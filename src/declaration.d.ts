@@ -1,0 +1,1 @@
+declare module '@modelscript/tree-sitter-modelscript';

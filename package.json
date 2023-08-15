@@ -1,0 +1,40 @@
+{
+  "name": "@modelscript/modelscript",
+  "version": "0.0.1",
+  "author": {
+    "email": "mnachawa@gmail.com",
+    "name": "Mohamad Omar Nachawati",
+    "url": "https://nachawati.me"
+  },
+  "license": "ISC",
+  "type": "module",
+  "main": "dist/node/index.js",
+  "browser": "dist/browser/index.js",
+  "typings": "dist/types/index.d.ts",
+  "bin": {
+    "ms": "./dist/node/ms.js"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "tsc && webpack --mode=production --node-env=production",
+    "build:dev": "tsc && webpack --mode=development",
+    "build:prod": "tsc && webpack --mode=production --node-env=production",
+    "watch": "webpack --watch"
+  },
+  "dependencies": {
+    "@modelscript/tree-sitter-modelscript": "file:../tree-sitter-modelscript",
+    "tree-sitter": "^0.20.5",
+    "web-tree-sitter": "^0.20.8",
+    "yargs": "^17.7.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.4.9",
+    "@types/webpack": "^5.28.1",
+    "@types/yargs": "^17.0.24",
+    "prettier": "^3.0.1",
+    "ts-loader": "^9.4.4",
+    "typescript": "^5.1.6",
+    "webpack": "^5.88.2",
+    "webpack-cli": "^5.1.4"
+  }
+}
