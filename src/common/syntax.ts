@@ -23,6 +23,8 @@ export abstract class ModelScriptAbstractSyntaxNode {
                 return new BinaryExpressionAbstractSyntaxNode(concreteSyntaxNode);
             case 'binary_integer_literal':
                 return new BinaryIntegerLiteralAbstractSyntaxNode(concreteSyntaxNode);
+            case 'conditional_expression':
+                return new ConditionalExpressionAbstractSyntaxNode(concreteSyntaxNode);
             case 'decimal_integer_literal':
                 return new DecimalIntegerLiteralAbstractSyntaxNode(concreteSyntaxNode);
             case 'double_quoted_string_literal':
@@ -50,7 +52,7 @@ export abstract class ModelScriptAbstractSyntaxNode {
             case 'unkeyed_element':
                 return new UnkeyedElementAbstractSyntaxNode(concreteSyntaxNode);
             default:
-                return undefined;
+                throw new Error(concreteSyntaxNode?.type)
         }
     }
 
@@ -82,6 +84,8 @@ export abstract class ExpressionAbstractSyntaxNode extends ModelScriptAbstractSy
                 return new BinaryExpressionAbstractSyntaxNode(concreteSyntaxNode);
             case 'binary_integer_literal':
                 return new BinaryIntegerLiteralAbstractSyntaxNode(concreteSyntaxNode);
+            case 'conditional_expression':
+                return new ConditionalExpressionAbstractSyntaxNode(concreteSyntaxNode);
             case 'decimal_integer_literal':
                 return new DecimalIntegerLiteralAbstractSyntaxNode(concreteSyntaxNode);
             case 'double_quoted_string_literal':
@@ -103,7 +107,7 @@ export abstract class ExpressionAbstractSyntaxNode extends ModelScriptAbstractSy
             case 'unary_expression':
                 return new UnaryExpressionAbstractSyntaxNode(concreteSyntaxNode);
             default:
-                return undefined;
+                throw new Error(concreteSyntaxNode?.type)
         }
     }
 
@@ -247,6 +251,53 @@ export class BinaryExpressionAbstractSyntaxNode extends ExpressionAbstractSyntax
 
 }
 
+export class ConditionalExpressionAbstractSyntaxNode extends ExpressionAbstractSyntaxNode {
+
+    #alternative?: ExpressionAbstractSyntaxNode;
+    #condition?: ExpressionAbstractSyntaxNode;
+    #consequence?: ExpressionAbstractSyntaxNode;
+
+    constructor(concreteSyntaxNode: SyntaxNode) {
+        super(concreteSyntaxNode);
+    }
+
+    override accept(visitor: ModelScriptAbstractSyntaxVisitor, ...args: any[]): any {
+        return visitor.visitConditionalExpression(this, ...args);
+    }
+
+    get alternative(): ExpressionAbstractSyntaxNode | undefined {
+        this.process();
+        return this.#alternative;
+    }
+
+    get condition(): ExpressionAbstractSyntaxNode | undefined {
+        this.process();
+        return this.#condition;
+    }
+
+    get consequence(): ExpressionAbstractSyntaxNode | undefined {
+        this.process();
+        return this.#consequence;
+    }
+
+    protected override process(): void {
+
+        if (this.processed == true || this.concreteSyntaxNode == null)
+            return;
+
+        if (this.concreteSyntaxNode.type != 'conditional_expression')
+            throw new Error(this.concreteSyntaxNode.type);
+
+        this.#alternative = ExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'alternative'));
+        this.#condition = ExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'condition'));
+        this.#consequence = ExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'consequence'));
+
+        this.processed = true;
+
+    }
+
+}
+
 export abstract class LiteralAbstractSyntaxNode extends ExpressionAbstractSyntaxNode {
 
     constructor(concreteSyntaxNode: SyntaxNode) {
@@ -274,7 +325,7 @@ export abstract class LiteralAbstractSyntaxNode extends ExpressionAbstractSyntax
             case 'single_quoted_string_literal':
                 return new SingleQuotedStringLiteralAbstractSyntaxNode(concreteSyntaxNode);
             default:
-                return undefined;
+                throw new Error(concreteSyntaxNode?.type)
         }
     }
 
@@ -369,7 +420,7 @@ export abstract class NumberLiteralAbstractSyntaxNode extends LiteralAbstractSyn
             case 'octal_integer_literal':
                 return new OctalIntegerLiteralAbstractSyntaxNode(concreteSyntaxNode);
             default:
-                return undefined;
+                throw new Error(concreteSyntaxNode?.type)
         }
     }
 
@@ -398,7 +449,7 @@ export abstract class IntegerLiteralAbstractSyntaxNode extends NumberLiteralAbst
             case 'octal_integer_literal':
                 return new OctalIntegerLiteralAbstractSyntaxNode(concreteSyntaxNode);
             default:
-                return undefined;
+                throw new Error(concreteSyntaxNode?.type)
         }
     }
 
@@ -555,7 +606,7 @@ export abstract class StringLiteralAbstractSyntaxNode extends LiteralAbstractSyn
             case 'single_quoted_string_literal':
                 return new SingleQuotedStringLiteralAbstractSyntaxNode(concreteSyntaxNode);
             default:
-                return undefined;
+                throw new Error(concreteSyntaxNode?.type)
         }
     }
 
@@ -934,6 +985,10 @@ export abstract class ModelScriptAbstractSyntaxVisitor {
     }
 
     visitBinaryIntegerLiteral(node: BinaryIntegerLiteralAbstractSyntaxNode, ...args: any[]): any {
+        throw new Error();
+    }
+
+    visitConditionalExpression(node: ConditionalExpressionAbstractSyntaxNode, ...args: any[]): any {
         throw new Error();
     }
 

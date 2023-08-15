@@ -1,5 +1,5 @@
 import { ModelScriptContext } from './context.js';
-import { ModelScriptAbstractSyntaxVisitor, ArrayConstructorAbstractSyntaxNode, BinaryIntegerLiteralAbstractSyntaxNode, DecimalIntegerLiteralAbstractSyntaxNode, DoubleQuotedStringLiteralAbstractSyntaxNode, HexadecimalIntegerLiteralAbstractSyntaxNode, KeyedElementAbstractSyntaxNode, LogicalLiteralAbstractSyntaxNode, ModuleAbstractSyntaxNode, NullLiteralAbstractSyntaxNode, ObjectConstructorAbstractSyntaxNode, OctalIntegerLiteralAbstractSyntaxNode, SingleQuotedStringLiteralAbstractSyntaxNode, UnkeyedElementAbstractSyntaxNode, UnaryExpressionAbstractSyntaxNode, UnaryOperator, BinaryExpressionAbstractSyntaxNode, BinaryOperator, ParenthesizedExpressionAbstractSyntaxNode } from './syntax.js';
+import { ModelScriptAbstractSyntaxVisitor, ArrayConstructorAbstractSyntaxNode, BinaryIntegerLiteralAbstractSyntaxNode, DecimalIntegerLiteralAbstractSyntaxNode, DoubleQuotedStringLiteralAbstractSyntaxNode, HexadecimalIntegerLiteralAbstractSyntaxNode, KeyedElementAbstractSyntaxNode, LogicalLiteralAbstractSyntaxNode, ModuleAbstractSyntaxNode, NullLiteralAbstractSyntaxNode, ObjectConstructorAbstractSyntaxNode, OctalIntegerLiteralAbstractSyntaxNode, SingleQuotedStringLiteralAbstractSyntaxNode, UnkeyedElementAbstractSyntaxNode, UnaryExpressionAbstractSyntaxNode, UnaryOperator, BinaryExpressionAbstractSyntaxNode, BinaryOperator, ParenthesizedExpressionAbstractSyntaxNode, ConditionalExpressionAbstractSyntaxNode } from './syntax.js';
 
 export class ModelScriptInterpreter extends ModelScriptAbstractSyntaxVisitor {
 
@@ -80,6 +80,13 @@ export class ModelScriptInterpreter extends ModelScriptAbstractSyntaxVisitor {
             default:
                 throw new Error();
         }
+    }
+
+    override visitConditionalExpression(node: ConditionalExpressionAbstractSyntaxNode, ...args: any[]): any {
+        if (node.condition?.accept(this))
+            return node.consequence?.accept(this);
+        else
+            return node.alternative?.accept(this);
     }
 
     override visitBinaryIntegerLiteral(node: BinaryIntegerLiteralAbstractSyntaxNode, ...args: any[]): any {
