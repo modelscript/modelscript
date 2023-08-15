@@ -41,6 +41,8 @@ export abstract class ModelScriptAbstractSyntaxNode {
                 return new ObjectConstructorAbstractSyntaxNode(concreteSyntaxNode);
             case 'octal_integer_literal':
                 return new OctalIntegerLiteralAbstractSyntaxNode(concreteSyntaxNode);
+            case 'parenthesized_expression':
+                return new ParenthesizedExpressionAbstractSyntaxNode(concreteSyntaxNode);
             case 'single_quoted_string_literal':
                 return new SingleQuotedStringLiteralAbstractSyntaxNode(concreteSyntaxNode);
             case 'unary_expression':
@@ -94,6 +96,8 @@ export abstract class ExpressionAbstractSyntaxNode extends ModelScriptAbstractSy
                 return new ObjectConstructorAbstractSyntaxNode(concreteSyntaxNode);
             case 'octal_integer_literal':
                 return new OctalIntegerLiteralAbstractSyntaxNode(concreteSyntaxNode);
+            case 'parenthesized_expression':
+                return new ParenthesizedExpressionAbstractSyntaxNode(concreteSyntaxNode);
             case 'single_quoted_string_literal':
                 return new SingleQuotedStringLiteralAbstractSyntaxNode(concreteSyntaxNode);
             case 'unary_expression':
@@ -799,6 +803,39 @@ export class UnkeyedElementAbstractSyntaxNode extends ElementAbstractSyntaxNode 
 
 }
 
+export class ParenthesizedExpressionAbstractSyntaxNode extends ExpressionAbstractSyntaxNode {
+
+    #expression?: ExpressionAbstractSyntaxNode;
+
+    constructor(concreteSyntaxNode: SyntaxNode) {
+        super(concreteSyntaxNode);
+    }
+
+    override accept(visitor: ModelScriptAbstractSyntaxVisitor, ...args: any[]): any {
+        return visitor.visitParenthesizedExpression(this, ...args);
+    }
+
+    get expression(): ExpressionAbstractSyntaxNode | undefined {
+        this.process();
+        return this.#expression;
+    }
+
+    protected override process(): void {
+
+        if (this.processed == true || this.concreteSyntaxNode == null)
+            return;
+
+        if (this.concreteSyntaxNode.type != 'parenthesized_expression')
+            throw new Error(this.concreteSyntaxNode.type);
+
+        this.#expression = ExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'expression'));
+
+        this.processed = true;
+
+    }
+
+}
+
 export class UnaryExpressionAbstractSyntaxNode extends ExpressionAbstractSyntaxNode {
 
     #operand?: ExpressionAbstractSyntaxNode;
@@ -941,6 +978,10 @@ export abstract class ModelScriptAbstractSyntaxVisitor {
     }
 
     visitUnkeyedElement(node: UnkeyedElementAbstractSyntaxNode, ...args: any[]): any {
+        throw new Error();
+    }
+
+    visitParenthesizedExpression(node: ParenthesizedExpressionAbstractSyntaxNode, ...args: any[]): any {
         throw new Error();
     }
 
