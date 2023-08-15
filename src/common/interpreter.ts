@@ -1,9 +1,10 @@
 import { ModelScriptContext } from './context.js';
-import { ModelScriptAbstractSyntaxVisitor, ArrayConstructorAbstractSyntaxNode, BinaryIntegerLiteralAbstractSyntaxNode, DecimalIntegerLiteralAbstractSyntaxNode, DoubleQuotedStringLiteralAbstractSyntaxNode, HexadecimalIntegerLiteralAbstractSyntaxNode, KeyedElementAbstractSyntaxNode, LogicalLiteralAbstractSyntaxNode, ModuleAbstractSyntaxNode, NullLiteralAbstractSyntaxNode, ObjectConstructorAbstractSyntaxNode, OctalIntegerLiteralAbstractSyntaxNode, SingleQuotedStringLiteralAbstractSyntaxNode, UnkeyedElementAbstractSyntaxNode, UnaryExpressionAbstractSyntaxNode, UnaryOperator, BinaryExpressionAbstractSyntaxNode, BinaryOperator, ParenthesizedExpressionAbstractSyntaxNode, ConditionalExpressionAbstractSyntaxNode } from './syntax.js';
+import { ModelScriptAbstractSyntaxVisitor, ArrayConstructorAbstractSyntaxNode, BinaryIntegerLiteralAbstractSyntaxNode, DecimalIntegerLiteralAbstractSyntaxNode, DoubleQuotedStringLiteralAbstractSyntaxNode, HexadecimalIntegerLiteralAbstractSyntaxNode, KeyedElementAbstractSyntaxNode, LogicalLiteralAbstractSyntaxNode, ModuleAbstractSyntaxNode, NullLiteralAbstractSyntaxNode, ObjectConstructorAbstractSyntaxNode, OctalIntegerLiteralAbstractSyntaxNode, SingleQuotedStringLiteralAbstractSyntaxNode, UnkeyedElementAbstractSyntaxNode, UnaryExpressionAbstractSyntaxNode, UnaryOperator, BinaryExpressionAbstractSyntaxNode, BinaryOperator, ParenthesizedExpressionAbstractSyntaxNode, ConditionalExpressionAbstractSyntaxNode, ContextItemExpressionAbstractSyntaxNode } from './syntax.js';
 
 export class ModelScriptInterpreter extends ModelScriptAbstractSyntaxVisitor {
 
     #context: ModelScriptContext;
+    #contextItem: any = null;
 
     constructor(context: ModelScriptContext) {
         super();
@@ -89,6 +90,10 @@ export class ModelScriptInterpreter extends ModelScriptAbstractSyntaxVisitor {
             return node.alternative?.accept(this);
     }
 
+    override visitContextItemExpression(node: ContextItemExpressionAbstractSyntaxNode, ...args: any[]): any {
+        return this.#contextItem;
+    }
+
     override visitBinaryIntegerLiteral(node: BinaryIntegerLiteralAbstractSyntaxNode, ...args: any[]): any {
         return node.value;
     }
@@ -135,6 +140,10 @@ export class ModelScriptInterpreter extends ModelScriptAbstractSyntaxVisitor {
         return node.value;
     }
 
+    override visitParenthesizedExpression(node: ParenthesizedExpressionAbstractSyntaxNode, ...args: any[]): any {
+        return node.expression?.accept(this);
+    }
+
     override visitSingleQuotedStringLiteral(node: SingleQuotedStringLiteralAbstractSyntaxNode, ...args: any[]): any {
         return node.value;
     }
@@ -146,10 +155,6 @@ export class ModelScriptInterpreter extends ModelScriptAbstractSyntaxVisitor {
             container.push(value);
         else
             container[value] = value;
-    }
-   
-    override visitParenthesizedExpression(node: ParenthesizedExpressionAbstractSyntaxNode, ...args: any[]): any {
-        return node.expression?.accept(this);
     }
 
     override visitUnaryExpression(node: UnaryExpressionAbstractSyntaxNode, ...args: any[]): any {

@@ -25,6 +25,8 @@ export abstract class ModelScriptAbstractSyntaxNode {
                 return new BinaryIntegerLiteralAbstractSyntaxNode(concreteSyntaxNode);
             case 'conditional_expression':
                 return new ConditionalExpressionAbstractSyntaxNode(concreteSyntaxNode);
+            case 'context_item_expression':
+                return new ContextItemExpressionAbstractSyntaxNode(concreteSyntaxNode);
             case 'decimal_integer_literal':
                 return new DecimalIntegerLiteralAbstractSyntaxNode(concreteSyntaxNode);
             case 'double_quoted_string_literal':
@@ -86,6 +88,8 @@ export abstract class ExpressionAbstractSyntaxNode extends ModelScriptAbstractSy
                 return new BinaryIntegerLiteralAbstractSyntaxNode(concreteSyntaxNode);
             case 'conditional_expression':
                 return new ConditionalExpressionAbstractSyntaxNode(concreteSyntaxNode);
+            case 'context_item_expression':
+                return new ContextItemExpressionAbstractSyntaxNode(concreteSyntaxNode);
             case 'decimal_integer_literal':
                 return new DecimalIntegerLiteralAbstractSyntaxNode(concreteSyntaxNode);
             case 'double_quoted_string_literal':
@@ -291,6 +295,30 @@ export class ConditionalExpressionAbstractSyntaxNode extends ExpressionAbstractS
         this.#alternative = ExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'alternative'));
         this.#condition = ExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'condition'));
         this.#consequence = ExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'consequence'));
+
+        this.processed = true;
+
+    }
+
+}
+
+export class ContextItemExpressionAbstractSyntaxNode extends ExpressionAbstractSyntaxNode {
+
+    constructor(concreteSyntaxNode: SyntaxNode) {
+        super(concreteSyntaxNode);
+    }
+
+    override accept(visitor: ModelScriptAbstractSyntaxVisitor, ...args: any[]): any {
+        return visitor.visitContextItemExpression(this, ...args);
+    }
+
+    protected override process(): void {
+
+        if (this.processed == true || this.concreteSyntaxNode == null)
+            return;
+
+        if (this.concreteSyntaxNode.type != 'context_item_expression')
+            throw new Error(this.concreteSyntaxNode.type);
 
         this.processed = true;
 
@@ -992,6 +1020,10 @@ export abstract class ModelScriptAbstractSyntaxVisitor {
         throw new Error();
     }
 
+    visitContextItemExpression(node: ContextItemExpressionAbstractSyntaxNode, ...args: any[]): any {
+        throw new Error();
+    }
+
     visitDecimalIntegerLiteral(node: DecimalIntegerLiteralAbstractSyntaxNode, ...args: any[]): any {
         throw new Error();
     }
@@ -1028,15 +1060,15 @@ export abstract class ModelScriptAbstractSyntaxVisitor {
         throw new Error();
     }
 
+    visitParenthesizedExpression(node: ParenthesizedExpressionAbstractSyntaxNode, ...args: any[]): any {
+        throw new Error();
+    }
+
     visitSingleQuotedStringLiteral(node: SingleQuotedStringLiteralAbstractSyntaxNode, ...args: any[]): any {
         throw new Error();
     }
 
     visitUnkeyedElement(node: UnkeyedElementAbstractSyntaxNode, ...args: any[]): any {
-        throw new Error();
-    }
-
-    visitParenthesizedExpression(node: ParenthesizedExpressionAbstractSyntaxNode, ...args: any[]): any {
         throw new Error();
     }
 
