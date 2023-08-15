@@ -41,6 +41,8 @@ export abstract class ModelScriptAbstractSyntaxNode {
                 return new OctalIntegerLiteralAbstractSyntaxNode(concreteSyntaxNode);
             case 'single_quoted_string_literal':
                 return new SingleQuotedStringLiteralAbstractSyntaxNode(concreteSyntaxNode);
+            case 'unary_expression':
+                return new UnaryExpressionAbstractSyntaxNode(concreteSyntaxNode);
             case 'unkeyed_element':
                 return new UnkeyedElementAbstractSyntaxNode(concreteSyntaxNode);
             default:
@@ -90,6 +92,8 @@ export abstract class ExpressionAbstractSyntaxNode extends ModelScriptAbstractSy
                 return new OctalIntegerLiteralAbstractSyntaxNode(concreteSyntaxNode);
             case 'single_quoted_string_literal':
                 return new SingleQuotedStringLiteralAbstractSyntaxNode(concreteSyntaxNode);
+            case 'unary_expression':
+                return new UnaryExpressionAbstractSyntaxNode(concreteSyntaxNode);
             default:
                 return undefined;
         }
@@ -655,6 +659,60 @@ export class UnkeyedElementAbstractSyntaxNode extends ElementAbstractSyntaxNode 
 
 }
 
+export class UnaryExpressionAbstractSyntaxNode extends ExpressionAbstractSyntaxNode {
+
+    #operand?: ExpressionAbstractSyntaxNode;
+    #operator?: UnaryOperator;
+
+    constructor(concreteSyntaxNode: SyntaxNode) {
+        super(concreteSyntaxNode);
+    }
+
+    override accept(visitor: ModelScriptAbstractSyntaxVisitor, ...args: any[]): any {
+        return visitor.visitUnaryExpression(this, ...args);
+    }
+
+    get operand(): ExpressionAbstractSyntaxNode | undefined {
+        this.process();
+        return this.#operand;
+    }
+
+    get operator(): UnaryOperator | undefined {
+        this.process();
+        return this.#operator;
+    }
+
+    protected override process(): void {
+
+        if (this.processed == true || this.concreteSyntaxNode == null)
+            return;
+
+        if (this.concreteSyntaxNode.type != "unary_expression")
+            throw new Error(this.concreteSyntaxNode.type);
+
+        this.#operand = ExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, "operand"));
+
+        switch (childForFieldName(this.concreteSyntaxNode, 'operator')?.text) {
+            case '+':
+                this.#operator = UnaryOperator.PLUS;
+                break;
+            case '-':
+                this.#operator = UnaryOperator.MINUS;
+                break;
+            case '~':
+                this.#operator = UnaryOperator.BITWISE_NOT;
+                break;
+            case '!':
+                this.#operator = UnaryOperator.LOGICAL_NOT;
+                break;
+        }
+
+        this.processed = true;
+
+    }
+
+}
+
 export class ModuleAbstractSyntaxNode extends ModelScriptAbstractSyntaxNode {
 
     #expression?: ExpressionAbstractSyntaxNode;
@@ -742,4 +800,15 @@ export abstract class ModelScriptAbstractSyntaxVisitor {
         throw new Error();
     }
 
+    visitUnaryExpression(node: UnaryExpressionAbstractSyntaxNode, ...args: any[]): any {
+        throw new Error();
+    }
+
+}
+
+export enum UnaryOperator {
+    BITWISE_NOT,
+    LOGICAL_NOT,
+    MINUS,
+    PLUS
 }

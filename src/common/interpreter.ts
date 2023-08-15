@@ -1,5 +1,5 @@
 import { ModelScriptContext } from './context.js';
-import { ModelScriptAbstractSyntaxVisitor, ArrayConstructorAbstractSyntaxNode, BinaryIntegerLiteralAbstractSyntaxNode, DecimalIntegerLiteralAbstractSyntaxNode, DoubleQuotedStringLiteralAbstractSyntaxNode, HexadecimalIntegerLiteralAbstractSyntaxNode, KeyedElementAbstractSyntaxNode, LogicalLiteralAbstractSyntaxNode, ModuleAbstractSyntaxNode, NullLiteralAbstractSyntaxNode, ObjectConstructorAbstractSyntaxNode, OctalIntegerLiteralAbstractSyntaxNode, SingleQuotedStringLiteralAbstractSyntaxNode, UnkeyedElementAbstractSyntaxNode } from './syntax.js';
+import { ModelScriptAbstractSyntaxVisitor, ArrayConstructorAbstractSyntaxNode, BinaryIntegerLiteralAbstractSyntaxNode, DecimalIntegerLiteralAbstractSyntaxNode, DoubleQuotedStringLiteralAbstractSyntaxNode, HexadecimalIntegerLiteralAbstractSyntaxNode, KeyedElementAbstractSyntaxNode, LogicalLiteralAbstractSyntaxNode, ModuleAbstractSyntaxNode, NullLiteralAbstractSyntaxNode, ObjectConstructorAbstractSyntaxNode, OctalIntegerLiteralAbstractSyntaxNode, SingleQuotedStringLiteralAbstractSyntaxNode, UnkeyedElementAbstractSyntaxNode, UnaryExpressionAbstractSyntaxNode, UnaryOperator } from './syntax.js';
 
 export class ModelScriptInterpreter extends ModelScriptAbstractSyntaxVisitor {
 
@@ -74,6 +74,21 @@ export class ModelScriptInterpreter extends ModelScriptAbstractSyntaxVisitor {
             container.push(value);
         else
             container[value] = value;
+    }
+
+    override visitUnaryExpression(node: UnaryExpressionAbstractSyntaxNode, ...args: any[]): any {
+        switch (node.operator) {
+            case UnaryOperator.BITWISE_NOT:
+                return ~node.operand?.accept(this)
+            case UnaryOperator.LOGICAL_NOT:
+                return !node.operand?.accept(this)
+            case UnaryOperator.MINUS:
+                return -node.operand?.accept(this)
+            case UnaryOperator.PLUS:
+                return +node.operand?.accept(this)
+            default:
+                throw new Error();
+        }
     }
 
 }
