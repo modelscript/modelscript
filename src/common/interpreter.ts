@@ -1,5 +1,5 @@
 import { ModelScriptContext } from './context.js';
-import { ModelScriptAbstractSyntaxVisitor, ArrayConstructorAbstractSyntaxNode, BinaryIntegerLiteralAbstractSyntaxNode, DecimalIntegerLiteralAbstractSyntaxNode, DoubleQuotedStringLiteralAbstractSyntaxNode, HexadecimalIntegerLiteralAbstractSyntaxNode, KeyedElementAbstractSyntaxNode, LogicalLiteralAbstractSyntaxNode, ModuleAbstractSyntaxNode, NullLiteralAbstractSyntaxNode, ObjectConstructorAbstractSyntaxNode, OctalIntegerLiteralAbstractSyntaxNode, SingleQuotedStringLiteralAbstractSyntaxNode, UnkeyedElementAbstractSyntaxNode, UnaryExpressionAbstractSyntaxNode, UnaryOperator } from './syntax.js';
+import { ModelScriptAbstractSyntaxVisitor, ArrayConstructorAbstractSyntaxNode, BinaryIntegerLiteralAbstractSyntaxNode, DecimalIntegerLiteralAbstractSyntaxNode, DoubleQuotedStringLiteralAbstractSyntaxNode, HexadecimalIntegerLiteralAbstractSyntaxNode, KeyedElementAbstractSyntaxNode, LogicalLiteralAbstractSyntaxNode, ModuleAbstractSyntaxNode, NullLiteralAbstractSyntaxNode, ObjectConstructorAbstractSyntaxNode, OctalIntegerLiteralAbstractSyntaxNode, SingleQuotedStringLiteralAbstractSyntaxNode, UnkeyedElementAbstractSyntaxNode, UnaryExpressionAbstractSyntaxNode, UnaryOperator, BinaryExpressionAbstractSyntaxNode, BinaryOperator } from './syntax.js';
 
 export class ModelScriptInterpreter extends ModelScriptAbstractSyntaxVisitor {
 
@@ -15,6 +15,71 @@ export class ModelScriptInterpreter extends ModelScriptAbstractSyntaxVisitor {
         for (const element of node.elements ?? [])
             element?.accept(this, array);
         return array;
+    }
+
+    override visitBinaryExpression(node: BinaryExpressionAbstractSyntaxNode, ...args: any[]): any {
+        switch (node.operator) {
+            case BinaryOperator.ASSIGNMENT:
+                throw new Error();
+            case BinaryOperator.MULTIPLICATION_ASSIGNMENT:
+                throw new Error();
+            case BinaryOperator.DIVISION_ASSIGNMENT:
+                throw new Error();
+            case BinaryOperator.MODULUS_ASSIGNMENT:
+                throw new Error();
+            case BinaryOperator.ADDITION_ASSIGNMENT:
+                throw new Error();
+            case BinaryOperator.SUBTRACTION_ASSIGNMENT:
+                throw new Error();
+            case BinaryOperator.LEFT_SHIFT_ASSIGNMENT:
+                throw new Error();
+            case BinaryOperator.RIGHT_SHIFT_ASSIGNMENT:
+                throw new Error();
+            case BinaryOperator.BITWISE_AND_ASSIGNMENT:
+                throw new Error();
+            case BinaryOperator.BITWISE_INCLUSIVE_OR_ASSIGNMENT:
+                throw new Error();
+            case BinaryOperator.BITWISE_EXCLUSIVE_OR_ASSIGNMENT:
+                throw new Error();
+            case BinaryOperator.LOGICAL_OR:
+                return node.operand1?.accept(this) || node.operand2?.accept(this);
+            case BinaryOperator.LOGICAL_AND:
+                return node.operand1?.accept(this) && node.operand2?.accept(this);
+            case BinaryOperator.BITWISE_INCLUSIVE_OR:
+                return node.operand1?.accept(this) | node.operand2?.accept(this);
+            case BinaryOperator.BITWISE_EXCLUSIVE_OR:
+                return node.operand1?.accept(this) ^ node.operand2?.accept(this);
+            case BinaryOperator.BITWISE_AND:
+                return node.operand1?.accept(this) & node.operand2?.accept(this);
+            case BinaryOperator.EQUALITY:
+                return node.operand1?.accept(this) == node.operand2?.accept(this);
+            case BinaryOperator.INEQUALITY:
+                return node.operand1?.accept(this) != node.operand2?.accept(this);
+            case BinaryOperator.LESS_THAN:
+                return node.operand1?.accept(this) < node.operand2?.accept(this);
+            case BinaryOperator.GREATER_THAN:
+                return node.operand1?.accept(this) > node.operand2?.accept(this);
+            case BinaryOperator.LESS_THAN_OR_EQUAL_TO:
+                return node.operand1?.accept(this) <= node.operand2?.accept(this);
+            case BinaryOperator.GREATER_THAN_OR_EQUAL_TO:
+                return node.operand1?.accept(this) >= node.operand2?.accept(this);
+            case BinaryOperator.LEFT_SHIFT:
+                return node.operand1?.accept(this) << node.operand2?.accept(this);
+            case BinaryOperator.RIGHT_SHIFT:
+                return node.operand1?.accept(this) >> node.operand2?.accept(this);
+            case BinaryOperator.ADDITION:
+                return node.operand1?.accept(this) + node.operand2?.accept(this);
+            case BinaryOperator.SUBTRACTION:
+                return node.operand1?.accept(this) - node.operand2?.accept(this);
+            case BinaryOperator.MULTIPLICATION:
+                return node.operand1?.accept(this) * node.operand2?.accept(this);
+            case BinaryOperator.DIVISION:
+                return node.operand1?.accept(this) / node.operand2?.accept(this);
+            case BinaryOperator.MODULUS:
+                return node.operand1?.accept(this) % node.operand2?.accept(this);
+            default:
+                throw new Error();
+        }
     }
 
     override visitBinaryIntegerLiteral(node: BinaryIntegerLiteralAbstractSyntaxNode, ...args: any[]): any {
@@ -82,9 +147,9 @@ export class ModelScriptInterpreter extends ModelScriptAbstractSyntaxVisitor {
                 return ~node.operand?.accept(this)
             case UnaryOperator.LOGICAL_NOT:
                 return !node.operand?.accept(this)
-            case UnaryOperator.MINUS:
+            case UnaryOperator.UNARY_NEGATION:
                 return -node.operand?.accept(this)
-            case UnaryOperator.PLUS:
+            case UnaryOperator.UNARY_PLUS:
                 return +node.operand?.accept(this)
             default:
                 throw new Error();

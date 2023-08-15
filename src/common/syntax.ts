@@ -19,6 +19,8 @@ export abstract class ModelScriptAbstractSyntaxNode {
         switch (concreteSyntaxNode?.type) {
             case 'array_constructor':
                 return new ArrayConstructorAbstractSyntaxNode(concreteSyntaxNode);
+            case 'binary_expression':
+                return new BinaryExpressionAbstractSyntaxNode(concreteSyntaxNode);
             case 'binary_integer_literal':
                 return new BinaryIntegerLiteralAbstractSyntaxNode(concreteSyntaxNode);
             case 'decimal_integer_literal':
@@ -74,6 +76,8 @@ export abstract class ExpressionAbstractSyntaxNode extends ModelScriptAbstractSy
         switch (concreteSyntaxNode?.type) {
             case 'array_constructor':
                 return new ArrayConstructorAbstractSyntaxNode(concreteSyntaxNode);
+            case 'binary_expression':
+                return new BinaryExpressionAbstractSyntaxNode(concreteSyntaxNode);
             case 'binary_integer_literal':
                 return new BinaryIntegerLiteralAbstractSyntaxNode(concreteSyntaxNode);
             case 'decimal_integer_literal':
@@ -100,6 +104,142 @@ export abstract class ExpressionAbstractSyntaxNode extends ModelScriptAbstractSy
     }
 
     protected abstract override process(): void;
+
+}
+
+export class BinaryExpressionAbstractSyntaxNode extends ExpressionAbstractSyntaxNode {
+
+    #operand1?: ExpressionAbstractSyntaxNode;
+    #operand2?: ExpressionAbstractSyntaxNode;
+    #operator?: BinaryOperator;
+
+    constructor(concreteSyntaxNode: SyntaxNode) {
+        super(concreteSyntaxNode);
+    }
+
+    override accept(visitor: ModelScriptAbstractSyntaxVisitor, ...args: any[]): any {
+        return visitor.visitBinaryExpression(this, ...args);
+    }
+
+    get operand1(): ExpressionAbstractSyntaxNode | undefined {
+        this.process();
+        return this.#operand1;
+    }
+
+    get operand2(): ExpressionAbstractSyntaxNode | undefined {
+        this.process();
+        return this.#operand2;
+    }
+
+    get operator(): BinaryOperator | undefined {
+        this.process();
+        return this.#operator;
+    }
+
+    protected override process(): void {
+
+        if (this.processed == true || this.concreteSyntaxNode == null)
+            return;
+
+        if (this.concreteSyntaxNode.type != 'binary_expression')
+            throw new Error(this.concreteSyntaxNode.type);
+
+        this.#operand1 = ExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'operand1'));
+        this.#operand2 = ExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'operand2'));
+
+        switch (childForFieldName(this.concreteSyntaxNode, 'operator')?.text) {
+            case '=':
+                this.#operator = BinaryOperator.ASSIGNMENT;
+                break;
+            case '*=':
+                this.#operator = BinaryOperator.MULTIPLICATION_ASSIGNMENT;
+                break;
+            case '/=':
+                this.#operator = BinaryOperator.DIVISION_ASSIGNMENT;
+                break;
+            case '%=':
+                this.#operator = BinaryOperator.MODULUS_ASSIGNMENT;
+                break;
+            case '+=':
+                this.#operator = BinaryOperator.ADDITION_ASSIGNMENT;
+                break;
+            case '-=':
+                this.#operator = BinaryOperator.SUBTRACTION_ASSIGNMENT;
+                break;
+            case '<<=':
+                this.#operator = BinaryOperator.LEFT_SHIFT_ASSIGNMENT;
+                break;
+            case '>>=':
+                this.#operator = BinaryOperator.RIGHT_SHIFT_ASSIGNMENT;
+                break;
+            case '&=':
+                this.#operator = BinaryOperator.BITWISE_AND_ASSIGNMENT;
+                break;
+            case '|=':
+                this.#operator = BinaryOperator.BITWISE_INCLUSIVE_OR_ASSIGNMENT;
+                break;
+            case '^=':
+                this.#operator = BinaryOperator.BITWISE_EXCLUSIVE_OR_ASSIGNMENT;
+                break;
+            case '||':
+                this.#operator = BinaryOperator.LOGICAL_OR;
+                break;
+            case '&&':
+                this.#operator = BinaryOperator.LOGICAL_AND;
+                break;
+            case '|':
+                this.#operator = BinaryOperator.BITWISE_INCLUSIVE_OR;
+                break;
+            case '^':
+                this.#operator = BinaryOperator.BITWISE_EXCLUSIVE_OR;
+                break;
+            case '&':
+                this.#operator = BinaryOperator.BITWISE_AND;
+                break;
+            case '==':
+                this.#operator = BinaryOperator.EQUALITY;
+                break;
+            case '!=':
+                this.#operator = BinaryOperator.INEQUALITY;
+                break;
+            case '<':
+                this.#operator = BinaryOperator.LESS_THAN;
+                break;
+            case '>':
+                this.#operator = BinaryOperator.GREATER_THAN;
+                break;
+            case '<=':
+                this.#operator = BinaryOperator.LESS_THAN_OR_EQUAL_TO;
+                break;
+            case '>=':
+                this.#operator = BinaryOperator.GREATER_THAN_OR_EQUAL_TO;
+                break;
+            case '<<':
+                this.#operator = BinaryOperator.LEFT_SHIFT;
+                break;
+            case '>>':
+                this.#operator = BinaryOperator.RIGHT_SHIFT;
+                break;
+            case '+':
+                this.#operator = BinaryOperator.ADDITION;
+                break;
+            case '-':
+                this.#operator = BinaryOperator.SUBTRACTION;
+                break;
+            case '*':
+                this.#operator = BinaryOperator.MULTIPLICATION;
+                break;
+            case '/':
+                this.#operator = BinaryOperator.DIVISION;
+                break;
+            case '%':
+                this.#operator = BinaryOperator.MODULUS;
+                break;
+        }
+
+        this.processed = true;
+
+    }
 
 }
 
@@ -157,10 +297,10 @@ export class LogicalLiteralAbstractSyntaxNode extends LiteralAbstractSyntaxNode 
         if (this.processed == true || this.concreteSyntaxNode == null)
             return;
 
-        if (this.concreteSyntaxNode.type != "logical_literal")
+        if (this.concreteSyntaxNode.type != 'logical_literal')
             throw new Error(this.concreteSyntaxNode.type);
 
-        this.#value = this.concreteSyntaxNode.text == "true";
+        this.#value = this.concreteSyntaxNode.text == 'true';
 
         this.processed = true;
 
@@ -190,7 +330,7 @@ export class NullLiteralAbstractSyntaxNode extends LiteralAbstractSyntaxNode {
         if (this.processed == true || this.concreteSyntaxNode == null)
             return;
 
-        if (this.concreteSyntaxNode.type != "null_literal")
+        if (this.concreteSyntaxNode.type != 'null_literal')
             throw new Error(this.concreteSyntaxNode.type);
 
         this.#value = null;
@@ -281,7 +421,7 @@ export class BinaryIntegerLiteralAbstractSyntaxNode extends IntegerLiteralAbstra
         if (this.processed == true || this.concreteSyntaxNode == null)
             return;
 
-        if (this.concreteSyntaxNode.type != "binary_integer_literal")
+        if (this.concreteSyntaxNode.type != 'binary_integer_literal')
             throw new Error(this.concreteSyntaxNode.type);
 
         this.#value = parseInt(this.concreteSyntaxNode.text.substring(2), 2);
@@ -314,7 +454,7 @@ export class DecimalIntegerLiteralAbstractSyntaxNode extends IntegerLiteralAbstr
         if (this.processed == true || this.concreteSyntaxNode == null)
             return;
 
-        if (this.concreteSyntaxNode.type != "decimal_integer_literal")
+        if (this.concreteSyntaxNode.type != 'decimal_integer_literal')
             throw new Error(this.concreteSyntaxNode.type);
 
         this.#value = parseInt(this.concreteSyntaxNode.text, 10);
@@ -347,7 +487,7 @@ export class HexadecimalIntegerLiteralAbstractSyntaxNode extends IntegerLiteralA
         if (this.processed == true || this.concreteSyntaxNode == null)
             return;
 
-        if (this.concreteSyntaxNode.type != "hexadecimal_integer_literal")
+        if (this.concreteSyntaxNode.type != 'hexadecimal_integer_literal')
             throw new Error(this.concreteSyntaxNode.type);
 
         this.#value = parseInt(this.concreteSyntaxNode.text.substring(2), 16);
@@ -380,7 +520,7 @@ export class OctalIntegerLiteralAbstractSyntaxNode extends IntegerLiteralAbstrac
         if (this.processed == true || this.concreteSyntaxNode == null)
             return;
 
-        if (this.concreteSyntaxNode.type != "octal_integer_literal")
+        if (this.concreteSyntaxNode.type != 'octal_integer_literal')
             throw new Error(this.concreteSyntaxNode.type);
 
         this.#value = parseInt(this.concreteSyntaxNode.text.substring(2), 8);
@@ -438,7 +578,7 @@ export class DoubleQuotedStringLiteralAbstractSyntaxNode extends StringLiteralAb
         if (this.processed == true || this.concreteSyntaxNode == null)
             return;
 
-        if (this.concreteSyntaxNode.type != "double_quoted_string_literal")
+        if (this.concreteSyntaxNode.type != 'double_quoted_string_literal')
             throw new Error(this.concreteSyntaxNode.type);
 
         this.#value = this.concreteSyntaxNode.text.substring(1, this.concreteSyntaxNode.text.length);
@@ -471,7 +611,7 @@ export class SingleQuotedStringLiteralAbstractSyntaxNode extends StringLiteralAb
         if (this.processed == true || this.concreteSyntaxNode == null)
             return;
 
-        if (this.concreteSyntaxNode.type != "single_quoted_string_literal")
+        if (this.concreteSyntaxNode.type != 'single_quoted_string_literal')
             throw new Error(this.concreteSyntaxNode.type);
 
         this.#value = this.concreteSyntaxNode.text.substring(1, this.concreteSyntaxNode.text.length);
@@ -509,7 +649,7 @@ export class ArrayConstructorAbstractSyntaxNode extends ExpressionAbstractSyntax
         if (this.processed == true || this.concreteSyntaxNode == null)
             return;
 
-        if (this.concreteSyntaxNode.type != "array_constructor")
+        if (this.concreteSyntaxNode.type != 'array_constructor')
             throw new Error(this.concreteSyntaxNode.type);
 
         this.#elements = [];
@@ -547,7 +687,7 @@ export class ObjectConstructorAbstractSyntaxNode extends ExpressionAbstractSynta
         if (this.processed == true || this.concreteSyntaxNode == null)
             return;
 
-        if (this.concreteSyntaxNode.type != "object_constructor")
+        if (this.concreteSyntaxNode.type != 'object_constructor')
             throw new Error(this.concreteSyntaxNode.type);
 
         this.#elements = [];
@@ -609,11 +749,11 @@ export class KeyedElementAbstractSyntaxNode extends ElementAbstractSyntaxNode {
         if (this.processed == true || this.concreteSyntaxNode == null)
             return;
 
-        if (this.concreteSyntaxNode.type != "keyed_element")
+        if (this.concreteSyntaxNode.type != 'keyed_element')
             throw new Error(this.concreteSyntaxNode.type);
 
-        this.#key = ExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, "key"));
-        this.#value = ExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, "value"));
+        this.#key = ExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'key'));
+        this.#value = ExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'value'));
 
         this.processed = true;
 
@@ -643,10 +783,10 @@ export class UnkeyedElementAbstractSyntaxNode extends ElementAbstractSyntaxNode 
         if (this.processed == true || this.concreteSyntaxNode == null)
             return;
 
-        if (this.concreteSyntaxNode.type != "unkeyed_element")
+        if (this.concreteSyntaxNode.type != 'unkeyed_element')
             throw new Error(this.concreteSyntaxNode.type);
 
-        this.#value = ExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, "value"));
+        this.#value = ExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'value'));
 
         this.processed = true;
 
@@ -687,23 +827,23 @@ export class UnaryExpressionAbstractSyntaxNode extends ExpressionAbstractSyntaxN
         if (this.processed == true || this.concreteSyntaxNode == null)
             return;
 
-        if (this.concreteSyntaxNode.type != "unary_expression")
+        if (this.concreteSyntaxNode.type != 'unary_expression')
             throw new Error(this.concreteSyntaxNode.type);
 
-        this.#operand = ExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, "operand"));
+        this.#operand = ExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'operand'));
 
         switch (childForFieldName(this.concreteSyntaxNode, 'operator')?.text) {
-            case '+':
-                this.#operator = UnaryOperator.PLUS;
-                break;
-            case '-':
-                this.#operator = UnaryOperator.MINUS;
-                break;
             case '~':
                 this.#operator = UnaryOperator.BITWISE_NOT;
                 break;
             case '!':
                 this.#operator = UnaryOperator.LOGICAL_NOT;
+                break;
+            case '-':
+                this.#operator = UnaryOperator.UNARY_NEGATION;
+                break;
+            case '+':
+                this.#operator = UnaryOperator.UNARY_PLUS;
                 break;
         }
 
@@ -735,10 +875,10 @@ export class ModuleAbstractSyntaxNode extends ModelScriptAbstractSyntaxNode {
         if (this.processed == true || this.concreteSyntaxNode == null)
             return;
 
-        if (this.concreteSyntaxNode.type != "module")
+        if (this.concreteSyntaxNode.type != 'module')
             throw new Error(this.concreteSyntaxNode.type);
 
-        this.#expression = ExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, "expression"));
+        this.#expression = ExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'expression'));
 
         this.processed = true;
 
@@ -749,6 +889,10 @@ export class ModuleAbstractSyntaxNode extends ModelScriptAbstractSyntaxNode {
 export abstract class ModelScriptAbstractSyntaxVisitor {
 
     visitArrayConstructor(node: ArrayConstructorAbstractSyntaxNode, ...args: any[]): any {
+        throw new Error();
+    }
+
+    visitBinaryExpression(node: BinaryExpressionAbstractSyntaxNode, ...args: any[]): any {
         throw new Error();
     }
 
@@ -806,9 +950,41 @@ export abstract class ModelScriptAbstractSyntaxVisitor {
 
 }
 
+export enum BinaryOperator {
+    ASSIGNMENT,
+    MULTIPLICATION_ASSIGNMENT,
+    DIVISION_ASSIGNMENT,
+    MODULUS_ASSIGNMENT,
+    ADDITION_ASSIGNMENT,
+    SUBTRACTION_ASSIGNMENT,
+    LEFT_SHIFT_ASSIGNMENT,
+    RIGHT_SHIFT_ASSIGNMENT,
+    BITWISE_AND_ASSIGNMENT,
+    BITWISE_INCLUSIVE_OR_ASSIGNMENT,
+    BITWISE_EXCLUSIVE_OR_ASSIGNMENT,
+    LOGICAL_OR,
+    LOGICAL_AND,
+    BITWISE_INCLUSIVE_OR,
+    BITWISE_EXCLUSIVE_OR,
+    BITWISE_AND,
+    EQUALITY,
+    INEQUALITY,
+    LESS_THAN,
+    GREATER_THAN,
+    LESS_THAN_OR_EQUAL_TO,
+    GREATER_THAN_OR_EQUAL_TO,
+    LEFT_SHIFT,
+    RIGHT_SHIFT,
+    ADDITION,
+    SUBTRACTION,
+    MULTIPLICATION,
+    DIVISION,
+    MODULUS
+}
+
 export enum UnaryOperator {
     BITWISE_NOT,
     LOGICAL_NOT,
-    MINUS,
-    PLUS
+    UNARY_NEGATION,
+    UNARY_PLUS
 }
