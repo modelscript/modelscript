@@ -49,6 +49,8 @@ export abstract class ModelScriptAbstractSyntaxNode {
                 return new ParenthesizedExpressionAbstractSyntaxNode(concreteSyntaxNode);
             case 'single_quoted_string_literal':
                 return new SingleQuotedStringLiteralAbstractSyntaxNode(concreteSyntaxNode);
+            case 'subscript_expression':
+                return new SubscriptExpressionAbstractSyntaxNode(concreteSyntaxNode);
             case 'unary_expression':
                 return new UnaryExpressionAbstractSyntaxNode(concreteSyntaxNode);
             case 'unkeyed_element':
@@ -108,6 +110,8 @@ export abstract class ExpressionAbstractSyntaxNode extends ModelScriptAbstractSy
                 return new ParenthesizedExpressionAbstractSyntaxNode(concreteSyntaxNode);
             case 'single_quoted_string_literal':
                 return new SingleQuotedStringLiteralAbstractSyntaxNode(concreteSyntaxNode);
+            case 'subscript_expression':
+                return new SubscriptExpressionAbstractSyntaxNode(concreteSyntaxNode);
             case 'unary_expression':
                 return new UnaryExpressionAbstractSyntaxNode(concreteSyntaxNode);
             default:
@@ -915,6 +919,46 @@ export class ParenthesizedExpressionAbstractSyntaxNode extends ExpressionAbstrac
 
 }
 
+export class SubscriptExpressionAbstractSyntaxNode extends ExpressionAbstractSyntaxNode {
+
+    #expression?: ExpressionAbstractSyntaxNode;
+    #subscript?: ExpressionAbstractSyntaxNode;
+
+    constructor(concreteSyntaxNode: SyntaxNode) {
+        super(concreteSyntaxNode);
+    }
+
+    override accept(visitor: ModelScriptAbstractSyntaxVisitor, ...args: any[]): any {
+        return visitor.visitSubscriptExpression(this, ...args);
+    }
+
+    get expression(): ExpressionAbstractSyntaxNode | undefined {
+        this.process();
+        return this.#expression;
+    }
+
+    protected override process(): void {
+
+        if (this.processed == true || this.concreteSyntaxNode == null)
+            return;
+
+        if (this.concreteSyntaxNode.type != 'subscript_expression')
+            throw new Error(this.concreteSyntaxNode.type);
+
+        this.#expression = ExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'expression'));
+        this.#subscript = ExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'subscript'));
+
+        this.processed = true;
+
+    }
+
+    get subscript(): ExpressionAbstractSyntaxNode | undefined {
+        this.process();
+        return this.#subscript;
+    }
+
+}
+
 export class UnaryExpressionAbstractSyntaxNode extends ExpressionAbstractSyntaxNode {
 
     #operand?: ExpressionAbstractSyntaxNode;
@@ -1065,6 +1109,10 @@ export abstract class ModelScriptAbstractSyntaxVisitor {
     }
 
     visitSingleQuotedStringLiteral(node: SingleQuotedStringLiteralAbstractSyntaxNode, ...args: any[]): any {
+        throw new Error();
+    }
+
+    visitSubscriptExpression(node: SubscriptExpressionAbstractSyntaxNode, ...args: any[]): any {
         throw new Error();
     }
 
