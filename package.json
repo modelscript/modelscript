@@ -23,12 +23,15 @@
   },
   "dependencies": {
     "@modelscript/tree-sitter-modelscript": "file:../tree-sitter-modelscript",
+    "@rdfjs/dataset": "^2.0.1",
     "tree-sitter": "^0.20.5",
     "web-tree-sitter": "^0.20.8",
     "yargs": "^17.7.2"
   },
   "devDependencies": {
     "@types/node": "^20.4.9",
+    "@types/rdfjs__data-model": "^2.0.4",
+    "@types/rdfjs__dataset": "^2.0.3",
     "@types/webpack": "^5.28.1",
     "@types/yargs": "^17.0.24",
     "prettier": "^3.0.1",

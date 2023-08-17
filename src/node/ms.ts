@@ -16,7 +16,7 @@ yargs(hideBin(process.argv))
         const input = fs.readFileSync(String(argv.file), { encoding: "utf8" });
         const context = new ModelScriptNodeContext();
         const result = context.eval(input);
-        console.log(result);
+        console.log(JSON.stringify(result, undefined, 4));
     })
     .demandCommand(1)
     .parse();

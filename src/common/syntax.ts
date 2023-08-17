@@ -16,6 +16,8 @@ export abstract class ModelScriptAbstractSyntaxNode {
     }
 
     static construct(concreteSyntaxNode?: SyntaxNode | null): ModelScriptAbstractSyntaxNode | undefined {
+        if (concreteSyntaxNode == null)
+            return undefined;
         switch (concreteSyntaxNode?.type) {
             case 'array_constructor':
                 return new ArrayConstructorAbstractSyntaxNode(concreteSyntaxNode);
@@ -47,6 +49,8 @@ export abstract class ModelScriptAbstractSyntaxNode {
                 return new OctalIntegerLiteralAbstractSyntaxNode(concreteSyntaxNode);
             case 'parenthesized_expression':
                 return new ParenthesizedExpressionAbstractSyntaxNode(concreteSyntaxNode);
+            case 'relation_expression':
+                return new RelationExpressionAbstractSyntaxNode(concreteSyntaxNode);
             case 'single_quoted_string_literal':
                 return new SingleQuotedStringLiteralAbstractSyntaxNode(concreteSyntaxNode);
             case 'subscript_expression':
@@ -81,6 +85,110 @@ export abstract class ExpressionAbstractSyntaxNode extends ModelScriptAbstractSy
     abstract override accept(visitor: ModelScriptAbstractSyntaxVisitor, ...args: any[]): any;
 
     static construct(concreteSyntaxNode?: SyntaxNode | null): ExpressionAbstractSyntaxNode | undefined {
+        if (concreteSyntaxNode == null)
+            return undefined;
+        switch (concreteSyntaxNode?.type) {
+            case 'array_constructor':
+                return new ArrayConstructorAbstractSyntaxNode(concreteSyntaxNode);
+            case 'binary_expression':
+                return new BinaryExpressionAbstractSyntaxNode(concreteSyntaxNode);
+            case 'binary_integer_literal':
+                return new BinaryIntegerLiteralAbstractSyntaxNode(concreteSyntaxNode);
+            case 'conditional_expression':
+                return new ConditionalExpressionAbstractSyntaxNode(concreteSyntaxNode);
+            case 'context_item_expression':
+                return new ContextItemExpressionAbstractSyntaxNode(concreteSyntaxNode);
+            case 'decimal_integer_literal':
+                return new DecimalIntegerLiteralAbstractSyntaxNode(concreteSyntaxNode);
+            case 'double_quoted_string_literal':
+                return new DoubleQuotedStringLiteralAbstractSyntaxNode(concreteSyntaxNode);
+            case 'hexadecimal_integer_literal':
+                return new HexadecimalIntegerLiteralAbstractSyntaxNode(concreteSyntaxNode);
+            case 'logical_literal':
+                return new LogicalLiteralAbstractSyntaxNode(concreteSyntaxNode);
+            case 'null_literal':
+                return new NullLiteralAbstractSyntaxNode(concreteSyntaxNode);
+            case 'object_constructor':
+                return new ObjectConstructorAbstractSyntaxNode(concreteSyntaxNode);
+            case 'octal_integer_literal':
+                return new OctalIntegerLiteralAbstractSyntaxNode(concreteSyntaxNode);
+            case 'parenthesized_expression':
+                return new ParenthesizedExpressionAbstractSyntaxNode(concreteSyntaxNode);
+            case 'relation_expression':
+                return new RelationExpressionAbstractSyntaxNode(concreteSyntaxNode);
+            case 'single_quoted_string_literal':
+                return new SingleQuotedStringLiteralAbstractSyntaxNode(concreteSyntaxNode);
+            case 'subscript_expression':
+                return new SubscriptExpressionAbstractSyntaxNode(concreteSyntaxNode);
+            case 'unary_expression':
+                return new UnaryExpressionAbstractSyntaxNode(concreteSyntaxNode);
+            default:
+                throw new Error(concreteSyntaxNode?.type)
+        }
+    }
+
+    protected abstract override process(): void;
+
+}
+
+export class RelationExpressionAbstractSyntaxNode extends ExpressionAbstractSyntaxNode {
+
+    #property?: SingleExpressionAbstractSyntaxNode;
+    #object?: SingleExpressionAbstractSyntaxNode;
+    #subject?: SingleExpressionAbstractSyntaxNode;
+
+    constructor(concreteSyntaxNode: SyntaxNode) {
+        super(concreteSyntaxNode);
+    }
+
+    override accept(visitor: ModelScriptAbstractSyntaxVisitor, ...args: any[]): any {
+        return visitor.visitRelationExpression(this, ...args);
+    }
+
+    get property(): SingleExpressionAbstractSyntaxNode | undefined {
+        this.process();
+        return this.#property;
+    }
+
+    get object(): SingleExpressionAbstractSyntaxNode | undefined {
+        this.process();
+        return this.#object;
+    }
+
+    get subject(): SingleExpressionAbstractSyntaxNode | undefined {
+        this.process();
+        return this.#subject;
+    }
+
+    protected override process(): void {
+
+        if (this.processed == true || this.concreteSyntaxNode == null)
+            return;
+
+        if (this.concreteSyntaxNode.type != 'relation_expression')
+            throw new Error(this.concreteSyntaxNode.type);
+
+        this.#property = SingleExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'property'));
+        this.#object = SingleExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'object'));
+        this.#subject = SingleExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'subject'));
+
+        this.processed = true;
+
+    }
+
+}
+
+export abstract class SingleExpressionAbstractSyntaxNode extends ExpressionAbstractSyntaxNode {
+
+    constructor(concreteSyntaxNode: SyntaxNode) {
+        super(concreteSyntaxNode);
+    }
+
+    abstract override accept(visitor: ModelScriptAbstractSyntaxVisitor, ...args: any[]): any;
+
+    static construct(concreteSyntaxNode?: SyntaxNode | null): SingleExpressionAbstractSyntaxNode | undefined {
+        if (concreteSyntaxNode == null)
+            return undefined;
         switch (concreteSyntaxNode?.type) {
             case 'array_constructor':
                 return new ArrayConstructorAbstractSyntaxNode(concreteSyntaxNode);
@@ -123,10 +231,10 @@ export abstract class ExpressionAbstractSyntaxNode extends ModelScriptAbstractSy
 
 }
 
-export class BinaryExpressionAbstractSyntaxNode extends ExpressionAbstractSyntaxNode {
+export class BinaryExpressionAbstractSyntaxNode extends SingleExpressionAbstractSyntaxNode {
 
-    #operand1?: ExpressionAbstractSyntaxNode;
-    #operand2?: ExpressionAbstractSyntaxNode;
+    #operand1?: SingleExpressionAbstractSyntaxNode;
+    #operand2?: SingleExpressionAbstractSyntaxNode;
     #operator?: BinaryOperator;
 
     constructor(concreteSyntaxNode: SyntaxNode) {
@@ -137,12 +245,12 @@ export class BinaryExpressionAbstractSyntaxNode extends ExpressionAbstractSyntax
         return visitor.visitBinaryExpression(this, ...args);
     }
 
-    get operand1(): ExpressionAbstractSyntaxNode | undefined {
+    get operand1(): SingleExpressionAbstractSyntaxNode | undefined {
         this.process();
         return this.#operand1;
     }
 
-    get operand2(): ExpressionAbstractSyntaxNode | undefined {
+    get operand2(): SingleExpressionAbstractSyntaxNode | undefined {
         this.process();
         return this.#operand2;
     }
@@ -160,8 +268,8 @@ export class BinaryExpressionAbstractSyntaxNode extends ExpressionAbstractSyntax
         if (this.concreteSyntaxNode.type != 'binary_expression')
             throw new Error(this.concreteSyntaxNode.type);
 
-        this.#operand1 = ExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'operand1'));
-        this.#operand2 = ExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'operand2'));
+        this.#operand1 = SingleExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'operand1'));
+        this.#operand2 = SingleExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'operand2'));
 
         switch (childForFieldName(this.concreteSyntaxNode, 'operator')?.text) {
             case '=':
@@ -259,11 +367,11 @@ export class BinaryExpressionAbstractSyntaxNode extends ExpressionAbstractSyntax
 
 }
 
-export class ConditionalExpressionAbstractSyntaxNode extends ExpressionAbstractSyntaxNode {
+export class ConditionalExpressionAbstractSyntaxNode extends SingleExpressionAbstractSyntaxNode {
 
-    #alternative?: ExpressionAbstractSyntaxNode;
-    #condition?: ExpressionAbstractSyntaxNode;
-    #consequence?: ExpressionAbstractSyntaxNode;
+    #alternative?: SingleExpressionAbstractSyntaxNode;
+    #condition?: SingleExpressionAbstractSyntaxNode;
+    #consequence?: SingleExpressionAbstractSyntaxNode;
 
     constructor(concreteSyntaxNode: SyntaxNode) {
         super(concreteSyntaxNode);
@@ -273,17 +381,17 @@ export class ConditionalExpressionAbstractSyntaxNode extends ExpressionAbstractS
         return visitor.visitConditionalExpression(this, ...args);
     }
 
-    get alternative(): ExpressionAbstractSyntaxNode | undefined {
+    get alternative(): SingleExpressionAbstractSyntaxNode | undefined {
         this.process();
         return this.#alternative;
     }
 
-    get condition(): ExpressionAbstractSyntaxNode | undefined {
+    get condition(): SingleExpressionAbstractSyntaxNode | undefined {
         this.process();
         return this.#condition;
     }
 
-    get consequence(): ExpressionAbstractSyntaxNode | undefined {
+    get consequence(): SingleExpressionAbstractSyntaxNode | undefined {
         this.process();
         return this.#consequence;
     }
@@ -296,9 +404,9 @@ export class ConditionalExpressionAbstractSyntaxNode extends ExpressionAbstractS
         if (this.concreteSyntaxNode.type != 'conditional_expression')
             throw new Error(this.concreteSyntaxNode.type);
 
-        this.#alternative = ExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'alternative'));
-        this.#condition = ExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'condition'));
-        this.#consequence = ExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'consequence'));
+        this.#alternative = SingleExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'alternative'));
+        this.#condition = SingleExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'condition'));
+        this.#consequence = SingleExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'consequence'));
 
         this.processed = true;
 
@@ -306,7 +414,7 @@ export class ConditionalExpressionAbstractSyntaxNode extends ExpressionAbstractS
 
 }
 
-export class ContextItemExpressionAbstractSyntaxNode extends ExpressionAbstractSyntaxNode {
+export class ContextItemExpressionAbstractSyntaxNode extends SingleExpressionAbstractSyntaxNode {
 
     constructor(concreteSyntaxNode: SyntaxNode) {
         super(concreteSyntaxNode);
@@ -330,7 +438,7 @@ export class ContextItemExpressionAbstractSyntaxNode extends ExpressionAbstractS
 
 }
 
-export abstract class LiteralAbstractSyntaxNode extends ExpressionAbstractSyntaxNode {
+export abstract class LiteralAbstractSyntaxNode extends SingleExpressionAbstractSyntaxNode {
 
     constructor(concreteSyntaxNode: SyntaxNode) {
         super(concreteSyntaxNode);
@@ -714,7 +822,7 @@ export class SingleQuotedStringLiteralAbstractSyntaxNode extends StringLiteralAb
 
 }
 
-export class ArrayConstructorAbstractSyntaxNode extends ExpressionAbstractSyntaxNode {
+export class ArrayConstructorAbstractSyntaxNode extends SingleExpressionAbstractSyntaxNode {
 
     #elements?: ElementAbstractSyntaxNode[];
 
@@ -752,7 +860,7 @@ export class ArrayConstructorAbstractSyntaxNode extends ExpressionAbstractSyntax
 
 }
 
-export class ObjectConstructorAbstractSyntaxNode extends ExpressionAbstractSyntaxNode {
+export class ObjectConstructorAbstractSyntaxNode extends SingleExpressionAbstractSyntaxNode {
 
     #elements?: ElementAbstractSyntaxNode[];
 
@@ -815,7 +923,7 @@ export abstract class ElementAbstractSyntaxNode extends ModelScriptAbstractSynta
 
 export class KeyedElementAbstractSyntaxNode extends ElementAbstractSyntaxNode {
 
-    #key?: ExpressionAbstractSyntaxNode;
+    #key?: SingleExpressionAbstractSyntaxNode;
     #value?: ExpressionAbstractSyntaxNode;
 
     constructor(concreteSyntaxNode: SyntaxNode) {
@@ -839,7 +947,7 @@ export class KeyedElementAbstractSyntaxNode extends ElementAbstractSyntaxNode {
         if (this.concreteSyntaxNode.type != 'keyed_element')
             throw new Error(this.concreteSyntaxNode.type);
 
-        this.#key = ExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'key'));
+        this.#key = SingleExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'key'));
         this.#value = ExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'value'));
 
         this.processed = true;
@@ -886,7 +994,7 @@ export class UnkeyedElementAbstractSyntaxNode extends ElementAbstractSyntaxNode 
 
 }
 
-export class ParenthesizedExpressionAbstractSyntaxNode extends ExpressionAbstractSyntaxNode {
+export class ParenthesizedExpressionAbstractSyntaxNode extends SingleExpressionAbstractSyntaxNode {
 
     #expression?: ExpressionAbstractSyntaxNode;
 
@@ -919,10 +1027,10 @@ export class ParenthesizedExpressionAbstractSyntaxNode extends ExpressionAbstrac
 
 }
 
-export class SubscriptExpressionAbstractSyntaxNode extends ExpressionAbstractSyntaxNode {
+export class SubscriptExpressionAbstractSyntaxNode extends SingleExpressionAbstractSyntaxNode {
 
-    #expression?: ExpressionAbstractSyntaxNode;
-    #subscript?: ExpressionAbstractSyntaxNode;
+    #expression?: SingleExpressionAbstractSyntaxNode;
+    #subscript?: SingleExpressionAbstractSyntaxNode;
 
     constructor(concreteSyntaxNode: SyntaxNode) {
         super(concreteSyntaxNode);
@@ -932,7 +1040,7 @@ export class SubscriptExpressionAbstractSyntaxNode extends ExpressionAbstractSyn
         return visitor.visitSubscriptExpression(this, ...args);
     }
 
-    get expression(): ExpressionAbstractSyntaxNode | undefined {
+    get expression(): SingleExpressionAbstractSyntaxNode | undefined {
         this.process();
         return this.#expression;
     }
@@ -945,8 +1053,8 @@ export class SubscriptExpressionAbstractSyntaxNode extends ExpressionAbstractSyn
         if (this.concreteSyntaxNode.type != 'subscript_expression')
             throw new Error(this.concreteSyntaxNode.type);
 
-        this.#expression = ExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'expression'));
-        this.#subscript = ExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'subscript'));
+        this.#expression = SingleExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'expression'));
+        this.#subscript = SingleExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'subscript'));
 
         this.processed = true;
 
@@ -959,9 +1067,9 @@ export class SubscriptExpressionAbstractSyntaxNode extends ExpressionAbstractSyn
 
 }
 
-export class UnaryExpressionAbstractSyntaxNode extends ExpressionAbstractSyntaxNode {
+export class UnaryExpressionAbstractSyntaxNode extends SingleExpressionAbstractSyntaxNode {
 
-    #operand?: ExpressionAbstractSyntaxNode;
+    #operand?: SingleExpressionAbstractSyntaxNode;
     #operator?: UnaryOperator;
 
     constructor(concreteSyntaxNode: SyntaxNode) {
@@ -972,7 +1080,7 @@ export class UnaryExpressionAbstractSyntaxNode extends ExpressionAbstractSyntaxN
         return visitor.visitUnaryExpression(this, ...args);
     }
 
-    get operand(): ExpressionAbstractSyntaxNode | undefined {
+    get operand(): SingleExpressionAbstractSyntaxNode | undefined {
         this.process();
         return this.#operand;
     }
@@ -990,7 +1098,7 @@ export class UnaryExpressionAbstractSyntaxNode extends ExpressionAbstractSyntaxN
         if (this.concreteSyntaxNode.type != 'unary_expression')
             throw new Error(this.concreteSyntaxNode.type);
 
-        this.#operand = ExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'operand'));
+        this.#operand = SingleExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'operand'));
 
         switch (childForFieldName(this.concreteSyntaxNode, 'operator')?.text) {
             case '~':
@@ -1105,6 +1213,10 @@ export abstract class ModelScriptAbstractSyntaxVisitor {
     }
 
     visitParenthesizedExpression(node: ParenthesizedExpressionAbstractSyntaxNode, ...args: any[]): any {
+        throw new Error();
+    }
+
+    visitRelationExpression(node: RelationExpressionAbstractSyntaxNode, ...args: any[]): any {
         throw new Error();
     }
 
