@@ -18,7 +18,7 @@ export abstract class ModelScriptAbstractSyntaxNode {
     static construct(concreteSyntaxNode?: SyntaxNode | null): ModelScriptAbstractSyntaxNode | undefined {
         if (concreteSyntaxNode == null)
             return undefined;
-        switch (concreteSyntaxNode?.type) {
+        switch (concreteSyntaxNode.type) {
             case 'array_constructor':
                 return new ArrayConstructorAbstractSyntaxNode(concreteSyntaxNode);
             case 'binary_expression':
@@ -41,6 +41,8 @@ export abstract class ModelScriptAbstractSyntaxNode {
                 return new KeyedElementAbstractSyntaxNode(concreteSyntaxNode);
             case 'module':
                 return new ModuleAbstractSyntaxNode(concreteSyntaxNode);
+            case 'name':
+                return new NameAbstractSyntaxNode(concreteSyntaxNode);
             case 'null_literal':
                 return new NullLiteralAbstractSyntaxNode(concreteSyntaxNode);
             case 'object_constructor':
@@ -49,6 +51,12 @@ export abstract class ModelScriptAbstractSyntaxNode {
                 return new OctalIntegerLiteralAbstractSyntaxNode(concreteSyntaxNode);
             case 'parenthesized_expression':
                 return new ParenthesizedExpressionAbstractSyntaxNode(concreteSyntaxNode);
+            case 'quantified_expression':
+                return new QuantifiedExpressionAbstractSyntaxNode(concreteSyntaxNode);
+            case 'quantifier':
+                return new QuantifierAbstractSyntaxNode(concreteSyntaxNode);
+            case 'quantifier_clause':
+                return new QuantifiedClauseAbstractSyntaxNode(concreteSyntaxNode);
             case 'relation_expression':
                 return new RelationExpressionAbstractSyntaxNode(concreteSyntaxNode);
             case 'single_quoted_string_literal':
@@ -59,8 +67,10 @@ export abstract class ModelScriptAbstractSyntaxNode {
                 return new UnaryExpressionAbstractSyntaxNode(concreteSyntaxNode);
             case 'unkeyed_element':
                 return new UnkeyedElementAbstractSyntaxNode(concreteSyntaxNode);
+            case 'variable':
+                return new VariableAbstractSyntaxNode(concreteSyntaxNode);
             default:
-                throw new Error(concreteSyntaxNode?.type)
+                throw new Error(concreteSyntaxNode.type)
         }
     }
 
@@ -87,7 +97,7 @@ export abstract class ExpressionAbstractSyntaxNode extends ModelScriptAbstractSy
     static construct(concreteSyntaxNode?: SyntaxNode | null): ExpressionAbstractSyntaxNode | undefined {
         if (concreteSyntaxNode == null)
             return undefined;
-        switch (concreteSyntaxNode?.type) {
+        switch (concreteSyntaxNode.type) {
             case 'array_constructor':
                 return new ArrayConstructorAbstractSyntaxNode(concreteSyntaxNode);
             case 'binary_expression':
@@ -114,6 +124,8 @@ export abstract class ExpressionAbstractSyntaxNode extends ModelScriptAbstractSy
                 return new OctalIntegerLiteralAbstractSyntaxNode(concreteSyntaxNode);
             case 'parenthesized_expression':
                 return new ParenthesizedExpressionAbstractSyntaxNode(concreteSyntaxNode);
+            case 'quantified_expression':
+                return new QuantifiedExpressionAbstractSyntaxNode(concreteSyntaxNode);
             case 'relation_expression':
                 return new RelationExpressionAbstractSyntaxNode(concreteSyntaxNode);
             case 'single_quoted_string_literal':
@@ -123,7 +135,7 @@ export abstract class ExpressionAbstractSyntaxNode extends ModelScriptAbstractSy
             case 'unary_expression':
                 return new UnaryExpressionAbstractSyntaxNode(concreteSyntaxNode);
             default:
-                throw new Error(concreteSyntaxNode?.type)
+                throw new Error(concreteSyntaxNode.type)
         }
     }
 
@@ -143,6 +155,15 @@ export class RelationExpressionAbstractSyntaxNode extends ExpressionAbstractSynt
 
     override accept(visitor: ModelScriptAbstractSyntaxVisitor, ...args: any[]): any {
         return visitor.visitRelationExpression(this, ...args);
+    }
+
+    static override construct(concreteSyntaxNode?: SyntaxNode | null): RelationExpressionAbstractSyntaxNode | undefined {
+        if (concreteSyntaxNode == null)
+            return undefined;
+        else if (concreteSyntaxNode.type != 'relation_expression')
+            throw new Error(concreteSyntaxNode.type)
+        else
+            return new RelationExpressionAbstractSyntaxNode(concreteSyntaxNode);
     }
 
     get property(): SingleExpressionAbstractSyntaxNode | undefined {
@@ -189,7 +210,7 @@ export abstract class SingleExpressionAbstractSyntaxNode extends ExpressionAbstr
     static construct(concreteSyntaxNode?: SyntaxNode | null): SingleExpressionAbstractSyntaxNode | undefined {
         if (concreteSyntaxNode == null)
             return undefined;
-        switch (concreteSyntaxNode?.type) {
+        switch (concreteSyntaxNode.type) {
             case 'array_constructor':
                 return new ArrayConstructorAbstractSyntaxNode(concreteSyntaxNode);
             case 'binary_expression':
@@ -216,6 +237,8 @@ export abstract class SingleExpressionAbstractSyntaxNode extends ExpressionAbstr
                 return new OctalIntegerLiteralAbstractSyntaxNode(concreteSyntaxNode);
             case 'parenthesized_expression':
                 return new ParenthesizedExpressionAbstractSyntaxNode(concreteSyntaxNode);
+            case 'quantified_expression':
+                return new QuantifiedExpressionAbstractSyntaxNode(concreteSyntaxNode);
             case 'single_quoted_string_literal':
                 return new SingleQuotedStringLiteralAbstractSyntaxNode(concreteSyntaxNode);
             case 'subscript_expression':
@@ -223,7 +246,7 @@ export abstract class SingleExpressionAbstractSyntaxNode extends ExpressionAbstr
             case 'unary_expression':
                 return new UnaryExpressionAbstractSyntaxNode(concreteSyntaxNode);
             default:
-                throw new Error(concreteSyntaxNode?.type)
+                throw new Error(concreteSyntaxNode.type)
         }
     }
 
@@ -243,6 +266,15 @@ export class BinaryExpressionAbstractSyntaxNode extends SingleExpressionAbstract
 
     override accept(visitor: ModelScriptAbstractSyntaxVisitor, ...args: any[]): any {
         return visitor.visitBinaryExpression(this, ...args);
+    }
+
+    static override construct(concreteSyntaxNode?: SyntaxNode | null): BinaryExpressionAbstractSyntaxNode | undefined {
+        if (concreteSyntaxNode == null)
+            return undefined;
+        else if (concreteSyntaxNode.type != 'binary_expression')
+            throw new Error(concreteSyntaxNode.type)
+        else
+            return new BinaryExpressionAbstractSyntaxNode(concreteSyntaxNode);
     }
 
     get operand1(): SingleExpressionAbstractSyntaxNode | undefined {
@@ -359,6 +391,8 @@ export class BinaryExpressionAbstractSyntaxNode extends SingleExpressionAbstract
             case '%':
                 this.#operator = BinaryOperator.MODULUS;
                 break;
+            default:
+                throw Error();
         }
 
         this.processed = true;
@@ -396,6 +430,15 @@ export class ConditionalExpressionAbstractSyntaxNode extends SingleExpressionAbs
         return this.#consequence;
     }
 
+    static override construct(concreteSyntaxNode?: SyntaxNode | null): ConditionalExpressionAbstractSyntaxNode | undefined {
+        if (concreteSyntaxNode == null)
+            return undefined;
+        else if (concreteSyntaxNode.type != 'conditional_expression')
+            throw new Error(concreteSyntaxNode.type)
+        else
+            return new ConditionalExpressionAbstractSyntaxNode(concreteSyntaxNode);
+    }
+
     protected override process(): void {
 
         if (this.processed == true || this.concreteSyntaxNode == null)
@@ -424,6 +467,15 @@ export class ContextItemExpressionAbstractSyntaxNode extends SingleExpressionAbs
         return visitor.visitContextItemExpression(this, ...args);
     }
 
+    static override construct(concreteSyntaxNode?: SyntaxNode | null): ContextItemExpressionAbstractSyntaxNode | undefined {
+        if (concreteSyntaxNode == null)
+            return undefined;
+        else if (concreteSyntaxNode.type != 'context_item_expression')
+            throw new Error(concreteSyntaxNode.type)
+        else
+            return new ContextItemExpressionAbstractSyntaxNode(concreteSyntaxNode);
+    }
+
     protected override process(): void {
 
         if (this.processed == true || this.concreteSyntaxNode == null)
@@ -447,7 +499,9 @@ export abstract class LiteralAbstractSyntaxNode extends SingleExpressionAbstract
     abstract override accept(visitor: ModelScriptAbstractSyntaxVisitor, ...args: any[]): any;
 
     static override construct(concreteSyntaxNode?: SyntaxNode | null): LiteralAbstractSyntaxNode | undefined {
-        switch (concreteSyntaxNode?.type) {
+        if (concreteSyntaxNode == null)
+            return undefined;
+        switch (concreteSyntaxNode.type) {
             case 'binary_integer_literal':
                 return new BinaryIntegerLiteralAbstractSyntaxNode(concreteSyntaxNode);
             case 'decimal_integer_literal':
@@ -465,7 +519,7 @@ export abstract class LiteralAbstractSyntaxNode extends SingleExpressionAbstract
             case 'single_quoted_string_literal':
                 return new SingleQuotedStringLiteralAbstractSyntaxNode(concreteSyntaxNode);
             default:
-                throw new Error(concreteSyntaxNode?.type)
+                throw new Error(concreteSyntaxNode.type)
         }
     }
 
@@ -485,6 +539,15 @@ export class LogicalLiteralAbstractSyntaxNode extends LiteralAbstractSyntaxNode 
 
     override accept(visitor: ModelScriptAbstractSyntaxVisitor, ...args: any[]): any {
         return visitor.visitLogicalLiteral(this, ...args);
+    }
+
+    static override construct(concreteSyntaxNode?: SyntaxNode | null): LogicalLiteralAbstractSyntaxNode | undefined {
+        if (concreteSyntaxNode == null)
+            return undefined;
+        else if (concreteSyntaxNode.type != 'logical_literal')
+            throw new Error(concreteSyntaxNode.type)
+        else
+            return new LogicalLiteralAbstractSyntaxNode(concreteSyntaxNode);
     }
 
     protected override process(): void {
@@ -520,6 +583,15 @@ export class NullLiteralAbstractSyntaxNode extends LiteralAbstractSyntaxNode {
         return visitor.visitNullLiteral(this, ...args);
     }
 
+    static override construct(concreteSyntaxNode?: SyntaxNode | null): NullLiteralAbstractSyntaxNode | undefined {
+        if (concreteSyntaxNode == null)
+            return undefined;
+        else if (concreteSyntaxNode.type != 'null_literal')
+            throw new Error(concreteSyntaxNode.type)
+        else
+            return new NullLiteralAbstractSyntaxNode(concreteSyntaxNode);
+    }
+
     protected override process(): void {
 
         if (this.processed == true || this.concreteSyntaxNode == null)
@@ -550,7 +622,9 @@ export abstract class NumberLiteralAbstractSyntaxNode extends LiteralAbstractSyn
     abstract override accept(visitor: ModelScriptAbstractSyntaxVisitor, ...args: any[]): any;
 
     static override construct(concreteSyntaxNode?: SyntaxNode | null): NumberLiteralAbstractSyntaxNode | undefined {
-        switch (concreteSyntaxNode?.type) {
+        if (concreteSyntaxNode == null)
+            return undefined;
+        switch (concreteSyntaxNode.type) {
             case 'binary_integer_literal':
                 return new BinaryIntegerLiteralAbstractSyntaxNode(concreteSyntaxNode);
             case 'decimal_integer_literal':
@@ -560,7 +634,7 @@ export abstract class NumberLiteralAbstractSyntaxNode extends LiteralAbstractSyn
             case 'octal_integer_literal':
                 return new OctalIntegerLiteralAbstractSyntaxNode(concreteSyntaxNode);
             default:
-                throw new Error(concreteSyntaxNode?.type)
+                throw new Error(concreteSyntaxNode.type)
         }
     }
 
@@ -579,7 +653,9 @@ export abstract class IntegerLiteralAbstractSyntaxNode extends NumberLiteralAbst
     abstract override accept(visitor: ModelScriptAbstractSyntaxVisitor, ...args: any[]): any;
 
     static override construct(concreteSyntaxNode?: SyntaxNode | null): IntegerLiteralAbstractSyntaxNode | undefined {
-        switch (concreteSyntaxNode?.type) {
+        if (concreteSyntaxNode == null)
+            return undefined;
+        switch (concreteSyntaxNode.type) {
             case 'binary_integer_literal':
                 return new BinaryIntegerLiteralAbstractSyntaxNode(concreteSyntaxNode);
             case 'decimal_integer_literal':
@@ -589,7 +665,7 @@ export abstract class IntegerLiteralAbstractSyntaxNode extends NumberLiteralAbst
             case 'octal_integer_literal':
                 return new OctalIntegerLiteralAbstractSyntaxNode(concreteSyntaxNode);
             default:
-                throw new Error(concreteSyntaxNode?.type)
+                throw new Error(concreteSyntaxNode.type)
         }
     }
 
@@ -609,6 +685,15 @@ export class BinaryIntegerLiteralAbstractSyntaxNode extends IntegerLiteralAbstra
 
     override accept(visitor: ModelScriptAbstractSyntaxVisitor, ...args: any[]): any {
         return visitor.visitBinaryIntegerLiteral(this, ...args);
+    }
+
+    static override construct(concreteSyntaxNode?: SyntaxNode | null): BinaryIntegerLiteralAbstractSyntaxNode | undefined {
+        if (concreteSyntaxNode == null)
+            return undefined;
+        else if (concreteSyntaxNode.type != 'binary_integer_literal')
+            throw new Error(concreteSyntaxNode.type)
+        else
+            return new BinaryIntegerLiteralAbstractSyntaxNode(concreteSyntaxNode);
     }
 
     protected override process(): void {
@@ -644,6 +729,15 @@ export class DecimalIntegerLiteralAbstractSyntaxNode extends IntegerLiteralAbstr
         return visitor.visitDecimalIntegerLiteral(this, ...args);
     }
 
+    static override construct(concreteSyntaxNode?: SyntaxNode | null): DecimalIntegerLiteralAbstractSyntaxNode | undefined {
+        if (concreteSyntaxNode == null)
+            return undefined;
+        else if (concreteSyntaxNode.type != 'decimal_integer_literal')
+            throw new Error(concreteSyntaxNode.type)
+        else
+            return new DecimalIntegerLiteralAbstractSyntaxNode(concreteSyntaxNode);
+    }
+
     protected override process(): void {
 
         if (this.processed == true || this.concreteSyntaxNode == null)
@@ -675,6 +769,15 @@ export class HexadecimalIntegerLiteralAbstractSyntaxNode extends IntegerLiteralA
 
     override accept(visitor: ModelScriptAbstractSyntaxVisitor, ...args: any[]): any {
         return visitor.visitHexadecimalIntegerLiteral(this, ...args);
+    }
+
+    static override construct(concreteSyntaxNode?: SyntaxNode | null): HexadecimalIntegerLiteralAbstractSyntaxNode | undefined {
+        if (concreteSyntaxNode == null)
+            return undefined;
+        else if (concreteSyntaxNode.type != 'hexadecimal_integer_literal')
+            throw new Error(concreteSyntaxNode.type)
+        else
+            return new HexadecimalIntegerLiteralAbstractSyntaxNode(concreteSyntaxNode);
     }
 
     protected override process(): void {
@@ -710,6 +813,15 @@ export class OctalIntegerLiteralAbstractSyntaxNode extends IntegerLiteralAbstrac
         return visitor.visitOctalIntegerLiteral(this, ...args);
     }
 
+    static override construct(concreteSyntaxNode?: SyntaxNode | null): OctalIntegerLiteralAbstractSyntaxNode | undefined {
+        if (concreteSyntaxNode == null)
+            return undefined;
+        else if (concreteSyntaxNode.type != 'octal_integer_literal')
+            throw new Error(concreteSyntaxNode.type)
+        else
+            return new OctalIntegerLiteralAbstractSyntaxNode(concreteSyntaxNode);
+    }
+
     protected override process(): void {
 
         if (this.processed == true || this.concreteSyntaxNode == null)
@@ -740,13 +852,15 @@ export abstract class StringLiteralAbstractSyntaxNode extends LiteralAbstractSyn
     abstract override accept(visitor: ModelScriptAbstractSyntaxVisitor, ...args: any[]): any;
 
     static override construct(concreteSyntaxNode?: SyntaxNode | null): StringLiteralAbstractSyntaxNode | undefined {
-        switch (concreteSyntaxNode?.type) {
+        if (concreteSyntaxNode == null)
+            return undefined;
+        switch (concreteSyntaxNode.type) {
             case 'double_quoted_string_literal':
                 return new DoubleQuotedStringLiteralAbstractSyntaxNode(concreteSyntaxNode);
             case 'single_quoted_string_literal':
                 return new SingleQuotedStringLiteralAbstractSyntaxNode(concreteSyntaxNode);
             default:
-                throw new Error(concreteSyntaxNode?.type)
+                throw new Error(concreteSyntaxNode.type)
         }
     }
 
@@ -766,6 +880,15 @@ export class DoubleQuotedStringLiteralAbstractSyntaxNode extends StringLiteralAb
 
     override accept(visitor: ModelScriptAbstractSyntaxVisitor, ...args: any[]): any {
         return visitor.visitDoubleQuotedStringLiteral(this, ...args);
+    }
+
+    static override construct(concreteSyntaxNode?: SyntaxNode | null): DoubleQuotedStringLiteralAbstractSyntaxNode | undefined {
+        if (concreteSyntaxNode == null)
+            return undefined;
+        else if (concreteSyntaxNode.type != 'double_quoted_string_literal')
+            throw new Error(concreteSyntaxNode.type)
+        else
+            return new DoubleQuotedStringLiteralAbstractSyntaxNode(concreteSyntaxNode);
     }
 
     protected override process(): void {
@@ -801,6 +924,15 @@ export class SingleQuotedStringLiteralAbstractSyntaxNode extends StringLiteralAb
         return visitor.visitSingleQuotedStringLiteral(this, ...args);
     }
 
+    static override construct(concreteSyntaxNode?: SyntaxNode | null): SingleQuotedStringLiteralAbstractSyntaxNode | undefined {
+        if (concreteSyntaxNode == null)
+            return undefined;
+        else if (concreteSyntaxNode.type != 'single_quoted_string_literal')
+            throw new Error(concreteSyntaxNode.type)
+        else
+            return new SingleQuotedStringLiteralAbstractSyntaxNode(concreteSyntaxNode);
+    }
+
     protected override process(): void {
 
         if (this.processed == true || this.concreteSyntaxNode == null)
@@ -832,6 +964,15 @@ export class ArrayConstructorAbstractSyntaxNode extends SingleExpressionAbstract
 
     override accept(visitor: ModelScriptAbstractSyntaxVisitor, ...args: any[]): any {
         return visitor.visitArrayConstructor(this, ...args);
+    }
+
+    static override construct(concreteSyntaxNode?: SyntaxNode | null): ArrayConstructorAbstractSyntaxNode | undefined {
+        if (concreteSyntaxNode == null)
+            return undefined;
+        else if (concreteSyntaxNode.type != 'array_constructor')
+            throw new Error(concreteSyntaxNode.type)
+        else
+            return new ArrayConstructorAbstractSyntaxNode(concreteSyntaxNode);
     }
 
     get elements(): ElementAbstractSyntaxNode[] | undefined {
@@ -872,6 +1013,15 @@ export class ObjectConstructorAbstractSyntaxNode extends SingleExpressionAbstrac
         return visitor.visitObjectConstructor(this, ...args);
     }
 
+    static override construct(concreteSyntaxNode?: SyntaxNode | null): ObjectConstructorAbstractSyntaxNode | undefined {
+        if (concreteSyntaxNode == null)
+            return undefined;
+        else if (concreteSyntaxNode.type != 'object_constructor')
+            throw new Error(concreteSyntaxNode.type)
+        else
+            return new ObjectConstructorAbstractSyntaxNode(concreteSyntaxNode);
+    }
+
     get elements(): ElementAbstractSyntaxNode[] | undefined {
         this.process();
         return this.#elements;
@@ -907,11 +1057,15 @@ export abstract class ElementAbstractSyntaxNode extends ModelScriptAbstractSynta
     abstract override accept(visitor: ModelScriptAbstractSyntaxVisitor, ...args: any[]): any;
 
     static override construct(concreteSyntaxNode?: SyntaxNode | null): ElementAbstractSyntaxNode | undefined {
-        switch (concreteSyntaxNode?.type) {
+        if (concreteSyntaxNode == null)
+            return undefined;
+        switch (concreteSyntaxNode.type) {
             case 'keyed_element':
                 return new KeyedElementAbstractSyntaxNode(concreteSyntaxNode);
             case 'unkeyed_element':
                 return new UnkeyedElementAbstractSyntaxNode(concreteSyntaxNode);
+            default:
+                throw new Error(concreteSyntaxNode.type)
         }
     }
 
@@ -932,6 +1086,15 @@ export class KeyedElementAbstractSyntaxNode extends ElementAbstractSyntaxNode {
 
     override accept(visitor: ModelScriptAbstractSyntaxVisitor, ...args: any[]): any {
         return visitor.visitKeyedElement(this, ...args);
+    }
+
+    static override construct(concreteSyntaxNode?: SyntaxNode | null): KeyedElementAbstractSyntaxNode | undefined {
+        if (concreteSyntaxNode == null)
+            return undefined;
+        else if (concreteSyntaxNode.type != 'keyed_element')
+            throw new Error(concreteSyntaxNode.type)
+        else
+            return new KeyedElementAbstractSyntaxNode(concreteSyntaxNode);
     }
 
     get key(): ExpressionAbstractSyntaxNode | undefined {
@@ -973,6 +1136,15 @@ export class UnkeyedElementAbstractSyntaxNode extends ElementAbstractSyntaxNode 
         return visitor.visitUnkeyedElement(this, ...args);
     }
 
+    static override construct(concreteSyntaxNode?: SyntaxNode | null): UnkeyedElementAbstractSyntaxNode | undefined {
+        if (concreteSyntaxNode == null)
+            return undefined;
+        else if (concreteSyntaxNode.type != 'unkeyed_element')
+            throw new Error(concreteSyntaxNode.type)
+        else
+            return new UnkeyedElementAbstractSyntaxNode(concreteSyntaxNode);
+    }
+
     protected override process(): void {
 
         if (this.processed == true || this.concreteSyntaxNode == null)
@@ -1006,6 +1178,15 @@ export class ParenthesizedExpressionAbstractSyntaxNode extends SingleExpressionA
         return visitor.visitParenthesizedExpression(this, ...args);
     }
 
+    static override construct(concreteSyntaxNode?: SyntaxNode | null): ParenthesizedExpressionAbstractSyntaxNode | undefined {
+        if (concreteSyntaxNode == null)
+            return undefined;
+        else if (concreteSyntaxNode.type != 'parenthesized_expression')
+            throw new Error(concreteSyntaxNode.type)
+        else
+            return new ParenthesizedExpressionAbstractSyntaxNode(concreteSyntaxNode);
+    }
+
     get expression(): ExpressionAbstractSyntaxNode | undefined {
         this.process();
         return this.#expression;
@@ -1027,6 +1208,180 @@ export class ParenthesizedExpressionAbstractSyntaxNode extends SingleExpressionA
 
 }
 
+export class QuantifiedExpressionAbstractSyntaxNode extends SingleExpressionAbstractSyntaxNode {
+
+    #condition?: SingleExpressionAbstractSyntaxNode;
+    #predicate?: SingleExpressionAbstractSyntaxNode;
+    #quantifierClauses?: QuantifiedClauseAbstractSyntaxNode[];
+
+    constructor(concreteSyntaxNode: SyntaxNode) {
+        super(concreteSyntaxNode);
+    }
+
+    override accept(visitor: ModelScriptAbstractSyntaxVisitor, ...args: any[]): any {
+        return visitor.visitQuantifiedExpression(this, ...args);
+    }
+
+    get condition(): SingleExpressionAbstractSyntaxNode | undefined {
+        this.process();
+        return this.#condition;
+    }
+
+    static override construct(concreteSyntaxNode?: SyntaxNode | null): QuantifiedExpressionAbstractSyntaxNode | undefined {
+        if (concreteSyntaxNode == null)
+            return undefined;
+        else if (concreteSyntaxNode.type != 'quantified_expression')
+            throw new Error(concreteSyntaxNode.type)
+        else
+            return new QuantifiedExpressionAbstractSyntaxNode(concreteSyntaxNode);
+    }
+
+    get predicate(): SingleExpressionAbstractSyntaxNode | undefined {
+        this.process();
+        return this.#predicate;
+    }
+
+    protected override process(): void {
+
+        if (this.processed == true || this.concreteSyntaxNode == null)
+            return;
+
+        if (this.concreteSyntaxNode.type != 'quantified_expression')
+            throw new Error(this.concreteSyntaxNode.type);
+
+        this.#condition = SingleExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'condition'));
+        this.#predicate = SingleExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'predicate'));
+
+        this.#quantifierClauses = [];
+        for (const child of childrenForFieldName(this.concreteSyntaxNode, 'quantifierClause')) {
+            const quantifierClause = QuantifiedClauseAbstractSyntaxNode.construct(child);
+            if (quantifierClause != null)
+                this.#quantifierClauses.push(quantifierClause);
+        }
+
+        this.processed = true;
+
+    }
+
+    get quantifierClauses(): QuantifiedClauseAbstractSyntaxNode[] | undefined {
+        this.process();
+        return this.#quantifierClauses;
+    }
+
+}
+
+export class QuantifiedClauseAbstractSyntaxNode extends ModelScriptAbstractSyntaxNode {
+
+    #type?: QuantifierType;
+    #quantifiers?: QuantifierAbstractSyntaxNode[];
+
+    constructor(concreteSyntaxNode: SyntaxNode) {
+        super(concreteSyntaxNode);
+    }
+
+    override accept(visitor: ModelScriptAbstractSyntaxVisitor, ...args: any[]): any {
+        return visitor.visitQuantifierClause(this, ...args);
+    }
+
+    static override construct(concreteSyntaxNode?: SyntaxNode | null): QuantifiedClauseAbstractSyntaxNode | undefined {
+        if (concreteSyntaxNode == null)
+            return undefined;
+        else if (concreteSyntaxNode.type != 'quantified_clause')
+            throw new Error(concreteSyntaxNode.type)
+        else
+            return new QuantifiedClauseAbstractSyntaxNode(concreteSyntaxNode);
+    }
+
+    protected override process(): void {
+
+        if (this.processed == true || this.concreteSyntaxNode == null)
+            return;
+
+        if (this.concreteSyntaxNode.type != 'quantified_clause')
+            throw new Error(this.concreteSyntaxNode.type);
+
+        this.#quantifiers = [];
+        for (const child of childrenForFieldName(this.concreteSyntaxNode, 'quantifier')) {
+            const quantifier = QuantifierAbstractSyntaxNode.construct(child);
+            if (quantifier != null)
+                this.#quantifiers.push(quantifier);
+        }
+
+        switch (childForFieldName(this.concreteSyntaxNode, 'type')?.text) {
+            case 'every':
+                this.#type = QuantifierType.EVERY;
+                break;
+            case 'some':
+                this.#type = QuantifierType.SOME;
+                break;
+        }
+
+        this.processed = true;
+
+    }
+
+    get quantifiers(): QuantifierAbstractSyntaxNode[] | undefined {
+        this.process();
+        return this.#quantifiers;
+    }
+
+
+    get type(): QuantifierType | undefined {
+        this.process();
+        return this.#type;
+    }
+
+}
+
+export class QuantifierAbstractSyntaxNode extends ModelScriptAbstractSyntaxNode {
+
+    #context?: SingleExpressionAbstractSyntaxNode;
+    #name?: NameAbstractSyntaxNode;
+
+    constructor(concreteSyntaxNode: SyntaxNode) {
+        super(concreteSyntaxNode);
+    }
+
+    override accept(visitor: ModelScriptAbstractSyntaxVisitor, ...args: any[]): any {
+        return visitor.visitQuantifier(this, ...args);
+    }
+
+    static override construct(concreteSyntaxNode?: SyntaxNode | null): QuantifierAbstractSyntaxNode | undefined {
+        if (concreteSyntaxNode == null)
+            return undefined;
+        else if (concreteSyntaxNode.type != 'quantifier')
+            throw new Error(concreteSyntaxNode.type)
+        else
+            return new QuantifierAbstractSyntaxNode(concreteSyntaxNode);
+    }
+
+    get context(): SingleExpressionAbstractSyntaxNode | undefined {
+        this.process();
+        return this.#context;
+    }
+
+    get name(): NameAbstractSyntaxNode | undefined {
+        this.process();
+        return this.#name;
+    }
+
+    protected override process(): void {
+
+        if (this.processed == true || this.concreteSyntaxNode == null)
+            return;
+
+        if (this.concreteSyntaxNode.type != 'quantifier')
+            throw new Error(this.concreteSyntaxNode.type);
+
+        this.#context = SingleExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'context'));
+        this.#name = NameAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'name'));
+
+        this.processed = true;
+
+    }
+
+}
+
 export class SubscriptExpressionAbstractSyntaxNode extends SingleExpressionAbstractSyntaxNode {
 
     #expression?: SingleExpressionAbstractSyntaxNode;
@@ -1038,6 +1393,15 @@ export class SubscriptExpressionAbstractSyntaxNode extends SingleExpressionAbstr
 
     override accept(visitor: ModelScriptAbstractSyntaxVisitor, ...args: any[]): any {
         return visitor.visitSubscriptExpression(this, ...args);
+    }
+
+    static override construct(concreteSyntaxNode?: SyntaxNode | null): SubscriptExpressionAbstractSyntaxNode | undefined {
+        if (concreteSyntaxNode == null)
+            return undefined;
+        else if (concreteSyntaxNode.type != 'subscript_expression')
+            throw new Error(concreteSyntaxNode.type)
+        else
+            return new SubscriptExpressionAbstractSyntaxNode(concreteSyntaxNode);
     }
 
     get expression(): SingleExpressionAbstractSyntaxNode | undefined {
@@ -1078,6 +1442,15 @@ export class UnaryExpressionAbstractSyntaxNode extends SingleExpressionAbstractS
 
     override accept(visitor: ModelScriptAbstractSyntaxVisitor, ...args: any[]): any {
         return visitor.visitUnaryExpression(this, ...args);
+    }
+
+    static override construct(concreteSyntaxNode?: SyntaxNode | null): UnaryExpressionAbstractSyntaxNode | undefined {
+        if (concreteSyntaxNode == null)
+            return undefined;
+        else if (concreteSyntaxNode.type != 'unary_expression')
+            throw new Error(concreteSyntaxNode.type)
+        else
+            return new UnaryExpressionAbstractSyntaxNode(concreteSyntaxNode);
     }
 
     get operand(): SingleExpressionAbstractSyntaxNode | undefined {
@@ -1121,6 +1494,48 @@ export class UnaryExpressionAbstractSyntaxNode extends SingleExpressionAbstractS
 
 }
 
+export class VariableAbstractSyntaxNode extends SingleExpressionAbstractSyntaxNode {
+
+    #name?: NameAbstractSyntaxNode;
+
+    constructor(concreteSyntaxNode: SyntaxNode) {
+        super(concreteSyntaxNode);
+    }
+
+    override accept(visitor: ModelScriptAbstractSyntaxVisitor, ...args: any[]): any {
+        return visitor.visitVariable(this, ...args);
+    }
+
+    static override construct(concreteSyntaxNode?: SyntaxNode | null): VariableAbstractSyntaxNode | undefined {
+        if (concreteSyntaxNode == null)
+            return undefined;
+        else if (concreteSyntaxNode.type != 'variable')
+            throw new Error(concreteSyntaxNode.type)
+        else
+            return new VariableAbstractSyntaxNode(concreteSyntaxNode);
+    }
+
+    get name(): NameAbstractSyntaxNode | undefined {
+        this.process();
+        return this.#name;
+    }
+
+    protected override process(): void {
+
+        if (this.processed == true || this.concreteSyntaxNode == null)
+            return;
+
+        if (this.concreteSyntaxNode.type != 'variable')
+            throw new Error(this.concreteSyntaxNode.type);
+
+        this.#name = NameAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'name'));
+
+        this.processed = true;
+
+    }
+
+}
+
 export class ModuleAbstractSyntaxNode extends ModelScriptAbstractSyntaxNode {
 
     #expression?: ExpressionAbstractSyntaxNode;
@@ -1131,6 +1546,15 @@ export class ModuleAbstractSyntaxNode extends ModelScriptAbstractSyntaxNode {
 
     override accept(visitor: ModelScriptAbstractSyntaxVisitor, ...args: any[]): any {
         return visitor.visitModule(this, ...args);
+    }
+
+    static override construct(concreteSyntaxNode?: SyntaxNode | null): ModuleAbstractSyntaxNode | undefined {
+        if (concreteSyntaxNode == null)
+            return undefined;
+        else if (concreteSyntaxNode.type != 'module')
+            throw new Error(concreteSyntaxNode.type)
+        else
+            return new ModuleAbstractSyntaxNode(concreteSyntaxNode);
     }
 
     get expression(): ExpressionAbstractSyntaxNode | undefined {
@@ -1150,6 +1574,48 @@ export class ModuleAbstractSyntaxNode extends ModelScriptAbstractSyntaxNode {
 
         this.processed = true;
 
+    }
+
+}
+
+export class NameAbstractSyntaxNode extends ModelScriptAbstractSyntaxNode {
+
+    #value?: string;
+
+    constructor(concreteSyntaxNode: SyntaxNode) {
+        super(concreteSyntaxNode);
+    }
+
+    override accept(visitor: ModelScriptAbstractSyntaxVisitor, ...args: any[]): any {
+        return visitor.visitName(this, ...args);
+    }
+
+    static override construct(concreteSyntaxNode?: SyntaxNode | null): NameAbstractSyntaxNode | undefined {
+        if (concreteSyntaxNode == null)
+            return undefined;
+        else if (concreteSyntaxNode.type != 'name')
+            throw new Error(concreteSyntaxNode.type)
+        else
+            return new NameAbstractSyntaxNode(concreteSyntaxNode);
+    }
+
+    protected override process(): void {
+
+        if (this.processed == true || this.concreteSyntaxNode == null)
+            return;
+
+        if (this.concreteSyntaxNode.type != 'name')
+            throw new Error(this.concreteSyntaxNode.type);
+
+        this.#value = this.concreteSyntaxNode.text;
+
+        this.processed = true;
+
+    }
+
+    get value(): string | undefined {
+        this.process();
+        return this.#value;
     }
 
 }
@@ -1200,6 +1666,10 @@ export abstract class ModelScriptAbstractSyntaxVisitor {
         throw new Error();
     }
 
+    visitName(node: NameAbstractSyntaxNode, ...args: any[]): any {
+        throw new Error();
+    }
+
     visitNullLiteral(node: NullLiteralAbstractSyntaxNode, ...args: any[]): any {
         throw new Error();
     }
@@ -1209,6 +1679,18 @@ export abstract class ModelScriptAbstractSyntaxVisitor {
     }
 
     visitOctalIntegerLiteral(node: OctalIntegerLiteralAbstractSyntaxNode, ...args: any[]): any {
+        throw new Error();
+    }
+
+    visitQuantifiedExpression(node: QuantifiedExpressionAbstractSyntaxNode, ...args: any[]): any {
+        throw new Error();
+    }
+
+    visitQuantifierClause(node: QuantifiedClauseAbstractSyntaxNode, ...args: any[]): any {
+        throw new Error();
+    }
+
+    visitQuantifier(node: QuantifierAbstractSyntaxNode, ...args: any[]): any {
         throw new Error();
     }
 
@@ -1233,6 +1715,10 @@ export abstract class ModelScriptAbstractSyntaxVisitor {
     }
 
     visitUnaryExpression(node: UnaryExpressionAbstractSyntaxNode, ...args: any[]): any {
+        throw new Error();
+    }
+
+    visitVariable(node: VariableAbstractSyntaxNode, ...args: any[]): any {
         throw new Error();
     }
 
@@ -1268,6 +1754,11 @@ export enum BinaryOperator {
     MULTIPLICATION,
     DIVISION,
     MODULUS
+}
+
+export enum QuantifierType {
+    EVERY,
+    SOME
 }
 
 export enum UnaryOperator {
