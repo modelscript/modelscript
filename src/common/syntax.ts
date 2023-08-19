@@ -134,6 +134,8 @@ export abstract class ExpressionAbstractSyntaxNode extends ModelScriptAbstractSy
                 return new SubscriptExpressionAbstractSyntaxNode(concreteSyntaxNode);
             case 'unary_expression':
                 return new UnaryExpressionAbstractSyntaxNode(concreteSyntaxNode);
+            case 'variable':
+                return new VariableAbstractSyntaxNode(concreteSyntaxNode);
             default:
                 throw new Error(concreteSyntaxNode.type)
         }
@@ -245,6 +247,8 @@ export abstract class SingleExpressionAbstractSyntaxNode extends ExpressionAbstr
                 return new SubscriptExpressionAbstractSyntaxNode(concreteSyntaxNode);
             case 'unary_expression':
                 return new UnaryExpressionAbstractSyntaxNode(concreteSyntaxNode);
+            case 'variable':
+                return new VariableAbstractSyntaxNode(concreteSyntaxNode);
             default:
                 throw new Error(concreteSyntaxNode.type)
         }
@@ -899,7 +903,7 @@ export class DoubleQuotedStringLiteralAbstractSyntaxNode extends StringLiteralAb
         if (this.concreteSyntaxNode.type != 'double_quoted_string_literal')
             throw new Error(this.concreteSyntaxNode.type);
 
-        this.#value = this.concreteSyntaxNode.text.substring(1, this.concreteSyntaxNode.text.length);
+        this.#value = this.concreteSyntaxNode.text.substring(1, this.concreteSyntaxNode.text.length - 1);
 
         this.processed = true;
 
@@ -941,7 +945,7 @@ export class SingleQuotedStringLiteralAbstractSyntaxNode extends StringLiteralAb
         if (this.concreteSyntaxNode.type != 'single_quoted_string_literal')
             throw new Error(this.concreteSyntaxNode.type);
 
-        this.#value = this.concreteSyntaxNode.text.substring(1, this.concreteSyntaxNode.text.length);
+        this.#value = this.concreteSyntaxNode.text.substring(1, this.concreteSyntaxNode.text.length - 1);
 
         this.processed = true;
 
