@@ -1,5 +1,7 @@
 import { ModelScriptContext } from './context.js';
-import { ModelScriptAbstractSyntaxVisitor, ArrayConstructorAbstractSyntaxNode, BinaryIntegerLiteralAbstractSyntaxNode, DecimalIntegerLiteralAbstractSyntaxNode, DoubleQuotedStringLiteralAbstractSyntaxNode, HexadecimalIntegerLiteralAbstractSyntaxNode, KeyedElementAbstractSyntaxNode, LogicalLiteralAbstractSyntaxNode, ModuleAbstractSyntaxNode, NullLiteralAbstractSyntaxNode, ObjectConstructorAbstractSyntaxNode, OctalIntegerLiteralAbstractSyntaxNode, SingleQuotedStringLiteralAbstractSyntaxNode, UnkeyedElementAbstractSyntaxNode, UnaryExpressionAbstractSyntaxNode, UnaryOperator, BinaryExpressionAbstractSyntaxNode, BinaryOperator, ParenthesizedExpressionAbstractSyntaxNode, ConditionalExpressionAbstractSyntaxNode, ContextItemExpressionAbstractSyntaxNode, SubscriptExpressionAbstractSyntaxNode, RelationExpressionAbstractSyntaxNode, VariableAbstractSyntaxNode } from './syntax.js';
+import { ModelScriptAbstractSyntaxVisitor, ArrayConstructorAbstractSyntaxNode, BinaryIntegerLiteralAbstractSyntaxNode, DecimalIntegerLiteralAbstractSyntaxNode, DoubleQuotedStringLiteralAbstractSyntaxNode, HexadecimalIntegerLiteralAbstractSyntaxNode, KeyedElementAbstractSyntaxNode, LogicalLiteralAbstractSyntaxNode, ModuleAbstractSyntaxNode, NullLiteralAbstractSyntaxNode, ObjectConstructorAbstractSyntaxNode, OctalIntegerLiteralAbstractSyntaxNode, SingleQuotedStringLiteralAbstractSyntaxNode, UnkeyedElementAbstractSyntaxNode, UnaryExpressionAbstractSyntaxNode, UnaryOperator, BinaryExpressionAbstractSyntaxNode, BinaryOperator, ParenthesizedExpressionAbstractSyntaxNode, ConditionalExpressionAbstractSyntaxNode, ContextItemExpressionAbstractSyntaxNode, SubscriptExpressionAbstractSyntaxNode, RelationExpressionAbstractSyntaxNode, VariableAbstractSyntaxNode, ResourceDeclarationAbstractSyntaxNode, NameAbstractSyntaxNode } from './syntax.js';
+
+const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
 
 export class ModelScriptInterpreter extends ModelScriptAbstractSyntaxVisitor {
 
@@ -122,7 +124,13 @@ export class ModelScriptInterpreter extends ModelScriptAbstractSyntaxVisitor {
     }
 
     override visitModule(node: ModuleAbstractSyntaxNode, ...args: any[]): any {
+        for (const statement of node.statements ?? [])
+            statement.accept(this);
         return node.expression?.accept(this);
+    }
+
+    override visitName(node: NameAbstractSyntaxNode, ...args: any[]): any {
+        return node.value;
     }
 
     override visitNullLiteral(node: NullLiteralAbstractSyntaxNode, ...args: any[]): any {
@@ -153,6 +161,34 @@ export class ModelScriptInterpreter extends ModelScriptAbstractSyntaxVisitor {
             property: property,
             object: object
         };
+    }
+
+    override visitResourceDeclaration(node: ResourceDeclarationAbstractSyntaxNode, ...args: any[]): any {
+
+        const resourceName = node.name?.accept(this);
+
+        if (resourceName == null)
+            throw new Error("name is null");
+
+        const resource = this.#context.namedNode(resourceName);
+
+        for (const superClass of node.superClasses ?? []) {
+
+            const superClassName = superClass.accept(this);
+
+            if (superClassName == null)
+                throw new Error("super class name is null");
+
+            const superClassResource = this.#context.namedNode(superClassName);
+            this.#context.insert(resource, this.#context.namedNode(RDF_TYPE), superClassResource);
+
+        }
+
+        const properties = node.properties?.accept(this);
+
+        for (const [key, value] of Object.entries(properties))
+            this.#context.insert(resource, this.#context.namedNode(key), value);
+
     }
 
     override visitSingleQuotedStringLiteral(node: SingleQuotedStringLiteralAbstractSyntaxNode, ...args: any[]): any {

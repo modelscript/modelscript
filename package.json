@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@modelscript/tree-sitter-modelscript": "file:../tree-sitter-modelscript",
+    "@rdfjs/data-model": "^2.0.1",
     "@rdfjs/dataset": "^2.0.1",
     "tree-sitter": "^0.20.5",
     "web-tree-sitter": "^0.20.8",

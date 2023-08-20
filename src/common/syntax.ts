@@ -25,6 +25,8 @@ export abstract class ModelScriptAbstractSyntaxNode {
                 return new BinaryExpressionAbstractSyntaxNode(concreteSyntaxNode);
             case 'binary_integer_literal':
                 return new BinaryIntegerLiteralAbstractSyntaxNode(concreteSyntaxNode);
+            case 'class':
+                return new ClassAbstractSyntaxNode(concreteSyntaxNode);
             case 'conditional_expression':
                 return new ConditionalExpressionAbstractSyntaxNode(concreteSyntaxNode);
             case 'context_item_expression':
@@ -82,6 +84,200 @@ export abstract class ModelScriptAbstractSyntaxNode {
 
     protected set processed(processed: boolean) {
         this.#processed = processed;
+    }
+
+}
+
+export abstract class ClassExpressionAbstractSyntaxNode extends ModelScriptAbstractSyntaxNode {
+
+    constructor(concreteSyntaxNode: SyntaxNode) {
+        super(concreteSyntaxNode);
+    }
+
+    abstract override accept(visitor: ModelScriptAbstractSyntaxVisitor, ...args: any[]): any;
+
+    static construct(concreteSyntaxNode?: SyntaxNode | null): ClassExpressionAbstractSyntaxNode | undefined {
+        if (concreteSyntaxNode == null)
+            return undefined;
+        switch (concreteSyntaxNode.type) {
+            case 'class':
+                return new ClassAbstractSyntaxNode(concreteSyntaxNode);
+            default:
+                throw new Error(concreteSyntaxNode.type)
+        }
+    }
+
+    protected abstract override process(): void;
+
+}
+
+export class ClassAbstractSyntaxNode extends ClassExpressionAbstractSyntaxNode {
+
+    #name?: NameAbstractSyntaxNode;
+
+    constructor(concreteSyntaxNode: SyntaxNode) {
+        super(concreteSyntaxNode);
+    }
+
+    override accept(visitor: ModelScriptAbstractSyntaxVisitor, ...args: any[]): any {
+        return visitor.visitClass(this, ...args);
+    }
+
+    static override construct(concreteSyntaxNode?: SyntaxNode | null): ClassAbstractSyntaxNode | undefined {
+        if (concreteSyntaxNode == null)
+            return undefined;
+        else if (concreteSyntaxNode.type != 'class')
+            throw new Error(concreteSyntaxNode.type)
+        else
+            return new ClassAbstractSyntaxNode(concreteSyntaxNode);
+    }
+
+    get name(): NameAbstractSyntaxNode | undefined {
+        this.process();
+        return this.#name;
+    }
+
+    protected override process(): void {
+
+        if (this.processed == true || this.concreteSyntaxNode == null)
+            return;
+
+        if (this.concreteSyntaxNode.type != 'class')
+            throw new Error(this.concreteSyntaxNode.type);
+
+        this.#name = NameAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'name'));
+
+        this.processed = true;
+
+    }
+
+}
+
+export abstract class StatementAbstractSyntaxNode extends ModelScriptAbstractSyntaxNode {
+
+    constructor(concreteSyntaxNode: SyntaxNode) {
+        super(concreteSyntaxNode);
+    }
+
+    abstract override accept(visitor: ModelScriptAbstractSyntaxVisitor, ...args: any[]): any;
+
+    static construct(concreteSyntaxNode?: SyntaxNode | null): StatementAbstractSyntaxNode | undefined {
+        if (concreteSyntaxNode == null)
+            return undefined;
+        switch (concreteSyntaxNode.type) {
+            case 'expression_statement':
+                return new ExpressionStatementAbstractSyntaxNode(concreteSyntaxNode);
+            case 'resource_declaration':
+                return new ResourceDeclarationAbstractSyntaxNode(concreteSyntaxNode);
+            default:
+                throw new Error(concreteSyntaxNode.type)
+        }
+    }
+
+    protected abstract override process(): void;
+
+}
+
+export class ExpressionStatementAbstractSyntaxNode extends StatementAbstractSyntaxNode {
+
+    #expression?: ExpressionAbstractSyntaxNode;
+
+    constructor(concreteSyntaxNode: SyntaxNode) {
+        super(concreteSyntaxNode);
+    }
+
+    override accept(visitor: ModelScriptAbstractSyntaxVisitor, ...args: any[]): any {
+        return visitor.visitExpressionStatement(this, ...args);
+    }
+
+    static override construct(concreteSyntaxNode?: SyntaxNode | null): ExpressionStatementAbstractSyntaxNode | undefined {
+        if (concreteSyntaxNode == null)
+            return undefined;
+        else if (concreteSyntaxNode.type != 'expression_statement')
+            throw new Error(concreteSyntaxNode.type)
+        else
+            return new ExpressionStatementAbstractSyntaxNode(concreteSyntaxNode);
+    }
+
+    get expression(): ExpressionAbstractSyntaxNode | undefined {
+        this.process();
+        return this.#expression;
+    }
+
+    protected override process(): void {
+
+        if (this.processed == true || this.concreteSyntaxNode == null)
+            return;
+
+        if (this.concreteSyntaxNode.type != 'expression_statement')
+            throw new Error(this.concreteSyntaxNode.type);
+
+        this.#expression = ExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'expression'));
+
+        this.processed = true;
+
+    }
+
+}
+
+export class ResourceDeclarationAbstractSyntaxNode extends StatementAbstractSyntaxNode {
+
+    #name?: NameAbstractSyntaxNode;
+    #properties?: ObjectConstructorAbstractSyntaxNode;
+    #superClasses?: ClassExpressionAbstractSyntaxNode[];
+
+    constructor(concreteSyntaxNode: SyntaxNode) {
+        super(concreteSyntaxNode);
+    }
+
+    override accept(visitor: ModelScriptAbstractSyntaxVisitor, ...args: any[]): any {
+        return visitor.visitResourceDeclaration(this, ...args);
+    }
+
+    static override construct(concreteSyntaxNode?: SyntaxNode | null): ResourceDeclarationAbstractSyntaxNode | undefined {
+        if (concreteSyntaxNode == null)
+            return undefined;
+        else if (concreteSyntaxNode.type != 'resource_declaration')
+            throw new Error(concreteSyntaxNode.type)
+        else
+            return new ResourceDeclarationAbstractSyntaxNode(concreteSyntaxNode);
+    }
+
+    get name(): NameAbstractSyntaxNode | undefined {
+        this.process();
+        return this.#name;
+    }
+
+    protected override process(): void {
+
+        if (this.processed == true || this.concreteSyntaxNode == null)
+            return;
+
+        if (this.concreteSyntaxNode.type != 'resource_declaration')
+            throw new Error(this.concreteSyntaxNode.type);
+
+        this.#name = NameAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'name'));
+        this.#properties = ObjectConstructorAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'properties'));
+
+        this.#superClasses = [];
+        for (const child of childrenForFieldName(this.concreteSyntaxNode, 'superClass')) {
+            const superClass = ClassExpressionAbstractSyntaxNode.construct(child);
+            if (superClass != null)
+                this.#superClasses.push(superClass);
+        }
+
+        this.processed = true;
+
+    }
+
+    get properties(): ObjectConstructorAbstractSyntaxNode | undefined {
+        this.process();
+        return this.#properties;
+    }
+
+    get superClasses(): ClassExpressionAbstractSyntaxNode[] | undefined {
+        this.process();
+        return this.#superClasses;
     }
 
 }
@@ -1542,6 +1738,7 @@ export class VariableAbstractSyntaxNode extends SingleExpressionAbstractSyntaxNo
 
 export class ModuleAbstractSyntaxNode extends ModelScriptAbstractSyntaxNode {
 
+    #statements?: StatementAbstractSyntaxNode[];
     #expression?: ExpressionAbstractSyntaxNode;
 
     constructor(concreteSyntaxNode: SyntaxNode) {
@@ -1574,10 +1771,22 @@ export class ModuleAbstractSyntaxNode extends ModelScriptAbstractSyntaxNode {
         if (this.concreteSyntaxNode.type != 'module')
             throw new Error(this.concreteSyntaxNode.type);
 
+        this.#statements = [];
+        for (const child of childrenForFieldName(this.concreteSyntaxNode, 'statement')) {
+            const statement = StatementAbstractSyntaxNode.construct(child);
+            if (statement != null)
+                this.#statements.push(statement);
+        }
+
         this.#expression = ExpressionAbstractSyntaxNode.construct(childForFieldName(this.concreteSyntaxNode, 'expression'));
 
         this.processed = true;
 
+    }
+
+    get statements(): StatementAbstractSyntaxNode[] | undefined {
+        this.process();
+        return this.#statements;
     }
 
 }
@@ -1638,6 +1847,10 @@ export abstract class ModelScriptAbstractSyntaxVisitor {
         throw new Error();
     }
 
+    visitClass(node: ClassAbstractSyntaxNode, ...args: any[]): any {
+        throw new Error();
+    }
+
     visitConditionalExpression(node: ConditionalExpressionAbstractSyntaxNode, ...args: any[]): any {
         throw new Error();
     }
@@ -1651,6 +1864,10 @@ export abstract class ModelScriptAbstractSyntaxVisitor {
     }
 
     visitDoubleQuotedStringLiteral(node: DoubleQuotedStringLiteralAbstractSyntaxNode, ...args: any[]): any {
+        throw new Error();
+    }
+
+    visitExpressionStatement(node: ExpressionStatementAbstractSyntaxNode, ...args: any[]): any {
         throw new Error();
     }
 
@@ -1703,6 +1920,10 @@ export abstract class ModelScriptAbstractSyntaxVisitor {
     }
 
     visitRelationExpression(node: RelationExpressionAbstractSyntaxNode, ...args: any[]): any {
+        throw new Error();
+    }
+
+    visitResourceDeclaration(node: ResourceDeclarationAbstractSyntaxNode, ...args: any[]): any {
         throw new Error();
     }
 
