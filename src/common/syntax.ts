@@ -35,6 +35,8 @@ export abstract class ModelScriptAbstractSyntaxNode {
                 return new DecimalIntegerLiteralAbstractSyntaxNode(concreteSyntaxNode);
             case 'double_quoted_string_literal':
                 return new DoubleQuotedStringLiteralAbstractSyntaxNode(concreteSyntaxNode);
+            case 'empty_statement':
+                return new EmptyStatementAbstractSyntaxNode(concreteSyntaxNode);
             case 'hexadecimal_integer_literal':
                 return new HexadecimalIntegerLiteralAbstractSyntaxNode(concreteSyntaxNode);
             case 'logical_literal':
@@ -165,6 +167,8 @@ export abstract class StatementAbstractSyntaxNode extends ModelScriptAbstractSyn
         if (concreteSyntaxNode == null)
             return undefined;
         switch (concreteSyntaxNode.type) {
+            case 'empty_statement':
+                return new EmptyStatementAbstractSyntaxNode(concreteSyntaxNode);
             case 'expression_statement':
                 return new ExpressionStatementAbstractSyntaxNode(concreteSyntaxNode);
             case 'resource_declaration':
@@ -175,6 +179,39 @@ export abstract class StatementAbstractSyntaxNode extends ModelScriptAbstractSyn
     }
 
     protected abstract override process(): void;
+
+}
+
+export class EmptyStatementAbstractSyntaxNode extends StatementAbstractSyntaxNode {
+
+    constructor(concreteSyntaxNode: SyntaxNode) {
+        super(concreteSyntaxNode);
+    }
+
+    override accept(visitor: ModelScriptAbstractSyntaxVisitor, ...args: any[]): any {
+        return visitor.visitEmptyStatement(this, ...args);
+    }
+
+    static override construct(concreteSyntaxNode?: SyntaxNode | null): EmptyStatementAbstractSyntaxNode | undefined {
+        if (concreteSyntaxNode == null)
+            return undefined;
+        else if (concreteSyntaxNode.type != 'empty_statement')
+            throw new Error(concreteSyntaxNode.type)
+        else
+            return new EmptyStatementAbstractSyntaxNode(concreteSyntaxNode);
+    }
+
+    protected override process(): void {
+
+        if (this.processed == true || this.concreteSyntaxNode == null)
+            return;
+
+        if (this.concreteSyntaxNode.type != 'empty_statement')
+            throw new Error(this.concreteSyntaxNode.type);
+
+        this.processed = true;
+
+    }
 
 }
 
@@ -1864,6 +1901,10 @@ export abstract class ModelScriptAbstractSyntaxVisitor {
     }
 
     visitDoubleQuotedStringLiteral(node: DoubleQuotedStringLiteralAbstractSyntaxNode, ...args: any[]): any {
+        throw new Error();
+    }
+
+    visitEmptyStatement(node: EmptyStatementAbstractSyntaxNode, ...args: any[]): any {
         throw new Error();
     }
 
