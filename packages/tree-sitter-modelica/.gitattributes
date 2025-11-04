@@ -1,0 +1,15 @@
+# Generated source files
+src/*.json linguist-generated
+src/parser.c linguist-generated
+src/tree_sitter/* linguist-generated
+
+# C bindings
+bindings/c/** linguist-generated
+CMakeLists.txt linguist-generated
+Makefile linguist-generated
+
+# Node.js bindings
+bindings/node/* linguist-generated
+binding.gyp linguist-generated
+package.json linguist-generated
+package-lock.json linguist-generated

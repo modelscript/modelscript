@@ -36,8 +36,10 @@
     "watch": "tsc --watch"
   },
   "dependencies": {
+    "@modelscript/tree-sitter-modelica": "^0.0.0",
     "@npmcli/package-json": "^7.0.0",
     "modelscript": "^0.0.0",
+    "tree-sitter": "^0.21.1",
     "yargs": "^17.7.2"
   },
   "devDependencies": {

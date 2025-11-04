@@ -1,0 +1,56 @@
+{
+  "name": "@modelscript/tree-sitter-modelica",
+  "version": "0.0.0",
+  "description": "Modelica grammar for tree-sitter",
+  "keywords": [
+    "incremental",
+    "parsing",
+    "tree-sitter",
+    "modelica"
+  ],
+  "repository": "https://github.com/modelscript/modelscript.git",
+  "license": "AGPL-3.0-or-later",
+  "author": {
+    "name": "Mohamad Omar Nachawati",
+    "email": "mnachawa@gmail.com"
+  },
+  "main": "bindings/node",
+  "types": "bindings/node",
+  "files": [
+    "package.json",
+    "README.md",
+    "COPYING",
+    "grammar.js",
+    "tree-sitter.json",
+    "binding.gyp",
+    "prebuilds/**",
+    "bindings/node/*",
+    "queries/*",
+    "src/**",
+    "*.wasm"
+  ],
+  "scripts": {
+    "build": "npm run clean && tree-sitter generate --abi=14 && node-gyp-build && tree-sitter build --wasm",
+    "clean": "rimraf build && rimraf src",
+    "prestart": "tree-sitter build --wasm",
+    "start": "tree-sitter playground",
+    "test": "node --test bindings/node/*_test.js"
+  },
+  "dependencies": {
+    "node-addon-api": "^8.5.0",
+    "node-gyp-build": "^4.8.4"
+  },
+  "devDependencies": {
+    "prebuildify": "^6.0.1",
+    "tree-sitter": "^0.21.1",
+    "tree-sitter-cli": "^0.25.10"
+  },
+  "peerDependencies": {
+    "tree-sitter": "^0.21.1"
+  },
+  "peerDependenciesMeta": {
+    "tree-sitter": {
+      "optional": true
+    }
+  }
+}
