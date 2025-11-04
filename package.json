@@ -38,6 +38,9 @@
     "lint": "eslint src --ext ts",
     "watch": "tsc --watch"
   },
+  "dependencies": {
+    "tree-sitter": "^0.21.1"
+  },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
     "@types/node": "^24.10.0",
