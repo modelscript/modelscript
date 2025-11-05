@@ -63,13 +63,13 @@ export abstract class ModelicaSyntaxNode implements IModelicaSyntaxNode {
         );
       case ModelicaComponentDeclarationSyntaxNode.type:
         return new ModelicaComponentDeclarationSyntaxNode(
-          parent,
+          parent as ModelicaComponentClauseSyntaxNode | null,
           concreteSyntaxNode,
           abstractSyntaxNode as IModelicaComponentDeclarationSyntaxNode,
         );
       case ModelicaDeclarationSyntaxNode.type:
         return new ModelicaDeclarationSyntaxNode(
-          parent,
+          parent as ModelicaComponentDeclarationSyntaxNode | null,
           concreteSyntaxNode,
           abstractSyntaxNode as IModelicaDeclarationSyntaxNode,
         );
@@ -284,6 +284,17 @@ export class ModelicaClassDefinitionSyntaxNode
     return visitor.visitClassDefinition(this, argument);
   }
 
+  get elements(): IterableIterator<ModelicaElementSyntaxNode> {
+    const classSpecifier = this.classSpecifier;
+    return (function* () {
+      if (classSpecifier != null) yield* classSpecifier.elements;
+    })();
+  }
+
+  get identifier(): ModelicaIdentifierSyntaxNode | null {
+    return this.classSpecifier?.identifier ?? null;
+  }
+
   static override new(
     parent: ModelicaSyntaxNode | null,
     concreteSyntaxNode?: SyntaxNode | null,
@@ -320,6 +331,8 @@ export abstract class ModelicaClassSpecifierSyntaxNode
       abstractSyntaxNode?.identifier,
     );
   }
+
+  abstract get elements(): IterableIterator<ModelicaElementSyntaxNode>;
 
   static override new(
     parent: ModelicaSyntaxNode | null,
@@ -371,6 +384,15 @@ export class ModelicaLongClassSpecifierSyntaxNode
 
   override accept<R, A>(visitor: IModelicaSyntaxVisitor<R, A>, argument?: A): R {
     return visitor.visitLongClassSpecifier(this, argument);
+  }
+
+  override get elements(): IterableIterator<ModelicaElementSyntaxNode> {
+    const sections = this.sections;
+    return (function* () {
+      for (const section of sections) {
+        if (section instanceof ModelicaElementSectionSyntaxNode) yield* section.elements;
+      }
+    })();
   }
 
   static override new(
@@ -508,7 +530,7 @@ export class ModelicaComponentDeclarationSyntaxNode
   declaration: ModelicaDeclarationSyntaxNode | null;
 
   constructor(
-    parent: ModelicaSyntaxNode | null,
+    parent: ModelicaComponentClauseSyntaxNode | null,
     concreteSyntaxNode?: SyntaxNode | null,
     abstractSyntaxNode?: IModelicaComponentDeclarationSyntaxNode | null,
   ) {
@@ -524,8 +546,12 @@ export class ModelicaComponentDeclarationSyntaxNode
     return visitor.visitComponentDeclaration(this, argument);
   }
 
+  override get parent(): ModelicaComponentClauseSyntaxNode | null {
+    return super.parent as ModelicaComponentClauseSyntaxNode | null;
+  }
+
   static override new(
-    parent: ModelicaSyntaxNode | null,
+    parent: ModelicaComponentClauseSyntaxNode | null,
     concreteSyntaxNode?: SyntaxNode | null,
     abstractSyntaxNode?: IModelicaComponentDeclarationSyntaxNode | null,
   ): ModelicaComponentDeclarationSyntaxNode | null {
@@ -546,7 +572,7 @@ export class ModelicaDeclarationSyntaxNode extends ModelicaSyntaxNode implements
   identifier: ModelicaIdentifierSyntaxNode | null;
 
   constructor(
-    parent: ModelicaSyntaxNode | null,
+    parent: ModelicaComponentDeclarationSyntaxNode | null,
     concreteSyntaxNode?: SyntaxNode | null,
     abstractSyntaxNode?: IModelicaDeclarationSyntaxNode | null,
   ) {
@@ -563,7 +589,7 @@ export class ModelicaDeclarationSyntaxNode extends ModelicaSyntaxNode implements
   }
 
   static override new(
-    parent: ModelicaSyntaxNode | null,
+    parent: ModelicaComponentDeclarationSyntaxNode | null,
     concreteSyntaxNode?: SyntaxNode | null,
     abstractSyntaxNode?: IModelicaDeclarationSyntaxNode | null,
   ): ModelicaDeclarationSyntaxNode | null {
