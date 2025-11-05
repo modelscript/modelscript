@@ -11,9 +11,45 @@ module.exports = grammar({
   name: "modelica",
 
   rules: {
-    StoredDefinition: ($) => seq(optional($.BOM), optional(field("withinDirective", $.WithinDirective))),
+    StoredDefinition: ($) =>
+      seq(
+        optional($.BOM),
+        optional(field("withinDirective", $.WithinDirective)),
+        repeat(field("classDefinition", $.ClassDefinition)),
+      ),
 
     WithinDirective: ($) => seq("within", optional(field("packageName", $.Name)), ";"),
+
+    ClassDefinition: ($) => seq(field("classKind", $.ClassKind), field("classSpecifier", $._ClassSpecifier), ";"),
+
+    ClassKind: ($) => choice(field("class", "class"), field("package", "package")),
+
+    _ClassSpecifier: ($) => $.LongClassSpecifier,
+
+    LongClassSpecifier: ($) =>
+      seq(
+        choice(field("identifier", $.IDENT)),
+        optional(field("section", $.ElementSection)),
+        "end",
+        field("endIdentifier", $.IDENT),
+      ),
+
+    ElementSection: ($) => repeat1(field("element", $._Element)),
+
+    _Element: ($) => choice($.ClassDefinition, $.ComponentClause),
+
+    ComponentClause: ($) =>
+      seq(
+        field("typeSpecifier", $.TypeSpecifier),
+        commaSep1(field("componentDeclaration", $.ComponentDeclaration)),
+        ";",
+      ),
+
+    ComponentDeclaration: ($) => seq(field("declaration", $.Declaration)),
+
+    Declaration: ($) => seq(field("identifier", $.IDENT)),
+
+    TypeSpecifier: ($) => seq(optional(field("global", ".")), field("name", $.Name)),
 
     Name: ($) => commaSep1(field("component", $.IDENT), "."),
 

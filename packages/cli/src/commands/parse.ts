@@ -26,7 +26,7 @@ export const Parse: CommandModule<{}, ParseArgs> = {
     parser.setLanguage(Modelica);
     const text = readFileSync(args.file, "utf8");
     const tree = parser.parse(text);
-    const node = ModelicaSyntaxNode.make(null, tree.rootNode);
+    const node = ModelicaSyntaxNode.new(null, tree.rootNode);
     const json = JSON.stringify(node, null, 2);
     console.log(json);
   },
