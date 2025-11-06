@@ -3,6 +3,7 @@
 import {
   ModelicaClassDefinitionSyntaxNode,
   ModelicaComponentClauseSyntaxNode,
+  ModelicaElementSyntaxNode,
   type ModelicaComponentDeclarationSyntaxNode,
   type ModelicaIdentifierSyntaxNode,
   type ModelicaNameSyntaxNode,
@@ -21,7 +22,7 @@ export abstract class ModelicaNode {
     this["@type"] = this.constructor.name.substring(8);
   }
 
-  abstract accept<R, A>(visitor: IModelicaNodeVisitor<R, A>, argument?: A): R;
+  abstract accept<R, A>(visitor: IModelicaModelVisitor<R, A>, argument?: A): R;
 
   abstract get elements(): IterableIterator<ModelicaElement>;
 
@@ -99,7 +100,9 @@ export abstract class ModelicaNode {
   }
 }
 
-export abstract class ModelicaElement extends ModelicaNode {}
+export abstract class ModelicaElement extends ModelicaNode {
+  abstract get abstractSyntaxNode(): ModelicaElementSyntaxNode | null;
+}
 
 export abstract class ModelicaNamedElement extends ModelicaElement {
   name: string | null;
@@ -123,7 +126,7 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     return this.#abstractSyntaxNode;
   }
 
-  override accept<R, A>(visitor: IModelicaNodeVisitor<R, A>, argument?: A): R {
+  override accept<R, A>(visitor: IModelicaModelVisitor<R, A>, argument?: A): R {
     return visitor.visitClassInstance(this, argument);
   }
 
@@ -163,7 +166,7 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
   #abstractSyntaxNode: ModelicaComponentDeclarationSyntaxNode | null;
   typeClassInstance: ModelicaClassInstance | null = null;
 
-  constructor(parent: ModelicaNode | null, abstractSyntaxNode: ModelicaComponentDeclarationSyntaxNode | null) {
+  constructor(parent: ModelicaClassInstance | null, abstractSyntaxNode: ModelicaComponentDeclarationSyntaxNode | null) {
     super(parent, abstractSyntaxNode?.declaration?.identifier?.value ?? null);
     this.#abstractSyntaxNode = abstractSyntaxNode;
   }
@@ -172,7 +175,7 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
     return this.#abstractSyntaxNode;
   }
 
-  override accept<R, A>(visitor: IModelicaNodeVisitor<R, A>, argument?: A): R {
+  override accept<R, A>(visitor: IModelicaModelVisitor<R, A>, argument?: A): R {
     return visitor.visitComponentInstance(this, argument);
   }
 
@@ -194,6 +197,10 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
     }
     this.instantiated = true;
   }
+
+  override get parent(): ModelicaClassInstance | null {
+    return super.parent as ModelicaClassInstance | null;
+  }
 }
 
 export abstract class ModelicaPredefinedClassInstance extends ModelicaClassInstance {
@@ -203,7 +210,7 @@ export abstract class ModelicaPredefinedClassInstance extends ModelicaClassInsta
     this.name = name;
   }
 
-  abstract override accept<R, A>(visitor: IModelicaNodeVisitor<R, A>, argument?: A): R;
+  abstract override accept<R, A>(visitor: IModelicaModelVisitor<R, A>, argument?: A): R;
 }
 
 export class ModelicaBooleanClassInstance extends ModelicaPredefinedClassInstance {
@@ -214,7 +221,7 @@ export class ModelicaBooleanClassInstance extends ModelicaPredefinedClassInstanc
     this.value = value ?? null;
   }
 
-  override accept<R, A>(visitor: IModelicaNodeVisitor<R, A>, argument?: A): R {
+  override accept<R, A>(visitor: IModelicaModelVisitor<R, A>, argument?: A): R {
     return visitor.visitBooleanClassInstance(this, argument);
   }
 }
@@ -227,7 +234,7 @@ export class ModelicaIntegerClassInstance extends ModelicaPredefinedClassInstanc
     this.value = value ?? null;
   }
 
-  override accept<R, A>(visitor: IModelicaNodeVisitor<R, A>, argument?: A): R {
+  override accept<R, A>(visitor: IModelicaModelVisitor<R, A>, argument?: A): R {
     return visitor.visitIntegerClassInstance(this, argument);
   }
 }
@@ -240,7 +247,7 @@ export class ModelicaRealClassInstance extends ModelicaPredefinedClassInstance {
     this.value = value ?? null;
   }
 
-  override accept<R, A>(visitor: IModelicaNodeVisitor<R, A>, argument?: A): R {
+  override accept<R, A>(visitor: IModelicaModelVisitor<R, A>, argument?: A): R {
     return visitor.visitRealClassInstance(this, argument);
   }
 }
@@ -253,12 +260,12 @@ export class ModelicaStringClassInstance extends ModelicaPredefinedClassInstance
     this.value = value ?? null;
   }
 
-  override accept<R, A>(visitor: IModelicaNodeVisitor<R, A>, argument?: A): R {
+  override accept<R, A>(visitor: IModelicaModelVisitor<R, A>, argument?: A): R {
     return visitor.visitStringClassInstance(this, argument);
   }
 }
 
-export interface IModelicaNodeVisitor<R, A> {
+export interface IModelicaModelVisitor<R, A> {
   visitBooleanClassInstance(node: ModelicaBooleanClassInstance, argument?: A): R;
 
   visitClassInstance(node: ModelicaClassInstance, argument?: A): R;
@@ -272,7 +279,7 @@ export interface IModelicaNodeVisitor<R, A> {
   visitStringClassInstance(node: ModelicaStringClassInstance, argument?: A): R;
 }
 
-export abstract class ModelicaNodeVisitor<A> implements IModelicaNodeVisitor<void, A> {
+export abstract class ModelicaModelVisitor<A> implements IModelicaModelVisitor<void, A> {
   // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
   visitBooleanClassInstance(node: ModelicaBooleanClassInstance, argument?: A): void {}
 

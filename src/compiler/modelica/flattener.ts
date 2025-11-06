@@ -2,12 +2,12 @@
 
 import {
   ModelicaComponentInstance,
-  ModelicaNodeVisitor,
+  ModelicaModelVisitor,
   ModelicaPredefinedClassInstance,
   type ModelicaClassInstance,
 } from "../../model/modelica.js";
 
-export class ModelicaFlattener extends ModelicaNodeVisitor<string> {
+export class ModelicaFlattener extends ModelicaModelVisitor<string> {
   visitClassInstance(node: ModelicaClassInstance, parentName = ""): void {
     if (parentName === "") {
       console.log("class " + node.name);

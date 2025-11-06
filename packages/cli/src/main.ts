@@ -7,6 +7,7 @@ import yargs from "yargs/yargs";
 import path from "node:path";
 import { Flatten } from "./commands/flatten.js";
 import { Instantiate } from "./commands/instantiate.js";
+import { Lint } from "./commands/lint.js";
 import { Parse } from "./commands/parse.js";
 import { Render } from "./commands/render.js";
 
@@ -18,6 +19,7 @@ yargs(process.argv.slice(2))
   .usage(`CLI for ModelScript ${pkg.content.version}`)
   .command(Flatten)
   .command(Instantiate)
+  .command(Lint)
   .command(Parse)
   .command(Render)
   .strictCommands()

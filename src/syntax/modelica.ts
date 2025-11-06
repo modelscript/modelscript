@@ -749,8 +749,8 @@ export abstract class ModelicaSyntaxVisitor<A> implements IModelicaSyntaxVisitor
   }
 
   visitComponentClause(node: ModelicaComponentClauseSyntaxNode, argument?: A): void {
-    for (const componentDeclaration of node.componentDeclarations) componentDeclaration.accept(this, argument);
     node.typeSpecifier?.accept(this);
+    for (const componentDeclaration of node.componentDeclarations) componentDeclaration.accept(this, argument);
   }
 
   visitComponentDeclaration(node: ModelicaComponentDeclarationSyntaxNode, argument?: A): void {
@@ -780,6 +780,7 @@ export abstract class ModelicaSyntaxVisitor<A> implements IModelicaSyntaxVisitor
 
   visitStoredDefinition(node: ModelicaStoredDefinitionSyntaxNode, argument?: A): void {
     node.withinDirective?.accept(this, argument);
+    for (const classDefinition of node.classDefinitions) classDefinition.accept(this, argument);
   }
 
   visitTypeSpecifier(node: ModelicaTypeSpecifierSyntaxNode, argument?: A): void {
