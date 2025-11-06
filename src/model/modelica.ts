@@ -73,6 +73,16 @@ export abstract class ModelicaNode {
       }
       if (!encapsulated) scope = scope.parent;
     }
+    switch (simpleName) {
+      case "Boolean":
+        return new ModelicaBooleanClassInstance(null, null);
+      case "Integer":
+        return new ModelicaIntegerClassInstance(null, null);
+      case "Real":
+        return new ModelicaRealClassInstance(null, null);
+      case "String":
+        return new ModelicaStringClassInstance(null, null);
+    }
     return null;
   }
 
@@ -186,13 +196,86 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
   }
 }
 
+export abstract class ModelicaPredefinedClassInstance extends ModelicaClassInstance {
+  constructor(parent: ModelicaNode | null, name: string) {
+    super(parent, null);
+    this["@type"] = name + "ClassInstance";
+    this.name = name;
+  }
+
+  abstract override accept<R, A>(visitor: IModelicaNodeVisitor<R, A>, argument?: A): R;
+}
+
+export class ModelicaBooleanClassInstance extends ModelicaPredefinedClassInstance {
+  value: boolean | null;
+
+  constructor(parent: ModelicaNode | null, value?: boolean | null) {
+    super(parent, "Boolean");
+    this.value = value ?? null;
+  }
+
+  override accept<R, A>(visitor: IModelicaNodeVisitor<R, A>, argument?: A): R {
+    return visitor.visitBooleanClassInstance(this, argument);
+  }
+}
+
+export class ModelicaIntegerClassInstance extends ModelicaPredefinedClassInstance {
+  value: number | null;
+
+  constructor(parent: ModelicaNode | null, value?: number | null) {
+    super(parent, "Integer");
+    this.value = value ?? null;
+  }
+
+  override accept<R, A>(visitor: IModelicaNodeVisitor<R, A>, argument?: A): R {
+    return visitor.visitIntegerClassInstance(this, argument);
+  }
+}
+
+export class ModelicaRealClassInstance extends ModelicaPredefinedClassInstance {
+  value: number | null;
+
+  constructor(parent: ModelicaNode | null, value?: number | null) {
+    super(parent, "Real");
+    this.value = value ?? null;
+  }
+
+  override accept<R, A>(visitor: IModelicaNodeVisitor<R, A>, argument?: A): R {
+    return visitor.visitRealClassInstance(this, argument);
+  }
+}
+
+export class ModelicaStringClassInstance extends ModelicaPredefinedClassInstance {
+  value: string | null;
+
+  constructor(parent: ModelicaNode | null, value?: string | null) {
+    super(parent, "String");
+    this.value = value ?? null;
+  }
+
+  override accept<R, A>(visitor: IModelicaNodeVisitor<R, A>, argument?: A): R {
+    return visitor.visitStringClassInstance(this, argument);
+  }
+}
+
 export interface IModelicaNodeVisitor<R, A> {
+  visitBooleanClassInstance(node: ModelicaBooleanClassInstance, argument?: A): R;
+
   visitClassInstance(node: ModelicaClassInstance, argument?: A): R;
 
   visitComponentInstance(node: ModelicaComponentInstance, argument?: A): R;
+
+  visitIntegerClassInstance(node: ModelicaIntegerClassInstance, argument?: A): R;
+
+  visitRealClassInstance(node: ModelicaRealClassInstance, argument?: A): R;
+
+  visitStringClassInstance(node: ModelicaStringClassInstance, argument?: A): R;
 }
 
 export abstract class ModelicaNodeVisitor<A> implements IModelicaNodeVisitor<void, A> {
+  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
+  visitBooleanClassInstance(node: ModelicaBooleanClassInstance, argument?: A): void {}
+
   visitClassInstance(node: ModelicaClassInstance, argument?: A): void {
     for (const element of node.elements) element.accept(this, argument);
   }
@@ -200,4 +283,13 @@ export abstract class ModelicaNodeVisitor<A> implements IModelicaNodeVisitor<voi
   visitComponentInstance(node: ModelicaComponentInstance, argument?: A): void {
     for (const element of node.elements) element.accept(this, argument);
   }
+
+  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
+  visitIntegerClassInstance(node: ModelicaIntegerClassInstance, argument?: A): void {}
+
+  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
+  visitRealClassInstance(node: ModelicaRealClassInstance, argument?: A): void {}
+
+  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
+  visitStringClassInstance(node: ModelicaStringClassInstance, argument?: A): void {}
 }
