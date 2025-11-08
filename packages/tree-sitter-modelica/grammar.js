@@ -36,7 +36,9 @@ module.exports = grammar({
 
     ElementSection: ($) => repeat1(field("element", $._Element)),
 
-    _Element: ($) => choice($.ClassDefinition, $.ComponentClause),
+    _Element: ($) => choice($.ClassDefinition, $.ComponentClause, $.ExtendsClause),
+
+    ExtendsClause: ($) => seq("extends", field("typeSpecifier", $.TypeSpecifier), ";"),
 
     ComponentClause: ($) =>
       seq(

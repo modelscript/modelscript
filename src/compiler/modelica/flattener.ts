@@ -26,10 +26,10 @@ export class ModelicaFlattener extends ModelicaModelVisitor<string> {
 
   visitComponentInstance(node: ModelicaComponentInstance, parentName = ""): void {
     const name = parentName === "" ? node.name : parentName + "." + node.name;
-    if (node.typeClassInstance instanceof ModelicaPredefinedClassInstance) {
-      console.log("  " + node.typeClassInstance.name + " " + name + ";");
+    if (node.classInstance instanceof ModelicaPredefinedClassInstance) {
+      console.log("  " + node.classInstance.name + " " + name + ";");
     } else {
-      node.typeClassInstance?.accept(this, name);
+      node.classInstance?.accept(this, name);
     }
   }
 }

@@ -79,6 +79,12 @@ export abstract class ModelicaSyntaxNode implements IModelicaSyntaxNode {
           concreteSyntaxNode,
           abstractSyntaxNode as IModelicaElementSectionSyntaxNode,
         );
+      case ModelicaExtendsClauseSyntaxNode.type:
+        return new ModelicaExtendsClauseSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaExtendsClauseSyntaxNode,
+        );
       case ModelicaIdentifierSyntaxNode.type:
         return new ModelicaIdentifierSyntaxNode(
           parent,
@@ -243,7 +249,13 @@ export abstract class ModelicaElementSyntaxNode extends ModelicaSyntaxNode {
         return new ModelicaComponentClauseSyntaxNode(
           parent,
           concreteSyntaxNode,
-          abstractSyntaxNode as ModelicaComponentClauseSyntaxNode,
+          abstractSyntaxNode as IModelicaComponentClauseSyntaxNode,
+        );
+      case ModelicaExtendsClauseSyntaxNode.type:
+        return new ModelicaExtendsClauseSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaExtendsClauseSyntaxNode,
         );
       default:
         return null;
@@ -465,6 +477,47 @@ export class ModelicaElementSectionSyntaxNode
     switch (concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]) {
       case ModelicaElementSectionSyntaxNode.type:
         return new ModelicaElementSectionSyntaxNode(parent, concreteSyntaxNode, abstractSyntaxNode);
+      default:
+        return null;
+    }
+  }
+}
+
+export interface IModelicaExtendsClauseSyntaxNode extends IModelicaElementSyntaxNode {
+  typeSpecifier: IModelicaTypeSpecifierSyntaxNode | null;
+}
+
+export class ModelicaExtendsClauseSyntaxNode
+  extends ModelicaElementSyntaxNode
+  implements IModelicaExtendsClauseSyntaxNode
+{
+  typeSpecifier: ModelicaTypeSpecifierSyntaxNode | null;
+
+  constructor(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaExtendsClauseSyntaxNode | null,
+  ) {
+    super(parent, concreteSyntaxNode, abstractSyntaxNode);
+    this.typeSpecifier = ModelicaTypeSpecifierSyntaxNode.new(
+      this,
+      concreteSyntaxNode?.childForFieldName("typeSpecifier"),
+      abstractSyntaxNode?.typeSpecifier,
+    );
+  }
+
+  override accept<R, A>(visitor: IModelicaSyntaxVisitor<R, A>, argument?: A): R {
+    return visitor.visitExtendsClause(this, argument);
+  }
+
+  static override new(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaExtendsClauseSyntaxNode | null,
+  ): ModelicaExtendsClauseSyntaxNode | null {
+    switch (concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]) {
+      case ModelicaExtendsClauseSyntaxNode.type:
+        return new ModelicaExtendsClauseSyntaxNode(parent, concreteSyntaxNode, abstractSyntaxNode);
       default:
         return null;
     }
@@ -730,6 +783,8 @@ export interface IModelicaSyntaxVisitor<R, A> {
 
   visitElementSection(node: ModelicaElementSectionSyntaxNode, argument?: A): R;
 
+  visitExtendsClause(node: ModelicaExtendsClauseSyntaxNode, argument?: A): R;
+
   visitIdentifier(node: ModelicaIdentifierSyntaxNode, argument?: A): R;
 
   visitLongClassSpecifier(node: ModelicaLongClassSpecifierSyntaxNode, argument?: A): R;
@@ -763,6 +818,10 @@ export abstract class ModelicaSyntaxVisitor<A> implements IModelicaSyntaxVisitor
 
   visitElementSection(node: ModelicaElementSectionSyntaxNode, argument?: A): void {
     for (const element of node.elements) element.accept(this, argument);
+  }
+
+  visitExtendsClause(node: ModelicaExtendsClauseSyntaxNode, argument?: A): void {
+    node.typeSpecifier?.accept(this, argument);
   }
 
   // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars

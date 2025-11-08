@@ -5,6 +5,7 @@ import {
   ModelicaClassDefinitionSyntaxNode,
   ModelicaComponentClauseSyntaxNode,
   ModelicaElementSyntaxNode,
+  ModelicaExtendsClauseSyntaxNode,
   ModelicaStoredDefinitionSyntaxNode,
   type ModelicaComponentDeclarationSyntaxNode,
   type ModelicaIdentifierSyntaxNode,
@@ -185,6 +186,52 @@ export abstract class ModelicaElement extends ModelicaNode {
   }
 }
 
+export class ModelicaExtendsClassInstance extends ModelicaElement {
+  #abstractSyntaxNode: ModelicaExtendsClauseSyntaxNode | null;
+  classInstance: ModelicaClassInstance | null = null;
+
+  constructor(
+    library: ModelicaLibrary | null,
+    parent: ModelicaNode | null,
+    abstractSyntaxNode?: ModelicaExtendsClauseSyntaxNode | null,
+  ) {
+    super(library, parent);
+    this.#abstractSyntaxNode = abstractSyntaxNode ?? null;
+  }
+
+  get abstractSyntaxNode(): ModelicaExtendsClauseSyntaxNode | null {
+    return this.#abstractSyntaxNode;
+  }
+
+  set abstractSyntaxNode(abstractSyntaxNode: ModelicaExtendsClauseSyntaxNode | null) {
+    this.#abstractSyntaxNode = abstractSyntaxNode;
+    this.instantiated = false;
+  }
+
+  override accept<R, A>(visitor: IModelicaModelVisitor<R, A>, argument?: A): R {
+    return visitor.visitExtendsClassInstance(this, argument);
+  }
+
+  override get elements(): IterableIterator<ModelicaElement> {
+    if (!this.instantiated && !this.instantiating) this.instantiate();
+    const elements = this.classInstance?.elements;
+    return (function* () {
+      if (elements) yield* elements;
+    })();
+  }
+
+  override instantiate(): void {
+    if (this.instantiated) return;
+    if (this.instantiating) throw Error("reentrant error: class is already being instantiated");
+    this.instantiating = true;
+    const element = this.parent?.resolveTypeSpecifier(this.abstractSyntaxNode?.typeSpecifier);
+    if (element instanceof ModelicaClassInstance) {
+      this.classInstance = element;
+    }
+    this.instantiated = true;
+  }
+}
+
 export abstract class ModelicaNamedElement extends ModelicaElement {
   name: string | null = null;
 }
@@ -221,7 +268,10 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     if (!this.instantiated && !this.instantiating) this.instantiate();
     const declaredElements = this.declaredElements;
     return (function* () {
-      yield* declaredElements;
+      for (const declaredElement of declaredElements) {
+        if (declaredElement instanceof ModelicaExtendsClassInstance) yield* declaredElement.elements;
+        else yield declaredElement;
+      }
     })();
   }
 
@@ -237,7 +287,12 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
         for (const componentDeclarationSyntaxNode of elementSyntaxNode.componentDeclarations) {
           this.declaredElements.push(new ModelicaComponentInstance(this.library, this, componentDeclarationSyntaxNode));
         }
+      } else if (elementSyntaxNode instanceof ModelicaExtendsClauseSyntaxNode) {
+        this.declaredElements.push(new ModelicaExtendsClassInstance(this.library, this, elementSyntaxNode));
       }
+    }
+    for (const element of this.declaredElements) {
+      if (element instanceof ModelicaExtendsClassInstance) element.instantiate();
     }
     for (const element of this.declaredElements) {
       if (element instanceof ModelicaClassInstance) element.instantiate();
@@ -325,7 +380,7 @@ export class ModelicaEntity extends ModelicaClassInstance {
 
 export class ModelicaComponentInstance extends ModelicaNamedElement {
   #abstractSyntaxNode: ModelicaComponentDeclarationSyntaxNode | null;
-  typeClassInstance: ModelicaClassInstance | null = null;
+  classInstance: ModelicaClassInstance | null = null;
 
   constructor(
     library: ModelicaLibrary | null,
@@ -346,7 +401,7 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
 
   override get elements(): IterableIterator<ModelicaElement> {
     if (!this.instantiated && !this.instantiating) this.instantiate();
-    const elements = this.typeClassInstance?.elements;
+    const elements = this.classInstance?.elements;
     return (function* () {
       if (elements) yield* elements;
     })();
@@ -359,7 +414,7 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
     this.name = this.abstractSyntaxNode?.declaration?.identifier?.value ?? null;
     const element = this.parent?.resolveTypeSpecifier(this.abstractSyntaxNode?.parent?.typeSpecifier);
     if (element instanceof ModelicaClassInstance) {
-      this.typeClassInstance = element;
+      this.classInstance = element;
     }
     this.instantiated = true;
   }
@@ -440,6 +495,8 @@ export interface IModelicaModelVisitor<R, A> {
 
   visitEntity(node: ModelicaEntity, argument?: A): R;
 
+  visitExtendsClassInstance(node: ModelicaExtendsClassInstance, argument?: A): R;
+
   visitIntegerClassInstance(node: ModelicaIntegerClassInstance, argument?: A): R;
 
   visitLibrary(node: ModelicaLibrary, argument?: A): R;
@@ -462,6 +519,10 @@ export abstract class ModelicaModelVisitor<A> implements IModelicaModelVisitor<v
   }
 
   visitEntity(node: ModelicaEntity, argument?: A): void {
+    for (const element of node.elements) element.accept(this, argument);
+  }
+
+  visitExtendsClassInstance(node: ModelicaExtendsClassInstance, argument?: A): void {
     for (const element of node.elements) element.accept(this, argument);
   }
 

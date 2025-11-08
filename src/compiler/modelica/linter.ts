@@ -14,8 +14,10 @@ import {
   type ModelicaStringClassInstance,
   ModelicaEntity,
   ModelicaLibrary,
+  ModelicaExtendsClassInstance,
 } from "../../model/modelica.js";
 import {
+  ModelicaExtendsClauseSyntaxNode,
   ModelicaSyntaxNode,
   ModelicaSyntaxVisitor,
   type IModelicaSyntaxVisitor,
@@ -142,6 +144,11 @@ export class ModelicaModelLinter extends ModelicaModelVisitor<string | null | un
     super.visitEntity(node, node.path);
   }
 
+  visitExtendsClassInstance(node: ModelicaExtendsClassInstance, resource: string | null | undefined): void {
+    ModelicaLinter.applyRules("visitExtendsClassInstance", node, this.#diagnosticsCallback, resource);
+    super.visitExtendsClassInstance(node, resource);
+  }
+
   visitIntegerClassInstance(node: ModelicaIntegerClassInstance, resource: string | null | undefined): void {
     ModelicaLinter.applyRules("visitIntegerClassInstance", node, this.#diagnosticsCallback, resource);
     super.visitIntegerClassInstance(node, resource);
@@ -194,6 +201,11 @@ export class ModelicaSyntaxLinter extends ModelicaSyntaxVisitor<string | null | 
   visitElementSection(node: ModelicaElementSectionSyntaxNode, resource: string | null | undefined): void {
     ModelicaLinter.applyRules("visitElementSection", node, this.#diagnosticsCallback, resource);
     super.visitElementSection(node, resource);
+  }
+
+  visitExtendsClause(node: ModelicaExtendsClauseSyntaxNode, resource: string | null | undefined): void {
+    ModelicaLinter.applyRules("visitExtendsClause", node, this.#diagnosticsCallback, resource);
+    super.visitExtendsClause(node, resource);
   }
 
   visitIdentifier(node: ModelicaIdentifierSyntaxNode, resource: string | null | undefined): void {
@@ -272,7 +284,7 @@ ModelicaLinter.register({
     node: ModelicaComponentInstance,
     diagnosticsCallback: DiagnosticsCallbackWithoutResource,
   ): void {
-    if (node.typeClassInstance == null) {
+    if (node.classInstance == null) {
       const typeSpecifier = node.abstractSyntaxNode?.parent?.typeSpecifier?.concreteSyntaxNode;
       diagnosticsCallback(
         "error",
