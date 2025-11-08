@@ -1,29 +1,23 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import {
-  ModelicaClassInstance,
-  ModelicaLinter,
-  ModelicaStoredDefinitionSyntaxNode,
-  ModelicaSyntaxNode,
-} from "modelscript";
+import { Context, ModelicaLibrary, ModelicaLinter } from "modelscript";
 import type { CommandModule } from "yargs";
 import Parser, { type Range } from "tree-sitter";
 import Modelica from "@modelscript/tree-sitter-modelica";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { NodeFileSystem } from "../util/filesystem.js";
 
 interface LintArgs {
-  file: string;
+  path: string;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export const Lint: CommandModule<{}, LintArgs> = {
-  command: "lint <file>",
+  command: "lint <path>",
   describe: "",
   builder: (yargs) => {
-    return yargs.positional("file", {
+    return yargs.positional("path", {
       demandOption: true,
-      description: "path of file to lint",
+      description: "path of library or module to lint",
       type: "string",
     });
   },
@@ -40,17 +34,14 @@ export const Lint: CommandModule<{}, LintArgs> = {
         diagnosticsMap.get(resource ?? null)?.push({ type, message, resource, range });
       },
     );
-    const resource = resolve(args.file);
+
     const parser = new Parser();
     parser.setLanguage(Modelica);
-    const text = readFileSync(args.file, "utf8");
-    const tree = parser.parse(text);
-    linter.lint(tree, resource);
-    const node = ModelicaSyntaxNode.new(null, tree.rootNode) as ModelicaStoredDefinitionSyntaxNode;
-    linter.lint(node, resource);
-    const instance = new ModelicaClassInstance(null, node.classDefinitions[0]);
-    instance.instantiate();
-    linter.lint(instance, resource);
+    Context.registerParser(".mo", parser);
+    const context = new Context(new NodeFileSystem());
+    const library = new ModelicaLibrary(context, args.path);
+    linter.lint(library);
+
     for (const resource of diagnosticsMap.keys()) {
       const diagnostics = diagnosticsMap.get(resource);
       if (diagnostics == null) continue;

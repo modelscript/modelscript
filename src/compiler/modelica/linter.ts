@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import type { Range, Tree } from "tree-sitter";
 import {
   ModelicaClassInstance,
@@ -10,6 +12,8 @@ import {
   type ModelicaIntegerClassInstance,
   type ModelicaRealClassInstance,
   type ModelicaStringClassInstance,
+  ModelicaEntity,
+  ModelicaLibrary,
 } from "../../model/modelica.js";
 import {
   ModelicaSyntaxNode,
@@ -52,8 +56,8 @@ export class ModelicaLinter {
 
   constructor(diagnosticsCallback: DiagnosticsCallback) {
     this.#diagnosticsCallback = diagnosticsCallback;
-    this.#modelicaModelLinter = new ModelicaModelLinter(diagnosticsCallback);
     this.#modelicaSyntaxLinter = new ModelicaSyntaxLinter(diagnosticsCallback);
+    this.#modelicaModelLinter = new ModelicaModelLinter(diagnosticsCallback, this.#modelicaSyntaxLinter);
   }
 
   static applyRules<T>(
@@ -109,10 +113,12 @@ export class ModelicaLinter {
 
 export class ModelicaModelLinter extends ModelicaModelVisitor<string | null | undefined> {
   #diagnosticsCallback: DiagnosticsCallback;
+  #modelicaSyntaxLinter: ModelicaSyntaxLinter;
 
-  constructor(diagnosticsCallback: DiagnosticsCallback) {
+  constructor(diagnosticsCallback: DiagnosticsCallback, modelicaSyntaxLinter: ModelicaSyntaxLinter) {
     super();
     this.#diagnosticsCallback = diagnosticsCallback;
+    this.#modelicaSyntaxLinter = modelicaSyntaxLinter;
   }
 
   visitBooleanClassInstance(node: ModelicaBooleanClassInstance, resource: string | null | undefined): void {
@@ -130,9 +136,20 @@ export class ModelicaModelLinter extends ModelicaModelVisitor<string | null | un
     super.visitComponentInstance(node, resource);
   }
 
+  visitEntity(node: ModelicaEntity): void {
+    node.storedDefinitionSyntaxNode?.accept(this.#modelicaSyntaxLinter, node.path);
+    ModelicaLinter.applyRules("visitEntity", node, this.#diagnosticsCallback, node.path);
+    super.visitEntity(node, node.path);
+  }
+
   visitIntegerClassInstance(node: ModelicaIntegerClassInstance, resource: string | null | undefined): void {
     ModelicaLinter.applyRules("visitIntegerClassInstance", node, this.#diagnosticsCallback, resource);
     super.visitIntegerClassInstance(node, resource);
+  }
+
+  visitLibrary(node: ModelicaLibrary): void {
+    ModelicaLinter.applyRules("visitLibrary", node, this.#diagnosticsCallback, node.path);
+    super.visitLibrary(node, node.path);
   }
 
   visitRealClassInstance(node: ModelicaRealClassInstance, resource: string | null | undefined): void {
