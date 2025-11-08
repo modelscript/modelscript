@@ -67,6 +67,12 @@ export abstract class ModelicaSyntaxNode implements IModelicaSyntaxNode {
           concreteSyntaxNode,
           abstractSyntaxNode as IModelicaComponentDeclarationSyntaxNode,
         );
+      case ModelicaCompoundImportClauseSyntaxNode.type:
+        return new ModelicaCompoundImportClauseSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaCompoundImportClauseSyntaxNode,
+        );
       case ModelicaDeclarationSyntaxNode.type:
         return new ModelicaDeclarationSyntaxNode(
           parent as ModelicaComponentDeclarationSyntaxNode | null,
@@ -99,6 +105,12 @@ export abstract class ModelicaSyntaxNode implements IModelicaSyntaxNode {
         );
       case ModelicaNameSyntaxNode.type:
         return new ModelicaNameSyntaxNode(parent, concreteSyntaxNode, abstractSyntaxNode as IModelicaNameSyntaxNode);
+      case ModelicaSimpleImportClauseSyntaxNode.type:
+        return new ModelicaSimpleImportClauseSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaSimpleImportClauseSyntaxNode,
+        );
       case ModelicaStoredDefinitionSyntaxNode.type:
         return new ModelicaStoredDefinitionSyntaxNode(
           parent,
@@ -110,6 +122,12 @@ export abstract class ModelicaSyntaxNode implements IModelicaSyntaxNode {
           parent,
           concreteSyntaxNode,
           abstractSyntaxNode as IModelicaTypeSpecifierSyntaxNode,
+        );
+      case ModelicaUnqualifiedImportClauseSyntaxNode.type:
+        return new ModelicaUnqualifiedImportClauseSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaUnqualifiedImportClauseSyntaxNode,
         );
       case ModelicaWithinDirectiveSyntaxNode.type:
         return new ModelicaWithinDirectiveSyntaxNode(
@@ -251,11 +269,29 @@ export abstract class ModelicaElementSyntaxNode extends ModelicaSyntaxNode {
           concreteSyntaxNode,
           abstractSyntaxNode as IModelicaComponentClauseSyntaxNode,
         );
+      case ModelicaCompoundImportClauseSyntaxNode.type:
+        return new ModelicaCompoundImportClauseSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaCompoundImportClauseSyntaxNode,
+        );
       case ModelicaExtendsClauseSyntaxNode.type:
         return new ModelicaExtendsClauseSyntaxNode(
           parent,
           concreteSyntaxNode,
           abstractSyntaxNode as IModelicaExtendsClauseSyntaxNode,
+        );
+      case ModelicaSimpleImportClauseSyntaxNode.type:
+        return new ModelicaSimpleImportClauseSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaSimpleImportClauseSyntaxNode,
+        );
+      case ModelicaUnqualifiedImportClauseSyntaxNode.type:
+        return new ModelicaUnqualifiedImportClauseSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaUnqualifiedImportClauseSyntaxNode,
         );
       default:
         return null;
@@ -477,6 +513,165 @@ export class ModelicaElementSectionSyntaxNode
     switch (concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]) {
       case ModelicaElementSectionSyntaxNode.type:
         return new ModelicaElementSectionSyntaxNode(parent, concreteSyntaxNode, abstractSyntaxNode);
+      default:
+        return null;
+    }
+  }
+}
+
+export interface IModelicaImportClauseSyntaxNode extends IModelicaElementSyntaxNode {
+  packageName: IModelicaNameSyntaxNode | null;
+}
+
+export abstract class ModelicaImportClauseSyntaxNode
+  extends ModelicaElementSyntaxNode
+  implements IModelicaImportClauseSyntaxNode
+{
+  packageName: ModelicaNameSyntaxNode | null;
+
+  constructor(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaImportClauseSyntaxNode | null,
+  ) {
+    super(parent, concreteSyntaxNode, abstractSyntaxNode);
+    this.packageName = ModelicaNameSyntaxNode.new(
+      this,
+      concreteSyntaxNode?.childForFieldName("packageName"),
+      abstractSyntaxNode?.packageName,
+    );
+  }
+
+  static override new(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaImportClauseSyntaxNode | null,
+  ): ModelicaImportClauseSyntaxNode | null {
+    switch (concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]) {
+      case ModelicaSimpleImportClauseSyntaxNode.type:
+        return new ModelicaSimpleImportClauseSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaSimpleImportClauseSyntaxNode,
+        );
+      case ModelicaCompoundImportClauseSyntaxNode.type:
+        return new ModelicaCompoundImportClauseSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaCompoundImportClauseSyntaxNode,
+        );
+      case ModelicaUnqualifiedImportClauseSyntaxNode.type:
+        return new ModelicaUnqualifiedImportClauseSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaUnqualifiedImportClauseSyntaxNode,
+        );
+      default:
+        return null;
+    }
+  }
+}
+
+export interface IModelicaSimpleImportClauseSyntaxNode extends IModelicaImportClauseSyntaxNode {
+  shortName: IModelicaIdentifierSyntaxNode | null;
+}
+
+export class ModelicaSimpleImportClauseSyntaxNode
+  extends ModelicaImportClauseSyntaxNode
+  implements IModelicaSimpleImportClauseSyntaxNode
+{
+  shortName: ModelicaIdentifierSyntaxNode | null;
+
+  constructor(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaSimpleImportClauseSyntaxNode | null,
+  ) {
+    super(parent, concreteSyntaxNode, abstractSyntaxNode);
+    this.shortName = ModelicaIdentifierSyntaxNode.new(
+      this,
+      concreteSyntaxNode?.childForFieldName("shortName"),
+      abstractSyntaxNode?.shortName,
+    );
+  }
+
+  override accept<R, A>(visitor: IModelicaSyntaxVisitor<R, A>, argument?: A): R {
+    return visitor.visitSimpleImportClause(this, argument);
+  }
+
+  static override new(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaSimpleImportClauseSyntaxNode | null,
+  ): ModelicaSimpleImportClauseSyntaxNode | null {
+    switch (concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]) {
+      case ModelicaSimpleImportClauseSyntaxNode.type:
+        return new ModelicaSimpleImportClauseSyntaxNode(parent, concreteSyntaxNode, abstractSyntaxNode);
+      default:
+        return null;
+    }
+  }
+}
+
+export interface IModelicaCompoundImportClauseSyntaxNode extends IModelicaImportClauseSyntaxNode {
+  importNames: IModelicaIdentifierSyntaxNode[];
+}
+
+export class ModelicaCompoundImportClauseSyntaxNode
+  extends ModelicaImportClauseSyntaxNode
+  implements IModelicaCompoundImportClauseSyntaxNode
+{
+  importNames: ModelicaIdentifierSyntaxNode[];
+
+  constructor(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaCompoundImportClauseSyntaxNode | null,
+  ) {
+    super(parent, concreteSyntaxNode, abstractSyntaxNode);
+    this.importNames = ModelicaIdentifierSyntaxNode.newArray(
+      this,
+      concreteSyntaxNode?.childrenForFieldName("importName"),
+      abstractSyntaxNode?.importNames,
+    );
+  }
+
+  override accept<R, A>(visitor: IModelicaSyntaxVisitor<R, A>, argument?: A): R {
+    return visitor.visitCompoundImportClause(this, argument);
+  }
+
+  static override new(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaCompoundImportClauseSyntaxNode | null,
+  ): ModelicaCompoundImportClauseSyntaxNode | null {
+    switch (concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]) {
+      case ModelicaCompoundImportClauseSyntaxNode.type:
+        return new ModelicaCompoundImportClauseSyntaxNode(parent, concreteSyntaxNode, abstractSyntaxNode);
+      default:
+        return null;
+    }
+  }
+}
+
+export type IModelicaUnqualifiedImportClauseSyntaxNode = IModelicaImportClauseSyntaxNode;
+
+export class ModelicaUnqualifiedImportClauseSyntaxNode
+  extends ModelicaImportClauseSyntaxNode
+  implements IModelicaUnqualifiedImportClauseSyntaxNode
+{
+  override accept<R, A>(visitor: IModelicaSyntaxVisitor<R, A>, argument?: A): R {
+    return visitor.visitUnqualifiedImportClause(this, argument);
+  }
+
+  static override new(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaUnqualifiedImportClauseSyntaxNode | null,
+  ): ModelicaUnqualifiedImportClauseSyntaxNode | null {
+    switch (concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]) {
+      case ModelicaUnqualifiedImportClauseSyntaxNode.type:
+        return new ModelicaUnqualifiedImportClauseSyntaxNode(parent, concreteSyntaxNode, abstractSyntaxNode);
       default:
         return null;
     }
@@ -779,6 +974,8 @@ export interface IModelicaSyntaxVisitor<R, A> {
 
   visitComponentDeclaration(node: ModelicaComponentDeclarationSyntaxNode, argument?: A): R;
 
+  visitCompoundImportClause(node: ModelicaCompoundImportClauseSyntaxNode, argument?: A): R;
+
   visitDeclaration(node: ModelicaDeclarationSyntaxNode, argument?: A): R;
 
   visitElementSection(node: ModelicaElementSectionSyntaxNode, argument?: A): R;
@@ -791,9 +988,13 @@ export interface IModelicaSyntaxVisitor<R, A> {
 
   visitName(node: ModelicaNameSyntaxNode, argument?: A): R;
 
+  visitSimpleImportClause(node: ModelicaSimpleImportClauseSyntaxNode, argument?: A): R;
+
   visitStoredDefinition(node: ModelicaStoredDefinitionSyntaxNode, argument?: A): R;
 
   visitTypeSpecifier(node: ModelicaTypeSpecifierSyntaxNode, argument?: A): R;
+
+  visitUnqualifiedImportClause(node: ModelicaUnqualifiedImportClauseSyntaxNode, argument?: A): R;
 
   visitWithinDirective(node: ModelicaWithinDirectiveSyntaxNode, argument?: A): R;
 }
@@ -810,6 +1011,11 @@ export abstract class ModelicaSyntaxVisitor<A> implements IModelicaSyntaxVisitor
 
   visitComponentDeclaration(node: ModelicaComponentDeclarationSyntaxNode, argument?: A): void {
     node.declaration?.accept(this, argument);
+  }
+
+  visitCompoundImportClause(node: ModelicaCompoundImportClauseSyntaxNode, argument?: A): void {
+    node.packageName?.accept(this, argument);
+    for (const importName of node.importNames) importName.accept(this, argument);
   }
 
   visitDeclaration(node: ModelicaDeclarationSyntaxNode, argument?: A): void {
@@ -837,6 +1043,11 @@ export abstract class ModelicaSyntaxVisitor<A> implements IModelicaSyntaxVisitor
     for (const component of node.components) component.accept(this, argument);
   }
 
+  visitSimpleImportClause(node: ModelicaSimpleImportClauseSyntaxNode, argument?: A): void {
+    node.shortName?.accept(this, argument);
+    node.packageName?.accept(this, argument);
+  }
+
   visitStoredDefinition(node: ModelicaStoredDefinitionSyntaxNode, argument?: A): void {
     node.withinDirective?.accept(this, argument);
     for (const classDefinition of node.classDefinitions) classDefinition.accept(this, argument);
@@ -844,6 +1055,10 @@ export abstract class ModelicaSyntaxVisitor<A> implements IModelicaSyntaxVisitor
 
   visitTypeSpecifier(node: ModelicaTypeSpecifierSyntaxNode, argument?: A): void {
     node.name?.accept(this, argument);
+  }
+
+  visitUnqualifiedImportClause(node: ModelicaUnqualifiedImportClauseSyntaxNode, argument?: A): void {
+    node.packageName?.accept(this, argument);
   }
 
   visitWithinDirective(node: ModelicaWithinDirectiveSyntaxNode, argument?: A): void {

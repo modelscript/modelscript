@@ -4,9 +4,13 @@ import type { Context } from "../compiler/context.js";
 import {
   ModelicaClassDefinitionSyntaxNode,
   ModelicaComponentClauseSyntaxNode,
+  ModelicaCompoundImportClauseSyntaxNode,
   ModelicaElementSyntaxNode,
   ModelicaExtendsClauseSyntaxNode,
+  ModelicaImportClauseSyntaxNode,
+  ModelicaSimpleImportClauseSyntaxNode,
   ModelicaStoredDefinitionSyntaxNode,
+  ModelicaUnqualifiedImportClauseSyntaxNode,
   type ModelicaComponentDeclarationSyntaxNode,
   type ModelicaIdentifierSyntaxNode,
   type ModelicaNameSyntaxNode,
@@ -77,6 +81,14 @@ export abstract class ModelicaNode {
     while (scope) {
       for (const element of scope.elements) {
         if (element instanceof ModelicaNamedElement && element.name === simpleName) return element;
+      }
+      if (scope instanceof ModelicaClassInstance) {
+        const element = scope.qualifiedImports.get(simpleName);
+        if (element != null) return element;
+        for (const unqualifiedImport of scope.unqualifiedImports) {
+          const element = unqualifiedImport.resolveSimpleName(identifier);
+          if (element != null) return element;
+        }
       }
       if (!encapsulated) scope = scope.parent;
     }
@@ -238,6 +250,9 @@ export abstract class ModelicaNamedElement extends ModelicaElement {
 
 export class ModelicaClassInstance extends ModelicaNamedElement {
   #abstractSyntaxNode: ModelicaClassDefinitionSyntaxNode | null;
+  #importClauses: ModelicaImportClauseSyntaxNode[] = [];
+  #qualifiedImports = new Map<string, ModelicaClassInstance>();
+  #unqualifiedImports: ModelicaClassInstance[] = [];
   declaredElements: ModelicaElement[] = [];
 
   constructor(
@@ -280,6 +295,9 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     if (this.instantiating) throw Error("reentrant error: class is already being instantiated");
     this.instantiating = true;
     this.declaredElements = [];
+    this.#importClauses = [];
+    this.#qualifiedImports = new Map<string, ModelicaClassInstance>();
+    this.#unqualifiedImports = [];
     for (const elementSyntaxNode of this.abstractSyntaxNode?.elements ?? []) {
       if (elementSyntaxNode instanceof ModelicaClassDefinitionSyntaxNode) {
         this.declaredElements.push(new ModelicaClassInstance(this.library, this, elementSyntaxNode));
@@ -289,6 +307,8 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
         }
       } else if (elementSyntaxNode instanceof ModelicaExtendsClauseSyntaxNode) {
         this.declaredElements.push(new ModelicaExtendsClassInstance(this.library, this, elementSyntaxNode));
+      } else if (elementSyntaxNode instanceof ModelicaImportClauseSyntaxNode) {
+        this.#importClauses.push(elementSyntaxNode);
       }
     }
     for (const element of this.declaredElements) {
@@ -297,10 +317,36 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     for (const element of this.declaredElements) {
       if (element instanceof ModelicaClassInstance) element.instantiate();
     }
+    for (const importClause of this.#importClauses) {
+      const packageInstance = this.resolveName(importClause.packageName, true);
+      if (!(packageInstance instanceof ModelicaClassInstance)) continue;
+      if (importClause instanceof ModelicaUnqualifiedImportClauseSyntaxNode) {
+        this.#unqualifiedImports.push(packageInstance);
+      } else if (importClause instanceof ModelicaSimpleImportClauseSyntaxNode) {
+        const shortName = importClause.shortName?.value;
+        const name = shortName == null ? packageInstance.name : shortName;
+        if (name) this.#qualifiedImports.set(name, packageInstance);
+      } else if (importClause instanceof ModelicaCompoundImportClauseSyntaxNode) {
+        for (const importName of importClause.importNames) {
+          const qualifiedImport = packageInstance.resolveSimpleName(importName);
+          if (qualifiedImport instanceof ModelicaClassInstance) {
+            if (qualifiedImport.name) this.#qualifiedImports.set(qualifiedImport.name, qualifiedImport);
+          }
+        }
+      }
+    }
     for (const element of this.declaredElements) {
       if (element instanceof ModelicaComponentInstance) element.instantiate();
     }
     this.instantiated = true;
+  }
+
+  get qualifiedImports(): Map<string, ModelicaClassInstance> {
+    return this.#qualifiedImports;
+  }
+
+  get unqualifiedImports(): ModelicaClassInstance[] {
+    return this.#unqualifiedImports;
   }
 }
 

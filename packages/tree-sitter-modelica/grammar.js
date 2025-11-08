@@ -9,7 +9,7 @@
 
 module.exports = grammar({
   name: "modelica",
-
+  conflicts: ($) => [[$.Name]],
   rules: {
     StoredDefinition: ($) =>
       seq(
@@ -36,7 +36,17 @@ module.exports = grammar({
 
     ElementSection: ($) => repeat1(field("element", $._Element)),
 
-    _Element: ($) => choice($.ClassDefinition, $.ComponentClause, $.ExtendsClause),
+    _Element: ($) => choice($.ClassDefinition, $.ComponentClause, $.ExtendsClause, $._ImportClause),
+
+    _ImportClause: ($) => choice($.SimpleImportClause, $.CompoundImportClause, $.UnqualifiedImportClause),
+
+    SimpleImportClause: ($) =>
+      seq("import", optional(seq(field("shortName", $.IDENT), "=")), field("packageName", $.Name), ";"),
+
+    CompoundImportClause: ($) =>
+      seq("import", field("packageName", $.Name), ".", "{", commaSep1(field("importName", $.IDENT)), "}", ";"),
+
+    UnqualifiedImportClause: ($) => seq("import", field("packageName", $.Name), ".", "*", ";"),
 
     ExtendsClause: ($) => seq("extends", field("typeSpecifier", $.TypeSpecifier), ";"),
 

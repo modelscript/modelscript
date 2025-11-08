@@ -17,9 +17,12 @@ import {
   ModelicaExtendsClassInstance,
 } from "../../model/modelica.js";
 import {
+  ModelicaCompoundImportClauseSyntaxNode,
   ModelicaExtendsClauseSyntaxNode,
+  ModelicaSimpleImportClauseSyntaxNode,
   ModelicaSyntaxNode,
   ModelicaSyntaxVisitor,
+  ModelicaUnqualifiedImportClauseSyntaxNode,
   type IModelicaSyntaxVisitor,
   type ModelicaClassDefinitionSyntaxNode,
   type ModelicaComponentClauseSyntaxNode,
@@ -193,6 +196,11 @@ export class ModelicaSyntaxLinter extends ModelicaSyntaxVisitor<string | null | 
     super.visitComponentDeclaration(node, resource);
   }
 
+  visitCompoundImportClause(node: ModelicaCompoundImportClauseSyntaxNode, resource: string | null | undefined): void {
+    ModelicaLinter.applyRules("visitCompoundImportClause", node, this.#diagnosticsCallback, resource);
+    super.visitCompoundImportClause(node, resource);
+  }
+
   visitDeclaration(node: ModelicaDeclarationSyntaxNode, resource: string | null | undefined): void {
     ModelicaLinter.applyRules("visitDeclaration", node, this.#diagnosticsCallback, resource);
     super.visitDeclaration(node, resource);
@@ -223,6 +231,11 @@ export class ModelicaSyntaxLinter extends ModelicaSyntaxVisitor<string | null | 
     super.visitName(node, resource);
   }
 
+  visitSimpleImportClause(node: ModelicaSimpleImportClauseSyntaxNode, resource: string | null | undefined): void {
+    ModelicaLinter.applyRules("visitSimpleImportClause", node, this.#diagnosticsCallback, resource);
+    super.visitSimpleImportClause(node, resource);
+  }
+
   visitStoredDefinition(node: ModelicaStoredDefinitionSyntaxNode, resource: string | null | undefined): void {
     ModelicaLinter.applyRules("visitStoredDefinition", node, this.#diagnosticsCallback, resource);
     super.visitStoredDefinition(node, resource);
@@ -231,6 +244,14 @@ export class ModelicaSyntaxLinter extends ModelicaSyntaxVisitor<string | null | 
   visitTypeSpecifier(node: ModelicaTypeSpecifierSyntaxNode, resource: string | null | undefined): void {
     ModelicaLinter.applyRules("visitTypeSpecifier", node, this.#diagnosticsCallback, resource);
     super.visitTypeSpecifier(node, resource);
+  }
+
+  visitUnqualifiedImportClause(
+    node: ModelicaUnqualifiedImportClauseSyntaxNode,
+    resource: string | null | undefined,
+  ): void {
+    ModelicaLinter.applyRules("visitUnqualifiedImportClause", node, this.#diagnosticsCallback, resource);
+    super.visitUnqualifiedImportClause(node, resource);
   }
 
   visitWithinDirective(node: ModelicaWithinDirectiveSyntaxNode, resource: string | null | undefined): void {
