@@ -9,7 +9,9 @@
 
 module.exports = grammar({
   name: "modelica",
+  extras: ($) => [/\s/, $.BLOCK_COMMENT, $.LINE_COMMENT],
   conflicts: ($) => [[$.Name]],
+  word: ($) => $.IDENT,
   rules: {
     StoredDefinition: ($) =>
       seq(
@@ -29,12 +31,16 @@ module.exports = grammar({
     LongClassSpecifier: ($) =>
       seq(
         choice(field("identifier", $.IDENT)),
-        optional(field("section", $.ElementSection)),
+        optional(field("section", $.InitialElementSection)),
+        repeat(field("section", choice($.ElementSection, $.EquationSection))),
         "end",
         field("endIdentifier", $.IDENT),
       ),
 
-    ElementSection: ($) => repeat1(field("element", $._Element)),
+    InitialElementSection: ($) => repeat1(field("element", $._Element)),
+
+    ElementSection: ($) =>
+      seq(choice(field("protected", "protected"), field("public", "public")), repeat(field("element", $._Element))),
 
     _Element: ($) => choice($.ClassDefinition, $.ComponentClause, $.ExtendsClause, $._ImportClause),
 
@@ -61,9 +67,31 @@ module.exports = grammar({
 
     Declaration: ($) => seq(field("identifier", $.IDENT)),
 
+    EquationSection: ($) => seq("equation", repeat(field("equation", $._Equation))),
+
+    _Equation: ($) => choice($.SimpleEquation),
+
+    SimpleEquation: ($) =>
+      seq(field("expression1", $._SimpleExpression), "=", field("expression2", $._Expression), ";"),
+
+    _Expression: ($) => choice($._SimpleExpression),
+
+    _SimpleExpression: ($) => choice($._PrimaryExpression),
+
+    _PrimaryExpression: ($) => choice($._Literal, $.ComponentReference),
+
+    _Literal: ($) => choice($._UnsignedNumberLiteral),
+
+    _UnsignedNumberLiteral: ($) => choice($.UNSIGNED_INTEGER, $.UNSIGNED_REAL),
+
     TypeSpecifier: ($) => seq(optional(field("global", ".")), field("name", $.Name)),
 
     Name: ($) => commaSep1(field("component", $.IDENT), "."),
+
+    ComponentReference: ($) =>
+      seq(optional(field("global", ".")), commaSep1(field("component", $.ComponentReferenceComponent), ".")),
+
+    ComponentReferenceComponent: ($) => seq(field("identifier", $.IDENT)),
 
     IDENT: ($) =>
       token(

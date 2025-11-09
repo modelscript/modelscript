@@ -7,6 +7,11 @@ export enum ModelicaClassKind {
   PACKAGE = "package",
 }
 
+export enum ModelicaVisibility {
+  PUBLIC = "public",
+  PROTECTED = "protected",
+}
+
 export interface IModelicaSyntaxNode {
   "@type": string;
 }
@@ -26,11 +31,12 @@ export abstract class ModelicaSyntaxNode implements IModelicaSyntaxNode {
     else this.#parent = null;
     if (concreteSyntaxNode != null) this.#concreteSyntaxNode = new WeakRef(concreteSyntaxNode);
     else this.#concreteSyntaxNode = null;
-    this["@type"] = type ?? this.constructor.name.substring(8, this.constructor.name.length - 10);
-    if (concreteSyntaxNode != null && concreteSyntaxNode.type != this["@type"])
-      throw new Error(`Expected concrete syntax node of type "${this["@type"]}", got "${concreteSyntaxNode.type}"`);
-    if (abstractSyntaxNode != null && abstractSyntaxNode["@type"] != this["@type"])
-      throw new Error(`Expected abstract syntax node of type "${this["@type"]}", got "${abstractSyntaxNode["@type"]}"`);
+    this["@type"] = this.constructor.name.substring(8, this.constructor.name.length - 10);
+    type = type ?? this["@type"];
+    if (concreteSyntaxNode != null && concreteSyntaxNode.type != type)
+      throw new Error(`Expected concrete syntax node of type "${type}", got "${concreteSyntaxNode.type}"`);
+    if (abstractSyntaxNode != null && abstractSyntaxNode["@type"] != type)
+      throw new Error(`Expected abstract syntax node of type "${type}", got "${abstractSyntaxNode["@type"]}"`);
   }
 
   abstract accept<R, A>(visitor: IModelicaSyntaxVisitor<R, A>, argument?: A): R;
@@ -67,6 +73,18 @@ export abstract class ModelicaSyntaxNode implements IModelicaSyntaxNode {
           concreteSyntaxNode,
           abstractSyntaxNode as IModelicaComponentDeclarationSyntaxNode,
         );
+      case ModelicaComponentReferenceSyntaxNode.type:
+        return new ModelicaComponentReferenceSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaComponentReferenceSyntaxNode,
+        );
+      case ModelicaComponentReferenceComponentSyntaxNode.type:
+        return new ModelicaComponentReferenceComponentSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaComponentReferenceComponentSyntaxNode,
+        );
       case ModelicaCompoundImportClauseSyntaxNode.type:
         return new ModelicaCompoundImportClauseSyntaxNode(
           parent,
@@ -84,6 +102,14 @@ export abstract class ModelicaSyntaxNode implements IModelicaSyntaxNode {
           parent,
           concreteSyntaxNode,
           abstractSyntaxNode as IModelicaElementSectionSyntaxNode,
+        );
+      case "Initial" + ModelicaElementSectionSyntaxNode.type:
+        return new ModelicaElementSectionSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaElementSectionSyntaxNode,
+          "Initial" + ModelicaElementSectionSyntaxNode.type,
+          ModelicaVisibility.PUBLIC,
         );
       case ModelicaExtendsClauseSyntaxNode.type:
         return new ModelicaExtendsClauseSyntaxNode(
@@ -472,6 +498,20 @@ export abstract class ModelicaSectionSyntaxNode extends ModelicaSyntaxNode {
           concreteSyntaxNode,
           abstractSyntaxNode as IModelicaElementSectionSyntaxNode,
         );
+      case "Initial" + ModelicaElementSectionSyntaxNode.type:
+        return new ModelicaElementSectionSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaElementSectionSyntaxNode,
+          "Initial" + ModelicaElementSectionSyntaxNode.type,
+          ModelicaVisibility.PUBLIC,
+        );
+      case ModelicaEquationSectionSyntaxNode.type:
+        return new ModelicaEquationSectionSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaEquationSectionSyntaxNode,
+        );
       default:
         return null;
     }
@@ -480,6 +520,7 @@ export abstract class ModelicaSectionSyntaxNode extends ModelicaSyntaxNode {
 
 export interface IModelicaElementSectionSyntaxNode extends IModelicaSectionSyntaxNode {
   elements: IModelicaElementSyntaxNode[];
+  visibility: ModelicaVisibility;
 }
 
 export class ModelicaElementSectionSyntaxNode
@@ -487,13 +528,22 @@ export class ModelicaElementSectionSyntaxNode
   implements IModelicaElementSectionSyntaxNode
 {
   elements: ModelicaElementSyntaxNode[];
+  visibility: ModelicaVisibility;
 
   constructor(
     parent: ModelicaSyntaxNode | null,
     concreteSyntaxNode?: SyntaxNode | null,
     abstractSyntaxNode?: IModelicaElementSectionSyntaxNode | null,
+    type?: string | null,
+    visibility?: ModelicaVisibility | null,
   ) {
-    super(parent, concreteSyntaxNode, abstractSyntaxNode);
+    super(parent, concreteSyntaxNode, abstractSyntaxNode, type);
+    this.visibility =
+      visibility ??
+      abstractSyntaxNode?.visibility ??
+      (concreteSyntaxNode?.childForFieldName("protected") != null
+        ? ModelicaVisibility.PROTECTED
+        : ModelicaVisibility.PUBLIC);
     this.elements = ModelicaElementSyntaxNode.newArray(
       this,
       concreteSyntaxNode?.childrenForFieldName("element"),
@@ -513,6 +563,14 @@ export class ModelicaElementSectionSyntaxNode
     switch (concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]) {
       case ModelicaElementSectionSyntaxNode.type:
         return new ModelicaElementSectionSyntaxNode(parent, concreteSyntaxNode, abstractSyntaxNode);
+      case "Initial" + ModelicaElementSectionSyntaxNode.type:
+        return new ModelicaElementSectionSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode,
+          "Initial" + ModelicaElementSectionSyntaxNode.type,
+          ModelicaVisibility.PUBLIC,
+        );
       default:
         return null;
     }
@@ -850,6 +908,363 @@ export class ModelicaDeclarationSyntaxNode extends ModelicaSyntaxNode implements
   }
 }
 
+export interface IModelicaEquationSectionSyntaxNode extends IModelicaSyntaxNode {
+  equations: IModelicaEquationSyntaxNode[];
+}
+
+export class ModelicaEquationSectionSyntaxNode
+  extends ModelicaSyntaxNode
+  implements IModelicaEquationSectionSyntaxNode
+{
+  equations: ModelicaEquationSyntaxNode[];
+
+  constructor(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaEquationSectionSyntaxNode | null,
+  ) {
+    super(parent, concreteSyntaxNode, abstractSyntaxNode);
+    this.equations = ModelicaEquationSyntaxNode.newArray(
+      this,
+      concreteSyntaxNode?.childrenForFieldName("equation"),
+      abstractSyntaxNode?.equations,
+    );
+  }
+
+  override accept<R, A>(visitor: IModelicaSyntaxVisitor<R, A>, argument?: A): R {
+    return visitor.visitEquationSection(this, argument);
+  }
+
+  static override new(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaEquationSectionSyntaxNode | null,
+  ): ModelicaEquationSectionSyntaxNode | null {
+    switch (concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]) {
+      case ModelicaEquationSectionSyntaxNode.type:
+        return new ModelicaEquationSectionSyntaxNode(parent, concreteSyntaxNode, abstractSyntaxNode);
+      default:
+        return null;
+    }
+  }
+}
+
+export type IModelicaEquationSyntaxNode = IModelicaSyntaxNode;
+
+export abstract class ModelicaEquationSyntaxNode extends ModelicaSyntaxNode implements IModelicaEquationSyntaxNode {
+  static override new(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaEquationSyntaxNode | null,
+  ): ModelicaEquationSyntaxNode | null {
+    switch (concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]) {
+      case ModelicaSimpleEquationSyntaxNode.type:
+        return new ModelicaSimpleEquationSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaSimpleEquationSyntaxNode,
+        );
+      default:
+        return null;
+    }
+  }
+}
+
+export interface IModelicaSimpleEquationSyntaxNode extends IModelicaEquationSyntaxNode {
+  expression1: IModelicaSimpleExpressionSyntaxNode | null;
+  expression2: IModelicaExpressionSyntaxNode | null;
+}
+
+export class ModelicaSimpleEquationSyntaxNode
+  extends ModelicaEquationSyntaxNode
+  implements IModelicaSimpleEquationSyntaxNode
+{
+  expression1: ModelicaSimpleExpressionSyntaxNode | null;
+  expression2: ModelicaExpressionSyntaxNode | null;
+
+  constructor(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaSimpleEquationSyntaxNode | null,
+  ) {
+    super(parent, concreteSyntaxNode, abstractSyntaxNode);
+    this.expression1 = ModelicaSimpleExpressionSyntaxNode.new(
+      this,
+      concreteSyntaxNode?.childForFieldName("expression1"),
+      abstractSyntaxNode?.expression1,
+    );
+    this.expression2 = ModelicaExpressionSyntaxNode.new(
+      this,
+      concreteSyntaxNode?.childForFieldName("expression2"),
+      abstractSyntaxNode?.expression2,
+    );
+  }
+
+  override accept<R, A>(visitor: IModelicaSyntaxVisitor<R, A>, argument?: A): R {
+    return visitor.visitSimpleEquation(this, argument);
+  }
+
+  static override new(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaSimpleEquationSyntaxNode | null,
+  ): ModelicaSimpleEquationSyntaxNode | null {
+    switch (concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]) {
+      case ModelicaSimpleEquationSyntaxNode.type:
+        return new ModelicaSimpleEquationSyntaxNode(parent, concreteSyntaxNode, abstractSyntaxNode);
+      default:
+        return null;
+    }
+  }
+}
+
+export type IModelicaExpressionSyntaxNode = IModelicaSyntaxNode;
+
+export abstract class ModelicaExpressionSyntaxNode extends ModelicaSyntaxNode implements IModelicaExpressionSyntaxNode {
+  static override new(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaExpressionSyntaxNode | null,
+  ): ModelicaExpressionSyntaxNode | null {
+    switch (concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]) {
+      case ModelicaComponentReferenceSyntaxNode.type:
+        return new ModelicaComponentReferenceSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaComponentReferenceSyntaxNode,
+        );
+      case ModelicaUnsignedIntegerLiteralSyntaxNode.type:
+        return new ModelicaUnsignedIntegerLiteralSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaUnsignedIntegerLiteralSyntaxNode,
+        );
+      case ModelicaUnsignedRealLiteralSyntaxNode.type:
+        return new ModelicaUnsignedRealLiteralSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaUnsignedRealLiteralSyntaxNode,
+        );
+      default:
+        return null;
+    }
+  }
+}
+
+export type IModelicaSimpleExpressionSyntaxNode = IModelicaExpressionSyntaxNode;
+
+export abstract class ModelicaSimpleExpressionSyntaxNode
+  extends ModelicaExpressionSyntaxNode
+  implements IModelicaSimpleExpressionSyntaxNode
+{
+  static override new(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaSimpleExpressionSyntaxNode | null,
+  ): ModelicaSimpleExpressionSyntaxNode | null {
+    switch (concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]) {
+      case ModelicaComponentReferenceSyntaxNode.type:
+        return new ModelicaComponentReferenceSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaComponentReferenceSyntaxNode,
+        );
+      case ModelicaUnsignedIntegerLiteralSyntaxNode.type:
+        return new ModelicaUnsignedIntegerLiteralSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaUnsignedIntegerLiteralSyntaxNode,
+        );
+      case ModelicaUnsignedRealLiteralSyntaxNode.type:
+        return new ModelicaUnsignedRealLiteralSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaUnsignedRealLiteralSyntaxNode,
+        );
+      default:
+        return null;
+    }
+  }
+}
+
+export type IModelicaPrimaryExpressionSyntaxNode = IModelicaSimpleExpressionSyntaxNode;
+
+export abstract class ModelicaPrimaryExpressionSyntaxNode
+  extends ModelicaSimpleExpressionSyntaxNode
+  implements IModelicaPrimaryExpressionSyntaxNode
+{
+  static override new(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaPrimaryExpressionSyntaxNode | null,
+  ): ModelicaPrimaryExpressionSyntaxNode | null {
+    switch (concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]) {
+      case ModelicaComponentReferenceSyntaxNode.type:
+        return new ModelicaComponentReferenceSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaComponentReferenceSyntaxNode,
+        );
+      case ModelicaUnsignedIntegerLiteralSyntaxNode.type:
+        return new ModelicaUnsignedIntegerLiteralSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaUnsignedIntegerLiteralSyntaxNode,
+        );
+      case ModelicaUnsignedRealLiteralSyntaxNode.type:
+        return new ModelicaUnsignedRealLiteralSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaUnsignedRealLiteralSyntaxNode,
+        );
+      default:
+        return null;
+    }
+  }
+}
+
+export type IModelicaLiteralSyntaxNode = IModelicaPrimaryExpressionSyntaxNode;
+
+export abstract class ModelicaLiteralSyntaxNode
+  extends ModelicaPrimaryExpressionSyntaxNode
+  implements IModelicaLiteralSyntaxNode
+{
+  static override new(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaLiteralSyntaxNode | null,
+  ): ModelicaLiteralSyntaxNode | null {
+    switch (concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]) {
+      case ModelicaUnsignedIntegerLiteralSyntaxNode.type:
+        return new ModelicaUnsignedIntegerLiteralSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaUnsignedIntegerLiteralSyntaxNode,
+        );
+      case ModelicaUnsignedRealLiteralSyntaxNode.type:
+        return new ModelicaUnsignedRealLiteralSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaUnsignedRealLiteralSyntaxNode,
+        );
+      default:
+        return null;
+    }
+  }
+}
+
+export type IModelicaUnsignedNumberLiteralSyntaxNode = IModelicaLiteralSyntaxNode;
+
+export abstract class ModelicaUnsignedNumberLiteralSyntaxNode
+  extends ModelicaLiteralSyntaxNode
+  implements IModelicaUnsignedNumberLiteralSyntaxNode
+{
+  static override new(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaUnsignedNumberLiteralSyntaxNode | null,
+  ): ModelicaUnsignedNumberLiteralSyntaxNode | null {
+    switch (concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]) {
+      case ModelicaUnsignedIntegerLiteralSyntaxNode.type:
+        return new ModelicaUnsignedIntegerLiteralSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaUnsignedIntegerLiteralSyntaxNode,
+        );
+      case ModelicaUnsignedRealLiteralSyntaxNode.type:
+        return new ModelicaUnsignedRealLiteralSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaUnsignedRealLiteralSyntaxNode,
+        );
+      default:
+        return null;
+    }
+  }
+}
+
+export interface IModelicaUnsignedIntegerLiteralSyntaxNode extends IModelicaUnsignedNumberLiteralSyntaxNode {
+  value: string | null;
+}
+
+export class ModelicaUnsignedIntegerLiteralSyntaxNode
+  extends ModelicaUnsignedNumberLiteralSyntaxNode
+  implements IModelicaUnsignedIntegerLiteralSyntaxNode
+{
+  value: string | null;
+
+  constructor(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaUnsignedIntegerLiteralSyntaxNode | null,
+  ) {
+    super(parent, concreteSyntaxNode, abstractSyntaxNode, ModelicaUnsignedIntegerLiteralSyntaxNode.type);
+    this.value = abstractSyntaxNode?.value ?? concreteSyntaxNode?.text ?? null;
+  }
+
+  override accept<R, A>(visitor: IModelicaSyntaxVisitor<R, A>, argument?: A): R {
+    return visitor.visitUnsignedIntegerLiteral(this, argument);
+  }
+
+  static override new(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaUnsignedIntegerLiteralSyntaxNode | null,
+  ): ModelicaUnsignedIntegerLiteralSyntaxNode | null {
+    switch (concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]) {
+      case ModelicaUnsignedIntegerLiteralSyntaxNode.type:
+        return new ModelicaUnsignedIntegerLiteralSyntaxNode(parent, concreteSyntaxNode, abstractSyntaxNode);
+      default:
+        return null;
+    }
+  }
+
+  static override get type(): string {
+    return "UNSIGNED_INTEGER";
+  }
+}
+
+export interface IModelicaUnsignedRealLiteralSyntaxNode extends IModelicaUnsignedNumberLiteralSyntaxNode {
+  value: string | null;
+}
+
+export class ModelicaUnsignedRealLiteralSyntaxNode
+  extends ModelicaUnsignedNumberLiteralSyntaxNode
+  implements IModelicaUnsignedRealLiteralSyntaxNode
+{
+  value: string | null;
+
+  constructor(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaUnsignedRealLiteralSyntaxNode | null,
+  ) {
+    super(parent, concreteSyntaxNode, abstractSyntaxNode, ModelicaUnsignedRealLiteralSyntaxNode.type);
+    this.value = abstractSyntaxNode?.value ?? concreteSyntaxNode?.text ?? null;
+  }
+
+  override accept<R, A>(visitor: IModelicaSyntaxVisitor<R, A>, argument?: A): R {
+    return visitor.visitUnsignedRealLiteral(this, argument);
+  }
+
+  static override new(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaUnsignedRealLiteralSyntaxNode | null,
+  ): ModelicaUnsignedRealLiteralSyntaxNode | null {
+    switch (concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]) {
+      case ModelicaUnsignedRealLiteralSyntaxNode.type:
+        return new ModelicaUnsignedRealLiteralSyntaxNode(parent, concreteSyntaxNode, abstractSyntaxNode);
+      default:
+        return null;
+    }
+  }
+
+  static override get type(): string {
+    return "UNSIGNED_REAL";
+  }
+}
+
 export interface IModelicaTypeSpecifierSyntaxNode extends IModelicaSyntaxNode {
   global: boolean;
   name: IModelicaNameSyntaxNode | null;
@@ -929,6 +1344,91 @@ export class ModelicaNameSyntaxNode extends ModelicaSyntaxNode implements IModel
   }
 }
 
+export interface IModelicaComponentReferenceSyntaxNode extends IModelicaPrimaryExpressionSyntaxNode {
+  components: IModelicaComponentReferenceComponentSyntaxNode[];
+  global: boolean;
+}
+
+export class ModelicaComponentReferenceSyntaxNode
+  extends ModelicaPrimaryExpressionSyntaxNode
+  implements IModelicaComponentReferenceSyntaxNode
+{
+  components: ModelicaComponentReferenceComponentSyntaxNode[];
+  global: boolean;
+
+  constructor(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaComponentReferenceSyntaxNode | null,
+  ) {
+    super(parent, concreteSyntaxNode, abstractSyntaxNode);
+    this.global = abstractSyntaxNode?.global ?? concreteSyntaxNode?.childForFieldName("global") != null;
+    this.components = ModelicaComponentReferenceComponentSyntaxNode.newArray(
+      this,
+      concreteSyntaxNode?.childrenForFieldName("component"),
+      abstractSyntaxNode?.components,
+    );
+  }
+
+  override accept<R, A>(visitor: IModelicaSyntaxVisitor<R, A>, argument?: A): R {
+    return visitor.visitComponentReference(this, argument);
+  }
+
+  static override new(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaComponentReferenceSyntaxNode | null,
+  ): ModelicaComponentReferenceSyntaxNode | null {
+    switch (concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]) {
+      case ModelicaComponentReferenceSyntaxNode.type:
+        return new ModelicaComponentReferenceSyntaxNode(parent, concreteSyntaxNode, abstractSyntaxNode);
+      default:
+        return null;
+    }
+  }
+}
+
+export interface IModelicaComponentReferenceComponentSyntaxNode extends IModelicaSyntaxNode {
+  identifier: IModelicaIdentifierSyntaxNode | null;
+}
+
+export class ModelicaComponentReferenceComponentSyntaxNode
+  extends ModelicaSyntaxNode
+  implements IModelicaComponentReferenceComponentSyntaxNode
+{
+  identifier: ModelicaIdentifierSyntaxNode | null;
+
+  constructor(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaComponentReferenceComponentSyntaxNode | null,
+  ) {
+    super(parent, concreteSyntaxNode, abstractSyntaxNode);
+    this.identifier = ModelicaIdentifierSyntaxNode.new(
+      this,
+      concreteSyntaxNode?.childForFieldName("identifier"),
+      abstractSyntaxNode?.identifier,
+    );
+  }
+
+  override accept<R, A>(visitor: IModelicaSyntaxVisitor<R, A>, argument?: A): R {
+    return visitor.visitComponentReferenceComponent(this, argument);
+  }
+
+  static override new(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaComponentReferenceComponentSyntaxNode | null,
+  ): ModelicaComponentReferenceComponentSyntaxNode | null {
+    switch (concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]) {
+      case ModelicaComponentReferenceComponentSyntaxNode.type:
+        return new ModelicaComponentReferenceComponentSyntaxNode(parent, concreteSyntaxNode, abstractSyntaxNode);
+      default:
+        return null;
+    }
+  }
+}
+
 export interface IModelicaIdentifierSyntaxNode extends IModelicaSyntaxNode {
   value: string | null;
 }
@@ -974,11 +1474,17 @@ export interface IModelicaSyntaxVisitor<R, A> {
 
   visitComponentDeclaration(node: ModelicaComponentDeclarationSyntaxNode, argument?: A): R;
 
+  visitComponentReference(node: ModelicaComponentReferenceSyntaxNode, argument?: A): R;
+
+  visitComponentReferenceComponent(node: ModelicaComponentReferenceComponentSyntaxNode, argument?: A): R;
+
   visitCompoundImportClause(node: ModelicaCompoundImportClauseSyntaxNode, argument?: A): R;
 
   visitDeclaration(node: ModelicaDeclarationSyntaxNode, argument?: A): R;
 
   visitElementSection(node: ModelicaElementSectionSyntaxNode, argument?: A): R;
+
+  visitEquationSection(node: ModelicaEquationSectionSyntaxNode, argument?: A): R;
 
   visitExtendsClause(node: ModelicaExtendsClauseSyntaxNode, argument?: A): R;
 
@@ -988,6 +1494,8 @@ export interface IModelicaSyntaxVisitor<R, A> {
 
   visitName(node: ModelicaNameSyntaxNode, argument?: A): R;
 
+  visitSimpleEquation(node: ModelicaSimpleEquationSyntaxNode, argument?: A): R;
+
   visitSimpleImportClause(node: ModelicaSimpleImportClauseSyntaxNode, argument?: A): R;
 
   visitStoredDefinition(node: ModelicaStoredDefinitionSyntaxNode, argument?: A): R;
@@ -995,6 +1503,10 @@ export interface IModelicaSyntaxVisitor<R, A> {
   visitTypeSpecifier(node: ModelicaTypeSpecifierSyntaxNode, argument?: A): R;
 
   visitUnqualifiedImportClause(node: ModelicaUnqualifiedImportClauseSyntaxNode, argument?: A): R;
+
+  visitUnsignedIntegerLiteral(node: ModelicaUnsignedIntegerLiteralSyntaxNode, argument?: A): R;
+
+  visitUnsignedRealLiteral(node: ModelicaUnsignedRealLiteralSyntaxNode, argument?: A): R;
 
   visitWithinDirective(node: ModelicaWithinDirectiveSyntaxNode, argument?: A): R;
 }
@@ -1013,6 +1525,14 @@ export abstract class ModelicaSyntaxVisitor<A> implements IModelicaSyntaxVisitor
     node.declaration?.accept(this, argument);
   }
 
+  visitComponentReference(node: ModelicaComponentReferenceSyntaxNode, argument?: A): void {
+    for (const component of node.components) component.accept(this, argument);
+  }
+
+  visitComponentReferenceComponent(node: ModelicaComponentReferenceComponentSyntaxNode, argument?: A): void {
+    node.identifier?.accept(this, argument);
+  }
+
   visitCompoundImportClause(node: ModelicaCompoundImportClauseSyntaxNode, argument?: A): void {
     node.packageName?.accept(this, argument);
     for (const importName of node.importNames) importName.accept(this, argument);
@@ -1024,6 +1544,10 @@ export abstract class ModelicaSyntaxVisitor<A> implements IModelicaSyntaxVisitor
 
   visitElementSection(node: ModelicaElementSectionSyntaxNode, argument?: A): void {
     for (const element of node.elements) element.accept(this, argument);
+  }
+
+  visitEquationSection(node: ModelicaEquationSectionSyntaxNode, argument?: A): void {
+    for (const equation of node.equations) equation.accept(this, argument);
   }
 
   visitExtendsClause(node: ModelicaExtendsClauseSyntaxNode, argument?: A): void {
@@ -1043,6 +1567,11 @@ export abstract class ModelicaSyntaxVisitor<A> implements IModelicaSyntaxVisitor
     for (const component of node.components) component.accept(this, argument);
   }
 
+  visitSimpleEquation(node: ModelicaSimpleEquationSyntaxNode, argument?: A): void {
+    node.expression1?.accept(this, argument);
+    node.expression2?.accept(this, argument);
+  }
+
   visitSimpleImportClause(node: ModelicaSimpleImportClauseSyntaxNode, argument?: A): void {
     node.shortName?.accept(this, argument);
     node.packageName?.accept(this, argument);
@@ -1060,6 +1589,12 @@ export abstract class ModelicaSyntaxVisitor<A> implements IModelicaSyntaxVisitor
   visitUnqualifiedImportClause(node: ModelicaUnqualifiedImportClauseSyntaxNode, argument?: A): void {
     node.packageName?.accept(this, argument);
   }
+
+  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
+  visitUnsignedIntegerLiteral(node: ModelicaUnsignedIntegerLiteralSyntaxNode, argument?: A): void {}
+
+  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
+  visitUnsignedRealLiteral(node: ModelicaUnsignedRealLiteralSyntaxNode, argument?: A): void {}
 
   visitWithinDirective(node: ModelicaWithinDirectiveSyntaxNode, argument?: A): void {
     node.packageName?.accept(this, argument);

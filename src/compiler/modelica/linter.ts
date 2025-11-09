@@ -17,12 +17,18 @@ import {
   ModelicaExtendsClassInstance,
 } from "../../model/modelica.js";
 import {
+  ModelicaComponentReferenceComponentSyntaxNode,
+  ModelicaComponentReferenceSyntaxNode,
   ModelicaCompoundImportClauseSyntaxNode,
+  ModelicaEquationSectionSyntaxNode,
   ModelicaExtendsClauseSyntaxNode,
+  ModelicaSimpleEquationSyntaxNode,
   ModelicaSimpleImportClauseSyntaxNode,
   ModelicaSyntaxNode,
   ModelicaSyntaxVisitor,
   ModelicaUnqualifiedImportClauseSyntaxNode,
+  ModelicaUnsignedIntegerLiteralSyntaxNode,
+  ModelicaUnsignedRealLiteralSyntaxNode,
   type IModelicaSyntaxVisitor,
   type ModelicaClassDefinitionSyntaxNode,
   type ModelicaComponentClauseSyntaxNode,
@@ -196,6 +202,19 @@ export class ModelicaSyntaxLinter extends ModelicaSyntaxVisitor<string | null | 
     super.visitComponentDeclaration(node, resource);
   }
 
+  visitComponentReference(node: ModelicaComponentReferenceSyntaxNode, resource: string | null | undefined): void {
+    ModelicaLinter.applyRules("visitComponentReference", node, this.#diagnosticsCallback, resource);
+    super.visitComponentReference(node, resource);
+  }
+
+  visitComponentReferenceComponent(
+    node: ModelicaComponentReferenceComponentSyntaxNode,
+    resource: string | null | undefined,
+  ): void {
+    ModelicaLinter.applyRules("visitComponentReferenceComponent", node, this.#diagnosticsCallback, resource);
+    super.visitComponentReferenceComponent(node, resource);
+  }
+
   visitCompoundImportClause(node: ModelicaCompoundImportClauseSyntaxNode, resource: string | null | undefined): void {
     ModelicaLinter.applyRules("visitCompoundImportClause", node, this.#diagnosticsCallback, resource);
     super.visitCompoundImportClause(node, resource);
@@ -209,6 +228,11 @@ export class ModelicaSyntaxLinter extends ModelicaSyntaxVisitor<string | null | 
   visitElementSection(node: ModelicaElementSectionSyntaxNode, resource: string | null | undefined): void {
     ModelicaLinter.applyRules("visitElementSection", node, this.#diagnosticsCallback, resource);
     super.visitElementSection(node, resource);
+  }
+
+  visitEquationSection(node: ModelicaEquationSectionSyntaxNode, resource: string | null | undefined): void {
+    ModelicaLinter.applyRules("visitEquationSection", node, this.#diagnosticsCallback, resource);
+    super.visitEquationSection(node, resource);
   }
 
   visitExtendsClause(node: ModelicaExtendsClauseSyntaxNode, resource: string | null | undefined): void {
@@ -229,6 +253,11 @@ export class ModelicaSyntaxLinter extends ModelicaSyntaxVisitor<string | null | 
   visitName(node: ModelicaNameSyntaxNode, resource: string | null | undefined): void {
     ModelicaLinter.applyRules("visitName", node, this.#diagnosticsCallback, resource);
     super.visitName(node, resource);
+  }
+
+  visitSimpleEquation(node: ModelicaSimpleEquationSyntaxNode, resource: string | null | undefined): void {
+    ModelicaLinter.applyRules("visitSimpleEquation", node, this.#diagnosticsCallback, resource);
+    super.visitSimpleEquation(node, resource);
   }
 
   visitSimpleImportClause(node: ModelicaSimpleImportClauseSyntaxNode, resource: string | null | undefined): void {
@@ -252,6 +281,19 @@ export class ModelicaSyntaxLinter extends ModelicaSyntaxVisitor<string | null | 
   ): void {
     ModelicaLinter.applyRules("visitUnqualifiedImportClause", node, this.#diagnosticsCallback, resource);
     super.visitUnqualifiedImportClause(node, resource);
+  }
+
+  visitUnsignedIntegerLiteral(
+    node: ModelicaUnsignedIntegerLiteralSyntaxNode,
+    resource: string | null | undefined,
+  ): void {
+    ModelicaLinter.applyRules("visitUnsignedIntegerLiteral", node, this.#diagnosticsCallback, resource);
+    super.visitUnsignedIntegerLiteral(node, resource);
+  }
+
+  visitUnsignedRealLiteral(node: ModelicaUnsignedRealLiteralSyntaxNode, resource: string | null | undefined): void {
+    ModelicaLinter.applyRules("visitUnsignedRealLiteral", node, this.#diagnosticsCallback, resource);
+    super.visitUnsignedRealLiteral(node, resource);
   }
 
   visitWithinDirective(node: ModelicaWithinDirectiveSyntaxNode, resource: string | null | undefined): void {
