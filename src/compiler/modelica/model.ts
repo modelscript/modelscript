@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { Context } from "../compiler/context.js";
+import type { Context } from "../context.js";
 import {
   ModelicaClassDefinitionSyntaxNode,
   ModelicaComponentClauseSyntaxNode,
@@ -16,7 +16,7 @@ import {
   type ModelicaIdentifierSyntaxNode,
   type ModelicaNameSyntaxNode,
   type ModelicaTypeSpecifierSyntaxNode,
-} from "../syntax/modelica.js";
+} from "./syntax.js";
 
 export abstract class ModelicaNode {
   #instantiated = false;

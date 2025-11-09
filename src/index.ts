@@ -2,7 +2,7 @@
 
 export * from "./compiler/modelica/flattener.js";
 export * from "./compiler/modelica/linter.js";
+export * from "./compiler/modelica/model.js";
+export * from "./compiler/modelica/syntax.js";
 export * from "./compiler/context.js";
-export * from "./model/modelica.js";
-export * from "./syntax/modelica.js";
 export * from "./util/filesystem.js";

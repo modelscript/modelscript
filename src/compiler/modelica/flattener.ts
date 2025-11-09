@@ -6,7 +6,7 @@ import {
   ModelicaModelVisitor,
   ModelicaPredefinedClassInstance,
   type ModelicaClassInstance,
-} from "../../model/modelica.js";
+} from "./model.js";
 
 export class ModelicaFlattener extends ModelicaModelVisitor<string> {
   visitEntity(node: ModelicaEntity, parentName = ""): void {

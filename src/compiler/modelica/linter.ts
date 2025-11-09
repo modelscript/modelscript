@@ -15,7 +15,7 @@ import {
   ModelicaEntity,
   ModelicaLibrary,
   ModelicaExtendsClassInstance,
-} from "../../model/modelica.js";
+} from "./model.js";
 import {
   ModelicaComponentReferenceComponentSyntaxNode,
   ModelicaComponentReferenceSyntaxNode,
@@ -41,7 +41,7 @@ import {
   type ModelicaStoredDefinitionSyntaxNode,
   type ModelicaTypeSpecifierSyntaxNode,
   type ModelicaWithinDirectiveSyntaxNode,
-} from "../../syntax/modelica.js";
+} from "./syntax.js";
 
 export type DiagnosticsCallback = (
   type: string,
