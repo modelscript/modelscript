@@ -4,6 +4,7 @@ import type { Context } from "../compiler/context.js";
 import {
   ModelicaClassDefinitionSyntaxNode,
   ModelicaComponentClauseSyntaxNode,
+  ModelicaComponentReferenceSyntaxNode,
   ModelicaCompoundImportClauseSyntaxNode,
   ModelicaElementSyntaxNode,
   ModelicaExtendsClauseSyntaxNode,
@@ -56,6 +57,22 @@ export abstract class ModelicaNode {
 
   get parent(): ModelicaNode | null {
     return this.#parent?.deref() ?? null;
+  }
+
+  resolveComponentReference(
+    componentReference: ModelicaComponentReferenceSyntaxNode | null | undefined,
+  ): ModelicaComponentInstance | null {
+    if (!componentReference) return null;
+    const components = componentReference.components;
+    if (components.length === 0) return null;
+    let element = this.resolveSimpleName(components[0]?.identifier, componentReference.global);
+    if (element == null) return null;
+    for (let i = 1; i < components.length; i++) {
+      element = element.resolveSimpleName(components[i]?.identifier, false, true);
+      if (element == null) return null;
+    }
+    if (element instanceof ModelicaComponentInstance) return element;
+    return null;
   }
 
   resolveName(name: ModelicaNameSyntaxNode | null | undefined, global = false): ModelicaNamedElement | null {

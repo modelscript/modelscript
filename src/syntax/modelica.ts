@@ -31,12 +31,11 @@ export abstract class ModelicaSyntaxNode implements IModelicaSyntaxNode {
     else this.#parent = null;
     if (concreteSyntaxNode != null) this.#concreteSyntaxNode = new WeakRef(concreteSyntaxNode);
     else this.#concreteSyntaxNode = null;
-    this["@type"] = this.constructor.name.substring(8, this.constructor.name.length - 10);
-    type = type ?? this["@type"];
-    if (concreteSyntaxNode != null && concreteSyntaxNode.type != type)
-      throw new Error(`Expected concrete syntax node of type "${type}", got "${concreteSyntaxNode.type}"`);
-    if (abstractSyntaxNode != null && abstractSyntaxNode["@type"] != type)
-      throw new Error(`Expected abstract syntax node of type "${type}", got "${abstractSyntaxNode["@type"]}"`);
+    this["@type"] = type ?? this.constructor.name.substring(8, this.constructor.name.length - 10);
+    if (concreteSyntaxNode != null && concreteSyntaxNode.type != this["@type"])
+      throw new Error(`Expected concrete syntax node of type "${this["@type"]}", got "${concreteSyntaxNode.type}"`);
+    if (abstractSyntaxNode != null && abstractSyntaxNode["@type"] != this["@type"])
+      throw new Error(`Expected abstract syntax node of type "${this["@type"]}", got "${abstractSyntaxNode["@type"]}"`);
   }
 
   abstract accept<R, A>(visitor: IModelicaSyntaxVisitor<R, A>, argument?: A): R;
@@ -381,6 +380,10 @@ export class ModelicaClassDefinitionSyntaxNode
         return null;
     }
   }
+
+  get sections(): IModelicaSectionSyntaxNode[] {
+    return this.classSpecifier?.sections ?? [];
+  }
 }
 
 export interface IModelicaClassSpecifierSyntaxNode extends IModelicaSyntaxNode {
@@ -424,6 +427,8 @@ export abstract class ModelicaClassSpecifierSyntaxNode
         return null;
     }
   }
+
+  abstract get sections(): IModelicaSectionSyntaxNode[];
 }
 
 export interface IModelicaLongClassSpecifierSyntaxNode extends IModelicaClassSpecifierSyntaxNode {
