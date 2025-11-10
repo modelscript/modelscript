@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ModelicaFlattener, Context, ModelicaLibrary } from "modelscript";
+import { ModelicaFlattener, Context, ModelicaLibrary, ModelicaDAE, ModelicaDAEPrinter } from "modelscript";
 import type { CommandModule } from "yargs";
 import Parser from "tree-sitter";
 import Modelica from "@modelscript/tree-sitter-modelica";
@@ -38,7 +38,9 @@ export const Flatten: CommandModule<{}, FlattenArgs> = {
     if (!instance) {
       console.error(`'${args.name}' not found`);
     } else {
-      instance.accept(new ModelicaFlattener());
+      const dae = new ModelicaDAE(instance.name ?? "DAE");
+      instance.accept(new ModelicaFlattener(), ["", dae]);
+      dae.accept(new ModelicaDAEPrinter());
     }
   },
 };

@@ -364,6 +364,13 @@ export class ModelicaClassDefinitionSyntaxNode
     })();
   }
 
+  get equations(): IterableIterator<ModelicaEquationSyntaxNode> {
+    const classSpecifier = this.classSpecifier;
+    return (function* () {
+      if (classSpecifier != null) yield* classSpecifier.equations;
+    })();
+  }
+
   get identifier(): ModelicaIdentifierSyntaxNode | null {
     return this.classSpecifier?.identifier ?? null;
   }
@@ -410,6 +417,8 @@ export abstract class ModelicaClassSpecifierSyntaxNode
   }
 
   abstract get elements(): IterableIterator<ModelicaElementSyntaxNode>;
+
+  abstract get equations(): IterableIterator<ModelicaEquationSyntaxNode>;
 
   static override new(
     parent: ModelicaSyntaxNode | null,
@@ -470,6 +479,15 @@ export class ModelicaLongClassSpecifierSyntaxNode
     return (function* () {
       for (const section of sections) {
         if (section instanceof ModelicaElementSectionSyntaxNode) yield* section.elements;
+      }
+    })();
+  }
+
+  override get equations(): IterableIterator<ModelicaEquationSyntaxNode> {
+    const sections = this.sections;
+    return (function* () {
+      for (const section of sections) {
+        if (section instanceof ModelicaEquationSectionSyntaxNode) yield* section.equations;
       }
     })();
   }
@@ -1516,93 +1534,117 @@ export interface IModelicaSyntaxVisitor<R, A> {
   visitWithinDirective(node: ModelicaWithinDirectiveSyntaxNode, argument?: A): R;
 }
 
-export abstract class ModelicaSyntaxVisitor<A> implements IModelicaSyntaxVisitor<void, A> {
-  visitClassDefinition(node: ModelicaClassDefinitionSyntaxNode, argument?: A): void {
+export abstract class ModelicaSyntaxVisitor<R, A> implements IModelicaSyntaxVisitor<R | null, A> {
+  visitClassDefinition(node: ModelicaClassDefinitionSyntaxNode, argument?: A): R | null {
     node.classSpecifier?.accept(this, argument);
+    return null;
   }
 
-  visitComponentClause(node: ModelicaComponentClauseSyntaxNode, argument?: A): void {
+  visitComponentClause(node: ModelicaComponentClauseSyntaxNode, argument?: A): R | null {
     node.typeSpecifier?.accept(this);
     for (const componentDeclaration of node.componentDeclarations) componentDeclaration.accept(this, argument);
+    return null;
   }
 
-  visitComponentDeclaration(node: ModelicaComponentDeclarationSyntaxNode, argument?: A): void {
+  visitComponentDeclaration(node: ModelicaComponentDeclarationSyntaxNode, argument?: A): R | null {
     node.declaration?.accept(this, argument);
+    return null;
   }
 
-  visitComponentReference(node: ModelicaComponentReferenceSyntaxNode, argument?: A): void {
+  visitComponentReference(node: ModelicaComponentReferenceSyntaxNode, argument?: A): R | null {
     for (const component of node.components) component.accept(this, argument);
+    return null;
   }
 
-  visitComponentReferenceComponent(node: ModelicaComponentReferenceComponentSyntaxNode, argument?: A): void {
+  visitComponentReferenceComponent(node: ModelicaComponentReferenceComponentSyntaxNode, argument?: A): R | null {
     node.identifier?.accept(this, argument);
+    return null;
   }
 
-  visitCompoundImportClause(node: ModelicaCompoundImportClauseSyntaxNode, argument?: A): void {
+  visitCompoundImportClause(node: ModelicaCompoundImportClauseSyntaxNode, argument?: A): R | null {
     node.packageName?.accept(this, argument);
     for (const importName of node.importNames) importName.accept(this, argument);
+    return null;
   }
 
-  visitDeclaration(node: ModelicaDeclarationSyntaxNode, argument?: A): void {
+  visitDeclaration(node: ModelicaDeclarationSyntaxNode, argument?: A): R | null {
     node.identifier?.accept(this, argument);
+    return null;
   }
 
-  visitElementSection(node: ModelicaElementSectionSyntaxNode, argument?: A): void {
+  visitElementSection(node: ModelicaElementSectionSyntaxNode, argument?: A): R | null {
     for (const element of node.elements) element.accept(this, argument);
+    return null;
   }
 
-  visitEquationSection(node: ModelicaEquationSectionSyntaxNode, argument?: A): void {
+  visitEquationSection(node: ModelicaEquationSectionSyntaxNode, argument?: A): R | null {
     for (const equation of node.equations) equation.accept(this, argument);
+    return null;
   }
 
-  visitExtendsClause(node: ModelicaExtendsClauseSyntaxNode, argument?: A): void {
+  visitExtendsClause(node: ModelicaExtendsClauseSyntaxNode, argument?: A): R | null {
     node.typeSpecifier?.accept(this, argument);
+    return null;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
-  visitIdentifier(node: ModelicaIdentifierSyntaxNode, argument?: A): void {}
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  visitIdentifier(node: ModelicaIdentifierSyntaxNode, argument?: A): R | null {
+    return null;
+  }
 
-  visitLongClassSpecifier(node: ModelicaLongClassSpecifierSyntaxNode, argument?: A): void {
+  visitLongClassSpecifier(node: ModelicaLongClassSpecifierSyntaxNode, argument?: A): R | null {
     node.identifier?.accept(this);
     for (const section of node.sections) section.accept(this, argument);
     node.endIdentifier?.accept(this);
+    return null;
   }
 
-  visitName(node: ModelicaNameSyntaxNode, argument?: A): void {
+  visitName(node: ModelicaNameSyntaxNode, argument?: A): R | null {
     for (const component of node.components) component.accept(this, argument);
+    return null;
   }
 
-  visitSimpleEquation(node: ModelicaSimpleEquationSyntaxNode, argument?: A): void {
+  visitSimpleEquation(node: ModelicaSimpleEquationSyntaxNode, argument?: A): R | null {
     node.expression1?.accept(this, argument);
     node.expression2?.accept(this, argument);
+    return null;
   }
 
-  visitSimpleImportClause(node: ModelicaSimpleImportClauseSyntaxNode, argument?: A): void {
+  visitSimpleImportClause(node: ModelicaSimpleImportClauseSyntaxNode, argument?: A): R | null {
     node.shortName?.accept(this, argument);
     node.packageName?.accept(this, argument);
+    return null;
   }
 
-  visitStoredDefinition(node: ModelicaStoredDefinitionSyntaxNode, argument?: A): void {
+  visitStoredDefinition(node: ModelicaStoredDefinitionSyntaxNode, argument?: A): R | null {
     node.withinDirective?.accept(this, argument);
     for (const classDefinition of node.classDefinitions) classDefinition.accept(this, argument);
+    return null;
   }
 
-  visitTypeSpecifier(node: ModelicaTypeSpecifierSyntaxNode, argument?: A): void {
+  visitTypeSpecifier(node: ModelicaTypeSpecifierSyntaxNode, argument?: A): R | null {
     node.name?.accept(this, argument);
+    return null;
   }
 
-  visitUnqualifiedImportClause(node: ModelicaUnqualifiedImportClauseSyntaxNode, argument?: A): void {
+  visitUnqualifiedImportClause(node: ModelicaUnqualifiedImportClauseSyntaxNode, argument?: A): R | null {
     node.packageName?.accept(this, argument);
+    return null;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
-  visitUnsignedIntegerLiteral(node: ModelicaUnsignedIntegerLiteralSyntaxNode, argument?: A): void {}
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  visitUnsignedIntegerLiteral(node: ModelicaUnsignedIntegerLiteralSyntaxNode, argument?: A): R | null {
+    return null;
+  }
 
-  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
-  visitUnsignedRealLiteral(node: ModelicaUnsignedRealLiteralSyntaxNode, argument?: A): void {}
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  visitUnsignedRealLiteral(node: ModelicaUnsignedRealLiteralSyntaxNode, argument?: A): R | null {
+    return null;
+  }
 
-  visitWithinDirective(node: ModelicaWithinDirectiveSyntaxNode, argument?: A): void {
+  visitWithinDirective(node: ModelicaWithinDirectiveSyntaxNode, argument?: A): R | null {
     node.packageName?.accept(this, argument);
+    return null;
   }
 }
 

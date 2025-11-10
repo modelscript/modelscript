@@ -179,7 +179,7 @@ export class ModelicaModelLinter extends ModelicaModelVisitor<string | null | un
   }
 }
 
-export class ModelicaSyntaxLinter extends ModelicaSyntaxVisitor<string | null | undefined> {
+export class ModelicaSyntaxLinter extends ModelicaSyntaxVisitor<void, string | null | undefined> {
   #diagnosticsCallback: DiagnosticsCallback;
 
   constructor(diagnosticsCallback: DiagnosticsCallback) {

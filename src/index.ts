@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+export * from "./compiler/modelica/dae.js";
 export * from "./compiler/modelica/flattener.js";
 export * from "./compiler/modelica/linter.js";
 export * from "./compiler/modelica/model.js";
