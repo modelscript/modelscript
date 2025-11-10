@@ -7,6 +7,17 @@
 /// <reference types="tree-sitter-cli/dsl" />
 // @ts-check
 
+const PREC = {
+  LOGICAL_OR: 4,
+  LOGICAL_AND: 5,
+  UNARY_NEGATION: 6,
+  RELATIONAL: 7,
+  ADDITIVE: 8,
+  ADDITIVE_UNARY: 9,
+  MULTIPLICATIVE: 10,
+  EXPONENTIATION: 11,
+};
+
 module.exports = grammar({
   name: "modelica",
   extras: ($) => [/\s/, $.BLOCK_COMMENT, $.LINE_COMMENT],
@@ -76,13 +87,46 @@ module.exports = grammar({
 
     _Expression: ($) => choice($._SimpleExpression),
 
-    _SimpleExpression: ($) => choice($._PrimaryExpression),
+    _SimpleExpression: ($) => choice($.UnaryExpression, $.BinaryExpression, $._PrimaryExpression),
 
-    _PrimaryExpression: ($) => choice($._Literal, $.ComponentReference),
+    UnaryExpression: ($) =>
+      choice(
+        prec(PREC.UNARY_NEGATION, unaryExp("not", $._SimpleExpression)),
+        prec(PREC.ADDITIVE_UNARY, unaryExp("+", $._SimpleExpression)),
+        prec(PREC.ADDITIVE_UNARY, unaryExp("-", $._SimpleExpression)),
+        prec(PREC.ADDITIVE_UNARY, unaryExp(".+", $._SimpleExpression)),
+        prec(PREC.ADDITIVE_UNARY, unaryExp(".-", $._SimpleExpression)),
+      ),
 
-    _Literal: ($) => choice($._UnsignedNumberLiteral),
+    BinaryExpression: ($) =>
+      choice(
+        prec.left(PREC.LOGICAL_OR, binaryExp("or", $._SimpleExpression, $._SimpleExpression)),
+        prec.left(PREC.LOGICAL_AND, binaryExp("and", $._SimpleExpression, $._SimpleExpression)),
+        prec.right(PREC.RELATIONAL, binaryExp("<", $._SimpleExpression, $._SimpleExpression)),
+        prec.right(PREC.RELATIONAL, binaryExp("<=", $._SimpleExpression, $._SimpleExpression)),
+        prec.right(PREC.RELATIONAL, binaryExp(">", $._SimpleExpression, $._SimpleExpression)),
+        prec.right(PREC.RELATIONAL, binaryExp(">=", $._SimpleExpression, $._SimpleExpression)),
+        prec.right(PREC.RELATIONAL, binaryExp("==", $._SimpleExpression, $._SimpleExpression)),
+        prec.right(PREC.RELATIONAL, binaryExp("<>", $._SimpleExpression, $._SimpleExpression)),
+        prec.left(PREC.ADDITIVE, binaryExp("+", $._SimpleExpression, $._SimpleExpression)),
+        prec.left(PREC.ADDITIVE, binaryExp("-", $._SimpleExpression, $._SimpleExpression)),
+        prec.left(PREC.ADDITIVE, binaryExp(".+", $._SimpleExpression, $._SimpleExpression)),
+        prec.left(PREC.ADDITIVE, binaryExp(".-", $._SimpleExpression, $._SimpleExpression)),
+        prec.left(PREC.MULTIPLICATIVE, binaryExp("*", $._SimpleExpression, $._SimpleExpression)),
+        prec.left(PREC.MULTIPLICATIVE, binaryExp("/", $._SimpleExpression, $._SimpleExpression)),
+        prec.left(PREC.MULTIPLICATIVE, binaryExp(".*", $._SimpleExpression, $._SimpleExpression)),
+        prec.left(PREC.MULTIPLICATIVE, binaryExp("./", $._SimpleExpression, $._SimpleExpression)),
+        prec.right(PREC.EXPONENTIATION, binaryExp("^", $._PrimaryExpression, $._PrimaryExpression)),
+        prec.right(PREC.EXPONENTIATION, binaryExp(".^", $._PrimaryExpression, $._PrimaryExpression)),
+      ),
+
+    _PrimaryExpression: ($) => choice($._Literal, $.ComponentReference, $.ParenthesizedExpression),
+
+    _Literal: ($) => choice($._UnsignedNumberLiteral, $.BooleanLiteral, $.STRING),
 
     _UnsignedNumberLiteral: ($) => choice($.UNSIGNED_INTEGER, $.UNSIGNED_REAL),
+
+    BooleanLiteral: ($) => choice("false", "true"),
 
     TypeSpecifier: ($) => seq(optional(field("global", ".")), field("name", $.Name)),
 
@@ -92,6 +136,8 @@ module.exports = grammar({
       seq(optional(field("global", ".")), commaSep1(field("component", $.ComponentReferenceComponent), ".")),
 
     ComponentReferenceComponent: ($) => seq(field("identifier", $.IDENT)),
+
+    ParenthesizedExpression: ($) => seq("(", commaSep(optional(field("expression", $._Expression)), ","), ")"),
 
     IDENT: ($) =>
       token(
@@ -189,4 +235,28 @@ function commaSep(rule, sep = ",") {
  */
 function commaSep1(rule, sep = ",") {
   return seq(rule, repeat(seq(sep, rule)));
+}
+
+/**
+ * Rule template to match unary expressions
+ *
+ * @param {RuleOrLiteral} operator
+ * @param {RuleOrLiteral} operand
+ * @return {SeqRule}
+ */
+function unaryExp(operator, operand) {
+  return seq(field("operator", operator), field("operand", operand));
+}
+
+/**
+ * Rule template to match binary expressions
+ *
+ * @param {RuleOrLiteral} operator
+ * @param {RuleOrLiteral} operand1
+ * @param {RuleOrLiteral} operand2
+ * @return {SeqRule}
+ */
+
+function binaryExp(operator, operand1, operand2) {
+  return seq(field("operand1", operand1), field("operator", operator), field("operand2", operand2));
 }
