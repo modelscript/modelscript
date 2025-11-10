@@ -17,15 +17,24 @@ import {
   ModelicaExtendsClassInstance,
 } from "./model.js";
 import {
+  ModelicaBinaryExpressionSyntaxNode,
+  ModelicaBooleanLiteralSyntaxNode,
+  ModelicaClassModificationSyntaxNode,
   ModelicaComponentReferenceComponentSyntaxNode,
   ModelicaComponentReferenceSyntaxNode,
   ModelicaCompoundImportClauseSyntaxNode,
+  ModelicaElementModificationSyntaxNode,
   ModelicaEquationSectionSyntaxNode,
   ModelicaExtendsClauseSyntaxNode,
+  ModelicaModificationExpressionSyntaxNode,
+  ModelicaModificationSyntaxNode,
+  ModelicaParenthesizedExpressionSyntaxNode,
   ModelicaSimpleEquationSyntaxNode,
   ModelicaSimpleImportClauseSyntaxNode,
+  ModelicaStringLiteralSyntaxNode,
   ModelicaSyntaxNode,
   ModelicaSyntaxVisitor,
+  ModelicaUnaryExpressionSyntaxNode,
   ModelicaUnqualifiedImportClauseSyntaxNode,
   ModelicaUnsignedIntegerLiteralSyntaxNode,
   ModelicaUnsignedRealLiteralSyntaxNode,
@@ -187,9 +196,24 @@ export class ModelicaSyntaxLinter extends ModelicaSyntaxVisitor<void, string | n
     this.#diagnosticsCallback = diagnosticsCallback;
   }
 
+  visitBinaryExpression(node: ModelicaBinaryExpressionSyntaxNode, resource: string | null | undefined): void {
+    ModelicaLinter.applyRules("visitBinaryExpression", node, this.#diagnosticsCallback, resource);
+    super.visitBinaryExpression(node, resource);
+  }
+
+  visitBooleanLiteral(node: ModelicaBooleanLiteralSyntaxNode, resource: string | null | undefined): void {
+    ModelicaLinter.applyRules("visitBooleanLiteral", node, this.#diagnosticsCallback, resource);
+    super.visitBooleanLiteral(node, resource);
+  }
+
   visitClassDefinition(node: ModelicaClassDefinitionSyntaxNode, resource: string | null | undefined): void {
     ModelicaLinter.applyRules("visitClassDefinition", node, this.#diagnosticsCallback, resource);
     super.visitClassDefinition(node, resource);
+  }
+
+  visitClassModification(node: ModelicaClassModificationSyntaxNode, resource: string | null | undefined): void {
+    ModelicaLinter.applyRules("visitClassModification", node, this.#diagnosticsCallback, resource);
+    super.visitClassModification(node, resource);
   }
 
   visitComponentClause(node: ModelicaComponentClauseSyntaxNode, resource: string | null | undefined): void {
@@ -225,6 +249,11 @@ export class ModelicaSyntaxLinter extends ModelicaSyntaxVisitor<void, string | n
     super.visitDeclaration(node, resource);
   }
 
+  visitElementModification(node: ModelicaElementModificationSyntaxNode, resource: string | null | undefined): void {
+    ModelicaLinter.applyRules("visitElementModification", node, this.#diagnosticsCallback, resource);
+    super.visitElementModification(node, resource);
+  }
+
   visitElementSection(node: ModelicaElementSectionSyntaxNode, resource: string | null | undefined): void {
     ModelicaLinter.applyRules("visitElementSection", node, this.#diagnosticsCallback, resource);
     super.visitElementSection(node, resource);
@@ -250,9 +279,30 @@ export class ModelicaSyntaxLinter extends ModelicaSyntaxVisitor<void, string | n
     super.visitLongClassSpecifier(node, resource);
   }
 
+  visitModification(node: ModelicaModificationSyntaxNode, resource: string | null | undefined): void {
+    ModelicaLinter.applyRules("visitModification", node, this.#diagnosticsCallback, resource);
+    super.visitModification(node, resource);
+  }
+
+  visitModificationExpression(
+    node: ModelicaModificationExpressionSyntaxNode,
+    resource: string | null | undefined,
+  ): void {
+    ModelicaLinter.applyRules("visitModificationExpression", node, this.#diagnosticsCallback, resource);
+    super.visitModificationExpression(node, resource);
+  }
+
   visitName(node: ModelicaNameSyntaxNode, resource: string | null | undefined): void {
     ModelicaLinter.applyRules("visitName", node, this.#diagnosticsCallback, resource);
     super.visitName(node, resource);
+  }
+
+  visitParenthesizedExpression(
+    node: ModelicaParenthesizedExpressionSyntaxNode,
+    resource: string | null | undefined,
+  ): void {
+    ModelicaLinter.applyRules("visitParenthesizedExpression", node, this.#diagnosticsCallback, resource);
+    super.visitParenthesizedExpression(node, resource);
   }
 
   visitSimpleEquation(node: ModelicaSimpleEquationSyntaxNode, resource: string | null | undefined): void {
@@ -270,9 +320,19 @@ export class ModelicaSyntaxLinter extends ModelicaSyntaxVisitor<void, string | n
     super.visitStoredDefinition(node, resource);
   }
 
+  visitStringLiteral(node: ModelicaStringLiteralSyntaxNode, resource: string | null | undefined): void {
+    ModelicaLinter.applyRules("visitStringLiteral", node, this.#diagnosticsCallback, resource);
+    super.visitStringLiteral(node, resource);
+  }
+
   visitTypeSpecifier(node: ModelicaTypeSpecifierSyntaxNode, resource: string | null | undefined): void {
     ModelicaLinter.applyRules("visitTypeSpecifier", node, this.#diagnosticsCallback, resource);
     super.visitTypeSpecifier(node, resource);
+  }
+
+  visitUnaryExpression(node: ModelicaUnaryExpressionSyntaxNode, resource: string | null | undefined): void {
+    ModelicaLinter.applyRules("visitUnaryExpression", node, this.#diagnosticsCallback, resource);
+    super.visitUnaryExpression(node, resource);
   }
 
   visitUnqualifiedImportClause(
