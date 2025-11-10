@@ -122,11 +122,11 @@ module.exports = grammar({
 
     _PrimaryExpression: ($) => choice($._Literal, $.ComponentReference, $.ParenthesizedExpression),
 
-    _Literal: ($) => choice($._UnsignedNumberLiteral, $.BooleanLiteral, $.STRING),
+    _Literal: ($) => choice($._UnsignedNumberLiteral, $.BOOLEAN, $.STRING),
 
     _UnsignedNumberLiteral: ($) => choice($.UNSIGNED_INTEGER, $.UNSIGNED_REAL),
 
-    BooleanLiteral: ($) => choice("false", "true"),
+    BOOLEAN: ($) => choice("false", "true"),
 
     TypeSpecifier: ($) => seq(optional(field("global", ".")), field("name", $.Name)),
 

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import type { ModelicaBinaryOperator, ModelicaUnaryOperator } from "./syntax.js";
+
 export class ModelicaDAE {
   name: string;
   equations: ModelicaEquation[] = [];
@@ -38,6 +40,42 @@ export abstract class ModelicaExpression {
 }
 
 export abstract class ModelicaSimpleExpression extends ModelicaExpression {}
+
+export class ModelicaUnaryExpression extends ModelicaSimpleExpression {
+  operand: ModelicaSimpleExpression;
+  operator: ModelicaUnaryOperator;
+
+  constructor(operator: ModelicaUnaryOperator, operand: ModelicaSimpleExpression) {
+    super();
+    this.operator = operator;
+    this.operand = operand;
+  }
+
+  override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
+    return visitor.visitUnaryExpression(this, argument);
+  }
+}
+
+export class ModelicaBinaryExpression extends ModelicaSimpleExpression {
+  operand1: ModelicaSimpleExpression;
+  operand2: ModelicaSimpleExpression;
+  operator: ModelicaBinaryOperator;
+
+  constructor(
+    operator: ModelicaBinaryOperator,
+    operand1: ModelicaSimpleExpression,
+    operand2: ModelicaSimpleExpression,
+  ) {
+    super();
+    this.operator = operator;
+    this.operand1 = operand1;
+    this.operand2 = operand2;
+  }
+
+  override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
+    return visitor.visitBinaryExpression(this, argument);
+  }
+}
 
 export abstract class ModelicaPrimaryExpression extends ModelicaSimpleExpression {}
 
@@ -129,6 +167,8 @@ export class ModelicaStringVariable extends ModelicaVariable {
 }
 
 export interface IModelicaDAEVisitor<R, A> {
+  visitBinaryExpression(node: ModelicaBinaryExpression, argument?: A): R;
+
   visitBooleanLiteral(node: ModelicaBooleanLiteral, argument?: A): R;
 
   visitBooleanVariable(node: ModelicaBooleanVariable, argument?: A): R;
@@ -148,9 +188,14 @@ export interface IModelicaDAEVisitor<R, A> {
   visitStringLiteral(node: ModelicaStringLiteral, argument?: A): R;
 
   visitStringVariable(node: ModelicaStringVariable, argument?: A): R;
+
+  visitUnaryExpression(node: ModelicaUnaryExpression, argument?: A): R;
 }
 
 export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void, A> {
+  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
+  visitBinaryExpression(node: ModelicaBinaryExpression, argument?: A): void {}
+
   // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
   visitBooleanLiteral(node: ModelicaBooleanLiteral, argument?: A): void {}
 
@@ -184,9 +229,20 @@ export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void,
 
   // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
   visitStringVariable(node: ModelicaStringVariable, argument?: A): void {}
+
+  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
+  visitUnaryExpression(node: ModelicaUnaryExpression, argument?: A): void {}
 }
 
 export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
+  visitBinaryExpression(node: ModelicaBinaryExpression): void {
+    process.stdout.write("(");
+    node.operand1.accept(this);
+    process.stdout.write(" " + node.operator + " ");
+    node.operand2.accept(this);
+    process.stdout.write(")");
+  }
+
   visitBooleanLiteral(node: ModelicaBooleanLiteral): void {
     process.stdout.write(String(node.value));
   }
@@ -243,5 +299,11 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
 
   visitStringVariable(node: ModelicaStringVariable): void {
     process.stdout.write(node.name);
+  }
+
+  visitUnaryExpression(node: ModelicaUnaryExpression): void {
+    process.stdout.write("(" + node.operator);
+    node.operand.accept(this);
+    process.stdout.write(")");
   }
 }

@@ -1918,14 +1918,14 @@ export interface IModelicaSyntaxVisitor<R, A> {
 }
 
 export abstract class ModelicaSyntaxVisitor<R, A> implements IModelicaSyntaxVisitor<R | null, A> {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  visitBooleanLiteral(node: ModelicaBooleanLiteralSyntaxNode, argument?: A): R | null {
-    return null;
-  }
-
   visitBinaryExpression(node: ModelicaBinaryExpressionSyntaxNode, argument?: A): R | null {
     node.operand1?.accept(this, argument);
     node.operand2?.accept(this, argument);
+    return null;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  visitBooleanLiteral(node: ModelicaBooleanLiteralSyntaxNode, argument?: A): R | null {
     return null;
   }
 

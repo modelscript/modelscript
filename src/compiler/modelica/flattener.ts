@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
+  ModelicaBinaryExpression,
+  ModelicaBooleanLiteral,
   ModelicaBooleanVariable,
   ModelicaDAE,
   ModelicaExpression,
@@ -9,7 +11,9 @@ import {
   ModelicaRealLiteral,
   ModelicaRealVariable,
   ModelicaSimpleEquation,
+  ModelicaStringLiteral,
   ModelicaStringVariable,
+  ModelicaUnaryExpression,
 } from "./dae.js";
 import {
   ModelicaBooleanClassInstance,
@@ -24,9 +28,14 @@ import {
   type ModelicaClassInstance,
 } from "./model.js";
 import {
+  ModelicaBinaryExpressionSyntaxNode,
+  ModelicaBooleanLiteralSyntaxNode,
   ModelicaComponentReferenceSyntaxNode,
+  ModelicaParenthesizedExpressionSyntaxNode,
   ModelicaSimpleEquationSyntaxNode,
+  ModelicaStringLiteralSyntaxNode,
   ModelicaSyntaxVisitor,
+  ModelicaUnaryExpressionSyntaxNode,
   ModelicaUnsignedIntegerLiteralSyntaxNode,
   ModelicaUnsignedRealLiteralSyntaxNode,
 } from "./syntax.js";
@@ -79,6 +88,22 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<
   ModelicaExpression,
   [string, ModelicaClassInstance, ModelicaDAE]
 > {
+  visitBinaryExpression(
+    node: ModelicaBinaryExpressionSyntaxNode,
+    args: [string, ModelicaClassInstance, ModelicaDAE],
+  ): ModelicaExpression | null {
+    const operand1 = node.operand1?.accept(this, args);
+    const operand2 = node.operand2?.accept(this, args);
+    const operator = node.operator;
+    if (operator && operand1 && operand2) return new ModelicaBinaryExpression(operator, operand1, operand2);
+    return null;
+  }
+
+  visitBooleanLiteral(node: ModelicaBooleanLiteralSyntaxNode): ModelicaExpression | null {
+    if (node.value != null) return new ModelicaBooleanLiteral(node.value === "true");
+    return null;
+  }
+
   visitComponentReference(
     node: ModelicaComponentReferenceSyntaxNode,
     args: [string, ModelicaClassInstance, ModelicaDAE],
@@ -91,6 +116,13 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<
     return null;
   }
 
+  visitParenthesizedExpression(
+    node: ModelicaParenthesizedExpressionSyntaxNode,
+    args: [string, ModelicaClassInstance, ModelicaDAE],
+  ): ModelicaExpression | null {
+    return node.expression?.accept(this, args) ?? null;
+  }
+
   visitSimpleEquation(
     node: ModelicaSimpleEquationSyntaxNode,
     args: [string, ModelicaClassInstance, ModelicaDAE],
@@ -101,11 +133,28 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<
     return null;
   }
 
-  visitUnsignedIntegerLiteral(node: ModelicaUnsignedIntegerLiteralSyntaxNode): ModelicaExpression {
-    return new ModelicaIntegerLiteral(parseInt(node.value ?? "0"));
+  visitStringLiteral(node: ModelicaStringLiteralSyntaxNode): ModelicaExpression | null {
+    if (node.value != null) return new ModelicaStringLiteral(node.value);
+    return null;
   }
 
-  visitUnsignedRealLiteral(node: ModelicaUnsignedRealLiteralSyntaxNode): ModelicaExpression {
-    return new ModelicaRealLiteral(parseFloat(node.value ?? "0"));
+  visitUnaryExpression(
+    node: ModelicaUnaryExpressionSyntaxNode,
+    args: [string, ModelicaClassInstance, ModelicaDAE],
+  ): ModelicaExpression | null {
+    const operand = node.operand?.accept(this, args);
+    const operator = node.operator;
+    if (operator && operand) return new ModelicaUnaryExpression(operator, operand);
+    return null;
+  }
+
+  visitUnsignedIntegerLiteral(node: ModelicaUnsignedIntegerLiteralSyntaxNode): ModelicaExpression | null {
+    if (node.value != null) return new ModelicaIntegerLiteral(parseInt(node.value));
+    return null;
+  }
+
+  visitUnsignedRealLiteral(node: ModelicaUnsignedRealLiteralSyntaxNode): ModelicaExpression | null {
+    if (node.value != null) return new ModelicaRealLiteral(parseFloat(node.value));
+    return null;
   }
 }
