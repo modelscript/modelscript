@@ -38,7 +38,7 @@ export const Flatten: CommandModule<{}, FlattenArgs> = {
     if (!instance) {
       console.error(`'${args.name}' not found`);
     } else {
-      const dae = new ModelicaDAE(instance.name ?? "DAE");
+      const dae = new ModelicaDAE(instance.name ?? "DAE", instance.description);
       instance.accept(new ModelicaFlattener(), ["", dae]);
       dae.accept(new ModelicaDAEPrinter());
     }

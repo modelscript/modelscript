@@ -20,12 +20,15 @@ import {
   ModelicaBinaryExpressionSyntaxNode,
   ModelicaBooleanLiteralSyntaxNode,
   ModelicaClassModificationSyntaxNode,
+  ModelicaClassOrInheritanceModificationSyntaxNode,
   ModelicaComponentReferenceComponentSyntaxNode,
   ModelicaComponentReferenceSyntaxNode,
   ModelicaCompoundImportClauseSyntaxNode,
+  ModelicaDescriptionSyntaxNode,
   ModelicaElementModificationSyntaxNode,
   ModelicaEquationSectionSyntaxNode,
   ModelicaExtendsClauseSyntaxNode,
+  ModelicaInheritanceModificationSyntaxNode,
   ModelicaModificationExpressionSyntaxNode,
   ModelicaModificationSyntaxNode,
   ModelicaParenthesizedExpressionSyntaxNode,
@@ -216,6 +219,14 @@ export class ModelicaSyntaxLinter extends ModelicaSyntaxVisitor<void, string | n
     super.visitClassModification(node, resource);
   }
 
+  visitClassOrInheritanceModification(
+    node: ModelicaClassOrInheritanceModificationSyntaxNode,
+    resource: string | null | undefined,
+  ): void {
+    ModelicaLinter.applyRules("visitClassOrInheritanceModification", node, this.#diagnosticsCallback, resource);
+    super.visitClassOrInheritanceModification(node, resource);
+  }
+
   visitComponentClause(node: ModelicaComponentClauseSyntaxNode, resource: string | null | undefined): void {
     ModelicaLinter.applyRules("visitComponentClause", node, this.#diagnosticsCallback, resource);
     super.visitComponentClause(node, resource);
@@ -249,6 +260,11 @@ export class ModelicaSyntaxLinter extends ModelicaSyntaxVisitor<void, string | n
     super.visitDeclaration(node, resource);
   }
 
+  visitDescription(node: ModelicaDescriptionSyntaxNode, resource: string | null | undefined): void {
+    ModelicaLinter.applyRules("visitDescription", node, this.#diagnosticsCallback, resource);
+    super.visitDescription(node, resource);
+  }
+
   visitElementModification(node: ModelicaElementModificationSyntaxNode, resource: string | null | undefined): void {
     ModelicaLinter.applyRules("visitElementModification", node, this.#diagnosticsCallback, resource);
     super.visitElementModification(node, resource);
@@ -272,6 +288,14 @@ export class ModelicaSyntaxLinter extends ModelicaSyntaxVisitor<void, string | n
   visitIdentifier(node: ModelicaIdentifierSyntaxNode, resource: string | null | undefined): void {
     ModelicaLinter.applyRules("visitIdentifier", node, this.#diagnosticsCallback, resource);
     super.visitIdentifier(node, resource);
+  }
+
+  visitInheritanceModification(
+    node: ModelicaInheritanceModificationSyntaxNode,
+    resource: string | null | undefined,
+  ): void {
+    ModelicaLinter.applyRules("visitInheritanceModification", node, this.#diagnosticsCallback, resource);
+    super.visitInheritanceModification(node, resource);
   }
 
   visitLongClassSpecifier(node: ModelicaLongClassSpecifierSyntaxNode, resource: string | null | undefined): void {

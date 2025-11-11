@@ -299,6 +299,7 @@ export class ModelicaExtendsClassInstance extends ModelicaElement {
 }
 
 export abstract class ModelicaNamedElement extends ModelicaElement {
+  description: string | null = null;
   name: string | null = null;
 
   abstract get modification(): ModelicaModification | null;
@@ -321,6 +322,8 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     super(library, parent);
     this.#abstractSyntaxNode = abstractSyntaxNode ?? null;
     this.name = this.abstractSyntaxNode?.identifier?.value ?? null;
+    this.description =
+      this.abstractSyntaxNode?.classSpecifier?.description?.descriptionStrings?.map((d) => d.value)?.join(" ") ?? null;
     this.#modification = modification ?? null;
   }
 
@@ -512,6 +515,7 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
     super(library, parent);
     this.#abstractSyntaxNode = abstractSyntaxNode;
     this.name = this.abstractSyntaxNode?.declaration?.identifier?.value ?? null;
+    this.description = this.abstractSyntaxNode?.description?.descriptionStrings?.map((d) => d.value)?.join(" ") ?? null;
     this.#modification = this.mergeModifications();
   }
 
@@ -565,6 +569,7 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
         this,
         modificationArguments,
         outerModificationArgument.modificationExpression ?? modificationSyntaxNode?.modificationExpression,
+        outerModificationArgument.description,
       );
     return new ModelicaModification(this, modificationArguments, modificationSyntaxNode?.modificationExpression);
   }
@@ -700,6 +705,7 @@ export class ModelicaStringClassInstance extends ModelicaPredefinedClassInstance
 
 export class ModelicaModification {
   #scope: ModelicaNode | null;
+  description: string | null;
   modificationArguments: ModelicaModificationArgument[];
   modificationExpression: ModelicaModificationExpressionSyntaxNode | null;
 
@@ -707,10 +713,12 @@ export class ModelicaModification {
     scope: ModelicaNode | null,
     modificationArguments: ModelicaModificationArgument[],
     modificationExpression?: ModelicaModificationExpressionSyntaxNode | null,
+    description?: string | null,
   ) {
     this.#scope = scope;
     this.modificationArguments = modificationArguments;
     this.modificationExpression = modificationExpression ?? null;
+    this.description = description ?? null;
   }
 
   static merge(
@@ -730,6 +738,7 @@ export class ModelicaModification {
       overridingModification.#scope,
       mergedModificationArguments,
       overridingModification.modificationExpression ?? modification.modificationExpression,
+      overridingModification.description ?? modification.description,
     );
   }
 
@@ -759,6 +768,7 @@ export abstract class ModelicaModificationArgument {
 }
 
 export class ModelicaElementModification extends ModelicaModificationArgument {
+  description: string | null;
   modificationArguments: ModelicaModificationArgument[] = [];
   modificationExpression: ModelicaModificationExpressionSyntaxNode | null;
   nameComponents: ModelicaIdentifierSyntaxNode[] = [];
@@ -768,11 +778,13 @@ export class ModelicaElementModification extends ModelicaModificationArgument {
     nameComponents: ModelicaIdentifierSyntaxNode[],
     modificationArguments: ModelicaModificationArgument[],
     modificationExpression?: ModelicaModificationExpressionSyntaxNode | null,
+    description?: string | null,
   ) {
     super(scope);
     this.nameComponents = nameComponents;
     this.modificationArguments = modificationArguments;
     this.modificationExpression = modificationExpression ?? null;
+    this.description = description ?? null;
   }
 
   extract(): ModelicaModificationArgument[] {
@@ -783,6 +795,7 @@ export class ModelicaElementModification extends ModelicaModificationArgument {
           this.nameComponents.slice(1),
           this.modificationArguments,
           this.modificationExpression,
+          this.description,
         ),
       ];
     else return this.modificationArguments;
@@ -808,6 +821,7 @@ export class ModelicaElementModification extends ModelicaModificationArgument {
       abstractSyntaxNode.name?.components ?? [],
       modificationArguments,
       abstractSyntaxNode.modification?.modificationExpression,
+      abstractSyntaxNode.description?.descriptionStrings?.map((d) => d.value)?.join(" "),
     );
   }
 }

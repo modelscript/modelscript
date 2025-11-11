@@ -4,11 +4,13 @@ import type { ModelicaBinaryOperator, ModelicaUnaryOperator } from "./syntax.js"
 
 export class ModelicaDAE {
   name: string;
+  description: string | null;
   equations: ModelicaEquation[] = [];
   variables: ModelicaVariable[] = [];
 
-  constructor(name: string) {
+  constructor(name: string, description?: string | null) {
     this.name = name;
+    this.description = description ?? null;
   }
 
   accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
@@ -17,6 +19,12 @@ export class ModelicaDAE {
 }
 
 export abstract class ModelicaEquation {
+  description: string | null;
+
+  constructor(description?: string | null) {
+    this.description = description ?? null;
+  }
+
   abstract accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R;
 }
 
@@ -24,8 +32,8 @@ export class ModelicaSimpleEquation extends ModelicaEquation {
   expression1: ModelicaSimpleExpression;
   expression2: ModelicaExpression;
 
-  constructor(expression1: ModelicaSimpleExpression, expression2: ModelicaExpression) {
-    super();
+  constructor(expression1: ModelicaSimpleExpression, expression2: ModelicaExpression, description?: string | null) {
+    super(description);
     this.expression1 = expression1;
     this.expression2 = expression2;
   }
@@ -135,11 +143,13 @@ export class ModelicaStringLiteral extends ModelicaLiteral {
 
 export abstract class ModelicaVariable extends ModelicaPrimaryExpression {
   name: string;
+  description: string | null;
   value: ModelicaExpression | null;
 
-  constructor(name: string, value: ModelicaExpression | null) {
+  constructor(name: string, value: ModelicaExpression | null, description?: string | null) {
     super();
     this.name = name;
+    this.description = description ?? null;
     this.value = value;
   }
 }
@@ -261,7 +271,9 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
   }
 
   visitDAE(node: ModelicaDAE): void {
-    console.log("class " + node.name);
+    process.stdout.write("class " + node.name);
+    if (node.description) process.stdout.write(' "' + node.description + '"');
+    console.log("");
     for (const variable of node.variables) {
       if (variable instanceof ModelicaBooleanVariable) {
         process.stdout.write("  Boolean ");
@@ -279,6 +291,7 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
         process.stdout.write(" = ");
         variable.value.accept(this);
       }
+      if (variable.description) process.stdout.write(' "' + variable.description + '"');
       console.log(";");
     }
     console.log("equation");
@@ -307,6 +320,7 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     node.expression1.accept(this);
     process.stdout.write(" = ");
     node.expression2.accept(this);
+    if (node.description) process.stdout.write(' "' + node.description + '"');
     console.log(";");
   }
 

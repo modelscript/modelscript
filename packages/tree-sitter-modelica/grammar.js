@@ -46,6 +46,7 @@ module.exports = grammar({
     LongClassSpecifier: ($) =>
       seq(
         choice(field("identifier", $.IDENT)),
+        optional(field("description", $.Description)),
         optional(field("section", $.InitialElementSection)),
         repeat(field("section", choice($.ElementSection, $.EquationSection))),
         "end",
@@ -62,12 +63,28 @@ module.exports = grammar({
     _ImportClause: ($) => choice($.SimpleImportClause, $.CompoundImportClause, $.UnqualifiedImportClause),
 
     SimpleImportClause: ($) =>
-      seq("import", optional(seq(field("shortName", $.IDENT), "=")), field("packageName", $.Name), ";"),
+      seq(
+        "import",
+        optional(seq(field("shortName", $.IDENT), "=")),
+        field("packageName", $.Name),
+        optional(field("description", $.Description)),
+        ";",
+      ),
 
     CompoundImportClause: ($) =>
-      seq("import", field("packageName", $.Name), ".", "{", commaSep1(field("importName", $.IDENT)), "}", ";"),
+      seq(
+        "import",
+        field("packageName", $.Name),
+        ".",
+        "{",
+        commaSep1(field("importName", $.IDENT)),
+        "}",
+        optional(field("description", $.Description)),
+        ";",
+      ),
 
-    UnqualifiedImportClause: ($) => seq("import", field("packageName", $.Name), ".", "*", ";"),
+    UnqualifiedImportClause: ($) =>
+      seq("import", field("packageName", $.Name), ".", "*", optional(field("description", $.Description)), ";"),
 
     // A.2.3 Extends
 
@@ -102,7 +119,8 @@ module.exports = grammar({
         ";",
       ),
 
-    ComponentDeclaration: ($) => seq(field("declaration", $.Declaration)),
+    ComponentDeclaration: ($) =>
+      seq(field("declaration", $.Declaration), optional(field("description", $.Description))),
 
     Declaration: ($) => seq(field("identifier", $.IDENT), optional(field("modification", $.Modification))),
 
@@ -123,7 +141,12 @@ module.exports = grammar({
 
     _ModificationArgument: ($) => choice($.ElementModification),
 
-    ElementModification: ($) => seq(field("name", $.Name), optional(field("modification", $.Modification))),
+    ElementModification: ($) =>
+      seq(
+        field("name", $.Name),
+        optional(field("modification", $.Modification)),
+        optional(field("description", $.Description)),
+      ),
 
     // A.2.6 Equations
 
@@ -132,7 +155,13 @@ module.exports = grammar({
     _Equation: ($) => choice($.SimpleEquation),
 
     SimpleEquation: ($) =>
-      seq(field("expression1", $._SimpleExpression), "=", field("expression2", $._Expression), ";"),
+      seq(
+        field("expression1", $._SimpleExpression),
+        "=",
+        field("expression2", $._Expression),
+        optional(field("description", $.Description)),
+        ";",
+      ),
 
     // A.2.7 Expressions
 
@@ -189,6 +218,8 @@ module.exports = grammar({
     ComponentReferenceComponent: ($) => seq(field("identifier", $.IDENT)),
 
     ParenthesizedExpression: ($) => seq("(", commaSep(optional(field("expression", $._Expression)), ","), ")"),
+
+    Description: ($) => commaSep1(field("descriptionString", $.STRING), "+"),
 
     // A.1 Lexical conventions
 

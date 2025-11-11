@@ -67,13 +67,21 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           args[1],
         ]) ?? null;
       if (node.classInstance instanceof ModelicaBooleanClassInstance) {
-        args[1].variables.push(new ModelicaBooleanVariable(name, value));
+        args[1].variables.push(
+          new ModelicaBooleanVariable(name, value, node.modification?.description ?? node.description),
+        );
       } else if (node.classInstance instanceof ModelicaIntegerClassInstance) {
-        args[1].variables.push(new ModelicaIntegerVariable(name, value));
+        args[1].variables.push(
+          new ModelicaIntegerVariable(name, value, node.modification?.description ?? node.description),
+        );
       } else if (node.classInstance instanceof ModelicaRealClassInstance) {
-        args[1].variables.push(new ModelicaRealVariable(name, value));
+        args[1].variables.push(
+          new ModelicaRealVariable(name, value, node.modification?.description ?? node.description),
+        );
       } else if (node.classInstance instanceof ModelicaStringClassInstance) {
-        args[1].variables.push(new ModelicaStringVariable(name, value));
+        args[1].variables.push(
+          new ModelicaStringVariable(name, value, node.modification?.description ?? node.description),
+        );
       }
     } else {
       node.classInstance?.accept(this, [name, args[1]]);
@@ -135,7 +143,14 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<
   ): null {
     const expression1 = node.expression1?.accept(this, args);
     const expression2 = node.expression2?.accept(this, args);
-    if (expression1 && expression2) args[2].equations.push(new ModelicaSimpleEquation(expression1, expression2));
+    if (expression1 && expression2)
+      args[2].equations.push(
+        new ModelicaSimpleEquation(
+          expression1,
+          expression2,
+          node.description?.descriptionStrings?.map((d) => d.value)?.join(" "),
+        ),
+      );
     return null;
   }
 
