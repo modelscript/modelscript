@@ -49,6 +49,7 @@ module.exports = grammar({
         optional(field("description", $.Description)),
         optional(field("section", $.InitialElementSection)),
         repeat(field("section", choice($.ElementSection, $.EquationSection))),
+        optional(seq(field("annotationClause", $.AnnotationClause), ";")),
         "end",
         field("endIdentifier", $.IDENT),
       ),
@@ -68,6 +69,7 @@ module.exports = grammar({
         optional(seq(field("shortName", $.IDENT), "=")),
         field("packageName", $.Name),
         optional(field("description", $.Description)),
+        optional(field("annotationClause", $.AnnotationClause)),
         ";",
       ),
 
@@ -80,11 +82,20 @@ module.exports = grammar({
         commaSep1(field("importName", $.IDENT)),
         "}",
         optional(field("description", $.Description)),
+        optional(field("annotationClause", $.AnnotationClause)),
         ";",
       ),
 
     UnqualifiedImportClause: ($) =>
-      seq("import", field("packageName", $.Name), ".", "*", optional(field("description", $.Description)), ";"),
+      seq(
+        "import",
+        field("packageName", $.Name),
+        ".",
+        "*",
+        optional(field("description", $.Description)),
+        optional(field("annotationClause", $.AnnotationClause)),
+        ";",
+      ),
 
     // A.2.3 Extends
 
@@ -93,6 +104,7 @@ module.exports = grammar({
         "extends",
         field("typeSpecifier", $.TypeSpecifier),
         optional(field("classOrInheritanceModification", $.ClassOrInheritanceModification)),
+        optional(field("annotationClause", $.AnnotationClause)),
         ";",
       ),
 
@@ -120,7 +132,11 @@ module.exports = grammar({
       ),
 
     ComponentDeclaration: ($) =>
-      seq(field("declaration", $.Declaration), optional(field("description", $.Description))),
+      seq(
+        field("declaration", $.Declaration),
+        optional(field("description", $.Description)),
+        optional(field("annotationClause", $.AnnotationClause)),
+      ),
 
     Declaration: ($) => seq(field("identifier", $.IDENT), optional(field("modification", $.Modification))),
 
@@ -160,6 +176,7 @@ module.exports = grammar({
         "=",
         field("expression2", $._Expression),
         optional(field("description", $.Description)),
+        optional(field("annotationClause", $.AnnotationClause)),
         ";",
       ),
 
@@ -220,6 +237,8 @@ module.exports = grammar({
     ParenthesizedExpression: ($) => seq("(", commaSep(optional(field("expression", $._Expression)), ","), ")"),
 
     Description: ($) => commaSep1(field("descriptionString", $.STRING), "+"),
+
+    AnnotationClause: ($) => seq("annotation", field("classModification", $.ClassModification)),
 
     // A.1 Lexical conventions
 
