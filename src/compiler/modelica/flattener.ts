@@ -60,14 +60,20 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
   visitComponentInstance(node: ModelicaComponentInstance, args: [string, ModelicaDAE]): void {
     const name = args[0] === "" ? (node.name ?? "?") : args[0] + "." + node.name;
     if (node.classInstance instanceof ModelicaPredefinedClassInstance) {
+      const value =
+        node.modification?.modificationExpression?.expression?.accept(new ModelicaSyntaxFlattener(), [
+          args[0],
+          node.classInstance,
+          args[1],
+        ]) ?? null;
       if (node.classInstance instanceof ModelicaBooleanClassInstance) {
-        args[1].variables.push(new ModelicaBooleanVariable(name));
+        args[1].variables.push(new ModelicaBooleanVariable(name, value));
       } else if (node.classInstance instanceof ModelicaIntegerClassInstance) {
-        args[1].variables.push(new ModelicaIntegerVariable(name));
+        args[1].variables.push(new ModelicaIntegerVariable(name, value));
       } else if (node.classInstance instanceof ModelicaRealClassInstance) {
-        args[1].variables.push(new ModelicaRealVariable(name));
+        args[1].variables.push(new ModelicaRealVariable(name, value));
       } else if (node.classInstance instanceof ModelicaStringClassInstance) {
-        args[1].variables.push(new ModelicaStringVariable(name));
+        args[1].variables.push(new ModelicaStringVariable(name, value));
       }
     } else {
       node.classInstance?.accept(this, [name, args[1]]);

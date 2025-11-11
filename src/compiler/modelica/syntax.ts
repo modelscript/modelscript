@@ -107,6 +107,12 @@ export abstract class ModelicaSyntaxNode implements IModelicaSyntaxNode {
           concreteSyntaxNode,
           abstractSyntaxNode as IModelicaClassModificationSyntaxNode,
         );
+      case ModelicaClassOrInheritanceModificationSyntaxNode.type:
+        return new ModelicaClassOrInheritanceModificationSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaClassOrInheritanceModificationSyntaxNode,
+        );
       case ModelicaComponentClauseSyntaxNode.type:
         return new ModelicaComponentClauseSyntaxNode(
           parent,
@@ -174,6 +180,12 @@ export abstract class ModelicaSyntaxNode implements IModelicaSyntaxNode {
           parent,
           concreteSyntaxNode,
           abstractSyntaxNode as IModelicaIdentifierSyntaxNode,
+        );
+      case ModelicaInheritanceModificationSyntaxNode.type:
+        return new ModelicaInheritanceModificationSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaInheritanceModificationSyntaxNode,
         );
       case ModelicaLongClassSpecifierSyntaxNode.type:
         return new ModelicaLongClassSpecifierSyntaxNode(
@@ -843,6 +855,7 @@ export class ModelicaUnqualifiedImportClauseSyntaxNode
 }
 
 export interface IModelicaExtendsClauseSyntaxNode extends IModelicaElementSyntaxNode {
+  classOrInheritanceModification: IModelicaClassOrInheritanceModificationSyntaxNode | null;
   typeSpecifier: IModelicaTypeSpecifierSyntaxNode | null;
 }
 
@@ -850,6 +863,7 @@ export class ModelicaExtendsClauseSyntaxNode
   extends ModelicaElementSyntaxNode
   implements IModelicaExtendsClauseSyntaxNode
 {
+  classOrInheritanceModification: ModelicaClassOrInheritanceModificationSyntaxNode | null;
   typeSpecifier: ModelicaTypeSpecifierSyntaxNode | null;
 
   constructor(
@@ -862,6 +876,11 @@ export class ModelicaExtendsClauseSyntaxNode
       this,
       concreteSyntaxNode?.childForFieldName("typeSpecifier"),
       abstractSyntaxNode?.typeSpecifier,
+    );
+    this.classOrInheritanceModification = ModelicaClassOrInheritanceModificationSyntaxNode.new(
+      this,
+      concreteSyntaxNode?.childForFieldName("classOrInheritanceModification"),
+      abstractSyntaxNode?.classOrInheritanceModification,
     );
   }
 
@@ -877,6 +896,106 @@ export class ModelicaExtendsClauseSyntaxNode
     switch (concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]) {
       case ModelicaExtendsClauseSyntaxNode.type:
         return new ModelicaExtendsClauseSyntaxNode(parent, concreteSyntaxNode, abstractSyntaxNode);
+      default:
+        return null;
+    }
+  }
+}
+
+export interface IModelicaClassOrInheritanceModificationSyntaxNode extends IModelicaSyntaxNode {
+  modificationArgumentOrInheritanceModifications: (
+    | IModelicaModificationArgumentSyntaxNode
+    | IModelicaInheritanceModificationSyntaxNode
+  )[];
+}
+
+export class ModelicaClassOrInheritanceModificationSyntaxNode
+  extends ModelicaSyntaxNode
+  implements IModelicaClassOrInheritanceModificationSyntaxNode
+{
+  modificationArgumentOrInheritanceModifications: (
+    | ModelicaModificationArgumentSyntaxNode
+    | ModelicaInheritanceModificationSyntaxNode
+  )[];
+
+  constructor(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaClassOrInheritanceModificationSyntaxNode | null,
+  ) {
+    super(parent, concreteSyntaxNode, abstractSyntaxNode);
+    this.modificationArgumentOrInheritanceModifications = [];
+    const concreteSyntaxNodeArray =
+      concreteSyntaxNode?.childrenForFieldName("modificationArgumentOrInheritanceModification") ?? [];
+    const abstractSyntaxNodeArray = abstractSyntaxNode?.modificationArgumentOrInheritanceModifications ?? [];
+    const length = Math.max(concreteSyntaxNodeArray?.length ?? 0, abstractSyntaxNodeArray?.length ?? 0);
+    for (let i = 0; i < length; i++) {
+      const node = ModelicaSyntaxNode.new(
+        parent,
+        concreteSyntaxNodeArray?.[i] ?? null,
+        abstractSyntaxNodeArray?.[i] ?? null,
+      );
+      if (
+        node instanceof ModelicaModificationArgumentSyntaxNode ||
+        node instanceof ModelicaInheritanceModificationSyntaxNode
+      )
+        this.modificationArgumentOrInheritanceModifications.push(node);
+    }
+  }
+
+  override accept<R, A>(visitor: IModelicaSyntaxVisitor<R, A>, argument?: A): R {
+    return visitor.visitClassOrInheritanceModification(this, argument);
+  }
+
+  static override new(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaClassOrInheritanceModificationSyntaxNode | null,
+  ): ModelicaClassOrInheritanceModificationSyntaxNode | null {
+    switch (concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]) {
+      case ModelicaClassOrInheritanceModificationSyntaxNode.type:
+        return new ModelicaClassOrInheritanceModificationSyntaxNode(parent, concreteSyntaxNode, abstractSyntaxNode);
+      default:
+        return null;
+    }
+  }
+}
+
+export interface IModelicaInheritanceModificationSyntaxNode extends IModelicaSyntaxNode {
+  identifier: IModelicaIdentifierSyntaxNode | null;
+}
+
+export class ModelicaInheritanceModificationSyntaxNode
+  extends ModelicaSyntaxNode
+  implements IModelicaInheritanceModificationSyntaxNode
+{
+  identifier: ModelicaIdentifierSyntaxNode | null;
+
+  constructor(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaInheritanceModificationSyntaxNode | null,
+  ) {
+    super(parent, concreteSyntaxNode, abstractSyntaxNode);
+    this.identifier = ModelicaIdentifierSyntaxNode.new(
+      this,
+      concreteSyntaxNode?.childForFieldName("identifier"),
+      abstractSyntaxNode?.identifier,
+    );
+  }
+
+  override accept<R, A>(visitor: IModelicaSyntaxVisitor<R, A>, argument?: A): R {
+    return visitor.visitInheritanceModification(this, argument);
+  }
+
+  static override new(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaInheritanceModificationSyntaxNode | null,
+  ): ModelicaInheritanceModificationSyntaxNode | null {
+    switch (concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]) {
+      case ModelicaInheritanceModificationSyntaxNode.type:
+        return new ModelicaInheritanceModificationSyntaxNode(parent, concreteSyntaxNode, abstractSyntaxNode);
       default:
         return null;
     }
@@ -1154,6 +1273,8 @@ export abstract class ModelicaModificationArgumentSyntaxNode
   extends ModelicaSyntaxNode
   implements IModelicaModificationArgumentSyntaxNode
 {
+  abstract get identifier(): ModelicaIdentifierSyntaxNode | null;
+
   static override new(
     parent: ModelicaSyntaxNode | null,
     concreteSyntaxNode?: SyntaxNode | null,
@@ -1204,6 +1325,10 @@ export class ModelicaElementModificationSyntaxNode
 
   override accept<R, A>(visitor: IModelicaSyntaxVisitor<R, A>, argument?: A): R {
     return visitor.visitElementModification(this, argument);
+  }
+
+  override get identifier(): ModelicaIdentifierSyntaxNode | null {
+    return this.name?.components?.[0] ?? null;
   }
 
   static override new(
@@ -2102,6 +2227,8 @@ export interface IModelicaSyntaxVisitor<R, A> {
 
   visitClassModification(node: ModelicaClassModificationSyntaxNode, argument?: A): R;
 
+  visitClassOrInheritanceModification(node: ModelicaClassOrInheritanceModificationSyntaxNode, argument?: A): R;
+
   visitComponentClause(node: ModelicaComponentClauseSyntaxNode, argument?: A): R;
 
   visitComponentDeclaration(node: ModelicaComponentDeclarationSyntaxNode, argument?: A): R;
@@ -2123,6 +2250,8 @@ export interface IModelicaSyntaxVisitor<R, A> {
   visitExtendsClause(node: ModelicaExtendsClauseSyntaxNode, argument?: A): R;
 
   visitIdentifier(node: ModelicaIdentifierSyntaxNode, argument?: A): R;
+
+  visitInheritanceModification(node: ModelicaInheritanceModificationSyntaxNode, argument?: A): R;
 
   visitLongClassSpecifier(node: ModelicaLongClassSpecifierSyntaxNode, argument?: A): R;
 
@@ -2174,6 +2303,12 @@ export abstract class ModelicaSyntaxVisitor<R, A> implements IModelicaSyntaxVisi
 
   visitClassModification(node: ModelicaClassModificationSyntaxNode, argument?: A): R | null {
     for (const modificationArgument of node.modificationArguments) modificationArgument.accept(this, argument);
+    return null;
+  }
+
+  visitClassOrInheritanceModification(node: ModelicaClassOrInheritanceModificationSyntaxNode, argument?: A): R | null {
+    for (const modificationArgumentOrInheritanceModification of node.modificationArgumentOrInheritanceModifications)
+      modificationArgumentOrInheritanceModification.accept(this, argument);
     return null;
   }
 
@@ -2232,6 +2367,11 @@ export abstract class ModelicaSyntaxVisitor<R, A> implements IModelicaSyntaxVisi
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   visitIdentifier(node: ModelicaIdentifierSyntaxNode, argument?: A): R | null {
+    return null;
+  }
+
+  visitInheritanceModification(node: ModelicaInheritanceModificationSyntaxNode, argument?: A): R | null {
+    node.identifier?.accept(this, argument);
     return null;
   }
 

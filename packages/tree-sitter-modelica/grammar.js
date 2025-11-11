@@ -71,7 +71,27 @@ module.exports = grammar({
 
     // A.2.3 Extends
 
-    ExtendsClause: ($) => seq("extends", field("typeSpecifier", $.TypeSpecifier), ";"),
+    ExtendsClause: ($) =>
+      seq(
+        "extends",
+        field("typeSpecifier", $.TypeSpecifier),
+        optional(field("classOrInheritanceModification", $.ClassOrInheritanceModification)),
+        ";",
+      ),
+
+    ClassOrInheritanceModification: ($) =>
+      seq(
+        "(",
+        commaSep(
+          field(
+            "modificationArgumentOrInheritanceModification",
+            choice($._ModificationArgument, $.InheritanceModification),
+          ),
+        ),
+        ")",
+      ),
+
+    InheritanceModification: ($) => seq("break", choice(field("identifier", $.IDENT))),
 
     // A.2.4 Component Clause
 

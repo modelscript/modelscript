@@ -135,10 +135,12 @@ export class ModelicaStringLiteral extends ModelicaLiteral {
 
 export abstract class ModelicaVariable extends ModelicaPrimaryExpression {
   name: string;
+  value: ModelicaExpression | null;
 
-  constructor(name: string) {
+  constructor(name: string, value: ModelicaExpression | null) {
     super();
     this.name = name;
+    this.value = value;
   }
 }
 
@@ -193,14 +195,17 @@ export interface IModelicaDAEVisitor<R, A> {
 }
 
 export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void, A> {
-  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
-  visitBinaryExpression(node: ModelicaBinaryExpression, argument?: A): void {}
+  visitBinaryExpression(node: ModelicaBinaryExpression, argument?: A): void {
+    node.operand1.accept(this, argument);
+    node.operand2.accept(this, argument);
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
   visitBooleanLiteral(node: ModelicaBooleanLiteral, argument?: A): void {}
 
-  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
-  visitBooleanVariable(node: ModelicaBooleanVariable, argument?: A): void {}
+  visitBooleanVariable(node: ModelicaBooleanVariable, argument?: A): void {
+    node.value?.accept(this, argument);
+  }
 
   visitDAE(node: ModelicaDAE, argument?: A): void {
     for (const variable of node.variables) variable.accept(this, argument);
@@ -210,14 +215,16 @@ export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void,
   // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
   visitIntegerLiteral(node: ModelicaIntegerLiteral, argument?: A): void {}
 
-  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
-  visitIntegerVariable(node: ModelicaIntegerVariable, argument?: A): void {}
+  visitIntegerVariable(node: ModelicaIntegerVariable, argument?: A): void {
+    node.value?.accept(this, argument);
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
   visitRealLiteral(node: ModelicaRealLiteral, argument?: A): void {}
 
-  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
-  visitRealVariable(node: ModelicaRealVariable, argument?: A): void {}
+  visitRealVariable(node: ModelicaRealVariable, argument?: A): void {
+    node.value?.accept(this, argument);
+  }
 
   visitSimpleEquation(node: ModelicaSimpleEquation, argument?: A): void {
     node.expression1.accept(this, argument);
@@ -227,11 +234,13 @@ export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void,
   // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
   visitStringLiteral(node: ModelicaStringLiteral, argument?: A): void {}
 
-  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
-  visitStringVariable(node: ModelicaStringVariable, argument?: A): void {}
+  visitStringVariable(node: ModelicaStringVariable, argument?: A): void {
+    node.value?.accept(this, argument);
+  }
 
-  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
-  visitUnaryExpression(node: ModelicaUnaryExpression, argument?: A): void {}
+  visitUnaryExpression(node: ModelicaUnaryExpression, argument?: A): void {
+    node.operand.accept(this, argument);
+  }
 }
 
 export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
@@ -255,14 +264,22 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     console.log("class " + node.name);
     for (const variable of node.variables) {
       if (variable instanceof ModelicaBooleanVariable) {
-        console.log("  Boolean " + variable.name + ";");
+        process.stdout.write("  Boolean ");
       } else if (variable instanceof ModelicaIntegerVariable) {
-        console.log("  Integer " + variable.name + ";");
+        process.stdout.write("  Integer ");
       } else if (variable instanceof ModelicaRealVariable) {
-        console.log("  Real " + variable.name + ";");
+        process.stdout.write("  Real ");
       } else if (variable instanceof ModelicaStringVariable) {
-        console.log("  String " + variable.name + ";");
+        process.stdout.write("  String ");
+      } else {
+        throw new Error("invalid variable");
       }
+      process.stdout.write(variable.name);
+      if (variable.value) {
+        process.stdout.write(" = ");
+        variable.value.accept(this);
+      }
+      console.log(";");
     }
     console.log("equation");
     for (const equation of node.equations) equation.accept(this);
