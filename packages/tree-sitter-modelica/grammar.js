@@ -127,6 +127,7 @@ module.exports = grammar({
     ComponentClause: ($) =>
       seq(
         field("typeSpecifier", $.TypeSpecifier),
+        optional(field("arraySubscripts", $.ArraySubscripts)),
         commaSep1(field("componentDeclaration", $.ComponentDeclaration)),
         ";",
       ),
@@ -138,7 +139,12 @@ module.exports = grammar({
         optional(field("annotationClause", $.AnnotationClause)),
       ),
 
-    Declaration: ($) => seq(field("identifier", $.IDENT), optional(field("modification", $.Modification))),
+    Declaration: ($) =>
+      seq(
+        field("identifier", $.IDENT),
+        optional(field("arraySubscripts", $.ArraySubscripts)),
+        optional(field("modification", $.Modification)),
+      ),
 
     // A.2.5 Modification
 
@@ -235,6 +241,10 @@ module.exports = grammar({
     ComponentReferenceComponent: ($) => seq(field("identifier", $.IDENT)),
 
     ParenthesizedExpression: ($) => seq("(", commaSep(optional(field("expression", $._Expression)), ","), ")"),
+
+    ArraySubscripts: ($) => seq("[", commaSep1(field("subscript", $.Subscript)), "]"),
+
+    Subscript: ($) => choice(field("flexible", ":"), field("expression", $._Expression)),
 
     Description: ($) => commaSep1(field("descriptionString", $.STRING), "+"),
 

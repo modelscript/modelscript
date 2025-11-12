@@ -89,6 +89,12 @@ export abstract class ModelicaSyntaxNode implements IModelicaSyntaxNode {
           concreteSyntaxNode,
           abstractSyntaxNode as IModelicaAnnotationClauseSyntaxNode,
         );
+      case ModelicaArraySubscriptsSyntaxNode.type:
+        return new ModelicaArraySubscriptsSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaArraySubscriptsSyntaxNode,
+        );
       case ModelicaBinaryExpressionSyntaxNode.type:
         return new ModelicaBinaryExpressionSyntaxNode(
           parent,
@@ -242,6 +248,12 @@ export abstract class ModelicaSyntaxNode implements IModelicaSyntaxNode {
           parent,
           concreteSyntaxNode,
           abstractSyntaxNode as IModelicaStringLiteralSyntaxNode,
+        );
+      case ModelicaSubscriptSyntaxNode.type:
+        return new ModelicaSubscriptSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaSubscriptSyntaxNode,
         );
       case ModelicaTypeSpecifierSyntaxNode.type:
         return new ModelicaTypeSpecifierSyntaxNode(
@@ -1054,6 +1066,7 @@ export class ModelicaInheritanceModificationSyntaxNode
 }
 
 export interface IModelicaComponentClauseSyntaxNode extends IModelicaElementSyntaxNode {
+  arraySubscripts: IModelicaArraySubscriptsSyntaxNode | null;
   componentDeclarations: IModelicaComponentDeclarationSyntaxNode[];
   typeSpecifier: IModelicaTypeSpecifierSyntaxNode | null;
 }
@@ -1062,6 +1075,7 @@ export class ModelicaComponentClauseSyntaxNode
   extends ModelicaElementSyntaxNode
   implements IModelicaComponentClauseSyntaxNode
 {
+  arraySubscripts: ModelicaArraySubscriptsSyntaxNode | null;
   componentDeclarations: ModelicaComponentDeclarationSyntaxNode[];
   typeSpecifier: ModelicaTypeSpecifierSyntaxNode | null;
 
@@ -1075,6 +1089,11 @@ export class ModelicaComponentClauseSyntaxNode
       this,
       concreteSyntaxNode?.childForFieldName("typeSpecifier"),
       abstractSyntaxNode?.typeSpecifier,
+    );
+    this.arraySubscripts = ModelicaArraySubscriptsSyntaxNode.new(
+      this,
+      concreteSyntaxNode?.childForFieldName("arraySubscripts"),
+      abstractSyntaxNode?.arraySubscripts,
     );
     this.componentDeclarations = ModelicaComponentDeclarationSyntaxNode.newArray(
       this,
@@ -1161,11 +1180,13 @@ export class ModelicaComponentDeclarationSyntaxNode
 }
 
 export interface IModelicaDeclarationSyntaxNode extends IModelicaSyntaxNode {
+  arraySubscripts: IModelicaArraySubscriptsSyntaxNode | null;
   identifier: IModelicaIdentifierSyntaxNode | null;
   modification: IModelicaModificationSyntaxNode | null;
 }
 
 export class ModelicaDeclarationSyntaxNode extends ModelicaSyntaxNode implements IModelicaDeclarationSyntaxNode {
+  arraySubscripts: ModelicaArraySubscriptsSyntaxNode | null;
   identifier: ModelicaIdentifierSyntaxNode | null;
   modification: ModelicaModificationSyntaxNode | null;
 
@@ -1179,6 +1200,11 @@ export class ModelicaDeclarationSyntaxNode extends ModelicaSyntaxNode implements
       this,
       concreteSyntaxNode?.childForFieldName("identifier"),
       abstractSyntaxNode?.identifier,
+    );
+    this.arraySubscripts = ModelicaArraySubscriptsSyntaxNode.new(
+      this,
+      concreteSyntaxNode?.childForFieldName("arraySubscripts"),
+      abstractSyntaxNode?.arraySubscripts,
     );
     this.modification = ModelicaModificationSyntaxNode.new(
       this,
@@ -2277,6 +2303,88 @@ export class ModelicaComponentReferenceComponentSyntaxNode
   }
 }
 
+export interface IModelicaArraySubscriptsSyntaxNode extends IModelicaSyntaxNode {
+  subscripts: IModelicaSubscriptSyntaxNode[];
+}
+
+export class ModelicaArraySubscriptsSyntaxNode
+  extends ModelicaSyntaxNode
+  implements IModelicaArraySubscriptsSyntaxNode
+{
+  subscripts: ModelicaSubscriptSyntaxNode[];
+
+  constructor(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaArraySubscriptsSyntaxNode | null,
+  ) {
+    super(parent, concreteSyntaxNode, abstractSyntaxNode);
+    this.subscripts = ModelicaSubscriptSyntaxNode.newArray(
+      this,
+      concreteSyntaxNode?.childrenForFieldName("subscript"),
+      abstractSyntaxNode?.subscripts,
+    );
+  }
+
+  override accept<R, A>(visitor: IModelicaSyntaxVisitor<R, A>, argument?: A): R {
+    return visitor.visitArraySubscripts(this, argument);
+  }
+
+  static override new(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaArraySubscriptsSyntaxNode | null,
+  ): ModelicaArraySubscriptsSyntaxNode | null {
+    switch (concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]) {
+      case ModelicaArraySubscriptsSyntaxNode.type:
+        return new ModelicaArraySubscriptsSyntaxNode(parent, concreteSyntaxNode, abstractSyntaxNode);
+      default:
+        return null;
+    }
+  }
+}
+
+export interface IModelicaSubscriptSyntaxNode extends IModelicaSyntaxNode {
+  expression: IModelicaExpressionSyntaxNode | null;
+  flexible: boolean;
+}
+
+export class ModelicaSubscriptSyntaxNode extends ModelicaSyntaxNode implements IModelicaSubscriptSyntaxNode {
+  expression: ModelicaExpressionSyntaxNode | null;
+  flexible: boolean;
+
+  constructor(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaSubscriptSyntaxNode | null,
+  ) {
+    super(parent, concreteSyntaxNode, abstractSyntaxNode);
+    this.flexible = abstractSyntaxNode?.flexible ?? concreteSyntaxNode?.childForFieldName("flexible") != null;
+    this.expression = ModelicaExpressionSyntaxNode.new(
+      this,
+      concreteSyntaxNode?.childForFieldName("expression"),
+      abstractSyntaxNode?.expression,
+    );
+  }
+
+  override accept<R, A>(visitor: IModelicaSyntaxVisitor<R, A>, argument?: A): R {
+    return visitor.visitSubscript(this, argument);
+  }
+
+  static override new(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaSubscriptSyntaxNode | null,
+  ): ModelicaSubscriptSyntaxNode | null {
+    switch (concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]) {
+      case ModelicaSubscriptSyntaxNode.type:
+        return new ModelicaSubscriptSyntaxNode(parent, concreteSyntaxNode, abstractSyntaxNode);
+      default:
+        return null;
+    }
+  }
+}
+
 export interface IModelicaDescriptionSyntaxNode extends IModelicaSyntaxNode {
   descriptionStrings: IModelicaStringLiteralSyntaxNode[];
 }
@@ -2397,6 +2505,8 @@ export class ModelicaIdentifierSyntaxNode extends ModelicaSyntaxNode implements 
 export interface IModelicaSyntaxVisitor<R, A> {
   visitAnnotationClause(node: ModelicaAnnotationClauseSyntaxNode, argument?: A): R;
 
+  visitArraySubscripts(node: ModelicaArraySubscriptsSyntaxNode, argument?: A): R;
+
   visitBinaryExpression(node: ModelicaBinaryExpressionSyntaxNode, argument?: A): R;
 
   visitBooleanLiteral(node: ModelicaBooleanLiteralSyntaxNode, argument?: A): R;
@@ -2451,6 +2561,8 @@ export interface IModelicaSyntaxVisitor<R, A> {
 
   visitStringLiteral(node: ModelicaStringLiteralSyntaxNode, argument?: A): R;
 
+  visitSubscript(node: ModelicaSubscriptSyntaxNode, argument?: A): R;
+
   visitTypeSpecifier(node: ModelicaTypeSpecifierSyntaxNode, argument?: A): R;
 
   visitUnaryExpression(node: ModelicaUnaryExpressionSyntaxNode, argument?: A): R;
@@ -2467,6 +2579,11 @@ export interface IModelicaSyntaxVisitor<R, A> {
 export abstract class ModelicaSyntaxVisitor<R, A> implements IModelicaSyntaxVisitor<R | null, A> {
   visitAnnotationClause(node: ModelicaAnnotationClauseSyntaxNode, argument?: A): R | null {
     node.classModification?.accept(this, argument);
+    return null;
+  }
+
+  visitArraySubscripts(node: ModelicaArraySubscriptsSyntaxNode, argument?: A): R | null {
+    for (const subscript of node.subscripts) subscript.accept(this, argument);
     return null;
   }
 
@@ -2608,6 +2725,11 @@ export abstract class ModelicaSyntaxVisitor<R, A> implements IModelicaSyntaxVisi
   visitStoredDefinition(node: ModelicaStoredDefinitionSyntaxNode, argument?: A): R | null {
     node.withinDirective?.accept(this, argument);
     for (const classDefinition of node.classDefinitions) classDefinition.accept(this, argument);
+    return null;
+  }
+
+  visitSubscript(node: ModelicaSubscriptSyntaxNode, argument?: A): R | null {
+    node.expression?.accept(this, argument);
     return null;
   }
 
