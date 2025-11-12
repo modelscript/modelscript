@@ -464,6 +464,10 @@ export class ModelicaClassDefinitionSyntaxNode
     return visitor.visitClassDefinition(this, argument);
   }
 
+  get annotationClause(): ModelicaAnnotationClauseSyntaxNode | null {
+    return this.classSpecifier?.annotationClause ?? null;
+  }
+
   get elements(): IterableIterator<ModelicaElementSyntaxNode> {
     const classSpecifier = this.classSpecifier;
     return (function* () {
@@ -501,6 +505,7 @@ export class ModelicaClassDefinitionSyntaxNode
 }
 
 export interface IModelicaClassSpecifierSyntaxNode extends IModelicaSyntaxNode {
+  annotationClause: IModelicaAnnotationClauseSyntaxNode | null;
   description: IModelicaDescriptionSyntaxNode | null;
   identifier: IModelicaIdentifierSyntaxNode | null;
 }
@@ -509,6 +514,7 @@ export abstract class ModelicaClassSpecifierSyntaxNode
   extends ModelicaSyntaxNode
   implements IModelicaClassSpecifierSyntaxNode
 {
+  annotationClause: ModelicaAnnotationClauseSyntaxNode | null;
   description: ModelicaDescriptionSyntaxNode | null;
   identifier: ModelicaIdentifierSyntaxNode | null;
 
@@ -527,6 +533,11 @@ export abstract class ModelicaClassSpecifierSyntaxNode
       this,
       concreteSyntaxNode?.childForFieldName("description"),
       abstractSyntaxNode?.description,
+    );
+    this.annotationClause = ModelicaAnnotationClauseSyntaxNode.new(
+      this,
+      concreteSyntaxNode?.childForFieldName("annotationClause"),
+      abstractSyntaxNode?.annotationClause,
     );
   }
 
@@ -555,7 +566,6 @@ export abstract class ModelicaClassSpecifierSyntaxNode
 }
 
 export interface IModelicaLongClassSpecifierSyntaxNode extends IModelicaClassSpecifierSyntaxNode {
-  annotationClause: IModelicaAnnotationClauseSyntaxNode | null;
   endIdentifier: IModelicaIdentifierSyntaxNode | null;
   sections: IModelicaSectionSyntaxNode[];
 }
@@ -564,7 +574,6 @@ export class ModelicaLongClassSpecifierSyntaxNode
   extends ModelicaClassSpecifierSyntaxNode
   implements IModelicaLongClassSpecifierSyntaxNode
 {
-  annotationClause: ModelicaAnnotationClauseSyntaxNode | null;
   endIdentifier: ModelicaIdentifierSyntaxNode | null;
   sections: ModelicaSectionSyntaxNode[];
 
@@ -578,11 +587,6 @@ export class ModelicaLongClassSpecifierSyntaxNode
       this,
       concreteSyntaxNode?.childrenForFieldName("section"),
       abstractSyntaxNode?.sections,
-    );
-    this.annotationClause = ModelicaAnnotationClauseSyntaxNode.new(
-      this,
-      concreteSyntaxNode?.childForFieldName("annotationClause"),
-      abstractSyntaxNode?.annotationClause,
     );
     this.endIdentifier = ModelicaIdentifierSyntaxNode.new(
       this,
