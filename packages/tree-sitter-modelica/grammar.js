@@ -39,9 +39,17 @@ module.exports = grammar({
 
     ClassDefinition: ($) => seq(field("classKind", $.ClassKind), field("classSpecifier", $._ClassSpecifier), ";"),
 
-    ClassKind: ($) => choice(field("class", "class"), field("package", "package")),
+    ClassKind: ($) =>
+      choice(
+        field("block", "block"),
+        field("class", "class"),
+        field("model", "model"),
+        field("package", "package"),
+        field("record", "record"),
+        field("type", "type"),
+      ),
 
-    _ClassSpecifier: ($) => $.LongClassSpecifier,
+    _ClassSpecifier: ($) => choice($.LongClassSpecifier, $.ShortClassSpecifier),
 
     LongClassSpecifier: ($) =>
       seq(
@@ -52,6 +60,39 @@ module.exports = grammar({
         optional(seq(field("annotationClause", $.AnnotationClause), ";")),
         "end",
         field("endIdentifier", $.IDENT),
+      ),
+
+    ShortClassSpecifier: ($) =>
+      seq(
+        field("identifier", $.IDENT),
+        "=",
+        choice(
+          seq(
+            field("typeSpecifier", $.TypeSpecifier),
+            optional(field("arraySubscripts", $.ArraySubscripts)),
+            optional(field("classModification", $.ClassModification)),
+          ),
+          seq(
+            field("enumeration", "enumeration"),
+            "(",
+            optional(
+              choice(
+                commaSep1(field("enumerationLiteral", $.EnumerationLiteral)),
+                field("unspecifiedEnumeration", ":"),
+              ),
+            ),
+            ")",
+          ),
+        ),
+        optional(field("description", $.Description)),
+        optional(field("annotationClause", $.AnnotationClause)),
+      ),
+
+    EnumerationLiteral: ($) =>
+      seq(
+        field("identifier", $.IDENT),
+        optional(field("description", $.Description)),
+        optional(field("annotationClause", $.AnnotationClause)),
       ),
 
     InitialElementSection: ($) => repeat1(field("element", $._Element)),

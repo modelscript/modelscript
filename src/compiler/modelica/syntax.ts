@@ -3,8 +3,12 @@
 import type { SyntaxNode } from "tree-sitter";
 
 export enum ModelicaClassKind {
+  BLOCK = "block",
   CLASS = "class",
+  MODEL = "model",
   PACKAGE = "package",
+  RECORD = "record",
+  TYPE = "type",
 }
 
 export enum ModelicaVisibility {
@@ -199,6 +203,12 @@ export abstract class ModelicaSyntaxNode implements IModelicaSyntaxNode {
           "Initial" + ModelicaElementSectionSyntaxNode.type,
           ModelicaVisibility.PUBLIC,
         );
+      case ModelicaEnumerationLiteralSyntaxNode.type:
+        return new ModelicaEnumerationLiteralSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaEnumerationLiteralSyntaxNode,
+        );
       case ModelicaExpressionListSyntaxNode.type:
         return new ModelicaExpressionListSyntaxNode(
           parent,
@@ -248,6 +258,12 @@ export abstract class ModelicaSyntaxNode implements IModelicaSyntaxNode {
           parent,
           concreteSyntaxNode,
           abstractSyntaxNode as IModelicaParenthesizedExpressionSyntaxNode,
+        );
+      case ModelicaShortClassSpecifierSyntaxNode.type:
+        return new ModelicaShortClassSpecifierSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaShortClassSpecifierSyntaxNode,
         );
       case ModelicaSimpleImportClauseSyntaxNode.type:
         return new ModelicaSimpleImportClauseSyntaxNode(
@@ -587,6 +603,12 @@ export abstract class ModelicaClassSpecifierSyntaxNode
           concreteSyntaxNode,
           abstractSyntaxNode as IModelicaLongClassSpecifierSyntaxNode,
         );
+      case ModelicaShortClassSpecifierSyntaxNode.type:
+        return new ModelicaShortClassSpecifierSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaShortClassSpecifierSyntaxNode,
+        );
       default:
         return null;
     }
@@ -655,6 +677,145 @@ export class ModelicaLongClassSpecifierSyntaxNode
     switch (concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]) {
       case ModelicaLongClassSpecifierSyntaxNode.type:
         return new ModelicaLongClassSpecifierSyntaxNode(parent, concreteSyntaxNode, abstractSyntaxNode);
+      default:
+        return null;
+    }
+  }
+}
+
+export interface IModelicaShortClassSpecifierSyntaxNode extends IModelicaClassSpecifierSyntaxNode {
+  arraySubscripts: IModelicaArraySubscriptsSyntaxNode | null;
+  classModification: IModelicaClassModificationSyntaxNode | null;
+  enumeration: boolean;
+  enumerationLiterals: IModelicaEnumerationLiteralSyntaxNode[];
+  typeSpecifier: IModelicaTypeSpecifierSyntaxNode | null;
+  unspecifiedEnumeration: boolean;
+}
+
+export class ModelicaShortClassSpecifierSyntaxNode
+  extends ModelicaClassSpecifierSyntaxNode
+  implements IModelicaShortClassSpecifierSyntaxNode
+{
+  arraySubscripts: ModelicaArraySubscriptsSyntaxNode | null;
+  classModification: ModelicaClassModificationSyntaxNode | null;
+  enumeration: boolean;
+  enumerationLiterals: ModelicaEnumerationLiteralSyntaxNode[];
+  typeSpecifier: ModelicaTypeSpecifierSyntaxNode | null;
+  unspecifiedEnumeration: boolean;
+
+  constructor(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaShortClassSpecifierSyntaxNode | null,
+  ) {
+    super(parent, concreteSyntaxNode, abstractSyntaxNode);
+    this.typeSpecifier = ModelicaTypeSpecifierSyntaxNode.new(
+      this,
+      concreteSyntaxNode?.childForFieldName("typeSpecifier"),
+      abstractSyntaxNode?.typeSpecifier,
+    );
+    this.arraySubscripts = ModelicaArraySubscriptsSyntaxNode.new(
+      this,
+      concreteSyntaxNode?.childForFieldName("arraySubscripts"),
+      abstractSyntaxNode?.arraySubscripts,
+    );
+    this.classModification = ModelicaClassModificationSyntaxNode.new(
+      this,
+      concreteSyntaxNode?.childForFieldName("classModification"),
+      abstractSyntaxNode?.classModification,
+    );
+    this.enumeration = abstractSyntaxNode?.enumeration ?? concreteSyntaxNode?.childForFieldName("enumeration") != null;
+    this.enumerationLiterals = ModelicaEnumerationLiteralSyntaxNode.newArray(
+      this,
+      concreteSyntaxNode?.childrenForFieldName("enumerationLiteral"),
+      abstractSyntaxNode?.enumerationLiterals,
+    );
+    this.unspecifiedEnumeration =
+      abstractSyntaxNode?.unspecifiedEnumeration ??
+      concreteSyntaxNode?.childForFieldName("unspecifiedEnumeration") != null;
+  }
+
+  override accept<R, A>(visitor: IModelicaSyntaxVisitor<R, A>, argument?: A): R {
+    return visitor.visitShortClassSpecifier(this, argument);
+  }
+
+  get elements(): IterableIterator<ModelicaElementSyntaxNode> {
+    // eslint-disable-next-line @typescript-eslint/no-empty-function
+    return (function* () {})();
+  }
+
+  get equations(): IterableIterator<ModelicaEquationSyntaxNode> {
+    // eslint-disable-next-line @typescript-eslint/no-empty-function
+    return (function* () {})();
+  }
+
+  get sections(): IModelicaSyntaxNode[] {
+    return [];
+  }
+
+  static override new(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaShortClassSpecifierSyntaxNode | null,
+  ): ModelicaShortClassSpecifierSyntaxNode | null {
+    switch (concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]) {
+      case ModelicaShortClassSpecifierSyntaxNode.type:
+        return new ModelicaShortClassSpecifierSyntaxNode(parent, concreteSyntaxNode, abstractSyntaxNode);
+      default:
+        return null;
+    }
+  }
+}
+
+export interface IModelicaEnumerationLiteralSyntaxNode extends IModelicaSyntaxNode {
+  annotationClause: IModelicaAnnotationClauseSyntaxNode | null;
+  description: IModelicaDescriptionSyntaxNode | null;
+  identifier: IModelicaIdentifierSyntaxNode | null;
+}
+
+export class ModelicaEnumerationLiteralSyntaxNode
+  extends ModelicaSyntaxNode
+  implements IModelicaEnumerationLiteralSyntaxNode
+{
+  annotationClause: ModelicaAnnotationClauseSyntaxNode | null;
+  description: ModelicaDescriptionSyntaxNode | null;
+  identifier: ModelicaIdentifierSyntaxNode | null;
+
+  constructor(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaEnumerationLiteralSyntaxNode | null,
+  ) {
+    super(parent, concreteSyntaxNode, abstractSyntaxNode);
+    this.identifier = ModelicaIdentifierSyntaxNode.new(
+      this,
+      concreteSyntaxNode?.childForFieldName("identifier"),
+      abstractSyntaxNode?.identifier,
+    );
+    this.description = ModelicaDescriptionSyntaxNode.new(
+      this,
+      concreteSyntaxNode?.childForFieldName("description"),
+      abstractSyntaxNode?.description,
+    );
+    this.annotationClause = ModelicaAnnotationClauseSyntaxNode.new(
+      this,
+      concreteSyntaxNode?.childForFieldName("annotationClause"),
+      abstractSyntaxNode?.annotationClause,
+    );
+  }
+
+  override accept<R, A>(visitor: IModelicaSyntaxVisitor<R, A>, argument?: A): R {
+    return visitor.visitEnumerationLiteral(this, argument);
+  }
+
+  static override new(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaEnumerationLiteralSyntaxNode | null,
+  ): ModelicaEnumerationLiteralSyntaxNode | null {
+    switch (concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]) {
+      case ModelicaEnumerationLiteralSyntaxNode.type:
+        return new ModelicaEnumerationLiteralSyntaxNode(parent, concreteSyntaxNode, abstractSyntaxNode);
       default:
         return null;
     }
@@ -2732,6 +2893,8 @@ export interface IModelicaSyntaxVisitor<R, A> {
 
   visitElementSection(node: ModelicaElementSectionSyntaxNode, argument?: A): R;
 
+  visitEnumerationLiteral(node: ModelicaEnumerationLiteralSyntaxNode, argument?: A): R;
+
   visitEquationSection(node: ModelicaEquationSectionSyntaxNode, argument?: A): R;
 
   visitExpressionList(node: ModelicaExpressionListSyntaxNode, argument?: A): R;
@@ -2751,6 +2914,8 @@ export interface IModelicaSyntaxVisitor<R, A> {
   visitName(node: ModelicaNameSyntaxNode, argument?: A): R;
 
   visitParenthesizedExpression(node: ModelicaParenthesizedExpressionSyntaxNode, argument?: A): R;
+
+  visitShortClassSpecifier(node: ModelicaShortClassSpecifierSyntaxNode, argument?: A): R;
 
   visitSimpleEquation(node: ModelicaSimpleEquationSyntaxNode, argument?: A): R;
 
@@ -2831,6 +2996,8 @@ export abstract class ModelicaSyntaxVisitor<R, A> implements IModelicaSyntaxVisi
 
   visitComponentDeclaration(node: ModelicaComponentDeclarationSyntaxNode, argument?: A): R | null {
     node.declaration?.accept(this, argument);
+    node.description?.accept(this, argument);
+    node.annotationClause?.accept(this, argument);
     return null;
   }
 
@@ -2848,6 +3015,8 @@ export abstract class ModelicaSyntaxVisitor<R, A> implements IModelicaSyntaxVisi
   visitCompoundImportClause(node: ModelicaCompoundImportClauseSyntaxNode, argument?: A): R | null {
     node.packageName?.accept(this, argument);
     for (const importName of node.importNames) importName.accept(this, argument);
+    node.description?.accept(this, argument);
+    node.annotationClause?.accept(this, argument);
     return null;
   }
 
@@ -2864,11 +3033,19 @@ export abstract class ModelicaSyntaxVisitor<R, A> implements IModelicaSyntaxVisi
   visitElementModification(node: ModelicaElementModificationSyntaxNode, argument?: A): R | null {
     node.name?.accept(this, argument);
     node.modification?.accept(this, argument);
+    node.description?.accept(this, argument);
     return null;
   }
 
   visitElementSection(node: ModelicaElementSectionSyntaxNode, argument?: A): R | null {
     for (const element of node.elements) element.accept(this, argument);
+    return null;
+  }
+
+  visitEnumerationLiteral(node: ModelicaEnumerationLiteralSyntaxNode, argument?: A): R | null {
+    node.identifier?.accept(this, argument);
+    node.description?.accept(this, argument);
+    node.annotationClause?.accept(this, argument);
     return null;
   }
 
@@ -2884,6 +3061,7 @@ export abstract class ModelicaSyntaxVisitor<R, A> implements IModelicaSyntaxVisi
 
   visitExtendsClause(node: ModelicaExtendsClauseSyntaxNode, argument?: A): R | null {
     node.typeSpecifier?.accept(this, argument);
+    node.annotationClause?.accept(this, argument);
     return null;
   }
 
@@ -2901,6 +3079,8 @@ export abstract class ModelicaSyntaxVisitor<R, A> implements IModelicaSyntaxVisi
     node.identifier?.accept(this, argument);
     for (const section of node.sections) section.accept(this, argument);
     node.endIdentifier?.accept(this, argument);
+    node.description?.accept(this, argument);
+    node.annotationClause?.accept(this, argument);
     return null;
   }
 
@@ -2925,15 +3105,30 @@ export abstract class ModelicaSyntaxVisitor<R, A> implements IModelicaSyntaxVisi
     return null;
   }
 
+  visitShortClassSpecifier(node: ModelicaShortClassSpecifierSyntaxNode, argument?: A): R | null {
+    node.identifier?.accept(this, argument);
+    node.typeSpecifier?.accept(this, argument);
+    node.arraySubscripts?.accept(this, argument);
+    node.classModification?.accept(this, argument);
+    for (const enumerationLiteral of node.enumerationLiterals) enumerationLiteral.accept(this, argument);
+    node.description?.accept(this, argument);
+    node.annotationClause?.accept(this, argument);
+    return null;
+  }
+
   visitSimpleEquation(node: ModelicaSimpleEquationSyntaxNode, argument?: A): R | null {
     node.expression1?.accept(this, argument);
     node.expression2?.accept(this, argument);
+    node.description?.accept(this, argument);
+    node.annotationClause?.accept(this, argument);
     return null;
   }
 
   visitSimpleImportClause(node: ModelicaSimpleImportClauseSyntaxNode, argument?: A): R | null {
     node.shortName?.accept(this, argument);
     node.packageName?.accept(this, argument);
+    node.description?.accept(this, argument);
+    node.annotationClause?.accept(this, argument);
     return null;
   }
 
@@ -2965,6 +3160,8 @@ export abstract class ModelicaSyntaxVisitor<R, A> implements IModelicaSyntaxVisi
 
   visitUnqualifiedImportClause(node: ModelicaUnqualifiedImportClauseSyntaxNode, argument?: A): R | null {
     node.packageName?.accept(this, argument);
+    node.description?.accept(this, argument);
+    node.annotationClause?.accept(this, argument);
     return null;
   }
 
