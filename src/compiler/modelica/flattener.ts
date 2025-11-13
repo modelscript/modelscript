@@ -16,6 +16,7 @@ import {
   ModelicaUnaryExpression,
 } from "./dae.js";
 import {
+  ModelicaArrayClassInstance,
   ModelicaBooleanClassInstance,
   ModelicaComponentInstance,
   ModelicaEntity,
@@ -41,6 +42,10 @@ import {
 } from "./syntax.js";
 
 export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE]> {
+  visitArrayClassInstance(node: ModelicaArrayClassInstance, args: [string, ModelicaDAE]): void {
+    this.visitClassInstance(node, args);
+  }
+
   visitEntity(node: ModelicaEntity, args: [string, ModelicaDAE]): void {
     this.visitClassInstance(node, args);
   }
@@ -83,6 +88,56 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           new ModelicaStringVariable(name, value, node.modification?.description ?? node.description),
         );
       }
+    } else if (node.classInstance instanceof ModelicaArrayClassInstance) {
+      const shape = node.classInstance.shape;
+      const index = new Array(shape.length).fill(1);
+      for (const declaredElement of node.classInstance.declaredElements) {
+        if (declaredElement instanceof ModelicaPredefinedClassInstance) {
+          const elementName = name + "[" + index.join(", ") + "]";
+          const value =
+            declaredElement.modification?.modificationExpression?.expression?.accept(new ModelicaSyntaxFlattener(), [
+              args[0],
+              node.classInstance,
+              args[1],
+            ]) ?? null;
+          if (declaredElement instanceof ModelicaBooleanClassInstance) {
+            args[1].variables.push(
+              new ModelicaBooleanVariable(
+                elementName,
+                value,
+                declaredElement.modification?.description ?? declaredElement.description,
+              ),
+            );
+          } else if (declaredElement instanceof ModelicaIntegerClassInstance) {
+            args[1].variables.push(
+              new ModelicaIntegerVariable(
+                elementName,
+                value,
+                declaredElement.modification?.description ?? declaredElement.description,
+              ),
+            );
+          } else if (declaredElement instanceof ModelicaRealClassInstance) {
+            args[1].variables.push(
+              new ModelicaRealVariable(
+                elementName,
+                value,
+                declaredElement.modification?.description ?? declaredElement.description,
+              ),
+            );
+          } else if (declaredElement instanceof ModelicaStringClassInstance) {
+            args[1].variables.push(
+              new ModelicaStringVariable(
+                elementName,
+                value,
+                declaredElement.modification?.description ?? declaredElement.description,
+              ),
+            );
+          }
+        } else {
+          declaredElement?.accept(this, [name, args[1]]);
+        }
+        if (!this.incrementIndex(index, shape)) break;
+      }
     } else {
       node.classInstance?.accept(this, [name, args[1]]);
     }
@@ -95,6 +150,18 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     for (const equationSyntaxNode of node.classInstance?.abstractSyntaxNode?.equations ?? []) {
       equationSyntaxNode.accept(new ModelicaSyntaxFlattener(), [args[0], node.classInstance, args[1]]);
     }
+  }
+
+  incrementIndex(index: number[], shape: ModelicaIntegerLiteral[]): boolean {
+    for (let i = shape.length - 1; i >= 0; i--) {
+      const length = shape[i]?.value ?? 0;
+      if ((index[i] ?? 1) < length) {
+        index[i] = (index[i] ?? 1) + 1;
+        for (let j = i + 1; j < shape.length; j++) index[j] = 1;
+        return true;
+      }
+    }
+    return false;
   }
 }
 

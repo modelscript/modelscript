@@ -2,6 +2,8 @@
 
 import type { Context } from "../context.js";
 import { ANNOTATION } from "./annotation.js";
+import { ModelicaIntegerLiteral } from "./dae.js";
+import { ModelicaInterpreter } from "./interpreter.js";
 import {
   ModelicaAnnotationClauseSyntaxNode,
   ModelicaClassDefinitionSyntaxNode,
@@ -18,6 +20,7 @@ import {
   ModelicaModificationSyntaxNode,
   ModelicaSimpleImportClauseSyntaxNode,
   ModelicaStoredDefinitionSyntaxNode,
+  ModelicaSubscriptSyntaxNode,
   ModelicaUnqualifiedImportClauseSyntaxNode,
   type ModelicaComponentDeclarationSyntaxNode,
   type ModelicaIdentifierSyntaxNode,
@@ -551,7 +554,16 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
     this.instantiating = true;
     const element = this.parent?.resolveTypeSpecifier(this.abstractSyntaxNode?.parent?.typeSpecifier);
     if (element instanceof ModelicaClassInstance) {
-      this.classInstance = element.clone(this.modification);
+      const arraySubscripts = [...(this.abstractSyntaxNode?.arraySubscripts ?? [])];
+      if (arraySubscripts.length === 0) this.classInstance = element.clone(this.modification);
+      else
+        this.classInstance = new ModelicaArrayClassInstance(
+          this.library,
+          this,
+          element,
+          arraySubscripts,
+          this.modification,
+        );
     }
     this.instantiated = true;
   }
@@ -713,12 +725,61 @@ export class ModelicaStringClassInstance extends ModelicaPredefinedClassInstance
   }
 }
 
+export class ModelicaArrayClassInstance extends ModelicaClassInstance {
+  #arraySubscripts: ModelicaSubscriptSyntaxNode[];
+  #elementClassInstance: ModelicaClassInstance | null;
+  shape: ModelicaIntegerLiteral[] = [];
+
+  constructor(
+    library: ModelicaLibrary | null,
+    parent: ModelicaNode | null,
+    elementClassInstance: ModelicaClassInstance | null,
+    arraySubscripts: ModelicaSubscriptSyntaxNode[],
+    modification?: ModelicaModification | null,
+  ) {
+    super(library, parent, elementClassInstance?.abstractSyntaxNode, modification);
+    this.#elementClassInstance = elementClassInstance;
+    this.#arraySubscripts = arraySubscripts;
+    this.instantiate();
+  }
+
+  override instantiate(): void {
+    if (this.instantiated) return;
+    if (this.instantiating) throw Error("reentrant error: array class is already being instantiated");
+    this.instantiating = true;
+    this.declaredElements = [];
+    this.shape = [];
+    if (!this.#elementClassInstance || this.#arraySubscripts.length == 0) {
+      this.instantiated = true;
+      return;
+    }
+    for (const arraySubscript of this.#arraySubscripts) {
+      if (arraySubscript.flexible || !arraySubscript.expression) {
+        this.shape.push(new ModelicaIntegerLiteral(-1));
+        continue;
+      }
+      const length = arraySubscript.expression.accept(new ModelicaInterpreter(), this);
+      if (length instanceof ModelicaIntegerLiteral) this.shape.push(length);
+      else this.shape.push(new ModelicaIntegerLiteral(-1));
+    }
+    for (let i = this.shape.length - 1; i >= 0; i--) {
+      for (let j = i; j < this.shape.length; j++) {
+        const length = this.shape[i]?.value ?? -1;
+        for (let k = 1; k <= length; k++) {
+          this.declaredElements.push(this.#elementClassInstance.clone());
+        }
+      }
+    }
+    this.instantiated = true;
+  }
+}
+
 export class ModelicaAnnotationClassInstance extends ModelicaClassInstance {
   static #annotationAbstractSyntaxNode: ModelicaClassDefinitionSyntaxNode | null;
 
   constructor(parent: ModelicaNode, abstractSyntaxNode?: ModelicaAnnotationClauseSyntaxNode | null) {
     super(
-      parent?.library ?? null,
+      parent.library ?? null,
       parent,
       ModelicaAnnotationClassInstance.loadAnnotationAbstractSyntaxNode(parent.library?.context),
     );
@@ -880,6 +941,8 @@ export class ModelicaElementModification extends ModelicaModificationArgument {
 }
 
 export interface IModelicaModelVisitor<R, A> {
+  visitArrayClassInstance(node: ModelicaArrayClassInstance, argument?: A): R;
+
   visitAnnotationClassInstance(node: ModelicaAnnotationClassInstance, argument?: A): R;
 
   visitBooleanClassInstance(node: ModelicaBooleanClassInstance, argument?: A): R;
@@ -902,6 +965,10 @@ export interface IModelicaModelVisitor<R, A> {
 }
 
 export abstract class ModelicaModelVisitor<A> implements IModelicaModelVisitor<void, A> {
+  visitArrayClassInstance(node: ModelicaArrayClassInstance, argument?: A): void {
+    for (const element of node.elements) element.accept(this, argument);
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
   visitAnnotationClassInstance(node: ModelicaAnnotationClassInstance, argument?: A): void {}
 

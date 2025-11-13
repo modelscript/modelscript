@@ -1161,6 +1161,15 @@ export class ModelicaComponentDeclarationSyntaxNode
     return visitor.visitComponentDeclaration(this, argument);
   }
 
+  get arraySubscripts(): IterableIterator<ModelicaSubscriptSyntaxNode> {
+    const declaration = this.declaration ?? null;
+    const componentClause = this.parent ?? null;
+    return (function* () {
+      yield* declaration?.arraySubscripts?.subscripts ?? [];
+      yield* componentClause?.arraySubscripts?.subscripts ?? [];
+    })();
+  }
+
   override get parent(): ModelicaComponentClauseSyntaxNode | null {
     return super.parent as ModelicaComponentClauseSyntaxNode | null;
   }

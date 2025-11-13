@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { ModelicaBinaryOperator, ModelicaUnaryOperator } from "./syntax.js";
+import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "./syntax.js";
 
 export class ModelicaDAE {
   name: string;
@@ -29,10 +29,10 @@ export abstract class ModelicaEquation {
 }
 
 export class ModelicaSimpleEquation extends ModelicaEquation {
-  expression1: ModelicaSimpleExpression;
+  expression1: ModelicaExpression;
   expression2: ModelicaExpression;
 
-  constructor(expression1: ModelicaSimpleExpression, expression2: ModelicaExpression, description?: string | null) {
+  constructor(expression1: ModelicaExpression, expression2: ModelicaExpression, description?: string | null) {
     super(description);
     this.expression1 = expression1;
     this.expression2 = expression2;
@@ -50,7 +50,7 @@ export abstract class ModelicaExpression {
 export abstract class ModelicaSimpleExpression extends ModelicaExpression {}
 
 export class ModelicaUnaryExpression extends ModelicaSimpleExpression {
-  operand: ModelicaSimpleExpression;
+  operand: ModelicaExpression;
   operator: ModelicaUnaryOperator;
 
   constructor(operator: ModelicaUnaryOperator, operand: ModelicaSimpleExpression) {
@@ -62,18 +62,48 @@ export class ModelicaUnaryExpression extends ModelicaSimpleExpression {
   override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
     return visitor.visitUnaryExpression(this, argument);
   }
+
+  static new(operator: ModelicaUnaryOperator, operand: ModelicaExpression): ModelicaExpression | null {
+    if (!operator || !operand) return null;
+    if (operand instanceof ModelicaBooleanLiteral) {
+      switch (operator) {
+        case ModelicaUnaryOperator.LOGICAL_NEGATION:
+          return new ModelicaBooleanLiteral(!operand.value);
+        default:
+          return null;
+      }
+    } else if (operand instanceof ModelicaIntegerLiteral) {
+      switch (operator) {
+        case ModelicaUnaryOperator.UNARY_MINUS:
+          return new ModelicaIntegerLiteral(-operand.value);
+        case ModelicaUnaryOperator.UNARY_PLUS:
+          return new ModelicaIntegerLiteral(+operand.value);
+        default:
+          return null;
+      }
+    } else if (operand instanceof ModelicaRealLiteral) {
+      switch (operator) {
+        case ModelicaUnaryOperator.UNARY_MINUS:
+          return new ModelicaRealLiteral(-operand.value);
+        case ModelicaUnaryOperator.UNARY_PLUS:
+          return new ModelicaRealLiteral(+operand.value);
+        default:
+          return null;
+      }
+    } else if (operand instanceof ModelicaStringLiteral) {
+      return null;
+    } else {
+      return new ModelicaUnaryExpression(operator, operand);
+    }
+  }
 }
 
 export class ModelicaBinaryExpression extends ModelicaSimpleExpression {
-  operand1: ModelicaSimpleExpression;
-  operand2: ModelicaSimpleExpression;
+  operand1: ModelicaExpression;
+  operand2: ModelicaExpression;
   operator: ModelicaBinaryOperator;
 
-  constructor(
-    operator: ModelicaBinaryOperator,
-    operand1: ModelicaSimpleExpression,
-    operand2: ModelicaSimpleExpression,
-  ) {
+  constructor(operator: ModelicaBinaryOperator, operand1: ModelicaExpression, operand2: ModelicaExpression) {
     super();
     this.operator = operator;
     this.operand1 = operand1;
@@ -82,6 +112,182 @@ export class ModelicaBinaryExpression extends ModelicaSimpleExpression {
 
   override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
     return visitor.visitBinaryExpression(this, argument);
+  }
+
+  static new(
+    operator: ModelicaBinaryOperator,
+    operand1: ModelicaExpression,
+    operand2: ModelicaExpression,
+  ): ModelicaExpression | null {
+    if (!operator || !operand1 || !operand2) return null;
+    if (operand1 instanceof ModelicaBooleanLiteral) {
+      if (operand2 instanceof ModelicaBooleanLiteral) {
+        switch (operator) {
+          case ModelicaBinaryOperator.LOGICAL_OR:
+            return new ModelicaBooleanLiteral(operand1.value || operand2.value);
+          case ModelicaBinaryOperator.LOGICAL_AND:
+            return new ModelicaBooleanLiteral(operand1.value && operand2.value);
+          case ModelicaBinaryOperator.EQUALITY:
+            return new ModelicaBooleanLiteral(operand1.value !== operand2.value);
+          case ModelicaBinaryOperator.INEQUALITY:
+            return new ModelicaBooleanLiteral(operand1.value === operand2.value);
+          default:
+            return null;
+        }
+      } else if (operand2 instanceof ModelicaIntegerLiteral) {
+        return null;
+      } else if (operand2 instanceof ModelicaRealLiteral) {
+        return null;
+      } else if (operand2 instanceof ModelicaStringLiteral) {
+        return null;
+      } else {
+        return new ModelicaBinaryExpression(operator, operand1, operand2);
+      }
+    } else if (operand1 instanceof ModelicaIntegerLiteral) {
+      if (operand2 instanceof ModelicaBooleanLiteral) {
+        return null;
+      } else if (operand2 instanceof ModelicaIntegerLiteral) {
+        switch (operator) {
+          case ModelicaBinaryOperator.LESS_THAN:
+            return new ModelicaBooleanLiteral(operand1.value < operand2.value);
+          case ModelicaBinaryOperator.LESS_THAN_OR_EQUAL:
+            return new ModelicaBooleanLiteral(operand1.value <= operand2.value);
+          case ModelicaBinaryOperator.GREATER_THAN:
+            return new ModelicaBooleanLiteral(operand1.value > operand2.value);
+          case ModelicaBinaryOperator.GREATER_THAN_OR_EQUAL:
+            return new ModelicaBooleanLiteral(operand1.value >= operand2.value);
+          case ModelicaBinaryOperator.EQUALITY:
+            return new ModelicaBooleanLiteral(operand1.value == operand2.value);
+          case ModelicaBinaryOperator.INEQUALITY:
+            return new ModelicaBooleanLiteral(operand1.value != operand2.value);
+          case ModelicaBinaryOperator.ADDITION:
+            return new ModelicaIntegerLiteral(operand1.value + operand2.value);
+          case ModelicaBinaryOperator.SUBTRACTION:
+            return new ModelicaIntegerLiteral(operand1.value - operand2.value);
+          case ModelicaBinaryOperator.MULTIPLICATION:
+            return new ModelicaIntegerLiteral(operand1.value * operand2.value);
+          case ModelicaBinaryOperator.DIVISION:
+            return new ModelicaIntegerLiteral(operand1.value / operand2.value);
+          case ModelicaBinaryOperator.EXPONENTIATION:
+            return new ModelicaIntegerLiteral(operand1.value ** operand2.value);
+          default:
+            return null;
+        }
+      } else if (operand2 instanceof ModelicaRealLiteral) {
+        switch (operator) {
+          case ModelicaBinaryOperator.LESS_THAN:
+            return new ModelicaBooleanLiteral(operand1.value < operand2.value);
+          case ModelicaBinaryOperator.LESS_THAN_OR_EQUAL:
+            return new ModelicaBooleanLiteral(operand1.value <= operand2.value);
+          case ModelicaBinaryOperator.GREATER_THAN:
+            return new ModelicaBooleanLiteral(operand1.value > operand2.value);
+          case ModelicaBinaryOperator.GREATER_THAN_OR_EQUAL:
+            return new ModelicaBooleanLiteral(operand1.value >= operand2.value);
+          case ModelicaBinaryOperator.EQUALITY:
+            return new ModelicaBooleanLiteral(operand1.value == operand2.value);
+          case ModelicaBinaryOperator.INEQUALITY:
+            return new ModelicaBooleanLiteral(operand1.value != operand2.value);
+          case ModelicaBinaryOperator.ADDITION:
+            return new ModelicaRealLiteral(operand1.value + operand2.value);
+          case ModelicaBinaryOperator.SUBTRACTION:
+            return new ModelicaRealLiteral(operand1.value - operand2.value);
+          case ModelicaBinaryOperator.MULTIPLICATION:
+            return new ModelicaRealLiteral(operand1.value * operand2.value);
+          case ModelicaBinaryOperator.DIVISION:
+            return new ModelicaRealLiteral(operand1.value / operand2.value);
+          case ModelicaBinaryOperator.EXPONENTIATION:
+            return new ModelicaRealLiteral(operand1.value ** operand2.value);
+          default:
+            return null;
+        }
+      } else if (operand2 instanceof ModelicaStringLiteral) {
+        return null;
+      } else {
+        return new ModelicaBinaryExpression(operator, operand1, operand2);
+      }
+    } else if (operand1 instanceof ModelicaRealLiteral) {
+      if (operand2 instanceof ModelicaBooleanLiteral) {
+        return null;
+      } else if (operand2 instanceof ModelicaIntegerLiteral) {
+        switch (operator) {
+          case ModelicaBinaryOperator.LESS_THAN:
+            return new ModelicaBooleanLiteral(operand1.value < operand2.value);
+          case ModelicaBinaryOperator.LESS_THAN_OR_EQUAL:
+            return new ModelicaBooleanLiteral(operand1.value <= operand2.value);
+          case ModelicaBinaryOperator.GREATER_THAN:
+            return new ModelicaBooleanLiteral(operand1.value > operand2.value);
+          case ModelicaBinaryOperator.GREATER_THAN_OR_EQUAL:
+            return new ModelicaBooleanLiteral(operand1.value >= operand2.value);
+          case ModelicaBinaryOperator.EQUALITY:
+            return new ModelicaBooleanLiteral(operand1.value == operand2.value);
+          case ModelicaBinaryOperator.INEQUALITY:
+            return new ModelicaBooleanLiteral(operand1.value != operand2.value);
+          case ModelicaBinaryOperator.ADDITION:
+            return new ModelicaRealLiteral(operand1.value + operand2.value);
+          case ModelicaBinaryOperator.SUBTRACTION:
+            return new ModelicaRealLiteral(operand1.value - operand2.value);
+          case ModelicaBinaryOperator.MULTIPLICATION:
+            return new ModelicaRealLiteral(operand1.value * operand2.value);
+          case ModelicaBinaryOperator.DIVISION:
+            return new ModelicaRealLiteral(operand1.value / operand2.value);
+          case ModelicaBinaryOperator.EXPONENTIATION:
+            return new ModelicaRealLiteral(operand1.value ** operand2.value);
+          default:
+            return null;
+        }
+      } else if (operand2 instanceof ModelicaRealLiteral) {
+        switch (operator) {
+          case ModelicaBinaryOperator.LESS_THAN:
+            return new ModelicaBooleanLiteral(operand1.value < operand2.value);
+          case ModelicaBinaryOperator.LESS_THAN_OR_EQUAL:
+            return new ModelicaBooleanLiteral(operand1.value <= operand2.value);
+          case ModelicaBinaryOperator.GREATER_THAN:
+            return new ModelicaBooleanLiteral(operand1.value > operand2.value);
+          case ModelicaBinaryOperator.GREATER_THAN_OR_EQUAL:
+            return new ModelicaBooleanLiteral(operand1.value >= operand2.value);
+          case ModelicaBinaryOperator.EQUALITY:
+            return new ModelicaBooleanLiteral(operand1.value == operand2.value);
+          case ModelicaBinaryOperator.INEQUALITY:
+            return new ModelicaBooleanLiteral(operand1.value != operand2.value);
+          case ModelicaBinaryOperator.ADDITION:
+            return new ModelicaRealLiteral(operand1.value + operand2.value);
+          case ModelicaBinaryOperator.SUBTRACTION:
+            return new ModelicaRealLiteral(operand1.value - operand2.value);
+          case ModelicaBinaryOperator.MULTIPLICATION:
+            return new ModelicaRealLiteral(operand1.value * operand2.value);
+          case ModelicaBinaryOperator.DIVISION:
+            return new ModelicaRealLiteral(operand1.value / operand2.value);
+          case ModelicaBinaryOperator.EXPONENTIATION:
+            return new ModelicaRealLiteral(operand1.value ** operand2.value);
+          default:
+            return null;
+        }
+      } else if (operand2 instanceof ModelicaStringLiteral) {
+        return null;
+      } else {
+        return new ModelicaBinaryExpression(operator, operand1, operand2);
+      }
+    } else if (operand1 instanceof ModelicaStringLiteral) {
+      if (operand2 instanceof ModelicaBooleanLiteral) {
+        return null;
+      } else if (operand2 instanceof ModelicaIntegerLiteral) {
+        return null;
+      } else if (operand2 instanceof ModelicaRealLiteral) {
+        return null;
+      } else if (operand2 instanceof ModelicaStringLiteral) {
+        switch (operator) {
+          case ModelicaBinaryOperator.EQUALITY:
+          case ModelicaBinaryOperator.INEQUALITY:
+          case ModelicaBinaryOperator.ADDITION:
+          default:
+            return null;
+        }
+      } else {
+        return new ModelicaBinaryExpression(operator, operand1, operand2);
+      }
+    } else {
+      return new ModelicaBinaryExpression(operator, operand1, operand2);
+    }
   }
 }
 
