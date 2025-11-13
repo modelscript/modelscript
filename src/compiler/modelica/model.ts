@@ -7,6 +7,7 @@ import { ModelicaInterpreter } from "./interpreter.js";
 import {
   ModelicaAnnotationClauseSyntaxNode,
   ModelicaClassDefinitionSyntaxNode,
+  ModelicaClassKind,
   ModelicaComponentClauseSyntaxNode,
   ModelicaComponentReferenceSyntaxNode,
   ModelicaCompoundImportClauseSyntaxNode,
@@ -15,9 +16,11 @@ import {
   ModelicaExpressionSyntaxNode,
   ModelicaExtendsClauseSyntaxNode,
   ModelicaImportClauseSyntaxNode,
+  ModelicaLongClassSpecifierSyntaxNode,
   ModelicaModificationArgumentSyntaxNode,
   ModelicaModificationExpressionSyntaxNode,
   ModelicaModificationSyntaxNode,
+  ModelicaShortClassSpecifierSyntaxNode,
   ModelicaSimpleImportClauseSyntaxNode,
   ModelicaStoredDefinitionSyntaxNode,
   ModelicaSubscriptSyntaxNode,
@@ -317,6 +320,7 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
   #qualifiedImports = new Map<string, ModelicaClassInstance>();
   #unqualifiedImports: ModelicaClassInstance[] = [];
   annotation: ModelicaAnnotationClassInstance | null = null;
+  classKind: ModelicaClassKind;
   declaredElements: ModelicaElement[] = [];
 
   constructor(
@@ -333,6 +337,7 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     this.#modification = modification ?? null;
     if (abstractSyntaxNode?.annotationClause)
       this.annotation = new ModelicaAnnotationClassInstance(this, abstractSyntaxNode.annotationClause);
+    this.classKind = abstractSyntaxNode?.classKind ?? ModelicaClassKind.CLASS;
   }
 
   get abstractSyntaxNode(): ModelicaClassDefinitionSyntaxNode | null {
@@ -351,7 +356,7 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
 
   clone(modification?: ModelicaModification | null): ModelicaClassInstance {
     const mergedModification = ModelicaModification.merge(this.#modification, modification);
-    const classInstance = new ModelicaClassInstance(
+    const classInstance = ModelicaClassInstance.new(
       this.library,
       this.parent,
       this.abstractSyntaxNode,
@@ -382,7 +387,7 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     this.#unqualifiedImports = [];
     for (const elementSyntaxNode of this.abstractSyntaxNode?.elements ?? []) {
       if (elementSyntaxNode instanceof ModelicaClassDefinitionSyntaxNode) {
-        this.declaredElements.push(new ModelicaClassInstance(this.library, this, elementSyntaxNode));
+        this.declaredElements.push(ModelicaClassInstance.new(this.library, this, elementSyntaxNode));
       } else if (elementSyntaxNode instanceof ModelicaComponentClauseSyntaxNode) {
         for (const componentDeclarationSyntaxNode of elementSyntaxNode.componentDeclarations) {
           this.declaredElements.push(new ModelicaComponentInstance(this.library, this, componentDeclarationSyntaxNode));
@@ -438,6 +443,65 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
 
   get unqualifiedImports(): ModelicaClassInstance[] {
     return this.#unqualifiedImports;
+  }
+
+  static new(
+    library: ModelicaLibrary | null,
+    parent: ModelicaNode | null,
+    abstractSyntaxNode?: ModelicaClassDefinitionSyntaxNode | null,
+    modification?: ModelicaModification | null,
+  ): ModelicaClassInstance {
+    if (abstractSyntaxNode?.classSpecifier instanceof ModelicaShortClassSpecifierSyntaxNode) {
+      return new ModelicaShortClassInstance(library, parent, abstractSyntaxNode, modification);
+    } else if (abstractSyntaxNode?.classSpecifier instanceof ModelicaLongClassSpecifierSyntaxNode) {
+      return new ModelicaClassInstance(library, parent, abstractSyntaxNode, modification);
+    } else {
+      throw new Error();
+    }
+  }
+}
+
+export class ModelicaShortClassInstance extends ModelicaClassInstance {
+  classInstance: ModelicaClassInstance | null = null;
+
+  override clone(modification?: ModelicaModification | null): ModelicaClassInstance {
+    if (!this.instantiated && !this.instantiating) this.instantiate();
+    if (!this.classInstance) throw new Error();
+    const mergedModification = ModelicaModification.merge(this.modification, modification ?? null);
+    return this.classInstance.clone(mergedModification);
+  }
+
+  override get elements(): IterableIterator<ModelicaElement> {
+    if (!this.instantiated && !this.instantiating) this.instantiate();
+    const classInstance = this.classInstance;
+    return (function* () {
+      if (classInstance) {
+        yield* classInstance.elements;
+      }
+    })();
+  }
+
+  override instantiate(): void {
+    if (this.instantiated) return;
+    if (this.instantiating)
+      throw Error("reentrant error: short class '" + this.name + "' is already being instantiated");
+    this.instantiating = true;
+    this.declaredElements = [];
+    const classSpecifier = this.abstractSyntaxNode?.classSpecifier as ModelicaShortClassSpecifierSyntaxNode;
+    const arraySubscripts = [...(classSpecifier?.arraySubscripts?.subscripts ?? [])];
+    const classInstance = this.resolveTypeSpecifier(classSpecifier.typeSpecifier);
+    if (classInstance instanceof ModelicaClassInstance) {
+      if (arraySubscripts.length === 0) this.classInstance = classInstance.clone(this.modification);
+      else
+        this.classInstance = new ModelicaArrayClassInstance(
+          this.library,
+          this,
+          classInstance,
+          arraySubscripts,
+          this.modification,
+        );
+    }
+    this.instantiated = true;
   }
 }
 
@@ -741,6 +805,19 @@ export class ModelicaArrayClassInstance extends ModelicaClassInstance {
     this.#elementClassInstance = elementClassInstance;
     this.#arraySubscripts = arraySubscripts;
     this.instantiate();
+  }
+
+  override clone(modification?: ModelicaModification | null): ModelicaArrayClassInstance {
+    const mergedModification = ModelicaModification.merge(this.modification, modification);
+    const classInstance = new ModelicaArrayClassInstance(
+      this.library,
+      this.parent,
+      this.#elementClassInstance,
+      this.#arraySubscripts,
+      mergedModification,
+    );
+    classInstance.instantiate();
+    return classInstance;
   }
 
   override instantiate(): void {
