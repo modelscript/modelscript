@@ -165,6 +165,7 @@ module.exports = grammar({
 
     ElementModification: ($) =>
       seq(
+        optional(field("each", "each")),
         field("name", $.Name),
         optional(field("modification", $.Modification)),
         optional(field("description", $.Description)),
@@ -223,7 +224,8 @@ module.exports = grammar({
         prec.right(PREC.EXPONENTIATION, binaryExp(".^", $._PrimaryExpression, $._PrimaryExpression)),
       ),
 
-    _PrimaryExpression: ($) => choice($._Literal, $.ComponentReference, $.ParenthesizedExpression),
+    _PrimaryExpression: ($) =>
+      choice($._Literal, $.ComponentReference, $.ParenthesizedExpression, $.ArrayConcatenation, $.ArrayConstructor),
 
     _Literal: ($) => choice($._UnsignedNumberLiteral, $.BOOLEAN, $.STRING),
 
@@ -238,9 +240,16 @@ module.exports = grammar({
     ComponentReference: ($) =>
       seq(optional(field("global", ".")), commaSep1(field("component", $.ComponentReferenceComponent), ".")),
 
-    ComponentReferenceComponent: ($) => seq(field("identifier", $.IDENT)),
+    ComponentReferenceComponent: ($) =>
+      seq(field("identifier", $.IDENT), optional(field("arraySubscripts", $.ArraySubscripts))),
+
+    ArrayConcatenation: ($) => seq("[", commaSep1(field("expressionList", $.ExpressionList), ";"), "]"),
+
+    ArrayConstructor: ($) => seq("{", optional(choice(field("expressionList", $.ExpressionList))), "}"),
 
     ParenthesizedExpression: ($) => seq("(", commaSep(optional(field("expression", $._Expression)), ","), ")"),
+
+    ExpressionList: ($) => commaSep1(field("expression", $._Expression)),
 
     ArraySubscripts: ($) => seq("[", commaSep1(field("subscript", $.Subscript)), "]"),
 
