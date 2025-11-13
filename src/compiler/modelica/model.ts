@@ -703,6 +703,7 @@ export class ModelicaBooleanClassInstance extends ModelicaPredefinedClassInstanc
   }
 
   override clone(modification?: ModelicaModification | null): ModelicaBooleanClassInstance {
+    if (!this.instantiated && !this.instantiating) this.instantiate();
     const mergedModification = ModelicaModification.merge(this.modification, modification);
     const classInstance = new ModelicaBooleanClassInstance(
       this.library,
@@ -728,6 +729,7 @@ export class ModelicaIntegerClassInstance extends ModelicaPredefinedClassInstanc
   }
 
   override clone(modification?: ModelicaModification | null): ModelicaBooleanClassInstance {
+    if (!this.instantiated && !this.instantiating) this.instantiate();
     const mergedModification = ModelicaModification.merge(this.modification, modification);
     const classInstance = new ModelicaIntegerClassInstance(
       this.library,
@@ -743,7 +745,7 @@ export class ModelicaRealClassInstance extends ModelicaPredefinedClassInstance {
   constructor(
     library: ModelicaLibrary | null,
     parent: ModelicaNode | null,
-    value?: ModelicaExpressionSyntaxNode | null,
+    value?: ModelicaExpressionSyntaxNode | ModelicaExpression | null,
   ) {
     super(library, parent, "Real", value);
   }
@@ -753,8 +755,9 @@ export class ModelicaRealClassInstance extends ModelicaPredefinedClassInstance {
   }
 
   override clone(modification?: ModelicaModification | null): ModelicaBooleanClassInstance {
+    if (!this.instantiated && !this.instantiating) this.instantiate();
     const mergedModification = ModelicaModification.merge(this.modification, modification);
-    const classInstance = new ModelicaIntegerClassInstance(
+    const classInstance = new ModelicaRealClassInstance(
       this.library,
       this.parent,
       mergedModification?.expression ?? mergedModification?.modificationExpression?.expression,
@@ -778,6 +781,7 @@ export class ModelicaStringClassInstance extends ModelicaPredefinedClassInstance
   }
 
   override clone(modification?: ModelicaModification | null): ModelicaBooleanClassInstance {
+    if (!this.instantiated && !this.instantiating) this.instantiate();
     const mergedModification = ModelicaModification.merge(this.modification, modification);
     const classInstance = new ModelicaIntegerClassInstance(
       this.library,
@@ -808,6 +812,7 @@ export class ModelicaArrayClassInstance extends ModelicaClassInstance {
   }
 
   override clone(modification?: ModelicaModification | null): ModelicaArrayClassInstance {
+    if (!this.instantiated && !this.instantiating) this.instantiate();
     const mergedModification = ModelicaModification.merge(this.modification, modification);
     const classInstance = new ModelicaArrayClassInstance(
       this.library,
@@ -820,16 +825,16 @@ export class ModelicaArrayClassInstance extends ModelicaClassInstance {
     return classInstance;
   }
 
+  get elementClassInstance(): ModelicaClassInstance | null {
+    return this.#elementClassInstance;
+  }
+
   override instantiate(): void {
     if (this.instantiated) return;
     if (this.instantiating) throw Error("reentrant error: array class is already being instantiated");
     this.instantiating = true;
     this.declaredElements = [];
     this.shape = [];
-    if (!this.#elementClassInstance || this.#arraySubscripts.length == 0) {
-      this.instantiated = true;
-      return;
-    }
     for (const arraySubscript of this.#arraySubscripts) {
       if (arraySubscript.flexible || !arraySubscript.expression) {
         this.shape.push(new ModelicaIntegerLiteral(-1));
@@ -838,6 +843,20 @@ export class ModelicaArrayClassInstance extends ModelicaClassInstance {
       const length = arraySubscript.expression.accept(new ModelicaInterpreter(), this);
       if (length instanceof ModelicaIntegerLiteral) this.shape.push(length);
       else this.shape.push(new ModelicaIntegerLiteral(-1));
+    }
+    let elementClassInstance = this.#elementClassInstance;
+    if (elementClassInstance instanceof ModelicaShortClassInstance) {
+      elementClassInstance.instantiate();
+      elementClassInstance = elementClassInstance.classInstance;
+    }
+    if (elementClassInstance instanceof ModelicaArrayClassInstance) {
+      elementClassInstance.instantiate();
+      this.shape.push(...elementClassInstance.shape);
+      elementClassInstance = elementClassInstance.elementClassInstance;
+    }
+    if (!elementClassInstance || this.#arraySubscripts.length == 0) {
+      this.instantiated = true;
+      return;
     }
     const expression =
       this.modification?.expression ??
@@ -848,9 +867,7 @@ export class ModelicaArrayClassInstance extends ModelicaClassInstance {
         const length = this.shape[i]?.value ?? -1;
         for (let k = 1; k <= length; k++) {
           const value = expression instanceof ModelicaArray ? expression.elements[c] : expression;
-          this.declaredElements.push(
-            this.#elementClassInstance.clone(new ModelicaModification(this, [], null, null, value)),
-          );
+          this.declaredElements.push(elementClassInstance.clone(new ModelicaModification(this, [], null, null, value)));
           c++;
         }
       }
