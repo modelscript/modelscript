@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
+  ModelicaArray,
   ModelicaBinaryExpression,
   ModelicaBooleanLiteral,
   ModelicaBooleanVariable,
@@ -29,6 +30,8 @@ import {
   type ModelicaClassInstance,
 } from "./model.js";
 import {
+  ModelicaArrayConcatenationSyntaxNode,
+  ModelicaArrayConstructorSyntaxNode,
   ModelicaBinaryExpressionSyntaxNode,
   ModelicaBooleanLiteralSyntaxNode,
   ModelicaComponentReferenceSyntaxNode,
@@ -64,13 +67,15 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
 
   visitComponentInstance(node: ModelicaComponentInstance, args: [string, ModelicaDAE]): void {
     const name = args[0] === "" ? (node.name ?? "?") : args[0] + "." + node.name;
+    const value =
+      node.modification?.expression ??
+      node.modification?.modificationExpression?.expression?.accept(new ModelicaSyntaxFlattener(), [
+        args[0],
+        node.classInstance,
+        args[1],
+      ]) ??
+      null;
     if (node.classInstance instanceof ModelicaPredefinedClassInstance) {
-      const value =
-        node.modification?.modificationExpression?.expression?.accept(new ModelicaSyntaxFlattener(), [
-          args[0],
-          node.classInstance,
-          args[1],
-        ]) ?? null;
       if (node.classInstance instanceof ModelicaBooleanClassInstance) {
         args[1].variables.push(
           new ModelicaBooleanVariable(name, value, node.modification?.description ?? node.description),
@@ -91,20 +96,24 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     } else if (node.classInstance instanceof ModelicaArrayClassInstance) {
       const shape = node.classInstance.shape;
       const index = new Array(shape.length).fill(1);
+      let c = 0;
       for (const declaredElement of node.classInstance.declaredElements) {
         if (declaredElement instanceof ModelicaPredefinedClassInstance) {
           const elementName = name + "[" + index.join(", ") + "]";
-          const value =
-            declaredElement.modification?.modificationExpression?.expression?.accept(new ModelicaSyntaxFlattener(), [
-              args[0],
-              node.classInstance,
-              args[1],
-            ]) ?? null;
+          const declaredElementValue =
+            (value instanceof ModelicaArray
+              ? value.elements[c]
+              : (value ??
+                declaredElement.modification?.expression ??
+                declaredElement.modification?.modificationExpression?.expression?.accept(
+                  new ModelicaSyntaxFlattener(),
+                  [args[0], node.classInstance, args[1]],
+                ))) ?? null;
           if (declaredElement instanceof ModelicaBooleanClassInstance) {
             args[1].variables.push(
               new ModelicaBooleanVariable(
                 elementName,
-                value,
+                declaredElementValue,
                 declaredElement.modification?.description ?? declaredElement.description,
               ),
             );
@@ -112,7 +121,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
             args[1].variables.push(
               new ModelicaIntegerVariable(
                 elementName,
-                value,
+                declaredElementValue,
                 declaredElement.modification?.description ?? declaredElement.description,
               ),
             );
@@ -120,7 +129,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
             args[1].variables.push(
               new ModelicaRealVariable(
                 elementName,
-                value,
+                declaredElementValue,
                 declaredElement.modification?.description ?? declaredElement.description,
               ),
             );
@@ -128,7 +137,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
             args[1].variables.push(
               new ModelicaStringVariable(
                 elementName,
-                value,
+                declaredElementValue,
                 declaredElement.modification?.description ?? declaredElement.description,
               ),
             );
@@ -137,6 +146,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           declaredElement?.accept(this, [name, args[1]]);
         }
         if (!this.incrementIndex(index, shape)) break;
+        c++;
       }
     } else {
       node.classInstance?.accept(this, [name, args[1]]);
@@ -169,6 +179,33 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<
   ModelicaExpression,
   [string, ModelicaClassInstance, ModelicaDAE]
 > {
+  visitArrayConcatenation(
+    node: ModelicaArrayConcatenationSyntaxNode,
+    args: [string, ModelicaClassInstance, ModelicaDAE],
+  ): ModelicaExpression | null {
+    const elements: ModelicaExpression[] = [];
+    const shape = [node.expressionLists.length, node.expressionLists[0]?.expressions?.length ?? 0];
+    for (const expressionList of node.expressionLists ?? []) {
+      for (const expression of expressionList.expressions ?? []) {
+        const element = expression.accept(this, args);
+        if (element != null) elements.push(element);
+      }
+    }
+    return new ModelicaArray(shape, elements);
+  }
+
+  visitArrayConstructor(
+    node: ModelicaArrayConstructorSyntaxNode,
+    args: [string, ModelicaClassInstance, ModelicaDAE],
+  ): ModelicaExpression | null {
+    const elements: ModelicaExpression[] = [];
+    for (const expression of node.expressionList?.expressions ?? []) {
+      const element = expression.accept(this, args);
+      if (element != null) elements.push(element);
+    }
+    return new ModelicaArray([elements.length], elements);
+  }
+
   visitBinaryExpression(
     node: ModelicaBinaryExpressionSyntaxNode,
     args: [string, ModelicaClassInstance, ModelicaDAE],

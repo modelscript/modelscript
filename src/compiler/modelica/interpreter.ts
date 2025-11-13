@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
+  ModelicaArray,
   ModelicaBinaryExpression,
   ModelicaBooleanLiteral,
   ModelicaIntegerLiteral,
@@ -11,6 +12,8 @@ import {
 } from "./dae.js";
 import type { ModelicaNode } from "./model.js";
 import {
+  ModelicaArrayConcatenationSyntaxNode,
+  ModelicaArrayConstructorSyntaxNode,
   ModelicaBinaryExpressionSyntaxNode,
   ModelicaBooleanLiteralSyntaxNode,
   ModelicaComponentReferenceComponentSyntaxNode,
@@ -24,6 +27,30 @@ import {
 } from "./syntax.js";
 
 export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpression, ModelicaNode> {
+  visitArrayConcatenation(
+    node: ModelicaArrayConcatenationSyntaxNode,
+    argument: ModelicaNode,
+  ): ModelicaExpression | null {
+    const elements: ModelicaExpression[] = [];
+    const shape = [node.expressionLists.length, node.expressionLists[0]?.expressions?.length ?? 0];
+    for (const expressionList of node.expressionLists ?? []) {
+      for (const expression of expressionList.expressions ?? []) {
+        const element = expression.accept(this, argument);
+        if (element != null) elements.push(element);
+      }
+    }
+    return new ModelicaArray(shape, elements);
+  }
+
+  visitArrayConstructor(node: ModelicaArrayConstructorSyntaxNode, argument: ModelicaNode): ModelicaExpression | null {
+    const elements: ModelicaExpression[] = [];
+    for (const expression of node.expressionList?.expressions ?? []) {
+      const element = expression.accept(this, argument);
+      if (element != null) elements.push(element);
+    }
+    return new ModelicaArray([elements.length], elements);
+  }
+
   visitBinaryExpression(node: ModelicaBinaryExpressionSyntaxNode, scope: ModelicaNode): ModelicaExpression | null {
     const operand1 = node.operand1?.accept(this, scope);
     const operand2 = node.operand2?.accept(this, scope);

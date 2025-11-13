@@ -293,6 +293,21 @@ export class ModelicaBinaryExpression extends ModelicaSimpleExpression {
 
 export abstract class ModelicaPrimaryExpression extends ModelicaSimpleExpression {}
 
+export class ModelicaArray extends ModelicaPrimaryExpression {
+  elements: ModelicaExpression[];
+  shape: number[];
+
+  constructor(shape: number[], elements: ModelicaExpression[]) {
+    super();
+    this.shape = shape;
+    this.elements = elements;
+  }
+
+  override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
+    return visitor.visitArray(this, argument);
+  }
+}
+
 export abstract class ModelicaLiteral extends ModelicaPrimaryExpression {}
 
 export class ModelicaBooleanLiteral extends ModelicaLiteral {
@@ -385,6 +400,8 @@ export class ModelicaStringVariable extends ModelicaVariable {
 }
 
 export interface IModelicaDAEVisitor<R, A> {
+  visitArray(node: ModelicaArray, argument?: A): R;
+
   visitBinaryExpression(node: ModelicaBinaryExpression, argument?: A): R;
 
   visitBooleanLiteral(node: ModelicaBooleanLiteral, argument?: A): R;
@@ -411,6 +428,10 @@ export interface IModelicaDAEVisitor<R, A> {
 }
 
 export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void, A> {
+  visitArray(node: ModelicaArray, argument?: A): void {
+    for (const element of node.elements) element.accept(this, argument);
+  }
+
   visitBinaryExpression(node: ModelicaBinaryExpression, argument?: A): void {
     node.operand1.accept(this, argument);
     node.operand2.accept(this, argument);
@@ -460,6 +481,15 @@ export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void,
 }
 
 export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
+  visitArray(node: ModelicaArray): void {
+    process.stdout.write("{");
+    for (let i = 0; i < node.elements.length; i++) {
+      node.elements[i]?.accept(this);
+      if (i < node.elements.length - 1) process.stdout.write(", ");
+    }
+    process.stdout.write("}");
+  }
+
   visitBinaryExpression(node: ModelicaBinaryExpression): void {
     process.stdout.write("(");
     node.operand1.accept(this);
