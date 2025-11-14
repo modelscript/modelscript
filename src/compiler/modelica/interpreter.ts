@@ -4,20 +4,20 @@ import {
   ModelicaArray,
   ModelicaBinaryExpression,
   ModelicaBooleanLiteral,
+  ModelicaExpression,
   ModelicaIntegerLiteral,
   ModelicaRealLiteral,
   ModelicaStringLiteral,
   ModelicaUnaryExpression,
-  type ModelicaExpression,
 } from "./dae.js";
-import type { ModelicaNode } from "./model.js";
+import { ModelicaEnumerationClassInstance, ModelicaPredefinedClassInstance, type ModelicaNode } from "./model.js";
 import {
   ModelicaArrayConcatenationSyntaxNode,
   ModelicaArrayConstructorSyntaxNode,
   ModelicaBinaryExpressionSyntaxNode,
   ModelicaBooleanLiteralSyntaxNode,
-  ModelicaComponentReferenceComponentSyntaxNode,
   ModelicaComponentReferenceSyntaxNode,
+  ModelicaExpressionSyntaxNode,
   ModelicaParenthesizedExpressionSyntaxNode,
   ModelicaStringLiteralSyntaxNode,
   ModelicaSyntaxVisitor,
@@ -64,17 +64,16 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     return null;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   visitComponentReference(node: ModelicaComponentReferenceSyntaxNode, scope: ModelicaNode): ModelicaExpression | null {
-    return null;
-  }
-
-  visitComponentReferenceComponent(
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    node: ModelicaComponentReferenceComponentSyntaxNode,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    scope: ModelicaNode,
-  ): ModelicaExpression | null {
+    const namedElement = scope.resolveComponentReference(node);
+    if (!namedElement) return null;
+    if (namedElement instanceof ModelicaPredefinedClassInstance) {
+      if (namedElement.value instanceof ModelicaExpression) return namedElement.value;
+      if (namedElement.value instanceof ModelicaExpressionSyntaxNode) return namedElement.value.accept(this, scope);
+      return null;
+    } else if (namedElement instanceof ModelicaEnumerationClassInstance) {
+      return namedElement.value;
+    }
     return null;
   }
 

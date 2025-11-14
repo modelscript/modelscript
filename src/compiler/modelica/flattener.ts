@@ -6,6 +6,7 @@ import {
   ModelicaBooleanLiteral,
   ModelicaBooleanVariable,
   ModelicaDAE,
+  ModelicaEnumerationVariable,
   ModelicaExpression,
   ModelicaIntegerLiteral,
   ModelicaIntegerVariable,
@@ -21,6 +22,7 @@ import {
   ModelicaBooleanClassInstance,
   ModelicaComponentInstance,
   ModelicaEntity,
+  ModelicaEnumerationClassInstance,
   ModelicaExtendsClassInstance,
   ModelicaIntegerClassInstance,
   ModelicaModelVisitor,
@@ -93,12 +95,24 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           new ModelicaStringVariable(name, value, node.modification?.description ?? node.description),
         );
       }
+    } else if (node.classInstance instanceof ModelicaEnumerationClassInstance) {
+      args[1].variables.push(
+        new ModelicaEnumerationVariable(
+          name,
+          node.classInstance.enumerationLiterals,
+          value,
+          node.modification?.description ?? node.description,
+        ),
+      );
     } else if (node.classInstance instanceof ModelicaArrayClassInstance) {
       const shape = node.classInstance.shape;
       const index = new Array(shape.length).fill(1);
       let c = 0;
       for (const declaredElement of node.classInstance.declaredElements) {
-        if (declaredElement instanceof ModelicaPredefinedClassInstance) {
+        if (
+          declaredElement instanceof ModelicaPredefinedClassInstance ||
+          declaredElement instanceof ModelicaEnumerationClassInstance
+        ) {
           const elementName = name + "[" + index.join(", ") + "]";
           const declaredElementValue =
             (value instanceof ModelicaArray
@@ -137,6 +151,15 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
             args[1].variables.push(
               new ModelicaStringVariable(
                 elementName,
+                declaredElementValue,
+                declaredElement.modification?.description ?? declaredElement.description,
+              ),
+            );
+          } else if (declaredElement instanceof ModelicaEnumerationClassInstance) {
+            args[1].variables.push(
+              new ModelicaEnumerationVariable(
+                elementName,
+                declaredElement.enumerationLiterals,
                 declaredElementValue,
                 declaredElement.modification?.description ?? declaredElement.description,
               ),
@@ -228,8 +251,15 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<
   ): ModelicaExpression | null {
     const name =
       (args[0] === "" ? "" : args[0] + ".") + node.components.map((c) => c.identifier?.value ?? "<ERROR>").join(".");
-    for (const variable of args[2].variables) {
-      if (variable.name === name) return variable;
+    if (args[1] instanceof ModelicaEnumerationClassInstance) {
+      for (const enumerationLiteral of args[1].enumerationLiterals ?? []) {
+        if (enumerationLiteral.stringValue === node.components?.[(node.components?.length ?? 1) - 1]?.identifier?.value)
+          return enumerationLiteral;
+      }
+    } else {
+      for (const variable of args[2].variables) {
+        if (variable.name === name) return variable;
+      }
     }
     return null;
   }

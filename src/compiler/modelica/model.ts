@@ -2,7 +2,7 @@
 
 import type { Context } from "../context.js";
 import { ANNOTATION } from "./annotation.js";
-import { ModelicaArray, ModelicaExpression, ModelicaIntegerLiteral } from "./dae.js";
+import { ModelicaArray, ModelicaEnumerationLiteral, ModelicaExpression, ModelicaIntegerLiteral } from "./dae.js";
 import { ModelicaInterpreter } from "./interpreter.js";
 import {
   ModelicaAnnotationClauseSyntaxNode,
@@ -74,7 +74,7 @@ export abstract class ModelicaNode {
 
   resolveComponentReference(
     componentReference: ModelicaComponentReferenceSyntaxNode | null | undefined,
-  ): ModelicaComponentInstance | null {
+  ): ModelicaNamedElement | null {
     if (!componentReference) return null;
     const components = componentReference.components;
     if (components.length === 0) return null;
@@ -84,8 +84,7 @@ export abstract class ModelicaNode {
       element = element.resolveSimpleName(components[i]?.identifier, false, true);
       if (element == null) return null;
     }
-    if (element instanceof ModelicaComponentInstance) return element;
-    return null;
+    return element;
   }
 
   resolveName(name: ModelicaNameSyntaxNode | null | undefined, global = false): ModelicaNamedElement | null {
@@ -121,6 +120,7 @@ export abstract class ModelicaNode {
         }
       }
       if (!encapsulated) scope = scope.parent;
+      else break;
     }
     switch (simpleName) {
       case "Boolean":
@@ -452,12 +452,99 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     modification?: ModelicaModification | null,
   ): ModelicaClassInstance {
     if (abstractSyntaxNode?.classSpecifier instanceof ModelicaShortClassSpecifierSyntaxNode) {
-      return new ModelicaShortClassInstance(library, parent, abstractSyntaxNode, modification);
+      if (abstractSyntaxNode.classSpecifier.enumeration) {
+        return new ModelicaEnumerationClassInstance(library, parent, abstractSyntaxNode, modification);
+      } else {
+        return new ModelicaShortClassInstance(library, parent, abstractSyntaxNode, modification);
+      }
     } else if (abstractSyntaxNode?.classSpecifier instanceof ModelicaLongClassSpecifierSyntaxNode) {
       return new ModelicaClassInstance(library, parent, abstractSyntaxNode, modification);
     } else {
       throw new Error();
     }
+  }
+}
+
+export class ModelicaEnumerationClassInstance extends ModelicaClassInstance {
+  enumerationLiterals: ModelicaEnumerationLiteral[] | null;
+  value: ModelicaEnumerationLiteral | null;
+
+  constructor(
+    library: ModelicaLibrary | null,
+    parent: ModelicaNode | null,
+    abstractSyntaxNode?: ModelicaClassDefinitionSyntaxNode | null,
+    modification?: ModelicaModification | null,
+    enumerationLiterals?: ModelicaEnumerationLiteral[] | null,
+    value?: ModelicaEnumerationLiteral | null,
+  ) {
+    super(library, parent, abstractSyntaxNode, modification);
+    this.enumerationLiterals = enumerationLiterals ?? null;
+    this.value = value ?? null;
+  }
+
+  override clone(modification?: ModelicaModification | null): ModelicaClassInstance {
+    if (!this.instantiated && !this.instantiating) this.instantiate();
+    const mergedModification = ModelicaModification.merge(this.modification, modification ?? null);
+    const classInstance = new ModelicaEnumerationClassInstance(
+      this.library,
+      this.parent,
+      this.abstractSyntaxNode,
+      mergedModification,
+      this.enumerationLiterals,
+      this.value,
+    );
+    classInstance.instantiate();
+    return classInstance;
+  }
+
+  override get elements(): IterableIterator<ModelicaElement> {
+    if (!this.instantiated && !this.instantiating) this.instantiate();
+    // eslint-disable-next-line @typescript-eslint/no-empty-function
+    return (function* () {})();
+  }
+
+  override instantiate(): void {
+    if (this.instantiated) return;
+    if (this.instantiating)
+      throw Error("reentrant error: enumeration class '" + this.name + "' is already being instantiated");
+    this.instantiating = true;
+    this.declaredElements = [];
+    const classSpecifier = this.abstractSyntaxNode?.classSpecifier;
+    if (!(classSpecifier instanceof ModelicaShortClassSpecifierSyntaxNode) || !classSpecifier.enumeration) {
+      this.instantiated = true;
+      return;
+    }
+    if (!this.enumerationLiterals) {
+      let i = 1;
+      this.enumerationLiterals = [];
+      for (const enumerationLiteral of classSpecifier.enumerationLiterals) {
+        if (enumerationLiteral.identifier?.value) {
+          this.enumerationLiterals.push(new ModelicaEnumerationLiteral(i, enumerationLiteral.identifier.value));
+          i++;
+        }
+      }
+    }
+    const expression =
+      this.modification?.expression ??
+      this.modification?.modificationExpression?.expression?.accept(new ModelicaInterpreter(), this);
+    if (expression instanceof ModelicaEnumerationLiteral) this.value = expression;
+    this.instantiated = true;
+  }
+
+  override resolveSimpleName(
+    identifier: ModelicaIdentifierSyntaxNode | null | undefined,
+    global = false,
+    encapsulated = false,
+  ): ModelicaNamedElement | null {
+    const simpleName = identifier?.value;
+    if (!simpleName) return null;
+    if (!this.instantiated && !this.instantiating) this.instantiate();
+    for (const enumerationLiteral of this.enumerationLiterals ?? []) {
+      if (enumerationLiteral.stringValue === identifier.value) {
+        return this.clone(new ModelicaModification(this, [], null, null, enumerationLiteral));
+      }
+    }
+    return super.resolveSimpleName(identifier, global, encapsulated);
   }
 }
 
@@ -495,7 +582,7 @@ export class ModelicaShortClassInstance extends ModelicaClassInstance {
       else
         this.classInstance = new ModelicaArrayClassInstance(
           this.library,
-          this,
+          this.parent,
           classInstance,
           arraySubscripts,
           this.modification,
@@ -848,6 +935,8 @@ export class ModelicaArrayClassInstance extends ModelicaClassInstance {
     if (elementClassInstance instanceof ModelicaShortClassInstance) {
       elementClassInstance.instantiate();
       elementClassInstance = elementClassInstance.classInstance;
+    } else if (elementClassInstance instanceof ModelicaEnumerationClassInstance) {
+      elementClassInstance.instantiate();
     }
     if (elementClassInstance instanceof ModelicaArrayClassInstance) {
       elementClassInstance.instantiate();

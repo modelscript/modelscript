@@ -362,6 +362,21 @@ export class ModelicaStringLiteral extends ModelicaLiteral {
   }
 }
 
+export class ModelicaEnumerationLiteral extends ModelicaLiteral {
+  ordinalValue: number;
+  stringValue: string;
+
+  constructor(ordinalValue: number, stringValue: string) {
+    super();
+    this.ordinalValue = ordinalValue;
+    this.stringValue = stringValue;
+  }
+
+  override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
+    return visitor.visitEnumerationLiteral(this, argument);
+  }
+}
+
 export abstract class ModelicaVariable extends ModelicaPrimaryExpression {
   name: string;
   description: string | null;
@@ -399,6 +414,24 @@ export class ModelicaStringVariable extends ModelicaVariable {
   }
 }
 
+export class ModelicaEnumerationVariable extends ModelicaVariable {
+  enumerationLiterals: ModelicaEnumerationLiteral[];
+
+  constructor(
+    name: string,
+    enumerationLiterals: ModelicaEnumerationLiteral[] | null,
+    value: ModelicaExpression | null,
+    description?: string | null,
+  ) {
+    super(name, value, description);
+    this.enumerationLiterals = enumerationLiterals ?? [];
+  }
+
+  override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
+    return visitor.visitEnumerationVariable(this, argument);
+  }
+}
+
 export interface IModelicaDAEVisitor<R, A> {
   visitArray(node: ModelicaArray, argument?: A): R;
 
@@ -409,6 +442,10 @@ export interface IModelicaDAEVisitor<R, A> {
   visitBooleanVariable(node: ModelicaBooleanVariable, argument?: A): R;
 
   visitDAE(node: ModelicaDAE, argument?: A): R;
+
+  visitEnumerationLiteral(node: ModelicaEnumerationLiteral, argument?: A): R;
+
+  visitEnumerationVariable(node: ModelicaEnumerationVariable, argument?: A): R;
 
   visitIntegerLiteral(node: ModelicaIntegerLiteral, argument?: A): R;
 
@@ -448,6 +485,12 @@ export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void,
     for (const variable of node.variables) variable.accept(this, argument);
     for (const equation of node.equations) equation.accept(this, argument);
   }
+
+  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
+  visitEnumerationLiteral(node: ModelicaEnumerationLiteral, argument?: A): void {}
+
+  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
+  visitEnumerationVariable(node: ModelicaEnumerationVariable, argument?: A): void {}
 
   // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
   visitIntegerLiteral(node: ModelicaIntegerLiteral, argument?: A): void {}
@@ -519,6 +562,10 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
         process.stdout.write("  Real ");
       } else if (variable instanceof ModelicaStringVariable) {
         process.stdout.write("  String ");
+      } else if (variable instanceof ModelicaEnumerationVariable) {
+        process.stdout.write(
+          "  enumeration(" + variable.enumerationLiterals.map((e) => '"' + e.stringValue + '"').join(", ") + ") ",
+        );
       } else {
         throw new Error("invalid variable");
       }
@@ -533,6 +580,14 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     console.log("equation");
     for (const equation of node.equations) equation.accept(this);
     console.log("end " + node.name + ";");
+  }
+
+  visitEnumerationLiteral(node: ModelicaEnumerationLiteral): void {
+    process.stdout.write(String('"' + node.stringValue + '"'));
+  }
+
+  visitEnumerationVariable(node: ModelicaEnumerationVariable): void {
+    process.stdout.write(String(node.name));
   }
 
   visitIntegerLiteral(node: ModelicaIntegerLiteral): void {
