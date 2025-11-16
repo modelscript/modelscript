@@ -221,6 +221,24 @@ export abstract class ModelicaSyntaxNode implements IModelicaSyntaxNode {
           concreteSyntaxNode,
           abstractSyntaxNode as IModelicaExtendsClauseSyntaxNode,
         );
+      case ModelicaFunctionArgumentSyntaxNode.type:
+        return new ModelicaFunctionArgumentSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaFunctionArgumentSyntaxNode,
+        );
+      case ModelicaFunctionArgumentsSyntaxNode.type:
+        return new ModelicaFunctionArgumentsSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaFunctionArgumentsSyntaxNode,
+        );
+      case ModelicaFunctionCallSyntaxNode.type:
+        return new ModelicaFunctionCallSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaFunctionCallSyntaxNode,
+        );
       case ModelicaIdentifierSyntaxNode.type:
         return new ModelicaIdentifierSyntaxNode(
           parent,
@@ -253,6 +271,12 @@ export abstract class ModelicaSyntaxNode implements IModelicaSyntaxNode {
         );
       case ModelicaNameSyntaxNode.type:
         return new ModelicaNameSyntaxNode(parent, concreteSyntaxNode, abstractSyntaxNode as IModelicaNameSyntaxNode);
+      case ModelicaNamedArgumentSyntaxNode.type:
+        return new ModelicaNamedArgumentSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaNamedArgumentSyntaxNode,
+        );
       case ModelicaParenthesizedExpressionSyntaxNode.type:
         return new ModelicaParenthesizedExpressionSyntaxNode(
           parent,
@@ -1807,6 +1831,12 @@ export abstract class ModelicaExpressionSyntaxNode extends ModelicaSyntaxNode im
           concreteSyntaxNode,
           abstractSyntaxNode as IModelicaComponentReferenceSyntaxNode,
         );
+      case ModelicaFunctionCallSyntaxNode.type:
+        return new ModelicaFunctionCallSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaFunctionCallSyntaxNode,
+        );
       case ModelicaParenthesizedExpressionSyntaxNode.type:
         return new ModelicaParenthesizedExpressionSyntaxNode(
           parent,
@@ -1884,6 +1914,12 @@ export abstract class ModelicaSimpleExpressionSyntaxNode
           parent,
           concreteSyntaxNode,
           abstractSyntaxNode as IModelicaComponentReferenceSyntaxNode,
+        );
+      case ModelicaFunctionCallSyntaxNode.type:
+        return new ModelicaFunctionCallSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaFunctionCallSyntaxNode,
         );
       case ModelicaParenthesizedExpressionSyntaxNode.type:
         return new ModelicaParenthesizedExpressionSyntaxNode(
@@ -2057,6 +2093,12 @@ export abstract class ModelicaPrimaryExpressionSyntaxNode
           parent,
           concreteSyntaxNode,
           abstractSyntaxNode as IModelicaComponentReferenceSyntaxNode,
+        );
+      case ModelicaFunctionCallSyntaxNode.type:
+        return new ModelicaFunctionCallSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaFunctionCallSyntaxNode,
         );
       case ModelicaParenthesizedExpressionSyntaxNode.type:
         return new ModelicaParenthesizedExpressionSyntaxNode(
@@ -2325,47 +2367,6 @@ export class ModelicaStringLiteralSyntaxNode
   }
 }
 
-export interface IModelicaParenthesizedExpressionSyntaxNode extends IModelicaPrimaryExpressionSyntaxNode {
-  expression: IModelicaExpressionSyntaxNode | null;
-}
-
-export class ModelicaParenthesizedExpressionSyntaxNode
-  extends ModelicaPrimaryExpressionSyntaxNode
-  implements IModelicaParenthesizedExpressionSyntaxNode
-{
-  expression: ModelicaExpressionSyntaxNode | null;
-
-  constructor(
-    parent: ModelicaSyntaxNode | null,
-    concreteSyntaxNode?: SyntaxNode | null,
-    abstractSyntaxNode?: IModelicaParenthesizedExpressionSyntaxNode | null,
-  ) {
-    super(parent, concreteSyntaxNode, abstractSyntaxNode);
-    this.expression = ModelicaExpressionSyntaxNode.new(
-      this,
-      concreteSyntaxNode?.childForFieldName("expression"),
-      abstractSyntaxNode?.expression,
-    );
-  }
-
-  override accept<R, A>(visitor: IModelicaSyntaxVisitor<R, A>, argument?: A): R {
-    return visitor.visitParenthesizedExpression(this, argument);
-  }
-
-  static override new(
-    parent: ModelicaSyntaxNode | null,
-    concreteSyntaxNode?: SyntaxNode | null,
-    abstractSyntaxNode?: IModelicaParenthesizedExpressionSyntaxNode | null,
-  ): ModelicaParenthesizedExpressionSyntaxNode | null {
-    switch (concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]) {
-      case ModelicaParenthesizedExpressionSyntaxNode.type:
-        return new ModelicaParenthesizedExpressionSyntaxNode(parent, concreteSyntaxNode, abstractSyntaxNode);
-      default:
-        return null;
-    }
-  }
-}
-
 export interface IModelicaTypeSpecifierSyntaxNode extends IModelicaSyntaxNode {
   global: boolean;
   name: IModelicaNameSyntaxNode | null;
@@ -2537,6 +2538,102 @@ export class ModelicaComponentReferenceComponentSyntaxNode
   }
 }
 
+export interface IModelicaFunctionCallSyntaxNode extends IModelicaPrimaryExpressionSyntaxNode {
+  functionArguments: IModelicaFunctionArgumentsSyntaxNode | null;
+  functionReference: IModelicaComponentReferenceComponentSyntaxNode | null;
+}
+
+export class ModelicaFunctionCallSyntaxNode
+  extends ModelicaPrimaryExpressionSyntaxNode
+  implements IModelicaFunctionCallSyntaxNode
+{
+  functionArguments: ModelicaFunctionArgumentsSyntaxNode | null;
+  functionReference: ModelicaComponentReferenceComponentSyntaxNode | null;
+
+  constructor(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaFunctionCallSyntaxNode | null,
+  ) {
+    super(parent, concreteSyntaxNode, abstractSyntaxNode);
+    this.functionArguments = ModelicaFunctionArgumentsSyntaxNode.new(
+      this,
+      concreteSyntaxNode?.childForFieldName("functionArguments"),
+      abstractSyntaxNode?.functionArguments,
+    );
+    this.functionReference = ModelicaComponentReferenceComponentSyntaxNode.new(
+      this,
+      concreteSyntaxNode?.childForFieldName("functionReference"),
+      abstractSyntaxNode?.functionReference,
+    );
+  }
+
+  override accept<R, A>(visitor: IModelicaSyntaxVisitor<R, A>, argument?: A): R {
+    return visitor.visitFunctionCall(this, argument);
+  }
+
+  static override new(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaFunctionCallSyntaxNode | null,
+  ): ModelicaFunctionCallSyntaxNode | null {
+    switch (concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]) {
+      case ModelicaFunctionCallSyntaxNode.type:
+        return new ModelicaFunctionCallSyntaxNode(parent, concreteSyntaxNode, abstractSyntaxNode);
+      default:
+        return null;
+    }
+  }
+}
+
+export interface IModelicaFunctionArgumentsSyntaxNode extends IModelicaSyntaxNode {
+  namedArguments: IModelicaNamedArgumentSyntaxNode[];
+  positionalArguments: IModelicaFunctionArgumentSyntaxNode[];
+}
+
+export class ModelicaFunctionArgumentsSyntaxNode
+  extends ModelicaSyntaxNode
+  implements IModelicaFunctionArgumentsSyntaxNode
+{
+  namedArguments: ModelicaNamedArgumentSyntaxNode[];
+  positionalArguments: ModelicaFunctionArgumentSyntaxNode[];
+
+  constructor(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaFunctionArgumentsSyntaxNode | null,
+  ) {
+    super(parent, concreteSyntaxNode, abstractSyntaxNode);
+    this.positionalArguments = ModelicaFunctionArgumentSyntaxNode.newArray(
+      this,
+      concreteSyntaxNode?.childrenForFieldName("positionalArgument"),
+      abstractSyntaxNode?.positionalArguments,
+    );
+    this.namedArguments = ModelicaNamedArgumentSyntaxNode.newArray(
+      this,
+      concreteSyntaxNode?.childrenForFieldName("namedArgument"),
+      abstractSyntaxNode?.namedArguments,
+    );
+  }
+
+  override accept<R, A>(visitor: IModelicaSyntaxVisitor<R, A>, argument?: A): R {
+    return visitor.visitFunctionArguments(this, argument);
+  }
+
+  static override new(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaFunctionArgumentsSyntaxNode | null,
+  ): ModelicaFunctionArgumentsSyntaxNode | null {
+    switch (concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]) {
+      case ModelicaFunctionArgumentsSyntaxNode.type:
+        return new ModelicaFunctionArgumentsSyntaxNode(parent, concreteSyntaxNode, abstractSyntaxNode);
+      default:
+        return null;
+    }
+  }
+}
+
 export interface IModelicaArrayConcatenationSyntaxNode extends IModelicaPrimaryExpressionSyntaxNode {
   expressionLists: IModelicaExpressionListSyntaxNode[];
 }
@@ -2613,6 +2710,133 @@ export class ModelicaArrayConstructorSyntaxNode
     switch (concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]) {
       case ModelicaArrayConstructorSyntaxNode.type:
         return new ModelicaArrayConstructorSyntaxNode(parent, concreteSyntaxNode, abstractSyntaxNode);
+      default:
+        return null;
+    }
+  }
+}
+
+export interface IModelicaNamedArgumentSyntaxNode extends IModelicaSyntaxNode {
+  argument: IModelicaFunctionArgumentSyntaxNode | null;
+  identifier: IModelicaIdentifierSyntaxNode | null;
+}
+
+export class ModelicaNamedArgumentSyntaxNode extends ModelicaSyntaxNode implements IModelicaNamedArgumentSyntaxNode {
+  argument: ModelicaFunctionArgumentSyntaxNode | null;
+  identifier: ModelicaIdentifierSyntaxNode | null;
+
+  constructor(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaNamedArgumentSyntaxNode | null,
+  ) {
+    super(parent, concreteSyntaxNode, abstractSyntaxNode);
+    this.identifier = ModelicaIdentifierSyntaxNode.new(
+      this,
+      concreteSyntaxNode?.childForFieldName("identifier"),
+      abstractSyntaxNode?.identifier,
+    );
+    this.argument = ModelicaFunctionArgumentSyntaxNode.new(
+      this,
+      concreteSyntaxNode?.childForFieldName("argument"),
+      abstractSyntaxNode?.argument,
+    );
+  }
+
+  override accept<R, A>(visitor: IModelicaSyntaxVisitor<R, A>, argument?: A): R {
+    return visitor.visitNamedArgument(this, argument);
+  }
+
+  static override new(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaNamedArgumentSyntaxNode | null,
+  ): ModelicaNamedArgumentSyntaxNode | null {
+    switch (concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]) {
+      case ModelicaNamedArgumentSyntaxNode.type:
+        return new ModelicaNamedArgumentSyntaxNode(parent, concreteSyntaxNode, abstractSyntaxNode);
+      default:
+        return null;
+    }
+  }
+}
+
+export interface IModelicaFunctionArgumentSyntaxNode extends IModelicaSyntaxNode {
+  expression: IModelicaExpressionSyntaxNode | null;
+}
+
+export class ModelicaFunctionArgumentSyntaxNode
+  extends ModelicaSyntaxNode
+  implements IModelicaFunctionArgumentSyntaxNode
+{
+  expression: ModelicaExpressionSyntaxNode | null;
+
+  constructor(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaFunctionArgumentSyntaxNode | null,
+  ) {
+    super(parent, concreteSyntaxNode, abstractSyntaxNode);
+    this.expression = ModelicaExpressionSyntaxNode.new(
+      this,
+      concreteSyntaxNode?.childForFieldName("expression"),
+      abstractSyntaxNode?.expression,
+    );
+  }
+
+  override accept<R, A>(visitor: IModelicaSyntaxVisitor<R, A>, argument?: A): R {
+    return visitor.visitFunctionArgument(this, argument);
+  }
+
+  static override new(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaFunctionArgumentSyntaxNode | null,
+  ): ModelicaFunctionArgumentSyntaxNode | null {
+    switch (concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]) {
+      case ModelicaFunctionArgumentSyntaxNode.type:
+        return new ModelicaFunctionArgumentSyntaxNode(parent, concreteSyntaxNode, abstractSyntaxNode);
+      default:
+        return null;
+    }
+  }
+}
+
+export interface IModelicaParenthesizedExpressionSyntaxNode extends IModelicaPrimaryExpressionSyntaxNode {
+  expression: IModelicaExpressionSyntaxNode | null;
+}
+
+export class ModelicaParenthesizedExpressionSyntaxNode
+  extends ModelicaPrimaryExpressionSyntaxNode
+  implements IModelicaParenthesizedExpressionSyntaxNode
+{
+  expression: ModelicaExpressionSyntaxNode | null;
+
+  constructor(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaParenthesizedExpressionSyntaxNode | null,
+  ) {
+    super(parent, concreteSyntaxNode, abstractSyntaxNode);
+    this.expression = ModelicaExpressionSyntaxNode.new(
+      this,
+      concreteSyntaxNode?.childForFieldName("expression"),
+      abstractSyntaxNode?.expression,
+    );
+  }
+
+  override accept<R, A>(visitor: IModelicaSyntaxVisitor<R, A>, argument?: A): R {
+    return visitor.visitParenthesizedExpression(this, argument);
+  }
+
+  static override new(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaParenthesizedExpressionSyntaxNode | null,
+  ): ModelicaParenthesizedExpressionSyntaxNode | null {
+    switch (concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]) {
+      case ModelicaParenthesizedExpressionSyntaxNode.type:
+        return new ModelicaParenthesizedExpressionSyntaxNode(parent, concreteSyntaxNode, abstractSyntaxNode);
       default:
         return null;
     }
@@ -2901,6 +3125,12 @@ export interface IModelicaSyntaxVisitor<R, A> {
 
   visitExtendsClause(node: ModelicaExtendsClauseSyntaxNode, argument?: A): R;
 
+  visitFunctionArgument(node: ModelicaFunctionArgumentSyntaxNode, argument?: A): R;
+
+  visitFunctionArguments(node: ModelicaFunctionArgumentsSyntaxNode, argument?: A): R;
+
+  visitFunctionCall(node: ModelicaFunctionCallSyntaxNode, argument?: A): R;
+
   visitIdentifier(node: ModelicaIdentifierSyntaxNode, argument?: A): R;
 
   visitInheritanceModification(node: ModelicaInheritanceModificationSyntaxNode, argument?: A): R;
@@ -2912,6 +3142,8 @@ export interface IModelicaSyntaxVisitor<R, A> {
   visitModificationExpression(node: ModelicaModificationExpressionSyntaxNode, argument?: A): R;
 
   visitName(node: ModelicaNameSyntaxNode, argument?: A): R;
+
+  visitNamedArgument(node: ModelicaNamedArgumentSyntaxNode, argument?: A): R;
 
   visitParenthesizedExpression(node: ModelicaParenthesizedExpressionSyntaxNode, argument?: A): R;
 
@@ -3065,6 +3297,27 @@ export abstract class ModelicaSyntaxVisitor<R, A> implements IModelicaSyntaxVisi
     return null;
   }
 
+  visitFunctionArgument(node: ModelicaFunctionArgumentSyntaxNode, argument?: A): R | null {
+    node.expression?.accept(this, argument);
+    return null;
+  }
+
+  visitFunctionArguments(node: ModelicaFunctionArgumentsSyntaxNode, argument?: A): R | null {
+    for (const positionalArgument of node.positionalArguments) {
+      positionalArgument.accept(this, argument);
+    }
+    for (const namedArgument of node.namedArguments) {
+      namedArgument.accept(this, argument);
+    }
+    return null;
+  }
+
+  visitFunctionCall(node: ModelicaFunctionCallSyntaxNode, argument?: A): R | null {
+    node.functionReference?.accept(this, argument);
+    node.functionArguments?.accept(this, argument);
+    return null;
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   visitIdentifier(node: ModelicaIdentifierSyntaxNode, argument?: A): R | null {
     return null;
@@ -3097,6 +3350,12 @@ export abstract class ModelicaSyntaxVisitor<R, A> implements IModelicaSyntaxVisi
 
   visitName(node: ModelicaNameSyntaxNode, argument?: A): R | null {
     for (const component of node.components) component.accept(this, argument);
+    return null;
+  }
+
+  visitNamedArgument(node: ModelicaNamedArgumentSyntaxNode, argument?: A): R | null {
+    node.identifier?.accept(this, argument);
+    node.argument?.accept(this, argument);
     return null;
   }
 

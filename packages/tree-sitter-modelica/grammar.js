@@ -266,7 +266,14 @@ module.exports = grammar({
       ),
 
     _PrimaryExpression: ($) =>
-      choice($._Literal, $.ComponentReference, $.ParenthesizedExpression, $.ArrayConcatenation, $.ArrayConstructor),
+      choice(
+        $._Literal,
+        $.FunctionCall,
+        $.ComponentReference,
+        $.ParenthesizedExpression,
+        $.ArrayConcatenation,
+        $.ArrayConstructor,
+      ),
 
     _Literal: ($) => choice($._UnsignedNumberLiteral, $.BOOLEAN, $.STRING),
 
@@ -284,9 +291,30 @@ module.exports = grammar({
     ComponentReferenceComponent: ($) =>
       seq(field("identifier", $.IDENT), optional(field("arraySubscripts", $.ArraySubscripts))),
 
+    FunctionCall: ($) =>
+      seq(
+        field("functionReference", $.ComponentReference),
+        "(",
+        optional(field("functionArguments", $.FunctionArguments)),
+        ")",
+      ),
+
+    FunctionArguments: ($) =>
+      choice(
+        seq(
+          commaSep1(field("positionalArgument", $.FunctionArgument)),
+          optional(seq(",", commaSep1(field("namedArgument", $.NamedArgument)))),
+        ),
+        commaSep1(field("namedArgument", $.NamedArgument)),
+      ),
+
     ArrayConcatenation: ($) => seq("[", commaSep1(field("expressionList", $.ExpressionList), ";"), "]"),
 
     ArrayConstructor: ($) => seq("{", optional(choice(field("expressionList", $.ExpressionList))), "}"),
+
+    NamedArgument: ($) => seq(field("identifier", $.IDENT), "=", field("argument", $.FunctionArgument)),
+
+    FunctionArgument: ($) => choice(field("expression", $._Expression)),
 
     ParenthesizedExpression: ($) => seq("(", commaSep(optional(field("expression", $._Expression)), ","), ")"),
 
