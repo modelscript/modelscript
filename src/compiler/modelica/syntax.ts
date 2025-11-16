@@ -2540,7 +2540,7 @@ export class ModelicaComponentReferenceComponentSyntaxNode
 
 export interface IModelicaFunctionCallSyntaxNode extends IModelicaPrimaryExpressionSyntaxNode {
   functionArguments: IModelicaFunctionArgumentsSyntaxNode | null;
-  functionReference: IModelicaComponentReferenceComponentSyntaxNode | null;
+  functionReference: IModelicaComponentReferenceSyntaxNode | null;
 }
 
 export class ModelicaFunctionCallSyntaxNode
@@ -2548,7 +2548,7 @@ export class ModelicaFunctionCallSyntaxNode
   implements IModelicaFunctionCallSyntaxNode
 {
   functionArguments: ModelicaFunctionArgumentsSyntaxNode | null;
-  functionReference: ModelicaComponentReferenceComponentSyntaxNode | null;
+  functionReference: ModelicaComponentReferenceSyntaxNode | null;
 
   constructor(
     parent: ModelicaSyntaxNode | null,
@@ -2561,7 +2561,7 @@ export class ModelicaFunctionCallSyntaxNode
       concreteSyntaxNode?.childForFieldName("functionArguments"),
       abstractSyntaxNode?.functionArguments,
     );
-    this.functionReference = ModelicaComponentReferenceComponentSyntaxNode.new(
+    this.functionReference = ModelicaComponentReferenceSyntaxNode.new(
       this,
       concreteSyntaxNode?.childForFieldName("functionReference"),
       abstractSyntaxNode?.functionReference,

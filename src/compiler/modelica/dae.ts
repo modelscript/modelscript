@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "./syntax.js";
+import { ModelicaInterpreter } from "./interpreter.js";
+import {
+  ModelicaArrayClassInstance,
+  ModelicaClassInstance,
+  ModelicaEnumerationClassInstance,
+  ModelicaPredefinedClassInstance,
+} from "./model.js";
+import { ModelicaBinaryOperator, ModelicaExpressionSyntaxNode, ModelicaUnaryOperator } from "./syntax.js";
 
 export class ModelicaDAE {
   name: string;
@@ -45,6 +52,35 @@ export class ModelicaSimpleEquation extends ModelicaEquation {
 
 export abstract class ModelicaExpression {
   abstract accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R;
+
+  static fromClassInstance(classInstance: ModelicaClassInstance | null | undefined): ModelicaExpression | null {
+    if (!classInstance || classInstance instanceof ModelicaEnumerationClassInstance) return null;
+    if (!classInstance.instantiated && !classInstance.instantiating) classInstance.instantiate();
+    if (classInstance instanceof ModelicaArrayClassInstance) {
+      const elements: ModelicaExpression[] = [];
+      for (const element of classInstance.elements ?? []) {
+        if (element instanceof ModelicaClassInstance) {
+          const expression = ModelicaExpression.fromClassInstance(element);
+          if (expression) elements.push(expression);
+        }
+      }
+      return new ModelicaArray([elements.length], elements);
+    } else if (classInstance instanceof ModelicaPredefinedClassInstance) {
+      return classInstance.value instanceof ModelicaExpressionSyntaxNode
+        ? classInstance.value.accept(new ModelicaInterpreter(), classInstance)
+        : classInstance.value;
+    } else {
+      const elements = new Map<string, ModelicaExpression>();
+      for (const component of classInstance.components) {
+        if (!component.name) continue;
+        if (!component.instantiated && !component.instantiating) component.instantiate();
+        const value = ModelicaExpression.fromClassInstance(component.classInstance);
+        if (!value) continue;
+        elements.set(component.name, value);
+      }
+      return new ModelicaObject(elements, classInstance);
+    }
+  }
 }
 
 export abstract class ModelicaSimpleExpression extends ModelicaExpression {}
@@ -353,6 +389,25 @@ export class ModelicaArray extends ModelicaPrimaryExpression {
   }
 }
 
+export class ModelicaObject extends ModelicaPrimaryExpression {
+  #classInstance: ModelicaClassInstance | null;
+  elements: Record<string, ModelicaExpression> = {};
+
+  constructor(elements: Map<string, ModelicaExpression>, classInstance?: ModelicaClassInstance | null) {
+    super();
+    this.#classInstance = classInstance ?? null;
+    for (const entry of elements.entries()) this.elements[entry[0]] = entry[1];
+  }
+
+  override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
+    return visitor.visitObject(this, argument);
+  }
+
+  get classInstance(): ModelicaClassInstance | null {
+    return this.#classInstance;
+  }
+}
+
 export abstract class ModelicaLiteral extends ModelicaPrimaryExpression {}
 
 export class ModelicaBooleanLiteral extends ModelicaLiteral {
@@ -496,6 +551,8 @@ export interface IModelicaDAEVisitor<R, A> {
 
   visitIntegerVariable(node: ModelicaIntegerVariable, argument?: A): R;
 
+  visitObject(node: ModelicaObject, argument?: A): R;
+
   visitRealLiteral(node: ModelicaRealLiteral, argument?: A): R;
 
   visitRealVariable(node: ModelicaRealVariable, argument?: A): R;
@@ -542,6 +599,10 @@ export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void,
 
   visitIntegerVariable(node: ModelicaIntegerVariable, argument?: A): void {
     node.value?.accept(this, argument);
+  }
+
+  visitObject(node: ModelicaObject, argument?: A): void {
+    for (const key in node.elements) node.elements[key]?.accept(this, argument);
   }
 
   // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
@@ -641,6 +702,18 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
 
   visitIntegerVariable(node: ModelicaIntegerVariable): void {
     process.stdout.write(node.name);
+  }
+
+  visitObject(node: ModelicaObject): void {
+    process.stdout.write("{");
+    let i = 0;
+    for (const key in node.elements) {
+      const value = node.elements[key];
+      process.stdout.write('"' + key + '": ');
+      value?.accept(this);
+      if (i++ < Object.keys(node.elements).length - 1) process.stdout.write(", ");
+    }
+    process.stdout.write("}");
   }
 
   visitRealLiteral(node: ModelicaRealLiteral): void {

@@ -2,7 +2,13 @@
 
 import type { Context } from "../context.js";
 import { ANNOTATION } from "./annotation.js";
-import { ModelicaArray, ModelicaEnumerationLiteral, ModelicaExpression, ModelicaIntegerLiteral } from "./dae.js";
+import {
+  ModelicaArray,
+  ModelicaEnumerationLiteral,
+  ModelicaExpression,
+  ModelicaIntegerLiteral,
+  ModelicaObject,
+} from "./dae.js";
 import { ModelicaInterpreter } from "./interpreter.js";
 import {
   ModelicaAnnotationClauseSyntaxNode,
@@ -294,10 +300,11 @@ export class ModelicaExtendsClassInstance extends ModelicaElement {
             ).length > 0
           )
             continue;
-          if (modificationArgumentOrInheritanceModification instanceof ModelicaElementModificationSyntaxNode)
+          if (modificationArgumentOrInheritanceModification instanceof ModelicaElementModificationSyntaxNode) {
             modificationArguments.push(
               ModelicaElementModification.new(this.parent, modificationArgumentOrInheritanceModification),
             );
+          }
         }
       }
       mergedModificationArguments.push(...modificationArguments);
@@ -367,6 +374,15 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     );
     classInstance.instantiate();
     return classInstance;
+  }
+
+  get components(): IterableIterator<ModelicaComponentInstance> {
+    const elements = this.elements;
+    return (function* () {
+      for (const element of elements) {
+        if (element instanceof ModelicaComponentInstance) yield element;
+      }
+    })();
   }
 
   override get elements(): IterableIterator<ModelicaElement> {
@@ -783,23 +799,34 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
       break;
     }
     const modificationArguments: ModelicaModificationArgument[] = [];
-    if (outerModificationArgument instanceof ModelicaElementModification)
+    if (outerModificationArgument instanceof ModelicaElementModification) {
       modificationArguments.push(...outerModificationArgument.extract());
+    }
     const modificationSyntaxNode = this.abstractSyntaxNode?.declaration?.modification;
     for (const modificationArgumentSyntaxNode of modificationSyntaxNode?.classModification?.modificationArguments ??
       []) {
       if (modificationArguments.filter((m) => m.name === modificationArgumentSyntaxNode.identifier?.value).length > 0)
         continue;
-      if (modificationArgumentSyntaxNode instanceof ModelicaElementModificationSyntaxNode)
+      if (modificationArgumentSyntaxNode instanceof ModelicaElementModificationSyntaxNode) {
         modificationArguments.push(ModelicaElementModification.new(this.parent, modificationArgumentSyntaxNode));
+      }
     }
-    if (outerModificationArgument instanceof ModelicaElementModification)
+    if (outerModificationArgument instanceof ModelicaElementModification) {
       return new ModelicaModification(
         this,
         modificationArguments,
         outerModificationArgument.modificationExpression ?? modificationSyntaxNode?.modificationExpression,
         outerModificationArgument.description,
       );
+    } else if (outerModificationArgument instanceof ModelicaParameterModification) {
+      return new ModelicaModification(
+        this,
+        modificationArguments,
+        null,
+        null,
+        outerModificationArgument.expression.accept(new ModelicaInterpreter(), this),
+      );
+    }
     return new ModelicaModification(this, modificationArguments, modificationSyntaxNode?.modificationExpression);
   }
 
@@ -1014,7 +1041,13 @@ export class ModelicaArrayClassInstance extends ModelicaClassInstance {
       }
       this.shape = expression.flatShape;
       for (const element of expression.flatElements) {
-        this.declaredElements.push(elementClassInstance.clone(new ModelicaModification(this, [], null, null, element)));
+        if (element instanceof ModelicaObject && element.classInstance) {
+          this.declaredElements.push(element.classInstance);
+        } else {
+          this.declaredElements.push(
+            elementClassInstance.clone(new ModelicaModification(this, [], null, null, element)),
+          );
+        }
       }
     }
     this.instantiated = true;
@@ -1150,6 +1183,26 @@ export class ModelicaElementModification extends ModelicaModificationArgument {
       abstractSyntaxNode.modification?.modificationExpression,
       abstractSyntaxNode.description?.descriptionStrings?.map((d) => d.value)?.join(" "),
     );
+  }
+}
+
+export class ModelicaParameterModification extends ModelicaModificationArgument {
+  #evaluated = false;
+  expression: ModelicaExpressionSyntaxNode;
+  name: string;
+  #value: ModelicaExpression | null = null;
+
+  constructor(scope: ModelicaNode | null, name: string, expression: ModelicaExpressionSyntaxNode) {
+    super(scope);
+    this.name = name;
+    this.expression = expression;
+  }
+
+  get value(): ModelicaExpression | null {
+    if (this.#evaluated) return this.#value;
+    this.#value = this.expression?.accept(new ModelicaInterpreter(), this.scope);
+    this.#evaluated = true;
+    return this.#value;
   }
 }
 

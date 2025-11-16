@@ -6,18 +6,28 @@ import {
   ModelicaBooleanLiteral,
   ModelicaExpression,
   ModelicaIntegerLiteral,
+  ModelicaObject,
   ModelicaRealLiteral,
   ModelicaStringLiteral,
   ModelicaUnaryExpression,
 } from "./dae.js";
-import { ModelicaEnumerationClassInstance, ModelicaPredefinedClassInstance, type ModelicaNode } from "./model.js";
+import {
+  ModelicaClassInstance,
+  ModelicaEnumerationClassInstance,
+  ModelicaModification,
+  ModelicaParameterModification,
+  ModelicaPredefinedClassInstance,
+  type ModelicaNode,
+} from "./model.js";
 import {
   ModelicaArrayConcatenationSyntaxNode,
   ModelicaArrayConstructorSyntaxNode,
   ModelicaBinaryExpressionSyntaxNode,
   ModelicaBooleanLiteralSyntaxNode,
+  ModelicaClassKind,
   ModelicaComponentReferenceSyntaxNode,
   ModelicaExpressionSyntaxNode,
+  ModelicaFunctionCallSyntaxNode,
   ModelicaParenthesizedExpressionSyntaxNode,
   ModelicaStringLiteralSyntaxNode,
   ModelicaSyntaxVisitor,
@@ -73,6 +83,23 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
       return null;
     } else if (namedElement instanceof ModelicaEnumerationClassInstance) {
       return namedElement.value;
+    }
+    return null;
+  }
+
+  visitFunctionCall(node: ModelicaFunctionCallSyntaxNode, scope: ModelicaNode): ModelicaExpression | null {
+    const functionInstance = scope.resolveComponentReference(node.functionReference);
+    if (functionInstance == null || !(functionInstance instanceof ModelicaClassInstance)) return null;
+    const parameters: ModelicaParameterModification[] = [];
+    for (const namedArgument of node.functionArguments?.namedArguments ?? []) {
+      const name = namedArgument.identifier?.value;
+      const expression = namedArgument.argument?.expression;
+      if (name != null && expression != null)
+        parameters.push(new ModelicaParameterModification(scope, name, expression));
+    }
+    const clonedFunctionInstance = functionInstance.clone(new ModelicaModification(scope, parameters));
+    if (functionInstance.classKind == ModelicaClassKind.RECORD) {
+      return new ModelicaObject(new Map(), clonedFunctionInstance);
     }
     return null;
   }
