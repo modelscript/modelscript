@@ -79,7 +79,11 @@ export abstract class ModelicaNode {
     const components = componentReference.components;
     if (components.length === 0) return null;
     let element = this.resolveSimpleName(components[0]?.identifier, componentReference.global);
-    if (element == null) return null;
+    if (element instanceof ModelicaComponentInstance) {
+      if (!element.instantiated && !element.instantiating) element.instantiate();
+      element = element.classInstance;
+    }
+    if (!element) return null;
     for (let i = 1; i < components.length; i++) {
       element = element.resolveSimpleName(components[i]?.identifier, false, true);
       if (element == null) return null;
@@ -587,6 +591,7 @@ export class ModelicaShortClassInstance extends ModelicaClassInstance {
           arraySubscripts,
           this.modification,
         );
+      this.classInstance.instantiate();
     }
     this.instantiated = true;
   }
@@ -707,7 +712,7 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
     if (element instanceof ModelicaClassInstance) {
       const arraySubscripts = [...(this.abstractSyntaxNode?.arraySubscripts ?? [])];
       if (arraySubscripts.length === 0) this.classInstance = element.clone(this.modification);
-      else
+      else {
         this.classInstance = new ModelicaArrayClassInstance(
           this.library,
           this,
@@ -715,6 +720,8 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
           arraySubscripts,
           this.modification,
         );
+        this.classInstance.instantiate();
+      }
     }
     this.instantiated = true;
   }
@@ -883,7 +890,7 @@ export class ModelicaStringClassInstance extends ModelicaPredefinedClassInstance
 export class ModelicaArrayClassInstance extends ModelicaClassInstance {
   #arraySubscripts: ModelicaSubscriptSyntaxNode[];
   #elementClassInstance: ModelicaClassInstance | null;
-  shape: ModelicaIntegerLiteral[] = [];
+  shape: number[] = [];
 
   constructor(
     library: ModelicaLibrary | null,
@@ -895,7 +902,6 @@ export class ModelicaArrayClassInstance extends ModelicaClassInstance {
     super(library, parent, elementClassInstance?.abstractSyntaxNode, modification);
     this.#elementClassInstance = elementClassInstance;
     this.#arraySubscripts = arraySubscripts;
-    this.instantiate();
   }
 
   override clone(modification?: ModelicaModification | null): ModelicaArrayClassInstance {
@@ -913,6 +919,7 @@ export class ModelicaArrayClassInstance extends ModelicaClassInstance {
   }
 
   get elementClassInstance(): ModelicaClassInstance | null {
+    this.instantiate();
     return this.#elementClassInstance;
   }
 
@@ -924,22 +931,19 @@ export class ModelicaArrayClassInstance extends ModelicaClassInstance {
     this.shape = [];
     for (const arraySubscript of this.#arraySubscripts) {
       if (arraySubscript.flexible || !arraySubscript.expression) {
-        this.shape.push(new ModelicaIntegerLiteral(-1));
+        this.shape.push(-1);
         continue;
       }
       const length = arraySubscript.expression.accept(new ModelicaInterpreter(), this);
-      if (length instanceof ModelicaIntegerLiteral) this.shape.push(length);
-      else this.shape.push(new ModelicaIntegerLiteral(-1));
+      if (length instanceof ModelicaIntegerLiteral) this.shape.push(length.value);
+      else this.shape.push(-1);
     }
     let elementClassInstance = this.#elementClassInstance;
+    elementClassInstance?.instantiate();
     if (elementClassInstance instanceof ModelicaShortClassInstance) {
-      elementClassInstance.instantiate();
       elementClassInstance = elementClassInstance.classInstance;
-    } else if (elementClassInstance instanceof ModelicaEnumerationClassInstance) {
-      elementClassInstance.instantiate();
     }
     if (elementClassInstance instanceof ModelicaArrayClassInstance) {
-      elementClassInstance.instantiate();
       this.shape.push(...elementClassInstance.shape);
       elementClassInstance = elementClassInstance.elementClassInstance;
     }
@@ -950,15 +954,18 @@ export class ModelicaArrayClassInstance extends ModelicaClassInstance {
     const expression =
       this.modification?.expression ??
       this.modification?.modificationExpression?.expression?.accept(new ModelicaInterpreter(), this);
-    let c = 0;
-    for (let i = this.shape.length - 1; i >= 0; i--) {
-      for (let j = i; j < this.shape.length; j++) {
-        const length = this.shape[i]?.value ?? -1;
-        for (let k = 1; k <= length; k++) {
-          const value = expression instanceof ModelicaArray ? expression.elements[c] : expression;
-          this.declaredElements.push(elementClassInstance.clone(new ModelicaModification(this, [], null, null, value)));
-          c++;
-        }
+    if (!expression) {
+      this.instantiated = true;
+      return;
+    }
+    if (expression instanceof ModelicaArray) {
+      if (!expression.assignable(this.shape)) {
+        this.instantiated = true;
+        return;
+      }
+      this.shape = expression.flatShape;
+      for (const element of expression.flatElements) {
+        this.declaredElements.push(elementClassInstance.clone(new ModelicaModification(this, [], null, null, element)));
       }
     }
     this.instantiated = true;

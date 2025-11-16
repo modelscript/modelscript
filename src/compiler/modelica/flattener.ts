@@ -109,14 +109,14 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       const index = new Array(shape.length).fill(1);
       let c = 0;
       for (const declaredElement of node.classInstance.declaredElements) {
+        const elementName = name + "[" + index.join(", ") + "]";
         if (
           declaredElement instanceof ModelicaPredefinedClassInstance ||
           declaredElement instanceof ModelicaEnumerationClassInstance
         ) {
-          const elementName = name + "[" + index.join(", ") + "]";
           const declaredElementValue =
             (value instanceof ModelicaArray
-              ? value.elements[c]
+              ? value.getFlatElement(c)
               : (value ??
                 declaredElement.modification?.expression ??
                 declaredElement.modification?.modificationExpression?.expression?.accept(
@@ -166,7 +166,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
             );
           }
         } else {
-          declaredElement?.accept(this, [name, args[1]]);
+          declaredElement?.accept(this, [elementName, args[1]]);
         }
         if (!this.incrementIndex(index, shape)) break;
         c++;
@@ -185,9 +185,9 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     }
   }
 
-  incrementIndex(index: number[], shape: ModelicaIntegerLiteral[]): boolean {
+  incrementIndex(index: number[], shape: number[]): boolean {
     for (let i = shape.length - 1; i >= 0; i--) {
-      const length = shape[i]?.value ?? 0;
+      const length = shape[i] ?? -1;
       if ((index[i] ?? 1) < length) {
         index[i] = (index[i] ?? 1) + 1;
         for (let j = i + 1; j < shape.length; j++) index[j] = 1;

@@ -306,6 +306,51 @@ export class ModelicaArray extends ModelicaPrimaryExpression {
   override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
     return visitor.visitArray(this, argument);
   }
+
+  assignable(shape: number[]): boolean {
+    const flatShape = this.flatShape;
+    if (flatShape.length !== shape.length) {
+      return false;
+    }
+    for (let i = 0; i < flatShape.length; i++) {
+      if (flatShape[i] !== shape[i] && (flatShape[i] ?? -1) >= 0 && (shape[i] ?? -1) >= 0) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  get flatElements(): IterableIterator<ModelicaExpression> {
+    const elements = this.elements;
+    return (function* () {
+      for (const element of elements) {
+        if (element instanceof ModelicaArray) yield* element.flatElements;
+        else yield element;
+      }
+    })();
+  }
+
+  get flatShape(): number[] {
+    const flatShape = [...this.shape];
+    let element = this.elements[0];
+    while (element) {
+      if (element instanceof ModelicaArray) {
+        flatShape.push(...element.shape);
+        element = element.elements[0];
+      } else {
+        break;
+      }
+    }
+    return flatShape;
+  }
+
+  getFlatElement(i: number): ModelicaExpression | null {
+    let c = 0;
+    for (const element of this.flatElements) {
+      if (c++ === i) return element;
+    }
+    return null;
+  }
 }
 
 export abstract class ModelicaLiteral extends ModelicaPrimaryExpression {}
