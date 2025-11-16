@@ -15,6 +15,7 @@ import {
   ModelicaElementSyntaxNode,
   ModelicaExpressionSyntaxNode,
   ModelicaExtendsClauseSyntaxNode,
+  ModelicaIdentifierSyntaxNode,
   ModelicaImportClauseSyntaxNode,
   ModelicaLongClassSpecifierSyntaxNode,
   ModelicaModificationArgumentSyntaxNode,
@@ -26,7 +27,6 @@ import {
   ModelicaSubscriptSyntaxNode,
   ModelicaUnqualifiedImportClauseSyntaxNode,
   type ModelicaComponentDeclarationSyntaxNode,
-  type ModelicaIdentifierSyntaxNode,
   type ModelicaNameSyntaxNode,
   type ModelicaTypeSpecifierSyntaxNode,
 } from "./syntax.js";
@@ -104,11 +104,11 @@ export abstract class ModelicaNode {
   }
 
   resolveSimpleName(
-    identifier: ModelicaIdentifierSyntaxNode | null | undefined,
+    identifier: ModelicaIdentifierSyntaxNode | string | null | undefined,
     global = false,
     encapsulated = false,
   ): ModelicaNamedElement | null {
-    const simpleName = identifier?.value;
+    const simpleName = identifier instanceof ModelicaIdentifierSyntaxNode ? identifier?.value : identifier;
     if (!simpleName) return null;
     let scope: ModelicaNode | null = global ? this.root : this;
     while (scope) {
@@ -318,12 +318,13 @@ export abstract class ModelicaNamedElement extends ModelicaElement {
 }
 
 export class ModelicaClassInstance extends ModelicaNamedElement {
+  static #annotationClassInstance: ModelicaClassInstance | null = null;
   #abstractSyntaxNode: ModelicaClassDefinitionSyntaxNode | null;
   #importClauses: ModelicaImportClauseSyntaxNode[] = [];
   #modification: ModelicaModification | null = null;
   #qualifiedImports = new Map<string, ModelicaClassInstance>();
   #unqualifiedImports: ModelicaClassInstance[] = [];
-  annotation: ModelicaAnnotationClassInstance | null = null;
+  annotations: ModelicaNamedElement[] = [];
   classKind: ModelicaClassKind;
   declaredElements: ModelicaElement[] = [];
 
@@ -339,8 +340,6 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     this.description =
       this.abstractSyntaxNode?.classSpecifier?.description?.descriptionStrings?.map((d) => d.value)?.join(" ") ?? null;
     this.#modification = modification ?? null;
-    if (abstractSyntaxNode?.annotationClause)
-      this.annotation = new ModelicaAnnotationClassInstance(this, abstractSyntaxNode.annotationClause);
     this.classKind = abstractSyntaxNode?.classKind ?? ModelicaClassKind.CLASS;
   }
 
@@ -429,8 +428,46 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     for (const element of this.declaredElements) {
       if (element instanceof ModelicaComponentInstance) element.instantiate();
     }
-    this.annotation?.instantiate();
+    this.annotations = this.instantiateAnnotations(this, this.abstractSyntaxNode?.annotationClause);
     this.instantiated = true;
+  }
+
+  instantiateAnnotations(
+    classInstance: ModelicaClassInstance,
+    annotationClause?: ModelicaAnnotationClauseSyntaxNode | null,
+  ): ModelicaNamedElement[] {
+    if (!annotationClause) return [];
+    if (!ModelicaClassInstance.#annotationClassInstance) {
+      const tree = classInstance.library?.context?.getParser(".mo").parse(ANNOTATION);
+      const node = ModelicaStoredDefinitionSyntaxNode.new(null, tree?.rootNode)?.classDefinitions?.[0] ?? null;
+      ModelicaClassInstance.#annotationClassInstance = ModelicaClassInstance.new(null, null, node);
+      ModelicaClassInstance.#annotationClassInstance.instantiate();
+    }
+    const annotations: ModelicaNamedElement[] = [];
+    const modification = ModelicaModification.new(classInstance, annotationClause);
+    for (const modificationArgument of modification.modificationArguments) {
+      const annotation = ModelicaClassInstance.#annotationClassInstance.resolveSimpleName(modificationArgument.name);
+      if (annotation instanceof ModelicaClassInstance) {
+        if (modificationArgument instanceof ModelicaElementModification) {
+          annotations.push(
+            annotation.clone(new ModelicaModification(classInstance, modificationArgument.modificationArguments)),
+          );
+        }
+      } else if (annotation instanceof ModelicaComponentInstance) {
+        if (modificationArgument instanceof ModelicaElementModification) {
+          annotations.push(
+            annotation.clone(
+              new ModelicaModification(
+                classInstance,
+                modificationArgument.modificationArguments,
+                modificationArgument.modificationExpression,
+              ),
+            ),
+          );
+        }
+      }
+    }
+    return annotations;
   }
 
   override get modification(): ModelicaModification | null {
@@ -680,12 +717,13 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
     library: ModelicaLibrary | null,
     parent: ModelicaClassInstance | null,
     abstractSyntaxNode: ModelicaComponentDeclarationSyntaxNode | null,
+    modification?: ModelicaModification | null,
   ) {
     super(library, parent);
     this.#abstractSyntaxNode = abstractSyntaxNode;
     this.name = this.abstractSyntaxNode?.declaration?.identifier?.value ?? null;
     this.description = this.abstractSyntaxNode?.description?.descriptionStrings?.map((d) => d.value)?.join(" ") ?? null;
-    this.#modification = this.mergeModifications();
+    this.#modification = modification ?? this.mergeModifications();
   }
 
   get abstractSyntaxNode(): ModelicaComponentDeclarationSyntaxNode | null {
@@ -694,6 +732,17 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
 
   override accept<R, A>(visitor: IModelicaModelVisitor<R, A>, argument?: A): R {
     return visitor.visitComponentInstance(this, argument);
+  }
+
+  clone(modification?: ModelicaModification | null): ModelicaComponentInstance {
+    const componentInstance = new ModelicaComponentInstance(
+      this.library,
+      this.parent,
+      this.abstractSyntaxNode,
+      modification,
+    );
+    componentInstance.instantiate();
+    return componentInstance;
   }
 
   override get elements(): IterableIterator<ModelicaElement> {
@@ -972,44 +1021,6 @@ export class ModelicaArrayClassInstance extends ModelicaClassInstance {
   }
 }
 
-export class ModelicaAnnotationClassInstance extends ModelicaClassInstance {
-  static #annotationAbstractSyntaxNode: ModelicaClassDefinitionSyntaxNode | null;
-
-  constructor(parent: ModelicaNode, abstractSyntaxNode?: ModelicaAnnotationClauseSyntaxNode | null) {
-    super(
-      parent.library ?? null,
-      parent,
-      ModelicaAnnotationClassInstance.loadAnnotationAbstractSyntaxNode(parent.library?.context),
-    );
-    this.modification = ModelicaModification.new(this, abstractSyntaxNode ?? null);
-  }
-
-  override accept<R, A>(visitor: IModelicaModelVisitor<R, A>, argument?: A): R {
-    return visitor.visitAnnotationClassInstance(this, argument);
-  }
-
-  override instantiate(): void {
-    super.instantiate();
-    const annotationNames = new Set(this.modification?.modificationArguments.map((m) => m.name));
-    for (let i = this.declaredElements.length - 1; i >= 0; i--) {
-      const declaredElement = this.declaredElements[i];
-      if (!(declaredElement instanceof ModelicaNamedElement && annotationNames.has(declaredElement.name)))
-        this.declaredElements.splice(i, 1);
-    }
-  }
-
-  static loadAnnotationAbstractSyntaxNode(
-    context: Context | null | undefined,
-  ): ModelicaClassDefinitionSyntaxNode | null {
-    if (!ModelicaAnnotationClassInstance.#annotationAbstractSyntaxNode) {
-      const tree = context?.getParser(".mo").parse(ANNOTATION);
-      ModelicaAnnotationClassInstance.#annotationAbstractSyntaxNode =
-        ModelicaStoredDefinitionSyntaxNode.new(null, tree?.rootNode)?.classDefinitions?.[0] ?? null;
-    }
-    return ModelicaAnnotationClassInstance.#annotationAbstractSyntaxNode;
-  }
-}
-
 export class ModelicaModification {
   #scope: ModelicaNode | null;
   description: string | null;
@@ -1145,8 +1156,6 @@ export class ModelicaElementModification extends ModelicaModificationArgument {
 export interface IModelicaModelVisitor<R, A> {
   visitArrayClassInstance(node: ModelicaArrayClassInstance, argument?: A): R;
 
-  visitAnnotationClassInstance(node: ModelicaAnnotationClassInstance, argument?: A): R;
-
   visitBooleanClassInstance(node: ModelicaBooleanClassInstance, argument?: A): R;
 
   visitClassInstance(node: ModelicaClassInstance, argument?: A): R;
@@ -1170,9 +1179,6 @@ export abstract class ModelicaModelVisitor<A> implements IModelicaModelVisitor<v
   visitArrayClassInstance(node: ModelicaArrayClassInstance, argument?: A): void {
     for (const element of node.elements) element.accept(this, argument);
   }
-
-  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
-  visitAnnotationClassInstance(node: ModelicaAnnotationClassInstance, argument?: A): void {}
 
   // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
   visitBooleanClassInstance(node: ModelicaBooleanClassInstance, argument?: A): void {}
