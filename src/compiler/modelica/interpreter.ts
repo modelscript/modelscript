@@ -70,7 +70,7 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
 
   visitBooleanLiteral(node: ModelicaBooleanLiteralSyntaxNode): ModelicaExpression | null {
     const value = node.value === "true" ? true : node.value === "false" ? false : null;
-    if (value) return new ModelicaBooleanLiteral(value);
+    if (value !== null) return new ModelicaBooleanLiteral(value);
     return null;
   }
 
@@ -124,13 +124,13 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
 
   visitUnsignedIntegerLiteral(node: ModelicaUnsignedIntegerLiteralSyntaxNode): ModelicaExpression | null {
     const value = node.value ? parseInt(node.value) : null;
-    if (value) return new ModelicaIntegerLiteral(value);
+    if (value !== null) return new ModelicaIntegerLiteral(value);
     return null;
   }
 
   visitUnsignedRealLiteral(node: ModelicaUnsignedRealLiteralSyntaxNode): ModelicaExpression | null {
     const value = node.value ? parseFloat(node.value) : null;
-    if (value) return new ModelicaRealLiteral(value);
+    if (value !== null) return new ModelicaRealLiteral(value);
     return null;
   }
 }

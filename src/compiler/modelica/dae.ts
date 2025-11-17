@@ -9,6 +9,8 @@ import {
 } from "./model.js";
 import { ModelicaBinaryOperator, ModelicaExpressionSyntaxNode, ModelicaUnaryOperator } from "./syntax.js";
 
+type array<T> = T | array<T>[];
+
 export class ModelicaDAE {
   name: string;
   description: string | null;
@@ -53,6 +55,8 @@ export class ModelicaSimpleEquation extends ModelicaEquation {
 export abstract class ModelicaExpression {
   abstract accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R;
 
+  abstract toJSON(): array<boolean | number | object | string>;
+
   static fromClassInstance(classInstance: ModelicaClassInstance | null | undefined): ModelicaExpression | null {
     if (!classInstance || classInstance instanceof ModelicaEnumerationClassInstance) return null;
     if (!classInstance.instantiated && !classInstance.instantiating) classInstance.instantiate();
@@ -64,7 +68,7 @@ export abstract class ModelicaExpression {
           if (expression) elements.push(expression);
         }
       }
-      return new ModelicaArray([elements.length], elements);
+      return new ModelicaArray(classInstance.shape, elements);
     } else if (classInstance instanceof ModelicaPredefinedClassInstance) {
       return classInstance.value instanceof ModelicaExpressionSyntaxNode
         ? classInstance.value.accept(new ModelicaInterpreter(), classInstance)
@@ -97,6 +101,10 @@ export class ModelicaUnaryExpression extends ModelicaSimpleExpression {
 
   override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
     return visitor.visitUnaryExpression(this, argument);
+  }
+
+  override toJSON(): array<boolean | number | object | string> {
+    throw new Error();
   }
 
   static new(operator: ModelicaUnaryOperator, operand: ModelicaExpression): ModelicaExpression | null {
@@ -148,6 +156,10 @@ export class ModelicaBinaryExpression extends ModelicaSimpleExpression {
 
   override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
     return visitor.visitBinaryExpression(this, argument);
+  }
+
+  override toJSON(): array<boolean | number | object | string> {
+    throw new Error();
   }
 
   static new(
@@ -387,16 +399,31 @@ export class ModelicaArray extends ModelicaPrimaryExpression {
     }
     return null;
   }
+
+  override toJSON(): array<boolean | number | object | string> {
+    let offset = 0;
+    let elements = this.elements.map((e) => e.toJSON());
+    for (let i = this.shape.length - 1; i >= 1; i--) {
+      const length = this.shape[i] ?? 0;
+      const chunks: array<boolean | number | object | string>[] = [];
+      for (let j = 0; j < length; j++) {
+        chunks.push(elements.slice(offset, offset + length));
+        offset += length;
+      }
+      elements = chunks;
+    }
+    return elements;
+  }
 }
 
 export class ModelicaObject extends ModelicaPrimaryExpression {
   #classInstance: ModelicaClassInstance | null;
-  elements: Record<string, ModelicaExpression> = {};
+  elements: Map<string, ModelicaExpression>;
 
   constructor(elements: Map<string, ModelicaExpression>, classInstance?: ModelicaClassInstance | null) {
     super();
+    this.elements = elements;
     this.#classInstance = classInstance ?? null;
-    for (const entry of elements.entries()) this.elements[entry[0]] = entry[1];
   }
 
   override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
@@ -405,6 +432,12 @@ export class ModelicaObject extends ModelicaPrimaryExpression {
 
   get classInstance(): ModelicaClassInstance | null {
     return this.#classInstance;
+  }
+
+  override toJSON(): object {
+    return Object.assign(Object.fromEntries(this.elements.entries().map((e) => [e[0], e[1].toJSON()])), {
+      "@type": this.classInstance?.name ?? undefined,
+    });
   }
 }
 
@@ -421,6 +454,10 @@ export class ModelicaBooleanLiteral extends ModelicaLiteral {
   override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
     return visitor.visitBooleanLiteral(this, argument);
   }
+
+  override toJSON(): boolean {
+    return this.value;
+  }
 }
 
 export class ModelicaIntegerLiteral extends ModelicaLiteral {
@@ -433,6 +470,10 @@ export class ModelicaIntegerLiteral extends ModelicaLiteral {
 
   override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
     return visitor.visitIntegerLiteral(this, argument);
+  }
+
+  override toJSON(): number {
+    return this.value;
   }
 }
 
@@ -447,6 +488,10 @@ export class ModelicaRealLiteral extends ModelicaLiteral {
   override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
     return visitor.visitRealLiteral(this, argument);
   }
+
+  override toJSON(): number {
+    return this.value;
+  }
 }
 
 export class ModelicaStringLiteral extends ModelicaLiteral {
@@ -459,6 +504,10 @@ export class ModelicaStringLiteral extends ModelicaLiteral {
 
   override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
     return visitor.visitStringLiteral(this, argument);
+  }
+
+  override toJSON(): string {
+    return this.value;
   }
 }
 
@@ -474,6 +523,10 @@ export class ModelicaEnumerationLiteral extends ModelicaLiteral {
 
   override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
     return visitor.visitEnumerationLiteral(this, argument);
+  }
+
+  toJSON(): string {
+    return this.stringValue;
   }
 }
 
@@ -494,11 +547,19 @@ export class ModelicaBooleanVariable extends ModelicaVariable {
   override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
     return visitor.visitBooleanVariable(this, argument);
   }
+
+  toJSON(): array<boolean | number | object | string> {
+    throw new Error();
+  }
 }
 
 export class ModelicaIntegerVariable extends ModelicaVariable {
   override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
     return visitor.visitIntegerVariable(this, argument);
+  }
+
+  toJSON(): array<boolean | number | object | string> {
+    throw new Error();
   }
 }
 
@@ -506,11 +567,19 @@ export class ModelicaRealVariable extends ModelicaVariable {
   override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
     return visitor.visitRealVariable(this, argument);
   }
+
+  toJSON(): array<boolean | number | object | string> {
+    throw new Error();
+  }
 }
 
 export class ModelicaStringVariable extends ModelicaVariable {
   override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
     return visitor.visitStringVariable(this, argument);
+  }
+
+  toJSON(): array<boolean | number | object | string> {
+    throw new Error();
   }
 }
 
@@ -529,6 +598,10 @@ export class ModelicaEnumerationVariable extends ModelicaVariable {
 
   override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
     return visitor.visitEnumerationVariable(this, argument);
+  }
+
+  toJSON(): array<boolean | number | object | string> {
+    throw new Error();
   }
 }
 
@@ -602,7 +675,7 @@ export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void,
   }
 
   visitObject(node: ModelicaObject, argument?: A): void {
-    for (const key in node.elements) node.elements[key]?.accept(this, argument);
+    for (const element of node.elements.values()) element.accept(this, argument);
   }
 
   // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
@@ -707,10 +780,9 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
   visitObject(node: ModelicaObject): void {
     process.stdout.write("{");
     let i = 0;
-    for (const key in node.elements) {
-      const value = node.elements[key];
-      process.stdout.write('"' + key + '": ');
-      value?.accept(this);
+    for (const entry of node.elements.entries()) {
+      process.stdout.write('"' + entry[0] + '": ');
+      entry[1].accept(this);
       if (i++ < Object.keys(node.elements).length - 1) process.stdout.write(", ");
     }
     process.stdout.write("}");
