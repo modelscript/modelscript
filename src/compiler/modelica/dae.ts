@@ -58,7 +58,7 @@ export abstract class ModelicaExpression {
   abstract toJSON(): array<boolean | number | object | string>;
 
   static fromClassInstance(classInstance: ModelicaClassInstance | null | undefined): ModelicaExpression | null {
-    if (!classInstance || classInstance instanceof ModelicaEnumerationClassInstance) return null;
+    if (!classInstance) return null;
     if (!classInstance.instantiated && !classInstance.instantiating) classInstance.instantiate();
     if (classInstance instanceof ModelicaArrayClassInstance) {
       const elements: ModelicaExpression[] = [];
@@ -69,6 +69,8 @@ export abstract class ModelicaExpression {
         }
       }
       return new ModelicaArray(classInstance.shape, elements);
+    } else if (classInstance instanceof ModelicaEnumerationClassInstance) {
+      return classInstance.value;
     } else if (classInstance instanceof ModelicaPredefinedClassInstance) {
       return classInstance.value instanceof ModelicaExpressionSyntaxNode
         ? classInstance.value.accept(new ModelicaInterpreter(), classInstance)
