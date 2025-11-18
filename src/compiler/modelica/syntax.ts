@@ -5,6 +5,7 @@ import type { SyntaxNode } from "tree-sitter";
 export enum ModelicaClassKind {
   BLOCK = "block",
   CLASS = "class",
+  CONNECTOR = "connector",
   MODEL = "model",
   PACKAGE = "package",
   RECORD = "record",

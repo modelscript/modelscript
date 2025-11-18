@@ -43,6 +43,7 @@ module.exports = grammar({
       choice(
         field("block", "block"),
         field("class", "class"),
+        field("connector", "connector"),
         field("model", "model"),
         field("package", "package"),
         field("record", "record"),
