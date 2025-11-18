@@ -6,17 +6,15 @@ import {
   ModelicaBooleanLiteral,
   ModelicaExpression,
   ModelicaIntegerLiteral,
-  ModelicaObject,
   ModelicaRealLiteral,
   ModelicaStringLiteral,
   ModelicaUnaryExpression,
 } from "./dae.js";
 import {
   ModelicaClassInstance,
-  ModelicaEnumerationClassInstance,
+  ModelicaComponentInstance,
   ModelicaModification,
   ModelicaParameterModification,
-  ModelicaPredefinedClassInstance,
   type ModelicaNode,
 } from "./model.js";
 import {
@@ -26,7 +24,6 @@ import {
   ModelicaBooleanLiteralSyntaxNode,
   ModelicaClassKind,
   ModelicaComponentReferenceSyntaxNode,
-  ModelicaExpressionSyntaxNode,
   ModelicaFunctionCallSyntaxNode,
   ModelicaParenthesizedExpressionSyntaxNode,
   ModelicaStringLiteralSyntaxNode,
@@ -77,14 +74,13 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
   visitComponentReference(node: ModelicaComponentReferenceSyntaxNode, scope: ModelicaNode): ModelicaExpression | null {
     const namedElement = scope.resolveComponentReference(node);
     if (!namedElement) return null;
-    if (namedElement instanceof ModelicaPredefinedClassInstance) {
-      if (namedElement.value instanceof ModelicaExpression) return namedElement.value;
-      if (namedElement.value instanceof ModelicaExpressionSyntaxNode) return namedElement.value.accept(this, scope);
-      return null;
-    } else if (namedElement instanceof ModelicaEnumerationClassInstance) {
-      return namedElement.value;
+    if (namedElement instanceof ModelicaClassInstance) return ModelicaExpression.fromClassInstance(namedElement);
+    else if (namedElement instanceof ModelicaComponentInstance) {
+      if (!namedElement.instantiated && !namedElement.instantiating) namedElement.instantiate();
+      return ModelicaExpression.fromClassInstance(namedElement.classInstance);
+    } else {
+      throw new Error();
     }
-    return null;
   }
 
   visitFunctionCall(node: ModelicaFunctionCallSyntaxNode, scope: ModelicaNode): ModelicaExpression | null {
@@ -97,11 +93,11 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
       if (name != null && expression != null)
         parameters.push(new ModelicaParameterModification(scope, name, expression));
     }
-    const clonedFunctionInstance = functionInstance.clone(new ModelicaModification(scope, parameters));
     if (functionInstance.classKind == ModelicaClassKind.RECORD) {
-      return new ModelicaObject(new Map(), clonedFunctionInstance);
+      return ModelicaExpression.fromClassInstance(functionInstance.clone(new ModelicaModification(scope, parameters)));
+    } else {
+      throw new Error();
     }
-    return null;
   }
 
   visitParenthesizedExpression(

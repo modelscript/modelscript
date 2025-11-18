@@ -776,8 +776,9 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
     const element = this.parent?.resolveTypeSpecifier(this.abstractSyntaxNode?.parent?.typeSpecifier);
     if (element instanceof ModelicaClassInstance) {
       const arraySubscripts = [...(this.abstractSyntaxNode?.arraySubscripts ?? [])];
-      if (arraySubscripts.length === 0) this.classInstance = element.clone(this.modification);
-      else {
+      if (arraySubscripts.length === 0) {
+        this.classInstance = element.clone(this.modification);
+      } else {
         this.classInstance = new ModelicaArrayClassInstance(
           this.library,
           this,
@@ -824,7 +825,7 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
         modificationArguments,
         null,
         null,
-        outerModificationArgument.expression.accept(new ModelicaInterpreter(), this),
+        outerModificationArgument.expression.accept(new ModelicaInterpreter(), outerModificationArgument.scope),
       );
     }
     return new ModelicaModification(this, modificationArguments, modificationSyntaxNode?.modificationExpression);
