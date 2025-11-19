@@ -112,6 +112,14 @@ export enum LinePattern {
   DASH_DOT_DOT = "DashDotDot",
 }
 
+export interface IPlacement {
+  "@type": "Placement";
+  visible?: boolean;
+  transformation?: ITransformation;
+  iconVisible?: boolean;
+  iconTransformation?: ITransformation;
+}
+
 export type IPoint = [IDrawingUnit, IDrawingUnit];
 
 export interface IPolygon extends IFilledShape, IGraphicItem {
@@ -155,4 +163,11 @@ export enum TextStyle {
   BOLD = "Bold",
   ITALIC = "Italic",
   UNDERLINE = "UnderLine",
+}
+
+export interface ITransformation {
+  "@type": "Transformation";
+  extent?: IExtent;
+  rotation?: number;
+  origin?: IPoint;
 }
