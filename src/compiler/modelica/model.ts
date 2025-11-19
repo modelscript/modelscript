@@ -262,7 +262,6 @@ export abstract class ModelicaElement extends ModelicaNode {
     const annotations: ModelicaNamedElement[] = [];
     const modification = ModelicaModification.new(classInstance, annotationClause);
     for (const modificationArgument of modification.modificationArguments) {
-      console.error(JSON.stringify(modificationArgument, null, 2));
       const annotation = ModelicaElement.#annotationClassInstance.resolveSimpleName(modificationArgument.name);
       if (annotation instanceof ModelicaClassInstance) {
         if (modificationArgument instanceof ModelicaElementModification) {
@@ -270,7 +269,7 @@ export abstract class ModelicaElement extends ModelicaNode {
             annotation.clone(
               new ModelicaModification(
                 classInstance,
-                modificationArgument.modificationArguments,
+                [...modificationArgument.extract(), ...modificationArgument.modificationArguments],
                 modificationArgument.modificationExpression,
               ),
             ),
@@ -282,7 +281,7 @@ export abstract class ModelicaElement extends ModelicaNode {
             annotation.clone(
               new ModelicaModification(
                 classInstance,
-                modificationArgument.modificationArguments,
+                [...modificationArgument.extract(), ...modificationArgument.modificationArguments],
                 modificationArgument.modificationExpression,
               ),
             ),
