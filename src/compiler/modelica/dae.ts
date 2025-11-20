@@ -403,15 +403,11 @@ export class ModelicaArray extends ModelicaPrimaryExpression {
   }
 
   override toJSON(): array<boolean | number | object | string> {
-    let offset = 0;
-    let elements = this.elements.map((e) => e.toJSON());
+    let elements = [...this.flatElements].map((e) => e.toJSON());
     for (let i = this.shape.length - 1; i >= 1; i--) {
       const length = this.shape[i] ?? 0;
       const chunks: array<boolean | number | object | string>[] = [];
-      for (let j = 0; j < length; j++) {
-        chunks.push(elements.slice(offset, offset + length));
-        offset += length;
-      }
+      for (let j = 0; j < elements.length; j += length) chunks.push(elements.slice(j, j + length));
       elements = chunks;
     }
     return elements;
