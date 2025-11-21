@@ -39,6 +39,7 @@
     "watch": "tsc --watch"
   },
   "dependencies": {
+    "@svgdotjs/svg.js": "^3.2.5",
     "tree-sitter": "^0.21.1"
   },
   "devDependencies": {

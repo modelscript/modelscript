@@ -1557,6 +1557,33 @@ export class ModelicaClassModificationSyntaxNode
     return visitor.visitClassModification(this, argument);
   }
 
+  hasModificationArgument(name: string): boolean {
+    const nameComponents = name.split(".");
+    if (nameComponents.length === 0) return false;
+    for (const modificationArgument of this.modificationArguments) {
+      if (modificationArgument instanceof ModelicaElementModificationSyntaxNode) {
+        const length = modificationArgument.name?.components?.length ?? 0;
+        if (length === 0 || length > nameComponents.length) continue;
+        let match = true;
+        for (let i = 0; i < length; i++) {
+          if (modificationArgument.name?.components?.[i]?.value !== nameComponents[i]) {
+            match = false;
+            break;
+          }
+        }
+        if (match) {
+          if (nameComponents.length === length) {
+            return true;
+          } else if (nameComponents.length > length) {
+            name = nameComponents.slice(length).join(".");
+            if (modificationArgument.modification?.classModification?.hasModificationArgument(name)) return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
   static override new(
     parent: ModelicaSyntaxNode | null,
     concreteSyntaxNode?: SyntaxNode | null,
