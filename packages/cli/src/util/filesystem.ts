@@ -33,7 +33,7 @@ export class NodeFileSystem implements FileSystem {
     return sep;
   }
 
-  stat(path: string): Stats {
-    return statSync(path);
+  stat(path: string): Stats | null {
+    return statSync(path, { throwIfNoEntry: false }) ?? null;
   }
 }
