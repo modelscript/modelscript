@@ -37,17 +37,29 @@ module.exports = grammar({
 
     // A.2.2 Class Definition
 
-    ClassDefinition: ($) => seq(field("classKind", $.ClassKind), field("classSpecifier", $._ClassSpecifier), ";"),
-
-    ClassKind: ($) =>
-      choice(
-        field("block", "block"),
-        field("class", "class"),
-        field("connector", "connector"),
-        field("model", "model"),
-        field("package", "package"),
-        field("record", "record"),
-        field("type", "type"),
+    ClassDefinition: ($) =>
+      seq(
+        optional(field("redeclare", "redeclare")),
+        optional(field("final", "final")),
+        optional(field("inner", "inner")),
+        optional(field("outer", "outer")),
+        optional(field("replaceable", "replaceable")),
+        optional(field("encapsulated", "encapsulated")),
+        optional(field("partial", "partial")),
+        optional(field("purity", choice("pure", "impure"))),
+        choice(
+          field("class", "class"),
+          field("model", "model"),
+          seq(optional(field("operator", "operator")), field("record", "record")),
+          field("block", "block"),
+          seq(optional(field("expandable", "expandable")), field("connector", "connector")),
+          field("type", "type"),
+          field("package", "package"),
+          seq(optional(field("operator", "operator")), field("function", "function")),
+          field("operator", "operator"),
+        ),
+        field("classSpecifier", $._ClassSpecifier),
+        ";",
       ),
 
     _ClassSpecifier: ($) => choice($.LongClassSpecifier, $.ShortClassSpecifier),
@@ -69,6 +81,7 @@ module.exports = grammar({
         "=",
         choice(
           seq(
+            optional(field("causality", choice("input", "output"))),
             field("typeSpecifier", $.TypeSpecifier),
             optional(field("arraySubscripts", $.ArraySubscripts)),
             optional(field("classModification", $.ClassModification)),
@@ -99,7 +112,7 @@ module.exports = grammar({
     InitialElementSection: ($) => repeat1(field("element", $._Element)),
 
     ElementSection: ($) =>
-      seq(choice(field("protected", "protected"), field("public", "public")), repeat(field("element", $._Element))),
+      seq(field("visibility", choice("protected", "public")), repeat(field("element", $._Element))),
 
     _Element: ($) => choice($.ClassDefinition, $.ComponentClause, $.ExtendsClause, $._ImportClause),
 
@@ -162,12 +175,21 @@ module.exports = grammar({
         ")",
       ),
 
-    InheritanceModification: ($) => seq("break", choice(field("identifier", $.IDENT))),
+    InheritanceModification: ($) =>
+      seq("break", choice(field("connectEquation", $.ConnectEquation), field("identifier", $.IDENT))),
 
     // A.2.4 Component Clause
 
     ComponentClause: ($) =>
       seq(
+        optional(field("redeclare", "redeclare")),
+        optional(field("final", "final")),
+        optional(field("inner", "inner")),
+        optional(field("outer", "outer")),
+        optional(field("replaceable", "replaceable")),
+        optional(field("flow", choice("flow", "stream"))),
+        optional(field("variability", choice("discrete", "parameter", "constant"))),
+        optional(field("causality", choice("input", "output"))),
         field("typeSpecifier", $.TypeSpecifier),
         optional(field("arraySubscripts", $.ArraySubscripts)),
         commaSep1(field("componentDeclaration", $.ComponentDeclaration)),
@@ -208,6 +230,7 @@ module.exports = grammar({
     ElementModification: ($) =>
       seq(
         optional(field("each", "each")),
+        optional(field("final", "final")),
         field("name", $.Name),
         optional(field("modification", $.Modification)),
         optional(field("description", $.Description)),

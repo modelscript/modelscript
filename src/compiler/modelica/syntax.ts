@@ -2,21 +2,6 @@
 
 import type { SyntaxNode } from "tree-sitter";
 
-export enum ModelicaClassKind {
-  BLOCK = "block",
-  CLASS = "class",
-  CONNECTOR = "connector",
-  MODEL = "model",
-  PACKAGE = "package",
-  RECORD = "record",
-  TYPE = "type",
-}
-
-export enum ModelicaVisibility {
-  PUBLIC = "public",
-  PROTECTED = "protected",
-}
-
 export enum ModelicaBinaryOperator {
   LOGICAL_OR = "or",
   LOGICAL_AND = "and",
@@ -38,12 +23,53 @@ export enum ModelicaBinaryOperator {
   ELEMENTWISE_EXPONENTIATION = ".^",
 }
 
+export enum ModelicaClassKind {
+  CLASS = "class",
+  MODEL = "model",
+  RECORD = "record",
+  OPERATOR_RECORD = "operator record",
+  BLOCK = "block",
+  CONNECTOR = "connector",
+  EXPANDABLE_CONNECTOR = "expandable connector",
+  TYPE = "type",
+  PACKAGE = "package",
+  FUNCTION = "function",
+  OPERATOR_FUNCTION = "operator function",
+  OPERATOR = "operator",
+}
+
+export enum ModelicaCausality {
+  INPUT = "input",
+  OUTPUT = "output ",
+}
+
+export enum ModelicaFlow {
+  FLOW = "flow",
+  STREAM = "stream",
+}
+
+export enum ModelicaPurity {
+  PURE = "pure",
+  IMPURE = "impure",
+}
+
 export enum ModelicaUnaryOperator {
   ELEMENTWISE_UNARY_MINUS = ".-",
   ELEMENTWISE_UNARY_PLUS = ".+",
   LOGICAL_NEGATION = "not",
   UNARY_MINUS = "-",
   UNARY_PLUS = "+",
+}
+
+export enum ModelicaVariability {
+  CONSTANT = "constant",
+  DISCRETE = "discrete",
+  PARAMETER = "parameter",
+}
+
+export enum ModelicaVisibility {
+  PUBLIC = "public",
+  PROTECTED = "protected",
 }
 
 export interface IModelicaSyntaxNode {
@@ -61,14 +87,14 @@ export abstract class ModelicaSyntaxNode implements IModelicaSyntaxNode {
     abstractSyntaxNode?: IModelicaSyntaxNode | null,
     type?: string | null,
   ) {
-    if (parent != null) this.#parent = new WeakRef(parent);
+    if (parent) this.#parent = new WeakRef(parent);
     else this.#parent = null;
-    if (concreteSyntaxNode != null) this.#concreteSyntaxNode = new WeakRef(concreteSyntaxNode);
+    if (concreteSyntaxNode) this.#concreteSyntaxNode = new WeakRef(concreteSyntaxNode);
     else this.#concreteSyntaxNode = null;
     this["@type"] = type ?? this.constructor.name.substring(8, this.constructor.name.length - 10);
-    if (concreteSyntaxNode != null && concreteSyntaxNode.type != this["@type"])
+    if (concreteSyntaxNode && concreteSyntaxNode.type != this["@type"])
       throw new Error(`Expected concrete syntax node of type "${this["@type"]}", got "${concreteSyntaxNode.type}"`);
-    if (abstractSyntaxNode != null && abstractSyntaxNode["@type"] != this["@type"])
+    if (abstractSyntaxNode && abstractSyntaxNode["@type"] != this["@type"])
       throw new Error(`Expected abstract syntax node of type "${this["@type"]}", got "${abstractSyntaxNode["@type"]}"`);
   }
 
@@ -358,7 +384,7 @@ export abstract class ModelicaSyntaxNode implements IModelicaSyntaxNode {
     const length = Math.max(concreteSyntaxNodeArray?.length ?? 0, abstractSyntaxNodeArray?.length ?? 0);
     for (let i = 0; i < length; i++) {
       const node = this.new(parent, concreteSyntaxNodeArray?.[i] ?? null, abstractSyntaxNodeArray?.[i] ?? null) as T;
-      if (node != null) nodes.push(node);
+      if (node) nodes.push(node);
     }
     return nodes;
   }
@@ -511,6 +537,14 @@ export abstract class ModelicaElementSyntaxNode extends ModelicaSyntaxNode {
 export interface IModelicaClassDefinitionSyntaxNode extends IModelicaElementSyntaxNode {
   classKind: ModelicaClassKind | null;
   classSpecifier: IModelicaClassSpecifierSyntaxNode | null;
+  encapsulated: boolean;
+  final: boolean;
+  inner: boolean;
+  outer: boolean;
+  partial: boolean;
+  purity: ModelicaPurity | null;
+  redeclare: boolean;
+  replaceable: boolean;
 }
 
 export class ModelicaClassDefinitionSyntaxNode
@@ -519,6 +553,14 @@ export class ModelicaClassDefinitionSyntaxNode
 {
   classKind: ModelicaClassKind | null;
   classSpecifier: ModelicaClassSpecifierSyntaxNode | null;
+  encapsulated: boolean;
+  final: boolean;
+  inner: boolean;
+  outer: boolean;
+  partial: boolean;
+  purity: ModelicaPurity | null;
+  redeclare: boolean;
+  replaceable: boolean;
 
   constructor(
     parent: ModelicaSyntaxNode | null,
@@ -526,10 +568,45 @@ export class ModelicaClassDefinitionSyntaxNode
     abstractSyntaxNode?: IModelicaClassDefinitionSyntaxNode | null,
   ) {
     super(parent, concreteSyntaxNode, abstractSyntaxNode);
-    this.classKind =
-      toEnum(ModelicaClassKind, concreteSyntaxNode?.childForFieldName("classKind")?.text) ??
-      abstractSyntaxNode?.classKind ??
+    this.encapsulated =
+      abstractSyntaxNode?.encapsulated ?? concreteSyntaxNode?.childForFieldName("encapsulated") != null;
+    this.final = abstractSyntaxNode?.final ?? concreteSyntaxNode?.childForFieldName("final") != null;
+    this.inner = abstractSyntaxNode?.inner ?? concreteSyntaxNode?.childForFieldName("inner") != null;
+    this.outer = abstractSyntaxNode?.outer ?? concreteSyntaxNode?.childForFieldName("outer") != null;
+    this.partial = abstractSyntaxNode?.partial ?? concreteSyntaxNode?.childForFieldName("partial") != null;
+    this.redeclare = abstractSyntaxNode?.redeclare ?? concreteSyntaxNode?.childForFieldName("redeclare") != null;
+    this.replaceable = abstractSyntaxNode?.replaceable ?? concreteSyntaxNode?.childForFieldName("replaceable") != null;
+    this.purity =
+      abstractSyntaxNode?.purity ??
+      toEnum(ModelicaPurity, concreteSyntaxNode?.childForFieldName("purity")?.text) ??
       null;
+    if (abstractSyntaxNode?.classKind) {
+      this.classKind = abstractSyntaxNode.classKind;
+    } else if (!concreteSyntaxNode || concreteSyntaxNode.childForFieldName("class")) {
+      this.classKind = ModelicaClassKind.CLASS;
+    } else if (concreteSyntaxNode.childForFieldName("model")) {
+      this.classKind = ModelicaClassKind.MODEL;
+    } else if (concreteSyntaxNode.childForFieldName("record")) {
+      this.classKind = concreteSyntaxNode.childForFieldName("operator")
+        ? ModelicaClassKind.OPERATOR_RECORD
+        : ModelicaClassKind.RECORD;
+    } else if (concreteSyntaxNode.childForFieldName("block")) {
+      this.classKind = ModelicaClassKind.BLOCK;
+    } else if (concreteSyntaxNode.childForFieldName("connector")) {
+      this.classKind = ModelicaClassKind.CONNECTOR;
+    } else if (concreteSyntaxNode.childForFieldName("type")) {
+      this.classKind = ModelicaClassKind.TYPE;
+    } else if (concreteSyntaxNode.childForFieldName("package")) {
+      this.classKind = ModelicaClassKind.PACKAGE;
+    } else if (concreteSyntaxNode.childForFieldName("function")) {
+      this.classKind = concreteSyntaxNode.childForFieldName("operator")
+        ? ModelicaClassKind.OPERATOR_FUNCTION
+        : ModelicaClassKind.FUNCTION;
+    } else if (concreteSyntaxNode.childForFieldName("operator")) {
+      this.classKind = ModelicaClassKind.OPERATOR;
+    } else {
+      this.classKind = ModelicaClassKind.CLASS;
+    }
     this.classSpecifier = ModelicaClassSpecifierSyntaxNode.new(
       this,
       concreteSyntaxNode?.childForFieldName("classSpecifier"),
@@ -548,14 +625,14 @@ export class ModelicaClassDefinitionSyntaxNode
   get elements(): IterableIterator<ModelicaElementSyntaxNode> {
     const classSpecifier = this.classSpecifier;
     return (function* () {
-      if (classSpecifier != null) yield* classSpecifier.elements;
+      if (classSpecifier) yield* classSpecifier.elements;
     })();
   }
 
   get equations(): IterableIterator<ModelicaEquationSyntaxNode> {
     const classSpecifier = this.classSpecifier;
     return (function* () {
-      if (classSpecifier != null) yield* classSpecifier.equations;
+      if (classSpecifier) yield* classSpecifier.equations;
     })();
   }
 
@@ -716,6 +793,7 @@ export class ModelicaLongClassSpecifierSyntaxNode
 
 export interface IModelicaShortClassSpecifierSyntaxNode extends IModelicaClassSpecifierSyntaxNode {
   arraySubscripts: IModelicaArraySubscriptsSyntaxNode | null;
+  causality: ModelicaCausality | null;
   classModification: IModelicaClassModificationSyntaxNode | null;
   enumeration: boolean;
   enumerationLiterals: IModelicaEnumerationLiteralSyntaxNode[];
@@ -728,6 +806,7 @@ export class ModelicaShortClassSpecifierSyntaxNode
   implements IModelicaShortClassSpecifierSyntaxNode
 {
   arraySubscripts: ModelicaArraySubscriptsSyntaxNode | null;
+  causality: ModelicaCausality | null;
   classModification: ModelicaClassModificationSyntaxNode | null;
   enumeration: boolean;
   enumerationLiterals: ModelicaEnumerationLiteralSyntaxNode[];
@@ -740,6 +819,10 @@ export class ModelicaShortClassSpecifierSyntaxNode
     abstractSyntaxNode?: IModelicaShortClassSpecifierSyntaxNode | null,
   ) {
     super(parent, concreteSyntaxNode, abstractSyntaxNode);
+    this.causality =
+      abstractSyntaxNode?.causality ??
+      toEnum(ModelicaCausality, concreteSyntaxNode?.childForFieldName("causality")?.text) ??
+      null;
     this.typeSpecifier = ModelicaTypeSpecifierSyntaxNode.new(
       this,
       concreteSyntaxNode?.childForFieldName("typeSpecifier"),
@@ -890,7 +973,7 @@ export abstract class ModelicaSectionSyntaxNode extends ModelicaSyntaxNode {
 
 export interface IModelicaElementSectionSyntaxNode extends IModelicaSectionSyntaxNode {
   elements: IModelicaElementSyntaxNode[];
-  visibility: ModelicaVisibility;
+  visibility: ModelicaVisibility | null;
 }
 
 export class ModelicaElementSectionSyntaxNode
@@ -898,7 +981,7 @@ export class ModelicaElementSectionSyntaxNode
   implements IModelicaElementSectionSyntaxNode
 {
   elements: ModelicaElementSyntaxNode[];
-  visibility: ModelicaVisibility;
+  visibility: ModelicaVisibility | null;
 
   constructor(
     parent: ModelicaSyntaxNode | null,
@@ -911,9 +994,8 @@ export class ModelicaElementSectionSyntaxNode
     this.visibility =
       visibility ??
       abstractSyntaxNode?.visibility ??
-      (concreteSyntaxNode?.childForFieldName("protected") != null
-        ? ModelicaVisibility.PROTECTED
-        : ModelicaVisibility.PUBLIC);
+      toEnum(ModelicaVisibility, concreteSyntaxNode?.childForFieldName("visibility")?.text) ??
+      null;
     this.elements = ModelicaElementSyntaxNode.newArray(
       this,
       concreteSyntaxNode?.childrenForFieldName("element"),
@@ -1235,6 +1317,7 @@ export class ModelicaClassOrInheritanceModificationSyntaxNode
 }
 
 export interface IModelicaInheritanceModificationSyntaxNode extends IModelicaSyntaxNode {
+  connectEquation: IModelicaConnectEquationSyntaxNode | null;
   identifier: IModelicaIdentifierSyntaxNode | null;
 }
 
@@ -1242,6 +1325,7 @@ export class ModelicaInheritanceModificationSyntaxNode
   extends ModelicaSyntaxNode
   implements IModelicaInheritanceModificationSyntaxNode
 {
+  connectEquation: IModelicaConnectEquationSyntaxNode | null;
   identifier: ModelicaIdentifierSyntaxNode | null;
 
   constructor(
@@ -1250,6 +1334,11 @@ export class ModelicaInheritanceModificationSyntaxNode
     abstractSyntaxNode?: IModelicaInheritanceModificationSyntaxNode | null,
   ) {
     super(parent, concreteSyntaxNode, abstractSyntaxNode);
+    this.connectEquation = ModelicaConnectEquationSyntaxNode.new(
+      this,
+      concreteSyntaxNode?.childForFieldName("connectEquation"),
+      abstractSyntaxNode?.connectEquation,
+    );
     this.identifier = ModelicaIdentifierSyntaxNode.new(
       this,
       concreteSyntaxNode?.childForFieldName("identifier"),
@@ -1278,7 +1367,15 @@ export class ModelicaInheritanceModificationSyntaxNode
 export interface IModelicaComponentClauseSyntaxNode extends IModelicaElementSyntaxNode {
   arraySubscripts: IModelicaArraySubscriptsSyntaxNode | null;
   componentDeclarations: IModelicaComponentDeclarationSyntaxNode[];
+  causality: ModelicaCausality | null;
+  final: boolean;
+  flow: ModelicaFlow | null;
+  inner: boolean;
+  outer: boolean;
+  redeclare: boolean;
+  replaceable: boolean;
   typeSpecifier: IModelicaTypeSpecifierSyntaxNode | null;
+  variability: ModelicaVariability | null;
 }
 
 export class ModelicaComponentClauseSyntaxNode
@@ -1287,7 +1384,15 @@ export class ModelicaComponentClauseSyntaxNode
 {
   arraySubscripts: ModelicaArraySubscriptsSyntaxNode | null;
   componentDeclarations: ModelicaComponentDeclarationSyntaxNode[];
+  causality: ModelicaCausality | null;
+  final: boolean;
+  flow: ModelicaFlow | null;
+  inner: boolean;
+  outer: boolean;
+  redeclare: boolean;
+  replaceable: boolean;
   typeSpecifier: ModelicaTypeSpecifierSyntaxNode | null;
+  variability: ModelicaVariability | null;
 
   constructor(
     parent: ModelicaSyntaxNode | null,
@@ -1295,6 +1400,21 @@ export class ModelicaComponentClauseSyntaxNode
     abstractSyntaxNode?: IModelicaComponentClauseSyntaxNode | null,
   ) {
     super(parent, concreteSyntaxNode, abstractSyntaxNode);
+    this.final = abstractSyntaxNode?.final ?? concreteSyntaxNode?.childForFieldName("final") != null;
+    this.inner = abstractSyntaxNode?.inner ?? concreteSyntaxNode?.childForFieldName("inner") != null;
+    this.outer = abstractSyntaxNode?.outer ?? concreteSyntaxNode?.childForFieldName("outer") != null;
+    this.redeclare = abstractSyntaxNode?.redeclare ?? concreteSyntaxNode?.childForFieldName("redeclare") != null;
+    this.replaceable = abstractSyntaxNode?.replaceable ?? concreteSyntaxNode?.childForFieldName("replaceable") != null;
+    this.flow =
+      abstractSyntaxNode?.flow ?? toEnum(ModelicaFlow, concreteSyntaxNode?.childForFieldName("flow")?.text) ?? null;
+    this.variability =
+      abstractSyntaxNode?.variability ??
+      toEnum(ModelicaVariability, concreteSyntaxNode?.childForFieldName("variability")?.text) ??
+      null;
+    this.causality =
+      abstractSyntaxNode?.causality ??
+      toEnum(ModelicaCausality, concreteSyntaxNode?.childForFieldName("causality")?.text) ??
+      null;
     this.typeSpecifier = ModelicaTypeSpecifierSyntaxNode.new(
       this,
       concreteSyntaxNode?.childForFieldName("typeSpecifier"),
@@ -1633,6 +1753,7 @@ export abstract class ModelicaModificationArgumentSyntaxNode
 export interface IModelicaElementModificationSyntaxNode extends IModelicaModificationArgumentSyntaxNode {
   description: IModelicaDescriptionSyntaxNode | null;
   each: boolean;
+  final: boolean;
   modification: IModelicaModificationSyntaxNode | null;
   name: IModelicaNameSyntaxNode | null;
 }
@@ -1643,6 +1764,7 @@ export class ModelicaElementModificationSyntaxNode
 {
   description: ModelicaDescriptionSyntaxNode | null;
   each: boolean;
+  final: boolean;
   modification: ModelicaModificationSyntaxNode | null;
   name: ModelicaNameSyntaxNode | null;
 
@@ -1653,6 +1775,7 @@ export class ModelicaElementModificationSyntaxNode
   ) {
     super(parent, concreteSyntaxNode, abstractSyntaxNode);
     this.each = abstractSyntaxNode?.each ?? concreteSyntaxNode?.childForFieldName("each") != null;
+    this.final = abstractSyntaxNode?.final ?? concreteSyntaxNode?.childForFieldName("final") != null;
     this.name = ModelicaNameSyntaxNode.new(
       this,
       concreteSyntaxNode?.childForFieldName("name"),
@@ -2064,8 +2187,8 @@ export class ModelicaUnaryExpressionSyntaxNode
   ) {
     super(parent, concreteSyntaxNode, abstractSyntaxNode);
     this.operator =
-      toEnum(ModelicaUnaryOperator, concreteSyntaxNode?.childForFieldName("operator")?.text) ??
       abstractSyntaxNode?.operator ??
+      toEnum(ModelicaUnaryOperator, concreteSyntaxNode?.childForFieldName("operator")?.text) ??
       null;
     this.operand = ModelicaSimpleExpressionSyntaxNode.new(
       this,
@@ -2118,8 +2241,8 @@ export class ModelicaBinaryExpressionSyntaxNode
       abstractSyntaxNode?.operand1,
     );
     this.operator =
-      toEnum(ModelicaBinaryOperator, concreteSyntaxNode?.childForFieldName("operator")?.text) ??
       abstractSyntaxNode?.operator ??
+      toEnum(ModelicaBinaryOperator, concreteSyntaxNode?.childForFieldName("operator")?.text) ??
       null;
     this.operand2 = ModelicaSimpleExpressionSyntaxNode.new(
       this,
