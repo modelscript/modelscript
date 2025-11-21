@@ -217,13 +217,26 @@ module.exports = grammar({
 
     EquationSection: ($) => seq("equation", repeat(field("equation", $._Equation))),
 
-    _Equation: ($) => choice($.SimpleEquation),
+    _Equation: ($) => choice($.SimpleEquation, $.ConnectEquation),
 
     SimpleEquation: ($) =>
       seq(
         field("expression1", $._SimpleExpression),
         "=",
         field("expression2", $._Expression),
+        optional(field("description", $.Description)),
+        optional(field("annotationClause", $.AnnotationClause)),
+        ";",
+      ),
+
+    ConnectEquation: ($) =>
+      seq(
+        "connect",
+        "(",
+        field("componentReference1", $.ComponentReference),
+        ",",
+        field("componentReference2", $.ComponentReference),
+        ")",
         optional(field("description", $.Description)),
         optional(field("annotationClause", $.AnnotationClause)),
         ";",

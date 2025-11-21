@@ -172,6 +172,12 @@ export abstract class ModelicaSyntaxNode implements IModelicaSyntaxNode {
           concreteSyntaxNode,
           abstractSyntaxNode as IModelicaCompoundImportClauseSyntaxNode,
         );
+      case ModelicaConnectEquationSyntaxNode.type:
+        return new ModelicaConnectEquationSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaConnectEquationSyntaxNode,
+        );
       case ModelicaDeclarationSyntaxNode.type:
         return new ModelicaDeclarationSyntaxNode(
           parent as ModelicaComponentDeclarationSyntaxNode | null,
@@ -1760,6 +1766,12 @@ export abstract class ModelicaEquationSyntaxNode extends ModelicaSyntaxNode impl
     abstractSyntaxNode?: IModelicaEquationSyntaxNode | null,
   ): ModelicaEquationSyntaxNode | null {
     switch (concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]) {
+      case ModelicaConnectEquationSyntaxNode.type:
+        return new ModelicaConnectEquationSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaConnectEquationSyntaxNode,
+        );
       case ModelicaSimpleEquationSyntaxNode.type:
         return new ModelicaSimpleEquationSyntaxNode(
           parent,
@@ -1814,6 +1826,54 @@ export class ModelicaSimpleEquationSyntaxNode
     switch (concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]) {
       case ModelicaSimpleEquationSyntaxNode.type:
         return new ModelicaSimpleEquationSyntaxNode(parent, concreteSyntaxNode, abstractSyntaxNode);
+      default:
+        return null;
+    }
+  }
+}
+
+export interface IModelicaConnectEquationSyntaxNode extends IModelicaEquationSyntaxNode {
+  componentReference1: IModelicaComponentReferenceSyntaxNode | null;
+  componentReference2: IModelicaComponentReferenceSyntaxNode | null;
+}
+
+export class ModelicaConnectEquationSyntaxNode
+  extends ModelicaEquationSyntaxNode
+  implements IModelicaConnectEquationSyntaxNode
+{
+  componentReference1: ModelicaComponentReferenceSyntaxNode | null;
+  componentReference2: ModelicaComponentReferenceSyntaxNode | null;
+
+  constructor(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaConnectEquationSyntaxNode | null,
+  ) {
+    super(parent, concreteSyntaxNode, abstractSyntaxNode);
+    this.componentReference1 = ModelicaComponentReferenceSyntaxNode.new(
+      this,
+      concreteSyntaxNode?.childForFieldName("componentReference1"),
+      abstractSyntaxNode?.componentReference1,
+    );
+    this.componentReference2 = ModelicaComponentReferenceSyntaxNode.new(
+      this,
+      concreteSyntaxNode?.childForFieldName("componentReference2"),
+      abstractSyntaxNode?.componentReference2,
+    );
+  }
+
+  override accept<R, A>(visitor: IModelicaSyntaxVisitor<R, A>, argument?: A): R {
+    return visitor.visitConnectEquation(this, argument);
+  }
+
+  static override new(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaConnectEquationSyntaxNode | null,
+  ): ModelicaConnectEquationSyntaxNode | null {
+    switch (concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]) {
+      case ModelicaConnectEquationSyntaxNode.type:
+        return new ModelicaConnectEquationSyntaxNode(parent, concreteSyntaxNode, abstractSyntaxNode);
       default:
         return null;
     }
@@ -3137,6 +3197,8 @@ export interface IModelicaSyntaxVisitor<R, A> {
 
   visitCompoundImportClause(node: ModelicaCompoundImportClauseSyntaxNode, argument?: A): R;
 
+  visitConnectEquation(node: ModelicaConnectEquationSyntaxNode, argument?: A): R;
+
   visitDeclaration(node: ModelicaDeclarationSyntaxNode, argument?: A): R;
 
   visitDescription(node: ModelicaDescriptionSyntaxNode, argument?: A): R;
@@ -3277,6 +3339,12 @@ export abstract class ModelicaSyntaxVisitor<R, A> implements IModelicaSyntaxVisi
     for (const importName of node.importNames) importName.accept(this, argument);
     node.description?.accept(this, argument);
     node.annotationClause?.accept(this, argument);
+    return null;
+  }
+
+  visitConnectEquation(node: ModelicaConnectEquationSyntaxNode, argument?: A): R | null {
+    node.componentReference1?.accept(this, argument);
+    node.componentReference2?.accept(this, argument);
     return null;
   }
 
