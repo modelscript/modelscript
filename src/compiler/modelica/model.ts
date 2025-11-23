@@ -17,8 +17,11 @@ import {
   ModelicaComponentClauseSyntaxNode,
   ModelicaComponentReferenceSyntaxNode,
   ModelicaCompoundImportClauseSyntaxNode,
+  ModelicaConnectEquationSyntaxNode,
   ModelicaElementModificationSyntaxNode,
   ModelicaElementSyntaxNode,
+  ModelicaEquationSectionSyntaxNode,
+  ModelicaEquationSyntaxNode,
   ModelicaExpressionSyntaxNode,
   ModelicaExtendsClauseSyntaxNode,
   ModelicaIdentifierSyntaxNode,
@@ -235,8 +238,9 @@ export abstract class ModelicaElement extends ModelicaNode {
 
   abstract get abstractSyntaxNode(): ModelicaElementSyntaxNode | null;
 
-  annotation<T>(name: string): T | null {
-    for (const annotation of this.annotations) {
+  annotation<T>(name: string, annotations?: ModelicaNamedElement[] | null): T | null {
+    annotations = annotations ?? this.annotations;
+    for (const annotation of annotations) {
       if (annotation.name === name) {
         if (annotation instanceof ModelicaClassInstance) {
           return (ModelicaExpression.fromClassInstance(annotation)?.toJSON() ?? null) as T | null;
@@ -248,7 +252,7 @@ export abstract class ModelicaElement extends ModelicaNode {
     return null;
   }
 
-  instantiateAnnotations(
+  static instantiateAnnotations(
     classInstance: ModelicaClassInstance | null,
     annotationClause?: ModelicaAnnotationClauseSyntaxNode | null,
   ): ModelicaNamedElement[] {
@@ -341,7 +345,7 @@ export class ModelicaExtendsClassInstance extends ModelicaElement {
     if (element instanceof ModelicaClassInstance) {
       this.classInstance = element.clone(this.#modification);
     }
-    this.annotations = this.instantiateAnnotations(this.parent, this.abstractSyntaxNode?.annotationClause);
+    this.annotations = ModelicaElement.instantiateAnnotations(this.parent, this.abstractSyntaxNode?.annotationClause);
     this.instantiated = true;
   }
 
@@ -443,6 +447,15 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     })();
   }
 
+  get connectEquations(): IterableIterator<ModelicaConnectEquationSyntaxNode> {
+    const equations = this.equations;
+    return (function* () {
+      for (const equation of equations) {
+        if (equation instanceof ModelicaConnectEquationSyntaxNode) yield equation;
+      }
+    })();
+  }
+
   override get elements(): IterableIterator<ModelicaElement> {
     if (!this.instantiated && !this.instantiating) this.instantiate();
     const declaredElements = this.declaredElements;
@@ -454,11 +467,34 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     })();
   }
 
-  get extendsClassInstances(): IterableIterator<ModelicaExtendsClassInstance> {
-    const elements = this.elements;
+  get equationSections(): IterableIterator<ModelicaEquationSectionSyntaxNode> {
+    const extendsClassInstances = this.extendsClassInstances;
+    const abstractSyntaxNode = this.abstractSyntaxNode;
     return (function* () {
-      for (const element of elements) {
-        if (element instanceof ModelicaExtendsClassInstance) yield element;
+      for (const extendsClassInstance of extendsClassInstances) {
+        for (const section of extendsClassInstance.classInstance?.abstractSyntaxNode?.sections ?? [])
+          if (section instanceof ModelicaEquationSectionSyntaxNode) yield section;
+      }
+      for (const section of abstractSyntaxNode?.sections ?? []) {
+        if (section instanceof ModelicaEquationSectionSyntaxNode) yield section;
+      }
+    })();
+  }
+
+  get equations(): IterableIterator<ModelicaEquationSyntaxNode> {
+    const equationSections = this.equationSections;
+    return (function* () {
+      for (const equationSection of equationSections) {
+        yield* equationSection.equations;
+      }
+    })();
+  }
+
+  get extendsClassInstances(): IterableIterator<ModelicaExtendsClassInstance> {
+    const declaredElements = this.declaredElements;
+    return (function* () {
+      for (const declaredElement of declaredElements) {
+        if (declaredElement instanceof ModelicaExtendsClassInstance) yield declaredElement;
       }
     })();
   }
@@ -511,7 +547,7 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     for (const element of this.declaredElements) {
       if (element instanceof ModelicaComponentInstance) element.instantiate();
     }
-    this.annotations = this.instantiateAnnotations(this, this.abstractSyntaxNode?.annotationClause);
+    this.annotations = ModelicaElement.instantiateAnnotations(this, this.abstractSyntaxNode?.annotationClause);
     this.instantiated = true;
   }
 
@@ -742,7 +778,7 @@ export class ModelicaEntity extends ModelicaClassInstance {
     if (filePath) {
       const parser = context.getParser(context.fs.extname(filePath));
       const text = context.fs.read(filePath);
-      const tree = parser.parse(text);
+      const tree = parser.parse(text, undefined, { bufferSize: text.length * 2 });
       this.#storedDefinitionSyntaxNode = ModelicaStoredDefinitionSyntaxNode.new(null, tree.rootNode);
       this.abstractSyntaxNode = this.#storedDefinitionSyntaxNode?.classDefinitions?.[0] ?? null;
     }
@@ -818,7 +854,7 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
         this.classInstance.instantiate();
       }
     }
-    this.annotations = this.instantiateAnnotations(this.parent, this.abstractSyntaxNode?.annotationClause);
+    this.annotations = ModelicaElement.instantiateAnnotations(this.parent, this.abstractSyntaxNode?.annotationClause);
     this.instantiated = true;
   }
 

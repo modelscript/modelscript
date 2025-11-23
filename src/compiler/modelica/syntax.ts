@@ -653,7 +653,7 @@ export class ModelicaClassDefinitionSyntaxNode
     }
   }
 
-  get sections(): IModelicaSectionSyntaxNode[] {
+  get sections(): ModelicaSectionSyntaxNode[] {
     return this.classSpecifier?.sections ?? [];
   }
 }
@@ -722,7 +722,7 @@ export abstract class ModelicaClassSpecifierSyntaxNode
     }
   }
 
-  abstract get sections(): IModelicaSectionSyntaxNode[];
+  abstract get sections(): ModelicaSectionSyntaxNode[];
 }
 
 export interface IModelicaLongClassSpecifierSyntaxNode extends IModelicaClassSpecifierSyntaxNode {
@@ -863,7 +863,7 @@ export class ModelicaShortClassSpecifierSyntaxNode
     return (function* () {})();
   }
 
-  get sections(): IModelicaSyntaxNode[] {
+  override get sections(): ModelicaSectionSyntaxNode[] {
     return [];
   }
 
@@ -3579,7 +3579,7 @@ export abstract class ModelicaSyntaxVisitor<R, A> implements IModelicaSyntaxVisi
   }
 
   visitParenthesizedExpression(node: ModelicaParenthesizedExpressionSyntaxNode, argument?: A): R | null {
-    node.accept(this, argument);
+    node.expression?.accept(this, argument);
     return null;
   }
 
