@@ -96,7 +96,7 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     if (functionInstance.classKind == ModelicaClassKind.RECORD) {
       return ModelicaExpression.fromClassInstance(functionInstance.clone(new ModelicaModification(scope, parameters)));
     } else {
-      throw new Error();
+      return null;
     }
   }
 

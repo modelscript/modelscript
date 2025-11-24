@@ -30,13 +30,13 @@ import {
   ModelicaModificationArgumentSyntaxNode,
   ModelicaModificationExpressionSyntaxNode,
   ModelicaModificationSyntaxNode,
+  ModelicaNameSyntaxNode,
   ModelicaShortClassSpecifierSyntaxNode,
   ModelicaSimpleImportClauseSyntaxNode,
   ModelicaStoredDefinitionSyntaxNode,
   ModelicaSubscriptSyntaxNode,
   ModelicaUnqualifiedImportClauseSyntaxNode,
   type ModelicaComponentDeclarationSyntaxNode,
-  type ModelicaNameSyntaxNode,
   type ModelicaTypeSpecifierSyntaxNode,
 } from "./syntax.js";
 
@@ -100,8 +100,8 @@ export abstract class ModelicaNode {
     return element;
   }
 
-  resolveName(name: ModelicaNameSyntaxNode | null | undefined, global = false): ModelicaNamedElement | null {
-    const components = name?.components;
+  resolveName(name: ModelicaNameSyntaxNode | string[] | null | undefined, global = false): ModelicaNamedElement | null {
+    const components = name instanceof ModelicaNameSyntaxNode ? name.components : name;
     if (!components || components.length === 0) return null;
     let namedElement = this.resolveSimpleName(components[0], global);
     if (!namedElement) return null;

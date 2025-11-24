@@ -22,6 +22,7 @@ import {
   type IBitmap,
   type IColor,
   type ICoordinateSystem,
+  type IDiagram,
   type IEllipse,
   type IExtent,
   type IFilledShape,
@@ -35,19 +36,68 @@ import {
   type IText,
   type ITransformation,
 } from "./types.js";
-import type { ModelicaClassInstance, ModelicaComponentInstance } from "./model.js";
+import { ModelicaComponentInstance, ModelicaElement, type ModelicaClassInstance } from "./model.js";
 import { ModelicaClassKind } from "./syntax.js";
+import {
+  ModelicaBooleanLiteral,
+  ModelicaEnumerationLiteral,
+  ModelicaExpression,
+  ModelicaIntegerLiteral,
+  ModelicaRealLiteral,
+  ModelicaStringLiteral,
+} from "./dae.js";
 
-export function renderIcon(classInstance: ModelicaClassInstance, svg?: Svg): Svg | null {
+export function renderDiagram(classInstance: ModelicaClassInstance, svg?: Svg): Svg | null {
   svg = svg ? svg : new Svg();
   for (const extendsClassInstance of classInstance.extendsClassInstances) {
-    if (extendsClassInstance.classInstance) renderIcon(extendsClassInstance.classInstance, svg);
+    if (extendsClassInstance.classInstance) renderDiagram(extendsClassInstance.classInstance, svg);
+  }
+  const diagram: IDiagram | null = classInstance.annotation("Diagram");
+  applyCoordinateSystem(svg, diagram?.coordinateSystem);
+  const group = svg.group();
+  for (const graphicItem of diagram?.graphics ?? []) renderGraphicItem(group, graphicItem, classInstance);
+  for (const component of classInstance.components) {
+    const componentClassInstance = component.classInstance;
+    if (!componentClassInstance) continue;
+    const componentSvg = renderIcon(componentClassInstance, component);
+    if (componentSvg) {
+      applyDiagramPlacement(componentSvg, component, diagram?.coordinateSystem);
+      group.add(componentSvg);
+    }
+  }
+  for (const connectEquation of classInstance.connectEquations) {
+    const annotations = ModelicaElement.instantiateAnnotations(classInstance, connectEquation.annotationClause);
+    const line: ILine | null = classInstance.annotation("Line", annotations);
+    if (line) renderLine(group, line);
+    const text: IText | null = classInstance.annotation("Text", annotations);
+    if (text) renderText(group, text, classInstance);
+  }
+  const box = svg.viewbox();
+  for (let x = box.x; x <= box.x + box.width; x += 20) {
+    svg.line(x, box.y, x, box.y + box.height).stroke({ width: 0.25, color: "rgba(0,0,0,0.50)" });
+  }
+  for (let y = box.y; y <= box.y + box.height; y += 20) {
+    svg.line(box.x, y, box.x + box.width, y).stroke({ width: 0.25, color: "rgba(0,0,0,0.50)" });
+  }
+  svg.circle(5).cx(svg.viewbox().cx).cy(svg.viewbox().cy);
+  return svg;
+}
+
+export function renderIcon(
+  classInstance: ModelicaClassInstance,
+  componentInstance?: ModelicaComponentInstance,
+  svg?: Svg,
+): Svg | null {
+  svg = svg ? svg : new Svg();
+  for (const extendsClassInstance of classInstance.extendsClassInstances) {
+    if (extendsClassInstance.classInstance) renderIcon(extendsClassInstance.classInstance, componentInstance, svg);
   }
   const icon: IIcon | null = classInstance.annotation("Icon");
   if (!icon) return svg;
   applyCoordinateSystem(svg, icon.coordinateSystem);
   const group = svg.group();
-  for (const graphicItem of icon.graphics ?? []) renderGraphicItem(group, graphicItem);
+  for (const graphicItem of icon.graphics ?? [])
+    renderGraphicItem(group, graphicItem, classInstance, componentInstance);
   for (const component of classInstance.components) {
     const connectorClassInstance = component.classInstance;
     if (!connectorClassInstance || connectorClassInstance.classKind !== ModelicaClassKind.CONNECTOR) continue;
@@ -57,13 +107,26 @@ export function renderIcon(classInstance: ModelicaClassInstance, svg?: Svg): Svg
       group.add(connectorSvg);
     }
   }
+  const box = svg.viewbox();
+  for (let x = box.x; x <= box.x + box.width; x += 20) {
+    svg.line(x, box.y, x, box.y + box.height).stroke({ width: 0.25, color: "rgba(0,0,0,0.50)" });
+  }
+  for (let y = box.y; y <= box.y + box.height; y += 20) {
+    svg.line(box.x, y, box.x + box.width, y).stroke({ width: 0.25, color: "rgba(0,0,0,0.50)" });
+  }
+  svg.circle(5).cx(svg.viewbox().cx).cy(svg.viewbox().cy);
   return svg;
 }
 
-export function renderGraphicItem(group: G, graphicItem: IGraphicItem): Shape {
-  const o: [number, number] = [graphicItem.origin?.[0] ?? 0, graphicItem.origin?.[1] ?? 0];
-  const r: number = ((graphicItem.rotation ?? 0) * Math.PI) / 180;
-  group = group.group().matrix(Math.cos(r), -Math.sin(r), Math.sin(r), Math.cos(r), o[0], o[1]);
+export function renderGraphicItem(
+  group: G,
+  graphicItem: IGraphicItem,
+  classInstance?: ModelicaClassInstance,
+  componentInstance?: ModelicaComponentInstance,
+): Shape {
+  const [ox, oy] = convertPoint(graphicItem.origin, [0, 0]);
+  group.rotate(-(graphicItem.rotation ?? 0));
+  group.translate(ox, oy);
   let shape;
   switch (graphicItem["@type"]) {
     case "Bitmap":
@@ -82,7 +145,7 @@ export function renderGraphicItem(group: G, graphicItem: IGraphicItem): Shape {
       shape = renderRectangle(group, graphicItem as IRectangle);
       break;
     case "Text":
-      shape = renderText(group, graphicItem as IText);
+      shape = renderText(group, graphicItem as IText, classInstance, componentInstance);
       break;
     default:
       throw new Error();
@@ -111,15 +174,16 @@ export function renderBitmap(group: G, graphicItem: IBitmap): Shape {
 }
 
 export function renderEllipse(group: G, graphicItem: IEllipse): Shape {
-  const p1 = convertPoint(graphicItem.extent?.[0], [-100, -100]);
+  const [cx1, cy1] = convertPoint(graphicItem.extent?.[0], [-100, -100]);
+  const [cx2, cy2] = convertPoint(graphicItem.extent?.[1], [100, 100]);
   const rx = computeWidth(graphicItem.extent) / 2;
   const ry = computeHeight(graphicItem.extent) / 2;
   const shape = group
     .ellipse()
     .rx(rx)
     .ry(ry)
-    .cx(p1[0] + rx)
-    .cy(p1[1] + ry);
+    .cx(Math.min(cx1, cx2) + rx)
+    .cy(Math.min(cy1, cy2) + ry);
   renderFilledShape(shape, graphicItem);
   return shape;
 }
@@ -157,42 +221,84 @@ export function renderPolygon(group: G, graphicItem: IPolygon): Shape {
 }
 
 export function renderRectangle(group: G, graphicItem: IRectangle): Shape {
-  const p1 = convertPoint(graphicItem.extent?.[0], [0, 0]);
-  const p2 = convertPoint(graphicItem.extent?.[1], [0, 0]);
-  const shape = group
-    .rect()
-    .width(Math.abs(p2[0] - p1[0]))
-    .height(Math.abs(p2[1] - p1[1]))
-    .x(Math.min(p1[0], p2[0]))
-    .y(Math.min(p1[1], p2[1]));
+  const [x1, y1] = convertPoint(graphicItem.extent?.[0], [0, 0]);
+  const [x2, y2] = convertPoint(graphicItem.extent?.[1], [0, 0]);
+  const x = Math.min(x1, x2);
+  const y = Math.min(y1, y2);
+  const width = computeWidth(graphicItem.extent);
+  const height = computeHeight(graphicItem.extent);
+  const shape = group.rect().width(width).height(height).x(x).y(y);
   if (graphicItem.radius) shape.radius(graphicItem.radius);
   renderFilledShape(shape, graphicItem);
   return shape;
 }
 
-export function renderText(group: G, graphicItem: IText): Shape {
-  const shape = group.text(graphicItem.textString ?? graphicItem.string ?? "");
+export function renderText(
+  group: G,
+  graphicItem: IText,
+  classInstance?: ModelicaClassInstance,
+  componentInstance?: ModelicaComponentInstance,
+): Shape {
+  const rawText = graphicItem.textString ?? graphicItem.string ?? "";
+  const replacer = (match: string, name: string): string => {
+    const namedElement = classInstance?.resolveName(name.split("."));
+    if (!(namedElement instanceof ModelicaComponentInstance)) return namedElement?.name ?? "?";
+    const expression = ModelicaExpression.fromClassInstance(namedElement.classInstance);
+    if (expression instanceof ModelicaIntegerLiteral || expression instanceof ModelicaRealLiteral) {
+      return String(expression.value);
+    } else if (expression instanceof ModelicaEnumerationLiteral) {
+      return expression.stringValue;
+    } else if (expression instanceof ModelicaStringLiteral) {
+      return expression.value;
+    } else if (expression instanceof ModelicaBooleanLiteral) {
+      return String(expression.value);
+    } else {
+      return "?";
+    }
+  };
+  const formattedText = rawText
+    .replaceAll(/%%/g, "%")
+    .replaceAll(/%name\b/g, componentInstance?.name ?? "?")
+    .replaceAll(/%class\b/g, classInstance?.name ?? "?")
+    .replaceAll(/%\{([^}]*)\}/g, replacer)
+    .replaceAll(/%(\w+)\b/g, replacer);
+  const shape = group.text(formattedText);
   applyFontName(shape, graphicItem);
-  applyFontSize(shape, graphicItem);
   applyHorizontalAlignment(shape, graphicItem);
   applyTextColor(shape, graphicItem);
   applyTextStyle(shape, graphicItem);
+  applyFontSize(shape, graphicItem);
   return shape;
 }
 
 export function applyCoordinateSystem(svg: Svg, coordinateSystem?: ICoordinateSystem): void {
-  const p1 = convertPoint(coordinateSystem?.extent?.[0], [-100, -100]);
-  const p2 = convertPoint(coordinateSystem?.extent?.[1], [100, 100]);
+  const [x1, y1] = convertPoint(coordinateSystem?.extent?.[0], [-100, -100]);
+  const [x2, y2] = convertPoint(coordinateSystem?.extent?.[1], [100, 100]);
+  const x = Math.min(x1, x2);
+  const y = Math.min(y1, y2);
+  const width = computeWidth(coordinateSystem?.extent);
+  const height = computeHeight(coordinateSystem?.extent);
   svg.viewbox({
-    x: p1[0],
-    y: p1[1],
-    width: p2[0] - p1[0],
-    height: p2[1] - p1[1],
+    x: x,
+    y: y,
+    width: width,
+    height: height,
   });
   svg.attr({
     preserveAspectRatio: coordinateSystem?.preserveAspectRatio,
-    overflow: true,
+    overflow: "visible",
   });
+}
+
+export function applyDiagramPlacement(
+  svg: Svg,
+  component: ModelicaComponentInstance,
+  coordinateSystem?: ICoordinateSystem,
+): void {
+  const placement: IPlacement | null = component.annotation("Placement");
+  if (!placement) return;
+  svg.attr("visibility", placement.visible === false ? "hidden" : "visible");
+  applyTransformation(svg, placement.transformation, coordinateSystem);
 }
 
 export function applyFill(shape: Shape, filledShape: IFilledShape) {
@@ -212,9 +318,26 @@ export function applyFontName(shape: Text, graphicItem: IText): void {
 }
 
 export function applyFontSize(shape: Text, graphicItem: IText): void {
-  shape.attr({
-    "font-size": determineFontSize(graphicItem),
-  });
+  const fontSize = graphicItem.fontSize ?? 0;
+  if (fontSize === 0) {
+    const width = computeWidth(graphicItem.extent, 100);
+    const height = computeHeight(graphicItem.extent, 40) - 6;
+    for (let i = 1; i <= height; i++) {
+      shape.attr({
+        "font-size": i,
+      });
+      if (shape.node.getComputedTextLength() > width) {
+        shape.attr({
+          "font-size": i - 1,
+        });
+        break;
+      }
+    }
+  } else {
+    shape.attr({
+      "font-size": fontSize,
+    });
+  }
 }
 
 export function applyHorizontalAlignment(shape: Text, graphicItem: IText): void {
@@ -225,7 +348,6 @@ export function applyHorizontalAlignment(shape: Text, graphicItem: IText): void 
     case TextAlignment.LEFT:
       shape
         .x(p1[0])
-        .y(p1[1])
         .y((p1[1] + p2[1]) / 2)
         .attr({
           "text-anchor": "start",
@@ -234,7 +356,6 @@ export function applyHorizontalAlignment(shape: Text, graphicItem: IText): void 
     case TextAlignment.RIGHT:
       shape
         .x(p2[0])
-        .y(p1[1])
         .y((p1[1] + p2[1]) / 2)
         .attr({
           "text-anchor": "end",
@@ -286,7 +407,11 @@ export function applyLineArrows(shape: Line | Path | Polyline, graphicItem: ILin
               ["L", 0, 10],
             ])
             .fill("none")
-            .stroke({ color: convertColor(graphicItem.color, "rgb(0,0,0)"), width: graphicItem.thickness ?? 0.25 });
+            .stroke({
+              color: convertColor(graphicItem.color, "rgb(0,0,0)"),
+              width: (graphicItem.thickness ?? 0.25) * 4,
+            })
+            .attr("vector-effect", "non-scaling-stroke");
           applyMarkerAttributes(marker);
           return marker;
         };
@@ -298,7 +423,11 @@ export function applyLineArrows(shape: Line | Path | Polyline, graphicItem: ILin
               ["L", 10, 5],
             ])
             .fill("none")
-            .stroke({ color: convertColor(graphicItem.color, "rgb(0,0,0)"), width: graphicItem.thickness ?? 0.25 });
+            .stroke({
+              color: convertColor(graphicItem.color, "rgb(0,0,0)"),
+              width: (graphicItem.thickness ?? 0.25) * 4,
+            })
+            .attr("vector-effect", "non-scaling-stroke");
           applyMarkerAttributes(marker);
           return marker;
         };
@@ -363,7 +492,8 @@ export function applyLineThickness(shape: Shape, graphicItem: IFilledShape | ILi
   } else {
     lineThickness = (graphicItem as IFilledShape).lineThickness;
   }
-  shape.attr("stroke-width", lineThickness ?? 0.25);
+  shape.attr("stroke-width", (lineThickness ?? 0.25) * 4);
+  shape.attr("vector-effect", "non-scaling-stroke");
 }
 
 export function applyMarkerAttributes(marker: Marker): void {
@@ -397,13 +527,17 @@ export function applyTransformation(
   const h1 = computeHeight(transformation?.extent);
   const h2 = computeHeight(coordinateSystem?.extent);
   const sy = h2 === 0 ? h1 : h1 / h2;
-  const tx = transformation.extent?.[0][0] ?? 0;
-  const ty = transformation.extent?.[0][1] ?? 0;
-  const ox = transformation.origin?.[0] ?? 0;
-  const oy = transformation.origin?.[1] ?? 0;
-  svg.rotate(transformation.rotation ?? 0, 0, 0);
-  svg.scale(sx, sy);
-  svg.translate(tx + ox, ty + oy);
+  const [ox, oy] = convertPoint(transformation.origin, [0, 0]);
+  const [tx1, ty1] = convertPoint(transformation.extent?.[0], [0, 0]);
+  const [tx2, ty2] = convertPoint(transformation.extent?.[1], [0, 0]);
+  const tx = Math.min(tx1, tx2);
+  const ty = -Math.min(ty1, ty2);
+  const cx = -w1 / 2;
+  const cy = -h1 / 2;
+  svg.scale(sx, sy, cx, cy);
+  svg.translate(ox, oy);
+  svg.translate(ox + cx - tx, oy + cy - ty);
+  svg.rotate(-(transformation.rotation ?? 0), ox, oy);
 }
 
 export function applyVisibility(shape: Shape, graphicItem: IGraphicItem): void {
@@ -411,12 +545,14 @@ export function applyVisibility(shape: Shape, graphicItem: IGraphicItem): void {
   shape.attr("visibility", graphicItem.visible ? "visible" : "hidden");
 }
 
-export function computeHeight(extent?: IExtent): number {
-  return (extent?.[1][1] ?? 0) - (extent?.[0][1] ?? 0);
+export function computeHeight(extent?: IExtent, defaultValue = 200): number {
+  if (!extent) return defaultValue;
+  return Math.abs((extent?.[1][1] ?? 0) - (extent?.[0][1] ?? 0));
 }
 
-export function computeWidth(extent?: IExtent): number {
-  return (extent?.[1][0] ?? 0) - (extent?.[0][0] ?? 0);
+export function computeWidth(extent?: IExtent, defaultValue = 200): number {
+  if (!extent) return defaultValue;
+  return Math.abs((extent?.[1][0] ?? 0) - (extent?.[0][0] ?? 0));
 }
 
 export function convertColor(color?: IColor, defaultValue?: string): string {
@@ -431,7 +567,7 @@ export function convertMidpoint(point1?: IPoint, point2?: IPoint): ArrayXY {
 }
 
 export function convertPoint(point?: IPoint, defaultValue?: [number, number]): ArrayXY {
-  return [point?.[0] ?? defaultValue?.[0] ?? 0, point?.[1] ?? defaultValue?.[1] ?? 0];
+  return [point?.[0] ?? defaultValue?.[0] ?? 0, -(point?.[1] ?? defaultValue?.[1] ?? 0)];
 }
 
 export function convertSmoothPath(points?: IPoint[]): PathCommand[] {
@@ -445,10 +581,4 @@ export function convertSmoothPath(points?: IPoint[]): PathCommand[] {
     pathArray.push(["L", ...convertPoint(points[points.length - 1])]);
   }
   return pathArray;
-}
-
-export function determineFontSize(graphicItem: IText): number {
-  const fontSize = graphicItem.fontSize ?? 0;
-  if (fontSize !== 0) return fontSize;
-  return 12;
 }

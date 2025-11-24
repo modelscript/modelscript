@@ -2,7 +2,7 @@
 
 import Parser from "tree-sitter";
 import type { CommandModule } from "yargs";
-import { Context, ModelicaClassInstance, ModelicaLibrary, renderIcon } from "modelscript";
+import { Context, ModelicaClassInstance, ModelicaLibrary, renderDiagram, renderIcon } from "modelscript";
 import Modelica from "@modelscript/tree-sitter-modelica";
 import { NodeFileSystem } from "../util/filesystem.js";
 import { registerWindow } from "@svgdotjs/svg.js";
@@ -52,12 +52,15 @@ export const Render: CommandModule<{}, RenderArgs> = {
     } else if (!(instance instanceof ModelicaClassInstance)) {
       console.error(`'${args.name}' is not a class`);
     } else {
+      let svg;
       if (args.icon) {
-        const svg = renderIcon(instance);
-        if (svg) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          console.log((xmlFormat as any)(svg?.svg()));
-        }
+        svg = renderIcon(instance);
+      } else {
+        svg = renderDiagram(instance);
+      }
+      if (svg) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        console.log((xmlFormat as any)(svg?.svg()));
       }
     }
   },
