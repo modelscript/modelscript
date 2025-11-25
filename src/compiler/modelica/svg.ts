@@ -242,7 +242,7 @@ export function renderText(
   const rawText = graphicItem.textString ?? graphicItem.string ?? "";
   const replacer = (match: string, name: string): string => {
     const namedElement = classInstance?.resolveName(name.split("."));
-    if (!(namedElement instanceof ModelicaComponentInstance)) return namedElement?.name ?? "?";
+    if (!(namedElement instanceof ModelicaComponentInstance)) return namedElement?.name ?? "%" + name;
     const expression = ModelicaExpression.fromClassInstance(namedElement.classInstance);
     if (expression instanceof ModelicaIntegerLiteral || expression instanceof ModelicaRealLiteral) {
       return String(expression.value);
@@ -253,13 +253,13 @@ export function renderText(
     } else if (expression instanceof ModelicaBooleanLiteral) {
       return String(expression.value);
     } else {
-      return "?";
+      return "%{" + name + "}";
     }
   };
   const formattedText = rawText
     .replaceAll(/%%/g, "%")
-    .replaceAll(/%name\b/g, componentInstance?.name ?? "?")
-    .replaceAll(/%class\b/g, classInstance?.name ?? "?")
+    .replaceAll(/%name\b/g, componentInstance?.name ?? "%name")
+    .replaceAll(/%class\b/g, classInstance?.name ?? "%class")
     .replaceAll(/%\{([^}]*)\}/g, replacer)
     .replaceAll(/%(\w+)\b/g, replacer);
   const shape = group.text(formattedText);
