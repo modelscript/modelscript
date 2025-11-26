@@ -61,7 +61,7 @@ export function renderDiagram(classInstance: ModelicaClassInstance, svg?: Svg): 
     if (!componentClassInstance) continue;
     const componentSvg = renderIcon(componentClassInstance, component);
     if (componentSvg) {
-      applyDiagramPlacement(componentSvg, component, diagram?.coordinateSystem);
+      applyDiagramPlacement(componentSvg, component);
       group.add(componentSvg);
     }
   }
@@ -72,14 +72,6 @@ export function renderDiagram(classInstance: ModelicaClassInstance, svg?: Svg): 
     const text: IText | null = classInstance.annotation("Text", annotations);
     if (text) renderText(group, text, classInstance);
   }
-  const box = svg.viewbox();
-  for (let x = box.x; x <= box.x + box.width; x += 20) {
-    svg.line(x, box.y, x, box.y + box.height).stroke({ width: 0.25, color: "rgba(0,0,0,0.50)" });
-  }
-  for (let y = box.y; y <= box.y + box.height; y += 20) {
-    svg.line(box.x, y, box.x + box.width, y).stroke({ width: 0.25, color: "rgba(0,0,0,0.50)" });
-  }
-  svg.circle(5).cx(svg.viewbox().cx).cy(svg.viewbox().cy);
   return svg;
 }
 
@@ -103,18 +95,10 @@ export function renderIcon(
     if (!connectorClassInstance || connectorClassInstance.classKind !== ModelicaClassKind.CONNECTOR) continue;
     const connectorSvg = renderIcon(connectorClassInstance);
     if (connectorSvg) {
-      applyIconPlacement(connectorSvg, component, icon.coordinateSystem);
+      applyIconPlacement(connectorSvg, component);
       group.add(connectorSvg);
     }
   }
-  const box = svg.viewbox();
-  for (let x = box.x; x <= box.x + box.width; x += 20) {
-    svg.line(x, box.y, x, box.y + box.height).stroke({ width: 0.25, color: "rgba(0,0,0,0.50)" });
-  }
-  for (let y = box.y; y <= box.y + box.height; y += 20) {
-    svg.line(box.x, y, box.x + box.width, y).stroke({ width: 0.25, color: "rgba(0,0,0,0.50)" });
-  }
-  svg.circle(5).cx(svg.viewbox().cx).cy(svg.viewbox().cy);
   return svg;
 }
 
@@ -285,20 +269,17 @@ export function applyCoordinateSystem(svg: Svg, coordinateSystem?: ICoordinateSy
     height: height,
   });
   svg.attr({
-    preserveAspectRatio: coordinateSystem?.preserveAspectRatio,
+    preserveAspectRatio: "xMinYMin meet",
     overflow: "visible",
   });
 }
 
-export function applyDiagramPlacement(
-  svg: Svg,
-  component: ModelicaComponentInstance,
-  coordinateSystem?: ICoordinateSystem,
-): void {
+export function applyDiagramPlacement(componentSvg: Svg, component: ModelicaComponentInstance): void {
   const placement: IPlacement | null = component.annotation("Placement");
   if (!placement) return;
-  svg.attr("visibility", placement.visible === false ? "hidden" : "visible");
-  applyTransformation(svg, placement.transformation, coordinateSystem);
+  componentSvg.attr("visibility", placement.visible === false ? "hidden" : "visible");
+  const icon = component.classInstance?.annotation("Icon") as IIcon;
+  applyTransformation(componentSvg, placement.transformation, icon.coordinateSystem);
 }
 
 export function applyFill(shape: Shape, filledShape: IFilledShape) {
@@ -371,11 +352,7 @@ export function applyHorizontalAlignment(shape: Text, graphicItem: IText): void 
   }
 }
 
-export function applyIconPlacement(
-  svg: Svg,
-  component: ModelicaComponentInstance,
-  coordinateSystem?: ICoordinateSystem,
-): void {
+export function applyIconPlacement(componentSvg: Svg, component: ModelicaComponentInstance): void {
   const placement: IPlacement | null = component.annotation("Placement");
   if (!placement) return;
   const hasIconTransformation =
@@ -388,8 +365,9 @@ export function applyIconPlacement(
       "Placement.iconVisible",
     ) ?? false;
   const iconVisible = hasIconVisible ? placement.iconVisible : placement.visible;
-  svg.attr("visibility", iconVisible === false ? "hidden" : "visible");
-  applyTransformation(svg, iconTransformation, coordinateSystem);
+  componentSvg.attr("visibility", iconVisible === false ? "hidden" : "visible");
+  const icon = component.classInstance?.annotation("Icon") as IIcon;
+  applyTransformation(componentSvg, iconTransformation, icon?.coordinateSystem);
 }
 
 export function applyLineArrows(shape: Line | Path | Polyline, graphicItem: ILine): void {
@@ -518,26 +496,22 @@ export function applyTextStyle(shape: Text, graphicItem: IText): void {
 export function applyTransformation(
   svg: Svg,
   transformation?: ITransformation,
-  coordinateSystem?: ICoordinateSystem,
+  iconCoordinateSystem?: ICoordinateSystem,
 ): void {
   if (!transformation) return;
   const w1 = computeWidth(transformation?.extent);
-  const w2 = computeWidth(coordinateSystem?.extent);
-  const sx = w2 === 0 ? w1 : w1 / w2;
+  const w2 = computeWidth(iconCoordinateSystem?.extent);
+  const sx = w2 === 0 ? w2 : w1 / w2;
   const h1 = computeHeight(transformation?.extent);
-  const h2 = computeHeight(coordinateSystem?.extent);
+  const h2 = computeHeight(iconCoordinateSystem?.extent);
   const sy = h2 === 0 ? h1 : h1 / h2;
   const [ox, oy] = convertPoint(transformation.origin, [0, 0]);
   const [tx1, ty1] = convertPoint(transformation.extent?.[0], [0, 0]);
   const [tx2, ty2] = convertPoint(transformation.extent?.[1], [0, 0]);
   const tx = Math.min(tx1, tx2);
-  const ty = -Math.min(ty1, ty2);
-  const cx = -w1 / 2;
-  const cy = -h1 / 2;
-  svg.scale(sx, sy, cx, cy);
-  svg.translate(ox, oy);
-  svg.translate(ox + cx - tx, oy + cy - ty);
-  svg.rotate(-(transformation.rotation ?? 0), ox, oy);
+  const ty = Math.min(ty1, ty2);
+  const a = -(transformation.rotation ?? 0);
+  svg.attr("transform", `rotate(${a}, ${ox}, ${oy}) translate(${ox + tx}, ${oy + ty}) scale(${sx}, ${sy})`);
 }
 
 export function applyVisibility(shape: Shape, graphicItem: IGraphicItem): void {
