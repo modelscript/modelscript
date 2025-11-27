@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ModelicaSyntaxNode } from "modelscript";
+import { ModelicaSyntaxNode } from "@modelscript/modelscript";
 import type { CommandModule } from "yargs";
 import Parser from "tree-sitter";
 import Modelica from "@modelscript/tree-sitter-modelica";

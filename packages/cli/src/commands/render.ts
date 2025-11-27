@@ -2,7 +2,7 @@
 
 import Parser from "tree-sitter";
 import type { CommandModule } from "yargs";
-import { Context, ModelicaClassInstance, ModelicaLibrary, renderDiagram, renderIcon } from "modelscript";
+import { Context, ModelicaClassInstance, ModelicaLibrary, renderDiagram, renderIcon } from "@modelscript/modelscript";
 import Modelica from "@modelscript/tree-sitter-modelica";
 import { NodeFileSystem } from "../util/filesystem.js";
 import { registerWindow } from "@svgdotjs/svg.js";
