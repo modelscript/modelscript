@@ -32,6 +32,7 @@
   "scripts": {
     "build": "npm run clean && tree-sitter generate --abi=14 && node-gyp-build && tree-sitter build --wasm",
     "clean": "rimraf build && rimraf src",
+    "preinstall": "tree-sitter generate --abi=14",
     "prestart": "tree-sitter build --wasm",
     "start": "tree-sitter playground",
     "test": "node --test bindings/node/*_test.js"
