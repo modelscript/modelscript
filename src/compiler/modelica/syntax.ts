@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { SyntaxNode } from "tree-sitter";
+import type { SyntaxNode } from "../../util/tree-sitter.js";
 
 export enum ModelicaBinaryOperator {
   LOGICAL_OR = "or",

@@ -11,3 +11,4 @@ export * from "./compiler/modelica/syntax.js";
 export * from "./compiler/modelica/types.js";
 export * from "./compiler/context.js";
 export * from "./util/filesystem.js";
+export * from "./util/tree-sitter.js";

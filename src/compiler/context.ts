@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type Parser from "tree-sitter";
 import type { FileSystem } from "../util/filesystem.js";
+import type { Parser } from "../util/tree-sitter.js";
 
 export class Context {
   #fs: FileSystem;
