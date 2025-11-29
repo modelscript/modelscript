@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Editor } from "@monaco-editor/react";
-import { PlusIcon, ShareAndroidIcon } from "@primer/octicons-react";
-import { Dialog, IconButton, PageHeader, PageLayout, useConfirm } from "@primer/react";
+import { ChecklistIcon, PlusIcon, ShareAndroidIcon } from "@primer/octicons-react";
+import { Button, Dialog, IconButton, PageHeader, PageLayout, useConfirm } from "@primer/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import pako from "pako";
 
@@ -13,9 +13,12 @@ export default function Modelica() {
   const [title, setTitle] = useState("");
   const [isShareDialogOpen, setShareDialogOpen] = useState(false);
   const shareButtonRef = useRef<HTMLButtonElement>(null);
+  const onShareDialogClose = useCallback(() => setShareDialogOpen(false), []);
+  const [isFlattenDialogOpen, setFlattenDialogOpen] = useState(false);
+  const flattenButtonRef = useRef<HTMLButtonElement>(null);
+  const onFlattenDialogClose = useCallback(() => setFlattenDialogOpen(false), []);
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
-  const onShareDialogClose = useCallback(() => setShareDialogOpen(false), []);
   useEffect(() => {
     document.title = title.length > 0 ? title : "ModelScript Morsel";
   }, [title]);
@@ -84,6 +87,14 @@ export default function Modelica() {
               ></PageHeader.Title>
             </PageHeader.TitleArea>
             <PageHeader.Actions>
+              <Button
+                variant="primary"
+                leadingVisual={ChecklistIcon}
+                ref={flattenButtonRef}
+                onClick={() => setFlattenDialogOpen(!isFlattenDialogOpen)}
+              >
+                Flatten
+              </Button>
               <IconButton
                 aria-label="Share Morsel"
                 icon={ShareAndroidIcon}
@@ -113,6 +124,23 @@ export default function Modelica() {
             ]}
           >
             <div style={{ wordBreak: "break-all" }}>{url(editorRef, title)}</div>
+          </Dialog>
+        )}
+        {isFlattenDialogOpen && (
+          <Dialog
+            title="Flatten morsel"
+            subtitle={title}
+            onClose={onFlattenDialogClose}
+            returnFocusRef={flattenButtonRef}
+            height="large"
+          >
+            <Dialog.Body style={{ height: "100%" }}>
+              <Editor
+                height="100%"
+                defaultLanguage="modelica"
+                options={{ lineNumbers: "off", minimap: { enabled: false }, readOnly: true }}
+              ></Editor>
+            </Dialog.Body>
           </Dialog>
         )}
         <PageLayout containerWidth="xlarge" className="flex-1 bgColor-inset" style={{ height: "100%" }}>
