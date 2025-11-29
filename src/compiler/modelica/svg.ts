@@ -307,7 +307,8 @@ export function applyFontSize(shape: Text, graphicItem: IText): void {
       shape.attr({
         "font-size": i,
       });
-      if (shape.node.getComputedTextLength() > width) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((shape.node as any).getComputedTextLength() > width) {
         shape.attr({
           "font-size": i - 1,
         });

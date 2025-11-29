@@ -9,9 +9,16 @@
     "typecheck": "react-router typegen && tsc"
   },
   "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
+    "@primer/css": "^22.0.2",
+    "@primer/octicons-react": "^19.21.0",
+    "@primer/primitives": "^11.3.1",
+    "@primer/react": "^38.3.0",
     "@react-router/node": "^7.9.2",
     "@react-router/serve": "^7.9.2",
     "isbot": "^5.1.31",
+    "monaco-editor": "^0.55.1",
+    "pako": "^0.2.9",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-router": "^7.9.2"
@@ -20,11 +27,13 @@
     "@react-router/dev": "^7.9.2",
     "@tailwindcss/vite": "^4.1.13",
     "@types/node": "^22",
+    "@types/pako": "^2.0.4",
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",
     "tailwindcss": "^4.1.13",
     "typescript": "^5.9.2",
     "vite": "^7.1.7",
+    "vite-plugin-node-polyfills": "^0.24.0",
     "vite-tsconfig-paths": "^5.1.4"
   }
 }
