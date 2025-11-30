@@ -94,6 +94,84 @@ export default function Modelica() {
     monaco.languages.register({
       id: "modelica",
     });
+    monaco.languages.setMonarchTokensProvider("modelica", {
+      keywords: [
+        "annotation",
+        "block",
+        "class",
+        "connect",
+        "connector",
+        "constant",
+        "discrete",
+        "each",
+        "encapsulated",
+        "end",
+        "enumeration",
+        "equation",
+        "expandable",
+        "extends",
+        "false",
+        "final",
+        "flow",
+        "function",
+        "import",
+        "impure",
+        "inner",
+        "input",
+        "model",
+        "operator",
+        "outer",
+        "output",
+        "package",
+        "parameter",
+        "partial",
+        "protected",
+        "public",
+        "pure",
+        "record",
+        "redeclare",
+        "replaceable",
+        "stream",
+        "true",
+        "type",
+        "within",
+      ],
+      typeKeywords: ["Boolean", "Integer", "Real", "String"],
+      tokenizer: {
+        root: [
+          [
+            /([_a-zA-Z]([_a-zA-Z0-9])*|'([_a-zA-Z0-9!#$%&()*+,-./:;<>=?@^{}|~ "]|\[|\]|\\('|"|\?|\\|a|b|f|n|r|t|v))*')/,
+            {
+              cases: {
+                "@typeKeywords": "keyword",
+                "@keywords": "keyword",
+                "@default": "identifier",
+              },
+            },
+          ],
+          { include: "@whitespace" },
+          [/\d*\.\d+([eE][-+]?\d+)?/, "number.float"],
+          [/\d+/, "number"],
+          [/"/, "string", "@string"],
+        ],
+        string: [
+          [/[^\\"]+/, "string"],
+          [/\\./, "string.escape"],
+          [/"/, "string", "@pop"],
+        ],
+        comment: [
+          [/[^/*]+/, "comment"],
+          [/\/\*/, "comment", "@push"],
+          ["\\*/", "comment", "@pop"],
+          [/[\\/*]/, "comment"],
+        ],
+        whitespace: [
+          [/[ \t\r\n]+/, "white"],
+          [/\/\*/, "comment", "@comment"],
+          [/\/\/.*$/, "comment"],
+        ],
+      },
+    });
     await Parser.init();
     const Modelica = await Parser.Language.load("/tree-sitter-modelica.wasm");
     const parser = new Parser();
