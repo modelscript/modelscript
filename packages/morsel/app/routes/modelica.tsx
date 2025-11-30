@@ -18,7 +18,12 @@ import {
   ModelicaFlattener,
   ModelicaDAEPrinter,
   StringWriter,
+  renderDiagram,
+  ModelicaLibrary,
 } from "@modelscript/modelscript";
+
+import { Graph } from "@antv/x6";
+
 import { basename, extname, join, resolve, sep } from "@zenfs/core/path.js";
 import { fs, configure, statSync, InMemory } from "@zenfs/core";
 
@@ -75,6 +80,29 @@ export default function Modelica() {
   useEffect(() => {
     document.title = title.length > 0 ? title : "ModelScript Morsel";
   }, [title]);
+  useEffect(() => {
+    const data = {
+      nodes: [],
+      edges: [],
+    };
+    const container = document.getElementById("container");
+    if (container) {
+      const graph = new Graph({
+        container,
+        autoResize: true,
+        interacting: false,
+        background: {
+          color: "#fff",
+        },
+        grid: {
+          size: 16,
+          visible: true,
+          type: "doubleMesh",
+        },
+      });
+      graph.fromJSON(data);
+    }
+  }, []);
   const confirmNew = useConfirm();
   const onNewButtonClick = useCallback(async () => {
     if (
@@ -199,7 +227,8 @@ export default function Modelica() {
     history.replaceState({}, "", url.href);
   };
   const handleDidChangeContent = (value: string | undefined) => {
-    const parser = context?.getParser(".mo");
+    if (!context) return;
+    const parser = context.getParser(".mo");
     if (!parser || !value) return;
     const model = editorRef.current.getModel();
     const markers: any[] = [];
@@ -222,10 +251,12 @@ export default function Modelica() {
     } else {
       linter.lint(tree);
       linter.lint(node);
-      const instance = new ModelicaClassInstance(null, null, node.classDefinitions[0]);
+      const instance = new ModelicaClassInstance(new ModelicaLibrary(context, ""), null, node.classDefinitions[0]);
       instance.instantiate();
       linter.lint(instance);
       setClassInstance(instance);
+      const svg = renderDiagram(instance);
+      if (svg) document.getElementById("svg")?.replaceChildren(svg.node);
     }
     monacoRef.current.editor.setModelMarkers(model, "owner", markers);
   };
@@ -317,16 +348,24 @@ export default function Modelica() {
             </Dialog.Body>
           </Dialog>
         )}
-        <PageLayout containerWidth="xlarge" className="flex-1 bgColor-inset" style={{ height: "100%" }}>
+        <PageLayout containerWidth="full" className="flex-1 bgColor-inset" style={{ height: "100%" }}>
           <PageLayout.Content className="bgColor-inset" style={{ height: "100%" }}>
-            <Editor
-              height="99%"
-              beforeMount={handleEditorWillMount}
-              onMount={handleEditorDidMount}
-              onChange={handleDidChangeContent}
-              defaultLanguage="modelica"
-              className="border"
-            ></Editor>
+            <div className="d-flex " style={{ height: "100%" }}>
+              <div className="flex-1">
+                <Editor
+                  options={{ automaticLayout: true, minimap: { enabled: false } }}
+                  beforeMount={handleEditorWillMount}
+                  onMount={handleEditorDidMount}
+                  onChange={handleDidChangeContent}
+                  defaultLanguage="modelica"
+                  className="border"
+                ></Editor>
+              </div>
+              <div className="flex-1" id="svg"></div>
+              <div className="flex-1">
+                <div id="container" style={{ height: "100%", width: "100%" }}></div>
+              </div>
+            </div>
           </PageLayout.Content>
         </PageLayout>
       </div>

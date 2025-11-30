@@ -9,6 +9,7 @@
     "typecheck": "react-router typegen && tsc"
   },
   "dependencies": {
+    "@antv/x6": "^3.0.1",
     "@modelscript/modelscript": "^0.0.0",
     "@modelscript/tree-sitter-modelica": "^0.0.0",
     "@monaco-editor/react": "^4.7.0",
@@ -38,6 +39,7 @@
     "tailwindcss": "^4.1.13",
     "typescript": "^5.9.2",
     "vite": "^7.1.7",
+    "vite-plugin-commonjs": "^0.10.4",
     "vite-plugin-node-polyfills": "^0.24.0",
     "vite-tsconfig-paths": "^5.1.4"
   }

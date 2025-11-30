@@ -260,13 +260,15 @@ export abstract class ModelicaElement extends ModelicaNode {
     if (!ModelicaElement.#annotationClassInstance) {
       const tree = classInstance.library?.context?.getParser(".mo").parse(ANNOTATION);
       const node = ModelicaStoredDefinitionSyntaxNode.new(null, tree?.rootNode)?.classDefinitions?.[0] ?? null;
-      ModelicaElement.#annotationClassInstance = ModelicaClassInstance.new(null, null, node);
-      ModelicaElement.#annotationClassInstance.instantiate();
+      if (node) {
+        ModelicaElement.#annotationClassInstance = ModelicaClassInstance.new(null, null, node);
+        ModelicaElement.#annotationClassInstance.instantiate();
+      }
     }
     const annotations: ModelicaNamedElement[] = [];
     const modification = ModelicaModification.new(classInstance, annotationClause);
     for (const modificationArgument of modification.modificationArguments) {
-      const annotation = ModelicaElement.#annotationClassInstance.resolveSimpleName(modificationArgument.name);
+      const annotation = ModelicaElement.#annotationClassInstance?.resolveSimpleName(modificationArgument.name);
       if (annotation instanceof ModelicaClassInstance) {
         if (modificationArgument instanceof ModelicaElementModification) {
           annotations.push(
@@ -427,6 +429,7 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
   }
 
   clone(modification?: ModelicaModification | null): ModelicaClassInstance {
+    if (!this.abstractSyntaxNode) throw new Error();
     const mergedModification = ModelicaModification.merge(this.#modification, modification);
     const classInstance = ModelicaClassInstance.new(
       this.library,
@@ -570,7 +573,7 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
   static new(
     library: ModelicaLibrary | null,
     parent: ModelicaNode | null,
-    abstractSyntaxNode?: ModelicaClassDefinitionSyntaxNode | null,
+    abstractSyntaxNode: ModelicaClassDefinitionSyntaxNode,
     modification?: ModelicaModification | null,
   ): ModelicaClassInstance {
     if (abstractSyntaxNode?.classSpecifier instanceof ModelicaShortClassSpecifierSyntaxNode) {
