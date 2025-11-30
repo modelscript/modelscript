@@ -40,7 +40,7 @@ export const Flatten: CommandModule<{}, FlattenArgs> = {
     } else {
       const dae = new ModelicaDAE(instance.name ?? "DAE", instance.description);
       instance.accept(new ModelicaFlattener(), ["", dae]);
-      dae.accept(new ModelicaDAEPrinter());
+      dae.accept(new ModelicaDAEPrinter(process.stdout));
     }
   },
 };

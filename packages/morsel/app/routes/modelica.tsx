@@ -4,12 +4,65 @@ import { ChecklistIcon, PlusIcon, ShareAndroidIcon } from "@primer/octicons-reac
 import { Button, Dialog, IconButton, PageHeader, PageLayout, useConfirm } from "@primer/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import pako from "pako";
+import Parser from "web-tree-sitter";
+import {
+  Context,
+  type FileSystem,
+  type Dirent,
+  type Stats,
+  type Range,
+  ModelicaStoredDefinitionSyntaxNode,
+  ModelicaLinter,
+  ModelicaClassInstance,
+  ModelicaDAE,
+  ModelicaFlattener,
+  ModelicaDAEPrinter,
+  StringWriter,
+} from "@modelscript/modelscript";
+import { basename, extname, join, resolve, sep } from "@zenfs/core/path.js";
+import { fs, configure, statSync, InMemory } from "@zenfs/core";
 
 export function meta() {
   return [{ title: "ModelScript Morsel" }];
 }
 
+export class ZenFileSystem implements FileSystem {
+  basename(path: string): string {
+    return basename(path);
+  }
+
+  extname(path: string): string {
+    return extname(path);
+  }
+
+  join(...paths: string[]): string {
+    return join(...paths);
+  }
+
+  read(path: string): string {
+    return fs.readFileSync(path, { encoding: "utf8" });
+  }
+
+  readdir(path: string): Dirent[] {
+    return fs.readdirSync(path, { withFileTypes: true });
+  }
+
+  resolve(...paths: string[]): string {
+    return resolve(...paths);
+  }
+
+  get sep(): string {
+    return sep;
+  }
+
+  stat(path: string): Stats | null {
+    return statSync(path) ?? null;
+  }
+}
+
 export default function Modelica() {
+  const [context, setContext] = useState<Context | null>(null);
+  const [classInstance, setClassInstance] = useState<ModelicaClassInstance | null>(null);
   const [title, setTitle] = useState("");
   const [isShareDialogOpen, setShareDialogOpen] = useState(false);
   const shareButtonRef = useRef<HTMLButtonElement>(null);
@@ -36,11 +89,22 @@ export default function Modelica() {
       }
     }
   }, [confirmNew]);
-  const handleEditorWillMount = (monaco: any) => {
+  const handleEditorWillMount = async (monaco: any) => {
     monacoRef.current = monaco;
     monaco.languages.register({
       id: "modelica",
     });
+    await Parser.init();
+    const Modelica = await Parser.Language.load("/tree-sitter-modelica.wasm");
+    const parser = new Parser();
+    parser.setLanguage(Modelica);
+    Context.registerParser(".mo", parser);
+    await configure({
+      mounts: {
+        "/tmp": InMemory,
+      },
+    });
+    setContext(new Context(new ZenFileSystem()));
   };
   const handleEditorDidMount = (editor: any) => {
     editorRef.current = editor;
@@ -55,6 +119,37 @@ export default function Modelica() {
     }
     url.search = "";
     history.replaceState({}, "", url.href);
+  };
+  const handleDidChangeContent = (value: string | undefined) => {
+    const parser = context?.getParser(".mo");
+    if (!parser || !value) return;
+    const model = editorRef.current.getModel();
+    const markers: any[] = [];
+    const linter = new ModelicaLinter(
+      (type: string, message: string, resource: string | null | undefined, range: Range | null | undefined) => {
+        if (!range) return;
+        markers.push({
+          message,
+          startLineNumber: range.startPosition.row + 1,
+          startColumn: range.startPosition.column + 1,
+          endLineNumber: range.endPosition.row + 1,
+          endColumn: range.endPosition.column + 1,
+        });
+      },
+    );
+    const tree = parser.parse(value, undefined, { bufferSize: value.length * 2 });
+    const node = ModelicaStoredDefinitionSyntaxNode.new(null, tree.rootNode);
+    if (node == null) {
+      linter.lint(tree);
+    } else {
+      linter.lint(tree);
+      linter.lint(node);
+      const instance = new ModelicaClassInstance(null, null, node.classDefinitions[0]);
+      instance.instantiate();
+      linter.lint(instance);
+      setClassInstance(instance);
+    }
+    monacoRef.current.editor.setModelMarkers(model, "owner", markers);
   };
   return (
     <>
@@ -138,6 +233,7 @@ export default function Modelica() {
               <Editor
                 height="100%"
                 defaultLanguage="modelica"
+                value={flatten(classInstance)}
                 options={{ lineNumbers: "off", minimap: { enabled: false }, readOnly: true }}
               ></Editor>
             </Dialog.Body>
@@ -149,6 +245,7 @@ export default function Modelica() {
               height="99%"
               beforeMount={handleEditorWillMount}
               onMount={handleEditorDidMount}
+              onChange={handleDidChangeContent}
               defaultLanguage="modelica"
               className="border"
             ></Editor>
@@ -166,10 +263,18 @@ function decode(base64url: string): string {
 }
 
 function encode(text: string): string {
-  console.log("encode", text);
   const buffer = pako.deflateRaw(Buffer.from(text, "utf8"));
   const base64 = Buffer.from(buffer).toString("base64");
   return base64.replaceAll("+", "-").replaceAll("/", "_");
+}
+
+function flatten(classInstance: ModelicaClassInstance | null): string {
+  if (!classInstance) return "";
+  const dae = new ModelicaDAE(classInstance.name ?? "DAE", classInstance.description);
+  classInstance.accept(new ModelicaFlattener(), ["", dae]);
+  const writer = new StringWriter();
+  dae.accept(new ModelicaDAEPrinter(writer));
+  return writer.toString();
 }
 
 function url(editorRef: any, title: any): string {

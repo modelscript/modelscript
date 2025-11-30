@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import type { Writer } from "../../util/io.js";
 import { ModelicaInterpreter } from "./interpreter.js";
 import {
   ModelicaArrayClassInstance,
@@ -701,119 +702,126 @@ export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void,
 }
 
 export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
+  out: Writer;
+
+  constructor(out: Writer) {
+    super();
+    this.out = out;
+  }
+
   visitArray(node: ModelicaArray): void {
-    process.stdout.write("{");
+    this.out.write("{");
     for (let i = 0; i < node.elements.length; i++) {
       node.elements[i]?.accept(this);
-      if (i < node.elements.length - 1) process.stdout.write(", ");
+      if (i < node.elements.length - 1) this.out.write(", ");
     }
-    process.stdout.write("}");
+    this.out.write("}");
   }
 
   visitBinaryExpression(node: ModelicaBinaryExpression): void {
-    process.stdout.write("(");
+    this.out.write("(");
     node.operand1.accept(this);
-    process.stdout.write(" " + node.operator + " ");
+    this.out.write(" " + node.operator + " ");
     node.operand2.accept(this);
-    process.stdout.write(")");
+    this.out.write(")");
   }
 
   visitBooleanLiteral(node: ModelicaBooleanLiteral): void {
-    process.stdout.write(String(node.value));
+    this.out.write(String(node.value));
   }
 
   visitBooleanVariable(node: ModelicaBooleanVariable): void {
-    process.stdout.write(node.name);
+    this.out.write(node.name);
   }
 
   visitDAE(node: ModelicaDAE): void {
-    process.stdout.write("class " + node.name);
-    if (node.description) process.stdout.write(' "' + node.description + '"');
-    console.log("");
+    this.out.write("class " + node.name);
+    if (node.description) this.out.write(' "' + node.description + '"');
+    this.out.write("\n");
     for (const variable of node.variables) {
       if (variable instanceof ModelicaBooleanVariable) {
-        process.stdout.write("  Boolean ");
+        this.out.write("  Boolean ");
       } else if (variable instanceof ModelicaIntegerVariable) {
-        process.stdout.write("  Integer ");
+        this.out.write("  Integer ");
       } else if (variable instanceof ModelicaRealVariable) {
-        process.stdout.write("  Real ");
+        this.out.write("  Real ");
       } else if (variable instanceof ModelicaStringVariable) {
-        process.stdout.write("  String ");
+        this.out.write("  String ");
       } else if (variable instanceof ModelicaEnumerationVariable) {
-        process.stdout.write(
+        this.out.write(
           "  enumeration(" + variable.enumerationLiterals.map((e) => '"' + e.stringValue + '"').join(", ") + ") ",
         );
       } else {
         throw new Error("invalid variable");
       }
-      process.stdout.write(variable.name);
+      this.out.write(variable.name);
       if (variable.value) {
-        process.stdout.write(" = ");
+        this.out.write(" = ");
         variable.value.accept(this);
       }
-      if (variable.description) process.stdout.write(' "' + variable.description + '"');
-      console.log(";");
+      if (variable.description) this.out.write(' "' + variable.description + '"');
+      this.out.write(";\n");
     }
-    console.log("equation");
+    this.out.write("equation\n");
     for (const equation of node.equations) equation.accept(this);
-    console.log("end " + node.name + ";");
+    this.out.write("end " + node.name + ";\n");
   }
 
   visitEnumerationLiteral(node: ModelicaEnumerationLiteral): void {
-    process.stdout.write(String('"' + node.stringValue + '"'));
+    this.out.write(String('"' + node.stringValue + '"'));
   }
 
   visitEnumerationVariable(node: ModelicaEnumerationVariable): void {
-    process.stdout.write(String(node.name));
+    this.out.write(String(node.name));
   }
 
   visitIntegerLiteral(node: ModelicaIntegerLiteral): void {
-    process.stdout.write(String(node.value));
+    this.out.write(String(node.value));
   }
 
   visitIntegerVariable(node: ModelicaIntegerVariable): void {
-    process.stdout.write(node.name);
+    this.out.write(node.name);
   }
 
   visitObject(node: ModelicaObject): void {
-    process.stdout.write("{");
+    this.out.write("{");
     let i = 0;
     for (const entry of node.elements.entries()) {
-      process.stdout.write('"' + entry[0] + '": ');
+      this.out.write('"' + entry[0] + '": ');
       entry[1].accept(this);
-      if (i++ < Object.keys(node.elements).length - 1) process.stdout.write(", ");
+      if (i++ < Object.keys(node.elements).length - 1) this.out.write(", ");
     }
-    process.stdout.write("}");
+    this.out.write("}");
   }
 
   visitRealLiteral(node: ModelicaRealLiteral): void {
-    process.stdout.write(String(node.value));
+    this.out.write(String(node.value));
   }
 
   visitRealVariable(node: ModelicaRealVariable): void {
-    process.stdout.write(node.name);
+    this.out.write(node.name);
   }
 
   visitSimpleEquation(node: ModelicaSimpleEquation): void {
-    process.stdout.write("  ");
+    this.out.write("  ");
     node.expression1.accept(this);
-    process.stdout.write(" = ");
+    this.out.write(" = ");
     node.expression2.accept(this);
-    if (node.description) process.stdout.write(' "' + node.description + '"');
-    console.log(";");
+    if (node.description) this.out.write(' "' + node.description + '"');
+    this.out.write(";\n");
   }
 
   visitStringLiteral(node: ModelicaStringLiteral): void {
-    process.stdout.write(node.value);
+    this.out.write(node.value);
   }
 
   visitStringVariable(node: ModelicaStringVariable): void {
-    process.stdout.write(node.name);
+    this.out.write(node.name);
   }
 
   visitUnaryExpression(node: ModelicaUnaryExpression): void {
-    process.stdout.write("(" + node.operator);
+    this.out.write("(" + node.operator);
     node.operand.accept(this);
-    process.stdout.write(")");
+    this.out.write(")");
   }
 }
