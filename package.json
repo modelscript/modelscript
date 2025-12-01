@@ -39,7 +39,8 @@
     "watch": "tsc --watch"
   },
   "dependencies": {
-    "@svgdotjs/svg.js": "^3.2.5"
+    "@svgdotjs/svg.js": "^3.2.5",
+    "pako": "^2.1.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
