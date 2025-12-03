@@ -59,7 +59,7 @@ export function renderDiagram(classInstance: ModelicaClassInstance, svg?: Svg): 
   for (const component of classInstance.components) {
     const componentClassInstance = component.classInstance;
     if (!componentClassInstance) continue;
-    const componentSvg = renderIcon(componentClassInstance, component);
+    const componentSvg = renderIcon(componentClassInstance, component, true);
     if (componentSvg) {
       applyDiagramPlacement(componentSvg, component);
       group.add(componentSvg);
@@ -78,11 +78,13 @@ export function renderDiagram(classInstance: ModelicaClassInstance, svg?: Svg): 
 export function renderIcon(
   classInstance: ModelicaClassInstance,
   componentInstance?: ModelicaComponentInstance,
+  ports = false,
   svg?: Svg,
 ): Svg | null {
   svg = svg ? svg : new Svg();
   for (const extendsClassInstance of classInstance.extendsClassInstances) {
-    if (extendsClassInstance.classInstance) renderIcon(extendsClassInstance.classInstance, componentInstance, svg);
+    if (extendsClassInstance.classInstance)
+      renderIcon(extendsClassInstance.classInstance, componentInstance, ports, svg);
   }
   const icon: IIcon | null = classInstance.annotation("Icon");
   if (!icon) return svg;
@@ -90,13 +92,15 @@ export function renderIcon(
   const group = svg.group();
   for (const graphicItem of icon.graphics ?? [])
     renderGraphicItem(group, graphicItem, classInstance, componentInstance);
-  for (const component of classInstance.components) {
-    const connectorClassInstance = component.classInstance;
-    if (!connectorClassInstance || connectorClassInstance.classKind !== ModelicaClassKind.CONNECTOR) continue;
-    const connectorSvg = renderIcon(connectorClassInstance);
-    if (connectorSvg) {
-      applyIconPlacement(connectorSvg, component);
-      group.add(connectorSvg);
+  if (ports) {
+    for (const component of classInstance.components) {
+      const connectorClassInstance = component.classInstance;
+      if (!connectorClassInstance || connectorClassInstance.classKind !== ModelicaClassKind.CONNECTOR) continue;
+      const connectorSvg = renderIcon(connectorClassInstance);
+      if (connectorSvg) {
+        applyIconPlacement(connectorSvg, component);
+        group.add(connectorSvg);
+      }
     }
   }
   return svg;
@@ -275,11 +279,13 @@ export function applyCoordinateSystem(svg: Svg, coordinateSystem?: ICoordinateSy
 }
 
 export function applyDiagramPlacement(componentSvg: Svg, component: ModelicaComponentInstance): void {
-  const placement: IPlacement | null = component.annotation("Placement");
-  if (!placement) return;
-  componentSvg.attr("visibility", placement.visible === false ? "hidden" : "visible");
-  const icon = component.classInstance?.annotation("Icon") as IIcon;
-  applyTransformation(componentSvg, placement.transformation, icon.coordinateSystem);
+  const transform = computeDiagramPlacement(component);
+  if (!transform) componentSvg.attr("visibility", "hidden");
+  else
+    componentSvg.attr(
+      "transform",
+      `rotate(${transform.rotate}, ${transform.originX}, ${transform.originY}) translate(${transform.translateX}, ${transform.translateY}) scale(${transform.scaleX}, ${transform.scaleY})`,
+    );
 }
 
 export function applyFill(shape: Shape, filledShape: IFilledShape) {
@@ -354,21 +360,13 @@ export function applyHorizontalAlignment(shape: Text, graphicItem: IText): void 
 }
 
 export function applyIconPlacement(componentSvg: Svg, component: ModelicaComponentInstance): void {
-  const placement: IPlacement | null = component.annotation("Placement");
-  if (!placement) return;
-  const hasIconTransformation =
-    component.abstractSyntaxNode?.annotationClause?.classModification?.hasModificationArgument(
-      "Placement.iconTransformation",
-    ) ?? false;
-  const iconTransformation = hasIconTransformation ? placement.iconTransformation : placement.transformation;
-  const hasIconVisible =
-    component.abstractSyntaxNode?.annotationClause?.classModification?.hasModificationArgument(
-      "Placement.iconVisible",
-    ) ?? false;
-  const iconVisible = hasIconVisible ? placement.iconVisible : placement.visible;
-  componentSvg.attr("visibility", iconVisible === false ? "hidden" : "visible");
-  const icon = component.classInstance?.annotation("Icon") as IIcon;
-  applyTransformation(componentSvg, iconTransformation, icon?.coordinateSystem);
+  const transform = computeIconPlacement(component);
+  if (!transform) componentSvg.attr("visibility", "hidden");
+  else
+    componentSvg.attr(
+      "transform",
+      `rotate(${transform.rotate}, ${transform.originX}, ${transform.originY}) translate(${transform.translateX}, ${transform.translateY}) scale(${transform.scaleX}, ${transform.scaleY})`,
+    );
 }
 
 export function applyLineArrows(shape: Line | Path | Polyline, graphicItem: ILine): void {
@@ -494,12 +492,58 @@ export function applyTextStyle(shape: Text, graphicItem: IText): void {
   });
 }
 
-export function applyTransformation(
-  svg: Svg,
+export function applyVisibility(shape: Shape, graphicItem: IGraphicItem): void {
+  if (graphicItem?.visible == null) return;
+  shape.attr("visibility", graphicItem.visible ? "visible" : "hidden");
+}
+
+export function computeDiagramPlacement(component: ModelicaComponentInstance): TransformData | null {
+  const placement: IPlacement | null = component.annotation("Placement");
+  if (!placement) return null;
+  const icon = component.classInstance?.annotation("Icon") as IIcon;
+  return computeTransform(placement.transformation, icon.coordinateSystem);
+}
+
+export function computeHeight(extent?: IExtent, defaultValue = 200): number {
+  if (!extent) return defaultValue;
+  return Math.abs((extent?.[1][1] ?? 0) - (extent?.[0][1] ?? 0));
+}
+
+export function computeIconPlacement(component: ModelicaComponentInstance): TransformData | null {
+  const placement: IPlacement | null = component.annotation("Placement");
+  if (!placement) return null;
+  const hasIconTransformation =
+    component.abstractSyntaxNode?.annotationClause?.classModification?.hasModificationArgument(
+      "Placement.iconTransformation",
+    ) ?? false;
+  const iconTransformation = hasIconTransformation ? placement.iconTransformation : placement.transformation;
+  const hasIconVisible =
+    component.abstractSyntaxNode?.annotationClause?.classModification?.hasModificationArgument(
+      "Placement.iconVisible",
+    ) ?? false;
+  const iconVisible = hasIconVisible ? placement.iconVisible : placement.visible;
+  if (iconVisible === false) return null;
+  const icon = component.classInstance?.annotation("Icon") as IIcon;
+  return computeTransform(iconTransformation, icon?.coordinateSystem);
+}
+
+export interface TransformData {
+  scaleX: number;
+  scaleY: number;
+  rotate: number;
+  translateX: number;
+  translateY: number;
+  originX: number;
+  originY: number;
+  width: number;
+  height: number;
+}
+
+export function computeTransform(
   transformation?: ITransformation,
   iconCoordinateSystem?: ICoordinateSystem,
-): void {
-  if (!transformation) return;
+): TransformData | null {
+  if (!transformation) return null;
   const w1 = computeWidth(transformation?.extent);
   const w2 = computeWidth(iconCoordinateSystem?.extent);
   const sx = w2 === 0 ? w2 : w1 / w2;
@@ -512,17 +556,17 @@ export function applyTransformation(
   const tx = Math.min(tx1, tx2);
   const ty = Math.min(ty1, ty2);
   const a = -(transformation.rotation ?? 0);
-  svg.attr("transform", `rotate(${a}, ${ox}, ${oy}) translate(${ox + tx}, ${oy + ty}) scale(${sx}, ${sy})`);
-}
-
-export function applyVisibility(shape: Shape, graphicItem: IGraphicItem): void {
-  if (graphicItem?.visible == null) return;
-  shape.attr("visibility", graphicItem.visible ? "visible" : "hidden");
-}
-
-export function computeHeight(extent?: IExtent, defaultValue = 200): number {
-  if (!extent) return defaultValue;
-  return Math.abs((extent?.[1][1] ?? 0) - (extent?.[0][1] ?? 0));
+  return {
+    scaleX: sx,
+    scaleY: sy,
+    rotate: a,
+    translateX: ox + tx,
+    translateY: oy + ty,
+    originX: ox,
+    originY: oy,
+    width: w2 * sx,
+    height: h2 * sy,
+  };
 }
 
 export function computeWidth(extent?: IExtent, defaultValue = 200): number {
