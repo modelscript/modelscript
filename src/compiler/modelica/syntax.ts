@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { toEnum } from "../../util/enum.js";
 import type { SyntaxNode } from "../../util/tree-sitter.js";
 
 export enum ModelicaBinaryOperator {
@@ -3657,14 +3658,4 @@ export abstract class ModelicaSyntaxVisitor<R, A> implements IModelicaSyntaxVisi
     node.packageName?.accept(this, argument);
     return null;
   }
-}
-
-function toEnum<T extends Record<number, string | number>>(
-  enumType: T,
-  value: string | null | undefined,
-): T[keyof T] | null {
-  for (const key of Object.keys(enumType)) {
-    if (enumType[key as keyof T] === value) return enumType[key as keyof T];
-  }
-  return null;
 }
