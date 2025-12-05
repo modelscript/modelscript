@@ -1,4 +1,4 @@
-name: GitHub Pages
+name: Deploy Morsel App
 
 on:
   push:
@@ -26,5 +26,6 @@ jobs:
         uses: peaceiris/actions-gh-pages@v4
         if: github.ref == 'refs/heads/prototype'
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          personal_token: ${{ secrets.MODELSCRIPT_MORSEL_DEPLOY_PAT }}
+          external_repository: modelscript-morsel/modelscript-morsel.github.io
           publish_dir: ./packages/morsel/build/client
