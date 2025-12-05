@@ -1,3 +1,5 @@
-import { type RouteConfig, index, route } from "@react-router/dev/routes";
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
-export default [index("routes/home.tsx"), route("modelica", "routes/modelica.tsx")] satisfies RouteConfig;
+import { type RouteConfig, index } from "@react-router/dev/routes";
+
+export default [index("routes/index.tsx")] satisfies RouteConfig;

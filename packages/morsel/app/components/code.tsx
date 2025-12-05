@@ -1,6 +1,6 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Editor } from "@monaco-editor/react";
+import { Editor, type Monaco, type Theme } from "@monaco-editor/react";
 import { useRef, useState } from "react";
 import Parser from "web-tree-sitter";
 import {
@@ -10,22 +10,25 @@ import {
   ModelicaClassInstance,
   ModelicaLibrary,
   ModelicaStoredDefinitionSyntaxNode,
-  decodeAndInflateBase64Url,
 } from "@modelscript/modelscript";
 import { configure, InMemory } from "@zenfs/core";
 import { WebFileSystem } from "~/util/filesystem";
 import { debounce } from "lodash";
+import { editor } from "monaco-editor";
 
-export default function Code({
-  setClassInstance,
-}: {
+interface CodeEditorProps {
+  content: string;
   setClassInstance: (classInstance: ModelicaClassInstance) => void;
-}) {
-  const editorRef = useRef<any>(null);
-  const monacoRef = useRef<any>(null);
-  const [context, setContext] = useState<Context | null>(null);
+  setEditor: (editor: editor.ICodeEditor) => void;
+  theme: Theme;
+  embed: boolean;
+}
 
-  const handleEditorWillMount = async (monaco: any) => {
+export default function CodeEditor(props: CodeEditorProps) {
+  const editorRef = useRef<editor.ICodeEditor>(null);
+  const monacoRef = useRef<Monaco>(null);
+  const [context, setContext] = useState<Context | null>(null);
+  const handleEditorWillMount = async (monaco: Monaco) => {
     monacoRef.current = monaco;
     monaco.languages.register({
       id: "modelica",
@@ -43,21 +46,14 @@ export default function Code({
     });
     setContext(new Context(new WebFileSystem()));
   };
-  const handleEditorDidMount = (editor: any) => {
+  const handleEditorDidMount = (editor: editor.ICodeEditor) => {
     editorRef.current = editor;
-    const url = new URL(window.location.href);
-    const m = url.searchParams.get("m");
-    if (m) {
-      editorRef.current.setValue(decodeAndInflateBase64Url(m));
-    }
-    url.search = "";
-    history.replaceState({}, "", url.href);
+    props.setEditor(editor);
   };
   const handleDidChangeContent = debounce((value: string | undefined) => {
-    console.log(1);
     if (!value || !context) return;
-    const markers: any[] = [];
-    const model = editorRef.current.getModel();
+    const markers: Partial<editor.IMarker>[] = [];
+    const model = editorRef.current?.getModel();
     const linter = new ModelicaLinter(
       (type: string, message: string, resource: string | null | undefined, range: Range | null | undefined) => {
         if (!range) return;
@@ -78,25 +74,33 @@ export default function Code({
       const instance = new ModelicaClassInstance(new ModelicaLibrary(context, ""), null, node.classDefinitions[0]);
       instance.instantiate();
       linter.lint(instance);
-      setClassInstance(instance);
+      props.setClassInstance(instance);
     }
     monacoRef.current.editor.setModelMarkers(model, "owner", markers);
   }, 500);
   return (
     <Editor
+      theme={props.theme}
+      defaultValue={props.content}
       beforeMount={handleEditorWillMount}
       defaultLanguage="modelica"
       onChange={handleDidChangeContent}
       onMount={handleEditorDidMount}
-      options={{
-        automaticLayout: true,
-        folding: false,
-        glyphMargin: false,
-        lineDecorationsWidth: 0,
-        lineNumbers: "off",
-        lineNumbersMinChars: 0,
-        minimap: { enabled: false },
-      }}
+      options={
+        !props.embed
+          ? {
+              automaticLayout: true,
+            }
+          : {
+              automaticLayout: true,
+              folding: false,
+              glyphMargin: false,
+              lineDecorationsWidth: 0,
+              lineNumbers: "off",
+              lineNumbersMinChars: 0,
+              minimap: { enabled: false },
+            }
+      }
       height="100%"
       width="100%"
     ></Editor>
