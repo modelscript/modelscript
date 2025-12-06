@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { Context } from "../context.js";
+import { Scope } from "../scope.js";
 import { ANNOTATION } from "./annotation.js";
 import {
   ModelicaArray,
@@ -15,7 +16,6 @@ import {
   ModelicaClassDefinitionSyntaxNode,
   ModelicaClassKind,
   ModelicaComponentClauseSyntaxNode,
-  ModelicaComponentReferenceSyntaxNode,
   ModelicaCompoundImportClauseSyntaxNode,
   ModelicaConnectEquationSyntaxNode,
   ModelicaElementModificationSyntaxNode,
@@ -30,31 +30,25 @@ import {
   ModelicaModificationArgumentSyntaxNode,
   ModelicaModificationExpressionSyntaxNode,
   ModelicaModificationSyntaxNode,
-  ModelicaNameSyntaxNode,
   ModelicaShortClassSpecifierSyntaxNode,
   ModelicaSimpleImportClauseSyntaxNode,
   ModelicaStoredDefinitionSyntaxNode,
   ModelicaSubscriptSyntaxNode,
   ModelicaUnqualifiedImportClauseSyntaxNode,
   type ModelicaComponentDeclarationSyntaxNode,
-  type ModelicaTypeSpecifierSyntaxNode,
 } from "./syntax.js";
 
-export abstract class ModelicaNode {
+export abstract class ModelicaNode extends Scope {
   #instantiated = false;
   #instantiating = false;
-  #parent: WeakRef<ModelicaNode> | null;
   "@type": string;
 
-  constructor(parent: ModelicaNode | null) {
-    if (parent) this.#parent = new WeakRef(parent);
-    else this.#parent = null;
+  constructor(parent: Scope | null) {
+    super(parent);
     this["@type"] = this.constructor.name.substring(8);
   }
 
   abstract accept<R, A>(visitor: IModelicaModelVisitor<R, A>, argument?: A): R;
-
-  abstract get elements(): IterableIterator<ModelicaElement>;
 
   abstract instantiate(): void;
 
@@ -76,89 +70,6 @@ export abstract class ModelicaNode {
   }
 
   abstract get library(): ModelicaLibrary | null;
-
-  get parent(): ModelicaNode | null {
-    return this.#parent?.deref() ?? null;
-  }
-
-  resolveComponentReference(
-    componentReference: ModelicaComponentReferenceSyntaxNode | null | undefined,
-  ): ModelicaNamedElement | null {
-    if (!componentReference) return null;
-    const components = componentReference.components;
-    if (components.length === 0) return null;
-    let element = this.resolveSimpleName(components[0]?.identifier, componentReference.global);
-    if (element instanceof ModelicaComponentInstance) {
-      if (!element.instantiated && !element.instantiating) element.instantiate();
-      element = element.classInstance;
-    }
-    if (!element) return null;
-    for (let i = 1; i < components.length; i++) {
-      element = element.resolveSimpleName(components[i]?.identifier, false, true);
-      if (element == null) return null;
-    }
-    return element;
-  }
-
-  resolveName(name: ModelicaNameSyntaxNode | string[] | null | undefined, global = false): ModelicaNamedElement | null {
-    const components = name instanceof ModelicaNameSyntaxNode ? name.components : name;
-    if (!components || components.length === 0) return null;
-    let namedElement = this.resolveSimpleName(components[0], global);
-    if (!namedElement) return null;
-    for (let i = 1; i < components.length; i++) {
-      namedElement = namedElement.resolveSimpleName(components[i], false, true);
-      if (!namedElement) return null;
-    }
-    return namedElement;
-  }
-
-  resolveSimpleName(
-    identifier: ModelicaIdentifierSyntaxNode | string | null | undefined,
-    global = false,
-    encapsulated = false,
-  ): ModelicaNamedElement | null {
-    const simpleName = identifier instanceof ModelicaIdentifierSyntaxNode ? identifier?.value : identifier;
-    if (!simpleName) return null;
-    let scope: ModelicaNode | null = global ? this.root : this;
-    while (scope) {
-      for (const element of scope.elements) {
-        if (element instanceof ModelicaNamedElement && element.name === simpleName) return element;
-      }
-      if (scope instanceof ModelicaClassInstance) {
-        const element = scope.qualifiedImports.get(simpleName);
-        if (element != null) return element;
-        for (const unqualifiedImport of scope.unqualifiedImports) {
-          const element = unqualifiedImport.resolveSimpleName(identifier);
-          if (element != null) return element;
-        }
-      }
-      if (!encapsulated) scope = scope.parent;
-      else break;
-    }
-    switch (simpleName) {
-      case "Boolean":
-        return new ModelicaBooleanClassInstance(null, null);
-      case "Integer":
-        return new ModelicaIntegerClassInstance(null, null);
-      case "Real":
-        return new ModelicaRealClassInstance(null, null);
-      case "String":
-        return new ModelicaStringClassInstance(null, null);
-    }
-    return null;
-  }
-
-  resolveTypeSpecifier(typeSpecifier: ModelicaTypeSpecifierSyntaxNode | null | undefined): ModelicaNamedElement | null {
-    if (!typeSpecifier || !typeSpecifier.name) return null;
-    return this.resolveName(typeSpecifier.name, typeSpecifier.global);
-  }
-
-  get root(): ModelicaNode {
-    let root = this.parent;
-    if (!root) return this;
-    while (root.parent) root = root.parent;
-    return root;
-  }
 }
 
 export class ModelicaLibrary extends ModelicaNode {
@@ -230,7 +141,7 @@ export abstract class ModelicaElement extends ModelicaNode {
   #library: WeakRef<ModelicaLibrary> | null;
   annotations: ModelicaNamedElement[] = [];
 
-  constructor(library: ModelicaLibrary | null, parent: ModelicaNode | null) {
+  constructor(library: ModelicaLibrary | null, parent: Scope | null) {
     super(parent);
     if (library) this.#library = new WeakRef(library);
     else this.#library = null;
@@ -401,7 +312,7 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
 
   constructor(
     library: ModelicaLibrary | null,
-    parent: ModelicaNode | null,
+    parent: Scope | null,
     abstractSyntaxNode?: ModelicaClassDefinitionSyntaxNode | null,
     modification?: ModelicaModification | null,
   ) {
@@ -572,7 +483,7 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
 
   static new(
     library: ModelicaLibrary | null,
-    parent: ModelicaNode | null,
+    parent: Scope | null,
     abstractSyntaxNode: ModelicaClassDefinitionSyntaxNode,
     modification?: ModelicaModification | null,
   ): ModelicaClassInstance {
@@ -596,7 +507,7 @@ export class ModelicaEnumerationClassInstance extends ModelicaClassInstance {
 
   constructor(
     library: ModelicaLibrary | null,
-    parent: ModelicaNode | null,
+    parent: Scope | null,
     abstractSyntaxNode?: ModelicaClassDefinitionSyntaxNode | null,
     modification?: ModelicaModification | null,
     enumerationLiterals?: ModelicaEnumerationLiteral[] | null,
@@ -724,7 +635,7 @@ export class ModelicaEntity extends ModelicaClassInstance {
   subEntities: ModelicaEntity[] = [];
   unstructured = false;
 
-  constructor(library: ModelicaLibrary, parent: ModelicaNode | null, path: string) {
+  constructor(library: ModelicaLibrary, parent: Scope | null, path: string) {
     super(library, parent);
     this.path = library.context.fs.resolve(path);
   }
@@ -914,7 +825,7 @@ export abstract class ModelicaPredefinedClassInstance extends ModelicaClassInsta
 
   constructor(
     library: ModelicaLibrary | null,
-    parent: ModelicaNode | null,
+    parent: Scope | null,
     name: string,
     value?: ModelicaExpressionSyntaxNode | ModelicaExpression | null,
   ) {
@@ -932,7 +843,7 @@ export abstract class ModelicaPredefinedClassInstance extends ModelicaClassInsta
 export class ModelicaBooleanClassInstance extends ModelicaPredefinedClassInstance {
   constructor(
     library: ModelicaLibrary | null,
-    parent: ModelicaNode | null,
+    parent: Scope | null,
     value?: ModelicaExpressionSyntaxNode | ModelicaExpression | null,
   ) {
     super(library, parent, "Boolean", value);
@@ -958,7 +869,7 @@ export class ModelicaBooleanClassInstance extends ModelicaPredefinedClassInstanc
 export class ModelicaIntegerClassInstance extends ModelicaPredefinedClassInstance {
   constructor(
     library: ModelicaLibrary | null,
-    parent: ModelicaNode | null,
+    parent: Scope | null,
     value?: ModelicaExpressionSyntaxNode | ModelicaExpression | null,
   ) {
     super(library, parent, "Integer", value);
@@ -984,7 +895,7 @@ export class ModelicaIntegerClassInstance extends ModelicaPredefinedClassInstanc
 export class ModelicaRealClassInstance extends ModelicaPredefinedClassInstance {
   constructor(
     library: ModelicaLibrary | null,
-    parent: ModelicaNode | null,
+    parent: Scope | null,
     value?: ModelicaExpressionSyntaxNode | ModelicaExpression | null,
   ) {
     super(library, parent, "Real", value);
@@ -1008,11 +919,7 @@ export class ModelicaRealClassInstance extends ModelicaPredefinedClassInstance {
 }
 
 export class ModelicaStringClassInstance extends ModelicaPredefinedClassInstance {
-  constructor(
-    library: ModelicaLibrary | null,
-    parent: ModelicaNode | null,
-    value?: ModelicaExpressionSyntaxNode | null,
-  ) {
+  constructor(library: ModelicaLibrary | null, parent: Scope | null, value?: ModelicaExpressionSyntaxNode | null) {
     super(library, parent, "String", value);
   }
 
@@ -1040,7 +947,7 @@ export class ModelicaArrayClassInstance extends ModelicaClassInstance {
 
   constructor(
     library: ModelicaLibrary | null,
-    parent: ModelicaNode | null,
+    parent: Scope | null,
     elementClassInstance: ModelicaClassInstance | null,
     arraySubscripts: ModelicaSubscriptSyntaxNode[],
     modification?: ModelicaModification | null,
