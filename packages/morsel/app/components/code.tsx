@@ -49,6 +49,9 @@ export default function CodeEditor(props: CodeEditorProps) {
   const handleEditorDidMount = (editor: editor.ICodeEditor) => {
     editorRef.current = editor;
     props.setEditor(editor);
+    setTimeout(() => {
+      editor.setValue(editor.getValue());
+    }, 100);
   };
   const handleDidChangeContent = debounce((value: string | undefined) => {
     if (!value || !context) return;
