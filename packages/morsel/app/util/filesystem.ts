@@ -34,6 +34,11 @@ export class WebFileSystem implements FileSystem {
   }
 
   stat(path: string): Stats | null {
-    return statSync(path) ?? null;
+    try {
+      return statSync(path);
+    } catch (e) {
+      console.error(e);
+      return null;
+    }
   }
 }

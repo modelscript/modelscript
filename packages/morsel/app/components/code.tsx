@@ -8,10 +8,10 @@ import {
   type Range,
   ModelicaLinter,
   ModelicaClassInstance,
-  ModelicaLibrary,
   ModelicaStoredDefinitionSyntaxNode,
 } from "@modelscript/modelscript";
 import { configure, InMemory } from "@zenfs/core";
+import { Zip } from "@zenfs/archives";
 import { WebFileSystem } from "~/util/filesystem";
 import { debounce } from "lodash";
 import { editor } from "monaco-editor";
@@ -39,12 +39,16 @@ export default function CodeEditor(props: CodeEditorProps) {
     const parser = new Parser();
     parser.setLanguage(Modelica);
     Context.registerParser(".mo", parser);
+    const ModelicaLibrary = await fetch("/ModelicaStandardLibrary_v4.1.0.zip");
     await configure({
       mounts: {
+        "/lib": { backend: Zip, data: await ModelicaLibrary.arrayBuffer() },
         "/tmp": InMemory,
       },
     });
-    setContext(new Context(new WebFileSystem()));
+    const context = new Context(new WebFileSystem());
+    context.addLibrary("/lib/Modelica");
+    setContext(context);
   };
   const handleEditorDidMount = (editor: editor.ICodeEditor) => {
     editorRef.current = editor;
@@ -74,7 +78,7 @@ export default function CodeEditor(props: CodeEditorProps) {
     const node = ModelicaStoredDefinitionSyntaxNode.new(null, tree.rootNode);
     if (node) {
       linter.lint(node);
-      const instance = new ModelicaClassInstance(new ModelicaLibrary(context, ""), null, node.classDefinitions[0]);
+      const instance = new ModelicaClassInstance(null, context, node.classDefinitions[0]);
       instance.instantiate();
       linter.lint(instance);
       props.setClassInstance(instance);
