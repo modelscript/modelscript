@@ -2,7 +2,7 @@
 
 import type { FileSystem } from "../util/filesystem.js";
 import type { Parser, Tree } from "../util/tree-sitter.js";
-import { ModelicaLibrary, type ModelicaElement } from "./modelica/model.js";
+import { ModelicaLibrary, ModelicaNamedElement, type ModelicaElement } from "./modelica/model.js";
 import { Scope } from "./scope.js";
 
 export class Context extends Scope {
@@ -27,7 +27,7 @@ export class Context extends Scope {
     const libraries = this.#libraries;
     return (function* () {
       for (const library of libraries) {
-        yield library.entity;
+        if (library) yield* library.elements;
       }
     })();
   }
@@ -59,6 +59,14 @@ export class Context extends Scope {
   parse(extname: string, input: string, oldTree?: Tree): Tree {
     const parser = this.getParser(extname);
     return parser.parse(input, oldTree, { bufferSize: input.length * 2 });
+  }
+
+  query(name: string): ModelicaNamedElement | null {
+    for (const library of this.#libraries) {
+      const instance = library.query(name);
+      if (instance) return instance;
+    }
+    return null;
   }
 
   static registerParser(extname: string, parser: Parser) {

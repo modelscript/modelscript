@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Context, ModelicaLibrary } from "@modelscript/modelscript";
+import { Context } from "@modelscript/modelscript";
 import type { CommandModule } from "yargs";
 import Parser from "tree-sitter";
 import Modelica from "@modelscript/tree-sitter-modelica";
@@ -8,12 +8,12 @@ import { NodeFileSystem } from "../util/filesystem.js";
 
 interface InstantiateArgs {
   name: string;
-  path: string;
+  paths: string[];
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export const Instantiate: CommandModule<{}, InstantiateArgs> = {
-  command: "instantiate <name> <path>",
+  command: "instantiate <name> <paths...>",
   describe: "",
   builder: (yargs) => {
     return yargs
@@ -22,9 +22,10 @@ export const Instantiate: CommandModule<{}, InstantiateArgs> = {
         description: "name of class to instantiate",
         type: "string",
       })
-      .positional("path", {
+      .positional("paths", {
+        array: true,
         demandOption: true,
-        description: "path of library or module to load",
+        description: "path of library and module to load",
         type: "string",
       });
   },
@@ -33,8 +34,8 @@ export const Instantiate: CommandModule<{}, InstantiateArgs> = {
     parser.setLanguage(Modelica);
     Context.registerParser(".mo", parser);
     const context = new Context(new NodeFileSystem());
-    const library = new ModelicaLibrary(context, args.path);
-    const instance = library.query(args.name);
+    for (const path of args.paths) context.addLibrary(path);
+    const instance = context.query(args.name);
     if (!instance) {
       console.error(`'${args.name}' not found`);
     } else {

@@ -2,7 +2,7 @@
 
 import Parser from "tree-sitter";
 import type { CommandModule } from "yargs";
-import { Context, ModelicaClassInstance, ModelicaLibrary, renderDiagram, renderIcon } from "@modelscript/modelscript";
+import { Context, ModelicaClassInstance, renderDiagram, renderIcon } from "@modelscript/modelscript";
 import Modelica from "@modelscript/tree-sitter-modelica";
 import { NodeFileSystem } from "../util/filesystem.js";
 import { registerWindow } from "@svgdotjs/svg.js";
@@ -11,13 +11,13 @@ import xmlFormat from "xml-formatter";
 
 interface RenderArgs {
   name: string;
-  path: string;
+  paths: string[];
   icon: boolean;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export const Render: CommandModule<{}, RenderArgs> = {
-  command: "render <name> <path>",
+  command: "render <name> <paths...>",
   describe: "",
   builder: (yargs) => {
     return yargs
@@ -26,9 +26,10 @@ export const Render: CommandModule<{}, RenderArgs> = {
         description: "name of class to render",
         type: "string",
       })
-      .positional("path", {
+      .positional("paths", {
+        array: true,
         demandOption: true,
-        description: "path of library or module to load",
+        description: "paths of libraries and modules to load",
         type: "string",
       })
       .option("icon", {
@@ -43,8 +44,8 @@ export const Render: CommandModule<{}, RenderArgs> = {
     parser.setLanguage(Modelica);
     Context.registerParser(".mo", parser);
     const context = new Context(new NodeFileSystem());
-    const library = new ModelicaLibrary(context, args.path);
-    const instance = library.query(args.name);
+    for (const path of args.paths) context.addLibrary(path);
+    const instance = context.query(args.name);
     const window = createSVGWindow();
     registerWindow(window, window.document);
     if (!instance) {

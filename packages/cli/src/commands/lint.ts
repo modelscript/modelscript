@@ -8,18 +8,26 @@ import { NodeFileSystem } from "../util/filesystem.js";
 
 interface LintArgs {
   path: string;
+  paths: string[] | undefined;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export const Lint: CommandModule<{}, LintArgs> = {
-  command: "lint <path>",
+  command: "lint <path> [paths...]",
   describe: "",
   builder: (yargs) => {
-    return yargs.positional("path", {
-      demandOption: true,
-      description: "path of library or module to lint",
-      type: "string",
-    });
+    return yargs
+      .positional("path", {
+        demandOption: true,
+        description: "path of library or module to lint",
+        type: "string",
+      })
+      .positional("paths", {
+        array: true,
+        demandOption: false,
+        description: "additional paths of libraries and modules to load",
+        type: "string",
+      });
   },
   handler: (args) => {
     const diagnosticsMap = new Map<
@@ -39,6 +47,7 @@ export const Lint: CommandModule<{}, LintArgs> = {
     parser.setLanguage(Modelica);
     Context.registerParser(".mo", parser);
     const context = new Context(new NodeFileSystem());
+    for (const path of args.paths ?? []) context.addLibrary(path);
     const library = new ModelicaLibrary(context, args.path);
     linter.lint(library);
 

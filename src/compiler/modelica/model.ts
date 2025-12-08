@@ -78,7 +78,7 @@ export class ModelicaLibrary extends ModelicaNode {
   path: string;
 
   constructor(context: Context, path: string) {
-    super(null);
+    super(context);
     this.#context = new WeakRef(context);
     this.path = context.fs.resolve(path);
     this.entity = new ModelicaEntity(this, this, this.path);
