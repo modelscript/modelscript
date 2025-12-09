@@ -7,6 +7,13 @@ import {
   ModelicaClassKind,
   renderIcon,
   computeIconPlacement,
+  ModelicaElement,
+  type ILine,
+  convertPoint,
+  Smooth,
+  LinePattern,
+  Arrow,
+  toEnum,
 } from "@modelscript/modelscript";
 import { DagreLayout } from "@antv/layout";
 import type { Theme } from "@monaco-editor/react";
@@ -82,8 +89,12 @@ export default function DiagramEditor(props: DiagramEditorProps) {
             id: connector.name ?? undefined,
             group: "g",
             args: {
-              x: (componentTransform?.width ?? 200) / 2 + (connectorTransform?.translateX ?? 0),
-              y: (componentTransform?.height ?? 200) / 2 + (connectorTransform?.translateY ?? 0),
+              x:
+                (componentTransform?.width ?? 200) / 2 +
+                (connectorTransform?.translateX ?? 0) * (connectorTransform?.scaleX ?? 0.1),
+              y:
+                (componentTransform?.height ?? 200) / 2 +
+                (connectorTransform?.translateY ?? 0) * (connectorTransform?.scaleY ?? 0.1),
             },
             markup: [
               {
@@ -94,8 +105,8 @@ export default function DiagramEditor(props: DiagramEditorProps) {
             attrs: {
               path: {
                 href: `data:image/svg+xml,${encodeURIComponent(connectorSvg.svg())}`,
-                width: connectorTransform?.width,
-                height: connectorTransform?.height,
+                width: (connectorTransform?.width ?? 200) * (connectorTransform?.scaleX ?? 0.1),
+                height: (connectorTransform?.height ?? 200) * (connectorTransform?.scaleY ?? 0.1),
                 magnet: true,
               },
             },
@@ -123,15 +134,56 @@ export default function DiagramEditor(props: DiagramEditorProps) {
       });
     }
     for (const connectEquation of props.classInstance.connectEquations) {
-      const c1 = connectEquation.componentReference1?.components.map((c) => c.identifier?.value ?? "").join(".");
-      const c2 = connectEquation.componentReference2?.components.map((c) => c.identifier?.value ?? "").join(".");
-      if (!c1 || !c2) continue;
-      if (!nodes.has(c1) || !nodes.has(c2)) continue;
+      const c1 = connectEquation.componentReference1?.components.map((c) => c.identifier?.value ?? "");
+      const c2 = connectEquation.componentReference2?.components.map((c) => c.identifier?.value ?? "");
+      if (!c1 || !c2 || c1.length === 0 || c2.length === 0) continue;
+      if (!nodes.has(c1[0]) || !nodes.has(c2[0])) continue;
+      const annotations = ModelicaElement.instantiateAnnotations(props.classInstance, connectEquation.annotationClause);
+      const line: ILine | null = props.classInstance.annotation("Line", annotations);
+      const strokeColor = `rgb(${line?.color?.[0] ?? 0}, ${line?.color?.[1] ?? 0}, ${line?.color?.[2] ?? 0})`;
+      const strokeWidth = (line?.thickness ?? 0.25) * 4;
+      const stroke = line?.visible === false || line?.pattern === LinePattern.NONE ? "none" : strokeColor;
+      let strokeDasharray = undefined;
+      switch (line?.pattern) {
+        case LinePattern.DASH:
+          strokeDasharray = "4, 2";
+          break;
+        case LinePattern.DASH_DOT:
+          strokeDasharray = "4, 2, 1, 2";
+          break;
+        case LinePattern.DASH_DOT_DOT:
+          strokeDasharray = "4, 2, 1, 2, 1, 2";
+          break;
+        case LinePattern.DOT:
+          strokeDasharray = "1, 2";
+          break;
+      }
+      const sourceMarker = marker(toEnum(Arrow, line?.arrow?.[0]), strokeColor, strokeWidth);
+      const targetMarker = marker(toEnum(Arrow, line?.arrow?.[1]), strokeColor, strokeWidth);
       edges.push({
-        source: c1,
-        target: c2,
-        tools: {
-          name: "vertices",
+        source: {
+          cell: c1[0],
+          port: c1?.[1],
+        },
+        target: {
+          cell: c2[0],
+          port: c2?.[1],
+        },
+        vertices: line?.points
+          ?.map((p) => convertPoint(p))
+          .map((p) => {
+            return { x: p[0], y: p[1] };
+          }),
+        connector: { name: line?.smooth === Smooth.BEZIER ? "smooth" : undefined },
+        attrs: {
+          line: {
+            stroke,
+            strokeWidth,
+            strokeDasharray,
+            sourceMarker,
+            targetMarker,
+            "vector-effect": "non-scaling-stroke",
+          },
         },
       });
     }
@@ -141,4 +193,36 @@ export default function DiagramEditor(props: DiagramEditorProps) {
     g.zoomToFit({ useCellGeometry: true });
   }, [props.classInstance, props.theme]);
   return <div ref={refContainer} />;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function marker(arrow: Arrow | null | undefined, strokeColor: string, strokeWidth: number): any {
+  switch (arrow) {
+    case Arrow.FILLED:
+      return {
+        tagName: "path",
+        d: "M 0 0 L 10 5 L 10 -5 Z",
+        strokeWidth,
+        fill: strokeColor,
+        stroke: strokeColor,
+      };
+    case Arrow.HALF:
+      return {
+        tagName: "path",
+        d: "M 0 0 L 10 5",
+        strokeWidth,
+        fill: strokeColor,
+        stroke: strokeColor,
+      };
+    case Arrow.OPEN:
+      return {
+        tagName: "path",
+        d: "M 0 0 L 10 5 L 0 0 L 10 -5",
+        strokeWidth,
+        fill: "none",
+        stroke: strokeColor,
+      };
+    default:
+      return {};
+  }
 }
