@@ -39,13 +39,24 @@ export default function CodeEditor(props: CodeEditorProps) {
     const parser = new Parser();
     parser.setLanguage(Modelica);
     Context.registerParser(".mo", parser);
-    const ModelicaLibrary = await fetch("/ModelicaStandardLibrary_v4.1.0.zip");
-    await configure({
-      mounts: {
-        "/lib": { backend: Zip, data: await ModelicaLibrary.arrayBuffer() },
-        "/tmp": InMemory,
-      },
-    });
+
+    try {
+      const ModelicaLibrary = await fetch("/ModelicaStandardLibrary_v4.1.0.zip");
+      await configure({
+        mounts: {
+          "/lib": { backend: Zip, data: await ModelicaLibrary.arrayBuffer() },
+          "/tmp": InMemory,
+        },
+      });
+    } catch (e) {
+      console.error(e);
+      await configure({
+        mounts: {
+          "/tmp": InMemory,
+        },
+      });
+    }
+
     const context = new Context(new WebFileSystem());
     context.addLibrary("/lib/Modelica");
     setContext(context);
