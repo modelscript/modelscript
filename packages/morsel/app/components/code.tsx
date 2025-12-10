@@ -39,7 +39,6 @@ export default function CodeEditor(props: CodeEditorProps) {
     const parser = new Parser();
     parser.setLanguage(Modelica);
     Context.registerParser(".mo", parser);
-
     try {
       const ModelicaLibrary = await fetch("/ModelicaStandardLibrary_v4.1.0.zip");
       await configure({
@@ -50,13 +49,7 @@ export default function CodeEditor(props: CodeEditorProps) {
       });
     } catch (e) {
       console.error(e);
-      await configure({
-        mounts: {
-          "/tmp": InMemory,
-        },
-      });
     }
-
     const context = new Context(new WebFileSystem());
     context.addLibrary("/lib/Modelica");
     setContext(context);
@@ -107,17 +100,17 @@ export default function CodeEditor(props: CodeEditorProps) {
       options={
         !props.embed
           ? {
-              automaticLayout: true,
-            }
+            automaticLayout: true,
+          }
           : {
-              automaticLayout: true,
-              folding: false,
-              glyphMargin: false,
-              lineDecorationsWidth: 0,
-              lineNumbers: "off",
-              lineNumbersMinChars: 0,
-              minimap: { enabled: false },
-            }
+            automaticLayout: true,
+            folding: false,
+            glyphMargin: false,
+            lineDecorationsWidth: 0,
+            lineNumbers: "off",
+            lineNumbersMinChars: 0,
+            minimap: { enabled: false },
+          }
       }
       height="100%"
       width="100%"
