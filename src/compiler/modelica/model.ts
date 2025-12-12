@@ -120,7 +120,7 @@ export class ModelicaLibrary extends ModelicaNode {
     const components = name.split(".");
     let instance: ModelicaNamedElement = this.entity;
     if (instance.name !== components?.[0]) return null;
-    for (const component of components.slice(1)) {
+    for (const component of components.splice(1)) {
       let found = false;
       for (const element of instance.elements) {
         if (element instanceof ModelicaNamedElement) {

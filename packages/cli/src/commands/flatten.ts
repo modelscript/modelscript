@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ModelicaFlattener, Context, ModelicaDAE, ModelicaDAEPrinter } from "@modelscript/modelscript";
+import { ModelicaFlattener, Context, ModelicaDAE, ModelicaDAEPrinter, NodeFileSystem } from "@modelscript/modelscript";
 import type { CommandModule } from "yargs";
 import Parser from "tree-sitter";
 import Modelica from "@modelscript/tree-sitter-modelica";
-import { NodeFileSystem } from "../util/filesystem.js";
 
 interface FlattenArgs {
   name: string;
