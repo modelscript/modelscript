@@ -61,7 +61,7 @@ const config: Config = {
   // forceCoverageMatch: [],
 
   // A path to a module which exports an async function that is triggered once before all test suites
-  globalSetup: "./jest.globalSetup.ts",
+  // globalSetup: undefined,
 
   // A path to a module which exports an async function that is triggered once after all test suites
   // globalTeardown: undefined,
@@ -92,7 +92,9 @@ const config: Config = {
   // ],
 
   // A map from regular expressions to module names or to arrays of module names that allow to stub out resources with a single module
-  // moduleNameMapper: {},
+  moduleNameMapper: {
+    "(.+)\\.js": "$1",
+  },
 
   // An array of regexp pattern strings, matched against all module paths before considered 'visible' to the module loader
   // modulePathIgnorePatterns: [],
@@ -104,7 +106,7 @@ const config: Config = {
   // notifyMode: "failure-change",
 
   // A preset that is used as a base for Jest's configuration
-  // preset: undefined,
+  preset: "ts-jest/presets/default-esm",
 
   // Run tests from one or more projects
   // projects: undefined,
@@ -136,7 +138,7 @@ const config: Config = {
   // runner: "jest-runner",
 
   // The paths to modules that run some code to configure or set up the testing environment before each test
-  // setupFiles: [],
+  setupFiles: ["<rootDir>/tests/jest.setup.ts"],
 
   // A list of paths to modules that run some code to configure or set up the testing framework before each test
   // setupFilesAfterEnv: [],
@@ -157,7 +159,10 @@ const config: Config = {
   // testLocationInResults: false,
 
   // The glob patterns Jest uses to detect test files
-  testMatch: ["<rootDir>/tests/**/*.ts"],
+  // testMatch: [
+  //   "**/__tests__/**/*.?([mc])[jt]s?(x)",
+  //   "**/?(*.)+(spec|test).?([mc])[jt]s?(x)"
+  // ],
 
   // An array of regexp pattern strings that are matched against all test paths, matched tests are skipped
   // testPathIgnorePatterns: [

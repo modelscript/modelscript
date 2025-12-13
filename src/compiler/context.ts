@@ -1,13 +1,24 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { FileSystem } from "../util/filesystem.js";
+import { StringWriter } from "../util/io.js";
 import type { Parser, Tree } from "../util/tree-sitter.js";
-import { ModelicaLibrary, ModelicaNamedElement, type ModelicaElement } from "./modelica/model.js";
+import { ModelicaDAE, ModelicaDAEPrinter } from "./modelica/dae.js";
+import { ModelicaFlattener } from "./modelica/flattener.js";
+import {
+  ModelicaClassInstance,
+  ModelicaLibrary,
+  ModelicaNamedElement,
+  type ModelicaElement,
+} from "./modelica/model.js";
+import { ModelicaStoredDefinitionSyntaxNode } from "./modelica/syntax.js";
 import { Scope } from "./scope.js";
 
 export class Context extends Scope {
+  #classes: ModelicaClassInstance[] = [];
   #fs: FileSystem;
   #libraries: ModelicaLibrary[] = [];
+
   static #parsers = new Map<string, Parser>();
 
   constructor(fs: FileSystem) {
@@ -24,12 +35,24 @@ export class Context extends Scope {
   }
 
   get elements(): IterableIterator<ModelicaElement> {
+    const classes = this.#classes;
     const libraries = this.#libraries;
     return (function* () {
+      yield* classes;
       for (const library of libraries) {
         if (library) yield* library.elements;
       }
     })();
+  }
+
+  flatten(name: string): string | null {
+    const instance = this.query(name);
+    if (!instance) return null;
+    const dae = new ModelicaDAE(instance.name ?? "DAE", instance.description);
+    instance.accept(new ModelicaFlattener(), ["", dae]);
+    const out = new StringWriter();
+    dae.accept(new ModelicaDAEPrinter(out));
+    return out.toString();
   }
 
   get fs(): FileSystem {
@@ -54,6 +77,13 @@ export class Context extends Scope {
     return (function* () {
       yield* libraries;
     })();
+  }
+
+  load(extname: string, input: string): void {
+    const tree = this.parse(".mo", input);
+    const node = ModelicaStoredDefinitionSyntaxNode.new(null, tree.rootNode);
+    for (const classDefinition of node?.classDefinitions ?? [])
+      this.#classes.push(ModelicaClassInstance.new(null, this, classDefinition));
   }
 
   parse(extname: string, input: string, oldTree?: Tree): Tree {
