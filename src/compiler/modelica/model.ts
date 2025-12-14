@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import logger from "../../util/logger.js";
 import type { Context } from "../context.js";
 import { Scope } from "../scope.js";
 import { ANNOTATION } from "./annotation.js";
@@ -394,7 +395,39 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     })();
   }
 
+  extractModification(name: string | null | undefined): ModelicaModification {
+    if (!name) return new ModelicaModification(this, []);
+    let outerModificationArgument: ModelicaModificationArgument | null = null;
+    for (const modificationArgument of this.modification?.modificationArguments ?? []) {
+      if (modificationArgument.name !== name) continue;
+      outerModificationArgument = modificationArgument;
+      break;
+    }
+    const modificationArguments: ModelicaModificationArgument[] = [];
+    if (outerModificationArgument instanceof ModelicaElementModification) {
+      modificationArguments.push(...outerModificationArgument.extract());
+    }
+    if (outerModificationArgument instanceof ModelicaElementModification) {
+      return new ModelicaModification(
+        this,
+        modificationArguments,
+        outerModificationArgument.modificationExpression,
+        outerModificationArgument.description,
+      );
+    } else if (outerModificationArgument instanceof ModelicaParameterModification) {
+      return new ModelicaModification(
+        this,
+        modificationArguments,
+        null,
+        null,
+        outerModificationArgument.expression.accept(new ModelicaInterpreter(), outerModificationArgument.scope),
+      );
+    }
+    return new ModelicaModification(this, modificationArguments);
+  }
+
   override instantiate(): void {
+    logger.debug("Instantiating class: " + this.name);
     if (this.instantiated) return;
     if (this.instantiating) throw Error("reentrant error: class is already being instantiated");
     this.instantiating = true;
@@ -404,7 +437,14 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     this.#unqualifiedImports = [];
     for (const elementSyntaxNode of this.abstractSyntaxNode?.elements ?? []) {
       if (elementSyntaxNode instanceof ModelicaClassDefinitionSyntaxNode) {
-        this.declaredElements.push(ModelicaClassInstance.new(this.library, this, elementSyntaxNode));
+        this.declaredElements.push(
+          ModelicaClassInstance.new(
+            this.library,
+            this,
+            elementSyntaxNode,
+            this.extractModification(elementSyntaxNode.identifier?.value),
+          ),
+        );
       } else if (elementSyntaxNode instanceof ModelicaComponentClauseSyntaxNode) {
         for (const componentDeclarationSyntaxNode of elementSyntaxNode.componentDeclarations) {
           this.declaredElements.push(new ModelicaComponentInstance(this.library, this, componentDeclarationSyntaxNode));
@@ -730,6 +770,7 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
   }
 
   override instantiate(): void {
+    logger.debug("Instantiating element: " + this.name);
     if (this.instantiated) return;
     if (this.instantiating) throw Error("reentrant error: component is already being instantiated");
     this.instantiating = true;
