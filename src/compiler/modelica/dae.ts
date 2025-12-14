@@ -8,7 +8,12 @@ import {
   ModelicaEnumerationClassInstance,
   ModelicaPredefinedClassInstance,
 } from "./model.js";
-import { ModelicaBinaryOperator, ModelicaExpressionSyntaxNode, ModelicaUnaryOperator } from "./syntax.js";
+import {
+  ModelicaBinaryOperator,
+  ModelicaExpressionSyntaxNode,
+  ModelicaUnaryOperator,
+  ModelicaVariability,
+} from "./syntax.js";
 
 type array<T> = T | array<T>[];
 
@@ -533,12 +538,19 @@ export abstract class ModelicaVariable extends ModelicaPrimaryExpression {
   name: string;
   description: string | null;
   value: ModelicaExpression | null;
+  variability: ModelicaVariability | null;
 
-  constructor(name: string, value: ModelicaExpression | null, description?: string | null) {
+  constructor(
+    name: string,
+    value: ModelicaExpression | null,
+    variability: ModelicaVariability | null,
+    description?: string | null,
+  ) {
     super();
     this.name = name;
     this.description = description ?? null;
     this.value = value;
+    this.variability = variability;
   }
 }
 
@@ -589,9 +601,10 @@ export class ModelicaEnumerationVariable extends ModelicaVariable {
     name: string,
     enumerationLiterals: ModelicaEnumerationLiteral[] | null,
     value: ModelicaExpression | null,
+    variability: ModelicaVariability | null,
     description?: string | null,
   ) {
-    super(name, value, description);
+    super(name, value, variability, description);
     this.enumerationLiterals = enumerationLiterals ?? [];
   }
 
@@ -739,17 +752,19 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     if (node.description) this.out.write(' "' + node.description + '"');
     this.out.write("\n");
     for (const variable of node.variables) {
+      this.out.write("  ");
+      if (variable.variability) this.out.write(variable.variability + " ");
       if (variable instanceof ModelicaBooleanVariable) {
-        this.out.write("  Boolean ");
+        this.out.write("Boolean ");
       } else if (variable instanceof ModelicaIntegerVariable) {
-        this.out.write("  Integer ");
+        this.out.write("Integer ");
       } else if (variable instanceof ModelicaRealVariable) {
-        this.out.write("  Real ");
+        this.out.write("Real ");
       } else if (variable instanceof ModelicaStringVariable) {
-        this.out.write("  String ");
+        this.out.write("String ");
       } else if (variable instanceof ModelicaEnumerationVariable) {
         this.out.write(
-          "  enumeration(" + variable.enumerationLiterals.map((e) => '"' + e.stringValue + '"').join(", ") + ") ",
+          "enumeration(" + variable.enumerationLiterals.map((e) => '"' + e.stringValue + '"').join(", ") + ") ",
         );
       } else {
         throw new Error("invalid variable");
@@ -762,9 +777,11 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
       if (variable.description) this.out.write(' "' + variable.description + '"');
       this.out.write(";\n");
     }
-    this.out.write("equation\n");
-    for (const equation of node.equations) equation.accept(this);
-    this.out.write("end " + node.name + ";\n");
+    if (node.equations.length > 0) {
+      this.out.write("equation\n");
+      for (const equation of node.equations) equation.accept(this);
+    }
+    this.out.write("end " + node.name + ";");
   }
 
   visitEnumerationLiteral(node: ModelicaEnumerationLiteral): void {
@@ -795,7 +812,11 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
   }
 
   visitRealLiteral(node: ModelicaRealLiteral): void {
-    this.out.write(String(node.value));
+    if (Number.isInteger(node.value)) {
+      this.out.write(node.value.toFixed(1));
+    } else {
+      this.out.write(node.value.toString());
+    }
   }
 
   visitRealVariable(node: ModelicaRealVariable): void {

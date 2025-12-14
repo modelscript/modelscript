@@ -10,7 +10,7 @@ export default defineConfig({
     tailwindcss(),
     reactRouter(),
     tsconfigPaths(),
-    nodePolyfills({ include: ["buffer"] }),
+    nodePolyfills({ include: ["buffer", "fs", "path"], protocolImports: true }),
     viteStaticCopy({
       targets: [
         {

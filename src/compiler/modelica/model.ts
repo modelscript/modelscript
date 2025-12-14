@@ -35,6 +35,7 @@ import {
   ModelicaStoredDefinitionSyntaxNode,
   ModelicaSubscriptSyntaxNode,
   ModelicaUnqualifiedImportClauseSyntaxNode,
+  ModelicaVariability,
   type ModelicaComponentDeclarationSyntaxNode,
 } from "./syntax.js";
 
@@ -113,26 +114,6 @@ export class ModelicaLibrary extends ModelicaNode {
 
   get library(): ModelicaLibrary {
     return this;
-  }
-
-  query(name: string): ModelicaNamedElement | null {
-    this.instantiate();
-    const components = name.split(".");
-    let instance: ModelicaNamedElement = this.entity;
-    if (instance.name !== components?.[0]) return null;
-    for (const component of components.splice(1)) {
-      let found = false;
-      for (const element of instance.elements) {
-        if (element instanceof ModelicaNamedElement) {
-          if (element.name === component) {
-            instance = element;
-            found = true;
-          }
-        }
-      }
-      if (!found) return null;
-    }
-    return instance;
   }
 }
 
@@ -817,6 +798,10 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
 
   override get parent(): ModelicaClassInstance | null {
     return super.parent as ModelicaClassInstance | null;
+  }
+
+  get variability(): ModelicaVariability | null {
+    return this.#abstractSyntaxNode?.parent?.variability ?? null;
   }
 }
 

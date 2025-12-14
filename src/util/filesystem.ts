@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import fs from "node:fs";
 import { basename, extname, join, resolve, sep } from "node:path";
 
 export interface FileSystem {
@@ -51,11 +51,11 @@ export class NodeFileSystem implements FileSystem {
   }
 
   read(path: string): string {
-    return readFileSync(path, { encoding: "utf8" });
+    return fs.readFileSync(path, { encoding: "utf8" });
   }
 
   readdir(path: string): Dirent[] {
-    return readdirSync(path, { withFileTypes: true });
+    return fs.readdirSync(path, { withFileTypes: true });
   }
 
   resolve(...paths: string[]): string {
@@ -67,6 +67,6 @@ export class NodeFileSystem implements FileSystem {
   }
 
   stat(path: string): Stats | null {
-    return statSync(path, { throwIfNoEntry: false }) ?? null;
+    return fs.statSync(path, { throwIfNoEntry: false }) ?? null;
   }
 }

@@ -100,17 +100,17 @@ export default function CodeEditor(props: CodeEditorProps) {
       options={
         !props.embed
           ? {
-            automaticLayout: true,
-          }
+              automaticLayout: true,
+            }
           : {
-            automaticLayout: true,
-            folding: false,
-            glyphMargin: false,
-            lineDecorationsWidth: 0,
-            lineNumbers: "off",
-            lineNumbersMinChars: 0,
-            minimap: { enabled: false },
-          }
+              automaticLayout: true,
+              folding: false,
+              glyphMargin: false,
+              lineDecorationsWidth: 0,
+              lineNumbers: "off",
+              lineNumbersMinChars: 0,
+              minimap: { enabled: false },
+            }
       }
       height="100%"
       width="100%"

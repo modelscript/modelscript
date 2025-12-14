@@ -5,12 +5,7 @@ import { StringWriter } from "../util/io.js";
 import type { Parser, Tree } from "../util/tree-sitter.js";
 import { ModelicaDAE, ModelicaDAEPrinter } from "./modelica/dae.js";
 import { ModelicaFlattener } from "./modelica/flattener.js";
-import {
-  ModelicaClassInstance,
-  ModelicaLibrary,
-  ModelicaNamedElement,
-  type ModelicaElement,
-} from "./modelica/model.js";
+import { ModelicaClassInstance, ModelicaLibrary, type ModelicaElement } from "./modelica/model.js";
 import { ModelicaStoredDefinitionSyntaxNode } from "./modelica/syntax.js";
 import { Scope } from "./scope.js";
 
@@ -79,7 +74,7 @@ export class Context extends Scope {
     })();
   }
 
-  load(extname: string, input: string): void {
+  load(input: string): void {
     const tree = this.parse(".mo", input);
     const node = ModelicaStoredDefinitionSyntaxNode.new(null, tree.rootNode);
     for (const classDefinition of node?.classDefinitions ?? [])
@@ -89,14 +84,6 @@ export class Context extends Scope {
   parse(extname: string, input: string, oldTree?: Tree): Tree {
     const parser = this.getParser(extname);
     return parser.parse(input, oldTree, { bufferSize: input.length * 2 });
-  }
-
-  query(name: string): ModelicaNamedElement | null {
-    for (const library of this.#libraries) {
-      const instance = library.query(name);
-      if (instance) return instance;
-    }
-    return null;
   }
 
   static registerParser(extname: string, parser: Parser) {

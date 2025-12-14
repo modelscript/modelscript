@@ -80,19 +80,29 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     if (node.classInstance instanceof ModelicaPredefinedClassInstance) {
       if (node.classInstance instanceof ModelicaBooleanClassInstance) {
         args[1].variables.push(
-          new ModelicaBooleanVariable(name, value, node.modification?.description ?? node.description),
+          new ModelicaBooleanVariable(
+            name,
+            value,
+            node.variability,
+            node.modification?.description ?? node.description,
+          ),
         );
       } else if (node.classInstance instanceof ModelicaIntegerClassInstance) {
         args[1].variables.push(
-          new ModelicaIntegerVariable(name, value, node.modification?.description ?? node.description),
+          new ModelicaIntegerVariable(
+            name,
+            value,
+            node.variability,
+            node.modification?.description ?? node.description,
+          ),
         );
       } else if (node.classInstance instanceof ModelicaRealClassInstance) {
         args[1].variables.push(
-          new ModelicaRealVariable(name, value, node.modification?.description ?? node.description),
+          new ModelicaRealVariable(name, value, node.variability, node.modification?.description ?? node.description),
         );
       } else if (node.classInstance instanceof ModelicaStringClassInstance) {
         args[1].variables.push(
-          new ModelicaStringVariable(name, value, node.modification?.description ?? node.description),
+          new ModelicaStringVariable(name, value, node.variability, node.modification?.description ?? node.description),
         );
       }
     } else if (node.classInstance instanceof ModelicaEnumerationClassInstance) {
@@ -101,6 +111,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           name,
           node.classInstance.enumerationLiterals,
           value,
+          node.variability,
           node.modification?.description ?? node.description,
         ),
       );
@@ -128,6 +139,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
               new ModelicaBooleanVariable(
                 elementName,
                 declaredElementValue,
+                node.variability,
                 declaredElement.modification?.description ?? declaredElement.description,
               ),
             );
@@ -136,6 +148,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
               new ModelicaIntegerVariable(
                 elementName,
                 declaredElementValue,
+                node.variability,
                 declaredElement.modification?.description ?? declaredElement.description,
               ),
             );
@@ -144,6 +157,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
               new ModelicaRealVariable(
                 elementName,
                 declaredElementValue,
+                node.variability,
                 declaredElement.modification?.description ?? declaredElement.description,
               ),
             );
@@ -152,6 +166,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
               new ModelicaStringVariable(
                 elementName,
                 declaredElementValue,
+                node.variability,
                 declaredElement.modification?.description ?? declaredElement.description,
               ),
             );
@@ -161,6 +176,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
                 elementName,
                 declaredElement.enumerationLiterals,
                 declaredElementValue,
+                node.variability,
                 declaredElement.modification?.description ?? declaredElement.description,
               ),
             );

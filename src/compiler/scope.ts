@@ -31,6 +31,10 @@ export abstract class Scope {
     return this.#parent?.deref() ?? null;
   }
 
+  query(name: string): ModelicaNamedElement | null {
+    return this.resolveName(name.split("."));
+  }
+
   resolveComponentReference(
     componentReference: ModelicaComponentReferenceSyntaxNode | null | undefined,
   ): ModelicaNamedElement | null {
