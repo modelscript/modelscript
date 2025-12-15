@@ -548,13 +548,32 @@ export abstract class ModelicaVariable extends ModelicaPrimaryExpression {
   ) {
     super();
     this.name = name;
-    this.description = description ?? null;
     this.value = value;
     this.variability = variability;
+    this.description = description ?? null;
   }
 }
 
 export class ModelicaBooleanVariable extends ModelicaVariable {
+  fixed: ModelicaExpression | null;
+  quantity: ModelicaExpression | null;
+  start: ModelicaExpression | null;
+
+  constructor(
+    name: string,
+    value: ModelicaExpression | null,
+    variability: ModelicaVariability | null,
+    description?: string | null,
+    quantity?: ModelicaExpression | null,
+    start?: ModelicaExpression | null,
+    fixed?: ModelicaExpression | null,
+  ) {
+    super(name, value, variability, description);
+    this.quantity = quantity ?? null;
+    this.start = start ?? null;
+    this.fixed = fixed ?? null;
+  }
+
   override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
     return visitor.visitBooleanVariable(this, argument);
   }
@@ -565,6 +584,31 @@ export class ModelicaBooleanVariable extends ModelicaVariable {
 }
 
 export class ModelicaIntegerVariable extends ModelicaVariable {
+  fixed: ModelicaExpression | null;
+  max: ModelicaExpression | null;
+  min: ModelicaExpression | null;
+  quantity: ModelicaExpression | null;
+  start: ModelicaExpression | null;
+
+  constructor(
+    name: string,
+    value: ModelicaExpression | null,
+    variability: ModelicaVariability | null,
+    description?: string | null,
+    quantity?: ModelicaExpression | null,
+    min?: ModelicaExpression | null,
+    max?: ModelicaExpression | null,
+    start?: ModelicaExpression | null,
+    fixed?: ModelicaExpression | null,
+  ) {
+    super(name, value, variability, description);
+    this.quantity = quantity ?? null;
+    this.min = min ?? null;
+    this.max = max ?? null;
+    this.start = start ?? null;
+    this.fixed = fixed ?? null;
+  }
+
   override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
     return visitor.visitIntegerVariable(this, argument);
   }
@@ -575,6 +619,46 @@ export class ModelicaIntegerVariable extends ModelicaVariable {
 }
 
 export class ModelicaRealVariable extends ModelicaVariable {
+  displayUnit: ModelicaExpression | null;
+  fixed: ModelicaExpression | null;
+  max: ModelicaExpression | null;
+  min: ModelicaExpression | null;
+  nominal: ModelicaExpression | null;
+  quantity: ModelicaExpression | null;
+  start: ModelicaExpression | null;
+  stateSelect: ModelicaExpression | null;
+  unbounded: ModelicaExpression | null;
+  unit: ModelicaExpression | null;
+
+  constructor(
+    name: string,
+    value: ModelicaExpression | null,
+    variability: ModelicaVariability | null,
+    description?: string | null,
+    quantity?: ModelicaExpression | null,
+    unit?: ModelicaExpression | null,
+    displayUnit?: ModelicaExpression | null,
+    min?: ModelicaExpression | null,
+    max?: ModelicaExpression | null,
+    start?: ModelicaExpression | null,
+    fixed?: ModelicaExpression | null,
+    nominal?: ModelicaExpression | null,
+    unbounded?: ModelicaExpression | null,
+    stateSelect?: ModelicaExpression | null,
+  ) {
+    super(name, value, variability, description);
+    this.quantity = quantity ?? null;
+    this.unit = unit ?? null;
+    this.displayUnit = displayUnit ?? null;
+    this.min = min ?? null;
+    this.max = max ?? null;
+    this.start = start ?? null;
+    this.fixed = fixed ?? null;
+    this.nominal = nominal ?? null;
+    this.unbounded = unbounded ?? null;
+    this.stateSelect = stateSelect ?? null;
+  }
+
   override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
     return visitor.visitRealVariable(this, argument);
   }
@@ -585,6 +669,25 @@ export class ModelicaRealVariable extends ModelicaVariable {
 }
 
 export class ModelicaStringVariable extends ModelicaVariable {
+  fixed: ModelicaExpression | null;
+  quantity: ModelicaExpression | null;
+  start: ModelicaExpression | null;
+
+  constructor(
+    name: string,
+    value: ModelicaExpression | null,
+    variability: ModelicaVariability | null,
+    description?: string | null,
+    quantity?: ModelicaExpression | null,
+    start?: ModelicaExpression | null,
+    fixed?: ModelicaExpression | null,
+  ) {
+    super(name, value, variability, description);
+    this.quantity = quantity ?? null;
+    this.start = start ?? null;
+    this.fixed = fixed ?? null;
+  }
+
   override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
     return visitor.visitStringVariable(this, argument);
   }
@@ -596,16 +699,30 @@ export class ModelicaStringVariable extends ModelicaVariable {
 
 export class ModelicaEnumerationVariable extends ModelicaVariable {
   enumerationLiterals: ModelicaEnumerationLiteral[];
+  fixed: boolean;
+  max: ModelicaExpression | null;
+  min: ModelicaExpression | null;
+  quantity: ModelicaExpression | null;
+  start: ModelicaExpression | null;
 
   constructor(
     name: string,
-    enumerationLiterals: ModelicaEnumerationLiteral[] | null,
     value: ModelicaExpression | null,
     variability: ModelicaVariability | null,
     description?: string | null,
+    enumerationLiterals?: ModelicaEnumerationLiteral[] | null,
+    quantity?: ModelicaExpression | null,
+    min?: ModelicaExpression | null,
+    max?: ModelicaExpression | null,
+    start?: ModelicaExpression | null,
   ) {
     super(name, value, variability, description);
     this.enumerationLiterals = enumerationLiterals ?? [];
+    this.quantity = quantity ?? null;
+    this.min = min ?? null;
+    this.max = max ?? null;
+    this.start = start ?? null;
+    this.fixed = variability === ModelicaVariability.PARAMETER || variability === ModelicaVariability.CONSTANT;
   }
 
   override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
