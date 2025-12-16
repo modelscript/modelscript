@@ -535,6 +535,7 @@ export class ModelicaEnumerationLiteral extends ModelicaLiteral {
 }
 
 export abstract class ModelicaVariable extends ModelicaPrimaryExpression {
+  attributes: Map<string, ModelicaExpression>;
   name: string;
   description: string | null;
   value: ModelicaExpression | null;
@@ -543,39 +544,34 @@ export abstract class ModelicaVariable extends ModelicaPrimaryExpression {
   constructor(
     name: string,
     value: ModelicaExpression | null,
+    attributes: Map<string, ModelicaExpression>,
     variability: ModelicaVariability | null,
     description?: string | null,
   ) {
     super();
     this.name = name;
     this.value = value;
+    this.attributes = attributes;
     this.variability = variability;
     this.description = description ?? null;
   }
 }
 
 export class ModelicaBooleanVariable extends ModelicaVariable {
-  fixed: ModelicaExpression | null;
-  quantity: ModelicaExpression | null;
-  start: ModelicaExpression | null;
-
-  constructor(
-    name: string,
-    value: ModelicaExpression | null,
-    variability: ModelicaVariability | null,
-    description?: string | null,
-    quantity?: ModelicaExpression | null,
-    start?: ModelicaExpression | null,
-    fixed?: ModelicaExpression | null,
-  ) {
-    super(name, value, variability, description);
-    this.quantity = quantity ?? null;
-    this.start = start ?? null;
-    this.fixed = fixed ?? null;
-  }
-
   override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
     return visitor.visitBooleanVariable(this, argument);
+  }
+
+  get fixed(): ModelicaExpression | null {
+    return this.attributes.get("fixed") ?? null;
+  }
+
+  get quantity(): ModelicaExpression | null {
+    return this.attributes.get("quantity") ?? null;
+  }
+
+  get start(): ModelicaExpression | null {
+    return this.attributes.get("start") ?? null;
   }
 
   toJSON(): array<boolean | number | object | string> {
@@ -584,33 +580,28 @@ export class ModelicaBooleanVariable extends ModelicaVariable {
 }
 
 export class ModelicaIntegerVariable extends ModelicaVariable {
-  fixed: ModelicaExpression | null;
-  max: ModelicaExpression | null;
-  min: ModelicaExpression | null;
-  quantity: ModelicaExpression | null;
-  start: ModelicaExpression | null;
-
-  constructor(
-    name: string,
-    value: ModelicaExpression | null,
-    variability: ModelicaVariability | null,
-    description?: string | null,
-    quantity?: ModelicaExpression | null,
-    min?: ModelicaExpression | null,
-    max?: ModelicaExpression | null,
-    start?: ModelicaExpression | null,
-    fixed?: ModelicaExpression | null,
-  ) {
-    super(name, value, variability, description);
-    this.quantity = quantity ?? null;
-    this.min = min ?? null;
-    this.max = max ?? null;
-    this.start = start ?? null;
-    this.fixed = fixed ?? null;
-  }
-
   override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
     return visitor.visitIntegerVariable(this, argument);
+  }
+
+  get fixed(): ModelicaExpression | null {
+    return this.attributes.get("fixed") ?? null;
+  }
+
+  get max(): ModelicaExpression | null {
+    return this.attributes.get("max") ?? null;
+  }
+
+  get min(): ModelicaExpression | null {
+    return this.attributes.get("min") ?? null;
+  }
+
+  get quantity(): ModelicaExpression | null {
+    return this.attributes.get("quantity") ?? null;
+  }
+
+  get start(): ModelicaExpression | null {
+    return this.attributes.get("start") ?? null;
   }
 
   toJSON(): array<boolean | number | object | string> {
@@ -619,77 +610,70 @@ export class ModelicaIntegerVariable extends ModelicaVariable {
 }
 
 export class ModelicaRealVariable extends ModelicaVariable {
-  displayUnit: ModelicaExpression | null;
-  fixed: ModelicaExpression | null;
-  max: ModelicaExpression | null;
-  min: ModelicaExpression | null;
-  nominal: ModelicaExpression | null;
-  quantity: ModelicaExpression | null;
-  start: ModelicaExpression | null;
-  stateSelect: ModelicaExpression | null;
-  unbounded: ModelicaExpression | null;
-  unit: ModelicaExpression | null;
-
-  constructor(
-    name: string,
-    value: ModelicaExpression | null,
-    variability: ModelicaVariability | null,
-    description?: string | null,
-    quantity?: ModelicaExpression | null,
-    unit?: ModelicaExpression | null,
-    displayUnit?: ModelicaExpression | null,
-    min?: ModelicaExpression | null,
-    max?: ModelicaExpression | null,
-    start?: ModelicaExpression | null,
-    fixed?: ModelicaExpression | null,
-    nominal?: ModelicaExpression | null,
-    unbounded?: ModelicaExpression | null,
-    stateSelect?: ModelicaExpression | null,
-  ) {
-    super(name, value, variability, description);
-    this.quantity = quantity ?? null;
-    this.unit = unit ?? null;
-    this.displayUnit = displayUnit ?? null;
-    this.min = min ?? null;
-    this.max = max ?? null;
-    this.start = start ?? null;
-    this.fixed = fixed ?? null;
-    this.nominal = nominal ?? null;
-    this.unbounded = unbounded ?? null;
-    this.stateSelect = stateSelect ?? null;
-  }
-
   override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
     return visitor.visitRealVariable(this, argument);
+  }
+
+  get displayUnit(): ModelicaExpression | null {
+    return this.attributes.get("displayUnit") ?? null;
+  }
+
+  get fixed(): ModelicaExpression | null {
+    return this.attributes.get("fixed") ?? null;
+  }
+
+  get max(): ModelicaExpression | null {
+    return this.attributes.get("max") ?? null;
+  }
+
+  get min(): ModelicaExpression | null {
+    return this.attributes.get("min") ?? null;
+  }
+
+  get nominal(): ModelicaExpression | null {
+    return this.attributes.get("nominal") ?? null;
+  }
+
+  get quantity(): ModelicaExpression | null {
+    return this.attributes.get("quantity") ?? null;
+  }
+
+  get start(): ModelicaExpression | null {
+    return this.attributes.get("start") ?? null;
+  }
+
+  get stateSelect(): ModelicaExpression | null {
+    return this.attributes.get("stateSelect") ?? null;
   }
 
   toJSON(): array<boolean | number | object | string> {
     throw new Error();
   }
+
+  get unbounded(): ModelicaExpression | null {
+    return this.attributes.get("unbounded") ?? null;
+  }
+
+  get unit(): ModelicaExpression | null {
+    return this.attributes.get("unit") ?? null;
+  }
 }
 
 export class ModelicaStringVariable extends ModelicaVariable {
-  fixed: ModelicaExpression | null;
-  quantity: ModelicaExpression | null;
-  start: ModelicaExpression | null;
-
-  constructor(
-    name: string,
-    value: ModelicaExpression | null,
-    variability: ModelicaVariability | null,
-    description?: string | null,
-    quantity?: ModelicaExpression | null,
-    start?: ModelicaExpression | null,
-    fixed?: ModelicaExpression | null,
-  ) {
-    super(name, value, variability, description);
-    this.quantity = quantity ?? null;
-    this.start = start ?? null;
-    this.fixed = fixed ?? null;
-  }
-
   override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
     return visitor.visitStringVariable(this, argument);
+  }
+
+  get fixed(): ModelicaExpression | null {
+    return this.attributes.get("fixed") ?? null;
+  }
+
+  get quantity(): ModelicaExpression | null {
+    return this.attributes.get("quantity") ?? null;
+  }
+
+  get start(): ModelicaExpression | null {
+    return this.attributes.get("start") ?? null;
   }
 
   toJSON(): array<boolean | number | object | string> {
@@ -699,34 +683,41 @@ export class ModelicaStringVariable extends ModelicaVariable {
 
 export class ModelicaEnumerationVariable extends ModelicaVariable {
   enumerationLiterals: ModelicaEnumerationLiteral[];
-  fixed: boolean;
-  max: ModelicaExpression | null;
-  min: ModelicaExpression | null;
-  quantity: ModelicaExpression | null;
-  start: ModelicaExpression | null;
 
   constructor(
     name: string,
     value: ModelicaExpression | null,
+    attributes: Map<string, ModelicaExpression>,
     variability: ModelicaVariability | null,
     description?: string | null,
     enumerationLiterals?: ModelicaEnumerationLiteral[] | null,
-    quantity?: ModelicaExpression | null,
-    min?: ModelicaExpression | null,
-    max?: ModelicaExpression | null,
-    start?: ModelicaExpression | null,
   ) {
-    super(name, value, variability, description);
+    super(name, value, attributes, variability, description);
     this.enumerationLiterals = enumerationLiterals ?? [];
-    this.quantity = quantity ?? null;
-    this.min = min ?? null;
-    this.max = max ?? null;
-    this.start = start ?? null;
-    this.fixed = variability === ModelicaVariability.PARAMETER || variability === ModelicaVariability.CONSTANT;
   }
 
   override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
     return visitor.visitEnumerationVariable(this, argument);
+  }
+
+  get fixed(): ModelicaExpression | null {
+    return this.attributes.get("fixed") ?? null;
+  }
+
+  get max(): ModelicaExpression | null {
+    return this.attributes.get("max") ?? null;
+  }
+
+  get min(): ModelicaExpression | null {
+    return this.attributes.get("min") ?? null;
+  }
+
+  get quantity(): ModelicaExpression | null {
+    return this.attributes.get("quantity") ?? null;
+  }
+
+  get start(): ModelicaExpression | null {
+    return this.attributes.get("start") ?? null;
   }
 
   toJSON(): array<boolean | number | object | string> {
@@ -887,6 +878,16 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
         throw new Error("invalid variable");
       }
       this.out.write(variable.name);
+      if (variable.attributes.size > 0) {
+        this.out.write("(");
+        let i = 0;
+        for (const entry of variable.attributes.entries()) {
+          this.out.write(entry[0] + " = ");
+          entry[1].accept(this);
+          if (++i < variable.attributes.size) this.out.write(", ");
+        }
+        this.out.write(")");
+      }
       if (variable.value) {
         this.out.write(" = ");
         variable.value.accept(this);
