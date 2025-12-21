@@ -11,6 +11,7 @@ import {
 import {
   ModelicaBinaryOperator,
   ModelicaExpressionSyntaxNode,
+  ModelicaSyntaxPrinter,
   ModelicaUnaryOperator,
   ModelicaVariability,
 } from "./syntax.js";
@@ -93,6 +94,12 @@ export abstract class ModelicaExpression {
       return new ModelicaObject(elements, classInstance);
     }
   }
+
+  split(count: number): ModelicaExpression[];
+  split(count: number, index: number): ModelicaExpression;
+  split(): ModelicaExpression | ModelicaExpression[] {
+    throw new Error("cannot split this expression");
+  }
 }
 
 export abstract class ModelicaSimpleExpression extends ModelicaExpression {}
@@ -146,6 +153,18 @@ export class ModelicaUnaryExpression extends ModelicaSimpleExpression {
       return null;
     } else {
       return new ModelicaUnaryExpression(operator, operand);
+    }
+  }
+
+  override split(count: number): ModelicaUnaryExpression[];
+  override split(count: number, index: number): ModelicaUnaryExpression;
+  override split(count: number, index?: number): ModelicaUnaryExpression | ModelicaUnaryExpression[] {
+    if (index) {
+      return new ModelicaUnaryExpression(this.operator, this.operand.split(count, index));
+    } else {
+      return this.operand
+        .split(count)
+        .map((splittedOperand) => new ModelicaUnaryExpression(this.operator, splittedOperand));
     }
   }
 }
@@ -345,6 +364,30 @@ export class ModelicaBinaryExpression extends ModelicaSimpleExpression {
       return new ModelicaBinaryExpression(operator, operand1, operand2);
     }
   }
+
+  override split(count: number): ModelicaBinaryExpression[];
+  override split(count: number, index: number): ModelicaBinaryExpression;
+  override split(count: number, index?: number): ModelicaBinaryExpression | ModelicaBinaryExpression[] {
+    if (index) {
+      return new ModelicaBinaryExpression(
+        this.operator,
+        this.operand1.split(count, index),
+        this.operand2.split(count, index),
+      );
+    } else {
+      const operands1 = this.operand1.split(count);
+      const operands2 = this.operand2.split(count);
+      const expressions = [];
+      for (let i = 0; i < count; i++) {
+        const operand1 = operands1[i];
+        const operand2 = operands2[i];
+        if (operand1 && operand2) {
+          expressions.push(new ModelicaBinaryExpression(this.operator, operand1, operand2));
+        }
+      }
+      return expressions;
+    }
+  }
 }
 
 export abstract class ModelicaPrimaryExpression extends ModelicaSimpleExpression {}
@@ -406,6 +449,19 @@ export class ModelicaArray extends ModelicaPrimaryExpression {
       if (c++ === i) return element;
     }
     return null;
+  }
+
+  override split(count: number): ModelicaPrimaryExpression[];
+  override split(count: number, index: number): ModelicaPrimaryExpression;
+  override split(count: number, index?: number): ModelicaPrimaryExpression | ModelicaPrimaryExpression[] {
+    if (this.elements.length != count) throw new Error();
+    if (index) {
+      const expression = this.elements[index];
+      if (!expression) throw new Error();
+      return expression;
+    } else {
+      return this.elements;
+    }
   }
 
   override toJSON(): array<boolean | number | object | string> {
@@ -538,19 +594,19 @@ export abstract class ModelicaVariable extends ModelicaPrimaryExpression {
   attributes: Map<string, ModelicaExpression>;
   name: string;
   description: string | null;
-  value: ModelicaExpression | null;
+  expression: ModelicaExpressionSyntaxNode | null;
   variability: ModelicaVariability | null;
 
   constructor(
     name: string,
-    value: ModelicaExpression | null,
+    expression: ModelicaExpressionSyntaxNode | null,
     attributes: Map<string, ModelicaExpression>,
     variability: ModelicaVariability | null,
     description?: string | null,
   ) {
     super();
     this.name = name;
-    this.value = value;
+    this.expression = expression;
     this.attributes = attributes;
     this.variability = variability;
     this.description = description ?? null;
@@ -686,13 +742,13 @@ export class ModelicaEnumerationVariable extends ModelicaVariable {
 
   constructor(
     name: string,
-    value: ModelicaExpression | null,
+    expression: ModelicaExpressionSyntaxNode | null,
     attributes: Map<string, ModelicaExpression>,
     variability: ModelicaVariability | null,
     description?: string | null,
     enumerationLiterals?: ModelicaEnumerationLiteral[] | null,
   ) {
-    super(name, value, attributes, variability, description);
+    super(name, expression, attributes, variability, description);
     this.enumerationLiterals = enumerationLiterals ?? [];
   }
 
@@ -772,9 +828,8 @@ export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void,
   // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
   visitBooleanLiteral(node: ModelicaBooleanLiteral, argument?: A): void {}
 
-  visitBooleanVariable(node: ModelicaBooleanVariable, argument?: A): void {
-    node.value?.accept(this, argument);
-  }
+  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
+  visitBooleanVariable(node: ModelicaBooleanVariable, argument?: A): void {}
 
   visitDAE(node: ModelicaDAE, argument?: A): void {
     for (const variable of node.variables) variable.accept(this, argument);
@@ -790,9 +845,8 @@ export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void,
   // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
   visitIntegerLiteral(node: ModelicaIntegerLiteral, argument?: A): void {}
 
-  visitIntegerVariable(node: ModelicaIntegerVariable, argument?: A): void {
-    node.value?.accept(this, argument);
-  }
+  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
+  visitIntegerVariable(node: ModelicaIntegerVariable, argument?: A): void {}
 
   visitObject(node: ModelicaObject, argument?: A): void {
     for (const element of node.elements.values()) element.accept(this, argument);
@@ -801,9 +855,8 @@ export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void,
   // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
   visitRealLiteral(node: ModelicaRealLiteral, argument?: A): void {}
 
-  visitRealVariable(node: ModelicaRealVariable, argument?: A): void {
-    node.value?.accept(this, argument);
-  }
+  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
+  visitRealVariable(node: ModelicaRealVariable, argument?: A): void {}
 
   visitSimpleEquation(node: ModelicaSimpleEquation, argument?: A): void {
     node.expression1.accept(this, argument);
@@ -813,9 +866,8 @@ export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void,
   // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
   visitStringLiteral(node: ModelicaStringLiteral, argument?: A): void {}
 
-  visitStringVariable(node: ModelicaStringVariable, argument?: A): void {
-    node.value?.accept(this, argument);
-  }
+  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
+  visitStringVariable(node: ModelicaStringVariable, argument?: A): void {}
 
   visitUnaryExpression(node: ModelicaUnaryExpression, argument?: A): void {
     node.operand.accept(this, argument);
@@ -888,9 +940,9 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
         }
         this.out.write(")");
       }
-      if (variable.value) {
+      if (variable.expression) {
         this.out.write(" = ");
-        variable.value.accept(this);
+        variable.expression.accept(new ModelicaSyntaxPrinter(this.out));
       }
       if (variable.description) this.out.write(' "' + variable.description + '"');
       this.out.write(";\n");
