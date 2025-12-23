@@ -2,16 +2,11 @@
 
 import type { Writer } from "../../util/io.js";
 import logger from "../../util/logger.js";
+import { makeWeakRef, makeWeakRefArray } from "../../util/weak.js";
 import type { Context } from "../context.js";
 import { Scope } from "../scope.js";
 import { ANNOTATION } from "./annotation.js";
-import {
-  ModelicaArray,
-  ModelicaEnumerationLiteral,
-  ModelicaExpression,
-  ModelicaIntegerLiteral,
-  ModelicaObject,
-} from "./dae.js";
+import { ModelicaDAEPrinter, ModelicaEnumerationLiteral, ModelicaExpression, ModelicaIntegerLiteral } from "./dae.js";
 import { ModelicaInterpreter } from "./interpreter.js";
 import {
   ModelicaAnnotationClauseSyntaxNode,
@@ -126,8 +121,7 @@ export abstract class ModelicaElement extends ModelicaNode {
 
   constructor(library: ModelicaLibrary | null, parent: Scope | null) {
     super(parent);
-    if (library) this.#library = new WeakRef(library);
-    else this.#library = null;
+    this.#library = makeWeakRef(library);
   }
 
   abstract get abstractSyntaxNode(): ModelicaElementSyntaxNode | null;
@@ -198,7 +192,7 @@ export abstract class ModelicaElement extends ModelicaNode {
 }
 
 export class ModelicaExtendsClassInstance extends ModelicaElement {
-  #abstractSyntaxNode: ModelicaExtendsClauseSyntaxNode | null;
+  #abstractSyntaxNode: WeakRef<ModelicaExtendsClauseSyntaxNode> | null;
   #modification: ModelicaModification;
   classInstance: ModelicaClassInstance | null = null;
 
@@ -208,16 +202,16 @@ export class ModelicaExtendsClassInstance extends ModelicaElement {
     abstractSyntaxNode?: ModelicaExtendsClauseSyntaxNode | null,
   ) {
     super(library, parent);
-    this.#abstractSyntaxNode = abstractSyntaxNode ?? null;
+    this.#abstractSyntaxNode = makeWeakRef(abstractSyntaxNode);
     this.#modification = this.mergeModifications();
   }
 
   get abstractSyntaxNode(): ModelicaExtendsClauseSyntaxNode | null {
-    return this.#abstractSyntaxNode;
+    return this.#abstractSyntaxNode?.deref() ?? null;
   }
 
   set abstractSyntaxNode(abstractSyntaxNode: ModelicaExtendsClauseSyntaxNode | null) {
-    this.#abstractSyntaxNode = abstractSyntaxNode;
+    this.#abstractSyntaxNode = makeWeakRef(abstractSyntaxNode);
     this.instantiated = false;
   }
 
@@ -285,7 +279,7 @@ export abstract class ModelicaNamedElement extends ModelicaElement {
 }
 
 export class ModelicaClassInstance extends ModelicaNamedElement {
-  #abstractSyntaxNode: ModelicaClassDefinitionSyntaxNode | null;
+  #abstractSyntaxNode: WeakRef<ModelicaClassDefinitionSyntaxNode> | null;
   #importClauses: ModelicaImportClauseSyntaxNode[] = [];
   #modification: ModelicaModification | null = null;
   #qualifiedImports = new Map<string, ModelicaClassInstance>();
@@ -300,7 +294,7 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     modification?: ModelicaModification | null,
   ) {
     super(library, parent);
-    this.#abstractSyntaxNode = abstractSyntaxNode ?? null;
+    this.#abstractSyntaxNode = makeWeakRef(abstractSyntaxNode);
     this.name = this.abstractSyntaxNode?.identifier?.value ?? null;
     this.description =
       this.abstractSyntaxNode?.classSpecifier?.description?.descriptionStrings?.map((d) => d.value)?.join(" ") ?? null;
@@ -309,11 +303,11 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
   }
 
   get abstractSyntaxNode(): ModelicaClassDefinitionSyntaxNode | null {
-    return this.#abstractSyntaxNode;
+    return this.#abstractSyntaxNode?.deref() ?? null;
   }
 
   set abstractSyntaxNode(abstractSyntaxNode: ModelicaClassDefinitionSyntaxNode | null) {
-    this.#abstractSyntaxNode = abstractSyntaxNode;
+    this.#abstractSyntaxNode = makeWeakRef(abstractSyntaxNode);
     this.name = this.abstractSyntaxNode?.identifier?.value ?? null;
     this.instantiated = false;
   }
@@ -416,7 +410,7 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
         outerModificationArgument.description,
       );
     } else if (outerModificationArgument instanceof ModelicaParameterModification) {
-      return new ModelicaModification(this, modificationArguments, outerModificationArgument.expression);
+      return new ModelicaModification(this, modificationArguments, null, null, outerModificationArgument.expression);
     }
     return new ModelicaModification(this, modificationArguments);
   }
@@ -552,7 +546,7 @@ export class ModelicaEnumerationClassInstance extends ModelicaClassInstance {
   override get elements(): IterableIterator<ModelicaElement> {
     if (!this.instantiated && !this.instantiating) this.instantiate();
     // eslint-disable-next-line @typescript-eslint/no-empty-function
-    return (function* () { })();
+    return (function* () {})();
   }
 
   override instantiate(): void {
@@ -576,7 +570,7 @@ export class ModelicaEnumerationClassInstance extends ModelicaClassInstance {
         }
       }
     }
-    const value = this.modification?.value ?? this.modification?.expression?.accept(new ModelicaInterpreter(), this);
+    const value = this.modification?.expression;
     if (value instanceof ModelicaEnumerationLiteral) this.value = value;
     this.instantiated = true;
   }
@@ -644,7 +638,7 @@ export class ModelicaShortClassInstance extends ModelicaClassInstance {
 }
 
 export class ModelicaEntity extends ModelicaClassInstance {
-  #storedDefinitionSyntaxNode: ModelicaStoredDefinitionSyntaxNode | null = null;
+  #storedDefinitionSyntaxNode: WeakRef<ModelicaStoredDefinitionSyntaxNode> | null = null;
   path: string;
   subEntities: ModelicaEntity[] = [];
   unstructured = false;
@@ -707,18 +701,18 @@ export class ModelicaEntity extends ModelicaClassInstance {
       const parser = context.getParser(context.fs.extname(filePath));
       const text = context.fs.read(filePath);
       const tree = parser.parse(text, undefined, { bufferSize: text.length * 2 });
-      this.#storedDefinitionSyntaxNode = ModelicaStoredDefinitionSyntaxNode.new(null, tree.rootNode);
-      this.abstractSyntaxNode = this.#storedDefinitionSyntaxNode?.classDefinitions?.[0] ?? null;
+      this.#storedDefinitionSyntaxNode = makeWeakRef(ModelicaStoredDefinitionSyntaxNode.new(null, tree.rootNode));
+      this.abstractSyntaxNode = this.storedDefinitionSyntaxNode?.classDefinitions?.[0] ?? null;
     }
   }
 
   get storedDefinitionSyntaxNode(): ModelicaStoredDefinitionSyntaxNode | null {
-    return this.#storedDefinitionSyntaxNode;
+    return this.#storedDefinitionSyntaxNode?.deref() ?? null;
   }
 }
 
 export class ModelicaComponentInstance extends ModelicaNamedElement {
-  #abstractSyntaxNode: ModelicaComponentDeclarationSyntaxNode | null;
+  #abstractSyntaxNode: WeakRef<ModelicaComponentDeclarationSyntaxNode> | null;
   #modification: ModelicaModification | null = null;
   classInstance: ModelicaClassInstance | null = null;
 
@@ -729,14 +723,14 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
     modification?: ModelicaModification | null,
   ) {
     super(library, parent);
-    this.#abstractSyntaxNode = abstractSyntaxNode;
+    this.#abstractSyntaxNode = makeWeakRef(abstractSyntaxNode);
     this.name = this.abstractSyntaxNode?.declaration?.identifier?.value ?? null;
     this.description = this.abstractSyntaxNode?.description?.descriptionStrings?.map((d) => d.value)?.join(" ") ?? null;
     this.#modification = modification ?? this.mergeModifications();
   }
 
   get abstractSyntaxNode(): ModelicaComponentDeclarationSyntaxNode | null {
-    return this.#abstractSyntaxNode;
+    return this.#abstractSyntaxNode?.deref() ?? null;
   }
 
   override accept<R, A>(visitor: IModelicaModelVisitor<R, A>, argument?: A): R {
@@ -813,15 +807,10 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
         modificationArguments,
         outerModificationArgument.modificationExpression ?? modificationSyntaxNode?.modificationExpression,
         outerModificationArgument.description,
+        outerModificationArgument.expression,
       );
     } else if (outerModificationArgument instanceof ModelicaParameterModification) {
-      return new ModelicaModification(
-        this,
-        modificationArguments,
-        null,
-        null,
-        outerModificationArgument.expression.accept(new ModelicaInterpreter(), outerModificationArgument.scope),
-      );
+      return new ModelicaModification(this, modificationArguments, null, null, outerModificationArgument.expression);
     }
     return new ModelicaModification(this, modificationArguments, modificationSyntaxNode?.modificationExpression);
   }
@@ -835,13 +824,11 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
   }
 
   get variability(): ModelicaVariability | null {
-    return this.#abstractSyntaxNode?.parent?.variability ?? null;
+    return this.abstractSyntaxNode?.parent?.variability ?? null;
   }
 }
 
 export abstract class ModelicaPredefinedClassInstance extends ModelicaClassInstance {
-  value: ModelicaExpressionSyntaxNode | ModelicaExpression | null;
-
   constructor(
     library: ModelicaLibrary | null,
     parent: Scope | null,
@@ -851,24 +838,20 @@ export abstract class ModelicaPredefinedClassInstance extends ModelicaClassInsta
     super(library, parent, null, modification);
     this["@type"] = name + "ClassInstance";
     this.name = name;
-    this.value = modification?.expression ?? null;
   }
 
   abstract override accept<R, A>(visitor: IModelicaModelVisitor<R, A>, argument?: A): R;
 
   abstract override clone(modification?: ModelicaModification | null): ModelicaClassInstance;
+
+  get expression(): ModelicaExpression | null {
+    return this.modification?.expression ?? null;
+  }
 }
 
 export class ModelicaBooleanClassInstance extends ModelicaPredefinedClassInstance {
-  fixed: ModelicaExpressionSyntaxNode | null;
-  quantity: ModelicaExpressionSyntaxNode | null;
-  start: ModelicaExpressionSyntaxNode | null;
-
   constructor(library: ModelicaLibrary | null, parent: Scope | null, modification?: ModelicaModification | null) {
     super(library, parent, "Boolean", modification);
-    this.fixed = this.modification?.getModificationArgument("fixed")?.expression ?? null;
-    this.quantity = this.modification?.getModificationArgument("quantity")?.expression ?? null;
-    this.start = this.modification?.getModificationArgument("start")?.expression ?? null;
   }
 
   override accept<R, A>(visitor: IModelicaModelVisitor<R, A>, argument?: A): R {
@@ -882,22 +865,23 @@ export class ModelicaBooleanClassInstance extends ModelicaPredefinedClassInstanc
     classInstance.instantiate();
     return classInstance;
   }
+
+  get fixed(): ModelicaExpression | null {
+    return this.modification?.getModificationArgument("fixed")?.expression ?? null;
+  }
+
+  get quantity(): ModelicaExpression | null {
+    return this.modification?.getModificationArgument("quantity")?.expression ?? null;
+  }
+
+  get start(): ModelicaExpression | null {
+    return this.modification?.getModificationArgument("start")?.expression ?? null;
+  }
 }
 
 export class ModelicaIntegerClassInstance extends ModelicaPredefinedClassInstance {
-  fixed: ModelicaExpressionSyntaxNode | null;
-  max: ModelicaExpressionSyntaxNode | null;
-  min: ModelicaExpressionSyntaxNode | null;
-  quantity: ModelicaExpressionSyntaxNode | null;
-  start: ModelicaExpressionSyntaxNode | null;
-
   constructor(library: ModelicaLibrary | null, parent: Scope | null, modification?: ModelicaModification | null) {
     super(library, parent, "Integer", modification);
-    this.fixed = this.modification?.getModificationArgument("fixed")?.expression ?? null;
-    this.max = this.modification?.getModificationArgument("max")?.expression ?? null;
-    this.min = this.modification?.getModificationArgument("min")?.expression ?? null;
-    this.quantity = this.modification?.getModificationArgument("quantity")?.expression ?? null;
-    this.start = this.modification?.getModificationArgument("start")?.expression ?? null;
   }
 
   override accept<R, A>(visitor: IModelicaModelVisitor<R, A>, argument?: A): R {
@@ -911,32 +895,31 @@ export class ModelicaIntegerClassInstance extends ModelicaPredefinedClassInstanc
     classInstance.instantiate();
     return classInstance;
   }
+
+  get fixed(): ModelicaExpression | null {
+    return this.modification?.getModificationArgument("fixed")?.expression ?? null;
+  }
+
+  get max(): ModelicaExpression | null {
+    return this.modification?.getModificationArgument("max")?.expression ?? null;
+  }
+
+  get min(): ModelicaExpression | null {
+    return this.modification?.getModificationArgument("min")?.expression ?? null;
+  }
+
+  get quantity(): ModelicaExpression | null {
+    return this.modification?.getModificationArgument("quantity")?.expression ?? null;
+  }
+
+  get start(): ModelicaExpression | null {
+    return this.modification?.getModificationArgument("start")?.expression ?? null;
+  }
 }
 
 export class ModelicaRealClassInstance extends ModelicaPredefinedClassInstance {
-  displayUnit: ModelicaExpressionSyntaxNode | null;
-  fixed: ModelicaExpressionSyntaxNode | null;
-  max: ModelicaExpressionSyntaxNode | null;
-  min: ModelicaExpressionSyntaxNode | null;
-  nominal: ModelicaExpressionSyntaxNode | null;
-  quantity: ModelicaExpressionSyntaxNode | null;
-  start: ModelicaExpressionSyntaxNode | null;
-  stateSelect: ModelicaExpressionSyntaxNode | null;
-  unbounded: ModelicaExpressionSyntaxNode | null;
-  unit: ModelicaExpressionSyntaxNode | null;
-
   constructor(library: ModelicaLibrary | null, parent: Scope | null, modification?: ModelicaModification | null) {
     super(library, parent, "Real", modification);
-    this.displayUnit = this.modification?.getModificationArgument("displayUnit")?.expression ?? null;
-    this.fixed = this.modification?.getModificationArgument("fixed")?.expression ?? null;
-    this.max = this.modification?.getModificationArgument("max")?.expression ?? null;
-    this.min = this.modification?.getModificationArgument("min")?.expression ?? null;
-    this.nominal = this.modification?.getModificationArgument("nominal")?.expression ?? null;
-    this.quantity = this.modification?.getModificationArgument("quantity")?.expression ?? null;
-    this.start = this.modification?.getModificationArgument("start")?.expression ?? null;
-    this.stateSelect = this.modification?.getModificationArgument("stateSelect")?.expression ?? null;
-    this.unbounded = this.modification?.getModificationArgument("unbounded")?.expression ?? null;
-    this.unit = this.modification?.getModificationArgument("unit")?.expression ?? null;
   }
 
   override accept<R, A>(visitor: IModelicaModelVisitor<R, A>, argument?: A): R {
@@ -950,30 +933,75 @@ export class ModelicaRealClassInstance extends ModelicaPredefinedClassInstance {
     classInstance.instantiate();
     return classInstance;
   }
+
+  get displayUnit(): ModelicaExpression | null {
+    return this.modification?.getModificationArgument("displayUnit")?.expression ?? null;
+  }
+
+  get fixed(): ModelicaExpression | null {
+    return this.modification?.getModificationArgument("fixed")?.expression ?? null;
+  }
+
+  get max(): ModelicaExpression | null {
+    return this.modification?.getModificationArgument("max")?.expression ?? null;
+  }
+
+  get min(): ModelicaExpression | null {
+    return this.modification?.getModificationArgument("min")?.expression ?? null;
+  }
+
+  get nominal(): ModelicaExpression | null {
+    return this.modification?.getModificationArgument("nominal")?.expression ?? null;
+  }
+
+  get quantity(): ModelicaExpression | null {
+    return this.modification?.getModificationArgument("quantity")?.expression ?? null;
+  }
+
+  get start(): ModelicaExpression | null {
+    return this.modification?.getModificationArgument("start")?.expression ?? null;
+  }
+
+  get stateSelect(): ModelicaExpression | null {
+    return this.modification?.getModificationArgument("stateSelect")?.expression ?? null;
+  }
+
+  get unbounded(): ModelicaExpression | null {
+    return this.modification?.getModificationArgument("unbounded")?.expression ?? null;
+  }
+
+  get unit(): ModelicaExpression | null {
+    return this.modification?.getModificationArgument("unit")?.expression ?? null;
+  }
 }
 
 export class ModelicaStringClassInstance extends ModelicaPredefinedClassInstance {
-  fixed: ModelicaExpressionSyntaxNode | null;
-  quantity: ModelicaExpressionSyntaxNode | null;
-  start: ModelicaExpressionSyntaxNode | null;
-
   constructor(library: ModelicaLibrary | null, parent: Scope | null, modification?: ModelicaModification | null) {
     super(library, parent, "String", modification);
-    this.fixed = this.modification?.getModificationArgument("fixed")?.expression ?? null;
-    this.quantity = this.modification?.getModificationArgument("quantity")?.expression ?? null;
-    this.start = this.modification?.getModificationArgument("start")?.expression ?? null;
   }
 
   override accept<R, A>(visitor: IModelicaModelVisitor<R, A>, argument?: A): R {
     return visitor.visitStringClassInstance(this, argument);
   }
 
-  override clone(modification?: ModelicaModification | null): ModelicaBooleanClassInstance {
+  override clone(modification?: ModelicaModification | null): ModelicaStringClassInstance {
     if (!this.instantiated && !this.instantiating) this.instantiate();
     const mergedModification = ModelicaModification.merge(this.modification, modification);
-    const classInstance = new ModelicaIntegerClassInstance(this.library, this.parent, mergedModification);
+    const classInstance = new ModelicaStringClassInstance(this.library, this.parent, mergedModification);
     classInstance.instantiate();
     return classInstance;
+  }
+
+  get fixed(): ModelicaExpression | null {
+    return this.modification?.getModificationArgument("fixed")?.expression ?? null;
+  }
+
+  get quantity(): ModelicaExpression | null {
+    return this.modification?.getModificationArgument("quantity")?.expression ?? null;
+  }
+
+  get start(): ModelicaExpression | null {
+    return this.modification?.getModificationArgument("start")?.expression ?? null;
   }
 }
 
@@ -992,6 +1020,10 @@ export class ModelicaArrayClassInstance extends ModelicaClassInstance {
     super(library, parent, elementClassInstance?.abstractSyntaxNode, modification);
     this.#elementClassInstance = elementClassInstance;
     this.#arraySubscripts = arraySubscripts;
+  }
+
+  override accept<R, A>(visitor: IModelicaModelVisitor<R, A>, argument?: A): R {
+    return visitor.visitArrayClassInstance(this, argument);
   }
 
   override clone(modification?: ModelicaModification | null): ModelicaArrayClassInstance {
@@ -1028,19 +1060,28 @@ export class ModelicaArrayClassInstance extends ModelicaClassInstance {
       if (length instanceof ModelicaIntegerLiteral) this.shape.push(length.value);
       else this.shape.push(-1);
     }
+
     let elementClassInstance = this.#elementClassInstance;
     elementClassInstance?.instantiate();
     if (elementClassInstance instanceof ModelicaShortClassInstance) {
       elementClassInstance = elementClassInstance.classInstance;
-    }
-    if (elementClassInstance instanceof ModelicaArrayClassInstance) {
+    } else if (elementClassInstance instanceof ModelicaArrayClassInstance) {
       this.shape.push(...elementClassInstance.shape);
       elementClassInstance = elementClassInstance.elementClassInstance;
     }
+    this.name = (elementClassInstance?.name ?? "?") + "[" + this.shape.join(", ") + "]";
     if (!elementClassInstance || this.#arraySubscripts.length == 0) {
       this.instantiated = true;
       return;
     }
+
+    const size = this.shape.reduce((acc, cur) => acc * cur);
+    const modifications = this.modification?.split(size);
+    for (let i = 0; i < size; i++) {
+      this.declaredElements.push(elementClassInstance.clone(modifications?.[i]));
+    }
+
+    /*
     const expression = this.modification?.expression?.accept(new ModelicaInterpreter(), this);
     if (!expression) {
       this.instantiated = true;
@@ -1062,32 +1103,36 @@ export class ModelicaArrayClassInstance extends ModelicaClassInstance {
         }
       }
     }
+    */
     this.instantiated = true;
   }
 }
 
 export class ModelicaModification {
+  #expression: ModelicaExpression | null;
   scope: ModelicaNode | null;
   description: string | null;
-  expression: ModelicaExpressionSyntaxNode | null;
+  modificationExpression: ModelicaModificationExpressionSyntaxNode | null;
   modificationArguments: ModelicaModificationArgument[];
-  value: ModelicaExpression | null;
 
   constructor(
     scope: ModelicaNode | null,
     modificationArguments: ModelicaModificationArgument[],
-    modificationExpression?: ModelicaExpressionSyntaxNode | ModelicaModificationExpressionSyntaxNode | null,
+    modificationExpression?: ModelicaModificationExpressionSyntaxNode | null,
     description?: string | null,
-    value?: ModelicaExpression | null,
+    expression?: ModelicaExpression | null,
   ) {
     this.scope = scope;
     this.modificationArguments = modificationArguments;
-    if (modificationExpression instanceof ModelicaExpressionSyntaxNode) this.expression = modificationExpression;
-    else if (modificationExpression instanceof ModelicaModificationExpressionSyntaxNode)
-      this.expression = modificationExpression.expression;
-    else this.expression = null;
+    this.modificationExpression = modificationExpression ?? null;
     this.description = description ?? null;
-    this.value = value ?? null;
+    this.#expression = expression ?? null;
+  }
+
+  get expression(): ModelicaExpression | null {
+    if (this.#expression) return this.#expression;
+    this.#expression = this.modificationExpression?.expression?.accept(new ModelicaInterpreter(), this.scope) ?? null;
+    return this.#expression;
   }
 
   getModificationArgument(name: string): ModelicaModificationArgument | null {
@@ -1113,8 +1158,9 @@ export class ModelicaModification {
     return new ModelicaModification(
       overridingModification.scope,
       mergedModificationArguments,
-      overridingModification.expression ?? modification.expression,
+      overridingModification.modificationExpression ?? modification.modificationExpression,
       overridingModification.description ?? modification.description,
+      overridingModification.expression ?? modification.expression,
     );
   }
 
@@ -1132,6 +1178,37 @@ export class ModelicaModification {
       return new ModelicaModification(scope, modificationArguments);
     return new ModelicaModification(scope, modificationArguments, abstractSyntaxNode?.modificationExpression);
   }
+
+  split(count: number): ModelicaModification[];
+  split(count: number, index: number): ModelicaModification;
+  split(count: number, index?: number): ModelicaModification | ModelicaModification[] {
+    if (!this.expression) throw new Error();
+    if (index) {
+      return new ModelicaModification(
+        this.scope,
+        this.modificationArguments.map((m) => m.split(count, index)),
+        this.modificationExpression,
+        this.description,
+        this.expression.split(count, index),
+      );
+    } else {
+      const modificationArguments = this.modificationArguments.map((m) => m.split(count));
+      const expressions = this.expression.split(count);
+      const modifications: ModelicaModification[] = [];
+      for (let i = 0; i < count; i++) {
+        modifications.push(
+          new ModelicaModification(
+            this.scope,
+            modificationArguments.map((m) => m[i]).flatMap((m) => m ?? []),
+            this.modificationExpression,
+            this.description,
+            expressions[i],
+          ),
+        );
+      }
+      return modifications;
+    }
+  }
 }
 
 export abstract class ModelicaModificationArgument {
@@ -1141,20 +1218,25 @@ export abstract class ModelicaModificationArgument {
     this.#scope = scope;
   }
 
-  abstract get expression(): ModelicaExpressionSyntaxNode | null;
+  abstract get expression(): ModelicaExpression | null;
 
   abstract get name(): string | null;
 
   get scope(): ModelicaNode | null {
     return this.#scope;
   }
+
+  abstract split(count: number): ModelicaModificationArgument[];
+  abstract split(count: number, index: number): ModelicaModificationArgument;
+  abstract split(count: number, index?: number): ModelicaModificationArgument | ModelicaModificationArgument[];
 }
 
 export class ModelicaElementModification extends ModelicaModificationArgument {
+  #expression: ModelicaExpression | null = null;
+  #modificationExpression: WeakRef<ModelicaModificationExpressionSyntaxNode> | null;
+  #nameComponents: WeakRef<ModelicaIdentifierSyntaxNode>[];
   description: string | null;
   modificationArguments: ModelicaModificationArgument[] = [];
-  modificationExpression: ModelicaModificationExpressionSyntaxNode | null;
-  nameComponents: ModelicaIdentifierSyntaxNode[] = [];
 
   constructor(
     scope: ModelicaNode | null,
@@ -1162,16 +1244,20 @@ export class ModelicaElementModification extends ModelicaModificationArgument {
     modificationArguments: ModelicaModificationArgument[],
     modificationExpression?: ModelicaModificationExpressionSyntaxNode | null,
     description?: string | null,
+    expression?: ModelicaExpression | null,
   ) {
     super(scope);
-    this.nameComponents = nameComponents;
+    this.#nameComponents = makeWeakRefArray(nameComponents);
     this.modificationArguments = modificationArguments;
-    this.modificationExpression = modificationExpression ?? null;
+    this.#modificationExpression = makeWeakRef(modificationExpression);
     this.description = description ?? null;
+    this.#expression = expression ?? null;
   }
 
-  override get expression(): ModelicaExpressionSyntaxNode | null {
-    return this.modificationExpression?.expression ?? null;
+  override get expression(): ModelicaExpression | null {
+    if (this.#expression) return this.#expression;
+    this.#expression = this.modificationExpression?.expression?.accept(new ModelicaInterpreter(), this.scope) ?? null;
+    return this.#expression;
   }
 
   extract(): ModelicaModificationArgument[] {
@@ -1188,8 +1274,20 @@ export class ModelicaElementModification extends ModelicaModificationArgument {
     else return this.modificationArguments;
   }
 
+  get modificationExpression(): ModelicaModificationExpressionSyntaxNode | null {
+    return this.#modificationExpression?.deref() ?? null;
+  }
+
   override get name(): string | null {
     return this.nameComponents[0]?.value ?? null;
+  }
+
+  get nameComponents(): ModelicaIdentifierSyntaxNode[] {
+    return this.#nameComponents.map((nameComponentRef) => {
+      const nameComponent = nameComponentRef.deref();
+      if (!nameComponent) throw new Error();
+      return nameComponent;
+    });
   }
 
   static new(
@@ -1211,24 +1309,93 @@ export class ModelicaElementModification extends ModelicaModificationArgument {
       abstractSyntaxNode.description?.descriptionStrings?.map((d) => d.value)?.join(" "),
     );
   }
+
+  override split(count: number): ModelicaElementModification[];
+  override split(count: number, index: number): ModelicaElementModification;
+  override split(count: number, index?: number): ModelicaElementModification | ModelicaElementModification[] {
+    if (!this.expression) throw new Error();
+    if (index) {
+      return new ModelicaElementModification(
+        this.scope,
+        this.nameComponents,
+        this.modificationArguments.map((m) => m.split(count, index)),
+        this.modificationExpression,
+        this.description,
+        this.expression.split(count, index),
+      );
+    } else {
+      const modificationArguments = this.modificationArguments.map((m) => m.split(count));
+      const expressions = this.expression.split(count);
+      const modifications = [];
+      for (let i = 0; i < count; i++) {
+        modifications.push(
+          new ModelicaElementModification(
+            this.scope,
+            this.nameComponents,
+            modificationArguments?.[i] ?? [],
+            this.modificationExpression,
+            this.description,
+            expressions[i],
+          ),
+        );
+      }
+      return modifications;
+    }
+  }
 }
 
 export class ModelicaParameterModification extends ModelicaModificationArgument {
-  #expression: ModelicaExpressionSyntaxNode;
+  #expression: ModelicaExpression | null = null;
+  #expressionSyntaxNode: WeakRef<ModelicaExpressionSyntaxNode> | null;
   #name: string;
 
-  constructor(scope: ModelicaNode | null, name: string, expression: ModelicaExpressionSyntaxNode) {
+  constructor(
+    scope: ModelicaNode | null,
+    name: string,
+    expressionSyntaxNode?: ModelicaExpressionSyntaxNode | null,
+    expression?: ModelicaExpression | null,
+  ) {
     super(scope);
     this.#name = name;
-    this.#expression = expression;
+    this.#expressionSyntaxNode = makeWeakRef(expressionSyntaxNode);
+    this.#expression = expression ?? null;
   }
 
-  override get expression(): ModelicaExpressionSyntaxNode {
+  override get expression(): ModelicaExpression | null {
+    if (this.#expression) return this.#expression;
+    this.#expression = this.#expressionSyntaxNode?.deref()?.accept(new ModelicaInterpreter(), this.scope) ?? null;
     return this.#expression;
+  }
+
+  get expressionSyntaxNode(): ModelicaExpressionSyntaxNode | null {
+    return this.#expressionSyntaxNode?.deref() ?? null;
   }
 
   get name(): string {
     return this.#name;
+  }
+
+  override split(count: number): ModelicaParameterModification[];
+  override split(count: number, index: number): ModelicaParameterModification;
+  override split(count: number, index?: number): ModelicaParameterModification | ModelicaParameterModification[] {
+    if (!this.expression) throw new Error();
+    if (index) {
+      return new ModelicaParameterModification(
+        this.scope,
+        this.name,
+        this.expressionSyntaxNode,
+        this.expression.split(count, index),
+      );
+    } else {
+      const expressions = this.expression.split(count);
+      const modifications = [];
+      for (const expression of expressions) {
+        modifications.push(
+          new ModelicaParameterModification(this.scope, this.name, this.expressionSyntaxNode, expression),
+        );
+      }
+      return modifications;
+    }
   }
 }
 
@@ -1260,7 +1427,7 @@ export abstract class ModelicaModelVisitor<A> implements IModelicaModelVisitor<v
   }
 
   // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
-  visitBooleanClassInstance(node: ModelicaBooleanClassInstance, argument?: A): void { }
+  visitBooleanClassInstance(node: ModelicaBooleanClassInstance, argument?: A): void {}
 
   visitClassInstance(node: ModelicaClassInstance, argument?: A): void {
     for (const element of node.elements) element.accept(this, argument);
@@ -1279,17 +1446,17 @@ export abstract class ModelicaModelVisitor<A> implements IModelicaModelVisitor<v
   }
 
   // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
-  visitIntegerClassInstance(node: ModelicaIntegerClassInstance, argument?: A): void { }
+  visitIntegerClassInstance(node: ModelicaIntegerClassInstance, argument?: A): void {}
 
   visitLibrary(node: ModelicaLibrary, argument?: A): void {
     for (const element of node.elements) element.accept(this, argument);
   }
 
   // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
-  visitRealClassInstance(node: ModelicaRealClassInstance, argument?: A): void { }
+  visitRealClassInstance(node: ModelicaRealClassInstance, argument?: A): void {}
 
   // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
-  visitStringClassInstance(node: ModelicaStringClassInstance, argument?: A): void { }
+  visitStringClassInstance(node: ModelicaStringClassInstance, argument?: A): void {}
 }
 
 export class ModelicaModelPrinter extends ModelicaModelVisitor<number> {
@@ -1305,15 +1472,38 @@ export class ModelicaModelPrinter extends ModelicaModelVisitor<number> {
   }
 
   visitArrayClassInstance(node: ModelicaArrayClassInstance, indent = 0): void {
-    for (const element of node.elements) element.accept(this, indent + 1);
+    for (const declaredElement of node.declaredElements) {
+      declaredElement.accept(this, indent + 1);
+    }
   }
 
   visitBooleanClassInstance(node: ModelicaBooleanClassInstance, indent = 0): void {
     this.indent(indent);
-    this.out.write("type " + node.name);
-    for (const element of node.elements) element.accept(this, indent + 1);
+    this.out.write("type Boolean\n");
+    this.indent(indent + 1);
+    this.out.write("BooleanType ⟨value⟩ = ");
+    node.expression?.accept(new ModelicaDAEPrinter(this.out));
+    this.out.write(";\n");
+    if (node.quantity) {
+      this.indent(indent + 1);
+      this.out.write('parameter StringType quantity = "');
+      node.quantity.accept(new ModelicaDAEPrinter(this.out));
+      this.out.write('";\n');
+    }
+    if (node.start) {
+      this.indent(indent + 1);
+      this.out.write("parameter BooleanType start = ");
+      node.start.accept(new ModelicaDAEPrinter(this.out));
+      this.out.write(";\n");
+    }
+    if (node.fixed) {
+      this.indent(indent + 1);
+      this.out.write("parameter BooleanType fixed = ");
+      node.fixed.accept(new ModelicaDAEPrinter(this.out));
+      this.out.write(";\n");
+    }
     this.indent(indent);
-    this.out.write("end " + node.name + ";\n");
+    this.out.write("end Boolean;\n");
   }
 
   visitClassInstance(node: ModelicaClassInstance, indent = 0): void {
@@ -1326,43 +1516,152 @@ export class ModelicaModelPrinter extends ModelicaModelVisitor<number> {
 
   visitComponentInstance(node: ModelicaComponentInstance, indent = 0): void {
     this.indent(indent);
-    this.out.write(node.classInstance?.name ?? "?")
-    this.out.write(" " + (node.name ?? "?") + ";\n");
-  }
-
-  visitEntity(node: ModelicaEntity, indent = 0): void {
-    for (const element of node.elements) element.accept(this, indent + 1);
-  }
-
-  visitExtendsClassInstance(node: ModelicaExtendsClassInstance, indent = 0): void {
-    for (const element of node.elements) element.accept(this, indent + 1);
+    this.out.write(node.classInstance?.name ?? "?");
+    this.out.write(" " + (node.name ?? "?") + " {\n");
+    node.classInstance?.accept(this, indent + 1);
+    this.indent(indent);
+    this.out.write("};\n");
   }
 
   visitIntegerClassInstance(node: ModelicaIntegerClassInstance, indent = 0): void {
     this.indent(indent);
-    this.out.write("type " + node.name);
-    for (const element of node.elements) element.accept(this, indent + 1);
-    this.indent(indent);
-    this.out.write("end " + node.name + ";\n");
-  }
+    this.out.write("type Integer\n");
+    this.indent(indent + 1);
+    this.out.write("IntegerType ⟨value⟩ = ");
+    node.expression?.accept(new ModelicaDAEPrinter(this.out));
+    this.out.write(";\n");
+    if (node.quantity) {
+      this.indent(indent + 1);
+      this.out.write('parameter StringType quantity = "');
+      node.quantity.accept(new ModelicaDAEPrinter(this.out));
+      this.out.write('";\n');
+    }
+    if (node.min) {
+      this.indent(indent + 1);
+      this.out.write("parameter IntegerType min = ");
+      node.min.accept(new ModelicaDAEPrinter(this.out));
+      this.out.write(";\n");
+    }
+    if (node.max) {
+      this.indent(indent + 1);
+      this.out.write("parameter IntegerType max = ");
+      node.max.accept(new ModelicaDAEPrinter(this.out));
+      this.out.write(";\n");
+    }
+    if (node.start) {
+      this.indent(indent + 1);
+      this.out.write("parameter IntegerType start = ");
+      node.start.accept(new ModelicaDAEPrinter(this.out));
+      this.out.write(";\n");
+    }
+    if (node.fixed) {
+      this.indent(indent + 1);
+      this.out.write("parameter BooleanType fixed = ");
+      node.fixed.accept(new ModelicaDAEPrinter(this.out));
+      this.out.write(";\n");
+    }
 
-  visitLibrary(node: ModelicaLibrary, indent = 0): void {
-    for (const element of node.elements) element.accept(this, indent + 1);
+    this.indent(indent);
+    this.out.write("end Integer;\n");
   }
 
   visitRealClassInstance(node: ModelicaRealClassInstance, indent = 0): void {
     this.indent(indent);
-    this.out.write("type " + node.name);
-    for (const element of node.elements) element.accept(this, indent + 1);
+    this.out.write("type Real\n");
+    this.indent(indent + 1);
+    this.out.write("RealType ⟨value⟩ = ");
+    node.expression?.accept(new ModelicaDAEPrinter(this.out));
+    this.out.write(";\n");
+    if (node.quantity) {
+      this.indent(indent + 1);
+      this.out.write('parameter StringType quantity = "');
+      node.quantity.accept(new ModelicaDAEPrinter(this.out));
+      this.out.write('";\n');
+    }
+    if (node.unit) {
+      this.indent(indent + 1);
+      this.out.write('parameter StringType unit = "');
+      node.unit.accept(new ModelicaDAEPrinter(this.out));
+      this.out.write('";\n');
+    }
+    if (node.displayUnit) {
+      this.indent(indent + 1);
+      this.out.write('parameter StringType displayUnit = "');
+      node.displayUnit.accept(new ModelicaDAEPrinter(this.out));
+      this.out.write('";\n');
+    }
+    if (node.min) {
+      this.indent(indent + 1);
+      this.out.write("parameter RealType min = ");
+      node.min.accept(new ModelicaDAEPrinter(this.out));
+      this.out.write(";\n");
+    }
+    if (node.max) {
+      this.indent(indent + 1);
+      this.out.write("parameter RealType max = ");
+      node.max.accept(new ModelicaDAEPrinter(this.out));
+      this.out.write(";\n");
+    }
+    if (node.start) {
+      this.indent(indent + 1);
+      this.out.write("parameter RealType start = ");
+      node.start.accept(new ModelicaDAEPrinter(this.out));
+      this.out.write(";\n");
+    }
+    if (node.fixed) {
+      this.indent(indent + 1);
+      this.out.write("parameter BooleanType fixed = ");
+      node.fixed.accept(new ModelicaDAEPrinter(this.out));
+      this.out.write(";\n");
+    }
+    if (node.nominal) {
+      this.indent(indent + 1);
+      this.out.write("parameter RealType nominal = ");
+      node.nominal.accept(new ModelicaDAEPrinter(this.out));
+      this.out.write(";\n");
+    }
+    if (node.unbounded) {
+      this.indent(indent + 1);
+      this.out.write("parameter BooleanType unbounded = ");
+      node.unbounded.accept(new ModelicaDAEPrinter(this.out));
+      this.out.write(";\n");
+    }
+    if (node.stateSelect) {
+      this.indent(indent + 1);
+      this.out.write("parameter StateSelect stateSelect = ");
+      node.stateSelect.accept(new ModelicaDAEPrinter(this.out));
+      this.out.write(";\n");
+    }
     this.indent(indent);
-    this.out.write("end " + node.name + ";\n");
+    this.out.write("end Real;\n");
   }
 
   visitStringClassInstance(node: ModelicaStringClassInstance, indent = 0): void {
     this.indent(indent);
-    this.out.write("type " + node.name);
-    for (const element of node.elements) element.accept(this, indent + 1);
+    this.out.write("type String\n");
+    this.indent(indent + 1);
+    this.out.write("StringType ⟨value⟩ = ");
+    node.expression?.accept(new ModelicaDAEPrinter(this.out));
+    this.out.write(";\n");
+    if (node.quantity) {
+      this.indent(indent + 1);
+      this.out.write('parameter StringType quantity = "');
+      node.quantity.accept(new ModelicaDAEPrinter(this.out));
+      this.out.write('";\n');
+    }
+    if (node.start) {
+      this.indent(indent + 1);
+      this.out.write("parameter StringType start = ");
+      node.start.accept(new ModelicaDAEPrinter(this.out));
+      this.out.write(";\n");
+    }
+    if (node.fixed) {
+      this.indent(indent + 1);
+      this.out.write("parameter BooleanType fixed = ");
+      node.fixed.accept(new ModelicaDAEPrinter(this.out));
+      this.out.write(";\n");
+    }
     this.indent(indent);
-    this.out.write("end " + node.name + ";\n");
+    this.out.write("end String;\n");
   }
 }

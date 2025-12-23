@@ -122,7 +122,7 @@ describe("Modification", () => {
     context.load(
       dedent(`
       class A
-        Real x = 17 + 2*x;
+        Real x = 17 + 2 * x;
       end A;
 
       class Modification5
@@ -482,5 +482,17 @@ describe("Modification", () => {
       end Modification17;
     `),
     );
+  });
+
+  test("simple", () => {
+    const context = new Context(new NodeFileSystem());
+    context.load(
+      dedent(`
+      model A
+        Real x(start = 12) = 10;
+      end A;
+    `),
+    );
+    console.log(context.flatten("A"));
   });
 });

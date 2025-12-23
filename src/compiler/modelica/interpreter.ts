@@ -34,25 +34,22 @@ import {
 } from "./syntax.js";
 
 export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpression, ModelicaNode> {
-  visitArrayConcatenation(
-    node: ModelicaArrayConcatenationSyntaxNode,
-    argument: ModelicaNode,
-  ): ModelicaExpression | null {
+  visitArrayConcatenation(node: ModelicaArrayConcatenationSyntaxNode, scope: ModelicaNode): ModelicaExpression | null {
     const elements: ModelicaExpression[] = [];
     const shape = [node.expressionLists.length, node.expressionLists[0]?.expressions?.length ?? 0];
     for (const expressionList of node.expressionLists ?? []) {
       for (const expression of expressionList.expressions ?? []) {
-        const element = expression.accept(this, argument);
+        const element = expression.accept(this, scope);
         if (element != null) elements.push(element);
       }
     }
     return new ModelicaArray(shape, elements);
   }
 
-  visitArrayConstructor(node: ModelicaArrayConstructorSyntaxNode, argument: ModelicaNode): ModelicaExpression | null {
+  visitArrayConstructor(node: ModelicaArrayConstructorSyntaxNode, scope: ModelicaNode): ModelicaExpression | null {
     const elements: ModelicaExpression[] = [];
     for (const expression of node.expressionList?.expressions ?? []) {
-      const element = expression.accept(this, argument);
+      const element = expression.accept(this, scope);
       if (element != null) elements.push(element);
     }
     return new ModelicaArray([elements.length], elements);

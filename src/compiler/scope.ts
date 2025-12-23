@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { makeWeakRef } from "../util/weak.js";
 import {
   ModelicaBooleanClassInstance,
   ModelicaClassInstance,
@@ -21,8 +22,7 @@ export abstract class Scope {
   #parent: WeakRef<Scope> | null;
 
   constructor(parent: Scope | null) {
-    if (parent) this.#parent = new WeakRef(parent);
-    else this.#parent = null;
+    this.#parent = makeWeakRef(parent);
   }
 
   abstract get elements(): IterableIterator<ModelicaElement>;

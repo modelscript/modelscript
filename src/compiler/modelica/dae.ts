@@ -1,20 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { Writer } from "../../util/io.js";
-import { ModelicaInterpreter } from "./interpreter.js";
 import {
   ModelicaArrayClassInstance,
   ModelicaClassInstance,
   ModelicaEnumerationClassInstance,
   ModelicaPredefinedClassInstance,
 } from "./model.js";
-import {
-  ModelicaBinaryOperator,
-  ModelicaExpressionSyntaxNode,
-  ModelicaSyntaxPrinter,
-  ModelicaUnaryOperator,
-  ModelicaVariability,
-} from "./syntax.js";
+import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "./syntax.js";
 
 type array<T> = T | array<T>[];
 
@@ -79,9 +72,7 @@ export abstract class ModelicaExpression {
     } else if (classInstance instanceof ModelicaEnumerationClassInstance) {
       return classInstance.value;
     } else if (classInstance instanceof ModelicaPredefinedClassInstance) {
-      return classInstance.value instanceof ModelicaExpressionSyntaxNode
-        ? classInstance.value.accept(new ModelicaInterpreter(), classInstance)
-        : classInstance.value;
+      return classInstance.expression;
     } else {
       const elements = new Map<string, ModelicaExpression>();
       for (const component of classInstance.components) {
@@ -594,12 +585,12 @@ export abstract class ModelicaVariable extends ModelicaPrimaryExpression {
   attributes: Map<string, ModelicaExpression>;
   name: string;
   description: string | null;
-  expression: ModelicaExpressionSyntaxNode | null;
+  expression: ModelicaExpression | null;
   variability: ModelicaVariability | null;
 
   constructor(
     name: string,
-    expression: ModelicaExpressionSyntaxNode | null,
+    expression: ModelicaExpression | null,
     attributes: Map<string, ModelicaExpression>,
     variability: ModelicaVariability | null,
     description?: string | null,
@@ -742,7 +733,7 @@ export class ModelicaEnumerationVariable extends ModelicaVariable {
 
   constructor(
     name: string,
-    expression: ModelicaExpressionSyntaxNode | null,
+    expression: ModelicaExpression | null,
     attributes: Map<string, ModelicaExpression>,
     variability: ModelicaVariability | null,
     description?: string | null,
@@ -942,7 +933,7 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
       }
       if (variable.expression) {
         this.out.write(" = ");
-        variable.expression.accept(new ModelicaSyntaxPrinter(this.out));
+        variable.expression.accept(this);
       }
       if (variable.description) this.out.write(' "' + variable.description + '"');
       this.out.write(";\n");
