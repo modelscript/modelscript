@@ -45,8 +45,14 @@ module.exports = grammar({
         optional(field("outer", "outer")),
         optional(field("replaceable", "replaceable")),
         optional(field("encapsulated", "encapsulated")),
+        field("classPrefixes", $.ClassPrefixes),
+        field("classSpecifier", $._ClassSpecifier),
+        ";",
+      ),
+
+    ClassPrefixes: ($) =>
+      seq(
         optional(field("partial", "partial")),
-        optional(field("purity", choice("pure", "impure"))),
         choice(
           field("class", "class"),
           field("model", "model"),
@@ -55,11 +61,13 @@ module.exports = grammar({
           seq(optional(field("expandable", "expandable")), field("connector", "connector")),
           field("type", "type"),
           field("package", "package"),
-          seq(optional(field("operator", "operator")), field("function", "function")),
+          seq(
+            optional(field("purity", choice("pure", "impure"))),
+            optional(field("operator", "operator")),
+            field("function", "function"),
+          ),
           field("operator", "operator"),
         ),
-        field("classSpecifier", $._ClassSpecifier),
-        ";",
       ),
 
     _ClassSpecifier: ($) => choice($.LongClassSpecifier, $.ShortClassSpecifier),
@@ -221,11 +229,11 @@ module.exports = grammar({
         seq("=", field("modificationExpression", $.ModificationExpression)),
       ),
 
-    ModificationExpression: ($) => choice(field("expression", $._Expression)),
+    ModificationExpression: ($) => choice(field("expression", $._Expression), field("break", "break")),
 
     ClassModification: ($) => seq("(", commaSep(field("modificationArgument", $._ModificationArgument)), ")"),
 
-    _ModificationArgument: ($) => choice($.ElementModification),
+    _ModificationArgument: ($) => choice($.ElementModification, $.ElementRedeclaration, $.ElementReplaceable),
 
     ElementModification: ($) =>
       seq(
@@ -235,6 +243,42 @@ module.exports = grammar({
         optional(field("modification", $.Modification)),
         optional(field("description", $.Description)),
       ),
+
+    ElementRedeclaration: ($) =>
+      seq(
+        "redeclare",
+        optional(field("each", "each")),
+        optional(field("final", "final")),
+        optional(field("replaceable", "replaceable")),
+        choice(field("shortClassDefinition", $.ShortClassDefinition), field("componentClause", $.ComponentClause1)),
+      ),
+
+    ElementReplaceable: ($) =>
+      seq(
+        optional(field("each", "each")),
+        optional(field("final", "final")),
+        "replaceable",
+        choice(field("shortClassDefinition", $.ShortClassDefinition), field("componentClause", $.ComponentClause1)),
+      ),
+
+    ComponentClause1: ($) =>
+      seq(
+        optional(field("flow", choice("flow", "stream"))),
+        optional(field("variability", choice("discrete", "parameter", "constant"))),
+        optional(field("causality", choice("input", "output"))),
+        field("typeSpecifier", $.TypeSpecifier),
+        field("componentDeclaration", $.ComponentDeclaration1),
+      ),
+
+    ComponentDeclaration1: ($) =>
+      seq(
+        field("declaration", $.Declaration),
+        optional(field("description", $.Description)),
+        optional(field("annotationClause", $.AnnotationClause)),
+      ),
+
+    ShortClassDefinition: ($) =>
+      seq(field("classPrefixes", $.ClassPrefixes), field("classSpecifier", $.ShortClassSpecifier)),
 
     // A.2.6 Equations
 

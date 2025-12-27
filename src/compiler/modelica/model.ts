@@ -248,13 +248,13 @@ export class ModelicaExtendsClassInstance extends ModelicaElement {
       for (const modificationArgumentOrInheritanceModification of this.abstractSyntaxNode
         ?.classOrInheritanceModification?.modificationArgumentOrInheritanceModifications ?? []) {
         if (modificationArgumentOrInheritanceModification instanceof ModelicaModificationArgumentSyntaxNode) {
-          if (
-            modificationArguments.filter(
-              (m) => m.name === modificationArgumentOrInheritanceModification.identifier?.value,
-            ).length > 0
-          )
-            continue;
           if (modificationArgumentOrInheritanceModification instanceof ModelicaElementModificationSyntaxNode) {
+            if (
+              modificationArguments.filter(
+                (m) => m.name === modificationArgumentOrInheritanceModification.identifier?.value,
+              ).length > 0
+            )
+              continue;
             modificationArguments.push(
               ModelicaElementModification.new(this.parent, modificationArgumentOrInheritanceModification),
             );
@@ -299,7 +299,7 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     this.description =
       this.abstractSyntaxNode?.classSpecifier?.description?.descriptionStrings?.map((d) => d.value)?.join(" ") ?? null;
     this.#modification = modification ?? null;
-    this.classKind = abstractSyntaxNode?.classKind ?? ModelicaClassKind.CLASS;
+    this.classKind = abstractSyntaxNode?.classPrefixes?.classKind ?? ModelicaClassKind.CLASS;
   }
 
   get abstractSyntaxNode(): ModelicaClassDefinitionSyntaxNode | null {
@@ -795,9 +795,9 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
     const modificationSyntaxNode = this.abstractSyntaxNode?.declaration?.modification;
     for (const modificationArgumentSyntaxNode of modificationSyntaxNode?.classModification?.modificationArguments ??
       []) {
-      if (modificationArguments.filter((m) => m.name === modificationArgumentSyntaxNode.identifier?.value).length > 0)
-        continue;
       if (modificationArgumentSyntaxNode instanceof ModelicaElementModificationSyntaxNode) {
+        if (modificationArguments.filter((m) => m.name === modificationArgumentSyntaxNode.identifier?.value).length > 0)
+          continue;
         modificationArguments.push(ModelicaElementModification.new(this.parent, modificationArgumentSyntaxNode));
       }
     }
