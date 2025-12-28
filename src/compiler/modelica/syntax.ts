@@ -1791,12 +1791,6 @@ export abstract class ModelicaModificationArgumentSyntaxNode
           concreteSyntaxNode,
           abstractSyntaxNode as IModelicaElementRedeclarationSyntaxNode,
         );
-      case ModelicaElementReplaceableSyntaxNode.type:
-        return new ModelicaElementReplaceableSyntaxNode(
-          parent,
-          concreteSyntaxNode,
-          abstractSyntaxNode as IModelicaElementReplaceableSyntaxNode,
-        );
       default:
         return null;
     }
@@ -1872,6 +1866,7 @@ export interface IModelicaElementRedeclarationSyntaxNode extends IModelicaModifi
   componentClause: IModelicaComponentClause1SyntaxNode | null;
   each: boolean;
   final: boolean;
+  redeclare: boolean;
   replaceable: boolean;
   shortClassDefinition: IModelicaShortClassDefinitionSyntaxNode | null;
 }
@@ -1883,6 +1878,7 @@ export class ModelicaElementRedeclarationSyntaxNode
   componentClause: ModelicaComponentClause1SyntaxNode | null;
   each: boolean;
   final: boolean;
+  redeclare: boolean;
   replaceable: boolean;
   shortClassDefinition: ModelicaShortClassDefinitionSyntaxNode | null;
 
@@ -1892,18 +1888,19 @@ export class ModelicaElementRedeclarationSyntaxNode
     abstractSyntaxNode?: IModelicaElementRedeclarationSyntaxNode | null,
   ) {
     super(parent, concreteSyntaxNode, abstractSyntaxNode);
+    this.redeclare = abstractSyntaxNode?.redeclare ?? concreteSyntaxNode?.childForFieldName("redeclare") != null;
     this.each = abstractSyntaxNode?.each ?? concreteSyntaxNode?.childForFieldName("each") != null;
     this.final = abstractSyntaxNode?.final ?? concreteSyntaxNode?.childForFieldName("final") != null;
     this.replaceable = abstractSyntaxNode?.replaceable ?? concreteSyntaxNode?.childForFieldName("replaceable") != null;
+    this.shortClassDefinition = ModelicaShortClassDefinitionSyntaxNode.new(
+      this,
+      concreteSyntaxNode?.childForFieldName("classDefinition"),
+      abstractSyntaxNode?.shortClassDefinition,
+    );
     this.componentClause = ModelicaComponentClause1SyntaxNode.new(
       this,
       concreteSyntaxNode?.childForFieldName("componentClause"),
       abstractSyntaxNode?.componentClause,
-    );
-    this.shortClassDefinition = ModelicaShortClassDefinitionSyntaxNode.new(
-      this,
-      concreteSyntaxNode?.childForFieldName("shortClassDefinition"),
-      abstractSyntaxNode?.shortClassDefinition,
     );
   }
 
@@ -1919,60 +1916,6 @@ export class ModelicaElementRedeclarationSyntaxNode
     switch (concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]) {
       case ModelicaElementRedeclarationSyntaxNode.type:
         return new ModelicaElementRedeclarationSyntaxNode(parent, concreteSyntaxNode, abstractSyntaxNode);
-      default:
-        return null;
-    }
-  }
-}
-
-export interface IModelicaElementReplaceableSyntaxNode extends IModelicaModificationArgumentSyntaxNode {
-  componentClause: IModelicaComponentClause1SyntaxNode | null;
-  each: boolean;
-  final: boolean;
-  shortClassDefinition: IModelicaShortClassDefinitionSyntaxNode | null;
-}
-
-export class ModelicaElementReplaceableSyntaxNode
-  extends ModelicaModificationArgumentSyntaxNode
-  implements IModelicaElementReplaceableSyntaxNode
-{
-  componentClause: ModelicaComponentClause1SyntaxNode | null;
-  each: boolean;
-  final: boolean;
-  shortClassDefinition: ModelicaShortClassDefinitionSyntaxNode | null;
-
-  constructor(
-    parent: ModelicaSyntaxNode | null,
-    concreteSyntaxNode?: SyntaxNode | null,
-    abstractSyntaxNode?: IModelicaElementReplaceableSyntaxNode | null,
-  ) {
-    super(parent, concreteSyntaxNode, abstractSyntaxNode);
-    this.each = abstractSyntaxNode?.each ?? concreteSyntaxNode?.childForFieldName("each") != null;
-    this.final = abstractSyntaxNode?.final ?? concreteSyntaxNode?.childForFieldName("final") != null;
-    this.shortClassDefinition = ModelicaShortClassDefinitionSyntaxNode.new(
-      this,
-      concreteSyntaxNode?.childForFieldName("shortClassDefinition"),
-      abstractSyntaxNode?.shortClassDefinition,
-    );
-    this.componentClause = ModelicaComponentClause1SyntaxNode.new(
-      this,
-      concreteSyntaxNode?.childForFieldName("componentClause"),
-      abstractSyntaxNode?.componentClause,
-    );
-  }
-
-  override accept<R, A>(visitor: IModelicaSyntaxVisitor<R, A>, argument?: A): R {
-    return visitor.visitElementReplaceable(this, argument);
-  }
-
-  static override new(
-    parent: ModelicaSyntaxNode | null,
-    concreteSyntaxNode?: SyntaxNode | null,
-    abstractSyntaxNode?: IModelicaElementReplaceableSyntaxNode | null,
-  ): ModelicaElementReplaceableSyntaxNode | null {
-    switch (concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]) {
-      case ModelicaElementReplaceableSyntaxNode.type:
-        return new ModelicaElementReplaceableSyntaxNode(parent, concreteSyntaxNode, abstractSyntaxNode);
       default:
         return null;
     }
@@ -2101,15 +2044,19 @@ export class ModelicaComponentDeclaration1SyntaxNode
         return null;
     }
   }
+
+  override get parent(): ModelicaComponentClause1SyntaxNode | null {
+    return super.parent as ModelicaComponentClause1SyntaxNode | null;
+  }
 }
 
-export interface IModelicaShortClassDefinitionSyntaxNode extends IModelicaElementSyntaxNode {
+export interface IModelicaShortClassDefinitionSyntaxNode extends IModelicaSyntaxNode {
   classPrefixes: IModelicaClassPrefixesSyntaxNode | null;
   classSpecifier: IModelicaShortClassSpecifierSyntaxNode | null;
 }
 
 export class ModelicaShortClassDefinitionSyntaxNode
-  extends ModelicaElementSyntaxNode
+  extends ModelicaSyntaxNode
   implements IModelicaShortClassDefinitionSyntaxNode
 {
   classPrefixes: ModelicaClassPrefixesSyntaxNode | null;
@@ -2137,6 +2084,28 @@ export class ModelicaShortClassDefinitionSyntaxNode
     return visitor.visitShortClassDefinition(this, argument);
   }
 
+  get annotationClause(): ModelicaAnnotationClauseSyntaxNode | null {
+    return this.classSpecifier?.annotationClause ?? null;
+  }
+
+  get elements(): IterableIterator<ModelicaElementSyntaxNode> {
+    const classSpecifier = this.classSpecifier;
+    return (function* () {
+      if (classSpecifier) yield* classSpecifier.elements;
+    })();
+  }
+
+  get equations(): IterableIterator<ModelicaEquationSyntaxNode> {
+    const classSpecifier = this.classSpecifier;
+    return (function* () {
+      if (classSpecifier) yield* classSpecifier.equations;
+    })();
+  }
+
+  get identifier(): ModelicaIdentifierSyntaxNode | null {
+    return this.classSpecifier?.identifier ?? null;
+  }
+
   static override new(
     parent: ModelicaSyntaxNode | null,
     concreteSyntaxNode?: SyntaxNode | null,
@@ -2148,6 +2117,10 @@ export class ModelicaShortClassDefinitionSyntaxNode
       default:
         return null;
     }
+  }
+
+  get sections(): ModelicaSectionSyntaxNode[] {
+    return this.classSpecifier?.sections ?? [];
   }
 }
 
@@ -3672,8 +3645,6 @@ export interface IModelicaSyntaxVisitor<R, A> {
 
   visitElementRedeclaration(node: ModelicaElementRedeclarationSyntaxNode, argument?: A): R;
 
-  visitElementReplaceable(node: ModelicaElementReplaceableSyntaxNode, argument?: A): R;
-
   visitElementSection(node: ModelicaElementSectionSyntaxNode, argument?: A): R;
 
   visitEnumerationLiteral(node: ModelicaEnumerationLiteralSyntaxNode, argument?: A): R;
@@ -3855,12 +3826,6 @@ export abstract class ModelicaSyntaxVisitor<R, A> implements IModelicaSyntaxVisi
   }
 
   visitElementRedeclaration(node: ModelicaElementRedeclarationSyntaxNode, argument?: A | undefined): R | null {
-    node.shortClassDefinition?.accept(this, argument);
-    node.componentClause?.accept(this, argument);
-    return null;
-  }
-
-  visitElementReplaceable(node: ModelicaElementReplaceableSyntaxNode, argument?: A | undefined): R | null {
     node.shortClassDefinition?.accept(this, argument);
     node.componentClause?.accept(this, argument);
     return null;
@@ -4252,18 +4217,10 @@ export class ModelicaSyntaxPrinter extends ModelicaSyntaxVisitor<void, number> {
   }
 
   override visitElementRedeclaration(node: ModelicaElementRedeclarationSyntaxNode, indent = 0): void {
-    this.out.write("redeclare");
+    if (node.redeclare) this.out.write("redeclare");
     if (node.each) this.out.write("each");
     if (node.final) this.out.write("final");
     if (node.replaceable) this.out.write("replaceable");
-    node.shortClassDefinition?.accept(this, indent);
-    node.componentClause?.accept(this, indent);
-  }
-
-  override visitElementReplaceable(node: ModelicaElementReplaceableSyntaxNode, indent = 0): void {
-    if (node.each) this.out.write("each");
-    if (node.final) this.out.write("final");
-    this.out.write("replaceable");
     node.shortClassDefinition?.accept(this, indent);
     node.componentClause?.accept(this, indent);
   }

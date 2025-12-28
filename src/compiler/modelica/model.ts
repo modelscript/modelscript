@@ -12,10 +12,13 @@ import {
   ModelicaAnnotationClauseSyntaxNode,
   ModelicaClassDefinitionSyntaxNode,
   ModelicaClassKind,
+  ModelicaClassModificationSyntaxNode,
   ModelicaComponentClauseSyntaxNode,
+  ModelicaComponentDeclaration1SyntaxNode,
   ModelicaCompoundImportClauseSyntaxNode,
   ModelicaConnectEquationSyntaxNode,
   ModelicaElementModificationSyntaxNode,
+  ModelicaElementRedeclarationSyntaxNode,
   ModelicaElementSyntaxNode,
   ModelicaEquationSectionSyntaxNode,
   ModelicaEquationSyntaxNode,
@@ -27,6 +30,7 @@ import {
   ModelicaModificationArgumentSyntaxNode,
   ModelicaModificationExpressionSyntaxNode,
   ModelicaModificationSyntaxNode,
+  ModelicaShortClassDefinitionSyntaxNode,
   ModelicaShortClassSpecifierSyntaxNode,
   ModelicaSimpleImportClauseSyntaxNode,
   ModelicaStoredDefinitionSyntaxNode,
@@ -258,6 +262,10 @@ export class ModelicaExtendsClassInstance extends ModelicaElement {
             modificationArguments.push(
               ModelicaElementModification.new(this.parent, modificationArgumentOrInheritanceModification),
             );
+          } else if (modificationArgumentOrInheritanceModification instanceof ModelicaElementRedeclarationSyntaxNode) {
+            modificationArguments.push(
+              ModelicaElementRedeclaration.new(this.parent, modificationArgumentOrInheritanceModification),
+            );
           }
         }
       }
@@ -279,7 +287,7 @@ export abstract class ModelicaNamedElement extends ModelicaElement {
 }
 
 export class ModelicaClassInstance extends ModelicaNamedElement {
-  #abstractSyntaxNode: WeakRef<ModelicaClassDefinitionSyntaxNode> | null;
+  #abstractSyntaxNode: WeakRef<ModelicaClassDefinitionSyntaxNode | ModelicaShortClassDefinitionSyntaxNode> | null;
   #importClauses: ModelicaImportClauseSyntaxNode[] = [];
   #modification: ModelicaModification | null = null;
   #qualifiedImports = new Map<string, ModelicaClassInstance>();
@@ -290,7 +298,7 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
   constructor(
     library: ModelicaLibrary | null,
     parent: Scope | null,
-    abstractSyntaxNode?: ModelicaClassDefinitionSyntaxNode | null,
+    abstractSyntaxNode?: ModelicaClassDefinitionSyntaxNode | ModelicaShortClassDefinitionSyntaxNode | null,
     modification?: ModelicaModification | null,
   ) {
     super(library, parent);
@@ -298,11 +306,16 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     this.name = this.abstractSyntaxNode?.identifier?.value ?? null;
     this.description =
       this.abstractSyntaxNode?.classSpecifier?.description?.descriptionStrings?.map((d) => d.value)?.join(" ") ?? null;
-    this.#modification = modification ?? null;
+    if (abstractSyntaxNode instanceof ModelicaShortClassDefinitionSyntaxNode) {
+      this.#modification =
+        modification ?? ModelicaModification.new(parent, abstractSyntaxNode.classSpecifier?.classModification ?? null);
+    } else {
+      this.#modification = modification ?? null;
+    }
     this.classKind = abstractSyntaxNode?.classPrefixes?.classKind ?? ModelicaClassKind.CLASS;
   }
 
-  get abstractSyntaxNode(): ModelicaClassDefinitionSyntaxNode | null {
+  get abstractSyntaxNode(): ModelicaClassDefinitionSyntaxNode | ModelicaShortClassDefinitionSyntaxNode | null {
     return this.#abstractSyntaxNode?.deref() ?? null;
   }
 
@@ -426,17 +439,31 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     this.#unqualifiedImports = [];
     for (const elementSyntaxNode of this.abstractSyntaxNode?.elements ?? []) {
       if (elementSyntaxNode instanceof ModelicaClassDefinitionSyntaxNode) {
-        this.declaredElements.push(
-          ModelicaClassInstance.new(
-            this.library,
-            this,
-            elementSyntaxNode,
-            this.extractModification(elementSyntaxNode.identifier?.value),
-          ),
-        );
+        const redeclaration = this.modification?.getModificationArgument(elementSyntaxNode.identifier?.value);
+        if (redeclaration instanceof ModelicaClassRedeclaration && redeclaration.classInstance) {
+          this.declaredElements.push(redeclaration.classInstance);
+        } else {
+          this.declaredElements.push(
+            ModelicaClassInstance.new(
+              this.library,
+              this,
+              elementSyntaxNode,
+              this.extractModification(elementSyntaxNode.identifier?.value),
+            ),
+          );
+        }
       } else if (elementSyntaxNode instanceof ModelicaComponentClauseSyntaxNode) {
         for (const componentDeclarationSyntaxNode of elementSyntaxNode.componentDeclarations) {
-          this.declaredElements.push(new ModelicaComponentInstance(this.library, this, componentDeclarationSyntaxNode));
+          const redeclaration = this.modification?.getModificationArgument(
+            componentDeclarationSyntaxNode.declaration?.identifier?.value,
+          );
+          if (redeclaration instanceof ModelicaComponentRedeclaration && redeclaration.componentInstance) {
+            this.declaredElements.push(redeclaration.componentInstance);
+          } else {
+            this.declaredElements.push(
+              new ModelicaComponentInstance(this.library, this, componentDeclarationSyntaxNode),
+            );
+          }
         }
       } else if (elementSyntaxNode instanceof ModelicaExtendsClauseSyntaxNode) {
         this.declaredElements.push(new ModelicaExtendsClassInstance(this.library, this, elementSyntaxNode));
@@ -494,7 +521,7 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
   static new(
     library: ModelicaLibrary | null,
     parent: Scope | null,
-    abstractSyntaxNode: ModelicaClassDefinitionSyntaxNode,
+    abstractSyntaxNode: ModelicaClassDefinitionSyntaxNode | ModelicaShortClassDefinitionSyntaxNode,
     modification?: ModelicaModification | null,
   ): ModelicaClassInstance {
     if (abstractSyntaxNode?.classSpecifier instanceof ModelicaShortClassSpecifierSyntaxNode) {
@@ -518,7 +545,7 @@ export class ModelicaEnumerationClassInstance extends ModelicaClassInstance {
   constructor(
     library: ModelicaLibrary | null,
     parent: Scope | null,
-    abstractSyntaxNode?: ModelicaClassDefinitionSyntaxNode | null,
+    abstractSyntaxNode?: ModelicaClassDefinitionSyntaxNode | ModelicaShortClassDefinitionSyntaxNode | null,
     modification?: ModelicaModification | null,
     enumerationLiterals?: ModelicaEnumerationLiteral[] | null,
     value?: ModelicaEnumerationLiteral | null,
@@ -712,14 +739,14 @@ export class ModelicaEntity extends ModelicaClassInstance {
 }
 
 export class ModelicaComponentInstance extends ModelicaNamedElement {
-  #abstractSyntaxNode: WeakRef<ModelicaComponentDeclarationSyntaxNode> | null;
+  #abstractSyntaxNode: WeakRef<ModelicaComponentDeclarationSyntaxNode | ModelicaComponentDeclaration1SyntaxNode> | null;
   #modification: ModelicaModification | null = null;
   classInstance: ModelicaClassInstance | null = null;
 
   constructor(
     library: ModelicaLibrary | null,
     parent: ModelicaClassInstance | null,
-    abstractSyntaxNode: ModelicaComponentDeclarationSyntaxNode | null,
+    abstractSyntaxNode: ModelicaComponentDeclarationSyntaxNode | ModelicaComponentDeclaration1SyntaxNode | null,
     modification?: ModelicaModification | null,
   ) {
     super(library, parent);
@@ -729,7 +756,7 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
     this.#modification = modification ?? this.mergeModifications();
   }
 
-  get abstractSyntaxNode(): ModelicaComponentDeclarationSyntaxNode | null {
+  get abstractSyntaxNode(): ModelicaComponentDeclarationSyntaxNode | ModelicaComponentDeclaration1SyntaxNode | null {
     return this.#abstractSyntaxNode?.deref() ?? null;
   }
 
@@ -799,6 +826,8 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
         if (modificationArguments.filter((m) => m.name === modificationArgumentSyntaxNode.identifier?.value).length > 0)
           continue;
         modificationArguments.push(ModelicaElementModification.new(this.parent, modificationArgumentSyntaxNode));
+      } else if (modificationArgumentSyntaxNode instanceof ModelicaElementRedeclarationSyntaxNode) {
+        modificationArguments.push(ModelicaElementRedeclaration.new(this.parent, modificationArgumentSyntaxNode));
       }
     }
     if (outerModificationArgument instanceof ModelicaElementModification) {
@@ -1110,13 +1139,13 @@ export class ModelicaArrayClassInstance extends ModelicaClassInstance {
 
 export class ModelicaModification {
   #expression: ModelicaExpression | null;
-  scope: ModelicaNode | null;
+  scope: Scope | null;
   description: string | null;
   modificationExpression: ModelicaModificationExpressionSyntaxNode | null;
   modificationArguments: ModelicaModificationArgument[];
 
   constructor(
-    scope: ModelicaNode | null,
+    scope: Scope | null,
     modificationArguments: ModelicaModificationArgument[],
     modificationExpression?: ModelicaModificationExpressionSyntaxNode | null,
     description?: string | null,
@@ -1135,7 +1164,8 @@ export class ModelicaModification {
     return this.#expression;
   }
 
-  getModificationArgument(name: string): ModelicaModificationArgument | null {
+  getModificationArgument(name: string | null | undefined): ModelicaModificationArgument | null {
+    if (!name) return null;
     for (const modificationArgument of this.modificationArguments) {
       if (modificationArgument.name === name) return modificationArgument;
     }
@@ -1165,16 +1195,27 @@ export class ModelicaModification {
   }
 
   static new(
-    scope: ModelicaNode | null,
-    abstractSyntaxNode: ModelicaModificationSyntaxNode | ModelicaAnnotationClauseSyntaxNode | null,
+    scope: Scope | null,
+    abstractSyntaxNode:
+      | ModelicaModificationSyntaxNode
+      | ModelicaAnnotationClauseSyntaxNode
+      | ModelicaClassModificationSyntaxNode
+      | null,
   ): ModelicaModification {
+    const classModification =
+      abstractSyntaxNode instanceof ModelicaClassModificationSyntaxNode
+        ? abstractSyntaxNode
+        : abstractSyntaxNode?.classModification;
     const modificationArguments: ModelicaModificationArgument[] = [];
-    for (const modificationArgumentSyntaxNode of abstractSyntaxNode?.classModification?.modificationArguments ?? []) {
+    for (const modificationArgumentSyntaxNode of classModification?.modificationArguments ?? []) {
       if (modificationArgumentSyntaxNode instanceof ModelicaElementModificationSyntaxNode) {
         modificationArguments.push(ModelicaElementModification.new(scope, modificationArgumentSyntaxNode));
       }
     }
-    if (abstractSyntaxNode instanceof ModelicaAnnotationClauseSyntaxNode)
+    if (
+      abstractSyntaxNode instanceof ModelicaAnnotationClauseSyntaxNode ||
+      abstractSyntaxNode instanceof ModelicaClassModificationSyntaxNode
+    )
       return new ModelicaModification(scope, modificationArguments);
     return new ModelicaModification(scope, modificationArguments, abstractSyntaxNode?.modificationExpression);
   }
@@ -1212,9 +1253,9 @@ export class ModelicaModification {
 }
 
 export abstract class ModelicaModificationArgument {
-  #scope: ModelicaNode | null;
+  #scope: Scope | null;
 
-  constructor(scope: ModelicaNode | null) {
+  constructor(scope: Scope | null) {
     this.#scope = scope;
   }
 
@@ -1222,7 +1263,7 @@ export abstract class ModelicaModificationArgument {
 
   abstract get name(): string | null;
 
-  get scope(): ModelicaNode | null {
+  get scope(): Scope | null {
     return this.#scope;
   }
 
@@ -1239,7 +1280,7 @@ export class ModelicaElementModification extends ModelicaModificationArgument {
   modificationArguments: ModelicaModificationArgument[] = [];
 
   constructor(
-    scope: ModelicaNode | null,
+    scope: Scope | null,
     nameComponents: ModelicaIdentifierSyntaxNode[],
     modificationArguments: ModelicaModificationArgument[],
     modificationExpression?: ModelicaModificationExpressionSyntaxNode | null,
@@ -1291,7 +1332,7 @@ export class ModelicaElementModification extends ModelicaModificationArgument {
   }
 
   static new(
-    scope: ModelicaNode | null,
+    scope: Scope | null,
     abstractSyntaxNode: ModelicaElementModificationSyntaxNode,
   ): ModelicaElementModification {
     const modificationArguments: ModelicaModificationArgument[] = [];
@@ -1350,7 +1391,7 @@ export class ModelicaParameterModification extends ModelicaModificationArgument 
   #name: string;
 
   constructor(
-    scope: ModelicaNode | null,
+    scope: Scope | null,
     name: string,
     expressionSyntaxNode?: ModelicaExpressionSyntaxNode | null,
     expression?: ModelicaExpression | null,
@@ -1396,6 +1437,112 @@ export class ModelicaParameterModification extends ModelicaModificationArgument 
       }
       return modifications;
     }
+  }
+}
+
+export abstract class ModelicaElementRedeclaration extends ModelicaModificationArgument {
+  abstractSyntaxNode: ModelicaElementRedeclarationSyntaxNode;
+
+  constructor(scope: ModelicaNode | null, abstractSyntaxNode: ModelicaElementRedeclarationSyntaxNode) {
+    super(scope);
+    this.abstractSyntaxNode = abstractSyntaxNode;
+  }
+
+  get each(): boolean {
+    return this.abstractSyntaxNode.each;
+  }
+
+  get final(): boolean {
+    return this.abstractSyntaxNode.final;
+  }
+
+  static new(
+    scope: ModelicaNode | null,
+    abstractSyntaxNode: ModelicaElementRedeclarationSyntaxNode,
+  ): ModelicaElementRedeclaration {
+    if (abstractSyntaxNode.shortClassDefinition) {
+      return ModelicaClassRedeclaration.new(scope, abstractSyntaxNode);
+    } else if (abstractSyntaxNode.componentClause) {
+      return ModelicaComponentRedeclaration.new(scope, abstractSyntaxNode);
+    } else {
+      throw new Error();
+    }
+  }
+
+  get replaceable(): boolean {
+    return this.abstractSyntaxNode.replaceable;
+  }
+}
+
+export class ModelicaClassRedeclaration extends ModelicaElementRedeclaration {
+  classInstance: ModelicaShortClassInstance | null;
+
+  constructor(scope: ModelicaNode | null, abstractSyntaxNode: ModelicaElementRedeclarationSyntaxNode) {
+    super(scope, abstractSyntaxNode);
+    this.classInstance = new ModelicaShortClassInstance(
+      scope?.library ?? null,
+      scope,
+      abstractSyntaxNode.shortClassDefinition,
+    );
+  }
+
+  get expression(): ModelicaExpression | null {
+    throw new Error("Method not implemented.");
+  }
+
+  get name(): string | null {
+    return this.abstractSyntaxNode.shortClassDefinition?.identifier?.value ?? null;
+  }
+
+  static new(
+    scope: ModelicaNode | null,
+    abstractSyntaxNode: ModelicaElementRedeclarationSyntaxNode,
+  ): ModelicaClassRedeclaration {
+    return new ModelicaClassRedeclaration(scope, abstractSyntaxNode);
+  }
+
+  split(count: number): ModelicaModificationArgument[];
+  split(count: number, index: number): ModelicaModificationArgument;
+  split(count: number, index?: number): ModelicaModificationArgument | ModelicaModificationArgument[];
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  split(count: unknown, index?: unknown): ModelicaModificationArgument | ModelicaModificationArgument[] {
+    throw new Error("Method not implemented.");
+  }
+}
+
+export class ModelicaComponentRedeclaration extends ModelicaElementRedeclaration {
+  componentInstance: ModelicaComponentInstance | null;
+
+  constructor(scope: ModelicaNode | null, abstractSyntaxNode: ModelicaElementRedeclarationSyntaxNode) {
+    super(scope, abstractSyntaxNode);
+    this.componentInstance = new ModelicaComponentInstance(
+      scope?.library ?? null,
+      scope?.parent as ModelicaClassInstance,
+      abstractSyntaxNode.componentClause?.componentDeclaration ?? null,
+    );
+  }
+
+  get expression(): ModelicaExpression | null {
+    throw new Error("Method not implemented.");
+  }
+
+  get name(): string | null {
+    return this.componentInstance?.name ?? null;
+  }
+
+  static new(
+    scope: ModelicaNode | null,
+    abstractSyntaxNode: ModelicaElementRedeclarationSyntaxNode,
+  ): ModelicaComponentRedeclaration {
+    return new ModelicaComponentRedeclaration(scope, abstractSyntaxNode);
+  }
+
+  split(count: number): ModelicaModificationArgument[];
+  split(count: number, index: number): ModelicaModificationArgument;
+  split(count: number, index?: number): ModelicaModificationArgument | ModelicaModificationArgument[];
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  split(count: unknown, index?: unknown): ModelicaModificationArgument | ModelicaModificationArgument[] {
+    throw new Error("Method not implemented.");
   }
 }
 

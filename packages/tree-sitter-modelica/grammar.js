@@ -233,7 +233,7 @@ module.exports = grammar({
 
     ClassModification: ($) => seq("(", commaSep(field("modificationArgument", $._ModificationArgument)), ")"),
 
-    _ModificationArgument: ($) => choice($.ElementModification, $.ElementRedeclaration, $.ElementReplaceable),
+    _ModificationArgument: ($) => choice($.ElementModification, $.ElementRedeclaration),
 
     ElementModification: ($) =>
       seq(
@@ -246,19 +246,11 @@ module.exports = grammar({
 
     ElementRedeclaration: ($) =>
       seq(
-        "redeclare",
+        optional(field("redeclare", "redeclare")),
         optional(field("each", "each")),
         optional(field("final", "final")),
         optional(field("replaceable", "replaceable")),
-        choice(field("shortClassDefinition", $.ShortClassDefinition), field("componentClause", $.ComponentClause1)),
-      ),
-
-    ElementReplaceable: ($) =>
-      seq(
-        optional(field("each", "each")),
-        optional(field("final", "final")),
-        "replaceable",
-        choice(field("shortClassDefinition", $.ShortClassDefinition), field("componentClause", $.ComponentClause1)),
+        choice(field("classDefinition", $.ShortClassDefinition), field("componentClause", $.ComponentClause1)),
       ),
 
     ComponentClause1: ($) =>
