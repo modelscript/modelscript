@@ -70,7 +70,7 @@ module.exports = grammar({
         ),
       ),
 
-    _ClassSpecifier: ($) => choice($.LongClassSpecifier, $.ShortClassSpecifier),
+    _ClassSpecifier: ($) => choice($.LongClassSpecifier, $.ShortClassSpecifier, $.DerClassSpecifier),
 
     LongClassSpecifier: ($) =>
       seq(
@@ -106,6 +106,20 @@ module.exports = grammar({
             ")",
           ),
         ),
+        optional(field("description", $.Description)),
+        optional(field("annotationClause", $.AnnotationClause)),
+      ),
+
+    DerClassSpecifier: ($) =>
+      seq(
+        field("identifier", $.IDENT),
+        "=",
+        "der",
+        "(",
+        field("typeSpecifier", $.TypeSpecifier),
+        ",",
+        commaSep1(field("input", $.IDENT)),
+        ")",
         optional(field("description", $.Description)),
         optional(field("annotationClause", $.AnnotationClause)),
       ),
