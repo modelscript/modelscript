@@ -21,7 +21,15 @@ const PREC = {
 module.exports = grammar({
   name: "modelica",
   extras: ($) => [/\s/, $.BLOCK_COMMENT, $.LINE_COMMENT],
-  conflicts: ($) => [[$.Name]],
+  conflicts: ($) => [
+    [$.Name],
+    [$.EquationSection],
+    [$._PrimaryExpression, $.FunctionCall],
+    [$.ComponentReference],
+    [$.ParenthesizedExpression, $.FieldExpression],
+    [$.ElseIfEquationClause],
+    [$.ElseWhenEquationClause],
+  ],
   word: ($) => $.IDENT,
   rules: {
     // A.2.1 Stored Definition – Within
@@ -47,6 +55,7 @@ module.exports = grammar({
         optional(field("encapsulated", "encapsulated")),
         field("classPrefixes", $.ClassPrefixes),
         field("classSpecifier", $._ClassSpecifier),
+        optional(field("constrainingClause", $.ConstrainingClause)),
         ";",
       ),
 
@@ -74,10 +83,13 @@ module.exports = grammar({
 
     LongClassSpecifier: ($) =>
       seq(
-        choice(field("identifier", $.IDENT)),
+        optional(field("extends", "extends")),
+        field("identifier", $.IDENT),
+        optional(field("classModification", $.ClassModification)),
         optional(field("description", $.Description)),
         optional(field("section", $.InitialElementSection)),
-        repeat(field("section", choice($.ElementSection, $.EquationSection))),
+        repeat(field("section", choice($.ElementSection, $.EquationSection, $.AlgorithmSection))),
+        optional(field("externalFunctionClause", $.ExternalFunctionClause)),
         optional(seq(field("annotationClause", $.AnnotationClause), ";")),
         "end",
         field("endIdentifier", $.IDENT),
@@ -129,6 +141,26 @@ module.exports = grammar({
         field("identifier", $.IDENT),
         optional(field("description", $.Description)),
         optional(field("annotationClause", $.AnnotationClause)),
+      ),
+
+    ExternalFunctionClause: ($) =>
+      seq(
+        "external",
+        optional(field("languageSpecification", $.LanguageSpecification)),
+        optional(field("externalFunctionCall", $.ExternalFunctionCall)),
+        optional(field("annotationClause", $.AnnotationClause)),
+        ";",
+      ),
+
+    LanguageSpecification: ($) => field("language", $.STRING),
+
+    ExternalFunctionCall: ($) =>
+      seq(
+        optional(seq(field("output", $.ComponentReference), "=")),
+        field("functionName", $.IDENT),
+        "(",
+        optional(field("arguments", $.ExpressionList)),
+        ")",
       ),
 
     InitialElementSection: ($) => repeat1(field("element", $._Element)),
@@ -185,6 +217,14 @@ module.exports = grammar({
         ";",
       ),
 
+    ConstrainingClause: ($) =>
+      seq(
+        "constrainedby",
+        field("typeSpecifier", $.TypeSpecifier),
+        optional(field("classModification", $.ClassModification)),
+        optional(field("description", $.Description)),
+      ),
+
     ClassOrInheritanceModification: ($) =>
       seq(
         "(",
@@ -215,15 +255,19 @@ module.exports = grammar({
         field("typeSpecifier", $.TypeSpecifier),
         optional(field("arraySubscripts", $.ArraySubscripts)),
         commaSep1(field("componentDeclaration", $.ComponentDeclaration)),
+        optional(field("constrainingClause", $.ConstrainingClause)),
         ";",
       ),
 
     ComponentDeclaration: ($) =>
       seq(
         field("declaration", $.Declaration),
+        optional(field("conditionAttribute", $.ConditionAttribute)),
         optional(field("description", $.Description)),
         optional(field("annotationClause", $.AnnotationClause)),
       ),
+
+    ConditionAttribute: ($) => seq("if", field("expression", $._Expression)),
 
     Declaration: ($) =>
       seq(
@@ -274,6 +318,7 @@ module.exports = grammar({
         optional(field("causality", choice("input", "output"))),
         field("typeSpecifier", $.TypeSpecifier),
         field("componentDeclaration", $.ComponentDeclaration1),
+        optional(field("constrainingClause", $.ConstrainingClause)),
       ),
 
     ComponentDeclaration1: ($) =>
@@ -284,13 +329,59 @@ module.exports = grammar({
       ),
 
     ShortClassDefinition: ($) =>
-      seq(field("classPrefixes", $.ClassPrefixes), field("classSpecifier", $.ShortClassSpecifier)),
+      seq(
+        field("classPrefixes", $.ClassPrefixes),
+        field("classSpecifier", $.ShortClassSpecifier),
+        optional(field("constrainingClause", $.ConstrainingClause)),
+      ),
 
     // A.2.6 Equations
 
-    EquationSection: ($) => seq("equation", repeat(field("equation", $._Equation))),
+    EquationSection: ($) =>
+      seq(optional(field("initial", "initial")), "equation", repeat(field("equation", $._Equation))),
 
-    _Equation: ($) => choice($.SimpleEquation, $.ConnectEquation),
+    AlgorithmSection: ($) =>
+      seq(optional(field("initial", "initial")), "algorithm", repeat(field("statement", $._Statement))),
+
+    _Equation: ($) =>
+      choice($.SimpleEquation, $.ProcedureEquation, $.IfEquation, $.ForEquation, $.ConnectEquation, $.WhenEquation),
+
+    _Statement: ($) =>
+      choice(
+        $.AssignmentStatement,
+        $.ProcedureStatement,
+        $.DestructuringAssignmentStatement,
+        $.BreakStatement,
+        $.ReturnStatement,
+        $.IfStatement,
+        $.ForStatement,
+        $.WhileStatement,
+        $.WhenStatement,
+      ),
+
+    AssignmentStatement: ($) => seq(field("target", $.ComponentReference), ":=", field("source", $._Expression)),
+
+    ProcedureStatement: ($) =>
+      seq(
+        field("functionReference", $.ComponentReference),
+        field("functionCallArguments", $.FunctionCallArguments),
+        optional(field("description", $.Description)),
+        optional(field("annotationClause", $.AnnotationClause)),
+        ";",
+      ),
+
+    DestructuringAssignmentStatement: ($) =>
+      seq(
+        "(",
+        commaSep(optional(field("expression", $._Expression)), ","),
+        ")",
+        ":=",
+        field("functionReference", $.ComponentReference),
+        field("functionCallArguments", $.FunctionCallArguments),
+        optional(field("description", $.Description)),
+        optional(field("annotationClause", $.AnnotationClause)),
+        ";",
+      ),
 
     SimpleEquation: ($) =>
       seq(
@@ -301,6 +392,126 @@ module.exports = grammar({
         optional(field("annotationClause", $.AnnotationClause)),
         ";",
       ),
+
+    ProcedureEquation: ($) =>
+      seq(
+        field("functionReference", $.ComponentReference),
+        field("functionCallArguments", $.FunctionCallArguments),
+        optional(field("description", $.Description)),
+        optional(field("annotationClause", $.AnnotationClause)),
+        ";",
+      ),
+
+    IfEquation: ($) =>
+      seq(
+        "if",
+        field("condition", $._Expression),
+        "then",
+        repeat(field("equation", $._Equation)),
+        repeat(field("elseIfEquationClause", $.ElseIfEquationClause)),
+        optional(seq("else", repeat(field("elseEquation", $._Equation)))),
+        "end",
+        "if",
+        optional(field("description", $.Description)),
+        optional(field("annotationClause", $.AnnotationClause)),
+        ";",
+      ),
+
+    ElseIfEquationClause: ($) =>
+      seq("elseif", field("condition", $._Expression), "then", repeat(field("equation", $._Equation))),
+
+    IfStatement: ($) =>
+      seq(
+        "if",
+        field("condition", $._Expression),
+        "then",
+        repeat(field("statement", $._Statement)),
+        repeat(field("elseIfStatementClause", $.ElseIfStatementClause)),
+        optional(seq("else", repeat(field("elseStatement", $._Statement)))),
+        "end",
+        "if",
+        optional(field("description", $.Description)),
+        optional(field("annotationClause", $.AnnotationClause)),
+        ";",
+      ),
+
+    ElseIfStatementClause: ($) =>
+      seq("elseif", field("condition", $._Expression), "then", repeat(field("statement", $._Statement))),
+
+    ForEquation: ($) =>
+      seq(
+        "for",
+        commaSep1(field("forIndex", $.ForIndex)),
+        "loop",
+        repeat(field("equation", $._Equation)),
+        "end",
+        "for",
+        optional(field("description", $.Description)),
+        optional(field("annotationClause", $.AnnotationClause)),
+        ";",
+      ),
+
+    ForStatement: ($) =>
+      seq(
+        "for",
+        commaSep1(field("forIndex", $.ForIndex)),
+        "loop",
+        repeat(field("statement", $._Statement)),
+        "end",
+        "for",
+        optional(field("description", $.Description)),
+        optional(field("annotationClause", $.AnnotationClause)),
+        ";",
+      ),
+
+    ForIndex: ($) => seq(field("identifier", $.IDENT), optional(seq("in", field("expression", $._Expression)))),
+
+    WhileStatement: ($) =>
+      seq(
+        "while",
+        field("condition", $._Expression),
+        "loop",
+        repeat(field("statement", $._Statement)),
+        "end",
+        "while",
+        optional(field("description", $.Description)),
+        optional(field("annotationClause", $.AnnotationClause)),
+        ";",
+      ),
+
+    WhenEquation: ($) =>
+      seq(
+        "when",
+        field("condition", $._Expression),
+        "then",
+        repeat(field("equation", $._Equation)),
+        repeat(field("elseWhenClause", $.ElseWhenEquationClause)),
+        "end",
+        "when",
+        optional(field("description", $.Description)),
+        optional(field("annotationClause", $.AnnotationClause)),
+        ";",
+      ),
+
+    ElseWhenEquationClause: ($) =>
+      seq("elsewhen", field("condition", $._Expression), "then", repeat(field("equation", $._Equation))),
+
+    WhenStatement: ($) =>
+      seq(
+        "when",
+        field("condition", $._Expression),
+        "then",
+        repeat(field("statement", $._Statement)),
+        repeat(field("elseWhenClause", $.ElseWhenStatementClause)),
+        "end",
+        "when",
+        optional(field("description", $.Description)),
+        optional(field("annotationClause", $.AnnotationClause)),
+        ";",
+      ),
+
+    ElseWhenStatementClause: ($) =>
+      seq("elsewhen", field("condition", $._Expression), "then", repeat(field("statement", $._Statement))),
 
     ConnectEquation: ($) =>
       seq(
@@ -315,9 +526,51 @@ module.exports = grammar({
         ";",
       ),
 
+    BreakStatement: ($) =>
+      seq(
+        "break",
+        optional(field("description", $.Description)),
+        optional(field("annotationClause", $.AnnotationClause)),
+        ";",
+      ),
+
+    ReturnStatement: ($) =>
+      seq(
+        "return",
+        optional(field("description", $.Description)),
+        optional(field("annotationClause", $.AnnotationClause)),
+        ";",
+      ),
+
     // A.2.7 Expressions
 
-    _Expression: ($) => choice($._SimpleExpression),
+    _Expression: ($) => choice($.IfElseExpression, $.RangeExpression, $._SimpleExpression),
+
+    IfElseExpression: ($) =>
+      seq(
+        "if",
+        field("condition", $._Expression),
+        "then",
+        field("thenExpression", $._Expression),
+        repeat(field("elseIfExpressionClause", $.ElseIfExpressionClause)),
+        "else",
+        field("elseExpression", $._Expression),
+      ),
+
+    ElseIfExpressionClause: ($) =>
+      seq("elseif", field("condition", $._Expression), "then", field("thenExpression", $._Expression)),
+
+    RangeExpression: ($) =>
+      choice(
+        seq(
+          field("startExpression", $._SimpleExpression),
+          ":",
+          field("stepExpression", $._SimpleExpression),
+          ":",
+          field("stopExpression", $._SimpleExpression),
+        ),
+        seq(field("startExpression", $._SimpleExpression), ":", field("stopExpression", $._SimpleExpression)),
+      ),
 
     _SimpleExpression: ($) => choice($.UnaryExpression, $.BinaryExpression, $._PrimaryExpression),
 
@@ -358,52 +611,90 @@ module.exports = grammar({
         $.FunctionCall,
         $.ComponentReference,
         $.ParenthesizedExpression,
+        $.IndexExpression,
+        $.FieldExpression,
         $.ArrayConcatenation,
         $.ArrayConstructor,
+        $.EndExpression,
       ),
 
-    _Literal: ($) => choice($._UnsignedNumberLiteral, $.BOOLEAN, $.STRING),
+    EndExpression: ($) => "end",
 
-    _UnsignedNumberLiteral: ($) => choice($.UNSIGNED_INTEGER, $.UNSIGNED_REAL),
-
-    BOOLEAN: ($) => choice("false", "true"),
+    _Literal: ($) => choice($.UNSIGNED_INTEGER, $.UNSIGNED_REAL, $.BOOLEAN, $.STRING),
 
     TypeSpecifier: ($) => seq(optional(field("global", ".")), field("name", $.Name)),
 
-    Name: ($) => commaSep1(field("component", $.IDENT), "."),
+    Name: ($) => commaSep1(field("parts", $.IDENT), "."),
 
     ComponentReference: ($) =>
-      seq(optional(field("global", ".")), commaSep1(field("component", $.ComponentReferenceComponent), ".")),
+      seq(optional(field("global", ".")), commaSep1(field("parts", $.ComponentReferencePart), ".")),
 
-    ComponentReferenceComponent: ($) =>
+    ComponentReferencePart: ($) =>
       seq(field("identifier", $.IDENT), optional(field("arraySubscripts", $.ArraySubscripts))),
 
     FunctionCall: ($) =>
       seq(
-        field("functionReference", $.ComponentReference),
-        "(",
-        optional(field("functionArguments", $.FunctionArguments)),
-        ")",
+        field("functionReference", choice($.ComponentReference, "der", "initial", "pure")),
+        field("functionCallArguments", $.FunctionCallArguments),
       ),
 
-    FunctionArguments: ($) =>
-      choice(
-        seq(
-          commaSep1(field("positionalArgument", $.FunctionArgument)),
-          optional(seq(",", commaSep1(field("namedArgument", $.NamedArgument)))),
+    FunctionCallArguments: ($) =>
+      seq(
+        "(",
+        optional(
+          choice(
+            field("comprehensionClause", $.ComprehensionClause),
+            seq(
+              commaSep1(field("positionalArgument", $._FunctionArgument)),
+              optional(seq(",", commaSep1(field("namedArgument", $.NamedArgument)))),
+            ),
+            commaSep1(field("namedArgument", $.NamedArgument)),
+          ),
         ),
-        commaSep1(field("namedArgument", $.NamedArgument)),
+        ")",
       ),
 
     ArrayConcatenation: ($) => seq("[", commaSep1(field("expressionList", $.ExpressionList), ";"), "]"),
 
-    ArrayConstructor: ($) => seq("{", optional(choice(field("expressionList", $.ExpressionList))), "}"),
+    ArrayConstructor: ($) =>
+      seq(
+        "{",
+        optional(
+          choice(field("comprehensionClause", $.ComprehensionClause), field("expressionList", $.ExpressionList)),
+        ),
+        "}",
+      ),
 
-    NamedArgument: ($) => seq(field("identifier", $.IDENT), "=", field("argument", $.FunctionArgument)),
+    ComprehensionClause: ($) =>
+      seq(field("expression", $._Expression), "for", commaSep1(field("forIndex", $.ForIndex))),
 
-    FunctionArgument: ($) => choice(field("expression", $._Expression)),
+    NamedArgument: ($) => seq(field("identifier", $.IDENT), "=", field("argument", $._FunctionArgument)),
+
+    _FunctionArgument: ($) => choice($.FunctionPartialApplication, $.ExpressionFunctionArgument),
+
+    FunctionPartialApplication: ($) =>
+      seq(
+        "function",
+        field("typeSpecifier", $.TypeSpecifier),
+        "(",
+        commaSep(field("namedArgument", $.NamedArgument)),
+        ")",
+      ),
+
+    ExpressionFunctionArgument: ($) => field("expression", $._Expression),
 
     ParenthesizedExpression: ($) => seq("(", commaSep(optional(field("expression", $._Expression)), ","), ")"),
+
+    IndexExpression: ($) =>
+      seq(
+        "(",
+        commaSep(optional(field("expression", $._Expression)), ","),
+        ")",
+        field("arraySubscripts", $.ArraySubscripts),
+      ),
+
+    FieldExpression: ($) =>
+      seq("(", commaSep(optional(field("expression", $._Expression)), ","), ")", ".", field("identifier", $.IDENT)),
 
     ExpressionList: ($) => commaSep1(field("expression", $._Expression)),
 
@@ -416,6 +707,8 @@ module.exports = grammar({
     AnnotationClause: ($) => seq("annotation", field("classModification", $.ClassModification)),
 
     // A.1 Lexical conventions
+
+    BOOLEAN: ($) => choice("false", "true"),
 
     IDENT: ($) =>
       token(
