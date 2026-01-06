@@ -255,7 +255,7 @@ export class ModelicaExtendsClassInstance extends ModelicaElement {
           if (modificationArgumentOrInheritanceModification instanceof ModelicaElementModificationSyntaxNode) {
             if (
               modificationArguments.filter(
-                (m) => m.name === modificationArgumentOrInheritanceModification.identifier?.value,
+                (m) => m.name === modificationArgumentOrInheritanceModification.identifier?.text,
               ).length > 0
             )
               continue;
@@ -303,9 +303,9 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
   ) {
     super(library, parent);
     this.#abstractSyntaxNode = makeWeakRef(abstractSyntaxNode);
-    this.name = this.abstractSyntaxNode?.identifier?.value ?? null;
+    this.name = this.abstractSyntaxNode?.identifier?.text ?? null;
     this.description =
-      this.abstractSyntaxNode?.classSpecifier?.description?.descriptionStrings?.map((d) => d.value)?.join(" ") ?? null;
+      this.abstractSyntaxNode?.classSpecifier?.description?.strings?.map((d) => d.text ?? "")?.join(" ") ?? null;
     if (abstractSyntaxNode instanceof ModelicaShortClassDefinitionSyntaxNode) {
       this.#modification =
         modification ?? ModelicaModification.new(parent, abstractSyntaxNode.classSpecifier?.classModification ?? null);
@@ -321,7 +321,7 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
 
   set abstractSyntaxNode(abstractSyntaxNode: ModelicaClassDefinitionSyntaxNode | null) {
     this.#abstractSyntaxNode = makeWeakRef(abstractSyntaxNode);
-    this.name = this.abstractSyntaxNode?.identifier?.value ?? null;
+    this.name = this.abstractSyntaxNode?.identifier?.text ?? null;
     this.instantiated = false;
   }
 
@@ -439,7 +439,7 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     this.#unqualifiedImports = [];
     for (const elementSyntaxNode of this.abstractSyntaxNode?.elements ?? []) {
       if (elementSyntaxNode instanceof ModelicaClassDefinitionSyntaxNode) {
-        const redeclaration = this.modification?.getModificationArgument(elementSyntaxNode.identifier?.value);
+        const redeclaration = this.modification?.getModificationArgument(elementSyntaxNode.identifier?.text);
         if (redeclaration instanceof ModelicaClassRedeclaration && redeclaration.classInstance) {
           this.declaredElements.push(redeclaration.classInstance);
         } else {
@@ -448,14 +448,14 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
               this.library,
               this,
               elementSyntaxNode,
-              this.extractModification(elementSyntaxNode.identifier?.value),
+              this.extractModification(elementSyntaxNode.identifier?.text),
             ),
           );
         }
       } else if (elementSyntaxNode instanceof ModelicaComponentClauseSyntaxNode) {
         for (const componentDeclarationSyntaxNode of elementSyntaxNode.componentDeclarations) {
           const redeclaration = this.modification?.getModificationArgument(
-            componentDeclarationSyntaxNode.declaration?.identifier?.value,
+            componentDeclarationSyntaxNode.declaration?.identifier?.text,
           );
           if (redeclaration instanceof ModelicaComponentRedeclaration && redeclaration.componentInstance) {
             this.declaredElements.push(redeclaration.componentInstance);
@@ -483,7 +483,7 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
       if (importClause instanceof ModelicaUnqualifiedImportClauseSyntaxNode) {
         this.#unqualifiedImports.push(packageInstance);
       } else if (importClause instanceof ModelicaSimpleImportClauseSyntaxNode) {
-        const shortName = importClause.shortName?.value;
+        const shortName = importClause.shortName?.text;
         const name = shortName == null ? packageInstance.name : shortName;
         if (name) this.#qualifiedImports.set(name, packageInstance);
       } else if (importClause instanceof ModelicaCompoundImportClauseSyntaxNode) {
@@ -591,8 +591,8 @@ export class ModelicaEnumerationClassInstance extends ModelicaClassInstance {
       let i = 1;
       this.enumerationLiterals = [];
       for (const enumerationLiteral of classSpecifier.enumerationLiterals) {
-        if (enumerationLiteral.identifier?.value) {
-          this.enumerationLiterals.push(new ModelicaEnumerationLiteral(i, enumerationLiteral.identifier.value));
+        if (enumerationLiteral.identifier?.text) {
+          this.enumerationLiterals.push(new ModelicaEnumerationLiteral(i, enumerationLiteral.identifier.text));
           i++;
         }
       }
@@ -607,11 +607,11 @@ export class ModelicaEnumerationClassInstance extends ModelicaClassInstance {
     global = false,
     encapsulated = false,
   ): ModelicaNamedElement | null {
-    const simpleName = identifier?.value;
+    const simpleName = identifier?.text;
     if (!simpleName) return null;
     if (!this.instantiated && !this.instantiating) this.instantiate();
     for (const enumerationLiteral of this.enumerationLiterals ?? []) {
-      if (enumerationLiteral.stringValue === identifier.value) {
+      if (enumerationLiteral.stringValue === identifier.text) {
         return this.clone(new ModelicaModification(this, [], null, null, enumerationLiteral));
       }
     }
@@ -751,8 +751,8 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
   ) {
     super(library, parent);
     this.#abstractSyntaxNode = makeWeakRef(abstractSyntaxNode);
-    this.name = this.abstractSyntaxNode?.declaration?.identifier?.value ?? null;
-    this.description = this.abstractSyntaxNode?.description?.descriptionStrings?.map((d) => d.value)?.join(" ") ?? null;
+    this.name = this.abstractSyntaxNode?.declaration?.identifier?.text ?? null;
+    this.description = this.abstractSyntaxNode?.description?.strings?.map((d) => d.text ?? "")?.join(" ") ?? null;
     this.#modification = modification ?? this.mergeModifications();
   }
 
@@ -823,7 +823,7 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
     for (const modificationArgumentSyntaxNode of modificationSyntaxNode?.classModification?.modificationArguments ??
       []) {
       if (modificationArgumentSyntaxNode instanceof ModelicaElementModificationSyntaxNode) {
-        if (modificationArguments.filter((m) => m.name === modificationArgumentSyntaxNode.identifier?.value).length > 0)
+        if (modificationArguments.filter((m) => m.name === modificationArgumentSyntaxNode.identifier?.text).length > 0)
           continue;
         modificationArguments.push(ModelicaElementModification.new(this.parent, modificationArgumentSyntaxNode));
       } else if (modificationArgumentSyntaxNode instanceof ModelicaElementRedeclarationSyntaxNode) {
@@ -1320,7 +1320,7 @@ export class ModelicaElementModification extends ModelicaModificationArgument {
   }
 
   override get name(): string | null {
-    return this.nameComponents[0]?.value ?? null;
+    return this.nameComponents[0]?.text ?? null;
   }
 
   get nameComponents(): ModelicaIdentifierSyntaxNode[] {
@@ -1344,10 +1344,10 @@ export class ModelicaElementModification extends ModelicaModificationArgument {
     }
     return new ModelicaElementModification(
       scope,
-      abstractSyntaxNode.name?.components ?? [],
+      abstractSyntaxNode.name?.parts ?? [],
       modificationArguments,
       abstractSyntaxNode.modification?.modificationExpression,
-      abstractSyntaxNode.description?.descriptionStrings?.map((d) => d.value)?.join(" "),
+      abstractSyntaxNode.description?.strings?.map((d) => d.text ?? "")?.join(" "),
     );
   }
 
@@ -1491,7 +1491,7 @@ export class ModelicaClassRedeclaration extends ModelicaElementRedeclaration {
   }
 
   get name(): string | null {
-    return this.abstractSyntaxNode.shortClassDefinition?.identifier?.value ?? null;
+    return this.abstractSyntaxNode.shortClassDefinition?.identifier?.text ?? null;
   }
 
   static new(

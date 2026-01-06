@@ -25,7 +25,6 @@ import {
   ModelicaClassKind,
   ModelicaComponentReferenceSyntaxNode,
   ModelicaFunctionCallSyntaxNode,
-  ModelicaParenthesizedExpressionSyntaxNode,
   ModelicaStringLiteralSyntaxNode,
   ModelicaSyntaxVisitor,
   ModelicaUnaryExpressionSyntaxNode,
@@ -62,10 +61,8 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     return null;
   }
 
-  visitBooleanLiteral(node: ModelicaBooleanLiteralSyntaxNode): ModelicaExpression | null {
-    const value = node.value === "true" ? true : node.value === "false" ? false : null;
-    if (value !== null) return new ModelicaBooleanLiteral(value);
-    return null;
+  visitBooleanLiteral(node: ModelicaBooleanLiteralSyntaxNode): ModelicaBooleanLiteral {
+    return new ModelicaBooleanLiteral(node.value);
   }
 
   visitComponentReference(node: ModelicaComponentReferenceSyntaxNode, scope: ModelicaNode): ModelicaExpression | null {
@@ -84,8 +81,8 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     const functionInstance = scope.resolveComponentReference(node.functionReference);
     if (functionInstance == null || !(functionInstance instanceof ModelicaClassInstance)) return null;
     const parameters: ModelicaParameterModification[] = [];
-    for (const namedArgument of node.functionArguments?.namedArguments ?? []) {
-      const name = namedArgument.identifier?.value;
+    for (const namedArgument of node.functionCallArguments?.namedArguments ?? []) {
+      const name = namedArgument.identifier?.text;
       const expression = namedArgument.argument?.expression;
       if (name != null && expression != null)
         parameters.push(new ModelicaParameterModification(scope, name, expression));
@@ -97,16 +94,8 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     }
   }
 
-  visitParenthesizedExpression(
-    node: ModelicaParenthesizedExpressionSyntaxNode,
-    scope: ModelicaNode,
-  ): ModelicaExpression | null {
-    return node.expression?.accept(this, scope) ?? null;
-  }
-
   visitStringLiteral(node: ModelicaStringLiteralSyntaxNode): ModelicaExpression | null {
-    if (node.value) return new ModelicaStringLiteral(node.value);
-    return null;
+    return new ModelicaStringLiteral(node.text ?? "");
   }
 
   visitUnaryExpression(node: ModelicaUnaryExpressionSyntaxNode, scope: ModelicaNode): ModelicaExpression | null {
@@ -115,15 +104,11 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     return null;
   }
 
-  visitUnsignedIntegerLiteral(node: ModelicaUnsignedIntegerLiteralSyntaxNode): ModelicaExpression | null {
-    const value = node.value ? parseInt(node.value) : null;
-    if (value !== null) return new ModelicaIntegerLiteral(value);
-    return null;
+  visitUnsignedIntegerLiteral(node: ModelicaUnsignedIntegerLiteralSyntaxNode): ModelicaIntegerLiteral {
+    return new ModelicaIntegerLiteral(node.value);
   }
 
-  visitUnsignedRealLiteral(node: ModelicaUnsignedRealLiteralSyntaxNode): ModelicaExpression | null {
-    const value = node.value ? parseFloat(node.value) : null;
-    if (value !== null) return new ModelicaRealLiteral(value);
-    return null;
+  visitUnsignedRealLiteral(node: ModelicaUnsignedRealLiteralSyntaxNode): ModelicaRealLiteral {
+    return new ModelicaRealLiteral(node.value);
   }
 }

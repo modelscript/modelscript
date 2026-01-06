@@ -21,7 +21,7 @@ import {
   ModelicaBooleanLiteralSyntaxNode,
   ModelicaClassModificationSyntaxNode,
   ModelicaClassOrInheritanceModificationSyntaxNode,
-  ModelicaComponentReferenceComponentSyntaxNode,
+  ModelicaComponentReferencePartSyntaxNode,
   ModelicaComponentReferenceSyntaxNode,
   ModelicaCompoundImportClauseSyntaxNode,
   ModelicaDescriptionSyntaxNode,
@@ -31,7 +31,6 @@ import {
   ModelicaInheritanceModificationSyntaxNode,
   ModelicaModificationExpressionSyntaxNode,
   ModelicaModificationSyntaxNode,
-  ModelicaParenthesizedExpressionSyntaxNode,
   ModelicaSimpleEquationSyntaxNode,
   ModelicaSimpleImportClauseSyntaxNode,
   ModelicaStringLiteralSyntaxNode,
@@ -242,12 +241,12 @@ export class ModelicaSyntaxLinter extends ModelicaSyntaxVisitor<void, string | n
     super.visitComponentReference(node, resource);
   }
 
-  visitComponentReferenceComponent(
-    node: ModelicaComponentReferenceComponentSyntaxNode,
+  visitComponentReferencePart(
+    node: ModelicaComponentReferencePartSyntaxNode,
     resource: string | null | undefined,
   ): void {
-    ModelicaLinter.applyRules("visitComponentReferenceComponent", node, this.#diagnosticsCallback, resource);
-    super.visitComponentReferenceComponent(node, resource);
+    ModelicaLinter.applyRules("visitComponentReferencePart", node, this.#diagnosticsCallback, resource);
+    super.visitComponentReferencePart(node, resource);
   }
 
   visitCompoundImportClause(node: ModelicaCompoundImportClauseSyntaxNode, resource: string | null | undefined): void {
@@ -319,14 +318,6 @@ export class ModelicaSyntaxLinter extends ModelicaSyntaxVisitor<void, string | n
   visitName(node: ModelicaNameSyntaxNode, resource: string | null | undefined): void {
     ModelicaLinter.applyRules("visitName", node, this.#diagnosticsCallback, resource);
     super.visitName(node, resource);
-  }
-
-  visitParenthesizedExpression(
-    node: ModelicaParenthesizedExpressionSyntaxNode,
-    resource: string | null | undefined,
-  ): void {
-    ModelicaLinter.applyRules("visitParenthesizedExpression", node, this.#diagnosticsCallback, resource);
-    super.visitParenthesizedExpression(node, resource);
   }
 
   visitSimpleEquation(node: ModelicaSimpleEquationSyntaxNode, resource: string | null | undefined): void {
@@ -416,7 +407,7 @@ ModelicaLinter.register({
     node: ModelicaLongClassSpecifierSyntaxNode,
     diagnosticsCallback: DiagnosticsCallbackWithoutResource,
   ): void {
-    if (node.identifier?.value !== node.endIdentifier?.value) {
+    if (node.identifier?.text !== node.endIdentifier?.text) {
       diagnosticsCallback(
         "error",
         "The identifier at start and end are different.",

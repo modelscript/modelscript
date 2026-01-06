@@ -39,28 +39,28 @@ export abstract class Scope {
     componentReference: ModelicaComponentReferenceSyntaxNode | null | undefined,
   ): ModelicaNamedElement | null {
     if (!componentReference) return null;
-    const components = componentReference.components;
-    if (components.length === 0) return null;
-    let element = this.resolveSimpleName(components[0]?.identifier, componentReference.global);
+    const parts = componentReference.parts;
+    if (parts.length === 0) return null;
+    let element = this.resolveSimpleName(parts[0]?.identifier, componentReference.global);
     if (element instanceof ModelicaComponentInstance) {
       if (!element.instantiated && !element.instantiating) element.instantiate();
       element = element.classInstance;
     }
     if (!element) return null;
-    for (let i = 1; i < components.length; i++) {
-      element = element.resolveSimpleName(components[i]?.identifier, false, true);
+    for (let i = 1; i < parts.length; i++) {
+      element = element.resolveSimpleName(parts[i]?.identifier, false, true);
       if (element == null) return null;
     }
     return element;
   }
 
   resolveName(name: ModelicaNameSyntaxNode | string[] | null | undefined, global = false): ModelicaNamedElement | null {
-    const components = name instanceof ModelicaNameSyntaxNode ? name.components : name;
-    if (!components || components.length === 0) return null;
-    let namedElement = this.resolveSimpleName(components[0], global);
+    const parts = name instanceof ModelicaNameSyntaxNode ? name.parts : name;
+    if (!parts || parts.length === 0) return null;
+    let namedElement = this.resolveSimpleName(parts[0], global);
     if (!namedElement) return null;
-    for (let i = 1; i < components.length; i++) {
-      namedElement = namedElement.resolveSimpleName(components[i], false, true);
+    for (let i = 1; i < parts.length; i++) {
+      namedElement = namedElement.resolveSimpleName(parts[i], false, true);
       if (!namedElement) return null;
     }
     return namedElement;
@@ -71,7 +71,7 @@ export abstract class Scope {
     global = false,
     encapsulated = false,
   ): ModelicaNamedElement | null {
-    const simpleName = identifier instanceof ModelicaIdentifierSyntaxNode ? identifier?.value : identifier;
+    const simpleName = identifier instanceof ModelicaIdentifierSyntaxNode ? identifier?.text : identifier;
     if (!simpleName) return null;
     let scope: Scope | null = global ? this.root : this;
     while (scope) {

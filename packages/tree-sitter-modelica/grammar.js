@@ -21,15 +21,7 @@ const PREC = {
 module.exports = grammar({
   name: "modelica",
   extras: ($) => [/\s/, $.BLOCK_COMMENT, $.LINE_COMMENT],
-  conflicts: ($) => [
-    [$.Name],
-    [$.EquationSection],
-    [$._PrimaryExpression, $.FunctionCall],
-    [$.ComponentReference],
-    [$.ParenthesizedExpression, $.FieldExpression],
-    [$.ElseIfEquationClause],
-    [$.ElseWhenEquationClause],
-  ],
+  conflicts: ($) => [[$.Name], [$.EquationSection], [$.ElseIfEquationClause], [$.ElseWhenEquationClause]],
   word: ($) => $.IDENT,
   rules: {
     // A.2.1 Stored Definition – Within
@@ -267,7 +259,7 @@ module.exports = grammar({
         optional(field("annotationClause", $.AnnotationClause)),
       ),
 
-    ConditionAttribute: ($) => seq("if", field("expression", $._Expression)),
+    ConditionAttribute: ($) => seq("if", field("condition", $._Expression)),
 
     Declaration: ($) =>
       seq(
@@ -344,13 +336,13 @@ module.exports = grammar({
       seq(optional(field("initial", "initial")), "algorithm", repeat(field("statement", $._Statement))),
 
     _Equation: ($) =>
-      choice($.SimpleEquation, $.ProcedureEquation, $.IfEquation, $.ForEquation, $.ConnectEquation, $.WhenEquation),
+      choice($.SimpleEquation, $.SpecialEquation, $.IfEquation, $.ForEquation, $.ConnectEquation, $.WhenEquation),
 
     _Statement: ($) =>
       choice(
-        $.AssignmentStatement,
-        $.ProcedureStatement,
-        $.DestructuringAssignmentStatement,
+        $.SimpleAssignmentStatement,
+        $.ProcedureCallStatement,
+        $.ComplexAssignmentStatement,
         $.BreakStatement,
         $.ReturnStatement,
         $.IfStatement,
@@ -359,9 +351,17 @@ module.exports = grammar({
         $.WhenStatement,
       ),
 
-    AssignmentStatement: ($) => seq(field("target", $.ComponentReference), ":=", field("source", $._Expression)),
+    SimpleAssignmentStatement: ($) =>
+      seq(
+        field("target", $.ComponentReference),
+        ":=",
+        field("source", $._Expression),
+        optional(field("description", $.Description)),
+        optional(field("annotationClause", $.AnnotationClause)),
+        ";",
+      ),
 
-    ProcedureStatement: ($) =>
+    ProcedureCallStatement: ($) =>
       seq(
         field("functionReference", $.ComponentReference),
         field("functionCallArguments", $.FunctionCallArguments),
@@ -370,11 +370,9 @@ module.exports = grammar({
         ";",
       ),
 
-    DestructuringAssignmentStatement: ($) =>
+    ComplexAssignmentStatement: ($) =>
       seq(
-        "(",
-        commaSep(optional(field("expression", $._Expression)), ","),
-        ")",
+        field("outputExpressionList", $.OutputExpressionList),
         ":=",
         field("functionReference", $.ComponentReference),
         field("functionCallArguments", $.FunctionCallArguments),
@@ -393,10 +391,26 @@ module.exports = grammar({
         ";",
       ),
 
-    ProcedureEquation: ($) =>
+    SpecialEquation: ($) =>
       seq(
         field("functionReference", $.ComponentReference),
         field("functionCallArguments", $.FunctionCallArguments),
+        optional(field("description", $.Description)),
+        optional(field("annotationClause", $.AnnotationClause)),
+        ";",
+      ),
+
+    BreakStatement: ($) =>
+      seq(
+        "break",
+        optional(field("description", $.Description)),
+        optional(field("annotationClause", $.AnnotationClause)),
+        ";",
+      ),
+
+    ReturnStatement: ($) =>
+      seq(
+        "return",
         optional(field("description", $.Description)),
         optional(field("annotationClause", $.AnnotationClause)),
         ";",
@@ -485,7 +499,7 @@ module.exports = grammar({
         field("condition", $._Expression),
         "then",
         repeat(field("equation", $._Equation)),
-        repeat(field("elseWhenClause", $.ElseWhenEquationClause)),
+        repeat(field("elseWhenEquationClause", $.ElseWhenEquationClause)),
         "end",
         "when",
         optional(field("description", $.Description)),
@@ -502,7 +516,7 @@ module.exports = grammar({
         field("condition", $._Expression),
         "then",
         repeat(field("statement", $._Statement)),
-        repeat(field("elseWhenClause", $.ElseWhenStatementClause)),
+        repeat(field("elseWhenStatementClause", $.ElseWhenStatementClause)),
         "end",
         "when",
         optional(field("description", $.Description)),
@@ -526,22 +540,6 @@ module.exports = grammar({
         ";",
       ),
 
-    BreakStatement: ($) =>
-      seq(
-        "break",
-        optional(field("description", $.Description)),
-        optional(field("annotationClause", $.AnnotationClause)),
-        ";",
-      ),
-
-    ReturnStatement: ($) =>
-      seq(
-        "return",
-        optional(field("description", $.Description)),
-        optional(field("annotationClause", $.AnnotationClause)),
-        ";",
-      ),
-
     // A.2.7 Expressions
 
     _Expression: ($) => choice($.IfElseExpression, $.RangeExpression, $._SimpleExpression),
@@ -551,14 +549,14 @@ module.exports = grammar({
         "if",
         field("condition", $._Expression),
         "then",
-        field("thenExpression", $._Expression),
+        field("expression", $._Expression),
         repeat(field("elseIfExpressionClause", $.ElseIfExpressionClause)),
         "else",
         field("elseExpression", $._Expression),
       ),
 
     ElseIfExpressionClause: ($) =>
-      seq("elseif", field("condition", $._Expression), "then", field("thenExpression", $._Expression)),
+      seq("elseif", field("condition", $._Expression), "then", field("expression", $._Expression)),
 
     RangeExpression: ($) =>
       choice(
@@ -610,9 +608,8 @@ module.exports = grammar({
         $._Literal,
         $.FunctionCall,
         $.ComponentReference,
-        $.ParenthesizedExpression,
-        $.IndexExpression,
-        $.FieldExpression,
+        $.MemberAccessExpression,
+        $.OutputExpressionList,
         $.ArrayConcatenation,
         $.ArrayConstructor,
         $.EndExpression,
@@ -624,10 +621,10 @@ module.exports = grammar({
 
     TypeSpecifier: ($) => seq(optional(field("global", ".")), field("name", $.Name)),
 
-    Name: ($) => commaSep1(field("parts", $.IDENT), "."),
+    Name: ($) => commaSep1(field("part", $.IDENT), "."),
 
     ComponentReference: ($) =>
-      seq(optional(field("global", ".")), commaSep1(field("parts", $.ComponentReferencePart), ".")),
+      seq(optional(field("global", ".")), commaSep1(field("part", $.ComponentReferencePart), ".")),
 
     ComponentReferencePart: ($) =>
       seq(field("identifier", $.IDENT), optional(field("arraySubscripts", $.ArraySubscripts))),
@@ -645,7 +642,7 @@ module.exports = grammar({
           choice(
             field("comprehensionClause", $.ComprehensionClause),
             seq(
-              commaSep1(field("positionalArgument", $._FunctionArgument)),
+              commaSep1(field("argument", $.FunctionArgument)),
               optional(seq(",", commaSep1(field("namedArgument", $.NamedArgument)))),
             ),
             commaSep1(field("namedArgument", $.NamedArgument)),
@@ -668,9 +665,10 @@ module.exports = grammar({
     ComprehensionClause: ($) =>
       seq(field("expression", $._Expression), "for", commaSep1(field("forIndex", $.ForIndex))),
 
-    NamedArgument: ($) => seq(field("identifier", $.IDENT), "=", field("argument", $._FunctionArgument)),
+    NamedArgument: ($) => seq(field("identifier", $.IDENT), "=", field("argument", $.FunctionArgument)),
 
-    _FunctionArgument: ($) => choice($.FunctionPartialApplication, $.ExpressionFunctionArgument),
+    FunctionArgument: ($) =>
+      choice(field("expression", $._Expression), field("functionPartialApplication", $.FunctionPartialApplication)),
 
     FunctionPartialApplication: ($) =>
       seq(
@@ -681,20 +679,13 @@ module.exports = grammar({
         ")",
       ),
 
-    ExpressionFunctionArgument: ($) => field("expression", $._Expression),
-
-    ParenthesizedExpression: ($) => seq("(", commaSep(optional(field("expression", $._Expression)), ","), ")"),
-
-    IndexExpression: ($) =>
+    MemberAccessExpression: ($) =>
       seq(
-        "(",
-        commaSep(optional(field("expression", $._Expression)), ","),
-        ")",
-        field("arraySubscripts", $.ArraySubscripts),
+        field("outputExpressionList", $.OutputExpressionList),
+        choice(field("arraySubscripts", $.ArraySubscripts), seq(".", field("identifier", $.IDENT))),
       ),
 
-    FieldExpression: ($) =>
-      seq("(", commaSep(optional(field("expression", $._Expression)), ","), ")", ".", field("identifier", $.IDENT)),
+    OutputExpressionList: ($) => seq("(", commaSep(optional(field("output", $._Expression)), ","), ")"),
 
     ExpressionList: ($) => commaSep1(field("expression", $._Expression)),
 

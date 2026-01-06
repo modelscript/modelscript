@@ -37,7 +37,6 @@ import {
   ModelicaBinaryExpressionSyntaxNode,
   ModelicaBooleanLiteralSyntaxNode,
   ModelicaComponentReferenceSyntaxNode,
-  ModelicaParenthesizedExpressionSyntaxNode,
   ModelicaSimpleEquationSyntaxNode,
   ModelicaStringLiteralSyntaxNode,
   ModelicaSyntaxVisitor,
@@ -273,9 +272,8 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<
     return null;
   }
 
-  visitBooleanLiteral(node: ModelicaBooleanLiteralSyntaxNode): ModelicaExpression | null {
-    if (node.value != null) return new ModelicaBooleanLiteral(node.value === "true");
-    return null;
+  visitBooleanLiteral(node: ModelicaBooleanLiteralSyntaxNode): ModelicaBooleanLiteral {
+    return new ModelicaBooleanLiteral(node.value);
   }
 
   visitComponentReference(
@@ -283,10 +281,10 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<
     args: [string, ModelicaClassInstance, ModelicaDAE],
   ): ModelicaExpression | null {
     const name =
-      (args[0] === "" ? "" : args[0] + ".") + node.components.map((c) => c.identifier?.value ?? "<ERROR>").join(".");
+      (args[0] === "" ? "" : args[0] + ".") + node.parts.map((c) => c.identifier?.text ?? "<ERROR>").join(".");
     if (args[1] instanceof ModelicaEnumerationClassInstance) {
       for (const enumerationLiteral of args[1].enumerationLiterals ?? []) {
-        if (enumerationLiteral.stringValue === node.components?.[(node.components?.length ?? 1) - 1]?.identifier?.value)
+        if (enumerationLiteral.stringValue === node.parts?.[(node.parts?.length ?? 1) - 1]?.identifier?.text)
           return enumerationLiteral;
       }
     } else {
@@ -295,13 +293,6 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<
       }
     }
     return null;
-  }
-
-  visitParenthesizedExpression(
-    node: ModelicaParenthesizedExpressionSyntaxNode,
-    args: [string, ModelicaClassInstance, ModelicaDAE],
-  ): ModelicaExpression | null {
-    return node.expression?.accept(this, args) ?? null;
   }
 
   visitSimpleEquation(
@@ -315,15 +306,14 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<
         new ModelicaSimpleEquation(
           expression1,
           expression2,
-          node.description?.descriptionStrings?.map((d) => d.value)?.join(" "),
+          node.description?.strings?.map((d) => d.text ?? "")?.join(" "),
         ),
       );
     return null;
   }
 
   visitStringLiteral(node: ModelicaStringLiteralSyntaxNode): ModelicaExpression | null {
-    if (node.value != null) return new ModelicaStringLiteral(node.value);
-    return null;
+    return new ModelicaStringLiteral(node.text ?? "");
   }
 
   visitUnaryExpression(
@@ -336,13 +326,11 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<
     return null;
   }
 
-  visitUnsignedIntegerLiteral(node: ModelicaUnsignedIntegerLiteralSyntaxNode): ModelicaExpression | null {
-    if (node.value != null) return new ModelicaIntegerLiteral(parseInt(node.value));
-    return null;
+  visitUnsignedIntegerLiteral(node: ModelicaUnsignedIntegerLiteralSyntaxNode): ModelicaIntegerLiteral | null {
+    return new ModelicaIntegerLiteral(node.value);
   }
 
-  visitUnsignedRealLiteral(node: ModelicaUnsignedRealLiteralSyntaxNode): ModelicaExpression | null {
-    if (node.value != null) return new ModelicaRealLiteral(parseFloat(node.value));
-    return null;
+  visitUnsignedRealLiteral(node: ModelicaUnsignedRealLiteralSyntaxNode): ModelicaRealLiteral | null {
+    return new ModelicaRealLiteral(node.value);
   }
 }
