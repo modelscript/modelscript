@@ -2,7 +2,6 @@
 
 /* eslint-disable @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars */
 
-import { stat } from "fs";
 import { toEnum } from "../../util/enum.js";
 import type { Writer } from "../../util/io.js";
 import type { SyntaxNode } from "../../util/tree-sitter.js";
@@ -4607,7 +4606,7 @@ export class ModelicaComponentReferenceSyntaxNode
       case ModelicaComponentReferenceSyntaxNode.type:
         return new ModelicaComponentReferenceSyntaxNode(parent, concreteSyntaxNode, abstractSyntaxNode);
       default:
-        console.log("ERROR", concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]);
+        //console.log("ERROR", concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]);
         return null;
     }
   }
@@ -6274,8 +6273,15 @@ export class ModelicaSyntaxPrinter extends ModelicaSyntaxVisitor<void, number> {
     this.out = out;
   }
 
-  private indent(indent: number): void {
+  private print(text: string, indent = 0) {
     this.out.write("  ".repeat(indent));
+    this.out.write(text);
+  }
+
+  private println(text = "", indent = 0) {
+    this.out.write("  ".repeat(indent));
+    this.out.write(text);
+    this.out.write("\n");
   }
 
   override visitStoredDefinition(node: ModelicaStoredDefinitionSyntaxNode, indent = 0): void {
@@ -6286,67 +6292,66 @@ export class ModelicaSyntaxPrinter extends ModelicaSyntaxVisitor<void, number> {
   }
 
   override visitWithinDirective(node: ModelicaWithinDirectiveSyntaxNode, indent = 0): void {
-    this.indent(indent);
-    this.out.write("within ");
+    this.print("within ", indent);
     node.packageName?.accept(this, indent);
-    this.out.write(";\n");
+    this.println(";");
   }
 
   override visitClassDefinition(node: ModelicaClassDefinitionSyntaxNode, indent = 0): void {
-    if (node.redeclare) this.out.write("redeclare");
-    if (node.final) this.out.write("final");
-    if (node.inner) this.out.write("inner");
-    if (node.outer) this.out.write("outer");
-    if (node.replaceable) this.out.write("replaceable");
-    if (node.encapsulated) this.out.write("encapsulated");
+    this.print("", indent);
+    if (node.redeclare) this.print("redeclare ");
+    if (node.final) this.print("final ");
+    if (node.inner) this.print("inner ");
+    if (node.outer) this.print("outer ");
+    if (node.replaceable) this.print("replaceable ");
+    if (node.encapsulated) this.print("encapsulated ");
     node.classPrefixes?.accept(this, indent);
-    this.out.write(" ");
-    node.identifier?.accept(this, indent);
     node.classSpecifier?.accept(this, indent);
     node.constrainingClause?.accept(this, indent);
+    this.println(";");
   }
 
   override visitClassPrefixes(node: ModelicaClassPrefixesSyntaxNode, indent = 0): void {
-    if (node.partial) this.out.write("partial");
-    if (node.purity) this.out.write(node.purity);
-    this.out.write(node.classKind ?? "class");
+    if (node.partial) this.print("partial ");
+    if (node.purity) this.print(node.purity + " ");
+    this.print(node.classKind ?? "class");
+    this.print(" ");
   }
 
   override visitLongClassSpecifier(node: ModelicaLongClassSpecifierSyntaxNode, indent = 0): void {
-    if (node.extends) this.out.write("extends ");
+    if (node.extends) this.print("extends ");
     node.identifier?.accept(this, indent);
     node.classModification?.accept(this, indent);
     node.description?.accept(this, indent);
+    this.println();
     for (const section of node.sections) {
       section.accept(this, indent + 1);
     }
     node.externalFunctionClause?.accept(this, indent);
     node.annotationClause?.accept(this, indent);
-    this.out.write("end ");
+    this.print("end ", indent);
     node.endIdentifier?.accept(this, indent);
   }
 
   override visitShortClassSpecifier(node: ModelicaShortClassSpecifierSyntaxNode, indent = 0): void {
     node.identifier?.accept(this, indent);
-    this.out.write(" = ");
+    this.print(" = ");
     if (node.enumeration) {
-      this.out.write("enumeration (");
+      this.print("enumeration (");
       if (node.unspecifiedEnumeration) {
-        this.out.write(":");
+        this.print(":");
       } else {
         let i = 0;
         for (const enumerationLiteral of node.enumerationLiterals) {
           enumerationLiteral.accept(this, indent);
           if (++i < node.enumerationLiterals.length) {
-            this.out.write(", ");
+            this.print(", ");
           }
         }
       }
-      this.out.write(")");
+      this.print(")");
     } else {
-      if (node.causality) {
-        this.out.write(node.causality);
-      }
+      if (node.causality) this.print(node.causality + " ");
       node.typeSpecifier?.accept(this, indent);
       node.arraySubscripts?.accept(this, indent);
       node.classModification?.accept(this, indent);
@@ -6357,10 +6362,10 @@ export class ModelicaSyntaxPrinter extends ModelicaSyntaxVisitor<void, number> {
 
   override visitDerClassSpecifier(node: ModelicaDerClassSpecifierSyntaxNode, indent = 0): void {
     node.identifier?.accept(this, indent);
-    this.out.write(" = der(");
+    this.print(" = der(");
     node.typeSpecifier?.accept(this, indent);
     for (const input of node.inputs) {
-      this.out.write(", ");
+      this.print(", ");
       input.accept(this, indent);
     }
     node.description?.accept(this, indent);
@@ -6374,90 +6379,87 @@ export class ModelicaSyntaxPrinter extends ModelicaSyntaxVisitor<void, number> {
   }
 
   override visitExternalFunctionClause(node: ModelicaExternalFunctionClauseSyntaxNode, indent = 0): void {
-    this.out.write("external ");
+    this.print("external ");
     node.languageSpecification?.accept(this, indent);
     node.externalFunctionCall?.accept(this, indent);
     node.annotationClause?.accept(this, indent);
-    this.out.write(";\n");
+    this.println(";");
   }
 
   override visitLanguageSpecification(node: ModelicaLanguageSpecificationSyntaxNode, indent = 0): void {
-    if (node.language?.text) this.out.write(node.language.text);
+    if (node.language?.text) this.print(node.language.text);
   }
 
   override visitExternalFunctionCall(node: ModelicaExternalFunctionCallSyntaxNode, indent = 0): void {
     if (node.output) {
       node.output.accept(this, indent);
-      this.out.write(" = ");
+      this.print(" = ");
     }
     node.functionName?.accept(this, indent);
-    this.out.write("(");
+    this.print("(");
     node.arguments?.accept(this, indent);
-    this.out.write(")");
+    this.print(")");
   }
 
   override visitElementSection(node: ModelicaElementSectionSyntaxNode, indent = 0): void {
     if (node.visibility) {
-      this.indent(indent);
-      this.out.write(node.visibility + "\n");
+      this.print("", indent - 1);
+      this.println(node.visibility);
     }
     for (const element of node.elements) {
-      element.accept(this, indent + 1);
+      element.accept(this, indent);
     }
   }
 
   override visitSimpleImportClause(node: ModelicaSimpleImportClauseSyntaxNode, indent = 0): void {
-    this.indent(indent);
-    this.out.write("import ");
+    this.print("", indent);
+    this.print("import ");
     if (node.shortName != null) {
       node.shortName?.accept(this, indent);
-      this.out.write(" = ");
+      this.print(" = ");
     }
     node.packageName?.accept(this, indent);
     node.description?.accept(this, indent);
     node.annotationClause?.accept(this, indent);
-    this.out.write(";\n");
+    this.println(";");
   }
 
   override visitCompoundImportClause(node: ModelicaCompoundImportClauseSyntaxNode, indent = 0): void {
-    this.indent(indent);
-    this.out.write("import ");
+    this.print("import ", indent);
     node.packageName?.accept(this, indent);
-    this.out.write("{");
+    this.print("{");
     let i = 0;
     for (const importName of node.importNames) {
       importName.accept(this, indent);
       if (++i < node.importNames.length) {
-        this.out.write(", ");
+        this.print(", ");
       }
     }
-    this.out.write("}");
+    this.print("}");
     node.description?.accept(this, indent);
     node.annotationClause?.accept(this, indent);
-    this.out.write(";\n");
+    this.println(";");
   }
 
   override visitUnqualifiedImportClause(node: ModelicaUnqualifiedImportClauseSyntaxNode, indent = 0): void {
-    this.indent(indent);
-    this.out.write("import ");
+    this.print("import ", indent);
     node.packageName?.accept(this, indent);
-    this.out.write(".*");
+    this.print(".*");
     node.description?.accept(this, indent);
     node.annotationClause?.accept(this, indent);
-    this.out.write(";\n");
+    this.println(";");
   }
 
   override visitExtendsClause(node: ModelicaExtendsClauseSyntaxNode, indent = 0): void {
-    this.indent(indent);
-    this.out.write("extends ");
+    this.print("extends ", indent);
     node.typeSpecifier?.accept(this, indent);
     node.classOrInheritanceModification?.accept(this, indent);
     node.annotationClause?.accept(this, indent);
-    this.out.write(";\n");
+    this.println(";");
   }
 
   override visitConstrainingClause(node: ModelicaConstrainingClauseSyntaxNode, indent = 0): void {
-    this.out.write("constrainedby ");
+    this.print("constrainedby ");
     node.typeSpecifier?.accept(this, indent);
     node.classModification?.accept(this, indent);
     node.description?.accept(this, indent);
@@ -6467,19 +6469,19 @@ export class ModelicaSyntaxPrinter extends ModelicaSyntaxVisitor<void, number> {
     node: ModelicaClassOrInheritanceModificationSyntaxNode,
     indent = 0,
   ): void {
-    this.out.write("(");
+    this.print("(");
     let i = 0;
     for (const modificationArgumentOrInheritanceModification of node.modificationArgumentOrInheritanceModifications) {
       modificationArgumentOrInheritanceModification.accept(this, indent);
       if (++i < node.modificationArgumentOrInheritanceModifications.length) {
-        this.out.write(", ");
+        this.print(", ");
       }
     }
-    this.out.write(")");
+    this.print(")");
   }
 
   override visitInheritanceModification(node: ModelicaInheritanceModificationSyntaxNode, indent = 0): void {
-    this.out.write("break ");
+    this.print("break ");
     if (node.connectEquation) {
       node.connectEquation.accept(this, indent);
     } else {
@@ -6488,35 +6490,38 @@ export class ModelicaSyntaxPrinter extends ModelicaSyntaxVisitor<void, number> {
   }
 
   override visitComponentClause(node: ModelicaComponentClauseSyntaxNode, indent = 0): void {
-    if (node.redeclare) this.out.write("redeclare");
-    if (node.final) this.out.write("final");
-    if (node.inner) this.out.write("inner");
-    if (node.outer) this.out.write("outer");
-    if (node.replaceable) this.out.write("replaceable");
-    if (node.flow) this.out.write(node.flow);
-    if (node.variability) this.out.write(node.variability);
-    if (node.causality) this.out.write(node.causality);
+    this.print("", indent);
+    if (node.redeclare) this.print("redeclare ");
+    if (node.final) this.print("final ");
+    if (node.inner) this.print("inner ");
+    if (node.outer) this.print("outer ");
+    if (node.replaceable) this.print("replaceable ");
+    if (node.flow) this.print(node.flow + " ");
+    if (node.variability) this.print(node.variability + " ");
+    if (node.causality) this.print(node.causality + " ");
     node.typeSpecifier?.accept(this, indent);
     node.arraySubscripts?.accept(this, indent);
+    this.print(" ");
     let i = 0;
     for (const componentDeclaration of node.componentDeclarations) {
       componentDeclaration.accept(this, indent);
       if (++i < node.componentDeclarations.length) {
-        this.out.write(", ");
+        this.print(", ");
       }
     }
     node.constrainingClause?.accept(this, indent);
-    this.out.write(";\n");
+    this.println(";");
   }
 
   override visitComponentDeclaration(node: ModelicaComponentDeclarationSyntaxNode, indent = 0): void {
     node.declaration?.accept(this, indent);
+    node.conditionAttribute?.accept(this, indent);
     node.description?.accept(this, indent);
     node.annotationClause?.accept(this, indent);
   }
 
   override visitConditionAttribute(node: ModelicaConditionAttributeSyntaxNode, indent = 0): void {
-    this.out.write(" if ");
+    this.print(" if ");
     node.condition?.accept(this, indent);
   }
 
@@ -6527,54 +6532,53 @@ export class ModelicaSyntaxPrinter extends ModelicaSyntaxVisitor<void, number> {
   }
 
   override visitModification(node: ModelicaModificationSyntaxNode, indent = 0): void {
+    node.classModification?.accept(this, indent);
     if (node.modificationExpression) {
+      this.print(" = ");
       node.modificationExpression.accept(this, indent);
-    }
-    if (node.classModification) {
-      node.classModification.accept(this, indent);
     }
   }
 
   override visitModificationExpression(node: ModelicaModificationExpressionSyntaxNode, indent = 0): void {
-    if (node.break) this.out.write("break");
+    if (node.break) this.print("break");
     else node.expression?.accept(this, indent);
   }
 
   override visitClassModification(node: ModelicaClassModificationSyntaxNode, indent = 0): void {
     if (node.modificationArguments.length > 0) {
-      this.out.write("(");
+      this.print("(");
       let i = 0;
       for (const modificationArgument of node.modificationArguments) {
         modificationArgument.accept(this, indent);
         if (++i < node.modificationArguments.length) {
-          this.out.write(", ");
+          this.print(", ");
         }
       }
-      this.out.write(")");
+      this.print(")");
     }
   }
 
   override visitElementModification(node: ModelicaElementModificationSyntaxNode, indent = 0): void {
-    if (node.each) this.out.write("each");
-    if (node.final) this.out.write("final");
-    node.modification?.accept(this, indent);
+    if (node.each) this.print("each ");
+    if (node.final) this.print("final ");
     node.name?.accept(this, indent);
+    node.modification?.accept(this, indent);
     node.description?.accept(this, indent);
   }
 
   override visitElementRedeclaration(node: ModelicaElementRedeclarationSyntaxNode, indent = 0): void {
-    if (node.redeclare) this.out.write("redeclare");
-    if (node.each) this.out.write("each");
-    if (node.final) this.out.write("final");
-    if (node.replaceable) this.out.write("replaceable");
+    if (node.redeclare) this.print("redeclare ");
+    if (node.each) this.print("each ");
+    if (node.final) this.print("final ");
+    if (node.replaceable) this.print("replaceable ");
     node.shortClassDefinition?.accept(this, indent);
     node.componentClause?.accept(this, indent);
   }
 
   override visitComponentClause1(node: ModelicaComponentClause1SyntaxNode, indent = 0): void {
-    if (node.flow) this.out.write(node.flow);
-    if (node.variability) this.out.write(node.variability);
-    if (node.causality) this.out.write(node.causality);
+    if (node.flow) this.print(node.flow);
+    if (node.variability) this.print(node.variability);
+    if (node.causality) this.print(node.causality);
     node.typeSpecifier?.accept(this, indent);
     node.componentDeclaration?.accept(this, indent);
     node.constrainingClause?.accept(this, indent);
@@ -6594,8 +6598,7 @@ export class ModelicaSyntaxPrinter extends ModelicaSyntaxVisitor<void, number> {
 
   override visitEquationSection(node: ModelicaEquationSectionSyntaxNode, indent = 0): void {
     if (node.equations.length > 0) {
-      this.indent(indent);
-      this.out.write("equation\n");
+      this.println("equation", indent);
       for (const equation of node.equations) {
         equation.accept(this, indent + 1);
       }
@@ -6604,8 +6607,7 @@ export class ModelicaSyntaxPrinter extends ModelicaSyntaxVisitor<void, number> {
 
   override visitAlgorithmSection(node: ModelicaAlgorithmSectionSyntaxNode, indent = 0): void {
     if (node.statements.length > 0) {
-      this.indent(indent);
-      this.out.write("algorithm\n");
+      this.println("algorithm", indent);
       for (const statement of node.statements) {
         statement.accept(this, indent + 1);
       }
@@ -6614,11 +6616,11 @@ export class ModelicaSyntaxPrinter extends ModelicaSyntaxVisitor<void, number> {
 
   override visitSimpleAssignmentStatement(node: ModelicaSimpleAssignmentStatementSyntaxNode, indent = 0): void {
     node.target?.accept(this, indent);
-    this.out.write(" := ");
+    this.print(" := ");
     node.source?.accept(this, indent);
     node.description?.accept(this, indent);
     node.annotationClause?.accept(this, indent);
-    this.out.write(";\n");
+    this.println(";");
   }
 
   override visitProcedureCallStatement(node: ModelicaProcedureCallStatementSyntaxNode, indent = 0): void {
@@ -6626,26 +6628,26 @@ export class ModelicaSyntaxPrinter extends ModelicaSyntaxVisitor<void, number> {
     node.functionCallArguments?.accept(this, indent);
     node.description?.accept(this, indent);
     node.annotationClause?.accept(this, indent);
-    this.out.write(";\n");
+    this.println(";");
   }
 
   override visitComplexAssignmentStatement(node: ModelicaComplexAssignmentStatementSyntaxNode, indent = 0): void {
     node.outputExpressionList?.accept(this, indent);
-    this.out.write(" := ");
+    this.print(" := ");
     node.functionReference?.accept(this, indent);
     node.functionCallArguments?.accept(this, indent);
     node.description?.accept(this, indent);
     node.annotationClause?.accept(this, indent);
-    this.out.write(";\n");
+    this.println(";");
   }
 
   override visitSimpleEquation(node: ModelicaSimpleEquationSyntaxNode, indent = 0): void {
     node.expression1?.accept(this, indent);
-    this.out.write(" = ");
+    this.print(" = ");
     node.expression2?.accept(this, indent);
     node.description?.accept(this, indent);
     node.annotationClause?.accept(this, indent);
-    this.out.write(";\n");
+    this.println(";");
   }
 
   override visitSpecialEquation(node: ModelicaSpecialEquationSyntaxNode, indent = 0): void {
@@ -6653,213 +6655,212 @@ export class ModelicaSyntaxPrinter extends ModelicaSyntaxVisitor<void, number> {
     node.functionCallArguments?.accept(this, indent);
     node.description?.accept(this, indent);
     node.annotationClause?.accept(this, indent);
-    this.out.write(";\n");
+    this.println(";");
   }
 
   override visitIfEquation(node: ModelicaIfEquationSyntaxNode, indent = 0): void {
-    this.out.write("if ");
+    this.print("if ");
     node.condition?.accept(this, indent);
-    this.out.write("then ");
+    this.print("then ");
     for (const equation of node.equations) equation.accept(this, indent);
     for (const elseIfEquationClause of node.elseIfEquationClauses) elseIfEquationClause.accept(this, indent);
     if (node.elseEquations.length > 0) {
-      this.out.write("else ");
+      this.print("else ");
       for (const elseEquation of node.elseEquations) elseEquation.accept(this, indent);
     }
-    this.out.write("end if");
+    this.print("end if");
     node.description?.accept(this, indent);
     node.annotationClause?.accept(this, indent);
-    this.out.write(";\n");
+    this.println(";");
   }
 
   override visitElseIfEquationClause(node: ModelicaElseIfEquationClauseSyntaxNode, indent = 0): void {
-    this.out.write("elseif ");
+    this.print("elseif ");
     node.condition?.accept(this, indent);
-    this.out.write("then ");
+    this.print("then ");
     for (const equation of node.equations) equation.accept(this, indent);
   }
 
   override visitIfStatement(node: ModelicaIfStatementSyntaxNode, indent = 0): void {
-    this.out.write("if ");
+    this.print("if ");
     node.condition?.accept(this, indent);
-    this.out.write("then ");
+    this.print("then ");
     for (const statement of node.statements) statement.accept(this, indent);
     for (const elseIfStatementClause of node.elseIfStatementClauses) elseIfStatementClause.accept(this, indent);
     if (node.elseStatements.length > 0) {
-      this.out.write("else ");
+      this.print("else ");
       for (const elseStatement of node.elseStatements) elseStatement.accept(this, indent);
     }
-    this.out.write("end if");
+    this.print("end if");
     node.description?.accept(this, indent);
     node.annotationClause?.accept(this, indent);
-    this.out.write(";\n");
+    this.println(";");
   }
 
   override visitElseIfStatementClause(node: ModelicaElseIfStatementClauseSyntaxNode, indent = 0): void {
-    this.out.write("elseif ");
+    this.print("elseif ");
     node.condition?.accept(this, indent);
-    this.out.write("then ");
+    this.print("then ");
     for (const statement of node.statements) statement.accept(this, indent);
   }
 
   override visitForEquation(node: ModelicaForEquationSyntaxNode, indent = 0): void {
-    this.out.write("for ");
+    this.print("for ");
     let i = 0;
     for (const forIndex of node.forIndexes) {
       forIndex.accept(this, indent);
-      if (++i < node.forIndexes.length) this.out.write(", ");
+      if (++i < node.forIndexes.length) this.print(", ");
     }
-    this.out.write(" loop ");
+    this.print(" loop ");
     for (const equation of node.equations) equation.accept(this, indent);
-    this.out.write("end for");
+    this.print("end for");
     node.description?.accept(this, indent);
     node.annotationClause?.accept(this, indent);
-    this.out.write(";\n");
+    this.println(";");
   }
 
   override visitForStatement(node: ModelicaForStatementSyntaxNode, indent = 0): void {
-    this.out.write("for ");
+    this.print("for ");
     let i = 0;
     for (const forIndex of node.forIndexes) {
       forIndex.accept(this, indent);
-      if (++i < node.forIndexes.length) this.out.write(", ");
+      if (++i < node.forIndexes.length) this.print(", ");
     }
-    this.out.write(" loop ");
+    this.print(" loop ");
     for (const statement of node.statements) statement.accept(this, indent);
-    this.out.write("end for");
+    this.print("end for");
     node.description?.accept(this, indent);
     node.annotationClause?.accept(this, indent);
-    this.out.write(";\n");
+    this.println(";");
   }
 
   override visitForIndex(node: ModelicaForIndexSyntaxNode, indent = 0): void {
     node.identifier?.accept(this, indent);
     if (node.expression) {
-      this.out.write(" in ");
+      this.print(" in ");
       node.expression.accept(this, indent);
     }
   }
 
   override visitWhileStatement(node: ModelicaWhileStatementSyntaxNode, indent = 0): void {
-    this.out.write("while ");
+    this.print("while ");
     node.condition?.accept(this, indent);
-    this.out.write("then ");
+    this.print("then ");
     for (const statement of node.statements) statement.accept(this, indent);
-    this.out.write("end while");
+    this.print("end while");
     node.description?.accept(this, indent);
     node.annotationClause?.accept(this, indent);
-    this.out.write(";\n");
+    this.println(";");
   }
 
   override visitWhenEquation(node: ModelicaWhenEquationSyntaxNode, indent = 0): void {
-    this.out.write("when ");
+    this.print("when ");
     node.condition?.accept(this, indent);
-    this.out.write("then ");
+    this.print("then ");
     for (const equation of node.equations) equation.accept(this, indent);
     for (const elseWhenStatementClause of node.elseWhenEquationClauses) elseWhenStatementClause.accept(this, indent);
-    this.out.write("end when");
+    this.print("end when");
     node.description?.accept(this, indent);
     node.annotationClause?.accept(this, indent);
-    this.out.write(";\n");
+    this.println(";");
   }
 
   override visitElseWhenEquationClause(node: ModelicaElseWhenEquationClauseSyntaxNode, indent = 0): void {
-    this.out.write("elsewhen ");
+    this.print("elsewhen ");
     node.condition?.accept(this, indent);
-    this.out.write("then ");
+    this.print("then ");
     for (const equation of node.equations) equation.accept(this, indent);
   }
 
   override visitWhenStatement(node: ModelicaWhenStatementSyntaxNode, indent = 0): void {
-    this.out.write("when ");
+    this.print("when ");
     node.condition?.accept(this, indent);
-    this.out.write("then ");
+    this.print("then ");
     for (const statement of node.statements) statement.accept(this, indent);
     for (const elseWhenStatementClause of node.elseWhenStatementClauses) elseWhenStatementClause.accept(this, indent);
-    this.out.write("end when");
+    this.print("end when");
     node.description?.accept(this, indent);
     node.annotationClause?.accept(this, indent);
-    this.out.write(";\n");
+    this.println(";");
   }
 
   override visitElseWhenStatementClause(node: ModelicaElseWhenStatementClauseSyntaxNode, indent = 0): void {
-    this.out.write("elsewhen ");
+    this.print("elsewhen ");
     node.condition?.accept(this, indent);
-    this.out.write("then ");
+    this.print("then ");
     for (const statement of node.statements) statement.accept(this, indent);
   }
 
   override visitConnectEquation(node: ModelicaConnectEquationSyntaxNode, indent = 0): void {
-    this.indent(indent);
-    this.out.write("connect(");
+    this.print("connect(", indent);
     node.componentReference1?.accept(this, indent);
     node.componentReference2?.accept(this, indent);
-    this.out.write(")");
+    this.print(")");
     node.annotationClause?.accept(this, indent);
     node.description?.accept(this, indent);
-    this.out.write(";\n");
+    this.println(";");
   }
 
   override visitBreakStatement(node: ModelicaBreakStatementSyntaxNode, indent = 0): void {
-    this.out.write("break");
+    this.print("break", indent);
     node.annotationClause?.accept(this, indent);
     node.description?.accept(this, indent);
-    this.out.write(";\n");
+    this.println(";");
   }
 
   override visitReturnStatement(node: ModelicaReturnStatementSyntaxNode, indent = 0): void {
-    this.out.write("return");
+    this.print("return", indent);
     node.annotationClause?.accept(this, indent);
     node.description?.accept(this, indent);
-    this.out.write(";\n");
+    this.println(";");
   }
 
   override visitIfElseExpression(node: ModelicaIfElseExpressionSyntaxNode, indent = 0): void {
-    this.out.write("if ");
+    this.print("if ");
     node.condition?.accept(this, indent);
-    this.out.write(" then ");
+    this.print(" then ");
     node.expression?.accept(this, indent);
     for (const elseIfExpressionClause of node.elseIfExpressionClauses) elseIfExpressionClause.accept(this, indent);
-    this.out.write(" else ");
+    this.print(" else ");
     node.elseExpression?.accept(this, indent);
   }
 
   override visitElseIfExpressionClause(node: ModelicaElseIfExpressionClauseSyntaxNode, indent = 0): void {
-    this.out.write("elseif ");
+    this.print("elseif ");
     node.condition?.accept(this, indent);
-    this.out.write("then ");
+    this.print("then ");
     node.expression?.accept(this, indent);
   }
 
   override visitRangeExpression(node: ModelicaRangeExpressionSyntaxNode, indent = 0): void {
     node.startExpression?.accept(this, indent);
     if (node.stepExpression) {
-      this.out.write(":");
+      this.print(":");
       node.stepExpression.accept(this, indent);
     }
     if (node.stopExpression) {
-      this.out.write(":");
+      this.print(":");
       node.stopExpression.accept(this, indent);
     }
   }
 
   override visitUnaryExpression(node: ModelicaUnaryExpressionSyntaxNode, indent = 0): void {
-    this.out.write(node.operator ?? "?");
+    this.print(node.operator ?? "?");
     node.operand?.accept(this, indent);
   }
 
   override visitBinaryExpression(node: ModelicaBinaryExpressionSyntaxNode, indent = 0): void {
     node.operand1?.accept(this, indent);
-    this.out.write(" " + node.operator + " ");
+    this.print(" " + node.operator + " ");
     node.operand2?.accept(this, indent);
   }
 
   override visitEndExpression(node: ModelicaEndExpressionSyntaxNode, indent = 0): void {
-    this.out.write("end");
+    this.print("end");
   }
 
   override visitTypeSpecifier(node: ModelicaTypeSpecifierSyntaxNode, indent = 0): void {
-    if (node.global) this.out.write(".");
+    if (node.global) this.print(".");
     node.name?.accept(this, indent);
   }
 
@@ -6867,16 +6868,16 @@ export class ModelicaSyntaxPrinter extends ModelicaSyntaxVisitor<void, number> {
     let i = 0;
     for (const part of node.parts) {
       part.accept(this, indent);
-      if (++i < node.parts.length) this.out.write(".");
+      if (++i < node.parts.length) this.print(".");
     }
   }
 
   override visitComponentReference(node: ModelicaComponentReferenceSyntaxNode, indent = 0): void {
-    if (node.global) this.out.write(".");
+    if (node.global) this.print(".");
     let i = 0;
     for (const part of node.parts) {
       part.accept(this, indent);
-      if (++i < node.parts.length) this.out.write(".");
+      if (++i < node.parts.length) this.print(".");
     }
   }
 
@@ -6891,54 +6892,54 @@ export class ModelicaSyntaxPrinter extends ModelicaSyntaxVisitor<void, number> {
   }
 
   override visitFunctionCallArguments(node: ModelicaFunctionCallArgumentsSyntaxNode, indent = 0): void {
-    this.out.write("(");
+    this.print("(");
     let i = 0;
     for (const positionalArgument of node.arguments) {
       positionalArgument.accept(this, indent);
-      if (++i < node.arguments.length) this.out.write(", ");
+      if (++i < node.arguments.length) this.print(", ");
     }
     if (node.arguments.length > 0 && node.namedArguments.length > 0) {
-      this.out.write(", ");
+      this.print(", ");
     }
     i = 0;
     for (const namedArgument of node.namedArguments) {
       namedArgument.accept(this, indent);
-      if (++i < node.namedArguments.length) this.out.write(", ");
+      if (++i < node.namedArguments.length) this.print(", ");
     }
-    this.out.write(")");
+    this.print(")");
   }
 
   override visitArrayConcatenation(node: ModelicaArrayConcatenationSyntaxNode, indent = 0): void {
-    this.out.write("(");
+    this.print("(");
     let i = 0;
     for (const expressionList of node.expressionLists) {
       expressionList.accept(this, indent);
-      if (++i < node.expressionLists.length) this.out.write("; ");
+      if (++i < node.expressionLists.length) this.print("; ");
     }
-    this.out.write(")");
+    this.print(")");
   }
 
   override visitArrayConstructor(node: ModelicaArrayConstructorSyntaxNode, indent = 0): void {
-    this.out.write("{");
+    this.print("{");
     node.expressionList?.accept(this, indent);
-    this.out.write("}");
+    this.print("}");
   }
 
   override visitComprehensionClause(node: ModelicaComprehensionClauseSyntaxNode, indent = 0): void {
     node.expression?.accept(this, indent);
-    this.out.write(" for ");
+    this.print(" for ");
     let i = 0;
     for (const forIndex of node.forIndexes) {
       forIndex.accept(this, indent);
       if (++i < node.forIndexes.length) {
-        this.out.write(", ");
+        this.print(", ");
       }
     }
   }
 
   override visitNamedArgument(node: ModelicaNamedArgumentSyntaxNode, indent = 0): void {
     node.identifier?.accept(this, indent);
-    this.out.write(" = ");
+    this.print(" = ");
     node.argument?.accept(this, indent);
   }
 
@@ -6948,17 +6949,17 @@ export class ModelicaSyntaxPrinter extends ModelicaSyntaxVisitor<void, number> {
   }
 
   override visitFunctionPartialApplication(node: ModelicaFunctionPartialApplicationSyntaxNode, indent = 0): void {
-    this.out.write("function ");
+    this.print("function ");
     node.typeSpecifier?.accept(this, indent);
-    this.out.write("(");
+    this.print("(");
     let i = 0;
     for (const namedArgument of node.namedArguments) {
       namedArgument.accept(this, indent);
       if (++i < node.namedArguments.length) {
-        this.out.write(", ");
+        this.print(", ");
       }
     }
-    this.out.write(")");
+    this.print(")");
   }
 
   override visitMemberAccessExpression(node: ModelicaMemberAccessExpressionSyntaxNode, indent = 0): void {
@@ -6966,21 +6967,21 @@ export class ModelicaSyntaxPrinter extends ModelicaSyntaxVisitor<void, number> {
     if (node.arraySubscripts) {
       node.arraySubscripts.accept(this, indent);
     } else if (node.identifier) {
-      this.out.write(".");
+      this.print(".");
       node.identifier.accept(this, indent);
     }
   }
 
   override visitOutputExpressionList(node: ModelicaOutputExpressionListSyntaxNode, indent = 0): void {
-    this.out.write("(");
+    this.print("(");
     let i = 0;
     for (const output of node.outputs) {
       output?.accept(this, indent);
       if (++i < node.outputs.length) {
-        this.out.write(", ");
+        this.print(", ");
       }
     }
-    this.out.write(")");
+    this.print(")");
   }
 
   override visitExpressionList(node: ModelicaExpressionListSyntaxNode, indent = 0): void {
@@ -6988,58 +6989,61 @@ export class ModelicaSyntaxPrinter extends ModelicaSyntaxVisitor<void, number> {
     for (const expression of node.expressions) {
       expression.accept(this, indent);
       if (++i < node.expressions.length) {
-        this.out.write(", ");
+        this.print(", ");
       }
     }
   }
 
   override visitArraySubscripts(node: ModelicaArraySubscriptsSyntaxNode, indent = 0): void {
-    this.out.write("[");
+    this.print("[");
     let i = 0;
     for (const subscript of node.subscripts) {
       subscript.accept(this, indent);
-      if (++i < node.subscripts.length) this.out.write(", ");
+      if (++i < node.subscripts.length) this.print(", ");
     }
-    this.out.write("]");
+    this.print("]");
   }
 
   override visitSubscript(node: ModelicaSubscriptSyntaxNode, indent = 0): void {
-    if (node.flexible) this.out.write(":");
+    if (node.flexible) this.print(":");
     else node.expression?.accept(this, indent);
   }
 
   override visitDescription(node: ModelicaDescriptionSyntaxNode, indent = 0): void {
     let i = 0;
     for (const string of node.strings) {
+      this.print(" ");
       string.accept(this, indent);
       if (++i < node.strings.length) {
-        this.out.write(" + ");
+        this.print(" +");
       }
     }
   }
 
   override visitAnnotationClause(node: ModelicaAnnotationClauseSyntaxNode, indent = 0): void {
-    this.out.write("annotation");
+    this.print("annotation");
     node.classModification?.accept(this, indent);
   }
 
   override visitBooleanLiteral(node: ModelicaBooleanLiteralSyntaxNode, indent = 0): void {
-    this.out.write(node.text ?? "");
+    this.print(node.text ?? "");
   }
 
   override visitIdentifier(node: ModelicaIdentifierSyntaxNode, indent = 0): void {
-    this.out.write(node.text ?? "?");
+    this.print(node.text ?? "?");
   }
 
   override visitStringLiteral(node: ModelicaStringLiteralSyntaxNode, indent = 0): void {
-    this.out.write(node.text ?? "?");
+    this.print('"');
+    this.print(node.text ?? "?");
+    this.print('"');
   }
 
   override visitUnsignedIntegerLiteral(node: ModelicaUnsignedIntegerLiteralSyntaxNode, indent = 0): void {
-    this.out.write(node.text ?? "?");
+    this.print(node.text ?? "?");
   }
 
   override visitUnsignedRealLiteral(node: ModelicaUnsignedRealLiteralSyntaxNode, indent = 0): void {
-    this.out.write(node.text ?? "?");
+    this.print(node.text ?? "?");
   }
 }
