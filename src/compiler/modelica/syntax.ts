@@ -5594,7 +5594,7 @@ export enum ModelicaBinaryOperator {
 
 export enum ModelicaCausality {
   INPUT = "input",
-  OUTPUT = "output ",
+  OUTPUT = "output",
 }
 
 export enum ModelicaClassKind {

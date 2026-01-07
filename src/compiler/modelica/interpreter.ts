@@ -79,16 +79,35 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
 
   visitFunctionCall(node: ModelicaFunctionCallSyntaxNode, scope: ModelicaNode): ModelicaExpression | null {
     const functionInstance = scope.resolveComponentReference(node.functionReference);
-    if (functionInstance == null || !(functionInstance instanceof ModelicaClassInstance)) return null;
+    if (!(functionInstance instanceof ModelicaClassInstance)) return null;
     const parameters: ModelicaParameterModification[] = [];
+    const inputParameters = Array.from(functionInstance.inputParameters);
+    if (node.functionCallArguments?.arguments) {
+      for (let i = 0; i < node.functionCallArguments.arguments.length; i++) {
+        const name = inputParameters[i]?.name;
+        const expression = node.functionCallArguments.arguments[i]?.expression;
+        if (name && expression) parameters.push(new ModelicaParameterModification(scope, name, expression));
+      }
+    }
     for (const namedArgument of node.functionCallArguments?.namedArguments ?? []) {
       const name = namedArgument.identifier?.text;
       const expression = namedArgument.argument?.expression;
-      if (name != null && expression != null)
-        parameters.push(new ModelicaParameterModification(scope, name, expression));
+      if (name && expression) parameters.push(new ModelicaParameterModification(scope, name, expression));
     }
-    if (functionInstance.classKind == ModelicaClassKind.RECORD) {
+    if (functionInstance.classKind === ModelicaClassKind.RECORD) {
       return ModelicaExpression.fromClassInstance(functionInstance.clone(new ModelicaModification(scope, parameters)));
+    } else if (functionInstance.classKind === ModelicaClassKind.FUNCTION) {
+      const outputParameters = functionInstance.clone(new ModelicaModification(scope, parameters)).outputParameters;
+      const outputExpressions: ModelicaExpression[] = [];
+      for (const outputParameter of outputParameters) {
+        const outputExpression = ModelicaExpression.fromClassInstance(outputParameter.classInstance);
+        if (outputExpression) outputExpressions.push(outputExpression);
+      }
+      if (outputExpressions.length <= 1) {
+        return outputExpressions[0] ?? null;
+      } else {
+        return new ModelicaArray([outputExpressions.length], outputExpressions);
+      }
     } else {
       return null;
     }

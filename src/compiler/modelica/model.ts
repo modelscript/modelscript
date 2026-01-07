@@ -6,10 +6,17 @@ import { makeWeakRef, makeWeakRefArray } from "../../util/weak.js";
 import type { Context } from "../context.js";
 import { Scope } from "../scope.js";
 import { ANNOTATION } from "./annotation.js";
-import { ModelicaDAEPrinter, ModelicaEnumerationLiteral, ModelicaExpression, ModelicaIntegerLiteral } from "./dae.js";
+import {
+  ModelicaArray,
+  ModelicaDAEPrinter,
+  ModelicaEnumerationLiteral,
+  ModelicaExpression,
+  ModelicaIntegerLiteral,
+} from "./dae.js";
 import { ModelicaInterpreter } from "./interpreter.js";
 import {
   ModelicaAnnotationClauseSyntaxNode,
+  ModelicaCausality,
   ModelicaClassDefinitionSyntaxNode,
   ModelicaClassKind,
   ModelicaClassModificationSyntaxNode,
@@ -428,6 +435,20 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     return new ModelicaModification(this, modificationArguments);
   }
 
+  get inputParameters(): IterableIterator<ModelicaComponentInstance> {
+    const classKind = this.abstractSyntaxNode?.classPrefixes?.classKind;
+    const components = this.components;
+    return (function* () {
+      for (const component of components) {
+        if (
+          component.abstractSyntaxNode?.parent?.causality === ModelicaCausality.INPUT ||
+          classKind === ModelicaClassKind.RECORD
+        )
+          yield component;
+      }
+    })();
+  }
+
   override instantiate(): void {
     logger.debug("Instantiating class: " + this.name);
     if (this.instantiated) return;
@@ -508,6 +529,15 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
 
   set modification(modification: ModelicaModification) {
     this.#modification = modification;
+  }
+
+  get outputParameters(): IterableIterator<ModelicaComponentInstance> {
+    const components = this.components;
+    return (function* () {
+      for (const component of components) {
+        if (component.abstractSyntaxNode?.parent?.causality === ModelicaCausality.OUTPUT) yield component;
+      }
+    })();
   }
 
   get qualifiedImports(): Map<string, ModelicaClassInstance> {
@@ -690,6 +720,7 @@ export class ModelicaEntity extends ModelicaClassInstance {
   }
 
   override instantiate(): void {
+    console.log("instantiating " + this.name);
     super.instantiate();
     for (const subEntity of this.subEntities) {
       if (!subEntity.instantiated && !subEntity.instantiating) subEntity.instantiate();
@@ -1080,14 +1111,18 @@ export class ModelicaArrayClassInstance extends ModelicaClassInstance {
     this.instantiating = true;
     this.declaredElements = [];
     this.shape = [];
+    const expression = this.modification?.expression;
+    let i = 0;
     for (const arraySubscript of this.#arraySubscripts) {
-      if (arraySubscript.flexible || !arraySubscript.expression) {
-        this.shape.push(-1);
+      if (arraySubscript.flexible) {
+        if (expression instanceof ModelicaArray) this.shape.push(expression.shape[i] ?? 0);
+        else this.shape.push(0);
         continue;
       }
-      const length = arraySubscript.expression.accept(new ModelicaInterpreter(), this);
+      const length = arraySubscript.expression?.accept(new ModelicaInterpreter(), this);
       if (length instanceof ModelicaIntegerLiteral) this.shape.push(length.value);
-      else this.shape.push(-1);
+      else this.shape.push(0);
+      i++;
     }
 
     let elementClassInstance = this.#elementClassInstance;
@@ -1103,7 +1138,6 @@ export class ModelicaArrayClassInstance extends ModelicaClassInstance {
       this.instantiated = true;
       return;
     }
-
     const size = this.shape.reduce((acc, cur) => acc * cur);
     const modifications = this.modification?.split(size);
     for (let i = 0; i < size; i++) {
@@ -1223,18 +1257,17 @@ export class ModelicaModification {
   split(count: number): ModelicaModification[];
   split(count: number, index: number): ModelicaModification;
   split(count: number, index?: number): ModelicaModification | ModelicaModification[] {
-    if (!this.expression) throw new Error();
     if (index) {
       return new ModelicaModification(
         this.scope,
         this.modificationArguments.map((m) => m.split(count, index)),
         this.modificationExpression,
         this.description,
-        this.expression.split(count, index),
+        this.expression?.split(count, index),
       );
     } else {
       const modificationArguments = this.modificationArguments.map((m) => m.split(count));
-      const expressions = this.expression.split(count);
+      const expressions = this.expression?.split(count);
       const modifications: ModelicaModification[] = [];
       for (let i = 0; i < count; i++) {
         modifications.push(
@@ -1243,7 +1276,7 @@ export class ModelicaModification {
             modificationArguments.map((m) => m[i]).flatMap((m) => m ?? []),
             this.modificationExpression,
             this.description,
-            expressions[i],
+            expressions?.[i],
           ),
         );
       }
