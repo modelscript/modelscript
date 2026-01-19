@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { type DataUrl } from "parse-data-url";
 import { ContentType, decodeDataUrl, encodeDataUrl, ModelicaClassInstance } from "@modelscript/modelscript";
-import { Dialog, IconButton, Label, PageHeader, SegmentedControl, useTheme } from "@primer/react";
-import { editor } from "monaco-editor";
 import {
   CodeIcon,
   LinkExternalIcon,
@@ -14,6 +11,9 @@ import {
   UnwrapIcon,
   WorkflowIcon,
 } from "@primer/octicons-react";
+import { Dialog, IconButton, Label, PageHeader, SegmentedControl, useTheme } from "@primer/react";
+import { editor } from "monaco-editor";
+import { type DataUrl } from "parse-data-url";
 import { useEffect, useRef, useState } from "react";
 import CodeEditor from "./code";
 import DiagramEditor from "./diagram";

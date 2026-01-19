@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import parseDataUrl, { type DataUrl } from "parse-data-url";
 import { useEffect, useState } from "react";
 import { useLocation, useSearchParams } from "react-router";
-import parseDataUrl, { type DataUrl } from "parse-data-url";
 import MorselEditor from "~/components/morsel";
 
 export default function Home() {

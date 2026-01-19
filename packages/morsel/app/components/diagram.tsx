@@ -1,23 +1,23 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Graph, type EdgeMetadata, type NodeMetadata } from "@antv/x6";
-import { useEffect, useRef, useState } from "react";
-import {
-  type ModelicaClassInstance,
-  ModelicaClassKind,
-  renderIcon,
-  computeIconPlacement,
-  ModelicaElement,
-  type ILine,
-  convertPoint,
-  Smooth,
-  LinePattern,
-  Arrow,
-  toEnum,
-} from "@modelscript/modelscript";
 import { DagreLayout } from "@antv/layout";
-import type { Theme } from "@monaco-editor/react";
+import { Graph, type EdgeMetadata, type NodeMetadata } from "@antv/x6";
 import type { PortMetadata } from "@antv/x6/lib/model/port";
+import {
+  Arrow,
+  computeIconPlacement,
+  convertPoint,
+  LinePattern,
+  ModelicaClassKind,
+  ModelicaElement,
+  renderIcon,
+  Smooth,
+  toEnum,
+  type ILine,
+  type ModelicaClassInstance,
+} from "@modelscript/modelscript";
+import type { Theme } from "@monaco-editor/react";
+import { useEffect, useRef, useState } from "react";
 
 interface DiagramEditorProps {
   classInstance: ModelicaClassInstance | null;

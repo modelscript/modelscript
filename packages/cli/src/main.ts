@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import PackageJson from "@npmcli/package-json";
-import yargs from "yargs/yargs";
 import path from "node:path";
+import yargs from "yargs/yargs";
 import { Flatten } from "./commands/flatten.js";
 import { Instantiate } from "./commands/instantiate.js";
 import { Lint } from "./commands/lint.js";

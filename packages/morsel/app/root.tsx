@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Links, Meta, Outlet, Scripts, ScrollRestoration, useNavigate } from "react-router";
 import { BaseStyles, ThemeProvider } from "@primer/react";
 import { useEffect } from "react";
+import { Links, Meta, Outlet, Scripts, ScrollRestoration, useNavigate } from "react-router";
 
 import "@primer/css/dist/primer.css";
 import "@primer/primitives/dist/css/functional/themes/light.css";

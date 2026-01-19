@@ -1,4 +1,4 @@
 {
   "printWidth": 120,
-  "plugins": ["prettier-plugin-packagejson"]
+  "plugins": ["prettier-plugin-organize-imports", "prettier-plugin-packagejson"]
 }

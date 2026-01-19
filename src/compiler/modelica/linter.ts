@@ -4,17 +4,17 @@ import type { Range, Tree } from "../../util/tree-sitter.js";
 import {
   ModelicaClassInstance,
   ModelicaComponentInstance,
+  ModelicaEntity,
+  ModelicaExtendsClassInstance,
+  ModelicaLibrary,
+  ModelicaModelVisitor,
   ModelicaNamedElement,
   ModelicaNode,
-  ModelicaModelVisitor,
   type IModelicaModelVisitor,
   type ModelicaBooleanClassInstance,
   type ModelicaIntegerClassInstance,
   type ModelicaRealClassInstance,
   type ModelicaStringClassInstance,
-  ModelicaEntity,
-  ModelicaLibrary,
-  ModelicaExtendsClassInstance,
 } from "./model.js";
 import {
   ModelicaBinaryExpressionSyntaxNode,

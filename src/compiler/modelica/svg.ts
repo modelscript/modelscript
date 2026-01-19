@@ -13,6 +13,16 @@ import {
   type Text,
 } from "@svgdotjs/svg.js";
 import {
+  ModelicaBooleanLiteral,
+  ModelicaEnumerationLiteral,
+  ModelicaExpression,
+  ModelicaIntegerLiteral,
+  ModelicaRealLiteral,
+  ModelicaStringLiteral,
+} from "./dae.js";
+import { ModelicaComponentInstance, ModelicaElement, type ModelicaClassInstance } from "./model.js";
+import { ModelicaClassKind } from "./syntax.js";
+import {
   Arrow,
   FillPattern,
   LinePattern,
@@ -36,16 +46,6 @@ import {
   type IText,
   type ITransformation,
 } from "./types.js";
-import { ModelicaComponentInstance, ModelicaElement, type ModelicaClassInstance } from "./model.js";
-import { ModelicaClassKind } from "./syntax.js";
-import {
-  ModelicaBooleanLiteral,
-  ModelicaEnumerationLiteral,
-  ModelicaExpression,
-  ModelicaIntegerLiteral,
-  ModelicaRealLiteral,
-  ModelicaStringLiteral,
-} from "./dae.js";
 
 export function renderDiagram(classInstance: ModelicaClassInstance, svg?: Svg): Svg | null {
   svg = svg ? svg : new Svg();

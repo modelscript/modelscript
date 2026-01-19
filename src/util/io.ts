@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { parse } from "media-typer";
 import pako from "pako";
 import { type DataUrl } from "parse-data-url";
-import { parse } from "media-typer";
 import { toEnum } from "./enum.js";
 
 export enum ContentType {

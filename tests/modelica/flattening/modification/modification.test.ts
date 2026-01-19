@@ -2,10 +2,10 @@
 
 // This file contains code adapted from the OpenModelica project
 
-import dedent from "dedent-js";
 import { describe, expect, test } from "@jest/globals";
-import { NodeFileSystem } from "../../../../src/util/filesystem.js";
+import dedent from "dedent-js";
 import { Context } from "../../../../src/compiler/context.js";
+import { NodeFileSystem } from "../../../../src/util/filesystem.js";
 
 describe("Modification", () => {
   test("Modification1 - This file tests simple modifications of variables", () => {
