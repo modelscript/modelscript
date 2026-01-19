@@ -1,20 +1,31 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Editor, type Monaco, type Theme } from "@monaco-editor/react";
-import { useRef, useState } from "react";
-import Parser from "web-tree-sitter";
 import {
   Context,
-  type Range,
-  ModelicaLinter,
   ModelicaClassInstance,
+  ModelicaLinter,
   ModelicaStoredDefinitionSyntaxNode,
+  type Range,
 } from "@modelscript/modelscript";
-import { configure, InMemory } from "@zenfs/core";
+import { Editor, loader, type Monaco, type Theme } from "@monaco-editor/react";
 import { Zip } from "@zenfs/archives";
-import { WebFileSystem } from "~/util/filesystem";
+import { configure, InMemory } from "@zenfs/core";
 import { debounce } from "lodash";
+import * as monaco from "monaco-editor";
 import { editor } from "monaco-editor";
+import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
+import { useRef, useState } from "react";
+import Parser from "web-tree-sitter";
+import { WebFileSystem } from "~/util/filesystem";
+
+if (!self.MonacoEnvironment) {
+  self.MonacoEnvironment = {
+    getWorker: function () {
+      return new editorWorker();
+    },
+  };
+  loader.config({ monaco });
+}
 
 interface CodeEditorProps {
   content: string;
