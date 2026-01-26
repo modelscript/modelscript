@@ -29,6 +29,7 @@ if (!self.MonacoEnvironment) {
 
 interface CodeEditorProps {
   content: string;
+  setContext?: (context: Context) => void;
   setClassInstance: (classInstance: ModelicaClassInstance) => void;
   setEditor: (editor: editor.ICodeEditor) => void;
   theme: Theme;
@@ -64,6 +65,7 @@ export default function CodeEditor(props: CodeEditorProps) {
     const context = new Context(new WebFileSystem());
     context.addLibrary("/lib/Modelica");
     setContext(context);
+    props.setContext?.(context);
   };
   const handleEditorDidMount = (editor: editor.ICodeEditor) => {
     editorRef.current = editor;
@@ -93,7 +95,7 @@ export default function CodeEditor(props: CodeEditorProps) {
     const node = ModelicaStoredDefinitionSyntaxNode.new(null, tree.rootNode);
     if (node) {
       linter.lint(node);
-      const instance = new ModelicaClassInstance(null, context, node.classDefinitions[0]);
+      const instance = new ModelicaClassInstance(context, node.classDefinitions[0]);
       instance.instantiate();
       linter.lint(instance);
       props.setClassInstance(instance);

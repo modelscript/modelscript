@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ContentType, decodeDataUrl, encodeDataUrl, ModelicaClassInstance } from "@modelscript/modelscript";
+import { ContentType, Context, decodeDataUrl, encodeDataUrl, ModelicaClassInstance } from "@modelscript/modelscript";
 import {
   CodeIcon,
   LinkExternalIcon,
@@ -37,6 +37,7 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [content] = decodeDataUrl(props.dataUrl ?? null);
   const [editor, setEditor] = useState<editor.ICodeEditor | null>(null);
   const [classInstance, setClassInstance] = useState<ModelicaClassInstance | null>(null);
+  const [, setContext] = useState<Context | null>(null);
   const [view, setView] = useState<View>(View.SPLIT);
   const { colorMode, setColorMode } = useTheme();
   useEffect(() => {
@@ -188,6 +189,7 @@ export default function MorselEditor(props: MorselEditorProps) {
           >
             <CodeEditor
               embed={props.embed}
+              setContext={setContext}
               setClassInstance={setClassInstance}
               setEditor={setEditor}
               content={content}

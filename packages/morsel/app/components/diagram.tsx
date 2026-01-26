@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { DagreLayout } from "@antv/layout";
 import { Graph, type EdgeMetadata, type NodeMetadata } from "@antv/x6";
 import type { PortMetadata } from "@antv/x6/lib/model/port";
 import {
@@ -91,10 +90,10 @@ export default function DiagramEditor(props: DiagramEditorProps) {
             args: {
               x:
                 (componentTransform?.width ?? 200) / 2 +
-                (connectorTransform?.translateX ?? 0) * (connectorTransform?.scaleX ?? 0.1),
+                (connectorTransform?.translateX ?? 0) * (componentTransform?.scaleX ?? 0.1),
               y:
                 (componentTransform?.height ?? 200) / 2 +
-                (connectorTransform?.translateY ?? 0) * (connectorTransform?.scaleY ?? 0.1),
+                (connectorTransform?.translateY ?? 0) * (componentTransform?.scaleY ?? 0.1),
             },
             markup: [
               {
@@ -105,21 +104,23 @@ export default function DiagramEditor(props: DiagramEditorProps) {
             attrs: {
               path: {
                 href: `data:image/svg+xml,${encodeURIComponent(connectorSvg.svg())}`,
-                width: (connectorTransform?.width ?? 200) * (connectorTransform?.scaleX ?? 0.1),
-                height: (connectorTransform?.height ?? 200) * (connectorTransform?.scaleY ?? 0.1),
+                width: (connectorTransform?.width ?? 200) * (componentTransform?.scaleX ?? 0.1),
+                height: (connectorTransform?.height ?? 200) * (componentTransform?.scaleY ?? 0.1),
                 magnet: true,
               },
             },
           });
         }
       }
+      console.log(componentSvg.svg());
       nodes.set(component.name, {
         id: component.name,
         shape: "image",
-        x: (componentTransform?.width ?? 200) / 2,
-        y: (componentTransform?.height ?? 200) / 2,
+        x: componentTransform?.translateX ?? 0,
+        y: componentTransform?.translateY ?? 0,
         width: componentTransform?.width ?? 200,
         height: componentTransform?.height ?? 200,
+        angle: componentTransform?.rotate ?? 0,
         imageUrl: `data:image/svg+xml,${encodeURIComponent(componentSvg.svg())}`,
         ports: {
           groups: {
@@ -134,8 +135,8 @@ export default function DiagramEditor(props: DiagramEditorProps) {
       });
     }
     for (const connectEquation of props.classInstance.connectEquations) {
-      const c1 = connectEquation.componentReference1?.components.map((c) => c.identifier?.value ?? "");
-      const c2 = connectEquation.componentReference2?.components.map((c) => c.identifier?.value ?? "");
+      const c1 = connectEquation.componentReference1?.parts.map((c) => c.identifier?.text ?? "");
+      const c2 = connectEquation.componentReference2?.parts.map((c) => c.identifier?.text ?? "");
       if (!c1 || !c2 || c1.length === 0 || c2.length === 0) continue;
       if (!nodes.has(c1[0]) || !nodes.has(c2[0])) continue;
       const annotations = ModelicaElement.instantiateAnnotations(props.classInstance, connectEquation.annotationClause);
@@ -175,6 +176,7 @@ export default function DiagramEditor(props: DiagramEditorProps) {
             return { x: p[0], y: p[1] };
           }),
         connector: { name: line?.smooth === Smooth.BEZIER ? "smooth" : undefined },
+        router: line?.points && line.points.length > 0 ? "normal" : undefined,
         attrs: {
           line: {
             stroke,
@@ -187,9 +189,7 @@ export default function DiagramEditor(props: DiagramEditorProps) {
         },
       });
     }
-    const dagreLayout = new DagreLayout();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    g.fromJSON(dagreLayout.layout({ nodes: [...nodes.values()] as any, edges: edges as any }));
+    g.fromJSON({ nodes: [...nodes.values()], edges: edges });
     g.zoomToFit({ useCellGeometry: true });
   }, [props.classInstance, props.theme]);
   return <div ref={refContainer} />;

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import type { Scope } from "../scope.js";
 import {
   ModelicaArray,
   ModelicaBinaryExpression,
@@ -15,7 +16,6 @@ import {
   ModelicaComponentInstance,
   ModelicaModification,
   ModelicaParameterModification,
-  type ModelicaNode,
 } from "./model.js";
 import {
   ModelicaArrayConcatenationSyntaxNode,
@@ -32,8 +32,8 @@ import {
   ModelicaUnsignedRealLiteralSyntaxNode,
 } from "./syntax.js";
 
-export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpression, ModelicaNode> {
-  visitArrayConcatenation(node: ModelicaArrayConcatenationSyntaxNode, scope: ModelicaNode): ModelicaExpression | null {
+export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpression, Scope> {
+  visitArrayConcatenation(node: ModelicaArrayConcatenationSyntaxNode, scope: Scope): ModelicaExpression | null {
     const elements: ModelicaExpression[] = [];
     const shape = [node.expressionLists.length, node.expressionLists[0]?.expressions?.length ?? 0];
     for (const expressionList of node.expressionLists ?? []) {
@@ -45,7 +45,7 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     return new ModelicaArray(shape, elements);
   }
 
-  visitArrayConstructor(node: ModelicaArrayConstructorSyntaxNode, scope: ModelicaNode): ModelicaExpression | null {
+  visitArrayConstructor(node: ModelicaArrayConstructorSyntaxNode, scope: Scope): ModelicaExpression | null {
     const elements: ModelicaExpression[] = [];
     for (const expression of node.expressionList?.expressions ?? []) {
       const element = expression.accept(this, scope);
@@ -54,7 +54,7 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     return new ModelicaArray([elements.length], elements);
   }
 
-  visitBinaryExpression(node: ModelicaBinaryExpressionSyntaxNode, scope: ModelicaNode): ModelicaExpression | null {
+  visitBinaryExpression(node: ModelicaBinaryExpressionSyntaxNode, scope: Scope): ModelicaExpression | null {
     const operand1 = node.operand1?.accept(this, scope);
     const operand2 = node.operand2?.accept(this, scope);
     if (node.operator && operand1 && operand2) return ModelicaBinaryExpression.new(node.operator, operand1, operand2);
@@ -65,7 +65,7 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     return new ModelicaBooleanLiteral(node.value);
   }
 
-  visitComponentReference(node: ModelicaComponentReferenceSyntaxNode, scope: ModelicaNode): ModelicaExpression | null {
+  visitComponentReference(node: ModelicaComponentReferenceSyntaxNode, scope: Scope): ModelicaExpression | null {
     const namedElement = scope.resolveComponentReference(node);
     if (!namedElement) return null;
     if (namedElement instanceof ModelicaClassInstance) return ModelicaExpression.fromClassInstance(namedElement);
@@ -77,7 +77,7 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     }
   }
 
-  visitFunctionCall(node: ModelicaFunctionCallSyntaxNode, scope: ModelicaNode): ModelicaExpression | null {
+  visitFunctionCall(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
     const functionInstance = scope.resolveComponentReference(node.functionReference);
     if (!(functionInstance instanceof ModelicaClassInstance)) return null;
     const parameters: ModelicaParameterModification[] = [];
@@ -117,7 +117,7 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     return new ModelicaStringLiteral(node.text ?? "");
   }
 
-  visitUnaryExpression(node: ModelicaUnaryExpressionSyntaxNode, scope: ModelicaNode): ModelicaExpression | null {
+  visitUnaryExpression(node: ModelicaUnaryExpressionSyntaxNode, scope: Scope): ModelicaExpression | null {
     const operand = node.operand?.accept(this, scope);
     if (node.operator && operand) return ModelicaUnaryExpression.new(node.operator, operand);
     return null;

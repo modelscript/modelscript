@@ -99,7 +99,12 @@ export abstract class Scope {
       case "String":
         return new ModelicaStringClassInstance(null, null);
     }
-    return null;
+    return (
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ((this as any) !== ModelicaElement.annotationClassInstance
+        ? ModelicaElement.annotationClassInstance?.resolveSimpleName(simpleName, false, encapsulated)
+        : null) ?? null
+    );
   }
 
   resolveTypeSpecifier(typeSpecifier: ModelicaTypeSpecifierSyntaxNode | null | undefined): ModelicaNamedElement | null {

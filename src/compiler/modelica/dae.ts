@@ -60,7 +60,9 @@ export abstract class ModelicaExpression {
   static fromClassInstance(classInstance: ModelicaClassInstance | null | undefined): ModelicaExpression | null {
     if (!classInstance) return null;
     if (!classInstance.instantiated && !classInstance.instantiating) classInstance.instantiate();
+    //console.log("fromClassInstance", classInstance.name, classInstance.constructor.name);
     if (classInstance instanceof ModelicaArrayClassInstance) {
+      //console.log("Array:", classInstance.name, "Shape:", classInstance.shape);
       const elements: ModelicaExpression[] = [];
       for (const element of classInstance.elements ?? []) {
         if (element instanceof ModelicaClassInstance) {
@@ -72,7 +74,10 @@ export abstract class ModelicaExpression {
     } else if (classInstance instanceof ModelicaEnumerationClassInstance) {
       return classInstance.value;
     } else if (classInstance instanceof ModelicaPredefinedClassInstance) {
+      //console.log("Predefined:", classInstance.name, classInstance.expression);
       return classInstance.expression;
+    } else if (classInstance.modification?.expression instanceof ModelicaObject) {
+      return classInstance.modification.expression;
     } else {
       const elements = new Map<string, ModelicaExpression>();
       for (const component of classInstance.components) {
@@ -445,7 +450,17 @@ export class ModelicaArray extends ModelicaPrimaryExpression {
   override split(count: number): ModelicaPrimaryExpression[];
   override split(count: number, index: number): ModelicaPrimaryExpression;
   override split(count: number, index?: number): ModelicaPrimaryExpression | ModelicaPrimaryExpression[] {
-    if (this.elements.length != count) throw new Error();
+    if (this.elements.length != count) {
+      const flatElements = [...this.flatElements];
+      if (flatElements.length === count) {
+        if (index) {
+          return flatElements[index] as ModelicaPrimaryExpression;
+        } else {
+          return flatElements as ModelicaPrimaryExpression[];
+        }
+      }
+      throw new Error(`Array split mismatch: elements ${this.elements.length} != count ${count}`);
+    }
     if (index) {
       const expression = this.elements[index];
       if (!expression) throw new Error();

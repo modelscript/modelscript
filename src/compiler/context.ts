@@ -78,7 +78,7 @@ export class Context extends Scope {
     const tree = this.parse(".mo", input);
     const node = ModelicaStoredDefinitionSyntaxNode.new(null, tree.rootNode);
     for (const classDefinition of node?.classDefinitions ?? [])
-      this.#classes.push(ModelicaClassInstance.new(null, this, classDefinition));
+      this.#classes.push(ModelicaClassInstance.new(this, classDefinition));
   }
 
   parse(extname: string, input: string, oldTree?: Tree): Tree {
