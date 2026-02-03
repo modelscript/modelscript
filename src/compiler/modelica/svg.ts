@@ -61,7 +61,7 @@ export function renderDiagram(classInstance: ModelicaClassInstance, svg?: Svg): 
     if (!componentClassInstance) continue;
     const componentSvg = renderIcon(componentClassInstance, component, true);
     if (componentSvg) {
-      applyDiagramPlacement(componentSvg, component);
+      applyIconPlacement(componentSvg, component);
       group.add(componentSvg);
     }
   }
@@ -98,7 +98,7 @@ export function renderIcon(
       if (!connectorClassInstance || connectorClassInstance.classKind !== ModelicaClassKind.CONNECTOR) continue;
       const connectorSvg = renderIcon(connectorClassInstance);
       if (connectorSvg) {
-        applyIconPlacement(connectorSvg, component);
+        applyPortPlacement(connectorSvg, component);
         group.add(connectorSvg);
       }
     }
@@ -276,16 +276,6 @@ export function applyCoordinateSystem(svg: Svg, coordinateSystem?: ICoordinateSy
     preserveAspectRatio: "xMinYMin meet",
     overflow: "visible",
   });
-}
-
-export function applyDiagramPlacement(componentSvg: Svg, component: ModelicaComponentInstance): void {
-  const transform = computeDiagramPlacement(component);
-  if (!transform) componentSvg.attr("visibility", "hidden");
-  else
-    componentSvg.attr(
-      "transform",
-      `rotate(${transform.rotate}, ${transform.originX}, ${transform.originY}) translate(${transform.translateX}, ${transform.translateY}) scale(${transform.scaleX}, ${transform.scaleY})`,
-    );
 }
 
 export function applyFill(shape: Shape, filledShape: IFilledShape) {
@@ -480,6 +470,16 @@ export function applyMarkerAttributes(marker: Marker): void {
   marker.viewbox(0, 0, 10, 10);
 }
 
+export function applyPortPlacement(componentSvg: Svg, component: ModelicaComponentInstance): void {
+  const transform = computePortPlacement(component);
+  if (!transform) componentSvg.attr("visibility", "hidden");
+  else
+    componentSvg.attr(
+      "transform",
+      `rotate(${transform.rotate}, ${transform.originX}, ${transform.originY}) translate(${transform.translateX}, ${transform.translateY}) scale(${transform.scaleX}, ${transform.scaleY})`,
+    );
+}
+
 export function applyTextColor(shape: Text, graphicItem: IText): void {
   shape.fill(convertColor(graphicItem.textColor, "rgb(0,0,0)"));
 }
@@ -497,19 +497,19 @@ export function applyVisibility(shape: Shape, graphicItem: IGraphicItem): void {
   shape.attr("visibility", graphicItem.visible ? "visible" : "hidden");
 }
 
-export function computeDiagramPlacement(component: ModelicaComponentInstance): TransformData | null {
-  const placement: IPlacement | null = component.annotation("Placement");
-  if (!placement) return null;
-  const icon = component.classInstance?.annotation("Icon") as IIcon;
-  return computeTransform(placement.transformation, icon.coordinateSystem);
-}
-
 export function computeHeight(extent?: IExtent, defaultValue = 200): number {
   if (!extent) return defaultValue;
   return Math.abs((extent?.[1][1] ?? 0) - (extent?.[0][1] ?? 0));
 }
 
 export function computeIconPlacement(component: ModelicaComponentInstance): TransformData | null {
+  const placement: IPlacement | null = component.annotation("Placement");
+  if (!placement) return null;
+  const icon = component.classInstance?.annotation("Icon") as IIcon;
+  return computeTransform(placement.transformation, icon.coordinateSystem);
+}
+
+export function computePortPlacement(component: ModelicaComponentInstance): TransformData | null {
   const placement: IPlacement | null = component.annotation("Placement");
   if (!placement) return null;
   const hasIconTransformation =

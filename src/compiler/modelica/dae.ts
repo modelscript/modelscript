@@ -60,9 +60,7 @@ export abstract class ModelicaExpression {
   static fromClassInstance(classInstance: ModelicaClassInstance | null | undefined): ModelicaExpression | null {
     if (!classInstance) return null;
     if (!classInstance.instantiated && !classInstance.instantiating) classInstance.instantiate();
-    //console.log("fromClassInstance", classInstance.name, classInstance.constructor.name);
     if (classInstance instanceof ModelicaArrayClassInstance) {
-      //console.log("Array:", classInstance.name, "Shape:", classInstance.shape);
       const elements: ModelicaExpression[] = [];
       for (const element of classInstance.elements ?? []) {
         if (element instanceof ModelicaClassInstance) {
@@ -74,7 +72,6 @@ export abstract class ModelicaExpression {
     } else if (classInstance instanceof ModelicaEnumerationClassInstance) {
       return classInstance.value;
     } else if (classInstance instanceof ModelicaPredefinedClassInstance) {
-      //console.log("Predefined:", classInstance.name, classInstance.expression);
       return classInstance.expression;
     } else if (classInstance.modification?.expression instanceof ModelicaObject) {
       return classInstance.modification.expression;

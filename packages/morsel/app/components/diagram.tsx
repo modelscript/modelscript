@@ -5,6 +5,7 @@ import type { PortMetadata } from "@antv/x6/lib/model/port";
 import {
   Arrow,
   computeIconPlacement,
+  computePortPlacement,
   convertPoint,
   LinePattern,
   ModelicaClassKind,
@@ -78,49 +79,43 @@ export default function DiagramEditor(props: DiagramEditorProps) {
       if (!componentSvg) continue;
       const ports: PortMetadata[] = [];
       const componentTransform = computeIconPlacement(component);
-      for (const connector of component.classInstance?.components ?? []) {
+      if (!componentTransform) continue;
+      for (const connector of componentClassInstance.components) {
         const connectorClassInstance = connector.classInstance;
         if (!connectorClassInstance || connectorClassInstance.classKind !== ModelicaClassKind.CONNECTOR) continue;
-        const connectorSvg = renderIcon(connectorClassInstance);
+        const connectorSvg = renderIcon(connectorClassInstance, undefined, undefined, undefined);
         if (connectorSvg) {
-          const connectorTransform = computeIconPlacement(connector);
+          const connectorTransform = computePortPlacement(connector);
+          if (!connectorTransform) continue;
           ports.push({
-            id: connector.name ?? undefined,
+            id: connector.name ?? "",
             group: "g",
-            args: {
-              x:
-                (componentTransform?.width ?? 200) / 2 +
-                (connectorTransform?.translateX ?? 0) * (componentTransform?.scaleX ?? 0.1),
-              y:
-                (componentTransform?.height ?? 200) / 2 +
-                (connectorTransform?.translateY ?? 0) * (componentTransform?.scaleY ?? 0.1),
-            },
             markup: [
               {
                 tagName: "image",
-                selector: "path",
+                selector: "image",
               },
             ],
             attrs: {
-              path: {
+              image: {
                 href: `data:image/svg+xml,${encodeURIComponent(connectorSvg.svg())}`,
-                width: (connectorTransform?.width ?? 200) * (componentTransform?.scaleX ?? 0.1),
-                height: (connectorTransform?.height ?? 200) * (componentTransform?.scaleY ?? 0.1),
+                width: connectorTransform.width,
+                height: connectorTransform.height,
+                transform: `translate(${componentTransform.width / 2}, ${componentTransform.height / 2}) scale(${connectorTransform.scaleX}, ${connectorTransform.scaleY}) rotate(${connectorTransform.rotate}, ${connectorTransform.originX}, ${connectorTransform.originY}) translate(${connectorTransform.translateX}, ${connectorTransform.translateY})`,
                 magnet: true,
               },
             },
           });
         }
       }
-      console.log(componentSvg.svg());
       nodes.set(component.name, {
         id: component.name,
         shape: "image",
-        x: componentTransform?.translateX ?? 0,
-        y: componentTransform?.translateY ?? 0,
-        width: componentTransform?.width ?? 200,
-        height: componentTransform?.height ?? 200,
-        angle: componentTransform?.rotate ?? 0,
+        width: componentTransform.width,
+        height: componentTransform.height,
+        rotate: componentTransform.rotate,
+        x: componentTransform.translateX,
+        y: componentTransform.translateY,
         imageUrl: `data:image/svg+xml,${encodeURIComponent(componentSvg.svg())}`,
         ports: {
           groups: {
