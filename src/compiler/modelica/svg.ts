@@ -75,23 +75,42 @@ export function renderDiagram(classInstance: ModelicaClassInstance, svg?: Svg): 
   return svg;
 }
 
+export interface RenderIconOptions {
+  ports?: boolean;
+  svg?: Svg;
+  preserveAspectRatio?: string;
+}
+
 export function renderIcon(
   classInstance: ModelicaClassInstance,
   componentInstance?: ModelicaComponentInstance,
-  ports = false,
+  options?: RenderIconOptions | boolean,
   svg?: Svg,
 ): Svg | null {
-  svg = svg ? svg : new Svg();
+  const ports = typeof options === "boolean" ? options : (options?.ports ?? false);
+  const preserveAspectRatio = typeof options === "boolean" ? "none" : (options?.preserveAspectRatio ?? "none");
+  svg = svg ? svg : typeof options === "object" && options?.svg ? options.svg : new Svg();
   for (const extendsClassInstance of classInstance.extendsClassInstances) {
     if (extendsClassInstance.classInstance)
-      renderIcon(extendsClassInstance.classInstance, componentInstance, ports, svg);
+      renderIcon(extendsClassInstance.classInstance, componentInstance, options, svg);
   }
   const icon: IIcon | null = classInstance.annotation("Icon");
   if (!icon) return svg;
-  applyCoordinateSystem(svg, icon.coordinateSystem);
+  applyCoordinateSystem(svg, icon.coordinateSystem, preserveAspectRatio);
   const group = svg.group();
+  let scaleX = 1;
+  let scaleY = 1;
+  const placement = componentInstance?.annotation("Placement");
+  if (placement && componentInstance) {
+    const transform = computeIconPlacement(componentInstance);
+    if (transform) {
+      scaleX = transform.scaleX;
+      scaleY = transform.scaleY;
+    }
+  }
+
   for (const graphicItem of icon.graphics ?? [])
-    renderGraphicItem(group, graphicItem, classInstance, componentInstance);
+    renderGraphicItem(group, graphicItem, classInstance, componentInstance, scaleX, scaleY);
   if (ports) {
     for (const component of classInstance.components) {
       const connectorClassInstance = component.classInstance;
@@ -111,29 +130,32 @@ export function renderGraphicItem(
   graphicItem: IGraphicItem,
   classInstance?: ModelicaClassInstance,
   componentInstance?: ModelicaComponentInstance,
+  scaleX = 1,
+  scaleY = 1,
 ): Shape {
+  const graphicItemGroup = group.group();
   const [ox, oy] = convertPoint(graphicItem.origin, [0, 0]);
-  group.rotate(-(graphicItem.rotation ?? 0));
-  group.translate(ox, oy);
+  graphicItemGroup.rotate(-(graphicItem.rotation ?? 0));
+  graphicItemGroup.translate(ox, oy);
   let shape;
   switch (graphicItem["@type"]) {
     case "Bitmap":
-      shape = renderBitmap(group, graphicItem as IBitmap);
+      shape = renderBitmap(graphicItemGroup, graphicItem as IBitmap);
       break;
     case "Ellipse":
-      shape = renderEllipse(group, graphicItem as IEllipse);
+      shape = renderEllipse(graphicItemGroup, graphicItem as IEllipse);
       break;
     case "Line":
-      shape = renderLine(group, graphicItem as ILine);
+      shape = renderLine(graphicItemGroup, graphicItem as ILine);
       break;
     case "Polygon":
-      shape = renderPolygon(group, graphicItem as IPolygon);
+      shape = renderPolygon(graphicItemGroup, graphicItem as IPolygon);
       break;
     case "Rectangle":
-      shape = renderRectangle(group, graphicItem as IRectangle);
+      shape = renderRectangle(graphicItemGroup, graphicItem as IRectangle);
       break;
     case "Text":
-      shape = renderText(group, graphicItem as IText, classInstance, componentInstance);
+      shape = renderText(graphicItemGroup, graphicItem as IText, classInstance, componentInstance, scaleX, scaleY);
       break;
     default:
       throw new Error();
@@ -226,6 +248,8 @@ export function renderText(
   graphicItem: IText,
   classInstance?: ModelicaClassInstance,
   componentInstance?: ModelicaComponentInstance,
+  scaleX = 1,
+  scaleY = 1,
 ): Shape {
   const rawText = graphicItem.textString ?? graphicItem.string ?? "";
   const replacer = (match: string, name: string): string => {
@@ -255,11 +279,21 @@ export function renderText(
   applyHorizontalAlignment(shape, graphicItem);
   applyTextColor(shape, graphicItem);
   applyTextStyle(shape, graphicItem);
-  applyFontSize(shape, graphicItem);
+  applyFontSize(shape, graphicItem, scaleX, scaleY);
+  if (scaleX !== 1 || scaleY !== 1) {
+    shape.transform({
+      scaleX: 1 / scaleX,
+      scaleY: 1 / scaleY,
+    });
+  }
   return shape;
 }
 
-export function applyCoordinateSystem(svg: Svg, coordinateSystem?: ICoordinateSystem): void {
+export function applyCoordinateSystem(
+  svg: Svg,
+  coordinateSystem?: ICoordinateSystem,
+  preserveAspectRatio?: string,
+): void {
   const [x1, y1] = convertPoint(coordinateSystem?.extent?.[0], [-100, -100]);
   const [x2, y2] = convertPoint(coordinateSystem?.extent?.[1], [100, 100]);
   const x = Math.min(x1, x2);
@@ -273,7 +307,7 @@ export function applyCoordinateSystem(svg: Svg, coordinateSystem?: ICoordinateSy
     height: height,
   });
   svg.attr({
-    preserveAspectRatio: "xMinYMin meet",
+    preserveAspectRatio: preserveAspectRatio ?? "xMinYMin meet",
     overflow: "visible",
   });
 }
@@ -294,11 +328,11 @@ export function applyFontName(shape: Text, graphicItem: IText): void {
   });
 }
 
-export function applyFontSize(shape: Text, graphicItem: IText): void {
+export function applyFontSize(shape: Text, graphicItem: IText, scaleX = 1, scaleY = 1): void {
   const fontSize = graphicItem.fontSize ?? 0;
   if (fontSize === 0) {
-    const width = computeWidth(graphicItem.extent, 100);
-    const height = computeHeight(graphicItem.extent, 40) - 6;
+    const width = computeWidth(graphicItem.extent, 100) * scaleX;
+    const height = (computeHeight(graphicItem.extent, 40) - 6) * scaleY;
     for (let i = 1; i <= height; i++) {
       shape.attr({
         "font-size": i,
@@ -321,7 +355,7 @@ export function applyFontSize(shape: Text, graphicItem: IText): void {
 export function applyHorizontalAlignment(shape: Text, graphicItem: IText): void {
   const p1 = convertPoint(graphicItem?.extent?.[0], [0, 0]);
   const p2 = convertPoint(graphicItem?.extent?.[1], [0, 0]);
-  shape.attr("alignment-baseline", "middle");
+  shape.attr("dominant-baseline", "central");
   switch (graphicItem.horizontalAlignment) {
     case TextAlignment.LEFT:
       shape
