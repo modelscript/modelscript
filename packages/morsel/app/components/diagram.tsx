@@ -93,17 +93,15 @@ export default function DiagramEditor(props: DiagramEditorProps) {
             markup: [
               {
                 tagName: "image",
+                attrs: {
+                  href: `data:image/svg+xml,${encodeURIComponent(connectorSvg.svg())}`,
+                  width: connectorTransform.width,
+                  height: connectorTransform.height,
+                  transform: `rotate(${componentTransform.rotate}, ${componentTransform.originX - componentTransform.translateX}, ${componentTransform.originY - componentTransform.translateY}) translate(${componentTransform.width / 2}, ${componentTransform.height / 2}) scale(${componentTransform.scaleX}, ${componentTransform.scaleY}) rotate(${connectorTransform.rotate}, ${connectorTransform.originX}, ${connectorTransform.originY}) translate(${connectorTransform.translateX}, ${connectorTransform.translateY}) `,
+                  magnet: "true",
+                },
               },
             ],
-            attrs: {
-              image: {
-                href: `data:image/svg+xml,${encodeURIComponent(connectorSvg.svg())}`,
-                width: connectorTransform.width,
-                height: connectorTransform.height,
-                transform: `rotate(${componentTransform.rotate}, ${componentTransform.originX - componentTransform.translateX}, ${componentTransform.originY - componentTransform.translateY}) translate(${componentTransform.width / 2}, ${componentTransform.height / 2}) scale(${componentTransform.scaleX}, ${componentTransform.scaleY}) rotate(${connectorTransform.rotate}, ${connectorTransform.originX}, ${connectorTransform.originY}) translate(${connectorTransform.translateX}, ${connectorTransform.translateY}) `,
-                magnet: true,
-              },
-            },
           });
         }
       }
@@ -114,11 +112,7 @@ export default function DiagramEditor(props: DiagramEditorProps) {
         height: componentTransform.height,
         x: componentTransform.translateX,
         y: componentTransform.translateY,
-        attrs: {
-          image: {
-            transform: `rotate(${componentTransform.rotate}, ${componentTransform.originX - componentTransform.translateX}, ${componentTransform.originY - componentTransform.translateY})`,
-          },
-        },
+        transform: `rotate(${componentTransform.rotate}, ${componentTransform.originX - componentTransform.translateX}, ${componentTransform.originY - componentTransform.translateY})`,
         imageUrl: `data:image/svg+xml,${encodeURIComponent(componentSvg.svg())}`,
         ports: {
           groups: {
