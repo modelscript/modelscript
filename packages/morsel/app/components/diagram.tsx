@@ -83,7 +83,7 @@ export default function DiagramEditor(props: DiagramEditorProps) {
       for (const connector of componentClassInstance.components) {
         const connectorClassInstance = connector.classInstance;
         if (!connectorClassInstance || connectorClassInstance.classKind !== ModelicaClassKind.CONNECTOR) continue;
-        const connectorSvg = renderIcon(connectorClassInstance, undefined, undefined, undefined);
+        const connectorSvg = renderIcon(connectorClassInstance);
         if (connectorSvg) {
           const connectorTransform = computePortPlacement(connector);
           if (!connectorTransform) continue;
@@ -98,9 +98,9 @@ export default function DiagramEditor(props: DiagramEditorProps) {
             attrs: {
               image: {
                 href: `data:image/svg+xml,${encodeURIComponent(connectorSvg.svg())}`,
-                width: connectorTransform.width / connectorTransform.scaleX,
-                height: connectorTransform.height / connectorTransform.scaleY,
-                transform: `translate(${componentTransform.width / 2 + connectorTransform.translateX * componentTransform.scaleX}, ${componentTransform.height / 2 + connectorTransform.translateY * componentTransform.scaleY}) scale(${componentTransform.scaleX}, ${componentTransform.scaleY}) rotate(${connectorTransform.rotate}, ${connectorTransform.originX - connectorTransform.translateX}, ${connectorTransform.originY - connectorTransform.translateY}) scale(${connectorTransform.scaleX}, ${connectorTransform.scaleY})`,
+                width: connectorTransform.width,
+                height: connectorTransform.height,
+                transform: `rotate(${componentTransform.rotate}, ${componentTransform.originX - componentTransform.translateX}, ${componentTransform.originY - componentTransform.translateY}) translate(${componentTransform.width / 2}, ${componentTransform.height / 2}) scale(${componentTransform.scaleX}, ${componentTransform.scaleY}) rotate(${connectorTransform.rotate}, ${connectorTransform.originX}, ${connectorTransform.originY}) translate(${connectorTransform.translateX}, ${connectorTransform.translateY}) `,
                 magnet: true,
               },
             },
@@ -112,9 +112,13 @@ export default function DiagramEditor(props: DiagramEditorProps) {
         shape: "image",
         width: componentTransform.width,
         height: componentTransform.height,
-        rotate: componentTransform.rotate,
         x: componentTransform.translateX,
         y: componentTransform.translateY,
+        attrs: {
+          image: {
+            transform: `rotate(${componentTransform.rotate}, ${componentTransform.originX - componentTransform.translateX}, ${componentTransform.originY - componentTransform.translateY})`,
+          },
+        },
         imageUrl: `data:image/svg+xml,${encodeURIComponent(componentSvg.svg())}`,
         ports: {
           groups: {

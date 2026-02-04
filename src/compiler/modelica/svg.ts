@@ -533,7 +533,7 @@ export function applyVisibility(shape: Shape, graphicItem: IGraphicItem): void {
 
 export function computeHeight(extent?: IExtent, defaultValue = 200): number {
   if (!extent) return defaultValue;
-  return Math.abs((extent?.[1][1] ?? 0) - (extent?.[0][1] ?? 0));
+  return Math.abs((extent?.[1]?.[1] ?? 0) - (extent?.[0]?.[1] ?? 0));
 }
 
 export function computeIconPlacement(component: ModelicaComponentInstance): TransformData | null {
@@ -605,7 +605,7 @@ export function computeTransform(
 
 export function computeWidth(extent?: IExtent, defaultValue = 200): number {
   if (!extent) return defaultValue;
-  return Math.abs((extent?.[1][0] ?? 0) - (extent?.[0][0] ?? 0));
+  return Math.abs((extent?.[1]?.[0] ?? 0) - (extent?.[0]?.[0] ?? 0));
 }
 
 export function convertColor(color?: IColor, defaultValue?: string): string {
