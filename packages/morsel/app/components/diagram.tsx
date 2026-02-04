@@ -93,15 +93,14 @@ export default function DiagramEditor(props: DiagramEditorProps) {
             markup: [
               {
                 tagName: "image",
-                selector: "image",
               },
             ],
             attrs: {
               image: {
                 href: `data:image/svg+xml,${encodeURIComponent(connectorSvg.svg())}`,
-                width: connectorTransform.width,
-                height: connectorTransform.height,
-                transform: `translate(${componentTransform.width / 2}, ${componentTransform.height / 2}) scale(${connectorTransform.scaleX}, ${connectorTransform.scaleY}) rotate(${connectorTransform.rotate}, ${connectorTransform.originX}, ${connectorTransform.originY}) translate(${connectorTransform.translateX}, ${connectorTransform.translateY})`,
+                width: connectorTransform.width / connectorTransform.scaleX,
+                height: connectorTransform.height / connectorTransform.scaleY,
+                transform: `translate(${componentTransform.width / 2 + connectorTransform.translateX * componentTransform.scaleX}, ${componentTransform.height / 2 + connectorTransform.translateY * componentTransform.scaleY}) scale(${componentTransform.scaleX}, ${componentTransform.scaleY}) rotate(${connectorTransform.rotate}, ${connectorTransform.originX - connectorTransform.translateX}, ${connectorTransform.originY - connectorTransform.translateY}) scale(${connectorTransform.scaleX}, ${connectorTransform.scaleY})`,
                 magnet: true,
               },
             },
