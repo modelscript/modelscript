@@ -75,42 +75,23 @@ export function renderDiagram(classInstance: ModelicaClassInstance, svg?: Svg): 
   return svg;
 }
 
-export interface RenderIconOptions {
-  ports?: boolean;
-  svg?: Svg;
-  preserveAspectRatio?: string;
-}
-
 export function renderIcon(
   classInstance: ModelicaClassInstance,
   componentInstance?: ModelicaComponentInstance,
-  options?: RenderIconOptions | boolean,
+  ports?: boolean,
   svg?: Svg,
 ): Svg | null {
-  const ports = typeof options === "boolean" ? options : (options?.ports ?? false);
-  const preserveAspectRatio = typeof options === "boolean" ? "none" : (options?.preserveAspectRatio ?? "none");
-  svg = svg ? svg : typeof options === "object" && options?.svg ? options.svg : new Svg();
+  svg = svg ? svg : new Svg();
   for (const extendsClassInstance of classInstance.extendsClassInstances) {
     if (extendsClassInstance.classInstance)
-      renderIcon(extendsClassInstance.classInstance, componentInstance, options, svg);
+      renderIcon(extendsClassInstance.classInstance, componentInstance, ports, svg);
   }
   const icon: IIcon | null = classInstance.annotation("Icon");
   if (!icon) return svg;
-  applyCoordinateSystem(svg, icon.coordinateSystem, preserveAspectRatio);
+  applyCoordinateSystem(svg, icon.coordinateSystem);
   const group = svg.group();
-  let scaleX = 1;
-  let scaleY = 1;
-  const placement = componentInstance?.annotation("Placement");
-  if (placement && componentInstance) {
-    const transform = computeIconPlacement(componentInstance);
-    if (transform) {
-      scaleX = transform.scaleX;
-      scaleY = transform.scaleY;
-    }
-  }
-
   for (const graphicItem of icon.graphics ?? [])
-    renderGraphicItem(group, graphicItem, classInstance, componentInstance, scaleX, scaleY);
+    renderGraphicItem(group, graphicItem, classInstance, componentInstance);
   if (ports) {
     for (const component of classInstance.components) {
       const connectorClassInstance = component.classInstance;
@@ -130,8 +111,6 @@ export function renderGraphicItem(
   graphicItem: IGraphicItem,
   classInstance?: ModelicaClassInstance,
   componentInstance?: ModelicaComponentInstance,
-  scaleX = 1,
-  scaleY = 1,
 ): Shape {
   const graphicItemGroup = group.group();
   const [ox, oy] = convertPoint(graphicItem.origin, [0, 0]);
@@ -155,7 +134,7 @@ export function renderGraphicItem(
       shape = renderRectangle(graphicItemGroup, graphicItem as IRectangle);
       break;
     case "Text":
-      shape = renderText(graphicItemGroup, graphicItem as IText, classInstance, componentInstance, scaleX, scaleY);
+      shape = renderText(graphicItemGroup, graphicItem as IText, classInstance, componentInstance);
       break;
     default:
       throw new Error();
@@ -248,8 +227,6 @@ export function renderText(
   graphicItem: IText,
   classInstance?: ModelicaClassInstance,
   componentInstance?: ModelicaComponentInstance,
-  scaleX = 1,
-  scaleY = 1,
 ): Shape {
   const rawText = graphicItem.textString ?? graphicItem.string ?? "";
   const replacer = (match: string, name: string): string => {
@@ -279,21 +256,11 @@ export function renderText(
   applyHorizontalAlignment(shape, graphicItem);
   applyTextColor(shape, graphicItem);
   applyTextStyle(shape, graphicItem);
-  applyFontSize(shape, graphicItem, scaleX, scaleY);
-  if (scaleX !== 1 || scaleY !== 1) {
-    shape.transform({
-      scaleX: 1 / scaleX,
-      scaleY: 1 / scaleY,
-    });
-  }
+  applyFontSize(shape, graphicItem);
   return shape;
 }
 
-export function applyCoordinateSystem(
-  svg: Svg,
-  coordinateSystem?: ICoordinateSystem,
-  preserveAspectRatio?: string,
-): void {
+export function applyCoordinateSystem(svg: Svg, coordinateSystem?: ICoordinateSystem): void {
   const [x1, y1] = convertPoint(coordinateSystem?.extent?.[0], [-100, -100]);
   const [x2, y2] = convertPoint(coordinateSystem?.extent?.[1], [100, 100]);
   const x = Math.min(x1, x2);
@@ -307,7 +274,7 @@ export function applyCoordinateSystem(
     height: height,
   });
   svg.attr({
-    preserveAspectRatio: preserveAspectRatio ?? "xMinYMin meet",
+    preserveAspectRatio: "xMinYMin meet",
     overflow: "visible",
   });
 }
@@ -328,11 +295,11 @@ export function applyFontName(shape: Text, graphicItem: IText): void {
   });
 }
 
-export function applyFontSize(shape: Text, graphicItem: IText, scaleX = 1, scaleY = 1): void {
+export function applyFontSize(shape: Text, graphicItem: IText): void {
   const fontSize = graphicItem.fontSize ?? 0;
   if (fontSize === 0) {
-    const width = computeWidth(graphicItem.extent, 100) * scaleX;
-    const height = (computeHeight(graphicItem.extent, 40) - 6) * scaleY;
+    const width = computeWidth(graphicItem.extent, 100);
+    const height = computeHeight(graphicItem.extent, 40) - 6;
     for (let i = 1; i <= height; i++) {
       shape.attr({
         "font-size": i,
