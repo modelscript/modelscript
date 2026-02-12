@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Graph, type EdgeMetadata, type NodeMetadata } from "@antv/x6";
+import { Graph, Transform, type EdgeMetadata, type NodeMetadata } from "@antv/x6";
 import type { PortMetadata } from "@antv/x6/lib/model/port";
 import {
   Arrow,
@@ -10,7 +10,6 @@ import {
   LinePattern,
   ModelicaClassKind,
   ModelicaElement,
-  renderIcon,
   Smooth,
   toEnum,
   type ILine,
@@ -18,6 +17,7 @@ import {
 } from "@modelscript/modelscript";
 import type { Theme } from "@monaco-editor/react";
 import { useEffect, useRef, useState } from "react";
+import { renderIcon } from "../util/x6";
 
 interface DiagramEditorProps {
   classInstance: ModelicaClassInstance | null;
@@ -38,33 +38,56 @@ export default function DiagramEditor(props: DiagramEditorProps) {
           color: props.theme === "vs-dark" ? "#1e1e1e" : "#ffffff",
         },
         grid: {
-          type: "doubleMesh",
-          size: 20,
+          size: 2,
           visible: true,
+          type: "doubleMesh",
           args: [
-            { color: props.theme === "vs-dark" ? "#2f2f2f" : "#efefef" },
-            { color: props.theme === "vs-dark" ? "#2c2c2c" : "#ececec" },
+            {
+              color: "transparent",
+              thickness: 0,
+            },
+            {
+              color: props.theme === "vs-dark" ? "#2f2f2f" : "#ccc",
+              thickness: 1,
+              factor: 10,
+            },
           ],
         },
         connecting: {
-          router: "orth",
+          allowMulti: true,
+          allowLoop: true,
+          allowBlank: true,
+          allowEdge: true,
+          allowNode: true,
+          allowPort: true,
+
+          router: "normal",
         },
         mousewheel: {
           enabled: true,
           global: true,
           modifiers: "ctrl",
         },
-        interacting: false,
+        interacting: true,
       });
+      g.use(new Transform({ resizing: true, rotating: true }));
       setGraph(g);
     } else {
       g = graph;
+      g.use(new Transform({ resizing: true, rotating: true }));
       g.drawBackground({ color: props.theme === "vs-dark" ? "#1e1e1e" : "#ffffff" });
       g.drawGrid({
         type: "doubleMesh",
         args: [
-          { color: props.theme === "vs-dark" ? "#2f2f2f" : "#efefef" },
-          { color: props.theme === "vs-dark" ? "#2c2c2c" : "#ececec" },
+          {
+            color: "transparent",
+            thickness: 0,
+          },
+          {
+            color: props.theme === "vs-dark" ? "#2f2f2f" : "#ccc",
+            thickness: 1,
+            factor: 10,
+          },
         ],
       });
     }
@@ -75,54 +98,90 @@ export default function DiagramEditor(props: DiagramEditorProps) {
       if (!component.name) continue;
       const componentClassInstance = component.classInstance;
       if (!componentClassInstance) continue;
-      const componentSvg = renderIcon(componentClassInstance, component, false);
-      if (!componentSvg) continue;
-      const ports: PortMetadata[] = [];
       const componentTransform = computeIconPlacement(component);
       if (!componentTransform) continue;
+      const componentMarkup = renderIcon(componentClassInstance, component, false);
+      const ports: PortMetadata[] = [];
       for (const connector of componentClassInstance.components) {
         const connectorClassInstance = connector.classInstance;
         if (!connectorClassInstance || connectorClassInstance.classKind !== ModelicaClassKind.CONNECTOR) continue;
-        const connectorSvg = renderIcon(connectorClassInstance);
-        if (connectorSvg) {
-          const connectorTransform = computePortPlacement(connector);
-          if (!connectorTransform) continue;
-          ports.push({
-            id: connector.name ?? "",
-            group: "g",
-            markup: [
-              {
-                tagName: "image",
-                attrs: {
-                  href: `data:image/svg+xml,${encodeURIComponent(connectorSvg.svg())}`,
-                  width: connectorTransform.width,
-                  height: connectorTransform.height,
-                  transform: `rotate(${componentTransform.rotate}, ${componentTransform.originX - componentTransform.translateX}, ${componentTransform.originY - componentTransform.translateY}) translate(${componentTransform.width / 2}, ${componentTransform.height / 2}) scale(${componentTransform.scaleX}, ${componentTransform.scaleY}) rotate(${connectorTransform.rotate}, ${connectorTransform.originX}, ${connectorTransform.originY}) translate(${connectorTransform.translateX}, ${connectorTransform.translateY}) `,
-                  magnet: "true",
-                },
-              },
-            ],
-          });
-        }
-      }
-      nodes.set(component.name, {
-        id: component.name,
-        shape: "image",
-        width: componentTransform.width,
-        height: componentTransform.height,
-        x: componentTransform.translateX,
-        y: componentTransform.translateY,
-        transform: `rotate(${componentTransform.rotate}, ${componentTransform.originX - componentTransform.translateX}, ${componentTransform.originY - componentTransform.translateY})`,
-        imageUrl: `data:image/svg+xml,${encodeURIComponent(componentSvg.svg())}`,
-        ports: {
-          groups: {
-            g: {
-              position: {
-                name: "absolute",
-              },
+        const connectorTransform = computePortPlacement(connector);
+        if (!connectorTransform) continue;
+        const connectorMarkup = renderIcon(connectorClassInstance);
+        const a = connectorTransform.rotate * (Math.PI / 180);
+        const relTranslateX = (connectorTransform.translateX - connectorTransform.originX) * connectorTransform.scaleX;
+        const relTranslateY = (connectorTransform.translateY - connectorTransform.originY) * connectorTransform.scaleY;
+        ports.push({
+          id: connector.name ?? "",
+          group: "absolute",
+          args: {
+            x:
+              componentTransform.width / 2 +
+              relTranslateX * Math.cos(a) -
+              relTranslateY * Math.sin(a) +
+              connectorTransform.originX * connectorTransform.scaleX,
+            y:
+              componentTransform.height / 2 +
+              relTranslateX * Math.sin(a) +
+              relTranslateY * Math.cos(a) +
+              connectorTransform.originY * connectorTransform.scaleY,
+            angle: connectorTransform.rotate,
+          },
+          markup: {
+            tagName: "svg",
+            children: [connectorMarkup],
+            attrs: {
+              magnet: "true",
+              width: connectorTransform.width * connectorTransform.scaleX,
+              height: connectorTransform.height * connectorTransform.scaleY,
             },
           },
+        });
+      }
+      const a = componentTransform.rotate * (Math.PI / 180);
+      const relTranslateX = componentTransform.width / 2 + componentTransform.translateX - componentTransform.originX;
+      const relTranslateY = componentTransform.height / 2 + componentTransform.translateY - componentTransform.originY;
+      nodes.set(component.name, {
+        id: component.name,
+        x:
+          relTranslateX * Math.cos(a) -
+          relTranslateY * Math.sin(a) -
+          componentTransform.width / 2 +
+          componentTransform.originX,
+        y:
+          relTranslateX * Math.sin(a) +
+          relTranslateY * Math.cos(a) -
+          componentTransform.height / 2 +
+          componentTransform.originY,
+        angle: componentTransform.rotate,
+        width: componentTransform.width,
+        height: componentTransform.height,
+        markup: {
+          tagName: "svg",
+          children: [
+            {
+              tagName: "rect",
+              attrs: {
+                style: "fill: transparent; stroke:none",
+                width: componentTransform.width,
+                height: componentTransform.height,
+              },
+            },
+            componentMarkup,
+          ],
+          attrs: {
+            preserveAspectRatio: "none",
+            width: componentTransform.width,
+            height: componentTransform.height,
+          },
+        },
+        ports: {
           items: ports,
+          groups: {
+            absolute: {
+              position: "absolute",
+            },
+          },
         },
       });
     }
@@ -154,6 +213,8 @@ export default function DiagramEditor(props: DiagramEditorProps) {
       const sourceMarker = marker(toEnum(Arrow, line?.arrow?.[0]), strokeColor, strokeWidth);
       const targetMarker = marker(toEnum(Arrow, line?.arrow?.[1]), strokeColor, strokeWidth);
       edges.push({
+        id: `${c1[0]}.${c1?.[1]}-${c2[0]}.${c2?.[1]}`,
+        shape: "edge",
         source: {
           cell: c1[0],
           port: c1?.[1],
@@ -167,8 +228,9 @@ export default function DiagramEditor(props: DiagramEditorProps) {
           .map((p) => {
             return { x: p[0], y: p[1] };
           }),
-        connector: { name: line?.smooth === Smooth.BEZIER ? "smooth" : undefined },
-        router: line?.points && line.points.length > 0 ? "normal" : undefined,
+        connector: line?.smooth === Smooth.BEZIER ? "smooth" : undefined,
+        router: { name: "normal" },
+
         attrs: {
           line: {
             stroke,
@@ -181,6 +243,47 @@ export default function DiagramEditor(props: DiagramEditorProps) {
         },
       });
     }
+
+    document.getElementById("x-axis")?.remove();
+    const xAxis = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    xAxis.setAttribute("id", "x-axis");
+    xAxis.setAttribute("x1", "-100000");
+    xAxis.setAttribute("y1", "0");
+    xAxis.setAttribute("x2", "100000");
+    xAxis.setAttribute("y2", "0");
+    xAxis.setAttribute("stroke", "#999");
+    xAxis.setAttribute("stroke-width", "1");
+    xAxis.setAttribute("vector-effect", "non-scaling-stroke");
+    xAxis.setAttribute("z-index", "2");
+    g.view.viewport.insertBefore(xAxis, g.view.viewport.firstChild);
+
+    document.getElementById("y-axis")?.remove();
+    const yAxis = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    yAxis.setAttribute("id", "y-axis");
+    yAxis.setAttribute("x1", "0");
+    yAxis.setAttribute("y1", "-100000");
+    yAxis.setAttribute("x2", "0");
+    yAxis.setAttribute("y2", "100000");
+    yAxis.setAttribute("stroke", "#999");
+    yAxis.setAttribute("stroke-width", "1");
+    yAxis.setAttribute("vector-effect", "non-scaling-stroke");
+    yAxis.setAttribute("z-index", "2");
+    g.view.viewport.insertBefore(yAxis, g.view.viewport.firstChild);
+
+    document.getElementById("coordinateSystem")?.remove();
+    const coordinateSystem = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    coordinateSystem.setAttribute("id", "coordinateSystem");
+    coordinateSystem.setAttribute("x", "-100");
+    coordinateSystem.setAttribute("y", "-100");
+    coordinateSystem.setAttribute("width", "200");
+    coordinateSystem.setAttribute("height", "200");
+    coordinateSystem.setAttribute("fill", "none");
+    coordinateSystem.setAttribute("stroke", "#999");
+    coordinateSystem.setAttribute("stroke-width", "1");
+    coordinateSystem.setAttribute("vector-effect", "non-scaling-stroke");
+    coordinateSystem.setAttribute("z-index", "1");
+
+    g.view.viewport.insertBefore(coordinateSystem, g.view.viewport.firstChild);
     g.fromJSON({ nodes: [...nodes.values()], edges: edges });
     g.zoomToFit({ useCellGeometry: true });
   }, [props.classInstance, props.theme]);

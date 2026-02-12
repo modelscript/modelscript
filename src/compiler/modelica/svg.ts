@@ -507,7 +507,7 @@ export function computeIconPlacement(component: ModelicaComponentInstance): Tran
   const placement: IPlacement | null = component.annotation("Placement");
   if (!placement) return null;
   const icon = component.classInstance?.annotation("Icon") as IIcon;
-  return computeTransform(placement.transformation, icon.coordinateSystem);
+  return computeTransform(placement.transformation, icon?.coordinateSystem);
 }
 
 export function computePortPlacement(component: ModelicaComponentInstance): TransformData | null {
