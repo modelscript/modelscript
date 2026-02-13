@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { DagreLayout } from "@antv/layout";
 import { Graph, Transform, type EdgeMetadata, type NodeMetadata } from "@antv/x6";
 import type { PortMetadata } from "@antv/x6/lib/model/port";
 import {
@@ -60,22 +61,12 @@ export default function DiagramEditor(props: DiagramEditorProps) {
             },
           ],
         },
-        connecting: {
-          allowMulti: true,
-          allowLoop: true,
-          allowBlank: true,
-          allowEdge: true,
-          allowNode: true,
-          allowPort: true,
-
-          router: "normal",
-        },
         mousewheel: {
           enabled: true,
           global: true,
           modifiers: "ctrl",
         },
-        interacting: true,
+        interacting: false,
       });
       g.use(new Transform({ resizing: true, rotating: true }));
       setGraph(g);
@@ -105,8 +96,21 @@ export default function DiagramEditor(props: DiagramEditorProps) {
       if (!component.name) continue;
       const componentClassInstance = component.classInstance;
       if (!componentClassInstance) continue;
-      const componentTransform = computeIconPlacement(component);
-      if (!componentTransform) continue;
+      let componentTransform = computeIconPlacement(component);
+      const autoLayout = !componentTransform;
+      if (!componentTransform) {
+        componentTransform = {
+          originX: 0,
+          originY: 0,
+          rotate: 0,
+          scaleX: 1,
+          scaleY: 1,
+          translateX: -10,
+          translateY: -10,
+          width: 20,
+          height: 20,
+        };
+      }
       const componentMarkup = renderIconX6(componentClassInstance, component, false);
       const ports: PortMetadata[] = [];
       for (const connector of componentClassInstance.components) {
@@ -151,6 +155,7 @@ export default function DiagramEditor(props: DiagramEditorProps) {
       const relTranslateY = componentTransform.height / 2 + componentTransform.translateY - componentTransform.originY;
       nodes.set(component.name, {
         id: component.name,
+        autoLayout,
         x:
           relTranslateX * Math.cos(a) -
           relTranslateY * Math.sin(a) -
@@ -312,6 +317,39 @@ export default function DiagramEditor(props: DiagramEditorProps) {
       }
       const group = svg.group();
       for (const graphicItem of diagram?.graphics ?? []) renderGraphicItem(group, graphicItem, props.classInstance);
+    }
+    const nodesToLayout: string[] = [];
+    nodes.forEach((node) => {
+      if ((node as any).autoLayout) {
+        nodesToLayout.push(node.id ?? "");
+      }
+    });
+    if (nodesToLayout.length > 0) {
+      const dagreLayout = new DagreLayout({
+        type: "dagre",
+        rankdir: "LR",
+        align: "UL",
+        ranksep: 0.5,
+        nodesep: 0.5,
+        begin: [-10, -10],
+        controlPoints: true,
+      });
+      const model = {
+        nodes: [...nodes.values()].filter((n) => nodesToLayout.includes(n.id ?? "")) as any,
+        edges: edges.filter(
+          (e) =>
+            nodesToLayout.includes(typeof e.source === "string" ? e.source : (e.source.cell as string)) &&
+            nodesToLayout.includes(typeof e.target === "string" ? e.target : (e.target.cell as string)),
+        ) as any,
+      };
+      const newModel = dagreLayout.layout(model);
+      newModel.nodes?.forEach((n: any) => {
+        const node = nodes.get(n.id);
+        if (node) {
+          node.x = n.x;
+          node.y = n.y;
+        }
+      });
     }
     g.fromJSON({ nodes: [...nodes.values()], edges: edges });
     g.zoomToFit({ useCellGeometry: true });
