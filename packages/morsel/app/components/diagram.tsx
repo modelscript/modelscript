@@ -3,19 +3,26 @@
 import { Graph, Transform, type EdgeMetadata, type NodeMetadata } from "@antv/x6";
 import type { PortMetadata } from "@antv/x6/lib/model/port";
 import {
+  applyCoordinateSystem,
   Arrow,
+  computeHeight,
   computeIconPlacement,
   computePortPlacement,
+  computeWidth,
   convertPoint,
   LinePattern,
   ModelicaClassKind,
   ModelicaElement,
+  renderDiagram,
+  renderGraphicItem,
   Smooth,
   toEnum,
+  type IDiagram,
   type ILine,
   type ModelicaClassInstance,
 } from "@modelscript/modelscript";
 import type { Theme } from "@monaco-editor/react";
+import { Svg } from "@svgdotjs/svg.js";
 import { useEffect, useRef, useState } from "react";
 import { renderIconX6 } from "../util/x6";
 
@@ -230,8 +237,8 @@ export default function DiagramEditor(props: DiagramEditorProps) {
           }),
         connector: line?.smooth === Smooth.BEZIER ? "smooth" : undefined,
         router: { name: "normal" },
-
         attrs: {
+          "z-index": "-10",
           line: {
             stroke,
             strokeWidth,
@@ -282,8 +289,28 @@ export default function DiagramEditor(props: DiagramEditorProps) {
     coordinateSystem.setAttribute("stroke-width", "1");
     coordinateSystem.setAttribute("vector-effect", "non-scaling-stroke");
     coordinateSystem.setAttribute("z-index", "1");
-
     g.view.viewport.insertBefore(coordinateSystem, g.view.viewport.firstChild);
+
+    const diagram: IDiagram | null = props.classInstance.annotation("Diagram");
+    if (diagram) {
+      document.getElementById("background")?.remove();
+      const background = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      background.setAttribute("id", "background");
+      g.view.viewport.insertBefore(background, g.view.viewport.firstChild);
+      const svg = new Svg(background);
+      applyCoordinateSystem(svg, diagram.coordinateSystem);
+      const p1 = convertPoint(diagram.coordinateSystem?.extent?.[0], [-100, -100]);
+      background.setAttribute("x", String(p1[0]));
+      background.setAttribute("y", String(-p1[1]));
+      background.setAttribute("width", String(computeWidth(diagram.coordinateSystem?.extent)));
+      background.setAttribute("height", String(computeHeight(diagram.coordinateSystem?.extent)));
+      background.setAttribute("z-index", "1");
+      for (const extendsClassInstance of props.classInstance.extendsClassInstances) {
+        if (extendsClassInstance.classInstance) renderDiagram(extendsClassInstance.classInstance, svg);
+      }
+      const group = svg.group();
+      for (const graphicItem of diagram?.graphics ?? []) renderGraphicItem(group, graphicItem, props.classInstance);
+    }
     g.fromJSON({ nodes: [...nodes.values()], edges: edges });
     g.zoomToFit({ useCellGeometry: true });
   }, [props.classInstance, props.theme]);
