@@ -141,6 +141,7 @@ export default function DiagramEditor(props: DiagramEditorProps) {
               magnet: "true",
               width: connectorTransform.width * connectorTransform.scaleX,
               height: connectorTransform.height * connectorTransform.scaleY,
+              style: "overflow: visible",
             },
           },
         });
@@ -180,6 +181,7 @@ export default function DiagramEditor(props: DiagramEditorProps) {
             preserveAspectRatio: "none",
             width: componentTransform.width,
             height: componentTransform.height,
+            style: "overflow: visible",
           },
         },
         ports: {

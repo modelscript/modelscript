@@ -8,6 +8,7 @@ import {
   computeWidth,
   convertColor,
   convertPoint,
+  convertSmoothPath,
   FillPattern,
   LinePattern,
   ModelicaClassKind,
@@ -48,6 +49,7 @@ export function renderIconX6(
     attrs: {
       width: "100%",
       height: "100%",
+      style: "overflow: visible",
     },
   };
   if (!svg.children) svg.children = [];
@@ -166,14 +168,14 @@ export function renderLineX6(graphicItem: ILine): X6Markup {
       shape = {
         tagName: "path",
         attrs: {
-          //d: [...convertSmoothPath(graphicItem.points)],
+          d: [...convertSmoothPath(graphicItem.points)].join(" "),
         },
       };
     } else {
       shape = {
         tagName: "polyline",
         attrs: {
-          //points: graphicItem.points?.map((p) => convertPoint(p, [0, 0]) ?? []),
+          points: graphicItem.points?.map((p) => convertPoint(p, [0, 0]) ?? []).join(" "),
         },
       };
     }
@@ -205,14 +207,14 @@ export function renderPolygonX6(graphicItem: IPolygon): X6Markup {
     shape = {
       tagName: "path",
       attrs: {
-        //d: [...convertSmoothPath(graphicItem.points), ["Z"]],
+        d: [...convertSmoothPath(graphicItem.points), ["Z"]].join(" "),
       },
     };
   } else {
     shape = {
       tagName: "polygon",
       attrs: {
-        //points: graphicItem.points?.map((p) => convertPoint(p, [0, 0]) ?? []),
+        points: graphicItem.points?.map((p) => convertPoint(p, [0, 0]) ?? []).join(" "),
       },
     };
   }
