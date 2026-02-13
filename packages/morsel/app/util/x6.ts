@@ -10,17 +10,11 @@ import {
   convertPoint,
   FillPattern,
   LinePattern,
-  ModelicaBooleanLiteral,
   ModelicaClassKind,
   ModelicaComponentInstance,
-  ModelicaEnumerationLiteral,
-  ModelicaExpression,
-  ModelicaIntegerLiteral,
-  ModelicaRealLiteral,
-  ModelicaStringLiteral,
+  renderText,
   Smooth,
   TextAlignment,
-  TextStyle,
   type IBitmap,
   type ICoordinateSystem,
   type IEllipse,
@@ -33,7 +27,7 @@ import {
   type IText,
   type ModelicaClassInstance,
 } from "@modelscript/modelscript";
-import { Marker } from "@svgdotjs/svg.js";
+import { Marker, Svg } from "@svgdotjs/svg.js";
 
 export interface X6Markup {
   tagName: string;
@@ -44,7 +38,7 @@ export interface X6Markup {
   textContent?: string;
 }
 
-export function renderIcon(
+export function renderIconX6(
   classInstance: ModelicaClassInstance,
   componentInstance?: ModelicaComponentInstance,
   ports?: boolean,
@@ -59,25 +53,25 @@ export function renderIcon(
   if (!svg.children) svg.children = [];
   for (const extendsClassInstance of classInstance.extendsClassInstances) {
     if (extendsClassInstance.classInstance)
-      svg.children.push(renderIcon(extendsClassInstance.classInstance, componentInstance, ports));
+      svg.children.push(renderIconX6(extendsClassInstance.classInstance, componentInstance, ports));
   }
   const icon: IIcon | null = classInstance.annotation("Icon");
   if (!icon) return svg;
-  applyCoordinateSystem(svg, icon.coordinateSystem);
+  applyCoordinateSystemX6(svg, icon.coordinateSystem);
   const group: X6Markup = {
     tagName: "g",
   };
   svg.children.push(group);
   if (!group.children) group.children = [];
   for (const graphicItem of icon.graphics ?? [])
-    group.children.push(renderGraphicItem(graphicItem, classInstance, componentInstance));
+    group.children.push(renderGraphicItemX6(graphicItem, classInstance, componentInstance));
   if (ports) {
     for (const component of classInstance.components) {
       const connectorClassInstance = component.classInstance;
       if (!connectorClassInstance || connectorClassInstance.classKind !== ModelicaClassKind.CONNECTOR) continue;
-      const connectorSvg = renderIcon(connectorClassInstance);
+      const connectorSvg = renderIconX6(connectorClassInstance);
       if (connectorSvg) {
-        applyPortPlacement(connectorSvg, component);
+        applyPortPlacementX6(connectorSvg, component);
         group.children.push(connectorSvg);
       }
     }
@@ -85,7 +79,7 @@ export function renderIcon(
   return svg;
 }
 
-export function renderGraphicItem(
+export function renderGraphicItemX6(
   graphicItem: IGraphicItem,
   classInstance?: ModelicaClassInstance,
   componentInstance?: ModelicaComponentInstance,
@@ -93,45 +87,45 @@ export function renderGraphicItem(
   let shape;
   switch (graphicItem["@type"]) {
     case "Bitmap":
-      shape = renderBitmap(graphicItem as IBitmap);
+      shape = renderBitmapX6(graphicItem as IBitmap);
       break;
     case "Ellipse":
-      shape = renderEllipse(graphicItem as IEllipse);
+      shape = renderEllipseX6(graphicItem as IEllipse);
       break;
     case "Line":
-      shape = renderLine(graphicItem as ILine);
+      shape = renderLineX6(graphicItem as ILine);
       break;
     case "Polygon":
-      shape = renderPolygon(graphicItem as IPolygon);
+      shape = renderPolygonX6(graphicItem as IPolygon);
       break;
     case "Rectangle":
-      shape = renderRectangle(graphicItem as IRectangle);
+      shape = renderRectangleX6(graphicItem as IRectangle);
       break;
     case "Text":
-      shape = renderText(graphicItem as IText, classInstance, componentInstance);
+      shape = renderTextX6(graphicItem as IText, classInstance, componentInstance);
       break;
     default:
       throw new Error();
   }
-  applyVisibility(shape, graphicItem);
   const [ox, oy] = convertPoint(graphicItem.origin, [0, 0]);
   return {
     tagName: "g",
     children: [shape],
     attrs: {
-      transform: `rotate(${graphicItem.rotation ?? 0}) translate(${ox}, ${oy})`,
+      visibility: (graphicItem.visible ?? true) ? "visible" : "hidden",
+      transform: `translate(${ox}, ${oy}) rotate(${graphicItem.rotation ?? 0})`,
     },
   };
 }
 
-export function renderFilledShape(shape: X6Markup, filledShape: IFilledShape): void {
-  applyFill(shape, filledShape);
-  applyLineColor(shape, filledShape);
-  applyLinePattern(shape, filledShape);
-  applyLineThickness(shape, filledShape);
+export function renderFilledShapeX6(shape: X6Markup, filledShape: IFilledShape): void {
+  applyFillX6(shape, filledShape);
+  applyLineColorX6(shape, filledShape);
+  applyLinePatternX6(shape, filledShape);
+  applyLineThicknessX6(shape, filledShape);
 }
 
-export function renderBitmap(graphicItem: IBitmap): X6Markup {
+export function renderBitmapX6(graphicItem: IBitmap): X6Markup {
   const p1 = convertPoint(graphicItem.extent?.[0], [-100, -100]);
   const shape: X6Markup = {
     tagName: "image",
@@ -143,11 +137,11 @@ export function renderBitmap(graphicItem: IBitmap): X6Markup {
       y: p1[1],
     },
   };
-  renderFilledShape(shape, graphicItem);
+  renderFilledShapeX6(shape, graphicItem);
   return shape;
 }
 
-export function renderEllipse(graphicItem: IEllipse): X6Markup {
+export function renderEllipseX6(graphicItem: IEllipse): X6Markup {
   const [cx1, cy1] = convertPoint(graphicItem.extent?.[0], [-100, -100]);
   const [cx2, cy2] = convertPoint(graphicItem.extent?.[1], [100, 100]);
   const rx = computeWidth(graphicItem.extent) / 2;
@@ -161,11 +155,11 @@ export function renderEllipse(graphicItem: IEllipse): X6Markup {
       ry,
     },
   };
-  renderFilledShape(shape, graphicItem);
+  renderFilledShapeX6(shape, graphicItem);
   return shape;
 }
 
-export function renderLine(graphicItem: ILine): X6Markup {
+export function renderLineX6(graphicItem: ILine): X6Markup {
   let shape: X6Markup;
   if ((graphicItem.points?.length ?? 0) > 2) {
     if (graphicItem.smooth === Smooth.BEZIER) {
@@ -196,16 +190,16 @@ export function renderLine(graphicItem: ILine): X6Markup {
       },
     };
   }
-  applyLineArrows(shape, graphicItem);
-  applyLineColor(shape, graphicItem);
-  applyLinePattern(shape, graphicItem);
-  applyLineThickness(shape, graphicItem);
+  applyLineArrowsX6(shape, graphicItem);
+  applyLineColorX6(shape, graphicItem);
+  applyLinePatternX6(shape, graphicItem);
+  applyLineThicknessX6(shape, graphicItem);
   if (!shape.attrs) shape.attrs = {};
   shape.attrs["fill"] = "none";
   return shape;
 }
 
-export function renderPolygon(graphicItem: IPolygon): X6Markup {
+export function renderPolygonX6(graphicItem: IPolygon): X6Markup {
   let shape: X6Markup;
   if (graphicItem.smooth === Smooth.BEZIER && (graphicItem.points?.length ?? 0) > 2) {
     shape = {
@@ -222,11 +216,11 @@ export function renderPolygon(graphicItem: IPolygon): X6Markup {
       },
     };
   }
-  renderFilledShape(shape, graphicItem);
+  renderFilledShapeX6(shape, graphicItem);
   return shape;
 }
 
-export function renderRectangle(graphicItem: IRectangle): X6Markup {
+export function renderRectangleX6(graphicItem: IRectangle): X6Markup {
   const [x1, y1] = convertPoint(graphicItem.extent?.[0], [0, 0]);
   const [x2, y2] = convertPoint(graphicItem.extent?.[1], [0, 0]);
   const x = Math.min(x1, x2);
@@ -244,51 +238,45 @@ export function renderRectangle(graphicItem: IRectangle): X6Markup {
   };
   if (!shape.attrs) shape.attrs = {};
   if (graphicItem.radius) shape.attrs["radius"] = graphicItem.radius;
-  renderFilledShape(shape, graphicItem);
+  renderFilledShapeX6(shape, graphicItem);
   return shape;
 }
 
-export function renderText(
+export function renderTextX6(
   graphicItem: IText,
   classInstance?: ModelicaClassInstance,
   componentInstance?: ModelicaComponentInstance,
 ): X6Markup {
-  const rawText = graphicItem.textString ?? graphicItem.string ?? "";
-  const replacer = (match: string, name: string): string => {
-    const namedElement = classInstance?.resolveName(name.split("."));
-    if (!(namedElement instanceof ModelicaComponentInstance)) return namedElement?.name ?? "%" + name;
-    const expression = ModelicaExpression.fromClassInstance(namedElement.classInstance);
-    if (expression instanceof ModelicaIntegerLiteral || expression instanceof ModelicaRealLiteral) {
-      return String(expression.value);
-    } else if (expression instanceof ModelicaEnumerationLiteral) {
-      return expression.stringValue;
-    } else if (expression instanceof ModelicaStringLiteral) {
-      return expression.value;
-    } else if (expression instanceof ModelicaBooleanLiteral) {
-      return String(expression.value);
-    } else {
-      return "%{" + name + "}";
-    }
-  };
-  const formattedText = rawText
-    .replaceAll(/%%/g, "%")
-    .replaceAll(/%name\b/g, componentInstance?.name ?? "%name")
-    .replaceAll(/%class\b/g, classInstance?.name ?? "%class")
-    .replaceAll(/%\{([^}]*)\}/g, replacer)
-    .replaceAll(/%(\w+)\b/g, replacer);
-  const shape: X6Markup = {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.style.position = "absolute";
+  svg.style.visibility = "hidden";
+  document.body.appendChild(svg);
+  const text = renderText(new Svg(svg).group(), graphicItem, classInstance, componentInstance);
+  document.body.removeChild(svg);
+  const p1 = convertPoint(graphicItem?.extent?.[0], [0, 0]);
+  const p2 = convertPoint(graphicItem?.extent?.[1], [0, 0]);
+  return {
     tagName: "text",
-    textContent: formattedText,
+    textContent: text.text(),
+    attrs: {
+      style: `dominant-baseline: ${text.attr("dominant-baseline")}; fill: ${text.attr("fill")}; font-family: ${text.attr("font-family")}; font-size: ${text.attr("font-size")}; font-style: ${text.attr("font-style")}; font-weight: ${text.attr("font-weight")}; text-decoration: ${text.attr("text-decoration")}; text-anchor: ${text.attr("text-anchor")};`,
+      x:
+        (graphicItem.horizontalAlignment === TextAlignment.LEFT
+          ? p1[0]
+          : graphicItem.horizontalAlignment === TextAlignment.RIGHT
+            ? p2[0]
+            : (p1[0] + p2[0]) / 2) - 10,
+      y:
+        (graphicItem.horizontalAlignment === TextAlignment.LEFT
+          ? (p1[1] + p2[1]) / 2
+          : graphicItem.horizontalAlignment === TextAlignment.RIGHT
+            ? (p1[1] + p2[1]) / 2
+            : (p1[1] + p2[1]) / 2) - 10,
+    },
   };
-  applyFontName(shape, graphicItem);
-  applyHorizontalAlignment(shape, graphicItem);
-  applyTextColor(shape, graphicItem);
-  applyTextStyle(shape, graphicItem);
-  applyFontSize(shape, graphicItem);
-  return shape;
 }
 
-export function applyCoordinateSystem(markup: X6Markup, coordinateSystem?: ICoordinateSystem): void {
+export function applyCoordinateSystemX6(markup: X6Markup, coordinateSystem?: ICoordinateSystem): void {
   const [x1, y1] = convertPoint(coordinateSystem?.extent?.[0], [-100, -100]);
   const [x2, y2] = convertPoint(coordinateSystem?.extent?.[1], [100, 100]);
   const x = Math.min(x1, x2);
@@ -301,7 +289,7 @@ export function applyCoordinateSystem(markup: X6Markup, coordinateSystem?: ICoor
   markup.attrs["overflow"] = "visible";
 }
 
-export function applyFill(shape: X6Markup, filledShape: IFilledShape) {
+export function applyFillX6(shape: X6Markup, filledShape: IFilledShape) {
   if (!shape.attrs) shape.attrs = {};
   switch (filledShape.fillPattern) {
     case FillPattern.SOLID:
@@ -312,47 +300,7 @@ export function applyFill(shape: X6Markup, filledShape: IFilledShape) {
   }
 }
 
-export function applyFontName(shape: X6Markup, graphicItem: IText): void {
-  if (!shape.attrs) shape.attrs = {};
-  shape.attrs["font-family"] = graphicItem?.fontName ?? "monospace";
-}
-
-export function applyFontSize(shape: X6Markup, graphicItem: IText): void {
-  if (!shape.attrs) shape.attrs = {};
-  const fontSize = graphicItem.fontSize ?? 0;
-  if (fontSize === 0) {
-    //const width = computeWidth(graphicItem.extent, 100);
-    const height = computeHeight(graphicItem.extent, 40) - 6;
-    shape.attrs["font-size"] = height;
-  } else {
-    shape.attrs["font-size"] = fontSize;
-  }
-}
-
-export function applyHorizontalAlignment(shape: X6Markup, graphicItem: IText): void {
-  if (!shape.attrs) shape.attrs = {};
-  const p1 = convertPoint(graphicItem?.extent?.[0], [0, 0]);
-  const p2 = convertPoint(graphicItem?.extent?.[1], [0, 0]);
-  shape.attrs["dominant-baseline"] = "central";
-  switch (graphicItem.horizontalAlignment) {
-    case TextAlignment.LEFT:
-      shape.attrs["x"] = p1[0];
-      shape.attrs["y"] = (p1[1] + p2[1]) / 2;
-      shape.attrs["text-anchor"] = "start";
-      break;
-    case TextAlignment.RIGHT:
-      shape.attrs["x"] = p2[0];
-      shape.attrs["y"] = (p1[1] + p2[1]) / 2;
-      shape.attrs["text-anchor"] = "end";
-      break;
-    default:
-      shape.attrs["x"] = (p1[0] + p2[0]) / 2;
-      shape.attrs["y"] = (p1[1] + p2[1]) / 2;
-      shape.attrs["text-anchor"] = "middle";
-  }
-}
-
-export function applyIconPlacement(componentSvg: X6Markup, component: ModelicaComponentInstance): void {
+export function applyIconPlacementX6(componentSvg: X6Markup, component: ModelicaComponentInstance): void {
   if (!componentSvg.attrs) componentSvg.attrs = {};
   const transform = computeIconPlacement(component);
   if (!transform) componentSvg.attrs["visibility"] = "hidden";
@@ -361,7 +309,7 @@ export function applyIconPlacement(componentSvg: X6Markup, component: ModelicaCo
       `rotate(${transform.rotate}, ${transform.originX}, ${transform.originY}) translate(${transform.translateX}, ${transform.translateY}) scale(${transform.scaleX}, ${transform.scaleY})`;
 }
 
-export function applyLineArrows(shape: X6Markup, graphicItem: ILine): void {
+export function applyLineArrowsX6(shape: X6Markup, graphicItem: ILine): void {
   if (!shape.attrs) shape.attrs = {};
   const arrowSize = graphicItem.arrowSize ?? 3;
   if (arrowSize <= 0) return;
@@ -382,7 +330,7 @@ export function applyLineArrows(shape: X6Markup, graphicItem: ILine): void {
               width: (graphicItem.thickness ?? 0.25) * 4,
             })
             .attr("vector-effect", "non-scaling-stroke");
-          applyMarkerAttributes(marker);
+          applyMarkerAttributesX6(marker);
           return marker;
         };
       case Arrow.HALF:
@@ -398,7 +346,7 @@ export function applyLineArrows(shape: X6Markup, graphicItem: ILine): void {
               width: (graphicItem.thickness ?? 0.25) * 4,
             })
             .attr("vector-effect", "non-scaling-stroke");
-          applyMarkerAttributes(marker);
+          applyMarkerAttributesX6(marker);
           return marker;
         };
       default:
@@ -406,7 +354,7 @@ export function applyLineArrows(shape: X6Markup, graphicItem: ILine): void {
           marker
             .path([["M", 0, 0], ["L", 10, 5], ["L", 0, 10], ["z"]])
             .fill(convertColor(graphicItem.color, "rgb(0,0,0)"));
-          applyMarkerAttributes(marker);
+          applyMarkerAttributesX6(marker);
           return marker;
         };
     }
@@ -415,7 +363,7 @@ export function applyLineArrows(shape: X6Markup, graphicItem: ILine): void {
   //if (endArrow && endArrow !== Arrow.NONE) shape.marker("end", arrowSize, arrowSize, marker(endArrow));
 }
 
-export function applyLineColor(shape: X6Markup, graphicItem: IFilledShape | ILine): void {
+export function applyLineColorX6(shape: X6Markup, graphicItem: IFilledShape | ILine): void {
   if (!shape.attrs) shape.attrs = {};
   let color;
   if (graphicItem["@type"] === "Line") {
@@ -426,7 +374,7 @@ export function applyLineColor(shape: X6Markup, graphicItem: IFilledShape | ILin
   shape.attrs["stroke"] = convertColor(color, "rgb(0,0,0)");
 }
 
-export function applyLinePattern(shape: X6Markup, graphicItem: IFilledShape | ILine): void {
+export function applyLinePatternX6(shape: X6Markup, graphicItem: IFilledShape | ILine): void {
   if (!shape.attrs) shape.attrs = {};
   switch (graphicItem?.pattern) {
     case LinePattern.DASH:
@@ -447,7 +395,7 @@ export function applyLinePattern(shape: X6Markup, graphicItem: IFilledShape | IL
   }
 }
 
-export function applyLineThickness(shape: X6Markup, graphicItem: IFilledShape | ILine): void {
+export function applyLineThicknessX6(shape: X6Markup, graphicItem: IFilledShape | ILine): void {
   if (!shape.attrs) shape.attrs = {};
   let lineThickness;
   if (graphicItem["@type"] === "Line") {
@@ -459,38 +407,18 @@ export function applyLineThickness(shape: X6Markup, graphicItem: IFilledShape | 
   shape.attrs["vector-effect"] = "non-scaling-stroke";
 }
 
-export function applyMarkerAttributes(marker: Marker): void {
+export function applyMarkerAttributesX6(marker: Marker): void {
   marker.attr("markerUnits", "userSpaceOnUse");
   marker.orient("auto-start-reverse");
   marker.ref(10, 5);
   marker.viewbox(0, 0, 10, 10);
 }
 
-export function applyPortPlacement(componentSvg: X6Markup, component: ModelicaComponentInstance): void {
+export function applyPortPlacementX6(componentSvg: X6Markup, component: ModelicaComponentInstance): void {
   if (!componentSvg.attrs) componentSvg.attrs = {};
   const transform = computePortPlacement(component);
   if (!transform) componentSvg.attrs["visibility"] = "hidden";
   else
     componentSvg.attrs["transform"] =
       `rotate(${transform.rotate}, ${transform.originX}, ${transform.originY}) translate(${transform.translateX}, ${transform.translateY}) scale(${transform.scaleX}, ${transform.scaleY})`;
-}
-
-export function applyTextColor(shape: X6Markup, graphicItem: IText): void {
-  if (!shape.attrs) shape.attrs = {};
-  shape.attrs["fill"] = convertColor(graphicItem.textColor, "rgb(0,0,0)");
-}
-
-export function applyTextStyle(shape: X6Markup, graphicItem: IText): void {
-  if (!shape.attrs) shape.attrs = {};
-  shape.attrs["font-style"] = graphicItem?.textStyle?.find((e) => e === TextStyle.ITALIC) ? "italic" : "normal";
-  shape.attrs["font-weight"] = graphicItem?.textStyle?.find((e) => e === TextStyle.BOLD) ? "bold" : "normal";
-  shape.attrs["text-decoration"] = graphicItem?.textStyle?.find((e) => e === TextStyle.UNDERLINE)
-    ? "underline"
-    : "none";
-}
-
-export function applyVisibility(shape: X6Markup, graphicItem: IGraphicItem): void {
-  if (graphicItem?.visible == null) return;
-  if (!shape.attrs) shape.attrs = {};
-  shape.attrs["visibility"] = graphicItem.visible ? "visible" : "hidden";
 }

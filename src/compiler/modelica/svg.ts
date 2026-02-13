@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
+  Ellipse,
+  Image,
   Marker,
   Path,
+  Polygon,
   Polyline,
+  Rect,
   Svg,
   type ArrayXY,
   type G,
@@ -150,7 +154,7 @@ export function renderFilledShape(shape: Shape, filledShape: IFilledShape): void
   applyLineThickness(shape, filledShape);
 }
 
-export function renderBitmap(group: G, graphicItem: IBitmap): Shape {
+export function renderBitmap(group: G, graphicItem: IBitmap): Image {
   const p1 = convertPoint(graphicItem.extent?.[0], [-100, -100]);
   const shape = group
     .image(graphicItem.fileName)
@@ -162,7 +166,7 @@ export function renderBitmap(group: G, graphicItem: IBitmap): Shape {
   return shape;
 }
 
-export function renderEllipse(group: G, graphicItem: IEllipse): Shape {
+export function renderEllipse(group: G, graphicItem: IEllipse): Ellipse {
   const [cx1, cy1] = convertPoint(graphicItem.extent?.[0], [-100, -100]);
   const [cx2, cy2] = convertPoint(graphicItem.extent?.[1], [100, 100]);
   const rx = computeWidth(graphicItem.extent) / 2;
@@ -177,7 +181,7 @@ export function renderEllipse(group: G, graphicItem: IEllipse): Shape {
   return shape;
 }
 
-export function renderLine(group: G, graphicItem: ILine): Shape {
+export function renderLine(group: G, graphicItem: ILine): Line | Path | Polyline {
   let shape;
   if ((graphicItem.points?.length ?? 0) > 2) {
     if (graphicItem.smooth === Smooth.BEZIER) {
@@ -198,7 +202,7 @@ export function renderLine(group: G, graphicItem: ILine): Shape {
   return shape;
 }
 
-export function renderPolygon(group: G, graphicItem: IPolygon): Shape {
+export function renderPolygon(group: G, graphicItem: IPolygon): Path | Polygon {
   let shape;
   if (graphicItem.smooth === Smooth.BEZIER && (graphicItem.points?.length ?? 0) > 2) {
     shape = group.path([...convertSmoothPath(graphicItem.points), ["Z"]]);
@@ -209,7 +213,7 @@ export function renderPolygon(group: G, graphicItem: IPolygon): Shape {
   return shape;
 }
 
-export function renderRectangle(group: G, graphicItem: IRectangle): Shape {
+export function renderRectangle(group: G, graphicItem: IRectangle): Rect {
   const [x1, y1] = convertPoint(graphicItem.extent?.[0], [0, 0]);
   const [x2, y2] = convertPoint(graphicItem.extent?.[1], [0, 0]);
   const x = Math.min(x1, x2);
@@ -227,7 +231,7 @@ export function renderText(
   graphicItem: IText,
   classInstance?: ModelicaClassInstance,
   componentInstance?: ModelicaComponentInstance,
-): Shape {
+): Text {
   const rawText = graphicItem.textString ?? graphicItem.string ?? "";
   const replacer = (match: string, name: string): string => {
     const namedElement = classInstance?.resolveName(name.split("."));

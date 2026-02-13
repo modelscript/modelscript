@@ -17,7 +17,7 @@ import {
 } from "@modelscript/modelscript";
 import type { Theme } from "@monaco-editor/react";
 import { useEffect, useRef, useState } from "react";
-import { renderIcon } from "../util/x6";
+import { renderIconX6 } from "../util/x6";
 
 interface DiagramEditorProps {
   classInstance: ModelicaClassInstance | null;
@@ -100,14 +100,14 @@ export default function DiagramEditor(props: DiagramEditorProps) {
       if (!componentClassInstance) continue;
       const componentTransform = computeIconPlacement(component);
       if (!componentTransform) continue;
-      const componentMarkup = renderIcon(componentClassInstance, component, false);
+      const componentMarkup = renderIconX6(componentClassInstance, component, false);
       const ports: PortMetadata[] = [];
       for (const connector of componentClassInstance.components) {
         const connectorClassInstance = connector.classInstance;
         if (!connectorClassInstance || connectorClassInstance.classKind !== ModelicaClassKind.CONNECTOR) continue;
         const connectorTransform = computePortPlacement(connector);
         if (!connectorTransform) continue;
-        const connectorMarkup = renderIcon(connectorClassInstance);
+        const connectorMarkup = renderIconX6(connectorClassInstance);
         const a = connectorTransform.rotate * (Math.PI / 180);
         const relTranslateX = (connectorTransform.translateX - connectorTransform.originX) * connectorTransform.scaleX;
         const relTranslateY = (connectorTransform.translateY - connectorTransform.originY) * connectorTransform.scaleY;
