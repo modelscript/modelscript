@@ -31,6 +31,7 @@ interface DiagramEditorProps {
   classInstance: ModelicaClassInstance | null;
   onSelect?: (componentName: string | null) => void;
   onDrop?: (className: string, x: number, y: number) => void;
+  onConnect?: (source: string, target: string) => void;
   theme: Theme;
 }
 
@@ -38,10 +39,12 @@ export default function DiagramEditor(props: DiagramEditorProps) {
   const refContainer = useRef<HTMLDivElement>(null);
   const [graph, setGraph] = useState<Graph | null>(null);
   const onSelectRef = useRef(props.onSelect);
+  const onConnectRef = useRef(props.onConnect);
 
   useEffect(() => {
     onSelectRef.current = props.onSelect;
-  }, [props.onSelect]);
+    onConnectRef.current = props.onConnect;
+  }, [props.onSelect, props.onConnect]);
 
   useEffect(() => {
     if (!refContainer.current) return;
@@ -74,7 +77,22 @@ export default function DiagramEditor(props: DiagramEditorProps) {
           global: true,
           modifiers: "ctrl",
         },
-        interacting: false,
+        interacting: true,
+        connecting: {
+          createEdge: () => {
+            return g?.createEdge({
+              router: { name: "normal" },
+              attrs: {
+                "z-index": "-10",
+                line: {
+                  stroke: props.theme === "vs-dark" ? "#ccc" : "#333",
+                  strokeWidth: 1,
+                  "vector-effect": "non-scaling-stroke",
+                },
+              },
+            });
+          }
+        },
       });
       g.use(new Transform({ resizing: true, rotating: true }));
       g.on("cell:click", ({ cell }) => {
@@ -85,6 +103,18 @@ export default function DiagramEditor(props: DiagramEditorProps) {
       g.on("blank:click", () => {
         if (onSelectRef.current) {
           onSelectRef.current(null);
+        }
+      });
+      g.on("edge:connected", ({ isNew, edge }) => {
+        if (isNew && onConnectRef.current) {
+          const source = edge.getSource() as any;
+          const target = edge.getTarget() as any;
+          if (source.cell && source.port && target.cell && target.port) {
+            onConnectRef.current(
+              `${source.cell}.${source.port}`,
+              `${target.cell}.${target.port}`
+            );
+          }
         }
       });
       setGraph(g);

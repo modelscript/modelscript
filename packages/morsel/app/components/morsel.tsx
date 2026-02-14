@@ -6,9 +6,11 @@ import {
   decodeDataUrl,
   encodeDataUrl,
   type IDiagram,
+  type ModelicaClassDefinitionSyntaxNode,
   ModelicaClassInstance,
   ModelicaComponentInstance,
   ModelicaEntity,
+  type ModelicaEquationSectionSyntaxNode,
 } from "@modelscript/modelscript";
 import {
   CodeIcon,
@@ -382,6 +384,52 @@ export default function MorselEditor(props: MorselEditorProps) {
                             text: componentDecl,
                           },
                         ]);
+                      }
+                    }
+                  }}
+                  onConnect={(source, target) => {
+                    if (!classInstance || !editor) return;
+
+                    const connectEq = `  connect(${source}, ${target});\n`;
+                    const model = editor.getModel();
+                    if (!model) return;
+
+                    let equationSection: ModelicaEquationSectionSyntaxNode | null = null;
+                    const sections = (classInstance.abstractSyntaxNode as any)?.sections;
+
+                    if (sections) {
+                      for (const section of sections) {
+                        if (section["@type"] === "EquationSection") {
+                          equationSection = section as ModelicaEquationSectionSyntaxNode;
+                        }
+                      }
+                    }
+
+                    if (equationSection && equationSection.concreteSyntaxNode) {
+                      const endPos = equationSection.concreteSyntaxNode.endPosition;
+                      editor.executeEdits("connect", [{
+                        range: {
+                          startLineNumber: endPos.row + 1,
+                          startColumn: 1,
+                          endLineNumber: endPos.row + 1,
+                          endColumn: endPos.column + 1
+                        },
+                        text: connectEq
+                      }]);
+                    } else {
+                      const text = model.getValue();
+                      const lastEndIndex = text.lastIndexOf("end");
+                      if (lastEndIndex !== -1) {
+                        const pos = model.getPositionAt(lastEndIndex);
+                        editor.executeEdits("connect", [{
+                          range: {
+                            startLineNumber: pos.lineNumber,
+                            startColumn: 1,
+                            endLineNumber: pos.lineNumber,
+                            endColumn: 1
+                          },
+                          text: `equation\n${connectEq}`
+                        }]);
                       }
                     }
                   }}
