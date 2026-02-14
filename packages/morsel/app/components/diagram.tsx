@@ -35,6 +35,7 @@ interface DiagramEditorProps {
 export default function DiagramEditor(props: DiagramEditorProps) {
   const refContainer = useRef<HTMLDivElement>(null);
   const [graph, setGraph] = useState<Graph | null>(null);
+
   useEffect(() => {
     if (!refContainer.current) return;
     let g: Graph | null = null;
@@ -89,7 +90,17 @@ export default function DiagramEditor(props: DiagramEditorProps) {
         ],
       });
     }
-    if (!props.classInstance) return;
+
+    document.getElementById("x-axis")?.remove();
+    document.getElementById("y-axis")?.remove();
+    document.getElementById("coordinateSystem")?.remove();
+    document.getElementById("background")?.remove();
+
+    if (!props.classInstance) {
+      g.clearCells();
+      return;
+    }
+
     const nodes = new Map<string, NodeMetadata>();
     const edges: EdgeMetadata[] = [];
     for (const component of props.classInstance.components) {
@@ -258,7 +269,6 @@ export default function DiagramEditor(props: DiagramEditorProps) {
       });
     }
 
-    document.getElementById("x-axis")?.remove();
     const xAxis = document.createElementNS("http://www.w3.org/2000/svg", "line");
     xAxis.setAttribute("id", "x-axis");
     xAxis.setAttribute("x1", "-100000");
@@ -271,7 +281,6 @@ export default function DiagramEditor(props: DiagramEditorProps) {
     xAxis.setAttribute("z-index", "2");
     g.view.viewport.insertBefore(xAxis, g.view.viewport.firstChild);
 
-    document.getElementById("y-axis")?.remove();
     const yAxis = document.createElementNS("http://www.w3.org/2000/svg", "line");
     yAxis.setAttribute("id", "y-axis");
     yAxis.setAttribute("x1", "0");
@@ -284,7 +293,6 @@ export default function DiagramEditor(props: DiagramEditorProps) {
     yAxis.setAttribute("z-index", "2");
     g.view.viewport.insertBefore(yAxis, g.view.viewport.firstChild);
 
-    document.getElementById("coordinateSystem")?.remove();
     const coordinateSystem = document.createElementNS("http://www.w3.org/2000/svg", "rect");
     coordinateSystem.setAttribute("id", "coordinateSystem");
     coordinateSystem.setAttribute("x", "-100");
@@ -300,7 +308,6 @@ export default function DiagramEditor(props: DiagramEditorProps) {
 
     const diagram: IDiagram | null = props.classInstance.annotation("Diagram");
     if (diagram) {
-      document.getElementById("background")?.remove();
       const background = document.createElementNS("http://www.w3.org/2000/svg", "svg");
       background.setAttribute("id", "background");
       g.view.viewport.insertBefore(background, g.view.viewport.firstChild);
@@ -351,9 +358,57 @@ export default function DiagramEditor(props: DiagramEditorProps) {
         }
       });
     }
+
     g.fromJSON({ nodes: [...nodes.values()], edges: edges });
-    g.zoomToFit({ useCellGeometry: true });
+
+    // Restore zoom if class name is same, otherwise zoom to fit
+    if (lastClassRef.current === props.classInstance.name) {
+      const targetZoom = lastZoomRef.current;
+      if (targetZoom) {
+        g.zoomTo(targetZoom.zoom);
+        g.translate(targetZoom.tx, targetZoom.ty);
+      }
+    } else {
+      let extent = diagram?.coordinateSystem?.extent;
+      if (!extent || extent.length < 2) {
+        extent = [
+          [-100, -100],
+          [100, 100],
+        ];
+      }
+
+      const p1 = convertPoint(extent[0], [-100, -100]);
+      const width = computeWidth(extent);
+      const height = computeHeight(extent);
+      const bgRect = {
+        x: p1[0],
+        y: -p1[1],
+        width,
+        height,
+      };
+
+      const expandedRect = {
+        x: bgRect.x - bgRect.width * 0.125,
+        y: bgRect.y - bgRect.height * 0.125,
+        width: bgRect.width * 1.25,
+        height: bgRect.height * 1.25,
+      };
+      g.zoomToRect(expandedRect);
+    }
+    lastClassRef.current = props.classInstance.name;
+
+    // Save zoom state on change
+    g.on("scale", () => {
+      lastZoomRef.current = { zoom: g.zoom(), tx: g.translate().tx, ty: g.translate().ty };
+    });
+    g.on("translate", () => {
+      lastZoomRef.current = { zoom: g.zoom(), tx: g.translate().tx, ty: g.translate().ty };
+    });
   }, [props.classInstance, props.theme]);
+
+  const lastClassRef = useRef<string | null | undefined>(undefined);
+  const lastZoomRef = useRef<{ zoom: number; tx: number; ty: number } | null>(null);
+
   return <div ref={refContainer} />;
 }
 

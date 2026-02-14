@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ContentType, Context, decodeDataUrl, encodeDataUrl, ModelicaClassInstance } from "@modelscript/modelscript";
+import {
+  ContentType,
+  Context,
+  decodeDataUrl,
+  encodeDataUrl,
+  ModelicaClassInstance,
+  ModelicaEntity,
+} from "@modelscript/modelscript";
 import {
   CodeIcon,
   LinkExternalIcon,
@@ -11,7 +18,7 @@ import {
   UnwrapIcon,
   WorkflowIcon,
 } from "@primer/octicons-react";
-import { Dialog, IconButton, Label, PageHeader, SegmentedControl, useTheme } from "@primer/react";
+import { Dialog, IconButton, PageHeader, SegmentedControl, useTheme } from "@primer/react";
 import { editor } from "monaco-editor";
 import { type DataUrl } from "parse-data-url";
 import { useEffect, useRef, useState } from "react";
@@ -74,15 +81,12 @@ export default function MorselEditor(props: MorselEditorProps) {
               </PageHeader.LeadingVisual>
             </PageHeader.TitleArea>
             <PageHeader.Actions>
-              <Label size="small" variant="success" className="mx-1">
-                Modelica
-              </Label>
               <SegmentedControl size="small">
                 <SegmentedControl.IconButton
-                  icon={UnwrapIcon}
-                  aria-label="Code View"
-                  title="Code View"
-                  onClick={() => setView(View.CODE)}
+                  icon={WorkflowIcon}
+                  aria-label="Diagram"
+                  title="Diagram View"
+                  onClick={() => setView(View.DIAGRAM)}
                 ></SegmentedControl.IconButton>
                 <SegmentedControl.IconButton
                   icon={SplitViewIcon}
@@ -92,10 +96,10 @@ export default function MorselEditor(props: MorselEditorProps) {
                   onClick={() => setView(View.SPLIT)}
                 ></SegmentedControl.IconButton>
                 <SegmentedControl.IconButton
-                  icon={WorkflowIcon}
-                  aria-label="Diagram"
-                  title="Diagram View"
-                  onClick={() => setView(View.DIAGRAM)}
+                  icon={UnwrapIcon}
+                  aria-label="Code View"
+                  title="Code View"
+                  onClick={() => setView(View.CODE)}
                 ></SegmentedControl.IconButton>
               </SegmentedControl>
               <IconButton
@@ -185,6 +189,79 @@ export default function MorselEditor(props: MorselEditorProps) {
         </div>
         <div className="d-flex flex-1" style={{ minHeight: 0 }}>
           <div
+            className={[View.DIAGRAM, View.SPLIT].indexOf(view) === -1 ? "d-none" : "flex-1"}
+            style={{ width: view == View.DIAGRAM ? "100%" : "50%" }}
+          >
+            <div className="d-flex flex-row height-full">
+              <TreeWidget
+                context={context}
+                onSelect={(classInstance) => {
+                  let entity: ModelicaEntity | null = null;
+                  if (classInstance instanceof ModelicaEntity) {
+                    entity = classInstance;
+                  } else {
+                    let p = classInstance.parent;
+                    while (p) {
+                      if (p instanceof ModelicaEntity) {
+                        entity = p;
+                        break;
+                      }
+                      p = p.parent;
+                    }
+                  }
+
+                  if (entity) {
+                    const path = entity.path;
+                    let filePath = path;
+                    if (context?.fs.stat(path)?.isDirectory()) {
+                      filePath = context.fs.join(path, "package.mo");
+                    }
+                    if (context?.fs.stat(filePath)?.isFile()) {
+                      const content = context.fs.read(filePath);
+                      editor?.setValue(content);
+                      const node = classInstance.abstractSyntaxNode?.concreteSyntaxNode as any;
+                      if (node) {
+                        editor?.revealRange({
+                          startLineNumber: node.startPosition.row + 1,
+                          startColumn: node.startPosition.column + 1,
+                          endLineNumber: node.endPosition.row + 1,
+                          endColumn: node.endPosition.column + 1,
+                        });
+                        editor?.setSelection({
+                          startLineNumber: node.startPosition.row + 1,
+                          startColumn: node.startPosition.column + 1,
+                          endLineNumber: node.endPosition.row + 1,
+                          endColumn: node.endPosition.column + 1,
+                        });
+                      }
+                    }
+                  } else {
+                    const node = classInstance.abstractSyntaxNode?.concreteSyntaxNode as any;
+                    if (node) {
+                      editor?.revealRange({
+                        startLineNumber: node.startPosition.row + 1,
+                        startColumn: node.startPosition.column + 1,
+                        endLineNumber: node.endPosition.row + 1,
+                        endColumn: node.endPosition.column + 1,
+                      });
+                      editor?.setSelection({
+                        startLineNumber: node.startPosition.row + 1,
+                        startColumn: node.startPosition.column + 1,
+                        endLineNumber: node.endPosition.row + 1,
+                        endColumn: node.endPosition.column + 1,
+                      });
+                    }
+                  }
+                }}
+              />
+              <div className="border-left" />
+              <div className="flex-1 overflow-hidden" style={{ minWidth: 0 }}>
+                <DiagramEditor classInstance={classInstance} theme={colorMode === "dark" ? "vs-dark" : "light"} />
+              </div>
+            </div>
+          </div>
+          <div className={[View.SPLIT].indexOf(view) === -1 ? "d-none" : "border-left"}></div>
+          <div
             className={[View.CODE, View.SPLIT].indexOf(view) === -1 ? "d-none" : "flex-1"}
             style={{ width: view === View.CODE ? "100%" : "50%" }}
           >
@@ -196,19 +273,6 @@ export default function MorselEditor(props: MorselEditorProps) {
               content={content}
               theme={colorMode === "dark" ? "vs-dark" : "light"}
             />
-          </div>
-          <div className={[View.SPLIT].indexOf(view) === -1 ? "d-none" : "border-left"}></div>
-          <div
-            className={[View.DIAGRAM, View.SPLIT].indexOf(view) === -1 ? "d-none" : "flex-1"}
-            style={{ width: view == View.DIAGRAM ? "100%" : "50%" }}
-          >
-            <div className="d-flex flex-row height-full">
-              <TreeWidget context={context} onSelect={setClassInstance} />
-              <div className="border-left" />
-              <div className="flex-1 overflow-hidden" style={{ minWidth: 0 }}>
-                <DiagramEditor classInstance={classInstance} theme={colorMode === "dark" ? "vs-dark" : "light"} />
-              </div>
-            </div>
           </div>
         </div>
       </div>
