@@ -4,6 +4,7 @@ import {
   Context,
   ModelicaClassInstance,
   ModelicaLinter,
+  ModelicaNamedElement,
   ModelicaStoredDefinitionSyntaxNode,
   type Range,
 } from "@modelscript/modelscript";
@@ -40,12 +41,61 @@ export default function CodeEditor(props: CodeEditorProps) {
   const editorRef = useRef<editor.ICodeEditor>(null);
   const monacoRef = useRef<Monaco>(null);
   const [context, setContext] = useState<Context | null>(null);
+  const contextRef = useRef<Context | null>(null);
+  const classInstanceRef = useRef<ModelicaClassInstance | null>(null);
+
   const handleEditorWillMount = async (monaco: Monaco) => {
     monacoRef.current = monaco;
     monaco.languages.register({
       id: "modelica",
     });
     monaco.languages.setMonarchTokensProvider("modelica", modelicaTokensProvider);
+    monaco.languages.registerCompletionItemProvider("modelica", {
+      triggerCharacters: ["."],
+      provideCompletionItems: (model: editor.ITextModel, position: monaco.Position) => {
+        const textUntilPosition = model.getValueInRange({
+          startLineNumber: position.lineNumber,
+          startColumn: 1,
+          endLineNumber: position.lineNumber,
+          endColumn: position.column,
+        });
+
+        const word = model.getWordUntilPosition(position);
+        const range = {
+          startLineNumber: position.lineNumber,
+          endLineNumber: position.lineNumber,
+          startColumn: word.startColumn,
+          endColumn: word.endColumn,
+        };
+
+        const match = textUntilPosition.match(/([a-zA-Z0-9_]+(\.[a-zA-Z0-9_]+)*)\.$/);
+        if (match) {
+          const path = match[1];
+          const scope = classInstanceRef.current ?? contextRef.current;
+          if (!scope) return { suggestions: [] };
+
+          const element = scope.resolveName(path.split("."));
+          if (element) {
+            const suggestions: monaco.languages.CompletionItem[] = [];
+            // eslint-disable-next-line @typescript-eslint/naming-convention
+            for (const child of element.elements) {
+              if (child instanceof ModelicaNamedElement && child.name) {
+                suggestions.push({
+                  label: child.name,
+                  kind: monaco.languages.CompletionItemKind.Field,
+                  insertText: child.name,
+                  detail: child.description ?? undefined,
+                  range,
+                });
+              }
+            }
+            return { suggestions };
+          }
+        }
+        return { suggestions: [] };
+      },
+    });
+
     await Parser.init();
     const Modelica = await Parser.Language.load("/tree-sitter-modelica.wasm");
     const parser = new Parser();
@@ -65,6 +115,7 @@ export default function CodeEditor(props: CodeEditorProps) {
     const context = new Context(new WebFileSystem());
     context.addLibrary("/lib/Modelica");
     setContext(context);
+    contextRef.current = context;
     props.setContext?.(context);
   };
   const handleEditorDidMount = (editor: editor.ICodeEditor) => {
@@ -75,7 +126,8 @@ export default function CodeEditor(props: CodeEditorProps) {
     }, 100);
   };
   const handleDidChangeContent = debounce((value: string | undefined) => {
-    if (!value || !context) return;
+    if (!value || !contextRef.current) return;
+    const context = contextRef.current;
     const markers: Partial<editor.IMarker>[] = [];
     const model = editorRef.current?.getModel();
     const linter = new ModelicaLinter(
@@ -99,6 +151,7 @@ export default function CodeEditor(props: CodeEditorProps) {
       instance.instantiate();
       linter.lint(instance);
       props.setClassInstance(instance);
+      classInstanceRef.current = instance;
     }
     monacoRef.current.editor.setModelMarkers(model, "owner", markers);
   }, 500);
