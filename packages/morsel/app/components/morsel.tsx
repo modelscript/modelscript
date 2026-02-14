@@ -6,6 +6,7 @@ import {
   decodeDataUrl,
   encodeDataUrl,
   ModelicaClassInstance,
+  ModelicaComponentInstance,
   ModelicaEntity,
 } from "@modelscript/modelscript";
 import {
@@ -24,6 +25,7 @@ import { type DataUrl } from "parse-data-url";
 import { useEffect, useRef, useState } from "react";
 import CodeEditor from "./code";
 import DiagramEditor from "./diagram";
+import PropertiesWidget from "./properties";
 import TreeWidget from "./tree";
 
 interface MorselEditorProps {
@@ -50,6 +52,7 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [lastLoadedContent, setLastLoadedContent] = useState<string>("");
   const [isDirtyDialogOpen, setDirtyDialogOpen] = useState(false);
   const [pendingSelection, setPendingSelection] = useState<ModelicaClassInstance | null>(null);
+  const [selectedComponent, setSelectedComponent] = useState<ModelicaComponentInstance | null>(null);
   const { colorMode, setColorMode } = useTheme();
 
   useEffect(() => {
@@ -57,6 +60,10 @@ export default function MorselEditor(props: MorselEditorProps) {
       setLastLoadedContent(content);
     }
   }, [content]);
+
+  useEffect(() => {
+    setSelectedComponent(null);
+  }, [classInstance]);
 
   const loadClass = (classInstance: ModelicaClassInstance) => {
     let entity: ModelicaEntity | null = null;
@@ -306,8 +313,27 @@ export default function MorselEditor(props: MorselEditorProps) {
               />
               <div className="border-left" />
               <div className="flex-1 overflow-hidden" style={{ minWidth: 0 }}>
-                <DiagramEditor classInstance={classInstance} theme={colorMode === "dark" ? "vs-dark" : "light"} />
+                <DiagramEditor
+                  classInstance={classInstance}
+                  theme={colorMode === "dark" ? "vs-dark" : "light"}
+                  onSelect={(name) => {
+                    if (!name) {
+                      setSelectedComponent(null);
+                    } else {
+                      const component = classInstance?.components
+                        ? Array.from(classInstance.components).find((c) => c.name === name)
+                        : null;
+                      setSelectedComponent(component || null);
+                    }
+                  }}
+                />
               </div>
+              {selectedComponent && (
+                <>
+                  <div className="border-left" />
+                  <PropertiesWidget component={selectedComponent} />
+                </>
+              )}
             </div>
           </div>
           <div className={[View.SPLIT].indexOf(view) === -1 ? "d-none" : "border-left"}></div>

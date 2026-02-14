@@ -29,12 +29,18 @@ import { renderIconX6 } from "../util/x6";
 
 interface DiagramEditorProps {
   classInstance: ModelicaClassInstance | null;
+  onSelect?: (componentName: string | null) => void;
   theme: Theme;
 }
 
 export default function DiagramEditor(props: DiagramEditorProps) {
   const refContainer = useRef<HTMLDivElement>(null);
   const [graph, setGraph] = useState<Graph | null>(null);
+  const onSelectRef = useRef(props.onSelect);
+
+  useEffect(() => {
+    onSelectRef.current = props.onSelect;
+  }, [props.onSelect]);
 
   useEffect(() => {
     if (!refContainer.current) return;
@@ -70,6 +76,16 @@ export default function DiagramEditor(props: DiagramEditorProps) {
         interacting: false,
       });
       g.use(new Transform({ resizing: true, rotating: true }));
+      g.on("cell:click", ({ cell }) => {
+        if (cell.isNode() && onSelectRef.current) {
+          onSelectRef.current(cell.id);
+        }
+      });
+      g.on("blank:click", () => {
+        if (onSelectRef.current) {
+          onSelectRef.current(null);
+        }
+      });
       setGraph(g);
     } else {
       g = graph;
