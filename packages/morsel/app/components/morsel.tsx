@@ -17,6 +17,7 @@ import { type DataUrl } from "parse-data-url";
 import { useEffect, useRef, useState } from "react";
 import CodeEditor from "./code";
 import DiagramEditor from "./diagram";
+import TreeWidget from "./tree";
 
 interface MorselEditorProps {
   dataUrl: DataUrl | null;
@@ -37,7 +38,7 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [content] = decodeDataUrl(props.dataUrl ?? null);
   const [editor, setEditor] = useState<editor.ICodeEditor | null>(null);
   const [classInstance, setClassInstance] = useState<ModelicaClassInstance | null>(null);
-  const [, setContext] = useState<Context | null>(null);
+  const [context, setContext] = useState<Context | null>(null);
   const [view, setView] = useState<View>(View.SPLIT);
   const { colorMode, setColorMode } = useTheme();
   useEffect(() => {
@@ -201,7 +202,13 @@ export default function MorselEditor(props: MorselEditorProps) {
             className={[View.DIAGRAM, View.SPLIT].indexOf(view) === -1 ? "d-none" : "flex-1"}
             style={{ width: view == View.DIAGRAM ? "100%" : "50%" }}
           >
-            <DiagramEditor classInstance={classInstance} theme={colorMode === "dark" ? "vs-dark" : "light"} />
+            <div className="d-flex flex-row height-full">
+              <TreeWidget context={context} onSelect={setClassInstance} />
+              <div className="border-left" />
+              <div className="flex-1 overflow-hidden" style={{ minWidth: 0 }}>
+                <DiagramEditor classInstance={classInstance} theme={colorMode === "dark" ? "vs-dark" : "light"} />
+              </div>
+            </div>
           </div>
         </div>
       </div>
