@@ -47,7 +47,77 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [classInstance, setClassInstance] = useState<ModelicaClassInstance | null>(null);
   const [context, setContext] = useState<Context | null>(null);
   const [view, setView] = useState<View>(View.SPLIT);
+  const [lastLoadedContent, setLastLoadedContent] = useState<string>("");
+  const [isDirtyDialogOpen, setDirtyDialogOpen] = useState(false);
+  const [pendingSelection, setPendingSelection] = useState<ModelicaClassInstance | null>(null);
   const { colorMode, setColorMode } = useTheme();
+
+  useEffect(() => {
+    if (content) {
+      setLastLoadedContent(content);
+    }
+  }, [content]);
+
+  const loadClass = (classInstance: ModelicaClassInstance) => {
+    let entity: ModelicaEntity | null = null;
+    if (classInstance instanceof ModelicaEntity) {
+      entity = classInstance;
+    } else {
+      let p = classInstance.parent;
+      while (p) {
+        if (p instanceof ModelicaEntity) {
+          entity = p;
+          break;
+        }
+        p = p.parent;
+      }
+    }
+
+    if (entity) {
+      const path = entity.path;
+      let filePath = path;
+      if (context?.fs.stat(path)?.isDirectory()) {
+        filePath = context.fs.join(path, "package.mo");
+      }
+      if (context?.fs.stat(filePath)?.isFile()) {
+        const content = context.fs.read(filePath);
+        editor?.setValue(content);
+        setLastLoadedContent(content);
+        const node = classInstance.abstractSyntaxNode?.concreteSyntaxNode as any;
+        if (node) {
+          editor?.revealRange({
+            startLineNumber: node.startPosition.row + 1,
+            startColumn: node.startPosition.column + 1,
+            endLineNumber: node.endPosition.row + 1,
+            endColumn: node.endPosition.column + 1,
+          });
+          editor?.setSelection({
+            startLineNumber: node.startPosition.row + 1,
+            startColumn: node.startPosition.column + 1,
+            endLineNumber: node.endPosition.row + 1,
+            endColumn: node.endPosition.column + 1,
+          });
+        }
+      }
+    } else {
+      const node = classInstance.abstractSyntaxNode?.concreteSyntaxNode as any;
+      if (node) {
+        editor?.revealRange({
+          startLineNumber: node.startPosition.row + 1,
+          startColumn: node.startPosition.column + 1,
+          endLineNumber: node.endPosition.row + 1,
+          endColumn: node.endPosition.column + 1,
+        });
+        editor?.setSelection({
+          startLineNumber: node.startPosition.row + 1,
+          startColumn: node.startPosition.column + 1,
+          endLineNumber: node.endPosition.row + 1,
+          endColumn: node.endPosition.column + 1,
+        });
+      }
+    }
+  };
+
   useEffect(() => {
     setColorMode(window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -175,6 +245,36 @@ export default function MorselEditor(props: MorselEditorProps) {
                   >{`<iframe width="600" height="400" src="${window.location.protocol}//${window.location.host}/#${encodeDataUrl(editor?.getValue() ?? "", ContentType.MODELICA)}"></iframe>`}</div>
                 </Dialog>
               )}
+              {isDirtyDialogOpen && (
+                <Dialog
+                  title="Unsaved Changes"
+                  onClose={() => setDirtyDialogOpen(false)}
+                  footerButtons={[
+                    {
+                      buttonType: "normal",
+                      content: "Cancel",
+                      onClick: () => {
+                        setDirtyDialogOpen(false);
+                        setPendingSelection(null);
+                      },
+                    },
+                    {
+                      buttonType: "danger",
+                      content: "Discard Changes",
+                      onClick: () => {
+                        setDirtyDialogOpen(false);
+                        if (pendingSelection) {
+                          loadClass(pendingSelection);
+                          setPendingSelection(null);
+                        }
+                      },
+                    },
+                  ]}
+                >
+                  You have unsaved changes. Any unsaved changes will be lost if you switch without saving. Are you sure
+                  you want to discard your changes?
+                </Dialog>
+              )}
               {props.embed && (
                 <IconButton
                   icon={LinkExternalIcon}
@@ -196,61 +296,11 @@ export default function MorselEditor(props: MorselEditorProps) {
               <TreeWidget
                 context={context}
                 onSelect={(classInstance) => {
-                  let entity: ModelicaEntity | null = null;
-                  if (classInstance instanceof ModelicaEntity) {
-                    entity = classInstance;
+                  if (editor?.getValue() !== lastLoadedContent) {
+                    setPendingSelection(classInstance);
+                    setDirtyDialogOpen(true);
                   } else {
-                    let p = classInstance.parent;
-                    while (p) {
-                      if (p instanceof ModelicaEntity) {
-                        entity = p;
-                        break;
-                      }
-                      p = p.parent;
-                    }
-                  }
-
-                  if (entity) {
-                    const path = entity.path;
-                    let filePath = path;
-                    if (context?.fs.stat(path)?.isDirectory()) {
-                      filePath = context.fs.join(path, "package.mo");
-                    }
-                    if (context?.fs.stat(filePath)?.isFile()) {
-                      const content = context.fs.read(filePath);
-                      editor?.setValue(content);
-                      const node = classInstance.abstractSyntaxNode?.concreteSyntaxNode as any;
-                      if (node) {
-                        editor?.revealRange({
-                          startLineNumber: node.startPosition.row + 1,
-                          startColumn: node.startPosition.column + 1,
-                          endLineNumber: node.endPosition.row + 1,
-                          endColumn: node.endPosition.column + 1,
-                        });
-                        editor?.setSelection({
-                          startLineNumber: node.startPosition.row + 1,
-                          startColumn: node.startPosition.column + 1,
-                          endLineNumber: node.endPosition.row + 1,
-                          endColumn: node.endPosition.column + 1,
-                        });
-                      }
-                    }
-                  } else {
-                    const node = classInstance.abstractSyntaxNode?.concreteSyntaxNode as any;
-                    if (node) {
-                      editor?.revealRange({
-                        startLineNumber: node.startPosition.row + 1,
-                        startColumn: node.startPosition.column + 1,
-                        endLineNumber: node.endPosition.row + 1,
-                        endColumn: node.endPosition.column + 1,
-                      });
-                      editor?.setSelection({
-                        startLineNumber: node.startPosition.row + 1,
-                        startColumn: node.startPosition.column + 1,
-                        endLineNumber: node.endPosition.row + 1,
-                        endColumn: node.endPosition.column + 1,
-                      });
-                    }
+                    loadClass(classInstance);
                   }
                 }}
               />
