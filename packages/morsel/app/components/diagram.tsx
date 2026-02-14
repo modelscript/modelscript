@@ -30,6 +30,7 @@ import { renderIconX6 } from "../util/x6";
 interface DiagramEditorProps {
   classInstance: ModelicaClassInstance | null;
   onSelect?: (componentName: string | null) => void;
+  onDrop?: (className: string, x: number, y: number) => void;
   theme: Theme;
 }
 
@@ -425,7 +426,31 @@ export default function DiagramEditor(props: DiagramEditorProps) {
   const lastClassRef = useRef<string | null | undefined>(undefined);
   const lastZoomRef = useRef<{ zoom: number; tx: number; ty: number } | null>(null);
 
-  return <div ref={refContainer} />;
+  return (
+    <div
+      ref={refContainer}
+      className="height-full width-full"
+      onDragOver={(e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "copy";
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        const data = e.dataTransfer.getData("application/json");
+        if (data && graph) {
+          try {
+            const { className } = JSON.parse(data);
+            const p = graph.clientToLocal(e.clientX, e.clientY);
+            if (props.onDrop) {
+              props.onDrop(className, p.x, p.y);
+            }
+          } catch (e) {
+            console.error(e);
+          }
+        }
+      }}
+    />
+  );
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

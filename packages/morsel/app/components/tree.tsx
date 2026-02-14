@@ -47,6 +47,11 @@ export default function TreeWidget(props: TreeWidgetProps) {
             e.stopPropagation();
             props.onSelect(element);
           }}
+          draggable
+          onDragStart={(e) => {
+            e.dataTransfer.setData("application/json", JSON.stringify({ className: element.compositeName }));
+            e.dataTransfer.effectAllowed = "copy";
+          }}
         >
           <NavList.LeadingVisual>
             <ClassIcon classInstance={element} />

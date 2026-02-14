@@ -5,6 +5,7 @@ import {
   Context,
   decodeDataUrl,
   encodeDataUrl,
+  type IDiagram,
   ModelicaClassInstance,
   ModelicaComponentInstance,
   ModelicaEntity,
@@ -324,6 +325,64 @@ export default function MorselEditor(props: MorselEditorProps) {
                         ? Array.from(classInstance.components).find((c) => c.name === name)
                         : null;
                       setSelectedComponent(component || null);
+                    }
+                  }}
+                  onDrop={(className, x, y) => {
+                    if (!classInstance || !editor) return;
+
+                    // Generate unique component name
+                    const baseName = className.split(".").pop()?.toLowerCase() || "component";
+                    let name = baseName;
+                    let i = 1;
+                    const existingNames = new Set(Array.from(classInstance.components).map((c) => c.name));
+                    while (existingNames.has(name)) {
+                      name = `${baseName}${i}`;
+                      i++;
+                    }
+
+                    // Get diagram configuration
+                    const diagram: IDiagram | null = classInstance.annotation("Diagram");
+                    const initialScale = diagram?.coordinateSystem?.initialScale ?? 0.1;
+                    const extent = diagram?.coordinateSystem?.extent;
+
+                    let width = 200;
+                    let height = 200;
+
+                    if (extent && extent.length >= 2) {
+                      width = Math.abs(extent[1][0] - extent[0][0]);
+                      height = Math.abs(extent[1][1] - extent[0][1]);
+                    }
+
+                    const w = width * initialScale;
+                    const h = height * initialScale;
+
+                    // Generate annotation with extent
+                    const annotation = `annotation(Placement(transformation(origin={${Math.round(x)},${-Math.round(y)}}, extent={{-${w / 2},-${h / 2}},{${w / 2},${h / 2}}})))`;
+                    const componentDecl = `  ${className} ${name} ${annotation};\n`;
+
+                    // Insert into editor
+                    const model = editor.getModel();
+                    if (model) {
+                      // Find insertion point (end of class)
+                      const text = model.getValue();
+                      // Simple heuristic: insert before the last "end"
+                      const lastEndIndex = text.lastIndexOf("end");
+                      if (lastEndIndex !== -1) {
+                        const pos = model.getPositionAt(lastEndIndex);
+
+                        // Insert before the last "end" line
+                        editor.executeEdits("dnd", [
+                          {
+                            range: {
+                              startLineNumber: pos.lineNumber,
+                              startColumn: 1,
+                              endLineNumber: pos.lineNumber,
+                              endColumn: 1,
+                            },
+                            text: componentDecl,
+                          },
+                        ]);
+                      }
                     }
                   }}
                 />

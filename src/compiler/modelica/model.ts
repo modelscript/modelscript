@@ -352,6 +352,12 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     })();
   }
 
+  get compositeName(): string {
+    return this.parent instanceof ModelicaClassInstance
+      ? `${this.parent.compositeName}.${this.name}`
+      : (this.name ?? "");
+  }
+
   get connectEquations(): IterableIterator<ModelicaConnectEquationSyntaxNode> {
     const equations = this.equations;
     return (function* () {
