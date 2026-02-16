@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { createHash } from "crypto";
+
 import type { Writer } from "../../util/io.js";
 import logger from "../../util/logger.js";
 import { makeWeakRef, makeWeakRefArray } from "../../util/weak.js";
@@ -149,6 +151,8 @@ export abstract class ModelicaElement extends ModelicaNode {
     return ModelicaElement.#annotationClassInstance;
   }
 
+  abstract get hash(): string;
+
   static instantiateAnnotations(
     classInstance: ModelicaClassInstance | null,
     annotationClause?: ModelicaAnnotationClauseSyntaxNode | null,
@@ -236,6 +240,14 @@ export class ModelicaExtendsClassInstance extends ModelicaElement {
     return (function* () {
       if (elements) yield* elements;
     })();
+  }
+
+  get hash(): string {
+    const hash = createHash("sha256");
+    hash.update("extends");
+    hash.update(this.abstractSyntaxNode?.typeSpecifier?.concreteSyntaxNode?.text ?? "");
+    hash.update(this.mergeModifications().hash);
+    return hash.digest("hex");
   }
 
   override instantiate(): void {
@@ -428,6 +440,17 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
       return new ModelicaModification(this, modificationArguments, null, null, outerModificationArgument.expression);
     }
     return new ModelicaModification(this, modificationArguments);
+  }
+
+  get hash(): string {
+    const hash = createHash("sha256");
+    hash.update(this.name ?? "");
+    hash.update(this.classKind.toString());
+    hash.update(this.modification?.hash ?? "");
+    for (const declaredElement of this.declaredElements) {
+      hash.update(declaredElement.hash);
+    }
+    return hash.digest("hex");
   }
 
   get inputParameters(): IterableIterator<ModelicaComponentInstance> {
@@ -706,6 +729,16 @@ export class ModelicaEntity extends ModelicaClassInstance {
     })();
   }
 
+  override get hash(): string {
+    const hash = createHash("sha256");
+    hash.update(super.hash);
+    hash.update(this.path);
+    for (const subEntity of this.subEntities) {
+      hash.update(subEntity.hash);
+    }
+    return hash.digest("hex");
+  }
+
   override instantiate(): void {
     super.instantiate();
     for (const subEntity of this.subEntities) {
@@ -791,6 +824,14 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
     return (function* () {
       if (elements) yield* elements;
     })();
+  }
+
+  get hash(): string {
+    const hash = createHash("sha256");
+    hash.update(this.name ?? "");
+    hash.update(this.classInstance?.compositeName ?? "");
+    hash.update(this.modification?.hash ?? "");
+    return hash.digest("hex");
   }
 
   override instantiate(): void {
@@ -1064,6 +1105,15 @@ export class ModelicaArrayClassInstance extends ModelicaClassInstance {
     return this.#elementClassInstance;
   }
 
+  override get hash(): string {
+    const hash = createHash("sha256");
+    hash.update(super.hash);
+    for (const shape of this.shape) {
+      hash.update(shape.toString());
+    }
+    return hash.digest("hex");
+  }
+
   override instantiate(): void {
     if (this.instantiated) return;
     if (this.instantiating) throw Error("reentrant error: array class is already being instantiated");
@@ -1152,6 +1202,17 @@ export class ModelicaModification {
       if (modificationArgument.name === name) return modificationArgument;
     }
     return null;
+  }
+
+  get hash(): string {
+    const hash = createHash("sha256");
+    for (const modificationArgument of this.modificationArguments) {
+      hash.update(modificationArgument.hash);
+    }
+    if (this.expression) {
+      hash.update(this.expression.toString());
+    }
+    return hash.digest("hex");
   }
 
   static merge(
@@ -1297,6 +1358,8 @@ export abstract class ModelicaModificationArgument {
 
   abstract get expression(): ModelicaExpression | null;
 
+  abstract get hash(): string;
+
   abstract get name(): string | null;
 
   get scope(): Scope | null {
@@ -1361,6 +1424,18 @@ export class ModelicaElementModification extends ModelicaModificationArgument {
         ),
       ];
     else return this.modificationArguments;
+  }
+
+  get hash(): string {
+    const hash = createHash("sha256");
+    hash.update(this.nameComponents.map((n) => n.text).join("."));
+    for (const arg of this.modificationArguments) {
+      hash.update(arg.hash);
+    }
+    if (this.expression) {
+      hash.update(this.expression.toString());
+    }
+    return hash.digest("hex");
   }
 
   get modificationExpression(): ModelicaModificationExpressionSyntaxNode | null {
@@ -1472,6 +1547,15 @@ export class ModelicaParameterModification extends ModelicaModificationArgument 
     return this.#expressionSyntaxNode?.deref() ?? null;
   }
 
+  get hash(): string {
+    const hash = createHash("sha256");
+    hash.update(this.name);
+    if (this.expression) {
+      hash.update(this.expression.toString());
+    }
+    return hash.digest("hex");
+  }
+
   get name(): string {
     return this.#name;
   }
@@ -1546,6 +1630,13 @@ export class ModelicaClassRedeclaration extends ModelicaElementRedeclaration {
     throw new Error("Method not implemented.");
   }
 
+  get hash(): string {
+    const hash = createHash("sha256");
+    hash.update(this.name ?? "");
+    hash.update(this.classInstance?.hash ?? "");
+    return hash.digest("hex");
+  }
+
   get name(): string | null {
     return this.abstractSyntaxNode.shortClassDefinition?.identifier?.text ?? null;
   }
@@ -1579,6 +1670,13 @@ export class ModelicaComponentRedeclaration extends ModelicaElementRedeclaration
 
   get expression(): ModelicaExpression | null {
     throw new Error("Method not implemented.");
+  }
+
+  get hash(): string {
+    const hash = createHash("sha256");
+    hash.update(this.name ?? "");
+    hash.update(this.componentInstance?.hash ?? "");
+    return hash.digest("hex");
   }
 
   get name(): string | null {

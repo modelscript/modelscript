@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { createHash } from "crypto";
 import type { Writer } from "../../util/io.js";
 import {
   ModelicaArrayClassInstance,
@@ -25,6 +26,18 @@ export class ModelicaDAE {
   accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
     return visitor.visitDAE(this, argument);
   }
+
+  get hash(): string {
+    const hash = createHash("sha256");
+    hash.update(this.name);
+    for (const variable of this.variables) {
+      hash.update(variable.hash);
+    }
+    for (const equation of this.equations) {
+      hash.update(equation.hash);
+    }
+    return hash.digest("hex");
+  }
 }
 
 export abstract class ModelicaEquation {
@@ -35,6 +48,8 @@ export abstract class ModelicaEquation {
   }
 
   abstract accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R;
+
+  abstract get hash(): string;
 }
 
 export class ModelicaSimpleEquation extends ModelicaEquation {
@@ -50,10 +65,20 @@ export class ModelicaSimpleEquation extends ModelicaEquation {
   override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
     return visitor.visitSimpleEquation(this, argument);
   }
+
+  override get hash(): string {
+    const hash = createHash("sha256");
+    hash.update(this.expression1.hash);
+    hash.update("=");
+    hash.update(this.expression2.hash);
+    return hash.digest("hex");
+  }
 }
 
 export abstract class ModelicaExpression {
   abstract accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R;
+
+  abstract get hash(): string;
 
   abstract toJSON(): array<boolean | number | object | string>;
 
@@ -121,6 +146,13 @@ export class ModelicaUnaryExpression extends ModelicaSimpleExpression {
     return visitor.visitUnaryExpression(this, argument);
   }
 
+  override get hash(): string {
+    const hash = createHash("sha256");
+    hash.update(this.operator);
+    hash.update(this.operand.hash);
+    return hash.digest("hex");
+  }
+
   override toJSON(): array<boolean | number | object | string> {
     throw new Error();
   }
@@ -186,6 +218,14 @@ export class ModelicaBinaryExpression extends ModelicaSimpleExpression {
 
   override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
     return visitor.visitBinaryExpression(this, argument);
+  }
+
+  override get hash(): string {
+    const hash = createHash("sha256");
+    hash.update(this.operator);
+    hash.update(this.operand1.hash);
+    hash.update(this.operand2.hash);
+    return hash.digest("hex");
   }
 
   override toJSON(): array<boolean | number | object | string> {
@@ -454,6 +494,17 @@ export class ModelicaArray extends ModelicaPrimaryExpression {
     return null;
   }
 
+  override get hash(): string {
+    const hash = createHash("sha256");
+    for (const dim of this.shape) {
+      hash.update(dim.toString());
+    }
+    for (const element of this.elements) {
+      hash.update(element.hash);
+    }
+    return hash.digest("hex");
+  }
+
   override split(count: number): ModelicaPrimaryExpression[];
   override split(count: number, index: number): ModelicaPrimaryExpression;
   override split(count: number, index?: number): ModelicaPrimaryExpression | ModelicaPrimaryExpression[] {
@@ -466,7 +517,6 @@ export class ModelicaArray extends ModelicaPrimaryExpression {
           return flatElements as ModelicaPrimaryExpression[];
         }
       }
-      // Relaxed check: Return flatElements even if length mismatch
       console.warn(
         `Array split mismatch: elements ${flatElements.length} (flat) vs ${this.elements.length} (raw) != count ${count}. Proceeding with partial/mismatched data.`,
       );
@@ -515,6 +565,16 @@ export class ModelicaObject extends ModelicaPrimaryExpression {
     return this.#classInstance;
   }
 
+  override get hash(): string {
+    const hash = createHash("sha256");
+    const sortedKeys = Array.from(this.elements.keys()).sort();
+    for (const key of sortedKeys) {
+      hash.update(key);
+      hash.update(this.elements.get(key)?.hash ?? "");
+    }
+    return hash.digest("hex");
+  }
+
   override toJSON(): object {
     return Object.assign(Object.fromEntries(this.elements.entries().map((e) => [e[0], e[1].toJSON()])), {
       "@type": this.classInstance?.name ?? undefined,
@@ -536,6 +596,12 @@ export class ModelicaBooleanLiteral extends ModelicaLiteral {
     return visitor.visitBooleanLiteral(this, argument);
   }
 
+  override get hash(): string {
+    const hash = createHash("sha256");
+    hash.update(String(this.value));
+    return hash.digest("hex");
+  }
+
   override toJSON(): boolean {
     return this.value;
   }
@@ -551,6 +617,12 @@ export class ModelicaIntegerLiteral extends ModelicaLiteral {
 
   override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
     return visitor.visitIntegerLiteral(this, argument);
+  }
+
+  override get hash(): string {
+    const hash = createHash("sha256");
+    hash.update(String(this.value));
+    return hash.digest("hex");
   }
 
   override toJSON(): number {
@@ -570,6 +642,12 @@ export class ModelicaRealLiteral extends ModelicaLiteral {
     return visitor.visitRealLiteral(this, argument);
   }
 
+  override get hash(): string {
+    const hash = createHash("sha256");
+    hash.update(String(this.value));
+    return hash.digest("hex");
+  }
+
   override toJSON(): number {
     return this.value;
   }
@@ -585,6 +663,12 @@ export class ModelicaStringLiteral extends ModelicaLiteral {
 
   override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
     return visitor.visitStringLiteral(this, argument);
+  }
+
+  override get hash(): string {
+    const hash = createHash("sha256");
+    hash.update(String(this.value));
+    return hash.digest("hex");
   }
 
   override toJSON(): string {
@@ -604,6 +688,13 @@ export class ModelicaEnumerationLiteral extends ModelicaLiteral {
 
   override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
     return visitor.visitEnumerationLiteral(this, argument);
+  }
+
+  override get hash(): string {
+    const hash = createHash("sha256");
+    hash.update(String(this.ordinalValue));
+    hash.update(this.stringValue);
+    return hash.digest("hex");
   }
 
   toJSON(): string {
@@ -631,6 +722,19 @@ export abstract class ModelicaVariable extends ModelicaPrimaryExpression {
     this.attributes = attributes;
     this.variability = variability;
     this.description = description ?? null;
+  }
+
+  override get hash(): string {
+    const hash = createHash("sha256");
+    hash.update(this.name);
+    hash.update(this.variability?.toString() ?? "");
+    hash.update(this.expression?.hash ?? "");
+    const sortedKeys = Array.from(this.attributes.keys()).sort();
+    for (const key of sortedKeys) {
+      hash.update(key);
+      hash.update(this.attributes.get(key)?.hash ?? "");
+    }
+    return hash.digest("hex");
   }
 }
 
@@ -775,6 +879,15 @@ export class ModelicaEnumerationVariable extends ModelicaVariable {
 
   override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
     return visitor.visitEnumerationVariable(this, argument);
+  }
+
+  override get hash(): string {
+    const hash = createHash("sha256");
+    hash.update(super.hash);
+    for (const literal of this.enumerationLiterals) {
+      hash.update(literal.hash);
+    }
+    return hash.digest("hex");
   }
 
   get fixed(): ModelicaExpression | null {
