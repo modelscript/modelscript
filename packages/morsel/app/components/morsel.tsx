@@ -136,15 +136,17 @@ export default function MorselEditor(props: MorselEditorProps) {
 
   const editorRef = useRef(editor);
   const lastLoadedContentRef = useRef(lastLoadedContent);
+  const loadClassRef = useRef(loadClass);
   editorRef.current = editor;
   lastLoadedContentRef.current = lastLoadedContent;
+  loadClassRef.current = loadClass;
 
   const handleTreeSelect = useCallback((classInstance: ModelicaClassInstance) => {
     if (editorRef.current?.getValue() !== lastLoadedContentRef.current) {
       setPendingSelection(classInstance);
       setDirtyDialogOpen(true);
     } else {
-      loadClass(classInstance);
+      loadClassRef.current(classInstance);
     }
   }, []);
 
