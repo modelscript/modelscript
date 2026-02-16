@@ -33,6 +33,7 @@ interface CodeEditorProps {
   setContext?: (context: Context) => void;
   setClassInstance: (classInstance: ModelicaClassInstance) => void;
   setEditor: (editor: editor.ICodeEditor) => void;
+  onProgress?: (progress: number, message: string) => void;
   theme: Theme;
   embed: boolean;
 }
@@ -97,13 +98,17 @@ export default function CodeEditor(props: CodeEditorProps) {
       },
     });
 
+    props.onProgress?.(10, "Initializing parser…");
     await Parser.init();
+    props.onProgress?.(25, "Loading Modelica grammar…");
     const Modelica = await Parser.Language.load("/tree-sitter-modelica.wasm");
     const parser = new Parser();
     parser.setLanguage(Modelica);
     Context.registerParser(".mo", parser);
+    props.onProgress?.(40, "Fetching Modelica Standard Library…");
     try {
       const ModelicaLibrary = await fetch("/ModelicaStandardLibrary_v4.1.0.zip");
+      props.onProgress?.(60, "Configuring filesystem…");
       await configure({
         mounts: {
           "/lib": { backend: Zip, data: await ModelicaLibrary.arrayBuffer() },
@@ -113,11 +118,13 @@ export default function CodeEditor(props: CodeEditorProps) {
     } catch (e) {
       console.error(e);
     }
+    props.onProgress?.(80, "Loading libraries…");
     const context = new Context(new WebFileSystem());
     context.addLibrary("/lib/Modelica");
     setContext(context);
     contextRef.current = context;
     props.setContext?.(context);
+    props.onProgress?.(100, "Ready");
   };
   const handleEditorDidMount = (editor: editor.ICodeEditor) => {
     editorRef.current = editor;

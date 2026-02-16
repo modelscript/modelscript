@@ -58,6 +58,8 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [selectedComponent, setSelectedComponent] = useState<ModelicaComponentInstance | null>(null);
   const [diagramClassInstance, setDiagramClassInstance] = useState<ModelicaClassInstance | null>(null);
   const isDiagramUpdate = useRef(false);
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [loadingMessage, setLoadingMessage] = useState("Loading…");
   const { colorMode, setColorMode } = useTheme();
 
   useEffect(() => {
@@ -610,9 +612,54 @@ export default function MorselEditor(props: MorselEditorProps) {
               setEditor={setEditor}
               content={content}
               theme={colorMode === "dark" ? "vs-dark" : "light"}
+              onProgress={(progress, message) => {
+                setLoadingProgress(progress);
+                setLoadingMessage(message);
+              }}
             />
           </div>
         </div>
+        {loadingProgress < 100 && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: colorMode === "dark" ? "rgba(0,0,0,0.7)" : "rgba(255,255,255,0.85)",
+              zIndex: 9999,
+              gap: 12,
+            }}
+          >
+            <img
+              src={colorMode === "dark" ? "/brand-dark.png" : "/brand.png"}
+              alt="Morsel"
+              style={{ marginBottom: 8 }}
+            />
+            <div
+              style={{
+                width: 300,
+                height: 6,
+                borderRadius: 3,
+                backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  width: `${loadingProgress}%`,
+                  height: "100%",
+                  borderRadius: 3,
+                  backgroundColor: "#1f6feb",
+                  transition: "width 0.3s ease",
+                }}
+              />
+            </div>
+            <span style={{ fontSize: 13, color: colorMode === "dark" ? "#8b949e" : "#656d76" }}>{loadingMessage}</span>
+          </div>
+        )}
       </div>
     </>
   );
