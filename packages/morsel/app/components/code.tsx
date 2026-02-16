@@ -40,9 +40,10 @@ interface CodeEditorProps {
 export default function CodeEditor(props: CodeEditorProps) {
   const editorRef = useRef<editor.ICodeEditor>(null);
   const monacoRef = useRef<Monaco>(null);
-  const [context, setContext] = useState<Context | null>(null);
+  const [, setContext] = useState<Context | null>(null);
   const contextRef = useRef<Context | null>(null);
   const classInstanceRef = useRef<ModelicaClassInstance | null>(null);
+  const treeRef = useRef<Parser.Tree | null>(null);
 
   const handleEditorWillMount = async (monaco: Monaco) => {
     monacoRef.current = monaco;
@@ -143,6 +144,7 @@ export default function CodeEditor(props: CodeEditorProps) {
       },
     );
     const tree = context.parse(".mo", value);
+    treeRef.current = tree as any;
     linter.lint(tree);
     const node = ModelicaStoredDefinitionSyntaxNode.new(null, tree.rootNode);
     if (node) {

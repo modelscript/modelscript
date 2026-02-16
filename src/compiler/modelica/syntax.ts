@@ -11,7 +11,7 @@ export interface IModelicaSyntaxNode {
 }
 
 export abstract class ModelicaSyntaxNode implements IModelicaSyntaxNode {
-  #concreteSyntaxNode: WeakRef<SyntaxNode> | null;
+  #concreteSyntaxNode: SyntaxNode | null;
   #parent: WeakRef<ModelicaSyntaxNode> | null;
   "@type": string;
 
@@ -23,7 +23,7 @@ export abstract class ModelicaSyntaxNode implements IModelicaSyntaxNode {
   ) {
     if (parent) this.#parent = new WeakRef(parent);
     else this.#parent = null;
-    if (concreteSyntaxNode) this.#concreteSyntaxNode = new WeakRef(concreteSyntaxNode);
+    if (concreteSyntaxNode) this.#concreteSyntaxNode = concreteSyntaxNode;
     else this.#concreteSyntaxNode = null;
     this["@type"] = type ?? this.constructor.name.substring(8, this.constructor.name.length - 10);
     if (concreteSyntaxNode && concreteSyntaxNode.type != this["@type"])
@@ -35,7 +35,7 @@ export abstract class ModelicaSyntaxNode implements IModelicaSyntaxNode {
   abstract accept<R, A>(visitor: IModelicaSyntaxVisitor<R, A>, argument?: A): R;
 
   get concreteSyntaxNode(): SyntaxNode | null {
-    return this.#concreteSyntaxNode?.deref() ?? null;
+    return this.#concreteSyntaxNode ?? null;
   }
 
   get parent(): ModelicaSyntaxNode | null {

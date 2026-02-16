@@ -287,7 +287,7 @@ export function applyCoordinateSystemX6(markup: X6Markup, coordinateSystem?: ICo
   const height = computeHeight(coordinateSystem?.extent);
   if (!markup.attrs) markup.attrs = {};
   markup.attrs["viewBox"] = `${x} ${y} ${width} ${height}`;
-  markup.attrs["preserveAspectRatio"] = "xMinYMin meet";
+  markup.attrs["preserveAspectRatio"] = "none";
   markup.attrs["overflow"] = "visible";
 }
 

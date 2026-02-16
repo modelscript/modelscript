@@ -32,6 +32,8 @@ interface DiagramEditorProps {
   onSelect?: (componentName: string | null) => void;
   onDrop?: (className: string, x: number, y: number) => void;
   onConnect?: (source: string, target: string) => void;
+  onMove?: (name: string, x: number, y: number, width: number, height: number, rotation: number) => void;
+  onResize?: (name: string, x: number, y: number, width: number, height: number, rotation: number) => void;
   theme: Theme;
 }
 
@@ -40,11 +42,18 @@ export default function DiagramEditor(props: DiagramEditorProps) {
   const [graph, setGraph] = useState<Graph | null>(null);
   const onSelectRef = useRef(props.onSelect);
   const onConnectRef = useRef(props.onConnect);
+  const onMoveRef = useRef(props.onMove);
+  const onResizeRef = useRef(props.onResize);
+  const moveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const justResizedRef = useRef(false);
 
   useEffect(() => {
     onSelectRef.current = props.onSelect;
+    onSelectRef.current = props.onSelect;
     onConnectRef.current = props.onConnect;
-  }, [props.onSelect, props.onConnect]);
+    onMoveRef.current = props.onMove;
+    onResizeRef.current = props.onResize;
+  }, [props.onSelect, props.onConnect, props.onMove, props.onResize]);
 
   useEffect(() => {
     if (!refContainer.current) return;
@@ -91,7 +100,7 @@ export default function DiagramEditor(props: DiagramEditorProps) {
                 },
               },
             });
-          }
+          },
         },
       });
       g.use(new Transform({ resizing: true, rotating: true }));
@@ -110,11 +119,51 @@ export default function DiagramEditor(props: DiagramEditorProps) {
           const source = edge.getSource() as any;
           const target = edge.getTarget() as any;
           if (source.cell && source.port && target.cell && target.port) {
-            onConnectRef.current(
-              `${source.cell}.${source.port}`,
-              `${target.cell}.${target.port}`
-            );
+            onConnectRef.current(`${source.cell}.${source.port}`, `${target.cell}.${target.port}`);
           }
+        }
+      });
+      g.on("node:mouseup", ({ node }) => {
+        if (moveTimeoutRef.current) {
+          clearTimeout(moveTimeoutRef.current);
+        }
+        moveTimeoutRef.current = setTimeout(() => {
+          if (justResizedRef.current) {
+            justResizedRef.current = false; // Reset flag
+            moveTimeoutRef.current = null;
+            return;
+          }
+          if (onMoveRef.current) {
+            const p = node.getPosition();
+            const s = node.getSize();
+            const r = node.getAngle();
+            onMoveRef.current(node.id, p.x, p.y, s.width, s.height, r);
+          }
+          moveTimeoutRef.current = null;
+        }, 100);
+      });
+      g.on("node:rotated", ({ node }) => {
+        if (onMoveRef.current) {
+          const p = node.getPosition();
+          const s = node.getSize();
+          const r = node.getAngle();
+          onMoveRef.current(node.id, p.x, p.y, s.width, s.height, r);
+        }
+      });
+      g.on("node:resized", ({ node }: any) => {
+        if (moveTimeoutRef.current) {
+          clearTimeout(moveTimeoutRef.current);
+          moveTimeoutRef.current = null;
+        }
+        justResizedRef.current = true;
+        setTimeout(() => {
+          justResizedRef.current = false;
+        }, 200);
+        if (onResizeRef.current) {
+          const p = node.getPosition();
+          const s = node.getSize();
+          const r = node.getAngle();
+          onResizeRef.current(node.id, p.x, p.y, s.width, s.height, r);
         }
       });
       setGraph(g);

@@ -6,7 +6,6 @@ import {
   decodeDataUrl,
   encodeDataUrl,
   type IDiagram,
-  type ModelicaClassDefinitionSyntaxNode,
   ModelicaClassInstance,
   ModelicaComponentInstance,
   ModelicaEntity,
@@ -56,6 +55,8 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [isDirtyDialogOpen, setDirtyDialogOpen] = useState(false);
   const [pendingSelection, setPendingSelection] = useState<ModelicaClassInstance | null>(null);
   const [selectedComponent, setSelectedComponent] = useState<ModelicaComponentInstance | null>(null);
+  const [diagramClassInstance, setDiagramClassInstance] = useState<ModelicaClassInstance | null>(null);
+  const isDiagramUpdate = useRef(false);
   const { colorMode, setColorMode } = useTheme();
 
   useEffect(() => {
@@ -66,6 +67,10 @@ export default function MorselEditor(props: MorselEditorProps) {
 
   useEffect(() => {
     setSelectedComponent(null);
+    if (!isDiagramUpdate.current) {
+      setDiagramClassInstance(classInstance);
+    }
+    isDiagramUpdate.current = false;
   }, [classInstance]);
 
   const loadClass = (classInstance: ModelicaClassInstance) => {
@@ -139,6 +144,134 @@ export default function MorselEditor(props: MorselEditorProps) {
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
   }, []);
+
+  const handlePlacementChange = (
+    name: string,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    rotation: number,
+  ) => {
+    if (!classInstance || !editor) return;
+
+    const component = classInstance.components
+      ? Array.from(classInstance.components).find((c) => c.name === name)
+      : null;
+
+    if (!component) return;
+    const originX = Math.round(x + width / 2);
+    const originY = Math.round(-(y + height / 2));
+    const w = Math.round(width);
+    const h = Math.round(height);
+    const r = Math.round(-(rotation ?? 0));
+    const abstractNode = (component as any).abstractSyntaxNode;
+    const node = abstractNode?.concreteSyntaxNode;
+    if (node) {
+      const startLine = node.startPosition.row + 1;
+      const startCol = node.startPosition.column + 1;
+      const endLine = node.endPosition.row + 1;
+      const endCol = node.endPosition.column + 1;
+
+      const range = {
+        startLineNumber: startLine,
+        startColumn: startCol,
+        endLineNumber: endLine,
+        endColumn: endCol,
+      };
+
+      const text = editor.getModel()?.getValueInRange(range) || "";
+      const rotationPart = r !== 0 ? `, rotation=${r}` : "";
+      const newTransformationCore = `origin={${originX},${originY}}, extent={{-${w / 2},-${h / 2}},{${w / 2},${h / 2}}}${rotationPart}`;
+
+      const annotationMatch = text.match(/annotation\s*\(/);
+      if (annotationMatch) {
+        const startIndex = annotationMatch.index! + annotationMatch[0].length;
+        let nesting = 0;
+        let endIndex = -1;
+        for (let i = startIndex; i < text.length; i++) {
+          if (text[i] === "(") nesting++;
+          else if (text[i] === ")") {
+            if (nesting === 0) {
+              endIndex = i;
+              break;
+            }
+            nesting--;
+          }
+        }
+
+        if (endIndex !== -1) {
+          const annotationContent = text.substring(startIndex, endIndex);
+          const placementMatch = annotationContent.match(/Placement\s*\(/);
+          if (placementMatch) {
+            const placementStartRel = placementMatch.index! + placementMatch[0].length;
+            const placementStartAbs = startIndex + placementStartRel;
+            let pNesting = 0;
+            let placementEndAbs = -1;
+            for (let i = placementStartAbs; i < text.length; i++) {
+              if (text[i] === "(") pNesting++;
+              else if (text[i] === ")") {
+                if (pNesting === 0) {
+                  placementEndAbs = i;
+                  break;
+                }
+                pNesting--;
+              }
+            }
+            if (placementEndAbs !== -1) {
+              const placementContent = text.substring(placementStartAbs, placementEndAbs);
+              const transformMatch = placementContent.match(/transformation\s*\(/);
+              if (transformMatch) {
+                const transformStartAbs = placementStartAbs + transformMatch.index! + transformMatch[0].length;
+                let tNesting = 0;
+                let transformEndAbs = -1;
+                for (let i = transformStartAbs; i < text.length; i++) {
+                  if (text[i] === "(") tNesting++;
+                  else if (text[i] === ")") {
+                    if (tNesting === 0) {
+                      transformEndAbs = i;
+                      break;
+                    }
+                    tNesting--;
+                  }
+                }
+                if (transformEndAbs !== -1) {
+                  const newText =
+                    text.substring(0, transformStartAbs) + newTransformationCore + text.substring(transformEndAbs);
+                  if (newText !== text) {
+                    editor.executeEdits("move", [{ range, text: newText }]);
+                  }
+                }
+              } else {
+                const insert = `transformation(${newTransformationCore})`;
+                const prefix = placementContent.trim().length > 0 ? ", " : "";
+                const newText = text.substring(0, placementEndAbs) + prefix + insert + text.substring(placementEndAbs);
+                editor.executeEdits("move", [{ range, text: newText }]);
+              }
+            }
+          } else {
+            const insert = `Placement(transformation(${newTransformationCore}))`;
+            const innerContent = annotationContent.trim();
+            const prefix = innerContent.length > 0 ? ", " : "";
+            const newText = text.substring(0, endIndex) + prefix + insert + text.substring(endIndex);
+            editor.executeEdits("move", [{ range, text: newText }]);
+          }
+        }
+      } else {
+        const semiIndex = text.lastIndexOf(";");
+        if (semiIndex !== -1) {
+          const insert = ` annotation(Placement(transformation(${newTransformationCore})))`;
+          const newText = text.slice(0, semiIndex) + insert + text.slice(semiIndex);
+          editor.executeEdits("move", [{ range, text: newText }]);
+        } else {
+          const insert = ` annotation(Placement(transformation(${newTransformationCore})))`;
+          const newText = text + insert;
+          editor.executeEdits("move", [{ range, text: newText }]);
+        }
+      }
+    }
+  };
+
   return (
     <>
       <title>Morsel | ModelScript.org</title>
@@ -317,7 +450,7 @@ export default function MorselEditor(props: MorselEditorProps) {
               <div className="border-left" />
               <div className="flex-1 overflow-hidden" style={{ minWidth: 0 }}>
                 <DiagramEditor
-                  classInstance={classInstance}
+                  classInstance={diagramClassInstance}
                   theme={colorMode === "dark" ? "vs-dark" : "light"}
                   onSelect={(name) => {
                     if (!name) {
@@ -389,6 +522,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                   }}
                   onConnect={(source, target) => {
                     if (!classInstance || !editor) return;
+                    isDiagramUpdate.current = true;
 
                     const connectEq = `  connect(${source}, ${target});\n`;
                     const model = editor.getModel();
@@ -407,31 +541,45 @@ export default function MorselEditor(props: MorselEditorProps) {
 
                     if (equationSection && equationSection.concreteSyntaxNode) {
                       const endPos = equationSection.concreteSyntaxNode.endPosition;
-                      editor.executeEdits("connect", [{
-                        range: {
-                          startLineNumber: endPos.row + 1,
-                          startColumn: 1,
-                          endLineNumber: endPos.row + 1,
-                          endColumn: endPos.column + 1
+                      editor.executeEdits("connect", [
+                        {
+                          range: {
+                            startLineNumber: endPos.row + 1,
+                            startColumn: 1,
+                            endLineNumber: endPos.row + 1,
+                            endColumn: endPos.column + 1,
+                          },
+                          text: connectEq,
                         },
-                        text: connectEq
-                      }]);
+                      ]);
                     } else {
                       const text = model.getValue();
                       const lastEndIndex = text.lastIndexOf("end");
                       if (lastEndIndex !== -1) {
                         const pos = model.getPositionAt(lastEndIndex);
-                        editor.executeEdits("connect", [{
-                          range: {
-                            startLineNumber: pos.lineNumber,
-                            startColumn: 1,
-                            endLineNumber: pos.lineNumber,
-                            endColumn: 1
+                        editor.executeEdits("connect", [
+                          {
+                            range: {
+                              startLineNumber: pos.lineNumber,
+                              startColumn: 1,
+                              endLineNumber: pos.lineNumber,
+                              endColumn: 1,
+                            },
+                            text: `equation\n${connectEq}`,
                           },
-                          text: `equation\n${connectEq}`
-                        }]);
+                        ]);
                       }
                     }
+                  }}
+                  onMove={(name, x, y, width, height, rotation) => {
+                    if (!classInstance || !editor) return;
+                    isDiagramUpdate.current = true;
+                    handlePlacementChange(name, x, y, width, height, rotation);
+                  }}
+                  onResize={(name, x, y, width, height, rotation) => {
+                    if (!classInstance || !editor) return;
+                    isDiagramUpdate.current = false;
+                    handlePlacementChange(name, x, y, width, height, rotation);
                   }}
                 />
               </div>
