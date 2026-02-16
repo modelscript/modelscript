@@ -24,7 +24,7 @@ import {
 import { Dialog, IconButton, PageHeader, SegmentedControl, useTheme } from "@primer/react";
 import { editor } from "monaco-editor";
 import { type DataUrl } from "parse-data-url";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import CodeEditor from "./code";
 import DiagramEditor from "./diagram";
 import PropertiesWidget from "./properties";
@@ -133,6 +133,20 @@ export default function MorselEditor(props: MorselEditorProps) {
       }
     }
   };
+
+  const editorRef = useRef(editor);
+  const lastLoadedContentRef = useRef(lastLoadedContent);
+  editorRef.current = editor;
+  lastLoadedContentRef.current = lastLoadedContent;
+
+  const handleTreeSelect = useCallback((classInstance: ModelicaClassInstance) => {
+    if (editorRef.current?.getValue() !== lastLoadedContentRef.current) {
+      setPendingSelection(classInstance);
+      setDirtyDialogOpen(true);
+    } else {
+      loadClass(classInstance);
+    }
+  }, []);
 
   useEffect(() => {
     setColorMode(window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
@@ -437,17 +451,7 @@ export default function MorselEditor(props: MorselEditorProps) {
             style={{ width: view == View.DIAGRAM ? "100%" : "50%" }}
           >
             <div className="d-flex flex-row height-full">
-              <TreeWidget
-                context={context}
-                onSelect={(classInstance) => {
-                  if (editor?.getValue() !== lastLoadedContent) {
-                    setPendingSelection(classInstance);
-                    setDirtyDialogOpen(true);
-                  } else {
-                    loadClass(classInstance);
-                  }
-                }}
-              />
+              <TreeWidget context={context} onSelect={handleTreeSelect} />
               <div className="border-left" />
               <div className="flex-1 overflow-hidden" style={{ minWidth: 0 }}>
                 <DiagramEditor
