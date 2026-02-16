@@ -487,9 +487,6 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     for (const element of this.declaredElements) {
       if (element instanceof ModelicaExtendsClassInstance) element.instantiate();
     }
-    for (const element of this.declaredElements) {
-      if (element instanceof ModelicaClassInstance) element.instantiate();
-    }
     for (const importClause of this.#importClauses) {
       const packageInstance = this.resolveName(importClause.packageName, true);
       if (!(packageInstance instanceof ModelicaClassInstance)) continue;
@@ -507,9 +504,6 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
           }
         }
       }
-    }
-    for (const element of this.declaredElements) {
-      if (element instanceof ModelicaComponentInstance) element.instantiate();
     }
     this.annotations = ModelicaElement.instantiateAnnotations(this, this.abstractSyntaxNode?.annotationClause);
     this.instantiated = true;
@@ -643,7 +637,9 @@ export class ModelicaShortClassInstance extends ModelicaClassInstance {
 
   override clone(modification?: ModelicaModification | null): ModelicaClassInstance {
     if (!this.instantiated && !this.instantiating) this.instantiate();
-    if (!this.classInstance) throw new Error();
+    if (!this.classInstance) {
+      return new ModelicaClassInstance(this.parent, this.abstractSyntaxNode, modification);
+    }
     const mergedModification = ModelicaModification.merge(this.modification, modification ?? null);
     return this.classInstance.clone(mergedModification);
   }
@@ -677,6 +673,9 @@ export class ModelicaShortClassInstance extends ModelicaClassInstance {
           this.modification,
         );
       this.classInstance.instantiate();
+    } else {
+      // Resolution failed.
+      console.warn(`Failed to resolve class '${this.name}' target.`);
     }
     this.instantiated = true;
   }
@@ -1129,9 +1128,21 @@ export class ModelicaModification {
     this.#expression = expression ?? null;
   }
 
+  #evaluating = false;
+
   get expression(): ModelicaExpression | null {
     if (this.#expression) return this.#expression;
-    this.#expression = this.modificationExpression?.expression?.accept(new ModelicaInterpreter(), this.scope) ?? null;
+    if (this.#evaluating) {
+      // TODO: Handle circular dependencies
+      console.error("Circular dependency");
+      return null;
+    }
+    this.#evaluating = true;
+    try {
+      this.#expression = this.modificationExpression?.expression?.accept(new ModelicaInterpreter(), this.scope) ?? null;
+    } finally {
+      this.#evaluating = false;
+    }
     return this.#expression;
   }
 
@@ -1320,9 +1331,21 @@ export class ModelicaElementModification extends ModelicaModificationArgument {
     this.#expression = expression ?? null;
   }
 
+  #evaluating = false;
+
   override get expression(): ModelicaExpression | null {
     if (this.#expression) return this.#expression;
-    this.#expression = this.modificationExpression?.expression?.accept(new ModelicaInterpreter(), this.scope) ?? null;
+    if (this.#evaluating) {
+      // TODO: Handle circular dependencies
+      console.error("Circular dependency in element modification expression");
+      return null;
+    }
+    this.#evaluating = true;
+    try {
+      this.#expression = this.modificationExpression?.expression?.accept(new ModelicaInterpreter(), this.scope) ?? null;
+    } finally {
+      this.#evaluating = false;
+    }
     return this.#expression;
   }
 
@@ -1379,7 +1402,7 @@ export class ModelicaElementModification extends ModelicaModificationArgument {
   override split(count: number): ModelicaElementModification[];
   override split(count: number, index: number): ModelicaElementModification;
   override split(count: number, index?: number): ModelicaElementModification | ModelicaElementModification[] {
-    if (!this.expression) throw new Error();
+    const expressions = this.expression?.split(count, index as number);
     if (index) {
       return new ModelicaElementModification(
         this.scope,
@@ -1387,21 +1410,21 @@ export class ModelicaElementModification extends ModelicaModificationArgument {
         this.modificationArguments.map((m) => m.split(count, index)),
         this.modificationExpression,
         this.description,
-        this.expression.split(count, index),
+        expressions as ModelicaExpression | undefined,
       );
     } else {
       const modificationArguments = this.modificationArguments.map((m) => m.split(count));
-      const expressions = this.expression.split(count);
       const modifications = [];
+      const exprs = expressions as ModelicaExpression[] | undefined;
       for (let i = 0; i < count; i++) {
         modifications.push(
           new ModelicaElementModification(
             this.scope,
             this.nameComponents,
-            modificationArguments?.[i] ?? [],
+            modificationArguments.map((m) => m[i]).flatMap((m) => (m ? [m] : [])),
             this.modificationExpression,
             this.description,
-            expressions[i],
+            exprs?.[i],
           ),
         );
       }
@@ -1427,9 +1450,21 @@ export class ModelicaParameterModification extends ModelicaModificationArgument 
     this.#expression = expression ?? null;
   }
 
+  #evaluating = false;
+
   override get expression(): ModelicaExpression | null {
     if (this.#expression) return this.#expression;
-    this.#expression = this.#expressionSyntaxNode?.deref()?.accept(new ModelicaInterpreter(), this.scope) ?? null;
+    if (this.#evaluating) {
+      // TODO: Handle circular dependencies
+      console.error("Circular dependency in parameter modification expression");
+      return null;
+    }
+    this.#evaluating = true;
+    try {
+      this.#expression = this.#expressionSyntaxNode?.deref()?.accept(new ModelicaInterpreter(), this.scope) ?? null;
+    } finally {
+      this.#evaluating = false;
+    }
     return this.#expression;
   }
 

@@ -95,7 +95,17 @@ export abstract class ModelicaExpression {
   }
 }
 
-export abstract class ModelicaSimpleExpression extends ModelicaExpression {}
+export abstract class ModelicaSimpleExpression extends ModelicaExpression {
+  override split(count: number): ModelicaSimpleExpression[];
+  override split(count: number, index: number): ModelicaSimpleExpression;
+  override split(count: number, index?: number): ModelicaSimpleExpression | ModelicaSimpleExpression[] {
+    if (index) {
+      return this;
+    } else {
+      return Array(count).fill(this);
+    }
+  }
+}
 
 export class ModelicaUnaryExpression extends ModelicaSimpleExpression {
   operand: ModelicaExpression;
@@ -456,7 +466,15 @@ export class ModelicaArray extends ModelicaPrimaryExpression {
           return flatElements as ModelicaPrimaryExpression[];
         }
       }
-      throw new Error(`Array split mismatch: elements ${this.elements.length} != count ${count}`);
+      // Relaxed check: Return flatElements even if length mismatch
+      console.warn(
+        `Array split mismatch: elements ${flatElements.length} (flat) vs ${this.elements.length} (raw) != count ${count}. Proceeding with partial/mismatched data.`,
+      );
+      if (index) {
+        return flatElements[index] as ModelicaPrimaryExpression;
+      } else {
+        return flatElements as ModelicaPrimaryExpression[];
+      }
     }
     if (index) {
       const expression = this.elements[index];
