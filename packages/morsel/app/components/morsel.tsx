@@ -46,7 +46,8 @@ export default function MorselEditor(props: MorselEditorProps) {
   const shareButtonRef = useRef<HTMLButtonElement>(null);
   const [isEmbedDialogOpen, setEmbedDialogOpen] = useState(false);
   const embedButtonRef = useRef<HTMLButtonElement>(null);
-  const [content] = decodeDataUrl(props.dataUrl ?? null);
+  const [decodedContent] = decodeDataUrl(props.dataUrl ?? null);
+  const content = decodedContent || "model Example\n\nend Example;";
   const [editor, setEditor] = useState<editor.ICodeEditor | null>(null);
   const [classInstance, setClassInstance] = useState<ModelicaClassInstance | null>(null);
   const [context, setContext] = useState<Context | null>(null);
