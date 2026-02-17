@@ -20,7 +20,6 @@ const iconSvgCache = new Map<string, string | null>();
 const ClassIcon = React.memo(function ClassIcon(props: ClassIconProps) {
   const ref = React.useRef<HTMLDivElement>(null);
   const cacheKey = props.classInstance.compositeName;
-
   const svgString = React.useMemo(() => {
     const cached = iconSvgCache.get(cacheKey);
     if (cached !== undefined) return cached;

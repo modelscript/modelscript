@@ -9,6 +9,7 @@ export default defineConfig(({ isSsrBuild }) => {
   return {
     define: {
       "process.env": {},
+      "process.browser": true,
     },
     plugins: [
       tailwindcss(),
@@ -16,13 +17,8 @@ export default defineConfig(({ isSsrBuild }) => {
       tsconfigPaths(),
       isSsrBuild === false &&
         nodePolyfills({
-          include: ["buffer", "crypto", "fs", "path", "stream", "util"],
+          include: ["buffer", "crypto", "fs", "path", "process", "stream", "util"],
           protocolImports: false,
-          globals: {
-            Buffer: true,
-            global: true,
-            process: true,
-          },
         }),
       viteStaticCopy({
         targets: [
@@ -37,42 +33,8 @@ export default defineConfig(({ isSsrBuild }) => {
         ],
       }),
     ],
-    resolve: {
-      alias:
-        isSsrBuild !== false
-          ? {
-              // Force native node builtins for SSR, rely on polyfills for browser
-              stream: "node:stream",
-              crypto: "node:crypto",
-              buffer: "node:buffer",
-              util: "node:util",
-              fs: "node:fs",
-              path: "node:path",
-              events: "node:events",
-              "stream-browserify": "node:stream",
-              "crypto-browserify": "node:crypto",
-              "buffer-browserify": "node:buffer",
-            }
-          : undefined,
-    },
     ssr: {
       noExternal: ["@primer/react", "monaco-editor"],
-      external: [
-        "node:buffer",
-        "node:crypto",
-        "node:events",
-        "node:fs",
-        "node:path",
-        "node:stream",
-        "node:util",
-        "buffer",
-        "crypto",
-        "events",
-        "fs",
-        "path",
-        "stream",
-        "util",
-      ],
     },
   };
 });

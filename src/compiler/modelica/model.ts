@@ -307,14 +307,13 @@ export abstract class ModelicaNamedElement extends ModelicaElement {
 
 export class ModelicaClassInstance extends ModelicaNamedElement {
   #abstractSyntaxNode: ModelicaClassDefinitionSyntaxNode | ModelicaShortClassDefinitionSyntaxNode | null;
+  #cloneCache = new Map<string, ModelicaClassInstance>();
   #importClauses: ModelicaImportClauseSyntaxNode[] = [];
   #modification: ModelicaModification | null = null;
   #qualifiedImports = new Map<string, ModelicaClassInstance>();
   #unqualifiedImports: ModelicaClassInstance[] = [];
   classKind: ModelicaClassKind;
   declaredElements: ModelicaElement[] = [];
-
-  protected _cloneCache = new Map<string, ModelicaClassInstance>();
 
   constructor(
     parent: Scope | null,
@@ -343,7 +342,7 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     this.#abstractSyntaxNode = abstractSyntaxNode;
     this.name = this.abstractSyntaxNode?.identifier?.text ?? null;
     this.instantiated = false;
-    this._cloneCache.clear();
+    this.#cloneCache.clear();
   }
 
   override accept<R, A>(visitor: IModelicaModelVisitor<R, A>, argument?: A): R {
@@ -354,11 +353,11 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     if (!this.abstractSyntaxNode) throw new Error();
     const mergedModification = ModelicaModification.merge(this.#modification, modification);
     const hash = mergedModification?.hash ?? "";
-    const cachedInstance = this._cloneCache.get(hash);
-    if (cachedInstance) return cachedInstance;
+    const cachedInstance = this.#cloneCache.get(hash);
+    if (cachedInstance) cachedInstance.instantiate();
     const classInstance = ModelicaClassInstance.new(this.parent, this.abstractSyntaxNode, mergedModification);
     classInstance.instantiate();
-    this._cloneCache.set(hash, classInstance);
+    this.#cloneCache.set(hash, classInstance);
     return classInstance;
   }
 
@@ -930,13 +929,8 @@ export class ModelicaBooleanClassInstance extends ModelicaPredefinedClassInstanc
   override clone(modification?: ModelicaModification | null): ModelicaBooleanClassInstance {
     if (!this.instantiated && !this.instantiating) this.instantiate();
     const mergedModification = ModelicaModification.merge(this.modification, modification);
-    const hash = mergedModification?.hash ?? "";
-    if (this._cloneCache.has(hash)) {
-      return this._cloneCache.get(hash) as ModelicaBooleanClassInstance;
-    }
     const classInstance = new ModelicaBooleanClassInstance(this.parent, mergedModification);
     classInstance.instantiate();
-    this._cloneCache.set(hash, classInstance);
     return classInstance;
   }
 
@@ -965,13 +959,8 @@ export class ModelicaIntegerClassInstance extends ModelicaPredefinedClassInstanc
   override clone(modification?: ModelicaModification | null): ModelicaIntegerClassInstance {
     if (!this.instantiated && !this.instantiating) this.instantiate();
     const mergedModification = ModelicaModification.merge(this.modification, modification);
-    const hash = mergedModification?.hash ?? "";
-    if (this._cloneCache.has(hash)) {
-      return this._cloneCache.get(hash) as ModelicaIntegerClassInstance;
-    }
     const classInstance = new ModelicaIntegerClassInstance(this.parent, mergedModification);
     classInstance.instantiate();
-    this._cloneCache.set(hash, classInstance);
     return classInstance;
   }
 
@@ -1008,13 +997,8 @@ export class ModelicaRealClassInstance extends ModelicaPredefinedClassInstance {
   override clone(modification?: ModelicaModification | null): ModelicaRealClassInstance {
     if (!this.instantiated && !this.instantiating) this.instantiate();
     const mergedModification = ModelicaModification.merge(this.modification, modification);
-    const hash = mergedModification?.hash ?? "";
-    if (this._cloneCache.has(hash)) {
-      return this._cloneCache.get(hash) as ModelicaRealClassInstance;
-    }
     const classInstance = new ModelicaRealClassInstance(this.parent, mergedModification);
     classInstance.instantiate();
-    this._cloneCache.set(hash, classInstance);
     return classInstance;
   }
 
@@ -1071,13 +1055,8 @@ export class ModelicaStringClassInstance extends ModelicaPredefinedClassInstance
   override clone(modification?: ModelicaModification | null): ModelicaStringClassInstance {
     if (!this.instantiated && !this.instantiating) this.instantiate();
     const mergedModification = ModelicaModification.merge(this.modification, modification);
-    const hash = mergedModification?.hash ?? "";
-    if (this._cloneCache.has(hash)) {
-      return this._cloneCache.get(hash) as ModelicaStringClassInstance;
-    }
     const classInstance = new ModelicaStringClassInstance(this.parent, mergedModification);
     classInstance.instantiate();
-    this._cloneCache.set(hash, classInstance);
     return classInstance;
   }
 

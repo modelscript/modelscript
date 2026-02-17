@@ -62,7 +62,6 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
 
   useEffect(() => {
     onSelectRef.current = props.onSelect;
-    onSelectRef.current = props.onSelect;
     onConnectRef.current = props.onConnect;
     onMoveRef.current = props.onMove;
     onResizeRef.current = props.onResize;

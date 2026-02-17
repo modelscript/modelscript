@@ -13,7 +13,6 @@ export * from "./compiler/modelica/types.js";
 export * from "./compiler/scope.js";
 export * from "./util/enum.js";
 export * from "./util/filesystem.js";
-export * from "./util/hash.js";
 export * from "./util/io.js";
 export * from "./util/logger.js";
 export * from "./util/tree-sitter.js";
