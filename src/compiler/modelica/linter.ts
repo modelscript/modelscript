@@ -422,6 +422,7 @@ ModelicaLinter.register({
     node: ModelicaComponentInstance,
     diagnosticsCallback: DiagnosticsCallbackWithoutResource,
   ): void {
+    if (!node.instantiated) node.instantiate();
     if (node.classInstance == null) {
       const typeSpecifier = node.abstractSyntaxNode?.parent?.typeSpecifier?.concreteSyntaxNode;
       diagnosticsCallback(
