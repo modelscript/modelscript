@@ -8,6 +8,7 @@ import React from "react";
 interface TreeWidgetProps {
   context: Context | null;
   onSelect: (classInstance: ModelicaClassInstance) => void;
+  width?: number | string;
 }
 
 interface ClassIconProps {
@@ -171,7 +172,7 @@ const TreeWidget = React.memo(function TreeWidget(props: TreeWidgetProps) {
   }
 
   return (
-    <NavList className="height-full overflow-auto" style={{ width: "300px" }}>
+    <NavList className="height-full overflow-auto" style={{ width: props.width ?? "300px", flexShrink: 0 }}>
       {elements}
     </NavList>
   );

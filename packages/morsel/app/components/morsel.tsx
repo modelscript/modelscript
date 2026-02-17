@@ -26,7 +26,7 @@ import { editor } from "monaco-editor";
 import { type DataUrl } from "parse-data-url";
 import { useCallback, useEffect, useRef, useState } from "react";
 import CodeEditor from "./code";
-import DiagramEditor from "./diagram";
+import DiagramEditor, { type DiagramEditorHandle } from "./diagram";
 import PropertiesWidget from "./properties";
 import TreeWidget from "./tree";
 
@@ -58,6 +58,7 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [selectedComponent, setSelectedComponent] = useState<ModelicaComponentInstance | null>(null);
   const [diagramClassInstance, setDiagramClassInstance] = useState<ModelicaClassInstance | null>(null);
   const isDiagramUpdate = useRef(false);
+  const diagramEditorRef = useRef<DiagramEditorHandle>(null);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [loadingMessage, setLoadingMessage] = useState("Loading…");
   const [treeVisible, setTreeVisible] = useState(true);
@@ -65,6 +66,8 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [splitRatio, setSplitRatio] = useState(0.5);
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const isDraggingSplit = useRef(false);
+  const [treeWidth, setTreeWidth] = useState(300);
+  const isDraggingTree = useRef(false);
   const { colorMode, setColorMode } = useTheme();
 
   const NARROW_BREAKPOINT = 768;
@@ -98,6 +101,14 @@ export default function MorselEditor(props: MorselEditorProps) {
     }
     isDiagramUpdate.current = false;
   }, [classInstance]);
+
+  useEffect(() => {
+    if (view === View.DIAGRAM || view === View.SPLIT) {
+      setTimeout(() => {
+        diagramEditorRef.current?.fitContent();
+      }, 100);
+    }
+  }, [view, treeVisible]);
 
   const loadClass = (classInstance: ModelicaClassInstance) => {
     let entity: ModelicaEntity | null = null;
@@ -318,230 +329,281 @@ export default function MorselEditor(props: MorselEditorProps) {
     <>
       <title>Morsel | ModelScript.org</title>
       <div className="d-flex flex-column" style={{ height: "100vh", overflow: "hidden" }}>
-        <div className="d-flex flex-1" ref={splitContainerRef} style={{ minHeight: 0, overflow: "hidden" }}>
-          {treeVisible && [View.DIAGRAM, View.SPLIT].indexOf(view) !== -1 && (
+        <div className="d-flex flex-1" style={{ minHeight: 0 }}>
+          {treeVisible && (
             <>
-              <TreeWidget context={context} onSelect={handleTreeSelect} />
+              <TreeWidget context={context} onSelect={handleTreeSelect} width={treeWidth} />
+              <div
+                style={{
+                  width: 6,
+                  cursor: "col-resize",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                  backgroundColor: "transparent",
+                  display: "flex",
+                }}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  isDraggingTree.current = true;
+                  const startX = e.clientX;
+                  const startWidth = treeWidth;
+
+                  const onMouseMove = (e: MouseEvent) => {
+                    if (!isDraggingTree.current) return;
+                    const deltaX = e.clientX - startX;
+                    const newWidth = Math.max(200, Math.min(600, startWidth + deltaX));
+                    setTreeWidth(newWidth);
+                  };
+
+                  const onMouseUp = () => {
+                    isDraggingTree.current = false;
+                    document.removeEventListener("mousemove", onMouseMove);
+                    document.removeEventListener("mouseup", onMouseUp);
+                    document.body.style.cursor = "auto";
+                    document.body.style.userSelect = "auto";
+                  };
+
+                  document.addEventListener("mousemove", onMouseMove);
+                  document.addEventListener("mouseup", onMouseUp);
+                  document.body.style.cursor = "col-resize";
+                  document.body.style.userSelect = "none";
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.backgroundColor =
+                    colorMode === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
+                }}
+              />
               <div className="border-left" />
             </>
           )}
           <div
-            style={{
-              display: [View.DIAGRAM, View.SPLIT].indexOf(view) === -1 ? "none" : "flex",
-              flex: view === View.SPLIT ? "none" : 1,
-              width: view === View.SPLIT ? `${splitRatio * 100}%` : undefined,
-              flexDirection: "column",
-              minWidth: 0,
-            }}
+            className="d-flex flex-1"
+            ref={splitContainerRef}
+            style={{ minHeight: 0, overflow: "hidden", position: "relative" }}
           >
-            <div className="d-flex flex-row height-full">
-              <div className="flex-1 overflow-hidden" style={{ minWidth: 0 }}>
-                <DiagramEditor
-                  classInstance={diagramClassInstance}
-                  theme={colorMode === "dark" ? "vs-dark" : "light"}
-                  onSelect={(name) => {
-                    if (!name) {
-                      setSelectedComponent(null);
-                    } else {
-                      const component = classInstance?.components
-                        ? Array.from(classInstance.components).find((c) => c.name === name)
-                        : null;
-                      setSelectedComponent(component || null);
-                    }
-                  }}
-                  onDrop={(className, x, y) => {
-                    if (!classInstance || !editor) return;
-
-                    // Generate unique component name
-                    const baseName = className.split(".").pop()?.toLowerCase() || "component";
-                    let name = baseName;
-                    let i = 1;
-                    const existingNames = new Set(Array.from(classInstance.components).map((c) => c.name));
-                    while (existingNames.has(name)) {
-                      name = `${baseName}${i}`;
-                      i++;
-                    }
-
-                    // Get diagram configuration
-                    const diagram: IDiagram | null = classInstance.annotation("Diagram");
-                    const initialScale = diagram?.coordinateSystem?.initialScale ?? 0.1;
-                    const extent = diagram?.coordinateSystem?.extent;
-
-                    let width = 200;
-                    let height = 200;
-
-                    if (extent && extent.length >= 2) {
-                      width = Math.abs(extent[1][0] - extent[0][0]);
-                      height = Math.abs(extent[1][1] - extent[0][1]);
-                    }
-
-                    const w = width * initialScale;
-                    const h = height * initialScale;
-
-                    // Generate annotation with extent
-                    const annotation = `annotation(Placement(transformation(origin={${Math.round(x)},${-Math.round(y)}}, extent={{-${w / 2},-${h / 2}},{${w / 2},${h / 2}}})))`;
-                    const componentDecl = `  ${className} ${name} ${annotation};\n`;
-
-                    // Insert into editor
-                    const model = editor.getModel();
-                    if (model) {
-                      // Find insertion point (end of class)
-                      const text = model.getValue();
-                      // Simple heuristic: insert before the last "end"
-                      const lastEndIndex = text.lastIndexOf("end");
-                      if (lastEndIndex !== -1) {
-                        const pos = model.getPositionAt(lastEndIndex);
-
-                        // Insert before the last "end" line
-                        editor.executeEdits("dnd", [
-                          {
-                            range: {
-                              startLineNumber: pos.lineNumber,
-                              startColumn: 1,
-                              endLineNumber: pos.lineNumber,
-                              endColumn: 1,
-                            },
-                            text: componentDecl,
-                          },
-                        ]);
+            <div
+              style={{
+                display: [View.DIAGRAM, View.SPLIT].indexOf(view) === -1 ? "none" : "flex",
+                flex: view === View.SPLIT ? "none" : 1,
+                width: view === View.SPLIT ? `${splitRatio * 100}%` : undefined,
+                flexDirection: "column",
+                minWidth: 0,
+              }}
+            >
+              <div className="d-flex flex-row height-full">
+                <div className="flex-1 overflow-hidden" style={{ minWidth: 0 }}>
+                  <DiagramEditor
+                    ref={diagramEditorRef}
+                    classInstance={diagramClassInstance}
+                    theme={colorMode === "dark" ? "vs-dark" : "light"}
+                    onSelect={(name) => {
+                      if (!name) {
+                        setSelectedComponent(null);
+                      } else {
+                        const component = classInstance?.components
+                          ? Array.from(classInstance.components).find((c) => c.name === name)
+                          : null;
+                        setSelectedComponent(component || null);
                       }
-                    }
-                  }}
-                  onConnect={(source, target) => {
-                    if (!classInstance || !editor) return;
-                    isDiagramUpdate.current = true;
+                    }}
+                    onDrop={(className, x, y) => {
+                      if (!classInstance || !editor) return;
 
-                    const connectEq = `  connect(${source}, ${target});\n`;
-                    const model = editor.getModel();
-                    if (!model) return;
+                      // Generate unique component name
+                      const baseName = className.split(".").pop()?.toLowerCase() || "component";
+                      let name = baseName;
+                      let i = 1;
+                      const existingNames = new Set(Array.from(classInstance.components).map((c) => c.name));
+                      while (existingNames.has(name)) {
+                        name = `${baseName}${i}`;
+                        i++;
+                      }
 
-                    let equationSection: ModelicaEquationSectionSyntaxNode | null = null;
-                    const sections = (classInstance.abstractSyntaxNode as any)?.sections;
+                      // Get diagram configuration
+                      const diagram: IDiagram | null = classInstance.annotation("Diagram");
+                      const initialScale = diagram?.coordinateSystem?.initialScale ?? 0.1;
+                      const extent = diagram?.coordinateSystem?.extent;
 
-                    if (sections) {
-                      for (const section of sections) {
-                        if (section["@type"] === "EquationSection") {
-                          equationSection = section as ModelicaEquationSectionSyntaxNode;
+                      let width = 200;
+                      let height = 200;
+
+                      if (extent && extent.length >= 2) {
+                        width = Math.abs(extent[1][0] - extent[0][0]);
+                        height = Math.abs(extent[1][1] - extent[0][1]);
+                      }
+
+                      const w = width * initialScale;
+                      const h = height * initialScale;
+
+                      // Generate annotation with extent
+                      const annotation = `annotation(Placement(transformation(origin={${Math.round(x)},${-Math.round(y)}}, extent={{-${w / 2},-${h / 2}},{${w / 2},${h / 2}}})))`;
+                      const componentDecl = `  ${className} ${name} ${annotation};\n`;
+
+                      // Insert into editor
+                      const model = editor.getModel();
+                      if (model) {
+                        // Find insertion point (end of class)
+                        const text = model.getValue();
+                        // Simple heuristic: insert before the last "end"
+                        const lastEndIndex = text.lastIndexOf("end");
+                        if (lastEndIndex !== -1) {
+                          const pos = model.getPositionAt(lastEndIndex);
+
+                          // Insert before the last "end" line
+                          editor.executeEdits("dnd", [
+                            {
+                              range: {
+                                startLineNumber: pos.lineNumber,
+                                startColumn: 1,
+                                endLineNumber: pos.lineNumber,
+                                endColumn: 1,
+                              },
+                              text: componentDecl,
+                            },
+                          ]);
                         }
                       }
-                    }
+                    }}
+                    onConnect={(source, target) => {
+                      if (!classInstance || !editor) return;
+                      isDiagramUpdate.current = true;
 
-                    if (equationSection && equationSection.concreteSyntaxNode) {
-                      const endPos = equationSection.concreteSyntaxNode.endPosition;
-                      editor.executeEdits("connect", [
-                        {
-                          range: {
-                            startLineNumber: endPos.row + 1,
-                            startColumn: 1,
-                            endLineNumber: endPos.row + 1,
-                            endColumn: endPos.column + 1,
-                          },
-                          text: connectEq,
-                        },
-                      ]);
-                    } else {
-                      const text = model.getValue();
-                      const lastEndIndex = text.lastIndexOf("end");
-                      if (lastEndIndex !== -1) {
-                        const pos = model.getPositionAt(lastEndIndex);
+                      const connectEq = `  connect(${source}, ${target});\n`;
+                      const model = editor.getModel();
+                      if (!model) return;
+
+                      let equationSection: ModelicaEquationSectionSyntaxNode | null = null;
+                      const sections = (classInstance.abstractSyntaxNode as any)?.sections;
+
+                      if (sections) {
+                        for (const section of sections) {
+                          if (section["@type"] === "EquationSection") {
+                            equationSection = section as ModelicaEquationSectionSyntaxNode;
+                          }
+                        }
+                      }
+
+                      if (equationSection && equationSection.concreteSyntaxNode) {
+                        const endPos = equationSection.concreteSyntaxNode.endPosition;
                         editor.executeEdits("connect", [
                           {
                             range: {
-                              startLineNumber: pos.lineNumber,
+                              startLineNumber: endPos.row + 1,
                               startColumn: 1,
-                              endLineNumber: pos.lineNumber,
-                              endColumn: 1,
+                              endLineNumber: endPos.row + 1,
+                              endColumn: endPos.column + 1,
                             },
-                            text: `equation\n${connectEq}`,
+                            text: connectEq,
                           },
                         ]);
+                      } else {
+                        const text = model.getValue();
+                        const lastEndIndex = text.lastIndexOf("end");
+                        if (lastEndIndex !== -1) {
+                          const pos = model.getPositionAt(lastEndIndex);
+                          editor.executeEdits("connect", [
+                            {
+                              range: {
+                                startLineNumber: pos.lineNumber,
+                                startColumn: 1,
+                                endLineNumber: pos.lineNumber,
+                                endColumn: 1,
+                              },
+                              text: `equation\n${connectEq}`,
+                            },
+                          ]);
+                        }
                       }
-                    }
-                  }}
-                  onMove={(name, x, y, width, height, rotation) => {
-                    if (!classInstance || !editor) return;
-                    isDiagramUpdate.current = true;
-                    handlePlacementChange(name, x, y, width, height, rotation);
-                  }}
-                  onResize={(name, x, y, width, height, rotation) => {
-                    if (!classInstance || !editor) return;
-                    isDiagramUpdate.current = false;
-                    handlePlacementChange(name, x, y, width, height, rotation);
-                  }}
-                />
+                    }}
+                    onMove={(name, x, y, width, height, rotation) => {
+                      if (!classInstance || !editor) return;
+                      isDiagramUpdate.current = true;
+                      handlePlacementChange(name, x, y, width, height, rotation);
+                    }}
+                    onResize={(name, x, y, width, height, rotation) => {
+                      if (!classInstance || !editor) return;
+                      isDiagramUpdate.current = false;
+                      handlePlacementChange(name, x, y, width, height, rotation);
+                    }}
+                  />
+                </div>
+                {selectedComponent && (
+                  <>
+                    <div className="border-left" />
+                    <PropertiesWidget component={selectedComponent} />
+                  </>
+                )}
               </div>
-              {selectedComponent && (
-                <>
-                  <div className="border-left" />
-                  <PropertiesWidget component={selectedComponent} />
-                </>
-              )}
             </div>
-          </div>
-          {/* Draggable split divider */}
-          <div
-            style={{
-              display: view === View.SPLIT ? "flex" : "none",
-              width: 6,
-              cursor: "col-resize",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-              backgroundColor: "transparent",
-              borderLeft: `1px solid ${colorMode === "dark" ? "#30363d" : "#d0d7de"}`,
-              transition: "background-color 0.15s",
-            }}
-            onMouseDown={(e) => {
-              e.preventDefault();
-              isDraggingSplit.current = true;
-              const onMouseMove = (ev: MouseEvent) => {
-                if (!isDraggingSplit.current || !splitContainerRef.current) return;
-                const rect = splitContainerRef.current.getBoundingClientRect();
-                const x = ev.clientX - rect.left;
-                const ratio = Math.min(0.8, Math.max(0.2, x / rect.width));
-                setSplitRatio(ratio);
-              };
-              const onMouseUp = () => {
-                isDraggingSplit.current = false;
-                document.removeEventListener("mousemove", onMouseMove);
-                document.removeEventListener("mouseup", onMouseUp);
-                document.body.style.cursor = "";
-                document.body.style.userSelect = "";
-              };
-              document.addEventListener("mousemove", onMouseMove);
-              document.addEventListener("mouseup", onMouseUp);
-              document.body.style.cursor = "col-resize";
-              document.body.style.userSelect = "none";
-            }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.backgroundColor =
-                colorMode === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)";
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
-            }}
-          />
-          <div
-            style={{
-              display: [View.CODE, View.SPLIT].indexOf(view) === -1 ? "none" : "flex",
-              flex: view === View.SPLIT ? "none" : 1,
-              width: view === View.SPLIT ? `${(1 - splitRatio) * 100}%` : undefined,
-              flexDirection: "column",
-              minWidth: 0,
-            }}
-          >
-            <CodeEditor
-              embed={props.embed}
-              setContext={setContext}
-              setClassInstance={setClassInstance}
-              setEditor={setEditor}
-              content={content}
-              theme={colorMode === "dark" ? "vs-dark" : "light"}
-              onProgress={(progress, message) => {
-                setLoadingProgress(progress);
-                setLoadingMessage(message);
+            {/* Draggable split divider */}
+            <div
+              style={{
+                display: view === View.SPLIT ? "flex" : "none",
+                width: 6,
+                cursor: "col-resize",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+                backgroundColor: "transparent",
+                borderLeft: `1px solid ${colorMode === "dark" ? "#30363d" : "#d0d7de"}`,
+                transition: "background-color 0.15s",
+              }}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                isDraggingSplit.current = true;
+                const onMouseMove = (ev: MouseEvent) => {
+                  if (!isDraggingSplit.current || !splitContainerRef.current) return;
+                  const rect = splitContainerRef.current.getBoundingClientRect();
+                  const x = ev.clientX - rect.left;
+                  const ratio = Math.min(0.8, Math.max(0.2, x / rect.width));
+                  setSplitRatio(ratio);
+                };
+                const onMouseUp = () => {
+                  isDraggingSplit.current = false;
+                  document.removeEventListener("mousemove", onMouseMove);
+                  document.removeEventListener("mouseup", onMouseUp);
+                  document.body.style.cursor = "";
+                  document.body.style.userSelect = "";
+                };
+                document.addEventListener("mousemove", onMouseMove);
+                document.addEventListener("mouseup", onMouseUp);
+                document.body.style.cursor = "col-resize";
+                document.body.style.userSelect = "none";
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLElement).style.backgroundColor =
+                  colorMode === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)";
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
               }}
             />
+            <div
+              style={{
+                display: [View.CODE, View.SPLIT].indexOf(view) === -1 ? "none" : "flex",
+                flex: view === View.SPLIT ? "none" : 1,
+                width: view === View.SPLIT ? `${(1 - splitRatio) * 100}%` : undefined,
+                flexDirection: "column",
+                minWidth: 0,
+              }}
+            >
+              <CodeEditor
+                embed={props.embed}
+                setContext={setContext}
+                setClassInstance={setClassInstance}
+                setEditor={setEditor}
+                content={content}
+                theme={colorMode === "dark" ? "vs-dark" : "light"}
+                onProgress={(progress, message) => {
+                  setLoadingProgress(progress);
+                  setLoadingMessage(message);
+                }}
+              />
+            </div>
           </div>
         </div>
         {/* Floating dock */}

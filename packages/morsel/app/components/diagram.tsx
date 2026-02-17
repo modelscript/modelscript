@@ -24,8 +24,12 @@ import {
 } from "@modelscript/modelscript";
 import type { Theme } from "@monaco-editor/react";
 import { Svg } from "@svgdotjs/svg.js";
-import { useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { renderIconX6 } from "../util/x6";
+
+export interface DiagramEditorHandle {
+  fitContent: () => void;
+}
 
 interface DiagramEditorProps {
   classInstance: ModelicaClassInstance | null;
@@ -37,7 +41,7 @@ interface DiagramEditorProps {
   theme: Theme;
 }
 
-export default function DiagramEditor(props: DiagramEditorProps) {
+const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props, ref) => {
   const refContainer = useRef<HTMLDivElement>(null);
   const [graph, setGraph] = useState<Graph | null>(null);
   const onSelectRef = useRef(props.onSelect);
@@ -46,6 +50,15 @@ export default function DiagramEditor(props: DiagramEditorProps) {
   const onResizeRef = useRef(props.onResize);
   const moveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const justResizedRef = useRef(false);
+
+  useImperativeHandle(ref, () => ({
+    fitContent: () => {
+      if (graph) {
+        graph.zoomToFit({ padding: 20 });
+        graph.centerContent();
+      }
+    },
+  }));
 
   useEffect(() => {
     onSelectRef.current = props.onSelect;
@@ -142,7 +155,7 @@ export default function DiagramEditor(props: DiagramEditorProps) {
           moveTimeoutRef.current = null;
         }, 100);
       });
-      g.on("node:rotated", ({ node }) => {
+      g.on("node:rotated", ({ node }: any) => {
         if (onMoveRef.current) {
           const p = node.getPosition();
           const s = node.getSize();
@@ -530,7 +543,9 @@ export default function DiagramEditor(props: DiagramEditorProps) {
       }}
     />
   );
-}
+});
+
+export default DiagramEditor;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function marker(arrow: Arrow | null | undefined, strokeColor: string, strokeWidth: number): any {
