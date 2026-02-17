@@ -39,7 +39,7 @@ const ClassIcon = React.memo(function ClassIcon(props: ClassIconProps) {
     return <PackageIcon />;
   }
 
-  return <div ref={ref} style={{ width: 16, height: 16 }} />;
+  return <div ref={ref} style={{ width: 20, height: 20 }} />;
 });
 
 interface TreeNodeProps {
@@ -62,6 +62,8 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
   const { element, onSelect, depth } = props;
   const [expanded, setExpanded] = React.useState(false);
   const [hasChildren, setHasChildren] = React.useState<boolean | null>(null);
+  const iconRef = React.useRef<HTMLSpanElement>(null);
+  const dragImageRef = React.useRef<HTMLImageElement | null>(null);
 
   const children = expanded ? getClassChildren(element) : null;
 
@@ -72,6 +74,21 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
   }, [children, hasChildren]);
 
   const showChevron = hasChildren === null || hasChildren === true;
+
+  const handleMouseEnter = () => {
+    if (!dragImageRef.current) {
+      const svg = renderIcon(element, undefined, true, undefined);
+      if (svg) {
+        svg.size(40, 40);
+        const svgString = svg.svg();
+        const base64 = btoa(unescape(encodeURIComponent(svgString)));
+        const url = "data:image/svg+xml;base64," + base64;
+        const img = new Image();
+        img.src = url;
+        dragImageRef.current = img;
+      }
+    }
+  };
 
   return (
     <>
@@ -86,10 +103,17 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
           e.stopPropagation();
           onSelect(element);
         }}
+        onMouseEnter={handleMouseEnter}
         draggable
         onDragStart={(e) => {
           e.dataTransfer.setData("application/json", JSON.stringify({ className: element.compositeName }));
           e.dataTransfer.effectAllowed = "copy";
+
+          if (dragImageRef.current && dragImageRef.current.complete) {
+            e.dataTransfer.setDragImage(dragImageRef.current, 20, 20);
+          } else if (iconRef.current) {
+            e.dataTransfer.setDragImage(iconRef.current, 10, 10);
+          }
         }}
         style={{ paddingLeft: `${8 + depth * 16}px` }}
       >
@@ -104,7 +128,9 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
             ) : (
               <span style={{ width: 12 }} />
             )}
-            <ClassIcon classInstance={element} />
+            <span ref={iconRef}>
+              <ClassIcon classInstance={element} />
+            </span>
           </span>
         </NavList.LeadingVisual>
         {element.name}
