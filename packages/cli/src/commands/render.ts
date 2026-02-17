@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Context, ModelicaClassInstance, NodeFileSystem, renderDiagram, renderIcon } from "@modelscript/modelscript";
+import { Context, ModelicaClassInstance, renderDiagram, renderIcon } from "@modelscript/modelscript";
 import Modelica from "@modelscript/tree-sitter-modelica";
 import { registerWindow } from "@svgdotjs/svg.js";
 import { createSVGWindow } from "svgdom";
 import Parser from "tree-sitter";
 import xmlFormat from "xml-formatter";
 import type { CommandModule } from "yargs";
+import { NodeFileSystem } from "../util/filesystem.js";
 
 interface RenderArgs {
   name: string;

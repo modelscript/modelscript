@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import fs from "node:fs";
-import { basename, extname, join, resolve, sep } from "node:path";
-
 export interface FileSystem {
   basename(path: string): string;
 
@@ -35,38 +32,4 @@ export interface Stats {
   isDirectory(): boolean;
   mtime: Date;
   size: number;
-}
-
-export class NodeFileSystem implements FileSystem {
-  basename(path: string): string {
-    return basename(path);
-  }
-
-  extname(path: string): string {
-    return extname(path);
-  }
-
-  join(...paths: string[]): string {
-    return join(...paths);
-  }
-
-  read(path: string): string {
-    return fs.readFileSync(path, { encoding: "utf8" });
-  }
-
-  readdir(path: string): Dirent[] {
-    return fs.readdirSync(path, { withFileTypes: true });
-  }
-
-  resolve(...paths: string[]): string {
-    return resolve(...paths);
-  }
-
-  get sep(): string {
-    return sep;
-  }
-
-  stat(path: string): Stats | null {
-    return fs.statSync(path, { throwIfNoEntry: false }) ?? null;
-  }
 }
