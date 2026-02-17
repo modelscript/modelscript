@@ -13,7 +13,7 @@ import {
 } from "@modelscript/modelscript";
 import {
   CodeIcon,
-  LinkExternalIcon,
+  ListUnorderedIcon,
   MoonIcon,
   ShareAndroidIcon,
   SplitViewIcon,
@@ -21,7 +21,7 @@ import {
   UnwrapIcon,
   WorkflowIcon,
 } from "@primer/octicons-react";
-import { Dialog, IconButton, PageHeader, SegmentedControl, useTheme } from "@primer/react";
+import { Dialog, IconButton, useTheme } from "@primer/react";
 import { editor } from "monaco-editor";
 import { type DataUrl } from "parse-data-url";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -60,7 +60,30 @@ export default function MorselEditor(props: MorselEditorProps) {
   const isDiagramUpdate = useRef(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [loadingMessage, setLoadingMessage] = useState("Loading…");
+  const [treeVisible, setTreeVisible] = useState(true);
+  const [windowWidth, setWindowWidth] = useState(typeof window !== "undefined" ? window.innerWidth : 1200);
+  const [splitRatio, setSplitRatio] = useState(0.5);
+  const splitContainerRef = useRef<HTMLDivElement>(null);
+  const isDraggingSplit = useRef(false);
   const { colorMode, setColorMode } = useTheme();
+
+  const NARROW_BREAKPOINT = 768;
+  const isNarrow = windowWidth < NARROW_BREAKPOINT;
+
+  useEffect(() => {
+    const handleResize = () => setWindowWidth(window.innerWidth);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  useEffect(() => {
+    if (isNarrow) {
+      setTreeVisible(false);
+      setView((prev) => (prev === View.SPLIT ? View.DIAGRAM : prev));
+    } else {
+      setTreeVisible(true);
+    }
+  }, [isNarrow]);
 
   useEffect(() => {
     if (content) {
@@ -294,169 +317,24 @@ export default function MorselEditor(props: MorselEditorProps) {
   return (
     <>
       <title>Morsel | ModelScript.org</title>
-      <div className="d-flex flex-column" style={{ height: "100vh" }}>
-        <div className="border-bottom">
-          <PageHeader className={props.embed ? "p-2" : "p-3"}>
-            <PageHeader.TitleArea>
-              <PageHeader.LeadingVisual>
-                <img
-                  src={colorMode === "dark" ? "/brand-dark.png" : "/brand.png"}
-                  alt="Morsel"
-                  title="Morsel"
-                  style={{ cursor: props.embed ? "default" : "pointer" }}
-                  onClick={() => {
-                    if (!props.embed) {
-                      window.location.href = "/";
-                    }
-                  }}
-                />
-              </PageHeader.LeadingVisual>
-            </PageHeader.TitleArea>
-            <PageHeader.Actions>
-              <SegmentedControl size="small">
-                <SegmentedControl.IconButton
-                  icon={WorkflowIcon}
-                  aria-label="Diagram"
-                  title="Diagram View"
-                  onClick={() => setView(View.DIAGRAM)}
-                ></SegmentedControl.IconButton>
-                <SegmentedControl.IconButton
-                  icon={SplitViewIcon}
-                  aria-label="Split View"
-                  title="Split View"
-                  defaultSelected
-                  onClick={() => setView(View.SPLIT)}
-                ></SegmentedControl.IconButton>
-                <SegmentedControl.IconButton
-                  icon={UnwrapIcon}
-                  aria-label="Code View"
-                  title="Code View"
-                  onClick={() => setView(View.CODE)}
-                ></SegmentedControl.IconButton>
-              </SegmentedControl>
-              <IconButton
-                icon={ShareAndroidIcon}
-                size="small"
-                variant="invisible"
-                aria-label="Share Morsel"
-                ref={shareButtonRef}
-                onClick={() => setShareDialogOpen(!isShareDialogOpen)}
-              />
-              {isShareDialogOpen && (
-                <Dialog
-                  title="Share Morsel"
-                  onClose={() => setShareDialogOpen(false)}
-                  returnFocusRef={shareButtonRef}
-                  footerButtons={[
-                    {
-                      buttonType: "normal",
-                      content: "Copy to clipboard",
-                      onClick: async () => {
-                        await navigator.clipboard.writeText(
-                          `${window.location.protocol}//${window.location.host}/#${encodeDataUrl(editor?.getValue() ?? "", ContentType.MODELICA)}`,
-                        );
-                        alert("Copied to clipboard.");
-                        setShareDialogOpen(false);
-                      },
-                    },
-                  ]}
-                >
-                  <div
-                    style={{ wordBreak: "break-all" }}
-                  >{`${window.location.protocol}//${window.location.host}/#${encodeDataUrl(editor?.getValue() ?? "", ContentType.MODELICA)}`}</div>
-                </Dialog>
-              )}
-              <IconButton
-                icon={colorMode === "dark" ? SunIcon : MoonIcon}
-                size="small"
-                variant="invisible"
-                aria-label={`Switch to ${colorMode === "dark" ? "light" : "dark"} mode`}
-                onClick={() => setColorMode(colorMode === "dark" ? "light" : "dark")}
-              />
-              {!props.embed && (
-                <IconButton
-                  icon={CodeIcon}
-                  size="small"
-                  variant="invisible"
-                  aria-label="Embed Morsel"
-                  ref={embedButtonRef}
-                  onClick={() => setEmbedDialogOpen(!isEmbedDialogOpen)}
-                />
-              )}
-              {isEmbedDialogOpen && (
-                <Dialog
-                  title="Embed Morsel"
-                  onClose={() => setEmbedDialogOpen(false)}
-                  returnFocusRef={embedButtonRef}
-                  footerButtons={[
-                    {
-                      buttonType: "normal",
-                      content: "Copy to clipboard",
-                      onClick: async () => {
-                        await navigator.clipboard.writeText(
-                          `<iframe width="600" height="400" src="${window.location.protocol}//${window.location.host}/#${encodeDataUrl(editor?.getValue() ?? "", ContentType.MODELICA)}"></iframe>`,
-                        );
-                        alert("Copied to clipboard.");
-                        setEmbedDialogOpen(false);
-                      },
-                    },
-                  ]}
-                >
-                  <div
-                    style={{ wordBreak: "break-all" }}
-                  >{`<iframe width="600" height="400" src="${window.location.protocol}//${window.location.host}/#${encodeDataUrl(editor?.getValue() ?? "", ContentType.MODELICA)}"></iframe>`}</div>
-                </Dialog>
-              )}
-              {isDirtyDialogOpen && (
-                <Dialog
-                  title="Unsaved Changes"
-                  onClose={() => setDirtyDialogOpen(false)}
-                  footerButtons={[
-                    {
-                      buttonType: "normal",
-                      content: "Cancel",
-                      onClick: () => {
-                        setDirtyDialogOpen(false);
-                        setPendingSelection(null);
-                      },
-                    },
-                    {
-                      buttonType: "danger",
-                      content: "Discard Changes",
-                      onClick: () => {
-                        setDirtyDialogOpen(false);
-                        if (pendingSelection) {
-                          loadClass(pendingSelection);
-                          setPendingSelection(null);
-                        }
-                      },
-                    },
-                  ]}
-                >
-                  You have unsaved changes. Any unsaved changes will be lost if you switch without saving. Are you sure
-                  you want to discard your changes?
-                </Dialog>
-              )}
-              {props.embed && (
-                <IconButton
-                  icon={LinkExternalIcon}
-                  size="small"
-                  variant="invisible"
-                  aria-label="Open Morsel"
-                  onClick={() => window.open("/", "_blank")}
-                />
-              )}
-            </PageHeader.Actions>
-          </PageHeader>
-        </div>
-        <div className="d-flex flex-1" style={{ minHeight: 0 }}>
-          <div
-            className={[View.DIAGRAM, View.SPLIT].indexOf(view) === -1 ? "d-none" : "flex-1"}
-            style={{ width: view == View.DIAGRAM ? "100%" : "50%" }}
-          >
-            <div className="d-flex flex-row height-full">
+      <div className="d-flex flex-column" style={{ height: "100vh", overflow: "hidden" }}>
+        <div className="d-flex flex-1" ref={splitContainerRef} style={{ minHeight: 0, overflow: "hidden" }}>
+          {treeVisible && [View.DIAGRAM, View.SPLIT].indexOf(view) !== -1 && (
+            <>
               <TreeWidget context={context} onSelect={handleTreeSelect} />
               <div className="border-left" />
+            </>
+          )}
+          <div
+            style={{
+              display: [View.DIAGRAM, View.SPLIT].indexOf(view) === -1 ? "none" : "flex",
+              flex: view === View.SPLIT ? "none" : 1,
+              width: view === View.SPLIT ? `${splitRatio * 100}%` : undefined,
+              flexDirection: "column",
+              minWidth: 0,
+            }}
+          >
+            <div className="d-flex flex-row height-full">
               <div className="flex-1 overflow-hidden" style={{ minWidth: 0 }}>
                 <DiagramEditor
                   classInstance={diagramClassInstance}
@@ -600,10 +478,57 @@ export default function MorselEditor(props: MorselEditorProps) {
               )}
             </div>
           </div>
-          <div className={[View.SPLIT].indexOf(view) === -1 ? "d-none" : "border-left"}></div>
+          {/* Draggable split divider */}
           <div
-            className={[View.CODE, View.SPLIT].indexOf(view) === -1 ? "d-none" : "flex-1"}
-            style={{ width: view === View.CODE ? "100%" : "50%" }}
+            style={{
+              display: view === View.SPLIT ? "flex" : "none",
+              width: 6,
+              cursor: "col-resize",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+              backgroundColor: "transparent",
+              borderLeft: `1px solid ${colorMode === "dark" ? "#30363d" : "#d0d7de"}`,
+              transition: "background-color 0.15s",
+            }}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              isDraggingSplit.current = true;
+              const onMouseMove = (ev: MouseEvent) => {
+                if (!isDraggingSplit.current || !splitContainerRef.current) return;
+                const rect = splitContainerRef.current.getBoundingClientRect();
+                const x = ev.clientX - rect.left;
+                const ratio = Math.min(0.8, Math.max(0.2, x / rect.width));
+                setSplitRatio(ratio);
+              };
+              const onMouseUp = () => {
+                isDraggingSplit.current = false;
+                document.removeEventListener("mousemove", onMouseMove);
+                document.removeEventListener("mouseup", onMouseUp);
+                document.body.style.cursor = "";
+                document.body.style.userSelect = "";
+              };
+              document.addEventListener("mousemove", onMouseMove);
+              document.addEventListener("mouseup", onMouseUp);
+              document.body.style.cursor = "col-resize";
+              document.body.style.userSelect = "none";
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLElement).style.backgroundColor =
+                colorMode === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)";
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
+            }}
+          />
+          <div
+            style={{
+              display: [View.CODE, View.SPLIT].indexOf(view) === -1 ? "none" : "flex",
+              flex: view === View.SPLIT ? "none" : 1,
+              width: view === View.SPLIT ? `${(1 - splitRatio) * 100}%` : undefined,
+              flexDirection: "column",
+              minWidth: 0,
+            }}
           >
             <CodeEditor
               embed={props.embed}
@@ -619,6 +544,211 @@ export default function MorselEditor(props: MorselEditorProps) {
             />
           </div>
         </div>
+        {/* Floating dock */}
+        <div
+          style={{
+            position: "fixed",
+            bottom: 16,
+            left: "50%",
+            transform: "translateX(-50%)",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "8px 16px",
+            borderRadius: 12,
+            backgroundColor: colorMode === "dark" ? "rgba(22, 27, 34, 0.9)" : "rgba(255, 255, 255, 0.9)",
+            backdropFilter: "blur(12px)",
+            boxShadow:
+              colorMode === "dark"
+                ? "0 4px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.08)"
+                : "0 4px 24px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.06)",
+            zIndex: 1000,
+          }}
+        >
+          <img
+            src={colorMode === "dark" ? "/brand-dark.png" : "/brand.png"}
+            alt="Morsel"
+            style={{ height: 20, cursor: "pointer" }}
+            onClick={() => (window.location.href = "/")}
+          />
+          <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
+          <IconButton
+            icon={ListUnorderedIcon}
+            size="small"
+            variant="invisible"
+            aria-label="Toggle Tree"
+            title="Toggle Tree"
+            onClick={() => setTreeVisible((prev) => !prev)}
+          />
+          <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 2,
+              padding: 2,
+              borderRadius: 8,
+              backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)",
+            }}
+          >
+            <IconButton
+              icon={WorkflowIcon}
+              size="small"
+              variant="invisible"
+              aria-label="Diagram View"
+              title="Diagram View"
+              onClick={() => setView(View.DIAGRAM)}
+              style={
+                view === View.DIAGRAM
+                  ? {
+                      backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.8)",
+                      borderRadius: 6,
+                    }
+                  : {}
+              }
+            />
+            {!isNarrow && (
+              <IconButton
+                icon={SplitViewIcon}
+                size="small"
+                variant="invisible"
+                aria-label="Split View"
+                title="Split View"
+                onClick={() => setView(View.SPLIT)}
+                style={
+                  view === View.SPLIT
+                    ? {
+                        backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.8)",
+                        borderRadius: 6,
+                      }
+                    : {}
+                }
+              />
+            )}
+            <IconButton
+              icon={UnwrapIcon}
+              size="small"
+              variant="invisible"
+              aria-label="Code View"
+              title="Code View"
+              onClick={() => setView(View.CODE)}
+              style={
+                view === View.CODE
+                  ? {
+                      backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.8)",
+                      borderRadius: 6,
+                    }
+                  : {}
+              }
+            />
+          </div>
+          <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
+          <IconButton
+            icon={ShareAndroidIcon}
+            size="small"
+            variant="invisible"
+            aria-label="Share Morsel"
+            ref={shareButtonRef}
+            onClick={() => setShareDialogOpen(!isShareDialogOpen)}
+          />
+          {!props.embed && (
+            <IconButton
+              icon={CodeIcon}
+              size="small"
+              variant="invisible"
+              aria-label="Embed Morsel"
+              ref={embedButtonRef}
+              onClick={() => setEmbedDialogOpen(!isEmbedDialogOpen)}
+            />
+          )}
+          <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
+          <IconButton
+            icon={colorMode === "dark" ? SunIcon : MoonIcon}
+            size="small"
+            variant="invisible"
+            aria-label={`Switch to ${colorMode === "dark" ? "light" : "dark"} mode`}
+            onClick={() => setColorMode(colorMode === "dark" ? "light" : "dark")}
+          />
+        </div>
+        {/* Dialogs */}
+        {isShareDialogOpen && (
+          <Dialog
+            title="Share Morsel"
+            onClose={() => setShareDialogOpen(false)}
+            returnFocusRef={shareButtonRef}
+            footerButtons={[
+              {
+                buttonType: "normal",
+                content: "Copy to clipboard",
+                onClick: async () => {
+                  await navigator.clipboard.writeText(
+                    `${window.location.protocol}//${window.location.host}/#${encodeDataUrl(editor?.getValue() ?? "", ContentType.MODELICA)}`,
+                  );
+                  alert("Copied to clipboard.");
+                  setShareDialogOpen(false);
+                },
+              },
+            ]}
+          >
+            <div
+              style={{ wordBreak: "break-all" }}
+            >{`${window.location.protocol}//${window.location.host}/#${encodeDataUrl(editor?.getValue() ?? "", ContentType.MODELICA)}`}</div>
+          </Dialog>
+        )}
+        {isEmbedDialogOpen && (
+          <Dialog
+            title="Embed Morsel"
+            onClose={() => setEmbedDialogOpen(false)}
+            returnFocusRef={embedButtonRef}
+            footerButtons={[
+              {
+                buttonType: "normal",
+                content: "Copy to clipboard",
+                onClick: async () => {
+                  await navigator.clipboard.writeText(
+                    `<iframe width="600" height="400" src="${window.location.protocol}//${window.location.host}/#${encodeDataUrl(editor?.getValue() ?? "", ContentType.MODELICA)}"></iframe>`,
+                  );
+                  alert("Copied to clipboard.");
+                  setEmbedDialogOpen(false);
+                },
+              },
+            ]}
+          >
+            <div
+              style={{ wordBreak: "break-all" }}
+            >{`<iframe width="600" height="400" src="${window.location.protocol}//${window.location.host}/#${encodeDataUrl(editor?.getValue() ?? "", ContentType.MODELICA)}"></iframe>`}</div>
+          </Dialog>
+        )}
+        {isDirtyDialogOpen && (
+          <Dialog
+            title="Unsaved Changes"
+            onClose={() => setDirtyDialogOpen(false)}
+            footerButtons={[
+              {
+                buttonType: "normal",
+                content: "Cancel",
+                onClick: () => {
+                  setDirtyDialogOpen(false);
+                  setPendingSelection(null);
+                },
+              },
+              {
+                buttonType: "danger",
+                content: "Discard Changes",
+                onClick: () => {
+                  setDirtyDialogOpen(false);
+                  if (pendingSelection) {
+                    loadClass(pendingSelection);
+                    setPendingSelection(null);
+                  }
+                },
+              },
+            ]}
+          >
+            You have unsaved changes. Any unsaved changes will be lost if you switch without saving. Are you sure you
+            want to discard your changes?
+          </Dialog>
+        )}
         {loadingProgress < 100 && (
           <div
             style={{
