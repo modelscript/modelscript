@@ -18,6 +18,11 @@ import {
   type ModelicaComponentReferenceSyntaxNode,
 } from "./modelica/syntax.js";
 
+let scopeBoolean: ModelicaBooleanClassInstance | null = null;
+let scopeInteger: ModelicaIntegerClassInstance | null = null;
+let scopeReal: ModelicaRealClassInstance | null = null;
+let scopeString: ModelicaStringClassInstance | null = null;
+
 export abstract class Scope {
   #parent: WeakRef<Scope> | null;
 
@@ -91,13 +96,17 @@ export abstract class Scope {
     }
     switch (simpleName) {
       case "Boolean":
-        return new ModelicaBooleanClassInstance(null, null);
+        if (!scopeBoolean) scopeBoolean = new ModelicaBooleanClassInstance(null, null);
+        return scopeBoolean;
       case "Integer":
-        return new ModelicaIntegerClassInstance(null, null);
+        if (!scopeInteger) scopeInteger = new ModelicaIntegerClassInstance(null, null);
+        return scopeInteger;
       case "Real":
-        return new ModelicaRealClassInstance(null, null);
+        if (!scopeReal) scopeReal = new ModelicaRealClassInstance(null, null);
+        return scopeReal;
       case "String":
-        return new ModelicaStringClassInstance(null, null);
+        if (!scopeString) scopeString = new ModelicaStringClassInstance(null, null);
+        return scopeString;
     }
     return (
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
