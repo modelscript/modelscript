@@ -18,6 +18,7 @@ import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import { useRef, useState } from "react";
 import Parser from "web-tree-sitter";
 import { WebFileSystem } from "~/util/filesystem";
+import { format } from "~/util/formatter";
 
 if (!self.MonacoEnvironment) {
   self.MonacoEnvironment = {
@@ -98,6 +99,22 @@ export default function CodeEditor(props: CodeEditorProps) {
       },
     });
 
+    monaco.languages.setLanguageConfiguration("modelica", {
+      indentationRules: {
+        increaseIndentPattern:
+          /^\s*(model|class|record|block|connector|type|package|function|if|for|while|when|else|elseif|equation|algorithm|public|protected|initial equation|initial algorithm|enumeration)\b/,
+        decreaseIndentPattern:
+          /^\s*(end|else|elseif|equation|algorithm|public|protected|initial equation|initial algorithm)\b/,
+      },
+      onEnterRules: [
+        {
+          beforeText: /^\s*\/\//,
+          action: { indentAction: monaco.languages.IndentAction.None, appendText: "// " },
+        },
+      ],
+    });
+    console.log("Modelica language configuration set");
+
     props.onProgress?.(10, "Initializing parser…");
     await Parser.init();
     props.onProgress?.(25, "Loading Modelica grammar…");
@@ -124,6 +141,26 @@ export default function CodeEditor(props: CodeEditorProps) {
     setContext(context);
     contextRef.current = context;
     props.setContext?.(context);
+
+    monaco.languages.registerDocumentFormattingEditProvider("modelica", {
+      provideDocumentFormattingEdits: (
+        model: editor.ITextModel,
+        _options: monaco.languages.FormattingOptions,
+        _token: monaco.CancellationToken,
+      ) => {
+        const text = model.getValue();
+        const tree = parser.parse(text);
+        const formatted = format(tree, text);
+        tree.delete();
+        return [
+          {
+            range: model.getFullModelRange(),
+            text: formatted,
+          },
+        ];
+      },
+    });
+
     props.onProgress?.(100, "Ready");
   };
   const handleEditorDidMount = (editor: editor.ICodeEditor) => {
@@ -176,6 +213,12 @@ export default function CodeEditor(props: CodeEditorProps) {
         !props.embed
           ? {
               automaticLayout: true,
+              autoIndent: "full",
+              tabSize: 2,
+              insertSpaces: true,
+              guides: {
+                indentation: true,
+              },
             }
           : {
               automaticLayout: true,
