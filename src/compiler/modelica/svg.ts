@@ -284,13 +284,96 @@ export function applyCoordinateSystem(svg: Svg, coordinateSystem?: ICoordinateSy
 }
 
 export function applyFill(shape: Shape, filledShape: IFilledShape) {
+  const root = (shape.root() as Svg) || ((shape.parent() as G)?.root() as Svg);
+  if (!root) {
+    if (filledShape.fillPattern === FillPattern.SOLID) {
+      shape.fill(convertColor(filledShape.fillColor));
+    } else {
+      shape.fill("none");
+    }
+    return;
+  }
   switch (filledShape.fillPattern) {
     case FillPattern.SOLID:
       shape.fill(convertColor(filledShape.fillColor));
       break;
+    case FillPattern.HORIZONTAL:
+      shape.fill(createLinePattern(root, 0, filledShape.lineColor, filledShape.fillColor));
+      break;
+    case FillPattern.VERTICAL:
+      shape.fill(createLinePattern(root, 90, filledShape.lineColor, filledShape.fillColor));
+      break;
+    case FillPattern.CROSS:
+      shape.fill(createCrossPattern(root, 0, filledShape.lineColor, filledShape.fillColor));
+      break;
+    case FillPattern.FORWARD:
+      shape.fill(createLinePattern(root, -45, filledShape.lineColor, filledShape.fillColor));
+      break;
+    case FillPattern.BACKWARD:
+      shape.fill(createLinePattern(root, 45, filledShape.lineColor, filledShape.fillColor));
+      break;
+    case FillPattern.CROSS_DIAG:
+      shape.fill(createCrossPattern(root, 45, filledShape.lineColor, filledShape.fillColor));
+      break;
+    case FillPattern.HORIZONTAL_CYLINDER:
+      shape.fill(createLinearGradient(root, "vertical", filledShape.lineColor, filledShape.fillColor));
+      break;
+    case FillPattern.VERTICAL_CYLINDER:
+      shape.fill(createLinearGradient(root, "horizontal", filledShape.lineColor, filledShape.fillColor));
+      break;
+    case FillPattern.SPHERE:
+      shape.fill(createRadialGradient(root, filledShape.lineColor, filledShape.fillColor));
+      break;
     default:
       shape.fill("none");
   }
+}
+
+function createLinePattern(svg: Svg, rotation: number, lineColor?: IColor, fillColor?: IColor) {
+  return svg
+    .pattern(4, 4, (add) => {
+      if (fillColor) {
+        add.rect(4, 4).fill(convertColor(fillColor));
+      }
+      add.line(0, 2, 4, 2).stroke({ color: convertColor(lineColor), width: 0.5 });
+    })
+    .rotate(rotation);
+}
+
+function createCrossPattern(svg: Svg, rotation: number, lineColor?: IColor, fillColor?: IColor) {
+  return svg
+    .pattern(4, 4, (add) => {
+      if (fillColor) {
+        add.rect(4, 4).fill(convertColor(fillColor));
+      }
+      add.line(0, 2, 4, 2).stroke({ color: convertColor(lineColor), width: 0.5 });
+      add.line(2, 0, 2, 4).stroke({ color: convertColor(lineColor), width: 0.5 });
+    })
+    .rotate(rotation);
+}
+
+function createLinearGradient(svg: Svg, direction: "horizontal" | "vertical", lineColor?: IColor, fillColor?: IColor) {
+  const c = convertColor(fillColor);
+  const h = convertColor(lineColor, "white");
+  return svg
+    .gradient("linear", (add) => {
+      add.stop(0, h);
+      add.stop(0.5, c);
+      add.stop(1, h);
+    })
+    .from(0, 0)
+    .to(direction === "horizontal" ? 1 : 0, direction === "vertical" ? 1 : 0);
+}
+
+function createRadialGradient(svg: Svg, lineColor?: IColor, fillColor?: IColor) {
+  const c = convertColor(fillColor);
+  const h = convertColor(lineColor, "white");
+  return svg
+    .gradient("radial", (add) => {
+      add.stop(0, c);
+      add.stop(1, h);
+    })
+    .attr({ cx: 0.3, cy: 0.3, r: 0.7 });
 }
 
 export function applyFontName(shape: Text, graphicItem: IText): void {
