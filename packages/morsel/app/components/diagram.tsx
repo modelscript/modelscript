@@ -683,6 +683,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     }
 
     g.fromJSON({ nodes: [...nodes.values()], edges: edges });
+    g.cleanSelection();
 
     if (lastClassRef.current === props.classInstance.name) {
       const targetZoom = lastZoomRef.current;
