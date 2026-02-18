@@ -9,6 +9,7 @@ interface TreeWidgetProps {
   context: Context | null;
   onSelect: (classInstance: ModelicaClassInstance) => void;
   width?: number | string;
+  filter?: string;
 }
 
 interface ClassIconProps {
@@ -46,6 +47,7 @@ interface TreeNodeProps {
   element: ModelicaClassInstance;
   onSelect: (classInstance: ModelicaClassInstance) => void;
   depth: number;
+  showQualifiedName?: boolean;
 }
 
 function getClassChildren(element: ModelicaClassInstance): ModelicaClassInstance[] {
@@ -59,7 +61,7 @@ function getClassChildren(element: ModelicaClassInstance): ModelicaClassInstance
 }
 
 const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
-  const { element, onSelect, depth } = props;
+  const { element, onSelect, depth, showQualifiedName } = props;
   const [expanded, setExpanded] = React.useState(false);
   const [hasChildren, setHasChildren] = React.useState<boolean | null>(null);
   const iconRef = React.useRef<HTMLSpanElement>(null);
@@ -73,7 +75,7 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
     }
   }, [children, hasChildren]);
 
-  const showChevron = hasChildren === null || hasChildren === true;
+  const showChevron = (hasChildren === null || hasChildren === true) && !showQualifiedName;
 
   const handleMouseEnter = () => {
     if (!dragImageRef.current) {
@@ -95,8 +97,10 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
       <NavList.Item
         onClick={(e) => {
           e.stopPropagation();
-          if (hasChildren !== false) {
+          if (!showQualifiedName && hasChildren !== false) {
             setExpanded((prev) => !prev);
+          } else {
+            onSelect(element);
           }
         }}
         onDoubleClick={(e) => {
@@ -133,7 +137,7 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
             </span>
           </span>
         </NavList.LeadingVisual>
-        {element.name}
+        {showQualifiedName ? element.compositeName : element.name}
       </NavList.Item>
       {expanded &&
         children?.map((child) => <TreeNode key={child.name} element={child} onSelect={onSelect} depth={depth + 1} />)}
@@ -186,12 +190,49 @@ const LibraryGroup = React.memo(function LibraryGroup(props: LibraryGroupProps) 
 
 const TreeWidget = React.memo(function TreeWidget(props: TreeWidgetProps) {
   const elements: React.ReactNode[] = [];
+  const filter = props.filter?.toLowerCase() ?? "";
+
   if (props.context) {
-    for (const element of props.context.elements) {
-      if (element instanceof ModelicaClassInstance) {
-        elements.push(<TreeNode key={element.name} element={element} onSelect={props.onSelect} depth={0} />);
-      } else if (element instanceof ModelicaLibrary) {
-        elements.push(<LibraryGroup key={element.path} library={element} onSelect={props.onSelect} />);
+    if (filter) {
+      const matchingClasses: ModelicaClassInstance[] = [];
+
+      const flatten = (element: ModelicaClassInstance | ModelicaLibrary) => {
+        if (element instanceof ModelicaClassInstance) {
+          if (element.compositeName.toLowerCase().includes(filter)) {
+            matchingClasses.push(element);
+          }
+          for (const child of element.elements) {
+            if (child instanceof ModelicaClassInstance) {
+              flatten(child);
+            }
+          }
+        } else if (element instanceof ModelicaLibrary) {
+          for (const child of element.elements) {
+            if (child instanceof ModelicaClassInstance) {
+              flatten(child);
+            }
+          }
+        }
+      };
+
+      for (const element of props.context.elements) {
+        if (element instanceof ModelicaClassInstance || element instanceof ModelicaLibrary) {
+          flatten(element);
+        }
+      }
+
+      elements.push(
+        ...matchingClasses.map((c) => (
+          <TreeNode key={c.compositeName} element={c} onSelect={props.onSelect} depth={0} showQualifiedName={true} />
+        )),
+      );
+    } else {
+      for (const element of props.context.elements) {
+        if (element instanceof ModelicaClassInstance) {
+          elements.push(<TreeNode key={element.name} element={element} onSelect={props.onSelect} depth={0} />);
+        } else if (element instanceof ModelicaLibrary) {
+          elements.push(<LibraryGroup key={element.path} library={element} onSelect={props.onSelect} />);
+        }
       }
     }
   }

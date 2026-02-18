@@ -16,13 +16,15 @@ import {
   CodeIcon,
   ListUnorderedIcon,
   MoonIcon,
+  SearchIcon,
   ShareAndroidIcon,
   SplitViewIcon,
   SunIcon,
   UnwrapIcon,
   WorkflowIcon,
+  XIcon,
 } from "@primer/octicons-react";
-import { Dialog, IconButton, useTheme } from "@primer/react";
+import { Dialog, IconButton, Spinner, TextInput, useTheme } from "@primer/react";
 import { editor } from "monaco-editor";
 import { type DataUrl } from "parse-data-url";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -71,6 +73,23 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [treeWidth, setTreeWidth] = useState(300);
   const isDraggingTree = useRef(false);
   const { colorMode, setColorMode } = useTheme();
+  const [libraryFilter, setLibraryFilter] = useState("");
+  const [debouncedFilter, setDebouncedFilter] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
+  const [isSearchExpanded, setIsSearchExpanded] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setIsSearching(true);
+    const handler = setTimeout(() => {
+      setDebouncedFilter(libraryFilter);
+      setIsSearching(false);
+    }, 300);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [libraryFilter]);
 
   const NARROW_BREAKPOINT = 768;
   const isNarrow = windowWidth < NARROW_BREAKPOINT;
@@ -559,9 +578,77 @@ export default function MorselEditor(props: MorselEditorProps) {
           {treeVisible && (
             <>
               <div style={{ width: treeWidth, display: "flex", flexDirection: "column", minWidth: 200, maxWidth: 600 }}>
-                <div className="text-bold px-3 py-2 border-bottom bg-canvas-subtle">Libraries</div>
+                <div className="text-bold px-3 py-2 border-bottom bg-canvas-subtle d-flex flex-items-center flex-justify-between">
+                  <div className="d-flex flex-items-center">Libraries</div>
+                  <div className="d-flex flex-items-center">
+                    <TextInput
+                      ref={inputRef}
+                      aria-label="Filter classes"
+                      placeholder="Filter classes..."
+                      value={libraryFilter}
+                      onChange={(e) => setLibraryFilter(e.target.value)}
+                      onBlur={() => {
+                        if (!libraryFilter) setIsSearchExpanded(false);
+                      }}
+                      trailingAction={
+                        !isSearching && (isSearchExpanded || libraryFilter) ? (
+                          <TextInput.Action
+                            onClick={() => {
+                              if (libraryFilter) {
+                                setLibraryFilter("");
+                                inputRef.current?.focus();
+                              } else {
+                                setIsSearchExpanded(false);
+                              }
+                            }}
+                            icon={libraryFilter ? XIcon : SearchIcon}
+                            aria-label={libraryFilter ? "Clear search" : "Close search"}
+                          />
+                        ) : undefined
+                      }
+                      trailingVisual={
+                        isSearching && (isSearchExpanded || libraryFilter) ? (
+                          <Spinner size="small" style={{ marginTop: "6px", marginInlineStart: "8px" }} />
+                        ) : undefined
+                      }
+                      className={isSearchExpanded || libraryFilter ? "input-sm" : "input-sm border-0"}
+                      style={{
+                        width: isSearchExpanded || libraryFilter ? "168px" : "0px",
+                        opacity: isSearchExpanded || libraryFilter ? 1 : 0,
+                        padding: isSearchExpanded || libraryFilter ? undefined : "0px",
+                        borderWidth: isSearchExpanded || libraryFilter ? undefined : "0px",
+                        height: "28px",
+                        transition: "all 0.2s ease-in-out",
+                        overflow: "hidden",
+                      }}
+                    />
+                    <IconButton
+                      icon={SearchIcon}
+                      aria-label="Search libraries"
+                      size="small"
+                      variant="invisible"
+                      onClick={() => {
+                        setIsSearchExpanded(true);
+                        setTimeout(() => inputRef.current?.focus(), 50);
+                      }}
+                      style={{
+                        width: isSearchExpanded || libraryFilter ? "0px" : "28px",
+                        opacity: isSearchExpanded || libraryFilter ? 0 : 1,
+                        padding: isSearchExpanded || libraryFilter ? "0px" : undefined,
+                        overflow: "hidden",
+                        transition: "all 0.2s ease-in-out",
+                      }}
+                    />
+                  </div>
+                </div>
                 <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
-                  <TreeWidget context={context} onSelect={handleTreeSelect} width="100%" />
+                  <TreeWidget
+                    key={debouncedFilter ? "filtered" : "unfiltered"}
+                    context={context}
+                    onSelect={handleTreeSelect}
+                    width="100%"
+                    filter={debouncedFilter}
+                  />
                 </div>
                 <div className="text-bold px-3 py-2 border-top border-bottom bg-canvas-subtle">Components</div>
                 <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
