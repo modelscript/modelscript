@@ -35,19 +35,40 @@ interface DiagramEditorProps {
   classInstance: ModelicaClassInstance | null;
   onSelect?: (componentName: string | null) => void;
   onDrop?: (className: string, x: number, y: number) => void;
-  onConnect?: (source: string, target: string) => void;
-  onMove?: (name: string, x: number, y: number, width: number, height: number, rotation: number) => void;
-  onResize?: (name: string, x: number, y: number, width: number, height: number, rotation: number) => void;
+  onConnect?: (source: string, target: string, points?: { x: number; y: number }[]) => void;
+  onMove?: (
+    name: string,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    rotation: number,
+    edges?: { source: string; target: string; points: { x: number; y: number }[] }[],
+  ) => void;
+  onResize?: (
+    name: string,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    rotation: number,
+    edges?: { source: string; target: string; points: { x: number; y: number }[] }[],
+  ) => void;
+  onEdgeMove?: (edges: { source: string; target: string; points: { x: number; y: number }[] }[]) => void;
+  onEdgeDelete?: (source: string, target: string) => void;
   theme: Theme;
 }
 
 const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props, ref) => {
   const refContainer = useRef<HTMLDivElement>(null);
   const [graph, setGraph] = useState<Graph | null>(null);
+  const graphRef = useRef<Graph | null>(null);
   const onSelectRef = useRef(props.onSelect);
   const onConnectRef = useRef(props.onConnect);
   const onMoveRef = useRef(props.onMove);
   const onResizeRef = useRef(props.onResize);
+  const onEdgeMoveRef = useRef(props.onEdgeMove);
+  const onEdgeDeleteRef = useRef(props.onEdgeDelete);
   const moveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const justResizedRef = useRef(false);
 
@@ -65,7 +86,31 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     onConnectRef.current = props.onConnect;
     onMoveRef.current = props.onMove;
     onResizeRef.current = props.onResize;
-  }, [props.onSelect, props.onConnect, props.onMove, props.onResize]);
+    onEdgeMoveRef.current = props.onEdgeMove;
+    onEdgeDeleteRef.current = props.onEdgeDelete;
+  }, [props.onSelect, props.onConnect, props.onMove, props.onResize, props.onEdgeMove, props.onEdgeDelete]);
+
+  const getConnectedEdges = (node: any) => {
+    const g = graphRef.current;
+    if (!g) return [];
+    const edges = g.getConnectedEdges(node);
+    return edges?.map((edge) => {
+      const source = edge.getSource() as any;
+      const target = edge.getTarget() as any;
+      const vertices = edge.getVertices();
+      const sourcePoint = edge.getSourcePoint();
+      const targetPoint = edge.getTargetPoint();
+      const points = [sourcePoint, ...vertices, targetPoint].map((p) => ({
+        x: Math.round(p.x),
+        y: Math.round(-p.y),
+      }));
+      return {
+        source: `${source.cell}.${source.port}`,
+        target: `${target.cell}.${target.port}`,
+        points,
+      };
+    });
+  };
 
   useEffect(() => {
     if (!refContainer.current) return;
@@ -100,15 +145,23 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
         },
         interacting: true,
         connecting: {
+          allowBlank: false,
+          allowMulti: true,
+          allowLoop: false,
+          allowNode: false,
+          allowEdge: false,
+          allowPort: true,
+          highlight: true,
           createEdge: () => {
             return g?.createEdge({
               router: { name: "normal" },
               attrs: {
                 "z-index": "-10",
                 line: {
-                  stroke: props.theme === "vs-dark" ? "#ccc" : "#333",
+                  stroke: "#0000ff",
                   strokeWidth: 1,
                   "vector-effect": "non-scaling-stroke",
+                  targetMarker: null,
                 },
               },
             });
@@ -131,9 +184,95 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
           const source = edge.getSource() as any;
           const target = edge.getTarget() as any;
           if (source.cell && source.port && target.cell && target.port) {
-            onConnectRef.current(`${source.cell}.${source.port}`, `${target.cell}.${target.port}`);
+            const vertices = edge.getVertices();
+            const sourcePoint = edge.getSourcePoint();
+            const targetPoint = edge.getTargetPoint();
+            const points = [sourcePoint, ...vertices, targetPoint].map((p) => ({
+              x: Math.round(p.x),
+              y: Math.round(-p.y),
+            }));
+
+            onConnectRef.current(`${source.cell}.${source.port}`, `${target.cell}.${target.port}`, points);
           }
         }
+      });
+      g.on("edge:mouseenter", ({ edge }) => {
+        edge.addTools([
+          {
+            name: "vertices",
+            args: {
+              attrs: { fill: "#666", stroke: "transparent", strokeWidth: 1, r: 2 },
+            },
+          },
+          {
+            name: "segments",
+            args: {
+              attrs: {
+                fill: "#666",
+                stroke: "transparent",
+                strokeWidth: 1,
+                width: 10,
+                height: 2,
+                rx: 1,
+                ry: 1,
+                x: -5,
+                y: -1,
+              },
+              stopPropagation: false,
+            },
+          },
+          {
+            name: "button-remove",
+            args: {
+              distance: 20,
+              onClick({ cell }: { cell: any }) {
+                const source = cell.getSource() as any;
+                const target = cell.getTarget() as any;
+                if (source.cell && source.port && target.cell && target.port) {
+                  const sourceId = `${source.cell}.${source.port}`;
+                  const targetId = `${target.cell}.${target.port}`;
+                  if (onEdgeDeleteRef.current) {
+                    onEdgeDeleteRef.current(sourceId, targetId);
+                  }
+                  cell.remove();
+                }
+              },
+            },
+          },
+        ]);
+      });
+      g.on("edge:mouseleave", ({ edge }) => {
+        edge.removeTools();
+      });
+
+      let edgeUpdateTimeout: NodeJS.Timeout | null = null;
+      g.on("edge:change:vertices", ({ edge }) => {
+        if (edgeUpdateTimeout) {
+          clearTimeout(edgeUpdateTimeout);
+        }
+        edgeUpdateTimeout = setTimeout(() => {
+          if (onEdgeMoveRef.current) {
+            const source = edge.getSource() as any;
+            const target = edge.getTarget() as any;
+            if (source.cell && source.port && target.cell && target.port) {
+              const vertices = edge.getVertices();
+              const sourcePoint = edge.getSourcePoint();
+              const targetPoint = edge.getTargetPoint();
+              const points = [sourcePoint, ...vertices, targetPoint].map((p) => ({
+                x: Math.round(p.x),
+                y: Math.round(-p.y),
+              }));
+              onEdgeMoveRef.current([
+                {
+                  source: `${source.cell}.${source.port}`,
+                  target: `${target.cell}.${target.port}`,
+                  points,
+                },
+              ]);
+            }
+          }
+          edgeUpdateTimeout = null;
+        }, 500);
       });
       g.on("node:mouseup", ({ node }) => {
         if (moveTimeoutRef.current) {
@@ -141,7 +280,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
         }
         moveTimeoutRef.current = setTimeout(() => {
           if (justResizedRef.current) {
-            justResizedRef.current = false; // Reset flag
+            justResizedRef.current = false;
             moveTimeoutRef.current = null;
             return;
           }
@@ -149,7 +288,8 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
             const p = node.getPosition();
             const s = node.getSize();
             const r = node.getAngle();
-            onMoveRef.current(node.id, p.x, p.y, s.width, s.height, r);
+            const edges = getConnectedEdges(node);
+            onMoveRef.current(node.id, p.x, p.y, s.width, s.height, r, edges);
           }
           moveTimeoutRef.current = null;
         }, 100);
@@ -159,7 +299,8 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
           const p = node.getPosition();
           const s = node.getSize();
           const r = node.getAngle();
-          onMoveRef.current(node.id, p.x, p.y, s.width, s.height, r);
+          const edges = getConnectedEdges(node);
+          onMoveRef.current(node.id, p.x, p.y, s.width, s.height, r, edges);
         }
       });
       g.on("node:resized", ({ node }: any) => {
@@ -175,9 +316,11 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
           const p = node.getPosition();
           const s = node.getSize();
           const r = node.getAngle();
-          onResizeRef.current(node.id, p.x, p.y, s.width, s.height, r);
+          const edges = getConnectedEdges(node);
+          onResizeRef.current(node.id, p.x, p.y, s.width, s.height, r, edges);
         }
       });
+      graphRef.current = g;
       setGraph(g);
     } else {
       g = graph;
@@ -325,7 +468,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       if (!nodes.has(c1[0]) || !nodes.has(c2[0])) continue;
       const annotations = ModelicaElement.instantiateAnnotations(props.classInstance, connectEquation.annotationClause);
       const line: ILine | null = props.classInstance.annotation("Line", annotations);
-      const strokeColor = `rgb(${line?.color?.[0] ?? 0}, ${line?.color?.[1] ?? 0}, ${line?.color?.[2] ?? 0})`;
+      const strokeColor = `rgb(${line?.color?.[0] ?? 0}, ${line?.color?.[1] ?? 0}, ${line?.color?.[2] ?? 255})`;
       const strokeWidth = (line?.thickness ?? 0.25) * 4;
       const stroke = line?.visible === false || line?.pattern === LinePattern.NONE ? "none" : strokeColor;
       let strokeDasharray = undefined;
@@ -469,7 +612,6 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
 
     g.fromJSON({ nodes: [...nodes.values()], edges: edges });
 
-    // Restore zoom if class name is same, otherwise zoom to fit
     if (lastClassRef.current === props.classInstance.name) {
       const targetZoom = lastZoomRef.current;
       if (targetZoom) {
@@ -505,7 +647,6 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     }
     lastClassRef.current = props.classInstance.name;
 
-    // Save zoom state on change
     g.on("scale", () => {
       lastZoomRef.current = { zoom: g.zoom(), tx: g.translate().tx, ty: g.translate().ty };
     });

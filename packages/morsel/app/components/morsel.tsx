@@ -325,6 +325,161 @@ export default function MorselEditor(props: MorselEditorProps) {
     }
   };
 
+  const handleConnectUpdate = (edges: { source: string; target: string; points: { x: number; y: number }[] }[]) => {
+    if (!classInstance || !editor) return;
+
+    for (const edge of edges) {
+      const connectEq = Array.from(classInstance.connectEquations).find((ce: any) => {
+        const c1 = ce.componentReference1?.parts.map((c: any) => c.identifier?.text ?? "").join(".");
+        const c2 = ce.componentReference2?.parts.map((c: any) => c.identifier?.text ?? "").join(".");
+        return (c1 === edge.source && c2 === edge.target) || (c1 === edge.target && c2 === edge.source);
+      });
+
+      if (!connectEq) continue;
+
+      const node = connectEq.concreteSyntaxNode;
+      if (node) {
+        const startLine = node.startPosition.row + 1;
+        const startCol = node.startPosition.column + 1;
+        const endLine = node.endPosition.row + 1;
+        const endCol = node.endPosition.column + 1;
+
+        const range = {
+          startLineNumber: startLine,
+          startColumn: startCol,
+          endLineNumber: endLine,
+          endColumn: endCol,
+        };
+
+        const text = editor.getModel()?.getValueInRange(range) || "";
+        const pointsStr = `{${edge.points.map((p) => `{${p.x},${p.y}}`).join(", ")}}`;
+        const newPointsCore = `points=${pointsStr}`;
+        const colorCore = "color={0, 0, 255}";
+
+        let newText = text;
+        const lineMatch = text.match(/Line\s*\(/);
+        if (lineMatch) {
+          const startIndex = lineMatch.index! + lineMatch[0].length;
+          let nesting = 0;
+          let endIndex = -1;
+          for (let i = startIndex; i < text.length; i++) {
+            if (text[i] === "(") nesting++;
+            else if (text[i] === ")") {
+              if (nesting === 0) {
+                endIndex = i;
+                break;
+              }
+              nesting--;
+            }
+          }
+
+          if (endIndex !== -1) {
+            let lineContent = text.substring(startIndex, endIndex);
+            const pointsMatch = lineContent.match(/points\s*=\s*\{/);
+            if (pointsMatch) {
+              const pStartRel = pointsMatch.index!;
+              const pStartAbs = startIndex + pStartRel;
+              let pNesting = 0;
+              let pEndAbs = -1;
+              for (let i = pStartAbs; i < text.length; i++) {
+                if (text[i] === "{") pNesting++;
+                else if (text[i] === "}") {
+                  if (pNesting === 1) {
+                    pEndAbs = i;
+                    break;
+                  }
+                  pNesting--;
+                }
+              }
+              if (pEndAbs !== -1) {
+                lineContent =
+                  text.substring(startIndex, pStartAbs) + newPointsCore + text.substring(pEndAbs + 1, endIndex);
+              }
+            } else {
+              const prefix = lineContent.trim().length > 0 ? ", " : "";
+              lineContent = lineContent + prefix + newPointsCore;
+            }
+
+            if (!lineContent.match(/color\s*=\s*\{/)) {
+              const prefix = lineContent.trim().length > 0 ? ", " : "";
+              lineContent = lineContent + prefix + colorCore;
+            }
+
+            newText = text.substring(0, startIndex) + lineContent + text.substring(endIndex);
+          }
+        } else {
+          const annotationMatch = text.match(/annotation\s*\(/);
+          if (annotationMatch) {
+            const startIndex = annotationMatch.index! + annotationMatch[0].length;
+            let nesting = 0;
+            let endIndex = -1;
+            for (let i = startIndex; i < text.length; i++) {
+              if (text[i] === "(") nesting++;
+              else if (text[i] === ")") {
+                if (nesting === 0) {
+                  endIndex = i;
+                  break;
+                }
+                nesting--;
+              }
+            }
+            if (endIndex !== -1) {
+              const annotationContent = text.substring(startIndex, endIndex);
+              const prefix = annotationContent.trim().length > 0 ? ", " : "";
+              newText =
+                text.substring(0, endIndex) +
+                prefix +
+                `Line(${newPointsCore}, ${colorCore})` +
+                text.substring(endIndex);
+            }
+          } else {
+            const semiIndex = text.lastIndexOf(";");
+            const insert = ` annotation(Line(${newPointsCore}, ${colorCore}))`;
+            if (semiIndex !== -1) {
+              newText = text.slice(0, semiIndex) + insert + text.slice(semiIndex);
+            } else {
+              newText = text + insert;
+            }
+          }
+        }
+
+        if (newText !== text) {
+          editor.executeEdits("update-connect", [{ range, text: newText }]);
+        }
+      }
+    }
+  };
+
+  const handleEdgeDelete = (source: string, target: string) => {
+    if (!classInstance || !editor) return;
+
+    const connectEq = Array.from(classInstance.connectEquations).find((ce: any) => {
+      const c1 = ce.componentReference1?.parts.map((c: any) => c.identifier?.text ?? "").join(".");
+      const c2 = ce.componentReference2?.parts.map((c: any) => c.identifier?.text ?? "").join(".");
+      return (c1 === source && c2 === target) || (c1 === target && c2 === source);
+    });
+
+    if (!connectEq) return;
+
+    const node = connectEq.concreteSyntaxNode;
+    if (node) {
+      const startLine = node.startPosition.row + 1;
+      const startCol = node.startPosition.column + 1;
+      const endLine = node.endPosition.row + 1;
+      const endCol = node.endPosition.column + 1;
+
+      const range = {
+        startLineNumber: startLine,
+        startColumn: startCol,
+        endLineNumber: endLine,
+        endColumn: endCol,
+      };
+
+      isDiagramUpdate.current = true;
+      editor.executeEdits("delete-connect", [{ range, text: "" }]);
+    }
+  };
+
   return (
     <>
       <title>Morsel | ModelScript.org</title>
@@ -412,8 +567,6 @@ export default function MorselEditor(props: MorselEditorProps) {
                     }}
                     onDrop={(className, x, y) => {
                       if (!classInstance || !editor) return;
-
-                      // Generate unique component name
                       const baseName = className.split(".").pop()?.toLowerCase() || "component";
                       let name = baseName;
                       let i = 1;
@@ -423,7 +576,6 @@ export default function MorselEditor(props: MorselEditorProps) {
                         i++;
                       }
 
-                      // Get diagram configuration
                       const diagram: IDiagram | null = classInstance.annotation("Diagram");
                       const initialScale = diagram?.coordinateSystem?.initialScale ?? 0.1;
                       const extent = diagram?.coordinateSystem?.extent;
@@ -439,21 +591,15 @@ export default function MorselEditor(props: MorselEditorProps) {
                       const w = width * initialScale;
                       const h = height * initialScale;
 
-                      // Generate annotation with extent
                       const annotation = `annotation(Placement(transformation(origin={${Math.round(x)},${-Math.round(y)}}, extent={{-${w / 2},-${h / 2}},{${w / 2},${h / 2}}})))`;
                       const componentDecl = `  ${className} ${name} ${annotation};\n`;
 
-                      // Insert into editor
                       const model = editor.getModel();
                       if (model) {
-                        // Find insertion point (end of class)
                         const text = model.getValue();
-                        // Simple heuristic: insert before the last "end"
                         const lastEndIndex = text.lastIndexOf("end");
                         if (lastEndIndex !== -1) {
                           const pos = model.getPositionAt(lastEndIndex);
-
-                          // Insert before the last "end" line
                           editor.executeEdits("dnd", [
                             {
                               range: {
@@ -468,11 +614,14 @@ export default function MorselEditor(props: MorselEditorProps) {
                         }
                       }
                     }}
-                    onConnect={(source, target) => {
+                    onConnect={(source, target, points) => {
                       if (!classInstance || !editor) return;
                       isDiagramUpdate.current = true;
 
-                      const connectEq = `  connect(${source}, ${target});\n`;
+                      const annotation = points
+                        ? ` annotation(Line(points={${points.map((p) => `{${p.x},${p.y}}`).join(", ")}}, color={0, 0, 255}))`
+                        : " annotation(Line(color={0, 0, 255}))";
+                      const connectEq = `  connect(${source}, ${target})${annotation};\n`;
                       const model = editor.getModel();
                       if (!model) return;
 
@@ -519,16 +668,24 @@ export default function MorselEditor(props: MorselEditorProps) {
                         }
                       }
                     }}
-                    onMove={(name, x, y, width, height, rotation) => {
+                    onMove={(name, x, y, width, height, rotation, edges) => {
                       if (!classInstance || !editor) return;
                       isDiagramUpdate.current = true;
                       handlePlacementChange(name, x, y, width, height, rotation);
+                      if (edges) handleConnectUpdate(edges);
                     }}
-                    onResize={(name, x, y, width, height, rotation) => {
+                    onResize={(name, x, y, width, height, rotation, edges) => {
                       if (!classInstance || !editor) return;
                       isDiagramUpdate.current = false;
                       handlePlacementChange(name, x, y, width, height, rotation);
+                      if (edges) handleConnectUpdate(edges);
                     }}
+                    onEdgeMove={(edges) => {
+                      if (!classInstance || !editor) return;
+                      isDiagramUpdate.current = true;
+                      handleConnectUpdate(edges);
+                    }}
+                    onEdgeDelete={handleEdgeDelete}
                   />
                 </div>
                 {selectedComponent && (
