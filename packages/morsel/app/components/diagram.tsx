@@ -183,7 +183,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
         },
       });
       g.use(new Transform({ resizing: true, rotating: true }));
-      g.use(new Selection({ enabled: true, showNodeSelectionBox: true }));
+      g.use(new Selection({ enabled: true, showNodeSelectionBox: true, rubberband: true }));
       g.use(new Keyboard({ enabled: true }));
 
       g.bindKey(["backspace", "delete"], () => {
