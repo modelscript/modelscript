@@ -199,21 +199,21 @@ export default function MorselEditor(props: MorselEditorProps) {
     };
   }, []);
 
-  const handlePlacementChange = (
+  const getPlacementEdit = (
     name: string,
     x: number,
     y: number,
     width: number,
     height: number,
     rotation: number,
-  ) => {
-    if (!classInstance || !editor) return;
+  ): editor.IIdentifiedSingleEditOperation | null => {
+    if (!classInstance || !editor) return null;
 
     const component = classInstance.components
       ? Array.from(classInstance.components).find((c) => c.name === name)
       : null;
 
-    if (!component) return;
+    if (!component) return null;
     const originX = Math.round(x + width / 2);
     const originY = Math.round(-(y + height / 2));
     const w = Math.round(width);
@@ -293,14 +293,26 @@ export default function MorselEditor(props: MorselEditorProps) {
                   const newText =
                     text.substring(0, transformStartAbs) + newTransformationCore + text.substring(transformEndAbs);
                   if (newText !== text) {
-                    editor.executeEdits("move", [{ range, text: newText }]);
+                    return { range, text: newText };
+                  } else {
+                    console.log(`getPlacementEdit for ${name}: No change detected.`);
+                    console.log(`Input: x=${x}, y=${y}, w=${width}, h=${height}`);
+                    console.log(`Calculated: originX=${originX}, originY=${originY}`);
+                    console.log(`Existing text snippet:`, text.substring(transformStartAbs, transformEndAbs));
+                    console.log(`New core:`, newTransformationCore);
                   }
+                } else {
+                  const insert = `transformation(${newTransformationCore})`;
+                  const prefix = placementContent.trim().length > 0 ? ", " : "";
+                  const newText =
+                    text.substring(0, placementEndAbs) + prefix + insert + text.substring(placementEndAbs);
+                  return { range, text: newText };
                 }
               } else {
                 const insert = `transformation(${newTransformationCore})`;
                 const prefix = placementContent.trim().length > 0 ? ", " : "";
                 const newText = text.substring(0, placementEndAbs) + prefix + insert + text.substring(placementEndAbs);
-                editor.executeEdits("move", [{ range, text: newText }]);
+                return { range, text: newText };
               }
             }
           } else {
@@ -308,7 +320,7 @@ export default function MorselEditor(props: MorselEditorProps) {
             const innerContent = annotationContent.trim();
             const prefix = innerContent.length > 0 ? ", " : "";
             const newText = text.substring(0, endIndex) + prefix + insert + text.substring(endIndex);
-            editor.executeEdits("move", [{ range, text: newText }]);
+            return { range, text: newText };
           }
         }
       } else {
@@ -316,18 +328,22 @@ export default function MorselEditor(props: MorselEditorProps) {
         if (semiIndex !== -1) {
           const insert = ` annotation(Placement(transformation(${newTransformationCore})))`;
           const newText = text.slice(0, semiIndex) + insert + text.slice(semiIndex);
-          editor.executeEdits("move", [{ range, text: newText }]);
+          return { range, text: newText };
         } else {
           const insert = ` annotation(Placement(transformation(${newTransformationCore})))`;
           const newText = text + insert;
-          editor.executeEdits("move", [{ range, text: newText }]);
+          return { range, text: newText };
         }
       }
     }
+    return null;
   };
 
-  const handleConnectUpdate = (edges: { source: string; target: string; points: { x: number; y: number }[] }[]) => {
-    if (!classInstance || !editor) return;
+  const getConnectEdits = (
+    edges: { source: string; target: string; points: { x: number; y: number }[] }[],
+  ): Map<string, editor.IIdentifiedSingleEditOperation> => {
+    const edits = new Map<string, editor.IIdentifiedSingleEditOperation>();
+    if (!classInstance || !editor) return edits;
 
     for (const edge of edges) {
       const connectEq = Array.from(classInstance.connectEquations).find((ce: any) => {
@@ -340,6 +356,10 @@ export default function MorselEditor(props: MorselEditorProps) {
 
       const node = connectEq.concreteSyntaxNode;
       if (node) {
+        // Use a unique key for the map to avoid duplicates
+        const key = `${node.startPosition.row}:${node.startPosition.column}`;
+        if (edits.has(key)) continue;
+
         const startLine = node.startPosition.row + 1;
         const startCol = node.startPosition.column + 1;
         const endLine = node.endPosition.row + 1;
@@ -444,10 +464,11 @@ export default function MorselEditor(props: MorselEditorProps) {
         }
 
         if (newText !== text) {
-          editor.executeEdits("update-connect", [{ range, text: newText }]);
+          edits.set(key, { range, text: newText });
         }
       }
     }
+    return edits;
   };
 
   const handleEdgeDelete = (source: string, target: string) => {
@@ -717,22 +738,54 @@ export default function MorselEditor(props: MorselEditorProps) {
                         }
                       }
                     }}
-                    onMove={(name, x, y, width, height, rotation, edges) => {
+                    onMove={(items) => {
                       if (!classInstance || !editor) return;
                       isDiagramUpdate.current = true;
-                      handlePlacementChange(name, x, y, width, height, rotation);
-                      if (edges) handleConnectUpdate(edges);
+                      const edits: editor.IIdentifiedSingleEditOperation[] = [];
+                      const allEdges: any[] = [];
+                      items.forEach((item) => {
+                        const edit = getPlacementEdit(
+                          item.name,
+                          item.x,
+                          item.y,
+                          item.width,
+                          item.height,
+                          item.rotation,
+                        );
+                        if (edit) edits.push(edit);
+                        if (item.edges) allEdges.push(...item.edges);
+                      });
+
+                      if (allEdges.length > 0) {
+                        const edgeEdits = getConnectEdits(allEdges);
+                        edgeEdits.forEach((edit) => edits.push(edit));
+                      }
+
+                      if (edits.length > 0) {
+                        editor.executeEdits("move", edits);
+                      }
                     }}
                     onResize={(name, x, y, width, height, rotation, edges) => {
                       if (!classInstance || !editor) return;
                       isDiagramUpdate.current = false;
-                      handlePlacementChange(name, x, y, width, height, rotation);
-                      if (edges) handleConnectUpdate(edges);
+                      const edits: editor.IIdentifiedSingleEditOperation[] = [];
+                      const edit = getPlacementEdit(name, x, y, width, height, rotation);
+                      if (edit) edits.push(edit);
+                      if (edges) {
+                        const edgeEdits = getConnectEdits(edges);
+                        edgeEdits.forEach((edit) => edits.push(edit));
+                      }
+                      if (edits.length > 0) {
+                        editor.executeEdits("resize", edits);
+                      }
                     }}
                     onEdgeMove={(edges) => {
                       if (!classInstance || !editor) return;
                       isDiagramUpdate.current = true;
-                      handleConnectUpdate(edges);
+                      const edgeEdits = getConnectEdits(edges);
+                      if (edgeEdits.size > 0) {
+                        editor.executeEdits("edge-move", Array.from(edgeEdits.values()));
+                      }
                     }}
                     onEdgeDelete={handleEdgeDelete}
                     onComponentDelete={handleComponentDelete}

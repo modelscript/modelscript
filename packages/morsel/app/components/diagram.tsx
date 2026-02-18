@@ -37,13 +37,15 @@ interface DiagramEditorProps {
   onDrop?: (className: string, x: number, y: number) => void;
   onConnect?: (source: string, target: string, points?: { x: number; y: number }[]) => void;
   onMove?: (
-    name: string,
-    x: number,
-    y: number,
-    width: number,
-    height: number,
-    rotation: number,
-    edges?: { source: string; target: string; points: { x: number; y: number }[] }[],
+    items: {
+      name: string;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      rotation: number;
+      edges?: { source: string; target: string; points: { x: number; y: number }[] }[];
+    }[],
   ) => void;
   onResize?: (
     name: string,
@@ -73,6 +75,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
   const onComponentDeleteRef = useRef(props.onComponentDelete);
   const moveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const justResizedRef = useRef(false);
+  const changedNodesRef = useRef<Set<string>>(new Set());
 
   useImperativeHandle(ref, () => ({
     fitContent: () => {
@@ -308,7 +311,9 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
           edgeUpdateTimeout = null;
         }, 500);
       });
-      g.on("node:mouseup", ({ node }) => {
+      g.on("node:change:position", ({ node }) => {
+        changedNodesRef.current.add(node.id);
+
         if (moveTimeoutRef.current) {
           clearTimeout(moveTimeoutRef.current);
         }
@@ -316,17 +321,40 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
           if (justResizedRef.current) {
             justResizedRef.current = false;
             moveTimeoutRef.current = null;
+            changedNodesRef.current.clear();
             return;
           }
           if (onMoveRef.current) {
-            const p = node.getPosition();
-            const s = node.getSize();
-            const r = node.getAngle();
-            const edges = getConnectedEdges(node);
-            onMoveRef.current(node.id, p.x, p.y, s.width, s.height, r, edges);
+            const items: any[] = [];
+            changedNodesRef.current.forEach((id) => {
+              const n = g.getCellById(id);
+              if (n && n.isNode()) {
+                const p = n.getPosition();
+                const s = n.getSize();
+                const r = n.getAngle();
+                const edges = getConnectedEdges(n);
+                items.push({
+                  name: n.id,
+                  x: p.x,
+                  y: p.y,
+                  width: s.width,
+                  height: s.height,
+                  rotation: r,
+                  edges,
+                });
+              }
+            });
+
+            if (items.length > 0) {
+              onMoveRef.current(items);
+            }
           }
+          changedNodesRef.current.clear();
           moveTimeoutRef.current = null;
-        }, 100);
+        }, 200);
+      });
+      g.on("node:moved", ({ node }) => {
+        console.log(`node:moved ${node.id}`);
       });
       g.on("node:rotated", ({ node }: any) => {
         if (onMoveRef.current) {
@@ -334,7 +362,17 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
           const s = node.getSize();
           const r = node.getAngle();
           const edges = getConnectedEdges(node);
-          onMoveRef.current(node.id, p.x, p.y, s.width, s.height, r, edges);
+          onMoveRef.current!([
+            {
+              name: node.id,
+              x: p.x,
+              y: p.y,
+              width: s.width,
+              height: s.height,
+              rotation: r,
+              edges,
+            },
+          ]);
         }
       });
       g.on("node:resized", ({ node }: any) => {
