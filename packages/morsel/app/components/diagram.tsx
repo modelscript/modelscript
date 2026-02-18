@@ -382,8 +382,8 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
         if (!connectorTransform) continue;
         const connectorMarkup = renderIconX6(connectorClassInstance);
         const a = connectorTransform.rotate * (Math.PI / 180);
-        const relTranslateX = (connectorTransform.translateX - connectorTransform.originX) * connectorTransform.scaleX;
-        const relTranslateY = (connectorTransform.translateY - connectorTransform.originY) * connectorTransform.scaleY;
+        const relTranslateX = (connectorTransform.translateX - connectorTransform.originX) * componentTransform.scaleX;
+        const relTranslateY = (connectorTransform.translateY - connectorTransform.originY) * componentTransform.scaleY;
         ports.push({
           id: connector.name ?? "",
           group: "absolute",
@@ -392,12 +392,12 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
               componentTransform.width / 2 +
               relTranslateX * Math.cos(a) -
               relTranslateY * Math.sin(a) +
-              connectorTransform.originX * connectorTransform.scaleX,
+              connectorTransform.originX * componentTransform.scaleX,
             y:
               componentTransform.height / 2 +
               relTranslateX * Math.sin(a) +
               relTranslateY * Math.cos(a) +
-              connectorTransform.originY * connectorTransform.scaleY,
+              connectorTransform.originY * componentTransform.scaleY,
             angle: connectorTransform.rotate,
           },
           markup: {
@@ -405,8 +405,8 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
             children: [connectorMarkup],
             attrs: {
               magnet: "true",
-              width: connectorTransform.width * connectorTransform.scaleX,
-              height: connectorTransform.height * connectorTransform.scaleY,
+              width: connectorTransform.width * componentTransform.scaleX,
+              height: connectorTransform.height * componentTransform.scaleY,
               style: "overflow: visible",
             },
           },
