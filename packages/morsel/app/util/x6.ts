@@ -258,26 +258,51 @@ export function renderTextX6(
   document.body.appendChild(svg);
   const text = renderText(new Svg(svg).group(), graphicItem, classInstance, componentInstance);
   document.body.removeChild(svg);
-  const p1 = convertPoint(graphicItem?.extent?.[0], [0, 0]);
-  const p2 = convertPoint(graphicItem?.extent?.[1], [0, 0]);
+  const [x1, y1] = convertPoint(graphicItem?.extent?.[0], [0, 0]);
+  const [x2, y2] = convertPoint(graphicItem?.extent?.[1], [0, 0]);
+  const x = Math.min(x1, x2);
+  const y = Math.min(y1, y2);
+  const width = computeWidth(graphicItem.extent);
+  const height = computeHeight(graphicItem.extent);
+  const transform = componentInstance ? computeIconPlacement(componentInstance) : null;
+  const invScaleRatio = transform && transform.scaleX !== 0 ? transform.scaleY / transform.scaleX : 1;
+  const textX =
+    graphicItem.horizontalAlignment === TextAlignment.LEFT
+      ? x1
+      : graphicItem.horizontalAlignment === TextAlignment.RIGHT
+        ? x2
+        : (x1 + x2) / 2;
+  const textY = (y1 + y2) / 2;
   return {
-    tagName: "text",
-    textContent: text.text(),
+    tagName: "svg",
     attrs: {
-      style: `dominant-baseline: ${text.attr("dominant-baseline")}; fill: ${text.attr("fill")}; font-family: ${text.attr("font-family")}; font-size: ${text.attr("font-size")}; font-style: ${text.attr("font-style")}; font-weight: ${text.attr("font-weight")}; text-decoration: ${text.attr("text-decoration")}; text-anchor: ${text.attr("text-anchor")};`,
-      x:
-        (graphicItem.horizontalAlignment === TextAlignment.LEFT
-          ? p1[0]
-          : graphicItem.horizontalAlignment === TextAlignment.RIGHT
-            ? p2[0]
-            : (p1[0] + p2[0]) / 2) - 10,
-      y:
-        (graphicItem.horizontalAlignment === TextAlignment.LEFT
-          ? (p1[1] + p2[1]) / 2
-          : graphicItem.horizontalAlignment === TextAlignment.RIGHT
-            ? (p1[1] + p2[1]) / 2
-            : (p1[1] + p2[1]) / 2) - 10,
+      x,
+      y,
+      width,
+      height,
+      viewBox: `${x} ${y} ${width} ${height}`,
+      preserveAspectRatio: "xMidYMid meet",
+      overflow: "visible",
     },
+    children: [
+      {
+        tagName: "text",
+        textContent: text.text(),
+        attrs: {
+          style: `dominant-baseline: ${text.attr("dominant-baseline")}; fill: ${text.attr(
+            "fill",
+          )}; font-family: ${text.attr("font-family")}; font-size: ${text.attr(
+            "font-size",
+          )}; font-style: ${text.attr("font-style")}; font-weight: ${text.attr(
+            "font-weight",
+          )}; text-decoration: ${text.attr("text-decoration")}; text-anchor: ${text.attr(
+            "text-anchor",
+          )}; transform: scale(${invScaleRatio}, 1); transform-origin: ${textX}px ${textY}px;`,
+          x: textX,
+          y: textY,
+        },
+      },
+    ],
   };
 }
 
