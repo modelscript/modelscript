@@ -17,7 +17,7 @@ export default defineConfig(({ isSsrBuild }) => {
       tsconfigPaths(),
       isSsrBuild === false &&
         nodePolyfills({
-          include: ["buffer", "crypto", "fs", "path", "process", "stream", "util"],
+          include: ["buffer", "crypto", "fs", "path", "process", "stream", "util", "vm"],
           protocolImports: false,
         }),
       viteStaticCopy({
