@@ -239,7 +239,10 @@ export function renderRectangleX6(graphicItem: IRectangle): X6Markup {
     },
   };
   if (!shape.attrs) shape.attrs = {};
-  if (graphicItem.radius) shape.attrs["radius"] = graphicItem.radius;
+  if (graphicItem.radius) {
+    shape.attrs["rx"] = graphicItem.radius;
+    shape.attrs["ry"] = graphicItem.radius;
+  }
   renderFilledShapeX6(shape, graphicItem);
   return shape;
 }
