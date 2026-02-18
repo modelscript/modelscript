@@ -27,6 +27,7 @@ import { editor } from "monaco-editor";
 import { type DataUrl } from "parse-data-url";
 import { useCallback, useEffect, useRef, useState } from "react";
 import CodeEditor from "./code";
+import ComponentList from "./component-list";
 import DiagramEditor, { type DiagramEditorHandle } from "./diagram";
 import PropertiesWidget from "./properties";
 import TreeWidget from "./tree";
@@ -557,7 +558,24 @@ export default function MorselEditor(props: MorselEditorProps) {
         <div className="d-flex flex-1" style={{ minHeight: 0 }}>
           {treeVisible && (
             <>
-              <TreeWidget context={context} onSelect={handleTreeSelect} width={treeWidth} />
+              <div style={{ width: treeWidth, display: "flex", flexDirection: "column", minWidth: 200, maxWidth: 600 }}>
+                <div className="text-bold px-3 py-2 border-bottom bg-canvas-subtle">Libraries</div>
+                <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
+                  <TreeWidget context={context} onSelect={handleTreeSelect} width="100%" />
+                </div>
+                <div className="text-bold px-3 py-2 border-top border-bottom bg-canvas-subtle">Components</div>
+                <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
+                  <ComponentList
+                    classInstance={classInstance}
+                    onSelect={(name) => {
+                      if (!classInstance) return;
+                      const component = Array.from(classInstance.components).find((c) => c.name === name);
+                      setSelectedComponent(component || null);
+                    }}
+                    selectedName={selectedComponent?.name}
+                  />
+                </div>
+              </div>
               <div
                 style={{
                   width: 6,
