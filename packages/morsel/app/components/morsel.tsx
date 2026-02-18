@@ -7,6 +7,7 @@ import {
   encodeDataUrl,
   type IDiagram,
   ModelicaClassInstance,
+  ModelicaComponentClauseSyntaxNode,
   ModelicaComponentInstance,
   ModelicaEntity,
   type ModelicaEquationSectionSyntaxNode,
@@ -372,7 +373,6 @@ export default function MorselEditor(props: MorselEditorProps) {
               nesting--;
             }
           }
-
           if (endIndex !== -1) {
             let lineContent = text.substring(startIndex, endIndex);
             const pointsMatch = lineContent.match(/points\s*=\s*\{/);
@@ -452,31 +452,80 @@ export default function MorselEditor(props: MorselEditorProps) {
 
   const handleEdgeDelete = (source: string, target: string) => {
     if (!classInstance || !editor) return;
-
     const connectEq = Array.from(classInstance.connectEquations).find((ce: any) => {
       const c1 = ce.componentReference1?.parts.map((c: any) => c.identifier?.text ?? "").join(".");
       const c2 = ce.componentReference2?.parts.map((c: any) => c.identifier?.text ?? "").join(".");
       return (c1 === source && c2 === target) || (c1 === target && c2 === source);
     });
-
     if (!connectEq) return;
-
     const node = connectEq.concreteSyntaxNode;
     if (node) {
       const startLine = node.startPosition.row + 1;
       const startCol = node.startPosition.column + 1;
       const endLine = node.endPosition.row + 1;
       const endCol = node.endPosition.column + 1;
-
       const range = {
         startLineNumber: startLine,
         startColumn: startCol,
         endLineNumber: endLine,
         endColumn: endCol,
       };
-
       isDiagramUpdate.current = true;
       editor.executeEdits("delete-connect", [{ range, text: "" }]);
+    }
+  };
+
+  const handleComponentDelete = (name: string) => {
+    if (!classInstance || !editor) return;
+    const component = Array.from(classInstance.components).find((c) => c.name === name);
+    if (!component) return;
+    const node = component.abstractSyntaxNode?.parent;
+    if (node instanceof ModelicaComponentClauseSyntaxNode) {
+      if (node.componentDeclarations.length <= 1 && node.concreteSyntaxNode) {
+        const startLine = node.concreteSyntaxNode.startPosition.row + 1;
+        const startCol = node.concreteSyntaxNode.startPosition.column + 1;
+        const endLine = node.concreteSyntaxNode.endPosition.row + 1;
+        const endCol = node.concreteSyntaxNode.endPosition.column + 1;
+        const range = {
+          startLineNumber: startLine,
+          startColumn: startCol,
+          endLineNumber: endLine,
+          endColumn: endCol,
+        };
+        isDiagramUpdate.current = true;
+        editor.executeEdits("delete-component", [{ range, text: "" }]);
+      } else if (node.componentDeclarations.length >= 1) {
+        const index = node.componentDeclarations.findIndex((c) => c.declaration?.identifier?.text === name);
+        const componentDeclaration = node.componentDeclarations[index];
+        if (componentDeclaration?.concreteSyntaxNode) {
+          let startLine = componentDeclaration.concreteSyntaxNode.startPosition.row + 1;
+          let startCol = componentDeclaration.concreteSyntaxNode.startPosition.column + 1;
+          let endLine = componentDeclaration.concreteSyntaxNode.endPosition.row + 1;
+          let endCol = componentDeclaration.concreteSyntaxNode.endPosition.column + 1;
+
+          if (index > 0) {
+            const prevDecl = node.componentDeclarations[index - 1];
+            if (prevDecl.concreteSyntaxNode) {
+              startLine = prevDecl.concreteSyntaxNode.endPosition.row + 1;
+              startCol = prevDecl.concreteSyntaxNode.endPosition.column + 1;
+            }
+          } else if (node.componentDeclarations.length > 1) {
+            const nextDecl = node.componentDeclarations[1];
+            if (nextDecl.concreteSyntaxNode) {
+              endLine = nextDecl.concreteSyntaxNode.startPosition.row + 1;
+              endCol = nextDecl.concreteSyntaxNode.startPosition.column + 1;
+            }
+          }
+          const range = {
+            startLineNumber: startLine,
+            startColumn: startCol,
+            endLineNumber: endLine,
+            endColumn: endCol,
+          };
+          isDiagramUpdate.current = true;
+          editor.executeEdits("delete-component", [{ range, text: "" }]);
+        }
+      }
     }
   };
 
@@ -686,6 +735,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                       handleConnectUpdate(edges);
                     }}
                     onEdgeDelete={handleEdgeDelete}
+                    onComponentDelete={handleComponentDelete}
                   />
                 </div>
                 {selectedComponent && (

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { DagreLayout } from "@antv/layout";
-import { Graph, Transform, type EdgeMetadata, type NodeMetadata } from "@antv/x6";
+import { Graph, Keyboard, Selection, Transform, type EdgeMetadata, type NodeMetadata } from "@antv/x6";
 import type { PortMetadata } from "@antv/x6/lib/model/port";
 import {
   applyCoordinateSystem,
@@ -56,6 +56,7 @@ interface DiagramEditorProps {
   ) => void;
   onEdgeMove?: (edges: { source: string; target: string; points: { x: number; y: number }[] }[]) => void;
   onEdgeDelete?: (source: string, target: string) => void;
+  onComponentDelete?: (name: string) => void;
   theme: Theme;
 }
 
@@ -69,6 +70,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
   const onResizeRef = useRef(props.onResize);
   const onEdgeMoveRef = useRef(props.onEdgeMove);
   const onEdgeDeleteRef = useRef(props.onEdgeDelete);
+  const onComponentDeleteRef = useRef(props.onComponentDelete);
   const moveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const justResizedRef = useRef(false);
 
@@ -88,7 +90,16 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     onResizeRef.current = props.onResize;
     onEdgeMoveRef.current = props.onEdgeMove;
     onEdgeDeleteRef.current = props.onEdgeDelete;
-  }, [props.onSelect, props.onConnect, props.onMove, props.onResize, props.onEdgeMove, props.onEdgeDelete]);
+    onComponentDeleteRef.current = props.onComponentDelete;
+  }, [
+    props.onSelect,
+    props.onConnect,
+    props.onMove,
+    props.onResize,
+    props.onEdgeMove,
+    props.onEdgeDelete,
+    props.onComponentDelete,
+  ]);
 
   const getConnectedEdges = (node: any) => {
     const g = graphRef.current;
@@ -169,6 +180,30 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
         },
       });
       g.use(new Transform({ resizing: true, rotating: true }));
+      g.use(new Selection({ enabled: true, showNodeSelectionBox: true }));
+      g.use(new Keyboard({ enabled: true }));
+
+      g.bindKey(["backspace", "delete"], () => {
+        const cells = g?.getSelectedCells();
+        if (cells && cells.length > 0) {
+          cells.forEach((cell) => {
+            if (cell.isEdge()) {
+              const source = cell.getSource() as any;
+              const target = cell.getTarget() as any;
+              if (source.cell && source.port && target.cell && target.port) {
+                if (onEdgeDeleteRef.current) {
+                  onEdgeDeleteRef.current(`${source.cell}.${source.port}`, `${target.cell}.${target.port}`);
+                }
+              }
+            } else if (cell.isNode()) {
+              if (onComponentDeleteRef.current) {
+                onComponentDeleteRef.current(cell.id);
+              }
+            }
+          });
+          g?.removeCells(cells);
+        }
+      });
       g.on("cell:click", ({ cell }) => {
         if (cell.isNode() && onSelectRef.current) {
           onSelectRef.current(cell.id);
@@ -244,7 +279,6 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       g.on("edge:mouseleave", ({ edge }) => {
         edge.removeTools();
       });
-
       let edgeUpdateTimeout: NodeJS.Timeout | null = null;
       g.on("edge:change:vertices", ({ edge }) => {
         if (edgeUpdateTimeout) {
