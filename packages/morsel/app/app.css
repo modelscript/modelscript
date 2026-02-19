@@ -5,6 +5,10 @@ body {
   }
 }
 
+.modelica-icon svg {
+  overflow: visible !important;
+}
+
 #__primerPortalRoot__ div {
   z-index: 999 !important;
 }

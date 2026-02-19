@@ -41,7 +41,7 @@ const ClassIcon = React.memo(function ClassIcon(props: ClassIconProps) {
     return <PackageIcon />;
   }
 
-  return <div ref={ref} style={{ width: 20, height: 20 }} />;
+  return <div ref={ref} className="modelica-icon" style={{ width: 20, height: 20 }} />;
 });
 
 interface TreeNodeProps {
