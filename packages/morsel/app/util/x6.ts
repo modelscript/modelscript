@@ -662,6 +662,8 @@ export function applyMarkerAttributesX6(marker: Marker): void {
 
 export function applyPortPlacementX6(componentSvg: X6Markup, component: ModelicaComponentInstance): void {
   if (!componentSvg.attrs) componentSvg.attrs = {};
+  componentSvg.attrs["magnet"] = "true";
+  if (component.name) componentSvg.attrs["port"] = component.name;
   const transform = computePortPlacement(component);
   if (!transform) componentSvg.attrs["visibility"] = "hidden";
   else

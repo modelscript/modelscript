@@ -163,14 +163,26 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
         interacting: true,
         connecting: {
           allowBlank: false,
-          allowMulti: true,
+          allowMulti: (args) => {
+            return true;
+          },
           allowLoop: false,
           allowNode: false,
           allowEdge: false,
           allowPort: true,
           highlight: true,
+          validateMagnet: (args) => {
+            return true;
+          },
+          validateConnection: (args) => {
+            return true;
+          },
+          validateEdge: (args) => {
+            return true;
+          },
           createEdge: () => {
             return g?.createEdge({
+              zIndex: -1,
               router: { name: "normal" },
               attrs: {
                 "z-index": "-10",
