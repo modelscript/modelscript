@@ -464,7 +464,7 @@ export function applyLineArrows(shape: Line | Path | Polyline, graphicItem: ILin
             .fill("none")
             .stroke({
               color: convertColor(graphicItem.color, "rgb(0,0,0)"),
-              width: (graphicItem.thickness ?? 0.25) * 4,
+              width: graphicItem.thickness ?? 0.25,
             })
             .attr("vector-effect", "non-scaling-stroke");
           applyMarkerAttributes(marker);
@@ -480,7 +480,7 @@ export function applyLineArrows(shape: Line | Path | Polyline, graphicItem: ILin
             .fill("none")
             .stroke({
               color: convertColor(graphicItem.color, "rgb(0,0,0)"),
-              width: (graphicItem.thickness ?? 0.25) * 4,
+              width: graphicItem.thickness ?? 0.25,
             })
             .attr("vector-effect", "non-scaling-stroke");
           applyMarkerAttributes(marker);
@@ -547,7 +547,7 @@ export function applyLineThickness(shape: Shape, graphicItem: IFilledShape | ILi
   } else {
     lineThickness = (graphicItem as IFilledShape).lineThickness;
   }
-  shape.attr("stroke-width", (lineThickness ?? 0.25) * 4);
+  shape.attr("stroke-width", lineThickness ?? 0.25);
   shape.attr("vector-effect", "non-scaling-stroke");
 }
 

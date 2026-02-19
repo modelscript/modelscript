@@ -357,7 +357,7 @@ export function applyLineArrowsX6(shape: X6Markup, graphicItem: ILine): void {
             .fill("none")
             .stroke({
               color: convertColor(graphicItem.color, "rgb(0,0,0)"),
-              width: (graphicItem.thickness ?? 0.25) * 4,
+              width: graphicItem.thickness ?? 0.25,
             })
             .attr("vector-effect", "non-scaling-stroke");
           applyMarkerAttributesX6(marker);
@@ -373,7 +373,7 @@ export function applyLineArrowsX6(shape: X6Markup, graphicItem: ILine): void {
             .fill("none")
             .stroke({
               color: convertColor(graphicItem.color, "rgb(0,0,0)"),
-              width: (graphicItem.thickness ?? 0.25) * 4,
+              width: graphicItem.thickness ?? 0.25,
             })
             .attr("vector-effect", "non-scaling-stroke");
           applyMarkerAttributesX6(marker);
@@ -433,7 +433,7 @@ export function applyLineThicknessX6(shape: X6Markup, graphicItem: IFilledShape 
   } else {
     lineThickness = (graphicItem as IFilledShape).lineThickness;
   }
-  shape.attrs["stroke-width"] = (lineThickness ?? 0.25) * 4;
+  shape.attrs["stroke-width"] = lineThickness ?? 0.25;
   shape.attrs["vector-effect"] = "non-scaling-stroke";
 }
 

@@ -538,7 +538,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       const annotations = ModelicaElement.instantiateAnnotations(props.classInstance, connectEquation.annotationClause);
       const line: ILine | null = props.classInstance.annotation("Line", annotations);
       const strokeColor = `rgb(${line?.color?.[0] ?? 0}, ${line?.color?.[1] ?? 0}, ${line?.color?.[2] ?? 255})`;
-      const strokeWidth = (line?.thickness ?? 0.25) * 4;
+      const strokeWidth = line?.thickness ?? 0.25;
       const stroke = line?.visible === false || line?.pattern === LinePattern.NONE ? "none" : strokeColor;
       let strokeDasharray = undefined;
       switch (line?.pattern) {
