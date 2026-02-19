@@ -152,6 +152,9 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
             },
           ],
         },
+        panning: {
+          enabled: true,
+        },
         mousewheel: {
           enabled: true,
           global: true,
@@ -183,7 +186,15 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
         },
       });
       g.use(new Transform({ resizing: true, rotating: true }));
-      g.use(new Selection({ enabled: true, showNodeSelectionBox: true, rubberband: true }));
+      g.use(
+        new Selection({
+          enabled: true,
+          showNodeSelectionBox: true,
+          rubberband: true,
+          modifiers: ["ctrl", "shift"],
+          pointerEvents: "none",
+        }),
+      );
       g.use(new Keyboard({ enabled: true }));
 
       g.bindKey(["backspace", "delete"], () => {
@@ -207,12 +218,20 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
           g?.removeCells(cells);
         }
       });
-      g.on("cell:click", ({ cell }) => {
-        if (cell.isNode() && onSelectRef.current) {
-          onSelectRef.current(cell.id);
+      g.on("cell:click", ({ cell, e }) => {
+        if (cell.isNode()) {
+          const isModifier = e.ctrlKey || e.metaKey || e.shiftKey;
+          if (!isModifier) {
+            g?.cleanSelection();
+            g?.select(cell);
+          }
+          if (onSelectRef.current) {
+            onSelectRef.current(cell.id);
+          }
         }
       });
       g.on("blank:click", () => {
+        g?.cleanSelection();
         if (onSelectRef.current) {
           onSelectRef.current(null);
         }
