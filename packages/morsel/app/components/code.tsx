@@ -9,15 +9,12 @@ import {
   type Range,
 } from "@modelscript/modelscript";
 import { Editor, loader, type Monaco, type Theme } from "@monaco-editor/react";
-import { Zip } from "@zenfs/archives";
-import { configure, InMemory } from "@zenfs/core";
 import { debounce } from "lodash";
 import * as monaco from "monaco-editor";
 import { editor } from "monaco-editor";
 import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
-import { useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import Parser from "web-tree-sitter";
-import { WebFileSystem } from "~/util/filesystem";
 import { format } from "~/util/formatter";
 
 if (!self.MonacoEnvironment) {
@@ -31,7 +28,7 @@ if (!self.MonacoEnvironment) {
 
 interface CodeEditorProps {
   content: string;
-  setContext?: (context: Context) => void;
+  context: Context | null;
   setClassInstance: (classInstance: ModelicaClassInstance) => void;
   setEditor: (editor: editor.ICodeEditor) => void;
   onProgress?: (progress: number, message: string) => void;
@@ -42,10 +39,18 @@ interface CodeEditorProps {
 export default function CodeEditor(props: CodeEditorProps) {
   const editorRef = useRef<editor.ICodeEditor>(null);
   const monacoRef = useRef<Monaco>(null);
-  const [, setContext] = useState<Context | null>(null);
   const contextRef = useRef<Context | null>(null);
   const classInstanceRef = useRef<ModelicaClassInstance | null>(null);
   const treeRef = useRef<Parser.Tree | null>(null);
+
+  useEffect(() => {
+    contextRef.current = props.context;
+    // Re-lint or re-parse if context changes?
+    // Maybe trigger a change to re-lint.
+    if (editorRef.current && props.context) {
+      handleDidChangeContent(editorRef.current.getValue());
+    }
+  }, [props.context]);
 
   const handleEditorWillMount = async (monaco: Monaco) => {
     monacoRef.current = monaco;
@@ -115,51 +120,33 @@ export default function CodeEditor(props: CodeEditorProps) {
     });
     console.log("Modelica language configuration set");
 
-    props.onProgress?.(10, "Initializing parser…");
-    await Parser.init();
-    props.onProgress?.(25, "Loading Modelica grammar…");
-    const Modelica = await Parser.Language.load("/tree-sitter-modelica.wasm");
-    const parser = new Parser();
-    parser.setLanguage(Modelica);
-    Context.registerParser(".mo", parser);
-    props.onProgress?.(40, "Fetching Modelica Standard Library…");
     try {
-      const ModelicaLibrary = await fetch("/ModelicaStandardLibrary_v4.1.0.zip");
-      props.onProgress?.(60, "Configuring filesystem…");
-      await configure({
-        mounts: {
-          "/lib": { backend: Zip, data: await ModelicaLibrary.arrayBuffer() },
-          "/tmp": InMemory,
+      const Modelica = await Parser.Language.load("/tree-sitter-modelica.wasm");
+      const parser = new Parser();
+      parser.setLanguage(Modelica);
+      Context.registerParser(".mo", parser);
+
+      monaco.languages.registerDocumentFormattingEditProvider("modelica", {
+        provideDocumentFormattingEdits: (
+          model: editor.ITextModel,
+          _options: monaco.languages.FormattingOptions,
+          _token: monaco.CancellationToken,
+        ) => {
+          const text = model.getValue();
+          const tree = parser.parse(text);
+          const formatted = format(tree, text);
+          tree.delete();
+          return [
+            {
+              range: model.getFullModelRange(),
+              text: formatted,
+            },
+          ];
         },
       });
     } catch (e) {
-      console.error(e);
+      console.error("Failed to setup formatter/parser in CodeEditor", e);
     }
-    props.onProgress?.(80, "Loading libraries…");
-    const context = new Context(new WebFileSystem());
-    context.addLibrary("/lib/Modelica");
-    setContext(context);
-    contextRef.current = context;
-    props.setContext?.(context);
-
-    monaco.languages.registerDocumentFormattingEditProvider("modelica", {
-      provideDocumentFormattingEdits: (
-        model: editor.ITextModel,
-        _options: monaco.languages.FormattingOptions,
-        _token: monaco.CancellationToken,
-      ) => {
-        const text = model.getValue();
-        const tree = parser.parse(text);
-        const formatted = format(tree, text);
-        tree.delete();
-        return [
-          {
-            range: model.getFullModelRange(),
-            text: formatted,
-          },
-        ];
-      },
-    });
 
     props.onProgress?.(100, "Ready");
   };
@@ -173,8 +160,13 @@ export default function CodeEditor(props: CodeEditorProps) {
   const handleDidChangeContent = debounce((value: string | undefined) => {
     if (!value || !contextRef.current) return;
     const context = contextRef.current;
+
+    if (!monacoRef.current) return;
+
     const markers: Partial<editor.IMarker>[] = [];
     const model = editorRef.current?.getModel();
+    if (!model) return;
+
     const linter = new ModelicaLinter(
       (type: string, message: string, resource: string | null | undefined, range: Range | null | undefined) => {
         if (!range) return;

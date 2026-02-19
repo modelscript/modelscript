@@ -10,6 +10,7 @@ interface TreeWidgetProps {
   onSelect: (classInstance: ModelicaClassInstance) => void;
   width?: number | string;
   filter?: string;
+  version?: number;
 }
 
 interface ClassIconProps {

@@ -16,6 +16,7 @@ import {
   CodeIcon,
   ListUnorderedIcon,
   MoonIcon,
+  PlusIcon,
   SearchIcon,
   ShareAndroidIcon,
   SplitViewIcon,
@@ -25,9 +26,14 @@ import {
   XIcon,
 } from "@primer/octicons-react";
 import { Dialog, IconButton, Spinner, TextInput, useTheme } from "@primer/react";
+import { Zip } from "@zenfs/archives";
+import { configure, InMemory } from "@zenfs/core";
 import { editor } from "monaco-editor";
 import { type DataUrl } from "parse-data-url";
 import { useCallback, useEffect, useRef, useState } from "react";
+import Parser from "web-tree-sitter";
+import { mountLibrary, WebFileSystem } from "~/util/filesystem";
+import AddLibraryModal from "./add-library-modal";
 import CodeEditor from "./code";
 import ComponentList from "./component-list";
 import DiagramEditor, { type DiagramEditorHandle } from "./diagram";
@@ -50,6 +56,8 @@ export default function MorselEditor(props: MorselEditorProps) {
   const shareButtonRef = useRef<HTMLButtonElement>(null);
   const [isEmbedDialogOpen, setEmbedDialogOpen] = useState(false);
   const embedButtonRef = useRef<HTMLButtonElement>(null);
+  const [isAddLibraryOpen, setIsAddLibraryOpen] = useState(false);
+  const addLibraryButtonRef = useRef<HTMLButtonElement>(null);
   const [decodedContent] = decodeDataUrl(props.dataUrl ?? null);
   const content = decodedContent || "model Example\n\nend Example;";
   const [editor, setEditor] = useState<editor.ICodeEditor | null>(null);
@@ -78,6 +86,46 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [isSearching, setIsSearching] = useState(false);
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [contextVersion, setContextVersion] = useState(0);
+
+  useEffect(() => {
+    const init = async () => {
+      setLoadingProgress(10);
+      setLoadingMessage("Initializing parser…");
+      await Parser.init();
+      setLoadingProgress(25);
+      setLoadingMessage("Loading Modelica grammar…");
+      const Modelica = await Parser.Language.load("/tree-sitter-modelica.wasm");
+      const parser = new Parser();
+      parser.setLanguage(Modelica);
+      Context.registerParser(".mo", parser);
+
+      setLoadingProgress(40);
+      setLoadingMessage("Fetching Modelica Standard Library…");
+      try {
+        const ModelicaLibrary = await fetch("/ModelicaStandardLibrary_v4.1.0.zip");
+        setLoadingProgress(60);
+        setLoadingMessage("Configuring filesystem…");
+        await configure({
+          mounts: {
+            "/lib": { backend: Zip, data: await ModelicaLibrary.arrayBuffer() },
+            "/tmp": InMemory,
+          },
+        });
+      } catch (e) {
+        console.error(e);
+      }
+
+      setLoadingProgress(80);
+      setLoadingMessage("Loading libraries…");
+      const ctx = new Context(new WebFileSystem());
+      ctx.addLibrary("/lib/Modelica");
+      setContext(ctx);
+      setLoadingProgress(100);
+      setLoadingMessage("Ready");
+    };
+    init();
+  }, []);
 
   useEffect(() => {
     setIsSearching(true);
@@ -314,12 +362,6 @@ export default function MorselEditor(props: MorselEditorProps) {
                     text.substring(0, transformStartAbs) + newTransformationCore + text.substring(transformEndAbs);
                   if (newText !== text) {
                     return { range, text: newText };
-                  } else {
-                    console.log(`getPlacementEdit for ${name}: No change detected.`);
-                    console.log(`Input: x=${x}, y=${y}, w=${width}, h=${height}`);
-                    console.log(`Calculated: originX=${originX}, originY=${originY}`);
-                    console.log(`Existing text snippet:`, text.substring(transformStartAbs, transformEndAbs));
-                    console.log(`New core:`, newTransformationCore);
                   }
                 } else {
                   const insert = `transformation(${newTransformationCore})`;
@@ -578,9 +620,17 @@ export default function MorselEditor(props: MorselEditorProps) {
           {treeVisible && (
             <>
               <div style={{ width: treeWidth, display: "flex", flexDirection: "column", minWidth: 200, maxWidth: 600 }}>
-                <div className="text-bold px-3 py-2 border-bottom bg-canvas-subtle d-flex flex-items-center flex-justify-between">
-                  <div className="d-flex flex-items-center">Libraries</div>
-                  <div className="d-flex flex-items-center">
+                <div
+                  className="text-bold px-3 py-2 border-bottom bg-canvas-subtle d-flex flex-items-center flex-justify-between"
+                  style={{ gap: 8 }}
+                >
+                  <div
+                    className="d-flex flex-items-center"
+                    style={{ display: isSearchExpanded || libraryFilter ? "none" : "flex" }}
+                  >
+                    Libraries
+                  </div>
+                  <div className="d-flex flex-items-center flex-1 flex-justify-end" style={{ minWidth: 0 }}>
                     <TextInput
                       ref={inputRef}
                       aria-label="Filter classes"
@@ -613,7 +663,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                       }
                       className={isSearchExpanded || libraryFilter ? "input-sm" : "input-sm border-0"}
                       style={{
-                        width: isSearchExpanded || libraryFilter ? "168px" : "0px",
+                        width: isSearchExpanded || libraryFilter ? "100%" : "0px",
                         opacity: isSearchExpanded || libraryFilter ? 1 : 0,
                         padding: isSearchExpanded || libraryFilter ? undefined : "0px",
                         borderWidth: isSearchExpanded || libraryFilter ? undefined : "0px",
@@ -639,6 +689,14 @@ export default function MorselEditor(props: MorselEditorProps) {
                         transition: "all 0.2s ease-in-out",
                       }}
                     />
+                    <IconButton
+                      icon={PlusIcon}
+                      aria-label="Add Library"
+                      size="small"
+                      variant="invisible"
+                      ref={addLibraryButtonRef}
+                      onClick={() => setIsAddLibraryOpen(true)}
+                    />
                   </div>
                 </div>
                 <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
@@ -648,6 +706,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                     onSelect={handleTreeSelect}
                     width="100%"
                     filter={debouncedFilter}
+                    version={contextVersion}
                   />
                 </div>
                 <div className="text-bold px-3 py-2 border-top border-bottom bg-canvas-subtle">Components</div>
@@ -958,15 +1017,11 @@ export default function MorselEditor(props: MorselEditorProps) {
             >
               <CodeEditor
                 embed={props.embed}
-                setContext={setContext}
+                context={context}
                 setClassInstance={setClassInstance}
                 setEditor={setEditor}
                 content={content}
                 theme={colorMode === "dark" ? "vs-dark" : "light"}
-                onProgress={(progress, message) => {
-                  setLoadingProgress(progress);
-                  setLoadingMessage(message);
-                }}
               />
             </div>
           </div>
@@ -1216,6 +1271,71 @@ export default function MorselEditor(props: MorselEditorProps) {
             </div>
             <span style={{ fontSize: 13, color: colorMode === "dark" ? "#8b949e" : "#656d76" }}>{loadingMessage}</span>
           </div>
+        )}
+        {isAddLibraryOpen && (
+          <AddLibraryModal
+            isOpen={isAddLibraryOpen}
+            onDismiss={() => setIsAddLibraryOpen(false)}
+            onAddLibrary={async (item, type) => {
+              if (!context) return;
+              try {
+                let path: string;
+                let data: ArrayBuffer;
+                if (type === "file" && item instanceof File) {
+                  path = `/usr/${item.name.replace(/\.zip$/i, "")}`;
+                  data = await item.arrayBuffer();
+                } else if (type === "url") {
+                  const url = item as string;
+                  let response: Response;
+                  try {
+                    response = await fetch(url);
+                    if (!response.ok) {
+                      throw new Error("Direct fetch failed");
+                    }
+                  } catch (e) {
+                    try {
+                      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+                      response = await fetch(proxyUrl);
+                    } catch (proxyError) {
+                      throw new Error(
+                        `Failed to fetch library from ${url}: ${proxyError instanceof Error ? proxyError.message : String(proxyError)}`,
+                      );
+                    }
+                  }
+                  if (!response || !response.ok) {
+                    throw new Error(
+                      `Failed to fetch library: ${response?.status} ${response?.statusText || "Unknown Error"}`,
+                    );
+                  }
+                  data = await response.arrayBuffer();
+                  const fileName = url.split("/").pop() || "library.zip";
+                  path = `/usr/${fileName.replace(/\.zip$/i, "")}`;
+                } else {
+                  return;
+                }
+                await mountLibrary(path, data);
+                try {
+                  const entries = context.fs.readdir(path);
+                  const dirs = entries.filter((e) => e.isDirectory());
+                  if (dirs.length === 1) {
+                    path = `${path}/${dirs[0].name}`;
+                  } else {
+                    const hasPackage = entries.some((e) => e.name === "package.mo");
+                    if (!hasPackage) {
+                      console.warn("No package.mo found at root and multiple/no directories found. Using root.");
+                    }
+                  }
+                } catch (e) {
+                  console.error("Failed to readdir mounted path:", e);
+                }
+                const lib = context.addLibrary(path);
+                setContextVersion((v) => v + 1);
+              } catch (error) {
+                console.error(error);
+                alert("Failed to add library: " + (error instanceof Error ? error.message : String(error)));
+              }
+            }}
+          />
         )}
       </div>
     </>

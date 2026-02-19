@@ -42,3 +42,10 @@ export class WebFileSystem implements FileSystem {
     }
   }
 }
+
+export async function mountLibrary(path: string, data: ArrayBuffer): Promise<void> {
+  const { Zip } = await import("@zenfs/archives");
+  const { resolveMountConfig, mounts } = await import("@zenfs/core");
+  const fs = await resolveMountConfig({ backend: Zip, data });
+  mounts.set(path, fs);
+}

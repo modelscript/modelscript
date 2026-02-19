@@ -353,9 +353,6 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
           moveTimeoutRef.current = null;
         }, 200);
       });
-      g.on("node:moved", ({ node }) => {
-        console.log(`node:moved ${node.id}`);
-      });
       g.on("node:rotated", ({ node }: any) => {
         if (onMoveRef.current) {
           const p = node.getPosition();
