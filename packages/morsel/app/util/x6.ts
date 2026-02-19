@@ -70,7 +70,7 @@ export function renderIconX6(
     }
     return svg;
   }
-  applyCoordinateSystemX6(svg, icon.coordinateSystem);
+  applyCoordinateSystemX6(svg, icon.coordinateSystem, isRoot);
   const group: X6Markup = {
     tagName: "g",
     children: [],
@@ -327,7 +327,11 @@ export function renderTextX6(
   };
 }
 
-export function applyCoordinateSystemX6(markup: X6Markup, coordinateSystem?: ICoordinateSystem): void {
+export function applyCoordinateSystemX6(
+  markup: X6Markup,
+  coordinateSystem?: ICoordinateSystem,
+  isRoot: boolean = true,
+): void {
   const [x1, y1] = convertPoint(coordinateSystem?.extent?.[0], [-100, -100]);
   const [x2, y2] = convertPoint(coordinateSystem?.extent?.[1], [100, 100]);
   const x = Math.min(x1, x2);
@@ -335,9 +339,17 @@ export function applyCoordinateSystemX6(markup: X6Markup, coordinateSystem?: ICo
   const width = computeWidth(coordinateSystem?.extent);
   const height = computeHeight(coordinateSystem?.extent);
   if (!markup.attrs) markup.attrs = {};
+
   markup.attrs["viewBox"] = `${x} ${y} ${width} ${height}`;
   markup.attrs["preserveAspectRatio"] = "none";
   markup.attrs["overflow"] = "visible";
+
+  if (!isRoot) {
+    markup.attrs["x"] = x;
+    markup.attrs["y"] = y;
+    markup.attrs["width"] = width;
+    markup.attrs["height"] = height;
+  }
 }
 
 export function applyFillX6(shape: X6Markup, filledShape: IFilledShape, defs: X6Markup[]) {
