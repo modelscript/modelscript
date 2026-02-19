@@ -9,14 +9,13 @@ import {
   convertColor,
   convertPoint,
   convertSmoothPath,
-  FillPattern,
-  LinePattern,
   ModelicaClassKind,
   ModelicaComponentInstance,
   renderText,
   Smooth,
   TextAlignment,
   type IBitmap,
+  type IColor,
   type ICoordinateSystem,
   type IEllipse,
   type IFilledShape,
@@ -43,7 +42,10 @@ export function renderIconX6(
   classInstance: ModelicaClassInstance,
   componentInstance?: ModelicaComponentInstance,
   ports?: boolean,
+  defs?: X6Markup[],
 ): X6Markup {
+  const isRoot = !defs;
+  const localDefs = defs ?? [];
   const svg: X6Markup = {
     tagName: "svg",
     attrs: {
@@ -51,57 +53,78 @@ export function renderIconX6(
       height: "100%",
       style: "overflow: visible",
     },
+    children: [],
   };
-  if (!svg.children) svg.children = [];
   for (const extendsClassInstance of classInstance.extendsClassInstances) {
-    if (extendsClassInstance.classInstance)
-      svg.children.push(renderIconX6(extendsClassInstance.classInstance, componentInstance, ports));
+    if (extendsClassInstance.classInstance && svg.children)
+      svg.children.push(renderIconX6(extendsClassInstance.classInstance, componentInstance, ports, localDefs));
   }
+
   const icon: IIcon | null = classInstance.annotation("Icon");
-  if (!icon) return svg;
+  if (!icon) {
+    if (isRoot && localDefs.length > 0 && svg.children) {
+      svg.children.unshift({
+        tagName: "defs",
+        children: localDefs,
+      });
+    }
+    return svg;
+  }
   applyCoordinateSystemX6(svg, icon.coordinateSystem);
   const group: X6Markup = {
     tagName: "g",
+    children: [],
   };
-  svg.children.push(group);
-  if (!group.children) group.children = [];
-  for (const graphicItem of icon.graphics ?? [])
-    group.children.push(renderGraphicItemX6(graphicItem, classInstance, componentInstance));
-  if (ports) {
+  if (svg.children) svg.children.push(group);
+  if (group.children) {
+    for (const graphicItem of icon.graphics ?? [])
+      group.children.push(renderGraphicItemX6(graphicItem, localDefs, classInstance, componentInstance));
+  }
+
+  if (ports && group.children) {
     for (const component of classInstance.components) {
       const connectorClassInstance = component.classInstance;
       if (!connectorClassInstance || connectorClassInstance.classKind !== ModelicaClassKind.CONNECTOR) continue;
-      const connectorSvg = renderIconX6(connectorClassInstance);
+      const connectorSvg = renderIconX6(connectorClassInstance, undefined, false, localDefs);
       if (connectorSvg) {
         applyPortPlacementX6(connectorSvg, component);
         group.children.push(connectorSvg);
       }
     }
   }
+
+  if (isRoot && localDefs.length > 0 && svg.children) {
+    svg.children.unshift({
+      tagName: "defs",
+      children: localDefs,
+    });
+  }
+
   return svg;
 }
 
 export function renderGraphicItemX6(
   graphicItem: IGraphicItem,
+  defs: X6Markup[],
   classInstance?: ModelicaClassInstance,
   componentInstance?: ModelicaComponentInstance,
 ): X6Markup {
   let shape;
   switch (graphicItem["@type"]) {
     case "Bitmap":
-      shape = renderBitmapX6(graphicItem as IBitmap);
+      shape = renderBitmapX6(graphicItem as IBitmap, defs);
       break;
     case "Ellipse":
-      shape = renderEllipseX6(graphicItem as IEllipse);
+      shape = renderEllipseX6(graphicItem as IEllipse, defs);
       break;
     case "Line":
       shape = renderLineX6(graphicItem as ILine);
       break;
     case "Polygon":
-      shape = renderPolygonX6(graphicItem as IPolygon);
+      shape = renderPolygonX6(graphicItem as IPolygon, defs);
       break;
     case "Rectangle":
-      shape = renderRectangleX6(graphicItem as IRectangle);
+      shape = renderRectangleX6(graphicItem as IRectangle, defs);
       break;
     case "Text":
       shape = renderTextX6(graphicItem as IText, classInstance, componentInstance);
@@ -120,14 +143,12 @@ export function renderGraphicItemX6(
   };
 }
 
-export function renderFilledShapeX6(shape: X6Markup, filledShape: IFilledShape): void {
-  applyFillX6(shape, filledShape);
-  applyLineColorX6(shape, filledShape);
-  applyLinePatternX6(shape, filledShape);
-  applyLineThicknessX6(shape, filledShape);
+export function renderFilledShapeX6(shape: X6Markup, filledShape: IFilledShape, defs: X6Markup[]): void {
+  applyFillX6(shape, filledShape, defs);
+  applyLineStyleX6(shape, filledShape);
 }
 
-export function renderBitmapX6(graphicItem: IBitmap): X6Markup {
+export function renderBitmapX6(graphicItem: IBitmap, defs: X6Markup[]): X6Markup {
   const p1 = convertPoint(graphicItem.extent?.[0], [-100, -100]);
   const shape: X6Markup = {
     tagName: "image",
@@ -139,11 +160,11 @@ export function renderBitmapX6(graphicItem: IBitmap): X6Markup {
       y: p1[1],
     },
   };
-  renderFilledShapeX6(shape, graphicItem);
+  renderFilledShapeX6(shape, graphicItem, defs);
   return shape;
 }
 
-export function renderEllipseX6(graphicItem: IEllipse): X6Markup {
+export function renderEllipseX6(graphicItem: IEllipse, defs: X6Markup[]): X6Markup {
   const [cx1, cy1] = convertPoint(graphicItem.extent?.[0], [-100, -100]);
   const [cx2, cy2] = convertPoint(graphicItem.extent?.[1], [100, 100]);
   const rx = computeWidth(graphicItem.extent) / 2;
@@ -157,7 +178,7 @@ export function renderEllipseX6(graphicItem: IEllipse): X6Markup {
       ry,
     },
   };
-  renderFilledShapeX6(shape, graphicItem);
+  renderFilledShapeX6(shape, graphicItem, defs);
   return shape;
 }
 
@@ -168,7 +189,9 @@ export function renderLineX6(graphicItem: ILine): X6Markup {
       shape = {
         tagName: "path",
         attrs: {
-          d: [...convertSmoothPath(graphicItem.points)].join(" "),
+          d: convertSmoothPath(graphicItem.points)
+            .map((cmd) => cmd.join(" "))
+            .join(" "),
         },
       };
     } else {
@@ -193,21 +216,19 @@ export function renderLineX6(graphicItem: ILine): X6Markup {
     };
   }
   applyLineArrowsX6(shape, graphicItem);
-  applyLineColorX6(shape, graphicItem);
-  applyLinePatternX6(shape, graphicItem);
-  applyLineThicknessX6(shape, graphicItem);
+  applyLineStyleX6(shape, graphicItem);
   if (!shape.attrs) shape.attrs = {};
   shape.attrs["fill"] = "none";
   return shape;
 }
 
-export function renderPolygonX6(graphicItem: IPolygon): X6Markup {
+export function renderPolygonX6(graphicItem: IPolygon, defs: X6Markup[]): X6Markup {
   let shape: X6Markup;
   if (graphicItem.smooth === Smooth.BEZIER && (graphicItem.points?.length ?? 0) > 2) {
     shape = {
       tagName: "path",
       attrs: {
-        d: [...convertSmoothPath(graphicItem.points), ["Z"]].join(" "),
+        d: [...convertSmoothPath(graphicItem.points), ["Z"]].map((cmd) => cmd.join(" ")).join(" "),
       },
     };
   } else {
@@ -218,11 +239,11 @@ export function renderPolygonX6(graphicItem: IPolygon): X6Markup {
       },
     };
   }
-  renderFilledShapeX6(shape, graphicItem);
+  renderFilledShapeX6(shape, graphicItem, defs);
   return shape;
 }
 
-export function renderRectangleX6(graphicItem: IRectangle): X6Markup {
+export function renderRectangleX6(graphicItem: IRectangle, defs: X6Markup[]): X6Markup {
   const [x1, y1] = convertPoint(graphicItem.extent?.[0], [0, 0]);
   const [x2, y2] = convertPoint(graphicItem.extent?.[1], [0, 0]);
   const x = Math.min(x1, x2);
@@ -243,7 +264,7 @@ export function renderRectangleX6(graphicItem: IRectangle): X6Markup {
     shape.attrs["rx"] = graphicItem.radius;
     shape.attrs["ry"] = graphicItem.radius;
   }
-  renderFilledShapeX6(shape, graphicItem);
+  renderFilledShapeX6(shape, graphicItem, defs);
   return shape;
 }
 
@@ -319,15 +340,187 @@ export function applyCoordinateSystemX6(markup: X6Markup, coordinateSystem?: ICo
   markup.attrs["overflow"] = "visible";
 }
 
-export function applyFillX6(shape: X6Markup, filledShape: IFilledShape) {
+export function applyFillX6(shape: X6Markup, filledShape: IFilledShape, defs: X6Markup[]) {
   if (!shape.attrs) shape.attrs = {};
-  switch (filledShape.fillPattern) {
-    case FillPattern.SOLID:
-      shape.attrs.fill = convertColor(filledShape.fillColor);
+
+  const pattern = (filledShape.fillPattern ?? "None").toLowerCase();
+  let fillValue = "none";
+
+  switch (pattern) {
+    case "solid":
+      fillValue = convertColor(filledShape.fillColor);
+      break;
+    case "horizontal":
+      fillValue = createLinePatternX6(defs, 0, filledShape.lineColor, filledShape.fillColor);
+      break;
+    case "vertical":
+      fillValue = createLinePatternX6(defs, 90, filledShape.lineColor, filledShape.fillColor);
+      break;
+    case "cross":
+      fillValue = createCrossPatternX6(defs, 0, filledShape.lineColor, filledShape.fillColor);
+      break;
+    case "forward":
+      fillValue = createLinePatternX6(defs, -45, filledShape.lineColor, filledShape.fillColor);
+      break;
+    case "backward":
+      fillValue = createLinePatternX6(defs, 45, filledShape.lineColor, filledShape.fillColor);
+      break;
+    case "crossdiag":
+      fillValue = createCrossPatternX6(defs, 45, filledShape.lineColor, filledShape.fillColor);
+      break;
+    case "horizontalcylinder":
+      fillValue = createLinearGradientX6(defs, "vertical", filledShape.lineColor, filledShape.fillColor);
+      break;
+    case "verticalcylinder":
+      fillValue = createLinearGradientX6(defs, "horizontal", filledShape.lineColor, filledShape.fillColor);
+      break;
+    case "sphere":
+      fillValue = createRadialGradientX6(defs, filledShape.lineColor, filledShape.fillColor);
       break;
     default:
-      shape.attrs.fill = "none";
+      fillValue = "none";
   }
+
+  shape.attrs.fill = fillValue;
+  if (!shape.attrs.style) shape.attrs.style = "";
+  shape.attrs.style = (shape.attrs.style as string) + `; fill: ${fillValue} !important;`;
+}
+
+let nextId = 0;
+function getUniqueId(prefix: string): string {
+  return `${prefix}-${nextId++}`;
+}
+
+function createLinePatternX6(defs: X6Markup[], rotation: number, lineColor?: IColor, fillColor?: IColor): string {
+  const id = getUniqueId("pattern-line");
+  const children: X6Markup[] = [];
+  if (fillColor) {
+    children.push({
+      tagName: "rect",
+      attrs: { width: 4, height: 4, fill: convertColor(fillColor) },
+    });
+  }
+  children.push({
+    tagName: "line",
+    attrs: {
+      x1: 0,
+      y1: 2,
+      x2: 4,
+      y2: 2,
+      stroke: convertColor(lineColor),
+      "stroke-width": 0.5,
+    },
+  });
+
+  defs.push({
+    tagName: "pattern",
+    attrs: {
+      id,
+      x: 0,
+      y: 0,
+      width: 4,
+      height: 4,
+      patternUnits: "userSpaceOnUse",
+      patternTransform: `rotate(${rotation})`,
+    },
+    children,
+  });
+  return `url(#${id})`;
+}
+
+function createCrossPatternX6(defs: X6Markup[], rotation: number, lineColor?: IColor, fillColor?: IColor): string {
+  const id = getUniqueId("pattern-cross");
+  const children: X6Markup[] = [];
+  if (fillColor) {
+    children.push({
+      tagName: "rect",
+      attrs: { width: 4, height: 4, fill: convertColor(fillColor) },
+    });
+  }
+  children.push({
+    tagName: "line",
+    attrs: {
+      x1: 0,
+      y1: 2,
+      x2: 4,
+      y2: 2,
+      stroke: convertColor(lineColor),
+      "stroke-width": 0.5,
+    },
+  });
+  children.push({
+    tagName: "line",
+    attrs: {
+      x1: 2,
+      y1: 0,
+      x2: 2,
+      y2: 4,
+      stroke: convertColor(lineColor),
+      "stroke-width": 0.5,
+    },
+  });
+
+  defs.push({
+    tagName: "pattern",
+    attrs: {
+      id,
+      x: 0,
+      y: 0,
+      width: 4,
+      height: 4,
+      patternUnits: "userSpaceOnUse",
+      patternTransform: `rotate(${rotation})`,
+    },
+    children,
+  });
+  return `url(#${id})`;
+}
+
+function createLinearGradientX6(
+  defs: X6Markup[],
+  direction: "horizontal" | "vertical",
+  lineColor?: IColor,
+  fillColor?: IColor,
+): string {
+  const id = getUniqueId("gradient-linear");
+  const c = convertColor(fillColor);
+  const h = convertColor(lineColor, "white");
+  defs.push({
+    tagName: "linearGradient",
+    attrs: {
+      id,
+      x1: 0,
+      y1: 0,
+      x2: direction === "horizontal" ? 1 : 0,
+      y2: direction === "vertical" ? 1 : 0,
+    },
+    children: [
+      { tagName: "stop", attrs: { offset: "0%", "stop-color": h } },
+      { tagName: "stop", attrs: { offset: "50%", "stop-color": c } },
+      { tagName: "stop", attrs: { offset: "100%", "stop-color": h } },
+    ],
+  });
+  return `url(#${id})`;
+}
+
+function createRadialGradientX6(defs: X6Markup[], lineColor?: IColor, fillColor?: IColor): string {
+  const id = getUniqueId("gradient-radial");
+  const c = convertColor(fillColor);
+  const h = convertColor(lineColor, "white");
+  defs.push({
+    tagName: "radialGradient",
+    attrs: {
+      id,
+      cx: "30%",
+      cy: "30%",
+      r: "70%",
+    },
+    children: [
+      { tagName: "stop", attrs: { offset: "0%", "stop-color": c } },
+      { tagName: "stop", attrs: { offset: "100%", "stop-color": h } },
+    ],
+  });
+  return `url(#${id})`;
 }
 
 export function applyIconPlacementX6(componentSvg: X6Markup, component: ModelicaComponentInstance): void {
@@ -393,47 +586,58 @@ export function applyLineArrowsX6(shape: X6Markup, graphicItem: ILine): void {
   //if (endArrow && endArrow !== Arrow.NONE) shape.marker("end", arrowSize, arrowSize, marker(endArrow));
 }
 
-export function applyLineColorX6(shape: X6Markup, graphicItem: IFilledShape | ILine): void {
+export function applyLineStyleX6(shape: X6Markup, graphicItem: IFilledShape | ILine): void {
   if (!shape.attrs) shape.attrs = {};
+
   let color;
-  if (graphicItem["@type"] === "Line") {
-    color = (graphicItem as ILine).color;
-  } else {
-    color = (graphicItem as IFilledShape).lineColor;
-  }
-  shape.attrs["stroke"] = convertColor(color, "rgb(0,0,0)");
-}
+  let thickness;
+  let pattern;
 
-export function applyLinePatternX6(shape: X6Markup, graphicItem: IFilledShape | ILine): void {
-  if (!shape.attrs) shape.attrs = {};
-  switch (graphicItem?.pattern) {
-    case LinePattern.DASH:
-      shape.attrs["stroke-dasharray"] = "4, 2";
-      break;
-    case LinePattern.DASH_DOT:
-      shape.attrs["stroke-dasharray"] = "4, 2, 1, 2";
-      break;
-    case LinePattern.DASH_DOT_DOT:
-      shape.attrs["stroke-dasharray"] = "4, 2, 1, 2, 1, 2";
-      break;
-    case LinePattern.DOT:
-      shape.attrs["stroke-dasharray"] = "1, 2";
-      break;
-    case LinePattern.NONE:
-      shape.attrs["stroke-dasharray"] = "none";
-      break;
-  }
-}
-
-export function applyLineThicknessX6(shape: X6Markup, graphicItem: IFilledShape | ILine): void {
-  if (!shape.attrs) shape.attrs = {};
-  let lineThickness;
   if (graphicItem["@type"] === "Line") {
-    lineThickness = (graphicItem as ILine).thickness;
+    const line = graphicItem as ILine;
+    color = line.color;
+    thickness = line.thickness;
+    pattern = line.pattern;
   } else {
-    lineThickness = (graphicItem as IFilledShape).lineThickness;
+    const filled = graphicItem as IFilledShape;
+    color = filled.lineColor;
+    thickness = filled.lineThickness;
+    pattern = filled.pattern;
   }
-  shape.attrs["stroke-width"] = lineThickness ?? 0.25;
+
+  const strokeColor = convertColor(color, "rgb(0,0,0)");
+  const strokeWidth = thickness ?? 0.25;
+  const linePattern = (pattern ?? "Solid").toLowerCase();
+
+  let strokeDasharray = "none";
+  switch (linePattern) {
+    case "dash":
+      strokeDasharray = "4, 2";
+      break;
+    case "dot":
+      strokeDasharray = "1, 2";
+      break;
+    case "dashdot":
+      strokeDasharray = "4, 2, 1, 2";
+      break;
+    case "dashdotdot":
+      strokeDasharray = "4, 2, 1, 2, 1, 2";
+      break;
+    case "none":
+      shape.attrs.stroke = "none";
+      if (!shape.attrs.style) shape.attrs.style = "";
+      shape.attrs.style = (shape.attrs.style as string) + "; stroke: none !important;";
+      return;
+  }
+
+  shape.attrs.stroke = strokeColor;
+  shape.attrs["stroke-width"] = strokeWidth;
+  if (strokeDasharray !== "none") shape.attrs["stroke-dasharray"] = strokeDasharray;
+
+  if (!shape.attrs.style) shape.attrs.style = "";
+  shape.attrs.style =
+    (shape.attrs.style as string) +
+    `; stroke: ${strokeColor} !important; stroke-width: ${strokeWidth}px !important; stroke-dasharray: ${strokeDasharray} !important;`;
   shape.attrs["vector-effect"] = "non-scaling-stroke";
 }
 
