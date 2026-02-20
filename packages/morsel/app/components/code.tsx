@@ -7,6 +7,7 @@ import {
   ModelicaNamedElement,
   ModelicaStoredDefinitionSyntaxNode,
   type Range,
+  type Scope,
 } from "@modelscript/modelscript";
 import { Editor, loader, type Monaco, type Theme } from "@monaco-editor/react";
 import { debounce } from "lodash";
@@ -200,7 +201,16 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
     let instance: ModelicaClassInstance | null = null;
     if (node) {
       linter.lint(node);
-      instance = new ModelicaClassInstance(context, node.classDefinitions[0]);
+      let parentScope: Scope = context;
+      const withinParts = node.withinDirective?.packageName?.parts;
+      if (withinParts && withinParts.length > 0) {
+        const withinNames = withinParts.map((p) => p.text).filter((t): t is string => t !== null && t !== undefined);
+        const resolved = context.resolveName(withinNames);
+        if (resolved) {
+          parentScope = resolved;
+        }
+      }
+      instance = new ModelicaClassInstance(parentScope, node.classDefinitions[0]);
       instance.instantiate();
       linter.lint(instance);
       props.setClassInstance(instance);
@@ -225,24 +235,24 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
       options={
         !props.embed
           ? {
-              automaticLayout: true,
-              autoIndent: "full",
-              tabSize: 2,
-              insertSpaces: true,
-              guides: {
-                indentation: true,
-              },
-              readOnly: props.readOnly,
-            }
+            automaticLayout: true,
+            autoIndent: "full",
+            tabSize: 2,
+            insertSpaces: true,
+            guides: {
+              indentation: true,
+            },
+            readOnly: props.readOnly,
+          }
           : {
-              automaticLayout: true,
-              folding: false,
-              glyphMargin: false,
-              lineDecorationsWidth: 0,
-              lineNumbers: "off",
-              lineNumbersMinChars: 0,
-              minimap: { enabled: false },
-            }
+            automaticLayout: true,
+            folding: false,
+            glyphMargin: false,
+            lineDecorationsWidth: 0,
+            lineNumbers: "off",
+            lineNumbersMinChars: 0,
+            minimap: { enabled: false },
+          }
       }
       height="100%"
       width="100%"

@@ -815,7 +815,7 @@ export class ModelicaEntity extends ModelicaClassInstance {
 export class ModelicaComponentInstance extends ModelicaNamedElement {
   #abstractSyntaxNode: ModelicaComponentDeclarationSyntaxNode | ModelicaComponentDeclaration1SyntaxNode | null;
   #modification: ModelicaModification | null = null;
-  classInstance: ModelicaClassInstance | null = null;
+  #classInstance: ModelicaClassInstance | null = null;
 
   constructor(
     parent: ModelicaClassInstance | null,
@@ -827,6 +827,15 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
     this.name = this.abstractSyntaxNode?.declaration?.identifier?.text ?? null;
     this.description = this.abstractSyntaxNode?.description?.strings?.map((d) => d.text ?? "")?.join(" ") ?? null;
     this.#modification = modification ?? this.mergeModifications();
+  }
+
+  get classInstance(): ModelicaClassInstance | null {
+    if (!this.instantiated && !this.instantiating) this.instantiate();
+    return this.#classInstance;
+  }
+
+  set classInstance(value: ModelicaClassInstance | null) {
+    this.#classInstance = value;
   }
 
   get abstractSyntaxNode(): ModelicaComponentDeclarationSyntaxNode | ModelicaComponentDeclaration1SyntaxNode | null {
