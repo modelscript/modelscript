@@ -61,6 +61,10 @@ export function renderIconX6(
   }
 
   const icon: IIcon | null = classInstance.annotation("Icon");
+  if (isRoot) {
+    applyCoordinateSystemX6(svg, icon?.coordinateSystem, true);
+  }
+
   if (!icon) {
     if (isRoot && localDefs.length > 0 && svg.children) {
       svg.children.unshift({
@@ -70,7 +74,11 @@ export function renderIconX6(
     }
     return svg;
   }
-  applyCoordinateSystemX6(svg, icon.coordinateSystem, isRoot);
+
+  if (!isRoot) {
+    applyCoordinateSystemX6(svg, icon.coordinateSystem, false);
+  }
+
   const group: X6Markup = {
     tagName: "g",
     children: [],
