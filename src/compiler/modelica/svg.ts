@@ -24,7 +24,12 @@ import {
   ModelicaRealLiteral,
   ModelicaStringLiteral,
 } from "./dae.js";
-import { ModelicaComponentInstance, ModelicaElement, type ModelicaClassInstance } from "./model.js";
+import {
+  ModelicaComponentInstance,
+  ModelicaElement,
+  ModelicaRealClassInstance,
+  type ModelicaClassInstance,
+} from "./model.js";
 import { ModelicaClassKind } from "./syntax.js";
 import {
   Arrow,
@@ -235,10 +240,17 @@ export function renderText(
   const rawText = graphicItem.textString ?? graphicItem.string ?? "";
   const replacer = (match: string, name: string): string => {
     const namedElement = classInstance?.resolveName(name.split("."));
-    if (!(namedElement instanceof ModelicaComponentInstance)) return namedElement?.name ?? "%" + name;
+    if (!(namedElement instanceof ModelicaComponentInstance)) return namedElement?.name ?? name;
+    let unitString = "";
+    if (namedElement.classInstance instanceof ModelicaRealClassInstance) {
+      const unitExp = namedElement.classInstance?.unit;
+      if (unitExp instanceof ModelicaStringLiteral && unitExp.value) {
+        unitString = " " + unitExp.value;
+      }
+    }
     const expression = ModelicaExpression.fromClassInstance(namedElement.classInstance);
     if (expression instanceof ModelicaIntegerLiteral || expression instanceof ModelicaRealLiteral) {
-      return String(expression.value);
+      return String(expression.value) + unitString;
     } else if (expression instanceof ModelicaEnumerationLiteral) {
       return expression.stringValue;
     } else if (expression instanceof ModelicaStringLiteral) {
@@ -246,7 +258,7 @@ export function renderText(
     } else if (expression instanceof ModelicaBooleanLiteral) {
       return String(expression.value);
     } else {
-      return "%{" + name + "}";
+      return name;
     }
   };
   const formattedText = rawText
