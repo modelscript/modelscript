@@ -18,7 +18,6 @@ interface ComponentIconProps {
 const iconSvgCache = new Map<string, string | null>();
 
 const ComponentIcon = React.memo(function ComponentIcon(props: ComponentIconProps) {
-  const ref = React.useRef<HTMLDivElement>(null);
   const cacheKey = props.classInstance.compositeName;
   const svgString = React.useMemo(() => {
     const cached = iconSvgCache.get(cacheKey);
@@ -29,17 +28,13 @@ const ComponentIcon = React.memo(function ComponentIcon(props: ComponentIconProp
     return result;
   }, [cacheKey]);
 
-  React.useEffect(() => {
-    if (ref.current && svgString) {
-      ref.current.innerHTML = svgString;
-    }
-  }, [svgString]);
-
   if (!svgString) {
     return <PackageIcon />;
   }
 
-  return <div ref={ref} className="modelica-icon" style={{ width: 20, height: 20 }} />;
+  return (
+    <div className="modelica-icon" style={{ width: 20, height: 20 }} dangerouslySetInnerHTML={{ __html: svgString }} />
+  );
 });
 
 const ComponentList = React.memo(function ComponentList(props: ComponentListProps) {

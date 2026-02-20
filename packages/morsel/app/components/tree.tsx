@@ -20,7 +20,6 @@ interface ClassIconProps {
 const iconSvgCache = new Map<string, string | null>();
 
 const ClassIcon = React.memo(function ClassIcon(props: ClassIconProps) {
-  const ref = React.useRef<HTMLDivElement>(null);
   const cacheKey = props.classInstance.compositeName;
   const svgString = React.useMemo(() => {
     const cached = iconSvgCache.get(cacheKey);
@@ -31,17 +30,13 @@ const ClassIcon = React.memo(function ClassIcon(props: ClassIconProps) {
     return result;
   }, [cacheKey]);
 
-  React.useEffect(() => {
-    if (ref.current && svgString) {
-      ref.current.innerHTML = svgString;
-    }
-  }, [svgString]);
-
   if (!svgString) {
     return <PackageIcon />;
   }
 
-  return <div ref={ref} className="modelica-icon" style={{ width: 20, height: 20 }} />;
+  return (
+    <div className="modelica-icon" style={{ width: 20, height: 20 }} dangerouslySetInnerHTML={{ __html: svgString }} />
+  );
 });
 
 interface TreeNodeProps {
