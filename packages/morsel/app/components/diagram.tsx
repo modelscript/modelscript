@@ -346,6 +346,16 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
         }, 500);
       });
       g.on("node:change:position", ({ node }) => {
+        // Deselect edges when moving a node to avoid stale rubberbands
+        const selected = g?.getSelectedCells();
+        if (selected) {
+          selected.forEach((cell) => {
+            if (cell.isEdge()) {
+              g?.unselect(cell);
+            }
+          });
+        }
+
         changedNodesRef.current.add(node.id);
 
         if (moveTimeoutRef.current) {
