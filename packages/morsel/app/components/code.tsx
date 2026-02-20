@@ -40,6 +40,7 @@ interface CodeEditorProps {
 
 export interface CodeEditorHandle {
   sync: () => Promise<ModelicaClassInstance | null>;
+  revealComponent: (name: string) => void;
 }
 
 export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((props, ref) => {
@@ -63,6 +64,26 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
       handleDidChangeContent.cancel();
       const value = editorRef.current?.getValue();
       return processContent(value);
+    },
+    revealComponent: (name: string) => {
+      if (!editorRef.current || !classInstanceRef.current) return;
+
+      const component = Array.from(classInstanceRef.current.components).find((c) => c.name === name);
+      if (!component || !component.abstractSyntaxNode) return;
+
+      const concreteNode = component.abstractSyntaxNode.concreteSyntaxNode;
+      if (!concreteNode) return;
+
+      const range = {
+        startLineNumber: concreteNode.startPosition.row + 1,
+        startColumn: concreteNode.startPosition.column + 1,
+        endLineNumber: concreteNode.endPosition.row + 1,
+        endColumn: concreteNode.endPosition.column + 1,
+      };
+
+      editorRef.current.revealRangeInCenter(range);
+      editorRef.current.setSelection(range);
+      editorRef.current.focus();
     },
   }));
 

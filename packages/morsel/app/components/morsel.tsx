@@ -876,6 +876,9 @@ export default function MorselEditor(props: MorselEditorProps) {
                       if (!classInstance) return;
                       const component = Array.from(classInstance.components).find((c) => c.name === name);
                       setSelectedComponent(component || null);
+                      if (name) {
+                        codeEditorRef.current?.revealComponent(name);
+                      }
                     }}
                     selectedName={selectedComponent?.name}
                   />
@@ -957,6 +960,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                           ? Array.from(classInstance.components).find((c) => c.name === name)
                           : null;
                         setSelectedComponent(component || null);
+                        codeEditorRef.current?.revealComponent(name);
                       }
                     }}
                     onDrop={(className, x, y) => {
