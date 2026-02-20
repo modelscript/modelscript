@@ -19,6 +19,7 @@ import {
   Smooth,
   toEnum,
   type IDiagram,
+  type IIcon,
   type ILine,
   type ModelicaClassInstance,
 } from "@modelscript/modelscript";
@@ -474,16 +475,21 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       let componentTransform = computeIconPlacement(component);
       const autoLayout = !componentTransform;
       if (!componentTransform) {
+        const icon = componentClassInstance.annotation("Icon") as IIcon | null;
+        const naturalWidth = computeWidth(icon?.coordinateSystem?.extent) || 200;
+        const naturalHeight = computeHeight(icon?.coordinateSystem?.extent) || 200;
+        const scaleX = 20 / naturalWidth;
+        const scaleY = 20 / naturalHeight;
         componentTransform = {
           originX: 0,
           originY: 0,
           rotate: 0,
-          scaleX: 1,
-          scaleY: 1,
-          translateX: -10,
-          translateY: -10,
-          width: 20,
-          height: 20,
+          scaleX,
+          scaleY,
+          translateX: -(naturalWidth * scaleX) / 2,
+          translateY: -(naturalHeight * scaleY) / 2,
+          width: naturalWidth * scaleX,
+          height: naturalHeight * scaleY,
         };
       }
       const componentMarkup = renderIconX6(componentClassInstance, component, false);
