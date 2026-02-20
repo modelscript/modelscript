@@ -62,6 +62,7 @@ interface DiagramEditorProps {
   onEdgeMove?: (edges: { source: string; target: string; points: { x: number; y: number }[] }[]) => void;
   onEdgeDelete?: (source: string, target: string) => void;
   onComponentDelete?: (name: string) => void;
+  selectedName?: string | null;
   theme: Theme;
 }
 
@@ -843,6 +844,24 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       lastZoomRef.current = { zoom: g.zoom(), tx: g.translate().tx, ty: g.translate().ty };
     });
   }, [props.classInstance]);
+
+  useEffect(() => {
+    if (graph) {
+      const selectedCells = graph.getSelectedCells();
+      const currentSelectedId = selectedCells.length === 1 ? selectedCells[0].id : null;
+      if (props.selectedName !== currentSelectedId) {
+        graph.cleanSelection();
+        if (props.selectedName) {
+          const node = graph.getCellById(props.selectedName);
+          if (node && node.isNode()) {
+            graph.resetSelection(node);
+          }
+        } else {
+          graph.cleanSelection();
+        }
+      }
+    }
+  }, [graph, props.selectedName]);
 
   useEffect(() => {
     if (!graph) return;

@@ -947,6 +947,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                   <DiagramEditor
                     ref={diagramEditorRef}
                     classInstance={diagramClassInstance}
+                    selectedName={selectedComponent?.name}
                     theme={colorMode === "dark" ? "vs-dark" : "light"}
                     onSelect={(name) => {
                       if (!name) {
