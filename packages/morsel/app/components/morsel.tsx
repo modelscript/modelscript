@@ -10,7 +10,6 @@ import {
   ModelicaComponentClauseSyntaxNode,
   ModelicaComponentInstance,
   ModelicaEntity,
-  type ModelicaEquationSectionSyntaxNode,
 } from "@modelscript/modelscript";
 import {
   CodeIcon,
@@ -547,12 +546,39 @@ export default function MorselEditor(props: MorselEditorProps) {
       const startCol = node.startPosition.column + 1;
       const endLine = node.endPosition.row + 1;
       const endCol = node.endPosition.column + 1;
-      const range = {
+      let range = {
         startLineNumber: startLine,
         startColumn: startCol,
         endLineNumber: endLine,
         endColumn: endCol,
       };
+
+      const model = editor.getModel();
+      if (model) {
+        const startLineContent = model.getLineContent(startLine);
+        const prefix = startLineContent.substring(0, startCol - 1).trim();
+        const endLineContent = model.getLineContent(endLine);
+        const suffix = endLineContent.substring(endCol - 1).trim();
+
+        if (prefix === "" && suffix === "") {
+          if (endLine < model.getLineCount()) {
+            range = {
+              startLineNumber: startLine,
+              startColumn: 1,
+              endLineNumber: endLine + 1,
+              endColumn: 1,
+            };
+          } else {
+            range = {
+              startLineNumber: startLine,
+              startColumn: 1,
+              endLineNumber: endLine,
+              endColumn: model.getLineMaxColumn(endLine),
+            };
+          }
+        }
+      }
+
       isDiagramUpdate.current = true;
       editor.executeEdits("delete-connect", [{ range, text: "" }]);
     }
@@ -560,6 +586,54 @@ export default function MorselEditor(props: MorselEditorProps) {
 
   const handleComponentDelete = (name: string) => {
     if (!classInstance || !editor) return;
+
+    const edits: editor.IIdentifiedSingleEditOperation[] = [];
+    const model = editor.getModel();
+    if (model) {
+      Array.from(classInstance.connectEquations).forEach((ce: any) => {
+        const c1 = ce.componentReference1?.parts.map((c: any) => c.identifier?.text ?? "").join(".");
+        const c2 = ce.componentReference2?.parts.map((c: any) => c.identifier?.text ?? "").join(".");
+        const involvesComponent = c1 === name || c1.startsWith(`${name}.`) || c2 === name || c2.startsWith(`${name}.`);
+        if (involvesComponent) {
+          const node = ce.concreteSyntaxNode;
+          if (node) {
+            const startLine = node.startPosition.row + 1;
+            const startCol = node.startPosition.column + 1;
+            const endLine = node.endPosition.row + 1;
+            const endCol = node.endPosition.column + 1;
+            let range = {
+              startLineNumber: startLine,
+              startColumn: startCol,
+              endLineNumber: endLine,
+              endColumn: endCol,
+            };
+            const startLineContent = model.getLineContent(startLine);
+            const prefix = startLineContent.substring(0, startCol - 1).trim();
+            const endLineContent = model.getLineContent(endLine);
+            const suffix = endLineContent.substring(endCol - 1).trim();
+            if (prefix === "" && suffix === "") {
+              if (endLine < model.getLineCount()) {
+                range = {
+                  startLineNumber: startLine,
+                  startColumn: 1,
+                  endLineNumber: endLine + 1,
+                  endColumn: 1,
+                };
+              } else {
+                range = {
+                  startLineNumber: startLine,
+                  startColumn: 1,
+                  endLineNumber: endLine,
+                  endColumn: model.getLineMaxColumn(endLine),
+                };
+              }
+            }
+            edits.push({ range, text: "" });
+          }
+        }
+      });
+    }
+
     const component = Array.from(classInstance.components).find((c) => c.name === name);
     if (!component) return;
     const node = component.abstractSyntaxNode?.parent;
@@ -569,14 +643,36 @@ export default function MorselEditor(props: MorselEditorProps) {
         const startCol = node.concreteSyntaxNode.startPosition.column + 1;
         const endLine = node.concreteSyntaxNode.endPosition.row + 1;
         const endCol = node.concreteSyntaxNode.endPosition.column + 1;
-        const range = {
+        let range = {
           startLineNumber: startLine,
           startColumn: startCol,
           endLineNumber: endLine,
           endColumn: endCol,
         };
-        isDiagramUpdate.current = true;
-        editor.executeEdits("delete-component", [{ range, text: "" }]);
+        if (model) {
+          const startLineContent = model.getLineContent(startLine);
+          const prefix = startLineContent.substring(0, startCol - 1).trim();
+          const endLineContent = model.getLineContent(endLine);
+          const suffix = endLineContent.substring(endCol - 1).trim();
+          if (prefix === "" && suffix === "") {
+            if (endLine < model.getLineCount()) {
+              range = {
+                startLineNumber: startLine,
+                startColumn: 1,
+                endLineNumber: endLine + 1,
+                endColumn: 1,
+              };
+            } else {
+              range = {
+                startLineNumber: startLine,
+                startColumn: 1,
+                endLineNumber: endLine,
+                endColumn: model.getLineMaxColumn(endLine),
+              };
+            }
+          }
+        }
+        edits.push({ range, text: "" });
       } else if (node.componentDeclarations.length >= 1) {
         const index = node.componentDeclarations.findIndex((c) => c.declaration?.identifier?.text === name);
         const componentDeclaration = node.componentDeclarations[index];
@@ -599,16 +695,42 @@ export default function MorselEditor(props: MorselEditorProps) {
               endCol = nextDecl.concreteSyntaxNode.startPosition.column + 1;
             }
           }
-          const range = {
+          let range = {
             startLineNumber: startLine,
             startColumn: startCol,
             endLineNumber: endLine,
             endColumn: endCol,
           };
-          isDiagramUpdate.current = true;
-          editor.executeEdits("delete-component", [{ range, text: "" }]);
+          if (model) {
+            const startLineContent = model.getLineContent(startLine);
+            const prefix = startLineContent.substring(0, startCol - 1).trim();
+            const endLineContent = model.getLineContent(endLine);
+            const suffix = endLineContent.substring(endCol - 1).trim();
+            if (prefix === "" && suffix === "") {
+              if (endLine < model.getLineCount()) {
+                range = {
+                  startLineNumber: startLine,
+                  startColumn: 1,
+                  endLineNumber: endLine + 1,
+                  endColumn: 1,
+                };
+              } else {
+                range = {
+                  startLineNumber: startLine,
+                  startColumn: 1,
+                  endLineNumber: endLine,
+                  endColumn: model.getLineMaxColumn(endLine),
+                };
+              }
+            }
+          }
+          edits.push({ range, text: "" });
         }
       }
+    }
+    if (edits.length > 0) {
+      isDiagramUpdate.current = true;
+      editor.executeEdits("delete-component", edits);
     }
   };
 
@@ -830,21 +952,65 @@ export default function MorselEditor(props: MorselEditorProps) {
 
                       const model = editor.getModel();
                       if (model) {
+                        const keywords = [
+                          "protected",
+                          "initial equation",
+                          "initial algorithm",
+                          "equation",
+                          "algorithm",
+                          "end",
+                        ];
+                        let insertLine = -1;
                         const text = model.getValue();
-                        const lastEndIndex = text.lastIndexOf("end");
-                        if (lastEndIndex !== -1) {
-                          const pos = model.getPositionAt(lastEndIndex);
+                        const lines = text.split("\n");
+                        for (let i = 0; i < lines.length; i++) {
+                          const line = lines[i].trim();
+                          if (keywords.some((kw) => line.startsWith(kw))) {
+                            insertLine = i;
+                            break;
+                          }
+                        }
+                        if (insertLine !== -1) {
+                          let range = {
+                            startLineNumber: insertLine + 1,
+                            startColumn: 1,
+                            endLineNumber: insertLine + 1,
+                            endColumn: 1,
+                          };
+                          if (insertLine > 0 && lines[insertLine - 1].trim() === "") {
+                            range.startLineNumber = insertLine;
+                            range.endLineNumber = insertLine + 1;
+                          }
                           editor.executeEdits("dnd", [
                             {
-                              range: {
-                                startLineNumber: pos.lineNumber,
-                                startColumn: 1,
-                                endLineNumber: pos.lineNumber,
-                                endColumn: 1,
-                              },
+                              range: range,
                               text: componentDecl,
                             },
                           ]);
+                        } else {
+                          const lastEndIndex = text.lastIndexOf("end");
+                          if (lastEndIndex !== -1) {
+                            const pos = model.getPositionAt(lastEndIndex);
+                            let range = {
+                              startLineNumber: pos.lineNumber,
+                              startColumn: 1,
+                              endLineNumber: pos.lineNumber,
+                              endColumn: 1,
+                            };
+                            if (pos.lineNumber > 1) {
+                              const prevLineContent = model.getLineContent(pos.lineNumber - 1);
+                              if (prevLineContent.trim() === "") {
+                                range.startLineNumber = pos.lineNumber - 1;
+                                range.endLineNumber = pos.lineNumber;
+                              }
+                            }
+                            editor.executeEdits("dnd", [
+                              {
+                                range: range,
+                                text: componentDecl,
+                              },
+                            ]);
+                          }
                         }
                       }
                     }}
@@ -858,48 +1024,73 @@ export default function MorselEditor(props: MorselEditorProps) {
                       const connectEq = `  connect(${source}, ${target})${annotation};\n`;
                       const model = editor.getModel();
                       if (!model) return;
-
-                      let equationSection: ModelicaEquationSectionSyntaxNode | null = null;
-                      const sections = (classInstance.abstractSyntaxNode as any)?.sections;
-
-                      if (sections) {
-                        for (const section of sections) {
-                          if (section["@type"] === "EquationSection") {
-                            equationSection = section as ModelicaEquationSectionSyntaxNode;
+                      const equationMatches = model.findMatches("equation", false, false, true, null, true);
+                      if (equationMatches.length > 0) {
+                        const startLine = equationMatches[0].range.startLineNumber;
+                        const text = model.getValue();
+                        const lines = text.split("\n");
+                        let insertLine = -1;
+                        for (let i = startLine; i < lines.length; i++) {
+                          const line = lines[i].trim();
+                          if (
+                            line.startsWith("public") ||
+                            line.startsWith("protected") ||
+                            line.startsWith("initial equation") ||
+                            line.startsWith("algorithm") ||
+                            line.startsWith("end")
+                          ) {
+                            insertLine = i;
+                            break;
                           }
                         }
-                      }
-
-                      if (equationSection && equationSection.concreteSyntaxNode) {
-                        const endPos = equationSection.concreteSyntaxNode.endPosition;
-                        editor.executeEdits("connect", [
-                          {
-                            range: {
-                              startLineNumber: endPos.row + 1,
-                              startColumn: 1,
-                              endLineNumber: endPos.row + 1,
-                              endColumn: endPos.column + 1,
-                            },
-                            text: connectEq,
-                          },
-                        ]);
-                      } else {
-                        const text = model.getValue();
-                        const lastEndIndex = text.lastIndexOf("end");
-                        if (lastEndIndex !== -1) {
-                          const pos = model.getPositionAt(lastEndIndex);
+                        if (insertLine !== -1) {
                           editor.executeEdits("connect", [
                             {
                               range: {
-                                startLineNumber: pos.lineNumber,
+                                startLineNumber: insertLine + 1,
                                 startColumn: 1,
-                                endLineNumber: pos.lineNumber,
+                                endLineNumber: insertLine + 1,
                                 endColumn: 1,
                               },
-                              text: `equation\n${connectEq}`,
+                              text: connectEq,
                             },
                           ]);
+                          return;
                         }
+                      }
+                      const endMatches = model.findMatches("^\\s*end\\s+[^;]+;", false, true, false, null, true);
+                      if (endMatches.length > 0) {
+                        const lastEnd = endMatches[endMatches.length - 1];
+                        const insertText = equationMatches.length === 0 ? `equation\n${connectEq}` : connectEq;
+                        editor.executeEdits("connect", [
+                          {
+                            range: {
+                              startLineNumber: lastEnd.range.startLineNumber,
+                              startColumn: 1,
+                              endLineNumber: lastEnd.range.startLineNumber,
+                              endColumn: 1,
+                            },
+                            text: insertText,
+                          },
+                        ]);
+                        return;
+                      }
+                      const text = model.getValue();
+                      const lastEndIndex = text.lastIndexOf("end");
+                      if (lastEndIndex !== -1) {
+                        const pos = model.getPositionAt(lastEndIndex);
+                        const insertText = equationMatches.length === 0 ? `equation\n${connectEq}` : connectEq;
+                        editor.executeEdits("connect", [
+                          {
+                            range: {
+                              startLineNumber: pos.lineNumber,
+                              startColumn: 1,
+                              endLineNumber: pos.lineNumber,
+                              endColumn: 1,
+                            },
+                            text: insertText,
+                          },
+                        ]);
                       }
                     }}
                     onMove={(items) => {

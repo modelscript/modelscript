@@ -562,7 +562,7 @@ export function applyLineArrowsX6(shape: X6Markup, graphicItem: ILine): void {
             .fill("none")
             .stroke({
               color: convertColor(graphicItem.color, "rgb(0,0,0)"),
-              width: graphicItem.thickness ?? 0.25,
+              width: (graphicItem.thickness ?? 0.25) * 2,
             })
             .attr("vector-effect", "non-scaling-stroke");
           applyMarkerAttributesX6(marker);
@@ -578,7 +578,7 @@ export function applyLineArrowsX6(shape: X6Markup, graphicItem: ILine): void {
             .fill("none")
             .stroke({
               color: convertColor(graphicItem.color, "rgb(0,0,0)"),
-              width: graphicItem.thickness ?? 0.25,
+              width: (graphicItem.thickness ?? 0.25) * 2,
             })
             .attr("vector-effect", "non-scaling-stroke");
           applyMarkerAttributesX6(marker);
@@ -618,7 +618,7 @@ export function applyLineStyleX6(shape: X6Markup, graphicItem: IFilledShape | IL
   }
 
   const strokeColor = convertColor(color, "rgb(0,0,0)");
-  const strokeWidth = thickness ?? 0.25;
+  const strokeWidth = (thickness ?? 0.25) * 2;
   const linePattern = (pattern ?? "Solid").toLowerCase();
 
   let strokeDasharray = "none";

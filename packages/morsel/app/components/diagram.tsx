@@ -202,8 +202,11 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
         new Selection({
           enabled: true,
           showNodeSelectionBox: true,
+          showEdgeSelectionBox: true,
           rubberband: true,
-          modifiers: ["ctrl", "shift"],
+          multiple: true,
+          modifiers: ["ctrl", "meta", "shift"],
+          multipleSelectionModifiers: ["ctrl", "meta", "shift"],
           pointerEvents: "none",
         }),
       );
@@ -230,15 +233,14 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
           g?.removeCells(cells);
         }
       });
-      g.on("cell:click", ({ cell, e }) => {
+      g.on("cell:click", ({ cell }) => {
         if (cell.isNode()) {
-          const isModifier = e.ctrlKey || e.metaKey || e.shiftKey;
-          if (!isModifier) {
-            g?.cleanSelection();
-            g?.select(cell);
-          }
           if (onSelectRef.current) {
             onSelectRef.current(cell.id);
+          }
+        } else {
+          if (onSelectRef.current) {
+            onSelectRef.current(null);
           }
         }
       });
@@ -265,53 +267,54 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
           }
         }
       });
-      g.on("edge:mouseenter", ({ edge }) => {
-        edge.addTools([
-          {
-            name: "vertices",
-            args: {
-              attrs: { fill: "#666", stroke: "transparent", strokeWidth: 1, r: 2 },
-            },
-          },
-          {
-            name: "segments",
-            args: {
-              attrs: {
-                fill: "#666",
-                stroke: "transparent",
-                strokeWidth: 1,
-                width: 10,
-                height: 2,
-                rx: 1,
-                ry: 1,
-                x: -5,
-                y: -1,
+      g.on("selection:changed", ({ added, removed, selected }: { added: any[]; removed: any[]; selected: any[] }) => {
+        // Visual updates
+        added.forEach((cell) => {
+          if (cell.isEdge()) {
+            cell.addTools([
+              {
+                name: "vertices",
+                args: {
+                  attrs: { fill: "#666", stroke: "transparent", strokeWidth: 1, r: 2 },
+                },
               },
-              stopPropagation: false,
-            },
-          },
-          {
-            name: "button-remove",
-            args: {
-              distance: 20,
-              onClick({ cell }: { cell: any }) {
-                const source = cell.getSource() as any;
-                const target = cell.getTarget() as any;
-                if (source.cell && source.port && target.cell && target.port) {
-                  const sourceId = `${source.cell}.${source.port}`;
-                  const targetId = `${target.cell}.${target.port}`;
-                  if (onEdgeDeleteRef.current) {
-                    onEdgeDeleteRef.current(sourceId, targetId);
-                  }
-                  cell.remove();
-                }
+              {
+                name: "segments",
+                args: {
+                  attrs: {
+                    fill: "#666",
+                    stroke: "transparent",
+                    strokeWidth: 1,
+                    width: 10,
+                    height: 2,
+                    rx: 1,
+                    ry: 1,
+                    x: -5,
+                    y: -1,
+                  },
+                  stopPropagation: false,
+                },
               },
-            },
-          },
-        ]);
-      });
-      g.on("edge:mouseleave", ({ edge }) => {
-        edge.removeTools();
+            ]);
+          }
+        });
+        removed.forEach((cell) => {
+          if (cell.isEdge()) {
+            cell.removeTools();
+          }
+        });
+
+        // Property panel updates
+        const currentSelected = selected || g?.getSelectedCells();
+        if (currentSelected && currentSelected.length === 1 && currentSelected[0].isNode()) {
+          if (onSelectRef.current) {
+            onSelectRef.current(currentSelected[0].id);
+          }
+        } else {
+          if (onSelectRef.current) {
+            onSelectRef.current(null);
+          }
+        }
       });
       let edgeUpdateTimeout: NodeJS.Timeout | null = null;
       g.on("edge:change:vertices", ({ edge }) => {
@@ -358,7 +361,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
           if (onMoveRef.current) {
             const items: any[] = [];
             changedNodesRef.current.forEach((id) => {
-              const n = g.getCellById(id);
+              const n = g?.getCellById(id);
               if (n && n.isNode()) {
                 const p = n.getPosition();
                 const s = n.getSize();
@@ -569,7 +572,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       const annotations = ModelicaElement.instantiateAnnotations(props.classInstance, connectEquation.annotationClause);
       const line: ILine | null = props.classInstance.annotation("Line", annotations);
       const strokeColor = `rgb(${line?.color?.[0] ?? 0}, ${line?.color?.[1] ?? 0}, ${line?.color?.[2] ?? 255})`;
-      const strokeWidth = line?.thickness ?? 0.25;
+      const strokeWidth = (line?.thickness ?? 0.25) * 2;
       const stroke = line?.visible === false || line?.pattern === LinePattern.NONE ? "none" : strokeColor;
       let strokeDasharray = undefined;
       switch (line?.pattern) {
