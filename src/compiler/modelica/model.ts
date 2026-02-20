@@ -776,6 +776,25 @@ export class ModelicaEntity extends ModelicaClassInstance {
         subEntity.load();
         this.subEntities.push(subEntity);
       }
+      const packageOrderPath = context.fs.join(this.path, "package.order");
+      if (context.fs.stat(packageOrderPath)?.isFile()) {
+        const packageOrder = context.fs
+          .read(packageOrderPath)
+          .split("\n")
+          .map((s) => s.trim());
+        this.subEntities.sort((a, b) => {
+          const aName = a.name ?? "";
+          const bName = b.name ?? "";
+          const aIndex = packageOrder.indexOf(aName);
+          const bIndex = packageOrder.indexOf(bName);
+          if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
+          if (aIndex !== -1) return -1;
+          if (bIndex !== -1) return 1;
+          return aName.localeCompare(bName);
+        });
+      } else {
+        this.subEntities.sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
+      }
     } else {
       throw new Error();
     }
