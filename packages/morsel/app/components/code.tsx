@@ -13,7 +13,7 @@ import { debounce } from "lodash";
 import * as monaco from "monaco-editor";
 import { editor } from "monaco-editor";
 import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
-import { useEffect, useRef } from "react";
+import React, { useEffect, useRef } from "react";
 import Parser from "web-tree-sitter";
 import { format } from "~/util/formatter";
 
@@ -34,9 +34,14 @@ interface CodeEditorProps {
   onProgress?: (progress: number, message: string) => void;
   theme: Theme;
   embed: boolean;
+  readOnly?: boolean;
 }
 
-export default function CodeEditor(props: CodeEditorProps) {
+export interface CodeEditorHandle {
+  sync: () => Promise<ModelicaClassInstance | null>;
+}
+
+export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((props, ref) => {
   const editorRef = useRef<editor.ICodeEditor>(null);
   const monacoRef = useRef<Monaco>(null);
   const contextRef = useRef<Context | null>(null);
@@ -51,6 +56,14 @@ export default function CodeEditor(props: CodeEditorProps) {
       handleDidChangeContent(editorRef.current.getValue());
     }
   }, [props.context]);
+
+  React.useImperativeHandle(ref, () => ({
+    sync: async () => {
+      handleDidChangeContent.cancel();
+      const value = editorRef.current?.getValue();
+      return processContent(value);
+    },
+  }));
 
   const handleEditorWillMount = async (monaco: Monaco) => {
     monacoRef.current = monaco;
@@ -157,15 +170,16 @@ export default function CodeEditor(props: CodeEditorProps) {
       editor.setValue(editor.getValue());
     }, 100);
   };
-  const handleDidChangeContent = debounce((value: string | undefined) => {
-    if (!value || !contextRef.current) return;
+
+  const processContent = (value: string | undefined): ModelicaClassInstance | null => {
+    if (!value || !contextRef.current) return null;
     const context = contextRef.current;
 
-    if (!monacoRef.current) return;
+    if (!monacoRef.current) return null;
 
     const markers: Partial<editor.IMarker>[] = [];
     const model = editorRef.current?.getModel();
-    if (!model) return;
+    if (!model) return null;
 
     const linter = new ModelicaLinter(
       (type: string, message: string, resource: string | null | undefined, range: Range | null | undefined) => {
@@ -183,16 +197,23 @@ export default function CodeEditor(props: CodeEditorProps) {
     treeRef.current = tree as any;
     linter.lint(tree);
     const node = ModelicaStoredDefinitionSyntaxNode.new(null, tree.rootNode);
+    let instance: ModelicaClassInstance | null = null;
     if (node) {
       linter.lint(node);
-      const instance = new ModelicaClassInstance(context, node.classDefinitions[0]);
+      instance = new ModelicaClassInstance(context, node.classDefinitions[0]);
       instance.instantiate();
       linter.lint(instance);
       props.setClassInstance(instance);
       classInstanceRef.current = instance;
     }
     monacoRef.current.editor.setModelMarkers(model, "owner", markers);
+    return instance;
+  };
+
+  const handleDidChangeContent = debounce((value: string | undefined) => {
+    processContent(value);
   }, 500);
+
   return (
     <Editor
       theme={props.theme}
@@ -211,6 +232,7 @@ export default function CodeEditor(props: CodeEditorProps) {
               guides: {
                 indentation: true,
               },
+              readOnly: props.readOnly,
             }
           : {
               automaticLayout: true,
@@ -226,7 +248,9 @@ export default function CodeEditor(props: CodeEditorProps) {
       width="100%"
     ></Editor>
   );
-}
+});
+
+export default CodeEditor;
 
 const modelicaTokensProvider = {
   keywords: [

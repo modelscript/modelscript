@@ -9,18 +9,26 @@ import {
   ModelicaClassInstance,
   ModelicaComponentClauseSyntaxNode,
   ModelicaComponentInstance,
+  ModelicaDAE,
+  ModelicaDAEPrinter,
   ModelicaEntity,
+  ModelicaFlattener,
+  StringWriter,
 } from "@modelscript/modelscript";
 import {
-  CodeIcon,
-  ListUnorderedIcon,
+  DownloadIcon,
+  FileIcon,
   MoonIcon,
   PlusIcon,
+  RowsIcon,
   SearchIcon,
   ShareAndroidIcon,
+  SidebarCollapseIcon,
+  SidebarExpandIcon,
   SplitViewIcon,
   SunIcon,
   UnwrapIcon,
+  UploadIcon,
   WorkflowIcon,
   XIcon,
 } from "@primer/octicons-react";
@@ -33,9 +41,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Parser from "web-tree-sitter";
 import { mountLibrary, WebFileSystem } from "~/util/filesystem";
 import AddLibraryModal from "./add-library-modal";
-import CodeEditor from "./code";
+import CodeEditor, { type CodeEditorHandle } from "./code";
 import ComponentList from "./component-list";
 import DiagramEditor, { type DiagramEditorHandle } from "./diagram";
+import OpenFileDropzone from "./open-file-dropzone";
 import PropertiesWidget from "./properties";
 import TreeWidget from "./tree";
 
@@ -53,10 +62,13 @@ enum View {
 export default function MorselEditor(props: MorselEditorProps) {
   const [isShareDialogOpen, setShareDialogOpen] = useState(false);
   const shareButtonRef = useRef<HTMLButtonElement>(null);
-  const [isEmbedDialogOpen, setEmbedDialogOpen] = useState(false);
-  const embedButtonRef = useRef<HTMLButtonElement>(null);
   const [isAddLibraryOpen, setIsAddLibraryOpen] = useState(false);
   const addLibraryButtonRef = useRef<HTMLButtonElement>(null);
+  const [isOpenFileDialogOpen, setIsOpenFileDialogOpen] = useState(false);
+  const openFileButtonRef = useRef<HTMLButtonElement>(null);
+  const [isFlattenDialogOpen, setFlattenDialogOpen] = useState(false);
+  const [flattenedCode, setFlattenedCode] = useState("");
+  const codeEditorRef = useRef<CodeEditorHandle>(null);
   const [decodedContent] = decodeDataUrl(props.dataUrl ?? null);
   const content = decodedContent || "model Example\n\nend Example;";
   const [editor, setEditor] = useState<editor.ICodeEditor | null>(null);
@@ -734,6 +746,28 @@ export default function MorselEditor(props: MorselEditorProps) {
     }
   };
 
+  const handleFlatten = async () => {
+    if (!codeEditorRef.current) return;
+    const instance = await codeEditorRef.current.sync();
+    if (!instance) return;
+
+    try {
+      const dae = new ModelicaDAE(instance.name || "Model");
+      const flattener = new ModelicaFlattener();
+      instance.accept(flattener, ["", dae]);
+
+      const writer = new StringWriter();
+      const printer = new ModelicaDAEPrinter(writer);
+      dae.accept(printer);
+
+      setFlattenedCode(writer.toString());
+      setFlattenDialogOpen(true);
+    } catch (e) {
+      console.error("Flattening failed:", e);
+      alert("Failed to flatten model: " + (e instanceof Error ? e.message : String(e)));
+    }
+  };
+
   return (
     <>
       <title>Morsel | ModelScript.org</title>
@@ -1207,6 +1241,7 @@ export default function MorselEditor(props: MorselEditorProps) {
               }}
             >
               <CodeEditor
+                ref={codeEditorRef}
                 embed={props.embed}
                 context={context}
                 setClassInstance={setClassInstance}
@@ -1238,21 +1273,74 @@ export default function MorselEditor(props: MorselEditorProps) {
             zIndex: 1000,
           }}
         >
-          <img
-            src={colorMode === "dark" ? "/brand-dark.png" : "/brand.png"}
-            alt="Morsel"
-            style={{ height: 20, cursor: "pointer" }}
-            onClick={() => (window.location.href = "/")}
-          />
+          <img src={colorMode === "dark" ? "/brand-dark.png" : "/brand.png"} alt="Morsel" style={{ height: 20 }} />
           <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
           <IconButton
-            icon={ListUnorderedIcon}
+            icon={treeVisible ? SidebarExpandIcon : SidebarCollapseIcon}
             size="small"
             variant="invisible"
             aria-label="Toggle Tree"
             title="Toggle Tree"
             onClick={() => setTreeVisible((prev) => !prev)}
+            style={
+              treeVisible
+                ? {
+                    backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.8)",
+                    borderRadius: 6,
+                  }
+                : {}
+            }
           />
+          <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
+          <IconButton
+            icon={FileIcon}
+            size="small"
+            variant="invisible"
+            aria-label="New Model"
+            title="New Model"
+            onClick={() => {
+              if (confirm("Are you sure you want to create a new model? Unsaved changes will be lost.")) {
+                const newContent = "model Example\n\nend Example;";
+                editor?.setValue(newContent);
+              }
+            }}
+          />
+          <IconButton
+            icon={UploadIcon}
+            size="small"
+            variant="invisible"
+            aria-label="Open File"
+            title="Open File"
+            ref={openFileButtonRef}
+            onClick={() => setIsOpenFileDialogOpen(true)}
+          />
+          <IconButton
+            icon={DownloadIcon}
+            size="small"
+            variant="invisible"
+            aria-label="Save Model"
+            title="Save Model"
+            onClick={async () => {
+              const content = editor?.getValue() || "";
+              let filename = classInstance?.name ? `${classInstance.name}.mo` : "model.mo";
+              if (codeEditorRef.current) {
+                const syncedInstance = await codeEditorRef.current.sync();
+                if (syncedInstance?.name) {
+                  filename = `${syncedInstance.name}.mo`;
+                }
+              }
+              const blob = new Blob([content], { type: "text/plain" });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = filename;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+            }}
+          />
+
           <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
           <div
             style={{
@@ -1317,6 +1405,14 @@ export default function MorselEditor(props: MorselEditorProps) {
           </div>
           <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
           <IconButton
+            icon={RowsIcon}
+            size="small"
+            variant="invisible"
+            aria-label="Flatten Model"
+            title="Flatten Model"
+            onClick={handleFlatten}
+          />
+          <IconButton
             icon={ShareAndroidIcon}
             size="small"
             variant="invisible"
@@ -1324,16 +1420,7 @@ export default function MorselEditor(props: MorselEditorProps) {
             ref={shareButtonRef}
             onClick={() => setShareDialogOpen(!isShareDialogOpen)}
           />
-          {!props.embed && (
-            <IconButton
-              icon={CodeIcon}
-              size="small"
-              variant="invisible"
-              aria-label="Embed Morsel"
-              ref={embedButtonRef}
-              onClick={() => setEmbedDialogOpen(!isEmbedDialogOpen)}
-            />
-          )}
+
           <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
           <IconButton
             icon={colorMode === "dark" ? SunIcon : MoonIcon}
@@ -1368,30 +1455,7 @@ export default function MorselEditor(props: MorselEditorProps) {
             >{`${window.location.protocol}//${window.location.host}/#${encodeDataUrl(editor?.getValue() ?? "", ContentType.MODELICA)}`}</div>
           </Dialog>
         )}
-        {isEmbedDialogOpen && (
-          <Dialog
-            title="Embed Morsel"
-            onClose={() => setEmbedDialogOpen(false)}
-            returnFocusRef={embedButtonRef}
-            footerButtons={[
-              {
-                buttonType: "normal",
-                content: "Copy to clipboard",
-                onClick: async () => {
-                  await navigator.clipboard.writeText(
-                    `<iframe width="600" height="400" src="${window.location.protocol}//${window.location.host}/#${encodeDataUrl(editor?.getValue() ?? "", ContentType.MODELICA)}"></iframe>`,
-                  );
-                  alert("Copied to clipboard.");
-                  setEmbedDialogOpen(false);
-                },
-              },
-            ]}
-          >
-            <div
-              style={{ wordBreak: "break-all" }}
-            >{`<iframe width="600" height="400" src="${window.location.protocol}//${window.location.host}/#${encodeDataUrl(editor?.getValue() ?? "", ContentType.MODELICA)}"></iframe>`}</div>
-          </Dialog>
-        )}
+
         {isDirtyDialogOpen && (
           <Dialog
             title="Unsaved Changes"
@@ -1420,6 +1484,17 @@ export default function MorselEditor(props: MorselEditorProps) {
           >
             You have unsaved changes. Any unsaved changes will be lost if you switch without saving. Are you sure you
             want to discard your changes?
+          </Dialog>
+        )}
+        {isOpenFileDialogOpen && (
+          <Dialog title="Open File" onClose={() => setIsOpenFileDialogOpen(false)} returnFocusRef={openFileButtonRef}>
+            <OpenFileDropzone
+              onFileContent={(content) => {
+                editor?.setValue(content);
+                setIsOpenFileDialogOpen(false);
+              }}
+              colorMode={colorMode}
+            />
           </Dialog>
         )}
         {loadingProgress < 100 && (
@@ -1527,6 +1602,40 @@ export default function MorselEditor(props: MorselEditorProps) {
               }
             }}
           />
+        )}
+        {isFlattenDialogOpen && (
+          <Dialog
+            title="Flattened Model"
+            onClose={() => setFlattenDialogOpen(false)}
+            width="large"
+            footerButtons={[
+              {
+                buttonType: "normal",
+                content: "Copy to clipboard",
+                onClick: async () => {
+                  await navigator.clipboard.writeText(flattenedCode);
+                  alert("Copied to clipboard.");
+                },
+              },
+              {
+                buttonType: "normal",
+                content: "Close",
+                onClick: () => setFlattenDialogOpen(false),
+              },
+            ]}
+          >
+            <div style={{ height: "60vh", border: "1px solid " + (colorMode === "dark" ? "#30363d" : "#d0d7de") }}>
+              <CodeEditor
+                content={flattenedCode}
+                context={null}
+                setClassInstance={() => {}}
+                setEditor={() => {}}
+                theme={colorMode === "dark" ? "vs-dark" : "light"}
+                embed={false}
+                readOnly={true}
+              />
+            </div>
+          </Dialog>
         )}
       </div>
     </>

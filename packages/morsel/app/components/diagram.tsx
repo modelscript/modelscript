@@ -773,7 +773,26 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     g.on("translate", () => {
       lastZoomRef.current = { zoom: g.zoom(), tx: g.translate().tx, ty: g.translate().ty };
     });
-  }, [props.classInstance, props.theme]);
+  }, [props.classInstance]);
+
+  useEffect(() => {
+    if (!graph) return;
+    graph.drawBackground({ color: props.theme === "vs-dark" ? "#1e1e1e" : "#ffffff" });
+    graph.drawGrid({
+      type: "doubleMesh",
+      args: [
+        {
+          color: "transparent",
+          thickness: 0,
+        },
+        {
+          color: props.theme === "vs-dark" ? "#2f2f2f" : "#ccc",
+          thickness: 1,
+          factor: 10,
+        },
+      ],
+    });
+  }, [graph, props.theme]);
 
   const lastClassRef = useRef<string | null | undefined>(undefined);
   const lastZoomRef = useRef<{ zoom: number; tx: number; ty: number } | null>(null);
