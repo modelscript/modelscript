@@ -18,14 +18,15 @@ import {
 import {
   DownloadIcon,
   FileIcon,
+  FlowchartIcon,
   MoonIcon,
   PlusIcon,
-  RowsIcon,
   SearchIcon,
   ShareAndroidIcon,
   SidebarCollapseIcon,
   SidebarExpandIcon,
   SplitViewIcon,
+  StackIcon,
   SunIcon,
   UnwrapIcon,
   UploadIcon,
@@ -1340,7 +1341,23 @@ export default function MorselEditor(props: MorselEditorProps) {
               URL.revokeObjectURL(url);
             }}
           />
-
+          <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
+          <IconButton
+            icon={FlowchartIcon}
+            size="small"
+            variant="invisible"
+            aria-label="Auto Layout"
+            title="Auto Layout"
+            onClick={() => {
+              if (
+                confirm(
+                  "Running auto layout will overwrite existing placement annotations. Are you sure you want to auto layout the diagram?",
+                )
+              ) {
+                diagramEditorRef.current?.layout();
+              }
+            }}
+          />
           <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
           <div
             style={{
@@ -1405,13 +1422,14 @@ export default function MorselEditor(props: MorselEditorProps) {
           </div>
           <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
           <IconButton
-            icon={RowsIcon}
+            icon={StackIcon}
             size="small"
             variant="invisible"
             aria-label="Flatten Model"
             title="Flatten Model"
             onClick={handleFlatten}
           />
+          <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
           <IconButton
             icon={ShareAndroidIcon}
             size="small"
@@ -1420,7 +1438,6 @@ export default function MorselEditor(props: MorselEditorProps) {
             ref={shareButtonRef}
             onClick={() => setShareDialogOpen(!isShareDialogOpen)}
           />
-
           <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
           <IconButton
             icon={colorMode === "dark" ? SunIcon : MoonIcon}
@@ -1430,7 +1447,6 @@ export default function MorselEditor(props: MorselEditorProps) {
             onClick={() => setColorMode(colorMode === "dark" ? "light" : "dark")}
           />
         </div>
-        {/* Dialogs */}
         {isShareDialogOpen && (
           <Dialog
             title="Share Morsel"
@@ -1455,7 +1471,6 @@ export default function MorselEditor(props: MorselEditorProps) {
             >{`${window.location.protocol}//${window.location.host}/#${encodeDataUrl(editor?.getValue() ?? "", ContentType.MODELICA)}`}</div>
           </Dialog>
         )}
-
         {isDirtyDialogOpen && (
           <Dialog
             title="Unsaved Changes"

@@ -30,6 +30,7 @@ import { renderIconX6 } from "../util/x6";
 
 export interface DiagramEditorHandle {
   fitContent: () => void;
+  layout: () => void;
 }
 
 interface DiagramEditorProps {
@@ -83,6 +84,64 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       if (graph) {
         graph.zoomToFit({ padding: 20 });
         graph.centerContent();
+      }
+    },
+    layout: () => {
+      const g = graphRef.current;
+      if (!g) return;
+
+      const nodes = g.getNodes();
+      const edges = g.getEdges();
+
+      const dagreLayout = new DagreLayout({
+        type: "dagre",
+        rankdir: "LR",
+        align: "UL",
+        ranksep: 0.5,
+        nodesep: 0.5,
+        begin: [-10, -10],
+        controlPoints: true,
+      });
+
+      const model = {
+        nodes: nodes.map((node) => ({
+          id: node.id,
+          width: node.getSize().width,
+          height: node.getSize().height,
+        })) as any,
+        edges: edges.map((edge) => ({
+          source: edge.getSourceCellId(),
+          target: edge.getTargetCellId(),
+        })) as any,
+      };
+
+      const newModel = dagreLayout.layout(model);
+      const items: any[] = [];
+
+      g.batchUpdate("layout", () => {
+        newModel.nodes?.forEach((n: any) => {
+          const node = g.getCellById(n.id);
+          if (node && node.isNode()) {
+            node.setPosition(n.x, n.y);
+            const p = node.getPosition();
+            const s = node.getSize();
+            const r = node.getAngle();
+            const connectedEdges = getConnectedEdges(node);
+            items.push({
+              name: node.id,
+              x: p.x,
+              y: p.y,
+              width: s.width,
+              height: s.height,
+              rotation: r,
+              edges: connectedEdges,
+            });
+          }
+        });
+      });
+
+      if (items.length > 0 && onMoveRef.current) {
+        onMoveRef.current(items);
       }
     },
   }));
