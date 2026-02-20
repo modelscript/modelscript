@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { DagreLayout } from "@antv/layout";
-import { Graph, Keyboard, Selection, Transform, type EdgeMetadata, type NodeMetadata } from "@antv/x6";
+import { Graph, Keyboard, Selection, Snapline, Transform, type EdgeMetadata, type NodeMetadata } from "@antv/x6";
 import type { PortMetadata } from "@antv/x6/lib/model/port";
 import {
   applyCoordinateSystem,
@@ -212,6 +212,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
         }),
       );
       g.use(new Keyboard({ enabled: true }));
+      g.use(new Snapline({ enabled: true, clean: false }));
 
       g.bindKey(["backspace", "delete"], () => {
         const cells = g?.getSelectedCells();
