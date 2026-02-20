@@ -92,6 +92,8 @@ export default function MorselEditor(props: MorselEditorProps) {
   const isDraggingSplit = useRef(false);
   const [treeWidth, setTreeWidth] = useState(300);
   const isDraggingTree = useRef(false);
+  const [propertiesWidth, setPropertiesWidth] = useState(300);
+  const isDraggingProperties = useRef(false);
   const { colorMode, setColorMode } = useTheme();
   const [libraryFilter, setLibraryFilter] = useState("");
   const [debouncedFilter, setDebouncedFilter] = useState("");
@@ -1183,8 +1185,50 @@ export default function MorselEditor(props: MorselEditorProps) {
                 </div>
                 {selectedComponent && (
                   <>
-                    <div className="border-left" />
-                    <PropertiesWidget component={selectedComponent} />
+                    <div
+                      style={{
+                        width: 6,
+                        cursor: "col-resize",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexShrink: 0,
+                        backgroundColor: "transparent",
+                        borderLeft: `1px solid ${colorMode === "dark" ? "#30363d" : "#d0d7de"}`,
+                        transition: "background-color 0.15s",
+                      }}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        isDraggingProperties.current = true;
+                        const startX = e.clientX;
+                        const startWidth = propertiesWidth;
+                        const onMouseMove = (ev: MouseEvent) => {
+                          if (!isDraggingProperties.current) return;
+                          const deltaX = startX - ev.clientX;
+                          const newWidth = Math.max(200, Math.min(800, startWidth + deltaX));
+                          setPropertiesWidth(newWidth);
+                        };
+                        const onMouseUp = () => {
+                          isDraggingProperties.current = false;
+                          document.removeEventListener("mousemove", onMouseMove);
+                          document.removeEventListener("mouseup", onMouseUp);
+                          document.body.style.cursor = "auto";
+                          document.body.style.userSelect = "auto";
+                        };
+                        document.addEventListener("mousemove", onMouseMove);
+                        document.addEventListener("mouseup", onMouseUp);
+                        document.body.style.cursor = "col-resize";
+                        document.body.style.userSelect = "none";
+                      }}
+                      onMouseEnter={(e) => {
+                        (e.currentTarget as HTMLElement).style.backgroundColor =
+                          colorMode === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)";
+                      }}
+                      onMouseLeave={(e) => {
+                        (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
+                      }}
+                    />
+                    <PropertiesWidget component={selectedComponent} width={propertiesWidth} />
                   </>
                 )}
               </div>

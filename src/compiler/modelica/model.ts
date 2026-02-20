@@ -122,6 +122,10 @@ export class ModelicaLibrary extends ModelicaNode {
     this.instantiated = true;
   }
 
+  get name(): string | null {
+    return this.entity.name;
+  }
+
   get library(): ModelicaLibrary {
     return this;
   }
@@ -769,7 +773,10 @@ export class ModelicaEntity extends ModelicaClassInstance {
         filePath = null;
       }
       for (const dirent of context.fs.readdir(this.path)) {
-        if (dirent.isFile()) {
+        if (dirent.isDirectory()) {
+          const pkgPath = context.fs.join(this.path, dirent.name, "package.mo");
+          if (!context.fs.stat(pkgPath)?.isFile()) continue;
+        } else if (dirent.isFile()) {
           if (dirent.name === "package.mo" || context.fs.extname(dirent.name) !== ".mo") continue;
         }
         const subEntity = new ModelicaEntity(this, context.fs.join(this.path, dirent.name));

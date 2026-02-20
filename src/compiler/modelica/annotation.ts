@@ -3,6 +3,15 @@
 export const ANNOTATION = `
 class Annotation
 
+  // 18.5 Documentation
+
+  // 18.5.1 Class Description and Revision History
+
+  record Documentation
+    String info;
+    String revisions;
+  end Documentation;
+
   // 18.9 Graphical Objects
   
   type DrawingUnit = Real(final unit="mm");

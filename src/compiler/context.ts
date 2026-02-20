@@ -21,9 +21,18 @@ export class Context extends Scope {
     this.#fs = fs;
   }
 
-  addLibrary(path: string): ModelicaLibrary {
+  addLibrary(path: string): ModelicaLibrary | null {
     let library = this.getLibrary(path);
     if (library) return library;
+
+    const stats = this.#fs.stat(path);
+    if (stats?.isDirectory()) {
+      const pkgPath = this.#fs.join(path, "package.mo");
+      if (!this.#fs.stat(pkgPath)?.isFile()) {
+        return null;
+      }
+    }
+
     library = new ModelicaLibrary(this, path);
     this.#libraries.push(library);
     return library;
@@ -99,5 +108,26 @@ export class Context extends Scope {
       }
     }
     return false;
+  }
+
+  resolveURI(uri: string): string | null {
+    if (!uri.startsWith("modelica://")) return null;
+    const parts = uri.substring(11).split("/");
+    const libraryName = parts.shift();
+    if (!libraryName) return null;
+    const relativePath = parts.join(this.#fs.sep);
+
+    for (const library of this.#libraries) {
+      if (library.name === libraryName) {
+        const stats = this.#fs.stat(library.path);
+        if (stats?.isDirectory()) {
+          return this.#fs.resolve(this.#fs.join(library.path, relativePath));
+        } else {
+          return this.#fs.resolve(this.#fs.join(this.#fs.join(library.path, ".."), libraryName, relativePath));
+        }
+      }
+    }
+
+    return null;
   }
 }

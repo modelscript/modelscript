@@ -18,7 +18,11 @@ export class NodeFileSystem implements FileSystem {
   }
 
   read(path: string): string {
-    return fs.readFileSync(path, { encoding: "utf8" });
+    return fs.readFileSync(path, "utf8");
+  }
+
+  readBinary(path: string): Uint8Array {
+    return fs.readFileSync(path);
   }
 
   readdir(path: string): Dirent[] {

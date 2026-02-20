@@ -12,3 +12,19 @@ body {
 #__primerPortalRoot__ div {
   z-index: 999 !important;
 }
+
+.markdown-body ul {
+  padding-left: 1.5em !important;
+  list-style-type: disc !important;
+  margin-bottom: 1em;
+}
+
+.markdown-body ol {
+  padding-left: 1.5em !important;
+  list-style-type: decimal !important;
+  margin-bottom: 1em;
+}
+
+.markdown-body li {
+  margin-bottom: 0.5em;
+}

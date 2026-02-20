@@ -9,6 +9,8 @@ export interface FileSystem {
 
   read(path: string): string;
 
+  readBinary(path: string): Uint8Array;
+
   readdir(path: string): Dirent[];
 
   resolve(...paths: string[]): string;

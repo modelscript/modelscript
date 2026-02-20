@@ -21,6 +21,10 @@ export class WebFileSystem implements FileSystem {
     return fs.readFileSync(path, { encoding: "utf8" });
   }
 
+  readBinary(path: string): Uint8Array {
+    return fs.readFileSync(path);
+  }
+
   readdir(path: string): Dirent[] {
     return fs.readdirSync(path, { withFileTypes: true });
   }

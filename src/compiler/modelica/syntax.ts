@@ -5453,8 +5453,9 @@ export class ModelicaStringLiteralSyntaxNode
     abstractSyntaxNode?: IModelicaStringLiteralSyntaxNode | null,
   ) {
     super(parent, concreteSyntaxNode, abstractSyntaxNode, ModelicaStringLiteralSyntaxNode.type);
-    this.text =
+    const text =
       abstractSyntaxNode?.text ?? concreteSyntaxNode?.text?.substring(1, concreteSyntaxNode?.text?.length - 1) ?? null;
+    this.text = text?.replace(/""/g, '"')?.replace(/\\"/g, '"') ?? null;
   }
 
   override accept<R, A>(visitor: IModelicaSyntaxVisitor<R, A>, argument?: A): R {
