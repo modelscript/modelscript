@@ -133,7 +133,12 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
             </span>
           </span>
         </NavList.LeadingVisual>
-        {showQualifiedName ? element.compositeName : element.name}
+        <div
+          style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+          title={(showQualifiedName ? element.compositeName : element.name) ?? undefined}
+        >
+          {showQualifiedName ? element.compositeName : element.name}
+        </div>
       </NavList.Item>
       {expanded &&
         children?.map((child) => <TreeNode key={child.name} element={child} onSelect={onSelect} depth={depth + 1} />)}

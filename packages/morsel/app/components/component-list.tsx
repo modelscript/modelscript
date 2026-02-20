@@ -69,8 +69,20 @@ const ComponentList = React.memo(function ComponentList(props: ComponentListProp
           <NavList.LeadingVisual>
             {component.classInstance ? <ComponentIcon classInstance={component.classInstance} /> : <PackageIcon />}
           </NavList.LeadingVisual>
-          {component.name}
-          <NavList.TrailingVisual>{component.classInstance?.name}</NavList.TrailingVisual>
+          <div style={{ display: "flex", width: "100%", gap: "8px", overflow: "hidden" }}>
+            <div
+              style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+              title={component.name ?? undefined}
+            >
+              {component.name}
+            </div>
+            <div
+              style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", opacity: 0.7 }}
+              title={component.classInstance?.name ?? undefined}
+            >
+              {component.classInstance?.name}
+            </div>
+          </div>
         </NavList.Item>
       ))}
     </NavList>
