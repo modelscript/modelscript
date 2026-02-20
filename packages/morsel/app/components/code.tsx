@@ -235,24 +235,24 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
       options={
         !props.embed
           ? {
-            automaticLayout: true,
-            autoIndent: "full",
-            tabSize: 2,
-            insertSpaces: true,
-            guides: {
-              indentation: true,
-            },
-            readOnly: props.readOnly,
-          }
+              automaticLayout: true,
+              autoIndent: "full",
+              tabSize: 2,
+              insertSpaces: true,
+              guides: {
+                indentation: true,
+              },
+              readOnly: props.readOnly,
+            }
           : {
-            automaticLayout: true,
-            folding: false,
-            glyphMargin: false,
-            lineDecorationsWidth: 0,
-            lineNumbers: "off",
-            lineNumbersMinChars: 0,
-            minimap: { enabled: false },
-          }
+              automaticLayout: true,
+              folding: false,
+              glyphMargin: false,
+              lineDecorationsWidth: 0,
+              lineNumbers: "off",
+              lineNumbersMinChars: 0,
+              minimap: { enabled: false },
+            }
       }
       height="100%"
       width="100%"

@@ -11,6 +11,7 @@ import {
   computePortPlacement,
   computeWidth,
   convertPoint,
+  evaluateCondition,
   LinePattern,
   ModelicaClassKind,
   ModelicaElement,
@@ -530,6 +531,10 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     const edges: EdgeMetadata[] = [];
     for (const component of props.classInstance.components) {
       if (!component.name) continue;
+
+      const condition = evaluateCondition(component);
+      if (condition === false) continue;
+
       const componentClassInstance = component.classInstance;
       if (!componentClassInstance) continue;
       let componentTransform = computeIconPlacement(component);
@@ -555,6 +560,9 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       const componentMarkup = renderIconX6(componentClassInstance, component, false);
       const ports: PortMetadata[] = [];
       for (const connector of componentClassInstance.components) {
+        const connectorCondition = evaluateCondition(connector);
+        if (connectorCondition === false) continue;
+
         const connectorClassInstance = connector.classInstance;
         if (!connectorClassInstance || connectorClassInstance.classKind !== ModelicaClassKind.CONNECTOR) continue;
         const connectorTransform = computePortPlacement(connector);
@@ -586,7 +594,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
               magnet: "true",
               width: connectorTransform.width * componentTransform.scaleX,
               height: connectorTransform.height * componentTransform.scaleY,
-              style: "overflow: visible",
+              style: `overflow: visible${connectorCondition === undefined ? "; opacity: 0.5" : ""}`,
             },
           },
         });
@@ -597,6 +605,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       nodes.set(component.name, {
         id: component.name,
         autoLayout,
+        opacity: condition === undefined ? 0.5 : 1,
         x:
           relTranslateX * Math.cos(a) -
           relTranslateY * Math.sin(a) -

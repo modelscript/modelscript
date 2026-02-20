@@ -131,3 +131,21 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     return new ModelicaRealLiteral(node.value);
   }
 }
+
+export function evaluateCondition(component: ModelicaComponentInstance): boolean | undefined {
+  const node = component.abstractSyntaxNode;
+  if (!node || !("conditionAttribute" in node) || !node.conditionAttribute?.condition) return true;
+
+  const condition = node.conditionAttribute.condition;
+  const interpreter = new ModelicaInterpreter();
+  try {
+    const result = condition.accept(interpreter, component.parent ?? component);
+    if (result instanceof ModelicaBooleanLiteral) {
+      return result.value;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  } catch (e) {
+    // Ignore evaluation failures
+  }
+  return undefined;
+}

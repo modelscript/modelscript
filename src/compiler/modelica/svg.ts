@@ -24,6 +24,7 @@ import {
   ModelicaRealLiteral,
   ModelicaStringLiteral,
 } from "./dae.js";
+import { evaluateCondition } from "./interpreter.js";
 import {
   ModelicaComponentInstance,
   ModelicaElement,
@@ -68,8 +69,13 @@ export function renderDiagram(classInstance: ModelicaClassInstance, svg?: Svg): 
   for (const component of classInstance.components) {
     const componentClassInstance = component.classInstance;
     if (!componentClassInstance) continue;
+
+    const condition = evaluateCondition(component);
+    if (condition === false) continue;
+
     const componentSvg = renderIcon(componentClassInstance, component, true);
     if (componentSvg) {
+      if (condition === undefined) componentSvg.opacity(0.5);
       applyIconPlacement(componentSvg, component);
       group.add(componentSvg);
     }
@@ -103,10 +109,15 @@ export function renderIcon(
     renderGraphicItem(group, graphicItem, classInstance, componentInstance);
   if (ports) {
     for (const component of classInstance.components) {
+      const condition = evaluateCondition(component);
+      if (condition === false) continue;
+
       const connectorClassInstance = component.classInstance;
       if (!connectorClassInstance || connectorClassInstance.classKind !== ModelicaClassKind.CONNECTOR) continue;
+
       const connectorSvg = renderIcon(connectorClassInstance);
       if (connectorSvg) {
+        if (condition === undefined) connectorSvg.opacity(0.5);
         applyPortPlacement(connectorSvg, component);
         group.add(connectorSvg);
       }
