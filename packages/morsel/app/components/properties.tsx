@@ -7,6 +7,8 @@ import { ComponentIcon } from "./component-list";
 interface PropertiesWidgetProps {
   component: ModelicaComponentInstance | null;
   width?: number;
+  onNameChange?: (name: string) => void;
+  onDescriptionChange?: (description: string) => void;
   onParameterChange?: (name: string, value: string) => void;
 }
 
@@ -101,18 +103,58 @@ function ParameterRow({
 
 export default function PropertiesWidget(props: PropertiesWidgetProps) {
   const { colorMode } = useTheme();
+  const { component, onNameChange, onDescriptionChange, onParameterChange } = props;
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     info: true,
     parameters: true,
     documentation: true,
-    revisions: false,
+    revisions: true,
   });
 
-  if (!props.component) {
-    return <div className="p-3 text-center color-fg-muted">No component selected</div>;
-  }
+  const [localName, setLocalName] = useState(component?.name || "");
+  const [localDescription, setLocalDescription] = useState(component?.description || "");
 
-  const { component } = props;
+  useEffect(() => {
+    setLocalName(component?.name || "");
+    setLocalDescription(component?.description || "");
+  }, [component?.name, component?.description]);
+
+  useEffect(() => {
+    if (!localName || localName === component?.name) return;
+
+    const timeoutId = setTimeout(() => {
+      if (onNameChange) {
+        onNameChange(localName);
+      }
+    }, 500);
+
+    return () => clearTimeout(timeoutId);
+  }, [localName, component?.name, onNameChange]);
+
+  useEffect(() => {
+    const componentDescription = component?.description || "";
+    if (localDescription === componentDescription) return;
+
+    const timeoutId = setTimeout(() => {
+      if (onDescriptionChange) {
+        onDescriptionChange(localDescription);
+      }
+    }, 500);
+
+    return () => clearTimeout(timeoutId);
+  }, [localDescription, component?.description, onDescriptionChange]);
+
+  if (!component) {
+    return (
+      <div
+        className="height-full p-4 color-fg-muted f4 border-left"
+        style={{ width: props.width || 300 }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        No component selected
+      </div>
+    );
+  }
 
   const parameters: ModelicaComponentInstance[] = [];
   if (component.classInstance) {
@@ -195,9 +237,28 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
                 <div className="f6 color-fg-muted" style={{ lineHeight: "1.2" }}>
                   Name
                 </div>
-                <div className="f5 text-bold" style={{ wordBreak: "break-all", lineHeight: "1.2" }}>
-                  {component.name}
-                </div>
+                <TextInput
+                  size="small"
+                  value={localName}
+                  onChange={(e) => setLocalName(e.target.value)}
+                  onBlur={() => {
+                    if (localName !== component.name && onNameChange) {
+                      onNameChange(localName);
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      (e.target as HTMLInputElement).blur();
+                    }
+                  }}
+                  style={{
+                    width: "100%",
+                    height: 24,
+                    fontSize: 14,
+                    fontWeight: "bold",
+                    padding: "0 4px",
+                  }}
+                />
               </div>
               <div>
                 <div className="f6 color-fg-muted" style={{ lineHeight: "1.2" }}>
@@ -211,9 +272,27 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
           </div>
           <div>
             <div className="f6 color-fg-muted">Description</div>
-            <div className="f5" style={{ whiteSpace: "normal", wordBreak: "break-word" }}>
-              {component.description || "-"}
-            </div>
+            <TextInput
+              size="small"
+              value={localDescription}
+              onChange={(e) => setLocalDescription(e.target.value)}
+              onBlur={() => {
+                if (localDescription !== (component.description || "") && onDescriptionChange) {
+                  onDescriptionChange(localDescription);
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  (e.target as HTMLInputElement).blur();
+                }
+              }}
+              style={{
+                width: "100%",
+                height: 24,
+                fontSize: 12,
+                padding: "0 4px",
+              }}
+            />
           </div>
         </div>
       </details>

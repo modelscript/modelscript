@@ -406,13 +406,31 @@ export function applyFillX6(shape: X6Markup, filledShape: IFilledShape, defs: X6
   shape.attrs.style = (shape.attrs.style as string) + `; fill: ${fillValue} !important;`;
 }
 
-let nextId = 0;
-function getUniqueId(prefix: string): string {
-  return `${prefix}-${nextId++}`;
+function getStableId(prefix: string, params: any): string {
+  // A simple way to get a stable ID from params
+  const str = JSON.stringify(params);
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash |= 0; // Convert to 32bit integer
+  }
+  return `${prefix}-${Math.abs(hash).toString(36)}`;
+}
+
+function addDefIfMissing(defs: X6Markup[], def: X6Markup) {
+  const id = def.attrs?.id;
+  if (!id) {
+    defs.push(def);
+    return;
+  }
+  if (!defs.find((d) => d.attrs?.id === id)) {
+    defs.push(def);
+  }
 }
 
 function createLinePatternX6(defs: X6Markup[], rotation: number, lineColor?: IColor, fillColor?: IColor): string {
-  const id = getUniqueId("pattern-line");
+  const id = getStableId("pattern-line", { rotation, lineColor, fillColor });
   const children: X6Markup[] = [];
   if (fillColor) {
     children.push({
@@ -432,7 +450,7 @@ function createLinePatternX6(defs: X6Markup[], rotation: number, lineColor?: ICo
     },
   });
 
-  defs.push({
+  addDefIfMissing(defs, {
     tagName: "pattern",
     attrs: {
       id,
@@ -449,7 +467,7 @@ function createLinePatternX6(defs: X6Markup[], rotation: number, lineColor?: ICo
 }
 
 function createCrossPatternX6(defs: X6Markup[], rotation: number, lineColor?: IColor, fillColor?: IColor): string {
-  const id = getUniqueId("pattern-cross");
+  const id = getStableId("pattern-cross", { rotation, lineColor, fillColor });
   const children: X6Markup[] = [];
   if (fillColor) {
     children.push({
@@ -480,7 +498,7 @@ function createCrossPatternX6(defs: X6Markup[], rotation: number, lineColor?: IC
     },
   });
 
-  defs.push({
+  addDefIfMissing(defs, {
     tagName: "pattern",
     attrs: {
       id,
@@ -502,10 +520,10 @@ function createLinearGradientX6(
   lineColor?: IColor,
   fillColor?: IColor,
 ): string {
-  const id = getUniqueId("gradient-linear");
+  const id = getStableId("gradient-linear", { direction, lineColor, fillColor });
   const c = convertColor(fillColor);
   const h = convertColor(lineColor, "white");
-  defs.push({
+  addDefIfMissing(defs, {
     tagName: "linearGradient",
     attrs: {
       id,
@@ -524,10 +542,10 @@ function createLinearGradientX6(
 }
 
 function createRadialGradientX6(defs: X6Markup[], lineColor?: IColor, fillColor?: IColor): string {
-  const id = getUniqueId("gradient-radial");
+  const id = getStableId("gradient-radial", { lineColor, fillColor });
   const c = convertColor(fillColor);
   const h = convertColor(lineColor, "white");
-  defs.push({
+  addDefIfMissing(defs, {
     tagName: "radialGradient",
     attrs: {
       id,

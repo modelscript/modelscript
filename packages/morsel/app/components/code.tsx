@@ -71,8 +71,19 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
       const component = Array.from(classInstanceRef.current.components).find((c) => c.name === name);
       if (!component || !component.abstractSyntaxNode) return;
 
-      const concreteNode = component.abstractSyntaxNode.concreteSyntaxNode;
+      let concreteNode = component.abstractSyntaxNode.concreteSyntaxNode;
       if (!concreteNode) return;
+
+      if (
+        concreteNode.type === "component_declaration" &&
+        concreteNode.parent?.type === "component_clause" &&
+        concreteNode.parent.childCount <= 4
+      ) {
+        const declarations = concreteNode.parent.children.filter((c) => c.type === "component_declaration");
+        if (declarations.length === 1) {
+          concreteNode = concreteNode.parent;
+        }
+      }
 
       const range = {
         startLineNumber: concreteNode.startPosition.row + 1,
@@ -83,7 +94,6 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
 
       editorRef.current.revealRangeInCenter(range);
       editorRef.current.setSelection(range);
-      editorRef.current.focus();
     },
   }));
 

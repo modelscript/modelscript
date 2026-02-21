@@ -101,6 +101,7 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const [contextVersion, setContextVersion] = useState(0);
+  const expectedComponentNameRef = useRef<string | null>(null);
 
   useEffect(() => {
     const init = async () => {
@@ -178,9 +179,11 @@ export default function MorselEditor(props: MorselEditorProps) {
   }, [content]);
 
   useEffect(() => {
-    if (classInstance && selectedComponent) {
-      const next = Array.from(classInstance.components).find((c: any) => c.name === selectedComponent.name);
+    if (classInstance && (selectedComponent || expectedComponentNameRef.current)) {
+      const nameToFind = expectedComponentNameRef.current || selectedComponent?.name;
+      const next = Array.from(classInstance.components).find((c: any) => c.name === nameToFind);
       setSelectedComponent((next as ModelicaComponentInstance) || null);
+      expectedComponentNameRef.current = null;
     } else {
       setSelectedComponent(null);
     }
@@ -286,6 +289,81 @@ export default function MorselEditor(props: MorselEditorProps) {
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
   }, []);
+
+  const getNameEdit = (oldName: string, newName: string): editor.IIdentifiedSingleEditOperation | null => {
+    if (!classInstance || !editor || !newName) return null;
+    const component = Array.from(classInstance.components).find((c: any) => c.name === oldName);
+    if (!component) return null;
+
+    const abstractNode = (component as any).abstractSyntaxNode;
+    const identNode = abstractNode?.declaration?.identifier?.concreteSyntaxNode;
+    if (identNode) {
+      return {
+        range: {
+          startLineNumber: identNode.startPosition.row + 1,
+          startColumn: identNode.startPosition.column + 1,
+          endLineNumber: identNode.endPosition.row + 1,
+          endColumn: identNode.endPosition.column + 1,
+        },
+        text: newName,
+      };
+    }
+    return null;
+  };
+
+  const getDescriptionEdit = (
+    componentName: string,
+    newDescription: string,
+  ): editor.IIdentifiedSingleEditOperation | null => {
+    if (!classInstance || !editor) return null;
+    const component = Array.from(classInstance.components).find((c: any) => c.name === componentName);
+    if (!component) return null;
+
+    const abstractNode = (component as any).abstractSyntaxNode;
+    const descriptionNode = abstractNode?.description?.concreteSyntaxNode;
+
+    // Escape quotes for Modelica (double them)
+    const escapedDescription = newDescription.replace(/"/g, '""');
+
+    if (descriptionNode) {
+      return {
+        range: {
+          startLineNumber: descriptionNode.startPosition.row + 1,
+          startColumn: descriptionNode.startPosition.column + 1,
+          endLineNumber: descriptionNode.endPosition.row + 1,
+          endColumn: descriptionNode.endPosition.column + 1,
+        },
+        text: `"${escapedDescription}"`, // No leading space when replacing existing description
+      };
+    } else {
+      // If no description exists, we need to insert it after the identifier/modification
+      const identNode = abstractNode?.declaration?.identifier?.concreteSyntaxNode;
+      const modificationNode = abstractNode?.declaration?.modification?.concreteSyntaxNode;
+      const subscriptsNode = abstractNode?.declaration?.arraySubscripts?.concreteSyntaxNode;
+
+      let pos = null;
+      if (modificationNode) {
+        pos = modificationNode.endPosition;
+      } else if (subscriptsNode) {
+        pos = subscriptsNode.endPosition;
+      } else if (identNode) {
+        pos = identNode.endPosition;
+      }
+
+      if (pos) {
+        return {
+          range: {
+            startLineNumber: pos.row + 1,
+            startColumn: pos.column + 1,
+            endLineNumber: pos.row + 1,
+            endColumn: pos.column + 1,
+          },
+          text: ` "${escapedDescription}"`, // Include leading space only when inserting new description
+        };
+      }
+    }
+    return null;
+  };
 
   const getParameterEdit = (
     componentName: string,
@@ -1386,8 +1464,24 @@ export default function MorselEditor(props: MorselEditorProps) {
                       }}
                     />
                     <PropertiesWidget
+                      key={selectedComponent.name || "none"}
                       component={selectedComponent}
                       width={propertiesWidth}
+                      onNameChange={(newName) => {
+                        if (!selectedComponent || !editor) return;
+                        const edit = getNameEdit(selectedComponent.name!, newName);
+                        if (edit) {
+                          expectedComponentNameRef.current = newName;
+                          editor.executeEdits("name-change", [edit]);
+                        }
+                      }}
+                      onDescriptionChange={(newDescription) => {
+                        if (!selectedComponent || !editor) return;
+                        const edit = getDescriptionEdit(selectedComponent.name!, newDescription);
+                        if (edit) {
+                          editor.executeEdits("description-change", [edit]);
+                        }
+                      }}
                       onParameterChange={(name, value) => {
                         if (!selectedComponent || !editor) return;
                         const edit = getParameterEdit(selectedComponent.name!, name, value);

@@ -518,10 +518,8 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       });
     }
 
-    document.getElementById("x-axis")?.remove();
-    document.getElementById("y-axis")?.remove();
-    document.getElementById("coordinateSystem")?.remove();
-    document.getElementById("background")?.remove();
+    // We no longer remove these elements on every update to prevent flickering.
+    // They will be updated or created below if they don't exist.
 
     if (!props.classInstance) {
       g.clearCells();
@@ -709,48 +707,64 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       });
     }
 
-    const xAxis = document.createElementNS("http://www.w3.org/2000/svg", "line");
-    xAxis.setAttribute("id", "x-axis");
-    xAxis.setAttribute("x1", "-100000");
-    xAxis.setAttribute("y1", "0");
-    xAxis.setAttribute("x2", "100000");
-    xAxis.setAttribute("y2", "0");
-    xAxis.setAttribute("stroke", "#999");
-    xAxis.setAttribute("stroke-width", "1");
-    xAxis.setAttribute("vector-effect", "non-scaling-stroke");
-    xAxis.setAttribute("z-index", "2");
-    g.view.viewport.insertBefore(xAxis, g.view.viewport.firstChild);
+    let xAxis = document.getElementById("x-axis") as unknown as SVGLineElement | null;
+    if (!xAxis) {
+      xAxis = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      xAxis.setAttribute("id", "x-axis");
+      xAxis.setAttribute("stroke", "#999");
+      xAxis.setAttribute("stroke-width", "1");
+      xAxis.setAttribute("vector-effect", "non-scaling-stroke");
+      xAxis.setAttribute("z-index", "2");
+      g.view.viewport.insertBefore(xAxis, g.view.viewport.firstChild);
+    }
+    xAxis!.setAttribute("x1", "-100000");
+    xAxis!.setAttribute("y1", "0");
+    xAxis!.setAttribute("x2", "100000");
+    xAxis!.setAttribute("y2", "0");
 
-    const yAxis = document.createElementNS("http://www.w3.org/2000/svg", "line");
-    yAxis.setAttribute("id", "y-axis");
-    yAxis.setAttribute("x1", "0");
-    yAxis.setAttribute("y1", "-100000");
-    yAxis.setAttribute("x2", "0");
-    yAxis.setAttribute("y2", "100000");
-    yAxis.setAttribute("stroke", "#999");
-    yAxis.setAttribute("stroke-width", "1");
-    yAxis.setAttribute("vector-effect", "non-scaling-stroke");
-    yAxis.setAttribute("z-index", "2");
-    g.view.viewport.insertBefore(yAxis, g.view.viewport.firstChild);
+    let yAxis = document.getElementById("y-axis") as unknown as SVGLineElement | null;
+    if (!yAxis) {
+      yAxis = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      yAxis.setAttribute("id", "y-axis");
+      yAxis.setAttribute("stroke", "#999");
+      yAxis.setAttribute("stroke-width", "1");
+      yAxis.setAttribute("vector-effect", "non-scaling-stroke");
+      yAxis.setAttribute("z-index", "2");
+      g.view.viewport.insertBefore(yAxis, g.view.viewport.firstChild);
+    }
+    yAxis!.setAttribute("x1", "0");
+    yAxis!.setAttribute("y1", "-100000");
+    yAxis!.setAttribute("x2", "0");
+    yAxis!.setAttribute("y2", "100000");
 
-    const coordinateSystem = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-    coordinateSystem.setAttribute("id", "coordinateSystem");
-    coordinateSystem.setAttribute("x", "-100");
-    coordinateSystem.setAttribute("y", "-100");
-    coordinateSystem.setAttribute("width", "200");
-    coordinateSystem.setAttribute("height", "200");
-    coordinateSystem.setAttribute("fill", "none");
-    coordinateSystem.setAttribute("stroke", "#999");
-    coordinateSystem.setAttribute("stroke-width", "1");
-    coordinateSystem.setAttribute("vector-effect", "non-scaling-stroke");
-    coordinateSystem.setAttribute("z-index", "1");
-    g.view.viewport.insertBefore(coordinateSystem, g.view.viewport.firstChild);
+    let coordinateSystem = document.getElementById("coordinateSystem") as unknown as SVGRectElement | null;
+    if (!coordinateSystem) {
+      coordinateSystem = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      coordinateSystem.setAttribute("id", "coordinateSystem");
+      coordinateSystem.setAttribute("fill", "none");
+      coordinateSystem.setAttribute("stroke", "#999");
+      coordinateSystem.setAttribute("stroke-width", "1");
+      coordinateSystem.setAttribute("vector-effect", "non-scaling-stroke");
+      coordinateSystem.setAttribute("z-index", "1");
+      g.view.viewport.insertBefore(coordinateSystem, g.view.viewport.firstChild);
+    }
+    coordinateSystem!.setAttribute("x", "-100");
+    coordinateSystem!.setAttribute("y", "-100");
+    coordinateSystem!.setAttribute("width", "200");
+    coordinateSystem!.setAttribute("height", "200");
 
     const diagram: IDiagram | null = props.classInstance.annotation("Diagram");
     if (diagram) {
-      const background = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-      background.setAttribute("id", "background");
-      g.view.viewport.insertBefore(background, g.view.viewport.firstChild);
+      let background = document.getElementById("background") as unknown as SVGSVGElement | null;
+      if (background) {
+        while (background.firstChild) {
+          background.removeChild(background.firstChild);
+        }
+      } else {
+        background = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        background.setAttribute("id", "background");
+        g.view.viewport.insertBefore(background, g.view.viewport.firstChild);
+      }
       const svg = new Svg(background);
       applyCoordinateSystem(svg, diagram.coordinateSystem);
       const p1 = convertPoint(diagram.coordinateSystem?.extent?.[0], [-100, -100]);
