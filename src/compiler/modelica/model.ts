@@ -517,9 +517,6 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
         this.#importClauses.push(elementSyntaxNode);
       }
     }
-    for (const element of this.declaredElements) {
-      if (element instanceof ModelicaExtendsClassInstance) element.instantiate();
-    }
     for (const importClause of this.#importClauses) {
       const packageInstance = this.resolveName(importClause.packageName, true);
       if (!(packageInstance instanceof ModelicaClassInstance)) continue;
@@ -537,6 +534,9 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
           }
         }
       }
+    }
+    for (const element of this.declaredElements) {
+      if (element instanceof ModelicaExtendsClassInstance) element.instantiate();
     }
     this.annotations = ModelicaElement.instantiateAnnotations(this, this.abstractSyntaxNode?.annotationClause);
     this.instantiated = true;
