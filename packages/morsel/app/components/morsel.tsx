@@ -178,7 +178,13 @@ export default function MorselEditor(props: MorselEditorProps) {
   }, [content]);
 
   useEffect(() => {
-    setSelectedComponent(null);
+    if (classInstance && selectedComponent) {
+      const next = Array.from(classInstance.components).find((c: any) => c.name === selectedComponent.name);
+      setSelectedComponent((next as ModelicaComponentInstance) || null);
+    } else {
+      setSelectedComponent(null);
+    }
+
     if (!isDiagramUpdate.current) {
       setDiagramClassInstance(classInstance);
     }
@@ -280,6 +286,152 @@ export default function MorselEditor(props: MorselEditorProps) {
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
   }, []);
+
+  const getParameterEdit = (
+    componentName: string,
+    parameterName: string,
+    newValue: string,
+  ): editor.IIdentifiedSingleEditOperation | null => {
+    if (!classInstance || !editor) return null;
+    const component = Array.from(classInstance.components).find((c: any) => c.name === componentName);
+    if (!component) return null;
+
+    const abstractNode = (component as any).abstractSyntaxNode;
+    if (!abstractNode) return null;
+
+    const declNode = abstractNode.declaration;
+    const modification = declNode?.modification;
+
+    const shouldRemove = newValue === "";
+
+    if (modification?.classModification) {
+      const classMod = modification.classModification;
+      const argIndex = classMod.modificationArguments.findIndex((arg: any) => {
+        if (!arg.name) return false;
+        const nameText = arg.name.parts.map((p: any) => p.text).join(".");
+        return nameText === parameterName;
+      });
+
+      if (argIndex !== -1) {
+        const existingArg = classMod.modificationArguments[argIndex];
+        if (shouldRemove) {
+          const argNode = (existingArg as any).concreteSyntaxNode;
+          if (!argNode) return null;
+
+          let startLine = argNode.startPosition.row + 1;
+          let startCol = argNode.startPosition.column + 1;
+          let endLine = argNode.endPosition.row + 1;
+          let endCol = argNode.endPosition.column + 1;
+
+          const nextArg = classMod.modificationArguments[argIndex + 1];
+          if (nextArg) {
+            const nextNode = (nextArg as any).concreteSyntaxNode;
+            if (nextNode) {
+              endLine = nextNode.startPosition.row + 1;
+              endCol = nextNode.startPosition.column + 1;
+            }
+          } else if (argIndex > 0) {
+            const prevArg = classMod.modificationArguments[argIndex - 1];
+            const prevNode = (prevArg as any).concreteSyntaxNode;
+            if (prevNode) {
+              startLine = prevNode.endPosition.row + 1;
+              startCol = prevNode.endPosition.column + 1;
+            }
+          } else {
+            const classModNode = classMod.concreteSyntaxNode;
+            if (classModNode) {
+              return {
+                range: {
+                  startLineNumber: classModNode.startPosition.row + 1,
+                  startColumn: classModNode.startPosition.column + 1,
+                  endLineNumber: classModNode.endPosition.row + 1,
+                  endColumn: classModNode.endPosition.column + 1,
+                },
+                text: "",
+              };
+            }
+          }
+
+          return {
+            range: {
+              startLineNumber: startLine,
+              startColumn: startCol,
+              endLineNumber: endLine,
+              endColumn: endCol,
+            },
+            text: "",
+          };
+        }
+
+        const modNode = (existingArg as any).modification?.concreteSyntaxNode;
+        if (modNode) {
+          return {
+            range: {
+              startLineNumber: modNode.startPosition.row + 1,
+              startColumn: modNode.startPosition.column + 1,
+              endLineNumber: modNode.endPosition.row + 1,
+              endColumn: modNode.endPosition.column + 1,
+            },
+            text: `=${newValue}`,
+          };
+        } else {
+          const argNode = (existingArg as any).concreteSyntaxNode;
+          if (argNode) {
+            return {
+              range: {
+                startLineNumber: argNode.startPosition.row + 1,
+                startColumn: argNode.startPosition.column + 1,
+                endLineNumber: argNode.endPosition.row + 1,
+                endColumn: argNode.endPosition.column + 1,
+              },
+              text: `${parameterName}=${newValue}`,
+            };
+          }
+        }
+      } else {
+        if (shouldRemove) return null;
+        const classModNode = classMod.concreteSyntaxNode;
+        if (classModNode) {
+          const lastChild = classModNode.lastChild;
+          if (lastChild && lastChild.text === ")") {
+            const hasArgs = classMod.modificationArguments.length > 0;
+            return {
+              range: {
+                startLineNumber: lastChild.startPosition.row + 1,
+                startColumn: lastChild.startPosition.column + 1,
+                endLineNumber: lastChild.startPosition.row + 1,
+                endColumn: lastChild.startPosition.column + 1,
+              },
+              text: `${hasArgs ? ", " : ""}${parameterName}=${newValue}`,
+            };
+          }
+        }
+      }
+    } else {
+      if (shouldRemove) return null;
+      const identNode = declNode?.identifier?.concreteSyntaxNode;
+      const subscriptsNode = declNode?.arraySubscripts?.concreteSyntaxNode;
+      let pos = null;
+      if (subscriptsNode) {
+        pos = subscriptsNode.endPosition;
+      } else if (identNode) {
+        pos = identNode.endPosition;
+      }
+
+      if (pos) {
+        return {
+          range: {
+            startLineNumber: pos.row + 1,
+            startColumn: pos.column + 1,
+            endLineNumber: pos.row + 1,
+            endColumn: pos.column + 1,
+          },
+          text: `(${parameterName}=${newValue})`,
+        };
+      }
+    }
+    return null;
+  };
 
   const getPlacementEdit = (
     name: string,
@@ -1233,7 +1385,17 @@ export default function MorselEditor(props: MorselEditorProps) {
                         (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
                       }}
                     />
-                    <PropertiesWidget component={selectedComponent} width={propertiesWidth} />
+                    <PropertiesWidget
+                      component={selectedComponent}
+                      width={propertiesWidth}
+                      onParameterChange={(name, value) => {
+                        if (!selectedComponent || !editor) return;
+                        const edit = getParameterEdit(selectedComponent.name!, name, value);
+                        if (edit) {
+                          editor.executeEdits("parameter-change", [edit]);
+                        }
+                      }}
+                    />
                   </>
                 )}
               </div>
