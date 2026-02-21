@@ -27,6 +27,7 @@ import {
   ShareAndroidIcon,
   SidebarCollapseIcon,
   SidebarExpandIcon,
+  SponsorTiersIcon,
   StackIcon,
   SunIcon,
   UnwrapIcon,
@@ -1873,6 +1874,14 @@ export default function MorselEditor(props: MorselEditorProps) {
             aria-label="Share Model"
             ref={shareButtonRef}
             onClick={() => setShareDialogOpen(!isShareDialogOpen)}
+          />
+          <IconButton
+            icon={SponsorTiersIcon}
+            size="small"
+            variant="invisible"
+            aria-label="Sponsor Me"
+            title="Sponsor Me"
+            onClick={() => window.open("https://github.com/sponsors/nachawati", "_blank")}
           />
           <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
           <IconButton
