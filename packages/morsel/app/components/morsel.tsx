@@ -1963,7 +1963,7 @@ export default function MorselEditor(props: MorselEditorProps) {
           <Dialog
             title="Flattened Model"
             onClose={() => setFlattenDialogOpen(false)}
-            width="large"
+            width="xlarge"
             footerButtons={[
               {
                 buttonType: "normal",
