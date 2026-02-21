@@ -2,6 +2,7 @@ import { ModelicaComponentInstance, ModelicaVariability } from "@modelscript/mod
 import { ChevronDownIcon, ChevronRightIcon } from "@primer/octicons-react";
 import { TextInput, useTheme } from "@primer/react";
 import { useEffect, useState } from "react";
+import { ComponentIcon } from "./component-list";
 
 interface PropertiesWidgetProps {
   component: ModelicaComponentInstance | null;
@@ -173,18 +174,44 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
           {expandedSections.info ? <ChevronDownIcon className="mr-1" /> : <ChevronRightIcon className="mr-1" />}
           INFORMATION
         </summary>
-        <div style={{ display: "flex", flexDirection: "column", paddingBottom: 8 }}>
-          <div style={{ padding: "8px 16px" }}>
-            <div className="f6 color-fg-muted">Name</div>
-            <div className="f5 text-bold">{component.name}</div>
+        <div style={{ display: "flex", flexDirection: "column", padding: "8px 16px", gap: "12px" }}>
+          <div style={{ display: "flex", flexDirection: "row", gap: "24px", alignItems: "stretch" }}>
+            {component.classInstance && (
+              <div style={{ flexShrink: 0, display: "flex", alignItems: "center" }}>
+                <ComponentIcon classInstance={component.classInstance} size={80} />
+              </div>
+            )}
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "8px",
+                overflow: "hidden",
+                flex: 1,
+                justifyContent: "center",
+              }}
+            >
+              <div>
+                <div className="f6 color-fg-muted" style={{ lineHeight: "1.2" }}>
+                  Name
+                </div>
+                <div className="f5 text-bold" style={{ wordBreak: "break-all", lineHeight: "1.2" }}>
+                  {component.name}
+                </div>
+              </div>
+              <div>
+                <div className="f6 color-fg-muted" style={{ lineHeight: "1.2" }}>
+                  Type
+                </div>
+                <div className="f5" style={{ wordBreak: "break-all", lineHeight: "1.2" }}>
+                  {component.classInstance?.name}
+                </div>
+              </div>
+            </div>
           </div>
-          <div style={{ padding: "8px 16px" }}>
-            <div className="f6 color-fg-muted">Type</div>
-            <div className="f5">{component.classInstance?.name}</div>
-          </div>
-          <div style={{ padding: "8px 16px" }}>
+          <div>
             <div className="f6 color-fg-muted">Description</div>
-            <div className="f5" style={{ whiteSpace: "normal" }}>
+            <div className="f5" style={{ whiteSpace: "normal", wordBreak: "break-word" }}>
               {component.description || "-"}
             </div>
           </div>

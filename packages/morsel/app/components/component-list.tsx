@@ -13,27 +13,33 @@ interface ComponentListProps {
 
 interface ComponentIconProps {
   classInstance: ModelicaClassInstance;
+  size?: number;
 }
 
 const iconSvgCache = new Map<string, string | null>();
 
-const ComponentIcon = React.memo(function ComponentIcon(props: ComponentIconProps) {
-  const cacheKey = props.classInstance.compositeName;
+export const ComponentIcon = React.memo(function ComponentIcon(props: ComponentIconProps) {
+  const { classInstance, size = 20 } = props;
+  const cacheKey = classInstance.compositeName;
   const svgString = React.useMemo(() => {
     const cached = iconSvgCache.get(cacheKey);
     if (cached !== undefined) return cached;
-    const svg = renderIcon(props.classInstance, undefined, true, undefined);
+    const svg = renderIcon(classInstance, undefined, true, undefined);
     const result = svg && svg.children().length > 0 ? svg.svg() : null;
     iconSvgCache.set(cacheKey, result);
     return result;
-  }, [cacheKey]);
+  }, [cacheKey, classInstance]);
 
   if (!svgString) {
-    return <PackageIcon />;
+    return <PackageIcon size={size} />;
   }
 
   return (
-    <div className="modelica-icon" style={{ width: 20, height: 20 }} dangerouslySetInnerHTML={{ __html: svgString }} />
+    <div
+      className="modelica-icon"
+      style={{ width: size, height: size }}
+      dangerouslySetInnerHTML={{ __html: svgString }}
+    />
   );
 });
 
