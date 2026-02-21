@@ -1,6 +1,6 @@
 import { ModelicaComponentInstance, ModelicaVariability } from "@modelscript/modelscript";
 import { ChevronDownIcon, ChevronRightIcon } from "@primer/octicons-react";
-import { Textarea, TextInput, useTheme } from "@primer/react";
+import { Button, Textarea, TextInput, useTheme } from "@primer/react";
 import { useEffect, useState } from "react";
 import { ComponentIcon } from "./component-list";
 
@@ -93,7 +93,10 @@ function ParameterRow({
         />
       </div>
       {parameter.description && (
-        <div className="f6 color-fg-muted text-italic" style={{ marginTop: 2, fontSize: 11, paddingLeft: 0 }}>
+        <div
+          className="f6 color-fg-muted text-italic"
+          style={{ marginTop: 2, fontSize: 11, paddingLeft: 0, opacity: 0.6 }}
+        >
           {parameter.description}
         </div>
       )}
@@ -204,7 +207,7 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
       style={{ width: props.width || 300, paddingBottom: 80 }}
       onClick={(e) => e.stopPropagation()}
     >
-      <details open={expandedSections.info} className="border-bottom">
+      <details open={expandedSections.info} className="mb-2border-bottom">
         <summary
           className="p-2 cursor-pointer f6 text-bold color-fg-muted"
           style={{ listStyle: "none" }}
@@ -233,12 +236,24 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
                 justifyContent: "center",
               }}
             >
+              <div style={{ padding: "4px 0" }}>
+                <div className="f6 color-fg-muted" style={{ lineHeight: "1.2" }}>
+                  Type
+                </div>
+                <div
+                  className="f6"
+                  style={{ wordBreak: "break-all", lineHeight: "1.2", fontWeight: "normal", padding: "4px 0" }}
+                >
+                  {component.classInstance?.name}
+                </div>
+              </div>
               <div>
                 <div className="f6 color-fg-muted" style={{ lineHeight: "1.2" }}>
                   Name
                 </div>
                 <TextInput
                   size="small"
+                  block
                   value={localName}
                   onChange={(e) => setLocalName(e.target.value)}
                   onBlur={() => {
@@ -254,41 +269,54 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
                   style={{
                     width: "100%",
                     height: 24,
-                    fontSize: 14,
-                    fontWeight: "bold",
+                    fontSize: 12,
                     padding: "0 4px",
                   }}
                 />
               </div>
-              <div>
-                <div className="f6 color-fg-muted" style={{ lineHeight: "1.2" }}>
-                  Type
-                </div>
-                <div className="f5" style={{ wordBreak: "break-all", lineHeight: "1.2" }}>
-                  {component.classInstance?.name}
-                </div>
-              </div>
             </div>
           </div>
-          <div>
-            <div className="f6 color-fg-muted">Description</div>
-            <Textarea
-              block
-              value={localDescription}
-              onChange={(e) => setLocalDescription(e.target.value)}
-              onBlur={() => {
-                if (localDescription !== (component.description || "") && onDescriptionChange) {
-                  onDescriptionChange(localDescription);
-                }
-              }}
-              rows={5}
-              style={{
-                width: "100%",
-                fontSize: 12,
-                padding: "4px",
-              }}
-            />
-          </div>
+          {localDescription ? (
+            <div>
+              <div className="f6 color-fg-muted" style={{ opacity: 0.4 }}>
+                Description
+              </div>
+              <Textarea
+                block
+                value={localDescription}
+                onChange={(e) => setLocalDescription(e.target.value)}
+                onBlur={() => {
+                  if (localDescription !== (component.description || "") && onDescriptionChange) {
+                    onDescriptionChange(localDescription);
+                  }
+                }}
+                rows={5}
+                style={{
+                  width: "100%",
+                  fontSize: 12,
+                  padding: "4px",
+                }}
+              />
+            </div>
+          ) : (
+            <div style={{ display: "flex", justifyContent: "center", padding: "16px 0" }}>
+              <Button
+                variant="invisible"
+                size="small"
+                onClick={() => setLocalDescription(" ")}
+                style={{
+                  fontSize: 12,
+                  color: "var(--fgColor-muted, #656d76)",
+                  padding: "16px 24px",
+                  borderRadius: "8px",
+                  border: `1px solid ${colorMode === "dark" ? "#30363d" : "#d0d7de"}`,
+                  width: "100%",
+                }}
+              >
+                Add Description
+              </Button>
+            </div>
+          )}
         </div>
       </details>
 

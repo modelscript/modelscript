@@ -1949,7 +1949,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                 editor?.setValue(content);
                 setIsOpenFileDialogOpen(false);
               }}
-              colorMode={colorMode}
+              colorMode={colorMode || "light"}
             />
           </Dialog>
         )}
