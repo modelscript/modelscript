@@ -5,7 +5,6 @@ import {
   Context,
   decodeDataUrl,
   encodeDataUrl,
-  type IDiagram,
   ModelicaClassInstance,
   ModelicaComponentClauseSyntaxNode,
   ModelicaComponentInstance,
@@ -14,6 +13,7 @@ import {
   ModelicaEntity,
   ModelicaFlattener,
   StringWriter,
+  type IDiagram,
 } from "@modelscript/modelscript";
 import {
   ColumnsIcon,
@@ -48,7 +48,41 @@ import ComponentList from "./component-list";
 import DiagramEditor, { type DiagramEditorHandle } from "./diagram";
 import OpenFileDropzone from "./open-file-dropzone";
 import PropertiesWidget from "./properties";
+import { Splash, type ModelData } from "./splash";
 import TreeWidget from "./tree";
+
+const EXAMPLE_PATHS = [
+  {
+    id: "cauer-low-pass",
+    name: "CauerLowPassAnalog",
+    path: "/lib/Modelica/Electrical/Analog/Examples/CauerLowPassAnalog.mo",
+  },
+  { id: "chua-circuit", name: "ChuaCircuit", path: "/lib/Modelica/Electrical/Analog/Examples/ChuaCircuit.mo" },
+  {
+    id: "mos-inverter",
+    name: "HeatingMOSInverter",
+    path: "/lib/Modelica/Electrical/Analog/Examples/HeatingMOSInverter.mo",
+  },
+  {
+    id: "thyristor-test",
+    name: "ThyristorBehaviourTest",
+    path: "/lib/Modelica/Electrical/Analog/Examples/ThyristorBehaviourTest.mo",
+  },
+  {
+    id: "opamp-amplifier",
+    name: "AmplifierWithOpAmpDetailed",
+    path: "/lib/Modelica/Electrical/Analog/Examples/AmplifierWithOpAmpDetailed.mo",
+  },
+  { id: "pump-dropout", name: "PumpDropOut", path: "/lib/Modelica/Thermal/FluidHeatFlow/Examples/PumpDropOut.mo" },
+  { id: "two-mass", name: "TwoMass", path: "/lib/Modelica/Thermal/FluidHeatFlow/Examples/TwoMass.mo" },
+  { id: "open-tank", name: "TestOpenTank", path: "/lib/Modelica/Thermal/FluidHeatFlow/Examples/TestOpenTank.mo" },
+  { id: "one-mass", name: "OneMass", path: "/lib/Modelica/Thermal/FluidHeatFlow/Examples/OneMass.mo" },
+  {
+    id: "parallel-cooling",
+    name: "ParallelCooling",
+    path: "/lib/Modelica/Thermal/FluidHeatFlow/Examples/ParallelCooling.mo",
+  },
+];
 
 interface MorselEditorProps {
   dataUrl: DataUrl | null;
@@ -98,7 +132,7 @@ export default function MorselEditor(props: MorselEditorProps) {
   const isDraggingTree = useRef(false);
   const [propertiesWidth, setPropertiesWidth] = useState(300);
   const isDraggingProperties = useRef(false);
-  const { colorMode, setColorMode } = useTheme();
+  const { colorMode, resolvedColorMode, setColorMode } = useTheme();
   const [libraryFilter, setLibraryFilter] = useState("");
   const [debouncedFilter, setDebouncedFilter] = useState("");
   const [isSearching, setIsSearching] = useState(false);
@@ -106,6 +140,45 @@ export default function MorselEditor(props: MorselEditorProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [contextVersion, setContextVersion] = useState(0);
   const expectedComponentNameRef = useRef<string | null>(null);
+  const [isSplashVisible, setSplashVisible] = useState(false);
+  const [pendingSplashVisible, setPendingSplashVisible] = useState(false);
+  const [recentModels, setRecentModels] = useState<ModelData[]>([]);
+  const [exampleModels, setExampleModels] = useState<ModelData[]>([]);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("recentModels");
+    if (saved) {
+      try {
+        setRecentModels(JSON.parse(saved));
+      } catch (e) {
+        console.error("Failed to parse recent models", e);
+      }
+    }
+  }, []);
+
+  const saveRecentModel = useCallback((name: string, content: string) => {
+    if (!name || name === "NewModel" || name === "Example") return;
+    setRecentModels((prev: ModelData[]) => {
+      const id = name.toLowerCase().replace(/\s+/g, "-");
+      const model: ModelData = { id, name, content, lastModified: Date.now() };
+      const next = [model, ...prev.filter((m: ModelData) => m.name !== name)].slice(0, 10);
+      localStorage.setItem("recentModels", JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const handleModelSelect = (model: ModelData) => {
+    setSplashVisible(false);
+    setLastLoadedContent(model.content);
+    if (editor) {
+      editor.setValue(model.content);
+    }
+  };
+
+  const handleClearRecent = useCallback(() => {
+    setRecentModels([]);
+    localStorage.removeItem("recentModels");
+  }, []);
 
   useEffect(() => {
     const init = async () => {
@@ -140,6 +213,19 @@ export default function MorselEditor(props: MorselEditorProps) {
       const ctx = new Context(new WebFileSystem());
       ctx.addLibrary("/lib/Modelica");
       setContext(ctx);
+
+      // Load example models from the virtual filesystem
+      const examples: ModelData[] = EXAMPLE_PATHS.map((ex) => {
+        try {
+          const content = ctx.fs.read(ex.path);
+          return { id: ex.id, name: ex.name, content };
+        } catch (e) {
+          console.error(`Failed to load example ${ex.name}`, e);
+          return null;
+        }
+      }).filter(Boolean) as ModelData[];
+      setExampleModels(examples);
+
       setLoadingProgress(100);
       setLoadingMessage("Ready");
     };
@@ -196,6 +282,10 @@ export default function MorselEditor(props: MorselEditorProps) {
       setDiagramClassInstance(classInstance);
     }
     isDiagramUpdate.current = false;
+
+    if (classInstance?.name) {
+      saveRecentModel(classInstance.name, editor?.getValue() || lastLoadedContent);
+    }
   }, [classInstance]);
 
   useEffect(() => {
@@ -1007,7 +1097,7 @@ export default function MorselEditor(props: MorselEditorProps) {
 
   return (
     <>
-      <title>Morsel | ModelScript.org</title>
+      <title>Morsel</title>
       <div className="d-flex flex-column" style={{ height: "100vh", overflow: "hidden" }}>
         <div className="d-flex flex-1" style={{ minHeight: 0 }}>
           {treeVisible && (
@@ -1622,10 +1712,15 @@ export default function MorselEditor(props: MorselEditorProps) {
             variant="invisible"
             aria-label="New Model"
             title="New Model"
-            onClick={() => {
-              if (confirm("Are you sure you want to create a new model? Unsaved changes will be lost.")) {
-                const newContent = "model Example\n\nend Example;";
-                editor?.setValue(newContent);
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (editorRef.current?.getValue() !== lastLoadedContentRef.current) {
+                setPendingSplashVisible(true);
+                setDirtyDialogOpen(true);
+              } else {
+                setSplashVisible(true);
               }
             }}
           />
@@ -1633,8 +1728,8 @@ export default function MorselEditor(props: MorselEditorProps) {
             icon={UploadIcon}
             size="small"
             variant="invisible"
-            aria-label="Open File"
-            title="Open File"
+            aria-label="Open Model"
+            title="Open Model"
             ref={openFileButtonRef}
             onClick={() => setIsOpenFileDialogOpen(true)}
           />
@@ -1775,7 +1870,7 @@ export default function MorselEditor(props: MorselEditorProps) {
             icon={ShareAndroidIcon}
             size="small"
             variant="invisible"
-            aria-label="Share Morsel"
+            aria-label="Share Model"
             ref={shareButtonRef}
             onClick={() => setShareDialogOpen(!isShareDialogOpen)}
           />
@@ -1790,7 +1885,7 @@ export default function MorselEditor(props: MorselEditorProps) {
         </div>
         {isShareDialogOpen && (
           <Dialog
-            title="Share Morsel"
+            title="Share Model"
             onClose={() => setShareDialogOpen(false)}
             returnFocusRef={shareButtonRef}
             footerButtons={[
@@ -1823,6 +1918,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                 onClick: () => {
                   setDirtyDialogOpen(false);
                   setPendingSelection(null);
+                  setPendingSplashVisible(false);
                 },
               },
               {
@@ -1833,6 +1929,10 @@ export default function MorselEditor(props: MorselEditorProps) {
                   if (pendingSelection) {
                     loadClass(pendingSelection);
                     setPendingSelection(null);
+                  }
+                  if (pendingSplashVisible) {
+                    setSplashVisible(true);
+                    setPendingSplashVisible(false);
                   }
                 },
               },
@@ -1992,6 +2092,17 @@ export default function MorselEditor(props: MorselEditorProps) {
               />
             </div>
           </Dialog>
+        )}
+        {isSplashVisible && (
+          <Splash
+            onClose={() => setSplashVisible(false)}
+            onSelect={handleModelSelect}
+            recentModels={recentModels}
+            exampleModels={exampleModels}
+            context={context}
+            colorMode={resolvedColorMode}
+            onClearRecent={handleClearRecent}
+          />
         )}
       </div>
     </>
