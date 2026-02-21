@@ -1097,7 +1097,7 @@ export default function MorselEditor(props: MorselEditorProps) {
 
   return (
     <>
-      <title>Morsel</title>
+      <title>{classInstance?.name ? `${classInstance.name} - Morsel` : "Morsel"}</title>
       <div className="d-flex flex-column" style={{ height: "100vh", overflow: "hidden" }}>
         <div className="d-flex flex-1" style={{ minHeight: 0 }}>
           {treeVisible && (
