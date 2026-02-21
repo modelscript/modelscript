@@ -16,16 +16,17 @@ import {
   StringWriter,
 } from "@modelscript/modelscript";
 import {
+  ColumnsIcon,
   DownloadIcon,
   FileIcon,
   FlowchartIcon,
   MoonIcon,
   PlusIcon,
+  RowsIcon,
   SearchIcon,
   ShareAndroidIcon,
   SidebarCollapseIcon,
   SidebarExpandIcon,
-  SplitViewIcon,
   StackIcon,
   SunIcon,
   UnwrapIcon,
@@ -57,8 +58,11 @@ interface MorselEditorProps {
 enum View {
   CODE,
   DIAGRAM,
-  SPLIT,
+  SPLIT_COLUMNS,
+  SPLIT_ROWS,
 }
+
+const isSplit = (v: View) => v === View.SPLIT_COLUMNS || v === View.SPLIT_ROWS;
 
 export default function MorselEditor(props: MorselEditorProps) {
   const [isShareDialogOpen, setShareDialogOpen] = useState(false);
@@ -75,7 +79,7 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [editor, setEditor] = useState<editor.ICodeEditor | null>(null);
   const [classInstance, setClassInstance] = useState<ModelicaClassInstance | null>(null);
   const [context, setContext] = useState<Context | null>(null);
-  const [view, setView] = useState<View>(View.SPLIT);
+  const [view, setView] = useState<View>(View.SPLIT_COLUMNS);
   const [lastLoadedContent, setLastLoadedContent] = useState<string>("");
   const [isDirtyDialogOpen, setDirtyDialogOpen] = useState(false);
   const [pendingSelection, setPendingSelection] = useState<ModelicaClassInstance | null>(null);
@@ -166,7 +170,7 @@ export default function MorselEditor(props: MorselEditorProps) {
   useEffect(() => {
     if (isNarrow) {
       setTreeVisible(false);
-      setView((prev) => (prev === View.SPLIT ? View.DIAGRAM : prev));
+      setView((prev) => (isSplit(prev) ? View.DIAGRAM : prev));
     } else {
       setTreeVisible(true);
     }
@@ -195,7 +199,7 @@ export default function MorselEditor(props: MorselEditorProps) {
   }, [classInstance]);
 
   useEffect(() => {
-    if (view === View.DIAGRAM || view === View.SPLIT) {
+    if (view === View.DIAGRAM || isSplit(view)) {
       setTimeout(() => {
         diagramEditorRef.current?.fitContent();
       }, 100);
@@ -1162,17 +1166,19 @@ export default function MorselEditor(props: MorselEditorProps) {
             </>
           )}
           <div
-            className="d-flex flex-1"
+            className={`d-flex flex-1 ${view === View.SPLIT_ROWS ? "flex-column" : ""}`}
             ref={splitContainerRef}
             style={{ minHeight: 0, overflow: "hidden", position: "relative" }}
           >
             <div
               style={{
-                display: [View.DIAGRAM, View.SPLIT].indexOf(view) === -1 ? "none" : "flex",
-                flex: view === View.SPLIT ? "none" : 1,
-                width: view === View.SPLIT ? `${splitRatio * 100}%` : undefined,
+                display: view === View.DIAGRAM || isSplit(view) ? "flex" : "none",
+                flex: isSplit(view) ? "none" : 1,
+                width: isSplit(view) && view === View.SPLIT_COLUMNS ? `${splitRatio * 100}%` : undefined,
+                height: isSplit(view) && view === View.SPLIT_ROWS ? `${splitRatio * 100}%` : undefined,
                 flexDirection: "column",
                 minWidth: 0,
+                minHeight: 0,
               }}
             >
               <div className="d-flex flex-row height-full">
@@ -1497,14 +1503,18 @@ export default function MorselEditor(props: MorselEditorProps) {
             {/* Draggable split divider */}
             <div
               style={{
-                display: view === View.SPLIT ? "flex" : "none",
-                width: 6,
-                cursor: "col-resize",
+                display: isSplit(view) ? "flex" : "none",
+                width: view === View.SPLIT_COLUMNS ? 6 : "100%",
+                height: view === View.SPLIT_ROWS ? 6 : "100%",
+                cursor: view === View.SPLIT_COLUMNS ? "col-resize" : "row-resize",
                 alignItems: "center",
                 justifyContent: "center",
                 flexShrink: 0,
                 backgroundColor: "transparent",
-                borderLeft: `1px solid ${colorMode === "dark" ? "#30363d" : "#d0d7de"}`,
+                borderLeft:
+                  view === View.SPLIT_COLUMNS ? `1px solid ${colorMode === "dark" ? "#30363d" : "#d0d7de"}` : "none",
+                borderTop:
+                  view === View.SPLIT_ROWS ? `1px solid ${colorMode === "dark" ? "#30363d" : "#d0d7de"}` : "none",
                 transition: "background-color 0.15s",
               }}
               onMouseDown={(e) => {
@@ -1513,9 +1523,15 @@ export default function MorselEditor(props: MorselEditorProps) {
                 const onMouseMove = (ev: MouseEvent) => {
                   if (!isDraggingSplit.current || !splitContainerRef.current) return;
                   const rect = splitContainerRef.current.getBoundingClientRect();
-                  const x = ev.clientX - rect.left;
-                  const ratio = Math.min(0.8, Math.max(0.2, x / rect.width));
-                  setSplitRatio(ratio);
+                  if (view === View.SPLIT_COLUMNS) {
+                    const x = ev.clientX - rect.left;
+                    const ratio = Math.min(0.8, Math.max(0.2, x / rect.width));
+                    setSplitRatio(ratio);
+                  } else {
+                    const y = ev.clientY - rect.top;
+                    const ratio = Math.min(0.8, Math.max(0.2, y / rect.height));
+                    setSplitRatio(ratio);
+                  }
                 };
                 const onMouseUp = () => {
                   isDraggingSplit.current = false;
@@ -1526,7 +1542,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                 };
                 document.addEventListener("mousemove", onMouseMove);
                 document.addEventListener("mouseup", onMouseUp);
-                document.body.style.cursor = "col-resize";
+                document.body.style.cursor = view === View.SPLIT_COLUMNS ? "col-resize" : "row-resize";
                 document.body.style.userSelect = "none";
               }}
               onMouseEnter={(e) => {
@@ -1539,11 +1555,13 @@ export default function MorselEditor(props: MorselEditorProps) {
             />
             <div
               style={{
-                display: [View.CODE, View.SPLIT].indexOf(view) === -1 ? "none" : "flex",
-                flex: view === View.SPLIT ? "none" : 1,
-                width: view === View.SPLIT ? `${(1 - splitRatio) * 100}%` : undefined,
+                display: view === View.CODE || isSplit(view) ? "flex" : "none",
+                flex: isSplit(view) ? "none" : 1,
+                width: isSplit(view) && view === View.SPLIT_COLUMNS ? `${(1 - splitRatio) * 100}%` : undefined,
+                height: isSplit(view) && view === View.SPLIT_ROWS ? `${(1 - splitRatio) * 100}%` : undefined,
                 flexDirection: "column",
                 minWidth: 0,
+                minHeight: 0,
               }}
             >
               <CodeEditor
@@ -1691,22 +1709,40 @@ export default function MorselEditor(props: MorselEditorProps) {
               }
             />
             {!isNarrow && (
-              <IconButton
-                icon={SplitViewIcon}
-                size="small"
-                variant="invisible"
-                aria-label="Split View"
-                title="Split View"
-                onClick={() => setView(View.SPLIT)}
-                style={
-                  view === View.SPLIT
-                    ? {
-                        backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.8)",
-                        borderRadius: 6,
-                      }
-                    : {}
-                }
-              />
+              <>
+                <IconButton
+                  icon={ColumnsIcon}
+                  size="small"
+                  variant="invisible"
+                  aria-label="Split View (Columns)"
+                  title="Split View (Columns)"
+                  onClick={() => setView(View.SPLIT_COLUMNS)}
+                  style={
+                    view === View.SPLIT_COLUMNS
+                      ? {
+                          backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.8)",
+                          borderRadius: 6,
+                        }
+                      : {}
+                  }
+                />
+                <IconButton
+                  icon={RowsIcon}
+                  size="small"
+                  variant="invisible"
+                  aria-label="Split View (Rows)"
+                  title="Split View (Rows)"
+                  onClick={() => setView(View.SPLIT_ROWS)}
+                  style={
+                    view === View.SPLIT_ROWS
+                      ? {
+                          backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.8)",
+                          borderRadius: 6,
+                        }
+                      : {}
+                  }
+                />
+              </>
             )}
             <IconButton
               icon={UnwrapIcon}
