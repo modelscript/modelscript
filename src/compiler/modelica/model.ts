@@ -345,6 +345,8 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
   set abstractSyntaxNode(abstractSyntaxNode: ModelicaClassDefinitionSyntaxNode | null) {
     this.#abstractSyntaxNode = abstractSyntaxNode;
     this.name = this.abstractSyntaxNode?.identifier?.text ?? null;
+    this.description =
+      this.abstractSyntaxNode?.classSpecifier?.description?.strings?.map((d) => d.text ?? "")?.join(" ") ?? null;
     this.instantiated = false;
     this.#cloneCache.clear();
   }
@@ -539,6 +541,8 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
       if (element instanceof ModelicaExtendsClassInstance) element.instantiate();
     }
     this.annotations = ModelicaElement.instantiateAnnotations(this, this.abstractSyntaxNode?.annotationClause);
+    this.description =
+      this.abstractSyntaxNode?.classSpecifier?.description?.strings?.map((d) => d.text ?? "")?.join(" ") ?? null;
     this.instantiated = true;
   }
 

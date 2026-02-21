@@ -1,6 +1,6 @@
 import { ModelicaComponentInstance, ModelicaVariability } from "@modelscript/modelscript";
 import { ChevronDownIcon, ChevronRightIcon } from "@primer/octicons-react";
-import { TextInput, useTheme } from "@primer/react";
+import { Textarea, TextInput, useTheme } from "@primer/react";
 import { useEffect, useState } from "react";
 import { ComponentIcon } from "./component-list";
 
@@ -272,8 +272,8 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
           </div>
           <div>
             <div className="f6 color-fg-muted">Description</div>
-            <TextInput
-              size="small"
+            <Textarea
+              block
               value={localDescription}
               onChange={(e) => setLocalDescription(e.target.value)}
               onBlur={() => {
@@ -281,16 +281,11 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
                   onDescriptionChange(localDescription);
                 }
               }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  (e.target as HTMLInputElement).blur();
-                }
-              }}
+              rows={5}
               style={{
                 width: "100%",
-                height: 24,
                 fontSize: 12,
-                padding: "0 4px",
+                padding: "4px",
               }}
             />
           </div>

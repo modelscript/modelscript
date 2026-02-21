@@ -5290,7 +5290,7 @@ export class ModelicaDescriptionSyntaxNode extends ModelicaSyntaxNode implements
     super(parent, concreteSyntaxNode, abstractSyntaxNode);
     this.strings = ModelicaStringLiteralSyntaxNode.newArray(
       this,
-      concreteSyntaxNode?.childrenForFieldName("string"),
+      concreteSyntaxNode?.children ?? [],
       abstractSyntaxNode?.strings,
     );
   }
