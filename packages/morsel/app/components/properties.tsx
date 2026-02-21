@@ -26,6 +26,18 @@ function ParameterRow({
     setLocalValue(value);
   }, [value, parameter.name]);
 
+  useEffect(() => {
+    if (localValue === value) return;
+
+    const timeoutId = setTimeout(() => {
+      if (onParameterChange) {
+        onParameterChange(parameter.name!, localValue);
+      }
+    }, 500);
+
+    return () => clearTimeout(timeoutId);
+  }, [localValue, value, parameter.name, onParameterChange]);
+
   return (
     <div
       style={{
