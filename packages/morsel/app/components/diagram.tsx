@@ -5,7 +5,6 @@ import { Graph, Keyboard, Selection, Snapline, Transform, type EdgeMetadata, typ
 import type { PortMetadata } from "@antv/x6/lib/model/port";
 import {
   applyCoordinateSystem,
-  Arrow,
   computeHeight,
   computeIconPlacement,
   computePortPlacement,
@@ -18,7 +17,6 @@ import {
   renderDiagram,
   renderGraphicItem,
   Smooth,
-  toEnum,
   type IDiagram,
   type IIcon,
   type ILine,
@@ -673,8 +671,8 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
           strokeDasharray = "1, 2";
           break;
       }
-      const sourceMarker = marker(toEnum(Arrow, line?.arrow?.[0]), strokeColor, strokeWidth);
-      const targetMarker = marker(toEnum(Arrow, line?.arrow?.[1]), strokeColor, strokeWidth);
+      const sourceMarker = marker(line?.arrow?.[0], strokeColor, strokeWidth);
+      const targetMarker = marker(line?.arrow?.[1], strokeColor, strokeWidth);
       edges.push({
         id: `${c1[0]}.${c1?.[1]}-${c2[0]}.${c2?.[1]}`,
         shape: "edge",
@@ -928,33 +926,44 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
 export default DiagramEditor;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function marker(arrow: Arrow | null | undefined, strokeColor: string, strokeWidth: number): any {
-  switch (arrow) {
-    case Arrow.FILLED:
+function marker(arrow: string | null | undefined, strokeColor: string, strokeWidth: number): any {
+  if (!arrow) return null;
+  const normalized = arrow.toLowerCase();
+  switch (normalized) {
+    case "filled":
       return {
         tagName: "path",
-        d: "M 0 0 L 10 5 L 10 -5 Z",
-        strokeWidth,
+        d: "M 0 0 L 10 5 L 0 10 Z",
+        "stroke-width": strokeWidth,
         fill: strokeColor,
         stroke: strokeColor,
+        refX: 10,
+        refY: 5,
+        markerUnits: "userSpaceOnUse",
       };
-    case Arrow.HALF:
+    case "half":
       return {
         tagName: "path",
         d: "M 0 0 L 10 5",
-        strokeWidth,
-        fill: strokeColor,
-        stroke: strokeColor,
-      };
-    case Arrow.OPEN:
-      return {
-        tagName: "path",
-        d: "M 0 0 L 10 5 L 0 0 L 10 -5",
-        strokeWidth,
+        "stroke-width": strokeWidth,
         fill: "none",
         stroke: strokeColor,
+        refX: 10,
+        refY: 5,
+        markerUnits: "userSpaceOnUse",
+      };
+    case "open":
+      return {
+        tagName: "path",
+        d: "M 0 0 L 10 5 L 0 10",
+        "stroke-width": strokeWidth,
+        fill: "none",
+        stroke: strokeColor,
+        refX: 10,
+        refY: 5,
+        markerUnits: "userSpaceOnUse",
       };
     default:
-      return {};
+      return null;
   }
 }
