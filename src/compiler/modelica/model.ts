@@ -173,7 +173,8 @@ export abstract class ModelicaElement extends ModelicaNode {
     const annotations: ModelicaNamedElement[] = [];
     const modification = ModelicaModification.new(classInstance, annotationClause);
     for (const modificationArgument of modification.modificationArguments) {
-      const annotation = ModelicaElement.#annotationClassInstance?.resolveSimpleName(modificationArgument.name);
+      const name = modificationArgument.name;
+      const annotation = ModelicaElement.#annotationClassInstance?.resolveSimpleName(name);
       if (annotation instanceof ModelicaClassInstance) {
         if (modificationArgument instanceof ModelicaElementModification) {
           annotations.push(
@@ -240,10 +241,7 @@ export class ModelicaExtendsClassInstance extends ModelicaElement {
 
   override get elements(): IterableIterator<ModelicaElement> {
     if (!this.instantiated && !this.instantiating) this.instantiate();
-    const elements = this.classInstance?.elements;
-    return (function* () {
-      if (elements) yield* elements;
-    })();
+    return this.classInstance?.elements ?? [][Symbol.iterator]();
   }
 
   get hash(): string {
@@ -311,12 +309,12 @@ export abstract class ModelicaNamedElement extends ModelicaElement {
 
 export class ModelicaClassInstance extends ModelicaNamedElement {
   #abstractSyntaxNode: ModelicaClassDefinitionSyntaxNode | ModelicaShortClassDefinitionSyntaxNode | null;
-  #cloneCache = new Map<string, ModelicaClassInstance>();
   #importClauses: ModelicaImportClauseSyntaxNode[] = [];
   #modification: ModelicaModification | null = null;
   #qualifiedImports = new Map<string, ModelicaClassInstance>();
   #unqualifiedImports: ModelicaClassInstance[] = [];
   classKind: ModelicaClassKind;
+  cloneCache = new Map<string, ModelicaClassInstance>();
   declaredElements: ModelicaElement[] = [];
 
   constructor(
@@ -348,7 +346,7 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     this.description =
       this.abstractSyntaxNode?.classSpecifier?.description?.strings?.map((d) => d.text ?? "")?.join(" ") ?? null;
     this.instantiated = false;
-    this.#cloneCache.clear();
+    this.cloneCache.clear();
   }
 
   override accept<R, A>(visitor: IModelicaModelVisitor<R, A>, argument?: A): R {
@@ -359,11 +357,14 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     if (!this.abstractSyntaxNode) throw new Error();
     const mergedModification = ModelicaModification.merge(this.#modification, modification);
     const hash = mergedModification?.hash ?? "";
-    const cachedInstance = this.#cloneCache.get(hash);
-    if (cachedInstance) cachedInstance.instantiate();
+    const cachedInstance = this.cloneCache.get(hash);
+    if (cachedInstance) {
+      cachedInstance.instantiate();
+      return cachedInstance;
+    }
     const classInstance = ModelicaClassInstance.new(this.parent, this.abstractSyntaxNode, mergedModification);
     classInstance.instantiate();
-    this.#cloneCache.set(hash, classInstance);
+    this.cloneCache.set(hash, classInstance);
     return classInstance;
   }
 
@@ -391,13 +392,41 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     })();
   }
 
+  // TODO: fix this method
   override get elements(): IterableIterator<ModelicaElement> {
     if (!this.instantiated && !this.instantiating) this.instantiate();
-    const declaredElements = this.declaredElements;
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const self = this;
     return (function* () {
-      for (const declaredElement of declaredElements) {
-        if (declaredElement instanceof ModelicaExtendsClassInstance) yield* declaredElement.elements;
-        else yield declaredElement;
+      const stack: { iterator: Iterator<ModelicaElement>; visited: Set<ModelicaClassInstance> }[] = [
+        { iterator: self.declaredElements[Symbol.iterator](), visited: new Set([self]) },
+      ];
+
+      while (stack.length > 0) {
+        const top = stack[stack.length - 1];
+        if (!top) {
+          stack.pop();
+          continue;
+        }
+        const next = top.iterator.next();
+
+        if (next.done) {
+          stack.pop();
+          continue;
+        }
+
+        const element = next.value;
+        if (element instanceof ModelicaExtendsClassInstance) {
+          if (!element.instantiated && !element.instantiating) element.instantiate();
+          const baseClass = element.classInstance;
+          if (baseClass && !top.visited.has(baseClass)) {
+            const visited = new Set(top.visited);
+            visited.add(baseClass);
+            stack.push({ iterator: baseClass.declaredElements[Symbol.iterator](), visited });
+          }
+        } else {
+          yield element;
+        }
       }
     })();
   }
@@ -609,6 +638,12 @@ export class ModelicaEnumerationClassInstance extends ModelicaClassInstance {
   override clone(modification?: ModelicaModification | null): ModelicaClassInstance {
     if (!this.instantiated && !this.instantiating) this.instantiate();
     const mergedModification = ModelicaModification.merge(this.modification, modification ?? null);
+    const hash = mergedModification?.hash ?? "";
+    const cachedInstance = this.cloneCache.get(hash);
+    if (cachedInstance) {
+      cachedInstance.instantiate();
+      return cachedInstance;
+    }
     const classInstance = new ModelicaEnumerationClassInstance(
       this.parent,
       this.abstractSyntaxNode,
@@ -617,6 +652,7 @@ export class ModelicaEnumerationClassInstance extends ModelicaClassInstance {
       this.value,
     );
     classInstance.instantiate();
+    this.cloneCache.set(hash, classInstance);
     return classInstance;
   }
 
@@ -683,12 +719,7 @@ export class ModelicaShortClassInstance extends ModelicaClassInstance {
 
   override get elements(): IterableIterator<ModelicaElement> {
     if (!this.instantiated && !this.instantiating) this.instantiate();
-    const classInstance = this.classInstance;
-    return (function* () {
-      if (classInstance) {
-        yield* classInstance.elements;
-      }
-    })();
+    return this.classInstance?.elements ?? [][Symbol.iterator]();
   }
 
   override instantiate(): void {
@@ -865,10 +896,7 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
 
   override get elements(): IterableIterator<ModelicaElement> {
     if (!this.instantiated && !this.instantiating) this.instantiate();
-    const elements = this.classInstance?.elements;
-    return (function* () {
-      if (elements) yield* elements;
-    })();
+    return this.classInstance?.elements ?? [][Symbol.iterator]();
   }
 
   get hash(): string {
@@ -1228,8 +1256,6 @@ export class ModelicaModification {
   get expression(): ModelicaExpression | null {
     if (this.#expression) return this.#expression;
     if (this.#evaluating) {
-      // TODO: Handle circular dependencies
-      console.error("Circular dependency");
       return null;
     }
     this.#evaluating = true;
@@ -1444,8 +1470,6 @@ export class ModelicaElementModification extends ModelicaModificationArgument {
   override get expression(): ModelicaExpression | null {
     if (this.#expression) return this.#expression;
     if (this.#evaluating) {
-      // TODO: Handle circular dependencies
-      console.error("Circular dependency in element modification expression");
       return null;
     }
     this.#evaluating = true;
@@ -1575,8 +1599,6 @@ export class ModelicaParameterModification extends ModelicaModificationArgument 
   override get expression(): ModelicaExpression | null {
     if (this.#expression) return this.#expression;
     if (this.#evaluating) {
-      // TODO: Handle circular dependencies
-      console.error("Circular dependency in parameter modification expression");
       return null;
     }
     this.#evaluating = true;
@@ -1735,12 +1757,14 @@ export class ModelicaComponentRedeclaration extends ModelicaElementRedeclaration
     return new ModelicaComponentRedeclaration(scope, abstractSyntaxNode);
   }
 
-  split(count: number): ModelicaModificationArgument[];
-  split(count: number, index: number): ModelicaModificationArgument;
-  split(count: number, index?: number): ModelicaModificationArgument | ModelicaModificationArgument[];
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  split(count: unknown, index?: unknown): ModelicaModificationArgument | ModelicaModificationArgument[] {
-    throw new Error("Method not implemented.");
+  override split(count: number): ModelicaComponentRedeclaration[];
+  override split(count: number, index: number): ModelicaComponentRedeclaration;
+  override split(count: number, index?: number): ModelicaComponentRedeclaration | ModelicaComponentRedeclaration[] {
+    if (index !== undefined) {
+      return this;
+    } else {
+      return Array(count).fill(this);
+    }
   }
 }
 

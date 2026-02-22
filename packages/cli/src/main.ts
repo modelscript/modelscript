@@ -6,6 +6,7 @@ import PackageJson from "@npmcli/package-json";
 import path from "node:path";
 import yargs from "yargs/yargs";
 import { Flatten } from "./commands/flatten.js";
+import { I18n } from "./commands/i18n.js";
 import { Instantiate } from "./commands/instantiate.js";
 import { Lint } from "./commands/lint.js";
 import { Parse } from "./commands/parse.js";
@@ -18,6 +19,7 @@ yargs(process.argv.slice(2))
   .scriptName("msc")
   .usage(`CLI for ModelScript ${pkg.content.version}`)
   .command(Flatten)
+  .command(I18n)
   .command(Instantiate)
   .command(Lint)
   .command(Parse)

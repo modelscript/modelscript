@@ -153,8 +153,8 @@ export class ModelicaUnaryExpression extends ModelicaSimpleExpression {
     return hash.digest("hex");
   }
 
-  override toJSON(): array<boolean | number | object | string> {
-    throw new Error();
+  override toJSON(): string {
+    return `${this.operator}${this.operand.toJSON()}`;
   }
 
   static new(operator: ModelicaUnaryOperator, operand: ModelicaExpression): ModelicaExpression | null {
@@ -228,8 +228,8 @@ export class ModelicaBinaryExpression extends ModelicaSimpleExpression {
     return hash.digest("hex");
   }
 
-  override toJSON(): array<boolean | number | object | string> {
-    throw new Error();
+  override toJSON(): string {
+    return `${this.operand1.toJSON()}${this.operator}${this.operand2.toJSON()}`;
   }
 
   static new(
@@ -755,8 +755,8 @@ export class ModelicaBooleanVariable extends ModelicaVariable {
     return this.attributes.get("start") ?? null;
   }
 
-  toJSON(): array<boolean | number | object | string> {
-    throw new Error();
+  toJSON(): string {
+    return this.name;
   }
 }
 
@@ -785,8 +785,8 @@ export class ModelicaIntegerVariable extends ModelicaVariable {
     return this.attributes.get("start") ?? null;
   }
 
-  toJSON(): array<boolean | number | object | string> {
-    throw new Error();
+  toJSON(): string {
+    return this.name;
   }
 }
 
@@ -827,8 +827,8 @@ export class ModelicaRealVariable extends ModelicaVariable {
     return this.attributes.get("stateSelect") ?? null;
   }
 
-  toJSON(): array<boolean | number | object | string> {
-    throw new Error();
+  toJSON(): string {
+    return this.name;
   }
 
   get unbounded(): ModelicaExpression | null {
@@ -857,8 +857,8 @@ export class ModelicaStringVariable extends ModelicaVariable {
     return this.attributes.get("start") ?? null;
   }
 
-  toJSON(): array<boolean | number | object | string> {
-    throw new Error();
+  toJSON(): string {
+    return this.name;
   }
 }
 
@@ -910,8 +910,8 @@ export class ModelicaEnumerationVariable extends ModelicaVariable {
     return this.attributes.get("start") ?? null;
   }
 
-  toJSON(): array<boolean | number | object | string> {
-    throw new Error();
+  toJSON(): string {
+    return this.name;
   }
 }
 

@@ -4,6 +4,7 @@ export * from "./compiler/context.js";
 export * from "./compiler/modelica/annotation.js";
 export * from "./compiler/modelica/dae.js";
 export * from "./compiler/modelica/flattener.js";
+export * from "./compiler/modelica/i18n.js";
 export * from "./compiler/modelica/interpreter.js";
 export * from "./compiler/modelica/linter.js";
 export * from "./compiler/modelica/model.js";

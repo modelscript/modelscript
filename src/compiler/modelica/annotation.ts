@@ -152,5 +152,21 @@ class Annotation
     String imageSource "Base64 representation of bitmap";
   end Bitmap;
 
+  // 18.10 User interface
+  
+  record Dialog
+    String tab = "";
+    String group = "";
+    String tooltip = "";
+    Boolean enable = true;
+    Boolean showStartAttribute = false;
+    Boolean colorSelector = false;
+    String groupImage = "";
+  end Dialog;
+
+  record Choice
+    String text;
+  end Choice;
+
 end Annotation;
 `;
