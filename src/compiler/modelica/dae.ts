@@ -100,6 +100,8 @@ export abstract class ModelicaExpression {
       return classInstance.expression;
     } else if (classInstance.modification?.expression instanceof ModelicaObject) {
       return classInstance.modification.expression;
+    } else if (!classInstance.abstractSyntaxNode && classInstance.modification?.expression) {
+      return classInstance.modification.expression;
     } else {
       const elements = new Map<string, ModelicaExpression>();
       for (const component of classInstance.components) {

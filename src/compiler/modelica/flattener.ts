@@ -71,50 +71,55 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
 
     if (node.classInstance instanceof ModelicaPredefinedClassInstance) {
       const attributes = new Map(
-        node.modification?.modificationArguments.flatMap((m) =>
-          m.name && m.expression ? [[m.name, m.expression]] : [],
-        ),
+        node.modification?.modificationArguments.flatMap((m) => {
+          if (m.name === "annotation") return [];
+          console.warn(`Flattener mod arg: ${m.name}, expression: ${!!m.expression}`);
+          return m.name && m.expression ? [[m.name, m.expression]] : [];
+        }),
       );
+      const expression = node.modification?.expression ?? null;
+      let variable;
+      const isParameter = node.variability === "parameter" || node.variability === "constant";
+      const varExpression = isParameter ? expression : null;
+
       if (node.classInstance instanceof ModelicaBooleanClassInstance) {
-        args[1].variables.push(
-          new ModelicaBooleanVariable(
-            name,
-            node.modification?.expression ?? null,
-            attributes,
-            node.variability,
-            node.modification?.description ?? node.description,
-          ),
+        variable = new ModelicaBooleanVariable(
+          name,
+          varExpression,
+          attributes,
+          node.variability,
+          node.modification?.description ?? node.description,
         );
       } else if (node.classInstance instanceof ModelicaIntegerClassInstance) {
-        args[1].variables.push(
-          new ModelicaIntegerVariable(
-            name,
-            node.modification?.expression ?? null,
-            attributes,
-            node.variability,
-            node.modification?.description ?? node.description,
-          ),
+        variable = new ModelicaIntegerVariable(
+          name,
+          varExpression,
+          attributes,
+          node.variability,
+          node.modification?.description ?? node.description,
         );
       } else if (node.classInstance instanceof ModelicaRealClassInstance) {
-        args[1].variables.push(
-          new ModelicaRealVariable(
-            name,
-            node.modification?.expression ?? null,
-            attributes,
-            node.variability,
-            node.description,
-          ),
+        variable = new ModelicaRealVariable(
+          name,
+          varExpression,
+          attributes,
+          node.variability,
+          node.modification?.description ?? node.description,
         );
       } else if (node.classInstance instanceof ModelicaStringClassInstance) {
-        args[1].variables.push(
-          new ModelicaStringVariable(
-            name,
-            node.modification?.expression ?? null,
-            attributes,
-            node.variability,
-            node.modification?.description ?? node.description,
-          ),
+        variable = new ModelicaStringVariable(
+          name,
+          varExpression,
+          attributes,
+          node.variability,
+          node.modification?.description ?? node.description,
         );
+      }
+      if (variable) {
+        args[1].variables.push(variable);
+        if (!isParameter && expression) {
+          args[1].equations.push(new ModelicaSimpleEquation(variable, expression));
+        }
       }
     } else if (node.classInstance instanceof ModelicaEnumerationClassInstance) {
       const attributes = new Map(
@@ -122,16 +127,21 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           m.name && m.expression ? [[m.name, m.expression]] : [],
         ),
       );
-      args[1].variables.push(
-        new ModelicaEnumerationVariable(
-          name,
-          node.modification?.expression ?? null,
-          attributes,
-          node.variability,
-          node.modification?.description ?? node.description,
-          node.classInstance.enumerationLiterals,
-        ),
+      const expression = node.modification?.expression ?? null;
+      const isParameter = node.variability === "parameter" || node.variability === "constant";
+      const varExpression = isParameter ? expression : null;
+      const variable = new ModelicaEnumerationVariable(
+        name,
+        varExpression,
+        attributes,
+        node.variability,
+        node.modification?.description ?? node.description,
+        node.classInstance.enumerationLiterals,
       );
+      args[1].variables.push(variable);
+      if (!isParameter && expression) {
+        args[1].equations.push(new ModelicaSimpleEquation(variable, expression));
+      }
     } else if (node.classInstance instanceof ModelicaArrayClassInstance) {
       const shape = node.classInstance.shape;
       const index = new Array(shape.length).fill(1);
@@ -146,57 +156,57 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
               m.name && m.expression ? [[m.name, m.expression]] : [],
             ),
           );
+          const expression = declaredElement.modification?.expression ?? null;
+          const isParameter = node.variability === "parameter" || node.variability === "constant";
+          const varExpression = isParameter ? expression : null;
+          let variable;
           if (declaredElement instanceof ModelicaBooleanClassInstance) {
-            args[1].variables.push(
-              new ModelicaBooleanVariable(
-                elementName,
-                declaredElement.modification?.expression ?? null,
-                attributes,
-                node.variability,
-                declaredElement.modification?.description ?? declaredElement.description,
-              ),
+            variable = new ModelicaBooleanVariable(
+              elementName,
+              varExpression,
+              attributes,
+              node.variability,
+              declaredElement.modification?.description ?? declaredElement.description,
             );
           } else if (declaredElement instanceof ModelicaIntegerClassInstance) {
-            args[1].variables.push(
-              new ModelicaIntegerVariable(
-                elementName,
-                declaredElement.modification?.expression ?? null,
-                attributes,
-                node.variability,
-                declaredElement.modification?.description ?? declaredElement.description,
-              ),
+            variable = new ModelicaIntegerVariable(
+              elementName,
+              varExpression,
+              attributes,
+              node.variability,
+              declaredElement.modification?.description ?? declaredElement.description,
             );
           } else if (declaredElement instanceof ModelicaRealClassInstance) {
-            args[1].variables.push(
-              new ModelicaRealVariable(
-                elementName,
-                declaredElement.modification?.expression ?? null,
-                attributes,
-                node.variability,
-                declaredElement.modification?.description ?? declaredElement.description,
-              ),
+            variable = new ModelicaRealVariable(
+              elementName,
+              varExpression,
+              attributes,
+              node.variability,
+              declaredElement.modification?.description ?? declaredElement.description,
             );
           } else if (declaredElement instanceof ModelicaStringClassInstance) {
-            args[1].variables.push(
-              new ModelicaStringVariable(
-                elementName,
-                declaredElement.modification?.expression ?? null,
-                attributes,
-                node.variability,
-                declaredElement.modification?.description ?? declaredElement.description,
-              ),
+            variable = new ModelicaStringVariable(
+              elementName,
+              varExpression,
+              attributes,
+              node.variability,
+              declaredElement.modification?.description ?? declaredElement.description,
             );
           } else if (declaredElement instanceof ModelicaEnumerationClassInstance) {
-            args[1].variables.push(
-              new ModelicaEnumerationVariable(
-                elementName,
-                declaredElement.modification?.expression ?? null,
-                attributes,
-                node.variability,
-                declaredElement.modification?.description ?? declaredElement.description,
-                declaredElement.enumerationLiterals,
-              ),
+            variable = new ModelicaEnumerationVariable(
+              elementName,
+              varExpression,
+              attributes,
+              node.variability,
+              declaredElement.modification?.description ?? declaredElement.description,
+              declaredElement.enumerationLiterals,
             );
+          }
+          if (variable) {
+            args[1].variables.push(variable);
+            if (!isParameter && expression) {
+              args[1].equations.push(new ModelicaSimpleEquation(variable, expression));
+            }
           }
         } else {
           declaredElement?.accept(this, [elementName, args[1]]);

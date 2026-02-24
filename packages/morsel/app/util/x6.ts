@@ -138,7 +138,10 @@ export function renderGraphicItemX6(
       shape = renderTextX6(graphicItem as IText, classInstance, componentInstance);
       break;
     default:
-      throw new Error();
+      return {
+        tagName: "g",
+        children: [],
+      };
   }
   const [ox, oy] = convertPoint(graphicItem.origin, [0, 0]);
   return {

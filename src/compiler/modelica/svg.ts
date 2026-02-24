@@ -157,7 +157,8 @@ export function renderGraphicItem(
       shape = renderText(graphicItemGroup, graphicItem as IText, classInstance, componentInstance);
       break;
     default:
-      throw new Error();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return graphicItemGroup as any;
   }
   applyVisibility(shape, graphicItem);
   return shape;

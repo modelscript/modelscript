@@ -160,8 +160,11 @@ export abstract class ModelicaElement extends ModelicaNode {
   static instantiateAnnotations(
     classInstance: ModelicaClassInstance | null,
     annotationClause?: ModelicaAnnotationClauseSyntaxNode | null,
+    modificationAnnotations?: ModelicaModification | null,
   ): ModelicaNamedElement[] {
-    if (!classInstance || !annotationClause) return [];
+    const clauseModification = annotationClause ? ModelicaModification.new(classInstance, annotationClause) : null;
+    const modification = ModelicaModification.merge(clauseModification, modificationAnnotations);
+    if (!classInstance || !modification) return [];
     if (!ModelicaElement.#annotationClassInstance) {
       const tree = classInstance.context?.getParser(".mo").parse(ANNOTATION);
       const node = ModelicaStoredDefinitionSyntaxNode.new(null, tree?.rootNode)?.classDefinitions?.[0] ?? null;
@@ -171,7 +174,6 @@ export abstract class ModelicaElement extends ModelicaNode {
       }
     }
     const annotations: ModelicaNamedElement[] = [];
-    const modification = ModelicaModification.new(classInstance, annotationClause);
     for (const modificationArgument of modification.modificationArguments) {
       const name = modificationArgument.name;
       const annotation = ModelicaElement.#annotationClassInstance?.resolveSimpleName(name);
@@ -199,6 +201,20 @@ export abstract class ModelicaElement extends ModelicaNode {
             ),
           );
         }
+      } else if (!annotation && modificationArgument instanceof ModelicaElementModification) {
+        const dummy = new ModelicaClassInstance(
+          classInstance,
+          null,
+          new ModelicaModification(
+            classInstance,
+            modificationArgument.modificationArguments,
+            modificationArgument.modificationExpression,
+            modificationArgument.description,
+            modificationArgument.expression,
+          ),
+        );
+        dummy.name = modificationArgument.name;
+        annotations.push(dummy);
       }
     }
     return annotations;
@@ -569,7 +585,11 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     for (const element of this.declaredElements) {
       if (element instanceof ModelicaExtendsClassInstance) element.instantiate();
     }
-    this.annotations = ModelicaElement.instantiateAnnotations(this, this.abstractSyntaxNode?.annotationClause);
+    this.annotations = ModelicaElement.instantiateAnnotations(
+      this,
+      this.abstractSyntaxNode?.annotationClause,
+      this.modification?.annotations,
+    );
     this.description =
       this.abstractSyntaxNode?.classSpecifier?.description?.strings?.map((d) => d.text ?? "")?.join(" ") ?? null;
     this.instantiated = true;
@@ -922,7 +942,11 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
         this.classInstance.instantiate();
       }
     }
-    this.annotations = ModelicaElement.instantiateAnnotations(this.parent, this.abstractSyntaxNode?.annotationClause);
+    this.annotations = ModelicaElement.instantiateAnnotations(
+      this.parent,
+      this.abstractSyntaxNode?.annotationClause,
+      this.modification?.annotations,
+    );
     this.instantiated = true;
   }
 
@@ -941,18 +965,48 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
     if (outerModificationArgument instanceof ModelicaElementModification) {
       modificationArguments.push(...outerModificationArgument.extract());
     }
-    if (outerModificationArgument instanceof ModelicaElementModification) {
-      return new ModelicaModification(
+
+    // Filter out "annotation" arguments and convert them to .annotations
+    const annotationArg = modificationArguments.find((a) => a.name === "annotation");
+    const filteredArgs = modificationArguments.filter((a) => a.name !== "annotation");
+    let annotationFromArg: ModelicaModification | null = null;
+    if (annotationArg instanceof ModelicaElementModification) {
+      annotationFromArg = new ModelicaModification(
         this,
-        modificationArguments,
+        annotationArg.modificationArguments,
+        annotationArg.modificationExpression,
+        annotationArg.description,
+        annotationArg.expression,
+      );
+    }
+
+    if (outerModificationArgument instanceof ModelicaElementModification) {
+      const mod = new ModelicaModification(
+        this,
+        filteredArgs,
         outerModificationArgument.modificationExpression ?? modificationSyntaxNode?.modificationExpression,
         outerModificationArgument.description,
-        outerModificationArgument.expression,
       );
+      mod.annotations = ModelicaModification.merge(
+        this.abstractSyntaxNode?.annotationClause
+          ? ModelicaModification.new(this.parent, this.abstractSyntaxNode.annotationClause)
+          : null,
+        ModelicaModification.merge(outerModificationArgument.annotations, annotationFromArg),
+      );
+      return mod;
     } else if (outerModificationArgument instanceof ModelicaParameterModification) {
-      return new ModelicaModification(this, modificationArguments, null, null, outerModificationArgument.expression);
+      const mod = new ModelicaModification(this, filteredArgs, null, null, outerModificationArgument.expression);
+      mod.annotations = annotationFromArg;
+      return mod;
     }
-    return new ModelicaModification(this, modificationArguments, modificationSyntaxNode?.modificationExpression);
+    const mod = new ModelicaModification(this, filteredArgs, modificationSyntaxNode?.modificationExpression);
+    mod.annotations = ModelicaModification.merge(
+      annotationFromArg,
+      this.abstractSyntaxNode?.annotationClause
+        ? ModelicaModification.new(this.parent, this.abstractSyntaxNode.annotationClause)
+        : null,
+    );
+    return mod;
   }
 
   override get modification(): ModelicaModification | null {
@@ -1236,6 +1290,7 @@ export class ModelicaModification {
   description: string | null;
   modificationExpression: ModelicaModificationExpressionSyntaxNode | null;
   modificationArguments: ModelicaModificationArgument[];
+  annotations: ModelicaModification | null = null;
 
   constructor(
     scope: Scope | null,
@@ -1281,9 +1336,13 @@ export class ModelicaModification {
       hash.update(modificationArgument.hash);
     }
     if (this.expression) {
-      hash.update(this.expression.toString());
+      hash.update(this.expression.hash);
     }
-    return hash.digest("hex");
+    if (this.annotations) {
+      hash.update(this.annotations.hash);
+    }
+    const digest = hash.digest("hex");
+    return digest;
   }
 
   static merge(
@@ -1296,13 +1355,22 @@ export class ModelicaModification {
       ...modification.modificationArguments,
       ...overridingModification.modificationArguments,
     ]);
-    return new ModelicaModification(
+    const mergedExpression = overridingModification.expression ?? modification.expression;
+    const mergedModificationExpression = mergedExpression
+      ? null
+      : (overridingModification.modificationExpression ?? modification.modificationExpression);
+    const mergedModification = new ModelicaModification(
       overridingModification.scope,
       mergedModificationArguments,
-      overridingModification.modificationExpression ?? modification.modificationExpression,
+      mergedModificationExpression,
       overridingModification.description ?? modification.description,
-      overridingModification.expression ?? modification.expression,
+      mergedExpression,
     );
+    mergedModification.annotations = ModelicaModification.merge(
+      modification.annotations,
+      overridingModification.annotations,
+    );
+    return mergedModification;
   }
 
   static new(
@@ -1317,18 +1385,44 @@ export class ModelicaModification {
       abstractSyntaxNode instanceof ModelicaClassModificationSyntaxNode
         ? abstractSyntaxNode
         : abstractSyntaxNode?.classModification;
+
     const modificationArguments: ModelicaModificationArgument[] = [];
     for (const modificationArgumentSyntaxNode of classModification?.modificationArguments ?? []) {
       if (modificationArgumentSyntaxNode instanceof ModelicaElementModificationSyntaxNode) {
         modificationArguments.push(ModelicaElementModification.new(scope, modificationArgumentSyntaxNode));
+      } else if (modificationArgumentSyntaxNode instanceof ModelicaElementRedeclarationSyntaxNode) {
+        modificationArguments.push(ModelicaElementRedeclaration.new(scope, modificationArgumentSyntaxNode));
       }
     }
+
     if (
       abstractSyntaxNode instanceof ModelicaAnnotationClauseSyntaxNode ||
       abstractSyntaxNode instanceof ModelicaClassModificationSyntaxNode
-    )
+    ) {
       return new ModelicaModification(scope, modificationArguments);
-    return new ModelicaModification(scope, modificationArguments, abstractSyntaxNode?.modificationExpression);
+    }
+
+    const annotationArgument = modificationArguments.find((a) => a.name === "annotation");
+    const mod = new ModelicaModification(
+      scope,
+      modificationArguments.filter((a) => a.name !== "annotation"),
+      abstractSyntaxNode?.modificationExpression,
+    );
+    mod.annotations = ModelicaModification.merge(
+      abstractSyntaxNode?.annotationClause
+        ? ModelicaModification.new(scope, abstractSyntaxNode.annotationClause)
+        : null,
+      annotationArgument instanceof ModelicaElementModification
+        ? new ModelicaModification(
+            scope,
+            annotationArgument.modificationArguments,
+            annotationArgument.modificationExpression,
+            annotationArgument.description,
+            annotationArgument.expression,
+          )
+        : null,
+    );
+    return mod;
   }
 
   static mergeModificationArguments(
@@ -1366,19 +1460,23 @@ export class ModelicaModification {
               break;
             }
           }
+          let mergedAnnotations: ModelicaModification | null = null;
+          for (const m of elemMods) {
+            mergedAnnotations = ModelicaModification.merge(mergedAnnotations, m.annotations);
+          }
           const first = duplicates[0] as ModelicaElementModification;
           const firstNameComponent = first.nameComponents[0];
           if (firstNameComponent) {
-            mergedModificationArguments.push(
-              new ModelicaElementModification(
-                scope ?? first.scope,
-                [firstNameComponent],
-                mergedNextLevel,
-                modificationExpression,
-                first.description,
-                expression,
-              ),
+            const mod = new ModelicaElementModification(
+              scope ?? first.scope,
+              [firstNameComponent],
+              mergedNextLevel,
+              modificationExpression,
+              first.description,
+              expression,
             );
+            mod.annotations = mergedAnnotations;
+            mergedModificationArguments.push(mod);
           }
         } else {
           const last = duplicates[duplicates.length - 1];
@@ -1393,27 +1491,29 @@ export class ModelicaModification {
   split(count: number, index: number): ModelicaModification;
   split(count: number, index?: number): ModelicaModification | ModelicaModification[] {
     if (index) {
-      return new ModelicaModification(
+      const mod = new ModelicaModification(
         this.scope,
         this.modificationArguments.map((m) => m.split(count, index)),
         this.modificationExpression,
         this.description,
         this.expression?.split(count, index),
       );
+      mod.annotations = this.annotations;
+      return mod;
     } else {
       const modificationArguments = this.modificationArguments.map((m) => m.split(count));
       const expressions = this.expression?.split(count);
       const modifications: ModelicaModification[] = [];
       for (let i = 0; i < count; i++) {
-        modifications.push(
-          new ModelicaModification(
-            this.scope,
-            modificationArguments.map((m) => m[i]).flatMap((m) => m ?? []),
-            this.modificationExpression,
-            this.description,
-            expressions?.[i],
-          ),
+        const mod = new ModelicaModification(
+          this.scope,
+          modificationArguments.map((m) => m[i]).flatMap((m) => m ?? []),
+          this.modificationExpression,
+          this.description,
+          expressions?.[i],
         );
+        mod.annotations = this.annotations;
+        modifications.push(mod);
       }
       return modifications;
     }
@@ -1448,6 +1548,7 @@ export class ModelicaElementModification extends ModelicaModificationArgument {
   #nameComponents: WeakRef<ModelicaIdentifierSyntaxNode>[];
   description: string | null;
   modificationArguments: ModelicaModificationArgument[] = [];
+  annotations: ModelicaModification | null = null;
 
   constructor(
     scope: Scope | null,
@@ -1482,17 +1583,18 @@ export class ModelicaElementModification extends ModelicaModificationArgument {
   }
 
   extract(): ModelicaModificationArgument[] {
-    if (this.nameComponents.length > 1)
-      return [
-        new ModelicaElementModification(
-          this.scope,
-          this.nameComponents.slice(1),
-          this.modificationArguments,
-          this.modificationExpression,
-          this.description,
-        ),
-      ];
-    else return this.modificationArguments;
+    if (this.nameComponents.length > 1) {
+      const mod = new ModelicaElementModification(
+        this.scope,
+        this.nameComponents.slice(1),
+        this.modificationArguments,
+        this.modificationExpression,
+        this.description,
+        this.expression,
+      );
+      mod.annotations = this.annotations;
+      return [mod];
+    } else return this.modificationArguments;
   }
 
   get hash(): string {
@@ -1502,7 +1604,10 @@ export class ModelicaElementModification extends ModelicaModificationArgument {
       hash.update(arg.hash);
     }
     if (this.expression) {
-      hash.update(this.expression.toString());
+      hash.update(this.expression.hash);
+    }
+    if (this.annotations) {
+      hash.update(this.annotations.hash);
     }
     return hash.digest("hex");
   }
@@ -1532,15 +1637,22 @@ export class ModelicaElementModification extends ModelicaModificationArgument {
       ?.modificationArguments ?? []) {
       if (modificationArgumentSyntaxNode instanceof ModelicaElementModificationSyntaxNode) {
         modificationArguments.push(ModelicaElementModification.new(scope, modificationArgumentSyntaxNode));
+      } else if (modificationArgumentSyntaxNode instanceof ModelicaElementRedeclarationSyntaxNode) {
+        modificationArguments.push(ModelicaElementRedeclaration.new(scope, modificationArgumentSyntaxNode));
       }
     }
-    return new ModelicaElementModification(
+    const mod = new ModelicaElementModification(
       scope,
       abstractSyntaxNode.name?.parts ?? [],
       modificationArguments,
       abstractSyntaxNode.modification?.modificationExpression,
       abstractSyntaxNode.description?.strings?.map((d) => d.text ?? "")?.join(" "),
+      null,
     );
+    mod.annotations = abstractSyntaxNode.annotationClause
+      ? ModelicaModification.new(scope, abstractSyntaxNode.annotationClause)
+      : null;
+    return mod;
   }
 
   override split(count: number): ModelicaElementModification[];
@@ -1548,7 +1660,7 @@ export class ModelicaElementModification extends ModelicaModificationArgument {
   override split(count: number, index?: number): ModelicaElementModification | ModelicaElementModification[] {
     const expressions = this.expression?.split(count, index as number);
     if (index) {
-      return new ModelicaElementModification(
+      const mod = new ModelicaElementModification(
         this.scope,
         this.nameComponents,
         this.modificationArguments.map((m) => m.split(count, index)),
@@ -1556,21 +1668,23 @@ export class ModelicaElementModification extends ModelicaModificationArgument {
         this.description,
         expressions as ModelicaExpression | undefined,
       );
+      mod.annotations = this.annotations;
+      return mod;
     } else {
       const modificationArguments = this.modificationArguments.map((m) => m.split(count));
       const modifications = [];
       const exprs = expressions as ModelicaExpression[] | undefined;
       for (let i = 0; i < count; i++) {
-        modifications.push(
-          new ModelicaElementModification(
-            this.scope,
-            this.nameComponents,
-            modificationArguments.map((m) => m[i]).flatMap((m) => (m ? [m] : [])),
-            this.modificationExpression,
-            this.description,
-            exprs?.[i],
-          ),
+        const mod = new ModelicaElementModification(
+          this.scope,
+          this.nameComponents,
+          modificationArguments.map((m) => m[i]).flatMap((m) => (m ? [m] : [])),
+          this.modificationExpression,
+          this.description,
+          exprs?.[i],
         );
+        mod.annotations = this.annotations;
+        modifications.push(mod);
       }
       return modifications;
     }
@@ -1618,7 +1732,7 @@ export class ModelicaParameterModification extends ModelicaModificationArgument 
     const hash = createHash("sha256");
     hash.update(this.name);
     if (this.expression) {
-      hash.update(this.expression.toString());
+      hash.update(this.expression.hash);
     }
     return hash.digest("hex");
   }
