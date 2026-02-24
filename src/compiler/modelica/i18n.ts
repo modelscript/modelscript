@@ -69,6 +69,10 @@ export class I18nVisitor extends ModelicaModelVisitor<void> {
 
     const qualifiedName = this.getQualifiedName(node);
 
+    if (node.name) {
+      this.addEntry(node.name, qualifiedName, node);
+    }
+
     if (node.description) {
       this.addEntry(node.description, qualifiedName, node);
     }
@@ -84,6 +88,9 @@ export class I18nVisitor extends ModelicaModelVisitor<void> {
     const classSpecifier = node.abstractSyntaxNode?.classSpecifier;
     if (classSpecifier instanceof ModelicaShortClassSpecifierSyntaxNode && classSpecifier.enumeration) {
       for (const literal of classSpecifier.enumerationLiterals) {
+        if (literal.identifier?.text) {
+          this.addEntry(literal.identifier.text, qualifiedName, node);
+        }
         if (literal.description?.strings) {
           const desc = literal.description.strings.map((s) => s.text ?? "").join(" ");
           if (desc) {
@@ -115,6 +122,10 @@ export class I18nVisitor extends ModelicaModelVisitor<void> {
 
     const parentClass = node.parent as ModelicaClassInstance;
     const qualifiedName = this.getQualifiedName(parentClass);
+
+    if (node.name) {
+      this.addEntry(node.name, qualifiedName, node);
+    }
 
     if (node.description) {
       this.addEntry(node.description, qualifiedName, node);

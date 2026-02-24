@@ -578,7 +578,7 @@ export class ModelicaObject extends ModelicaPrimaryExpression {
   }
 
   override toJSON(): object {
-    return Object.assign(Object.fromEntries(this.elements.entries().map((e) => [e[0], e[1].toJSON()])), {
+    return Object.assign(Object.fromEntries(Array.from(this.elements.entries()).map(([k, v]) => [k, v.toJSON()])), {
       "@type": this.classInstance?.name ?? undefined,
     });
   }

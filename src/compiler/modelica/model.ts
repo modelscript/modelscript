@@ -229,6 +229,38 @@ export abstract class ModelicaElement extends ModelicaNode {
     }
     return null;
   }
+
+  translate(id: string): string {
+    const context = this.context as Context;
+    if (!context) return id;
+
+    let msgctxt = "";
+    // find nearest class instance to use as context
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    let current: Scope | null = this;
+    while (current) {
+      if (current instanceof ModelicaClassInstance) {
+        msgctxt = current.compositeName;
+        break;
+      }
+      current = current.parent;
+    }
+
+    return context.translate(id, msgctxt);
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  #translateObject(obj: any) {
+    if (!obj || typeof obj !== "object") return;
+    for (const key in obj) {
+      const val = obj[key];
+      if (typeof val === "string") {
+        obj[key] = this.translate(val);
+      } else if (typeof val === "object") {
+        this.#translateObject(val);
+      }
+    }
+  }
 }
 
 export class ModelicaExtendsClassInstance extends ModelicaElement {
@@ -321,6 +353,39 @@ export abstract class ModelicaNamedElement extends ModelicaElement {
   name: string | null = null;
 
   abstract get modification(): ModelicaModification | null;
+
+  get compositeName(): string {
+    let compositeName = this.name ?? "";
+    let parent = this.parent;
+    while (parent) {
+      if (parent instanceof ModelicaNamedElement && parent.name) {
+        compositeName = `${parent.name}.${compositeName}`;
+      }
+      parent = parent.parent;
+    }
+    return compositeName;
+  }
+
+  get localizedDescription(): string | null {
+    if (!this.description) return null;
+    return this.translate(this.description);
+  }
+
+  get localizedName(): string {
+    return this.translate(this.name ?? "");
+  }
+
+  get localizedCompositeName(): string {
+    let compositeName = this.localizedName;
+    let parent = this.parent;
+    while (parent) {
+      if (parent instanceof ModelicaNamedElement && parent.name) {
+        compositeName = `${parent.localizedName}.${compositeName}`;
+      }
+      parent = parent.parent;
+    }
+    return compositeName;
+  }
 }
 
 export class ModelicaClassInstance extends ModelicaNamedElement {
@@ -601,6 +666,11 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
 
   set modification(modification: ModelicaModification) {
     this.#modification = modification;
+  }
+
+  get isEnumeration(): boolean {
+    const classSpecifier = this.abstractSyntaxNode?.classSpecifier;
+    return classSpecifier instanceof ModelicaShortClassSpecifierSyntaxNode && classSpecifier.enumeration;
   }
 
   get outputParameters(): IterableIterator<ModelicaComponentInstance> {
@@ -1011,6 +1081,10 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
 
   override get modification(): ModelicaModification | null {
     return this.#modification;
+  }
+
+  get isEnumeration(): boolean {
+    return this.classInstance?.isEnumeration ?? false;
   }
 
   override get parent(): ModelicaClassInstance | null {

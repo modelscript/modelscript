@@ -6,6 +6,7 @@ import type { Parser, Tree } from "../util/tree-sitter.js";
 import { ModelicaDAE, ModelicaDAEPrinter } from "./modelica/dae.js";
 import { ModelicaFlattener } from "./modelica/flattener.js";
 import { ModelicaClassInstance, ModelicaLibrary, type ModelicaElement } from "./modelica/model.js";
+import { ModelicaPoParser, ModelicaTranslation } from "./modelica/po.js";
 import { ModelicaStoredDefinitionSyntaxNode } from "./modelica/syntax.js";
 import { Scope } from "./scope.js";
 
@@ -13,6 +14,8 @@ export class Context extends Scope {
   #classes: ModelicaClassInstance[] = [];
   #fs: FileSystem;
   #libraries: ModelicaLibrary[] = [];
+  #translations = new Map<string, ModelicaTranslation>();
+  #language: string | null = null;
 
   static #parsers = new Map<string, Parser>();
 
@@ -35,6 +38,9 @@ export class Context extends Scope {
 
     library = new ModelicaLibrary(this, path);
     this.#libraries.push(library);
+    if (this.#language) {
+      this.loadTranslationsForLibrary(library, this.#language);
+    }
     return library;
   }
 
@@ -99,6 +105,46 @@ export class Context extends Scope {
     Context.#parsers.set(extname, parser);
   }
 
+  get language(): string | null {
+    return this.#language;
+  }
+
+  setLanguage(lang: string | null) {
+    this.#language = lang;
+    if (lang && !this.#translations.has(lang)) {
+      this.#translations.set(lang, new ModelicaTranslation());
+      for (const library of this.#libraries) {
+        this.loadTranslationsForLibrary(library, lang);
+      }
+    }
+  }
+
+  loadTranslationsForLibrary(library: ModelicaLibrary, lang: string) {
+    const translation = this.#translations.get(lang);
+    if (!translation) return;
+
+    const poPaths = [
+      this.#fs.join(library.path, "i18n", `${lang}.po`),
+      this.#fs.join(library.path, `package.${lang}.po`),
+    ];
+
+    for (const poPath of poPaths) {
+      if (this.#fs.stat(poPath)?.isFile()) {
+        const content = this.#fs.read(poPath);
+        const entries = ModelicaPoParser.parse(content);
+        for (const entry of entries) {
+          translation.addEntry(entry);
+        }
+      }
+    }
+  }
+
+  translate(id: string, ctxt?: string): string {
+    if (!this.#language) return id;
+    const translation = this.#translations.get(this.#language);
+    return translation?.translate(id, ctxt) ?? id;
+  }
+
   removeLibrary(path: string): boolean {
     let i = this.#libraries.length;
     while (i--) {
@@ -120,13 +166,16 @@ export class Context extends Scope {
     for (const library of this.#libraries) {
       if (library.name === libraryName) {
         const stats = this.#fs.stat(library.path);
-        if (stats?.isDirectory()) {
-          return this.#fs.resolve(this.#fs.join(library.path, relativePath));
-        } else {
-          return this.#fs.resolve(this.#fs.join(this.#fs.join(library.path, ".."), libraryName, relativePath));
-        }
+        const result = stats?.isDirectory()
+          ? this.#fs.resolve(this.#fs.join(library.path, relativePath))
+          : this.#fs.resolve(this.#fs.join(this.#fs.join(library.path, ".."), libraryName, relativePath));
+        console.log(`resolveURI: ${uri} -> ${result}`);
+        return result;
       }
     }
+    console.warn(
+      `resolveURI failed for ${uri}: library ${libraryName} not found among [${this.#libraries.map((l) => l.name).join(", ")}]`,
+    );
 
     return null;
   }
