@@ -22,6 +22,8 @@ jobs:
         run: npm ci
       - name: Build
         run: npx lerna run build
+      - name: SPA fallback for GitHub Pages
+        run: cp packages/morsel/build/client/index.html packages/morsel/build/client/404.html
       - name: Deploy
         uses: peaceiris/actions-gh-pages@v4
         if: github.ref == 'refs/heads/prototype'
