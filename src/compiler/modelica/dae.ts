@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { createHash } from "crypto";
+import { createHash } from "../../util/hash.js";
 import type { Writer } from "../../util/io.js";
 import {
   ModelicaArrayClassInstance,
