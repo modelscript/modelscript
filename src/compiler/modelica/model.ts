@@ -884,9 +884,9 @@ export class ModelicaEntity extends ModelicaClassInstance {
   load(): void {
     this.subEntities = [];
     const context = this.context;
-    if (!context) throw new Error();
+    if (!context) throw new Error(`ModelicaEntity.load: no context for path '${this.path}'`);
     const stats = context.fs.stat(this.path);
-    if (!stats) throw new Error();
+    if (!stats) throw new Error(`ModelicaEntity.load: path not found '${this.path}'`);
     let filePath: string | null = null;
     if (stats.isFile()) {
       this.unstructured = true;

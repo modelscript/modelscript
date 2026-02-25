@@ -243,7 +243,25 @@ export default function MorselEditor(props: MorselEditorProps) {
       setLoadingProgress(80);
       setLoadingMessage("Loading libraries…");
       const ctx = new Context(new WebFileSystem());
-      ctx.addLibrary("/lib/Modelica");
+      try {
+        const libEntries = ctx.fs.readdir("/lib");
+        const hasPackage = libEntries.some((e) => e.name === "package.mo");
+        if (hasPackage) {
+          ctx.addLibrary("/lib");
+        } else {
+          for (const entry of libEntries) {
+            if (entry.isDirectory()) {
+              try {
+                ctx.addLibrary(`/lib/${entry.name}`);
+              } catch (e) {
+                console.warn(`Failed to load library from /lib/${entry.name}:`, e);
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.error("Failed to scan /lib:", e);
+      }
       const langs = [...new Set([...ctx.availableLanguages(), ...uiLanguages])].sort();
       setAvailableLanguages(langs);
 
@@ -2181,19 +2199,31 @@ export default function MorselEditor(props: MorselEditorProps) {
                 await mountLibrary(path, data);
                 try {
                   const entries = context.fs.readdir(path);
-                  const dirs = entries.filter((e) => e.isDirectory());
-                  if (dirs.length === 1) {
-                    path = `${path}/${dirs[0].name}`;
+                  const hasPackage = entries.some((e) => e.name === "package.mo");
+                  if (hasPackage) {
+                    context.addLibrary(path);
                   } else {
-                    const hasPackage = entries.some((e) => e.name === "package.mo");
-                    if (!hasPackage) {
-                      console.warn("No package.mo found at root and multiple/no directories found. Using root.");
+                    const dirs = entries.filter((e) => e.isDirectory());
+                    if (dirs.length === 1) {
+                      context.addLibrary(`${path}/${dirs[0].name}`);
+                    } else {
+                      for (const dir of dirs) {
+                        const libName = dir.name.split(" ")[0];
+                        const libPath = `${path}/${dir.name}`;
+                        try {
+                          const lib = context.addLibrary(libPath);
+                          if (lib) {
+                            console.log(`Loaded library: ${libName} from ${libPath}`);
+                          }
+                        } catch (libError) {
+                          console.warn(`Failed to load library ${libName} from ${libPath}:`, libError);
+                        }
+                      }
                     }
                   }
                 } catch (e) {
-                  console.error("Failed to readdir mounted path:", e);
+                  console.error("Failed to process mounted library:", e);
                 }
-                const lib = context.addLibrary(path);
                 setContextVersion((v) => v + 1);
               } catch (error) {
                 console.error(error);
