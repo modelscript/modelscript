@@ -378,7 +378,7 @@ function createCrossPattern(svg: Svg, rotation: number, lineColor?: IColor, fill
 
 function createLinearGradient(svg: Svg, direction: "horizontal" | "vertical", lineColor?: IColor, fillColor?: IColor) {
   const c = convertColor(fillColor);
-  const h = convertColor(lineColor, "white");
+  const h = convertColor(lineColor);
   return svg
     .gradient("linear", (add) => {
       add.stop(0, h);
@@ -391,7 +391,7 @@ function createLinearGradient(svg: Svg, direction: "horizontal" | "vertical", li
 
 function createRadialGradient(svg: Svg, lineColor?: IColor, fillColor?: IColor) {
   const c = convertColor(fillColor);
-  const h = convertColor(lineColor, "white");
+  const h = convertColor(lineColor);
   return svg
     .gradient("radial", (add) => {
       add.stop(0, c);

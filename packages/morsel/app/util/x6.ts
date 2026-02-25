@@ -525,7 +525,7 @@ function createLinearGradientX6(
 ): string {
   const id = getStableId("gradient-linear", { direction, lineColor, fillColor });
   const c = convertColor(fillColor);
-  const h = convertColor(lineColor, "white");
+  const h = convertColor(lineColor);
   addDefIfMissing(defs, {
     tagName: "linearGradient",
     attrs: {
@@ -547,7 +547,7 @@ function createLinearGradientX6(
 function createRadialGradientX6(defs: X6Markup[], lineColor?: IColor, fillColor?: IColor): string {
   const id = getStableId("gradient-radial", { lineColor, fillColor });
   const c = convertColor(fillColor);
-  const h = convertColor(lineColor, "white");
+  const h = convertColor(lineColor);
   addDefIfMissing(defs, {
     tagName: "radialGradient",
     attrs: {
