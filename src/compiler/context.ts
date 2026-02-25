@@ -24,6 +24,8 @@ export class Context extends Scope {
     this.#fs = fs;
   }
 
+  readonly hash = "root";
+
   addLibrary(path: string): ModelicaLibrary | null {
     let library = this.getLibrary(path);
     if (library) return library;

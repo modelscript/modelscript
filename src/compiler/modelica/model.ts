@@ -101,6 +101,12 @@ export class ModelicaLibrary extends ModelicaNode {
     this.entity = new ModelicaEntity(this, this.path);
   }
 
+  get hash(): string {
+    const hash = createHash("sha256");
+    hash.update(this.path);
+    return hash.digest("hex");
+  }
+
   override accept<R, A>(visitor: IModelicaModelVisitor<R, A>, argument?: A): R {
     return visitor.visitLibrary(this, argument);
   }
@@ -283,6 +289,10 @@ export class ModelicaExtendsClassInstance extends ModelicaElement {
     this.instantiated = false;
   }
 
+  get modification(): ModelicaModification {
+    return this.#modification;
+  }
+
   override accept<R, A>(visitor: IModelicaModelVisitor<R, A>, argument?: A): R {
     return visitor.visitExtendsClassInstance(this, argument);
   }
@@ -296,7 +306,7 @@ export class ModelicaExtendsClassInstance extends ModelicaElement {
     const hash = createHash("sha256");
     hash.update("extends");
     hash.update(this.abstractSyntaxNode?.typeSpecifier?.concreteSyntaxNode?.text ?? "");
-    hash.update(this.mergeModifications().hash);
+    hash.update(this.modification?.hash ?? "");
     return hash.digest("hex");
   }
 
@@ -389,6 +399,8 @@ export abstract class ModelicaNamedElement extends ModelicaElement {
 }
 
 export class ModelicaClassInstance extends ModelicaNamedElement {
+  static #hashing = new Set<ModelicaClassInstance>();
+  #hash: string | null = null;
   #abstractSyntaxNode: ModelicaClassDefinitionSyntaxNode | ModelicaShortClassDefinitionSyntaxNode | null;
   #importClauses: ModelicaImportClauseSyntaxNode[] = [];
   #modification: ModelicaModification | null = null;
@@ -428,6 +440,7 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
       this.abstractSyntaxNode?.classSpecifier?.description?.strings?.map((d) => d.text ?? "")?.join(" ") ?? null;
     this.instantiated = false;
     this.cloneCache.clear();
+    this.#hash = null;
   }
 
   override accept<R, A>(visitor: IModelicaModelVisitor<R, A>, argument?: A): R {
@@ -453,7 +466,9 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     const elements = this.elements;
     return (function* () {
       for (const element of elements) {
-        if (element instanceof ModelicaComponentInstance) yield element;
+        if (element instanceof ModelicaComponentInstance) {
+          yield element;
+        }
       }
     })();
   }
@@ -503,7 +518,7 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
           if (baseClass && !top.visited.has(baseClass)) {
             const visited = new Set(top.visited);
             visited.add(baseClass);
-            stack.push({ iterator: baseClass.declaredElements[Symbol.iterator](), visited });
+            stack.push({ iterator: baseClass.elements, visited });
           }
         } else {
           yield element;
@@ -558,6 +573,7 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
         modificationArguments,
         outerModificationArgument.modificationExpression,
         outerModificationArgument.description,
+        outerModificationArgument.expression,
       );
     } else if (outerModificationArgument instanceof ModelicaParameterModification) {
       return new ModelicaModification(this, modificationArguments, null, null, outerModificationArgument.expression);
@@ -566,14 +582,23 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
   }
 
   get hash(): string {
-    const hash = createHash("sha256");
-    hash.update(this.name ?? "");
-    hash.update(this.classKind.toString());
-    hash.update(this.modification?.hash ?? "");
-    for (const declaredElement of this.declaredElements) {
-      hash.update(declaredElement.hash);
+    if (this.#hash) return this.#hash;
+    if (ModelicaClassInstance.#hashing.has(this)) return "";
+    ModelicaClassInstance.#hashing.add(this);
+    try {
+      const hash = createHash("sha256");
+      hash.update(this.name ?? "");
+      hash.update(this.classKind.toString());
+      hash.update(this.modification?.hash ?? "");
+      for (const declaredElement of this.declaredElements) {
+        hash.update(declaredElement.hash);
+      }
+      const digest = hash.digest("hex");
+      this.#hash = digest;
+      return digest;
+    } finally {
+      ModelicaClassInstance.#hashing.delete(this);
     }
-    return hash.digest("hex");
   }
 
   get inputParameters(): IterableIterator<ModelicaComponentInstance> {
@@ -667,6 +692,7 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
 
   set modification(modification: ModelicaModification) {
     this.#modification = modification;
+    this.#hash = null;
   }
 
   get isEnumeration(): boolean {
@@ -865,14 +891,19 @@ export class ModelicaEntity extends ModelicaClassInstance {
     })();
   }
 
+  #entityHash: string | null = null;
+
   override get hash(): string {
+    if (this.#entityHash) return this.#entityHash;
     const hash = createHash("sha256");
     hash.update(super.hash);
     hash.update(this.path);
     for (const subEntity of this.subEntities) {
       hash.update(subEntity.hash);
     }
-    return hash.digest("hex");
+    const digest = hash.digest("hex");
+    this.#entityHash = digest;
+    return digest;
   }
 
   override instantiate(): void {
@@ -946,6 +977,8 @@ export class ModelicaEntity extends ModelicaClassInstance {
 }
 
 export class ModelicaComponentInstance extends ModelicaNamedElement {
+  static #hashing = new Set<ModelicaComponentInstance>();
+  #hash: string | null = null;
   #abstractSyntaxNode: ModelicaComponentDeclarationSyntaxNode | ModelicaComponentDeclaration1SyntaxNode | null;
   #modification: ModelicaModification | null = null;
   #classInstance: ModelicaClassInstance | null = null;
@@ -991,11 +1024,20 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
   }
 
   get hash(): string {
-    const hash = createHash("sha256");
-    hash.update(this.name ?? "");
-    hash.update(this.classInstance?.compositeName ?? "");
-    hash.update(this.modification?.hash ?? "");
-    return hash.digest("hex");
+    if (this.#hash) return this.#hash;
+    if (ModelicaComponentInstance.#hashing.has(this)) return "";
+    ModelicaComponentInstance.#hashing.add(this);
+    try {
+      const hash = createHash("sha256");
+      hash.update(this.name ?? "");
+      hash.update(this.classInstance?.compositeName ?? "");
+      hash.update(this.modification?.hash ?? "");
+      const digest = hash.digest("hex");
+      this.#hash = digest;
+      return digest;
+    } finally {
+      ModelicaComponentInstance.#hashing.delete(this);
+    }
   }
 
   override instantiate(): void {
@@ -1057,6 +1099,7 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
         filteredArgs,
         outerModificationArgument.modificationExpression ?? modificationSyntaxNode?.modificationExpression,
         outerModificationArgument.description,
+        outerModificationArgument.expression,
       );
       mod.annotations = ModelicaModification.merge(
         this.abstractSyntaxNode?.annotationClause
@@ -1360,6 +1403,8 @@ export class ModelicaArrayClassInstance extends ModelicaClassInstance {
 }
 
 export class ModelicaModification {
+  static #hashing = new Set<ModelicaModification>();
+  #hash: string | null = null;
   #expression: ModelicaExpression | null;
   scope: Scope | null;
   description: string | null;
@@ -1406,18 +1451,29 @@ export class ModelicaModification {
   }
 
   get hash(): string {
-    const hash = createHash("sha256");
-    for (const modificationArgument of this.modificationArguments) {
-      hash.update(modificationArgument.hash);
+    if (this.#hash) return this.#hash;
+    if (ModelicaModification.#hashing.has(this)) return "";
+    ModelicaModification.#hashing.add(this);
+    try {
+      const hash = createHash("sha256");
+      if (this.scope && (this.scope as { modification?: unknown }).modification !== this) {
+        hash.update(this.scope.hash);
+      }
+      for (const modificationArgument of this.modificationArguments) {
+        hash.update(modificationArgument.hash);
+      }
+      if (this.expression) {
+        hash.update(this.expression.hash);
+      }
+      if (this.annotations) {
+        hash.update(this.annotations.hash);
+      }
+      const digest = hash.digest("hex");
+      this.#hash = digest;
+      return digest;
+    } finally {
+      ModelicaModification.#hashing.delete(this);
     }
-    if (this.expression) {
-      hash.update(this.expression.hash);
-    }
-    if (this.annotations) {
-      hash.update(this.annotations.hash);
-    }
-    const digest = hash.digest("hex");
-    return digest;
   }
 
   static merge(

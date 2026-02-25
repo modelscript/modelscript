@@ -32,6 +32,8 @@ export abstract class Scope {
 
   abstract get elements(): IterableIterator<ModelicaElement>;
 
+  abstract get hash(): string;
+
   get parent(): Scope | null {
     return this.#parent?.deref() ?? null;
   }
