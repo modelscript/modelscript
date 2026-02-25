@@ -2,6 +2,7 @@ import { ModelicaComponentInstance, ModelicaVariability } from "@modelscript/mod
 import { ChevronDownIcon, ChevronRightIcon } from "@primer/octicons-react";
 import { Button, Textarea, TextInput, useTheme } from "@primer/react";
 import { useEffect, useState } from "react";
+import type { Translations } from "~/util/i18n";
 import { ComponentIcon } from "./component-list";
 
 interface PropertiesWidgetProps {
@@ -10,6 +11,7 @@ interface PropertiesWidgetProps {
   onNameChange?: (name: string) => void;
   onDescriptionChange?: (description: string) => void;
   onParameterChange?: (name: string, value: string) => void;
+  translations: Translations;
 }
 
 function ParameterRow({
@@ -64,9 +66,9 @@ function ParameterRow({
             textOverflow: "ellipsis",
             maxWidth: "calc(100% - 130px)",
           }}
-          title={parameter.name || ""}
+          title={parameter.localizedName || ""}
         >
-          {parameter.name}
+          {parameter.localizedName}
         </div>
         <TextInput
           size="small"
@@ -97,7 +99,7 @@ function ParameterRow({
           className="f6 color-fg-muted text-italic"
           style={{ marginTop: 2, fontSize: 11, paddingLeft: 0, opacity: 0.6 }}
         >
-          {parameter.description}
+          {parameter.localizedDescription}
         </div>
       )}
     </div>
@@ -106,7 +108,7 @@ function ParameterRow({
 
 export default function PropertiesWidget(props: PropertiesWidgetProps) {
   const { colorMode } = useTheme();
-  const { component, onNameChange, onDescriptionChange, onParameterChange } = props;
+  const { component, onNameChange, onDescriptionChange, onParameterChange, translations } = props;
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     info: true,
     parameters: true,
@@ -154,7 +156,7 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
         style={{ width: props.width || 300 }}
         onClick={(e) => e.stopPropagation()}
       >
-        No component selected
+        {translations.noComponentSelected}
       </div>
     );
   }
@@ -217,7 +219,7 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
           }}
         >
           {expandedSections.info ? <ChevronDownIcon className="mr-1" /> : <ChevronRightIcon className="mr-1" />}
-          INFORMATION
+          {translations.information}
         </summary>
         <div style={{ display: "flex", flexDirection: "column", padding: "8px 16px", gap: "12px" }}>
           <div style={{ display: "flex", flexDirection: "row", gap: "24px", alignItems: "stretch" }}>
@@ -238,18 +240,18 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
             >
               <div style={{ padding: "4px 0" }}>
                 <div className="f6 color-fg-muted" style={{ lineHeight: "1.2" }}>
-                  Type
+                  {translations.type}
                 </div>
                 <div
                   className="f6"
                   style={{ wordBreak: "break-all", lineHeight: "1.2", fontWeight: "normal", padding: "4px 0" }}
                 >
-                  {component.classInstance?.name}
+                  {component.classInstance?.localizedName}
                 </div>
               </div>
               <div>
                 <div className="f6 color-fg-muted" style={{ lineHeight: "1.2" }}>
-                  Name
+                  {translations.name}
                 </div>
                 <TextInput
                   size="small"
@@ -279,7 +281,7 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
           {localDescription ? (
             <div>
               <div className="f6 color-fg-muted" style={{ opacity: 0.4 }}>
-                Description
+                {translations.description}
               </div>
               <Textarea
                 block
@@ -313,7 +315,7 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
                   width: "100%",
                 }}
               >
-                Add Description
+                {translations.addDescription}
               </Button>
             </div>
           )}
@@ -331,7 +333,7 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
             }}
           >
             {expandedSections.parameters ? <ChevronDownIcon className="mr-1" /> : <ChevronRightIcon className="mr-1" />}
-            PARAMETERS
+            {translations.parameters}
           </summary>
           <div style={{ paddingBottom: 8 }}>
             {parameters.map((parameter) => {
@@ -371,7 +373,7 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
             ) : (
               <ChevronRightIcon className="mr-1" />
             )}
-            DOCUMENTATION
+            {translations.documentation}
           </summary>
           <div
             className="markdown-body p-3"
@@ -392,7 +394,7 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
             }}
           >
             {expandedSections.revisions ? <ChevronDownIcon className="mr-1" /> : <ChevronRightIcon className="mr-1" />}
-            REVISIONS
+            {translations.revisions}
           </summary>
           <div
             className="markdown-body p-3"

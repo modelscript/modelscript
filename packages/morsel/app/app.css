@@ -10,7 +10,7 @@ body {
 }
 
 #__primerPortalRoot__ div {
-  z-index: 999 !important;
+  z-index: 2000 !important;
 }
 
 .markdown-body ul {

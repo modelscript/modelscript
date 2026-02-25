@@ -145,6 +145,27 @@ export class Context extends Scope {
     return translation?.translate(id, ctxt) ?? id;
   }
 
+  availableLanguages(): string[] {
+    const languages = new Set<string>();
+    for (const library of this.#libraries) {
+      const i18nPath = this.#fs.join(library.path, "i18n");
+      const stats = this.#fs.stat(i18nPath);
+      if (stats?.isDirectory()) {
+        try {
+          for (const entry of this.#fs.readdir(i18nPath)) {
+            const name = entry.name;
+            if (name.endsWith(".po")) {
+              languages.add(name.replace(/\.po$/, ""));
+            }
+          }
+        } catch {
+          // ignore readdir errors
+        }
+      }
+    }
+    return [...languages].sort();
+  }
+
   removeLibrary(path: string): boolean {
     let i = this.#libraries.length;
     while (i--) {

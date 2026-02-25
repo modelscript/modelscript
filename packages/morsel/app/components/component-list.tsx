@@ -4,11 +4,14 @@ import { ModelicaClassInstance, renderIcon } from "@modelscript/modelscript";
 import { PackageIcon } from "@primer/octicons-react";
 import { NavList } from "@primer/react";
 import React from "react";
+import type { Translations } from "~/util/i18n";
 
 interface ComponentListProps {
   classInstance: ModelicaClassInstance | null;
   onSelect: (name: string) => void;
   selectedName?: string | null;
+  language?: string | null;
+  translations?: Translations;
 }
 
 interface ComponentIconProps {
@@ -49,7 +52,7 @@ const ComponentList = React.memo(function ComponentList(props: ComponentListProp
   if (!classInstance) {
     return (
       <div className="p-3 text-center color-fg-muted">
-        <em>No class selected</em>
+        <em>{props.translations?.noClassSelected ?? "No class selected"}</em>
       </div>
     );
   }
@@ -59,7 +62,7 @@ const ComponentList = React.memo(function ComponentList(props: ComponentListProp
   if (components.length === 0) {
     return (
       <div className="p-3 text-center color-fg-muted">
-        <em>No components</em>
+        <em>{props.translations?.noComponents ?? "No components"}</em>
       </div>
     );
   }
@@ -78,15 +81,15 @@ const ComponentList = React.memo(function ComponentList(props: ComponentListProp
           <div style={{ display: "flex", width: "100%", gap: "8px", overflow: "hidden" }}>
             <div
               style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-              title={component.name ?? undefined}
+              title={component.localizedName ?? undefined}
             >
-              {component.name}
+              {component.localizedName}
             </div>
             <div
               style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", opacity: 0.7 }}
-              title={component.classInstance?.name ?? undefined}
+              title={component.classInstance?.localizedName ?? undefined}
             >
-              {component.classInstance?.name}
+              {component.classInstance?.localizedName}
             </div>
           </div>
         </NavList.Item>

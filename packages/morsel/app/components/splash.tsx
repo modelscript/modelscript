@@ -4,6 +4,7 @@ import { Context } from "@modelscript/modelscript";
 import { PlusIcon, TrashIcon, XIcon } from "@primer/octicons-react";
 import { IconButton } from "@primer/react";
 import React from "react";
+import type { Translations } from "~/util/i18n";
 import { ModelPreview } from "./preview";
 
 export interface ModelData {
@@ -21,6 +22,7 @@ interface SplashProps {
   exampleModels: ModelData[];
   context: Context | null;
   colorMode?: string;
+  translations: Translations;
 }
 
 export const Splash: React.FC<SplashProps> = ({
@@ -31,6 +33,7 @@ export const Splash: React.FC<SplashProps> = ({
   exampleModels,
   context,
   colorMode = "light",
+  translations,
 }) => {
   const isDark = colorMode.includes("night") || colorMode.includes("dark");
   const bgColor = isDark ? "rgba(13, 17, 23, 0.5)" : "rgba(255, 255, 255, 0.5)";
@@ -64,27 +67,27 @@ export const Splash: React.FC<SplashProps> = ({
         <IconButton
           icon={XIcon}
           variant="invisible"
-          aria-label="Close"
+          aria-label={translations.close}
           onClick={onClose}
           style={{ color: textColor }}
         />
       </div>
 
       <div style={{ maxWidth: 1000, width: "100%" }} onClick={(e) => e.stopPropagation()}>
-        <h1 style={{ fontSize: 32, marginBottom: 40, fontWeight: 700 }}>New Model</h1>
+        <h1 style={{ fontSize: 32, marginBottom: 40, fontWeight: 700 }}>{translations.newModelTitle}</h1>
 
         <section style={{ marginBottom: 48 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-            <h2 style={{ fontSize: 20, margin: 0, opacity: 0.6, fontWeight: 600 }}>Recent Models</h2>
+            <h2 style={{ fontSize: 20, margin: 0, opacity: 0.6, fontWeight: 600 }}>{translations.recentModels}</h2>
             {recentModels.length > 0 && (
               <IconButton
                 icon={TrashIcon}
                 size="small"
                 variant="invisible"
-                aria-label="Clear Recent"
+                aria-label={translations.clearRecent}
                 onClick={onClearRecent}
                 style={{ color: textColor, opacity: 0.5 }}
-                title="Clear Recent Models"
+                title={translations.clearRecent}
               />
             )}
           </div>
@@ -133,7 +136,7 @@ export const Splash: React.FC<SplashProps> = ({
                   <PlusIcon size={32} />
                 </span>
               </div>
-              <span style={{ fontSize: 14, fontWeight: 500 }}>Create New</span>
+              <span style={{ fontSize: 14, fontWeight: 500 }}>{translations.createNew}</span>
             </div>
 
             {recentModels.map((model: ModelData) => (
@@ -145,7 +148,9 @@ export const Splash: React.FC<SplashProps> = ({
         <div style={{ height: 2, backgroundColor: borderColor, marginBottom: 48, opacity: 0.5 }} />
 
         <section>
-          <h2 style={{ fontSize: 20, marginBottom: 20, opacity: 0.6, fontWeight: 600 }}>Example Models</h2>
+          <h2 style={{ fontSize: 20, marginBottom: 20, opacity: 0.6, fontWeight: 600 }}>
+            {translations.exampleModels}
+          </h2>
           <div
             style={{
               display: "grid",

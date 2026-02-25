@@ -20,6 +20,7 @@ import {
   DownloadIcon,
   FileIcon,
   FlowchartIcon,
+  GlobeIcon,
   MoonIcon,
   PlusIcon,
   RowsIcon,
@@ -35,14 +36,15 @@ import {
   WorkflowIcon,
   XIcon,
 } from "@primer/octicons-react";
-import { Dialog, IconButton, Spinner, TextInput, useTheme } from "@primer/react";
+import { ActionList, ActionMenu, Dialog, IconButton, Spinner, TextInput, useTheme } from "@primer/react";
 import { Zip } from "@zenfs/archives";
 import { configure, InMemory } from "@zenfs/core";
 import { editor } from "monaco-editor";
 import { type DataUrl } from "parse-data-url";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Parser from "web-tree-sitter";
 import { mountLibrary, WebFileSystem } from "~/util/filesystem";
+import { getTranslations } from "~/util/i18n";
 import AddLibraryModal from "./add-library-modal";
 import CodeEditor, { type CodeEditorHandle } from "./code";
 import ComponentList from "./component-list";
@@ -84,6 +86,20 @@ const EXAMPLE_PATHS = [
     path: "/lib/Modelica/Thermal/FluidHeatFlow/Examples/ParallelCooling.mo",
   },
 ];
+
+const LANGUAGE_NAMES: Record<string, string> = {
+  ar: "العربية (Arabic)",
+  de: "Deutsch (German)",
+  en: "English",
+  fr: "Français (French)",
+  it: "Italiano (Italian)",
+  ja: "日本語 (Japanese)",
+  ko: "한국어 (Korean)",
+  pt: "Português (Portuguese)",
+  ru: "Русский (Russian)",
+  tr: "Türkçe (Turkish)",
+  zh: "中文 (Chinese)",
+};
 
 interface MorselEditorProps {
   dataUrl: DataUrl | null;
@@ -145,6 +161,9 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [pendingSplashVisible, setPendingSplashVisible] = useState(false);
   const [recentModels, setRecentModels] = useState<ModelData[]>([]);
   const [exampleModels, setExampleModels] = useState<ModelData[]>([]);
+  const [language, setLanguage] = useState<string | null>(null);
+  const [availableLanguages, setAvailableLanguages] = useState<string[]>([]);
+  const translations = useMemo(() => getTranslations(language), [language]);
 
   useEffect(() => {
     const saved = localStorage.getItem("recentModels");
@@ -213,6 +232,7 @@ export default function MorselEditor(props: MorselEditorProps) {
       setLoadingMessage("Loading libraries…");
       const ctx = new Context(new WebFileSystem());
       ctx.addLibrary("/lib/Modelica");
+      setAvailableLanguages(ctx.availableLanguages());
       setContext(ctx);
 
       // Load example models from the virtual filesystem
@@ -1112,13 +1132,13 @@ export default function MorselEditor(props: MorselEditorProps) {
                     className="d-flex flex-items-center"
                     style={{ display: isSearchExpanded || libraryFilter ? "none" : "flex" }}
                   >
-                    Libraries
+                    {translations.libraries}
                   </div>
                   <div className="d-flex flex-items-center flex-1 flex-justify-end" style={{ minWidth: 0 }}>
                     <TextInput
                       ref={inputRef}
-                      aria-label="Filter classes"
-                      placeholder="Filter classes..."
+                      aria-label={translations.filterClasses}
+                      placeholder={translations.filterClasses}
                       value={libraryFilter}
                       onChange={(e) => setLibraryFilter(e.target.value)}
                       onBlur={() => {
@@ -1158,7 +1178,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                     />
                     <IconButton
                       icon={SearchIcon}
-                      aria-label="Search libraries"
+                      aria-label={translations.filterClasses}
                       size="small"
                       variant="invisible"
                       onClick={() => {
@@ -1175,7 +1195,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                     />
                     <IconButton
                       icon={PlusIcon}
-                      aria-label="Add Library"
+                      aria-label={translations.addLibrary}
                       size="small"
                       variant="invisible"
                       ref={addLibraryButtonRef}
@@ -1191,9 +1211,12 @@ export default function MorselEditor(props: MorselEditorProps) {
                     width="100%"
                     filter={debouncedFilter}
                     version={contextVersion}
+                    language={language}
                   />
                 </div>
-                <div className="text-bold px-3 py-2 border-top border-bottom bg-canvas-subtle">Components</div>
+                <div className="text-bold px-3 py-2 border-top border-bottom bg-canvas-subtle">
+                  {translations.components}
+                </div>
                 <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
                   <ComponentList
                     classInstance={classInstance}
@@ -1206,6 +1229,8 @@ export default function MorselEditor(props: MorselEditorProps) {
                       }
                     }}
                     selectedName={selectedComponent?.name}
+                    language={language}
+                    translations={translations}
                   />
                 </div>
               </div>
@@ -1292,7 +1317,20 @@ export default function MorselEditor(props: MorselEditorProps) {
                     }}
                     onDrop={(className, x, y) => {
                       if (!classInstance || !editor) return;
-                      const baseName = className.split(".").pop()?.toLowerCase() || "component";
+
+                      // Try to get the defaultComponentName annotation from the dropped class
+                      const shortName = className.split(".").pop() || "component";
+                      let baseName = shortName.toLowerCase();
+                      const droppedClass = context?.query(className);
+                      if (droppedClass instanceof ModelicaClassInstance) {
+                        const defaultName = droppedClass.annotation<string>("defaultComponentName");
+                        if (defaultName) {
+                          baseName = droppedClass.translate(defaultName);
+                        } else {
+                          baseName = droppedClass.localizedName.toLowerCase();
+                        }
+                      }
+
                       let name = baseName;
                       let i = 1;
                       const existingNames = new Set(Array.from(classInstance.components).map((c) => c.name));
@@ -1564,6 +1602,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                       key={selectedComponent.name || "none"}
                       component={selectedComponent}
                       width={propertiesWidth}
+                      translations={translations}
                       onNameChange={(newName) => {
                         if (!selectedComponent || !editor) return;
                         const edit = getNameEdit(selectedComponent.name!, newName);
@@ -1694,8 +1733,8 @@ export default function MorselEditor(props: MorselEditorProps) {
             icon={treeVisible ? SidebarExpandIcon : SidebarCollapseIcon}
             size="small"
             variant="invisible"
-            aria-label="Toggle Tree"
-            title="Toggle Tree"
+            aria-label={translations.toggleTree}
+            title={translations.toggleTree}
             onClick={() => setTreeVisible((prev) => !prev)}
             style={
               treeVisible
@@ -1711,8 +1750,8 @@ export default function MorselEditor(props: MorselEditorProps) {
             icon={FileIcon}
             size="small"
             variant="invisible"
-            aria-label="New Model"
-            title="New Model"
+            aria-label={translations.newModel}
+            title={translations.newModel}
             type="button"
             onClick={(e) => {
               e.preventDefault();
@@ -1729,8 +1768,8 @@ export default function MorselEditor(props: MorselEditorProps) {
             icon={UploadIcon}
             size="small"
             variant="invisible"
-            aria-label="Open Model"
-            title="Open Model"
+            aria-label={translations.openModel}
+            title={translations.openModel}
             ref={openFileButtonRef}
             onClick={() => setIsOpenFileDialogOpen(true)}
           />
@@ -1738,8 +1777,8 @@ export default function MorselEditor(props: MorselEditorProps) {
             icon={DownloadIcon}
             size="small"
             variant="invisible"
-            aria-label="Save Model"
-            title="Save Model"
+            aria-label={translations.saveModel}
+            title={translations.saveModel}
             onClick={async () => {
               const content = editor?.getValue() || "";
               let filename = classInstance?.name ? `${classInstance.name}.mo` : "model.mo";
@@ -1765,14 +1804,10 @@ export default function MorselEditor(props: MorselEditorProps) {
             icon={FlowchartIcon}
             size="small"
             variant="invisible"
-            aria-label="Auto Layout"
-            title="Auto Layout"
+            aria-label={translations.autoLayout}
+            title={translations.autoLayout}
             onClick={() => {
-              if (
-                confirm(
-                  "Running auto layout will overwrite existing placement annotations. Are you sure you want to auto layout the diagram?",
-                )
-              ) {
+              if (confirm(translations.autoLayoutConfirm)) {
                 diagramEditorRef.current?.layout();
               }
             }}
@@ -1792,8 +1827,8 @@ export default function MorselEditor(props: MorselEditorProps) {
               icon={WorkflowIcon}
               size="small"
               variant="invisible"
-              aria-label="Diagram View"
-              title="Diagram View"
+              aria-label={translations.diagramView}
+              title={translations.diagramView}
               onClick={() => setView(View.DIAGRAM)}
               style={
                 view === View.DIAGRAM
@@ -1810,8 +1845,8 @@ export default function MorselEditor(props: MorselEditorProps) {
                   icon={ColumnsIcon}
                   size="small"
                   variant="invisible"
-                  aria-label="Split View (Columns)"
-                  title="Split View (Columns)"
+                  aria-label={translations.splitViewColumns}
+                  title={translations.splitViewColumns}
                   onClick={() => setView(View.SPLIT_COLUMNS)}
                   style={
                     view === View.SPLIT_COLUMNS
@@ -1826,8 +1861,8 @@ export default function MorselEditor(props: MorselEditorProps) {
                   icon={RowsIcon}
                   size="small"
                   variant="invisible"
-                  aria-label="Split View (Rows)"
-                  title="Split View (Rows)"
+                  aria-label={translations.splitViewRows}
+                  title={translations.splitViewRows}
                   onClick={() => setView(View.SPLIT_ROWS)}
                   style={
                     view === View.SPLIT_ROWS
@@ -1844,8 +1879,8 @@ export default function MorselEditor(props: MorselEditorProps) {
               icon={UnwrapIcon}
               size="small"
               variant="invisible"
-              aria-label="Code View"
-              title="Code View"
+              aria-label={translations.codeView}
+              title={translations.codeView}
               onClick={() => setView(View.CODE)}
               style={
                 view === View.CODE
@@ -1862,8 +1897,8 @@ export default function MorselEditor(props: MorselEditorProps) {
             icon={StackIcon}
             size="small"
             variant="invisible"
-            aria-label="Flatten Model"
-            title="Flatten Model"
+            aria-label={translations.flattenModel}
+            title={translations.flattenModel}
             onClick={handleFlatten}
           />
           <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
@@ -1871,7 +1906,7 @@ export default function MorselEditor(props: MorselEditorProps) {
             icon={ShareAndroidIcon}
             size="small"
             variant="invisible"
-            aria-label="Share Model"
+            aria-label={translations.shareModel}
             ref={shareButtonRef}
             onClick={() => setShareDialogOpen(!isShareDialogOpen)}
           />
@@ -1879,11 +1914,58 @@ export default function MorselEditor(props: MorselEditorProps) {
             icon={SponsorTiersIcon}
             size="small"
             variant="invisible"
-            aria-label="Sponsor Me"
-            title="Sponsor Me"
+            aria-label={translations.sponsorMe}
+            title={translations.sponsorMe}
             onClick={() => window.open("https://github.com/sponsors/nachawati", "_blank")}
           />
           <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
+          {availableLanguages.length > 0 && (
+            <>
+              <ActionMenu>
+                <ActionMenu.Anchor>
+                  <IconButton
+                    icon={GlobeIcon}
+                    size="small"
+                    variant="invisible"
+                    aria-label={translations.language}
+                    title={
+                      language
+                        ? `${translations.language}: ${LANGUAGE_NAMES[language] || language}`
+                        : `${translations.language}: ${translations.default}`
+                    }
+                  />
+                </ActionMenu.Anchor>
+                <ActionMenu.Overlay>
+                  <ActionList selectionVariant="single">
+                    <ActionList.Item
+                      selected={language === null}
+                      onSelect={() => {
+                        context?.setLanguage(null);
+                        setLanguage(null);
+                        setContextVersion((v) => v + 1);
+                      }}
+                    >
+                      {translations.default}
+                    </ActionList.Item>
+                    {availableLanguages.map((lang) => (
+                      <ActionList.Item
+                        key={lang}
+                        selected={language === lang}
+                        onSelect={() => {
+                          context?.setLanguage(lang);
+                          setLanguage(lang);
+                          setContextVersion((v) => v + 1);
+                        }}
+                      >
+                        {LANGUAGE_NAMES[lang] || lang}
+                      </ActionList.Item>
+                    ))}
+                  </ActionList>
+                </ActionMenu.Overlay>
+              </ActionMenu>
+              <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
+            </>
+          )}
           <IconButton
             icon={colorMode === "dark" ? SunIcon : MoonIcon}
             size="small"
@@ -1894,18 +1976,18 @@ export default function MorselEditor(props: MorselEditorProps) {
         </div>
         {isShareDialogOpen && (
           <Dialog
-            title="Share Model"
+            title={translations.shareModelTitle}
             onClose={() => setShareDialogOpen(false)}
             returnFocusRef={shareButtonRef}
             footerButtons={[
               {
                 buttonType: "normal",
-                content: "Copy to clipboard",
+                content: translations.copyToClipboard,
                 onClick: async () => {
                   await navigator.clipboard.writeText(
                     `${window.location.protocol}//${window.location.host}/#${encodeDataUrl(editor?.getValue() ?? "", ContentType.MODELICA)}`,
                   );
-                  alert("Copied to clipboard.");
+                  alert(translations.copiedToClipboard);
                   setShareDialogOpen(false);
                 },
               },
@@ -1918,12 +2000,12 @@ export default function MorselEditor(props: MorselEditorProps) {
         )}
         {isDirtyDialogOpen && (
           <Dialog
-            title="Unsaved Changes"
+            title={translations.unsavedChanges}
             onClose={() => setDirtyDialogOpen(false)}
             footerButtons={[
               {
                 buttonType: "normal",
-                content: "Cancel",
+                content: translations.cancel,
                 onClick: () => {
                   setDirtyDialogOpen(false);
                   setPendingSelection(null);
@@ -1932,7 +2014,7 @@ export default function MorselEditor(props: MorselEditorProps) {
               },
               {
                 buttonType: "danger",
-                content: "Discard Changes",
+                content: translations.discardChanges,
                 onClick: () => {
                   setDirtyDialogOpen(false);
                   if (pendingSelection) {
@@ -1947,13 +2029,17 @@ export default function MorselEditor(props: MorselEditorProps) {
               },
             ]}
           >
-            You have unsaved changes. Any unsaved changes will be lost if you switch without saving. Are you sure you
-            want to discard your changes?
+            {translations.unsavedChangesMessage}
           </Dialog>
         )}
         {isOpenFileDialogOpen && (
-          <Dialog title="Open File" onClose={() => setIsOpenFileDialogOpen(false)} returnFocusRef={openFileButtonRef}>
+          <Dialog
+            title={translations.openFile}
+            onClose={() => setIsOpenFileDialogOpen(false)}
+            returnFocusRef={openFileButtonRef}
+          >
             <OpenFileDropzone
+              translations={translations}
               onFileContent={(content) => {
                 editor?.setValue(content);
                 setIsOpenFileDialogOpen(false);
@@ -2007,6 +2093,7 @@ export default function MorselEditor(props: MorselEditorProps) {
           <AddLibraryModal
             isOpen={isAddLibraryOpen}
             onDismiss={() => setIsAddLibraryOpen(false)}
+            translations={translations}
             onAddLibrary={async (item, type) => {
               if (!context) return;
               try {
@@ -2111,6 +2198,7 @@ export default function MorselEditor(props: MorselEditorProps) {
             context={context}
             colorMode={resolvedColorMode}
             onClearRecent={handleClearRecent}
+            translations={translations}
           />
         )}
       </div>

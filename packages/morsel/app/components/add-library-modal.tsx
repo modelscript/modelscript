@@ -4,14 +4,16 @@ import { DownloadIcon, GlobeIcon, UploadIcon } from "@primer/octicons-react";
 import { Button, Dialog, FormControl, Heading, Spinner, Text, TextInput, UnderlineNav, useTheme } from "@primer/react";
 import { useCallback, useState } from "react";
 import { useDropzone } from "react-dropzone";
+import type { Translations } from "~/util/i18n";
 
 interface AddLibraryModalProps {
   isOpen: boolean;
   onDismiss: () => void;
   onAddLibrary: (file: File | string, type: "file" | "url" | "gallery") => Promise<void>;
+  translations: Translations;
 }
 
-export default function AddLibraryModal({ isOpen, onDismiss, onAddLibrary }: AddLibraryModalProps) {
+export default function AddLibraryModal({ isOpen, onDismiss, onAddLibrary, translations }: AddLibraryModalProps) {
   const [selectedTab, setSelectedTab] = useState<"upload" | "url">("upload");
   const [url, setUrl] = useState("");
   const [isAdding, setIsAdding] = useState(false);
@@ -51,13 +53,9 @@ export default function AddLibraryModal({ isOpen, onDismiss, onAddLibrary }: Add
   };
 
   return (
-    <Dialog
-      onClose={onDismiss}
-      title="Add Library"
-      sx={{ width: 600, maxHeight: "80vh", display: "flex", flexDirection: "column" }}
-    >
+    <Dialog onClose={onDismiss} title={translations.addLibrary}>
       <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-        <UnderlineNav aria-label="Add Library Methods">
+        <UnderlineNav aria-label={translations.addLibraryMethods}>
           <UnderlineNav.Item
             aria-current={selectedTab === "upload" ? "page" : undefined}
             onClick={(e) => {
@@ -66,7 +64,7 @@ export default function AddLibraryModal({ isOpen, onDismiss, onAddLibrary }: Add
             }}
             style={{ display: "flex", alignItems: "center", gap: 8 }}
           >
-            <UploadIcon /> Upload
+            <UploadIcon /> {translations.upload}
           </UnderlineNav.Item>
           <UnderlineNav.Item
             aria-current={selectedTab === "url" ? "page" : undefined}
@@ -76,7 +74,7 @@ export default function AddLibraryModal({ isOpen, onDismiss, onAddLibrary }: Add
             }}
             style={{ display: "flex", alignItems: "center", gap: 8 }}
           >
-            <GlobeIcon /> URL
+            <GlobeIcon /> {translations.url}
           </UnderlineNav.Item>
         </UnderlineNav>
 
@@ -105,15 +103,15 @@ export default function AddLibraryModal({ isOpen, onDismiss, onAddLibrary }: Add
               {isAdding ? (
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
                   <Spinner />
-                  <Text>Processing library...</Text>
+                  <Text>{translations.processingLibrary}</Text>
                 </div>
               ) : (
                 <>
                   <UploadIcon size={32} />
-                  <Heading as="h4" sx={{ mt: 2, mb: 1 }}>
-                    {isDragActive ? "Drop the ZIP file here" : "Drag & drop a ZIP file here"}
+                  <Heading as="h4" style={{ marginTop: 8, marginBottom: 4 }}>
+                    {isDragActive ? translations.dropZipHere : translations.dragDropZip}
                   </Heading>
-                  <Text color="fg.muted">or click to select a file</Text>
+                  <Text color="fg.muted">{translations.clickToSelectFile}</Text>
                 </>
               )}
             </div>
@@ -122,7 +120,7 @@ export default function AddLibraryModal({ isOpen, onDismiss, onAddLibrary }: Add
           {selectedTab === "url" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               <FormControl>
-                <FormControl.Label>Library URL (ZIP)</FormControl.Label>
+                <FormControl.Label>{translations.libraryUrl}</FormControl.Label>
                 <TextInput
                   block
                   value={url}
@@ -132,7 +130,7 @@ export default function AddLibraryModal({ isOpen, onDismiss, onAddLibrary }: Add
               </FormControl>
               <Button variant="primary" onClick={() => handleAdd(url, "url")} disabled={!url || isAdding}>
                 {isAdding ? <Spinner size="small" /> : <DownloadIcon />}
-                {isAdding ? " Downloading..." : " Download & Add"}
+                {isAdding ? ` ${translations.downloading}` : ` ${translations.downloadAndAdd}`}
               </Button>
             </div>
           )}

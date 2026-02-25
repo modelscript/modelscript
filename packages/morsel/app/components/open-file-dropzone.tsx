@@ -1,14 +1,18 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { UploadIcon } from "@primer/octicons-react";
 import { Heading, Text } from "@primer/react";
 import { useCallback } from "react";
 import { useDropzone } from "react-dropzone";
+import type { Translations } from "~/util/i18n";
 
 interface OpenFileDropzoneProps {
   onFileContent: (content: string) => void;
   colorMode: string;
+  translations: Translations;
 }
 
-export default function OpenFileDropzone({ onFileContent, colorMode }: OpenFileDropzoneProps) {
+export default function OpenFileDropzone({ onFileContent, colorMode, translations }: OpenFileDropzoneProps) {
   const onDrop = useCallback(
     (acceptedFiles: File[]) => {
       if (acceptedFiles.length > 0) {
@@ -57,10 +61,10 @@ export default function OpenFileDropzone({ onFileContent, colorMode }: OpenFileD
     >
       <input {...getInputProps()} />
       <UploadIcon size={32} />
-      <Heading as="h4" sx={{ mt: 2, mb: 1 }}>
-        {isDragActive ? "Drop the file here" : "Drag & drop a Modelica file here"}
+      <Heading as="h4" style={{ marginTop: 8, marginBottom: 4 }}>
+        {isDragActive ? translations.dropFileHere : translations.dragDropModelica}
       </Heading>
-      <Text color="fg.muted">or click to select a file</Text>
+      <Text color="fg.muted">{translations.orClickToSelect}</Text>
     </div>
   );
 }

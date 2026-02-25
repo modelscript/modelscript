@@ -11,6 +11,7 @@ interface TreeWidgetProps {
   width?: number | string;
   filter?: string;
   version?: number;
+  language?: string | null;
 }
 
 interface ClassIconProps {
@@ -44,6 +45,7 @@ interface TreeNodeProps {
   onSelect: (classInstance: ModelicaClassInstance) => void;
   depth: number;
   showQualifiedName?: boolean;
+  language?: string | null;
 }
 
 function getClassChildren(element: ModelicaClassInstance): ModelicaClassInstance[] {
@@ -57,7 +59,7 @@ function getClassChildren(element: ModelicaClassInstance): ModelicaClassInstance
 }
 
 const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
-  const { element, onSelect, depth, showQualifiedName } = props;
+  const { element, onSelect, depth, showQualifiedName, language } = props;
   const [expanded, setExpanded] = React.useState(false);
   const [hasChildren, setHasChildren] = React.useState<boolean | null>(null);
   const iconRef = React.useRef<HTMLSpanElement>(null);
@@ -135,13 +137,15 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
         </NavList.LeadingVisual>
         <div
           style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-          title={(showQualifiedName ? element.compositeName : element.name) ?? undefined}
+          title={(showQualifiedName ? element.localizedCompositeName : element.localizedName) ?? undefined}
         >
-          {showQualifiedName ? element.compositeName : element.name}
+          {showQualifiedName ? element.localizedCompositeName : element.localizedName}
         </div>
       </NavList.Item>
       {expanded &&
-        children?.map((child) => <TreeNode key={child.name} element={child} onSelect={onSelect} depth={depth + 1} />)}
+        children?.map((child) => (
+          <TreeNode key={child.name} element={child} onSelect={onSelect} depth={depth + 1} language={language} />
+        ))}
     </>
   );
 });
@@ -184,7 +188,9 @@ const LibraryGroup = React.memo(function LibraryGroup(props: LibraryGroupProps) 
         {library.path.split("/").pop() ?? library.path}
       </NavList.Item>
       {expanded &&
-        children?.map((child) => <TreeNode key={child.name} element={child} onSelect={onSelect} depth={1} />)}
+        children?.map((child) => (
+          <TreeNode key={child.name} element={child} onSelect={onSelect} depth={1} language={undefined} />
+        ))}
     </NavList.Group>
   );
 });
@@ -224,13 +230,28 @@ const TreeWidget = React.memo(function TreeWidget(props: TreeWidgetProps) {
 
       elements.push(
         ...matchingClasses.map((c) => (
-          <TreeNode key={c.compositeName} element={c} onSelect={props.onSelect} depth={0} showQualifiedName={true} />
+          <TreeNode
+            key={c.compositeName}
+            element={c}
+            onSelect={props.onSelect}
+            depth={0}
+            showQualifiedName={true}
+            language={props.language}
+          />
         )),
       );
     } else {
       for (const element of props.context.elements) {
         if (element instanceof ModelicaClassInstance) {
-          elements.push(<TreeNode key={element.name} element={element} onSelect={props.onSelect} depth={0} />);
+          elements.push(
+            <TreeNode
+              key={element.name}
+              element={element}
+              onSelect={props.onSelect}
+              depth={0}
+              language={props.language}
+            />,
+          );
         } else if (element instanceof ModelicaLibrary) {
           elements.push(<LibraryGroup key={element.path} library={element} onSelect={props.onSelect} />);
         }
