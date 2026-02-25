@@ -20,18 +20,19 @@ export default defineConfig(({ isSsrBuild }) => {
           include: ["buffer", "crypto", "fs", "path", "process", "stream", "util", "vm"],
           protocolImports: false,
         }),
-      viteStaticCopy({
-        targets: [
-          {
-            src: "./node_modules/web-tree-sitter/tree-sitter.wasm",
-            dest: "",
-          },
-          {
-            src: "../../node_modules/@modelscript/tree-sitter-modelica/tree-sitter-modelica.wasm",
-            dest: "",
-          },
-        ],
-      }),
+      isSsrBuild === false &&
+        viteStaticCopy({
+          targets: [
+            {
+              src: "./node_modules/web-tree-sitter/tree-sitter.wasm",
+              dest: "",
+            },
+            {
+              src: "../../node_modules/@modelscript/tree-sitter-modelica/tree-sitter-modelica.wasm",
+              dest: "",
+            },
+          ],
+        }),
     ],
     ssr: {
       noExternal: ["@primer/react", "monaco-editor"],
