@@ -215,7 +215,19 @@ export default function MorselEditor(props: MorselEditorProps) {
       setLoadingProgress(40);
       setLoadingMessage("Fetching Modelica Standard Library…");
       try {
-        const ModelicaLibrary = await fetch("/ModelicaStandardLibrary_v4.1.0.zip");
+        const cache = await caches.open("modelscript-libraries");
+        let ModelicaLibrary = await cache.match("/ModelicaStandardLibrary_v4.1.0.zip");
+        if (!ModelicaLibrary) {
+          ModelicaLibrary = await fetch("/ModelicaStandardLibrary_v4.1.0.zip");
+          if (!ModelicaLibrary.ok) {
+            ModelicaLibrary = await fetch(
+              "https://github.com/modelica/ModelicaStandardLibrary/releases/download/v4.1.0/ModelicaStandardLibrary_v4.1.0.zip",
+            );
+          }
+          if (ModelicaLibrary.ok) {
+            await cache.put("/ModelicaStandardLibrary_v4.1.0.zip", ModelicaLibrary.clone());
+          }
+        }
         setLoadingProgress(60);
         setLoadingMessage("Configuring filesystem…");
         await configure({
@@ -2133,26 +2145,32 @@ export default function MorselEditor(props: MorselEditorProps) {
                   data = await item.arrayBuffer();
                 } else if (type === "url") {
                   const url = item as string;
-                  let response: Response;
-                  try {
-                    response = await fetch(url);
-                    if (!response.ok) {
-                      throw new Error("Direct fetch failed");
-                    }
-                  } catch (e) {
+                  let response: Response | undefined;
+                  const cache = await caches.open("modelscript-libraries");
+                  response = await cache.match(url);
+
+                  if (!response) {
                     try {
-                      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
-                      response = await fetch(proxyUrl);
-                    } catch (proxyError) {
+                      response = await fetch(url);
+                      if (!response.ok) {
+                        throw new Error("Direct fetch failed");
+                      }
+                    } catch (e) {
+                      try {
+                        const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+                        response = await fetch(proxyUrl);
+                      } catch (proxyError) {
+                        throw new Error(
+                          `Failed to fetch library from ${url}: ${proxyError instanceof Error ? proxyError.message : String(proxyError)}`,
+                        );
+                      }
+                    }
+                    if (!response || !response.ok) {
                       throw new Error(
-                        `Failed to fetch library from ${url}: ${proxyError instanceof Error ? proxyError.message : String(proxyError)}`,
+                        `Failed to fetch library: ${response?.status} ${response?.statusText || "Unknown Error"}`,
                       );
                     }
-                  }
-                  if (!response || !response.ok) {
-                    throw new Error(
-                      `Failed to fetch library: ${response?.status} ${response?.statusText || "Unknown Error"}`,
-                    );
+                    await cache.put(url, response.clone());
                   }
                   data = await response.arrayBuffer();
                   const fileName = url.split("/").pop() || "library.zip";
