@@ -4,7 +4,6 @@ import { DagreLayout } from "@antv/layout";
 import { Graph, Keyboard, Selection, Snapline, Transform, type EdgeMetadata, type NodeMetadata } from "@antv/x6";
 import type { PortMetadata } from "@antv/x6/lib/model/port";
 import {
-  applyCoordinateSystem,
   computeHeight,
   computeIconPlacement,
   computePortPlacement,
@@ -14,8 +13,6 @@ import {
   LinePattern,
   ModelicaClassKind,
   ModelicaElement,
-  renderDiagram,
-  renderGraphicItem,
   Smooth,
   type IDiagram,
   type IIcon,
@@ -23,9 +20,8 @@ import {
   type ModelicaClassInstance,
 } from "@modelscript/modelscript";
 import type { Theme } from "@monaco-editor/react";
-import { Svg } from "@svgdotjs/svg.js";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { renderIconX6 } from "../util/x6";
+import { renderDiagramX6, renderIconX6 } from "../util/x6";
 
 export interface DiagramEditorHandle {
   fitContent: () => void;
@@ -220,7 +216,10 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
           global: true,
           modifiers: "ctrl",
         },
-        interacting: true,
+        interacting: (cellView) => {
+          if (cellView.cell.id === "__diagram_background__") return false;
+          return true;
+        },
         connecting: {
           allowBlank: false,
           allowMulti: (args) => {
@@ -295,7 +294,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
         }
       });
       g.on("cell:click", ({ cell }) => {
-        if (cell.isNode()) {
+        if (cell.isNode() && cell.id !== "__diagram_background__") {
           if (onSelectRef.current) {
             onSelectRef.current(cell.id);
           }
@@ -753,29 +752,45 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
 
     const diagram: IDiagram | null = props.classInstance.annotation("Diagram");
     if (diagram) {
-      let background = document.getElementById("background") as unknown as SVGSVGElement | null;
-      if (background) {
-        while (background.firstChild) {
-          background.removeChild(background.firstChild);
-        }
-      } else {
-        background = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-        background.setAttribute("id", "background");
-        g.view.viewport.insertBefore(background, g.view.viewport.firstChild);
+      const diagramMarkup = renderDiagramX6(props.classInstance);
+      if (diagramMarkup) {
+        const ext0 = diagram.coordinateSystem?.extent?.[0] ?? [-100, -100];
+        const ext1 = diagram.coordinateSystem?.extent?.[1] ?? [100, 100];
+        const bgWidth = computeWidth(diagram.coordinateSystem?.extent);
+        const bgHeight = computeHeight(diagram.coordinateSystem?.extent);
+        const x = Math.min(ext0[0], ext1[0]);
+        const y = -Math.max(ext0[1], ext1[1]);
+        nodes.set("__diagram_background__", {
+          id: "__diagram_background__",
+          x,
+          y,
+          width: bgWidth,
+          height: bgHeight,
+          zIndex: -1,
+          movable: false,
+          selectable: false,
+          markup: {
+            tagName: "svg",
+            children: [
+              {
+                tagName: "rect",
+                attrs: {
+                  style: "fill: transparent; stroke: none",
+                  width: bgWidth,
+                  height: bgHeight,
+                },
+              },
+              diagramMarkup,
+            ],
+            attrs: {
+              preserveAspectRatio: "none",
+              width: bgWidth,
+              height: bgHeight,
+              style: "overflow: visible",
+            },
+          },
+        } as any);
       }
-      const svg = new Svg(background);
-      applyCoordinateSystem(svg, diagram.coordinateSystem);
-      const p1 = convertPoint(diagram.coordinateSystem?.extent?.[0], [-100, -100]);
-      background.setAttribute("x", String(p1[0]));
-      background.setAttribute("y", String(-p1[1]));
-      background.setAttribute("width", String(computeWidth(diagram.coordinateSystem?.extent)));
-      background.setAttribute("height", String(computeHeight(diagram.coordinateSystem?.extent)));
-      background.setAttribute("z-index", "1");
-      for (const extendsClassInstance of props.classInstance.extendsClassInstances) {
-        if (extendsClassInstance.classInstance) renderDiagram(extendsClassInstance.classInstance, svg);
-      }
-      const group = svg.group();
-      for (const graphicItem of diagram?.graphics ?? []) renderGraphicItem(group, graphicItem, props.classInstance);
     }
     const nodesToLayout: string[] = [];
     nodes.forEach((node) => {

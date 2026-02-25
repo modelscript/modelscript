@@ -17,6 +17,7 @@ import {
   type IBitmap,
   type IColor,
   type ICoordinateSystem,
+  type IDiagram,
   type IEllipse,
   type IFilledShape,
   type IGraphicItem,
@@ -36,6 +37,55 @@ export interface X6Markup {
   attrs?: Record<string, string | number | undefined>;
   children?: X6Markup[];
   textContent?: string;
+}
+
+export function renderDiagramX6(classInstance: ModelicaClassInstance): X6Markup | null {
+  const defs: X6Markup[] = [];
+  const graphicItems: X6Markup[] = [];
+
+  function collectGraphics(ci: ModelicaClassInstance) {
+    for (const extendsClassInstance of ci.extendsClassInstances) {
+      if (extendsClassInstance.classInstance) {
+        collectGraphics(extendsClassInstance.classInstance);
+      }
+    }
+    const diagram: IDiagram | null = ci.annotation("Diagram");
+    if (diagram?.graphics) {
+      for (const graphicItem of diagram.graphics) {
+        graphicItems.push(renderGraphicItemX6(graphicItem, defs, ci));
+      }
+    }
+  }
+
+  collectGraphics(classInstance);
+
+  if (graphicItems.length === 0 && defs.length === 0) return null;
+
+  const diagram: IDiagram | null = classInstance.annotation("Diagram");
+  const [x1, y1] = convertPoint(diagram?.coordinateSystem?.extent?.[0], [-100, -100]);
+  const [x2, y2] = convertPoint(diagram?.coordinateSystem?.extent?.[1], [100, 100]);
+  const vbX = Math.min(x1, x2);
+  const vbY = Math.min(y1, y2);
+  const vbW = computeWidth(diagram?.coordinateSystem?.extent);
+  const vbH = computeHeight(diagram?.coordinateSystem?.extent);
+
+  const children: X6Markup[] = [];
+  if (defs.length > 0) {
+    children.push({ tagName: "defs", children: defs });
+  }
+  children.push({ tagName: "g", children: graphicItems });
+
+  return {
+    tagName: "svg",
+    attrs: {
+      width: "100%",
+      height: "100%",
+      viewBox: `${vbX} ${vbY} ${vbW} ${vbH}`,
+      preserveAspectRatio: "none",
+      overflow: "visible",
+    },
+    children,
+  };
 }
 
 export function renderIconX6(
