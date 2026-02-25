@@ -25,10 +25,16 @@ const ClassIcon = React.memo(function ClassIcon(props: ClassIconProps) {
   const svgString = React.useMemo(() => {
     const cached = iconSvgCache.get(cacheKey);
     if (cached !== undefined) return cached;
-    const svg = renderIcon(props.classInstance, undefined, true, undefined);
-    const result = svg && svg.children().length > 0 ? svg.svg() : null;
-    iconSvgCache.set(cacheKey, result);
-    return result;
+    try {
+      const svg = renderIcon(props.classInstance, undefined, true, undefined);
+      const result = svg && svg.children().length > 0 ? svg.svg() : null;
+      iconSvgCache.set(cacheKey, result);
+      return result;
+    } catch (e) {
+      console.warn(`Failed to render icon for ${cacheKey}:`, e);
+      iconSvgCache.set(cacheKey, null);
+      return null;
+    }
   }, [cacheKey]);
 
   if (!svgString) {

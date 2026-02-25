@@ -536,6 +536,7 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
   }
 
   get extendsClassInstances(): IterableIterator<ModelicaExtendsClassInstance> {
+    if (!this.instantiated && !this.instantiating) this.instantiate();
     const declaredElements = this.declaredElements;
     return (function* () {
       for (const declaredElement of declaredElements) {
