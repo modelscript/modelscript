@@ -56,6 +56,7 @@ interface DiagramEditorProps {
   onEdgeMove?: (edges: { source: string; target: string; points: { x: number; y: number }[] }[]) => void;
   onEdgeDelete?: (source: string, target: string) => void;
   onComponentDelete?: (name: string) => void;
+  onComponentsDelete?: (names: string[]) => void;
   selectedName?: string | null;
   theme: Theme;
 }
@@ -71,6 +72,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
   const onEdgeMoveRef = useRef(props.onEdgeMove);
   const onEdgeDeleteRef = useRef(props.onEdgeDelete);
   const onComponentDeleteRef = useRef(props.onComponentDelete);
+  const onComponentsDeleteRef = useRef(props.onComponentsDelete);
   const moveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const justResizedRef = useRef(false);
   const changedNodesRef = useRef<Set<string>>(new Set());
@@ -150,6 +152,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     onEdgeMoveRef.current = props.onEdgeMove;
     onEdgeDeleteRef.current = props.onEdgeDelete;
     onComponentDeleteRef.current = props.onComponentDelete;
+    onComponentsDeleteRef.current = props.onComponentsDelete;
   }, [
     props.onSelect,
     props.onConnect,
@@ -158,6 +161,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     props.onEdgeMove,
     props.onEdgeDelete,
     props.onComponentDelete,
+    props.onComponentsDelete,
   ]);
 
   const getConnectedEdges = (node: any) => {
@@ -275,6 +279,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       g.bindKey(["backspace", "delete"], () => {
         const cells = g?.getSelectedCells();
         if (cells && cells.length > 0) {
+          const componentNames: string[] = [];
           cells.forEach((cell) => {
             if (cell.isEdge()) {
               const source = cell.getSource() as any;
@@ -285,11 +290,16 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
                 }
               }
             } else if (cell.isNode()) {
-              if (onComponentDeleteRef.current) {
-                onComponentDeleteRef.current(cell.id);
-              }
+              componentNames.push(cell.id);
             }
           });
+          if (componentNames.length > 0) {
+            if (onComponentsDeleteRef.current) {
+              onComponentsDeleteRef.current(componentNames);
+            } else {
+              componentNames.forEach((name) => onComponentDeleteRef.current?.(name));
+            }
+          }
           g?.removeCells(cells);
         }
       });

@@ -954,15 +954,24 @@ export default function MorselEditor(props: MorselEditorProps) {
   };
 
   const handleComponentDelete = (name: string) => {
+    handleComponentsDelete([name]);
+  };
+
+  const handleComponentsDelete = (names: string[]) => {
     if (!classInstance || !editor) return;
 
     const edits: editor.IIdentifiedSingleEditOperation[] = [];
     const model = editor.getModel();
+    const nameSet = new Set(names);
+
     if (model) {
+      // Collect connect equation edits for all components
       Array.from(classInstance.connectEquations).forEach((ce: any) => {
         const c1 = ce.componentReference1?.parts.map((c: any) => c.identifier?.text ?? "").join(".");
         const c2 = ce.componentReference2?.parts.map((c: any) => c.identifier?.text ?? "").join(".");
-        const involvesComponent = c1 === name || c1.startsWith(`${name}.`) || c2 === name || c2.startsWith(`${name}.`);
+        const involvesComponent = [...nameSet].some(
+          (name) => c1 === name || c1.startsWith(`${name}.`) || c2 === name || c2.startsWith(`${name}.`),
+        );
         if (involvesComponent) {
           const node = ce.concreteSyntaxNode;
           if (node) {
@@ -1003,67 +1012,17 @@ export default function MorselEditor(props: MorselEditorProps) {
       });
     }
 
-    const component = Array.from(classInstance.components).find((c) => c.name === name);
-    if (!component) return;
-    const node = component.abstractSyntaxNode?.parent;
-    if (node instanceof ModelicaComponentClauseSyntaxNode) {
-      if (node.componentDeclarations.length <= 1 && node.concreteSyntaxNode) {
-        const startLine = node.concreteSyntaxNode.startPosition.row + 1;
-        const startCol = node.concreteSyntaxNode.startPosition.column + 1;
-        const endLine = node.concreteSyntaxNode.endPosition.row + 1;
-        const endCol = node.concreteSyntaxNode.endPosition.column + 1;
-        let range = {
-          startLineNumber: startLine,
-          startColumn: startCol,
-          endLineNumber: endLine,
-          endColumn: endCol,
-        };
-        if (model) {
-          const startLineContent = model.getLineContent(startLine);
-          const prefix = startLineContent.substring(0, startCol - 1).trim();
-          const endLineContent = model.getLineContent(endLine);
-          const suffix = endLineContent.substring(endCol - 1).trim();
-          if (prefix === "" && suffix === "") {
-            if (endLine < model.getLineCount()) {
-              range = {
-                startLineNumber: startLine,
-                startColumn: 1,
-                endLineNumber: endLine + 1,
-                endColumn: 1,
-              };
-            } else {
-              range = {
-                startLineNumber: startLine,
-                startColumn: 1,
-                endLineNumber: endLine,
-                endColumn: model.getLineMaxColumn(endLine),
-              };
-            }
-          }
-        }
-        edits.push({ range, text: "" });
-      } else if (node.componentDeclarations.length >= 1) {
-        const index = node.componentDeclarations.findIndex((c) => c.declaration?.identifier?.text === name);
-        const componentDeclaration = node.componentDeclarations[index];
-        if (componentDeclaration?.concreteSyntaxNode) {
-          let startLine = componentDeclaration.concreteSyntaxNode.startPosition.row + 1;
-          let startCol = componentDeclaration.concreteSyntaxNode.startPosition.column + 1;
-          let endLine = componentDeclaration.concreteSyntaxNode.endPosition.row + 1;
-          let endCol = componentDeclaration.concreteSyntaxNode.endPosition.column + 1;
-
-          if (index > 0) {
-            const prevDecl = node.componentDeclarations[index - 1];
-            if (prevDecl.concreteSyntaxNode) {
-              startLine = prevDecl.concreteSyntaxNode.endPosition.row + 1;
-              startCol = prevDecl.concreteSyntaxNode.endPosition.column + 1;
-            }
-          } else if (node.componentDeclarations.length > 1) {
-            const nextDecl = node.componentDeclarations[1];
-            if (nextDecl.concreteSyntaxNode) {
-              endLine = nextDecl.concreteSyntaxNode.startPosition.row + 1;
-              endCol = nextDecl.concreteSyntaxNode.startPosition.column + 1;
-            }
-          }
+    // Collect component declaration edits for all components
+    for (const name of names) {
+      const component = Array.from(classInstance.components).find((c) => c.name === name);
+      if (!component) continue;
+      const node = component.abstractSyntaxNode?.parent;
+      if (node instanceof ModelicaComponentClauseSyntaxNode) {
+        if (node.componentDeclarations.length <= 1 && node.concreteSyntaxNode) {
+          const startLine = node.concreteSyntaxNode.startPosition.row + 1;
+          const startCol = node.concreteSyntaxNode.startPosition.column + 1;
+          const endLine = node.concreteSyntaxNode.endPosition.row + 1;
+          const endCol = node.concreteSyntaxNode.endPosition.column + 1;
           let range = {
             startLineNumber: startLine,
             startColumn: startCol,
@@ -1094,6 +1053,59 @@ export default function MorselEditor(props: MorselEditorProps) {
             }
           }
           edits.push({ range, text: "" });
+        } else if (node.componentDeclarations.length >= 1) {
+          const index = node.componentDeclarations.findIndex((c) => c.declaration?.identifier?.text === name);
+          const componentDeclaration = node.componentDeclarations[index];
+          if (componentDeclaration?.concreteSyntaxNode) {
+            let startLine = componentDeclaration.concreteSyntaxNode.startPosition.row + 1;
+            let startCol = componentDeclaration.concreteSyntaxNode.startPosition.column + 1;
+            let endLine = componentDeclaration.concreteSyntaxNode.endPosition.row + 1;
+            let endCol = componentDeclaration.concreteSyntaxNode.endPosition.column + 1;
+
+            if (index > 0) {
+              const prevDecl = node.componentDeclarations[index - 1];
+              if (prevDecl.concreteSyntaxNode) {
+                startLine = prevDecl.concreteSyntaxNode.endPosition.row + 1;
+                startCol = prevDecl.concreteSyntaxNode.endPosition.column + 1;
+              }
+            } else if (node.componentDeclarations.length > 1) {
+              const nextDecl = node.componentDeclarations[1];
+              if (nextDecl.concreteSyntaxNode) {
+                endLine = nextDecl.concreteSyntaxNode.startPosition.row + 1;
+                endCol = nextDecl.concreteSyntaxNode.startPosition.column + 1;
+              }
+            }
+            let range = {
+              startLineNumber: startLine,
+              startColumn: startCol,
+              endLineNumber: endLine,
+              endColumn: endCol,
+            };
+            if (model) {
+              const startLineContent = model.getLineContent(startLine);
+              const prefix = startLineContent.substring(0, startCol - 1).trim();
+              const endLineContent = model.getLineContent(endLine);
+              const suffix = endLineContent.substring(endCol - 1).trim();
+              if (prefix === "" && suffix === "") {
+                if (endLine < model.getLineCount()) {
+                  range = {
+                    startLineNumber: startLine,
+                    startColumn: 1,
+                    endLineNumber: endLine + 1,
+                    endColumn: 1,
+                  };
+                } else {
+                  range = {
+                    startLineNumber: startLine,
+                    startColumn: 1,
+                    endLineNumber: endLine,
+                    endColumn: model.getLineMaxColumn(endLine),
+                  };
+                }
+              }
+            }
+            edits.push({ range, text: "" });
+          }
         }
       }
     }
@@ -1560,6 +1572,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                     }}
                     onEdgeDelete={handleEdgeDelete}
                     onComponentDelete={handleComponentDelete}
+                    onComponentsDelete={handleComponentsDelete}
                   />
                 </div>
                 {selectedComponent && (
