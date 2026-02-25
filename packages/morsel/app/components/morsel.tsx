@@ -297,8 +297,17 @@ export default function MorselEditor(props: MorselEditorProps) {
         : [];
       setExampleModels(examples);
 
-      setLoadingProgress(100);
-      setLoadingMessage("Ready");
+      // Defer hiding the loading screen until the browser is idle,
+      // so the diagram and other heavy UI components finish rendering first.
+      const hideLoading = () => {
+        setLoadingProgress(100);
+        setLoadingMessage("Ready");
+      };
+      if ("requestIdleCallback" in window) {
+        requestIdleCallback(hideLoading);
+      } else {
+        setTimeout(hideLoading, 200);
+      }
     };
     init();
   }, []);
