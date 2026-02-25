@@ -1799,7 +1799,14 @@ export default function MorselEditor(props: MorselEditorProps) {
             zIndex: 1000,
           }}
         >
-          <img src={colorMode === "dark" ? "/brand-dark.png" : "/brand.png"} alt="Morsel" style={{ height: 20 }} />
+          <a
+            href="https://github.com/modelscript/modelscript"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ display: "flex", alignItems: "center" }}
+          >
+            <img src={colorMode === "dark" ? "/brand-dark.png" : "/brand.png"} alt="Morsel" style={{ height: 20 }} />
+          </a>
           <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
           <IconButton
             icon={treeVisible ? SidebarExpandIcon : SidebarCollapseIcon}
@@ -2141,11 +2148,13 @@ export default function MorselEditor(props: MorselEditorProps) {
               gap: 12,
             }}
           >
-            <img
-              src={colorMode === "dark" ? "/brand-dark.png" : "/brand.png"}
-              alt="Morsel"
-              style={{ marginBottom: 8 }}
-            />
+            <a href="https://github.com/modelscript/modelscript" target="_blank" rel="noopener noreferrer">
+              <img
+                src={colorMode === "dark" ? "/brand-dark.png" : "/brand.png"}
+                alt="Morsel"
+                style={{ marginBottom: 8 }}
+              />
+            </a>
             <div
               style={{
                 width: 300,
