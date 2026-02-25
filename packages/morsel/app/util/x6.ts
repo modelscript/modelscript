@@ -336,7 +336,10 @@ export function renderTextX6(
 ): X6Markup {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.style.position = "absolute";
+  svg.style.top = "-10000px";
+  svg.style.left = "-10000px";
   svg.style.visibility = "hidden";
+  svg.style.pointerEvents = "none";
   document.body.appendChild(svg);
   const text = renderText(new Svg(svg).group(), graphicItem, classInstance, componentInstance);
   document.body.removeChild(svg);

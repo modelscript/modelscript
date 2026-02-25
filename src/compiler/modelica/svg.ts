@@ -410,19 +410,25 @@ export function applyFontSize(shape: Text, graphicItem: IText): void {
   const fontSize = graphicItem.fontSize ?? 0;
   if (fontSize === 0) {
     const width = computeWidth(graphicItem.extent, 100);
-    const height = computeHeight(graphicItem.extent, 40) - 6;
-    for (let i = 1; i <= height; i++) {
-      shape.attr({
-        "font-size": i,
-      });
+    const height = computeHeight(graphicItem.extent, 40) - 2; // Increased padding
+    let minSize = 1;
+    let maxSize = Math.max(1, Math.floor(height));
+    let bestSize = 1;
+
+    // Use binary search for faster and more consistent font size determination
+    while (minSize <= maxSize) {
+      const midSize = Math.floor((minSize + maxSize) / 2);
+      shape.attr({ "font-size": midSize });
+      // We use a small tolerance (1px) to avoid rounding issues that might differ between browsers
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      if ((shape.node as any).getComputedTextLength() > width) {
-        shape.attr({
-          "font-size": i - 1,
-        });
-        break;
+      if ((shape.node as any).getComputedTextLength() <= width + 0.5) {
+        bestSize = midSize;
+        minSize = midSize + 1;
+      } else {
+        maxSize = midSize - 1;
       }
     }
+    shape.attr({ "font-size": bestSize });
   } else {
     shape.attr({
       "font-size": fontSize,
