@@ -44,7 +44,7 @@ import { type DataUrl } from "parse-data-url";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Parser from "web-tree-sitter";
 import { mountLibrary, WebFileSystem } from "~/util/filesystem";
-import { getTranslations } from "~/util/i18n";
+import { getTranslations, uiLanguages } from "~/util/i18n";
 import AddLibraryModal from "./add-library-modal";
 import CodeEditor, { type CodeEditorHandle } from "./code";
 import ComponentList from "./component-list";
@@ -232,7 +232,16 @@ export default function MorselEditor(props: MorselEditorProps) {
       setLoadingMessage("Loading libraries…");
       const ctx = new Context(new WebFileSystem());
       ctx.addLibrary("/lib/Modelica");
-      setAvailableLanguages(ctx.availableLanguages());
+      const langs = [...new Set([...ctx.availableLanguages(), ...uiLanguages])].sort();
+      setAvailableLanguages(langs);
+
+      // Auto-detect browser language
+      const browserLang = navigator.language?.split("-")[0];
+      if (browserLang && browserLang !== "en" && langs.includes(browserLang)) {
+        ctx.setLanguage(browserLang);
+        setLanguage(browserLang);
+      }
+
       setContext(ctx);
 
       // Load example models from the virtual filesystem
@@ -1923,17 +1932,24 @@ export default function MorselEditor(props: MorselEditorProps) {
             <>
               <ActionMenu>
                 <ActionMenu.Anchor>
-                  <IconButton
-                    icon={GlobeIcon}
-                    size="small"
-                    variant="invisible"
-                    aria-label={translations.language}
-                    title={
-                      language
-                        ? `${translations.language}: ${LANGUAGE_NAMES[language] || language}`
-                        : `${translations.language}: ${translations.default}`
-                    }
-                  />
+                  <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                    <IconButton
+                      icon={GlobeIcon}
+                      size="small"
+                      variant="invisible"
+                      aria-label={translations.language}
+                      title={
+                        language
+                          ? `${translations.language}: ${LANGUAGE_NAMES[language] || language}`
+                          : `${translations.language}: ${translations.default}`
+                      }
+                    />
+                    {language && (
+                      <span style={{ fontSize: 10, color: "#8b949e", fontWeight: 600, letterSpacing: 0.5 }}>
+                        {language.toUpperCase()}
+                      </span>
+                    )}
+                  </div>
                 </ActionMenu.Anchor>
                 <ActionMenu.Overlay>
                   <ActionList selectionVariant="single">

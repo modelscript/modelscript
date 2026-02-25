@@ -352,6 +352,8 @@ const tr: Translations = {
 
 const translations: Record<string, Translations> = { en, ar, tr };
 
+export const uiLanguages = Object.keys(translations).filter((k) => k !== "en");
+
 export function getTranslations(language: string | null): Translations {
   if (language && translations[language]) {
     return translations[language];
