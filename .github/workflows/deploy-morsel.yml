@@ -21,7 +21,10 @@ jobs:
       - name: Install
         run: npm ci
       - name: Build
-        run: npx lerna run build
+        run: |
+          mkdir -p packages/morsel/public
+          curl -L https://github.com/modelica/ModelicaStandardLibrary/releases/download/v4.1.0/ModelicaStandardLibrary_v4.1.0.zip -o packages/morsel/public/ModelicaStandardLibrary_v4.1.0.zip
+          npx lerna run build
       - name: SPA fallback for GitHub Pages
         run: cp packages/morsel/build/client/index.html packages/morsel/build/client/404.html
       - name: Deploy
