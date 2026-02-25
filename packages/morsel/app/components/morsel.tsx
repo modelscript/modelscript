@@ -58,32 +58,32 @@ const EXAMPLE_PATHS = [
   {
     id: "cauer-low-pass",
     name: "CauerLowPassAnalog",
-    path: "/lib/Modelica/Electrical/Analog/Examples/CauerLowPassAnalog.mo",
+    path: "Electrical/Analog/Examples/CauerLowPassAnalog.mo",
   },
-  { id: "chua-circuit", name: "ChuaCircuit", path: "/lib/Modelica/Electrical/Analog/Examples/ChuaCircuit.mo" },
+  { id: "chua-circuit", name: "ChuaCircuit", path: "Electrical/Analog/Examples/ChuaCircuit.mo" },
   {
     id: "mos-inverter",
     name: "HeatingMOSInverter",
-    path: "/lib/Modelica/Electrical/Analog/Examples/HeatingMOSInverter.mo",
+    path: "Electrical/Analog/Examples/HeatingMOSInverter.mo",
   },
   {
     id: "thyristor-test",
     name: "ThyristorBehaviourTest",
-    path: "/lib/Modelica/Electrical/Analog/Examples/ThyristorBehaviourTest.mo",
+    path: "Electrical/Analog/Examples/ThyristorBehaviourTest.mo",
   },
   {
     id: "opamp-amplifier",
     name: "AmplifierWithOpAmpDetailed",
-    path: "/lib/Modelica/Electrical/Analog/Examples/AmplifierWithOpAmpDetailed.mo",
+    path: "Electrical/Analog/Examples/AmplifierWithOpAmpDetailed.mo",
   },
-  { id: "pump-dropout", name: "PumpDropOut", path: "/lib/Modelica/Thermal/FluidHeatFlow/Examples/PumpDropOut.mo" },
-  { id: "two-mass", name: "TwoMass", path: "/lib/Modelica/Thermal/FluidHeatFlow/Examples/TwoMass.mo" },
-  { id: "open-tank", name: "TestOpenTank", path: "/lib/Modelica/Thermal/FluidHeatFlow/Examples/TestOpenTank.mo" },
-  { id: "one-mass", name: "OneMass", path: "/lib/Modelica/Thermal/FluidHeatFlow/Examples/OneMass.mo" },
+  { id: "pump-dropout", name: "PumpDropOut", path: "Thermal/FluidHeatFlow/Examples/PumpDropOut.mo" },
+  { id: "two-mass", name: "TwoMass", path: "Thermal/FluidHeatFlow/Examples/TwoMass.mo" },
+  { id: "open-tank", name: "TestOpenTank", path: "Thermal/FluidHeatFlow/Examples/TestOpenTank.mo" },
+  { id: "one-mass", name: "OneMass", path: "Thermal/FluidHeatFlow/Examples/OneMass.mo" },
   {
     id: "parallel-cooling",
     name: "ParallelCooling",
-    path: "/lib/Modelica/Thermal/FluidHeatFlow/Examples/ParallelCooling.mo",
+    path: "Thermal/FluidHeatFlow/Examples/ParallelCooling.mo",
   },
 ];
 
@@ -275,15 +275,26 @@ export default function MorselEditor(props: MorselEditorProps) {
       setContext(ctx);
 
       // Load example models from the virtual filesystem
-      const examples: ModelData[] = EXAMPLE_PATHS.map((ex) => {
-        try {
-          const content = ctx.fs.read(ex.path);
-          return { id: ex.id, name: ex.name, content };
-        } catch (e) {
-          console.error(`Failed to load example ${ex.name}`, e);
-          return null;
+      // Find the Modelica library path dynamically (could be "Modelica 4.1.0" etc.)
+      let modelicaLibPath: string | null = null;
+      for (const lib of ctx.listLibraries()) {
+        if (lib.name === "Modelica") {
+          modelicaLibPath = lib.path;
+          break;
         }
-      }).filter(Boolean) as ModelData[];
+      }
+      const examples: ModelData[] = modelicaLibPath
+        ? (EXAMPLE_PATHS.map((ex) => {
+            try {
+              const fullPath = `${modelicaLibPath}/${ex.path}`;
+              const content = ctx.fs.read(fullPath);
+              return { id: ex.id, name: ex.name, content };
+            } catch (e) {
+              console.error(`Failed to load example ${ex.name}`, e);
+              return null;
+            }
+          }).filter(Boolean) as ModelData[])
+        : [];
       setExampleModels(examples);
 
       setLoadingProgress(100);
