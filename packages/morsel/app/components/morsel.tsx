@@ -161,6 +161,7 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [pendingSplashVisible, setPendingSplashVisible] = useState(false);
   const [recentModels, setRecentModels] = useState<ModelData[]>([]);
   const [exampleModels, setExampleModels] = useState<ModelData[]>([]);
+  const isInitialized = useRef(false);
   const [language, setLanguage] = useState<string | null>(null);
   const [availableLanguages, setAvailableLanguages] = useState<string[]>([]);
   const translations = useMemo(() => getTranslations(language), [language]);
@@ -202,6 +203,9 @@ export default function MorselEditor(props: MorselEditorProps) {
 
   useEffect(() => {
     const init = async () => {
+      if (isInitialized.current) return;
+      isInitialized.current = true;
+
       setLoadingProgress(10);
       setLoadingMessage("Initializing parser…");
       await Parser.init();
@@ -236,8 +240,12 @@ export default function MorselEditor(props: MorselEditorProps) {
             "/tmp": InMemory,
           },
         });
-      } catch (e) {
-        console.error(e);
+      } catch (e: any) {
+        if (e?.message?.includes("Mount point is already in use")) {
+          console.warn("ZenFS already configured, skipping...");
+        } else {
+          console.error("Failed to configure ZenFS:", e);
+        }
       }
 
       setLoadingProgress(80);
@@ -262,6 +270,9 @@ export default function MorselEditor(props: MorselEditorProps) {
       } catch (e) {
         console.error("Failed to scan /lib:", e);
       }
+
+      // Refresh libraries explicitly
+      ctx.listLibraries();
       const langs = [...new Set([...ctx.availableLanguages(), ...uiLanguages])].sort();
       setAvailableLanguages(langs);
 
@@ -281,6 +292,22 @@ export default function MorselEditor(props: MorselEditorProps) {
         if (lib.name === "Modelica") {
           modelicaLibPath = lib.path;
           break;
+        }
+      }
+
+      if (!modelicaLibPath) {
+        // Fallback for case where library isn't yet in Context list
+        try {
+          const libEntries = ctx.fs.readdir("/lib");
+          const mslEntry = libEntries.find((e) => e.name.startsWith("Modelica ") && e.isDirectory());
+          if (mslEntry) {
+            modelicaLibPath = `/lib/${mslEntry.name}`;
+            ctx.addLibrary(modelicaLibPath);
+          } else if (ctx.fs.stat("/lib/package.mo")?.isFile()) {
+            modelicaLibPath = "/lib";
+          }
+        } catch (e) {
+          console.error("Failed to fallback search MSL:", e);
         }
       }
       const examples: ModelData[] = modelicaLibPath
