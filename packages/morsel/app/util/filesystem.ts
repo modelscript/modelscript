@@ -40,8 +40,10 @@ export class WebFileSystem implements FileSystem {
   stat(path: string): Stats | null {
     try {
       return statSync(path);
-    } catch (e) {
-      console.error(e);
+    } catch (e: any) {
+      if (e?.code !== "ENOENT") {
+        console.error(e);
+      }
       return null;
     }
   }
