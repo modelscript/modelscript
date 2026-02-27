@@ -46,7 +46,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
-    "@types/node": "^24.10.0",
+    "@types/node": "^25.3.2",
     "@types/npmcli__package-json": "^4.0.4",
     "@types/svgdom": "^0.1.2",
     "@types/xml-formatter": "^1.2.0",
