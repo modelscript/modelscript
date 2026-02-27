@@ -4,8 +4,8 @@
 
 import { describe, expect, test } from "@jest/globals";
 import dedent from "dedent-js";
+import { NodeFileSystem } from "../../../../packages/cli/src/util/filesystem.js";
 import { Context } from "../../../../src/compiler/context.js";
-import { NodeFileSystem } from "../../../../src/test.js";
 
 describe("Modification", () => {
   test("Modification1 - This file tests simple modifications of variables", () => {
