@@ -1,14 +1,19 @@
-name: CI
+name: CI/CD
 
 on:
   push:
     branches:
       - main
   pull_request:
+  workflow_dispatch:
 
 jobs:
-  build_test_lint:
+  build_test_lint_deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v6
@@ -35,3 +40,13 @@ jobs:
         run: npx lerna run test
       - name: Run Lint
         run: npx lerna run lint
+      - name: SPA fallback for GitHub Pages
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        run: cp packages/morsel/build/client/index.html packages/morsel/build/client/404.html
+      - name: Deploy Morsel
+        uses: peaceiris/actions-gh-pages@v4
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        with:
+          personal_token: ${{ secrets.MODELSCRIPT_MORSEL_DEPLOY_PAT }}
+          external_repository: modelscript-morsel/modelscript-morsel.github.io
+          publish_dir: ./packages/morsel/build/client
