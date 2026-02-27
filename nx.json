@@ -1,0 +1,28 @@
+{
+  "$schema": "./node_modules/nx/schemas/nx-schema.json",
+  "targetDefaults": {
+    "build": {
+      "cache": true,
+      "dependsOn": ["^build"],
+      "outputs": [
+        "{projectRoot}/dist",
+        "{projectRoot}/build",
+        "{projectRoot}/public",
+        "{projectRoot}/src/**/*.js",
+        "{projectRoot}/bindings/**/*.o",
+        "{projectRoot}/build/**/*.node",
+        "{projectRoot}/build/**/*.wasm",
+        "{projectRoot}/build/Release/tree_sitter_modelica_binding.node"
+      ]
+    },
+    "test": {
+      "cache": true,
+      "dependsOn": ["^build", "build"],
+      "outputs": ["{projectRoot}/coverage"]
+    },
+    "lint": {
+      "cache": true,
+      "dependsOn": ["^build"]
+    }
+  }
+}

@@ -3,7 +3,7 @@ name: Deploy Morsel App
 on:
   push:
     branches:
-      - prototype
+      - main
   workflow_dispatch:
 
 jobs:
@@ -18,18 +18,27 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 22
+          cache: "npm"
+      - name: Cache MSL
+        id: cache-msl
+        uses: actions/cache@v4
+        with:
+          path: packages/morsel/public/ModelicaStandardLibrary_v4.1.0.zip
+          key: ${{ runner.os }}-msl-v4.1.0
       - name: Install
         run: npm ci
       - name: Build
         run: |
           mkdir -p packages/morsel/public
-          curl -L https://github.com/modelica/ModelicaStandardLibrary/releases/download/v4.1.0/ModelicaStandardLibrary_v4.1.0.zip -o packages/morsel/public/ModelicaStandardLibrary_v4.1.0.zip
+          if [ "${{ steps.cache-msl.outputs.cache-hit }}" != 'true' ]; then
+            curl -L https://github.com/modelica/ModelicaStandardLibrary/releases/download/v4.1.0/ModelicaStandardLibrary_v4.1.0.zip -o packages/morsel/public/ModelicaStandardLibrary_v4.1.0.zip
+          fi
           npx lerna run build
       - name: SPA fallback for GitHub Pages
         run: cp packages/morsel/build/client/index.html packages/morsel/build/client/404.html
       - name: Deploy
         uses: peaceiris/actions-gh-pages@v4
-        if: github.ref == 'refs/heads/prototype'
+        if: github.ref == 'refs/heads/main'
         with:
           personal_token: ${{ secrets.MODELSCRIPT_MORSEL_DEPLOY_PAT }}
           external_repository: modelscript-morsel/modelscript-morsel.github.io
