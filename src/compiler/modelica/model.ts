@@ -17,6 +17,7 @@ import {
 } from "./dae.js";
 import { ModelicaInterpreter } from "./interpreter.js";
 import {
+  ModelicaAlgorithmSectionSyntaxNode,
   ModelicaAnnotationClauseSyntaxNode,
   ModelicaCausality,
   ModelicaClassDefinitionSyntaxNode,
@@ -42,6 +43,7 @@ import {
   ModelicaShortClassDefinitionSyntaxNode,
   ModelicaShortClassSpecifierSyntaxNode,
   ModelicaSimpleImportClauseSyntaxNode,
+  ModelicaStatementSyntaxNode,
   ModelicaStoredDefinitionSyntaxNode,
   ModelicaSubscriptSyntaxNode,
   ModelicaUnqualifiedImportClauseSyntaxNode,
@@ -427,6 +429,29 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
       this.#modification = modification ?? null;
     }
     this.classKind = abstractSyntaxNode?.classPrefixes?.classKind ?? ModelicaClassKind.CLASS;
+  }
+
+  get algorithmSections(): IterableIterator<ModelicaAlgorithmSectionSyntaxNode> {
+    const extendsClassInstances = this.extendsClassInstances;
+    const abstractSyntaxNode = this.abstractSyntaxNode;
+    return (function* () {
+      for (const extendsClassInstance of extendsClassInstances) {
+        for (const section of extendsClassInstance.classInstance?.abstractSyntaxNode?.sections ?? [])
+          if (section instanceof ModelicaAlgorithmSectionSyntaxNode) yield section;
+      }
+      for (const section of abstractSyntaxNode?.sections ?? []) {
+        if (section instanceof ModelicaAlgorithmSectionSyntaxNode) yield section;
+      }
+    })();
+  }
+
+  get algorithms(): IterableIterator<ModelicaStatementSyntaxNode> {
+    const algorithmSections = this.algorithmSections;
+    return (function* () {
+      for (const algorithmSection of algorithmSections) {
+        yield* algorithmSection.statements;
+      }
+    })();
   }
 
   get abstractSyntaxNode(): ModelicaClassDefinitionSyntaxNode | ModelicaShortClassDefinitionSyntaxNode | null {
