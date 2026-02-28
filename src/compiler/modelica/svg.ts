@@ -250,6 +250,11 @@ export function renderText(
   componentInstance?: ModelicaComponentInstance,
 ): Text {
   const rawText = graphicItem.textString ?? graphicItem.string ?? "";
+  const formatUnit = (unit: string): string => {
+    if (unit === "Ohm") return "Ω";
+    return unit;
+  };
+
   const replacer = (match: string, name: string): string => {
     const namedElement = classInstance?.resolveName(name.split("."));
     if (!(namedElement instanceof ModelicaComponentInstance)) return namedElement?.name ?? name;
@@ -257,7 +262,7 @@ export function renderText(
     if (namedElement.classInstance instanceof ModelicaRealClassInstance) {
       const unitExp = namedElement.classInstance?.unit;
       if (unitExp instanceof ModelicaStringLiteral && unitExp.value) {
-        unitString = " " + unitExp.value;
+        unitString = " " + formatUnit(unitExp.value);
       }
     }
     const expression = ModelicaExpression.fromClassInstance(namedElement.classInstance);

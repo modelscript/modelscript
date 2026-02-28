@@ -420,9 +420,9 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     this.name = this.abstractSyntaxNode?.identifier?.text ?? null;
     this.description =
       this.abstractSyntaxNode?.classSpecifier?.description?.strings?.map((d) => d.text ?? "")?.join(" ") ?? null;
-    if (abstractSyntaxNode instanceof ModelicaShortClassDefinitionSyntaxNode) {
-      this.#modification =
-        modification ?? ModelicaModification.new(parent, abstractSyntaxNode.classSpecifier?.classModification ?? null);
+    if (abstractSyntaxNode?.classSpecifier instanceof ModelicaShortClassSpecifierSyntaxNode) {
+      const localMod = ModelicaModification.new(parent, abstractSyntaxNode.classSpecifier?.classModification ?? null);
+      this.#modification = ModelicaModification.merge(localMod, modification);
     } else {
       this.#modification = modification ?? null;
     }
@@ -859,7 +859,6 @@ export class ModelicaShortClassInstance extends ModelicaClassInstance {
         );
       this.classInstance.instantiate();
     } else {
-      // Resolution failed.
       console.warn(`Failed to resolve class '${this.name}' target.`);
     }
     this.instantiated = true;
