@@ -836,7 +836,34 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       });
     }
 
-    g.fromJSON({ nodes: [...nodes.values()], edges: edges });
+    g.batchUpdate(() => {
+      const currentCells = g.getCells();
+      const newCellIds = new Set([...nodes.keys(), ...edges.map((e) => e.id!)]);
+
+      currentCells.forEach((cell) => {
+        if (!newCellIds.has(cell.id)) {
+          g.removeCell(cell);
+        }
+      });
+
+      nodes.forEach((metadata, id) => {
+        const node = g.getCellById(id);
+        if (node && node.isNode()) {
+          (node as any).prop(metadata);
+        } else {
+          g.addNode(metadata as any);
+        }
+      });
+
+      edges.forEach((metadata) => {
+        const edge = g.getCellById(metadata.id!);
+        if (edge && edge.isEdge()) {
+          (edge as any).prop(metadata);
+        } else {
+          g.addEdge(metadata as any);
+        }
+      });
+    });
 
     if (lastClassRef.current === props.classInstance.name) {
       const targetZoom = lastZoomRef.current;
