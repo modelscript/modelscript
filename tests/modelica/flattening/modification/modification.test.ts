@@ -66,7 +66,7 @@ describe("Modification", () => {
     );
   });
 
-  test.skip("Modification3", () => {
+  test("Modification3", () => {
     const context = new Context(new NodeFileSystem());
     context.load(
       dedent(`
@@ -167,7 +167,7 @@ describe("Modification", () => {
     );
   });
 
-  test.skip("Modification7 - This test checks that two modifications of subsubcomponents are both taken care of.", () => {
+  test("Modification7 - This test checks that two modifications of subsubcomponents are both taken care of.", () => {
     const context = new Context(new NodeFileSystem());
     context.load(
       dedent(`
@@ -214,7 +214,7 @@ describe("Modification", () => {
     expect(context.flatten("Modification8")).toBe(null);
   });
 
-  test.skip("Modification10", () => {
+  test("Modification10", () => {
     const context = new Context(new NodeFileSystem());
     context.load(
       dedent(`
@@ -247,7 +247,7 @@ describe("Modification", () => {
     );
   });
 
-  test.skip("Modification11", () => {
+  test("Modification11", () => {
     const context = new Context(new NodeFileSystem());
     context.load(
       dedent(`
@@ -321,7 +321,7 @@ describe("Modification", () => {
     );
   });
 
-  test.skip("Modification14 - This file tests modification precedence.", () => {
+  test("Modification14 - This file tests modification precedence.", () => {
     const context = new Context(new NodeFileSystem());
     context.load(
       dedent(`

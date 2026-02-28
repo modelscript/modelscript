@@ -79,8 +79,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       );
       const expression = node.modification?.expression ?? null;
       let variable;
-      const isParameter = node.variability === "parameter" || node.variability === "constant";
-      const varExpression = isParameter ? expression : null;
+      const varExpression = expression;
 
       if (node.classInstance instanceof ModelicaBooleanClassInstance) {
         variable = new ModelicaBooleanVariable(
@@ -99,9 +98,15 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           node.modification?.description ?? node.description,
         );
       } else if (node.classInstance instanceof ModelicaRealClassInstance) {
+        for (const key of ["start", "min", "max", "nominal"]) {
+          if (attributes.has(key)) {
+            const casted = castToReal(attributes.get(key) ?? null);
+            if (casted) attributes.set(key, casted);
+          }
+        }
         variable = new ModelicaRealVariable(
           name,
-          varExpression,
+          castToReal(varExpression),
           attributes,
           node.variability,
           node.modification?.description ?? node.description,
@@ -117,9 +122,6 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       }
       if (variable) {
         args[1].variables.push(variable);
-        if (!isParameter && expression) {
-          args[1].equations.push(new ModelicaSimpleEquation(variable, expression));
-        }
       }
     } else if (node.classInstance instanceof ModelicaEnumerationClassInstance) {
       const attributes = new Map(
@@ -128,8 +130,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         ),
       );
       const expression = node.modification?.expression ?? null;
-      const isParameter = node.variability === "parameter" || node.variability === "constant";
-      const varExpression = isParameter ? expression : null;
+      const varExpression = expression;
       const variable = new ModelicaEnumerationVariable(
         name,
         varExpression,
@@ -139,9 +140,6 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         node.classInstance.enumerationLiterals,
       );
       args[1].variables.push(variable);
-      if (!isParameter && expression) {
-        args[1].equations.push(new ModelicaSimpleEquation(variable, expression));
-      }
     } else if (node.classInstance instanceof ModelicaArrayClassInstance) {
       const shape = node.classInstance.shape;
       const index = new Array(shape.length).fill(1);
@@ -157,8 +155,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
             ),
           );
           const expression = declaredElement.modification?.expression ?? null;
-          const isParameter = node.variability === "parameter" || node.variability === "constant";
-          const varExpression = isParameter ? expression : null;
+          const varExpression = expression;
           let variable;
           if (declaredElement instanceof ModelicaBooleanClassInstance) {
             variable = new ModelicaBooleanVariable(
@@ -177,9 +174,15 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
               declaredElement.modification?.description ?? declaredElement.description,
             );
           } else if (declaredElement instanceof ModelicaRealClassInstance) {
+            for (const key of ["start", "min", "max", "nominal"]) {
+              if (attributes.has(key)) {
+                const casted = castToReal(attributes.get(key) ?? null);
+                if (casted) attributes.set(key, casted);
+              }
+            }
             variable = new ModelicaRealVariable(
               elementName,
-              varExpression,
+              castToReal(varExpression),
               attributes,
               node.variability,
               declaredElement.modification?.description ?? declaredElement.description,
@@ -204,9 +207,6 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           }
           if (variable) {
             args[1].variables.push(variable);
-            if (!isParameter && expression) {
-              args[1].equations.push(new ModelicaSimpleEquation(variable, expression));
-            }
           }
         } else {
           declaredElement?.accept(this, [elementName, args[1]]);
@@ -343,4 +343,16 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<
   visitUnsignedRealLiteral(node: ModelicaUnsignedRealLiteralSyntaxNode): ModelicaRealLiteral | null {
     return new ModelicaRealLiteral(node.value);
   }
+}
+
+function castToReal(expression: ModelicaExpression | null): ModelicaExpression | null {
+  if (!expression) return null;
+  if (expression instanceof ModelicaIntegerLiteral) return new ModelicaRealLiteral(expression.value);
+  if (expression instanceof ModelicaArray) {
+    return new ModelicaArray(
+      expression.shape,
+      expression.elements.map((e) => castToReal(e) as ModelicaExpression),
+    );
+  }
+  return expression;
 }
