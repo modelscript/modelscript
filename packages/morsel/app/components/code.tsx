@@ -3,6 +3,7 @@
 import {
   Context,
   ModelicaClassInstance,
+  ModelicaComponentInstance,
   ModelicaLinter,
   ModelicaNamedElement,
   ModelicaStoredDefinitionSyntaxNode,
@@ -146,6 +147,60 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
           }
         }
         return { suggestions: [] };
+      },
+    });
+
+    monaco.languages.registerHoverProvider("modelica", {
+      provideHover: (model: editor.ITextModel, position: monaco.Position) => {
+        const wordInfo = model.getWordAtPosition(position);
+        if (!wordInfo) return null;
+
+        const lineContent = model.getLineContent(position.lineNumber);
+        let start = wordInfo.startColumn - 1;
+        while (start > 0 && (lineContent[start - 1] === "." || /[a-zA-Z0-9_]/.test(lineContent[start - 1]))) {
+          start--;
+        }
+        let end = wordInfo.endColumn - 1;
+        while (end < lineContent.length && (lineContent[end] === "." || /[a-zA-Z0-9_]/.test(lineContent[end]))) {
+          end++;
+        }
+        if (lineContent[end - 1] === ".") end--;
+
+        const fullPath = lineContent.substring(start, end);
+        const scope = classInstanceRef.current ?? contextRef.current;
+        if (!scope) return null;
+
+        let element = scope.resolveName(fullPath.split("."));
+        if (!element && fullPath !== wordInfo.word) {
+          element = scope.resolveName(wordInfo.word.split("."));
+          if (element) {
+            start = wordInfo.startColumn - 1;
+            end = wordInfo.endColumn - 1;
+          }
+        }
+
+        if (element instanceof ModelicaNamedElement) {
+          const contents = [];
+          if (element instanceof ModelicaClassInstance) {
+            contents.push({ value: `**${element.classKind}** \`${element.compositeName}\`` });
+          } else if (element instanceof ModelicaComponentInstance) {
+            const typeName = element.classInstance?.compositeName ?? "UnknownType";
+            contents.push({ value: `**component** \`${element.name}\` : \`${typeName}\`` });
+          } else {
+            contents.push({ value: `\`${element.name}\`` });
+          }
+
+          if (element.description) {
+            contents.push({ value: element.description });
+          }
+
+          return {
+            range: new monaco.Range(position.lineNumber, start + 1, position.lineNumber, end + 1),
+            contents,
+          };
+        }
+
+        return null;
       },
     });
 
