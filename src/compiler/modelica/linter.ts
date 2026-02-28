@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { Range, Tree } from "../../util/tree-sitter.js";
+import { Scope } from "../scope.js";
 import {
   ModelicaClassInstance,
   ModelicaComponentInstance,
@@ -430,6 +431,38 @@ ModelicaLinter.register({
         "Class '" + typeSpecifier?.text + "' not found in scope '" + node.parent?.name + "'.",
         typeSpecifier,
       );
+    }
+  },
+});
+
+class ModelicaExpressionNameResolutionVisitor extends ModelicaSyntaxVisitor<void, DiagnosticsCallbackWithoutResource> {
+  #scope: Scope;
+
+  constructor(scope: Scope) {
+    super();
+    this.#scope = scope;
+  }
+
+  override visitComponentReference(
+    node: ModelicaComponentReferenceSyntaxNode,
+    diagnosticsCallback: DiagnosticsCallbackWithoutResource,
+  ): void {
+    const fullPath = node.parts.map((p) => p.identifier?.text).join(".");
+    const resolved = this.#scope.resolveName(fullPath.split("."));
+    if (!resolved) {
+      diagnosticsCallback("error", "Name '" + fullPath + "' not found in scope.", node.concreteSyntaxNode);
+    }
+  }
+}
+
+ModelicaLinter.register({
+  visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+    const visitor = new ModelicaExpressionNameResolutionVisitor(node);
+    for (const equationSection of node.equationSections) {
+      equationSection.accept(visitor, diagnosticsCallback);
+    }
+    for (const algorithmSection of node.algorithmSections) {
+      algorithmSection.accept(visitor, diagnosticsCallback);
     }
   },
 });
