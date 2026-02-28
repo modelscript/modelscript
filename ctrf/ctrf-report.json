@@ -1,0 +1,206 @@
+{
+  "results": {
+    "tool": {
+      "name": "jest"
+    },
+    "summary": {
+      "tests": 17,
+      "passed": 5,
+      "failed": 0,
+      "pending": 12,
+      "skipped": 0,
+      "other": 0,
+      "start": 1772244007874,
+      "stop": 1772244008643
+    },
+    "tests": [
+      {
+        "name": "Modification Modification1 - This file tests simple modifications of variables",
+        "duration": 6,
+        "status": "passed",
+        "rawStatus": "passed",
+        "type": "unit",
+        "filePath": "/home/omar/git/modelscript/tests/modelica/flattening/modification/modification.test.ts",
+        "retries": 0,
+        "flaky": false,
+        "suite": "modification.test.ts > Modification"
+      },
+      {
+        "name": "Modification Modification2 - Modifying a parameter in a local class is allowed.",
+        "duration": 1,
+        "status": "passed",
+        "rawStatus": "passed",
+        "type": "unit",
+        "filePath": "/home/omar/git/modelscript/tests/modelica/flattening/modification/modification.test.ts",
+        "retries": 0,
+        "flaky": false,
+        "suite": "modification.test.ts > Modification"
+      },
+      {
+        "name": "Modification Modification3",
+        "duration": 0,
+        "status": "pending",
+        "rawStatus": "pending",
+        "type": "unit",
+        "filePath": "/home/omar/git/modelscript/tests/modelica/flattening/modification/modification.test.ts",
+        "retries": 0,
+        "flaky": false,
+        "suite": "modification.test.ts > Modification"
+      },
+      {
+        "name": "Modification Modification4 - Error since no p inside A.",
+        "duration": 0,
+        "status": "pending",
+        "rawStatus": "pending",
+        "type": "unit",
+        "filePath": "/home/omar/git/modelscript/tests/modelica/flattening/modification/modification.test.ts",
+        "retries": 0,
+        "flaky": false,
+        "suite": "modification.test.ts > Modification"
+      },
+      {
+        "name": "Modification Modification5 - By removing the declare-before-use this is legal in Modelica.",
+        "duration": 0,
+        "status": "pending",
+        "rawStatus": "pending",
+        "type": "unit",
+        "filePath": "/home/omar/git/modelscript/tests/modelica/flattening/modification/modification.test.ts",
+        "retries": 0,
+        "flaky": false,
+        "suite": "modification.test.ts > Modification"
+      },
+      {
+        "name": "Modification Modification6 - This file tests modification precedence.",
+        "duration": 3,
+        "status": "passed",
+        "rawStatus": "passed",
+        "type": "unit",
+        "filePath": "/home/omar/git/modelscript/tests/modelica/flattening/modification/modification.test.ts",
+        "retries": 0,
+        "flaky": false,
+        "suite": "modification.test.ts > Modification"
+      },
+      {
+        "name": "Modification Modification7 - This test checks that two modifications of subsubcomponents are both taken care of.",
+        "duration": 0,
+        "status": "pending",
+        "rawStatus": "pending",
+        "type": "unit",
+        "filePath": "/home/omar/git/modelscript/tests/modelica/flattening/modification/modification.test.ts",
+        "retries": 0,
+        "flaky": false,
+        "suite": "modification.test.ts > Modification"
+      },
+      {
+        "name": "Modification Modification8 - These are seen as two modifications of the same element.",
+        "duration": 0,
+        "status": "pending",
+        "rawStatus": "pending",
+        "type": "unit",
+        "filePath": "/home/omar/git/modelscript/tests/modelica/flattening/modification/modification.test.ts",
+        "retries": 0,
+        "flaky": false,
+        "suite": "modification.test.ts > Modification"
+      },
+      {
+        "name": "Modification Modification10",
+        "duration": 0,
+        "status": "pending",
+        "rawStatus": "pending",
+        "type": "unit",
+        "filePath": "/home/omar/git/modelscript/tests/modelica/flattening/modification/modification.test.ts",
+        "retries": 0,
+        "flaky": false,
+        "suite": "modification.test.ts > Modification"
+      },
+      {
+        "name": "Modification Modification11",
+        "duration": 0,
+        "status": "pending",
+        "rawStatus": "pending",
+        "type": "unit",
+        "filePath": "/home/omar/git/modelscript/tests/modelica/flattening/modification/modification.test.ts",
+        "retries": 0,
+        "flaky": false,
+        "suite": "modification.test.ts > Modification"
+      },
+      {
+        "name": "Modification Modification12",
+        "duration": 0,
+        "status": "pending",
+        "rawStatus": "pending",
+        "type": "unit",
+        "filePath": "/home/omar/git/modelscript/tests/modelica/flattening/modification/modification.test.ts",
+        "retries": 0,
+        "flaky": false,
+        "suite": "modification.test.ts > Modification"
+      },
+      {
+        "name": "Modification Modification13",
+        "duration": 0,
+        "status": "pending",
+        "rawStatus": "pending",
+        "type": "unit",
+        "filePath": "/home/omar/git/modelscript/tests/modelica/flattening/modification/modification.test.ts",
+        "retries": 0,
+        "flaky": false,
+        "suite": "modification.test.ts > Modification"
+      },
+      {
+        "name": "Modification Modification14 - This file tests modification precedence.",
+        "duration": 0,
+        "status": "pending",
+        "rawStatus": "pending",
+        "type": "unit",
+        "filePath": "/home/omar/git/modelscript/tests/modelica/flattening/modification/modification.test.ts",
+        "retries": 0,
+        "flaky": false,
+        "suite": "modification.test.ts > Modification"
+      },
+      {
+        "name": "Modification Modification15",
+        "duration": 1,
+        "status": "passed",
+        "rawStatus": "passed",
+        "type": "unit",
+        "filePath": "/home/omar/git/modelscript/tests/modelica/flattening/modification/modification.test.ts",
+        "retries": 0,
+        "flaky": false,
+        "suite": "modification.test.ts > Modification"
+      },
+      {
+        "name": "Modification Modification16",
+        "duration": 0,
+        "status": "pending",
+        "rawStatus": "pending",
+        "type": "unit",
+        "filePath": "/home/omar/git/modelscript/tests/modelica/flattening/modification/modification.test.ts",
+        "retries": 0,
+        "flaky": false,
+        "suite": "modification.test.ts > Modification"
+      },
+      {
+        "name": "Modification Modification17",
+        "duration": 0,
+        "status": "pending",
+        "rawStatus": "pending",
+        "type": "unit",
+        "filePath": "/home/omar/git/modelscript/tests/modelica/flattening/modification/modification.test.ts",
+        "retries": 0,
+        "flaky": false,
+        "suite": "modification.test.ts > Modification"
+      },
+      {
+        "name": "Modification simple",
+        "duration": 46,
+        "status": "passed",
+        "rawStatus": "passed",
+        "type": "unit",
+        "filePath": "/home/omar/git/modelscript/tests/modelica/flattening/modification/modification.test.ts",
+        "retries": 0,
+        "flaky": false,
+        "suite": "modification.test.ts > Modification"
+      }
+    ]
+  }
+}

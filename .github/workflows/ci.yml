@@ -38,6 +38,11 @@ jobs:
         run: npx lerna run build
       - name: Run Tests
         run: npx lerna run test
+      - name: Publish Test Report
+        uses: ctrf-io/github-test-reporter@v1
+        with:
+          report-path: "./ctrf/ctrf-report.json"
+        if: always()
       - name: Run Lint
         run: npx lerna run lint
       - name: SPA fallback for GitHub Pages
