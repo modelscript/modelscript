@@ -4,6 +4,7 @@ import {
   Context,
   ModelicaClassInstance,
   ModelicaComponentInstance,
+  ModelicaElement,
   ModelicaLinter,
   ModelicaNamedElement,
   ModelicaStoredDefinitionSyntaxNode,
@@ -170,12 +171,76 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
         const scope = classInstanceRef.current ?? contextRef.current;
         if (!scope) return null;
 
-        let element = scope.resolveName(fullPath.split("."));
-        if (!element && fullPath !== wordInfo.word) {
-          element = scope.resolveName(wordInfo.word.split("."));
-          if (element) {
-            start = wordInfo.startColumn - 1;
-            end = wordInfo.endColumn - 1;
+        let element = null;
+
+        if (treeRef.current) {
+          try {
+            const rootNode = treeRef.current.rootNode;
+            const searchRow = position.lineNumber - 1;
+            const searchCol = Math.max(0, wordInfo.startColumn - 1);
+            const searchEndCol = wordInfo.endColumn - 1;
+
+            let current: Parser.SyntaxNode | null = rootNode.descendantForPosition(
+              { row: searchRow, column: searchCol },
+              { row: searchRow, column: searchEndCol },
+            );
+
+            let isAnnotation = false;
+            const parameterPath: string[] = [];
+            let typeSpecifierStr: string | null = null;
+
+            while (current) {
+              if (current.type === "ElementModification") {
+                const nameNode = current.children.find((c: Parser.SyntaxNode) => c.type === "Name");
+                if (nameNode) {
+                  parameterPath.unshift(nameNode.text);
+                }
+              }
+
+              if (parameterPath.length > 0) {
+                if (current.type === "AnnotationClause") {
+                  isAnnotation = true;
+                  break;
+                }
+                if (
+                  current.type === "ComponentClause" ||
+                  current.type === "ShortClassSpecifier" ||
+                  current.type === "ExtendsClause"
+                ) {
+                  const typeSpecNode = current.children.find((c: Parser.SyntaxNode) => c.type === "TypeSpecifier");
+                  if (typeSpecNode) typeSpecifierStr = typeSpecNode.text;
+                  break;
+                }
+              }
+              current = current.parent;
+            }
+
+            if (parameterPath.length > 0) {
+              if (isAnnotation) {
+                const annotationClass = ModelicaElement.annotationClassInstance;
+                if (annotationClass) {
+                  element = annotationClass.resolveName(parameterPath);
+                }
+              } else if (typeSpecifierStr) {
+                const baseClass = scope.resolveName(typeSpecifierStr.split("."));
+                if (baseClass instanceof ModelicaClassInstance) {
+                  element = baseClass.resolveName(parameterPath);
+                }
+              }
+            }
+          } catch (e) {
+            console.error("Syntax tree hover traversal failed", e);
+          }
+        }
+
+        if (!element) {
+          element = scope.resolveName(fullPath.split("."));
+          if (!element && fullPath !== wordInfo.word) {
+            element = scope.resolveName(wordInfo.word.split("."));
+            if (element) {
+              start = wordInfo.startColumn - 1;
+              end = wordInfo.endColumn - 1;
+            }
           }
         }
 
