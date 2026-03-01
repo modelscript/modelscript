@@ -1542,6 +1542,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                             line.startsWith("protected") ||
                             line.startsWith("initial equation") ||
                             line.startsWith("algorithm") ||
+                            line.startsWith("annotation") ||
                             line.startsWith("end")
                           ) {
                             insertLine = i;
@@ -1566,13 +1567,27 @@ export default function MorselEditor(props: MorselEditorProps) {
                       const endMatches = model.findMatches("^\\s*end\\s+[^;]+;", false, true, false, null, true);
                       if (endMatches.length > 0) {
                         const lastEnd = endMatches[endMatches.length - 1];
+                        const text = model.getValue();
+                        const lines = text.split("\n");
+                        let insertLine = lastEnd.range.startLineNumber - 1;
+
+                        // Look backwards for annotation before end
+                        for (let i = insertLine - 1; i >= 0; i--) {
+                          const line = lines[i].trim();
+                          if (line.startsWith("annotation")) {
+                            insertLine = i;
+                          } else if (line !== "") {
+                            break;
+                          }
+                        }
+
                         const insertText = equationMatches.length === 0 ? `equation\n${connectEq}` : connectEq;
                         editor.executeEdits("connect", [
                           {
                             range: {
-                              startLineNumber: lastEnd.range.startLineNumber,
+                              startLineNumber: insertLine + 1,
                               startColumn: 1,
-                              endLineNumber: lastEnd.range.startLineNumber,
+                              endLineNumber: insertLine + 1,
                               endColumn: 1,
                             },
                             text: insertText,
