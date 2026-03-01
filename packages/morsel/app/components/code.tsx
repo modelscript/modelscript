@@ -104,6 +104,106 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
     monaco.languages.register({
       id: "modelica",
     });
+
+    const semanticTokenColors = {
+      keyword: "#c586c0",
+      type: "#4ec9b0",
+      class: "#4ec9b0",
+      variable: "#9cdcfe",
+      parameter: "#9cdcfe",
+      function: "#dcdcaa",
+      string: "#ce9178",
+      number: "#b5cea8",
+      operator: "#d4d4d4",
+      comment: "#6A9955",
+    };
+
+    monaco.editor.defineTheme("morsel-semantic-dark", {
+      base: "vs-dark",
+      inherit: true,
+      rules: [],
+      colors: semanticTokenColors,
+      semanticHighlighting: true,
+    });
+
+    monaco.editor.defineTheme("morsel-semantic-light", {
+      base: "vs",
+      inherit: true,
+      rules: [],
+      colors: semanticTokenColors,
+      semanticHighlighting: true,
+    });
+
+    // Placeholder for monarch tokens provider, assuming it's defined elsewhere or will be added.
+    // For now, using an empty object or a minimal definition to avoid errors.
+    const modelicaTokensProvider = {
+      tokenizer: {
+        root: [
+          [
+            /[a-zA-Z_][a-zA-Z0-9_]*/,
+            {
+              cases: {
+                "@keywords": "keyword",
+                "@default": "identifier",
+              },
+            },
+          ],
+          [/\d*\.\d+([eE][\-+]?\d+)?/, "number.float"],
+          [/\d+/, "number"],
+          [/"([^"\\]|\\.)*$/, "string.invalid"], // non-teminated string
+          [/"/, { token: "string.quote", bracket: "@open", next: "@string" }],
+          [/[\+\-\*\/=<>!&|~%]/, "operator"],
+          [/[{}()\[\]]/, "@brackets"],
+          [/;/, "delimiter"],
+          [/\/\/.*/, "comment"],
+          [/\/\*/, "comment", "@comment"],
+        ],
+        comment: [
+          [/[^\*]+/, "comment"],
+          [/\*\//, "comment", "@pop"],
+          [/[\*]/, "comment"],
+        ],
+        string: [
+          [/[^\\"]+/, "string"],
+          [/\\./, "string.escape"],
+          [/"/, { token: "string.quote", bracket: "@close", next: "@pop" }],
+        ],
+      },
+      keywords: [
+        "class",
+        "model",
+        "record",
+        "block",
+        "connector",
+        "type",
+        "package",
+        "function",
+        "algorithm",
+        "equation",
+        "end",
+        "public",
+        "protected",
+        "import",
+        "annotation",
+        "extends",
+        "encapsulated",
+        "partial",
+        "within",
+        "if",
+        "then",
+        "else",
+        "elseif",
+        "while",
+        "for",
+        "loop",
+        "when",
+        "return",
+        "break",
+        "true",
+        "false",
+      ],
+    };
+
     monaco.languages.setMonarchTokensProvider("modelica", modelicaTokensProvider);
     monaco.languages.registerCompletionItemProvider("modelica", {
       triggerCharacters: ["."],
@@ -148,6 +248,167 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
           }
         }
         return { suggestions: [] };
+      },
+    });
+
+    monaco.languages.registerDocumentSemanticTokensProvider("modelica", {
+      getLegend: function () {
+        return {
+          tokenTypes: [
+            "keyword",
+            "type",
+            "class",
+            "variable",
+            "parameter",
+            "function",
+            "string",
+            "number",
+            "operator",
+            "comment",
+          ],
+          tokenModifiers: ["declaration", "readonly"],
+        };
+      },
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      provideDocumentSemanticTokens: (
+        _model: editor.ITextModel,
+        _lastResultId: string | null,
+        _token: monaco.CancellationToken,
+      ) => {
+        if (!treeRef.current) return { data: new Uint32Array(0) };
+
+        const rootNode = treeRef.current.rootNode;
+        const rawTokens: { line: number; char: number; length: number; typeIndex: number; modifier: number }[] = [];
+
+        const traverseTree = (node: Parser.SyntaxNode) => {
+          let tokenType: string | null = null;
+          let pushSpecificNode: Parser.SyntaxNode | null = null;
+          const modifier = 0;
+
+          if (
+            [
+              "class",
+              "model",
+              "record",
+              "block",
+              "connector",
+              "type",
+              "package",
+              "function",
+              "algorithm",
+              "equation",
+              "end",
+              "public",
+              "protected",
+              "import",
+              "annotation",
+              "extends",
+              "encapsulated",
+              "partial",
+              "within",
+              "if",
+              "then",
+              "else",
+              "elseif",
+              "while",
+              "for",
+              "loop",
+              "when",
+              "return",
+              "break",
+              "true",
+              "false",
+            ].includes(node.type)
+          ) {
+            tokenType = "keyword";
+          } else if (node.type === "TypeSpecifier") {
+            tokenType = "type";
+          } else if (node.type === "ComponentDeclaration") {
+            const nameNode = node.children.find((c) => c.type === "IDENT");
+            if (nameNode) {
+              tokenType = "variable";
+              pushSpecificNode = nameNode;
+            }
+          } else if (node.type === "IDENT") {
+            if (node.parent?.type !== "ComponentDeclaration") {
+              tokenType = "variable";
+            }
+          } else if (node.type === "STRING") {
+            tokenType = "string";
+          } else if (node.type === "UNSIGNED_INTEGER" || node.type === "UNSIGNED_REAL") {
+            tokenType = "number";
+          } else if (node.type === "comment") {
+            tokenType = "comment";
+          } else if (["+", "-", "*", "/", "=", "<", ">", "<=", ">=", "==", "<>"].includes(node.type)) {
+            tokenType = "operator";
+          }
+
+          if (tokenType !== null) {
+            const types = [
+              "keyword",
+              "type",
+              "class",
+              "variable",
+              "parameter",
+              "function",
+              "string",
+              "number",
+              "operator",
+              "comment",
+            ];
+            const typeIndex = types.indexOf(tokenType);
+            const targetNode = pushSpecificNode || node;
+
+            if (
+              !rawTokens.some(
+                (t) => t.line === targetNode.startPosition.row && t.char === targetNode.startPosition.column,
+              )
+            ) {
+              rawTokens.push({
+                line: targetNode.startPosition.row,
+                char: targetNode.startPosition.column,
+                length: targetNode.endPosition.column - targetNode.startPosition.column,
+                typeIndex,
+                modifier,
+              });
+            }
+          }
+
+          if (node.type !== "ComponentDeclaration" && node.type !== "TypeSpecifier") {
+            for (const child of node.children) {
+              traverseTree(child);
+            }
+          }
+        };
+
+        traverseTree(rootNode);
+
+        rawTokens.sort((a, b) => {
+          if (a.line === b.line) {
+            return a.char - b.char;
+          }
+          return a.line - b.line;
+        });
+
+        const data: number[] = [];
+        let prevLine = 0;
+        let prevChar = 0;
+
+        for (const token of rawTokens) {
+          const deltaLine = token.line - prevLine;
+          const deltaChar = deltaLine === 0 ? token.char - prevChar : token.char;
+
+          data.push(deltaLine, deltaChar, token.length, token.typeIndex, token.modifier);
+
+          prevLine = token.line;
+          prevChar = token.char;
+        }
+
+        return { data: new Uint32Array(data) };
+      },
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      releaseDocumentSemanticTokens: (_resultId: string | undefined) => {
+        // No operation needed for release
       },
     });
 
@@ -394,6 +655,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
                 indentation: true,
               },
               readOnly: props.readOnly,
+              "semanticHighlighting.enabled": true,
             }
           : {
               automaticLayout: true,
@@ -403,6 +665,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
               lineNumbers: "off",
               lineNumbersMinChars: 0,
               minimap: { enabled: false },
+              "semanticHighlighting.enabled": true,
             }
       }
       height="100%"
