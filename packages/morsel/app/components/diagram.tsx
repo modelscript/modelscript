@@ -254,6 +254,10 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
                   strokeWidth: 1,
                   "vector-effect": "non-scaling-stroke",
                   targetMarker: null,
+                  "pointer-events": "stroke",
+                },
+                wrap: {
+                  pointerEvents: "none",
                 },
               },
             });
@@ -611,6 +615,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       nodes.set(component.name, {
         id: component.name,
         autoLayout,
+        zIndex: 10,
         opacity: condition === undefined ? 0.5 : 1,
         x:
           relTranslateX * Math.cos(a) -
@@ -685,6 +690,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       edges.push({
         id: `${c1[0]}.${c1?.[1]}-${c2[0]}.${c2?.[1]}`,
         shape: "edge",
+        zIndex: 1,
         source: {
           cell: c1[0],
           port: c1?.[1],
@@ -694,6 +700,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
           port: c2?.[1],
         },
         vertices: line?.points
+          ?.slice(1, -1)
           ?.map((p) => convertPoint(p))
           .map((p) => {
             return { x: p[0], y: p[1] };
@@ -709,6 +716,10 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
             sourceMarker,
             targetMarker,
             "vector-effect": "non-scaling-stroke",
+            "pointer-events": "stroke",
+          },
+          wrap: {
+            pointerEvents: "none",
           },
         },
       });
