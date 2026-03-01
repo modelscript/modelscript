@@ -256,9 +256,6 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
                   targetMarker: null,
                   "pointer-events": "stroke",
                 },
-                wrap: {
-                  pointerEvents: "none",
-                },
               },
             });
           },
@@ -655,6 +652,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
           groups: {
             absolute: {
               position: "absolute",
+              zIndex: 100,
             },
           },
         },
@@ -717,9 +715,6 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
             targetMarker,
             "vector-effect": "non-scaling-stroke",
             "pointer-events": "stroke",
-          },
-          wrap: {
-            pointerEvents: "none",
           },
         },
       });
