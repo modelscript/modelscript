@@ -27,6 +27,14 @@ This project is a monorepo managed with **Lerna** and **npm workspaces**.
 ### Prerequisites
 
 - **Node.js**: Version 22 or later.
+- **emsdk**: Required for building the Tree-sitter parser to WebAssembly.
+  ```bash
+  git clone https://github.com/emscripten-core/emsdk.git
+  cd emsdk
+  ./emsdk install latest
+  ./emsdk activate latest
+  source ./emsdk_env.sh
+  ```
 
 ### Installation
 

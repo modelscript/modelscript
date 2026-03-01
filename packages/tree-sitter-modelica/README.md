@@ -18,6 +18,7 @@ The grammar is defined in `grammar.js`.
 ### Prerequisites
 
 - [Tree-sitter CLI](https://tree-sitter.github.io/tree-sitter/creating-parsers#installation)
+- [emsdk](https://emscripten.org/docs/getting_started/downloads.html) (required for WASM build)
 
 ### Building the Grammar
 
