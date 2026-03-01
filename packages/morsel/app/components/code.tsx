@@ -14,11 +14,109 @@ import {
 import { Editor, loader, type Monaco, type Theme } from "@monaco-editor/react";
 import { debounce } from "lodash";
 import * as monaco from "monaco-editor";
-import { editor } from "monaco-editor";
+import { editor, languages } from "monaco-editor";
 import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import React, { useEffect, useRef } from "react";
 import Parser from "web-tree-sitter";
 import { format } from "~/util/formatter";
+
+const modelicaTokensProvider: languages.IMonarchLanguage = {
+  keywords: [
+    "algorithm",
+    "and",
+    "annotation",
+    "block",
+    "break",
+    "class",
+    "connect",
+    "connector",
+    "constant",
+    "constrainedby",
+    "der",
+    "discrete",
+    "each",
+    "else",
+    "elseif",
+    "elsewhen",
+    "encapsulated",
+    "end",
+    "enumeration",
+    "equation",
+    "expandable",
+    "extends",
+    "external",
+    "false",
+    "final",
+    "flow",
+    "for",
+    "function",
+    "if",
+    "import",
+    "impure",
+    "initial",
+    "inner",
+    "input",
+    "loop",
+    "model",
+    "not",
+    "operator",
+    "or",
+    "outer",
+    "output",
+    "package",
+    "parameter",
+    "partial",
+    "protected",
+    "public",
+    "pure",
+    "record",
+    "redeclare",
+    "replaceable",
+    "return",
+    "stream",
+    "then",
+    "true",
+    "type",
+    "when",
+    "while",
+    "within",
+  ],
+  typeKeywords: ["Boolean", "Integer", "Real", "String"],
+  tokenizer: {
+    root: [
+      [
+        /([_a-zA-Z]([_a-zA-Z0-9])*|'([_a-zA-Z0-9!#$%&()*+,-./:;<>=?@^{}|~ "]|\[|\]|\\('|"|\?|\\|a|b|f|n|r|t|v))*')/,
+        {
+          cases: {
+            "@typeKeywords": "keyword",
+            "@keywords": "keyword",
+            "@default": "identifier",
+          },
+        },
+      ],
+      { include: "@whitespace" },
+      [/\d*\.\d+([eE][-+]?\d+)?/, "number.float"],
+      [/\d+/, "number"],
+      [/"/, "string", "@string"],
+    ],
+    string: [
+      [/[^\\"]+/, "string"],
+      [/\\./, "string.escape"],
+      [/"/, "string", "@pop"],
+    ],
+    comment: [
+      [/[^/*]+/, "comment"],
+      [/\/\*/, "comment", "@push"],
+      ["\\*/", "comment", "@pop"],
+      [/[\\/*]/, "comment"],
+    ],
+    whitespace: [
+      [/[ \t\r\n]+/, "white"],
+      [/\/\*/, "comment", "@comment"],
+      [/\/\/.*$/, "comment"],
+    ],
+  },
+};
 
 if (!self.MonacoEnvironment) {
   self.MonacoEnvironment = {
@@ -105,104 +203,34 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
       id: "modelica",
     });
 
-    const semanticTokenColors = {
-      keyword: "#c586c0",
-      type: "#4ec9b0",
-      class: "#4ec9b0",
-      variable: "#9cdcfe",
-      parameter: "#9cdcfe",
-      function: "#dcdcaa",
-      string: "#ce9178",
-      number: "#b5cea8",
-      operator: "#d4d4d4",
-      comment: "#6A9955",
-    };
+    const semanticTokenRules = [
+      { token: "keyword", foreground: "#c586c0" },
+      { token: "type", foreground: "#4ec9b0" },
+      { token: "class", foreground: "#4ec9b0" },
+      { token: "variable", foreground: "#9cdcfe" },
+      { token: "parameter", foreground: "#9cdcfe" },
+      { token: "function", foreground: "#dcdcaa" },
+      { token: "string", foreground: "#ce9178" },
+      { token: "number", foreground: "#b5cea8" },
+      { token: "operator", foreground: "#d4d4d4" },
+      { token: "comment", foreground: "#6A9955" },
+    ];
 
     monaco.editor.defineTheme("morsel-semantic-dark", {
       base: "vs-dark",
       inherit: true,
-      rules: [],
-      colors: semanticTokenColors,
+      rules: semanticTokenRules,
+      colors: {},
       semanticHighlighting: true,
     });
 
     monaco.editor.defineTheme("morsel-semantic-light", {
       base: "vs",
       inherit: true,
-      rules: [],
-      colors: semanticTokenColors,
+      rules: semanticTokenRules,
+      colors: {},
       semanticHighlighting: true,
     });
-
-    // Placeholder for monarch tokens provider, assuming it's defined elsewhere or will be added.
-    // For now, using an empty object or a minimal definition to avoid errors.
-    const modelicaTokensProvider = {
-      tokenizer: {
-        root: [
-          [
-            /[a-zA-Z_][a-zA-Z0-9_]*/,
-            {
-              cases: {
-                "@keywords": "keyword",
-                "@default": "identifier",
-              },
-            },
-          ],
-          [/\d*\.\d+([eE][\-+]?\d+)?/, "number.float"],
-          [/\d+/, "number"],
-          [/"([^"\\]|\\.)*$/, "string.invalid"], // non-teminated string
-          [/"/, { token: "string.quote", bracket: "@open", next: "@string" }],
-          [/[\+\-\*\/=<>!&|~%]/, "operator"],
-          [/[{}()\[\]]/, "@brackets"],
-          [/;/, "delimiter"],
-          [/\/\/.*/, "comment"],
-          [/\/\*/, "comment", "@comment"],
-        ],
-        comment: [
-          [/[^\*]+/, "comment"],
-          [/\*\//, "comment", "@pop"],
-          [/[\*]/, "comment"],
-        ],
-        string: [
-          [/[^\\"]+/, "string"],
-          [/\\./, "string.escape"],
-          [/"/, { token: "string.quote", bracket: "@close", next: "@pop" }],
-        ],
-      },
-      keywords: [
-        "class",
-        "model",
-        "record",
-        "block",
-        "connector",
-        "type",
-        "package",
-        "function",
-        "algorithm",
-        "equation",
-        "end",
-        "public",
-        "protected",
-        "import",
-        "annotation",
-        "extends",
-        "encapsulated",
-        "partial",
-        "within",
-        "if",
-        "then",
-        "else",
-        "elseif",
-        "while",
-        "for",
-        "loop",
-        "when",
-        "return",
-        "break",
-        "true",
-        "false",
-      ],
-    };
 
     monaco.languages.setMonarchTokensProvider("modelica", modelicaTokensProvider);
     monaco.languages.registerCompletionItemProvider("modelica", {
@@ -282,55 +310,29 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
 
         const traverseTree = (node: Parser.SyntaxNode) => {
           let tokenType: string | null = null;
-          let pushSpecificNode: Parser.SyntaxNode | null = null;
           const modifier = 0;
 
-          if (
-            [
-              "class",
-              "model",
-              "record",
-              "block",
-              "connector",
-              "type",
-              "package",
-              "function",
-              "algorithm",
-              "equation",
-              "end",
-              "public",
-              "protected",
-              "import",
-              "annotation",
-              "extends",
-              "encapsulated",
-              "partial",
-              "within",
-              "if",
-              "then",
-              "else",
-              "elseif",
-              "while",
-              "for",
-              "loop",
-              "when",
-              "return",
-              "break",
-              "true",
-              "false",
-            ].includes(node.type)
-          ) {
+          const isKeyword =
+            modelicaTokensProvider.keywords.includes(node.type) ||
+            (modelicaTokensProvider.typeKeywords as string[]).includes(node.type);
+
+          if (isKeyword) {
             tokenType = "keyword";
-          } else if (node.type === "TypeSpecifier") {
-            tokenType = "type";
-          } else if (node.type === "ComponentDeclaration") {
-            const nameNode = node.children.find((c) => c.type === "IDENT");
-            if (nameNode) {
-              tokenType = "variable";
-              pushSpecificNode = nameNode;
-            }
           } else if (node.type === "IDENT") {
-            if (node.parent?.type !== "ComponentDeclaration") {
+            const parent = node.parent;
+            if (
+              parent?.type === "LongClassSpecifier" ||
+              parent?.type === "ShortClassSpecifier" ||
+              parent?.type === "DerClassSpecifier"
+            ) {
+              tokenType = "class";
+            } else if (parent?.type === "Declaration") {
+              tokenType = "variable";
+            } else if (parent?.type === "Name" && parent.parent?.type === "TypeSpecifier") {
+              tokenType = "type";
+            } else if ((modelicaTokensProvider.typeKeywords as string[]).includes(node.text)) {
+              tokenType = "type";
+            } else {
               tokenType = "variable";
             }
           } else if (node.type === "STRING") {
@@ -357,27 +359,20 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
               "comment",
             ];
             const typeIndex = types.indexOf(tokenType);
-            const targetNode = pushSpecificNode || node;
 
-            if (
-              !rawTokens.some(
-                (t) => t.line === targetNode.startPosition.row && t.char === targetNode.startPosition.column,
-              )
-            ) {
+            if (!rawTokens.some((t) => t.line === node.startPosition.row && t.char === node.startPosition.column)) {
               rawTokens.push({
-                line: targetNode.startPosition.row,
-                char: targetNode.startPosition.column,
-                length: targetNode.endPosition.column - targetNode.startPosition.column,
+                line: node.startPosition.row,
+                char: node.startPosition.column,
+                length: node.endPosition.column - node.startPosition.column,
                 typeIndex,
                 modifier,
               });
             }
           }
 
-          if (node.type !== "ComponentDeclaration" && node.type !== "TypeSpecifier") {
-            for (const child of node.children) {
-              traverseTree(child);
-            }
+          for (const child of node.children) {
+            traverseTree(child);
           }
         };
 
@@ -675,101 +670,3 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
 });
 
 export default CodeEditor;
-
-const modelicaTokensProvider = {
-  keywords: [
-    "algorithm",
-    "and",
-    "annotation",
-    "block",
-    "break",
-    "class",
-    "connect",
-    "connector",
-    "constant",
-    "constrainedby",
-    "der",
-    "discrete",
-    "each",
-    "else",
-    "elseif",
-    "elsewhen",
-    "encapsulated",
-    "end",
-    "enumeration",
-    "equation",
-    "expandable",
-    "extends",
-    "external",
-    "false",
-    "final",
-    "flow",
-    "for",
-    "function",
-    "if",
-    "import",
-    "impure",
-    "initial",
-    "inner",
-    "input",
-    "loop",
-    "model",
-    "not",
-    "operator",
-    "or",
-    "outer",
-    "output",
-    "package",
-    "parameter",
-    "partial",
-    "protected",
-    "public",
-    "pure",
-    "record",
-    "redeclare",
-    "replaceable",
-    "return",
-    "stream",
-    "then",
-    "true",
-    "type",
-    "when",
-    "while",
-    "within",
-  ],
-  typeKeywords: ["Boolean", "Integer", "Real", "String"],
-  tokenizer: {
-    root: [
-      [
-        /([_a-zA-Z]([_a-zA-Z0-9])*|'([_a-zA-Z0-9!#$%&()*+,-./:;<>=?@^{}|~ "]|\[|\]|\\('|"|\?|\\|a|b|f|n|r|t|v))*')/,
-        {
-          cases: {
-            "@typeKeywords": "keyword",
-            "@keywords": "keyword",
-            "@default": "identifier",
-          },
-        },
-      ],
-      { include: "@whitespace" },
-      [/\d*\.\d+([eE][-+]?\d+)?/, "number.float"],
-      [/\d+/, "number"],
-      [/"/, "string", "@string"],
-    ],
-    string: [
-      [/[^\\"]+/, "string"],
-      [/\\./, "string.escape"],
-      [/"/, "string", "@pop"],
-    ],
-    comment: [
-      [/[^/*]+/, "comment"],
-      [/\/\*/, "comment", "@push"],
-      ["\\*/", "comment", "@pop"],
-      [/[\\/*]/, "comment"],
-    ],
-    whitespace: [
-      [/[ \t\r\n]+/, "white"],
-      [/\/\*/, "comment", "@comment"],
-      [/\/\/.*$/, "comment"],
-    ],
-  },
-};
