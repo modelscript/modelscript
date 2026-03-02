@@ -165,6 +165,16 @@ export abstract class ModelicaElement extends ModelicaNode {
 
   abstract get hash(): string;
 
+  static initializeAnnotationClass(context: Context): void {
+    if (ModelicaElement.#annotationClassInstance) return;
+    const tree = context.getParser(".mo").parse(ANNOTATION);
+    const node = ModelicaStoredDefinitionSyntaxNode.new(null, tree?.rootNode)?.classDefinitions?.[0] ?? null;
+    if (node) {
+      ModelicaElement.#annotationClassInstance = ModelicaClassInstance.new(null, node);
+      ModelicaElement.#annotationClassInstance.instantiate();
+    }
+  }
+
   static instantiateAnnotations(
     classInstance: ModelicaClassInstance | null,
     annotationClause?: ModelicaAnnotationClauseSyntaxNode | null,
@@ -172,15 +182,10 @@ export abstract class ModelicaElement extends ModelicaNode {
   ): ModelicaNamedElement[] {
     const clauseModification = annotationClause ? ModelicaModification.new(classInstance, annotationClause) : null;
     const modification = ModelicaModification.merge(clauseModification, modificationAnnotations);
-    if (!classInstance || !modification) return [];
-    if (!ModelicaElement.#annotationClassInstance) {
-      const tree = classInstance.context?.getParser(".mo").parse(ANNOTATION);
-      const node = ModelicaStoredDefinitionSyntaxNode.new(null, tree?.rootNode)?.classDefinitions?.[0] ?? null;
-      if (node) {
-        ModelicaElement.#annotationClassInstance = ModelicaClassInstance.new(null, node);
-        ModelicaElement.#annotationClassInstance.instantiate();
-      }
+    if (!ModelicaElement.#annotationClassInstance && classInstance?.context) {
+      ModelicaElement.initializeAnnotationClass(classInstance.context);
     }
+    if (!classInstance || !modification) return [];
     const annotations: ModelicaNamedElement[] = [];
     for (const modificationArgument of modification.modificationArguments) {
       const name = modificationArgument.name;
@@ -302,6 +307,17 @@ export class ModelicaExtendsClassInstance extends ModelicaElement {
   override get elements(): IterableIterator<ModelicaElement> {
     if (!this.instantiated && !this.instantiating) this.instantiate();
     return this.classInstance?.elements ?? [][Symbol.iterator]();
+  }
+
+  override resolveSimpleName(
+    identifier: ModelicaIdentifierSyntaxNode | string | null | undefined,
+    global = false,
+    encapsulated = false,
+  ): ModelicaNamedElement | null {
+    const element = super.resolveSimpleName(identifier, global, encapsulated);
+    if (element) return element;
+    if (!this.instantiated && !this.instantiating) this.instantiate();
+    return this.classInstance?.resolveSimpleName(identifier, false, true) ?? null;
   }
 
   get hash(): string {
@@ -793,6 +809,7 @@ export class ModelicaEnumerationClassInstance extends ModelicaClassInstance {
       this.enumerationLiterals,
       this.value,
     );
+    classInstance.name = this.name;
     classInstance.instantiate();
     this.cloneCache.set(hash, classInstance);
     return classInstance;
@@ -809,6 +826,10 @@ export class ModelicaEnumerationClassInstance extends ModelicaClassInstance {
     if (this.instantiating)
       throw Error("reentrant error: enumeration class '" + this.name + "' is already being instantiated");
     this.instantiating = true;
+
+    const modValue = this.modification?.expression;
+    if (modValue instanceof ModelicaEnumerationLiteral) this.value = modValue;
+
     this.declaredElements = [];
     const classSpecifier = this.abstractSyntaxNode?.classSpecifier;
     if (!(classSpecifier instanceof ModelicaShortClassSpecifierSyntaxNode) || !classSpecifier.enumeration) {
@@ -820,26 +841,27 @@ export class ModelicaEnumerationClassInstance extends ModelicaClassInstance {
       this.enumerationLiterals = [];
       for (const enumerationLiteral of classSpecifier.enumerationLiterals) {
         if (enumerationLiteral.identifier?.text) {
-          this.enumerationLiterals.push(new ModelicaEnumerationLiteral(i, enumerationLiteral.identifier.text));
+          const description = enumerationLiteral.description?.strings?.map((d) => d.text ?? "")?.join(" ") ?? null;
+          this.enumerationLiterals.push(
+            new ModelicaEnumerationLiteral(i, enumerationLiteral.identifier.text, description),
+          );
           i++;
         }
       }
     }
-    const value = this.modification?.expression;
-    if (value instanceof ModelicaEnumerationLiteral) this.value = value;
     this.instantiated = true;
   }
 
   override resolveSimpleName(
-    identifier: ModelicaIdentifierSyntaxNode | null | undefined,
+    identifier: ModelicaIdentifierSyntaxNode | string | null | undefined,
     global = false,
     encapsulated = false,
   ): ModelicaNamedElement | null {
-    const simpleName = identifier?.text;
+    const simpleName = identifier instanceof ModelicaIdentifierSyntaxNode ? identifier.text : identifier;
     if (!simpleName) return null;
     if (!this.instantiated && !this.instantiating) this.instantiate();
     for (const enumerationLiteral of this.enumerationLiterals ?? []) {
-      if (enumerationLiteral.stringValue === identifier.text) {
+      if (enumerationLiteral.stringValue === simpleName) {
         return this.clone(new ModelicaModification(this, [], null, null, enumerationLiteral));
       }
     }
@@ -862,6 +884,17 @@ export class ModelicaShortClassInstance extends ModelicaClassInstance {
   override get elements(): IterableIterator<ModelicaElement> {
     if (!this.instantiated && !this.instantiating) this.instantiate();
     return this.classInstance?.elements ?? [][Symbol.iterator]();
+  }
+
+  override resolveSimpleName(
+    identifier: ModelicaIdentifierSyntaxNode | string | null | undefined,
+    global = false,
+    encapsulated = false,
+  ): ModelicaNamedElement | null {
+    const element = super.resolveSimpleName(identifier, global, encapsulated);
+    if (element) return element;
+    if (!this.instantiated && !this.instantiating) this.instantiate();
+    return this.classInstance?.resolveSimpleName(identifier, false, true) ?? null;
   }
 
   override instantiate(): void {
@@ -1047,6 +1080,17 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
     return this.classInstance?.elements ?? [][Symbol.iterator]();
   }
 
+  override resolveSimpleName(
+    identifier: ModelicaIdentifierSyntaxNode | string | null | undefined,
+    global = false,
+    encapsulated = false,
+  ): ModelicaNamedElement | null {
+    const element = super.resolveSimpleName(identifier, global, encapsulated);
+    if (element) return element;
+    if (!this.instantiated && !this.instantiating) this.instantiate();
+    return this.classInstance?.resolveSimpleName(identifier, false, true) ?? null;
+  }
+
   get hash(): string {
     if (this.#hash) return this.#hash;
     if (ModelicaComponentInstance.#hashing.has(this)) return "";
@@ -1178,7 +1222,97 @@ export abstract class ModelicaPredefinedClassInstance extends ModelicaClassInsta
   get expression(): ModelicaExpression | null {
     return this.modification?.expression ?? null;
   }
+
+  override resolveSimpleName(
+    identifier: ModelicaIdentifierSyntaxNode | string | null | undefined,
+    global = false,
+    encapsulated = false,
+  ): ModelicaNamedElement | null {
+    const simpleName = identifier instanceof ModelicaIdentifierSyntaxNode ? identifier.text : identifier;
+    if (simpleName && PREDEFINED_ATTRIBUTES[this.name ?? ""]?.[simpleName]) {
+      const element = new ModelicaComponentInstance(this, null);
+      element.name = simpleName;
+      element.description = PREDEFINED_ATTRIBUTES[this.name ?? ""]?.[simpleName] ?? null;
+      const typeName = PREDEFINED_ATTRIBUTE_TYPES[this.name ?? ""]?.[simpleName];
+      if (typeName) {
+        element.classInstance = this.root.resolveSimpleName(typeName) as ModelicaClassInstance;
+      }
+      return element;
+    }
+    return super.resolveSimpleName(identifier, global, encapsulated);
+  }
 }
+
+const PREDEFINED_ATTRIBUTES: Record<string, Record<string, string>> = {
+  Real: {
+    value: "The value of the variable.",
+    quantity: "The quantity name of the variable.",
+    unit: "The unit of the variable.",
+    displayUnit: "The display unit of the variable.",
+    min: "The minimum value of the variable.",
+    max: "The maximum value of the variable.",
+    start: "The initial value of the variable.",
+    fixed: "Whether the initial value is fixed.",
+    nominal: "The nominal value of the variable.",
+    unbounded: "Whether the variable is unbounded.",
+    stateSelect: "The state selection of the variable.",
+  },
+  Integer: {
+    value: "The value of the variable.",
+    quantity: "The quantity name of the variable.",
+    min: "The minimum value of the variable.",
+    max: "The maximum value of the variable.",
+    start: "The initial value of the variable.",
+    fixed: "Whether the initial value is fixed.",
+  },
+  Boolean: {
+    value: "The value of the variable.",
+    quantity: "The quantity name of the variable.",
+    start: "The initial value of the variable.",
+    fixed: "Whether the initial value is fixed.",
+  },
+  String: {
+    value: "The value of the variable.",
+    quantity: "The quantity name of the variable.",
+    start: "The initial value of the variable.",
+    fixed: "Whether the initial value is fixed.",
+  },
+};
+
+const PREDEFINED_ATTRIBUTE_TYPES: Record<string, Record<string, string>> = {
+  Real: {
+    value: "Real",
+    quantity: "String",
+    unit: "String",
+    displayUnit: "String",
+    min: "Real",
+    max: "Real",
+    start: "Real",
+    fixed: "Boolean",
+    nominal: "Real",
+    unbounded: "Boolean",
+  },
+  Integer: {
+    value: "Integer",
+    quantity: "String",
+    min: "Integer",
+    max: "Integer",
+    start: "Integer",
+    fixed: "Boolean",
+  },
+  Boolean: {
+    value: "Boolean",
+    quantity: "String",
+    start: "Boolean",
+    fixed: "Boolean",
+  },
+  String: {
+    value: "String",
+    quantity: "String",
+    start: "String",
+    fixed: "Boolean",
+  },
+};
 
 export class ModelicaBooleanClassInstance extends ModelicaPredefinedClassInstance {
   constructor(parent: Scope | null, modification?: ModelicaModification | null) {

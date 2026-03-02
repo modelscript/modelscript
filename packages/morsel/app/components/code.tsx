@@ -5,6 +5,8 @@ import {
   ModelicaClassInstance,
   ModelicaComponentInstance,
   ModelicaElement,
+  ModelicaEnumerationClassInstance,
+  ModelicaEnumerationLiteral,
   ModelicaLinter,
   ModelicaNamedElement,
   ModelicaStoredDefinitionSyntaxNode,
@@ -427,6 +429,11 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
         const scope = classInstanceRef.current ?? contextRef.current;
         if (!scope) return null;
 
+        // Ensure annotation class is initialized if we have a context
+        if (!ModelicaElement.annotationClassInstance && contextRef.current) {
+          ModelicaElement.initializeAnnotationClass(contextRef.current);
+        }
+
         let element = null;
 
         if (treeRef.current) {
@@ -436,51 +443,133 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
             const searchCol = Math.max(0, wordInfo.startColumn - 1);
             const searchEndCol = wordInfo.endColumn - 1;
 
-            let current: Parser.SyntaxNode | null = rootNode.descendantForPosition(
+            const current: Parser.SyntaxNode | null = rootNode.descendantForPosition(
               { row: searchRow, column: searchCol },
               { row: searchRow, column: searchEndCol },
             );
 
-            let isAnnotation = false;
-            const parameterPath: string[] = [];
-            let typeSpecifierStr: string | null = null;
+            // Unified path resolution for modifications and arguments
+            let currentPathNode: Parser.SyntaxNode | null = current;
+            let isOverValue = false;
+            let isOverName = false;
 
-            while (current) {
-              if (current.type === "ElementModification") {
-                const nameNode = current.children.find((c: Parser.SyntaxNode) => c.type === "Name");
-                if (nameNode) {
-                  parameterPath.unshift(nameNode.text);
-                }
+            while (currentPathNode) {
+              if (
+                currentPathNode.type === "Name" &&
+                (currentPathNode.parent?.type === "ElementModification" ||
+                  currentPathNode.parent?.type === "ElementRedeclaration")
+              ) {
+                isOverName = true;
+                break;
               }
-
-              if (parameterPath.length > 0) {
-                if (current.type === "AnnotationClause") {
-                  isAnnotation = true;
-                  break;
-                }
-                if (
-                  current.type === "ComponentClause" ||
-                  current.type === "ShortClassSpecifier" ||
-                  current.type === "ExtendsClause"
-                ) {
-                  const typeSpecNode = current.children.find((c: Parser.SyntaxNode) => c.type === "TypeSpecifier");
-                  if (typeSpecNode) typeSpecifierStr = typeSpecNode.text;
-                  break;
-                }
+              if (currentPathNode.type === "IDENT" && currentPathNode.parent?.type === "NamedArgument") {
+                isOverName = true;
+                break;
               }
-              current = current.parent;
+              if (
+                currentPathNode.type === "Modification" ||
+                currentPathNode.type === "FunctionCallArguments" ||
+                currentPathNode.type === "ArgumentList"
+              ) {
+                isOverValue = true;
+              }
+              if (
+                currentPathNode.type === "ElementModification" ||
+                currentPathNode.type === "NamedArgument" ||
+                currentPathNode.type === "FunctionCall"
+              ) {
+                break;
+              }
+              currentPathNode = currentPathNode.parent;
             }
 
-            if (parameterPath.length > 0) {
-              if (isAnnotation) {
-                const annotationClass = ModelicaElement.annotationClassInstance;
-                if (annotationClass) {
-                  element = annotationClass.resolveName(parameterPath);
+            if (isOverName || isOverValue) {
+              const traversalNode = currentPathNode;
+              let pathNode: Parser.SyntaxNode | null = traversalNode;
+              const parameterPath: string[] = [];
+              let baseElement: ModelicaNamedElement | null = null;
+              let foundBase = false;
+
+              while (pathNode) {
+                if (pathNode.type === "ElementModification") {
+                  const nameNode = pathNode.children.find((c: Parser.SyntaxNode) => c.type === "Name");
+                  if (nameNode) {
+                    parameterPath.unshift(...nameNode.text.split("."));
+                  }
+                } else if (pathNode.type === "NamedArgument") {
+                  const identNode = pathNode.childForFieldName("identifier");
+                  if (identNode) {
+                    parameterPath.unshift(identNode.text);
+                  }
                 }
-              } else if (typeSpecifierStr) {
-                const baseClass = scope.resolveName(typeSpecifierStr.split("."));
-                if (baseClass instanceof ModelicaClassInstance) {
-                  element = baseClass.resolveName(parameterPath);
+
+                // If we hit a FunctionCall, it's a base (potential record constructor)
+                if (pathNode.type === "FunctionCall") {
+                  const refNode = pathNode.children.find((c: Parser.SyntaxNode) => c.type === "ComponentReference");
+                  if (refNode) {
+                    const funcRef = refNode.text;
+                    baseElement = scope.resolveName(funcRef.split("."));
+                    if (!baseElement) {
+                      const annotationClass = ModelicaElement.annotationClassInstance;
+                      if (annotationClass) {
+                        baseElement = annotationClass.resolveSimpleName(funcRef);
+                        if (!baseElement && funcRef.includes(".")) {
+                          baseElement = annotationClass.resolveName(funcRef.split("."));
+                        }
+                      }
+                    }
+                    if (baseElement) {
+                      foundBase = true;
+                      break;
+                    }
+                  }
+                }
+
+                if (pathNode.type === "AnnotationClause") {
+                  baseElement = ModelicaElement.annotationClassInstance;
+                  foundBase = true;
+                  break;
+                }
+
+                if (
+                  pathNode.type === "ComponentClause" ||
+                  pathNode.type === "ShortClassSpecifier" ||
+                  pathNode.type === "ExtendsClause"
+                ) {
+                  const typeSpecNode = pathNode.children.find((c: Parser.SyntaxNode) => c.type === "TypeSpecifier");
+                  if (typeSpecNode) {
+                    baseElement = scope.resolveName(typeSpecNode.text.split("."));
+                    foundBase = true;
+                    break;
+                  }
+                }
+
+                pathNode = pathNode.parent;
+              }
+
+              if (foundBase && baseElement) {
+                const resolved =
+                  baseElement instanceof ModelicaClassInstance
+                    ? baseElement.resolveName(parameterPath)
+                    : baseElement instanceof ModelicaComponentInstance
+                      ? baseElement.classInstance?.resolveName(parameterPath)
+                      : null;
+
+                if (isOverName) {
+                  element = resolved;
+                } else if (isOverValue && resolved) {
+                  const typeScope =
+                    resolved instanceof ModelicaComponentInstance
+                      ? resolved.classInstance
+                      : resolved instanceof ModelicaClassInstance
+                        ? resolved
+                        : null;
+                  if (typeScope) {
+                    element = typeScope.resolveName(fullPath.split("."));
+                    if (!element && fullPath !== wordInfo.word) {
+                      element = typeScope.resolveName(wordInfo.word.split("."));
+                    }
+                  }
                 }
               }
             }
@@ -502,7 +591,15 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
 
         if (element instanceof ModelicaNamedElement) {
           const contents = [];
-          if (element instanceof ModelicaClassInstance) {
+          if (element instanceof ModelicaEnumerationClassInstance && (element as any).value) {
+            const value = (element as any).value as ModelicaEnumerationLiteral;
+            contents.push({
+              value: `**enumeration literal** \`${value.stringValue}\` : \`${element.name}\``,
+            });
+            if (value.description) {
+              contents.push({ value: value.description });
+            }
+          } else if (element instanceof ModelicaClassInstance) {
             contents.push({ value: `**${element.classKind}** \`${element.compositeName}\`` });
           } else if (element instanceof ModelicaComponentInstance) {
             const typeName = element.classInstance?.compositeName ?? "UnknownType";
@@ -511,7 +608,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
             contents.push({ value: `\`${element.name}\`` });
           }
 
-          if (element.description) {
+          if (element.description && !(element instanceof ModelicaEnumerationClassInstance && element.value)) {
             contents.push({ value: element.description });
           }
 

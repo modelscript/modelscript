@@ -681,11 +681,13 @@ export class ModelicaStringLiteral extends ModelicaLiteral {
 export class ModelicaEnumerationLiteral extends ModelicaLiteral {
   ordinalValue: number;
   stringValue: string;
+  description: string | null;
 
-  constructor(ordinalValue: number, stringValue: string) {
+  constructor(ordinalValue: number, stringValue: string, description?: string | null) {
     super();
     this.ordinalValue = ordinalValue;
     this.stringValue = stringValue;
+    this.description = description ?? null;
   }
 
   override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
