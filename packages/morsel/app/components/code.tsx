@@ -262,7 +262,6 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
           const element = scope.resolveName(path.split("."));
           if (element) {
             const suggestions: monaco.languages.CompletionItem[] = [];
-            // eslint-disable-next-line @typescript-eslint/naming-convention
             for (const child of element.elements) {
               if (child instanceof ModelicaNamedElement && child.name) {
                 suggestions.push({
@@ -299,15 +298,10 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
           tokenModifiers: ["declaration", "readonly"],
         };
       },
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      provideDocumentSemanticTokens: (
-        _model: editor.ITextModel,
-        _lastResultId: string | null,
-        _token: monaco.CancellationToken,
-      ) => {
+      provideDocumentSemanticTokens: (model: editor.ITextModel) => {
         if (!parserRef.current) return { data: new Uint32Array(0) };
 
-        const text = _model.getValue();
+        const text = model.getValue();
         const tree = parserRef.current.parse(text);
         const rootNode = tree.rootNode;
         try {
@@ -453,8 +447,9 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
           if (!scope) return null;
 
           // Ensure annotation class is initialized if we have a context
-          if (!ModelicaElement.annotationClassInstance && contextRef.current) {
-            ModelicaElement.initializeAnnotationClass(contextRef.current);
+          const ME = ModelicaElement as any;
+          if (!ME.annotationClassInstance && contextRef.current) {
+            ME.initializeAnnotationClass(contextRef.current);
           }
 
           let element = null;
@@ -795,6 +790,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
         });
       },
     );
+    if (treeRef.current) (treeRef.current as any).delete();
     const tree = context.parse(".mo", value);
     treeRef.current = tree as any;
     linter.lint(tree);
