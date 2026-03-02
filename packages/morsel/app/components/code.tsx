@@ -645,11 +645,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
       Context.registerParser(".mo", parser);
 
       monaco.languages.registerDocumentFormattingEditProvider("modelica", {
-        provideDocumentFormattingEdits: (
-          model: editor.ITextModel,
-          _options: monaco.languages.FormattingOptions,
-          _token: monaco.CancellationToken,
-        ) => {
+        provideDocumentFormattingEdits: (model: editor.ITextModel) => {
           const text = model.getValue();
           const tree = parser.parse(text);
           const formatted = format(tree, text);
@@ -658,6 +654,83 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
             {
               range: model.getFullModelRange(),
               text: formatted,
+            },
+          ];
+        },
+      });
+
+      monaco.languages.registerColorProvider("modelica", {
+        provideDocumentColors: (model: editor.ITextModel) => {
+          const text = model.getValue();
+          const tree = parser.parse(text);
+          const colors: languages.IColorInformation[] = [];
+          const colorFields = new Set(["color", "lineColor", "fillColor", "textColor"]);
+
+          const traverse = (node: Parser.SyntaxNode) => {
+            if (node.type === "ElementModification" || node.type === "NamedArgument") {
+              const nameNode = node.childForFieldName("name") || node.childForFieldName("identifier");
+              const name = nameNode?.text;
+              if (name && colorFields.has(name)) {
+                let exprNode = null;
+                if (node.type === "ElementModification") {
+                  const modNode = node.childForFieldName("modification");
+                  exprNode = modNode?.childForFieldName("modificationExpression")?.childForFieldName("expression");
+                } else {
+                  exprNode = node.childForFieldName("argument")?.childForFieldName("expression");
+                }
+
+                if (exprNode?.type === "ArrayConstructor") {
+                  const listNode = exprNode.childForFieldName("expressionList");
+                  if (listNode) {
+                    const exprs = listNode.namedChildren;
+                    if (exprs.length === 3) {
+                      const r = parseInt(exprs[0].text);
+                      const g = parseInt(exprs[1].text);
+                      const b = parseInt(exprs[2].text);
+                      if (!isNaN(r) && !isNaN(g) && !isNaN(b)) {
+                        colors.push({
+                          range: {
+                            startLineNumber: exprNode.startPosition.row + 1,
+                            startColumn: exprNode.startPosition.column + 1,
+                            endLineNumber: exprNode.endPosition.row + 1,
+                            endColumn: exprNode.endPosition.column + 1,
+                          },
+                          color: {
+                            red: Math.max(0, Math.min(255, r)) / 255.0,
+                            green: Math.max(0, Math.min(255, g)) / 255.0,
+                            blue: Math.max(0, Math.min(255, b)) / 255.0,
+                            alpha: 1.0,
+                          },
+                        });
+                      }
+                    }
+                  }
+                }
+              }
+            }
+            for (let i = 0; i < node.childCount; i++) {
+              const child = node.child(i);
+              if (child) traverse(child);
+            }
+          };
+
+          traverse(tree.rootNode);
+          tree.delete();
+          return colors;
+        },
+        provideColorPresentations: (_model: editor.ITextModel, colorInfo: languages.IColorInformation) => {
+          const c = colorInfo.color;
+          const r = Math.round(c.red * 255);
+          const g = Math.round(c.green * 255);
+          const b = Math.round(c.blue * 255);
+          const label = `{${r}, ${g}, ${b}}`;
+          return [
+            {
+              label: label,
+              textEdit: {
+                range: colorInfo.range,
+                text: label,
+              },
             },
           ];
         },
