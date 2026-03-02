@@ -6,7 +6,6 @@ import {
   ModelicaComponentInstance,
   ModelicaElement,
   ModelicaEnumerationClassInstance,
-  ModelicaEnumerationLiteral,
   ModelicaLinter,
   ModelicaNamedElement,
   ModelicaStoredDefinitionSyntaxNode,
@@ -151,6 +150,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
   const contextRef = useRef<Context | null>(null);
   const classInstanceRef = useRef<ModelicaClassInstance | null>(null);
   const treeRef = useRef<Parser.Tree | null>(null);
+  const parserRef = useRef<Parser | null>(null);
 
   useEffect(() => {
     contextRef.current = props.context;
@@ -305,103 +305,121 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
         _lastResultId: string | null,
         _token: monaco.CancellationToken,
       ) => {
-        if (!treeRef.current) return { data: new Uint32Array(0) };
+        if (!parserRef.current) return { data: new Uint32Array(0) };
 
-        const rootNode = treeRef.current.rootNode;
-        const rawTokens: { line: number; char: number; length: number; typeIndex: number; modifier: number }[] = [];
+        const text = _model.getValue();
+        const tree = parserRef.current.parse(text);
+        const rootNode = tree.rootNode;
+        try {
+          const rawTokens: {
+            line: number;
+            char: number;
+            length: number;
+            typeIndex: number;
+            modifier: number;
+          }[] = [];
 
-        const traverseTree = (node: Parser.SyntaxNode) => {
-          let tokenType: string | null = null;
-          const modifier = 0;
+          const traverseTree = (node: Parser.SyntaxNode) => {
+            let tokenType: string | null = null;
+            const modifier = 0;
 
-          const isKeyword =
-            modelicaTokensProvider.keywords.includes(node.type) ||
-            (modelicaTokensProvider.typeKeywords as string[]).includes(node.type);
+            const isKeyword =
+              modelicaTokensProvider.keywords.includes(node.type) ||
+              (modelicaTokensProvider.typeKeywords as string[]).includes(node.type);
 
-          if (isKeyword) {
-            tokenType = "keyword";
-          } else if (node.type === "IDENT") {
-            const parent = node.parent;
-            if (
-              parent?.type === "LongClassSpecifier" ||
-              parent?.type === "ShortClassSpecifier" ||
-              parent?.type === "DerClassSpecifier"
-            ) {
-              tokenType = "class";
-            } else if (parent?.type === "Declaration") {
-              tokenType = "variable";
-            } else if (parent?.type === "Name" && parent.parent?.type === "TypeSpecifier") {
-              tokenType = "type";
-            } else if ((modelicaTokensProvider.typeKeywords as string[]).includes(node.text)) {
-              tokenType = "type";
-            } else {
-              tokenType = "variable";
+            if (isKeyword) {
+              tokenType = "keyword";
+            } else if (node.type === "IDENT") {
+              const parent = node.parent;
+              let p: Parser.SyntaxNode | null = parent;
+              while (p && p.type === "Name") {
+                p = p.parent;
+              }
+
+              if (
+                parent?.type === "LongClassSpecifier" ||
+                parent?.type === "ShortClassSpecifier" ||
+                parent?.type === "DerClassSpecifier" ||
+                p?.type === "WithinDirective" ||
+                p?.type === "ExtendsClause" ||
+                p?.type === "TypeSpecifier"
+              ) {
+                tokenType = "type";
+              } else if (parent?.type === "Declaration") {
+                tokenType = "variable";
+              } else if ((modelicaTokensProvider.typeKeywords as string[]).includes(node.text)) {
+                tokenType = "type";
+              } else {
+                tokenType = "variable";
+              }
+            } else if (node.type === "STRING") {
+              tokenType = "string";
+            } else if (node.type === "UNSIGNED_INTEGER" || node.type === "UNSIGNED_REAL") {
+              tokenType = "number";
+            } else if (node.type === "comment") {
+              tokenType = "comment";
+            } else if (["+", "-", "*", "/", "=", "<", ">", "<=", ">=", "==", "<>"].includes(node.type)) {
+              tokenType = "operator";
             }
-          } else if (node.type === "STRING") {
-            tokenType = "string";
-          } else if (node.type === "UNSIGNED_INTEGER" || node.type === "UNSIGNED_REAL") {
-            tokenType = "number";
-          } else if (node.type === "comment") {
-            tokenType = "comment";
-          } else if (["+", "-", "*", "/", "=", "<", ">", "<=", ">=", "==", "<>"].includes(node.type)) {
-            tokenType = "operator";
-          }
 
-          if (tokenType !== null) {
-            const types = [
-              "keyword",
-              "type",
-              "class",
-              "variable",
-              "parameter",
-              "function",
-              "string",
-              "number",
-              "operator",
-              "comment",
-            ];
-            const typeIndex = types.indexOf(tokenType);
+            if (tokenType !== null) {
+              const types = [
+                "keyword",
+                "type",
+                "class",
+                "variable",
+                "parameter",
+                "function",
+                "string",
+                "number",
+                "operator",
+                "comment",
+              ];
+              const typeIndex = types.indexOf(tokenType);
 
-            if (!rawTokens.some((t) => t.line === node.startPosition.row && t.char === node.startPosition.column)) {
-              rawTokens.push({
-                line: node.startPosition.row,
-                char: node.startPosition.column,
-                length: node.endPosition.column - node.startPosition.column,
-                typeIndex,
-                modifier,
-              });
+              if (!rawTokens.some((t) => t.line === node.startPosition.row && t.char === node.startPosition.column)) {
+                rawTokens.push({
+                  line: node.startPosition.row,
+                  char: node.startPosition.column,
+                  length: node.endPosition.column - node.startPosition.column,
+                  typeIndex,
+                  modifier,
+                });
+              }
             }
+
+            for (const child of node.children) {
+              traverseTree(child);
+            }
+          };
+
+          traverseTree(rootNode);
+
+          rawTokens.sort((a, b) => {
+            if (a.line === b.line) {
+              return a.char - b.char;
+            }
+            return a.line - b.line;
+          });
+
+          const data: number[] = [];
+          let prevLine = 0;
+          let prevChar = 0;
+
+          for (const token of rawTokens) {
+            const deltaLine = token.line - prevLine;
+            const deltaChar = deltaLine === 0 ? token.char - prevChar : token.char;
+
+            data.push(deltaLine, deltaChar, token.length, token.typeIndex, token.modifier);
+
+            prevLine = token.line;
+            prevChar = token.char;
           }
 
-          for (const child of node.children) {
-            traverseTree(child);
-          }
-        };
-
-        traverseTree(rootNode);
-
-        rawTokens.sort((a, b) => {
-          if (a.line === b.line) {
-            return a.char - b.char;
-          }
-          return a.line - b.line;
-        });
-
-        const data: number[] = [];
-        let prevLine = 0;
-        let prevChar = 0;
-
-        for (const token of rawTokens) {
-          const deltaLine = token.line - prevLine;
-          const deltaChar = deltaLine === 0 ? token.char - prevChar : token.char;
-
-          data.push(deltaLine, deltaChar, token.length, token.typeIndex, token.modifier);
-
-          prevLine = token.line;
-          prevChar = token.char;
+          return { data: new Uint32Array(data) };
+        } finally {
+          tree.delete();
         }
-
-        return { data: new Uint32Array(data) };
       },
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       releaseDocumentSemanticTokens: (_resultId: string | undefined) => {
@@ -414,211 +432,216 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
         const wordInfo = model.getWordAtPosition(position);
         if (!wordInfo) return null;
 
-        const lineContent = model.getLineContent(position.lineNumber);
-        let start = wordInfo.startColumn - 1;
-        while (start > 0 && (lineContent[start - 1] === "." || /[a-zA-Z0-9_]/.test(lineContent[start - 1]))) {
-          start--;
-        }
-        let end = wordInfo.endColumn - 1;
-        while (end < lineContent.length && (lineContent[end] === "." || /[a-zA-Z0-9_]/.test(lineContent[end]))) {
-          end++;
-        }
-        if (lineContent[end - 1] === ".") end--;
+        const text = model.getValue();
+        const tree = parserRef.current?.parse(text);
+        if (!tree) return null;
 
-        const fullPath = lineContent.substring(start, end);
-        const scope = classInstanceRef.current ?? contextRef.current;
-        if (!scope) return null;
+        try {
+          const lineContent = model.getLineContent(position.lineNumber);
+          let start = wordInfo.startColumn - 1;
+          while (start > 0 && (lineContent[start - 1] === "." || /[a-zA-Z0-9_]/.test(lineContent[start - 1]))) {
+            start--;
+          }
+          let end = wordInfo.endColumn - 1;
+          while (end < lineContent.length && (lineContent[end] === "." || /[a-zA-Z0-9_]/.test(lineContent[end]))) {
+            end++;
+          }
+          if (lineContent[end - 1] === ".") end--;
 
-        // Ensure annotation class is initialized if we have a context
-        if (!ModelicaElement.annotationClassInstance && contextRef.current) {
-          ModelicaElement.initializeAnnotationClass(contextRef.current);
-        }
+          const fullPath = lineContent.substring(start, end);
+          const scope = classInstanceRef.current ?? contextRef.current;
+          if (!scope) return null;
 
-        let element = null;
+          // Ensure annotation class is initialized if we have a context
+          if (!ModelicaElement.annotationClassInstance && contextRef.current) {
+            ModelicaElement.initializeAnnotationClass(contextRef.current);
+          }
 
-        if (treeRef.current) {
-          try {
-            const rootNode = treeRef.current.rootNode;
-            const searchRow = position.lineNumber - 1;
-            const searchCol = Math.max(0, wordInfo.startColumn - 1);
-            const searchEndCol = wordInfo.endColumn - 1;
+          let element = null;
 
-            const current: Parser.SyntaxNode | null = rootNode.descendantForPosition(
-              { row: searchRow, column: searchCol },
-              { row: searchRow, column: searchEndCol },
-            );
+          const rootNode = tree.rootNode;
+          const searchRow = position.lineNumber - 1;
+          const searchCol = Math.max(0, wordInfo.startColumn - 1);
+          const searchEndCol = wordInfo.endColumn - 1;
 
-            // Unified path resolution for modifications and arguments
-            let currentPathNode: Parser.SyntaxNode | null = current;
-            let isOverValue = false;
-            let isOverName = false;
+          const current: Parser.SyntaxNode | null = rootNode.descendantForPosition(
+            { row: searchRow, column: searchCol },
+            { row: searchRow, column: searchEndCol },
+          );
 
-            while (currentPathNode) {
-              if (
-                currentPathNode.type === "Name" &&
-                (currentPathNode.parent?.type === "ElementModification" ||
-                  currentPathNode.parent?.type === "ElementRedeclaration")
-              ) {
-                isOverName = true;
-                break;
-              }
-              if (currentPathNode.type === "IDENT" && currentPathNode.parent?.type === "NamedArgument") {
-                isOverName = true;
-                break;
-              }
-              if (
-                currentPathNode.type === "Modification" ||
-                currentPathNode.type === "FunctionCallArguments" ||
-                currentPathNode.type === "ArgumentList"
-              ) {
-                isOverValue = true;
-              }
-              if (
-                currentPathNode.type === "ElementModification" ||
-                currentPathNode.type === "NamedArgument" ||
-                currentPathNode.type === "FunctionCall"
-              ) {
-                break;
-              }
-              currentPathNode = currentPathNode.parent;
+          // Unified path resolution for modifications and arguments
+          let currentPathNode: Parser.SyntaxNode | null = current;
+          let isOverValue = false;
+          let isOverName = false;
+
+          while (currentPathNode) {
+            if (
+              currentPathNode.type === "Name" &&
+              (currentPathNode.parent?.type === "ElementModification" ||
+                currentPathNode.parent?.type === "ElementRedeclaration")
+            ) {
+              isOverName = true;
+              break;
             }
+            if (currentPathNode.type === "IDENT" && currentPathNode.parent?.type === "NamedArgument") {
+              isOverName = true;
+              break;
+            }
+            if (
+              currentPathNode.type === "Modification" ||
+              currentPathNode.type === "FunctionCallArguments" ||
+              currentPathNode.type === "ArgumentList"
+            ) {
+              isOverValue = true;
+            }
+            if (
+              currentPathNode.type === "ElementModification" ||
+              currentPathNode.type === "NamedArgument" ||
+              currentPathNode.type === "FunctionCall"
+            ) {
+              break;
+            }
+            currentPathNode = currentPathNode.parent;
+          }
 
-            if (isOverName || isOverValue) {
-              const traversalNode = currentPathNode;
-              let pathNode: Parser.SyntaxNode | null = traversalNode;
-              const parameterPath: string[] = [];
-              let baseElement: ModelicaNamedElement | null = null;
-              let foundBase = false;
+          if (isOverName || isOverValue) {
+            const traversalNode = currentPathNode;
+            let pathNode: Parser.SyntaxNode | null = traversalNode;
+            const parameterPath: string[] = [];
+            let baseElement: ModelicaNamedElement | null = null;
+            let foundBase = false;
 
-              while (pathNode) {
-                if (pathNode.type === "ElementModification") {
-                  const nameNode = pathNode.children.find((c: Parser.SyntaxNode) => c.type === "Name");
-                  if (nameNode) {
-                    parameterPath.unshift(...nameNode.text.split("."));
-                  }
-                } else if (pathNode.type === "NamedArgument") {
-                  const identNode = pathNode.childForFieldName("identifier");
-                  if (identNode) {
-                    parameterPath.unshift(identNode.text);
-                  }
+            while (pathNode) {
+              if (pathNode.type === "ElementModification") {
+                const nameNode = pathNode.children.find((c: Parser.SyntaxNode) => c.type === "Name");
+                if (nameNode) {
+                  parameterPath.unshift(...nameNode.text.split("."));
                 }
+              } else if (pathNode.type === "NamedArgument") {
+                const identNode = pathNode.childForFieldName("identifier");
+                if (identNode) {
+                  parameterPath.unshift(identNode.text);
+                }
+              }
 
-                // If we hit a FunctionCall, it's a base (potential record constructor)
-                if (pathNode.type === "FunctionCall") {
-                  const refNode = pathNode.children.find((c: Parser.SyntaxNode) => c.type === "ComponentReference");
-                  if (refNode) {
-                    const funcRef = refNode.text;
-                    baseElement = scope.resolveName(funcRef.split("."));
-                    if (!baseElement) {
-                      const annotationClass = ModelicaElement.annotationClassInstance;
-                      if (annotationClass) {
-                        baseElement = annotationClass.resolveSimpleName(funcRef);
-                        if (!baseElement && funcRef.includes(".")) {
-                          baseElement = annotationClass.resolveName(funcRef.split("."));
-                        }
+              // If we hit a FunctionCall, it's a base (potential record constructor)
+              if (pathNode.type === "FunctionCall") {
+                const refNode = pathNode.children.find((c: Parser.SyntaxNode) => c.type === "ComponentReference");
+                if (refNode) {
+                  const funcRef = refNode.text;
+                  baseElement = scope.resolveName(funcRef.split("."));
+                  if (!baseElement) {
+                    const annotationClass = ModelicaElement.annotationClassInstance;
+                    if (annotationClass) {
+                      baseElement = annotationClass.resolveSimpleName(funcRef);
+                      if (!baseElement && funcRef.includes(".")) {
+                        baseElement = annotationClass.resolveName(funcRef.split("."));
                       }
                     }
-                    if (baseElement) {
-                      foundBase = true;
-                      break;
-                    }
                   }
-                }
-
-                if (pathNode.type === "AnnotationClause") {
-                  baseElement = ModelicaElement.annotationClassInstance;
-                  foundBase = true;
-                  break;
-                }
-
-                if (
-                  pathNode.type === "ComponentClause" ||
-                  pathNode.type === "ShortClassSpecifier" ||
-                  pathNode.type === "ExtendsClause"
-                ) {
-                  const typeSpecNode = pathNode.children.find((c: Parser.SyntaxNode) => c.type === "TypeSpecifier");
-                  if (typeSpecNode) {
-                    baseElement = scope.resolveName(typeSpecNode.text.split("."));
+                  if (baseElement) {
                     foundBase = true;
                     break;
                   }
                 }
-
-                pathNode = pathNode.parent;
               }
 
-              if (foundBase && baseElement) {
-                const resolved =
-                  baseElement instanceof ModelicaClassInstance
-                    ? baseElement.resolveName(parameterPath)
-                    : baseElement instanceof ModelicaComponentInstance
-                      ? baseElement.classInstance?.resolveName(parameterPath)
-                      : null;
+              if (pathNode.type === "AnnotationClause") {
+                baseElement = ModelicaElement.annotationClassInstance;
+                foundBase = true;
+                break;
+              }
 
-                if (isOverName) {
-                  element = resolved;
-                } else if (isOverValue && resolved) {
-                  const typeScope =
-                    resolved instanceof ModelicaComponentInstance
-                      ? resolved.classInstance
-                      : resolved instanceof ModelicaClassInstance
-                        ? resolved
-                        : null;
-                  if (typeScope) {
-                    element = typeScope.resolveName(fullPath.split("."));
-                    if (!element && fullPath !== wordInfo.word) {
-                      element = typeScope.resolveName(wordInfo.word.split("."));
-                    }
+              if (
+                pathNode.type === "ComponentClause" ||
+                pathNode.type === "ShortClassSpecifier" ||
+                pathNode.type === "ExtendsClause"
+              ) {
+                const typeSpecNode = pathNode.children.find((c: Parser.SyntaxNode) => c.type === "TypeSpecifier");
+                if (typeSpecNode) {
+                  baseElement = scope.resolveName(typeSpecNode.text.split("."));
+                  foundBase = true;
+                  break;
+                }
+              }
+
+              pathNode = pathNode.parent;
+            }
+
+            if (foundBase && baseElement) {
+              const resolved =
+                baseElement instanceof ModelicaClassInstance
+                  ? baseElement.resolveName(parameterPath)
+                  : baseElement instanceof ModelicaComponentInstance
+                    ? baseElement.classInstance?.resolveName(parameterPath)
+                    : null;
+
+              if (isOverName) {
+                element = resolved;
+              } else if (isOverValue && resolved) {
+                const typeScope =
+                  resolved instanceof ModelicaComponentInstance
+                    ? resolved.classInstance
+                    : resolved instanceof ModelicaClassInstance
+                      ? resolved
+                      : null;
+                if (typeScope) {
+                  element = typeScope.resolveName(fullPath.split("."));
+                  if (!element && fullPath !== wordInfo.word) {
+                    element = typeScope.resolveName(wordInfo.word.split("."));
                   }
                 }
               }
             }
-          } catch (e) {
-            console.error("Syntax tree hover traversal failed", e);
           }
-        }
 
-        if (!element) {
-          element = scope.resolveName(fullPath.split("."));
-          if (!element && fullPath !== wordInfo.word) {
-            element = scope.resolveName(wordInfo.word.split("."));
-            if (element) {
-              start = wordInfo.startColumn - 1;
-              end = wordInfo.endColumn - 1;
+          if (!element) {
+            element = scope.resolveName(fullPath.split("."));
+            if (!element && fullPath !== wordInfo.word) {
+              element = scope.resolveName(wordInfo.word.split("."));
+              if (element) {
+                start = wordInfo.startColumn - 1;
+                end = wordInfo.endColumn - 1;
+              }
             }
           }
-        }
 
-        if (element instanceof ModelicaNamedElement) {
-          const contents = [];
-          if (element instanceof ModelicaEnumerationClassInstance && (element as any).value) {
-            const value = (element as any).value as ModelicaEnumerationLiteral;
-            contents.push({
-              value: `**enumeration literal** \`${value.stringValue}\` : \`${element.name}\``,
-            });
-            if (value.description) {
-              contents.push({ value: value.description });
+          if (element instanceof ModelicaNamedElement) {
+            const contents = [];
+            if (element instanceof ModelicaEnumerationClassInstance && element.value) {
+              const value = element.value;
+              contents.push({
+                value: `**enumeration literal** \`${value.stringValue}\` : \`${element.name}\``,
+              });
+              if (value.description) {
+                contents.push({ value: value.description });
+              }
+            } else if (element instanceof ModelicaClassInstance) {
+              contents.push({ value: `**${element.classKind}** \`${element.compositeName}\`` });
+            } else if (element instanceof ModelicaComponentInstance) {
+              const typeName = element.classInstance?.compositeName ?? "UnknownType";
+              contents.push({ value: `**component** \`${element.name}\` : \`${typeName}\`` });
+            } else {
+              contents.push({ value: `\`${element.name}\`` });
             }
-          } else if (element instanceof ModelicaClassInstance) {
-            contents.push({ value: `**${element.classKind}** \`${element.compositeName}\`` });
-          } else if (element instanceof ModelicaComponentInstance) {
-            const typeName = element.classInstance?.compositeName ?? "UnknownType";
-            contents.push({ value: `**component** \`${element.name}\` : \`${typeName}\`` });
-          } else {
-            contents.push({ value: `\`${element.name}\`` });
+
+            if (element.description && !(element instanceof ModelicaEnumerationClassInstance && element.value)) {
+              contents.push({ value: element.description });
+            }
+
+            return {
+              range: new monaco.Range(position.lineNumber, start + 1, position.lineNumber, end + 1),
+              contents,
+            };
           }
 
-          if (element.description && !(element instanceof ModelicaEnumerationClassInstance && element.value)) {
-            contents.push({ value: element.description });
-          }
-
-          return {
-            range: new monaco.Range(position.lineNumber, start + 1, position.lineNumber, end + 1),
-            contents,
-          };
+          return null;
+        } catch (e) {
+          console.error("Syntax tree hover traversal failed", e);
+          return null;
+        } finally {
+          tree.delete();
         }
-
-        return null;
       },
     });
 
@@ -642,6 +665,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
       const Modelica = await Parser.Language.load("/tree-sitter-modelica.wasm");
       const parser = new Parser();
       parser.setLanguage(Modelica);
+      parserRef.current = parser;
       Context.registerParser(".mo", parser);
 
       monaco.languages.registerDocumentFormattingEditProvider("modelica", {
