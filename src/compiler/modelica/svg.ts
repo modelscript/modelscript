@@ -73,7 +73,7 @@ export function renderDiagram(classInstance: ModelicaClassInstance, svg?: Svg): 
     const condition = evaluateCondition(component);
     if (condition === false) continue;
 
-    const componentSvg = renderIcon(componentClassInstance, component, true);
+    const componentSvg = renderIcon(component.declaredType ?? componentClassInstance, component, true);
     if (componentSvg) {
       if (condition === undefined) componentSvg.opacity(0.5);
       applyIconPlacement(componentSvg, component);

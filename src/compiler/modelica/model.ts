@@ -907,15 +907,19 @@ export class ModelicaShortClassInstance extends ModelicaClassInstance {
     const arraySubscripts = [...(classSpecifier?.arraySubscripts?.subscripts ?? [])];
     const classInstance = this.resolveTypeSpecifier(classSpecifier.typeSpecifier);
     if (classInstance instanceof ModelicaClassInstance) {
-      if (arraySubscripts.length === 0) this.classInstance = classInstance.clone(this.modification);
-      else
+      if (arraySubscripts.length === 0) {
+        this.classInstance = classInstance.clone(this.modification);
+        this.classInstance.name = this.name; // Keep the declared name
+      } else {
         this.classInstance = new ModelicaArrayClassInstance(
           this.parent,
           classInstance,
           arraySubscripts,
           this.modification,
         );
-      this.classInstance.instantiate();
+        this.classInstance.name = this.name; // Keep the declared name
+        this.classInstance.instantiate();
+      }
     } else {
       console.warn(`Failed to resolve class '${this.name}' target.`);
     }
@@ -1039,6 +1043,7 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
   #abstractSyntaxNode: ModelicaComponentDeclarationSyntaxNode | ModelicaComponentDeclaration1SyntaxNode | null;
   #modification: ModelicaModification | null = null;
   #classInstance: ModelicaClassInstance | null = null;
+  #declaredType: ModelicaClassInstance | null = null;
 
   constructor(
     parent: ModelicaClassInstance | null,
@@ -1059,6 +1064,11 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
 
   set classInstance(value: ModelicaClassInstance | null) {
     this.#classInstance = value;
+  }
+
+  get declaredType(): ModelicaClassInstance | null {
+    if (!this.instantiated && !this.instantiating) this.instantiate();
+    return this.#declaredType;
   }
 
   get abstractSyntaxNode(): ModelicaComponentDeclarationSyntaxNode | ModelicaComponentDeclaration1SyntaxNode | null {
@@ -1115,6 +1125,7 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
     this.instantiating = true;
     const element = this.parent?.resolveTypeSpecifier(this.abstractSyntaxNode?.parent?.typeSpecifier);
     if (element instanceof ModelicaClassInstance) {
+      this.#declaredType = element;
       const arraySubscripts = [...(this.abstractSyntaxNode?.arraySubscripts ?? [])];
       if (arraySubscripts.length === 0) {
         this.classInstance = element.clone(this.modification);
@@ -1537,8 +1548,9 @@ export class ModelicaArrayClassInstance extends ModelicaClassInstance {
       i++;
     }
 
-    let elementClassInstance = this.#elementClassInstance;
-    elementClassInstance?.instantiate();
+    const declaredElementClassInstance = this.#elementClassInstance;
+    declaredElementClassInstance?.instantiate();
+    let elementClassInstance = declaredElementClassInstance;
     while (elementClassInstance instanceof ModelicaShortClassInstance) {
       elementClassInstance = elementClassInstance.classInstance;
     }
@@ -1546,7 +1558,7 @@ export class ModelicaArrayClassInstance extends ModelicaClassInstance {
       this.shape.push(...elementClassInstance.shape);
       elementClassInstance = elementClassInstance.elementClassInstance;
     }
-    this.name = (elementClassInstance?.name ?? "?") + "[" + this.shape.join(", ") + "]";
+    this.name = (declaredElementClassInstance?.name ?? "?") + "[" + this.shape.join(", ") + "]";
     if (!elementClassInstance || this.#arraySubscripts.length == 0) {
       this.instantiated = true;
       return;

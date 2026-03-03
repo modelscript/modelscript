@@ -151,59 +151,92 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
   const classInstanceRef = useRef<ModelicaClassInstance | null>(null);
   const treeRef = useRef<Parser.Tree | null>(null);
   const parserRef = useRef<Parser | null>(null);
+  const disposablesRef = useRef<monaco.IDisposable[]>([]);
 
-  useEffect(() => {
-    contextRef.current = props.context;
-    // Re-lint or re-parse if context changes?
-    // Maybe trigger a change to re-lint.
-    if (editorRef.current && props.context) {
-      handleDidChangeContent(editorRef.current.getValue());
-    }
-  }, [props.context]);
+  const resolvePathElement = (node: Parser.SyntaxNode, scope: Scope): ModelicaNamedElement | null => {
+    let pathNode: Parser.SyntaxNode | null = node;
+    const parameterPath: string[] = [];
+    let baseElement: ModelicaNamedElement | null = null;
+    let foundBase = false;
 
-  React.useImperativeHandle(ref, () => ({
-    sync: async () => {
-      handleDidChangeContent.cancel();
-      const value = editorRef.current?.getValue();
-      return processContent(value);
-    },
-    revealComponent: (name: string) => {
-      if (!editorRef.current || !classInstanceRef.current) return;
-
-      const component = Array.from(classInstanceRef.current.components).find((c) => c.name === name);
-      if (!component || !component.abstractSyntaxNode) return;
-
-      let concreteNode = component.abstractSyntaxNode.concreteSyntaxNode;
-      if (!concreteNode) return;
-
-      if (
-        concreteNode.type === "component_declaration" &&
-        concreteNode.parent?.type === "component_clause" &&
-        concreteNode.parent.childCount <= 4
-      ) {
-        const declarations = concreteNode.parent.children.filter((c) => c.type === "component_declaration");
-        if (declarations.length === 1) {
-          concreteNode = concreteNode.parent;
+    while (pathNode) {
+      if (pathNode.type === "ElementModification") {
+        const nameNode = pathNode.children.find((c: Parser.SyntaxNode) => c.type === "Name");
+        if (nameNode) {
+          parameterPath.unshift(...nameNode.text.split("."));
+        }
+      } else if (pathNode.type === "NamedArgument") {
+        const identNode = pathNode.childForFieldName("identifier");
+        if (identNode) {
+          parameterPath.unshift(identNode.text);
         }
       }
 
-      const range = {
-        startLineNumber: concreteNode.startPosition.row + 1,
-        startColumn: concreteNode.startPosition.column + 1,
-        endLineNumber: concreteNode.endPosition.row + 1,
-        endColumn: concreteNode.endPosition.column + 1,
-      };
+      // If we hit a FunctionCall, it's a base (potential record constructor)
+      if (pathNode.type === "FunctionCall") {
+        const refNode = pathNode.children.find((c: Parser.SyntaxNode) => c.type === "ComponentReference");
+        if (refNode) {
+          const funcRef = refNode.text;
+          baseElement = scope.resolveName(funcRef.split("."));
+          if (!baseElement) {
+            const annotationClass = ModelicaElement.annotationClassInstance;
+            if (annotationClass) {
+              baseElement = annotationClass.resolveSimpleName(funcRef);
+              if (!baseElement && funcRef.includes(".")) {
+                baseElement = annotationClass.resolveName(funcRef.split("."));
+              }
+            }
+          }
+          if (baseElement) {
+            foundBase = true;
+            break;
+          }
+        }
+      }
 
-      editorRef.current.revealRangeInCenter(range);
-      editorRef.current.setSelection(range);
-    },
-  }));
+      if (pathNode.type === "AnnotationClause") {
+        baseElement = ModelicaElement.annotationClassInstance;
+        foundBase = true;
+        break;
+      }
+
+      if (
+        pathNode.type === "ComponentClause" ||
+        pathNode.type === "ShortClassSpecifier" ||
+        pathNode.type === "ExtendsClause"
+      ) {
+        const typeSpecNode = pathNode.children.find((c: Parser.SyntaxNode) => c.type === "TypeSpecifier");
+        if (typeSpecNode) {
+          baseElement = scope.resolveName(typeSpecNode.text.split("."));
+          foundBase = true;
+          break;
+        }
+      }
+
+      pathNode = pathNode.parent;
+    }
+
+    if (foundBase && baseElement) {
+      return baseElement instanceof ModelicaClassInstance
+        ? baseElement.resolveName(parameterPath)
+        : baseElement instanceof ModelicaComponentInstance
+          ? (baseElement.classInstance?.resolveName(parameterPath) ?? null)
+          : null;
+    }
+    return null;
+  };
 
   const handleEditorWillMount = async (monaco: Monaco) => {
     monacoRef.current = monaco;
-    monaco.languages.register({
-      id: "modelica",
-    });
+
+    disposablesRef.current.forEach((d) => d.dispose());
+    disposablesRef.current = [];
+
+    if (!monaco.languages.getLanguages().some((l: languages.ILanguageExtensionPoint) => l.id === "modelica")) {
+      monaco.languages.register({
+        id: "modelica",
+      });
+    }
 
     const semanticTokenRules = [
       { token: "keyword", foreground: "#c586c0" },
@@ -223,7 +256,6 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
       inherit: true,
       rules: semanticTokenRules,
       colors: {},
-      semanticHighlighting: true,
     });
 
     monaco.editor.defineTheme("morsel-semantic-light", {
@@ -231,345 +263,287 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
       inherit: true,
       rules: semanticTokenRules,
       colors: {},
-      semanticHighlighting: true,
     });
 
-    monaco.languages.setMonarchTokensProvider("modelica", modelicaTokensProvider);
-    monaco.languages.registerCompletionItemProvider("modelica", {
-      triggerCharacters: ["."],
-      provideCompletionItems: (model: editor.ITextModel, position: monaco.Position) => {
-        const textUntilPosition = model.getValueInRange({
-          startLineNumber: position.lineNumber,
-          startColumn: 1,
-          endLineNumber: position.lineNumber,
-          endColumn: position.column,
-        });
-
-        const word = model.getWordUntilPosition(position);
-        const range = {
-          startLineNumber: position.lineNumber,
-          endLineNumber: position.lineNumber,
-          startColumn: word.startColumn,
-          endColumn: word.endColumn,
-        };
-
-        const match = textUntilPosition.match(/([a-zA-Z0-9_]+(\.[a-zA-Z0-9_]+)*)\.$/);
-        if (match) {
-          const path = match[1];
-          const scope = classInstanceRef.current ?? contextRef.current;
-          if (!scope) return { suggestions: [] };
-
-          const element = scope.resolveName(path.split("."));
-          if (element) {
-            const suggestions: monaco.languages.CompletionItem[] = [];
-            for (const child of element.elements) {
-              if (child instanceof ModelicaNamedElement && child.name) {
-                suggestions.push({
-                  label: child.name,
-                  kind: monaco.languages.CompletionItemKind.Field,
-                  insertText: child.name,
-                  detail: child.description ?? undefined,
-                  range,
-                });
-              }
-            }
-            return { suggestions };
+    disposablesRef.current.push(monaco.languages.setMonarchTokensProvider("modelica", modelicaTokensProvider));
+    disposablesRef.current.push(
+      monaco.languages.registerCompletionItemProvider("modelica", {
+        triggerCharacters: ["."],
+        provideCompletionItems: (model: editor.ITextModel, position: monaco.Position) => {
+          if (model !== editorRef.current?.getModel()) {
+            return { suggestions: [] };
           }
-        }
-        return { suggestions: [] };
-      },
-    });
-
-    monaco.languages.registerDocumentSemanticTokensProvider("modelica", {
-      getLegend: function () {
-        return {
-          tokenTypes: [
-            "keyword",
-            "type",
-            "class",
-            "variable",
-            "parameter",
-            "function",
-            "string",
-            "number",
-            "operator",
-            "comment",
-          ],
-          tokenModifiers: ["declaration", "readonly"],
-        };
-      },
-      provideDocumentSemanticTokens: (model: editor.ITextModel) => {
-        if (!parserRef.current) return { data: new Uint32Array(0) };
-
-        const text = model.getValue();
-        const tree = parserRef.current.parse(text);
-        const rootNode = tree.rootNode;
-        try {
-          const rawTokens: {
-            line: number;
-            char: number;
-            length: number;
-            typeIndex: number;
-            modifier: number;
-          }[] = [];
-
-          const traverseTree = (node: Parser.SyntaxNode) => {
-            let tokenType: string | null = null;
-            const modifier = 0;
-
-            const isKeyword =
-              modelicaTokensProvider.keywords.includes(node.type) ||
-              (modelicaTokensProvider.typeKeywords as string[]).includes(node.type);
-
-            if (isKeyword) {
-              tokenType = "keyword";
-            } else if (node.type === "IDENT") {
-              const parent = node.parent;
-              let p: Parser.SyntaxNode | null = parent;
-              while (p && p.type === "Name") {
-                p = p.parent;
-              }
-
-              if (
-                parent?.type === "LongClassSpecifier" ||
-                parent?.type === "ShortClassSpecifier" ||
-                parent?.type === "DerClassSpecifier" ||
-                p?.type === "WithinDirective" ||
-                p?.type === "ExtendsClause" ||
-                p?.type === "TypeSpecifier"
-              ) {
-                tokenType = "type";
-              } else if (parent?.type === "Declaration") {
-                tokenType = "variable";
-              } else if ((modelicaTokensProvider.typeKeywords as string[]).includes(node.text)) {
-                tokenType = "type";
-              } else {
-                tokenType = "variable";
-              }
-            } else if (node.type === "STRING") {
-              tokenType = "string";
-            } else if (node.type === "UNSIGNED_INTEGER" || node.type === "UNSIGNED_REAL") {
-              tokenType = "number";
-            } else if (node.type === "comment") {
-              tokenType = "comment";
-            } else if (["+", "-", "*", "/", "=", "<", ">", "<=", ">=", "==", "<>"].includes(node.type)) {
-              tokenType = "operator";
-            }
-
-            if (tokenType !== null) {
-              const types = [
-                "keyword",
-                "type",
-                "class",
-                "variable",
-                "parameter",
-                "function",
-                "string",
-                "number",
-                "operator",
-                "comment",
-              ];
-              const typeIndex = types.indexOf(tokenType);
-
-              if (!rawTokens.some((t) => t.line === node.startPosition.row && t.char === node.startPosition.column)) {
-                rawTokens.push({
-                  line: node.startPosition.row,
-                  char: node.startPosition.column,
-                  length: node.endPosition.column - node.startPosition.column,
-                  typeIndex,
-                  modifier,
-                });
-              }
-            }
-
-            for (const child of node.children) {
-              traverseTree(child);
-            }
-          };
-
-          traverseTree(rootNode);
-
-          rawTokens.sort((a, b) => {
-            if (a.line === b.line) {
-              return a.char - b.char;
-            }
-            return a.line - b.line;
+          const textUntilPosition = model.getValueInRange({
+            startLineNumber: position.lineNumber,
+            startColumn: 1,
+            endLineNumber: position.lineNumber,
+            endColumn: position.column,
           });
 
-          const data: number[] = [];
-          let prevLine = 0;
-          let prevChar = 0;
+          const word = model.getWordUntilPosition(position);
+          const range = {
+            startLineNumber: position.lineNumber,
+            endLineNumber: position.lineNumber,
+            startColumn: word.startColumn,
+            endColumn: word.endColumn,
+          };
 
-          for (const token of rawTokens) {
-            const deltaLine = token.line - prevLine;
-            const deltaChar = deltaLine === 0 ? token.char - prevChar : token.char;
+          const match = textUntilPosition.match(/([a-zA-Z0-9_]+(\.[a-zA-Z0-9_]+)*)\.$/);
+          if (match) {
+            const path = match[1];
+            const scope = classInstanceRef.current ?? contextRef.current;
+            if (!scope) return { suggestions: [] };
 
-            data.push(deltaLine, deltaChar, token.length, token.typeIndex, token.modifier);
+            const element = scope.resolveName(path.split("."));
+            if (element) {
+              const suggestions: monaco.languages.CompletionItem[] = [];
+              for (const child of element.elements) {
+                if (child instanceof ModelicaNamedElement && child.name) {
+                  suggestions.push({
+                    label: child.name,
+                    kind: monaco.languages.CompletionItemKind.Field,
+                    insertText: child.name,
+                    detail: child.description ?? undefined,
+                    range,
+                  });
+                }
+              }
+              return { suggestions };
+            }
+          }
+          return { suggestions: [] };
+        },
+      }),
+    );
 
-            prevLine = token.line;
-            prevChar = token.char;
+    disposablesRef.current.push(
+      monaco.languages.registerDocumentSemanticTokensProvider("modelica", {
+        getLegend: function () {
+          return {
+            tokenTypes: [
+              "keyword",
+              "type",
+              "class",
+              "variable",
+              "parameter",
+              "function",
+              "string",
+              "number",
+              "operator",
+              "comment",
+            ],
+            tokenModifiers: ["declaration", "readonly"],
+          };
+        },
+        provideDocumentSemanticTokens: (model: editor.ITextModel) => {
+          if (model !== editorRef.current?.getModel() || !parserRef.current) {
+            return { data: new Uint32Array(0) };
           }
 
-          return { data: new Uint32Array(data) };
-        } finally {
-          tree.delete();
-        }
-      },
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      releaseDocumentSemanticTokens: (_resultId: string | undefined) => {
-        // No operation needed for release
-      },
-    });
-
-    monaco.languages.registerHoverProvider("modelica", {
-      provideHover: (model: editor.ITextModel, position: monaco.Position) => {
-        const wordInfo = model.getWordAtPosition(position);
-        if (!wordInfo) return null;
-
-        const text = model.getValue();
-        const tree = parserRef.current?.parse(text);
-        if (!tree) return null;
-
-        try {
-          const lineContent = model.getLineContent(position.lineNumber);
-          let start = wordInfo.startColumn - 1;
-          while (start > 0 && (lineContent[start - 1] === "." || /[a-zA-Z0-9_]/.test(lineContent[start - 1]))) {
-            start--;
-          }
-          let end = wordInfo.endColumn - 1;
-          while (end < lineContent.length && (lineContent[end] === "." || /[a-zA-Z0-9_]/.test(lineContent[end]))) {
-            end++;
-          }
-          if (lineContent[end - 1] === ".") end--;
-
-          const fullPath = lineContent.substring(start, end);
-          const scope = classInstanceRef.current ?? contextRef.current;
-          if (!scope) return null;
-
-          // Ensure annotation class is initialized if we have a context
-          const ME = ModelicaElement as any;
-          if (!ME.annotationClassInstance && contextRef.current) {
-            ME.initializeAnnotationClass(contextRef.current);
-          }
-
-          let element = null;
-
+          const text = model.getValue();
+          const tree = parserRef.current.parse(text);
           const rootNode = tree.rootNode;
-          const searchRow = position.lineNumber - 1;
-          const searchCol = Math.max(0, wordInfo.startColumn - 1);
-          const searchEndCol = wordInfo.endColumn - 1;
+          try {
+            const rawTokens: {
+              line: number;
+              char: number;
+              length: number;
+              typeIndex: number;
+              modifier: number;
+            }[] = [];
 
-          const current: Parser.SyntaxNode | null = rootNode.descendantForPosition(
-            { row: searchRow, column: searchCol },
-            { row: searchRow, column: searchEndCol },
-          );
+            const traverseTree = (node: Parser.SyntaxNode) => {
+              let tokenType: string | null = null;
+              const modifier = 0;
 
-          // Unified path resolution for modifications and arguments
-          let currentPathNode: Parser.SyntaxNode | null = current;
-          let isOverValue = false;
-          let isOverName = false;
+              const isKeyword =
+                modelicaTokensProvider.keywords.includes(node.type) ||
+                (modelicaTokensProvider.typeKeywords as string[]).includes(node.type);
 
-          while (currentPathNode) {
-            if (
-              currentPathNode.type === "Name" &&
-              (currentPathNode.parent?.type === "ElementModification" ||
-                currentPathNode.parent?.type === "ElementRedeclaration")
-            ) {
-              isOverName = true;
-              break;
+              if (isKeyword) {
+                tokenType = "keyword";
+              } else if (node.type === "IDENT") {
+                const parent = node.parent;
+                let p: Parser.SyntaxNode | null = parent;
+                while (p && p.type === "Name") {
+                  p = p.parent;
+                }
+
+                if (
+                  parent?.type === "LongClassSpecifier" ||
+                  parent?.type === "ShortClassSpecifier" ||
+                  parent?.type === "DerClassSpecifier" ||
+                  p?.type === "WithinDirective" ||
+                  p?.type === "ExtendsClause" ||
+                  p?.type === "TypeSpecifier"
+                ) {
+                  tokenType = "type";
+                } else if (parent?.type === "Declaration") {
+                  tokenType = "variable";
+                } else if ((modelicaTokensProvider.typeKeywords as string[]).includes(node.text)) {
+                  tokenType = "type";
+                } else {
+                  tokenType = "variable";
+                }
+              } else if (node.type === "STRING") {
+                tokenType = "string";
+              } else if (node.type === "UNSIGNED_INTEGER" || node.type === "UNSIGNED_REAL") {
+                tokenType = "number";
+              } else if (node.type === "comment") {
+                tokenType = "comment";
+              } else if (["+", "-", "*", "/", "=", "<", ">", "<=", ">=", "==", "<>"].includes(node.type)) {
+                tokenType = "operator";
+              }
+
+              if (tokenType !== null) {
+                const types = [
+                  "keyword",
+                  "type",
+                  "class",
+                  "variable",
+                  "parameter",
+                  "function",
+                  "string",
+                  "number",
+                  "operator",
+                  "comment",
+                ];
+                const typeIndex = types.indexOf(tokenType);
+
+                if (!rawTokens.some((t) => t.line === node.startPosition.row && t.char === node.startPosition.column)) {
+                  rawTokens.push({
+                    line: node.startPosition.row,
+                    char: node.startPosition.column,
+                    length: node.endPosition.column - node.startPosition.column,
+                    typeIndex,
+                    modifier,
+                  });
+                }
+              }
+
+              for (const child of node.children) {
+                traverseTree(child);
+              }
+            };
+
+            traverseTree(rootNode);
+
+            rawTokens.sort((a, b) => {
+              if (a.line === b.line) {
+                return a.char - b.char;
+              }
+              return a.line - b.line;
+            });
+
+            const data: number[] = [];
+            let prevLine = 0;
+            let prevChar = 0;
+
+            for (const token of rawTokens) {
+              const deltaLine = token.line - prevLine;
+              const deltaChar = deltaLine === 0 ? token.char - prevChar : token.char;
+
+              data.push(deltaLine, deltaChar, token.length, token.typeIndex, token.modifier);
+
+              prevLine = token.line;
+              prevChar = token.char;
             }
-            if (currentPathNode.type === "IDENT" && currentPathNode.parent?.type === "NamedArgument") {
-              isOverName = true;
-              break;
-            }
-            if (
-              currentPathNode.type === "Modification" ||
-              currentPathNode.type === "FunctionCallArguments" ||
-              currentPathNode.type === "ArgumentList"
-            ) {
-              isOverValue = true;
-            }
-            if (
-              currentPathNode.type === "ElementModification" ||
-              currentPathNode.type === "NamedArgument" ||
-              currentPathNode.type === "FunctionCall"
-            ) {
-              break;
-            }
-            currentPathNode = currentPathNode.parent;
+
+            return { data: new Uint32Array(data) };
+          } finally {
+            tree.delete();
           }
+        },
+        releaseDocumentSemanticTokens: (_resultId: string | undefined) => {
+          // No operation needed for release
+        },
+      }),
+    );
 
-          if (isOverName || isOverValue) {
-            const traversalNode = currentPathNode;
-            let pathNode: Parser.SyntaxNode | null = traversalNode;
-            const parameterPath: string[] = [];
-            let baseElement: ModelicaNamedElement | null = null;
-            let foundBase = false;
+    disposablesRef.current.push(
+      monaco.languages.registerHoverProvider("modelica", {
+        provideHover: (model: editor.ITextModel, position: monaco.Position) => {
+          if (model !== editorRef.current?.getModel()) {
+            return null;
+          }
+          const wordInfo = model.getWordAtPosition(position);
+          if (!wordInfo) return null;
 
-            while (pathNode) {
-              if (pathNode.type === "ElementModification") {
-                const nameNode = pathNode.children.find((c: Parser.SyntaxNode) => c.type === "Name");
-                if (nameNode) {
-                  parameterPath.unshift(...nameNode.text.split("."));
-                }
-              } else if (pathNode.type === "NamedArgument") {
-                const identNode = pathNode.childForFieldName("identifier");
-                if (identNode) {
-                  parameterPath.unshift(identNode.text);
-                }
-              }
+          const text = model.getValue();
+          const tree = parserRef.current?.parse(text);
+          if (!tree) return null;
 
-              // If we hit a FunctionCall, it's a base (potential record constructor)
-              if (pathNode.type === "FunctionCall") {
-                const refNode = pathNode.children.find((c: Parser.SyntaxNode) => c.type === "ComponentReference");
-                if (refNode) {
-                  const funcRef = refNode.text;
-                  baseElement = scope.resolveName(funcRef.split("."));
-                  if (!baseElement) {
-                    const annotationClass = ModelicaElement.annotationClassInstance;
-                    if (annotationClass) {
-                      baseElement = annotationClass.resolveSimpleName(funcRef);
-                      if (!baseElement && funcRef.includes(".")) {
-                        baseElement = annotationClass.resolveName(funcRef.split("."));
-                      }
-                    }
-                  }
-                  if (baseElement) {
-                    foundBase = true;
-                    break;
-                  }
-                }
-              }
+          try {
+            const lineContent = model.getLineContent(position.lineNumber);
+            let start = wordInfo.startColumn - 1;
+            while (start > 0 && (lineContent[start - 1] === "." || /[a-zA-Z0-9_]/.test(lineContent[start - 1]))) {
+              start--;
+            }
+            let end = wordInfo.endColumn - 1;
+            while (end < lineContent.length && (lineContent[end] === "." || /[a-zA-Z0-9_]/.test(lineContent[end]))) {
+              end++;
+            }
+            if (lineContent[end - 1] === ".") end--;
 
-              if (pathNode.type === "AnnotationClause") {
-                baseElement = ModelicaElement.annotationClassInstance;
-                foundBase = true;
+            const fullPath = lineContent.substring(start, end);
+            const scope = classInstanceRef.current ?? contextRef.current;
+            if (!scope) return null;
+
+            // Ensure annotation class is initialized if we have a context
+            const ME = ModelicaElement as any;
+            if (!ME.annotationClassInstance && contextRef.current) {
+              ME.initializeAnnotationClass(contextRef.current);
+            }
+
+            let element = null;
+
+            const rootNode = tree.rootNode;
+            const searchRow = position.lineNumber - 1;
+            const searchCol = Math.max(0, wordInfo.startColumn - 1);
+            const searchEndCol = wordInfo.endColumn - 1;
+
+            const current: Parser.SyntaxNode | null = rootNode.descendantForPosition(
+              { row: searchRow, column: searchCol },
+              { row: searchRow, column: searchEndCol },
+            );
+
+            // Unified path resolution for modifications and arguments
+            let currentPathNode: Parser.SyntaxNode | null = current;
+            let isOverValue = false;
+            let isOverName = false;
+
+            while (currentPathNode) {
+              if (
+                currentPathNode.type === "Name" &&
+                (currentPathNode.parent?.type === "ElementModification" ||
+                  currentPathNode.parent?.type === "ElementRedeclaration")
+              ) {
+                isOverName = true;
                 break;
               }
-
-              if (
-                pathNode.type === "ComponentClause" ||
-                pathNode.type === "ShortClassSpecifier" ||
-                pathNode.type === "ExtendsClause"
-              ) {
-                const typeSpecNode = pathNode.children.find((c: Parser.SyntaxNode) => c.type === "TypeSpecifier");
-                if (typeSpecNode) {
-                  baseElement = scope.resolveName(typeSpecNode.text.split("."));
-                  foundBase = true;
-                  break;
-                }
+              if (currentPathNode.type === "IDENT" && currentPathNode.parent?.type === "NamedArgument") {
+                isOverName = true;
+                break;
               }
-
-              pathNode = pathNode.parent;
+              if (
+                currentPathNode.type === "Modification" ||
+                currentPathNode.type === "FunctionCallArguments" ||
+                currentPathNode.type === "ArgumentList"
+              ) {
+                isOverValue = true;
+              }
+              if (
+                currentPathNode.type === "ElementModification" ||
+                currentPathNode.type === "NamedArgument" ||
+                currentPathNode.type === "FunctionCall"
+              ) {
+                break;
+              }
+              currentPathNode = currentPathNode.parent;
             }
 
-            if (foundBase && baseElement) {
-              const resolved =
-                baseElement instanceof ModelicaClassInstance
-                  ? baseElement.resolveName(parameterPath)
-                  : baseElement instanceof ModelicaComponentInstance
-                    ? baseElement.classInstance?.resolveName(parameterPath)
-                    : null;
+            if ((isOverName || isOverValue) && currentPathNode) {
+              const resolved = resolvePathElement(currentPathNode, scope);
 
               if (isOverName) {
                 element = resolved;
@@ -588,72 +562,147 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
                 }
               }
             }
-          }
 
-          if (!element) {
-            element = scope.resolveName(fullPath.split("."));
-            if (!element && fullPath !== wordInfo.word) {
-              element = scope.resolveName(wordInfo.word.split("."));
-              if (element) {
-                start = wordInfo.startColumn - 1;
-                end = wordInfo.endColumn - 1;
+            if (!element) {
+              element = scope.resolveName(fullPath.split("."));
+              if (!element && fullPath !== wordInfo.word) {
+                element = scope.resolveName(wordInfo.word.split("."));
+                if (element) {
+                  start = wordInfo.startColumn - 1;
+                  end = wordInfo.endColumn - 1;
+                }
               }
             }
-          }
 
-          if (element instanceof ModelicaNamedElement) {
-            const contents = [];
-            if (element instanceof ModelicaEnumerationClassInstance && element.value) {
-              const value = element.value;
-              contents.push({
-                value: `**enumeration literal** \`${value.stringValue}\` : \`${element.name}\``,
-              });
-              if (value.description) {
-                contents.push({ value: value.description });
+            if (element instanceof ModelicaNamedElement) {
+              const contents = [];
+              if (element instanceof ModelicaEnumerationClassInstance && element.value) {
+                const value = element.value;
+                contents.push({
+                  value: `**enumeration literal** \`${value.stringValue}\` : \`${element.name}\``,
+                });
+                if (value.description) {
+                  contents.push({ value: value.description });
+                }
+              } else if (element instanceof ModelicaClassInstance) {
+                contents.push({ value: `**${element.classKind}** \`${element.compositeName}\`` });
+              } else if (element instanceof ModelicaComponentInstance) {
+                const typeName =
+                  element.declaredType?.compositeName ?? element.classInstance?.compositeName ?? "UnknownType";
+                contents.push({ value: `**component** \`${element.name}\` : \`${typeName}\`` });
+              } else {
+                contents.push({ value: `\`${element.name}\`` });
               }
-            } else if (element instanceof ModelicaClassInstance) {
-              contents.push({ value: `**${element.classKind}** \`${element.compositeName}\`` });
-            } else if (element instanceof ModelicaComponentInstance) {
-              const typeName = element.classInstance?.compositeName ?? "UnknownType";
-              contents.push({ value: `**component** \`${element.name}\` : \`${typeName}\`` });
-            } else {
-              contents.push({ value: `\`${element.name}\`` });
+
+              if (element.description && !(element instanceof ModelicaEnumerationClassInstance && element.value)) {
+                contents.push({ value: element.description });
+              }
+
+              return {
+                range: new monaco.Range(position.lineNumber, start + 1, position.lineNumber, end + 1),
+                contents,
+              };
             }
 
-            if (element.description && !(element instanceof ModelicaEnumerationClassInstance && element.value)) {
-              contents.push({ value: element.description });
-            }
-
-            return {
-              range: new monaco.Range(position.lineNumber, start + 1, position.lineNumber, end + 1),
-              contents,
-            };
+            return null;
+          } catch (e) {
+            console.error("Syntax tree hover traversal failed", e);
+            return null;
+          } finally {
+            tree.delete();
           }
-
-          return null;
-        } catch (e) {
-          console.error("Syntax tree hover traversal failed", e);
-          return null;
-        } finally {
-          tree.delete();
-        }
-      },
-    });
-
-    monaco.languages.setLanguageConfiguration("modelica", {
-      indentationRules: {
-        increaseIndentPattern:
-          /^\s*(model|class|record|block|connector|type|package|function|if|for|while|when|else|elseif|equation|algorithm|public|protected|initial equation|initial algorithm|enumeration)\b/,
-        decreaseIndentPattern:
-          /^\s*(end|else|elseif|equation|algorithm|public|protected|initial equation|initial algorithm)\b/,
-      },
-      onEnterRules: [
-        {
-          beforeText: /^\s*\/\//,
-          action: { indentAction: monaco.languages.IndentAction.None, appendText: "// " },
         },
-      ],
-    });
+      }),
+    );
+
+    disposablesRef.current.push(
+      monaco.languages.registerInlayHintsProvider("modelica", {
+        provideInlayHints: (model: editor.ITextModel) => {
+          if (model !== editorRef.current?.getModel()) {
+            return { hints: [], dispose: () => {} };
+          }
+          const text = model.getValue();
+          const tree = parserRef.current?.parse(text);
+          if (!tree) return { hints: [], dispose: () => {} };
+
+          const hints: monaco.languages.InlayHint[] = [];
+          const scope = classInstanceRef.current ?? contextRef.current;
+          if (!scope) {
+            tree.delete();
+            return { hints: [], dispose: () => {} };
+          }
+
+          try {
+            // Ensure annotation class is initialized if we have a context
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const ME = ModelicaElement as any;
+            if (!ME.annotationClassInstance && contextRef.current) {
+              ME.initializeAnnotationClass(contextRef.current);
+            }
+
+            const traverse = (node: Parser.SyntaxNode) => {
+              if (node.type === "ElementModification" || node.type === "NamedArgument") {
+                const element = resolvePathElement(node, scope);
+                if (element instanceof ModelicaComponentInstance) {
+                  const typeName = element.declaredType?.name ?? element.classInstance?.name;
+                  if (typeName) {
+                    const nameNode =
+                      node.type === "ElementModification"
+                        ? node.children.find((c) => c.type === "Name")
+                        : node.childForFieldName("identifier");
+
+                    if (nameNode) {
+                      hints.push({
+                        label: `: ${typeName}`,
+                        tooltip: element.description ?? undefined,
+                        position: {
+                          lineNumber: nameNode.endPosition.row + 1,
+                          column: nameNode.endPosition.column + 1,
+                        },
+                        kind: monaco.languages.InlayHintKind.Type,
+                        paddingLeft: true,
+                      });
+                    }
+                  }
+                }
+              }
+              for (let i = 0; i < node.childCount; i++) {
+                const child = node.child(i);
+                if (child) traverse(child);
+              }
+            };
+            traverse(tree.rootNode);
+          } catch (e) {
+            console.error("Inlay hints traversal failed", e);
+          } finally {
+            tree.delete();
+          }
+          return {
+            hints,
+            dispose: () => {
+              // No-op
+            },
+          };
+        },
+      }),
+    );
+
+    disposablesRef.current.push(
+      monaco.languages.setLanguageConfiguration("modelica", {
+        indentationRules: {
+          increaseIndentPattern:
+            /^\s*(model|class|record|block|connector|type|package|function|if|for|while|when|else|elseif|equation|algorithm|public|protected|initial equation|initial algorithm|enumeration)\b/,
+          decreaseIndentPattern:
+            /^\s*(end|else|elseif|equation|algorithm|public|protected|initial equation|initial algorithm)\b/,
+        },
+        onEnterRules: [
+          {
+            beforeText: /^\s*\/\//,
+            action: { indentAction: monaco.languages.IndentAction.None, appendText: "// " },
+          },
+        ],
+      }),
+    );
     console.log("Modelica language configuration set");
 
     try {
@@ -663,97 +712,107 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
       parserRef.current = parser;
       Context.registerParser(".mo", parser);
 
-      monaco.languages.registerDocumentFormattingEditProvider("modelica", {
-        provideDocumentFormattingEdits: (model: editor.ITextModel) => {
-          const text = model.getValue();
-          const tree = parser.parse(text);
-          const formatted = format(tree, text);
-          tree.delete();
-          return [
-            {
-              range: model.getFullModelRange(),
-              text: formatted,
-            },
-          ];
-        },
-      });
+      disposablesRef.current.push(
+        monaco.languages.registerDocumentFormattingEditProvider("modelica", {
+          provideDocumentFormattingEdits: (model: editor.ITextModel) => {
+            if (model !== editorRef.current?.getModel()) {
+              return [];
+            }
+            const text = model.getValue();
+            const tree = parser.parse(text);
+            const formatted = format(tree, text);
+            tree.delete();
+            return [
+              {
+                range: model.getFullModelRange(),
+                text: formatted,
+              },
+            ];
+          },
+        }),
+      );
 
-      monaco.languages.registerColorProvider("modelica", {
-        provideDocumentColors: (model: editor.ITextModel) => {
-          const text = model.getValue();
-          const tree = parser.parse(text);
-          const colors: languages.IColorInformation[] = [];
-          const colorFields = new Set(["color", "lineColor", "fillColor", "textColor"]);
+      disposablesRef.current.push(
+        monaco.languages.registerColorProvider("modelica", {
+          provideDocumentColors: (model: editor.ITextModel) => {
+            if (model !== editorRef.current?.getModel()) {
+              return [];
+            }
+            const text = model.getValue();
+            const tree = parser.parse(text);
+            const colors: languages.IColorInformation[] = [];
+            const colorFields = new Set(["color", "lineColor", "fillColor", "textColor"]);
 
-          const traverse = (node: Parser.SyntaxNode) => {
-            if (node.type === "ElementModification" || node.type === "NamedArgument") {
-              const nameNode = node.childForFieldName("name") || node.childForFieldName("identifier");
-              const name = nameNode?.text;
-              if (name && colorFields.has(name)) {
-                let exprNode = null;
-                if (node.type === "ElementModification") {
-                  const modNode = node.childForFieldName("modification");
-                  exprNode = modNode?.childForFieldName("modificationExpression")?.childForFieldName("expression");
-                } else {
-                  exprNode = node.childForFieldName("argument")?.childForFieldName("expression");
-                }
+            const traverse = (node: Parser.SyntaxNode) => {
+              if (node.type === "ElementModification" || node.type === "NamedArgument") {
+                const nameNode = node.childForFieldName("name") || node.childForFieldName("identifier");
+                const name = nameNode?.text;
+                if (name && colorFields.has(name)) {
+                  let exprNode = null;
+                  if (node.type === "ElementModification") {
+                    const modNode = node.childForFieldName("modification");
+                    exprNode = modNode?.childForFieldName("modificationExpression")?.childForFieldName("expression");
+                  } else {
+                    exprNode = node.childForFieldName("argument")?.childForFieldName("expression");
+                  }
 
-                if (exprNode?.type === "ArrayConstructor") {
-                  const listNode = exprNode.childForFieldName("expressionList");
-                  if (listNode) {
-                    const exprs = listNode.namedChildren;
-                    if (exprs.length === 3) {
-                      const r = parseInt(exprs[0].text);
-                      const g = parseInt(exprs[1].text);
-                      const b = parseInt(exprs[2].text);
-                      if (!isNaN(r) && !isNaN(g) && !isNaN(b)) {
-                        colors.push({
-                          range: {
-                            startLineNumber: exprNode.startPosition.row + 1,
-                            startColumn: exprNode.startPosition.column + 1,
-                            endLineNumber: exprNode.endPosition.row + 1,
-                            endColumn: exprNode.endPosition.column + 1,
-                          },
-                          color: {
-                            red: Math.max(0, Math.min(255, r)) / 255.0,
-                            green: Math.max(0, Math.min(255, g)) / 255.0,
-                            blue: Math.max(0, Math.min(255, b)) / 255.0,
-                            alpha: 1.0,
-                          },
-                        });
+                  if (exprNode?.type === "ArrayConstructor") {
+                    const listNode = exprNode.childForFieldName("expressionList");
+                    if (listNode) {
+                      const exprs = listNode.namedChildren;
+                      if (exprs.length === 3) {
+                        const r = parseInt(exprs[0].text);
+                        const g = parseInt(exprs[1].text);
+                        const b = parseInt(exprs[2].text);
+                        if (!isNaN(r) && !isNaN(g) && !isNaN(b)) {
+                          colors.push({
+                            range: {
+                              startLineNumber: exprNode.startPosition.row + 1,
+                              startColumn: exprNode.startPosition.column + 1,
+                              endLineNumber: exprNode.endPosition.row + 1,
+                              endColumn: exprNode.endPosition.column + 1,
+                            },
+                            color: {
+                              red: Math.max(0, Math.min(255, r)) / 255.0,
+                              green: Math.max(0, Math.min(255, g)) / 255.0,
+                              blue: Math.max(0, Math.min(255, b)) / 255.0,
+                              alpha: 1.0,
+                            },
+                          });
+                        }
                       }
                     }
                   }
                 }
               }
-            }
-            for (let i = 0; i < node.childCount; i++) {
-              const child = node.child(i);
-              if (child) traverse(child);
-            }
-          };
+              for (let i = 0; i < node.childCount; i++) {
+                const child = node.child(i);
+                if (child) traverse(child);
+              }
+            };
 
-          traverse(tree.rootNode);
-          tree.delete();
-          return colors;
-        },
-        provideColorPresentations: (_model: editor.ITextModel, colorInfo: languages.IColorInformation) => {
-          const c = colorInfo.color;
-          const r = Math.round(c.red * 255);
-          const g = Math.round(c.green * 255);
-          const b = Math.round(c.blue * 255);
-          const label = `{${r}, ${g}, ${b}}`;
-          return [
-            {
-              label: label,
-              textEdit: {
-                range: colorInfo.range,
-                text: label,
+            traverse(tree.rootNode);
+            tree.delete();
+            return colors;
+          },
+          provideColorPresentations: (_model: editor.ITextModel, colorInfo: languages.IColorInformation) => {
+            const c = colorInfo.color;
+            const r = Math.round(c.red * 255);
+            const g = Math.round(c.green * 255);
+            const b = Math.round(c.blue * 255);
+            const label = `{${r}, ${g}, ${b}}`;
+            return [
+              {
+                label: label,
+                textEdit: {
+                  range: colorInfo.range,
+                  text: label,
+                },
               },
-            },
-          ];
-        },
-      });
+            ];
+          },
+        }),
+      );
     } catch (e) {
       console.error("Failed to setup formatter/parser in CodeEditor", e);
     }
@@ -774,7 +833,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
 
     if (!monacoRef.current) return null;
 
-    const markers: Partial<editor.IMarker>[] = [];
+    const markers: editor.IMarkerData[] = [];
     const model = editorRef.current?.getModel();
     if (!model) return null;
 
@@ -787,6 +846,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
           startColumn: range.startPosition.column + 1,
           endLineNumber: range.endPosition.row + 1,
           endColumn: range.endPosition.column + 1,
+          severity: monaco.MarkerSeverity.Error,
         });
       },
     );
@@ -820,6 +880,60 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
   const handleDidChangeContent = debounce((value: string | undefined) => {
     processContent(value);
   }, 500);
+
+  useEffect(() => {
+    contextRef.current = props.context;
+    // Re-lint or re-parse if context changes?
+    // Maybe trigger a change to re-lint.
+    if (editorRef.current && props.context) {
+      handleDidChangeContent(editorRef.current.getValue());
+    }
+  }, [props.context]);
+
+  useEffect(() => {
+    return () => {
+      disposablesRef.current.forEach((d) => d.dispose());
+      disposablesRef.current = [];
+    };
+  }, []);
+
+  React.useImperativeHandle(ref, () => ({
+    sync: async () => {
+      handleDidChangeContent.cancel();
+      const value = editorRef.current?.getValue();
+      return processContent(value);
+    },
+    revealComponent: (name: string) => {
+      if (!editorRef.current || !classInstanceRef.current) return;
+
+      const component: any = Array.from(classInstanceRef.current.components).find((c: any) => c.name === name);
+      if (!component || !component.abstractSyntaxNode) return;
+
+      let concreteNode = component.abstractSyntaxNode.concreteSyntaxNode;
+      if (!concreteNode) return;
+
+      if (
+        concreteNode.type === "component_declaration" &&
+        concreteNode.parent?.type === "component_clause" &&
+        concreteNode.parent.childCount <= 4
+      ) {
+        const declarations = concreteNode.parent.children.filter((c) => c.type === "component_declaration");
+        if (declarations.length === 1) {
+          concreteNode = concreteNode.parent;
+        }
+      }
+
+      const range = {
+        startLineNumber: concreteNode.startPosition.row + 1,
+        startColumn: concreteNode.startPosition.column + 1,
+        endLineNumber: concreteNode.endPosition.row + 1,
+        endColumn: concreteNode.endPosition.column + 1,
+      };
+
+      editorRef.current.revealRangeInCenter(range);
+      editorRef.current.setSelection(range);
+    },
+  }));
 
   return (
     <Editor
