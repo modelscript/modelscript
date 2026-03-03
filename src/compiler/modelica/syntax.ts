@@ -5,9 +5,12 @@
 import { toEnum } from "../../util/enum.js";
 import type { Writer } from "../../util/io.js";
 import type { SyntaxNode } from "../../util/tree-sitter.js";
+import type { JSONValue, Triple } from "../../util/types.js";
 
 export interface IModelicaSyntaxNode {
   "@type": string;
+  toJSON: JSONValue;
+  toRDF: Triple[];
 }
 
 export abstract class ModelicaSyntaxNode implements IModelicaSyntaxNode {
@@ -40,6 +43,55 @@ export abstract class ModelicaSyntaxNode implements IModelicaSyntaxNode {
 
   get parent(): ModelicaSyntaxNode | null {
     return this.#parent?.deref() ?? null;
+  }
+
+  get toJSON(): JSONValue {
+    const json: Record<string, JSONValue> = { "@type": this["@type"] };
+    for (const key of Object.keys(this)) {
+      if (key === "@type" || key.startsWith("_") || key === "parent") continue;
+      const value = (this as Record<string, unknown>)[key];
+      if (value instanceof ModelicaSyntaxNode) {
+        json[key] = value.toJSON;
+      } else if (Array.isArray(value)) {
+        json[key] = value.map((v) => (v instanceof ModelicaSyntaxNode ? v.toJSON : (v as JSONValue)));
+      } else {
+        json[key] = value as JSONValue;
+      }
+    }
+    return json;
+  }
+
+  get toRDF(): Triple[] {
+    const id = this.concreteSyntaxNode
+      ? `_:node_${this.concreteSyntaxNode.id}`
+      : `_:node_${Math.random().toString(36).substring(2, 9)}`;
+    const triples: Triple[] = [{ s: id, p: "rdf:type", o: `modelica:${this["@type"]}` }];
+    for (const key of Object.keys(this)) {
+      if (key === "@type" || key.startsWith("_") || key === "parent") continue;
+      const value = (this as Record<string, unknown>)[key];
+      if (value instanceof ModelicaSyntaxNode) {
+        const valueId = value.concreteSyntaxNode
+          ? `_:node_${value.concreteSyntaxNode.id}`
+          : `_:node_${Math.random().toString(36).substring(2, 9)}`;
+        triples.push({ s: id, p: `modelica:${key}`, o: valueId });
+        triples.push(...value.toRDF);
+      } else if (Array.isArray(value)) {
+        for (const v of value) {
+          if (v instanceof ModelicaSyntaxNode) {
+            const vId = v.concreteSyntaxNode
+              ? `_:node_${v.concreteSyntaxNode.id}`
+              : `_:node_${Math.random().toString(36).substring(2, 9)}`;
+            triples.push({ s: id, p: `modelica:${key}`, o: vId });
+            triples.push(...v.toRDF);
+          } else {
+            triples.push({ s: id, p: `modelica:${key}`, o: v as string | number | boolean | null });
+          }
+        }
+      } else {
+        triples.push({ s: id, p: `modelica:${key}`, o: value as string | number | boolean | null });
+      }
+    }
+    return triples;
   }
 
   static new(

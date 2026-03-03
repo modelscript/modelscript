@@ -2,6 +2,7 @@
 
 import { createHash } from "../../util/hash.js";
 import type { Writer } from "../../util/io.js";
+import type { JSONValue, Triple } from "../../util/types.js";
 import {
   ModelicaArrayClassInstance,
   ModelicaClassInstance,
@@ -9,8 +10,6 @@ import {
   ModelicaPredefinedClassInstance,
 } from "./model.js";
 import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "./syntax.js";
-
-type array<T> = T | array<T>[];
 
 export class ModelicaDAE {
   name: string;
@@ -38,6 +37,36 @@ export class ModelicaDAE {
     }
     return hash.digest("hex");
   }
+
+  get toJSON(): JSONValue {
+    return {
+      "@type": "DAE",
+      name: this.name,
+      description: this.description,
+      variables: this.variables.map((v) => v.toJSON),
+      equations: this.equations.map((e) => e.toJSON),
+    };
+  }
+
+  get toRDF(): Triple[] {
+    const triples: Triple[] = [];
+    const id = `_:dae_${this.name}`;
+    triples.push({ s: id, p: "rdf:type", o: "modelica:DAE" });
+    triples.push({ s: id, p: "modelica:name", o: this.name });
+    if (this.description) triples.push({ s: id, p: "modelica:description", o: this.description });
+    for (const variable of this.variables) {
+      triples.push({ s: id, p: "modelica:variable", o: `_:var_${variable.name}` });
+      triples.push(...variable.toRDF);
+    }
+    for (let i = 0; i < this.equations.length; i++) {
+      const eq = this.equations[i];
+      if (!eq) continue;
+      const eqId = `_:eq_${i}`;
+      triples.push({ s: id, p: "modelica:equation", o: eqId });
+      triples.push(...eq.toRDF);
+    }
+    return triples;
+  }
 }
 
 export abstract class ModelicaEquation {
@@ -50,6 +79,10 @@ export abstract class ModelicaEquation {
   abstract accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R;
 
   abstract get hash(): string;
+
+  abstract get toJSON(): JSONValue;
+
+  abstract get toRDF(): Triple[];
 }
 
 export class ModelicaSimpleEquation extends ModelicaEquation {
@@ -73,6 +106,26 @@ export class ModelicaSimpleEquation extends ModelicaEquation {
     hash.update(this.expression2.hash);
     return hash.digest("hex");
   }
+
+  override get toJSON(): JSONValue {
+    return {
+      "@type": "SimpleEquation",
+      expression1: this.expression1.toJSON,
+      expression2: this.expression2.toJSON,
+      description: this.description,
+    };
+  }
+
+  override get toRDF(): Triple[] {
+    const id = `_:eq_${this.hash.substring(0, 8)}`;
+    return [
+      { s: id, p: "rdf:type", o: "modelica:SimpleEquation" },
+      { s: id, p: "modelica:expression1", o: `_:expr_${this.expression1.hash.substring(0, 8)}` },
+      { s: id, p: "modelica:expression2", o: `_:expr_${this.expression2.hash.substring(0, 8)}` },
+      ...this.expression1.toRDF,
+      ...this.expression2.toRDF,
+    ];
+  }
 }
 
 export abstract class ModelicaExpression {
@@ -80,7 +133,9 @@ export abstract class ModelicaExpression {
 
   abstract get hash(): string;
 
-  abstract toJSON(): array<boolean | number | object | string>;
+  abstract get toJSON(): JSONValue;
+
+  abstract get toRDF(): Triple[];
 
   static fromClassInstance(classInstance: ModelicaClassInstance | null | undefined): ModelicaExpression | null {
     if (!classInstance) return null;
@@ -155,8 +210,18 @@ export class ModelicaUnaryExpression extends ModelicaSimpleExpression {
     return hash.digest("hex");
   }
 
-  override toJSON(): string {
-    return `${this.operator}${this.operand.toJSON()}`;
+  override get toJSON(): string {
+    return `${this.operator}${this.operand.toJSON}`;
+  }
+
+  override get toRDF(): Triple[] {
+    const id = `_:expr_${this.hash.substring(0, 8)}`;
+    return [
+      { s: id, p: "rdf:type", o: "modelica:UnaryExpression" },
+      { s: id, p: "modelica:operator", o: this.operator },
+      { s: id, p: "modelica:operand", o: `_:expr_${this.operand.hash.substring(0, 8)}` },
+      ...this.operand.toRDF,
+    ];
   }
 
   static new(operator: ModelicaUnaryOperator, operand: ModelicaExpression): ModelicaExpression | null {
@@ -230,8 +295,20 @@ export class ModelicaBinaryExpression extends ModelicaSimpleExpression {
     return hash.digest("hex");
   }
 
-  override toJSON(): string {
-    return `${this.operand1.toJSON()}${this.operator}${this.operand2.toJSON()}`;
+  override get toJSON(): string {
+    return `${this.operand1.toJSON}${this.operator}${this.operand2.toJSON}`;
+  }
+
+  override get toRDF(): Triple[] {
+    const id = `_:expr_${this.hash.substring(0, 8)}`;
+    return [
+      { s: id, p: "rdf:type", o: "modelica:BinaryExpression" },
+      { s: id, p: "modelica:operator", o: this.operator },
+      { s: id, p: "modelica:operand1", o: `_:expr_${this.operand1.hash.substring(0, 8)}` },
+      { s: id, p: "modelica:operand2", o: `_:expr_${this.operand2.hash.substring(0, 8)}` },
+      ...this.operand1.toRDF,
+      ...this.operand2.toRDF,
+    ];
   }
 
   static new(
@@ -537,15 +614,29 @@ export class ModelicaArray extends ModelicaPrimaryExpression {
     }
   }
 
-  override toJSON(): array<boolean | number | object | string> {
-    let elements = [...this.flatElements].map((e) => e.toJSON());
+  override get toJSON(): JSONValue {
+    let elements: JSONValue = [...this.flatElements].map((e) => e.toJSON);
     for (let i = this.shape.length - 1; i >= 1; i--) {
       const length = this.shape[i] ?? 0;
-      const chunks: array<boolean | number | object | string>[] = [];
+      const chunks: JSONValue[] = [];
       for (let j = 0; j < elements.length; j += length) chunks.push(elements.slice(j, j + length));
       elements = chunks;
     }
     return elements;
+  }
+
+  override get toRDF(): Triple[] {
+    const id = `_:expr_${this.hash.substring(0, 8)}`;
+    const triples: Triple[] = [
+      { s: id, p: "rdf:type", o: "modelica:Array" },
+      { s: id, p: "modelica:shape", o: JSON.stringify(this.shape) },
+    ];
+    for (const element of this.elements) {
+      const elemId = `_:expr_${element.hash.substring(0, 8)}`;
+      triples.push({ s: id, p: "modelica:element", o: elemId });
+      triples.push(...element.toRDF);
+    }
+    return triples;
   }
 }
 
@@ -577,10 +668,24 @@ export class ModelicaObject extends ModelicaPrimaryExpression {
     return hash.digest("hex");
   }
 
-  override toJSON(): object {
-    return Object.assign(Object.fromEntries(Array.from(this.elements.entries()).map(([k, v]) => [k, v.toJSON()])), {
+  override get toJSON(): JSONValue {
+    return Object.assign(Object.fromEntries(Array.from(this.elements.entries()).map(([k, v]) => [k, v.toJSON])), {
       "@type": this.classInstance?.name ?? undefined,
     });
+  }
+
+  override get toRDF(): Triple[] {
+    const id = `_:expr_${this.hash.substring(0, 8)}`;
+    const triples: Triple[] = [{ s: id, p: "rdf:type", o: "modelica:Object" }];
+    if (this.classInstance?.name) {
+      triples.push({ s: id, p: "modelica:type", o: this.classInstance.name });
+    }
+    for (const [key, value] of this.elements.entries()) {
+      const valId = `_:expr_${value.hash.substring(0, 8)}`;
+      triples.push({ s: id, p: `modelica:${key}`, o: valId });
+      triples.push(...value.toRDF);
+    }
+    return triples;
   }
 }
 
@@ -604,8 +709,16 @@ export class ModelicaBooleanLiteral extends ModelicaLiteral {
     return hash.digest("hex");
   }
 
-  override toJSON(): boolean {
+  override get toJSON(): boolean {
     return this.value;
+  }
+
+  override get toRDF(): Triple[] {
+    const id = `_:expr_${this.hash.substring(0, 8)}`;
+    return [
+      { s: id, p: "rdf:type", o: "modelica:BooleanLiteral" },
+      { s: id, p: "modelica:value", o: this.value },
+    ];
   }
 }
 
@@ -627,8 +740,16 @@ export class ModelicaIntegerLiteral extends ModelicaLiteral {
     return hash.digest("hex");
   }
 
-  override toJSON(): number {
+  override get toJSON(): number {
     return this.value;
+  }
+
+  override get toRDF(): Triple[] {
+    const id = `_:expr_${this.hash.substring(0, 8)}`;
+    return [
+      { s: id, p: "rdf:type", o: "modelica:IntegerLiteral" },
+      { s: id, p: "modelica:value", o: this.value },
+    ];
   }
 }
 
@@ -650,8 +771,16 @@ export class ModelicaRealLiteral extends ModelicaLiteral {
     return hash.digest("hex");
   }
 
-  override toJSON(): number {
+  override get toJSON(): number {
     return this.value;
+  }
+
+  override get toRDF(): Triple[] {
+    const id = `_:expr_${this.hash.substring(0, 8)}`;
+    return [
+      { s: id, p: "rdf:type", o: "modelica:RealLiteral" },
+      { s: id, p: "modelica:value", o: this.value },
+    ];
   }
 }
 
@@ -673,8 +802,16 @@ export class ModelicaStringLiteral extends ModelicaLiteral {
     return hash.digest("hex");
   }
 
-  override toJSON(): string {
+  override get toJSON(): string {
     return this.value;
+  }
+
+  override get toRDF(): Triple[] {
+    const id = `_:expr_${this.hash.substring(0, 8)}`;
+    return [
+      { s: id, p: "rdf:type", o: "modelica:StringLiteral" },
+      { s: id, p: "modelica:value", o: this.value },
+    ];
   }
 }
 
@@ -701,8 +838,17 @@ export class ModelicaEnumerationLiteral extends ModelicaLiteral {
     return hash.digest("hex");
   }
 
-  toJSON(): string {
+  override get toJSON(): string {
     return this.stringValue;
+  }
+
+  override get toRDF(): Triple[] {
+    const id = `_:expr_${this.hash.substring(0, 8)}`;
+    return [
+      { s: id, p: "rdf:type", o: "modelica:EnumerationLiteral" },
+      { s: id, p: "modelica:value", o: this.stringValue },
+      { s: id, p: "modelica:ordinal", o: this.ordinalValue },
+    ];
   }
 }
 
@@ -740,6 +886,10 @@ export abstract class ModelicaVariable extends ModelicaPrimaryExpression {
     }
     return hash.digest("hex");
   }
+
+  abstract override get toJSON(): JSONValue;
+
+  abstract override get toRDF(): Triple[];
 }
 
 export class ModelicaBooleanVariable extends ModelicaVariable {
@@ -759,8 +909,21 @@ export class ModelicaBooleanVariable extends ModelicaVariable {
     return this.attributes.get("start") ?? null;
   }
 
-  toJSON(): string {
+  override get toJSON(): string {
     return this.name;
+  }
+
+  override get toRDF(): Triple[] {
+    const id = `_:var_${this.name}`;
+    const triples: Triple[] = [
+      { s: id, p: "rdf:type", o: "modelica:BooleanVariable" },
+      { s: id, p: "modelica:name", o: this.name },
+    ];
+    if (this.expression) {
+      triples.push({ s: id, p: "modelica:expression", o: `_:expr_${this.expression.hash.substring(0, 8)}` });
+      triples.push(...this.expression.toRDF);
+    }
+    return triples;
   }
 }
 
@@ -789,8 +952,21 @@ export class ModelicaIntegerVariable extends ModelicaVariable {
     return this.attributes.get("start") ?? null;
   }
 
-  toJSON(): string {
+  override get toJSON(): string {
     return this.name;
+  }
+
+  override get toRDF(): Triple[] {
+    const id = `_:var_${this.name}`;
+    const triples: Triple[] = [
+      { s: id, p: "rdf:type", o: "modelica:IntegerVariable" },
+      { s: id, p: "modelica:name", o: this.name },
+    ];
+    if (this.expression) {
+      triples.push({ s: id, p: "modelica:expression", o: `_:expr_${this.expression.hash.substring(0, 8)}` });
+      triples.push(...this.expression.toRDF);
+    }
+    return triples;
   }
 }
 
@@ -831,8 +1007,21 @@ export class ModelicaRealVariable extends ModelicaVariable {
     return this.attributes.get("stateSelect") ?? null;
   }
 
-  toJSON(): string {
+  override get toJSON(): string {
     return this.name;
+  }
+
+  override get toRDF(): Triple[] {
+    const id = `_:var_${this.name}`;
+    const triples: Triple[] = [
+      { s: id, p: "rdf:type", o: "modelica:RealVariable" },
+      { s: id, p: "modelica:name", o: this.name },
+    ];
+    if (this.expression) {
+      triples.push({ s: id, p: "modelica:expression", o: `_:expr_${this.expression.hash.substring(0, 8)}` });
+      triples.push(...this.expression.toRDF);
+    }
+    return triples;
   }
 
   get unbounded(): ModelicaExpression | null {
@@ -861,8 +1050,21 @@ export class ModelicaStringVariable extends ModelicaVariable {
     return this.attributes.get("start") ?? null;
   }
 
-  toJSON(): string {
+  override get toJSON(): string {
     return this.name;
+  }
+
+  override get toRDF(): Triple[] {
+    const id = `_:var_${this.name}`;
+    const triples: Triple[] = [
+      { s: id, p: "rdf:type", o: "modelica:StringVariable" },
+      { s: id, p: "modelica:name", o: this.name },
+    ];
+    if (this.expression) {
+      triples.push({ s: id, p: "modelica:expression", o: `_:expr_${this.expression.hash.substring(0, 8)}` });
+      triples.push(...this.expression.toRDF);
+    }
+    return triples;
   }
 }
 
@@ -914,8 +1116,21 @@ export class ModelicaEnumerationVariable extends ModelicaVariable {
     return this.attributes.get("start") ?? null;
   }
 
-  toJSON(): string {
+  override get toJSON(): string {
     return this.name;
+  }
+
+  override get toRDF(): Triple[] {
+    const id = `_:var_${this.name}`;
+    const triples: Triple[] = [
+      { s: id, p: "rdf:type", o: "modelica:EnumerationVariable" },
+      { s: id, p: "modelica:name", o: this.name },
+    ];
+    if (this.expression) {
+      triples.push({ s: id, p: "modelica:expression", o: `_:expr_${this.expression.hash.substring(0, 8)}` });
+      triples.push(...this.expression.toRDF);
+    }
+    return triples;
   }
 }
 

@@ -4,6 +4,7 @@ import { createHash } from "../../util/hash.js";
 
 import type { Writer } from "../../util/io.js";
 import logger from "../../util/logger.js";
+import type { JSONValue, Triple } from "../../util/types.js";
 import { makeWeakRef, makeWeakRefArray } from "../../util/weak.js";
 import { Context } from "../context.js";
 import { Scope } from "../scope.js";
@@ -91,6 +92,63 @@ export abstract class ModelicaNode extends Scope {
   set instantiating(instantiating: boolean) {
     this.#instantiating = instantiating;
   }
+
+  get toJSON(): JSONValue {
+    const json: Record<string, JSONValue> = { "@type": this["@type"] };
+    for (const key of Object.getOwnPropertyNames(this)) {
+      if (key === "@type" || key.startsWith("_") || key === "parent") continue;
+      const value = (this as Record<string, unknown>)[key];
+      if (value instanceof ModelicaNode) {
+        json[key] = value.toJSON;
+      } else if (Array.isArray(value)) {
+        json[key] = value.map((v) => (v instanceof ModelicaNode ? v.toJSON : (v as JSONValue)));
+      } else if (value instanceof Map) {
+        json[key] = Object.fromEntries(
+          Array.from(value.entries()).map(([k, v]) => [k, v instanceof ModelicaNode ? v.toJSON : (v as JSONValue)]),
+        );
+      } else if (!(value instanceof WeakRef)) {
+        json[key] = value as JSONValue;
+      }
+    }
+    return json;
+  }
+
+  get toRDF(): Triple[] {
+    const id = `_:node_${this.hash.substring(0, 8)}`;
+    const triples: Triple[] = [{ s: id, p: "rdf:type", o: `modelica:${this["@type"]}` }];
+    for (const key of Object.getOwnPropertyNames(this)) {
+      if (key === "@type" || key.startsWith("_") || key === "parent") continue;
+      const value = (this as Record<string, unknown>)[key];
+      if (value instanceof ModelicaNode) {
+        const valueId = `_:node_${value.hash.substring(0, 8)}`;
+        triples.push({ s: id, p: `modelica:${key}`, o: valueId });
+        triples.push(...value.toRDF);
+      } else if (Array.isArray(value)) {
+        for (const v of value) {
+          if (v instanceof ModelicaNode) {
+            const vId = `_:node_${v.hash.substring(0, 8)}`;
+            triples.push({ s: id, p: `modelica:${key}`, o: vId });
+            triples.push(...v.toRDF);
+          } else {
+            triples.push({ s: id, p: `modelica:${key}`, o: v as string | number | boolean | null });
+          }
+        }
+      } else if (value instanceof Map) {
+        for (const [k, v] of value.entries()) {
+          if (v instanceof ModelicaNode) {
+            const vId = `_:node_${v.hash.substring(0, 8)}`;
+            triples.push({ s: id, p: `modelica:${k}`, o: vId });
+            triples.push(...v.toRDF);
+          } else {
+            triples.push({ s: id, p: `modelica:${k}`, o: v as string | number | boolean | null });
+          }
+        }
+      } else if (!(value instanceof WeakRef)) {
+        triples.push({ s: id, p: `modelica:${key}`, o: value as string | number | boolean | null });
+      }
+    }
+    return triples;
+  }
 }
 
 export class ModelicaLibrary extends ModelicaNode {
@@ -150,9 +208,9 @@ export abstract class ModelicaElement extends ModelicaNode {
     for (const annotation of annotations) {
       if (annotation.name === name) {
         if (annotation instanceof ModelicaClassInstance) {
-          return (ModelicaExpression.fromClassInstance(annotation)?.toJSON() ?? null) as T | null;
+          return (ModelicaExpression.fromClassInstance(annotation)?.toJSON ?? null) as T | null;
         } else if (annotation instanceof ModelicaComponentInstance) {
-          return (ModelicaExpression.fromClassInstance(annotation.classInstance)?.toJSON() ?? null) as T | null;
+          return (ModelicaExpression.fromClassInstance(annotation.classInstance)?.toJSON ?? null) as T | null;
         }
       }
     }
