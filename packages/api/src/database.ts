@@ -75,6 +75,10 @@ export class LibraryDatabase {
     this.#initialize();
   }
 
+  get db(): Database.Database {
+    return this.#db;
+  }
+
   #initialize(): void {
     this.#db.exec(`
       CREATE TABLE IF NOT EXISTS classes (
