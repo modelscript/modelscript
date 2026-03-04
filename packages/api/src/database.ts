@@ -255,6 +255,125 @@ export class LibraryDatabase {
   }
 
   /**
+   * Get all classes with full details for a library version.
+   */
+  getAllClasses(
+    libraryName: string,
+    libraryVersion: string,
+  ): {
+    className: string;
+    classKind: string;
+    description: string | null;
+    extends: string[];
+    components: {
+      name: string;
+      typeName: string;
+      description: string | null;
+      causality: string | null;
+      variability: string | null;
+      modifiers: { name: string; value: string | null }[];
+    }[];
+  }[] {
+    const classRows = this.#db
+      .prepare(
+        `SELECT id, class_name, class_kind, description FROM classes
+         WHERE library_name = ? AND library_version = ? ORDER BY class_name`,
+      )
+      .all(libraryName, libraryVersion) as {
+      id: number;
+      class_name: string;
+      class_kind: string;
+      description: string | null;
+    }[];
+
+    const getExtends = this.#db.prepare(`SELECT base_class FROM extends WHERE class_id = ?`);
+    const getComponents = this.#db.prepare(
+      `SELECT id, component_name, type_name, description, causality, variability
+       FROM components WHERE class_id = ? ORDER BY component_name`,
+    );
+    const getModifiers = this.#db.prepare(`SELECT modifier_name, modifier_value FROM modifiers WHERE component_id = ?`);
+
+    return classRows.map((cls) => {
+      const extendsRows = getExtends.all(cls.id) as { base_class: string }[];
+      const componentRows = getComponents.all(cls.id) as ComponentRow[];
+
+      const components = componentRows.map((comp) => {
+        const modifiers = getModifiers.all(comp.id) as { modifier_name: string; modifier_value: string | null }[];
+        return {
+          name: comp.component_name,
+          typeName: comp.type_name,
+          description: comp.description,
+          causality: comp.causality,
+          variability: comp.variability,
+          modifiers: modifiers.map((m) => ({ name: m.modifier_name, value: m.modifier_value })),
+        };
+      });
+
+      return {
+        className: cls.class_name,
+        classKind: cls.class_kind,
+        description: cls.description,
+        extends: extendsRows.map((r) => r.base_class),
+        components,
+      };
+    });
+  }
+
+  /**
+   * Get all data for a library version as RDF triples ({s, p, o}).
+   */
+  getLibraryTriples(libraryName: string, libraryVersion: string): { s: string; p: string; o: string }[] {
+    const NS = "https://modelica.org/ontology#";
+    const LIB = `urn:modelica:${libraryName}:${libraryVersion}:`;
+    const triples: { s: string; p: string; o: string }[] = [];
+
+    const allClasses = this.getAllClasses(libraryName, libraryVersion);
+
+    for (const cls of allClasses) {
+      const classUri = `${LIB}${cls.className}`;
+      triples.push({ s: classUri, p: `${NS}type`, o: `${NS}Class` });
+      triples.push({ s: classUri, p: `${NS}className`, o: cls.className });
+      triples.push({ s: classUri, p: `${NS}classKind`, o: cls.classKind });
+      if (cls.description) {
+        triples.push({ s: classUri, p: `${NS}description`, o: cls.description });
+      }
+
+      for (const base of cls.extends) {
+        triples.push({ s: classUri, p: `${NS}extends`, o: `${LIB}${base}` });
+      }
+
+      for (const comp of cls.components) {
+        const compUri = `${classUri}.${comp.name}`;
+        triples.push({ s: classUri, p: `${NS}hasComponent`, o: compUri });
+        triples.push({ s: compUri, p: `${NS}type`, o: `${NS}Component` });
+        triples.push({ s: compUri, p: `${NS}componentName`, o: comp.name });
+        triples.push({ s: compUri, p: `${NS}typeName`, o: comp.typeName });
+        if (comp.description) {
+          triples.push({ s: compUri, p: `${NS}description`, o: comp.description });
+        }
+        if (comp.causality) {
+          triples.push({ s: compUri, p: `${NS}causality`, o: comp.causality });
+        }
+        if (comp.variability) {
+          triples.push({ s: compUri, p: `${NS}variability`, o: comp.variability });
+        }
+
+        for (const mod of comp.modifiers) {
+          const modUri = `${compUri}.${mod.name}`;
+          triples.push({ s: compUri, p: `${NS}hasModifier`, o: modUri });
+          triples.push({ s: modUri, p: `${NS}type`, o: `${NS}Modifier` });
+          triples.push({ s: modUri, p: `${NS}modifierName`, o: mod.name });
+          if (mod.value !== null) {
+            triples.push({ s: modUri, p: `${NS}modifierValue`, o: mod.value });
+          }
+        }
+      }
+    }
+
+    return triples;
+  }
+
+  /**
    * Delete all data for a library version.
    */
   deleteLibrary(libraryName: string, libraryVersion: string): void {

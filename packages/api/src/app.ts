@@ -4,8 +4,10 @@ import express from "express";
 
 import { LibraryDatabase } from "./database.js";
 import { JobQueue } from "./jobs.js";
+import { graphqlRouter } from "./routes/graphql.js";
 import { packagesRouter } from "./routes/packages.js";
 import { publishRouter } from "./routes/publish.js";
+import { rdfRouter } from "./routes/rdf.js";
 import { LibraryStorage } from "./storage.js";
 
 export function createApp(storage?: LibraryStorage): express.Express {
@@ -19,6 +21,8 @@ export function createApp(storage?: LibraryStorage): express.Express {
   // Mount the library routers
   app.use("/api/v1/libraries", packagesRouter(libraryStorage, jobQueue, database));
   app.use("/api/v1/libraries", publishRouter(libraryStorage, jobQueue, database));
+  app.use("/api/v1/libraries", rdfRouter(database));
+  app.use("/api/v1/libraries", graphqlRouter(database));
 
   // Health check
   app.get("/health", (_req, res) => {
