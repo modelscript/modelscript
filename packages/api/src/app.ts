@@ -2,6 +2,7 @@
 
 import express from "express";
 
+import { packagesRouter } from "./routes/packages.js";
 import { publishRouter } from "./routes/publish.js";
 import { LibraryStorage } from "./storage.js";
 
@@ -11,7 +12,8 @@ export function createApp(storage?: LibraryStorage): express.Express {
 
   app.use(express.json());
 
-  // Mount the publish router
+  // Mount the library routers
+  app.use("/api/v1/libraries", packagesRouter(libraryStorage));
   app.use("/api/v1/libraries", publishRouter(libraryStorage));
 
   // Health check
