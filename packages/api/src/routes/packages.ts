@@ -94,5 +94,36 @@ export function packagesRouter(storage: LibraryStorage): Router {
     }
   });
 
+  /**
+   * GET /api/v1/libraries/:name/:version/download
+   *
+   * Download the zip file for a specific package version.
+   */
+  router.get("/:name/:version/download", (req: Request, res: Response): void => {
+    const name = req.params["name"];
+    const version = req.params["version"];
+
+    if (typeof name !== "string" || typeof version !== "string") {
+      res.status(400).json({ error: "Package name and version are required" });
+      return;
+    }
+
+    if (!semver.valid(version)) {
+      res.status(400).json({ error: `Invalid semantic version: "${version}"` });
+      return;
+    }
+
+    const file = storage.read(name, version);
+    if (!file) {
+      res.status(404).json({ error: `Package "${name}@${version}" not found` });
+      return;
+    }
+
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", `attachment; filename="${name}-${version}.zip"`);
+    res.setHeader("Content-Length", file.size);
+    res.send(file.buffer);
+  });
+
   return router;
 }
