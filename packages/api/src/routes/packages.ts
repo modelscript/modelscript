@@ -4,12 +4,13 @@ import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import semver from "semver";
 
+import type { LibraryDatabase } from "../database.js";
 import type { JobQueue } from "../jobs.js";
 import type { LibraryStorage } from "../storage.js";
 import { parsePackageMo } from "../util/package-mo.js";
 import { extractPackageMoFromZip } from "../util/zip.js";
 
-export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue): Router {
+export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, database: LibraryDatabase): Router {
   const router = createRouter();
 
   /**
@@ -154,7 +155,8 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue): Rou
   /**
    * GET /api/v1/libraries/:name/:version/classes
    *
-   * List all classes that have generated SVGs for a library version.
+   * List all classes for a library version. Supports optional
+   * `?kind=` and `?q=` query parameters for filtering.
    */
   router.get("/:name/:version/classes", (req: Request, res: Response): void => {
     const name = req.params["name"];
@@ -165,8 +167,35 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue): Rou
       return;
     }
 
-    const classes = storage.listClasses(name, version);
+    const kind = typeof req.query["kind"] === "string" ? req.query["kind"] : undefined;
+    const q = typeof req.query["q"] === "string" ? req.query["q"] : undefined;
+
+    const classes = database.getClasses(name, version, { kind, q });
     res.json({ name, version, classes });
+  });
+
+  /**
+   * GET /api/v1/libraries/:name/:version/classes/:className
+   *
+   * Get details for a specific class, including extends and components.
+   */
+  router.get("/:name/:version/classes/:className", (req: Request, res: Response): void => {
+    const name = req.params["name"];
+    const version = req.params["version"];
+    const className = req.params["className"];
+
+    if (typeof name !== "string" || typeof version !== "string" || typeof className !== "string") {
+      res.status(400).json({ error: "Package name, version, and class name are required" });
+      return;
+    }
+
+    const cls = database.getClass(name, version, className);
+    if (!cls) {
+      res.status(404).json({ error: `Class "${className}" not found in ${name}@${version}` });
+      return;
+    }
+
+    res.json({ name, version, className, ...cls });
   });
 
   /**

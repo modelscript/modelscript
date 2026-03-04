@@ -5,15 +5,16 @@ import { Router as createRouter } from "express";
 import multer from "multer";
 import semver from "semver";
 
+import type { LibraryDatabase } from "../database.js";
 import type { JobQueue } from "../jobs.js";
 import { ConflictError, type LibraryStorage } from "../storage.js";
 import { parsePackageMo } from "../util/package-mo.js";
-import { renderLibrarySvgs } from "../util/svg-renderer.js";
+import { processLibrary } from "../util/svg-renderer.js";
 import { extractPackageMoFromZip } from "../util/zip.js";
 
 const upload = multer({ storage: multer.memoryStorage() });
 
-export function publishRouter(storage: LibraryStorage, jobQueue: JobQueue): Router {
+export function publishRouter(storage: LibraryStorage, jobQueue: JobQueue, database: LibraryDatabase): Router {
   const router = createRouter();
 
   /**
@@ -85,18 +86,19 @@ export function publishRouter(storage: LibraryStorage, jobQueue: JobQueue): Rout
       // 7. Store the library
       const filePath = await storage.store(name, version, req.file.buffer);
 
-      // 8. Enqueue background SVG generation
+      // 8. Enqueue background processing (SVG generation + metadata extraction)
       const jobKey = `${name}@${version}`;
       const zipBuffer = req.file.buffer;
       jobQueue.enqueue(jobKey, async () => {
-        const svgs = await renderLibrarySvgs(zipBuffer);
-        storage.storeSvgs(name, version, svgs);
+        const result = await processLibrary(zipBuffer);
+        storage.storeSvgs(name, version, result.svgs);
+        database.storeLibraryMetadata(name, version, result.metadata);
       });
 
       res.status(201).json({
         message: `Library ${name}@${version} published successfully`,
         path: filePath,
-        svgGeneration: "pending",
+        processing: "pending",
       });
     } catch (err) {
       if (err instanceof ConflictError) {
