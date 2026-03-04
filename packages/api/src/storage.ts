@@ -94,6 +94,54 @@ export class LibraryStorage {
     return filePath;
   }
 
+  /**
+   * Store generated SVG files for all classes in a library version.
+   */
+  storeSvgs(name: string, version: string, svgs: Map<string, { icon: string | null; diagram: string | null }>): void {
+    for (const [className, { icon, diagram }] of svgs) {
+      const dir = this.#svgDir(name, version, className);
+      fs.mkdirSync(dir, { recursive: true });
+
+      if (icon) {
+        fs.writeFileSync(path.join(dir, "icon.svg"), icon, "utf-8");
+      }
+      if (diagram) {
+        fs.writeFileSync(path.join(dir, "diagram.svg"), diagram, "utf-8");
+      }
+    }
+  }
+
+  /**
+   * Read a single SVG file for a class.
+   */
+  readSvg(name: string, version: string, className: string, type: "icon" | "diagram"): string | null {
+    const filePath = path.join(this.#svgDir(name, version, className), `${type}.svg`);
+    if (!fs.existsSync(filePath)) {
+      return null;
+    }
+    return fs.readFileSync(filePath, "utf-8");
+  }
+
+  /**
+   * List class names that have generated SVGs for a library version.
+   */
+  listClasses(name: string, version: string): string[] {
+    const dir = path.join(this.#dataDir, name, version, "svgs");
+    if (!fs.existsSync(dir)) {
+      return [];
+    }
+
+    return fs
+      .readdirSync(dir, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => d.name)
+      .sort();
+  }
+
+  #svgDir(name: string, version: string, className: string): string {
+    return path.join(this.#dataDir, name, version, "svgs", className);
+  }
+
   #filePath(name: string, version: string): string {
     return path.join(this.#dataDir, name, `${version}.zip`);
   }

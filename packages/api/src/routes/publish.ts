@@ -5,13 +5,15 @@ import { Router as createRouter } from "express";
 import multer from "multer";
 import semver from "semver";
 
+import type { JobQueue } from "../jobs.js";
 import { ConflictError, type LibraryStorage } from "../storage.js";
 import { parsePackageMo } from "../util/package-mo.js";
+import { renderLibrarySvgs } from "../util/svg-renderer.js";
 import { extractPackageMoFromZip } from "../util/zip.js";
 
 const upload = multer({ storage: multer.memoryStorage() });
 
-export function publishRouter(storage: LibraryStorage): Router {
+export function publishRouter(storage: LibraryStorage, jobQueue: JobQueue): Router {
   const router = createRouter();
 
   /**
@@ -83,9 +85,18 @@ export function publishRouter(storage: LibraryStorage): Router {
       // 7. Store the library
       const filePath = await storage.store(name, version, req.file.buffer);
 
+      // 8. Enqueue background SVG generation
+      const jobKey = `${name}@${version}`;
+      const zipBuffer = req.file.buffer;
+      jobQueue.enqueue(jobKey, async () => {
+        const svgs = await renderLibrarySvgs(zipBuffer);
+        storage.storeSvgs(name, version, svgs);
+      });
+
       res.status(201).json({
         message: `Library ${name}@${version} published successfully`,
         path: filePath,
+        svgGeneration: "pending",
       });
     } catch (err) {
       if (err instanceof ConflictError) {

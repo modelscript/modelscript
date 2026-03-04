@@ -4,11 +4,12 @@ import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import semver from "semver";
 
+import type { JobQueue } from "../jobs.js";
 import type { LibraryStorage } from "../storage.js";
 import { parsePackageMo } from "../util/package-mo.js";
 import { extractPackageMoFromZip } from "../util/zip.js";
 
-export function packagesRouter(storage: LibraryStorage): Router {
+export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue): Router {
   const router = createRouter();
 
   /**
@@ -123,6 +124,99 @@ export function packagesRouter(storage: LibraryStorage): Router {
     res.setHeader("Content-Disposition", `attachment; filename="${name}-${version}.zip"`);
     res.setHeader("Content-Length", file.size);
     res.send(file.buffer);
+  });
+
+  /**
+   * GET /api/v1/libraries/:name/:version/status
+   *
+   * Check the SVG generation job status for a library version.
+   */
+  router.get("/:name/:version/status", (req: Request, res: Response): void => {
+    const name = req.params["name"];
+    const version = req.params["version"];
+
+    if (typeof name !== "string" || typeof version !== "string") {
+      res.status(400).json({ error: "Package name and version are required" });
+      return;
+    }
+
+    const jobKey = `${name}@${version}`;
+    const status = jobQueue.getStatus(jobKey);
+
+    if (!status) {
+      res.status(404).json({ error: `No job found for "${jobKey}"` });
+      return;
+    }
+
+    res.json({ name, version, ...status });
+  });
+
+  /**
+   * GET /api/v1/libraries/:name/:version/classes
+   *
+   * List all classes that have generated SVGs for a library version.
+   */
+  router.get("/:name/:version/classes", (req: Request, res: Response): void => {
+    const name = req.params["name"];
+    const version = req.params["version"];
+
+    if (typeof name !== "string" || typeof version !== "string") {
+      res.status(400).json({ error: "Package name and version are required" });
+      return;
+    }
+
+    const classes = storage.listClasses(name, version);
+    res.json({ name, version, classes });
+  });
+
+  /**
+   * GET /api/v1/libraries/:name/:version/classes/:className/icon.svg
+   *
+   * Serve the icon SVG for a specific class.
+   */
+  router.get("/:name/:version/classes/:className/icon.svg", (req: Request, res: Response): void => {
+    const name = req.params["name"];
+    const version = req.params["version"];
+    const className = req.params["className"];
+
+    if (typeof name !== "string" || typeof version !== "string" || typeof className !== "string") {
+      res.status(400).json({ error: "Package name, version, and class name are required" });
+      return;
+    }
+
+    const svg = storage.readSvg(name, version, className, "icon");
+    if (!svg) {
+      res.status(404).json({ error: `Icon SVG not found for "${className}" in ${name}@${version}` });
+      return;
+    }
+
+    res.setHeader("Content-Type", "image/svg+xml");
+    res.send(svg);
+  });
+
+  /**
+   * GET /api/v1/libraries/:name/:version/classes/:className/diagram.svg
+   *
+   * Serve the diagram SVG for a specific class.
+   */
+  router.get("/:name/:version/classes/:className/diagram.svg", (req: Request, res: Response): void => {
+    const name = req.params["name"];
+    const version = req.params["version"];
+    const className = req.params["className"];
+
+    if (typeof name !== "string" || typeof version !== "string" || typeof className !== "string") {
+      res.status(400).json({ error: "Package name, version, and class name are required" });
+      return;
+    }
+
+    const svg = storage.readSvg(name, version, className, "diagram");
+    if (!svg) {
+      res.status(404).json({ error: `Diagram SVG not found for "${className}" in ${name}@${version}` });
+      return;
+    }
+
+    res.setHeader("Content-Type", "image/svg+xml");
+    res.send(svg);
   });
 
   return router;
