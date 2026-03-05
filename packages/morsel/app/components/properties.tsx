@@ -338,11 +338,10 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
           <div style={{ paddingBottom: 8 }}>
             {parameters.map((parameter) => {
               const value =
-                component.modification
-                  ?.getModificationArgument(parameter.name ?? "")
-                  ?.expression?.toJSON()
-                  ?.toString() ??
-                parameter.modification?.expression?.toJSON()?.toString() ??
+                (
+                  component.modification?.getModificationArgument(parameter.name ?? "")?.expression as any
+                )?.toJSON?.toString() ??
+                (parameter.modification?.expression as any)?.toJSON?.toString() ??
                 "-";
               return (
                 <ParameterRow

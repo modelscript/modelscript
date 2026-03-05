@@ -28,3 +28,17 @@ body {
 .markdown-body li {
   margin-bottom: 0.5em;
 }
+
+@keyframes rotate-spinner {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+svg[class*="Spinner"] {
+  animation: rotate-spinner 1s linear infinite !important;
+}

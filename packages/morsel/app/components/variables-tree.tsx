@@ -1,0 +1,85 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+import { Checkbox, TreeView } from "@primer/react";
+import { useMemo } from "react";
+
+interface VariablesTreeProps {
+  variables: string[];
+  selectedVariables: string[];
+  onToggleVariable: (variable: string) => void;
+}
+
+interface TreeNode {
+  name: string;
+  fullName: string;
+  children: Map<string, TreeNode>;
+  isVariable: boolean;
+}
+
+export function VariablesTree({ variables, selectedVariables, onToggleVariable }: VariablesTreeProps) {
+  const treeRoot = useMemo(() => {
+    const root: TreeNode = { name: "", fullName: "", children: new Map(), isVariable: false };
+
+    for (const variable of variables) {
+      const parts = variable.split(".");
+      let current = root;
+      let path = "";
+
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+        path = path ? `${path}.${part}` : part;
+
+        if (!current.children.has(part)) {
+          current.children.set(part, {
+            name: part,
+            fullName: path,
+            children: new Map(),
+            isVariable: i === parts.length - 1,
+          });
+        }
+        current = current.children.get(part)!;
+      }
+    }
+    return root;
+  }, [variables]);
+
+  const renderNode = (node: TreeNode) => {
+    const isSelected = selectedVariables.includes(node.fullName);
+    const hasChildren = node.children.size > 0;
+
+    const items = Array.from(node.children.values()).sort((a, b) => {
+      // Directories first, then alphabetical
+      if (a.children.size > 0 && b.children.size === 0) return -1;
+      if (a.children.size === 0 && b.children.size > 0) return 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    return (
+      <TreeView.Item key={node.fullName} id={node.fullName} defaultExpanded={true}>
+        <TreeView.LeadingVisual>
+          {node.isVariable ? (
+            <Checkbox
+              checked={isSelected}
+              onChange={() => onToggleVariable(node.fullName)}
+              aria-label={isSelected ? "Hide variable" : "Show variable"}
+            />
+          ) : null}
+        </TreeView.LeadingVisual>
+        {node.name}
+        {hasChildren && <TreeView.SubTree>{items.map(renderNode)}</TreeView.SubTree>}
+      </TreeView.Item>
+    );
+  };
+
+  return (
+    <TreeView aria-label="Simulation Variables">
+      {Array.from(treeRoot.children.values())
+        .sort((a, b) => {
+          if (a.children.size > 0 && b.children.size === 0) return -1;
+          if (a.children.size === 0 && b.children.size > 0) return 1;
+          return a.name.localeCompare(b.name);
+        })
+        .map(renderNode)}
+    </TreeView>
+  );
+}

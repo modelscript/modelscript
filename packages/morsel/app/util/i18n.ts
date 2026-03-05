@@ -85,6 +85,10 @@ export interface Translations {
   // Components
   components: string;
   libraries: string;
+
+  // Tabs
+  diagram: string;
+  results: string;
 }
 
 const en: Translations = {
@@ -174,6 +178,10 @@ const en: Translations = {
   // Components
   components: "Components",
   libraries: "Libraries",
+
+  // Tabs
+  diagram: "Diagram",
+  results: "Results",
 };
 
 const ar: Translations = {
@@ -263,6 +271,10 @@ const ar: Translations = {
   // Components
   components: "المكوّنات",
   libraries: "المكتبات",
+
+  // Tabs
+  diagram: "المخطط",
+  results: "النتائج",
 };
 
 const tr: Translations = {
@@ -352,6 +364,10 @@ const tr: Translations = {
   // Components
   components: "Bileşenler",
   libraries: "Kütüphaneler",
+
+  // Tabs
+  diagram: "Diyagram",
+  results: "Sonuçlar",
 };
 
 const translations: Record<string, Translations> = { en, ar, tr };

@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import { Links, Meta, Outlet, Scripts, ScrollRestoration, useNavigate } from "react-router";
 
 import "@primer/css/dist/primer.css";
+import "@primer/primitives/dist/css/functional/themes/dark.css";
 import "@primer/primitives/dist/css/functional/themes/light.css";
 import "./app.css";
 

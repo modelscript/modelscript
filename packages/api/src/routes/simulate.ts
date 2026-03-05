@@ -79,7 +79,7 @@ export function simulateRouter(storage: LibraryStorage, jobQueue: JobQueue): exp
 ${loadModels.join("\n")}
 ${loadFiles.map((f) => `loadFile("${f}");`).join("\n")}
 ${adhocMoPath ? `loadFile("${adhocMoPath}");` : ""}
-simulate(${modelName});
+simulate(${modelName}, outputFormat="csv");
 getErrorString();
 `;
 
@@ -91,9 +91,9 @@ getErrorString();
           env: { ...process.env, MODELICAPATH: modelicaPath },
         });
 
-        const matFilePath = path.join(tmpDir, `${modelName}_res.mat`);
+        const csvFilePath = path.join(tmpDir, `${modelName}_res.csv`);
 
-        if (!fs.existsSync(matFilePath)) {
+        if (!fs.existsSync(csvFilePath)) {
           const logPath = path.join(tmpDir, "simulate.log");
           let details = "";
           if (fs.existsSync(logPath)) {
@@ -101,7 +101,7 @@ getErrorString();
           }
           const files = fs.readdirSync(tmpDir);
           throw new Error(
-            `Simulation failed to produce a .mat result file.\nExpected path: ${matFilePath}\nFiles in tmpDir: ${files.join(
+            `Simulation failed to produce a .csv result file.\nExpected path: ${csvFilePath}\nFiles in tmpDir: ${files.join(
               ", ",
             )}\nSTDOUT: ${stdout}\nSTDERR: ${stderr}\nLOG: ${details}`,
           );
@@ -110,7 +110,7 @@ getErrorString();
         // Store the result path on the job so the GET route can stream it back
         const status = jobQueue.getStatus(jobId);
         if (status) {
-          status.resultPath = matFilePath;
+          status.resultPath = csvFilePath;
         }
       } catch (err) {
         // If it's a simulation failure, we might want to keep the tmp dir for debugging

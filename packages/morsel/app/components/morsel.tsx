@@ -24,6 +24,7 @@ import {
   MoonIcon,
   PlayIcon,
   PlusIcon,
+  PulseIcon,
   RowsIcon,
   SearchIcon,
   ShareAndroidIcon,
@@ -37,7 +38,16 @@ import {
   WorkflowIcon,
   XIcon,
 } from "@primer/octicons-react";
-import { ActionList, ActionMenu, Dialog, IconButton, Spinner, TextInput, useTheme } from "@primer/react";
+import {
+  ActionList,
+  ActionMenu,
+  Dialog,
+  IconButton,
+  SegmentedControl,
+  Spinner,
+  TextInput,
+  useTheme,
+} from "@primer/react";
 import { Zip } from "@zenfs/archives";
 import { configure, InMemory } from "@zenfs/core";
 import { editor } from "monaco-editor";
@@ -52,8 +62,10 @@ import ComponentList from "./component-list";
 import DiagramEditor, { type DiagramEditorHandle } from "./diagram";
 import OpenFileDropzone from "./open-file-dropzone";
 import PropertiesWidget from "./properties";
+import { SimulationResults } from "./simulation-results";
 import { Splash, type ModelData } from "./splash";
 import TreeWidget from "./tree";
+import { VariablesTree } from "./variables-tree";
 
 const EXAMPLE_PATHS = [
   {
@@ -136,6 +148,9 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [classInstance, setClassInstance] = useState<ModelicaClassInstance | null>(null);
   const [context, setContext] = useState<Context | null>(null);
   const [view, setView] = useState<View>(View.SPLIT_COLUMNS);
+  const [showResultsView, setShowResultsView] = useState(false);
+  const [simulationVariables, setSimulationVariables] = useState<string[]>([]);
+  const [selectedSimulationVariables, setSelectedSimulationVariables] = useState<string[]>([]);
   const [lastLoadedContent, setLastLoadedContent] = useState<string>("");
   const [isDirtyDialogOpen, setDirtyDialogOpen] = useState(false);
   const [pendingSelection, setPendingSelection] = useState<ModelicaClassInstance | null>(null);
@@ -205,6 +220,64 @@ export default function MorselEditor(props: MorselEditorProps) {
     setRecentModels([]);
     localStorage.removeItem("recentModels");
   }, []);
+
+  const handleVariablesLoaded = useCallback(
+    (vars: string[]) => {
+      setSimulationVariables(vars);
+
+      if (selectedSimulationVariables.length === 0 && vars.length > 0) {
+        // Find the first visual variable (matching VariablesTree sorting)
+        interface Node {
+          name: string;
+          fullName: string;
+          children: Map<string, Node>;
+          isVariable: boolean;
+        }
+
+        const root: Node = { name: "", fullName: "", children: new Map(), isVariable: false };
+        for (const v of vars) {
+          const parts = v.split(".");
+          let current = root;
+          let path = "";
+          for (let i = 0; i < parts.length; i++) {
+            const part = parts[i];
+            path = path ? `${path}.${part}` : part;
+            if (!current.children.has(part)) {
+              current.children.set(part, {
+                name: part,
+                fullName: path,
+                children: new Map(),
+                isVariable: i === parts.length - 1,
+              });
+            }
+            current = current.children.get(part)!;
+          }
+        }
+
+        const findFirst = (node: Node): string | null => {
+          if (node.isVariable) return node.fullName;
+          const sorted = Array.from(node.children.values()).sort((a, b) => {
+            if (a.children.size > 0 && b.children.size === 0) return -1;
+            if (a.children.size === 0 && b.children.size > 0) return 1;
+            return a.name.localeCompare(b.name);
+          });
+          for (const child of sorted) {
+            const res = findFirst(child);
+            if (res) return res;
+          }
+          return null;
+        };
+
+        const first = findFirst(root);
+        if (first) {
+          setSelectedSimulationVariables([first]);
+        } else {
+          setSelectedSimulationVariables([vars[0]]);
+        }
+      }
+    },
+    [selectedSimulationVariables.length],
+  );
 
   useEffect(() => {
     const init = async () => {
@@ -1227,6 +1300,9 @@ export default function MorselEditor(props: MorselEditorProps) {
     setSimulateDialogOpen(true);
     setSimulationStatus({ status: "pending" });
     setSimulationJobId(null);
+    setShowResultsView(false);
+    setSimulationVariables([]);
+    setSelectedSimulationVariables([]);
 
     const dependencies = Array.from(context.listLibraries()).map((lib) => ({
       name: lib.name,
@@ -1261,6 +1337,8 @@ export default function MorselEditor(props: MorselEditorProps) {
             setSimulationStatus(data);
             if (data.status === "completed") {
               clearInterval(simulationIntervalRef.current!);
+              setSimulateDialogOpen(false);
+              setShowResultsView(true);
             } else if (data.status === "failed") {
               clearInterval(simulationIntervalRef.current!);
               alert(`Simulation failed: ${data.error}`);
@@ -1395,23 +1473,35 @@ export default function MorselEditor(props: MorselEditorProps) {
                   />
                 </div>
                 <div className="text-bold px-3 py-2 border-top border-bottom bg-canvas-subtle">
-                  {translations.components}
+                  {showResultsView ? "Simulation Variables" : translations.components}
                 </div>
                 <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
-                  <ComponentList
-                    classInstance={classInstance}
-                    onSelect={(name) => {
-                      if (!classInstance) return;
-                      const component = Array.from(classInstance.components).find((c) => c.name === name);
-                      setSelectedComponent(component || null);
-                      if (name) {
-                        codeEditorRef.current?.revealComponent(name);
-                      }
-                    }}
-                    selectedName={selectedComponent?.name}
-                    language={language}
-                    translations={translations}
-                  />
+                  {!showResultsView ? (
+                    <ComponentList
+                      classInstance={classInstance}
+                      onSelect={(name) => {
+                        if (!classInstance) return;
+                        const component = Array.from(classInstance.components).find((c) => c.name === name);
+                        setSelectedComponent(component || null);
+                        if (name) {
+                          codeEditorRef.current?.revealComponent(name);
+                        }
+                      }}
+                      selectedName={selectedComponent?.name}
+                      language={language}
+                      translations={translations}
+                    />
+                  ) : (
+                    <VariablesTree
+                      variables={simulationVariables}
+                      selectedVariables={selectedSimulationVariables}
+                      onToggleVariable={(v) => {
+                        setSelectedSimulationVariables((current) =>
+                          current.includes(v) ? current.filter((x) => x !== v) : [...current, v],
+                        );
+                      }}
+                    />
+                  )}
                 </div>
               </div>
               <div
@@ -1466,366 +1556,448 @@ export default function MorselEditor(props: MorselEditorProps) {
             ref={splitContainerRef}
             style={{ minHeight: 0, overflow: "hidden", position: "relative" }}
           >
-            <div
-              style={{
-                display: view === View.DIAGRAM || isSplit(view) ? "flex" : "none",
-                flex: isSplit(view) ? "none" : 1,
-                width: isSplit(view) && view === View.SPLIT_COLUMNS ? `${splitRatio * 100}%` : undefined,
-                height: isSplit(view) && view === View.SPLIT_ROWS ? `${splitRatio * 100}%` : undefined,
-                flexDirection: "column",
-                minWidth: 0,
-                minHeight: 0,
-              }}
-            >
-              <div className="d-flex flex-row height-full">
-                <div className="flex-1 overflow-hidden" style={{ minWidth: 0 }}>
-                  <DiagramEditor
-                    ref={diagramEditorRef}
-                    classInstance={diagramClassInstance}
-                    selectedName={selectedComponent?.name}
-                    theme={colorMode === "dark" ? "vs-dark" : "light"}
-                    onSelect={(name) => {
-                      if (!name) {
-                        setSelectedComponent(null);
-                      } else {
-                        const component = classInstance?.components
-                          ? Array.from(classInstance.components).find((c) => c.name === name)
-                          : null;
-                        setSelectedComponent(component || null);
-                        codeEditorRef.current?.revealComponent(name);
-                      }
+            {(view === View.DIAGRAM || isSplit(view)) && (
+              <div
+                style={{
+                  display: "flex",
+                  flex: isSplit(view) ? "none" : 1,
+                  width: isSplit(view) && view === View.SPLIT_COLUMNS ? `${splitRatio * 100}%` : undefined,
+                  height: isSplit(view) && view === View.SPLIT_ROWS ? `${splitRatio * 100}%` : undefined,
+                  flexDirection: "column",
+                  minWidth: 0,
+                  minHeight: 0,
+                  position: "relative",
+                  backgroundColor: "var(--color-canvas-default)",
+                }}
+              >
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "16px",
+                    left: "50%",
+                    transform: "translateX(-50%)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "8px 16px",
+                    borderRadius: 12,
+                    backgroundColor: colorMode === "dark" ? "rgba(22, 27, 34, 0.9)" : "rgba(255, 255, 255, 0.9)",
+                    backdropFilter: "blur(12px)",
+                    boxShadow:
+                      colorMode === "dark"
+                        ? "0 4px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.08)"
+                        : "0 4px 24px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.06)",
+                    zIndex: 100,
+                  }}
+                >
+                  <SegmentedControl aria-label="Center Pane View" onChange={(i) => setShowResultsView(i === 1)}>
+                    <SegmentedControl.Button selected={!showResultsView} leadingVisual={WorkflowIcon}>
+                      {translations.diagram}
+                    </SegmentedControl.Button>
+                    <SegmentedControl.Button selected={showResultsView} leadingVisual={PulseIcon}>
+                      {translations.results}
+                    </SegmentedControl.Button>
+                  </SegmentedControl>
+                </div>
+                <div style={{ position: "relative", flex: 1, flexDirection: "row", overflow: "hidden" }}>
+                  <div
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      display: "flex",
+                      flexDirection: "row",
+                      visibility: !showResultsView ? "visible" : "hidden",
+                      opacity: !showResultsView ? 1 : 0,
+                      pointerEvents: !showResultsView ? "auto" : "none",
+                      zIndex: !showResultsView ? 1 : 0,
                     }}
-                    onDrop={(className, x, y) => {
-                      if (!classInstance || !editor) return;
-
-                      // Try to get the defaultComponentName annotation from the dropped class
-                      const shortName = className.split(".").pop() || "component";
-                      let baseName = shortName.toLowerCase();
-                      const droppedClass = context?.query(className);
-                      if (droppedClass instanceof ModelicaClassInstance) {
-                        const defaultName = droppedClass.annotation<string>("defaultComponentName");
-                        if (defaultName) {
-                          baseName = droppedClass.translate(defaultName);
-                        } else {
-                          baseName = droppedClass.localizedName.toLowerCase();
-                        }
-                      }
-
-                      let name = baseName;
-                      let i = 1;
-                      const existingNames = new Set(Array.from(classInstance.components).map((c) => c.name));
-                      while (existingNames.has(name)) {
-                        name = `${baseName}${i}`;
-                        i++;
-                      }
-
-                      const diagram: IDiagram | null = classInstance.annotation("Diagram");
-                      const initialScale = diagram?.coordinateSystem?.initialScale ?? 0.1;
-                      const extent = diagram?.coordinateSystem?.extent;
-
-                      let width = 200;
-                      let height = 200;
-
-                      if (extent && extent.length >= 2) {
-                        width = Math.abs(extent[1][0] - extent[0][0]);
-                        height = Math.abs(extent[1][1] - extent[0][1]);
-                      }
-
-                      const w = width * initialScale;
-                      const h = height * initialScale;
-
-                      const annotation = `annotation(Placement(transformation(origin={${Math.round(x)},${-Math.round(y)}}, extent={{-${w / 2},-${h / 2}},{${w / 2},${h / 2}}})))`;
-                      const componentDecl = `  ${className} ${name} ${annotation};\n`;
-
-                      const model = editor.getModel();
-                      if (model) {
-                        const keywords = [
-                          "protected",
-                          "initial equation",
-                          "initial algorithm",
-                          "equation",
-                          "algorithm",
-                          "end",
-                        ];
-                        let insertLine = -1;
-                        const text = model.getValue();
-                        const lines = text.split("\n");
-                        for (let i = 0; i < lines.length; i++) {
-                          const line = lines[i].trim();
-                          if (keywords.some((kw) => line.startsWith(kw))) {
-                            insertLine = i;
-                            break;
+                  >
+                    <div className="flex-1 overflow-hidden" style={{ minWidth: 0 }}>
+                      <DiagramEditor
+                        ref={diagramEditorRef}
+                        classInstance={diagramClassInstance}
+                        selectedName={selectedComponent?.name}
+                        theme={colorMode === "dark" ? "vs-dark" : "light"}
+                        onSelect={(name) => {
+                          if (!name) {
+                            setSelectedComponent(null);
+                          } else {
+                            const component = classInstance?.components
+                              ? Array.from(classInstance.components).find((c) => c.name === name)
+                              : null;
+                            setSelectedComponent(component || null);
+                            codeEditorRef.current?.revealComponent(name);
                           }
-                        }
-                        if (insertLine !== -1) {
-                          let range = {
-                            startLineNumber: insertLine + 1,
-                            startColumn: 1,
-                            endLineNumber: insertLine + 1,
-                            endColumn: 1,
-                          };
-                          if (insertLine > 0 && lines[insertLine - 1].trim() === "") {
-                            range.startLineNumber = insertLine;
-                            range.endLineNumber = insertLine + 1;
+                        }}
+                        onDrop={(className, x, y) => {
+                          if (!classInstance || !editor) return;
+
+                          // Try to get the defaultComponentName annotation from the dropped class
+                          const shortName = className.split(".").pop() || "component";
+                          let baseName = shortName.toLowerCase();
+                          const droppedClass = context?.query(className);
+                          if (droppedClass instanceof ModelicaClassInstance) {
+                            const defaultName = droppedClass.annotation<string>("defaultComponentName");
+                            if (defaultName) {
+                              baseName = droppedClass.translate(defaultName);
+                            } else {
+                              baseName = droppedClass.localizedName.toLowerCase();
+                            }
                           }
-                          editor.executeEdits("dnd", [
-                            {
-                              range: range,
-                              text: componentDecl,
-                            },
-                          ]);
-                        } else {
-                          const lastEndIndex = text.lastIndexOf("end");
-                          if (lastEndIndex !== -1) {
-                            const pos = model.getPositionAt(lastEndIndex);
-                            let range = {
-                              startLineNumber: pos.lineNumber,
-                              startColumn: 1,
-                              endLineNumber: pos.lineNumber,
-                              endColumn: 1,
-                            };
-                            if (pos.lineNumber > 1) {
-                              const prevLineContent = model.getLineContent(pos.lineNumber - 1);
-                              if (prevLineContent.trim() === "") {
-                                range.startLineNumber = pos.lineNumber - 1;
-                                range.endLineNumber = pos.lineNumber;
+
+                          let name = baseName;
+                          let i = 1;
+                          const existingNames = new Set(Array.from(classInstance.components).map((c) => c.name));
+                          while (existingNames.has(name)) {
+                            name = `${baseName}${i}`;
+                            i++;
+                          }
+
+                          const diagram: IDiagram | null = classInstance.annotation("Diagram");
+                          const initialScale = diagram?.coordinateSystem?.initialScale ?? 0.1;
+                          const extent = diagram?.coordinateSystem?.extent;
+
+                          let width = 200;
+                          let height = 200;
+
+                          if (extent && extent.length >= 2) {
+                            width = Math.abs(extent[1][0] - extent[0][0]);
+                            height = Math.abs(extent[1][1] - extent[0][1]);
+                          }
+
+                          const w = width * initialScale;
+                          const h = height * initialScale;
+
+                          const annotation = `annotation(Placement(transformation(origin={${Math.round(x)},${-Math.round(y)}}, extent={{-${w / 2},-${h / 2}},{${w / 2},${h / 2}}})))`;
+                          const componentDecl = `  ${className} ${name} ${annotation};\n`;
+
+                          const model = editor.getModel();
+                          if (model) {
+                            const keywords = [
+                              "protected",
+                              "initial equation",
+                              "initial algorithm",
+                              "equation",
+                              "algorithm",
+                              "end",
+                            ];
+                            let insertLine = -1;
+                            const text = model.getValue();
+                            const lines = text.split("\n");
+                            for (let i = 0; i < lines.length; i++) {
+                              const line = lines[i].trim();
+                              if (keywords.some((kw) => line.startsWith(kw))) {
+                                insertLine = i;
+                                break;
                               }
                             }
-                            editor.executeEdits("dnd", [
-                              {
-                                range: range,
-                                text: componentDecl,
-                              },
-                            ]);
-                          }
-                        }
-                      }
-                    }}
-                    onConnect={(source, target, points) => {
-                      if (!classInstance || !editor) return;
-                      isDiagramUpdate.current = true;
-
-                      const annotation = points
-                        ? ` annotation(Line(points={${points.map((p) => `{${p.x},${p.y}}`).join(", ")}}, color={0, 0, 255}))`
-                        : " annotation(Line(color={0, 0, 255}))";
-                      const connectEq = `  connect(${source}, ${target})${annotation};\n`;
-                      const model = editor.getModel();
-                      if (!model) return;
-                      const equationMatches = model.findMatches("equation", false, false, true, null, true);
-                      if (equationMatches.length > 0) {
-                        const startLine = equationMatches[0].range.startLineNumber;
-                        const text = model.getValue();
-                        const lines = text.split("\n");
-                        let insertLine = -1;
-                        for (let i = startLine; i < lines.length; i++) {
-                          const line = lines[i].trim();
-                          if (
-                            line.startsWith("public") ||
-                            line.startsWith("protected") ||
-                            line.startsWith("initial equation") ||
-                            line.startsWith("algorithm") ||
-                            line.startsWith("annotation") ||
-                            line.startsWith("end")
-                          ) {
-                            insertLine = i;
-                            break;
-                          }
-                        }
-                        if (insertLine !== -1) {
-                          editor.executeEdits("connect", [
-                            {
-                              range: {
+                            if (insertLine !== -1) {
+                              let range = {
                                 startLineNumber: insertLine + 1,
                                 startColumn: 1,
                                 endLineNumber: insertLine + 1,
                                 endColumn: 1,
-                              },
-                              text: connectEq,
-                            },
-                          ]);
-                          return;
-                        }
-                      }
-                      const endMatches = model.findMatches("^\\s*end\\s+[^;]+;", false, true, false, null, true);
-                      if (endMatches.length > 0) {
-                        const lastEnd = endMatches[endMatches.length - 1];
-                        const text = model.getValue();
-                        const lines = text.split("\n");
-                        let insertLine = lastEnd.range.startLineNumber - 1;
-
-                        // Look backwards for annotation before end
-                        for (let i = insertLine - 1; i >= 0; i--) {
-                          const line = lines[i].trim();
-                          if (line.startsWith("annotation")) {
-                            insertLine = i;
-                          } else if (line !== "") {
-                            break;
+                              };
+                              if (insertLine > 0 && lines[insertLine - 1].trim() === "") {
+                                range.startLineNumber = insertLine;
+                                range.endLineNumber = insertLine + 1;
+                              }
+                              editor.executeEdits("dnd", [
+                                {
+                                  range: range,
+                                  text: componentDecl,
+                                },
+                              ]);
+                            } else {
+                              const lastEndIndex = text.lastIndexOf("end");
+                              if (lastEndIndex !== -1) {
+                                const pos = model.getPositionAt(lastEndIndex);
+                                let range = {
+                                  startLineNumber: pos.lineNumber,
+                                  startColumn: 1,
+                                  endLineNumber: pos.lineNumber,
+                                  endColumn: 1,
+                                };
+                                if (pos.lineNumber > 1) {
+                                  const prevLineContent = model.getLineContent(pos.lineNumber - 1);
+                                  if (prevLineContent.trim() === "") {
+                                    range.startLineNumber = pos.lineNumber - 1;
+                                    range.endLineNumber = pos.lineNumber;
+                                  }
+                                }
+                                editor.executeEdits("dnd", [
+                                  {
+                                    range: range,
+                                    text: componentDecl,
+                                  },
+                                ]);
+                              }
+                            }
                           }
-                        }
+                        }}
+                        onConnect={(source, target, points) => {
+                          if (!classInstance || !editor) return;
+                          isDiagramUpdate.current = true;
 
-                        const insertText = equationMatches.length === 0 ? `equation\n${connectEq}` : connectEq;
-                        editor.executeEdits("connect", [
-                          {
-                            range: {
-                              startLineNumber: insertLine + 1,
-                              startColumn: 1,
-                              endLineNumber: insertLine + 1,
-                              endColumn: 1,
-                            },
-                            text: insertText,
-                          },
-                        ]);
-                        return;
-                      }
-                      const text = model.getValue();
-                      const lastEndIndex = text.lastIndexOf("end");
-                      if (lastEndIndex !== -1) {
-                        const pos = model.getPositionAt(lastEndIndex);
-                        const insertText = equationMatches.length === 0 ? `equation\n${connectEq}` : connectEq;
-                        editor.executeEdits("connect", [
-                          {
-                            range: {
-                              startLineNumber: pos.lineNumber,
-                              startColumn: 1,
-                              endLineNumber: pos.lineNumber,
-                              endColumn: 1,
-                            },
-                            text: insertText,
-                          },
-                        ]);
-                      }
-                    }}
-                    onMove={(items) => {
-                      if (!classInstance || !editor) return;
-                      isDiagramUpdate.current = true;
-                      const edits: editor.IIdentifiedSingleEditOperation[] = [];
-                      const allEdges: any[] = [];
-                      items.forEach((item) => {
-                        const edit = getPlacementEdit(
-                          item.name,
-                          item.x,
-                          item.y,
-                          item.width,
-                          item.height,
-                          item.rotation,
-                        );
-                        if (edit) edits.push(edit);
-                        if (item.edges) allEdges.push(...item.edges);
-                      });
+                          const annotation = points
+                            ? ` annotation(Line(points={${points.map((p) => `{${p.x},${p.y}}`).join(", ")}}, color={0, 0, 255}))`
+                            : " annotation(Line(color={0, 0, 255}))";
+                          const connectEq = `  connect(${source}, ${target})${annotation};\n`;
+                          const model = editor.getModel();
+                          if (!model) return;
+                          const equationMatches = model.findMatches("equation", false, false, true, null, true);
+                          if (equationMatches.length > 0) {
+                            const startLine = equationMatches[0].range.startLineNumber;
+                            const text = model.getValue();
+                            const lines = text.split("\n");
+                            let insertLine = -1;
+                            for (let i = startLine; i < lines.length; i++) {
+                              const line = lines[i].trim();
+                              if (
+                                line.startsWith("public") ||
+                                line.startsWith("protected") ||
+                                line.startsWith("initial equation") ||
+                                line.startsWith("algorithm") ||
+                                line.startsWith("annotation") ||
+                                line.startsWith("end")
+                              ) {
+                                insertLine = i;
+                                break;
+                              }
+                            }
+                            if (insertLine !== -1) {
+                              editor.executeEdits("connect", [
+                                {
+                                  range: {
+                                    startLineNumber: insertLine + 1,
+                                    startColumn: 1,
+                                    endLineNumber: insertLine + 1,
+                                    endColumn: 1,
+                                  },
+                                  text: connectEq,
+                                },
+                              ]);
+                              return;
+                            }
+                          }
+                          const endMatches = model.findMatches("^\\s*end\\s+[^;]+;", false, true, false, null, true);
+                          if (endMatches.length > 0) {
+                            const lastEnd = endMatches[endMatches.length - 1];
+                            const text = model.getValue();
+                            const lines = text.split("\n");
+                            let insertLine = lastEnd.range.startLineNumber - 1;
 
-                      if (allEdges.length > 0) {
-                        const edgeEdits = getConnectEdits(allEdges);
-                        edgeEdits.forEach((edit) => edits.push(edit));
-                      }
+                            // Look backwards for annotation before end
+                            for (let i = insertLine - 1; i >= 0; i--) {
+                              const line = lines[i].trim();
+                              if (line.startsWith("annotation")) {
+                                insertLine = i;
+                              } else if (line !== "") {
+                                break;
+                              }
+                            }
 
-                      if (edits.length > 0) {
-                        editor.executeEdits("move", edits);
-                      }
+                            const insertText = equationMatches.length === 0 ? `equation\n${connectEq}` : connectEq;
+                            editor.executeEdits("connect", [
+                              {
+                                range: {
+                                  startLineNumber: insertLine + 1,
+                                  startColumn: 1,
+                                  endLineNumber: insertLine + 1,
+                                  endColumn: 1,
+                                },
+                                text: insertText,
+                              },
+                            ]);
+                            return;
+                          }
+                          const text = model.getValue();
+                          const lastEndIndex = text.lastIndexOf("end");
+                          if (lastEndIndex !== -1) {
+                            const pos = model.getPositionAt(lastEndIndex);
+                            const insertText = equationMatches.length === 0 ? `equation\n${connectEq}` : connectEq;
+                            editor.executeEdits("connect", [
+                              {
+                                range: {
+                                  startLineNumber: pos.lineNumber,
+                                  startColumn: 1,
+                                  endLineNumber: pos.lineNumber,
+                                  endColumn: 1,
+                                },
+                                text: insertText,
+                              },
+                            ]);
+                          }
+                        }}
+                        onMove={(items) => {
+                          if (!classInstance || !editor) return;
+                          isDiagramUpdate.current = true;
+                          const edits: editor.IIdentifiedSingleEditOperation[] = [];
+                          const allEdges: any[] = [];
+                          items.forEach((item) => {
+                            const edit = getPlacementEdit(
+                              item.name,
+                              item.x,
+                              item.y,
+                              item.width,
+                              item.height,
+                              item.rotation,
+                            );
+                            if (edit) edits.push(edit);
+                            if (item.edges) allEdges.push(...item.edges);
+                          });
+
+                          if (allEdges.length > 0) {
+                            const edgeEdits = getConnectEdits(allEdges);
+                            edgeEdits.forEach((edit) => edits.push(edit));
+                          }
+
+                          if (edits.length > 0) {
+                            editor.executeEdits("move", edits);
+                          }
+                        }}
+                        onResize={(name, x, y, width, height, rotation, edges) => {
+                          if (!classInstance || !editor) return;
+                          isDiagramUpdate.current = false;
+                          const edits: editor.IIdentifiedSingleEditOperation[] = [];
+                          const edit = getPlacementEdit(name, x, y, width, height, rotation);
+                          if (edit) edits.push(edit);
+                          if (edges) {
+                            const edgeEdits = getConnectEdits(edges);
+                            edgeEdits.forEach((edit) => edits.push(edit));
+                          }
+                          if (edits.length > 0) {
+                            editor.executeEdits("resize", edits);
+                          }
+                        }}
+                        onEdgeMove={(edges) => {
+                          if (!classInstance || !editor) return;
+                          isDiagramUpdate.current = true;
+                          const edgeEdits = getConnectEdits(edges);
+                          if (edgeEdits.size > 0) {
+                            editor.executeEdits("edge-move", Array.from(edgeEdits.values()));
+                          }
+                        }}
+                        onEdgeDelete={handleEdgeDelete}
+                        onComponentDelete={handleComponentDelete}
+                        onComponentsDelete={handleComponentsDelete}
+                      />
+                    </div>
+                    {selectedComponent && (
+                      <>
+                        <div
+                          style={{
+                            width: 6,
+                            cursor: "col-resize",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            flexShrink: 0,
+                            backgroundColor: "transparent",
+                            borderLeft: `1px solid ${colorMode === "dark" ? "#30363d" : "#d0d7de"}`,
+                            transition: "background-color 0.15s",
+                          }}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            isDraggingProperties.current = true;
+                            const startX = e.clientX;
+                            const startWidth = propertiesWidth;
+                            const onMouseMove = (ev: MouseEvent) => {
+                              if (!isDraggingProperties.current) return;
+                              const deltaX = startX - ev.clientX;
+                              const newWidth = Math.max(200, Math.min(800, startWidth + deltaX));
+                              setPropertiesWidth(newWidth);
+                            };
+                            const onMouseUp = () => {
+                              isDraggingProperties.current = false;
+                              document.removeEventListener("mousemove", onMouseMove);
+                              document.removeEventListener("mouseup", onMouseUp);
+                              document.body.style.cursor = "auto";
+                              document.body.style.userSelect = "auto";
+                            };
+                            document.addEventListener("mousemove", onMouseMove);
+                            document.addEventListener("mouseup", onMouseUp);
+                            document.body.style.cursor = "col-resize";
+                            document.body.style.userSelect = "none";
+                          }}
+                          onMouseEnter={(e) => {
+                            (e.currentTarget as HTMLElement).style.backgroundColor =
+                              colorMode === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)";
+                          }}
+                          onMouseLeave={(e) => {
+                            (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
+                          }}
+                        />
+                        <PropertiesWidget
+                          key={selectedComponent.name || "none"}
+                          component={selectedComponent}
+                          width={propertiesWidth}
+                          translations={translations}
+                          onNameChange={(newName) => {
+                            if (!selectedComponent || !editor) return;
+                            const edit = getNameEdit(selectedComponent.name!, newName);
+                            if (edit) {
+                              expectedComponentNameRef.current = newName;
+                              editor.executeEdits("name-change", [edit]);
+                            }
+                          }}
+                          onDescriptionChange={(newDescription) => {
+                            if (!selectedComponent || !editor) return;
+                            const edit = getDescriptionEdit(selectedComponent.name!, newDescription);
+                            if (edit) {
+                              editor.executeEdits("description-change", [edit]);
+                            }
+                          }}
+                          onParameterChange={(name, value) => {
+                            if (!selectedComponent || !editor) return;
+                            const edit = getParameterEdit(selectedComponent.name!, name, value);
+                            if (edit) {
+                              editor.executeEdits("parameter-change", [edit]);
+                            }
+                          }}
+                        />
+                      </>
+                    )}
+                  </div>
+
+                  <div
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      display: showResultsView ? "flex" : "none",
+                      flexDirection: "column",
+                      overflow: "hidden",
+                      minHeight: 0,
+                      zIndex: showResultsView ? 2 : 0,
+                      backgroundColor: "var(--color-canvas-default)",
                     }}
-                    onResize={(name, x, y, width, height, rotation, edges) => {
-                      if (!classInstance || !editor) return;
-                      isDiagramUpdate.current = false;
-                      const edits: editor.IIdentifiedSingleEditOperation[] = [];
-                      const edit = getPlacementEdit(name, x, y, width, height, rotation);
-                      if (edit) edits.push(edit);
-                      if (edges) {
-                        const edgeEdits = getConnectEdits(edges);
-                        edgeEdits.forEach((edit) => edits.push(edit));
-                      }
-                      if (edits.length > 0) {
-                        editor.executeEdits("resize", edits);
-                      }
-                    }}
-                    onEdgeMove={(edges) => {
-                      if (!classInstance || !editor) return;
-                      isDiagramUpdate.current = true;
-                      const edgeEdits = getConnectEdits(edges);
-                      if (edgeEdits.size > 0) {
-                        editor.executeEdits("edge-move", Array.from(edgeEdits.values()));
-                      }
-                    }}
-                    onEdgeDelete={handleEdgeDelete}
-                    onComponentDelete={handleComponentDelete}
-                    onComponentsDelete={handleComponentsDelete}
-                  />
+                  >
+                    {simulationJobId && simulationStatus?.status === "completed" ? (
+                      <SimulationResults
+                        jobId={simulationJobId}
+                        selectedVariables={selectedSimulationVariables}
+                        onVariablesLoaded={handleVariablesLoaded}
+                      />
+                    ) : (
+                      <div
+                        style={{
+                          padding: "32px",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          height: "100%",
+                          color: "var(--color-fg-muted)",
+                        }}
+                      >
+                        {simulationStatus?.status === "pending" || simulationStatus?.status === "processing"
+                          ? "Simulation in progress... please wait."
+                          : "No simulation results available. Click 'Simulate' to generate results."}
+                      </div>
+                    )}
+                  </div>
                 </div>
-                {selectedComponent && (
-                  <>
-                    <div
-                      style={{
-                        width: 6,
-                        cursor: "col-resize",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flexShrink: 0,
-                        backgroundColor: "transparent",
-                        borderLeft: `1px solid ${colorMode === "dark" ? "#30363d" : "#d0d7de"}`,
-                        transition: "background-color 0.15s",
-                      }}
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        isDraggingProperties.current = true;
-                        const startX = e.clientX;
-                        const startWidth = propertiesWidth;
-                        const onMouseMove = (ev: MouseEvent) => {
-                          if (!isDraggingProperties.current) return;
-                          const deltaX = startX - ev.clientX;
-                          const newWidth = Math.max(200, Math.min(800, startWidth + deltaX));
-                          setPropertiesWidth(newWidth);
-                        };
-                        const onMouseUp = () => {
-                          isDraggingProperties.current = false;
-                          document.removeEventListener("mousemove", onMouseMove);
-                          document.removeEventListener("mouseup", onMouseUp);
-                          document.body.style.cursor = "auto";
-                          document.body.style.userSelect = "auto";
-                        };
-                        document.addEventListener("mousemove", onMouseMove);
-                        document.addEventListener("mouseup", onMouseUp);
-                        document.body.style.cursor = "col-resize";
-                        document.body.style.userSelect = "none";
-                      }}
-                      onMouseEnter={(e) => {
-                        (e.currentTarget as HTMLElement).style.backgroundColor =
-                          colorMode === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)";
-                      }}
-                      onMouseLeave={(e) => {
-                        (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
-                      }}
-                    />
-                    <PropertiesWidget
-                      key={selectedComponent.name || "none"}
-                      component={selectedComponent}
-                      width={propertiesWidth}
-                      translations={translations}
-                      onNameChange={(newName) => {
-                        if (!selectedComponent || !editor) return;
-                        const edit = getNameEdit(selectedComponent.name!, newName);
-                        if (edit) {
-                          expectedComponentNameRef.current = newName;
-                          editor.executeEdits("name-change", [edit]);
-                        }
-                      }}
-                      onDescriptionChange={(newDescription) => {
-                        if (!selectedComponent || !editor) return;
-                        const edit = getDescriptionEdit(selectedComponent.name!, newDescription);
-                        if (edit) {
-                          editor.executeEdits("description-change", [edit]);
-                        }
-                      }}
-                      onParameterChange={(name, value) => {
-                        if (!selectedComponent || !editor) return;
-                        const edit = getParameterEdit(selectedComponent.name!, name, value);
-                        if (edit) {
-                          editor.executeEdits("parameter-change", [edit]);
-                        }
-                      }}
-                    />
-                  </>
-                )}
               </div>
-            </div>
+            )}
             {/* Draggable split divider */}
             <div
               style={{
