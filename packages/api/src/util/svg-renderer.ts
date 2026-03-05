@@ -190,6 +190,7 @@ function extractClassMetadata(context: Context): ClassMetadata[] {
         className,
         classKind: classKind.toString(),
         description: element.description ?? null,
+        documentation: element.annotation<{ info?: string }>("Documentation")?.info ?? null,
         baseClasses,
         components,
       });

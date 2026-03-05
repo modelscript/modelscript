@@ -13,6 +13,7 @@ export interface ClassRow {
   class_name: string;
   class_kind: string;
   description: string | null;
+  documentation: string | null;
 }
 
 export interface ExtendsRow {
@@ -42,6 +43,7 @@ export interface ClassMetadata {
   className: string;
   classKind: string;
   description: string | null;
+  documentation: string | null;
   baseClasses: string[];
   components: ComponentMetadata[];
 }
@@ -88,6 +90,7 @@ export class LibraryDatabase {
         class_name      TEXT NOT NULL,
         class_kind      TEXT NOT NULL,
         description     TEXT,
+        documentation   TEXT,
         UNIQUE(library_name, library_version, class_name)
       );
 
@@ -127,8 +130,8 @@ export class LibraryDatabase {
   storeLibraryMetadata(libraryName: string, libraryVersion: string, classes: ClassMetadata[]): void {
     const deleteClasses = this.#db.prepare(`DELETE FROM classes WHERE library_name = ? AND library_version = ?`);
     const insertClass = this.#db.prepare(
-      `INSERT INTO classes (library_name, library_version, class_name, class_kind, description)
-       VALUES (?, ?, ?, ?, ?)`,
+      `INSERT INTO classes (library_name, library_version, class_name, class_kind, description, documentation)
+       VALUES (?, ?, ?, ?, ?, ?)`,
     );
     const insertExtends = this.#db.prepare(`INSERT INTO extends (class_id, base_class) VALUES (?, ?)`);
     const insertComponent = this.#db.prepare(
@@ -143,7 +146,14 @@ export class LibraryDatabase {
       deleteClasses.run(libraryName, libraryVersion);
 
       for (const cls of classes) {
-        const result = insertClass.run(libraryName, libraryVersion, cls.className, cls.classKind, cls.description);
+        const result = insertClass.run(
+          libraryName,
+          libraryVersion,
+          cls.className,
+          cls.classKind,
+          cls.description,
+          cls.documentation,
+        );
         const classId = result.lastInsertRowid;
 
         for (const baseClass of cls.baseClasses) {
@@ -179,7 +189,7 @@ export class LibraryDatabase {
     libraryVersion: string,
     opts?: { kind?: string | undefined; q?: string | undefined },
   ): Omit<ClassRow, "id">[] {
-    let sql = `SELECT class_name, class_kind, description FROM classes
+    let sql = `SELECT class_name, class_kind, description, documentation FROM classes
                WHERE library_name = ? AND library_version = ?`;
     const params: (string | number)[] = [libraryName, libraryVersion];
 
@@ -208,16 +218,17 @@ export class LibraryDatabase {
   ): {
     classKind: string;
     description: string | null;
+    documentation: string | null;
     extends: string[];
     components: (Omit<ComponentRow, "id" | "class_id"> & { modifiers: Omit<ModifierRow, "id" | "component_id">[] })[];
   } | null {
     const cls = this.#db
       .prepare(
-        `SELECT id, class_kind, description FROM classes
+        `SELECT id, class_kind, description, documentation FROM classes
          WHERE library_name = ? AND library_version = ? AND class_name = ?`,
       )
       .get(libraryName, libraryVersion, className) as
-      | { id: number; class_kind: string; description: string | null }
+      | { id: number; class_kind: string; description: string | null; documentation: string | null }
       | undefined;
 
     if (!cls) return null;
@@ -253,6 +264,7 @@ export class LibraryDatabase {
     return {
       classKind: cls.class_kind,
       description: cls.description,
+      documentation: cls.documentation,
       extends: extendsRows.map((r) => r.base_class),
       components,
     };
@@ -268,6 +280,7 @@ export class LibraryDatabase {
     className: string;
     classKind: string;
     description: string | null;
+    documentation: string | null;
     extends: string[];
     components: {
       name: string;
@@ -280,7 +293,7 @@ export class LibraryDatabase {
   }[] {
     const classRows = this.#db
       .prepare(
-        `SELECT id, class_name, class_kind, description FROM classes
+        `SELECT id, class_name, class_kind, description, documentation FROM classes
          WHERE library_name = ? AND library_version = ? ORDER BY class_name`,
       )
       .all(libraryName, libraryVersion) as {
@@ -288,6 +301,7 @@ export class LibraryDatabase {
       class_name: string;
       class_kind: string;
       description: string | null;
+      documentation: string | null;
     }[];
 
     const getExtends = this.#db.prepare(`SELECT base_class FROM extends WHERE class_id = ?`);
@@ -317,6 +331,7 @@ export class LibraryDatabase {
         className: cls.class_name,
         classKind: cls.class_kind,
         description: cls.description,
+        documentation: cls.documentation,
         extends: extendsRows.map((r) => r.base_class),
         components,
       };
@@ -340,6 +355,9 @@ export class LibraryDatabase {
       triples.push({ s: classUri, p: `${NS}classKind`, o: cls.classKind });
       if (cls.description) {
         triples.push({ s: classUri, p: `${NS}description`, o: cls.description });
+      }
+      if (cls.documentation) {
+        triples.push({ s: classUri, p: `${NS}documentation`, o: cls.documentation });
       }
 
       for (const base of cls.extends) {
