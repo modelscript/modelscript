@@ -22,6 +22,7 @@ import {
   FlowchartIcon,
   GlobeIcon,
   MoonIcon,
+  PlayIcon,
   PlusIcon,
   RowsIcon,
   SearchIcon,
@@ -124,6 +125,10 @@ export default function MorselEditor(props: MorselEditorProps) {
   const openFileButtonRef = useRef<HTMLButtonElement>(null);
   const [isFlattenDialogOpen, setFlattenDialogOpen] = useState(false);
   const [flattenedCode, setFlattenedCode] = useState("");
+  const [isSimulateDialogOpen, setSimulateDialogOpen] = useState(false);
+  const [simulationStatus, setSimulationStatus] = useState<any>(null);
+  const [simulationJobId, setSimulationJobId] = useState<string | null>(null);
+  const simulationIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const codeEditorRef = useRef<CodeEditorHandle>(null);
   const [decodedContent] = decodeDataUrl(props.dataUrl ?? null);
   const content = decodedContent || "model Example\n\nend Example;";
@@ -1214,6 +1219,83 @@ export default function MorselEditor(props: MorselEditorProps) {
     }
   };
 
+  const handleSimulate = async () => {
+    if (!codeEditorRef.current || !context) return;
+    const instance = await codeEditorRef.current.sync();
+    if (!instance) return;
+
+    setSimulateDialogOpen(true);
+    setSimulationStatus({ status: "pending" });
+    setSimulationJobId(null);
+
+    const dependencies = Array.from(context.listLibraries()).map((lib) => ({
+      name: lib.name,
+      version: lib.entity.annotation<string>("version") || "0.0.0", // Fallback version
+    }));
+
+    try {
+      const response = await fetch("/api/v1/simulate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          modelName: instance.compositeName || "Model",
+          modelSource: editor?.getValue(),
+          dependencies,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+
+      const { jobId } = await response.json();
+      setSimulationJobId(jobId);
+
+      // Start polling
+      if (simulationIntervalRef.current) clearInterval(simulationIntervalRef.current);
+      simulationIntervalRef.current = setInterval(async () => {
+        try {
+          const res = await fetch(`/api/v1/simulate/${jobId}`);
+          if (res.ok) {
+            const data = await res.json();
+            setSimulationStatus(data);
+            if (data.status === "completed") {
+              clearInterval(simulationIntervalRef.current!);
+            } else if (data.status === "failed") {
+              clearInterval(simulationIntervalRef.current!);
+              alert(`Simulation failed: ${data.error}`);
+            }
+          } else if (res.status === 404) {
+            setSimulationStatus({
+              status: "failed",
+              error: "Simulation job not found. The server may have been restarted.",
+            });
+            clearInterval(simulationIntervalRef.current!);
+            alert("Simulation job not found. The server may have been restarted.");
+          } else {
+            // Handle other non-ok responses during polling
+            const errorText = await res.text();
+            setSimulationStatus({
+              status: "failed",
+              error: `Simulation polling failed: ${res.status} ${res.statusText} - ${errorText}`,
+            });
+            clearInterval(simulationIntervalRef.current!);
+            alert(`Simulation polling failed: ${res.status} ${res.statusText} - ${errorText}`);
+          }
+        } catch (err) {
+          console.error("Polling simulation status failed:", err);
+          const error = `Simulation polling failed due to network error: ${err instanceof Error ? err.message : String(err)}`;
+          setSimulationStatus({ status: "failed", error });
+          clearInterval(simulationIntervalRef.current!);
+          alert(error);
+        }
+      }, 1000) as any;
+    } catch (e) {
+      console.error("Simulation failed:", e);
+      setSimulationStatus({ status: "failed", error: e instanceof Error ? e.message : String(e) });
+    }
+  };
+
   return (
     <>
       <title>{classInstance?.name ? `${classInstance.name} - Morsel` : "Morsel"}</title>
@@ -2015,6 +2097,14 @@ export default function MorselEditor(props: MorselEditorProps) {
           </div>
           <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
           <IconButton
+            icon={PlayIcon}
+            size="small"
+            variant="invisible"
+            aria-label={translations.simulateModel}
+            title={translations.simulateModel}
+            onClick={handleSimulate}
+          />
+          <IconButton
             icon={StackIcon}
             size="small"
             variant="invisible"
@@ -2348,6 +2438,48 @@ export default function MorselEditor(props: MorselEditorProps) {
             onClearRecent={handleClearRecent}
             translations={translations}
           />
+        )}
+        {isSimulateDialogOpen && (
+          <Dialog
+            title="Simulation"
+            onClose={() => {
+              setSimulateDialogOpen(false);
+              if (simulationIntervalRef.current) {
+                clearInterval(simulationIntervalRef.current);
+                simulationIntervalRef.current = null;
+              }
+            }}
+          >
+            <div style={{ padding: 20, textAlign: "center", minWidth: 300 }}>
+              {simulationStatus?.status === "completed" ? (
+                <>
+                  <div style={{ marginBottom: 20, color: "#3fb950" }}>Simulation completed successfully!</div>
+                  <IconButton
+                    icon={DownloadIcon}
+                    aria-label="Download Results"
+                    onClick={() => {
+                      if (simulationJobId) {
+                        window.open(`/api/v1/simulate/${simulationJobId}/result`, "_blank");
+                      }
+                    }}
+                  />
+                  <div style={{ marginTop: 10 }}>Download Results (.mat)</div>
+                </>
+              ) : simulationStatus?.status === "failed" ? (
+                <>
+                  <div style={{ marginBottom: 20, color: "#f85149" }}>Simulation failed</div>
+                  <div style={{ fontSize: 12, color: "#8b949e", maxWidth: 400, margin: "0 auto" }}>
+                    {simulationStatus.error || "An unknown error occurred."}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <Spinner size="large" style={{ marginBottom: 20 }} />
+                  <div>Simulating {simulationStatus?.status || "pending"}...</div>
+                </>
+              )}
+            </div>
+          </Dialog>
         )}
       </div>
     </>

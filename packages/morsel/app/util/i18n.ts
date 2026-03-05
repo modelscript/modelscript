@@ -8,6 +8,7 @@ export interface Translations {
   saveModel: string;
   autoLayout: string;
   flattenModel: string;
+  simulateModel: string;
   shareModel: string;
   sponsorMe: string;
   language: string;
@@ -94,6 +95,7 @@ const en: Translations = {
   saveModel: "Save Model",
   autoLayout: "Auto Layout",
   flattenModel: "Flatten Model",
+  simulateModel: "Simulate Model",
   shareModel: "Share Model",
   sponsorMe: "Sponsor Me",
   language: "Language",
@@ -182,6 +184,7 @@ const ar: Translations = {
   saveModel: "حفظ النموذج",
   autoLayout: "تخطيط تلقائي",
   flattenModel: "تسطيح النموذج",
+  simulateModel: "محاكاة النموذج",
   shareModel: "مشاركة النموذج",
   sponsorMe: "ادعمني",
   language: "اللغة",
@@ -270,6 +273,7 @@ const tr: Translations = {
   saveModel: "Modeli Kaydet",
   autoLayout: "Otomatik Düzen",
   flattenModel: "Modeli Düzleştir",
+  simulateModel: "Modeli Simüle Et",
   shareModel: "Modeli Paylaş",
   sponsorMe: "Bana Destek Ol",
   language: "Dil",

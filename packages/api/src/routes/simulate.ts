@@ -15,50 +15,70 @@ export function simulateRouter(storage: LibraryStorage, jobQueue: JobQueue): exp
   const router = express.Router();
 
   // POST /api/v1/simulate
-  // Request body: { libraryName: "MyLib", libraryVersion: "1.0", modelName: "MyLib.TestModel", dependencies?: { name: string; version: string }[] }
+  // Request body: { libraryName?: string, libraryVersion?: string, modelName: string, modelSource?: string, dependencies?: { name: string; version: string }[] }
   router.post("/simulate", async (req, res) => {
-    const { libraryName, libraryVersion, modelName, dependencies = [] } = req.body;
+    const { libraryName, libraryVersion, modelName, modelSource, dependencies = [] } = req.body;
 
-    if (!libraryName || !libraryVersion || !modelName) {
-      return res.status(400).json({ error: "Missing required fields: libraryName, libraryVersion, modelName" });
+    if (!modelName) {
+      return res.status(400).json({ error: "Missing required field: modelName" });
     }
 
-    const allLibraries = [{ name: libraryName, version: libraryVersion }, ...dependencies];
+    if (!modelSource && (!libraryName || !libraryVersion)) {
+      return res.status(400).json({ error: "Either modelSource or (libraryName and libraryVersion) must be provided" });
+    }
+
+    const allLibraries = dependencies.slice();
+    if (libraryName && libraryVersion) {
+      allLibraries.unshift({ name: libraryName, version: libraryVersion });
+    }
 
     // Check if all libraries (including dependencies) are available and pre-extracted
     const libraryPaths: string[] = [];
+    const loadModels: string[] = [];
+    const loadFiles: string[] = [];
+    const standardLibraries = ["Modelica", "ModelicaReference", "ModelicaServices", "Complex"];
+
     for (const lib of allLibraries) {
+      if (standardLibraries.includes(lib.name)) {
+        loadModels.push(lib.version ? `loadModel(${lib.name}, {"${lib.version}"});` : `loadModel(${lib.name});`);
+        continue;
+      }
+
       if (!storage.exists(lib.name, lib.version)) {
         return res.status(404).json({ error: `Library ${lib.name}@${lib.version} not found` });
       }
 
       const extPath = storage.getExtractedPath(lib.name, lib.version);
       if (!fs.existsSync(extPath)) {
-        // If not pre-extracted for some reason, we could trigger extraction or return error
-        // For now, let's assume background processing might be pending or failed.
         return res.status(400).json({
           error: `Library ${lib.name}@${lib.version} is not yet processed or extraction failed.`,
         });
       }
       libraryPaths.push(path.dirname(extPath)); // MODELICAPATH expects the parent of the library folder
+      loadFiles.push(path.join(extPath, "package.mo"));
     }
 
     // Deduplicate and join paths for MODELICAPATH
     const modelicaPath = Array.from(new Set(libraryPaths)).join(path.delimiter);
 
-    const jobId = `simulate-${libraryName}-${libraryVersion}-${modelName}-${Date.now()}`;
+    const jobId = `simulate-${libraryName || "adhoc"}-${libraryVersion || "0.0"}-${modelName}-${Date.now()}`;
 
     jobQueue.enqueue(jobId, async () => {
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "modelscript-simulate-"));
       try {
         const mosScriptPath = path.join(tmpDir, "simulate.mos");
 
-        // Use the pre-extracted main package.mo
-        const mainLibPath = storage.getExtractedPath(libraryName, libraryVersion);
-        const mainPackageMoPath = path.join(mainLibPath, "package.mo");
+        // If we have ad-hoc source, write it to a file and load it
+        let adhocMoPath: string | null = null;
+        if (modelSource) {
+          adhocMoPath = path.join(tmpDir, "adhoc.mo");
+          fs.writeFileSync(adhocMoPath, modelSource, "utf8");
+        }
 
         const mosContents = `
-loadFile("${mainPackageMoPath}");
+${loadModels.join("\n")}
+${loadFiles.map((f) => `loadFile("${f}");`).join("\n")}
+${adhocMoPath ? `loadFile("${adhocMoPath}");` : ""}
 simulate(${modelName});
 getErrorString();
 `;
@@ -66,17 +86,25 @@ getErrorString();
         fs.writeFileSync(mosScriptPath, mosContents, "utf8");
 
         // Execute OpenModelica Compiler (omc) with MODELICAPATH
-        await execFileAsync("omc", [mosScriptPath], {
+        const { stdout, stderr } = await execFileAsync("omc", [mosScriptPath], {
           cwd: tmpDir,
           env: { ...process.env, MODELICAPATH: modelicaPath },
         });
 
-        const segments = modelName.split(".");
-        const shortModelName = segments[segments.length - 1] ?? modelName;
-        const matFilePath = path.join(tmpDir, `${shortModelName}_res.mat`);
+        const matFilePath = path.join(tmpDir, `${modelName}_res.mat`);
 
         if (!fs.existsSync(matFilePath)) {
-          throw new Error("Simulation did not produce a .mat result file.");
+          const logPath = path.join(tmpDir, "simulate.log");
+          let details = "";
+          if (fs.existsSync(logPath)) {
+            details = fs.readFileSync(logPath, "utf8");
+          }
+          const files = fs.readdirSync(tmpDir);
+          throw new Error(
+            `Simulation failed to produce a .mat result file.\nExpected path: ${matFilePath}\nFiles in tmpDir: ${files.join(
+              ", ",
+            )}\nSTDOUT: ${stdout}\nSTDERR: ${stderr}\nLOG: ${details}`,
+          );
         }
 
         // Store the result path on the job so the GET route can stream it back
@@ -85,7 +113,9 @@ getErrorString();
           status.resultPath = matFilePath;
         }
       } catch (err) {
-        // Clean up only if failed, we need the tmp dir to persist if succeeded
+        // If it's a simulation failure, we might want to keep the tmp dir for debugging
+        // but for now, we'll just log the error and clean up.
+        console.error(`Simulation Job ${jobId} failed:`, err);
         fs.rmSync(tmpDir, { recursive: true, force: true });
         throw err;
       }
@@ -103,6 +133,18 @@ getErrorString();
       return res.status(404).json({ error: "Job not found" });
     }
 
+    res.json(status);
+  });
+
+  // GET /api/v1/simulate/:jobId/result
+  router.get("/simulate/:jobId/result", async (req, res) => {
+    const { jobId } = req.params;
+    const status = jobQueue.getStatus(jobId);
+
+    if (!status) {
+      return res.status(404).json({ error: "Job not found" });
+    }
+
     if (status.status === "completed" && status.resultPath) {
       if (fs.existsSync(status.resultPath)) {
         res.sendFile(status.resultPath);
@@ -110,7 +152,7 @@ getErrorString();
         res.status(500).json({ error: "Result file missing but job completed." });
       }
     } else {
-      res.json(status);
+      res.status(400).json({ error: "Simulation not completed yet" });
     }
   });
 

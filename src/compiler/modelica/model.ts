@@ -573,9 +573,17 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
   }
 
   get compositeName(): string {
-    return this.parent instanceof ModelicaClassInstance
-      ? `${this.parent.compositeName}.${this.name}`
-      : (this.name ?? "");
+    if (this.parent instanceof ModelicaClassInstance) {
+      return `${this.parent.compositeName}.${this.name}`;
+    }
+    const storedDefinition = this.abstractSyntaxNode?.parent;
+    if (storedDefinition instanceof ModelicaStoredDefinitionSyntaxNode) {
+      const within = storedDefinition.withinDirective?.packageName;
+      if (within) {
+        return `${within.parts.map((p) => p.text).join(".")}.${this.name}`;
+      }
+    }
+    return this.name ?? "";
   }
 
   get connectEquations(): IterableIterator<ModelicaConnectEquationSyntaxNode> {

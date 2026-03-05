@@ -34,6 +34,14 @@ export default defineConfig(({ isSsrBuild }) => {
           ],
         }),
     ],
+    server: {
+      proxy: {
+        "/api/v1": {
+          target: "http://localhost:3000",
+          changeOrigin: true,
+        },
+      },
+    },
     ssr: {
       noExternal: ["@primer/react", "monaco-editor"],
     },
