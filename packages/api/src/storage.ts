@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 import semver from "semver";
+
+import { extractZipToDir, findLibraryRoot } from "./util/zip.js";
 
 const DEFAULT_DATA_DIR = "data/libraries";
 
@@ -136,6 +139,48 @@ export class LibraryStorage {
       .filter((d) => d.isDirectory())
       .map((d) => d.name)
       .sort();
+  }
+
+  /**
+   * Extract the library zip to an extracted folder inside storage.
+   * Returns the path to the root of the extracted library (the folder containing package.mo).
+   * Throws if the zip is missing or invalid.
+   */
+  async extractLibrary(name: string, version: string): Promise<string> {
+    const extPath = this.getExtractedPath(name, version);
+    if (fs.existsSync(extPath)) {
+      return extPath;
+    }
+
+    const zipData = this.read(name, version);
+    if (!zipData) {
+      throw new Error(`Library ${name}@${version} not found`);
+    }
+
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "modelscript-extract-"));
+    try {
+      await extractZipToDir(zipData.buffer, tmpDir);
+
+      const libraryRoot = findLibraryRoot(tmpDir);
+      if (!libraryRoot) {
+        throw new Error(`Could not find package.mo in the extracted zip for ${name}@${version}`);
+      }
+
+      fs.mkdirSync(path.dirname(extPath), { recursive: true });
+      fs.cpSync(libraryRoot, extPath, { recursive: true });
+
+      return extPath;
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  }
+
+  /**
+   * Get the persistent path where the library is extracted.
+   * Format: `<dataDir>/<name>/<version>/extracted/<name>`
+   */
+  getExtractedPath(name: string, version: string): string {
+    return path.join(this.#dataDir, name, version, "extracted", name);
   }
 
   #svgDir(name: string, version: string, className: string): string {

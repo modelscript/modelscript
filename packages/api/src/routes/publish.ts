@@ -86,10 +86,14 @@ export function publishRouter(storage: LibraryStorage, jobQueue: JobQueue, datab
       // 7. Store the library
       const filePath = await storage.store(name, version, req.file.buffer);
 
-      // 8. Enqueue background processing (SVG generation + metadata extraction)
+      // 8. Enqueue background processing (extraction + SVG generation + metadata extraction)
       const jobKey = `${name}@${version}`;
       const zipBuffer = req.file.buffer;
       jobQueue.enqueue(jobKey, async () => {
+        // Pre-extract the zip to disk for simulations
+        await storage.extractLibrary(name, version);
+
+        // Process SVGs and metadata
         const result = await processLibrary(zipBuffer);
         storage.storeSvgs(name, version, result.svgs);
         database.storeLibraryMetadata(name, version, result.metadata);

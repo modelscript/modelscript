@@ -8,7 +8,6 @@ import path from "node:path";
 import { promisify } from "node:util";
 import type { JobQueue } from "../jobs.js";
 import type { LibraryStorage } from "../storage.js";
-import { extractZipToDir, findLibraryRoot } from "../util/zip.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -16,47 +15,61 @@ export function simulateRouter(storage: LibraryStorage, jobQueue: JobQueue): exp
   const router = express.Router();
 
   // POST /api/v1/simulate
-  // Request body: { libraryName: "MyLib", libraryVersion: "1.0", modelName: "MyLib.TestModel" }
+  // Request body: { libraryName: "MyLib", libraryVersion: "1.0", modelName: "MyLib.TestModel", dependencies?: { name: string; version: string }[] }
   router.post("/simulate", async (req, res) => {
-    const { libraryName, libraryVersion, modelName } = req.body;
+    const { libraryName, libraryVersion, modelName, dependencies = [] } = req.body;
 
     if (!libraryName || !libraryVersion || !modelName) {
       return res.status(400).json({ error: "Missing required fields: libraryName, libraryVersion, modelName" });
     }
 
-    // Determine if the library exists and read its buffer
-    const libraryResult = storage.read(libraryName, libraryVersion);
-    if (!libraryResult) {
-      return res.status(404).json({ error: "Library not found" });
+    const allLibraries = [{ name: libraryName, version: libraryVersion }, ...dependencies];
+
+    // Check if all libraries (including dependencies) are available and pre-extracted
+    const libraryPaths: string[] = [];
+    for (const lib of allLibraries) {
+      if (!storage.exists(lib.name, lib.version)) {
+        return res.status(404).json({ error: `Library ${lib.name}@${lib.version} not found` });
+      }
+
+      const extPath = storage.getExtractedPath(lib.name, lib.version);
+      if (!fs.existsSync(extPath)) {
+        // If not pre-extracted for some reason, we could trigger extraction or return error
+        // For now, let's assume background processing might be pending or failed.
+        return res.status(400).json({
+          error: `Library ${lib.name}@${lib.version} is not yet processed or extraction failed.`,
+        });
+      }
+      libraryPaths.push(path.dirname(extPath)); // MODELICAPATH expects the parent of the library folder
     }
+
+    // Deduplicate and join paths for MODELICAPATH
+    const modelicaPath = Array.from(new Set(libraryPaths)).join(path.delimiter);
 
     const jobId = `simulate-${libraryName}-${libraryVersion}-${modelName}-${Date.now()}`;
 
     jobQueue.enqueue(jobId, async () => {
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "modelscript-simulate-"));
       try {
-        // Extract the library to the temp directory
-        await extractZipToDir(libraryResult.buffer, tmpDir);
-
-        const libraryRoot = findLibraryRoot(tmpDir);
-        if (!libraryRoot) {
-          throw new Error("Could not find package.mo in the extracted zip");
-        }
-
         const mosScriptPath = path.join(tmpDir, "simulate.mos");
-        const packageMoPath = path.join(libraryRoot, "package.mo");
 
-        // The OpenModelica simulate command will generate a ModelName_res.mat file
+        // Use the pre-extracted main package.mo
+        const mainLibPath = storage.getExtractedPath(libraryName, libraryVersion);
+        const mainPackageMoPath = path.join(mainLibPath, "package.mo");
+
         const mosContents = `
-loadFile("${packageMoPath}");
+loadFile("${mainPackageMoPath}");
 simulate(${modelName});
 getErrorString();
 `;
 
         fs.writeFileSync(mosScriptPath, mosContents, "utf8");
 
-        // Execute OpenModelica Compiler (omc)
-        await execFileAsync("omc", [mosScriptPath], { cwd: tmpDir });
+        // Execute OpenModelica Compiler (omc) with MODELICAPATH
+        await execFileAsync("omc", [mosScriptPath], {
+          cwd: tmpDir,
+          env: { ...process.env, MODELICAPATH: modelicaPath },
+        });
 
         const segments = modelName.split(".");
         const shortModelName = segments[segments.length - 1] ?? modelName;
