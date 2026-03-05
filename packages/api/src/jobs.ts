@@ -5,6 +5,7 @@ export type JobStatus = "pending" | "processing" | "completed" | "failed";
 export interface JobInfo {
   status: JobStatus;
   error?: string;
+  resultPath?: string;
 }
 
 type JobFn = () => Promise<void>;
@@ -41,14 +42,17 @@ export class JobQueue {
       const job = this.#queue.shift();
       if (!job) continue;
 
-      this.#status.set(job.key, { status: "processing" });
+      const currentStatus = this.#status.get(job.key) || { status: "pending" as JobStatus };
+      this.#status.set(job.key, { ...currentStatus, status: "processing" });
       try {
         await job.fn();
-        this.#status.set(job.key, { status: "completed" });
+        const updatedStatus = this.#status.get(job.key) || { status: "pending" as JobStatus };
+        this.#status.set(job.key, { ...updatedStatus, status: "completed" });
       } catch (err) {
         const message = err instanceof Error ? err.message : "Unknown error";
         console.error(`Job "${job.key}" failed: ${message}`);
-        this.#status.set(job.key, { status: "failed", error: message });
+        const updatedStatus = this.#status.get(job.key) || { status: "pending" as JobStatus };
+        this.#status.set(job.key, { ...updatedStatus, status: "failed", error: message });
       }
     }
 

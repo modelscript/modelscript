@@ -8,6 +8,7 @@ import { graphqlRouter } from "./routes/graphql.js";
 import { packagesRouter } from "./routes/packages.js";
 import { publishRouter } from "./routes/publish.js";
 import { rdfRouter } from "./routes/rdf.js";
+import { simulateRouter } from "./routes/simulate.js";
 import { sparqlRouter } from "./routes/sparql.js";
 import { LibraryStorage } from "./storage.js";
 
@@ -25,6 +26,7 @@ export function createApp(storage?: LibraryStorage): express.Express {
   app.use("/api/v1/libraries", rdfRouter(database));
   app.use("/api/v1/libraries", graphqlRouter(database));
   app.use("/api/v1/libraries", sparqlRouter(database));
+  app.use("/api/v1", simulateRouter(libraryStorage, jobQueue));
 
   // Health check
   app.get("/health", (_req, res) => {
