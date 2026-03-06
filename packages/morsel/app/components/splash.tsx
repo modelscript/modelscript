@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Context } from "@modelscript/modelscript";
+import { Context } from "@modelscript/core";
 import { PlusIcon, TrashIcon, XIcon } from "@primer/octicons-react";
 import { IconButton } from "@primer/react";
 import React from "react";

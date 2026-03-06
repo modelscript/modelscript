@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import {
-  Context,
-  ModelicaClassInstance,
-  ModelicaStoredDefinitionSyntaxNode,
-  renderDiagram,
-} from "@modelscript/modelscript";
+import { Context, ModelicaClassInstance, ModelicaStoredDefinitionSyntaxNode, renderDiagram } from "@modelscript/core";
 import React, { useEffect, useState } from "react";
 
 interface ModelPreviewProps {

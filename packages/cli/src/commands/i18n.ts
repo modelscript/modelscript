@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Context, I18nVisitor } from "@modelscript/modelscript";
+import { Context, I18nVisitor } from "@modelscript/core";
 import Modelica from "@modelscript/tree-sitter-modelica";
 import { writeFileSync } from "node:fs";
 import Parser from "tree-sitter";

@@ -5,7 +5,7 @@ import {
   ModelicaClassInstance,
   ModelicaComponentInstance,
   type ModelicaModification,
-} from "@modelscript/modelscript";
+} from "@modelscript/core";
 import Modelica from "@modelscript/tree-sitter-modelica";
 import { registerWindow } from "@svgdotjs/svg.js";
 import fs from "node:fs";
@@ -155,7 +155,7 @@ export async function processLibrary(zipBuffer: Buffer): Promise<LibraryProcessi
   ensureSvgWindow();
   ensureParser();
 
-  const { renderIcon, renderDiagram } = await import("@modelscript/modelscript");
+  const { renderIcon, renderDiagram } = await import("@modelscript/core");
 
   const svgs = new Map<string, SvgResult>();
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "modelscript-"));

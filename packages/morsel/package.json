@@ -11,7 +11,7 @@
   "dependencies": {
     "@antv/layout": "^0.3.25",
     "@antv/x6": "^3.0.1",
-    "@modelscript/modelscript": "^0.0.0",
+    "@modelscript/core": "^0.0.0",
     "@modelscript/tree-sitter-modelica": "^0.0.0",
     "@monaco-editor/react": "^4.7.0",
     "@primer/css": "^22.0.2",

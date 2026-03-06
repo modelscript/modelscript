@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Context, ModelicaClassInstance, ModelicaLibrary, renderIcon } from "@modelscript/modelscript";
+import { Context, ModelicaClassInstance, ModelicaLibrary, renderIcon } from "@modelscript/core";
 import { ChevronDownIcon, ChevronRightIcon, PackageIcon } from "@primer/octicons-react";
 import { NavList } from "@primer/react";
 import React from "react";

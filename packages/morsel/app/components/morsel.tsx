@@ -14,7 +14,7 @@ import {
   ModelicaFlattener,
   StringWriter,
   type IDiagram,
-} from "@modelscript/modelscript";
+} from "@modelscript/core";
 import {
   ColumnsIcon,
   DownloadIcon,

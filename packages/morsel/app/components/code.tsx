@@ -11,7 +11,7 @@ import {
   ModelicaStoredDefinitionSyntaxNode,
   type Range,
   type Scope,
-} from "@modelscript/modelscript";
+} from "@modelscript/core";
 import { Editor, loader, type Monaco, type Theme } from "@monaco-editor/react";
 import { debounce } from "lodash";
 import * as monaco from "monaco-editor";

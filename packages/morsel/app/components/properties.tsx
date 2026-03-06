@@ -1,4 +1,4 @@
-import { ModelicaComponentInstance, ModelicaVariability } from "@modelscript/modelscript";
+import { ModelicaComponentInstance, ModelicaVariability } from "@modelscript/core";
 import { ChevronDownIcon, ChevronRightIcon } from "@primer/octicons-react";
 import { Button, Textarea, TextInput, useTheme } from "@primer/react";
 import { useEffect, useState } from "react";

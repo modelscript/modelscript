@@ -1,7 +1,7 @@
 {
-  "name": "@modelscript/cli",
+  "name": "@modelscript/core",
   "version": "0.0.0",
-  "description": "CLI for ModelScript",
+  "description": "ModelScript",
   "keywords": [
     "modelscript"
   ],
@@ -16,9 +16,7 @@
   "license": "AGPL-3.0-or-later",
   "author": "Mohamad Omar Nachawati <mnachawa@gmail.com>",
   "type": "module",
-  "bin": {
-    "msc": "./dist/main.js"
-  },
+  "exports": "./dist/index.js",
   "files": [
     "package.json",
     "README.md",
@@ -33,30 +31,40 @@
     "build": "npm run clean && npm run lint && tsc",
     "clean": "rimraf dist",
     "lint": "eslint src --ext ts",
+    "test": "node --experimental-vm-modules ../../node_modules/jest/bin/jest.js",
     "watch": "tsc --watch"
   },
+  "lint-staged": {
+    "*.ts": "eslint --ext ts",
+    "*.{ts,tsx,js,json,md,yml,css}": "prettier --write"
+  },
   "dependencies": {
-    "@modelscript/core": "^0.0.0",
-    "@modelscript/tree-sitter-modelica": "^0.0.0",
-    "@npmcli/package-json": "^7.0.0",
-    "svgdom": "^0.1.22",
-    "tree-sitter": "^0.21.1",
-    "xml-formatter": "^3.6.7",
-    "yargs": "^18.0.0"
+    "@svgdotjs/svg.js": "^3.2.5",
+    "pako": "^2.1.0",
+    "pino": "^10.1.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
+    "@jest/globals": "^30.2.0",
+    "@types/jest": "^30.0.0",
     "@types/node": "^25.3.2",
-    "@types/npmcli__package-json": "^4.0.4",
-    "@types/svgdom": "^0.1.2",
-    "@types/xml-formatter": "^1.2.0",
-    "@types/yargs": "^17.0.34",
+    "dedent-js": "^1.0.1",
     "eslint": "^9.39.1",
+    "husky": "^9.1.7",
+    "jest": "^30.2.0",
+    "jest-ctrf-json-reporter": "^0.0.10",
     "jiti": "^2.6.1",
     "lerna": "^9.0.0",
+    "lint-staged": "^16.2.7",
+    "nx": "^22.5.3",
+    "pino-pretty": "^13.1.3",
     "prettier": "^3.6.2",
+    "prettier-plugin-organize-imports": "^4.3.0",
     "prettier-plugin-packagejson": "^3.0.0",
     "rimraf": "^6.1.0",
+    "ts-jest": "^29.4.6",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.46.3"
   },

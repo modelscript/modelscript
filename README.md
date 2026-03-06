@@ -9,7 +9,7 @@ ModelScript is a comprehensive Modelica compilation, analysis, and visualization
 
 This project is a monorepo managed with **Lerna** and **npm workspaces**.
 
-- **[Core](./src/)**: The central compiler engine (`@modelscript/modelscript`), providing Modelica parsing, DAE generation, and semantic analysis.
+- **[Core](./src/)**: The central compiler engine (`@modelscript/core`), providing Modelica parsing, DAE generation, and semantic analysis.
 - **[CLI](./packages/cli/)**: The `msc` command-line interface (`@modelscript/cli`) for running compilation tasks from the terminal.
 - **[Morsel](./packages/morsel/)**: A visual Modelica editor and diagram viewer (`@modelscript/morsel`) built with React and React Router.
 - **[Grammar](./packages/tree-sitter-modelica/)**: A high-performance tree-sitter grammar for Modelica.

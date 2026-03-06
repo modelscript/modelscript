@@ -18,7 +18,7 @@ import {
   type IIcon,
   type ILine,
   type ModelicaClassInstance,
-} from "@modelscript/modelscript";
+} from "@modelscript/core";
 import type { Theme } from "@monaco-editor/react";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { renderDiagramX6, renderIconX6 } from "../util/x6";

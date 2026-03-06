@@ -4,7 +4,7 @@
 
 import { describe, expect, test } from "@jest/globals";
 import dedent from "dedent-js";
-import { NodeFileSystem } from "../../../../packages/cli/src/util/filesystem.js";
+import { NodeFileSystem } from "../../../../../../packages/cli/src/util/filesystem.js";
 import { Context } from "../../../../src/compiler/context.js";
 
 describe("Modification", () => {

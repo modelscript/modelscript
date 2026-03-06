@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Context, ModelicaClassInstance, renderDiagram, renderIcon } from "@modelscript/modelscript";
+import { Context, ModelicaClassInstance, renderDiagram, renderIcon } from "@modelscript/core";
 import Modelica from "@modelscript/tree-sitter-modelica";
 import { registerWindow } from "@svgdotjs/svg.js";
 import { createSVGWindow } from "svgdom";

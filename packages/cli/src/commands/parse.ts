@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ModelicaSyntaxNode } from "@modelscript/modelscript";
+import { ModelicaSyntaxNode } from "@modelscript/core";
 import Modelica from "@modelscript/tree-sitter-modelica";
 import { readFileSync } from "node:fs";
 import Parser from "tree-sitter";

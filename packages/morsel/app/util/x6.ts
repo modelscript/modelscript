@@ -27,7 +27,7 @@ import {
   type IRectangle,
   type IText,
   type ModelicaClassInstance,
-} from "@modelscript/modelscript";
+} from "@modelscript/core";
 import { Marker, Svg } from "@svgdotjs/svg.js";
 
 export interface X6Markup {
