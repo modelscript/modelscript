@@ -30,7 +30,7 @@
     "dist/**/*.d.ts.map"
   ],
   "scripts": {
-    "build": "npm run clean && npm run lint && tsc",
+    "build": "npm run clean && npm run lint && tsc && chmod +x dist/main.js",
     "clean": "rimraf dist",
     "lint": "eslint src --ext ts",
     "watch": "tsc --watch"

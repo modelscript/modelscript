@@ -98,19 +98,26 @@ export class LibraryStorage {
   }
 
   /**
+   * Store SVGs for a single class.
+   */
+  storeSvg(name: string, version: string, className: string, icon: string | null, diagram: string | null): void {
+    const dir = this.#svgDir(name, version, className);
+    fs.mkdirSync(dir, { recursive: true });
+
+    if (icon) {
+      fs.writeFileSync(path.join(dir, "icon.svg"), icon, "utf-8");
+    }
+    if (diagram) {
+      fs.writeFileSync(path.join(dir, "diagram.svg"), diagram, "utf-8");
+    }
+  }
+
+  /**
    * Store generated SVG files for all classes in a library version.
    */
   storeSvgs(name: string, version: string, svgs: Map<string, { icon: string | null; diagram: string | null }>): void {
     for (const [className, { icon, diagram }] of svgs) {
-      const dir = this.#svgDir(name, version, className);
-      fs.mkdirSync(dir, { recursive: true });
-
-      if (icon) {
-        fs.writeFileSync(path.join(dir, "icon.svg"), icon, "utf-8");
-      }
-      if (diagram) {
-        fs.writeFileSync(path.join(dir, "diagram.svg"), diagram, "utf-8");
-      }
+      this.storeSvg(name, version, className, icon, diagram);
     }
   }
 
@@ -181,6 +188,38 @@ export class LibraryStorage {
    */
   getExtractedPath(name: string, version: string): string {
     return path.join(this.#dataDir, name, version, "extracted", name);
+  }
+
+  /**
+   * Delete a specific library version.
+   * Removes the zip file and all version data (SVGs, extracted files).
+   * If no other versions remain, removes the library directory entirely.
+   */
+  delete(name: string, version: string): boolean {
+    const zipPath = this.#filePath(name, version);
+    if (!fs.existsSync(zipPath)) {
+      return false;
+    }
+
+    // Remove the zip file
+    fs.rmSync(zipPath, { force: true });
+
+    // Remove the version data directory (svgs, extracted, etc.)
+    const versionDir = path.join(this.#dataDir, name, version);
+    if (fs.existsSync(versionDir)) {
+      fs.rmSync(versionDir, { recursive: true, force: true });
+    }
+
+    // Clean up the library directory if no more versions exist
+    const libraryDir = path.join(this.#dataDir, name);
+    if (fs.existsSync(libraryDir)) {
+      const remaining = fs.readdirSync(libraryDir);
+      if (remaining.length === 0) {
+        fs.rmSync(libraryDir, { recursive: true, force: true });
+      }
+    }
+
+    return true;
   }
 
   #svgDir(name: string, version: string, className: string): string {

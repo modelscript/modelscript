@@ -23,8 +23,8 @@ export function parsePackageMo(content: string): {
   const descMatch = content.match(/^\s*(?:within\s+[^;]*;\s*)?package\s+\w+\s+"([^"]*)"/m);
   const description = descMatch?.[1] ?? null;
 
-  // Extract version from annotation(version="...") — handles various whitespace patterns
-  const versionMatch = content.match(/annotation\s*\(\s*version\s*=\s*"([^"]+)"/);
+  // Extract version from annotation(...) — handles various whitespace patterns and positions
+  const versionMatch = content.match(/\bversion\s*=\s*"([^"]+)"/);
   const version = versionMatch?.[1] ?? null;
 
   return { name, description, version };

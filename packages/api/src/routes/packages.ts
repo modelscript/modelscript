@@ -2,6 +2,8 @@
 
 import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
+import fs from "node:fs";
+import path from "node:path";
 import semver from "semver";
 
 import type { LibraryDatabase } from "../database.js";
@@ -16,13 +18,22 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
   /**
    * GET /api/v1/libraries
    *
-   * List all published packages. Supports an optional `?q=` query parameter
+   * List all published packages with their versions.
+   * Supports an optional `?q=` query parameter
    * for case-insensitive substring filtering on the package name.
    */
   router.get("/", (req: Request, res: Response): void => {
     const q = req.query["q"];
     const query = typeof q === "string" ? q : undefined;
-    const packages = storage.list(query);
+    const names = storage.list(query);
+    const packages = names.map((name) => {
+      const versions = storage.versions(name);
+      return {
+        name,
+        versions,
+        latestVersion: versions[0] || null,
+      };
+    });
     res.json({ packages });
   });
 
@@ -244,8 +255,53 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
       return;
     }
 
+    // Return 404 if the diagram has no meaningful visual content
+    const hasVisual = /<(line|rect|circle|path|polygon|polyline|ellipse|text|image)\b/i.test(svg);
+    if (!hasVisual) {
+      res.status(404).json({ error: `Diagram SVG is empty for "${className}" in ${name}@${version}` });
+      return;
+    }
+
     res.setHeader("Content-Type", "image/svg+xml");
     res.send(svg);
+  });
+
+  /**
+   * GET /api/v1/libraries/:name/:version/resources/*
+   *
+   * Serve files from an extracted library's directory.
+   * Used to resolve `modelica://` URIs in documentation HTML.
+   * e.g. modelica://Modelica/Resources/Images/foo.png
+   *   → GET /api/v1/libraries/Modelica/4.1.0/resources/Resources/Images/foo.png
+   */
+  router.get("/:name/:version/resources/{*path}", (req: Request, res: Response): void => {
+    const name = String(req.params["name"] ?? "");
+    const version = String(req.params["version"] ?? "");
+    // path-to-regexp v8 returns wildcard captures as arrays
+    const rawPath = req.params["path"];
+    const resourcePath = Array.isArray(rawPath) ? rawPath.join("/") : String(rawPath || "");
+
+    if (!name || !version || !resourcePath) {
+      res.status(400).json({ error: "Missing required parameters" });
+      return;
+    }
+
+    const extractedDir = storage.getExtractedPath(name, version);
+    const filePath = path.join(extractedDir, resourcePath);
+
+    // Security: ensure the resolved path is within the extracted directory
+    const resolved = path.resolve(filePath);
+    if (!resolved.startsWith(path.resolve(extractedDir))) {
+      res.status(403).json({ error: "Access denied" });
+      return;
+    }
+
+    if (!fs.existsSync(resolved)) {
+      res.status(404).json({ error: "Resource not found" });
+      return;
+    }
+
+    res.sendFile(resolved);
   });
 
   return router;

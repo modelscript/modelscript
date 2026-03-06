@@ -12,6 +12,7 @@
   "dependencies": {
     "@primer/octicons-react": "^19.22.0",
     "@primer/react": "^38.14.0",
+    "@tanstack/react-virtual": "^3.13.21",
     "@types/styled-components": "^5.1.36",
     "axios": "^1.13.6",
     "react": "^19.2.0",

@@ -111,7 +111,50 @@ export const Publish: CommandModule<{}, PublishArgs> = {
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const data = (await res.json()) as any;
-      console.log(`✅ Success: ${data.message || "Published successfully."}`);
+      console.log(`✅ Uploaded: ${data.message || "Published successfully."}`);
+      console.log(`⏳ Processing library (SVG generation + metadata extraction)...`);
+
+      // Poll the status endpoint to show progress
+      const statusUrl = `${API_URL}/api/v1/libraries/${name}/${version}/status`;
+      let done = false;
+
+      while (!done) {
+        await new Promise((r) => setTimeout(r, 2000));
+
+        try {
+          const statusRes = await fetch(statusUrl);
+          if (!statusRes.ok) {
+            // Status endpoint not available yet — keep waiting
+            continue;
+          }
+
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const status = (await statusRes.json()) as any;
+          const classesProcessed = status.classesProcessed ?? 0;
+
+          switch (status.status) {
+            case "pending":
+              process.stdout.write(`\r⏳ Waiting in queue...`);
+              break;
+            case "processing":
+              process.stdout.write(`\r⏳ Processing... ${classesProcessed} classes processed`);
+              break;
+            case "completed":
+              process.stdout.write(`\r`);
+              console.log(`✅ Processing complete — ${classesProcessed} classes processed.`);
+              done = true;
+              break;
+            case "failed":
+              process.stdout.write(`\r`);
+              console.error(`❌ Processing failed: ${status.error || "Unknown error"}`);
+              done = true;
+              process.exit(1);
+              break;
+          }
+        } catch {
+          // Network error during polling — keep trying
+        }
+      }
     } catch (e) {
       console.error(`Error connecting to registry: ${(e as Error).message}`);
       process.exit(1);

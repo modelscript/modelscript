@@ -35,6 +35,7 @@ export interface BoxProps {
   fontWeight?: string | number;
   fontSize?: string | number;
   textAlign?: "left" | "right" | "center" | "justify" | "initial" | "inherit";
+  color?: string;
   children?: React.ReactNode;
   style?: React.CSSProperties;
   className?: string;
@@ -61,6 +62,7 @@ const Box = styled.div<BoxProps>`
   height: ${(props) => (typeof props.height === "number" ? `${props.height}px` : props.height)};
   min-height: ${(props) => (typeof props.minHeight === "number" ? `${props.minHeight}px` : props.minHeight)};
   background-color: ${(props) => props.bg || props.backgroundColor};
+  color: ${(props) => props.color};
   border: ${(props) => props.border};
   border-width: ${(props) => (typeof props.borderWidth === "number" ? `${props.borderWidth}px` : props.borderWidth)};
   border-style: ${(props) => props.borderStyle};

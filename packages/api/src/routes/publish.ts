@@ -3,13 +3,13 @@
 import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import multer from "multer";
+import { fileURLToPath } from "node:url";
 import semver from "semver";
 
 import type { LibraryDatabase } from "../database.js";
 import type { JobQueue } from "../jobs.js";
 import { ConflictError, type LibraryStorage } from "../storage.js";
 import { parsePackageMo } from "../util/package-mo.js";
-import { processLibrary } from "../util/svg-renderer.js";
 import { extractPackageMoFromZip } from "../util/zip.js";
 
 const upload = multer({ storage: multer.memoryStorage() });
@@ -69,16 +69,11 @@ export function publishRouter(storage: LibraryStorage, jobQueue: JobQueue, datab
       }
 
       // 6. Validate version matches
-      if (!parsed.version) {
-        res.status(400).json({
-          error: "No version annotation found in package.mo",
-        });
-        return;
-      }
+      const parsedVersion = parsed.version || "0.0.0";
 
-      if (parsed.version !== version) {
+      if (parsedVersion !== version) {
         res.status(400).json({
-          error: `Version mismatch: URL specifies "${version}" but package.mo declares "${parsed.version}"`,
+          error: `Version mismatch: URL specifies "${version}" but package.mo declares "${parsedVersion}"`,
         });
         return;
       }
@@ -86,18 +81,16 @@ export function publishRouter(storage: LibraryStorage, jobQueue: JobQueue, datab
       // 7. Store the library
       const filePath = await storage.store(name, version, req.file.buffer);
 
-      // 8. Enqueue background processing (extraction + SVG generation + metadata extraction)
-      const jobKey = `${name}@${version}`;
-      const zipBuffer = req.file.buffer;
-      jobQueue.enqueue(jobKey, async () => {
-        // Pre-extract the zip to disk for simulations
-        await storage.extractLibrary(name, version);
+      // 8. Extract the zip to disk (I/O-bound, fine in main thread)
+      const libraryPath = await storage.extractLibrary(name, version);
 
-        // Process SVGs and metadata
-        const result = await processLibrary(zipBuffer);
-        storage.storeSvgs(name, version, result.svgs);
-        database.storeLibraryMetadata(name, version, result.metadata);
-      });
+      // 9. Enqueue background processing in a child process.
+      //    fork() creates a separate Node.js process that inherits tsx's module resolution,
+      //    so the main API event loop stays completely unblocked.
+      const jobKey = `${name}@${version}`;
+      const ext = import.meta.url.endsWith(".ts") ? ".ts" : ".js";
+      const workerScript = fileURLToPath(new URL(`../publish-worker${ext}`, import.meta.url));
+      jobQueue.enqueueProcess(jobKey, workerScript, { name, version, libraryPath });
 
       res.status(201).json({
         message: `Library ${name}@${version} published successfully`,
@@ -112,6 +105,40 @@ export function publishRouter(storage: LibraryStorage, jobQueue: JobQueue, datab
       const message = err instanceof Error ? err.message : "Internal server error";
       res.status(400).json({ error: message });
     }
+  });
+
+  /**
+   * DELETE /api/v1/libraries/:name/:version
+   *
+   * Remove a published library version from the registry.
+   */
+  router.delete("/:name/:version", (req: Request, res: Response): void => {
+    const name = req.params["name"];
+    const version = req.params["version"];
+
+    if (typeof name !== "string" || typeof version !== "string") {
+      res.status(400).json({ error: "Library name and version must be strings" });
+      return;
+    }
+
+    if (!semver.valid(version)) {
+      res.status(400).json({ error: `Invalid semantic version: "${version}"` });
+      return;
+    }
+
+    // Check if the library version exists
+    if (!storage.exists(name, version)) {
+      res.status(404).json({ error: `Library ${name}@${version} not found` });
+      return;
+    }
+
+    // Remove from database
+    database.deleteLibrary(name, version);
+
+    // Remove from storage (zip, SVGs, extracted files)
+    storage.delete(name, version);
+
+    res.json({ message: `Library ${name}@${version} has been unpublished` });
   });
 
   return router;

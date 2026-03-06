@@ -1,9 +1,179 @@
-import { Breadcrumbs, Flash, Heading, Label, NavList, PageLayout, Spinner, Text, Truncate } from "@primer/react";
-import React, { useCallback, useEffect, useState } from "react";
+import { AlertIcon } from "@primer/octicons-react";
+import { Heading, Label, NavList, Spinner, Text, Truncate } from "@primer/react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import type { ClassDetail, JobStatus } from "../api";
-import { getClassDetail, getDiagramUrl, getIconUrl, getJobStatus } from "../api";
+import styled, { css, keyframes } from "styled-components";
+import type { ClassDetail, ClassSummary, JobStatus } from "../api";
+import { getClassDetail, getClasses, getDiagramUrl, getIconUrl, getJobStatus, rewriteModelicaUris } from "../api";
 import Box from "../components/Box";
+import Breadcrumbs from "../components/Breadcrumbs";
+import { buildClassTree, ClassTreeNode } from "../components/ClassTree";
+
+/* ─── styled helpers ─── */
+
+const fadeIn = keyframes`
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+`;
+
+const PageWrap = styled.div`
+  background-color: #0d1117;
+  color: #c9d1d9;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+`;
+
+const ContentGrid = styled.div`
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 40px 60px;
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 40px;
+  width: 100%;
+  box-sizing: border-box;
+  animation: ${fadeIn} 0.4s ease;
+
+  @media (max-width: 900px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const HeaderBar = styled.div`
+  max-width: 1280px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 32px 40px 40px;
+  box-sizing: border-box;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+`;
+
+const glassCard = css`
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+`;
+
+const GlassCard = styled.div`
+  ${glassCard}
+  padding: 20px;
+  margin-bottom: 16px;
+`;
+
+const DocCard = styled.div`
+  ${glassCard}
+  padding: 32px;
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    color: #e6edf3;
+    margin-top: 24px;
+    margin-bottom: 12px;
+  }
+  p {
+    line-height: 1.7;
+    color: #c9d1d9;
+    margin-bottom: 16px;
+  }
+  a {
+    color: #58a6ff;
+    text-decoration: none;
+  }
+  a:hover {
+    text-decoration: underline;
+  }
+  code {
+    background: rgba(255, 255, 255, 0.06);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.9em;
+  }
+  pre {
+    background: rgba(0, 0, 0, 0.4);
+    padding: 16px;
+    border-radius: 6px;
+    overflow-x: auto;
+  }
+  pre code {
+    background: transparent;
+    padding: 0;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 16px;
+  }
+  th,
+  td {
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 8px 12px;
+    text-align: left;
+  }
+  th {
+    background: rgba(255, 255, 255, 0.04);
+    color: #e6edf3;
+  }
+  img {
+    max-width: 100%;
+  }
+`;
+
+const DetailRow = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  &:last-child {
+    border-bottom: none;
+  }
+`;
+
+const DetailLabel = styled.span`
+  font-size: 13px;
+  color: #8b949e;
+  text-transform: capitalize;
+`;
+
+const DetailValue = styled.span`
+  font-size: 13px;
+  color: #e6edf3;
+  font-weight: 500;
+  text-align: right;
+  max-width: 60%;
+  word-break: break-word;
+`;
+
+const DiagramWrap = styled.div`
+  ${glassCard}
+  padding: 24px;
+  margin-bottom: 24px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 120px;
+  overflow: auto;
+
+  img {
+    max-width: 100%;
+    filter: invert(1) hue-rotate(180deg);
+  }
+`;
+
+const SectionTitle = styled(Heading)`
+  font-size: 12px !important;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #8b949e !important;
+  margin-bottom: 12px !important;
+  font-weight: 600 !important;
+`;
+
+/* ─── main page ─── */
 
 const ClassDetailPage: React.FC = () => {
   const { name, version, className } = useParams<{ name: string; version: string; className: string }>();
@@ -12,6 +182,22 @@ const ClassDetailPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
   const [retryCount, setRetryCount] = useState(0);
+  const [diagramLoaded, setDiagramLoaded] = useState(false);
+  const [diagramError, setDiagramError] = useState(false);
+  const [allClasses, setAllClasses] = useState<ClassSummary[]>([]);
+
+  // Fetch all classes for the tree
+  useEffect(() => {
+    if (!name || !version) return;
+    getClasses(name, version)
+      .then(setAllClasses)
+      .catch(() => {});
+  }, [name, version]);
+
+  const tree = useMemo(() => {
+    if (!name || allClasses.length === 0) return [];
+    return buildClassTree(allClasses, name);
+  }, [allClasses, name]);
 
   const fetchClassDetail = useCallback(async () => {
     if (!name || !version || !className) return;
@@ -31,6 +217,12 @@ const ClassDetailPage: React.FC = () => {
     setLoading(true);
     fetchClassDetail();
   }, [fetchClassDetail]);
+
+  useEffect(() => {
+    if (className && name && version) {
+      document.title = `${className} | ${name}@${version} | ModelScript`;
+    }
+  }, [className, name, version]);
 
   useEffect(() => {
     if (!name || !version || jobStatus === "completed" || jobStatus === "failed") return;
@@ -54,162 +246,277 @@ const ClassDetailPage: React.FC = () => {
 
   if (loading && !cls) {
     return (
-      <Box display="flex" justifyContent="center" p={12}>
+      <PageWrap style={{ justifyContent: "center", alignItems: "center" }}>
         <Spinner size="large" />
-      </Box>
+      </PageWrap>
     );
   }
 
   if (error || !cls) {
     return (
-      <Box p={12}>
-        <Flash variant="danger">{error || "Class not found"}</Flash>
-      </Box>
+      <PageWrap style={{ justifyContent: "center", alignItems: "center" }}>
+        <Box
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 16,
+            padding: 40,
+            textAlign: "center",
+          }}
+        >
+          <AlertIcon size={48} fill="#f85149" />
+          <Heading as="h2" style={{ color: "#e6edf3", fontSize: 22, margin: 0 }}>
+            {error || "Class not found"}
+          </Heading>
+          <Text as="p" style={{ color: "#8b949e", fontSize: 15, margin: 0, maxWidth: 400 }}>
+            The class may not exist, is still being processed, or the server is unavailable.
+          </Text>
+        </Box>
+      </PageWrap>
     );
   }
 
   return (
-    <PageLayout>
-      <PageLayout.Header>
-        <Breadcrumbs>
-          <Breadcrumbs.Item href="/">Libraries</Breadcrumbs.Item>
-          <Breadcrumbs.Item href={`/${name}`}>{name}</Breadcrumbs.Item>
-          <Breadcrumbs.Item href={`/${name}/${version}`}>{version}</Breadcrumbs.Item>
-          <Breadcrumbs.Item href={`/${name}/${version}/classes/${className}`} selected>
-            {className}
-          </Breadcrumbs.Item>
-        </Breadcrumbs>
-        <Box display="flex" alignItems="center" gap="8px" mt={4} mb={8}>
-          <Heading as="h1">{className}</Heading>
-          <Label variant="accent">{cls.classKind}</Label>
-          {jobStatus && jobStatus !== "completed" && (
-            <Label variant="attention">{jobStatus === "processing" ? "Processing..." : "Pending"}</Label>
-          )}
+    <PageWrap>
+      {/* ── Header ── */}
+      <HeaderBar>
+        <Box mb={3}>
+          <Breadcrumbs
+            items={[
+              { label: "Libraries", href: "/libraries" },
+              { label: name || "", href: `/${name}` },
+              { label: version || "", href: `/${name}/${version}` },
+              ...(className || "").split(".").map((segment, i, parts) => {
+                const fullName = parts.slice(0, i + 1).join(".");
+                const isLast = i === parts.length - 1;
+                return {
+                  label: segment,
+                  href: isLast ? undefined : `/${name}/${version}/classes/${fullName}`,
+                };
+              }),
+            ]}
+          />
         </Box>
-      </PageLayout.Header>
-
-      <PageLayout.Pane position="start">
-        <Heading as="h3" style={{ fontSize: "16px", marginBottom: "8px" }}>
-          Components
-        </Heading>
-        <NavList>
-          {cls.components.map((comp) => (
-            <NavList.Item key={comp.component_name}>
-              <Box fontWeight="bold">{comp.component_name}</Box>
-              <Box fontSize="12px" opacity={0.6}>
-                <Truncate title={comp.type_name}>{comp.type_name}</Truncate>
-              </Box>
-              {comp.description && (
-                <Box fontSize="12px" opacity={0.8} mt={1}>
-                  {comp.description}
-                </Box>
-              )}
-            </NavList.Item>
-          ))}
-          {cls.components.length === 0 && <Text style={{ opacity: 0.6, fontSize: "14px" }}>No components.</Text>}
-        </NavList>
-      </PageLayout.Pane>
-
-      <PageLayout.Content>
-        <Box display="flex" gap="32px" mb={8} flexWrap="wrap">
-          <Box flex="0 0 auto">
-            <Heading as="h4" style={{ fontSize: "12px", marginBottom: "8px", opacity: 0.6 }}>
-              Icon
-            </Heading>
-            <Box
-              p={2}
-              bg="var(--color-canvas-subtle)"
-              border="1px solid var(--color-border-default)"
-              borderRadius={2}
-              display="flex"
-              justifyContent="center"
-              alignItems="center"
-              width={200}
-              height={200}
-            >
-              <img
-                src={`${getIconUrl(name!, version!, className!)}?t=${retryCount}`}
-                alt={`${className} icon`}
-                style={{ maxWidth: "100%", maxHeight: "100%" }}
-                onError={() => {
-                  if (jobStatus !== "completed") {
-                    setTimeout(() => setRetryCount((prev) => prev + 1), 3000);
-                  }
-                }}
-              />
-            </Box>
-          </Box>
-          <Box flex="1 1 400px">
-            <Heading as="h4" style={{ fontSize: "12px", marginBottom: "8px", opacity: 0.6 }}>
-              Diagram
-            </Heading>
-            <Box
-              p={2}
-              bg="var(--color-canvas-subtle)"
-              border="1px solid var(--color-border-default)"
-              borderRadius={2}
-              display="flex"
-              justifyContent="center"
-              alignItems="center"
-              minHeight={200}
-            >
-              <img
-                src={`${getDiagramUrl(name!, version!, className!)}?t=${retryCount}`}
-                alt={`${className} diagram`}
-                style={{ maxWidth: "100%" }}
-                onError={() => {
-                  if (jobStatus !== "completed") {
-                    setTimeout(() => setRetryCount((prev) => prev + 1), 3000);
-                  }
-                }}
-              />
-            </Box>
-          </Box>
-        </Box>
-
-        {cls.description && (
-          <Box mb={8}>
-            <Heading as="h3" style={{ fontSize: "16px", marginBottom: "8px" }}>
-              Description
-            </Heading>
-            <Text as="p">{cls.description}</Text>
-          </Box>
-        )}
-
-        {cls.documentation ? (
-          <Box mb={8}>
-            <Heading as="h3" style={{ fontSize: "16px", marginBottom: "8px" }}>
-              Documentation
-            </Heading>
-            <Box
-              border="1px solid var(--color-border-default)"
-              borderRadius={2}
-              p={4}
-              dangerouslySetInnerHTML={{ __html: cls.documentation }}
+        <Box display="flex" alignItems="center" gap="16px">
+          {/* Class icon */}
+          <Box
+            style={{
+              width: 48,
+              height: 48,
+              borderRadius: 8,
+              background: "linear-gradient(135deg, rgba(164,133,255,0.2), rgba(0,210,255,0.2))",
+              border: "1px solid rgba(255,255,255,0.1)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+              overflow: "hidden",
+            }}
+          >
+            <img
+              src={`${getIconUrl(name!, version!, className!)}?t=${retryCount}`}
+              alt=""
+              style={{ width: 36, height: 36, filter: "invert(1) hue-rotate(180deg)" }}
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = "none";
+              }}
             />
           </Box>
-        ) : (
-          <Box mb={8} opacity={0.6}>
-            <Text style={{ fontStyle: "italic" }}>No detailed documentation available.</Text>
-          </Box>
-        )}
-
-        {cls.extends.length > 0 && (
-          <Box mt={8}>
-            <Heading as="h3" style={{ fontSize: "16px", marginBottom: "8px" }}>
-              Extends
-            </Heading>
-            <Box display="flex" gap="8px" flexWrap="wrap">
-              {cls.extends.map((base) => (
-                <Label key={base} variant="secondary">
-                  {base}
-                </Label>
-              ))}
+          <Box>
+            <Box display="flex" alignItems="center" gap="8px">
+              <Heading as="h1" style={{ color: "#e6edf3", fontWeight: 700, fontSize: 28, margin: 0 }}>
+                {className}
+              </Heading>
+              <Label
+                variant="accent"
+                style={{
+                  fontSize: 14,
+                  padding: "2px 10px",
+                  background: "rgba(88,166,255,0.15)",
+                  color: "#58a6ff",
+                  border: "1px solid rgba(88,166,255,0.3)",
+                }}
+              >
+                {cls.classKind}
+              </Label>
+              {jobStatus && jobStatus !== "completed" && (
+                <Label variant="attention">{jobStatus === "processing" ? "Processing…" : "Pending"}</Label>
+              )}
             </Box>
+            {cls.description && (
+              <Text as="p" style={{ color: "#8b949e", fontSize: 15, margin: "4px 0 0" }}>
+                {cls.description}
+              </Text>
+            )}
           </Box>
-        )}
-      </PageLayout.Content>
-    </PageLayout>
+        </Box>
+      </HeaderBar>
+
+      {/* ── Body ── */}
+      <ContentGrid>
+        {/* ── Main column ── */}
+        <div>
+          {/* Class diagram */}
+          {!diagramError && diagramLoaded && (
+            <>
+              <SectionTitle as="h3">Diagram</SectionTitle>
+              <DiagramWrap>
+                <img
+                  src={`${getDiagramUrl(name!, version!, className!)}?t=${retryCount}`}
+                  alt={`${className} diagram`}
+                  onLoad={() => setDiagramLoaded(true)}
+                  onError={() => {
+                    if (jobStatus && jobStatus !== "completed" && jobStatus !== "failed") {
+                      setTimeout(() => setRetryCount((p) => p + 1), 3000);
+                    } else {
+                      setDiagramError(true);
+                    }
+                  }}
+                />
+              </DiagramWrap>
+            </>
+          )}
+          {/* Hidden loader to trigger loading */}
+          {!diagramError && !diagramLoaded && (
+            <img
+              src={`${getDiagramUrl(name!, version!, className!)}?t=${retryCount}`}
+              alt=""
+              style={{ display: "none" }}
+              onLoad={() => setDiagramLoaded(true)}
+              onError={() => {
+                if (jobStatus && jobStatus !== "completed" && jobStatus !== "failed") {
+                  setTimeout(() => setRetryCount((p) => p + 1), 3000);
+                } else {
+                  setDiagramError(true);
+                }
+              }}
+            />
+          )}
+
+          {/* Documentation */}
+          <SectionTitle as="h3">Documentation</SectionTitle>
+          <DocCard>
+            {cls.documentation ? (
+              <div dangerouslySetInnerHTML={{ __html: rewriteModelicaUris(cls.documentation, version!) }} />
+            ) : cls.description ? (
+              <Text as="p" style={{ color: "#c9d1d9", lineHeight: 1.7, margin: 0 }}>
+                {cls.description}
+              </Text>
+            ) : (
+              <Text as="p" style={{ color: "#8b949e", fontStyle: "italic", margin: 0 }}>
+                No documentation available for this class.
+              </Text>
+            )}
+          </DocCard>
+        </div>
+
+        {/* ── Sidebar ── */}
+        <aside>
+          {/* Class info */}
+          <SectionTitle as="h3">Class Details</SectionTitle>
+          <GlassCard>
+            <DetailRow>
+              <DetailLabel>Name</DetailLabel>
+              <DetailValue>{className}</DetailValue>
+            </DetailRow>
+            <DetailRow>
+              <DetailLabel>Kind</DetailLabel>
+              <DetailValue>
+                <Label variant="accent" style={{ fontSize: 11 }}>
+                  {cls.classKind}
+                </Label>
+              </DetailValue>
+            </DetailRow>
+            <DetailRow>
+              <DetailLabel>Library</DetailLabel>
+              <DetailValue>{name}</DetailValue>
+            </DetailRow>
+            <DetailRow>
+              <DetailLabel>Version</DetailLabel>
+              <DetailValue>{version}</DetailValue>
+            </DetailRow>
+            {cls.extends.length > 0 && (
+              <>
+                <DetailRow style={{ flexDirection: "column", alignItems: "flex-start", gap: 8 }}>
+                  <DetailLabel>Extends</DetailLabel>
+                  <Box display="flex" gap="6px" flexWrap="wrap">
+                    {cls.extends.map((base) => (
+                      <Label key={base} variant="secondary" style={{ fontSize: 11 }}>
+                        {base}
+                      </Label>
+                    ))}
+                  </Box>
+                </DetailRow>
+              </>
+            )}
+          </GlassCard>
+
+          {/* Class tree */}
+          {tree.length > 0 && (
+            <>
+              <SectionTitle as="h3" style={{ marginTop: 24 }}>
+                Explorer
+              </SectionTitle>
+              <GlassCard style={{ padding: "8px", maxHeight: "40vh", overflowY: "auto" }}>
+                {tree.map((node) => (
+                  <ClassTreeNode
+                    key={node.fullName}
+                    node={node}
+                    depth={0}
+                    libraryName={name!}
+                    version={version!}
+                    activeClassName={className}
+                  />
+                ))}
+              </GlassCard>
+            </>
+          )}
+
+          {/* Components */}
+          {cls.components.length > 0 && (
+            <>
+              <SectionTitle as="h3" style={{ marginTop: 24 }}>
+                Components
+              </SectionTitle>
+              <GlassCard style={{ padding: "8px", maxHeight: "calc(100vh - 400px)", overflowY: "auto" }}>
+                <NavList>
+                  {cls.components.map((comp) => (
+                    <NavList.Item key={comp.component_name} style={{ color: "#c9d1d9" }}>
+                      <NavList.LeadingVisual>
+                        <img
+                          src={getIconUrl(name!, version!, comp.type_name)}
+                          alt=""
+                          style={{ width: 32, height: 32, filter: "invert(1) hue-rotate(180deg)" }}
+                          onError={(e) => {
+                            const img = e.target as HTMLImageElement;
+                            img.style.display = "none";
+                            const fallback = document.createElement("span");
+                            fallback.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="32" height="32" fill="#8b949e"><path d="M8.878.392a1.75 1.75 0 0 0-1.756 0l-5.25 3.045A1.75 1.75 0 0 0 1 4.951v6.098c0 .624.332 1.2.872 1.514l5.25 3.045a1.75 1.75 0 0 0 1.756 0l5.25-3.045c.54-.313.872-.89.872-1.514V4.951c0-.624-.332-1.2-.872-1.514ZM7.875 1.69a.25.25 0 0 1 .25 0l4.63 2.685L8 7.133 3.245 4.375ZM2.5 5.677l5 2.9v5.765l-4.63-2.685a.25.25 0 0 1-.124-.216L2.5 5.677Zm6.5 8.665V8.578l5-2.9v5.764a.25.25 0 0 1-.124.216L8.5 14.342Z"></path></svg>`;
+                            img.parentNode?.appendChild(fallback);
+                          }}
+                        />
+                      </NavList.LeadingVisual>
+                      <Box fontWeight="bold" style={{ color: "#e6edf3" }}>
+                        {comp.component_name}
+                      </Box>
+                      <Box fontSize="12px" opacity={0.6}>
+                        <Truncate title={comp.type_name}>{comp.type_name}</Truncate>
+                      </Box>
+                      {comp.description && (
+                        <Box fontSize="12px" opacity={0.8} mt={1}>
+                          {comp.description}
+                        </Box>
+                      )}
+                    </NavList.Item>
+                  ))}
+                </NavList>
+              </GlassCard>
+            </>
+          )}
+        </aside>
+      </ContentGrid>
+    </PageWrap>
   );
 };
 

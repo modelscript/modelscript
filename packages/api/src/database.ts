@@ -125,56 +125,83 @@ export class LibraryDatabase {
   }
 
   /**
+   * Clear all metadata for a library version.
+   */
+  clearLibraryMetadata(libraryName: string, libraryVersion: string): void {
+    this.#db
+      .prepare(`DELETE FROM classes WHERE library_name = ? AND library_version = ?`)
+      .run(libraryName, libraryVersion);
+  }
+
+  /**
    * Store all metadata for a library version inside a transaction.
    */
-  storeLibraryMetadata(libraryName: string, libraryVersion: string, classes: ClassMetadata[]): void {
-    const deleteClasses = this.#db.prepare(`DELETE FROM classes WHERE library_name = ? AND library_version = ?`);
-    const insertClass = this.#db.prepare(
-      `INSERT INTO classes (library_name, library_version, class_name, class_kind, description, documentation)
+  /**
+   * Store metadata for a single class. This should be run inside a transaction for performance.
+   */
+  storeClassMetadata(libraryName: string, libraryVersion: string, cls: ClassMetadata): void {
+    const result = this.#db
+      .prepare(
+        `INSERT OR REPLACE INTO classes (library_name, library_version, class_name, class_kind, description, documentation)
        VALUES (?, ?, ?, ?, ?, ?)`,
-    );
-    const insertExtends = this.#db.prepare(`INSERT INTO extends (class_id, base_class) VALUES (?, ?)`);
+      )
+      .run(libraryName, libraryVersion, cls.className, cls.classKind, cls.description, cls.documentation);
+
+    const classId = result.lastInsertRowid;
+
+    const insertExtends = this.#db.prepare(`INSERT OR REPLACE INTO extends (class_id, base_class) VALUES (?, ?)`);
+    for (const baseClass of cls.baseClasses) {
+      insertExtends.run(classId, baseClass);
+    }
+
     const insertComponent = this.#db.prepare(
-      `INSERT INTO components (class_id, component_name, type_name, description, causality, variability)
+      `INSERT OR REPLACE INTO components (class_id, component_name, type_name, description, causality, variability)
        VALUES (?, ?, ?, ?, ?, ?)`,
     );
     const insertModifier = this.#db.prepare(
-      `INSERT INTO modifiers (component_id, modifier_name, modifier_value) VALUES (?, ?, ?)`,
+      `INSERT OR REPLACE INTO modifiers (component_id, modifier_name, modifier_value) VALUES (?, ?, ?)`,
     );
 
+    for (const comp of cls.components) {
+      const compResult = insertComponent.run(
+        classId,
+        comp.name,
+        comp.typeName,
+        comp.description,
+        comp.causality,
+        comp.variability,
+      );
+      const componentId = compResult.lastInsertRowid;
+
+      for (const mod of comp.modifiers) {
+        insertModifier.run(componentId, mod.name, mod.value);
+      }
+    }
+  }
+
+  /**
+   * Store all metadata for a library version inside a transaction.
+   * WARNING: This clears all existing metadata for the version first.
+   */
+  storeLibraryMetadata(libraryName: string, libraryVersion: string, classes: ClassMetadata[]): void {
     const transaction = this.#db.transaction(() => {
-      deleteClasses.run(libraryName, libraryVersion);
-
+      this.clearLibraryMetadata(libraryName, libraryVersion);
       for (const cls of classes) {
-        const result = insertClass.run(
-          libraryName,
-          libraryVersion,
-          cls.className,
-          cls.classKind,
-          cls.description,
-          cls.documentation,
-        );
-        const classId = result.lastInsertRowid;
+        this.storeClassMetadata(libraryName, libraryVersion, cls);
+      }
+    });
 
-        for (const baseClass of cls.baseClasses) {
-          insertExtends.run(classId, baseClass);
-        }
+    transaction();
+  }
 
-        for (const comp of cls.components) {
-          const compResult = insertComponent.run(
-            classId,
-            comp.name,
-            comp.typeName,
-            comp.description,
-            comp.causality,
-            comp.variability,
-          );
-          const componentId = compResult.lastInsertRowid;
-
-          for (const mod of comp.modifiers) {
-            insertModifier.run(componentId, mod.name, mod.value);
-          }
-        }
+  /**
+   * Store a batch of class metadata without clearing existing data.
+   * Use this for incremental batch inserts during library processing.
+   */
+  storeClassBatch(libraryName: string, libraryVersion: string, classes: ClassMetadata[]): void {
+    const transaction = this.#db.transaction(() => {
+      for (const cls of classes) {
+        this.storeClassMetadata(libraryName, libraryVersion, cls);
       }
     });
 

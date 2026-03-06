@@ -12,6 +12,7 @@ import { Lint } from "./commands/lint.js";
 import { Parse } from "./commands/parse.js";
 import { Publish } from "./commands/publish.js";
 import { Render } from "./commands/render.js";
+import { Unpublish } from "./commands/unpublish.js";
 
 const packagePath = path.dirname(import.meta.dirname);
 const pkg = await PackageJson.load(packagePath);
@@ -26,6 +27,7 @@ yargs(process.argv.slice(2))
   .command(Parse)
   .command(Publish)
   .command(Render)
+  .command(Unpublish)
   .strictCommands()
   .demandCommand()
   .help()
