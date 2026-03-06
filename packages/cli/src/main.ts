@@ -10,6 +10,7 @@ import { I18n } from "./commands/i18n.js";
 import { Instantiate } from "./commands/instantiate.js";
 import { Lint } from "./commands/lint.js";
 import { Parse } from "./commands/parse.js";
+import { Publish } from "./commands/publish.js";
 import { Render } from "./commands/render.js";
 
 const packagePath = path.dirname(import.meta.dirname);
@@ -23,6 +24,7 @@ yargs(process.argv.slice(2))
   .command(Instantiate)
   .command(Lint)
   .command(Parse)
+  .command(Publish)
   .command(Render)
   .strictCommands()
   .demandCommand()
