@@ -3,6 +3,7 @@ node_modules/
 coverage/
 ctrf/
 *.wasm
+*.db*
 
 # Nx caching
 .nx/
