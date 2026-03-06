@@ -4,6 +4,7 @@ coverage/
 ctrf/
 *.wasm
 *.db*
+packages/api/data/
 
 # Nx caching
 .nx/
