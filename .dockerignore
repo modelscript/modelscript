@@ -1,0 +1,21 @@
+.git
+.github
+.husky
+.nx
+.prettierignore
+.prettierrc.json
+.editorconfig
+*.db*
+
+# Build artifacts (rebuilt inside container)
+node_modules
+dist
+build
+coverage
+ctrf
+
+# Package-specific
+packages/morsel/.react-router
+packages/morsel/build
+packages/api/data
+packages/web/dist

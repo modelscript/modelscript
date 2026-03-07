@@ -1,22 +1,33 @@
-FROM node:20-alpine AS development-dependencies-env
-COPY . /app
+# ---- Dependencies ----
+FROM node:22-alpine AS deps
+RUN apk add --no-cache python3 make g++
 WORKDIR /app
+COPY package.json package-lock.json ./
+COPY packages/core/package.json packages/core/
+COPY packages/tree-sitter-modelica/package.json packages/tree-sitter-modelica/grammar.js packages/tree-sitter-modelica/binding.gyp packages/tree-sitter-modelica/
+COPY packages/tree-sitter-modelica/bindings packages/tree-sitter-modelica/bindings
+COPY packages/morsel/package.json packages/morsel/
+# Stub out other workspace packages so npm ci doesn't fail
+COPY packages/api/package.json packages/api/
+COPY packages/web/package.json packages/web/
+COPY packages/cli/package.json packages/cli/
 RUN npm ci
 
-FROM node:20-alpine AS production-dependencies-env
-COPY ./package.json package-lock.json /app/
-WORKDIR /app
-RUN npm ci --omit=dev
+# ---- Build ----
+FROM deps AS build
+COPY packages/core packages/core
+COPY packages/tree-sitter-modelica packages/tree-sitter-modelica
+COPY packages/morsel packages/morsel
+RUN npm run build -w packages/core && npm run build -w packages/morsel
 
-FROM node:20-alpine AS build-env
-COPY . /app/
-COPY --from=development-dependencies-env /app/node_modules /app/node_modules
+# ---- Production ----
+FROM node:22-alpine
 WORKDIR /app
-RUN npm run build
+COPY --from=build /app/packages/morsel/build packages/morsel/build
+COPY --from=build /app/packages/morsel/package.json packages/morsel/
+COPY --from=build /app/package.json /app/package-lock.json ./
+RUN npm install --omit=dev -w packages/morsel --ignore-scripts
 
-FROM node:20-alpine
-COPY ./package.json package-lock.json /app/
-COPY --from=production-dependencies-env /app/node_modules /app/node_modules
-COPY --from=build-env /app/build /app/build
-WORKDIR /app
-CMD ["npm", "run", "start"]
+EXPOSE 3000
+ENV NODE_ENV=production
+CMD ["npx", "react-router-serve", "./packages/morsel/build/server/index.js"]
