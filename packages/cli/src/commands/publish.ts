@@ -4,6 +4,7 @@ import AdmZip from "adm-zip";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import type { CommandModule } from "yargs";
+import { requireToken } from "../util/auth.js";
 import { parsePackageMo } from "../util/package-mo.js";
 
 interface PublishArgs {
@@ -76,6 +77,7 @@ export const Publish: CommandModule<{}, PublishArgs> = {
 
     console.log(`Publishing ${name}@${version}...`);
 
+    const token = requireToken();
     const zipBuffer = zip.toBuffer();
 
     // Create FormData manually since Node 18+ has a global Request/Response/FormData
@@ -94,6 +96,7 @@ export const Publish: CommandModule<{}, PublishArgs> = {
       const res = await fetch(endpoint, {
         method: "POST",
         body: formData,
+        headers: { Authorization: `Bearer ${token}` },
       });
 
       if (!res.ok) {

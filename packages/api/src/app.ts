@@ -4,6 +4,7 @@ import express from "express";
 
 import { LibraryDatabase } from "./database.js";
 import { JobQueue } from "./jobs.js";
+import { authRouter } from "./routes/auth.js";
 import { graphqlRouter } from "./routes/graphql.js";
 import { packagesRouter } from "./routes/packages.js";
 import { publishRouter } from "./routes/publish.js";
@@ -19,6 +20,9 @@ export function createApp(storage?: LibraryStorage): express.Express {
   const database = new LibraryDatabase();
 
   app.use(express.json());
+
+  // Auth routes
+  app.use("/api/v1/auth", authRouter(database));
 
   // Mount the library routers
   app.use("/api/v1/libraries", packagesRouter(libraryStorage, jobQueue, database));

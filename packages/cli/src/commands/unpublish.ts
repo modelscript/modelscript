@@ -3,6 +3,7 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import type { CommandModule } from "yargs";
+import { requireToken } from "../util/auth.js";
 import { parsePackageMo } from "../util/package-mo.js";
 
 interface UnpublishArgs {
@@ -95,11 +96,16 @@ export const Unpublish: CommandModule<{}, UnpublishArgs> = {
 
     console.log(`Unpublishing ${name}@${version}...`);
 
+    const token = requireToken();
+
     try {
       const API_URL = process.env.MODELSCRIPT_API_URL || "http://localhost:3000";
       const endpoint = `${API_URL}/api/v1/libraries/${name}/${version}`;
 
-      const res = await fetch(endpoint, { method: "DELETE" });
+      const res = await fetch(endpoint, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
       if (!res.ok) {
         let errMessage = res.statusText;

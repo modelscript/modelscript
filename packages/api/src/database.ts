@@ -121,8 +121,45 @@ export class LibraryDatabase {
       CREATE INDEX IF NOT EXISTS idx_extends_class ON extends(class_id);
       CREATE INDEX IF NOT EXISTS idx_components_class ON components(class_id);
       CREATE INDEX IF NOT EXISTS idx_modifiers_component ON modifiers(component_id);
+
+      CREATE TABLE IF NOT EXISTS users (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        username      TEXT NOT NULL UNIQUE,
+        email         TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        created_at    TEXT DEFAULT (datetime('now'))
+      );
     `);
   }
+
+  // ── User management ─────────────────────────────────────────────
+
+  createUser(username: string, email: string, passwordHash: string): { id: number; username: string; email: string } {
+    const result = this.#db
+      .prepare(`INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)`)
+      .run(username, email, passwordHash);
+    return { id: Number(result.lastInsertRowid), username, email };
+  }
+
+  getUserByEmail(email: string): { id: number; username: string; email: string; password_hash: string } | undefined {
+    return this.#db.prepare(`SELECT id, username, email, password_hash FROM users WHERE email = ?`).get(email) as
+      | { id: number; username: string; email: string; password_hash: string }
+      | undefined;
+  }
+
+  getUserByUsername(username: string): { id: number; username: string; email: string } | undefined {
+    return this.#db.prepare(`SELECT id, username, email FROM users WHERE username = ?`).get(username) as
+      | { id: number; username: string; email: string }
+      | undefined;
+  }
+
+  getUserById(id: number): { id: number; username: string; email: string } | undefined {
+    return this.#db.prepare(`SELECT id, username, email FROM users WHERE id = ?`).get(id) as
+      | { id: number; username: string; email: string }
+      | undefined;
+  }
+
+  // ── Library metadata ────────────────────────────────────────────
 
   /**
    * Clear all metadata for a library version.

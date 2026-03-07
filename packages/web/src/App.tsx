@@ -1,14 +1,17 @@
-import { MoonIcon, SearchIcon, SunIcon } from "@primer/octicons-react";
+import { MoonIcon, PersonIcon, SearchIcon, SignOutIcon, SunIcon } from "@primer/octicons-react";
 import { BaseStyles, Header, Text, ThemeProvider } from "@primer/react";
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { BrowserRouter, Link, Route, Routes, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import styled from "styled-components";
+import { AuthProvider, useAuth } from "./AuthContext";
 import Box from "./components/Box";
 import ClassDetailPage from "./pages/ClassDetailPage";
 import LandingPage from "./pages/LandingPage";
 import LibraryDetailPage from "./pages/LibraryDetailPage";
 import LibraryListPage from "./pages/LibraryListPage";
 import LibraryVersionPage from "./pages/LibraryVersionPage";
+import LoginPage from "./pages/LoginPage";
+import SignupPage from "./pages/SignupPage";
 import { ThemeContextProvider, useTheme } from "./theme";
 
 const HeaderInner = styled.div`
@@ -80,12 +83,97 @@ const ThemeToggle = styled.button`
   }
 `;
 
+const UserMenuWrapper = styled.div`
+  position: relative;
+`;
+
+const AvatarButton = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 2px solid var(--color-accent, #6366f1);
+  background: var(--color-accent, #6366f1);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-transform: uppercase;
+
+  &:hover {
+    opacity: 0.9;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.3);
+  }
+`;
+
+const Dropdown = styled.div`
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 200px;
+  background: var(--color-bg-secondary, var(--color-glass-bg));
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+  z-index: 200;
+`;
+
+const DropdownHeader = styled.div`
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border);
+`;
+
+const DropdownItem = styled.button`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 16px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: 14px;
+  cursor: pointer;
+  text-align: left;
+
+  &:hover {
+    background: var(--color-glass-bg-hover, rgba(255, 255, 255, 0.05));
+  }
+`;
+
+const SignInLink = styled(Link)`
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 6px;
+  background: var(--color-accent, #6366f1);
+  color: #fff !important;
+  text-decoration: none !important;
+  font-size: 13px;
+  font-weight: 600;
+  transition: opacity 0.2s;
+
+  &:hover {
+    opacity: 0.9;
+    color: #fff !important;
+    text-decoration: none !important;
+  }
+`;
+
 const GlobalHeader: React.FC = () => {
   const [searchParams] = useSearchParams();
   const [query, setQuery] = useState(searchParams.get("q") || "");
   const navigate = useNavigate();
   const location = useLocation();
   const { theme, toggleTheme } = useTheme();
+  const { user, isAuthenticated, logout } = useAuth();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   // Keep input in sync with URL when on /libraries (URL is source of truth there)
   const urlQuery = searchParams.get("q") || "";
@@ -115,6 +203,18 @@ const GlobalHeader: React.FC = () => {
     }
   };
 
+  // Close dropdown on outside click
+  React.useEffect(() => {
+    if (!menuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [menuOpen]);
+
   return (
     <Header
       style={{
@@ -124,6 +224,7 @@ const GlobalHeader: React.FC = () => {
         zIndex: 100,
         padding: "12px 0",
         transition: "background-color 0.3s ease",
+        overflow: "visible",
       }}
     >
       <HeaderInner>
@@ -160,6 +261,40 @@ const GlobalHeader: React.FC = () => {
             {theme === "dark" ? <SunIcon size={16} /> : <MoonIcon size={16} />}
           </ThemeToggle>
         </Header.Item>
+        <Header.Item>
+          {isAuthenticated && user ? (
+            <UserMenuWrapper ref={menuRef}>
+              <AvatarButton onClick={() => setMenuOpen(!menuOpen)} aria-label="User menu" title={user.username}>
+                {user.username.charAt(0)}
+              </AvatarButton>
+              {menuOpen && (
+                <Dropdown>
+                  <DropdownHeader>
+                    <Text style={{ fontWeight: 600, color: "var(--color-text-heading)", fontSize: 14 }}>
+                      {user.username}
+                    </Text>
+                    <br />
+                    <Text style={{ color: "var(--color-text-muted)", fontSize: 12 }}>{user.email}</Text>
+                  </DropdownHeader>
+                  <DropdownItem
+                    onClick={() => {
+                      logout();
+                      setMenuOpen(false);
+                    }}
+                  >
+                    <SignOutIcon size={16} />
+                    Sign out
+                  </DropdownItem>
+                </Dropdown>
+              )}
+            </UserMenuWrapper>
+          ) : (
+            <SignInLink to="/login">
+              <PersonIcon size={16} />
+              Sign in
+            </SignInLink>
+          )}
+        </Header.Item>
       </HeaderInner>
     </Header>
   );
@@ -192,6 +327,8 @@ function App() {
               <Routes>
                 <Route path="/" element={<LandingPage />} />
                 <Route path="/libraries" element={<LibraryListPage />} />
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/signup" element={<SignupPage />} />
                 <Route path="/:name" element={<LibraryVersionPage />} />
                 <Route path="/:name/:version" element={<LibraryDetailPage />} />
                 <Route path="/:name/:version/classes/:className" element={<ClassDetailPage />} />
@@ -242,7 +379,9 @@ function App() {
 function AppWithTheme() {
   return (
     <ThemeContextProvider>
-      <App />
+      <AuthProvider>
+        <App />
+      </AuthProvider>
     </ThemeContextProvider>
   );
 }
