@@ -1,6 +1,6 @@
 import { MoonIcon, SearchIcon, SunIcon } from "@primer/octicons-react";
 import { BaseStyles, Header, Text, ThemeProvider } from "@primer/react";
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { BrowserRouter, Link, Route, Routes, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import styled from "styled-components";
 import Box from "./components/Box";
@@ -87,10 +87,9 @@ const GlobalHeader: React.FC = () => {
   const location = useLocation();
   const { theme, toggleTheme } = useTheme();
 
-  // Sync input with URL q param when it changes externally
-  useEffect(() => {
-    setQuery(searchParams.get("q") || "");
-  }, [searchParams]);
+  // Keep input in sync with URL when on /libraries (URL is source of truth there)
+  const urlQuery = searchParams.get("q") || "";
+  const displayQuery = location.pathname === "/libraries" ? urlQuery : query;
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -140,7 +139,7 @@ const GlobalHeader: React.FC = () => {
         <Header.Item full>
           <form onSubmit={handleSearch} style={{ width: "100%", maxWidth: "480px" }}>
             <SearchWrapper>
-              <input type="text" placeholder="Search libraries…" value={query} onChange={handleChange} />
+              <input type="text" placeholder="Search libraries…" value={displayQuery} onChange={handleChange} />
               <span className="search-icon">
                 <SearchIcon size={16} />
               </span>

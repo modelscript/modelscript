@@ -7,7 +7,8 @@ import type { ClassDetail, ClassSummary, JobStatus } from "../api";
 import { getClassDetail, getClasses, getDiagramUrl, getIconUrl, getJobStatus, rewriteModelicaUris } from "../api";
 import Box from "../components/Box";
 import Breadcrumbs from "../components/Breadcrumbs";
-import { buildClassTree, ClassTreeNode } from "../components/ClassTree";
+import { ClassTreeNode } from "../components/ClassTree";
+import { buildClassTree } from "../components/classTreeUtils";
 
 /* ─── styled helpers ─── */
 
