@@ -67,6 +67,91 @@ export class ModelicaDAE {
     }
     return triples;
   }
+
+  /**
+   * Identify the continuous state variables (Real variables without a variability
+   * qualifier such as constant/parameter/discrete).
+   */
+  get stateVariables(): ModelicaRealVariable[] {
+    return this.variables.filter(
+      (v): v is ModelicaRealVariable => v instanceof ModelicaRealVariable && v.variability === null,
+    );
+  }
+
+  /**
+   * Identify derivative variables — those whose names match `der(...)`.
+   */
+  get derivativeVariables(): ModelicaRealVariable[] {
+    return this.variables.filter(
+      (v): v is ModelicaRealVariable => v instanceof ModelicaRealVariable && v.name.startsWith("der("),
+    );
+  }
+
+  /**
+   * Compute the derivatives of the DAE system at a given time for the given
+   * state variable values.
+   *
+   * @param time        The current simulation time.
+   * @param stateValues A `Map` from state variable name to its current numeric value.
+   * @returns           A `Map` from state variable name to its time derivative (`der(name)`).
+   *
+   * The method works by building a value environment from the supplied states
+   * and any parameter/constant bindings, then evaluating every equation in the
+   * DAE.  For equations of the form `der(x) = expr`, the right-hand side is
+   * evaluated to produce the derivative.  More complex implicit equations
+   * (F(x, der(x)) = 0) are not yet supported and will be skipped.
+   */
+  computeDerivatives(time: number, stateValues: Map<string, number>): Map<string, number> {
+    // Build the value environment
+    const env = new Map<string, number>();
+    env.set("time", time);
+
+    // Populate state values
+    for (const [name, value] of stateValues) {
+      env.set(name, value);
+    }
+
+    // Populate parameters and constants from their binding expressions
+    for (const variable of this.variables) {
+      if (
+        variable.variability === ModelicaVariability.PARAMETER ||
+        variable.variability === ModelicaVariability.CONSTANT
+      ) {
+        if (variable.expression) {
+          const value = evaluateExpression(variable.expression, env);
+          if (value !== null) env.set(variable.name, value);
+        }
+      }
+    }
+
+    // Evaluate equations to extract derivative values.
+    // For each equation of the form:  lhs = rhs
+    //   - If lhs is der(x), compute rhs
+    //   - If rhs is der(x), compute lhs
+    const derivatives = new Map<string, number>();
+
+    for (const equation of this.equations) {
+      if (!(equation instanceof ModelicaSimpleEquation)) continue;
+      const lhsDer = extractDerName(equation.expression1);
+      const rhsDer = extractDerName(equation.expression2);
+
+      if (lhsDer) {
+        const value = evaluateExpression(equation.expression2, env);
+        if (value !== null) {
+          derivatives.set(lhsDer, value);
+          env.set(`der(${lhsDer})`, value);
+        }
+      } else if (rhsDer) {
+        const value = evaluateExpression(equation.expression1, env);
+        if (value !== null) {
+          derivatives.set(rhsDer, value);
+          env.set(`der(${rhsDer})`, value);
+        }
+      }
+    }
+
+    return derivatives;
+  }
 }
 
 export abstract class ModelicaEquation {
@@ -1132,6 +1217,83 @@ export class ModelicaEnumerationVariable extends ModelicaVariable {
     }
     return triples;
   }
+}
+
+// ── Helper functions for computeDerivatives ───────────────────────────
+
+/**
+ * If the expression is a variable reference whose name matches `der(...)`,
+ * return the inner variable name.  Otherwise return `null`.
+ */
+function extractDerName(expression: ModelicaExpression): string | null {
+  if (
+    expression instanceof ModelicaRealVariable &&
+    expression.name.startsWith("der(") &&
+    expression.name.endsWith(")")
+  ) {
+    return expression.name.slice(4, -1);
+  }
+  return null;
+}
+
+/**
+ * Recursively evaluate a `ModelicaExpression` to a numeric value using
+ * the supplied variable environment.  Returns `null` when the expression
+ * cannot be evaluated (e.g. unknown variable, unsupported node type).
+ */
+function evaluateExpression(expression: ModelicaExpression, env: Map<string, number>): number | null {
+  if (expression instanceof ModelicaRealLiteral) {
+    return expression.value;
+  }
+  if (expression instanceof ModelicaIntegerLiteral) {
+    return expression.value;
+  }
+  if (expression instanceof ModelicaBooleanLiteral) {
+    return expression.value ? 1 : 0;
+  }
+  if (expression instanceof ModelicaRealVariable || expression instanceof ModelicaIntegerVariable) {
+    const value = env.get(expression.name);
+    return value !== undefined ? value : null;
+  }
+  if (expression instanceof ModelicaUnaryExpression) {
+    const operand = evaluateExpression(expression.operand, env);
+    if (operand === null) return null;
+    switch (expression.operator) {
+      case ModelicaUnaryOperator.UNARY_MINUS:
+      case ModelicaUnaryOperator.ELEMENTWISE_UNARY_MINUS:
+        return -operand;
+      case ModelicaUnaryOperator.UNARY_PLUS:
+      case ModelicaUnaryOperator.ELEMENTWISE_UNARY_PLUS:
+        return operand;
+      default:
+        return null;
+    }
+  }
+  if (expression instanceof ModelicaBinaryExpression) {
+    const left = evaluateExpression(expression.operand1, env);
+    const right = evaluateExpression(expression.operand2, env);
+    if (left === null || right === null) return null;
+    switch (expression.operator) {
+      case ModelicaBinaryOperator.ADDITION:
+      case ModelicaBinaryOperator.ELEMENTWISE_ADDITION:
+        return left + right;
+      case ModelicaBinaryOperator.SUBTRACTION:
+      case ModelicaBinaryOperator.ELEMENTWISE_SUBTRACTION:
+        return left - right;
+      case ModelicaBinaryOperator.MULTIPLICATION:
+      case ModelicaBinaryOperator.ELEMENTWISE_MULTIPLICATION:
+        return left * right;
+      case ModelicaBinaryOperator.DIVISION:
+      case ModelicaBinaryOperator.ELEMENTWISE_DIVISION:
+        return right !== 0 ? left / right : null;
+      case ModelicaBinaryOperator.EXPONENTIATION:
+      case ModelicaBinaryOperator.ELEMENTWISE_EXPONENTIATION:
+        return left ** right;
+      default:
+        return null;
+    }
+  }
+  return null;
 }
 
 export interface IModelicaDAEVisitor<R, A> {
