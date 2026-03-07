@@ -17,11 +17,14 @@ const fadeIn = keyframes`
 `;
 
 const PageWrap = styled.div`
-  background-color: #0d1117;
-  color: #c9d1d9;
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
   min-height: 100%;
   display: flex;
   flex-direction: column;
+  transition:
+    background-color 0.3s ease,
+    color 0.3s ease;
 `;
 
 const ContentGrid = styled.div`
@@ -46,13 +49,13 @@ const HeaderBar = styled.div`
   margin: 0 auto;
   padding: 32px 40px 40px;
   box-sizing: border-box;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid var(--color-border);
 `;
 
 const glassCard = css`
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--color-glass-bg);
   backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--color-glass-border);
   border-radius: 8px;
 `;
 
@@ -70,30 +73,30 @@ const DocCard = styled.div`
   h2,
   h3,
   h4 {
-    color: #e6edf3;
+    color: var(--color-text-heading);
     margin-top: 24px;
     margin-bottom: 12px;
   }
   p {
     line-height: 1.7;
-    color: #c9d1d9;
+    color: var(--color-text-primary);
     margin-bottom: 16px;
   }
   a {
-    color: #58a6ff;
+    color: var(--color-link);
     text-decoration: none;
   }
   a:hover {
     text-decoration: underline;
   }
   code {
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--color-code-bg);
     padding: 2px 6px;
     border-radius: 4px;
     font-size: 0.9em;
   }
   pre {
-    background: rgba(0, 0, 0, 0.4);
+    background: var(--color-pre-bg);
     padding: 16px;
     border-radius: 6px;
     overflow-x: auto;
@@ -109,13 +112,13 @@ const DocCard = styled.div`
   }
   th,
   td {
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--color-table-border);
     padding: 8px 12px;
     text-align: left;
   }
   th {
-    background: rgba(255, 255, 255, 0.04);
-    color: #e6edf3;
+    background: var(--color-table-header-bg);
+    color: var(--color-text-heading);
   }
   img {
     max-width: 100%;
@@ -127,7 +130,7 @@ const DetailRow = styled.div`
   justify-content: space-between;
   align-items: flex-start;
   padding: 10px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid var(--color-border);
   &:last-child {
     border-bottom: none;
   }
@@ -135,13 +138,13 @@ const DetailRow = styled.div`
 
 const DetailLabel = styled.span`
   font-size: 13px;
-  color: #8b949e;
+  color: var(--color-text-muted);
   text-transform: capitalize;
 `;
 
 const DetailValue = styled.span`
   font-size: 13px;
-  color: #e6edf3;
+  color: var(--color-text-heading);
   font-weight: 500;
   text-align: right;
   max-width: 60%;
@@ -160,7 +163,7 @@ const DiagramWrap = styled.div`
 
   img {
     max-width: 100%;
-    filter: invert(1) hue-rotate(180deg);
+    filter: var(--diagram-filter);
   }
 `;
 
@@ -168,7 +171,7 @@ const SectionTitle = styled(Heading)`
   font-size: 12px !important;
   text-transform: uppercase;
   letter-spacing: 1px;
-  color: #8b949e !important;
+  color: var(--color-text-muted) !important;
   margin-bottom: 12px !important;
   font-weight: 600 !important;
 `;
@@ -265,11 +268,11 @@ const ClassDetailPage: React.FC = () => {
             textAlign: "center",
           }}
         >
-          <AlertIcon size={48} fill="#f85149" />
-          <Heading as="h2" style={{ color: "#e6edf3", fontSize: 22, margin: 0 }}>
+          <AlertIcon size={48} fill="var(--color-error)" />
+          <Heading as="h2" style={{ color: "var(--color-text-heading)", fontSize: 22, margin: 0 }}>
             {error || "Class not found"}
           </Heading>
-          <Text as="p" style={{ color: "#8b949e", fontSize: 15, margin: 0, maxWidth: 400 }}>
+          <Text as="p" style={{ color: "var(--color-text-muted)", fontSize: 15, margin: 0, maxWidth: 400 }}>
             The class may not exist, is still being processed, or the server is unavailable.
           </Text>
         </Box>
@@ -305,8 +308,8 @@ const ClassDetailPage: React.FC = () => {
               width: 48,
               height: 48,
               borderRadius: 8,
-              background: "linear-gradient(135deg, rgba(164,133,255,0.2), rgba(0,210,255,0.2))",
-              border: "1px solid rgba(255,255,255,0.1)",
+              background: "var(--gradient-icon-box)",
+              border: "1px solid var(--color-border-strong)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -317,7 +320,7 @@ const ClassDetailPage: React.FC = () => {
             <img
               src={`${getIconUrl(name!, version!, className!)}?t=${retryCount}`}
               alt=""
-              style={{ width: 36, height: 36, filter: "invert(1) hue-rotate(180deg)" }}
+              style={{ width: 36, height: 36, filter: "var(--diagram-filter)" }}
               onError={(e) => {
                 (e.target as HTMLImageElement).style.display = "none";
               }}
@@ -325,7 +328,7 @@ const ClassDetailPage: React.FC = () => {
           </Box>
           <Box>
             <Box display="flex" alignItems="center" gap="8px">
-              <Heading as="h1" style={{ color: "#e6edf3", fontWeight: 700, fontSize: 28, margin: 0 }}>
+              <Heading as="h1" style={{ color: "var(--color-text-heading)", fontWeight: 700, fontSize: 28, margin: 0 }}>
                 {className}
               </Heading>
               <Label
@@ -333,9 +336,9 @@ const ClassDetailPage: React.FC = () => {
                 style={{
                   fontSize: 14,
                   padding: "2px 10px",
-                  background: "rgba(88,166,255,0.15)",
-                  color: "#58a6ff",
-                  border: "1px solid rgba(88,166,255,0.3)",
+                  background: "var(--color-accent-blue-bg)",
+                  color: "var(--color-accent-blue)",
+                  border: "1px solid var(--color-accent-blue-border)",
                 }}
               >
                 {cls.classKind}
@@ -345,7 +348,7 @@ const ClassDetailPage: React.FC = () => {
               )}
             </Box>
             {cls.description && (
-              <Text as="p" style={{ color: "#8b949e", fontSize: 15, margin: "4px 0 0" }}>
+              <Text as="p" style={{ color: "var(--color-text-muted)", fontSize: 15, margin: "4px 0 0" }}>
                 {cls.description}
               </Text>
             )}
@@ -400,11 +403,11 @@ const ClassDetailPage: React.FC = () => {
             {cls.documentation ? (
               <div dangerouslySetInnerHTML={{ __html: rewriteModelicaUris(cls.documentation, version!) }} />
             ) : cls.description ? (
-              <Text as="p" style={{ color: "#c9d1d9", lineHeight: 1.7, margin: 0 }}>
+              <Text as="p" style={{ color: "var(--color-text-primary)", lineHeight: 1.7, margin: 0 }}>
                 {cls.description}
               </Text>
             ) : (
-              <Text as="p" style={{ color: "#8b949e", fontStyle: "italic", margin: 0 }}>
+              <Text as="p" style={{ color: "var(--color-text-muted)", fontStyle: "italic", margin: 0 }}>
                 No documentation available for this class.
               </Text>
             )}
@@ -482,22 +485,22 @@ const ClassDetailPage: React.FC = () => {
               <GlassCard style={{ padding: "8px", maxHeight: "calc(100vh - 400px)", overflowY: "auto" }}>
                 <NavList>
                   {cls.components.map((comp) => (
-                    <NavList.Item key={comp.component_name} style={{ color: "#c9d1d9" }}>
+                    <NavList.Item key={comp.component_name} style={{ color: "var(--color-text-primary)" }}>
                       <NavList.LeadingVisual>
                         <img
                           src={getIconUrl(name!, version!, comp.type_name)}
                           alt=""
-                          style={{ width: 32, height: 32, filter: "invert(1) hue-rotate(180deg)" }}
+                          style={{ width: 32, height: 32, filter: "var(--diagram-filter)" }}
                           onError={(e) => {
                             const img = e.target as HTMLImageElement;
                             img.style.display = "none";
                             const fallback = document.createElement("span");
-                            fallback.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="32" height="32" fill="#8b949e"><path d="M8.878.392a1.75 1.75 0 0 0-1.756 0l-5.25 3.045A1.75 1.75 0 0 0 1 4.951v6.098c0 .624.332 1.2.872 1.514l5.25 3.045a1.75 1.75 0 0 0 1.756 0l5.25-3.045c.54-.313.872-.89.872-1.514V4.951c0-.624-.332-1.2-.872-1.514ZM7.875 1.69a.25.25 0 0 1 .25 0l4.63 2.685L8 7.133 3.245 4.375ZM2.5 5.677l5 2.9v5.765l-4.63-2.685a.25.25 0 0 1-.124-.216L2.5 5.677Zm6.5 8.665V8.578l5-2.9v5.764a.25.25 0 0 1-.124.216L8.5 14.342Z"></path></svg>`;
+                            fallback.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="32" height="32" fill="var(--color-text-muted)"><path d="M8.878.392a1.75 1.75 0 0 0-1.756 0l-5.25 3.045A1.75 1.75 0 0 0 1 4.951v6.098c0 .624.332 1.2.872 1.514l5.25 3.045a1.75 1.75 0 0 0 1.756 0l5.25-3.045c.54-.313.872-.89.872-1.514V4.951c0-.624-.332-1.2-.872-1.514ZM7.875 1.69a.25.25 0 0 1 .25 0l4.63 2.685L8 7.133 3.245 4.375ZM2.5 5.677l5 2.9v5.765l-4.63-2.685a.25.25 0 0 1-.124-.216L2.5 5.677Zm6.5 8.665V8.578l5-2.9v5.764a.25.25 0 0 1-.124.216L8.5 14.342Z"></path></svg>`;
                             img.parentNode?.appendChild(fallback);
                           }}
                         />
                       </NavList.LeadingVisual>
-                      <Box fontWeight="bold" style={{ color: "#e6edf3" }}>
+                      <Box fontWeight="bold" style={{ color: "var(--color-text-heading)" }}>
                         {comp.component_name}
                       </Box>
                       <Box fontSize="12px" opacity={0.6}>

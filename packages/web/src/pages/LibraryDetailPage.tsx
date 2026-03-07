@@ -24,11 +24,14 @@ const fadeIn = keyframes`
 `;
 
 const PageWrap = styled.div`
-  background-color: #0d1117;
-  color: #c9d1d9;
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
   min-height: 100%;
   display: flex;
   flex-direction: column;
+  transition:
+    background-color 0.3s ease,
+    color 0.3s ease;
 `;
 
 const ContentGrid = styled.div`
@@ -53,13 +56,13 @@ const HeaderBar = styled.div`
   margin: 0 auto;
   padding: 32px 40px 40px;
   box-sizing: border-box;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid var(--color-border);
 `;
 
 const glassCard = css`
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--color-glass-bg);
   backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--color-glass-border);
   border-radius: 8px;
 `;
 
@@ -77,30 +80,30 @@ const DocCard = styled.div`
   h2,
   h3,
   h4 {
-    color: #e6edf3;
+    color: var(--color-text-heading);
     margin-top: 24px;
     margin-bottom: 12px;
   }
   p {
     line-height: 1.7;
-    color: #c9d1d9;
+    color: var(--color-text-primary);
     margin-bottom: 16px;
   }
   a {
-    color: #58a6ff;
+    color: var(--color-link);
     text-decoration: none;
   }
   a:hover {
     text-decoration: underline;
   }
   code {
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--color-code-bg);
     padding: 2px 6px;
     border-radius: 4px;
     font-size: 0.9em;
   }
   pre {
-    background: rgba(0, 0, 0, 0.4);
+    background: var(--color-pre-bg);
     padding: 16px;
     border-radius: 6px;
     overflow-x: auto;
@@ -116,13 +119,13 @@ const DocCard = styled.div`
   }
   th,
   td {
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--color-table-border);
     padding: 8px 12px;
     text-align: left;
   }
   th {
-    background: rgba(255, 255, 255, 0.04);
-    color: #e6edf3;
+    background: var(--color-table-header-bg);
+    color: var(--color-text-heading);
   }
   img {
     max-width: 100%;
@@ -134,7 +137,7 @@ const DetailRow = styled.div`
   justify-content: space-between;
   align-items: flex-start;
   padding: 10px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid var(--color-border);
   &:last-child {
     border-bottom: none;
   }
@@ -142,13 +145,13 @@ const DetailRow = styled.div`
 
 const DetailLabel = styled.span`
   font-size: 13px;
-  color: #8b949e;
+  color: var(--color-text-muted);
   text-transform: capitalize;
 `;
 
 const DetailValue = styled.span`
   font-size: 13px;
-  color: #e6edf3;
+  color: var(--color-text-heading);
   font-weight: 500;
   text-align: right;
   max-width: 60%;
@@ -161,14 +164,14 @@ const TreeItem = styled(Link)<{ $depth: number }>`
   gap: 6px;
   padding: 5px 8px 5px ${(p) => 8 + p.$depth * 16}px;
   font-size: 13px;
-  color: #c9d1d9;
+  color: var(--color-text-primary);
   text-decoration: none;
   border-radius: 4px;
   cursor: pointer;
   transition: background 0.15s;
   &:hover {
-    background: rgba(255, 255, 255, 0.06);
-    color: #e6edf3;
+    background: var(--color-glass-bg-hover);
+    color: var(--color-text-heading);
   }
 `;
 
@@ -176,12 +179,12 @@ const TreeToggle = styled.button`
   background: none;
   border: none;
   cursor: pointer;
-  color: #8b949e;
+  color: var(--color-text-muted);
   padding: 0;
   display: flex;
   align-items: center;
   &:hover {
-    color: #c9d1d9;
+    color: var(--color-text-primary);
   }
 `;
 
@@ -197,7 +200,7 @@ const DiagramWrap = styled.div`
 
   img {
     max-width: 100%;
-    filter: invert(1) hue-rotate(180deg);
+    filter: var(--diagram-filter);
   }
 `;
 
@@ -205,7 +208,7 @@ const SectionTitle = styled(Heading)`
   font-size: 12px !important;
   text-transform: uppercase;
   letter-spacing: 1px;
-  color: #8b949e !important;
+  color: var(--color-text-muted) !important;
   margin-bottom: 12px !important;
   font-weight: 600 !important;
 `;
@@ -298,7 +301,7 @@ const ClassTreeNode: React.FC<{
         <img
           src={iconUrl}
           alt=""
-          style={{ width: 16, height: 16, flexShrink: 0, filter: "invert(1) hue-rotate(180deg)" }}
+          style={{ width: 16, height: 16, flexShrink: 0, filter: "var(--diagram-filter)" }}
           onError={(e) => {
             (e.target as HTMLImageElement).style.display = "none";
           }}
@@ -420,14 +423,14 @@ const LibraryDetailPage: React.FC = () => {
             textAlign: "center",
           }}
         >
-          <AlertIcon size={48} fill="#f85149" />
-          <Heading as="h2" style={{ color: "#e6edf3", fontSize: 22, margin: 0 }}>
+          <AlertIcon size={48} fill="var(--color-error)" />
+          <Heading as="h2" style={{ color: "var(--color-text-heading)", fontSize: 22, margin: 0 }}>
             Failed to load library details
           </Heading>
-          <Text as="p" style={{ color: "#8b949e", fontSize: 15, margin: 0, maxWidth: 400 }}>
+          <Text as="p" style={{ color: "var(--color-text-muted)", fontSize: 15, margin: 0, maxWidth: 400 }}>
             The library may not exist, is still being processed, or the server is unavailable.
           </Text>
-          <Link to="/libraries" style={{ color: "#58a6ff", fontSize: 14, textDecoration: "none" }}>
+          <Link to="/libraries" style={{ color: "var(--color-link)", fontSize: 14, textDecoration: "none" }}>
             ← Back to libraries
           </Link>
         </Box>
@@ -457,8 +460,8 @@ const LibraryDetailPage: React.FC = () => {
               width: 48,
               height: 48,
               borderRadius: 8,
-              background: "linear-gradient(135deg, rgba(164,133,255,0.2), rgba(0,210,255,0.2))",
-              border: "1px solid rgba(255,255,255,0.1)",
+              background: "var(--gradient-icon-box)",
+              border: "1px solid var(--color-border-strong)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -469,7 +472,7 @@ const LibraryDetailPage: React.FC = () => {
             <img
               src={getIconUrl(name!, version!, name!)}
               alt=""
-              style={{ width: 36, height: 36, filter: "invert(1) hue-rotate(180deg)" }}
+              style={{ width: 36, height: 36, filter: "var(--diagram-filter)" }}
               onError={(e) => {
                 (e.target as HTMLImageElement).style.display = "none";
                 // Show fallback icon
@@ -482,7 +485,7 @@ const LibraryDetailPage: React.FC = () => {
           </Box>
           <Box>
             <Box display="flex" alignItems="center" gap="8px">
-              <Heading as="h1" style={{ color: "#e6edf3", fontWeight: 700, fontSize: 28, margin: 0 }}>
+              <Heading as="h1" style={{ color: "var(--color-text-heading)", fontWeight: 700, fontSize: 28, margin: 0 }}>
                 {name}
               </Heading>
               <Label
@@ -490,9 +493,9 @@ const LibraryDetailPage: React.FC = () => {
                 style={{
                   fontSize: 14,
                   padding: "2px 10px",
-                  background: "rgba(88,166,255,0.15)",
-                  color: "#58a6ff",
-                  border: "1px solid rgba(88,166,255,0.3)",
+                  background: "var(--color-accent-blue-bg)",
+                  color: "var(--color-accent-blue)",
+                  border: "1px solid var(--color-accent-blue-border)",
                 }}
               >
                 {version}
@@ -502,7 +505,7 @@ const LibraryDetailPage: React.FC = () => {
               )}
             </Box>
             {libraryInfo?.description && (
-              <Text as="p" style={{ color: "#8b949e", fontSize: 15, margin: "4px 0 0" }}>
+              <Text as="p" style={{ color: "var(--color-text-muted)", fontSize: 15, margin: "4px 0 0" }}>
                 {libraryInfo.description}
               </Text>
             )}
@@ -553,11 +556,11 @@ const LibraryDetailPage: React.FC = () => {
             {rootClass?.documentation ? (
               <div dangerouslySetInnerHTML={{ __html: rewriteModelicaUris(rootClass.documentation, version!) }} />
             ) : rootClass?.description ? (
-              <Text as="p" style={{ color: "#c9d1d9", lineHeight: 1.7, margin: 0 }}>
+              <Text as="p" style={{ color: "var(--color-text-primary)", lineHeight: 1.7, margin: 0 }}>
                 {rootClass.description}
               </Text>
             ) : (
-              <Text as="p" style={{ color: "#8b949e", fontStyle: "italic", margin: 0 }}>
+              <Text as="p" style={{ color: "var(--color-text-muted)", fontStyle: "italic", margin: 0 }}>
                 No documentation available for this library.
               </Text>
             )}

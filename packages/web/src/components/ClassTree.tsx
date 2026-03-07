@@ -14,14 +14,14 @@ export const TreeItem = styled(Link)<{ $depth: number }>`
   gap: 6px;
   padding: 5px 8px 5px ${(p) => 8 + p.$depth * 16}px;
   font-size: 13px;
-  color: #c9d1d9;
+  color: var(--color-text-primary);
   text-decoration: none;
   border-radius: 4px;
   cursor: pointer;
   transition: background 0.15s;
   &:hover {
-    background: rgba(255, 255, 255, 0.06);
-    color: #e6edf3;
+    background: var(--color-glass-bg-hover);
+    color: var(--color-text-heading);
   }
 `;
 
@@ -29,12 +29,12 @@ export const TreeToggle = styled.button`
   background: none;
   border: none;
   cursor: pointer;
-  color: #8b949e;
+  color: var(--color-text-muted);
   padding: 0;
   display: flex;
   align-items: center;
   &:hover {
-    color: #c9d1d9;
+    color: var(--color-text-primary);
   }
 `;
 
@@ -107,7 +107,7 @@ export const ClassTreeNode: React.FC<{
       <TreeItem
         to={`/${libraryName}/${version}/classes/${node.fullName}`}
         $depth={depth}
-        style={isActive ? { background: "rgba(88,166,255,0.12)", color: "#58a6ff" } : undefined}
+        style={isActive ? { background: "var(--color-tree-active-bg)", color: "var(--color-link)" } : undefined}
         onClick={(e) => {
           if (hasChildren) {
             e.preventDefault();
@@ -131,7 +131,7 @@ export const ClassTreeNode: React.FC<{
         <img
           src={iconUrl}
           alt=""
-          style={{ width: 16, height: 16, flexShrink: 0, filter: "invert(1) hue-rotate(180deg)" }}
+          style={{ width: 16, height: 16, flexShrink: 0, filter: "var(--diagram-filter)" }}
           onError={(e) => {
             (e.target as HTMLImageElement).style.display = "none";
           }}

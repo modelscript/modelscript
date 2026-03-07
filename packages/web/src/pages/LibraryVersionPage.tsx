@@ -16,11 +16,14 @@ const fadeIn = keyframes`
 `;
 
 const PageWrap = styled.div`
-  background-color: #0d1117;
-  color: #c9d1d9;
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
   min-height: 100%;
   display: flex;
   flex-direction: column;
+  transition:
+    background-color 0.3s ease,
+    color 0.3s ease;
 `;
 
 const HeaderBar = styled.div`
@@ -29,7 +32,7 @@ const HeaderBar = styled.div`
   margin: 0 auto;
   padding: 32px 40px 40px;
   box-sizing: border-box;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid var(--color-border);
 `;
 
 const ContentArea = styled.div`
@@ -42,9 +45,9 @@ const ContentArea = styled.div`
 `;
 
 const glassCard = css`
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--color-glass-bg);
   backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--color-glass-border);
   border-radius: 8px;
 `;
 
@@ -52,7 +55,7 @@ const SectionTitle = styled(Heading)`
   font-size: 12px !important;
   text-transform: uppercase;
   letter-spacing: 1px;
-  color: #8b949e !important;
+  color: var(--color-text-muted) !important;
   margin-bottom: 12px !important;
   font-weight: 600 !important;
 `;
@@ -76,15 +79,15 @@ const VersionCard = styled(Link)`
   }
 
   &:hover {
-    border-color: rgba(88, 166, 255, 0.3);
-    background: rgba(255, 255, 255, 0.05);
+    border-color: var(--color-accent-blue-border);
+    background: var(--color-glass-bg-hover);
   }
 `;
 
 const VersionName = styled.span`
   font-size: 16px;
   font-weight: 600;
-  color: #58a6ff;
+  color: var(--color-link);
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -94,8 +97,8 @@ const IconBox = styled.div`
   width: 48px;
   height: 48px;
   border-radius: 8px;
-  background: linear-gradient(135deg, rgba(164, 133, 255, 0.2), rgba(0, 210, 255, 0.2));
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--gradient-icon-box);
+  border: 1px solid var(--color-border-strong);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -161,11 +164,11 @@ const LibraryVersionPage: React.FC = () => {
         </Box>
         <Box display="flex" alignItems="center" gap="16px">
           <IconBox>
-            <PackageIcon size={24} fill="#a485ff" />
+            <PackageIcon size={24} fill="var(--color-accent-purple)" />
           </IconBox>
           <Box>
             <Box display="flex" alignItems="center" gap="8px">
-              <Heading as="h1" style={{ color: "#e6edf3", fontWeight: 700, fontSize: 28, margin: 0 }}>
+              <Heading as="h1" style={{ color: "var(--color-text-heading)", fontWeight: 700, fontSize: 28, margin: 0 }}>
                 {name}
               </Heading>
               <Label
@@ -173,15 +176,15 @@ const LibraryVersionPage: React.FC = () => {
                 style={{
                   fontSize: 13,
                   padding: "2px 10px",
-                  background: "rgba(255,255,255,0.06)",
-                  color: "#8b949e",
-                  border: "1px solid rgba(255,255,255,0.1)",
+                  background: "var(--color-badge-bg)",
+                  color: "var(--color-text-muted)",
+                  border: "1px solid var(--color-border-strong)",
                 }}
               >
                 {library.versions.length} version{library.versions.length !== 1 ? "s" : ""}
               </Label>
             </Box>
-            <Text as="p" style={{ color: "#8b949e", fontSize: 15, margin: "4px 0 0" }}>
+            <Text as="p" style={{ color: "var(--color-text-muted)", fontSize: 15, margin: "4px 0 0" }}>
               Select a version to view documentation and details.
             </Text>
           </Box>
@@ -203,9 +206,9 @@ const LibraryVersionPage: React.FC = () => {
                 style={{
                   fontSize: 11,
                   padding: "2px 8px",
-                  background: "rgba(88,166,255,0.15)",
-                  color: "#58a6ff",
-                  border: "1px solid rgba(88,166,255,0.3)",
+                  background: "var(--color-accent-blue-bg)",
+                  color: "var(--color-accent-blue)",
+                  border: "1px solid var(--color-accent-blue-border)",
                 }}
               >
                 latest

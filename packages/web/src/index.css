@@ -1,7 +1,147 @@
+/* ─── Dark theme (default) ─── */
+:root,
+[data-theme="dark"] {
+  --color-bg-primary: #0d1117;
+  --color-bg-secondary: #161b22;
+  --color-text-primary: #c9d1d9;
+  --color-text-heading: #e6edf3;
+  --color-text-muted: #8b949e;
+  --color-text-tertiary: #6e7681;
+  --color-link: #58a6ff;
+  --color-link-hover: #79c0ff;
+  --color-border: rgba(255, 255, 255, 0.06);
+  --color-border-strong: rgba(255, 255, 255, 0.1);
+  --color-error: #f85149;
+
+  /* Glass / surface */
+  --color-glass-bg: rgba(255, 255, 255, 0.03);
+  --color-glass-bg-hover: rgba(255, 255, 255, 0.05);
+  --color-glass-border: rgba(255, 255, 255, 0.06);
+  --color-glass-border-hover: rgba(164, 133, 255, 0.4);
+
+  /* Search */
+  --color-search-bg: rgba(255, 255, 255, 0.05);
+  --color-search-border: rgba(255, 255, 255, 0.1);
+  --color-search-focus: rgba(88, 166, 255, 0.4);
+
+  /* Accent */
+  --color-accent-purple: #a485ff;
+  --color-accent-cyan: #00d2ff;
+  --color-accent-purple-bg: rgba(164, 133, 255, 0.1);
+  --color-accent-purple-border: rgba(164, 133, 255, 0.2);
+  --color-accent-blue-bg: rgba(88, 166, 255, 0.15);
+  --color-accent-blue-border: rgba(88, 166, 255, 0.3);
+  --color-accent-blue: #58a6ff;
+
+  /* Gradients */
+  --gradient-icon-box: linear-gradient(135deg, rgba(164, 133, 255, 0.2), rgba(0, 210, 255, 0.2));
+  --gradient-icon-box-border: rgba(255, 255, 255, 0.06);
+  --gradient-cta: linear-gradient(90deg, #8752ff, #2563eb);
+  --gradient-text: linear-gradient(90deg, #a485ff, #00d2ff);
+
+  /* Glow orbs */
+  --color-glow-purple: rgba(164, 133, 255, 0.15);
+  --color-glow-cyan: rgba(0, 210, 255, 0.1);
+
+  /* Badge */
+  --color-badge-bg: rgba(255, 255, 255, 0.06);
+
+  /* Code */
+  --color-code-bg: rgba(255, 255, 255, 0.06);
+  --color-pre-bg: rgba(0, 0, 0, 0.4);
+  --color-table-header-bg: rgba(255, 255, 255, 0.04);
+  --color-table-border: rgba(255, 255, 255, 0.08);
+
+  /* Secondary button */
+  --color-btn-secondary-bg: rgba(255, 255, 255, 0.1);
+  --color-btn-secondary-border: rgba(255, 255, 255, 0.1);
+  --color-btn-secondary-text: #c9d1d9;
+
+  /* Diagrams: in dark mode we invert (Modelica diagrams are black on white) */
+  --diagram-filter: invert(1) hue-rotate(180deg);
+
+  /* Tree active */
+  --color-tree-active-bg: rgba(88, 166, 255, 0.12);
+
+  /* Toggle icon */
+  --color-toggle-icon: #c9d1d9;
+}
+
+/* ─── Light theme ─── */
+[data-theme="light"] {
+  --color-bg-primary: #f8f9fc;
+  --color-bg-secondary: #ffffff;
+  --color-text-primary: #1f2328;
+  --color-text-heading: #0d1117;
+  --color-text-muted: #656d76;
+  --color-text-tertiary: #8b949e;
+  --color-link: #6639e6;
+  --color-link-hover: #8752ff;
+  --color-border: rgba(0, 0, 0, 0.08);
+  --color-border-strong: rgba(0, 0, 0, 0.15);
+  --color-error: #cf222e;
+
+  /* Glass / surface */
+  --color-glass-bg: rgba(255, 255, 255, 0.7);
+  --color-glass-bg-hover: rgba(255, 255, 255, 0.85);
+  --color-glass-border: rgba(0, 0, 0, 0.08);
+  --color-glass-border-hover: rgba(164, 133, 255, 0.5);
+
+  /* Search */
+  --color-search-bg: rgba(0, 0, 0, 0.04);
+  --color-search-border: rgba(0, 0, 0, 0.12);
+  --color-search-focus: rgba(102, 57, 230, 0.4);
+
+  /* Accent */
+  --color-accent-purple: #7c3aed;
+  --color-accent-cyan: #0891b2;
+  --color-accent-purple-bg: rgba(124, 58, 237, 0.08);
+  --color-accent-purple-border: rgba(124, 58, 237, 0.2);
+  --color-accent-blue-bg: rgba(102, 57, 230, 0.1);
+  --color-accent-blue-border: rgba(102, 57, 230, 0.25);
+  --color-accent-blue: #6639e6;
+
+  /* Gradients */
+  --gradient-icon-box: linear-gradient(135deg, rgba(124, 58, 237, 0.12), rgba(8, 145, 178, 0.12));
+  --gradient-icon-box-border: rgba(0, 0, 0, 0.08);
+  --gradient-cta: linear-gradient(90deg, #7c3aed, #2563eb);
+  --gradient-text: linear-gradient(90deg, #7c3aed, #0891b2);
+
+  /* Glow orbs */
+  --color-glow-purple: rgba(124, 58, 237, 0.08);
+  --color-glow-cyan: rgba(8, 145, 178, 0.06);
+
+  /* Badge */
+  --color-badge-bg: rgba(0, 0, 0, 0.06);
+
+  /* Code */
+  --color-code-bg: rgba(0, 0, 0, 0.05);
+  --color-pre-bg: #f0f2f5;
+  --color-table-header-bg: rgba(0, 0, 0, 0.04);
+  --color-table-border: rgba(0, 0, 0, 0.1);
+
+  /* Secondary button */
+  --color-btn-secondary-bg: rgba(0, 0, 0, 0.06);
+  --color-btn-secondary-border: rgba(0, 0, 0, 0.12);
+  --color-btn-secondary-text: #1f2328;
+
+  /* Diagrams: light mode shows them naturally */
+  --diagram-filter: none;
+
+  /* Tree active */
+  --color-tree-active-bg: rgba(102, 57, 230, 0.1);
+
+  /* Toggle icon */
+  --color-toggle-icon: #656d76;
+}
+
 html,
 body {
   margin: 0;
   padding: 0;
-  background-color: #0d1117;
-  color: #c9d1d9;
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  transition:
+    background-color 0.3s ease,
+    color 0.3s ease;
 }

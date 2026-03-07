@@ -11,23 +11,23 @@ const Nav = styled.nav`
 `;
 
 const BreadcrumbLink = styled(Link)`
-  color: #8b949e;
+  color: var(--color-text-muted);
   text-decoration: none;
   transition: color 0.15s;
 
   &:hover {
-    color: #c9d1d9;
+    color: var(--color-text-primary);
     text-decoration: underline;
   }
 `;
 
 const CurrentItem = styled.span`
-  color: #c9d1d9;
+  color: var(--color-text-primary);
   font-weight: 500;
 `;
 
 const Chevron = styled(ChevronRightIcon)`
-  color: #6e7681;
+  color: var(--color-text-tertiary);
   flex-shrink: 0;
 `;
 

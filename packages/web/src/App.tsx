@@ -1,4 +1,4 @@
-import { SearchIcon } from "@primer/octicons-react";
+import { MoonIcon, SearchIcon, SunIcon } from "@primer/octicons-react";
 import { BaseStyles, Header, Text, ThemeProvider } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import { BrowserRouter, Link, Route, Routes, useLocation, useNavigate, useSearchParams } from "react-router-dom";
@@ -9,6 +9,7 @@ import LandingPage from "./pages/LandingPage";
 import LibraryDetailPage from "./pages/LibraryDetailPage";
 import LibraryListPage from "./pages/LibraryListPage";
 import LibraryVersionPage from "./pages/LibraryVersionPage";
+import { ThemeContextProvider, useTheme } from "./theme";
 
 const HeaderInner = styled.div`
   max-width: 1280px;
@@ -29,21 +30,21 @@ const SearchWrapper = styled.div`
     width: 100%;
     height: 36px;
     padding: 0 36px 0 12px;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: var(--color-search-bg);
+    border: 1px solid var(--color-search-border);
     border-radius: 6px;
-    color: #c9d1d9;
+    color: var(--color-text-primary);
     font-size: 14px;
     outline: none;
     box-sizing: border-box;
     transition: border-color 0.2s;
 
     &::placeholder {
-      color: #6e7681;
+      color: var(--color-text-tertiary);
     }
 
     &:focus {
-      border-color: rgba(88, 166, 255, 0.4);
+      border-color: var(--color-search-focus);
     }
   }
 
@@ -52,10 +53,30 @@ const SearchWrapper = styled.div`
     right: 10px;
     top: 50%;
     transform: translateY(-50%);
-    color: #6e7681;
+    color: var(--color-text-tertiary);
     pointer-events: none;
     display: flex;
     align-items: center;
+  }
+`;
+
+const ThemeToggle = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  background: var(--color-glass-bg);
+  color: var(--color-toggle-icon);
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: var(--color-glass-bg-hover);
+    border-color: var(--color-border-strong);
+    color: var(--color-text-heading);
   }
 `;
 
@@ -64,6 +85,7 @@ const GlobalHeader: React.FC = () => {
   const [query, setQuery] = useState(searchParams.get("q") || "");
   const navigate = useNavigate();
   const location = useLocation();
+  const { theme, toggleTheme } = useTheme();
 
   // Sync input with URL q param when it changes externally
   useEffect(() => {
@@ -97,17 +119,22 @@ const GlobalHeader: React.FC = () => {
   return (
     <Header
       style={{
-        backgroundColor: "#0d1117",
-        borderBottom: "1px solid rgba(255,255,255,0.05)",
-        color: "#c9d1d9",
+        backgroundColor: "var(--color-bg-primary)",
+        borderBottom: "1px solid var(--color-border)",
+        color: "var(--color-text-primary)",
         zIndex: 100,
         padding: "12px 0",
+        transition: "background-color 0.3s ease",
       }}
     >
       <HeaderInner>
         <Header.Item>
           <Header.Link as={Link} to="/" style={{ display: "flex", alignItems: "center" }}>
-            <img src="/ms-logo-light.png" alt="ModelScript" style={{ width: 36, height: 36 }} />
+            <img
+              src={theme === "dark" ? "/ms-logo-light.png" : "/ms-logo.png"}
+              alt="ModelScript"
+              style={{ width: 36, height: 36 }}
+            />
           </Header.Link>
         </Header.Item>
         <Header.Item full>
@@ -121,9 +148,18 @@ const GlobalHeader: React.FC = () => {
           </form>
         </Header.Item>
         <Header.Item>
-          <Header.Link as={Link} to="/libraries" style={{ color: "#8b949e" }}>
+          <Header.Link as={Link} to="/libraries" style={{ color: "var(--color-text-muted)" }}>
             Libraries
           </Header.Link>
+        </Header.Item>
+        <Header.Item>
+          <ThemeToggle
+            onClick={toggleTheme}
+            aria-label="Toggle theme"
+            title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          >
+            {theme === "dark" ? <SunIcon size={16} /> : <MoonIcon size={16} />}
+          </ThemeToggle>
         </Header.Item>
       </HeaderInner>
     </Header>
@@ -131,14 +167,29 @@ const GlobalHeader: React.FC = () => {
 };
 
 function App() {
+  const { theme } = useTheme();
+
   return (
-    <ThemeProvider colorMode="night">
-      <BaseStyles style={{ backgroundColor: "#0d1117" }}>
+    <ThemeProvider colorMode={theme === "dark" ? "night" : "day"}>
+      <BaseStyles style={{ backgroundColor: "var(--color-bg-primary)", transition: "background-color 0.3s ease" }}>
         <BrowserRouter>
-          <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh", backgroundColor: "#0d1117" }}>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              minHeight: "100vh",
+              backgroundColor: "var(--color-bg-primary)",
+              transition: "background-color 0.3s ease",
+            }}
+          >
             <GlobalHeader />
 
-            <Box flex={1} display="flex" flexDirection="column" style={{ backgroundColor: "#0d1117" }}>
+            <Box
+              flex={1}
+              display="flex"
+              flexDirection="column"
+              style={{ backgroundColor: "var(--color-bg-primary)", transition: "background-color 0.3s ease" }}
+            >
               <Routes>
                 <Route path="/" element={<LandingPage />} />
                 <Route path="/libraries" element={<LibraryListPage />} />
@@ -152,26 +203,32 @@ function App() {
               as="footer"
               style={{
                 padding: "24px 32px",
-                borderTop: "1px solid rgba(255,255,255,0.05)",
-                backgroundColor: "#0d1117",
+                borderTop: "1px solid var(--color-border)",
+                backgroundColor: "var(--color-bg-primary)",
+                transition: "background-color 0.3s ease",
               }}
               display="flex"
               justifyContent="center"
               alignItems="center"
               gap={4}
             >
-              <Text style={{ color: "#8b949e", fontSize: "14px" }}>© {new Date().getFullYear()} ModelScript</Text>
-              <Link to="/terms" style={{ color: "#8b949e", textDecoration: "none", fontSize: "14px" }}>
+              <Text style={{ color: "var(--color-text-muted)", fontSize: "14px" }}>
+                © {new Date().getFullYear()} ModelScript
+              </Text>
+              <Link to="/terms" style={{ color: "var(--color-text-muted)", textDecoration: "none", fontSize: "14px" }}>
                 Terms of Use
               </Link>
-              <Link to="/privacy" style={{ color: "#8b949e", textDecoration: "none", fontSize: "14px" }}>
+              <Link
+                to="/privacy"
+                style={{ color: "var(--color-text-muted)", textDecoration: "none", fontSize: "14px" }}
+              >
                 Privacy
               </Link>
               <a
                 href="https://github.com/modelscript/modelscript"
                 target="_blank"
                 rel="noopener noreferrer"
-                style={{ color: "#8b949e", textDecoration: "none", fontSize: "14px" }}
+                style={{ color: "var(--color-text-muted)", textDecoration: "none", fontSize: "14px" }}
               >
                 GitHub
               </a>
@@ -183,4 +240,12 @@ function App() {
   );
 }
 
-export default App;
+function AppWithTheme() {
+  return (
+    <ThemeContextProvider>
+      <App />
+    </ThemeContextProvider>
+  );
+}
+
+export default AppWithTheme;

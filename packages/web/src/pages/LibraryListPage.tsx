@@ -15,11 +15,14 @@ const fadeIn = keyframes`
 `;
 
 const PageWrap = styled.div`
-  background-color: #0d1117;
-  color: #c9d1d9;
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
   min-height: 100%;
   display: flex;
   flex-direction: column;
+  transition:
+    background-color 0.3s ease,
+    color 0.3s ease;
 `;
 
 const ContentArea = styled.div`
@@ -33,7 +36,7 @@ const ContentArea = styled.div`
 
 const ResultCount = styled.span`
   font-size: 14px;
-  color: #8b949e;
+  color: var(--color-text-muted);
   margin-left: 8px;
 `;
 
@@ -45,10 +48,10 @@ const CardList = styled.div`
 const CardRow = styled.div`
   display: block;
   padding: 20px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid var(--color-border);
 
   &:first-child {
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    border-top: 1px solid var(--color-border);
   }
 `;
 
@@ -62,8 +65,8 @@ const IconBox = styled.div`
   width: 40px;
   height: 40px;
   border-radius: 6px;
-  background: linear-gradient(135deg, rgba(164, 133, 255, 0.15), rgba(0, 210, 255, 0.15));
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--gradient-icon-box);
+  border: 1px solid var(--gradient-icon-box-border);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -79,12 +82,12 @@ const CardBody = styled.div`
 const LibName = styled(Link)`
   font-size: 18px;
   font-weight: 600;
-  color: #58a6ff;
+  color: var(--color-link);
   text-decoration: none;
   transition: color 0.15s;
 
   &:hover {
-    color: #79c0ff;
+    color: var(--color-link-hover);
     text-decoration: underline;
   }
 `;
@@ -93,8 +96,8 @@ const VersionBadge = styled.span`
   display: inline-block;
   font-size: 12px;
   font-weight: 500;
-  color: #8b949e;
-  background: rgba(255, 255, 255, 0.06);
+  color: var(--color-text-muted);
+  background: var(--color-badge-bg);
   padding: 2px 8px;
   border-radius: 12px;
   margin-left: 10px;
@@ -103,14 +106,14 @@ const VersionBadge = styled.span`
 
 const VersionCount = styled.span`
   font-size: 12px;
-  color: #6e7681;
+  color: var(--color-text-tertiary);
   margin-left: 8px;
   vertical-align: middle;
 `;
 
 const Description = styled.p`
   font-size: 14px;
-  color: #8b949e;
+  color: var(--color-text-muted);
   margin: 6px 0 0;
   line-height: 1.5;
   overflow: hidden;
@@ -124,7 +127,7 @@ const MetaRow = styled.div`
   gap: 16px;
   margin-top: 8px;
   font-size: 12px;
-  color: #6e7681;
+  color: var(--color-text-tertiary);
 
   span {
     display: inline-flex;
@@ -170,7 +173,7 @@ const LibraryListPage: React.FC = () => {
         {/* Search header */}
         <Box display="flex" alignItems="center" justifyContent="space-between" style={{ marginBottom: "32px" }}>
           <Box display="flex" alignItems="baseline" gap="8px">
-            <Heading as="h1" style={{ color: "#e6edf3", fontWeight: 700, fontSize: 28, margin: 0 }}>
+            <Heading as="h1" style={{ color: "var(--color-text-heading)", fontWeight: 700, fontSize: 28, margin: 0 }}>
               Libraries
             </Heading>
             {!loading && (
@@ -197,11 +200,11 @@ const LibraryListPage: React.FC = () => {
               textAlign: "center",
             }}
           >
-            <AlertIcon size={48} fill="#f85149" />
-            <Heading as="h2" style={{ color: "#e6edf3", fontSize: 20, margin: 0 }}>
+            <AlertIcon size={48} fill="var(--color-error)" />
+            <Heading as="h2" style={{ color: "var(--color-text-heading)", fontSize: 20, margin: 0 }}>
               Failed to load libraries
             </Heading>
-            <Text as="p" style={{ color: "#8b949e", fontSize: 14, margin: 0 }}>
+            <Text as="p" style={{ color: "var(--color-text-muted)", fontSize: 14, margin: 0 }}>
               The server may be unavailable. Please try again later.
             </Text>
           </Box>
@@ -216,11 +219,11 @@ const LibraryListPage: React.FC = () => {
               textAlign: "center",
             }}
           >
-            <SearchIcon size={48} fill="#8b949e" />
-            <Heading as="h2" style={{ color: "#e6edf3", fontSize: 20, margin: 0 }}>
+            <SearchIcon size={48} fill="var(--color-text-muted)" />
+            <Heading as="h2" style={{ color: "var(--color-text-heading)", fontSize: 20, margin: 0 }}>
               No packages found
             </Heading>
-            <Text as="p" style={{ color: "#8b949e", fontSize: 14, margin: 0 }}>
+            <Text as="p" style={{ color: "var(--color-text-muted)", fontSize: 14, margin: 0 }}>
               {query ? `No results matching "${query}"` : "No libraries have been published yet."}
             </Text>
           </Box>
@@ -230,7 +233,7 @@ const LibraryListPage: React.FC = () => {
               <CardRow key={lib.name}>
                 <CardInner>
                   <IconBox>
-                    <PackageIcon size={20} fill="#a485ff" />
+                    <PackageIcon size={20} fill="var(--color-accent-purple)" />
                   </IconBox>
                   <CardBody>
                     <div>
@@ -259,7 +262,7 @@ const LibraryListPage: React.FC = () => {
                         <Link
                           to={`/${lib.name}`}
                           style={{
-                            color: "#6e7681",
+                            color: "var(--color-text-tertiary)",
                             textDecoration: "none",
                             display: "inline-flex",
                             alignItems: "center",

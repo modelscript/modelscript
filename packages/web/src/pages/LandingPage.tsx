@@ -20,9 +20,12 @@ const pulse = keyframes`
 const PageContainer = styled(Box)`
   position: relative;
   overflow: hidden;
-  background-color: #0d1117; // GitHub night background
-  color: #c9d1d9; // GitHub night text
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
   min-height: calc(100vh - 64px);
+  transition:
+    background-color 0.3s ease,
+    color 0.3s ease;
 `;
 
 const GlowOrb1 = styled.div`
@@ -31,7 +34,7 @@ const GlowOrb1 = styled.div`
   left: -5%;
   width: 50vw;
   height: 50vw;
-  background: radial-gradient(circle, rgba(164, 133, 255, 0.15) 0%, rgba(0, 0, 0, 0) 70%);
+  background: radial-gradient(circle, var(--color-glow-purple) 0%, rgba(0, 0, 0, 0) 70%);
   border-radius: 50%;
   pointer-events: none;
   animation: ${pulse} 8s infinite ease-in-out;
@@ -44,7 +47,7 @@ const GlowOrb2 = styled.div`
   right: -10%;
   width: 60vw;
   height: 60vw;
-  background: radial-gradient(circle, rgba(0, 210, 255, 0.1) 0%, rgba(0, 0, 0, 0) 70%);
+  background: radial-gradient(circle, var(--color-glow-cyan) 0%, rgba(0, 0, 0, 0) 70%);
   border-radius: 50%;
   pointer-events: none;
   animation: ${pulse} 12s infinite ease-in-out reverse;
@@ -62,7 +65,7 @@ const ContentWrapper = styled(Box)`
 `;
 
 const GradientText = styled(Heading)`
-  background: linear-gradient(90deg, #a485ff, #00d2ff);
+  background: var(--gradient-text);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -80,25 +83,25 @@ const FloatingBox = styled(Box)`
   width: 80px;
   height: 80px;
   border-radius: 20px;
-  background: linear-gradient(135deg, rgba(164, 133, 255, 0.2), rgba(0, 210, 255, 0.2));
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--gradient-icon-box);
+  border: 1px solid var(--color-border-strong);
   box-shadow: 0 10px 30px rgba(164, 133, 255, 0.2);
   margin-bottom: 32px;
 `;
 
 const GlassCard = styled(Box)`
   transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--color-glass-bg);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--color-glass-border);
   cursor: default;
 
   &:hover {
     transform: translateY(-8px);
-    border-color: rgba(164, 133, 255, 0.4);
+    border-color: var(--color-glass-border-hover);
     box-shadow: 0 12px 32px rgba(164, 133, 255, 0.15);
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--color-glass-bg-hover);
   }
 `;
 
@@ -124,7 +127,13 @@ const LandingPage: React.FC = () => {
           </GradientText>
           <Text
             as="p"
-            style={{ fontSize: "24px", color: "#8b949e", marginBottom: "48px", maxWidth: "700px", lineHeight: "1.6" }}
+            style={{
+              fontSize: "24px",
+              color: "var(--color-text-muted)",
+              marginBottom: "48px",
+              maxWidth: "700px",
+              lineHeight: "1.6",
+            }}
           >
             Discover, explore, and utilize the power of autonomous modeling. A comprehensive registry for
             next-generation intelligence components.
@@ -140,7 +149,7 @@ const LandingPage: React.FC = () => {
                 padding: "0 24px",
                 height: "48px",
                 borderRadius: "100px",
-                background: "linear-gradient(90deg, #8752ff, #2563eb)",
+                background: "var(--gradient-cta)",
                 border: "none",
                 color: "#ffffff",
               }}
@@ -157,9 +166,9 @@ const LandingPage: React.FC = () => {
                 padding: "0 24px",
                 height: "48px",
                 borderRadius: "100px",
-                background: "rgba(255,255,255,0.1)",
-                border: "1px solid rgba(255,255,255,0.1)",
-                color: "#c9d1d9",
+                background: "var(--color-btn-secondary-bg)",
+                border: "1px solid var(--color-btn-secondary-border)",
+                color: "var(--color-btn-secondary-text)",
               }}
             >
               View Architecture
@@ -208,14 +217,17 @@ const FeatureCard: React.FC<{ icon: React.ElementType; title: string; descriptio
       mb={4}
       p={3}
       borderRadius={2}
-      style={{ background: "rgba(164,133,255,0.1)", border: "1px solid rgba(164,133,255,0.2)" }}
+      style={{ background: "var(--color-accent-purple-bg)", border: "1px solid var(--color-accent-purple-border)" }}
     >
-      <Icon size={24} fill="#a485ff" />
+      <Icon size={24} fill="var(--color-accent-purple)" />
     </Box>
-    <Heading as="h3" style={{ fontSize: "22px", marginBottom: "16px", fontWeight: "600", color: "#e6edf3" }}>
+    <Heading
+      as="h3"
+      style={{ fontSize: "22px", marginBottom: "16px", fontWeight: "600", color: "var(--color-text-heading)" }}
+    >
       {title}
     </Heading>
-    <Text as="p" style={{ color: "#8b949e", fontSize: "16px", lineHeight: "1.5" }}>
+    <Text as="p" style={{ color: "var(--color-text-muted)", fontSize: "16px", lineHeight: "1.5" }}>
       {description}
     </Text>
   </GlassCard>
