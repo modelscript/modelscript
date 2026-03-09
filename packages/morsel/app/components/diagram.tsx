@@ -692,10 +692,14 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
         source: {
           cell: c1[0],
           port: c1?.[1],
+          anchor: "center",
+          connectionPoint: { name: "anchor" },
         },
         target: {
           cell: c2[0],
           port: c2?.[1],
+          anchor: "center",
+          connectionPoint: { name: "anchor" },
         },
         vertices: line?.points
           ?.slice(1, -1)

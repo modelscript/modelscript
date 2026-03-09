@@ -944,7 +944,21 @@ export class ModelicaShortClassInstance extends ModelicaClassInstance {
       return new ModelicaClassInstance(this.parent, this.abstractSyntaxNode, modification);
     }
     const mergedModification = ModelicaModification.merge(this.modification, modification ?? null);
-    return this.classInstance.clone(mergedModification);
+    const cloned = this.classInstance.clone(mergedModification);
+    // Preserve the classKind from the short class declaration's own prefix.
+    // e.g., `connector DigitalInput = input Logic;` — the clone should have classKind CONNECTOR,
+    // not the classKind of the aliased type Logic (which is TYPE).
+    const declaredClassKind = this.abstractSyntaxNode?.classPrefixes?.classKind;
+    if (declaredClassKind) cloned.classKind = declaredClassKind;
+    // Propagate annotations from the short class declaration's own annotation clause.
+    const shortClassAnnotations = ModelicaElement.instantiateAnnotations(
+      cloned,
+      this.abstractSyntaxNode?.annotationClause,
+    );
+    if (shortClassAnnotations.length > 0) {
+      cloned.annotations = [...shortClassAnnotations, ...cloned.annotations];
+    }
+    return cloned;
   }
 
   override get elements(): IterableIterator<ModelicaElement> {
@@ -972,10 +986,15 @@ export class ModelicaShortClassInstance extends ModelicaClassInstance {
     const classSpecifier = this.abstractSyntaxNode?.classSpecifier as ModelicaShortClassSpecifierSyntaxNode;
     const arraySubscripts = [...(classSpecifier?.arraySubscripts?.subscripts ?? [])];
     const classInstance = this.resolveTypeSpecifier(classSpecifier.typeSpecifier);
+    // Preserve the classKind from the short class declaration's own prefix.
+    // e.g., `connector DigitalInput = input Logic;` — the classKind should be CONNECTOR,
+    // not the classKind of the aliased type Logic (which is TYPE).
+    const declaredClassKind = this.abstractSyntaxNode?.classPrefixes?.classKind;
     if (classInstance instanceof ModelicaClassInstance) {
       if (arraySubscripts.length === 0) {
         this.classInstance = classInstance.clone(this.modification);
         this.classInstance.name = this.name; // Keep the declared name
+        if (declaredClassKind) this.classInstance.classKind = declaredClassKind;
       } else {
         this.classInstance = new ModelicaArrayClassInstance(
           this.parent,
@@ -984,7 +1003,19 @@ export class ModelicaShortClassInstance extends ModelicaClassInstance {
           this.modification,
         );
         this.classInstance.name = this.name; // Keep the declared name
+        if (declaredClassKind) this.classInstance.classKind = declaredClassKind;
         this.classInstance.instantiate();
+      }
+      // Propagate annotations from the short class declaration's own annotation clause.
+      // e.g., `connector DigitalInput = input Logic annotation(Icon(graphics={...}));`
+      // The Icon annotation defines port graphics (purple rectangles) and must be carried
+      // to the cloned instance, which otherwise only has annotations from the aliased type.
+      const shortClassAnnotations = ModelicaElement.instantiateAnnotations(
+        this.classInstance,
+        this.abstractSyntaxNode?.annotationClause,
+      );
+      if (shortClassAnnotations.length > 0) {
+        this.classInstance.annotations = [...shortClassAnnotations, ...this.classInstance.annotations];
       }
     } else {
       console.warn(`Failed to resolve class '${this.name}' target.`);
