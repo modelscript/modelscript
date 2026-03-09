@@ -308,9 +308,11 @@ export default function MorselEditor(props: MorselEditorProps) {
 
       setLoadingProgress(10);
       setLoadingMessage("Initializing parser…");
+      await new Promise((r) => setTimeout(r, 0));
       await Parser.init();
       setLoadingProgress(25);
       setLoadingMessage("Loading Modelica grammar…");
+      await new Promise((r) => setTimeout(r, 0));
       const Modelica = await Parser.Language.load("/tree-sitter-modelica.wasm");
       const parser = new Parser();
       parser.setLanguage(Modelica);
@@ -318,6 +320,7 @@ export default function MorselEditor(props: MorselEditorProps) {
 
       setLoadingProgress(40);
       setLoadingMessage("Fetching Modelica Standard Library…");
+      await new Promise((r) => setTimeout(r, 0));
       try {
         const cache = await caches.open("modelscript-libraries");
         let ModelicaLibrary = await cache.match("/ModelicaStandardLibrary_v4.1.0.zip");
@@ -334,6 +337,7 @@ export default function MorselEditor(props: MorselEditorProps) {
         }
         setLoadingProgress(60);
         setLoadingMessage("Configuring filesystem…");
+        await new Promise((r) => setTimeout(r, 0));
         await configure({
           mounts: {
             "/lib": { backend: Zip, data: await ModelicaLibrary.arrayBuffer() },
@@ -350,6 +354,7 @@ export default function MorselEditor(props: MorselEditorProps) {
 
       setLoadingProgress(80);
       setLoadingMessage("Loading libraries…");
+      await new Promise((r) => setTimeout(r, 0));
       const ctx = new Context(new WebFileSystem());
       try {
         const libEntries = ctx.fs.readdir("/lib");
@@ -431,9 +436,9 @@ export default function MorselEditor(props: MorselEditorProps) {
         setLoadingMessage("Ready");
       };
       if ("requestIdleCallback" in window) {
-        requestIdleCallback(hideLoading);
+        requestIdleCallback(hideLoading, { timeout: 500 });
       } else {
-        setTimeout(hideLoading, 200);
+        setTimeout(hideLoading, 300);
       }
     };
     init();
