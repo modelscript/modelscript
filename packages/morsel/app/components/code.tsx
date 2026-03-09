@@ -141,7 +141,7 @@ interface CodeEditorProps {
 
 export interface CodeEditorHandle {
   sync: () => Promise<ModelicaClassInstance | null>;
-  revealComponent: (name: string) => void;
+  revealComponent: (name: string, searchInstance?: ModelicaClassInstance | null) => void;
 }
 
 export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((props, ref) => {
@@ -903,10 +903,12 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
       const value = editorRef.current?.getValue();
       return processContent(value);
     },
-    revealComponent: (name: string) => {
-      if (!editorRef.current || !classInstanceRef.current) return;
+    revealComponent: (name: string, searchInstance?: ModelicaClassInstance | null) => {
+      if (!editorRef.current) return;
+      const instance = searchInstance ?? classInstanceRef.current;
+      if (!instance) return;
 
-      const component: any = Array.from(classInstanceRef.current.components).find((c: any) => c.name === name);
+      const component: any = Array.from(instance.components).find((c: any) => c.name === name);
       if (!component || !component.abstractSyntaxNode) return;
 
       let concreteNode = component.abstractSyntaxNode.concreteSyntaxNode;

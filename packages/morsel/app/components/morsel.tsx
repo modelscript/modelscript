@@ -6,6 +6,7 @@ import {
   decodeDataUrl,
   encodeDataUrl,
   ModelicaClassInstance,
+  ModelicaClassKind,
   ModelicaComponentClauseSyntaxNode,
   ModelicaComponentInstance,
   ModelicaDAE,
@@ -156,6 +157,7 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [pendingSelection, setPendingSelection] = useState<ModelicaClassInstance | null>(null);
   const [selectedComponent, setSelectedComponent] = useState<ModelicaComponentInstance | null>(null);
   const [diagramClassInstance, setDiagramClassInstance] = useState<ModelicaClassInstance | null>(null);
+  const [selectedModelIndex, setSelectedModelIndex] = useState(0);
   const isDiagramUpdate = useRef(false);
   const diagramEditorRef = useRef<DiagramEditorHandle>(null);
   const [loadingProgress, setLoadingProgress] = useState(0);
@@ -177,6 +179,7 @@ export default function MorselEditor(props: MorselEditorProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [contextVersion, setContextVersion] = useState(0);
   const expectedComponentNameRef = useRef<string | null>(null);
+  const pendingModelNameRef = useRef<string | null>(null);
   const [isSplashVisible, setSplashVisible] = useState(false);
   const [pendingSplashVisible, setPendingSplashVisible] = useState(false);
   const [recentModels, setRecentModels] = useState<ModelData[]>([]);
@@ -185,6 +188,25 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [language, setLanguage] = useState<string | null>(null);
   const [availableLanguages, setAvailableLanguages] = useState<string[]>([]);
   const translations = useMemo(() => getTranslations(language), [language]);
+
+  // Collect nested models/blocks from the current class instance (recursively for packages with multiple models)
+  const nestedModels = useMemo(() => {
+    if (!classInstance) return [];
+    const models: ModelicaClassInstance[] = [];
+    const collect = (instance: ModelicaClassInstance) => {
+      for (const element of instance.elements) {
+        if (element instanceof ModelicaClassInstance) {
+          if (element.classKind === ModelicaClassKind.MODEL || element.classKind === ModelicaClassKind.BLOCK) {
+            models.push(element);
+          } else if (element.classKind === ModelicaClassKind.PACKAGE) {
+            collect(element);
+          }
+        }
+      }
+    };
+    collect(classInstance);
+    return models;
+  }, [classInstance]);
 
   useEffect(() => {
     const saved = localStorage.getItem("recentModels");
@@ -464,7 +486,41 @@ export default function MorselEditor(props: MorselEditorProps) {
     }
 
     if (!isDiagramUpdate.current) {
-      setDiagramClassInstance(classInstance);
+      // Check if we should auto-select a specific nested model tab
+      const models: ModelicaClassInstance[] = [];
+      const collectModels = (instance: ModelicaClassInstance) => {
+        for (const element of instance.elements) {
+          if (element instanceof ModelicaClassInstance) {
+            if (element.classKind === ModelicaClassKind.MODEL || element.classKind === ModelicaClassKind.BLOCK) {
+              models.push(element);
+            } else if (element.classKind === ModelicaClassKind.PACKAGE) {
+              collectModels(element);
+            }
+          }
+        }
+      };
+      if (classInstance) {
+        collectModels(classInstance);
+      }
+
+      let targetIndex = 0;
+      if (pendingModelNameRef.current && models.length > 1) {
+        // Tree navigation: find the clicked model
+        const idx = models.findIndex((m) => m.compositeName === pendingModelNameRef.current);
+        if (idx !== -1) targetIndex = idx;
+      } else if (models.length > 1) {
+        // In-place edit: preserve current tab, clamped to valid range
+        targetIndex = Math.min(selectedModelIndex, models.length - 1);
+      }
+      pendingModelNameRef.current = null;
+      setSelectedModelIndex(targetIndex);
+
+      if (models.length > 1) {
+        models[targetIndex].instantiate();
+        setDiagramClassInstance(models[targetIndex]);
+      } else {
+        setDiagramClassInstance(classInstance);
+      }
     }
     isDiagramUpdate.current = false;
 
@@ -481,12 +537,19 @@ export default function MorselEditor(props: MorselEditorProps) {
     }
   }, [view, treeVisible]);
 
-  const loadClass = (classInstance: ModelicaClassInstance) => {
-    let entity: ModelicaEntity | null = null;
-    if (classInstance instanceof ModelicaEntity) {
-      entity = classInstance;
+  const loadClass = (selectedClass: ModelicaClassInstance) => {
+    // Store the name so the useEffect can auto-select the right tab
+    if (selectedClass.classKind === ModelicaClassKind.MODEL || selectedClass.classKind === ModelicaClassKind.BLOCK) {
+      pendingModelNameRef.current = selectedClass.compositeName ?? null;
     } else {
-      let p = classInstance.parent;
+      pendingModelNameRef.current = null;
+    }
+
+    let entity: ModelicaEntity | null = null;
+    if (selectedClass instanceof ModelicaEntity) {
+      entity = selectedClass;
+    } else {
+      let p = selectedClass.parent;
       while (p) {
         if (p instanceof ModelicaEntity) {
           entity = p;
@@ -506,7 +569,7 @@ export default function MorselEditor(props: MorselEditorProps) {
         const content = context.fs.read(filePath);
         editor?.setValue(content);
         setLastLoadedContent(content);
-        const node = classInstance.abstractSyntaxNode?.concreteSyntaxNode as any;
+        const node = selectedClass.abstractSyntaxNode?.concreteSyntaxNode as any;
         if (node) {
           editor?.revealRange({
             startLineNumber: node.startPosition.row + 1,
@@ -523,7 +586,7 @@ export default function MorselEditor(props: MorselEditorProps) {
         }
       }
     } else {
-      const node = classInstance.abstractSyntaxNode?.concreteSyntaxNode as any;
+      const node = selectedClass.abstractSyntaxNode?.concreteSyntaxNode as any;
       if (node) {
         editor?.revealRange({
           startLineNumber: node.startPosition.row + 1,
@@ -570,8 +633,9 @@ export default function MorselEditor(props: MorselEditorProps) {
   }, []);
 
   const getNameEdit = (oldName: string, newName: string): editor.IIdentifiedSingleEditOperation | null => {
-    if (!classInstance || !editor || !newName) return null;
-    const component = Array.from(classInstance.components).find((c: any) => c.name === oldName);
+    const instance = diagramClassInstance ?? classInstance;
+    if (!instance || !editor || !newName) return null;
+    const component = Array.from(instance.components).find((c: any) => c.name === oldName);
     if (!component) return null;
 
     const abstractNode = (component as any).abstractSyntaxNode;
@@ -594,8 +658,9 @@ export default function MorselEditor(props: MorselEditorProps) {
     componentName: string,
     newDescription: string,
   ): editor.IIdentifiedSingleEditOperation | null => {
-    if (!classInstance || !editor) return null;
-    const component = Array.from(classInstance.components).find((c: any) => c.name === componentName);
+    const instance = diagramClassInstance ?? classInstance;
+    if (!instance || !editor) return null;
+    const component = Array.from(instance.components).find((c: any) => c.name === componentName);
     if (!component) return null;
 
     const abstractNode = (component as any).abstractSyntaxNode;
@@ -649,8 +714,9 @@ export default function MorselEditor(props: MorselEditorProps) {
     parameterName: string,
     newValue: string,
   ): editor.IIdentifiedSingleEditOperation | null => {
-    if (!classInstance || !editor) return null;
-    const component = Array.from(classInstance.components).find((c: any) => c.name === componentName);
+    const instance = diagramClassInstance ?? classInstance;
+    if (!instance || !editor) return null;
+    const component = Array.from(instance.components).find((c: any) => c.name === componentName);
     if (!component) return null;
 
     const abstractNode = (component as any).abstractSyntaxNode;
@@ -798,11 +864,10 @@ export default function MorselEditor(props: MorselEditorProps) {
     height: number,
     rotation: number,
   ): editor.IIdentifiedSingleEditOperation | null => {
-    if (!classInstance || !editor) return null;
+    const instance = diagramClassInstance ?? classInstance;
+    if (!instance || !editor) return null;
 
-    const component = classInstance.components
-      ? Array.from(classInstance.components).find((c) => c.name === name)
-      : null;
+    const component = instance.components ? Array.from(instance.components).find((c) => c.name === name) : null;
 
     if (!component) return null;
     const originX = Math.round(x + width / 2);
@@ -826,96 +891,81 @@ export default function MorselEditor(props: MorselEditorProps) {
       };
 
       const text = editor.getModel()?.getValueInRange(range) || "";
+
+      // Validate extracted text contains the component name (guards against stale AST positions)
+      if (!text.includes(name)) return null;
+
       const rotationPart = r !== 0 ? `, rotation=${r}` : "";
       const newTransformationCore = `origin={${originX},${originY}}, extent={{-${w / 2},-${h / 2}},{${w / 2},${h / 2}}}${rotationPart}`;
+      const newPlacement = `Placement(transformation(${newTransformationCore}))`;
 
       const annotationMatch = text.match(/annotation\s*\(/);
       if (annotationMatch) {
-        const startIndex = annotationMatch.index! + annotationMatch[0].length;
+        const annStart = annotationMatch.index!;
+        const annContentStart = annStart + annotationMatch[0].length;
         let nesting = 0;
-        let endIndex = -1;
-        for (let i = startIndex; i < text.length; i++) {
+        let annEndIndex = -1;
+        for (let i = annContentStart; i < text.length; i++) {
           if (text[i] === "(") nesting++;
           else if (text[i] === ")") {
             if (nesting === 0) {
-              endIndex = i;
+              annEndIndex = i;
               break;
             }
             nesting--;
           }
         }
 
-        if (endIndex !== -1) {
-          const annotationContent = text.substring(startIndex, endIndex);
+        if (annEndIndex !== -1) {
+          let annotationContent = text.substring(annContentStart, annEndIndex);
+
+          // Remove any existing Placement(...) from annotation content
           const placementMatch = annotationContent.match(/Placement\s*\(/);
           if (placementMatch) {
-            const placementStartRel = placementMatch.index! + placementMatch[0].length;
-            const placementStartAbs = startIndex + placementStartRel;
+            const pStart = placementMatch.index!;
+            const pInner = pStart + placementMatch[0].length;
             let pNesting = 0;
-            let placementEndAbs = -1;
-            for (let i = placementStartAbs; i < text.length; i++) {
-              if (text[i] === "(") pNesting++;
-              else if (text[i] === ")") {
+            let pEnd = -1;
+            for (let i = pInner; i < annotationContent.length; i++) {
+              if (annotationContent[i] === "(") pNesting++;
+              else if (annotationContent[i] === ")") {
                 if (pNesting === 0) {
-                  placementEndAbs = i;
+                  pEnd = i;
                   break;
                 }
                 pNesting--;
               }
             }
-            if (placementEndAbs !== -1) {
-              const placementContent = text.substring(placementStartAbs, placementEndAbs);
-              const transformMatch = placementContent.match(/transformation\s*\(/);
-              if (transformMatch) {
-                const transformStartAbs = placementStartAbs + transformMatch.index! + transformMatch[0].length;
-                let tNesting = 0;
-                let transformEndAbs = -1;
-                for (let i = transformStartAbs; i < text.length; i++) {
-                  if (text[i] === "(") tNesting++;
-                  else if (text[i] === ")") {
-                    if (tNesting === 0) {
-                      transformEndAbs = i;
-                      break;
-                    }
-                    tNesting--;
-                  }
-                }
-                if (transformEndAbs !== -1) {
-                  const newText =
-                    text.substring(0, transformStartAbs) + newTransformationCore + text.substring(transformEndAbs);
-                  if (newText !== text) {
-                    return { range, text: newText };
-                  }
-                } else {
-                  const insert = `transformation(${newTransformationCore})`;
-                  const prefix = placementContent.trim().length > 0 ? ", " : "";
-                  const newText =
-                    text.substring(0, placementEndAbs) + prefix + insert + text.substring(placementEndAbs);
-                  return { range, text: newText };
-                }
+            if (pEnd !== -1) {
+              const before = annotationContent.substring(0, pStart);
+              const after = annotationContent.substring(pEnd + 1);
+              if (before.trimEnd().endsWith(",")) {
+                annotationContent = before.trimEnd().slice(0, -1).trimEnd() + after;
+              } else if (after.trimStart().startsWith(",")) {
+                annotationContent = before + after.trimStart().slice(1).trimStart();
               } else {
-                const insert = `transformation(${newTransformationCore})`;
-                const prefix = placementContent.trim().length > 0 ? ", " : "";
-                const newText = text.substring(0, placementEndAbs) + prefix + insert + text.substring(placementEndAbs);
-                return { range, text: newText };
+                annotationContent = before + after;
               }
             }
-          } else {
-            const insert = `Placement(transformation(${newTransformationCore}))`;
-            const innerContent = annotationContent.trim();
-            const prefix = innerContent.length > 0 ? ", " : "";
-            const newText = text.substring(0, endIndex) + prefix + insert + text.substring(endIndex);
+          }
+
+          // Re-insert Placement with new data
+          const trimmed = annotationContent.trim();
+          const separator = trimmed.length > 0 ? ", " : "";
+          const newText =
+            text.substring(0, annContentStart) + newPlacement + separator + trimmed + text.substring(annEndIndex);
+          if (newText !== text) {
             return { range, text: newText };
           }
         }
       } else {
         const semiIndex = text.lastIndexOf(";");
         if (semiIndex !== -1) {
-          const insert = ` annotation(Placement(transformation(${newTransformationCore})))`;
+          const insert = ` annotation(${newPlacement})`;
           const newText = text.slice(0, semiIndex) + insert + text.slice(semiIndex);
           return { range, text: newText };
         } else {
-          const insert = ` annotation(Placement(transformation(${newTransformationCore})))`;
+          const insert = ` annotation(${newPlacement})`;
           const newText = text + insert;
           return { range, text: newText };
         }
@@ -928,10 +978,11 @@ export default function MorselEditor(props: MorselEditorProps) {
     edges: { source: string; target: string; points: { x: number; y: number }[] }[],
   ): Map<string, editor.IIdentifiedSingleEditOperation> => {
     const edits = new Map<string, editor.IIdentifiedSingleEditOperation>();
-    if (!classInstance || !editor) return edits;
+    const instance = diagramClassInstance ?? classInstance;
+    if (!instance || !editor) return edits;
 
     for (const edge of edges) {
-      const connectEq = Array.from(classInstance.connectEquations).find((ce: any) => {
+      const connectEq = Array.from(instance.connectEquations).find((ce: any) => {
         const c1 = ce.componentReference1?.parts.map((c: any) => c.identifier?.text ?? "").join(".");
         const c2 = ce.componentReference2?.parts.map((c: any) => c.identifier?.text ?? "").join(".");
         return (c1 === edge.source && c2 === edge.target) || (c1 === edge.target && c2 === edge.source);
@@ -958,93 +1009,86 @@ export default function MorselEditor(props: MorselEditorProps) {
         };
 
         const text = editor.getModel()?.getValueInRange(range) || "";
+
+        // Validate the extracted text is actually a connect equation (guards against stale AST)
+        if (!text.match(/^\s*connect\s*\(/)) continue;
+
         const pointsStr = `{${edge.points.map((p) => `{${p.x},${p.y}}`).join(", ")}}`;
         const newPointsCore = `points=${pointsStr}`;
         const colorCore = "color={0, 0, 255}";
+        const newLineAnnotation = `Line(${newPointsCore}, ${colorCore})`;
 
         let newText = text;
-        const lineMatch = text.match(/Line\s*\(/);
-        if (lineMatch) {
-          const startIndex = lineMatch.index! + lineMatch[0].length;
+        const annotationMatch = text.match(/annotation\s*\(/);
+        if (annotationMatch) {
+          // Find the annotation bounds
+          const annStartIndex = annotationMatch.index!;
+          const annContentStart = annStartIndex + annotationMatch[0].length;
           let nesting = 0;
-          let endIndex = -1;
-          for (let i = startIndex; i < text.length; i++) {
+          let annEndIndex = -1;
+          for (let i = annContentStart; i < text.length; i++) {
             if (text[i] === "(") nesting++;
             else if (text[i] === ")") {
               if (nesting === 0) {
-                endIndex = i;
+                annEndIndex = i;
                 break;
               }
               nesting--;
             }
           }
-          if (endIndex !== -1) {
-            let lineContent = text.substring(startIndex, endIndex);
-            const pointsMatch = lineContent.match(/points\s*=\s*\{/);
-            if (pointsMatch) {
-              const pStartRel = pointsMatch.index!;
-              const pStartAbs = startIndex + pStartRel;
-              let pNesting = 0;
-              let pEndAbs = -1;
-              for (let i = pStartAbs; i < text.length; i++) {
-                if (text[i] === "{") pNesting++;
-                else if (text[i] === "}") {
-                  if (pNesting === 1) {
-                    pEndAbs = i;
+          if (annEndIndex !== -1) {
+            let annotationContent = text.substring(annContentStart, annEndIndex);
+            // Remove any existing Line(...) from annotation content
+            const lineMatch = annotationContent.match(/Line\s*\(/);
+            if (lineMatch) {
+              const lineStart = lineMatch.index!;
+              const lineInner = lineStart + lineMatch[0].length;
+              let lNesting = 0;
+              let lineEnd = -1;
+              for (let i = lineInner; i < annotationContent.length; i++) {
+                if (annotationContent[i] === "(") lNesting++;
+                else if (annotationContent[i] === ")") {
+                  if (lNesting === 0) {
+                    lineEnd = i;
                     break;
                   }
-                  pNesting--;
+                  lNesting--;
                 }
               }
-              if (pEndAbs !== -1) {
-                lineContent =
-                  text.substring(startIndex, pStartAbs) + newPointsCore + text.substring(pEndAbs + 1, endIndex);
+              if (lineEnd !== -1) {
+                // Remove the Line(...) and any leading/trailing comma+whitespace
+                let removeStart = lineStart;
+                let removeEnd = lineEnd + 1;
+                // Remove leading comma+space
+                const before = annotationContent.substring(0, removeStart);
+                const after = annotationContent.substring(removeEnd);
+                if (before.trimEnd().endsWith(",")) {
+                  annotationContent = before.trimEnd().slice(0, -1).trimEnd() + after;
+                } else if (after.trimStart().startsWith(",")) {
+                  annotationContent = before + after.trimStart().slice(1).trimStart();
+                } else {
+                  annotationContent = before + after;
+                }
               }
-            } else {
-              const prefix = lineContent.trim().length > 0 ? ", " : "";
-              lineContent = lineContent + prefix + newPointsCore;
             }
-
-            if (!lineContent.match(/color\s*=\s*\{/)) {
-              const prefix = lineContent.trim().length > 0 ? ", " : "";
-              lineContent = lineContent + prefix + colorCore;
-            }
-
-            newText = text.substring(0, startIndex) + lineContent + text.substring(endIndex);
+            // Re-insert the Line with new data
+            const trimmed = annotationContent.trim();
+            const separator = trimmed.length > 0 ? ", " : "";
+            newText =
+              text.substring(0, annContentStart) +
+              trimmed +
+              separator +
+              newLineAnnotation +
+              text.substring(annEndIndex);
           }
         } else {
-          const annotationMatch = text.match(/annotation\s*\(/);
-          if (annotationMatch) {
-            const startIndex = annotationMatch.index! + annotationMatch[0].length;
-            let nesting = 0;
-            let endIndex = -1;
-            for (let i = startIndex; i < text.length; i++) {
-              if (text[i] === "(") nesting++;
-              else if (text[i] === ")") {
-                if (nesting === 0) {
-                  endIndex = i;
-                  break;
-                }
-                nesting--;
-              }
-            }
-            if (endIndex !== -1) {
-              const annotationContent = text.substring(startIndex, endIndex);
-              const prefix = annotationContent.trim().length > 0 ? ", " : "";
-              newText =
-                text.substring(0, endIndex) +
-                prefix +
-                `Line(${newPointsCore}, ${colorCore})` +
-                text.substring(endIndex);
-            }
+          // No annotation at all: insert before the semicolon
+          const semiIndex = text.lastIndexOf(";");
+          const insert = ` annotation(${newLineAnnotation})`;
+          if (semiIndex !== -1) {
+            newText = text.slice(0, semiIndex) + insert + text.slice(semiIndex);
           } else {
-            const semiIndex = text.lastIndexOf(";");
-            const insert = ` annotation(Line(${newPointsCore}, ${colorCore}))`;
-            if (semiIndex !== -1) {
-              newText = text.slice(0, semiIndex) + insert + text.slice(semiIndex);
-            } else {
-              newText = text + insert;
-            }
+            newText = text + insert;
           }
         }
 
@@ -1478,13 +1522,13 @@ export default function MorselEditor(props: MorselEditorProps) {
                 <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
                   {!showResultsView ? (
                     <ComponentList
-                      classInstance={classInstance}
+                      classInstance={diagramClassInstance}
                       onSelect={(name) => {
-                        if (!classInstance) return;
-                        const component = Array.from(classInstance.components).find((c) => c.name === name);
+                        if (!diagramClassInstance) return;
+                        const component = Array.from(diagramClassInstance.components).find((c) => c.name === name);
                         setSelectedComponent(component || null);
                         if (name) {
-                          codeEditorRef.current?.revealComponent(name);
+                          codeEditorRef.current?.revealComponent(name, diagramClassInstance);
                         }
                       }}
                       selectedName={selectedComponent?.name}
@@ -1570,10 +1614,74 @@ export default function MorselEditor(props: MorselEditorProps) {
                   backgroundColor: "var(--color-canvas-default)",
                 }}
               >
+                {nestedModels.length > 1 && (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      width: "100%",
+                      gap: 0,
+                      padding: "0 0",
+                      overflowX: "auto",
+                      flexShrink: 0,
+                      borderBottom:
+                        colorMode === "dark" ? "1px solid rgba(255, 255, 255, 0.08)" : "1px solid rgba(0, 0, 0, 0.08)",
+                      backgroundColor: colorMode === "dark" ? "rgba(22, 27, 34, 0.6)" : "rgba(246, 248, 250, 0.8)",
+                    }}
+                  >
+                    {nestedModels.map((model, index) => (
+                      <button
+                        key={model.compositeName ?? index}
+                        onClick={() => {
+                          setSelectedModelIndex(index);
+                          model.instantiate();
+                          setDiagramClassInstance(model);
+                        }}
+                        style={{
+                          padding: "6px 16px",
+                          fontSize: 13,
+                          fontWeight: selectedModelIndex === index ? 600 : 400,
+                          border: "none",
+                          borderBottom:
+                            selectedModelIndex === index
+                              ? colorMode === "dark"
+                                ? "2px solid #58a6ff"
+                                : "2px solid #0969da"
+                              : "2px solid transparent",
+                          cursor: "pointer",
+                          whiteSpace: "nowrap",
+                          backgroundColor: "transparent",
+                          color:
+                            selectedModelIndex === index
+                              ? colorMode === "dark"
+                                ? "#e6edf3"
+                                : "#1f2328"
+                              : colorMode === "dark"
+                                ? "#8b949e"
+                                : "#656d76",
+                          transition: "all 0.15s ease",
+                        }}
+                        onMouseEnter={(e) => {
+                          if (selectedModelIndex !== index) {
+                            (e.currentTarget as HTMLElement).style.backgroundColor =
+                              colorMode === "dark" ? "rgba(255, 255, 255, 0.04)" : "rgba(0, 0, 0, 0.03)";
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (selectedModelIndex !== index) {
+                            (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
+                          }
+                        }}
+                      >
+                        {model.name ?? `Model ${index + 1}`}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <div
                   style={{
                     position: "absolute",
-                    top: "16px",
+                    top: nestedModels.length > 1 ? "48px" : "16px",
                     left: "50%",
                     transform: "translateX(-50%)",
                     display: "flex",
@@ -1622,11 +1730,12 @@ export default function MorselEditor(props: MorselEditorProps) {
                           if (!name) {
                             setSelectedComponent(null);
                           } else {
-                            const component = classInstance?.components
-                              ? Array.from(classInstance.components).find((c) => c.name === name)
+                            const searchInstance = diagramClassInstance ?? classInstance;
+                            const component = searchInstance?.components
+                              ? Array.from(searchInstance.components).find((c) => c.name === name)
                               : null;
                             setSelectedComponent(component || null);
-                            codeEditorRef.current?.revealComponent(name);
+                            codeEditorRef.current?.revealComponent(name, searchInstance);
                           }
                         }}
                         onDrop={(className, x, y) => {
@@ -1830,7 +1939,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                           }
                         }}
                         onMove={(items) => {
-                          if (!classInstance || !editor) return;
+                          if ((!diagramClassInstance && !classInstance) || !editor) return;
                           isDiagramUpdate.current = true;
                           const edits: editor.IIdentifiedSingleEditOperation[] = [];
                           const allEdges: any[] = [];
@@ -1853,11 +1962,32 @@ export default function MorselEditor(props: MorselEditorProps) {
                           }
 
                           if (edits.length > 0) {
-                            editor.executeEdits("move", edits);
+                            // Sort edits by position (descending) and remove overlaps
+                            edits.sort((a, b) => {
+                              if (a.range.startLineNumber !== b.range.startLineNumber)
+                                return a.range.startLineNumber - b.range.startLineNumber;
+                              return a.range.startColumn - b.range.startColumn;
+                            });
+                            const filtered = edits.filter((edit, i) => {
+                              if (i === 0) return true;
+                              const prev = edits[i - 1];
+                              // Skip if this edit starts before the previous one ends
+                              if (
+                                edit.range.startLineNumber < prev.range.endLineNumber ||
+                                (edit.range.startLineNumber === prev.range.endLineNumber &&
+                                  edit.range.startColumn < prev.range.endColumn)
+                              ) {
+                                return false;
+                              }
+                              return true;
+                            });
+                            if (filtered.length > 0) {
+                              editor.executeEdits("move", filtered);
+                            }
                           }
                         }}
                         onResize={(name, x, y, width, height, rotation, edges) => {
-                          if (!classInstance || !editor) return;
+                          if ((!diagramClassInstance && !classInstance) || !editor) return;
                           isDiagramUpdate.current = false;
                           const edits: editor.IIdentifiedSingleEditOperation[] = [];
                           const edit = getPlacementEdit(name, x, y, width, height, rotation);
@@ -1867,11 +1997,30 @@ export default function MorselEditor(props: MorselEditorProps) {
                             edgeEdits.forEach((edit) => edits.push(edit));
                           }
                           if (edits.length > 0) {
-                            editor.executeEdits("resize", edits);
+                            edits.sort((a, b) => {
+                              if (a.range.startLineNumber !== b.range.startLineNumber)
+                                return a.range.startLineNumber - b.range.startLineNumber;
+                              return a.range.startColumn - b.range.startColumn;
+                            });
+                            const filtered = edits.filter((edit, i) => {
+                              if (i === 0) return true;
+                              const prev = edits[i - 1];
+                              if (
+                                edit.range.startLineNumber < prev.range.endLineNumber ||
+                                (edit.range.startLineNumber === prev.range.endLineNumber &&
+                                  edit.range.startColumn < prev.range.endColumn)
+                              ) {
+                                return false;
+                              }
+                              return true;
+                            });
+                            if (filtered.length > 0) {
+                              editor.executeEdits("resize", filtered);
+                            }
                           }
                         }}
                         onEdgeMove={(edges) => {
-                          if (!classInstance || !editor) return;
+                          if ((!diagramClassInstance && !classInstance) || !editor) return;
                           isDiagramUpdate.current = true;
                           const edgeEdits = getConnectEdits(edges);
                           if (edgeEdits.size > 0) {
