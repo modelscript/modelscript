@@ -164,6 +164,48 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     props.onComponentsDelete,
   ]);
 
+  // Keyboard arrow movement for selected nodes
+  useEffect(() => {
+    const container = refContainer.current;
+    if (!container) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const g = graphRef.current;
+      if (!g) return;
+      const arrowKeys: Record<string, [number, number]> = {
+        ArrowUp: [0, -1],
+        ArrowDown: [0, 1],
+        ArrowLeft: [-1, 0],
+        ArrowRight: [1, 0],
+      };
+      const dir = arrowKeys[e.key];
+      if (!dir) return;
+      const selected = g.getSelectedCells().filter((c) => c.isNode());
+      if (selected.length === 0) return;
+      e.preventDefault();
+      const step = e.shiftKey ? 1 : 10;
+      const [dx, dy] = [dir[0] * step, dir[1] * step];
+      g.batchUpdate("keyboard-move", () => {
+        selected.forEach((node) => {
+          const pos = node.getPosition();
+          node.setPosition(pos.x + dx, pos.y + dy);
+        });
+      });
+      // Trigger onMove callback
+      if (onMoveRef.current) {
+        const items = selected.map((node) => {
+          const p = node.getPosition();
+          const s = node.getSize();
+          const r = node.getAngle();
+          const edges = getConnectedEdges(node);
+          return { name: node.id, x: p.x, y: p.y, width: s.width, height: s.height, rotation: r, edges };
+        });
+        onMoveRef.current(items);
+      }
+    };
+    container.addEventListener("keydown", handleKeyDown);
+    return () => container.removeEventListener("keydown", handleKeyDown);
+  }, [graph]);
+
   const getConnectedEdges = (node: any) => {
     const g = graphRef.current;
     if (!g) return [];
@@ -1034,6 +1076,8 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     <div
       ref={refContainer}
       className="height-full width-full"
+      tabIndex={0}
+      style={{ outline: "none" }}
       onDragOver={(e) => {
         e.preventDefault();
         e.dataTransfer.dropEffect = "copy";
