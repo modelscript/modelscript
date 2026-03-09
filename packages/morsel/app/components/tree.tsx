@@ -8,10 +8,12 @@ import React from "react";
 interface TreeWidgetProps {
   context: Context | null;
   onSelect: (classInstance: ModelicaClassInstance) => void;
+  onHighlight?: (className: string) => void;
   width?: number | string;
   filter?: string;
   version?: number;
   language?: string | null;
+  selectedClassName?: string | null;
 }
 
 interface ClassIconProps {
@@ -49,9 +51,11 @@ const ClassIcon = React.memo(function ClassIcon(props: ClassIconProps) {
 interface TreeNodeProps {
   element: ModelicaClassInstance;
   onSelect: (classInstance: ModelicaClassInstance) => void;
+  onHighlight?: (className: string) => void;
   depth: number;
   showQualifiedName?: boolean;
   language?: string | null;
+  selectedClassName?: string | null;
 }
 
 function getClassChildren(element: ModelicaClassInstance): ModelicaClassInstance[] {
@@ -65,11 +69,12 @@ function getClassChildren(element: ModelicaClassInstance): ModelicaClassInstance
 }
 
 const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
-  const { element, onSelect, depth, showQualifiedName, language } = props;
+  const { element, onSelect, onHighlight, depth, showQualifiedName, language, selectedClassName } = props;
   const [expanded, setExpanded] = React.useState(false);
   const [hasChildren, setHasChildren] = React.useState<boolean | null>(null);
   const iconRef = React.useRef<HTMLSpanElement>(null);
   const dragImageRef = React.useRef<HTMLImageElement | null>(null);
+  const [hovered, setHovered] = React.useState(false);
 
   const children = expanded ? getClassChildren(element) : null;
 
@@ -80,8 +85,10 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
   }, [children, hasChildren]);
 
   const showChevron = (hasChildren === null || hasChildren === true) && !showQualifiedName;
+  const isSelected = selectedClassName != null && element.compositeName === selectedClassName;
 
   const handleMouseEnter = () => {
+    setHovered(true);
     if (!dragImageRef.current) {
       const svg = renderIcon(element, undefined, true, undefined);
       if (svg) {
@@ -98,20 +105,38 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
 
   return (
     <>
-      <NavList.Item
+      <li
+        style={{
+          listStyle: "none",
+          display: "flex",
+          alignItems: "center",
+          padding: "6px 8px",
+          paddingLeft: `${8 + depth * 16}px`,
+          margin: "0 8px",
+          cursor: "pointer",
+          fontSize: 14,
+          color: "var(--fgColor-default, var(--color-fg-default))",
+          backgroundColor: isSelected
+            ? "var(--control-transparent-bgColor-selected, var(--color-action-list-item-default-selected-bg, rgba(177, 186, 196, 0.2)))"
+            : hovered
+              ? "var(--control-transparent-bgColor-hover, var(--color-action-list-item-default-hover-bg, rgba(177, 186, 196, 0.12)))"
+              : "transparent",
+          borderRadius: 6,
+          gap: 8,
+          userSelect: "none",
+          transition: "background-color 0.1s ease",
+        }}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={() => setHovered(false)}
         onClick={(e) => {
           e.stopPropagation();
-          if (!showQualifiedName && hasChildren !== false) {
-            setExpanded((prev) => !prev);
-          } else {
-            onSelect(element);
-          }
+          onHighlight?.(element.compositeName);
         }}
         onDoubleClick={(e) => {
           e.stopPropagation();
+          onHighlight?.(element.compositeName);
           onSelect(element);
         }}
-        onMouseEnter={handleMouseEnter}
         draggable
         onDragStart={(e) => {
           e.dataTransfer.setData("application/json", JSON.stringify({ className: element.compositeName }));
@@ -123,39 +148,48 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
             e.dataTransfer.setDragImage(iconRef.current, 10, 10);
           }
         }}
-        style={{ paddingLeft: `${8 + depth * 16}px` }}
       >
-        <NavList.LeadingVisual>
-          <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            {showChevron ? (
-              expanded ? (
-                <ChevronDownIcon size={12} />
-              ) : (
-                <ChevronRightIcon size={12} />
-              )
-            ) : (
-              <span style={{ width: 12 }} />
-            )}
-            <span ref={iconRef}>
-              <ClassIcon classInstance={element} />
+        <span style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+          {showChevron ? (
+            <span
+              role="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setExpanded((prev) => !prev);
+              }}
+              style={{
+                display: "flex",
+                cursor: "pointer",
+                padding: "6px 6px 6px 16px",
+                margin: "-4px -4px -4px -14px",
+              }}
+            >
+              {expanded ? <ChevronDownIcon size={12} /> : <ChevronRightIcon size={12} />}
             </span>
+          ) : (
+            <span style={{ width: 12 }} />
+          )}
+          <span ref={iconRef}>
+            <ClassIcon classInstance={element} />
           </span>
-        </NavList.LeadingVisual>
+        </span>
         <div
           style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
           title={(showQualifiedName ? element.localizedCompositeName : element.localizedName) ?? undefined}
         >
           {showQualifiedName ? element.localizedCompositeName : element.localizedName}
         </div>
-      </NavList.Item>
+      </li>
       {expanded &&
         children?.map((child, i) => (
           <TreeNode
             key={`${child.name}-${i}`}
             element={child}
             onSelect={onSelect}
+            onHighlight={onHighlight}
             depth={depth + 1}
             language={language}
+            selectedClassName={selectedClassName}
           />
         ))}
     </>
@@ -246,9 +280,11 @@ const TreeWidget = React.memo(function TreeWidget(props: TreeWidgetProps) {
             key={c.compositeName}
             element={c}
             onSelect={props.onSelect}
+            onHighlight={props.onHighlight}
             depth={0}
             showQualifiedName={true}
             language={props.language}
+            selectedClassName={props.selectedClassName}
           />
         )),
       );
@@ -260,8 +296,10 @@ const TreeWidget = React.memo(function TreeWidget(props: TreeWidgetProps) {
               key={element.name}
               element={element}
               onSelect={props.onSelect}
+              onHighlight={props.onHighlight}
               depth={0}
               language={props.language}
+              selectedClassName={props.selectedClassName}
             />,
           );
         } else if (element instanceof ModelicaLibrary) {

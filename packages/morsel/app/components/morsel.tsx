@@ -157,6 +157,7 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [pendingSelection, setPendingSelection] = useState<ModelicaClassInstance | null>(null);
   const [selectedComponent, setSelectedComponent] = useState<ModelicaComponentInstance | null>(null);
   const [diagramClassInstance, setDiagramClassInstance] = useState<ModelicaClassInstance | null>(null);
+  const [selectedTreeClassName, setSelectedTreeClassName] = useState<string | null>(null);
   const [selectedModelIndex, setSelectedModelIndex] = useState(0);
   const isDiagramUpdate = useRef(false);
   const diagramEditorRef = useRef<DiagramEditorHandle>(null);
@@ -1515,10 +1516,12 @@ export default function MorselEditor(props: MorselEditorProps) {
                     key={debouncedFilter ? "filtered" : "unfiltered"}
                     context={context}
                     onSelect={handleTreeSelect}
+                    onHighlight={setSelectedTreeClassName}
                     width="100%"
                     filter={debouncedFilter}
                     version={contextVersion}
                     language={language}
+                    selectedClassName={selectedTreeClassName}
                   />
                 </div>
                 <div className="text-bold px-3 py-2 border-top border-bottom bg-canvas-subtle">
