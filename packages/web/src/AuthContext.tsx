@@ -24,7 +24,7 @@ const TOKEN_KEY = "modelscript-auth-token";
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY));
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(!!token);
 
   // Set/clear the axios default header whenever token changes
   useEffect(() => {
@@ -39,10 +39,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // On mount, validate stored token
   useEffect(() => {
-    if (!token) {
-      setIsLoading(false);
-      return;
-    }
+    if (!token) return;
     api
       .get("/auth/me")
       .then((res) => setUser(res.data.user))
@@ -77,6 +74,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth(): AuthContextType {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth must be used within AuthProvider");
