@@ -849,7 +849,13 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       });
     }
 
+    const isNewClass = lastClassRef.current !== props.classInstance.name;
+
     g.batchUpdate(() => {
+      if (isNewClass) {
+        g.clearCells();
+      }
+
       const currentCells = g.getCells();
       const newCellIds = new Set([...nodes.keys(), ...edges.map((e) => e.id!)]);
 
