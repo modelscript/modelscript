@@ -971,7 +971,11 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
         const data = e.dataTransfer.getData("application/json");
         if (data && graph) {
           try {
-            const { className } = JSON.parse(data);
+            const { className, classKind } = JSON.parse(data);
+            // Only allow models, blocks, and connectors to be dropped
+            if (classKind && classKind !== "model" && classKind !== "block" && classKind !== "connector") {
+              return;
+            }
             const p = graph.clientToLocal(e.clientX, e.clientY);
             if (props.onDrop) {
               props.onDrop(className, p.x, p.y);

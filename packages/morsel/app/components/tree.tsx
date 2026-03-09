@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Context, ModelicaClassInstance, ModelicaClassKind, ModelicaLibrary, renderIcon } from "@modelscript/core";
+import { Context, ModelicaClassInstance, ModelicaLibrary, renderIcon } from "@modelscript/core";
 import { ChevronDownIcon, ChevronRightIcon, PackageIcon } from "@primer/octicons-react";
 import { NavList } from "@primer/react";
 import React from "react";
@@ -137,13 +137,12 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
           onHighlight?.(element.compositeName);
           onSelect(element);
         }}
-        draggable={
-          element.classKind === ModelicaClassKind.MODEL ||
-          element.classKind === ModelicaClassKind.BLOCK ||
-          element.classKind === ModelicaClassKind.CONNECTOR
-        }
+        draggable
         onDragStart={(e) => {
-          e.dataTransfer.setData("application/json", JSON.stringify({ className: element.compositeName }));
+          e.dataTransfer.setData(
+            "application/json",
+            JSON.stringify({ className: element.compositeName, classKind: element.classKind }),
+          );
           e.dataTransfer.effectAllowed = "copy";
 
           if (dragImageRef.current && dragImageRef.current.complete) {

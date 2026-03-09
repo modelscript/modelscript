@@ -527,6 +527,31 @@ export default function MorselEditor(props: MorselEditorProps) {
       } else {
         setDiagramClassInstance(classInstance);
       }
+    } else {
+      // Diagram-initiated edit (e.g. component delete): update diagramClassInstance
+      // to reflect new class state without resetting layout/tab selection
+      const models: ModelicaClassInstance[] = [];
+      const collectModels = (instance: ModelicaClassInstance) => {
+        for (const element of instance.elements) {
+          if (element instanceof ModelicaClassInstance) {
+            if (element.classKind === ModelicaClassKind.MODEL || element.classKind === ModelicaClassKind.BLOCK) {
+              models.push(element);
+            } else if (element.classKind === ModelicaClassKind.PACKAGE) {
+              collectModels(element);
+            }
+          }
+        }
+      };
+      if (classInstance) {
+        collectModels(classInstance);
+      }
+      if (models.length > 1) {
+        const targetIndex = Math.min(selectedModelIndex, models.length - 1);
+        models[targetIndex].instantiate();
+        setDiagramClassInstance(models[targetIndex]);
+      } else {
+        setDiagramClassInstance(classInstance);
+      }
     }
     isDiagramUpdate.current = false;
 
@@ -1317,6 +1342,8 @@ export default function MorselEditor(props: MorselEditorProps) {
     if (edits.length > 0) {
       isDiagramUpdate.current = true;
       editor.executeEdits("delete-component", edits);
+      // Force immediate re-parse to update classInstance and component list
+      codeEditorRef.current?.sync();
     }
   };
 
@@ -1752,14 +1779,18 @@ export default function MorselEditor(props: MorselEditorProps) {
                           // Try to get the defaultComponentName annotation from the dropped class
                           const shortName = className.split(".").pop() || "component";
                           let baseName = shortName.toLowerCase();
-                          const droppedClass = context?.query(className);
-                          if (droppedClass instanceof ModelicaClassInstance) {
-                            const defaultName = droppedClass.annotation<string>("defaultComponentName");
-                            if (defaultName) {
-                              baseName = droppedClass.translate(defaultName);
-                            } else {
-                              baseName = droppedClass.localizedName.toLowerCase();
+                          try {
+                            const droppedClass = context?.query(className);
+                            if (droppedClass instanceof ModelicaClassInstance) {
+                              const defaultName = droppedClass.annotation<string>("defaultComponentName");
+                              if (defaultName) {
+                                baseName = droppedClass.translate(defaultName);
+                              } else {
+                                baseName = droppedClass.localizedName.toLowerCase();
+                              }
                             }
+                          } catch {
+                            // query may throw during lazy instantiation; proceed with default baseName
                           }
 
                           let name = baseName;

@@ -537,6 +537,7 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     this.name = this.abstractSyntaxNode?.identifier?.text ?? null;
     this.description =
       this.abstractSyntaxNode?.classSpecifier?.description?.strings?.map((d) => d.text ?? "")?.join(" ") ?? null;
+    this.classKind = abstractSyntaxNode?.classPrefixes?.classKind ?? ModelicaClassKind.CLASS;
     this.instantiated = false;
     this.cloneCache.clear();
     this.#hash = null;
