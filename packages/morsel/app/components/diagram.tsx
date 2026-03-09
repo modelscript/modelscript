@@ -754,6 +754,14 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     yAxis!.setAttribute("x2", "0");
     yAxis!.setAttribute("y2", "100000");
 
+    const diagram: IDiagram | null = props.classInstance.annotation("Diagram");
+    const ext0 = diagram?.coordinateSystem?.extent?.[0] ?? [-100, -100];
+    const ext1 = diagram?.coordinateSystem?.extent?.[1] ?? [100, 100];
+    const bgWidth = computeWidth(diagram?.coordinateSystem?.extent);
+    const bgHeight = computeHeight(diagram?.coordinateSystem?.extent);
+    const csX = Math.min(ext0[0], ext1[0]);
+    const csY = -Math.max(ext0[1], ext1[1]);
+
     let coordinateSystem = document.getElementById("coordinateSystem") as unknown as SVGRectElement | null;
     if (!coordinateSystem) {
       coordinateSystem = document.createElementNS("http://www.w3.org/2000/svg", "rect");
@@ -765,21 +773,16 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       coordinateSystem.setAttribute("z-index", "1");
       g.view.viewport.insertBefore(coordinateSystem, g.view.viewport.firstChild);
     }
-    coordinateSystem!.setAttribute("x", "-100");
-    coordinateSystem!.setAttribute("y", "-100");
-    coordinateSystem!.setAttribute("width", "200");
-    coordinateSystem!.setAttribute("height", "200");
+    coordinateSystem!.setAttribute("x", String(csX));
+    coordinateSystem!.setAttribute("y", String(csY));
+    coordinateSystem!.setAttribute("width", String(bgWidth));
+    coordinateSystem!.setAttribute("height", String(bgHeight));
 
-    const diagram: IDiagram | null = props.classInstance.annotation("Diagram");
     if (diagram) {
       const diagramMarkup = renderDiagramX6(props.classInstance);
       if (diagramMarkup) {
-        const ext0 = diagram.coordinateSystem?.extent?.[0] ?? [-100, -100];
-        const ext1 = diagram.coordinateSystem?.extent?.[1] ?? [100, 100];
-        const bgWidth = computeWidth(diagram.coordinateSystem?.extent);
-        const bgHeight = computeHeight(diagram.coordinateSystem?.extent);
-        const x = Math.min(ext0[0], ext1[0]);
-        const y = -Math.max(ext0[1], ext1[1]);
+        const x = csX;
+        const y = csY;
         nodes.set("__diagram_background__", {
           id: "__diagram_background__",
           x,
