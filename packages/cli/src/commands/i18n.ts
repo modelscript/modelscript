@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Context, I18nVisitor } from "@modelscript/core";
+import { Context, I18nExtractor } from "@modelscript/core";
 import Modelica from "@modelscript/tree-sitter-modelica";
 import { writeFileSync } from "node:fs";
 import Parser from "tree-sitter";
@@ -13,7 +13,7 @@ interface I18nArgs {
 }
 
 export const I18n: CommandModule<Record<string, unknown>, I18nArgs> = {
-  command: "i18n <paths...>",
+  command: "i18n <paths..>",
   describe: "",
   builder: (yargs) => {
     return yargs
@@ -35,16 +35,16 @@ export const I18n: CommandModule<Record<string, unknown>, I18nArgs> = {
     Context.registerParser(".mo", parser);
     const context = new Context(new NodeFileSystem());
 
-    const visitor = new I18nVisitor();
+    const extractor = new I18nExtractor();
 
     for (const path of args.paths) {
       const library = context.addLibrary(path);
       if (library) {
-        library.accept(visitor);
+        extractor.extractFromLibrary(library);
       }
     }
 
-    const pot = visitor.generatePot();
+    const pot = extractor.generatePot();
     if (args.output) {
       writeFileSync(args.output, pot);
     } else {
