@@ -243,6 +243,19 @@ export function renderRectangle(group: G, graphicItem: IRectangle): Rect {
   return shape;
 }
 
+function formatNumber(value: number): string {
+  if (value === 0) return "0";
+  const abs = Math.abs(value);
+  if (abs >= 10000 || abs < 0.1) {
+    const exp = Math.floor(Math.log10(abs));
+    const eng = Math.floor(exp / 3) * 3;
+    const mantissa = value / Math.pow(10, eng);
+    const mantissaStr = Number.isInteger(mantissa) ? String(mantissa) : parseFloat(mantissa.toPrecision(4)).toString();
+    return `${mantissaStr}e${eng}`;
+  }
+  return String(value);
+}
+
 export function renderText(
   group: G,
   graphicItem: IText,
@@ -267,7 +280,7 @@ export function renderText(
     }
     const expression = ModelicaExpression.fromClassInstance(namedElement.classInstance);
     if (expression instanceof ModelicaIntegerLiteral || expression instanceof ModelicaRealLiteral) {
-      return String(expression.value) + unitString;
+      return formatNumber(expression.value) + unitString;
     } else if (expression instanceof ModelicaEnumerationLiteral) {
       return expression.stringValue;
     } else if (expression instanceof ModelicaStringLiteral) {
