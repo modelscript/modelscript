@@ -615,77 +615,10 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
       }),
     );
 
-    disposablesRef.current.push(
-      monaco.languages.registerInlayHintsProvider("modelica", {
-        provideInlayHints: (model: editor.ITextModel) => {
-          if (model !== editorRef.current?.getModel()) {
-            return { hints: [], dispose: () => {} };
-          }
-          const text = model.getValue();
-          const tree = parserRef.current?.parse(text);
-          if (!tree) return { hints: [], dispose: () => {} };
-
-          const hints: monaco.languages.InlayHint[] = [];
-          const scope = classInstanceRef.current ?? contextRef.current;
-          if (!scope) {
-            tree.delete();
-            return { hints: [], dispose: () => {} };
-          }
-
-          try {
-            // Ensure annotation class is initialized if we have a context
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const ME = ModelicaElement as any;
-            if (!ME.annotationClassInstance && contextRef.current) {
-              ME.initializeAnnotationClass(contextRef.current);
-            }
-
-            const traverse = (node: Parser.SyntaxNode) => {
-              if (node.type === "ElementModification" || node.type === "NamedArgument") {
-                const element = resolvePathElement(node, scope);
-                if (element instanceof ModelicaComponentInstance) {
-                  const typeName = element.declaredType?.name ?? element.classInstance?.name;
-                  if (typeName) {
-                    const nameNode =
-                      node.type === "ElementModification"
-                        ? node.children.find((c) => c.type === "Name")
-                        : node.childForFieldName("identifier");
-
-                    if (nameNode) {
-                      hints.push({
-                        label: `: ${typeName}`,
-                        tooltip: element.description ?? undefined,
-                        position: {
-                          lineNumber: nameNode.endPosition.row + 1,
-                          column: nameNode.endPosition.column + 1,
-                        },
-                        kind: monaco.languages.InlayHintKind.Type,
-                        paddingLeft: true,
-                      });
-                    }
-                  }
-                }
-              }
-              for (let i = 0; i < node.childCount; i++) {
-                const child = node.child(i);
-                if (child) traverse(child);
-              }
-            };
-            traverse(tree.rootNode);
-          } catch (e) {
-            console.error("Inlay hints traversal failed", e);
-          } finally {
-            tree.delete();
-          }
-          return {
-            hints,
-            dispose: () => {
-              // No-op
-            },
-          };
-        },
-      }),
-    );
+    // Inlay hints disabled for now
+    // disposablesRef.current.push(
+    //   monaco.languages.registerInlayHintsProvider("modelica", { ... }),
+    // );
 
     disposablesRef.current.push(
       monaco.languages.setLanguageConfiguration("modelica", {
