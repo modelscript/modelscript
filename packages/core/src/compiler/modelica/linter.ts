@@ -137,6 +137,7 @@ export class ModelicaLinter {
 export class ModelicaModelLinter extends ModelicaModelVisitor<string | null | undefined> {
   #diagnosticsCallback: DiagnosticsCallback;
   #modelicaSyntaxLinter: ModelicaSyntaxLinter;
+  #visited = new Set<string>();
 
   constructor(diagnosticsCallback: DiagnosticsCallback, modelicaSyntaxLinter: ModelicaSyntaxLinter) {
     super();
@@ -150,13 +151,18 @@ export class ModelicaModelLinter extends ModelicaModelVisitor<string | null | un
   }
 
   visitClassInstance(node: ModelicaClassInstance, resource: string | null | undefined): void {
+    const key = node.compositeName ?? "";
+    if (this.#visited.has(key)) return;
+    this.#visited.add(key);
     ModelicaLinter.applyRules("visitClassInstance", node, this.#diagnosticsCallback, resource);
     super.visitClassInstance(node, resource);
   }
 
   visitComponentInstance(node: ModelicaComponentInstance, resource: string | null | undefined): void {
+    // Do NOT call super.visitComponentInstance - that would recurse into the component's
+    // type definition elements (via classInstance.elements), causing infinite recursion
+    // for models with cyclic type references. The type itself is linted when visited as a class.
     ModelicaLinter.applyRules("visitComponentInstance", node, this.#diagnosticsCallback, resource);
-    super.visitComponentInstance(node, resource);
   }
 
   visitEntity(node: ModelicaEntity): void {

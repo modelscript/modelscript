@@ -2199,9 +2199,12 @@ export class ModelicaClassRedeclaration extends ModelicaElementRedeclaration {
   split(count: number): ModelicaModificationArgument[];
   split(count: number, index: number): ModelicaModificationArgument;
   split(count: number, index?: number): ModelicaModificationArgument | ModelicaModificationArgument[];
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   split(count: unknown, index?: unknown): ModelicaModificationArgument | ModelicaModificationArgument[] {
-    throw new Error("Method not implemented.");
+    if (index !== undefined) {
+      return this;
+    } else {
+      return Array(count as number).fill(this);
+    }
   }
 }
 
