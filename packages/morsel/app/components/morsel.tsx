@@ -927,7 +927,26 @@ export default function MorselEditor(props: MorselEditorProps) {
       if (!text.includes(name)) return null;
 
       const rotationPart = r !== 0 ? `, rotation=${r}` : "";
-      const newTransformationCore = `origin={${originX},${originY}}, extent={{-${w / 2},-${h / 2}},{${w / 2},${h / 2}}}${rotationPart}`;
+      // Detect flip from the original extent in the source text
+      let flipX = false;
+      let flipY = false;
+      const extentMatch = text.match(
+        /extent\s*=\s*\{\{\s*([^,]+)\s*,\s*([^}]+)\}\s*,\s*\{\s*([^,]+)\s*,\s*([^}]+)\}\}/,
+      );
+      if (extentMatch) {
+        const [, x1s, y1s, x2s, y2s] = extentMatch;
+        const ox1 = parseFloat(x1s);
+        const oy1 = parseFloat(y1s);
+        const ox2 = parseFloat(x2s);
+        const oy2 = parseFloat(y2s);
+        if (!isNaN(ox1) && !isNaN(ox2)) flipX = ox1 > ox2;
+        if (!isNaN(oy1) && !isNaN(oy2)) flipY = oy1 > oy2;
+      }
+      const ex1 = flipX ? w / 2 : -(w / 2);
+      const ex2 = flipX ? -(w / 2) : w / 2;
+      const ey1 = flipY ? h / 2 : -(h / 2);
+      const ey2 = flipY ? -(h / 2) : h / 2;
+      const newTransformationCore = `origin={${originX},${originY}}, extent={{${ex1},${ey1}},{${ex2},${ey2}}}${rotationPart}`;
       const newPlacement = `Placement(transformation(${newTransformationCore}))`;
 
       const annotationMatch = text.match(/annotation\s*\(/);
