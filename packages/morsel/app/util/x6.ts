@@ -350,7 +350,8 @@ export function renderTextX6(
   const width = computeWidth(graphicItem.extent);
   const height = computeHeight(graphicItem.extent);
   const transform = componentInstance ? computeIconPlacement(componentInstance) : null;
-  const invScaleRatio = transform && transform.scaleX !== 0 ? transform.scaleY / transform.scaleX : 1;
+  const invScaleRatio =
+    transform && transform.scaleX !== 0 ? Math.abs(transform.scaleY) / Math.abs(transform.scaleX) : 1;
   const textX =
     graphicItem.horizontalAlignment === TextAlignment.LEFT
       ? x1

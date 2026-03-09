@@ -564,7 +564,56 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
           height: naturalHeight * scaleY,
         };
       }
-      const componentMarkup = renderIconX6(componentClassInstance, component, false);
+      const absScaleX = Math.abs(componentTransform.scaleX);
+      const absScaleY = Math.abs(componentTransform.scaleY);
+      const absWidth = Math.abs(componentTransform.width);
+      const absHeight = Math.abs(componentTransform.height);
+      const flipX = componentTransform.scaleX < 0;
+      const flipY = componentTransform.scaleY < 0;
+      let componentMarkup = renderIconX6(componentClassInstance, component, false);
+      if (flipX || flipY) {
+        const sx = flipX ? -1 : 1;
+        const sy = flipY ? -1 : 1;
+        // Un-flip text elements so labels remain readable after the icon flip.
+        // Text elements from renderTextX6 already have an inline CSS transform
+        // (e.g. "transform: scale(invRatio, 1)").  CSS transform doesn't stack,
+        // so we COMPOSE the counter-scale by modifying the existing scale values
+        // rather than adding a second transform property.
+        const unflipText = (node: any): void => {
+          if (!node?.children) return;
+          for (const child of node.children) {
+            if (child.tagName === "text") {
+              if (!child.attrs) child.attrs = {};
+              const style = (child.attrs.style as string) || "";
+              // Match the existing transform: scale(a, b) and multiply by sx, sy
+              const scaleMatch = style.match(/transform:\s*scale\(([^,]+),\s*([^)]+)\)/);
+              if (scaleMatch) {
+                const existingScaleX = parseFloat(scaleMatch[1]);
+                const existingScaleY = parseFloat(scaleMatch[2]);
+                child.attrs.style = style.replace(
+                  /transform:\s*scale\([^)]+\)/,
+                  `transform: scale(${sx * existingScaleX}, ${sy * existingScaleY})`,
+                );
+              } else {
+                // No existing transform — add one using the text's position as origin
+                const textX = child.attrs.x ?? 0;
+                const textY = child.attrs.y ?? 0;
+                child.attrs.style =
+                  style + `; transform: scale(${sx}, ${sy}); transform-origin: ${textX}px ${textY}px;`;
+              }
+            }
+            unflipText(child);
+          }
+        };
+        unflipText(componentMarkup);
+        const tx = flipX ? absWidth : 0;
+        const ty = flipY ? absHeight : 0;
+        componentMarkup = {
+          tagName: "g",
+          attrs: { transform: `translate(${tx}, ${ty}) scale(${sx}, ${sy})` },
+          children: [componentMarkup],
+        } as any;
+      }
       const ports: PortMetadata[] = [];
       for (const connector of componentClassInstance.components) {
         const connectorCondition = evaluateCondition(connector);
@@ -574,24 +623,46 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
         if (!connectorClassInstance || connectorClassInstance.classKind !== ModelicaClassKind.CONNECTOR) continue;
         const connectorTransform = computePortPlacement(connector);
         if (!connectorTransform) continue;
-        const connectorMarkup = renderIconX6(connectorClassInstance);
+        let connectorMarkup = renderIconX6(connectorClassInstance);
+        // Flip port icon visually when the parent component is flipped
+        if (flipX || flipY) {
+          const psx = flipX ? -1 : 1;
+          const psy = flipY ? -1 : 1;
+          const ptx = flipX ? connectorTransform.width * absScaleX : 0;
+          const pty = flipY ? connectorTransform.height * absScaleY : 0;
+          connectorMarkup = {
+            tagName: "g",
+            attrs: { transform: `translate(${ptx}, ${pty}) scale(${psx}, ${psy})` },
+            children: [connectorMarkup],
+          } as any;
+        }
         const a = connectorTransform.rotate * (Math.PI / 180);
-        const relTranslateX = (connectorTransform.translateX - connectorTransform.originX) * componentTransform.scaleX;
-        const relTranslateY = (connectorTransform.translateY - connectorTransform.originY) * componentTransform.scaleY;
+        // Compute the connector's center in icon SVG coordinates.
+        // The extent center offset from the rotation origin is rotated by the
+        // connector's own rotation, then added back to the origin.
+        const extCenterOffX = connectorTransform.translateX - connectorTransform.originX + connectorTransform.width / 2;
+        const extCenterOffY =
+          connectorTransform.translateY - connectorTransform.originY + connectorTransform.height / 2;
+        const connCenterX = connectorTransform.originX + extCenterOffX * Math.cos(a) - extCenterOffY * Math.sin(a);
+        const connCenterY = connectorTransform.originY + extCenterOffX * Math.sin(a) + extCenterOffY * Math.cos(a);
+        const portWidth = connectorTransform.width * absScaleX;
+        const portHeight = connectorTransform.height * absScaleY;
+        // Desired visual center of the port in the node's coordinate system
+        const desiredCenterX = absWidth / 2 + connCenterX * componentTransform.scaleX;
+        const desiredCenterY = absHeight / 2 + connCenterY * componentTransform.scaleY;
+        // X6 rotates ports around their top-left corner, not center.
+        // To place the visual center at the desired point, we reverse-compute
+        // the top-left from: center = topLeft + rotate(halfSize, angle)
+        const cosA = Math.cos(a);
+        const sinA = Math.sin(a);
+        const portX = desiredCenterX - (portWidth / 2) * cosA + (portHeight / 2) * sinA;
+        const portY = desiredCenterY - (portWidth / 2) * sinA - (portHeight / 2) * cosA;
         ports.push({
           id: connector.name ?? "",
           group: "absolute",
           args: {
-            x:
-              componentTransform.width / 2 +
-              relTranslateX * Math.cos(a) -
-              relTranslateY * Math.sin(a) +
-              connectorTransform.originX * componentTransform.scaleX,
-            y:
-              componentTransform.height / 2 +
-              relTranslateX * Math.sin(a) +
-              relTranslateY * Math.cos(a) +
-              connectorTransform.originY * componentTransform.scaleY,
+            x: portX,
+            y: portY,
             angle: connectorTransform.rotate,
           },
           markup: {
@@ -599,34 +670,26 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
             children: [connectorMarkup],
             attrs: {
               magnet: "true",
-              width: connectorTransform.width * componentTransform.scaleX,
-              height: connectorTransform.height * componentTransform.scaleY,
+              width: connectorTransform.width * absScaleX,
+              height: connectorTransform.height * absScaleY,
               style: `overflow: visible${connectorCondition === undefined ? "; opacity: 0.5" : ""}`,
             },
           },
         });
       }
       const a = componentTransform.rotate * (Math.PI / 180);
-      const relTranslateX = componentTransform.width / 2 + componentTransform.translateX - componentTransform.originX;
-      const relTranslateY = componentTransform.height / 2 + componentTransform.translateY - componentTransform.originY;
+      const relTranslateX = absWidth / 2 + componentTransform.translateX - componentTransform.originX;
+      const relTranslateY = absHeight / 2 + componentTransform.translateY - componentTransform.originY;
       nodes.set(component.name, {
         id: component.name,
         autoLayout,
         zIndex: 10,
         opacity: condition === undefined ? 0.5 : 1,
-        x:
-          relTranslateX * Math.cos(a) -
-          relTranslateY * Math.sin(a) -
-          componentTransform.width / 2 +
-          componentTransform.originX,
-        y:
-          relTranslateX * Math.sin(a) +
-          relTranslateY * Math.cos(a) -
-          componentTransform.height / 2 +
-          componentTransform.originY,
+        x: relTranslateX * Math.cos(a) - relTranslateY * Math.sin(a) - absWidth / 2 + componentTransform.originX,
+        y: relTranslateX * Math.sin(a) + relTranslateY * Math.cos(a) - absHeight / 2 + componentTransform.originY,
         angle: componentTransform.rotate,
-        width: componentTransform.width,
-        height: componentTransform.height,
+        width: absWidth,
+        height: absHeight,
         markup: {
           tagName: "svg",
           children: [
@@ -634,16 +697,16 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
               tagName: "rect",
               attrs: {
                 style: "fill: transparent; stroke:none",
-                width: componentTransform.width,
-                height: componentTransform.height,
+                width: absWidth,
+                height: absHeight,
               },
             },
             componentMarkup,
           ],
           attrs: {
             preserveAspectRatio: "none",
-            width: componentTransform.width,
-            height: componentTransform.height,
+            width: absWidth,
+            height: absHeight,
             style: "overflow: visible",
           },
         },

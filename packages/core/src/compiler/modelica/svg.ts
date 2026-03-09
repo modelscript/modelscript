@@ -686,6 +686,9 @@ export function computeTransform(
   const h1 = computeHeight(transformation?.extent);
   const h2 = computeHeight(iconCoordinateSystem?.extent);
   const sy = h2 === 0 ? h1 : h1 / h2;
+  // Detect mirroring: if extent coordinates are flipped on an axis, negate the scale
+  const flipX = (transformation.extent?.[0]?.[0] ?? 0) > (transformation.extent?.[1]?.[0] ?? 0);
+  const flipY = (transformation.extent?.[0]?.[1] ?? 0) > (transformation.extent?.[1]?.[1] ?? 0);
   const [ox, oy] = convertPoint(transformation.origin, [0, 0]);
   const [tx1, ty1] = convertPoint(transformation.extent?.[0], [0, 0]);
   const [tx2, ty2] = convertPoint(transformation.extent?.[1], [0, 0]);
@@ -693,8 +696,8 @@ export function computeTransform(
   const ty = Math.min(ty1, ty2);
   const a = -(transformation.rotation ?? 0);
   return {
-    scaleX: sx,
-    scaleY: sy,
+    scaleX: flipX ? -sx : sx,
+    scaleY: flipY ? -sy : sy,
     rotate: a,
     translateX: ox + tx,
     translateY: oy + ty,
