@@ -149,8 +149,14 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
         </div>
       </NavList.Item>
       {expanded &&
-        children?.map((child) => (
-          <TreeNode key={child.name} element={child} onSelect={onSelect} depth={depth + 1} language={language} />
+        children?.map((child, i) => (
+          <TreeNode
+            key={`${child.name}-${i}`}
+            element={child}
+            onSelect={onSelect}
+            depth={depth + 1}
+            language={language}
+          />
         ))}
     </>
   );
@@ -194,8 +200,8 @@ const LibraryGroup = React.memo(function LibraryGroup(props: LibraryGroupProps) 
         {library.path.split("/").pop() ?? library.path}
       </NavList.Item>
       {expanded &&
-        children?.map((child) => (
-          <TreeNode key={child.name} element={child} onSelect={onSelect} depth={1} language={undefined} />
+        children?.map((child, i) => (
+          <TreeNode key={`${child.name}-${i}`} element={child} onSelect={onSelect} depth={1} language={undefined} />
         ))}
     </NavList.Group>
   );
