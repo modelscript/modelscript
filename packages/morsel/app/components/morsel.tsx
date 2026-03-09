@@ -206,6 +206,13 @@ export default function MorselEditor(props: MorselEditorProps) {
       }
     };
     collect(classInstance);
+    // Include the top-level model itself when it has nested models
+    if (
+      models.length > 0 &&
+      (classInstance.classKind === ModelicaClassKind.MODEL || classInstance.classKind === ModelicaClassKind.BLOCK)
+    ) {
+      models.unshift(classInstance);
+    }
     return models;
   }, [classInstance]);
 
@@ -507,6 +514,13 @@ export default function MorselEditor(props: MorselEditorProps) {
       };
       if (classInstance) {
         collectModels(classInstance);
+        // Include the top-level model itself when it has nested models
+        if (
+          models.length > 0 &&
+          (classInstance.classKind === ModelicaClassKind.MODEL || classInstance.classKind === ModelicaClassKind.BLOCK)
+        ) {
+          models.unshift(classInstance);
+        }
       }
 
       let targetIndex = 0;
@@ -544,6 +558,13 @@ export default function MorselEditor(props: MorselEditorProps) {
       };
       if (classInstance) {
         collectModels(classInstance);
+        // Include the top-level model itself when it has nested models
+        if (
+          models.length > 0 &&
+          (classInstance.classKind === ModelicaClassKind.MODEL || classInstance.classKind === ModelicaClassKind.BLOCK)
+        ) {
+          models.unshift(classInstance);
+        }
       }
       if (models.length > 1) {
         const targetIndex = Math.min(selectedModelIndex, models.length - 1);
