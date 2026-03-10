@@ -602,31 +602,16 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     // eslint-disable-next-line @typescript-eslint/no-this-alias
     const self = this;
     return (function* () {
-      const stack: { iterator: Iterator<ModelicaElement>; visited: Set<ModelicaClassInstance> }[] = [
-        { iterator: self.declaredElements[Symbol.iterator](), visited: new Set([self]) },
-      ];
+      const visited = new Set<ModelicaClassInstance>([self]);
 
-      while (stack.length > 0) {
-        const top = stack[stack.length - 1];
-        if (!top) {
-          stack.pop();
-          continue;
-        }
-        const next = top.iterator.next();
-
-        if (next.done) {
-          stack.pop();
-          continue;
-        }
-
-        const element = next.value;
+      // Yield elements in declaration order, inlining extends at their position
+      for (const element of self.declaredElements) {
         if (element instanceof ModelicaExtendsClassInstance) {
           if (!element.instantiated && !element.instantiating) element.instantiate();
           const baseClass = element.classInstance;
-          if (baseClass && !top.visited.has(baseClass)) {
-            const visited = new Set(top.visited);
+          if (baseClass && !visited.has(baseClass)) {
             visited.add(baseClass);
-            stack.push({ iterator: baseClass.elements, visited });
+            yield* baseClass.elements;
           }
         } else {
           yield element;

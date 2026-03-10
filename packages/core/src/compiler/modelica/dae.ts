@@ -945,6 +945,8 @@ export abstract class ModelicaVariable extends ModelicaPrimaryExpression {
   description: string | null;
   expression: ModelicaExpression | null;
   variability: ModelicaVariability | null;
+  causality: string | null;
+  isFinal: boolean;
 
   constructor(
     name: string,
@@ -952,6 +954,8 @@ export abstract class ModelicaVariable extends ModelicaPrimaryExpression {
     attributes: Map<string, ModelicaExpression>,
     variability: ModelicaVariability | null,
     description?: string | null,
+    causality?: string | null,
+    isFinal?: boolean,
   ) {
     super();
     this.name = name;
@@ -959,6 +963,8 @@ export abstract class ModelicaVariable extends ModelicaPrimaryExpression {
     this.attributes = attributes;
     this.variability = variability;
     this.description = description ?? null;
+    this.causality = causality ?? null;
+    this.isFinal = isFinal ?? false;
   }
 
   override get hash(): string {
@@ -1165,8 +1171,10 @@ export class ModelicaEnumerationVariable extends ModelicaVariable {
     variability: ModelicaVariability | null,
     description?: string | null,
     enumerationLiterals?: ModelicaEnumerationLiteral[] | null,
+    causality?: string | null,
+    isFinal?: boolean,
   ) {
-    super(name, expression, attributes, variability, description);
+    super(name, expression, attributes, variability, description, causality, isFinal);
     this.enumerationLiterals = enumerationLiterals ?? [];
   }
 
@@ -1430,6 +1438,8 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     this.out.write("\n");
     for (const variable of node.variables) {
       this.out.write("  ");
+      if (variable.isFinal) this.out.write("final ");
+      if (variable.causality) this.out.write(variable.causality + " ");
       if (variable.variability) this.out.write(variable.variability + " ");
       if (variable instanceof ModelicaBooleanVariable) {
         this.out.write("Boolean ");
@@ -1440,9 +1450,7 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
       } else if (variable instanceof ModelicaStringVariable) {
         this.out.write("String ");
       } else if (variable instanceof ModelicaEnumerationVariable) {
-        this.out.write(
-          "enumeration(" + variable.enumerationLiterals.map((e) => '"' + e.stringValue + '"').join(", ") + ") ",
-        );
+        this.out.write("enumeration(" + variable.enumerationLiterals.map((e) => e.stringValue).join(", ") + ") ");
       } else {
         throw new Error("invalid variable");
       }

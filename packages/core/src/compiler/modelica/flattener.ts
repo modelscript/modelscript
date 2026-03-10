@@ -68,6 +68,8 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
 
   visitComponentInstance(node: ModelicaComponentInstance, args: [string, ModelicaDAE]): void {
     const name = args[0] === "" ? (node.name ?? "?") : args[0] + "." + node.name;
+    const causality = node.abstractSyntaxNode?.parent?.causality ?? null;
+    const isFinal = (node.abstractSyntaxNode?.parent as { final?: boolean })?.final ?? false;
 
     if (node.classInstance instanceof ModelicaPredefinedClassInstance) {
       const attributes = new Map(
@@ -87,6 +89,8 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           attributes,
           node.variability,
           node.modification?.description ?? node.description,
+          causality,
+          isFinal,
         );
       } else if (node.classInstance instanceof ModelicaIntegerClassInstance) {
         variable = new ModelicaIntegerVariable(
@@ -95,6 +99,8 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           attributes,
           node.variability,
           node.modification?.description ?? node.description,
+          causality,
+          isFinal,
         );
       } else if (node.classInstance instanceof ModelicaRealClassInstance) {
         for (const key of ["start", "min", "max", "nominal"]) {
@@ -109,6 +115,8 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           attributes,
           node.variability,
           node.modification?.description ?? node.description,
+          causality,
+          isFinal,
         );
       } else if (node.classInstance instanceof ModelicaStringClassInstance) {
         variable = new ModelicaStringVariable(
@@ -117,6 +125,8 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           attributes,
           node.variability,
           node.modification?.description ?? node.description,
+          causality,
+          isFinal,
         );
       }
       if (variable) {
@@ -137,6 +147,8 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         node.variability,
         node.modification?.description ?? node.description,
         node.classInstance.enumerationLiterals,
+        causality,
+        isFinal,
       );
       args[1].variables.push(variable);
     } else if (node.classInstance instanceof ModelicaArrayClassInstance) {
@@ -171,6 +183,8 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
               attributes,
               node.variability,
               declaredElement.modification?.description ?? declaredElement.description,
+              causality,
+              isFinal,
             );
           } else if (declaredElement instanceof ModelicaIntegerClassInstance) {
             variable = new ModelicaIntegerVariable(
@@ -179,6 +193,8 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
               attributes,
               node.variability,
               declaredElement.modification?.description ?? declaredElement.description,
+              causality,
+              isFinal,
             );
           } else if (declaredElement instanceof ModelicaRealClassInstance) {
             for (const key of ["start", "min", "max", "nominal"]) {
@@ -193,6 +209,8 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
               attributes,
               node.variability,
               declaredElement.modification?.description ?? declaredElement.description,
+              causality,
+              isFinal,
             );
           } else if (declaredElement instanceof ModelicaStringClassInstance) {
             variable = new ModelicaStringVariable(
@@ -201,6 +219,8 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
               attributes,
               node.variability,
               declaredElement.modification?.description ?? declaredElement.description,
+              causality,
+              isFinal,
             );
           } else if (declaredElement instanceof ModelicaEnumerationClassInstance) {
             variable = new ModelicaEnumerationVariable(
@@ -210,6 +230,8 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
               node.variability,
               declaredElement.modification?.description ?? declaredElement.description,
               declaredElement.enumerationLiterals,
+              causality,
+              isFinal,
             );
           }
           if (variable) {
