@@ -3,10 +3,12 @@
 import { ModelicaEntity, ModelicaLibrary } from "./model.js";
 import {
   ModelicaAnnotationClauseSyntaxNode,
+  ModelicaArrayConcatenationSyntaxNode,
   ModelicaClassDefinitionSyntaxNode,
   ModelicaComponentClauseSyntaxNode,
   ModelicaComponentDeclarationSyntaxNode,
   ModelicaElementModificationSyntaxNode,
+  ModelicaFunctionCallSyntaxNode,
   ModelicaShortClassSpecifierSyntaxNode,
   ModelicaStoredDefinitionSyntaxNode,
   ModelicaStringLiteralSyntaxNode,
@@ -85,9 +87,7 @@ export class I18nExtractor {
    * Get the line number from a syntax node for source location tracking.
    */
   private getLine(node: ModelicaSyntaxNode | null | undefined): number | undefined {
-    return node?.concreteSyntaxNode?.startPosition?.row != null
-      ? node.concreteSyntaxNode.startPosition.row + 1
-      : undefined;
+    return node?.sourceRange?.startRow != null ? node.sourceRange.startRow + 1 : undefined;
   }
 
   /**
@@ -131,64 +131,38 @@ export class I18nExtractor {
     sourceFile: string,
   ) {
     if (!expr) return;
-    // Walk all descendants looking for function calls named "Text"
-    const concreteNode = expr.concreteSyntaxNode;
-    if (!concreteNode) return;
-
-    // Use tree-sitter to find all function_call nodes within the expression
-    this.walkConcreteSyntaxForText(concreteNode, msgctxt, sourceFile);
+    // Walk all AST nodes looking for function calls named "Text"
+    this.walkAstForTextCalls(expr, msgctxt, sourceFile);
   }
 
   /**
-   * Walk the concrete tree-sitter syntax tree to find Text(...) function calls.
+   * Walk the AST to find Text(...) function calls.
+   * Handles ArrayConcatenation (the graphics={...} array) and FunctionCall nodes.
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private walkConcreteSyntaxForText(node: any, msgctxt: string, sourceFile: string) {
-    if (!node) return;
-
-    // Check if this node is a function_call or similar with "Text" as the function name
-    if (node.type === "function_call" || node.type === "component_reference") {
-      // Look for Text(...) pattern - the function name child
-      const nameNode = node.childForFieldName?.("functionReference") ?? node.childForFieldName?.("name");
-      if (nameNode?.text === "Text") {
-        // Find the textString named argument in the function call arguments
-        const argsNode = node.childForFieldName?.("functionCallArguments");
-        if (argsNode) {
-          this.extractTextStringFromArgs(argsNode, msgctxt, sourceFile);
-        }
-      }
-    }
-
-    // Recurse into children
-    for (let i = 0; i < (node.childCount ?? 0); i++) {
-      this.walkConcreteSyntaxForText(node.child(i), msgctxt, sourceFile);
-    }
-  }
-
-  /**
-   * Extract textString from function call arguments for a Text(...) call.
-   */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private extractTextStringFromArgs(argsNode: any, msgctxt: string, sourceFile: string) {
-    // Walk all named_argument nodes looking for textString
-    for (let i = 0; i < (argsNode.childCount ?? 0); i++) {
-      const child = argsNode.child(i);
-      if (child?.type === "named_argument") {
-        const nameChild = child.childForFieldName?.("name");
-        if (nameChild?.text === "textString") {
-          const exprChild = child.childForFieldName?.("expression");
-          if (exprChild?.type === "STRING") {
-            const text = exprChild.text;
-            if (text) {
-              // Strip surrounding quotes
-              const unquoted = text.substring(1, text.length - 1).replace(/""/g, '"');
-              this.addEntry(unquoted, msgctxt, sourceFile, exprChild.startPosition?.row + 1);
+  private walkAstForTextCalls(node: ModelicaSyntaxNode, msgctxt: string, sourceFile: string) {
+    if (node instanceof ModelicaFunctionCallSyntaxNode) {
+      // Check if this is a Text(...) call
+      const funcName = node.functionReference?.parts?.map((p) => p.identifier?.text).join(".");
+      if (funcName === "Text" && node.functionCallArguments) {
+        // Look for textString named argument
+        for (const namedArg of node.functionCallArguments.namedArguments) {
+          if (namedArg.identifier?.text === "textString") {
+            const argExpr = namedArg.argument?.expression;
+            if (argExpr instanceof ModelicaStringLiteralSyntaxNode && argExpr.text) {
+              this.addEntry(argExpr.text, msgctxt, sourceFile, this.getLine(argExpr));
             }
           }
         }
       }
-      // Recurse for nested structures
-      this.extractTextStringFromArgs(child, msgctxt, sourceFile);
+    }
+
+    // Recurse into array concatenation elements
+    if (node instanceof ModelicaArrayConcatenationSyntaxNode) {
+      for (const exprList of node.expressionLists) {
+        for (const childExpr of exprList.expressions) {
+          this.walkAstForTextCalls(childExpr, msgctxt, sourceFile);
+        }
+      }
     }
   }
 

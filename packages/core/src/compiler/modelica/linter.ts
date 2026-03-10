@@ -392,9 +392,9 @@ ModelicaLinter.register({
         if (names.has(element.name)) {
           let range: Range | null = null;
           if (element instanceof ModelicaClassInstance) {
-            range = element.abstractSyntaxNode?.identifier?.concreteSyntaxNode ?? null;
+            range = element.abstractSyntaxNode?.identifier ?? null;
           } else if (element instanceof ModelicaComponentInstance) {
-            range = element.abstractSyntaxNode?.declaration?.identifier?.concreteSyntaxNode ?? null;
+            range = element.abstractSyntaxNode?.declaration?.identifier ?? null;
           }
           diagnosticsCallback(
             "error",
@@ -415,11 +415,7 @@ ModelicaLinter.register({
     diagnosticsCallback: DiagnosticsCallbackWithoutResource,
   ): void {
     if (node.identifier?.text !== node.endIdentifier?.text) {
-      diagnosticsCallback(
-        "error",
-        "The identifier at start and end are different.",
-        node.identifier?.concreteSyntaxNode,
-      );
+      diagnosticsCallback("error", "The identifier at start and end are different.", node.identifier);
     }
   },
 });
@@ -431,7 +427,7 @@ ModelicaLinter.register({
   ): void {
     if (!node.instantiated) node.instantiate();
     if (node.classInstance == null) {
-      const typeSpecifier = node.abstractSyntaxNode?.parent?.typeSpecifier?.concreteSyntaxNode;
+      const typeSpecifier = node.abstractSyntaxNode?.parent?.typeSpecifier;
       diagnosticsCallback(
         "error",
         "Class '" + typeSpecifier?.text + "' not found in scope '" + node.parent?.name + "'.",
@@ -456,7 +452,7 @@ class ModelicaExpressionNameResolutionVisitor extends ModelicaSyntaxVisitor<void
     const fullPath = node.parts.map((p) => p.identifier?.text).join(".");
     const resolved = this.#scope.resolveName(fullPath.split("."));
     if (!resolved) {
-      diagnosticsCallback("error", "Name '" + fullPath + "' not found in scope.", node.concreteSyntaxNode);
+      diagnosticsCallback("error", "Name '" + fullPath + "' not found in scope.", node);
     }
   }
 }

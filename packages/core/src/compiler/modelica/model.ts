@@ -381,7 +381,7 @@ export class ModelicaExtendsClassInstance extends ModelicaElement {
   get hash(): string {
     const hash = createHash("sha256");
     hash.update("extends");
-    hash.update(this.abstractSyntaxNode?.typeSpecifier?.concreteSyntaxNode?.text ?? "");
+    hash.update(this.abstractSyntaxNode?.typeSpecifier?.text ?? "");
     hash.update(this.modification?.hash ?? "");
     return hash.digest("hex");
   }

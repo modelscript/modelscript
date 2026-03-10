@@ -4,7 +4,7 @@
 
 import { toEnum } from "../../util/enum.js";
 import type { Writer } from "../../util/io.js";
-import type { SyntaxNode } from "../../util/tree-sitter.js";
+import type { Point, SyntaxNode } from "../../util/tree-sitter.js";
 import type { JSONValue, Triple } from "../../util/types.js";
 
 export interface IModelicaSyntaxNode {
@@ -14,9 +14,18 @@ export interface IModelicaSyntaxNode {
 }
 
 export abstract class ModelicaSyntaxNode implements IModelicaSyntaxNode {
-  #concreteSyntaxNode: SyntaxNode | null;
+  static #nextId = 0;
+  #id: number;
   #parent: WeakRef<ModelicaSyntaxNode> | null;
   "@type": string;
+  sourceRange: {
+    startRow: number;
+    startCol: number;
+    endRow: number;
+    endCol: number;
+    startIndex: number;
+    endIndex: number;
+  } | null;
 
   constructor(
     parent: ModelicaSyntaxNode | null,
@@ -24,21 +33,46 @@ export abstract class ModelicaSyntaxNode implements IModelicaSyntaxNode {
     abstractSyntaxNode?: IModelicaSyntaxNode | null,
     type?: string | null,
   ) {
+    this.#id = ModelicaSyntaxNode.#nextId++;
     if (parent) this.#parent = new WeakRef(parent);
     else this.#parent = null;
-    if (concreteSyntaxNode) this.#concreteSyntaxNode = concreteSyntaxNode;
-    else this.#concreteSyntaxNode = null;
     this["@type"] = type ?? this.constructor.name.substring(8, this.constructor.name.length - 10);
     if (concreteSyntaxNode && concreteSyntaxNode.type != this["@type"])
       throw new Error(`Expected concrete syntax node of type "${this["@type"]}", got "${concreteSyntaxNode.type}"`);
     if (abstractSyntaxNode && abstractSyntaxNode["@type"] != this["@type"])
       throw new Error(`Expected abstract syntax node of type "${this["@type"]}", got "${abstractSyntaxNode["@type"]}"`);
+    if (concreteSyntaxNode) {
+      this.sourceRange = {
+        startRow: concreteSyntaxNode.startPosition.row,
+        startCol: concreteSyntaxNode.startPosition.column,
+        endRow: concreteSyntaxNode.endPosition.row,
+        endCol: concreteSyntaxNode.endPosition.column,
+        startIndex: concreteSyntaxNode.startIndex,
+        endIndex: concreteSyntaxNode.endIndex,
+      };
+    } else {
+      this.sourceRange = null;
+    }
   }
 
   abstract accept<R, A>(visitor: IModelicaSyntaxVisitor<R, A>, argument?: A): R;
 
-  get concreteSyntaxNode(): SyntaxNode | null {
-    return this.#concreteSyntaxNode ?? null;
+  get startPosition(): Point {
+    return this.sourceRange
+      ? { row: this.sourceRange.startRow, column: this.sourceRange.startCol }
+      : { row: 0, column: 0 };
+  }
+
+  get endPosition(): Point {
+    return this.sourceRange ? { row: this.sourceRange.endRow, column: this.sourceRange.endCol } : { row: 0, column: 0 };
+  }
+
+  get startIndex(): number {
+    return this.sourceRange?.startIndex ?? 0;
+  }
+
+  get endIndex(): number {
+    return this.sourceRange?.endIndex ?? 0;
   }
 
   get parent(): ModelicaSyntaxNode | null {
@@ -62,25 +96,19 @@ export abstract class ModelicaSyntaxNode implements IModelicaSyntaxNode {
   }
 
   get toRDF(): Triple[] {
-    const id = this.concreteSyntaxNode
-      ? `_:node_${this.concreteSyntaxNode.id}`
-      : `_:node_${Math.random().toString(36).substring(2, 9)}`;
+    const id = `_:node_${this.#id}`;
     const triples: Triple[] = [{ s: id, p: "rdf:type", o: `modelica:${this["@type"]}` }];
     for (const key of Object.keys(this)) {
       if (key === "@type" || key.startsWith("_") || key === "parent") continue;
       const value = (this as Record<string, unknown>)[key];
       if (value instanceof ModelicaSyntaxNode) {
-        const valueId = value.concreteSyntaxNode
-          ? `_:node_${value.concreteSyntaxNode.id}`
-          : `_:node_${Math.random().toString(36).substring(2, 9)}`;
+        const valueId = `_:node_${(value as ModelicaSyntaxNode).#id ?? Math.random().toString(36).substring(2, 9)}`;
         triples.push({ s: id, p: `modelica:${key}`, o: valueId });
         triples.push(...value.toRDF);
       } else if (Array.isArray(value)) {
         for (const v of value) {
           if (v instanceof ModelicaSyntaxNode) {
-            const vId = v.concreteSyntaxNode
-              ? `_:node_${v.concreteSyntaxNode.id}`
-              : `_:node_${Math.random().toString(36).substring(2, 9)}`;
+            const vId = `_:node_${(v as ModelicaSyntaxNode).#id ?? Math.random().toString(36).substring(2, 9)}`;
             triples.push({ s: id, p: `modelica:${key}`, o: vId });
             triples.push(...v.toRDF);
           } else {
@@ -4579,6 +4607,12 @@ export class ModelicaTypeSpecifierSyntaxNode extends ModelicaSyntaxNode implemen
 
   override accept<R, A>(visitor: IModelicaSyntaxVisitor<R, A>, argument?: A): R {
     return visitor.visitTypeSpecifier(this, argument);
+  }
+
+  get text(): string | null {
+    const prefix = this.global ? "." : "";
+    const nameParts = this.name?.parts?.map((p) => p.text).join(".");
+    return nameParts ? prefix + nameParts : null;
   }
 
   static override new(
