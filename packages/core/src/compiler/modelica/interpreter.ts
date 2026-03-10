@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { Scope } from "../scope.js";
+import { type Scope, ModelicaLoopScope } from "../scope.js";
 import {
   ModelicaArray,
   ModelicaBinaryExpression,
@@ -15,6 +15,7 @@ import {
   ModelicaArrayClassInstance,
   ModelicaClassInstance,
   ModelicaComponentInstance,
+  ModelicaIntegerClassInstance,
   ModelicaModification,
   ModelicaParameterModification,
 } from "./model.js";
@@ -26,6 +27,7 @@ import {
   ModelicaClassKind,
   ModelicaComponentReferenceSyntaxNode,
   ModelicaFunctionCallSyntaxNode,
+  ModelicaRangeExpressionSyntaxNode,
   ModelicaStringLiteralSyntaxNode,
   ModelicaSyntaxVisitor,
   ModelicaUnaryExpressionSyntaxNode,
@@ -161,6 +163,99 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
    */
   private evaluateArgs(node: ModelicaFunctionCallSyntaxNode, scope: Scope): (ModelicaExpression | null)[] {
     return (node.functionCallArguments?.arguments ?? []).map((arg) => arg.expression?.accept(this, scope) ?? null);
+  }
+
+  /**
+   * Evaluate a comprehension clause, e.g. `sum(expr for i in 1:n)`.
+   * Returns the array of evaluated body expressions for each iteration.
+   */
+  private evaluateComprehension(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression[] | null {
+    const comp = node.functionCallArguments?.comprehensionClause;
+    if (!comp?.expression || !comp.forIndexes.length) return null;
+
+    // Evaluate all for-indexes to get their iteration ranges
+    const iterators: { name: string; values: number[] }[] = [];
+    for (const forIndex of comp.forIndexes) {
+      const varName = forIndex.identifier?.text;
+      if (!varName) return null;
+
+      const rangeExpr = forIndex.expression;
+      if (!rangeExpr) return null;
+
+      if (rangeExpr instanceof ModelicaRangeExpressionSyntaxNode) {
+        const startExpr = rangeExpr.startExpression?.accept(this, scope);
+        const stopExpr = rangeExpr.stopExpression?.accept(this, scope);
+        const stepExpr = rangeExpr.stepExpression?.accept(this, scope);
+        const start = toNumber(startExpr ?? null);
+        const stop = toNumber(stopExpr ?? null);
+        const step = stepExpr ? toNumber(stepExpr) : 1;
+        if (start == null || stop == null || step == null || step === 0) return null;
+
+        const values: number[] = [];
+        if (step > 0) {
+          for (let v = start; v <= stop; v += step) values.push(v);
+        } else {
+          for (let v = start; v >= stop; v += step) values.push(v);
+        }
+        iterators.push({ name: varName, values });
+      } else {
+        // Could be an array expression
+        const evaluated = rangeExpr.accept(this, scope);
+        if (evaluated instanceof ModelicaArray) {
+          const values: number[] = [];
+          for (const el of evaluated.elements) {
+            const v = toNumber(el);
+            if (v == null) return null;
+            values.push(v);
+          }
+          iterators.push({ name: varName, values });
+        } else {
+          return null;
+        }
+      }
+    }
+
+    // Generate cartesian product of all iterators and evaluate body
+    const results: ModelicaExpression[] = [];
+    const indices = iterators.map(() => 0);
+    const body = comp.expression;
+
+    while (true) {
+      // Create bindings for current iteration
+      const bindings = new Map<string, ModelicaClassInstance>();
+      for (let k = 0; k < iterators.length; k++) {
+        const iter = iterators[k];
+        if (!iter) break;
+        const val = iter.values[indices[k] ?? 0];
+        if (val == null) break;
+        const mod = new ModelicaModification(scope, [], null, null, new ModelicaIntegerLiteral(val));
+        const instance = new ModelicaIntegerClassInstance(scope, mod);
+        instance.instantiate();
+        bindings.set(iter.name, instance);
+      }
+
+      const loopScope = new ModelicaLoopScope(scope, bindings);
+      const result = body.accept(this, loopScope);
+      if (result) results.push(result);
+
+      // Advance indices (rightmost first)
+      let carry = true;
+      for (let k = iterators.length - 1; k >= 0; k--) {
+        const iter = iterators[k];
+        if (!iter) continue;
+        const idx = (indices[k] ?? 0) + 1;
+        if (idx < iter.values.length) {
+          indices[k] = idx;
+          carry = false;
+          break;
+        } else {
+          indices[k] = 0;
+        }
+      }
+      if (carry) break;
+    }
+
+    return results;
   }
 
   /**
@@ -361,8 +456,23 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
         return new ModelicaArray([n], rows);
       }
 
-      // min(A), min(x, y)
+      // min(A), min(x, y), min(... for ...)
       case "min": {
+        // Comprehension form: min(expr for i in 1:n)
+        if (node.functionCallArguments?.comprehensionClause) {
+          const values = this.evaluateComprehension(node, scope);
+          if (!values || values.length === 0) return null;
+          let minVal: number | null = null;
+          let isReal = false;
+          for (const e of values) {
+            const v = toNumber(e);
+            if (v == null) return null;
+            if (minVal == null || v < minVal) minVal = v;
+            if (e instanceof ModelicaRealLiteral) isReal = true;
+          }
+          if (minVal == null) return null;
+          return isReal ? new ModelicaRealLiteral(minVal) : new ModelicaIntegerLiteral(minVal);
+        }
         const args = this.evaluateArgs(node, scope);
         if (args.length === 2) {
           // min(x, y)
@@ -391,8 +501,22 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
         return null;
       }
 
-      // max(A), max(x, y)
+      // max(A), max(x, y), max(... for ...)
       case "max": {
+        if (node.functionCallArguments?.comprehensionClause) {
+          const values = this.evaluateComprehension(node, scope);
+          if (!values || values.length === 0) return null;
+          let maxVal: number | null = null;
+          let isReal = false;
+          for (const e of values) {
+            const v = toNumber(e);
+            if (v == null) return null;
+            if (maxVal == null || v > maxVal) maxVal = v;
+            if (e instanceof ModelicaRealLiteral) isReal = true;
+          }
+          if (maxVal == null) return null;
+          return isReal ? new ModelicaRealLiteral(maxVal) : new ModelicaIntegerLiteral(maxVal);
+        }
         const args = this.evaluateArgs(node, scope);
         if (args.length === 2) {
           const x = toNumber(args[0] ?? null);
@@ -419,8 +543,21 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
         return null;
       }
 
-      // sum(A)
+      // sum(A), sum(... for ...)
       case "sum": {
+        if (node.functionCallArguments?.comprehensionClause) {
+          const values = this.evaluateComprehension(node, scope);
+          if (!values || values.length === 0) return null;
+          let total = 0;
+          let isReal = false;
+          for (const e of values) {
+            const v = toNumber(e);
+            if (v == null) return null;
+            total += v;
+            if (e instanceof ModelicaRealLiteral) isReal = true;
+          }
+          return isReal ? new ModelicaRealLiteral(total) : new ModelicaIntegerLiteral(total);
+        }
         const args = this.evaluateArgs(node, scope);
         if (args.length === 1 && args[0]) {
           const flat = flattenArray(args[0]);
@@ -437,8 +574,21 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
         return null;
       }
 
-      // product(A)
+      // product(A), product(... for ...)
       case "product": {
+        if (node.functionCallArguments?.comprehensionClause) {
+          const values = this.evaluateComprehension(node, scope);
+          if (!values || values.length === 0) return null;
+          let total = 1;
+          let isReal = false;
+          for (const e of values) {
+            const v = toNumber(e);
+            if (v == null) return null;
+            total *= v;
+            if (e instanceof ModelicaRealLiteral) isReal = true;
+          }
+          return isReal ? new ModelicaRealLiteral(total) : new ModelicaIntegerLiteral(total);
+        }
         const args = this.evaluateArgs(node, scope);
         if (args.length === 1 && args[0]) {
           const flat = flattenArray(args[0]);

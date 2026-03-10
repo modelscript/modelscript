@@ -130,3 +130,40 @@ export abstract class Scope {
     return root;
   }
 }
+
+/**
+ * A lightweight scope for loop variables in comprehension clauses like
+ * `sum(expr for i in 1:n)`. Bindings map loop variable names to their
+ * current class instance values. Name resolution checks bindings first,
+ * then delegates to the parent scope.
+ */
+export class ModelicaLoopScope extends Scope {
+  #bindings: Map<string, ModelicaClassInstance>;
+
+  constructor(parent: Scope, bindings: Map<string, ModelicaClassInstance>) {
+    super(parent);
+    this.#bindings = bindings;
+  }
+
+  override get elements(): IterableIterator<ModelicaElement> {
+    // Loop scopes have no declared elements; bindings are resolved via resolveSimpleName
+    return [][Symbol.iterator]() as IterableIterator<ModelicaElement>;
+  }
+
+  override get hash(): string {
+    return "";
+  }
+
+  override resolveSimpleName(
+    identifier: ModelicaIdentifierSyntaxNode | string | null | undefined,
+    global = false,
+    encapsulated = false,
+  ): ModelicaNamedElement | null {
+    const simpleName = identifier instanceof ModelicaIdentifierSyntaxNode ? identifier?.text : identifier;
+    if (simpleName && !global) {
+      const binding = this.#bindings.get(simpleName);
+      if (binding) return binding;
+    }
+    return this.parent?.resolveSimpleName(identifier, global, encapsulated) ?? null;
+  }
+}
