@@ -2,9 +2,10 @@
 
 import { ModelicaClassInstance, renderIcon } from "@modelscript/core";
 import { PackageIcon } from "@primer/octicons-react";
-import { NavList } from "@primer/react";
+import { NavList, useTheme } from "@primer/react";
 import React from "react";
 import type { Translations } from "~/util/i18n";
+import { invertSvgColors } from "~/util/x6";
 
 interface ComponentListProps {
   classInstance: ModelicaClassInstance | null;
@@ -17,12 +18,13 @@ interface ComponentListProps {
 interface ComponentIconProps {
   classInstance: ModelicaClassInstance;
   size?: number;
+  darkMode?: boolean;
 }
 
 const iconSvgCache = new Map<string, string | null>();
 
 export const ComponentIcon = React.memo(function ComponentIcon(props: ComponentIconProps) {
-  const { classInstance, size = 20 } = props;
+  const { classInstance, size = 20, darkMode } = props;
   const cacheKey = classInstance.compositeName;
   const svgString = React.useMemo(() => {
     const cached = iconSvgCache.get(cacheKey);
@@ -37,17 +39,21 @@ export const ComponentIcon = React.memo(function ComponentIcon(props: ComponentI
     return <PackageIcon size={size} />;
   }
 
+  const displaySvg = invertSvgColors(svgString, !!darkMode);
+
   return (
     <div
       className="modelica-icon"
       style={{ width: size, height: size }}
-      dangerouslySetInnerHTML={{ __html: svgString }}
+      dangerouslySetInnerHTML={{ __html: displaySvg }}
     />
   );
 });
 
 const ComponentList = React.memo(function ComponentList(props: ComponentListProps) {
   const { classInstance, onSelect, selectedName } = props;
+  const { colorMode } = useTheme();
+  const isDark = colorMode === "dark";
 
   if (!classInstance) {
     return (
@@ -76,7 +82,11 @@ const ComponentList = React.memo(function ComponentList(props: ComponentListProp
           onClick={() => component.name && onSelect(component.name)}
         >
           <NavList.LeadingVisual>
-            {component.classInstance ? <ComponentIcon classInstance={component.classInstance} /> : <PackageIcon />}
+            {component.classInstance ? (
+              <ComponentIcon classInstance={component.classInstance} darkMode={isDark} />
+            ) : (
+              <PackageIcon />
+            )}
           </NavList.LeadingVisual>
           <div style={{ display: "flex", width: "100%", gap: "8px", overflow: "hidden" }}>
             <div

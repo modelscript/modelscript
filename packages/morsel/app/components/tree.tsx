@@ -2,8 +2,9 @@
 
 import { Context, ModelicaClassInstance, ModelicaLibrary, renderIcon } from "@modelscript/core";
 import { ChevronDownIcon, ChevronRightIcon, PackageIcon } from "@primer/octicons-react";
-import { NavList } from "@primer/react";
+import { NavList, useTheme } from "@primer/react";
 import React from "react";
+import { invertSvgColors } from "~/util/x6";
 
 interface TreeWidgetProps {
   context: Context | null;
@@ -23,6 +24,8 @@ interface ClassIconProps {
 const iconSvgCache = new Map<string, string | null>();
 
 const ClassIcon = React.memo(function ClassIcon(props: ClassIconProps) {
+  const { colorMode } = useTheme();
+  const isDark = colorMode === "dark";
   const cacheKey = props.classInstance.compositeName;
   const svgString = React.useMemo(() => {
     const cached = iconSvgCache.get(cacheKey);
@@ -43,8 +46,10 @@ const ClassIcon = React.memo(function ClassIcon(props: ClassIconProps) {
     return <PackageIcon />;
   }
 
+  const displaySvg = invertSvgColors(svgString, isDark);
+
   return (
-    <div className="modelica-icon" style={{ width: 20, height: 20 }} dangerouslySetInnerHTML={{ __html: svgString }} />
+    <div className="modelica-icon" style={{ width: 20, height: 20 }} dangerouslySetInnerHTML={{ __html: displaySvg }} />
   );
 });
 

@@ -225,7 +225,7 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
           <div style={{ display: "flex", flexDirection: "row", gap: "24px", alignItems: "stretch" }}>
             {component.classInstance && (
               <div style={{ flexShrink: 0, display: "flex", alignItems: "center" }}>
-                <ComponentIcon classInstance={component.classInstance} size={80} />
+                <ComponentIcon classInstance={component.classInstance} size={80} darkMode={colorMode === "dark"} />
               </div>
             )}
             <div

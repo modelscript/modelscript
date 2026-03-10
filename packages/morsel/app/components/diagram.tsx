@@ -21,7 +21,7 @@ import {
 } from "@modelscript/core";
 import type { Theme } from "@monaco-editor/react";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { renderDiagramX6, renderIconX6 } from "../util/x6";
+import { invertColorHelmlab, invertMarkupColors, renderDiagramX6, renderIconX6 } from "../util/x6";
 
 export interface DiagramEditorHandle {
   fitContent: () => void;
@@ -576,6 +576,8 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       return;
     }
 
+    const isDark = props.theme === "vs-dark";
+
     const nodes = new Map<string, NodeMetadata>();
     const edges: EdgeMetadata[] = [];
     for (const component of props.classInstance.components) {
@@ -612,7 +614,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       const absHeight = Math.abs(componentTransform.height);
       const flipX = componentTransform.scaleX < 0;
       const flipY = componentTransform.scaleY < 0;
-      let componentMarkup = renderIconX6(componentClassInstance, component, false);
+      let componentMarkup = invertMarkupColors(renderIconX6(componentClassInstance, component, false), isDark);
       if (flipX || flipY) {
         const sx = flipX ? -1 : 1;
         const sy = flipY ? -1 : 1;
@@ -665,7 +667,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
         if (!connectorClassInstance || connectorClassInstance.classKind !== ModelicaClassKind.CONNECTOR) continue;
         const connectorTransform = computePortPlacement(connector);
         if (!connectorTransform) continue;
-        let connectorMarkup = renderIconX6(connectorClassInstance);
+        let connectorMarkup = invertMarkupColors(renderIconX6(connectorClassInstance), isDark);
         // Flip port icon visually when the parent component is flipped
         if (flipX || flipY) {
           const psx = flipX ? -1 : 1;
@@ -770,7 +772,8 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       if (!nodes.has(c1[0]) || !nodes.has(c2[0])) continue;
       const annotations = ModelicaElement.instantiateAnnotations(props.classInstance, connectEquation.annotationClause);
       const line: ILine | null = props.classInstance.annotation("Line", annotations);
-      const strokeColor = `rgb(${line?.color?.[0] ?? 0}, ${line?.color?.[1] ?? 0}, ${line?.color?.[2] ?? 255})`;
+      const rawStrokeColor = `rgb(${line?.color?.[0] ?? 0}, ${line?.color?.[1] ?? 0}, ${line?.color?.[2] ?? 255})`;
+      const strokeColor = props.theme === "vs-dark" ? invertColorHelmlab(rawStrokeColor) : rawStrokeColor;
       const strokeWidth = (line?.thickness ?? 0.25) * 2;
       const stroke = line?.visible === false || line?.pattern === LinePattern.NONE ? "none" : strokeColor;
       let strokeDasharray = undefined;
@@ -884,7 +887,8 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     coordinateSystem!.setAttribute("height", String(bgHeight));
 
     if (diagram) {
-      const diagramMarkup = renderDiagramX6(props.classInstance);
+      const rawDiagramMarkup = renderDiagramX6(props.classInstance);
+      const diagramMarkup = rawDiagramMarkup ? invertMarkupColors(rawDiagramMarkup, props.theme === "vs-dark") : null;
       if (diagramMarkup) {
         const x = csX;
         const y = csY;
@@ -1030,7 +1034,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     g.on("translate", () => {
       lastZoomRef.current = { zoom: g.zoom(), tx: g.translate().tx, ty: g.translate().ty };
     });
-  }, [props.classInstance]);
+  }, [props.classInstance, props.theme]);
 
   useEffect(() => {
     if (graph) {
