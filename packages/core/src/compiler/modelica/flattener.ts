@@ -141,6 +141,12 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       );
       args[1].variables.push(variable);
     } else if (node.classInstance instanceof ModelicaArrayClassInstance) {
+      // Capture the array-level binding expression BEFORE iterating elements.
+      // Element-level modifications (split from the array's modification) include
+      // both attributes AND the split binding value.  We want to keep attributes on
+      // each element variable but emit the binding as a separate equation.
+      const arrayBindingExpression = node.modification?.expression ?? null;
+
       const shape = node.classInstance.shape;
       const index = new Array(shape.length).fill(1);
       for (const declaredElement of node.classInstance.declaredElements) {
@@ -154,7 +160,9 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
               m.name && m.expression ? [[m.name, m.expression]] : [],
             ),
           );
-          const expression = declaredElement.modification?.expression ?? null;
+          // If an array-level binding exists, do NOT inline the per-element
+          // expression on the variable — it belongs in the equation section.
+          const expression = arrayBindingExpression ? null : (declaredElement.modification?.expression ?? null);
           const varExpression = expression;
           let variable;
           if (declaredElement instanceof ModelicaBooleanClassInstance) {
@@ -212,6 +220,13 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           declaredElement?.accept(this, [elementName, args[1]]);
         }
         if (!this.incrementIndex(index, shape)) break;
+      }
+
+      // Emit the array-level binding as a separate equation: name = expr
+      if (arrayBindingExpression) {
+        // Use a RealVariable as a lightweight name-reference for the LHS.
+        const lhs = new ModelicaRealVariable(name, null, new Map(), null);
+        args[1].equations.push(new ModelicaSimpleEquation(lhs, arrayBindingExpression));
       }
     } else {
       node.classInstance?.accept(this, [name, args[1]]);
