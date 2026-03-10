@@ -904,12 +904,14 @@ export class ModelicaEnumerationLiteral extends ModelicaLiteral {
   ordinalValue: number;
   stringValue: string;
   description: string | null;
+  typeName: string | null;
 
-  constructor(ordinalValue: number, stringValue: string, description?: string | null) {
+  constructor(ordinalValue: number, stringValue: string, description?: string | null, typeName?: string | null) {
     super();
     this.ordinalValue = ordinalValue;
     this.stringValue = stringValue;
     this.description = description ?? null;
+    this.typeName = typeName ?? null;
   }
 
   override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
@@ -1470,7 +1472,11 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
   }
 
   visitEnumerationLiteral(node: ModelicaEnumerationLiteral): void {
-    this.out.write(String('"' + node.stringValue + '"'));
+    if (node.typeName) {
+      this.out.write(node.typeName + "." + node.stringValue);
+    } else {
+      this.out.write(String('"' + node.stringValue + '"'));
+    }
   }
 
   visitEnumerationVariable(node: ModelicaEnumerationVariable): void {

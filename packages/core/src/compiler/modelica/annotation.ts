@@ -3,6 +3,10 @@
 export const ANNOTATION = `
 class Annotation
 
+  // 4.9.7 Built-in Variable Attributes
+
+  type StateSelect = enumeration(never, avoid, default, prefer, always);
+
   // 18.5 Documentation
 
   // 18.5.1 Class Description and Revision History

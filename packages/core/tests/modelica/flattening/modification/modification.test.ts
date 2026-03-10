@@ -275,7 +275,7 @@ describe("Modification", () => {
     );
   });
 
-  test.skip("Modification12", () => {
+  test("Modification12", () => {
     const context = new Context(new NodeFileSystem());
     context.load(
       dedent(`
@@ -295,7 +295,7 @@ describe("Modification", () => {
     );
   });
 
-  test.skip("Modification13", () => {
+  test("Modification13", () => {
     const context = new Context(new NodeFileSystem());
     context.load(
       dedent(`
@@ -375,7 +375,7 @@ describe("Modification", () => {
     expect(context.flatten("Modification15")).toBe(null);
   });
 
-  test.skip("Modification16", () => {
+  test("Modification16", () => {
     const context = new Context(new NodeFileSystem());
     context.load(
       dedent(`

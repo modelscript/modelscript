@@ -73,7 +73,6 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       const attributes = new Map(
         node.modification?.modificationArguments.flatMap((m) => {
           if (m.name === "annotation") return [];
-          console.warn(`Flattener mod arg: ${m.name}, expression: ${!!m.expression}`);
           return m.name && m.expression ? [[m.name, m.expression]] : [];
         }),
       );
@@ -324,9 +323,12 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<
     node: ModelicaSimpleEquationSyntaxNode,
     args: [string, ModelicaClassInstance, ModelicaDAE],
   ): null {
-    const expression1 = node.expression1?.accept(this, args);
-    const expression2 = node.expression2?.accept(this, args);
-    if (expression1 && expression2)
+    let expression1 = node.expression1?.accept(this, args);
+    let expression2 = node.expression2?.accept(this, args);
+    if (expression1 && expression2) {
+      // Widen integers to Real when the other side is a Real variable
+      if (expression1 instanceof ModelicaRealVariable) expression2 = castToReal(expression2) ?? expression2;
+      if (expression2 instanceof ModelicaRealVariable) expression1 = castToReal(expression1) ?? expression1;
       args[2].equations.push(
         new ModelicaSimpleEquation(
           expression1,
@@ -334,6 +336,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<
           node.description?.strings?.map((d) => d.text ?? "")?.join(" "),
         ),
       );
+    }
     return null;
   }
 

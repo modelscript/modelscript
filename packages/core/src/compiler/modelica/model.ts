@@ -910,7 +910,7 @@ export class ModelicaEnumerationClassInstance extends ModelicaClassInstance {
         if (enumerationLiteral.identifier?.text) {
           const description = enumerationLiteral.description?.strings?.map((d) => d.text ?? "")?.join(" ") ?? null;
           this.enumerationLiterals.push(
-            new ModelicaEnumerationLiteral(i, enumerationLiteral.identifier.text, description),
+            new ModelicaEnumerationLiteral(i, enumerationLiteral.identifier.text, description, this.name),
           );
           i++;
         }
@@ -1400,6 +1400,7 @@ const PREDEFINED_ATTRIBUTE_TYPES: Record<string, Record<string, string>> = {
     fixed: "Boolean",
     nominal: "Real",
     unbounded: "Boolean",
+    stateSelect: "StateSelect",
   },
   Integer: {
     value: "Integer",
