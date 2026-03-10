@@ -67,10 +67,16 @@ const BUILTIN_ARRAY_FUNCTIONS = new Set([
 function buildFilledArray(shape: number[], value: ModelicaExpression): ModelicaArray {
   if (shape.length === 1) {
     const n = shape[0] ?? 0;
+    if (!Number.isInteger(n) || n < 0 || n > 1_000_000) {
+      return new ModelicaArray([0], []);
+    }
     return new ModelicaArray([n], Array(n).fill(value));
   }
   const [first, ...rest] = shape;
   const n = first ?? 0;
+  if (!Number.isInteger(n) || n < 0 || n > 1_000_000) {
+    return new ModelicaArray([0], []);
+  }
   const elements: ModelicaExpression[] = [];
   for (let i = 0; i < n; i++) {
     elements.push(buildFilledArray(rest, value));
