@@ -20,6 +20,7 @@ import {
 import {
   ModelicaBinaryExpressionSyntaxNode,
   ModelicaBooleanLiteralSyntaxNode,
+  ModelicaClassKind,
   ModelicaClassModificationSyntaxNode,
   ModelicaClassOrInheritanceModificationSyntaxNode,
   ModelicaComponentReferencePartSyntaxNode,
@@ -41,6 +42,7 @@ import {
   ModelicaUnqualifiedImportClauseSyntaxNode,
   ModelicaUnsignedIntegerLiteralSyntaxNode,
   ModelicaUnsignedRealLiteralSyntaxNode,
+  ModelicaVariability,
   type IModelicaSyntaxVisitor,
   type ModelicaClassDefinitionSyntaxNode,
   type ModelicaComponentClauseSyntaxNode,
@@ -465,6 +467,40 @@ ModelicaLinter.register({
     }
     for (const algorithmSection of node.algorithmSections) {
       algorithmSection.accept(visitor, diagnosticsCallback);
+    }
+  },
+});
+
+ModelicaLinter.register({
+  visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+    // Balanced model check only applies to models and blocks
+    if (node.classKind !== ModelicaClassKind.MODEL && node.classKind !== ModelicaClassKind.BLOCK) return;
+
+    // Count unknowns: components that are not parameters or constants
+    let nVariables = 0;
+    for (const component of node.components) {
+      if (
+        component.variability !== ModelicaVariability.PARAMETER &&
+        component.variability !== ModelicaVariability.CONSTANT
+      ) {
+        nVariables++;
+      }
+    }
+
+    // Count equations from equation sections
+    let nEquations = Array.from(node.equations).length;
+
+    // Each algorithm section contributes as many equations as assigned variables.
+    // As a simplification, count each statement as one equation.
+    nEquations += Array.from(node.algorithms).length;
+
+    if (nEquations !== nVariables) {
+      diagnosticsCallback(
+        "warning",
+        `The ${node.classKind} '${node.name}' is not balanced: ` +
+          `${nEquations} equation(s) and ${nVariables} variable(s).`,
+        node.abstractSyntaxNode?.identifier,
+      );
     }
   },
 });
