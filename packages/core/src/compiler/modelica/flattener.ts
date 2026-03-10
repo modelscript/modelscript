@@ -8,6 +8,8 @@ import {
   ModelicaDAE,
   ModelicaEnumerationVariable,
   ModelicaExpression,
+  ModelicaFunctionCallExpression,
+  ModelicaIfElseExpression,
   ModelicaIntegerLiteral,
   ModelicaIntegerVariable,
   ModelicaRealLiteral,
@@ -37,6 +39,9 @@ import {
   ModelicaBinaryExpressionSyntaxNode,
   ModelicaBooleanLiteralSyntaxNode,
   ModelicaComponentReferenceSyntaxNode,
+  ModelicaFunctionArgumentSyntaxNode,
+  ModelicaFunctionCallSyntaxNode,
+  ModelicaIfElseExpressionSyntaxNode,
   ModelicaSimpleEquationSyntaxNode,
   ModelicaStringLiteralSyntaxNode,
   ModelicaSyntaxVisitor,
@@ -320,6 +325,47 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<
 
   visitBooleanLiteral(node: ModelicaBooleanLiteralSyntaxNode): ModelicaBooleanLiteral {
     return new ModelicaBooleanLiteral(node.value);
+  }
+
+  visitFunctionArgument(
+    node: ModelicaFunctionArgumentSyntaxNode,
+    args: [string, ModelicaClassInstance, ModelicaDAE],
+  ): ModelicaExpression | null {
+    return node.expression?.accept(this, args) ?? null;
+  }
+
+  visitFunctionCall(
+    node: ModelicaFunctionCallSyntaxNode,
+    args: [string, ModelicaClassInstance, ModelicaDAE],
+  ): ModelicaExpression | null {
+    const functionName = node.functionReference?.parts?.map((p) => p.identifier?.text ?? "").join(".") ?? "";
+    const flatArgs: ModelicaExpression[] = [];
+    for (const arg of node.functionCallArguments?.arguments ?? []) {
+      const flatArg = arg.expression?.accept(this, args);
+      if (flatArg) flatArgs.push(flatArg);
+    }
+    return new ModelicaFunctionCallExpression(functionName, flatArgs);
+  }
+
+  visitIfElseExpression(
+    node: ModelicaIfElseExpressionSyntaxNode,
+    args: [string, ModelicaClassInstance, ModelicaDAE],
+  ): ModelicaExpression | null {
+    const condition = node.condition?.accept(this, args);
+    const thenExpr = node.expression?.accept(this, args);
+    const elseExpr = node.elseExpression?.accept(this, args);
+    if (!condition || !thenExpr || !elseExpr) return null;
+
+    const elseIfClauses: { condition: ModelicaExpression; expression: ModelicaExpression }[] = [];
+    for (const clause of node.elseIfExpressionClauses ?? []) {
+      const clauseCondition = clause.condition?.accept(this, args);
+      const clauseExpr = clause.expression?.accept(this, args);
+      if (clauseCondition && clauseExpr) {
+        elseIfClauses.push({ condition: clauseCondition, expression: clauseExpr });
+      }
+    }
+
+    return new ModelicaIfElseExpression(condition, thenExpr, elseIfClauses, elseExpr);
   }
 
   visitComponentReference(

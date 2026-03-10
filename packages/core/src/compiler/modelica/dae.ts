@@ -939,6 +939,82 @@ export class ModelicaEnumerationLiteral extends ModelicaLiteral {
   }
 }
 
+export class ModelicaIfElseExpression extends ModelicaExpression {
+  condition: ModelicaExpression;
+  thenExpression: ModelicaExpression;
+  elseIfClauses: { condition: ModelicaExpression; expression: ModelicaExpression }[];
+  elseExpression: ModelicaExpression;
+
+  constructor(
+    condition: ModelicaExpression,
+    thenExpression: ModelicaExpression,
+    elseIfClauses: { condition: ModelicaExpression; expression: ModelicaExpression }[],
+    elseExpression: ModelicaExpression,
+  ) {
+    super();
+    this.condition = condition;
+    this.thenExpression = thenExpression;
+    this.elseIfClauses = elseIfClauses;
+    this.elseExpression = elseExpression;
+  }
+
+  override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
+    return visitor.visitIfElseExpression(this, argument);
+  }
+
+  override get hash(): string {
+    const hash = createHash("sha256");
+    hash.update("ifelse");
+    hash.update(this.condition.hash);
+    hash.update(this.thenExpression.hash);
+    for (const clause of this.elseIfClauses) {
+      hash.update(clause.condition.hash);
+      hash.update(clause.expression.hash);
+    }
+    hash.update(this.elseExpression.hash);
+    return hash.digest("hex");
+  }
+
+  override get toJSON(): JSONValue {
+    return null;
+  }
+
+  override get toRDF(): Triple[] {
+    return [];
+  }
+}
+
+export class ModelicaFunctionCallExpression extends ModelicaExpression {
+  functionName: string;
+  args: ModelicaExpression[];
+
+  constructor(functionName: string, args: ModelicaExpression[]) {
+    super();
+    this.functionName = functionName;
+    this.args = args;
+  }
+
+  override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
+    return visitor.visitFunctionCallExpression(this, argument);
+  }
+
+  override get hash(): string {
+    const hash = createHash("sha256");
+    hash.update("funccall");
+    hash.update(this.functionName);
+    for (const arg of this.args) hash.update(arg.hash);
+    return hash.digest("hex");
+  }
+
+  override get toJSON(): JSONValue {
+    return null;
+  }
+
+  override get toRDF(): Triple[] {
+    return [];
+  }
+}
+
 export abstract class ModelicaVariable extends ModelicaPrimaryExpression {
   attributes: Map<string, ModelicaExpression>;
   name: string;
@@ -1321,6 +1397,10 @@ export interface IModelicaDAEVisitor<R, A> {
 
   visitEnumerationVariable(node: ModelicaEnumerationVariable, argument?: A): R;
 
+  visitFunctionCallExpression(node: ModelicaFunctionCallExpression, argument?: A): R;
+
+  visitIfElseExpression(node: ModelicaIfElseExpression, argument?: A): R;
+
   visitIntegerLiteral(node: ModelicaIntegerLiteral, argument?: A): R;
 
   visitIntegerVariable(node: ModelicaIntegerVariable, argument?: A): R;
@@ -1366,6 +1446,20 @@ export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void,
 
   // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
   visitEnumerationVariable(node: ModelicaEnumerationVariable, argument?: A): void {}
+
+  visitFunctionCallExpression(node: ModelicaFunctionCallExpression, argument?: A): void {
+    for (const arg of node.args) arg.accept(this, argument);
+  }
+
+  visitIfElseExpression(node: ModelicaIfElseExpression, argument?: A): void {
+    node.condition.accept(this, argument);
+    node.thenExpression.accept(this, argument);
+    for (const clause of node.elseIfClauses) {
+      clause.condition.accept(this, argument);
+      clause.expression.accept(this, argument);
+    }
+    node.elseExpression.accept(this, argument);
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
   visitIntegerLiteral(node: ModelicaIntegerLiteral, argument?: A): void {}
@@ -1489,6 +1583,30 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
 
   visitEnumerationVariable(node: ModelicaEnumerationVariable): void {
     this.out.write(String(node.name));
+  }
+
+  visitFunctionCallExpression(node: ModelicaFunctionCallExpression): void {
+    this.out.write(node.functionName + "(");
+    for (let i = 0; i < node.args.length; i++) {
+      if (i > 0) this.out.write(", ");
+      node.args[i]?.accept(this);
+    }
+    this.out.write(")");
+  }
+
+  visitIfElseExpression(node: ModelicaIfElseExpression): void {
+    this.out.write("if ");
+    node.condition.accept(this);
+    this.out.write(" then ");
+    node.thenExpression.accept(this);
+    for (const clause of node.elseIfClauses) {
+      this.out.write(" elseif ");
+      clause.condition.accept(this);
+      this.out.write(" then ");
+      clause.expression.accept(this);
+    }
+    this.out.write(" else ");
+    node.elseExpression.accept(this);
   }
 
   visitIntegerLiteral(node: ModelicaIntegerLiteral): void {

@@ -34,7 +34,29 @@ import {
 } from "./syntax.js";
 
 /** Set of Modelica built-in array function names handled directly by the interpreter. */
-const BUILTIN_ARRAY_FUNCTIONS = new Set(["fill", "size", "zeros", "ones", "linspace"]);
+const BUILTIN_ARRAY_FUNCTIONS = new Set([
+  "fill",
+  "size",
+  "zeros",
+  "ones",
+  "linspace",
+  "promote",
+  "ndims",
+  "scalar",
+  "vector",
+  "matrix",
+  "identity",
+  "diagonal",
+  "min",
+  "max",
+  "sum",
+  "product",
+  "transpose",
+  "outerProduct",
+  "symmetric",
+  "cross",
+  "skew",
+]);
 
 /**
  * Helper: build a (possibly nested) ModelicaArray filled with `value`.
@@ -52,6 +74,40 @@ function buildFilledArray(shape: number[], value: ModelicaExpression): ModelicaA
     elements.push(buildFilledArray(rest, value));
   }
   return new ModelicaArray([n], elements);
+}
+
+/** Extract a numeric value from an expression (Integer or Real literal). */
+function toNumber(expr: ModelicaExpression | null): number | null {
+  if (expr instanceof ModelicaIntegerLiteral) return expr.value;
+  if (expr instanceof ModelicaRealLiteral) return expr.value;
+  return null;
+}
+
+/** Flatten a potentially nested ModelicaArray into a 1D list of leaf expressions. */
+function flattenArray(expr: ModelicaExpression): ModelicaExpression[] {
+  if (expr instanceof ModelicaArray) {
+    const result: ModelicaExpression[] = [];
+    for (const e of expr.elements) result.push(...flattenArray(e));
+    return result;
+  }
+  return [expr];
+}
+
+/** Get the shape of a ModelicaArray expression. */
+function getArrayShape(expr: ModelicaExpression): number[] {
+  if (!(expr instanceof ModelicaArray)) return [];
+  const shape = [expr.elements.length];
+  if (expr.elements.length > 0 && expr.elements[0] instanceof ModelicaArray) {
+    shape.push(...getArrayShape(expr.elements[0]));
+  }
+  return shape;
+}
+
+/** Get element at [i,j] of a 2D array. */
+function getElement2D(arr: ModelicaArray, i: number, j: number): ModelicaExpression | null {
+  const row = arr.elements[i];
+  if (row instanceof ModelicaArray) return row.elements[j] ?? null;
+  return null;
 }
 
 export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpression, Scope> {
@@ -198,11 +254,8 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
         const n = nExpr.value;
         if (n < 2) return null;
 
-        // Extract numeric values for x1, x2
-        let x1: number | null = null;
-        let x2: number | null = null;
-        if (x1Expr instanceof ModelicaRealLiteral || x1Expr instanceof ModelicaIntegerLiteral) x1 = x1Expr.value;
-        if (x2Expr instanceof ModelicaRealLiteral || x2Expr instanceof ModelicaIntegerLiteral) x2 = x2Expr.value;
+        const x1 = toNumber(x1Expr);
+        const x2 = toNumber(x2Expr);
         if (x1 == null || x2 == null) return null;
 
         const elements: ModelicaExpression[] = [];
@@ -210,6 +263,313 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
           elements.push(new ModelicaRealLiteral(x1 + ((x2 - x1) * i) / (n - 1)));
         }
         return new ModelicaArray([n], elements);
+      }
+
+      // promote(A, n) — adds trailing dimensions of size 1
+      case "promote": {
+        const args = this.evaluateArgs(node, scope);
+        const A = args[0];
+        const nExpr = args[1];
+        if (!A || !(nExpr instanceof ModelicaIntegerLiteral)) return null;
+        const targetNdims = nExpr.value;
+        const currentShape = getArrayShape(A);
+        const currentNdims = currentShape.length;
+        if (targetNdims <= currentNdims) return A;
+        let result: ModelicaExpression = A;
+        for (let i = currentNdims; i < targetNdims; i++) {
+          result = new ModelicaArray([1], [result]);
+        }
+        return result;
+      }
+
+      // ndims(A) — number of dimensions
+      case "ndims": {
+        const args = this.evaluateArgs(node, scope);
+        const A = args[0];
+        if (!A) return null;
+        return new ModelicaIntegerLiteral(getArrayShape(A).length);
+      }
+
+      // scalar(A) — convert array of size 1 to scalar
+      case "scalar": {
+        const args = this.evaluateArgs(node, scope);
+        const A = args[0];
+        if (!A) return null;
+        const flat = flattenArray(A);
+        if (flat.length === 1 && flat[0]) return flat[0];
+        return null;
+      }
+
+      // vector(A) — convert to 1D vector
+      case "vector": {
+        const args = this.evaluateArgs(node, scope);
+        const A = args[0];
+        if (!A) return null;
+        const flat = flattenArray(A);
+        return new ModelicaArray([flat.length], flat);
+      }
+
+      // matrix(A) — convert to 2D matrix
+      case "matrix": {
+        const args = this.evaluateArgs(node, scope);
+        const A = args[0];
+        if (!A) return null;
+        const shape = getArrayShape(A);
+        if (shape.length === 0) {
+          // scalar → 1×1 matrix
+          return new ModelicaArray([1], [new ModelicaArray([1], [A])]);
+        } else if (shape.length === 1) {
+          // vector → 1×n matrix
+          return new ModelicaArray([1], [A]);
+        } else if (shape.length === 2) {
+          return A; // already 2D
+        }
+        return null;
+      }
+
+      // identity(n) → n×n identity matrix
+      case "identity": {
+        const args = this.evaluateArgs(node, scope);
+        const nExpr = args[0];
+        if (!(nExpr instanceof ModelicaIntegerLiteral)) return null;
+        const n = nExpr.value;
+        const rows: ModelicaExpression[] = [];
+        for (let i = 0; i < n; i++) {
+          const row: ModelicaExpression[] = [];
+          for (let j = 0; j < n; j++) {
+            row.push(new ModelicaIntegerLiteral(i === j ? 1 : 0));
+          }
+          rows.push(new ModelicaArray([n], row));
+        }
+        return new ModelicaArray([n], rows);
+      }
+
+      // diagonal(v) → diagonal matrix from vector v
+      case "diagonal": {
+        const args = this.evaluateArgs(node, scope);
+        const v = args[0];
+        if (!(v instanceof ModelicaArray)) return null;
+        const n = v.elements.length;
+        const rows: ModelicaExpression[] = [];
+        for (let i = 0; i < n; i++) {
+          const row: ModelicaExpression[] = [];
+          for (let j = 0; j < n; j++) {
+            row.push(i === j ? (v.elements[i] ?? new ModelicaIntegerLiteral(0)) : new ModelicaIntegerLiteral(0));
+          }
+          rows.push(new ModelicaArray([n], row));
+        }
+        return new ModelicaArray([n], rows);
+      }
+
+      // min(A), min(x, y)
+      case "min": {
+        const args = this.evaluateArgs(node, scope);
+        if (args.length === 2) {
+          // min(x, y)
+          const x = toNumber(args[0] ?? null);
+          const y = toNumber(args[1] ?? null);
+          if (x == null || y == null) return null;
+          const minVal = Math.min(x, y);
+          if (args[0] instanceof ModelicaRealLiteral || args[1] instanceof ModelicaRealLiteral) {
+            return new ModelicaRealLiteral(minVal);
+          }
+          return new ModelicaIntegerLiteral(minVal);
+        } else if (args.length === 1 && args[0]) {
+          // min(A) — minimum of all elements
+          const flat = flattenArray(args[0]);
+          let minVal: number | null = null;
+          let isReal = false;
+          for (const e of flat) {
+            const v = toNumber(e);
+            if (v == null) return null;
+            if (minVal == null || v < minVal) minVal = v;
+            if (e instanceof ModelicaRealLiteral) isReal = true;
+          }
+          if (minVal == null) return null;
+          return isReal ? new ModelicaRealLiteral(minVal) : new ModelicaIntegerLiteral(minVal);
+        }
+        return null;
+      }
+
+      // max(A), max(x, y)
+      case "max": {
+        const args = this.evaluateArgs(node, scope);
+        if (args.length === 2) {
+          const x = toNumber(args[0] ?? null);
+          const y = toNumber(args[1] ?? null);
+          if (x == null || y == null) return null;
+          const maxVal = Math.max(x, y);
+          if (args[0] instanceof ModelicaRealLiteral || args[1] instanceof ModelicaRealLiteral) {
+            return new ModelicaRealLiteral(maxVal);
+          }
+          return new ModelicaIntegerLiteral(maxVal);
+        } else if (args.length === 1 && args[0]) {
+          const flat = flattenArray(args[0]);
+          let maxVal: number | null = null;
+          let isReal = false;
+          for (const e of flat) {
+            const v = toNumber(e);
+            if (v == null) return null;
+            if (maxVal == null || v > maxVal) maxVal = v;
+            if (e instanceof ModelicaRealLiteral) isReal = true;
+          }
+          if (maxVal == null) return null;
+          return isReal ? new ModelicaRealLiteral(maxVal) : new ModelicaIntegerLiteral(maxVal);
+        }
+        return null;
+      }
+
+      // sum(A)
+      case "sum": {
+        const args = this.evaluateArgs(node, scope);
+        if (args.length === 1 && args[0]) {
+          const flat = flattenArray(args[0]);
+          let total = 0;
+          let isReal = false;
+          for (const e of flat) {
+            const v = toNumber(e);
+            if (v == null) return null;
+            total += v;
+            if (e instanceof ModelicaRealLiteral) isReal = true;
+          }
+          return isReal ? new ModelicaRealLiteral(total) : new ModelicaIntegerLiteral(total);
+        }
+        return null;
+      }
+
+      // product(A)
+      case "product": {
+        const args = this.evaluateArgs(node, scope);
+        if (args.length === 1 && args[0]) {
+          const flat = flattenArray(args[0]);
+          let total = 1;
+          let isReal = false;
+          for (const e of flat) {
+            const v = toNumber(e);
+            if (v == null) return null;
+            total *= v;
+            if (e instanceof ModelicaRealLiteral) isReal = true;
+          }
+          return isReal ? new ModelicaRealLiteral(total) : new ModelicaIntegerLiteral(total);
+        }
+        return null;
+      }
+
+      // transpose(A) — transpose a 2D matrix
+      case "transpose": {
+        const args = this.evaluateArgs(node, scope);
+        const A = args[0];
+        if (!(A instanceof ModelicaArray)) return null;
+        const shape = getArrayShape(A);
+        if (shape.length !== 2) return null;
+        const [nRows, nCols] = shape;
+        if (nRows == null || nCols == null) return null;
+        const rows: ModelicaExpression[] = [];
+        for (let j = 0; j < nCols; j++) {
+          const row: ModelicaExpression[] = [];
+          for (let i = 0; i < nRows; i++) {
+            row.push(getElement2D(A, i, j) ?? new ModelicaIntegerLiteral(0));
+          }
+          rows.push(new ModelicaArray([nRows], row));
+        }
+        return new ModelicaArray([nCols], rows);
+      }
+
+      // outerProduct(x, y) — x * y^T for vectors
+      case "outerProduct": {
+        const args = this.evaluateArgs(node, scope);
+        const x = args[0];
+        const y = args[1];
+        if (!(x instanceof ModelicaArray) || !(y instanceof ModelicaArray)) return null;
+        const n = x.elements.length;
+        const m = y.elements.length;
+        const rows: ModelicaExpression[] = [];
+        for (let i = 0; i < n; i++) {
+          const row: ModelicaExpression[] = [];
+          for (let j = 0; j < m; j++) {
+            const xi = toNumber(x.elements[i] ?? null);
+            const yj = toNumber(y.elements[j] ?? null);
+            if (xi == null || yj == null) return null;
+            row.push(new ModelicaRealLiteral(xi * yj));
+          }
+          rows.push(new ModelicaArray([m], row));
+        }
+        return new ModelicaArray([n], rows);
+      }
+
+      // symmetric(A) — returns symmetric matrix: upper triangle from A
+      case "symmetric": {
+        const args = this.evaluateArgs(node, scope);
+        const A = args[0];
+        if (!(A instanceof ModelicaArray)) return null;
+        const shape = getArrayShape(A);
+        if (shape.length !== 2 || shape[0] !== shape[1]) return null;
+        const n = shape[0] ?? 0;
+        const rows: ModelicaExpression[] = [];
+        for (let i = 0; i < n; i++) {
+          const row: ModelicaExpression[] = [];
+          for (let j = 0; j < n; j++) {
+            if (j >= i) {
+              row.push(getElement2D(A, i, j) ?? new ModelicaIntegerLiteral(0));
+            } else {
+              row.push(getElement2D(A, j, i) ?? new ModelicaIntegerLiteral(0));
+            }
+          }
+          rows.push(new ModelicaArray([n], row));
+        }
+        return new ModelicaArray([n], rows);
+      }
+
+      // cross(x, y) — cross product of 3-vectors
+      case "cross": {
+        const args = this.evaluateArgs(node, scope);
+        const x = args[0];
+        const y = args[1];
+        if (!(x instanceof ModelicaArray) || !(y instanceof ModelicaArray)) return null;
+        if (x.elements.length !== 3 || y.elements.length !== 3) return null;
+        const x1 = toNumber(x.elements[0] ?? null),
+          x2 = toNumber(x.elements[1] ?? null),
+          x3 = toNumber(x.elements[2] ?? null);
+        const y1 = toNumber(y.elements[0] ?? null),
+          y2 = toNumber(y.elements[1] ?? null),
+          y3 = toNumber(y.elements[2] ?? null);
+        if (x1 == null || x2 == null || x3 == null || y1 == null || y2 == null || y3 == null) return null;
+        return new ModelicaArray(
+          [3],
+          [
+            new ModelicaRealLiteral(x2 * y3 - x3 * y2),
+            new ModelicaRealLiteral(x3 * y1 - x1 * y3),
+            new ModelicaRealLiteral(x1 * y2 - x2 * y1),
+          ],
+        );
+      }
+
+      // skew(x) — skew-symmetric matrix from 3-vector
+      case "skew": {
+        const args = this.evaluateArgs(node, scope);
+        const x = args[0];
+        if (!(x instanceof ModelicaArray) || x.elements.length !== 3) return null;
+        const x1 = toNumber(x.elements[0] ?? null),
+          x2 = toNumber(x.elements[1] ?? null),
+          x3 = toNumber(x.elements[2] ?? null);
+        if (x1 == null || x2 == null || x3 == null) return null;
+        return new ModelicaArray(
+          [3],
+          [
+            new ModelicaArray(
+              [3],
+              [new ModelicaRealLiteral(0), new ModelicaRealLiteral(-x3), new ModelicaRealLiteral(x2)],
+            ),
+            new ModelicaArray(
+              [3],
+              [new ModelicaRealLiteral(x3), new ModelicaRealLiteral(0), new ModelicaRealLiteral(-x1)],
+            ),
+            new ModelicaArray(
+              [3],
+              [new ModelicaRealLiteral(-x2), new ModelicaRealLiteral(x1), new ModelicaRealLiteral(0)],
+            ),
+          ],
+        );
       }
 
       default:
