@@ -1378,7 +1378,13 @@ export default function MorselEditor(props: MorselEditorProps) {
   const handleFlatten = async () => {
     if (!codeEditorRef.current) return;
     const instances = await codeEditorRef.current.sync();
-    const instance = diagramClassInstance ?? instances[0];
+    // Filter to only MODEL/BLOCK instances, matching the nestedModels tab logic.
+    // instances includes ALL classes (functions, packages, etc.), so we must filter
+    // to select the correct model corresponding to the active tab.
+    const models = instances.filter(
+      (i) => i.classKind === ModelicaClassKind.MODEL || i.classKind === ModelicaClassKind.BLOCK,
+    );
+    const instance = models[selectedModelIndex] ?? models[0];
     if (!instance) return;
 
     try {
