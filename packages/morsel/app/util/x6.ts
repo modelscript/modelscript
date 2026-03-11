@@ -61,14 +61,23 @@ function clamp255(v: number): number {
  * Helmlab accounts for the Helmholtz-Kohlrausch effect and
  * has better dark-region perceptual uniformity than CIELAB.
  */
+const helmlabCache = new Map<string, string>();
+
 export function invertColorHelmlab(color: string): string {
+  const cached = helmlabCache.get(color);
+  if (cached !== undefined) return cached;
+
+  let result = color;
+
   // Try rgb() format
   const rgbMatch = color.match(/rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/);
   if (rgbMatch) {
     const [, rs, gs, bs] = rgbMatch;
     const [L, a, b] = hl.fromSrgb([+rs / 255, +gs / 255, +bs / 255]);
     const [r2, g2, b2] = hl.toSrgb([1 - L, a, b]);
-    return `rgb(${clamp255(r2 * 255 * BRIGHTNESS_BOOST)}, ${clamp255(g2 * 255 * BRIGHTNESS_BOOST)}, ${clamp255(b2 * 255 * BRIGHTNESS_BOOST)})`;
+    result = `rgb(${clamp255(r2 * 255 * BRIGHTNESS_BOOST)}, ${clamp255(g2 * 255 * BRIGHTNESS_BOOST)}, ${clamp255(b2 * 255 * BRIGHTNESS_BOOST)})`;
+    helmlabCache.set(color, result);
+    return result;
   }
   // Try #rrggbb or #rgb hex format
   const hexMatch = color.match(/^#([0-9a-fA-F]{3,8})$/);
@@ -83,10 +92,12 @@ export function invertColorHelmlab(color: string): string {
       const bv = parseInt(hex.slice(4, 6), 16) / 255;
       const [L, a, b] = hl.fromSrgb([r, g, bv]);
       const [r2, g2, b2] = hl.toSrgb([1 - L, a, b]);
-      return `rgb(${clamp255(r2 * 255 * BRIGHTNESS_BOOST)}, ${clamp255(g2 * 255 * BRIGHTNESS_BOOST)}, ${clamp255(b2 * 255 * BRIGHTNESS_BOOST)})`;
+      result = `rgb(${clamp255(r2 * 255 * BRIGHTNESS_BOOST)}, ${clamp255(g2 * 255 * BRIGHTNESS_BOOST)}, ${clamp255(b2 * 255 * BRIGHTNESS_BOOST)})`;
     }
   }
-  return color;
+
+  helmlabCache.set(color, result);
+  return result;
 }
 
 /** Regex that matches rgb() or hex color values. */

@@ -664,6 +664,7 @@ export default function MorselEditor(props: MorselEditorProps) {
   loadClassRef.current = loadClass;
 
   const handleTreeSelect = useCallback((classInstance: ModelicaClassInstance) => {
+    diagramEditorRef.current?.showLoading();
     if (editorRef.current?.getValue() !== lastLoadedContentRef.current) {
       setPendingSelection(classInstance);
       setDirtyDialogOpen(true);
