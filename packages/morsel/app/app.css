@@ -42,3 +42,9 @@ body {
 svg[class*="Spinner"] {
   animation: rotate-spinner 1s linear infinite !important;
 }
+
+@keyframes tree-spinner {
+  to {
+    transform: rotate(360deg);
+  }
+}

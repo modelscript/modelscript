@@ -1013,6 +1013,7 @@ export class ModelicaShortClassInstance extends ModelicaClassInstance {
 
 export class ModelicaEntity extends ModelicaClassInstance {
   #storedDefinitionSyntaxNode: ModelicaStoredDefinitionSyntaxNode | null = null;
+  #loaded = false;
   path: string;
   subEntities: ModelicaEntity[] = [];
   unstructured = false;
@@ -1024,6 +1025,11 @@ export class ModelicaEntity extends ModelicaClassInstance {
 
   override accept<R, A>(visitor: IModelicaModelVisitor<R, A>, argument?: A): R {
     return visitor.visitEntity(this, argument);
+  }
+
+  override clone(modification?: ModelicaModification | null): ModelicaClassInstance {
+    if (!this.#loaded) this.load();
+    return super.clone(modification);
   }
 
   override get elements(): IterableIterator<ModelicaElement> {
@@ -1052,13 +1058,13 @@ export class ModelicaEntity extends ModelicaClassInstance {
   }
 
   override instantiate(): void {
+    if (!this.#loaded) this.load();
     super.instantiate();
-    for (const subEntity of this.subEntities) {
-      if (!subEntity.instantiated && !subEntity.instantiating) subEntity.instantiate();
-    }
   }
 
   load(): void {
+    if (this.#loaded) return;
+    this.#loaded = true;
     this.subEntities = [];
     const context = this.context;
     if (!context) throw new Error(`ModelicaEntity.load: no context for path '${this.path}'`);
@@ -1082,7 +1088,9 @@ export class ModelicaEntity extends ModelicaClassInstance {
           if (dirent.name === "package.mo" || context.fs.extname(dirent.name) !== ".mo") continue;
         }
         const subEntity = new ModelicaEntity(this, context.fs.join(this.path, dirent.name));
-        subEntity.load();
+        // Set name from filesystem path without parsing — enables lazy loading
+        subEntity.name = dirent.isFile() ? dirent.name.replace(/\.mo$/, "") : dirent.name;
+        subEntity.unstructured = dirent.isFile();
         this.subEntities.push(subEntity);
       }
       const packageOrderPath = context.fs.join(this.path, "package.order");

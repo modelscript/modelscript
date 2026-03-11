@@ -76,18 +76,30 @@ function getClassChildren(element: ModelicaClassInstance): ModelicaClassInstance
 const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
   const { element, onSelect, onHighlight, depth, showQualifiedName, language, selectedClassName } = props;
   const [expanded, setExpanded] = React.useState(false);
+  const [loading, setLoading] = React.useState(false);
+  const [children, setChildren] = React.useState<ModelicaClassInstance[] | null>(null);
   const [hasChildren, setHasChildren] = React.useState<boolean | null>(null);
   const iconRef = React.useRef<HTMLSpanElement>(null);
   const dragImageRef = React.useRef<HTMLImageElement | null>(null);
   const [hovered, setHovered] = React.useState(false);
 
-  const children = expanded ? getClassChildren(element) : null;
-
-  React.useEffect(() => {
-    if (children !== null && hasChildren === null) {
-      setHasChildren(children.length > 0);
-    }
-  }, [children, hasChildren]);
+  const toggleExpand = React.useCallback(() => {
+    setExpanded((prev) => {
+      if (!prev) {
+        // Expanding: show spinner, defer loading to next frame
+        setLoading(true);
+        setTimeout(() => {
+          const result = getClassChildren(element);
+          setChildren(result);
+          setHasChildren(result.length > 0);
+          setLoading(false);
+        }, 0);
+      } else {
+        setChildren(null);
+      }
+      return !prev;
+    });
+  }, [element]);
 
   const showChevron = (hasChildren === null || hasChildren === true) && !showQualifiedName;
   const isSelected = selectedClassName != null && element.compositeName === selectedClassName;
@@ -163,7 +175,7 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
               role="button"
               onClick={(e) => {
                 e.stopPropagation();
-                setExpanded((prev) => !prev);
+                toggleExpand();
               }}
               style={{
                 display: "flex",
@@ -172,7 +184,23 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
                 margin: "-4px -4px -4px -14px",
               }}
             >
-              {expanded ? <ChevronDownIcon size={12} /> : <ChevronRightIcon size={12} />}
+              {loading ? (
+                <span
+                  style={{
+                    display: "inline-block",
+                    width: 12,
+                    height: 12,
+                    border: "2px solid var(--fgColor-muted, rgba(125, 133, 144, 0.4))",
+                    borderTopColor: "var(--fgColor-default, var(--color-fg-default))",
+                    borderRadius: "50%",
+                    animation: "tree-spinner 0.6s linear infinite",
+                  }}
+                />
+              ) : expanded ? (
+                <ChevronDownIcon size={12} />
+              ) : (
+                <ChevronRightIcon size={12} />
+              )}
             </span>
           ) : (
             <span style={{ width: 12 }} />
@@ -189,6 +217,7 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
         </div>
       </li>
       {expanded &&
+        !loading &&
         children?.map((child, i) => (
           <TreeNode
             key={`${child.name}-${i}`}
