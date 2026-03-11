@@ -485,6 +485,7 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
   classKind: ModelicaClassKind;
   cloneCache = new Map<string, ModelicaClassInstance>();
   declaredElements: ModelicaElement[] = [];
+  errors: string[] = [];
 
   constructor(
     parent: Scope | null,
@@ -1209,6 +1210,26 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
     const element = this.parent?.resolveTypeSpecifier(this.abstractSyntaxNode?.parent?.typeSpecifier);
     if (element instanceof ModelicaClassInstance) {
       this.#declaredType = element;
+      // Validate modification arguments against the resolved type's elements.
+      // Skip predefined types (Real, Integer, etc.) which use start/min/max attributes.
+      if (this.modification && !(element instanceof ModelicaPredefinedClassInstance)) {
+        const typeElementNames = new Set<string>();
+        for (const el of element.elements) {
+          if (el instanceof ModelicaNamedElement && el.name) {
+            typeElementNames.add(el.name);
+          }
+        }
+        for (const modArg of this.modification.modificationArguments) {
+          const name = modArg.name;
+          if (name && name !== "annotation" && !typeElementNames.has(name)) {
+            if (this.parent) {
+              this.parent.errors.push(
+                `In modifier of '${this.name}', class or component '${name}' not found in '${element.name}'.`,
+              );
+            }
+          }
+        }
+      }
       const arraySubscripts = [...(this.abstractSyntaxNode?.arraySubscripts ?? [])];
       if (arraySubscripts.length === 0) {
         this.classInstance = element.clone(this.modification);

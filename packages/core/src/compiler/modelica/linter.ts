@@ -504,3 +504,36 @@ ModelicaLinter.register({
     }
   },
 });
+
+ModelicaLinter.register({
+  visitComponentInstance(
+    node: ModelicaComponentInstance,
+    diagnosticsCallback: DiagnosticsCallbackWithoutResource,
+  ): void {
+    if (!node.instantiated) node.instantiate();
+    const classInstance = node.classInstance;
+    if (!classInstance || !classInstance.abstractSyntaxNode) return;
+
+    const modification = node.modification;
+    if (!modification) return;
+
+    // Collect declared element names in the component's type
+    const declaredNames = new Set<string>();
+    for (const element of classInstance.elements) {
+      if (element instanceof ModelicaNamedElement && element.name) {
+        declaredNames.add(element.name);
+      }
+    }
+
+    for (const modArg of modification.modificationArguments) {
+      const name = modArg.name;
+      if (name && name !== "annotation" && !declaredNames.has(name)) {
+        diagnosticsCallback(
+          "error",
+          `In modifier of '${node.name}', class or component '${name}' not found in '${classInstance.name}'.`,
+          node.abstractSyntaxNode?.declaration?.identifier,
+        );
+      }
+    }
+  },
+});

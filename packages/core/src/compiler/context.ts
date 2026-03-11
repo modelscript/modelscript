@@ -5,7 +5,13 @@ import { StringWriter } from "../util/io.js";
 import type { Parser, Tree } from "../util/tree-sitter.js";
 import { ModelicaDAE, ModelicaDAEPrinter } from "./modelica/dae.js";
 import { ModelicaFlattener } from "./modelica/flattener.js";
-import { ModelicaClassInstance, ModelicaLibrary, type ModelicaElement } from "./modelica/model.js";
+import {
+  ModelicaClassInstance,
+  ModelicaComponentInstance,
+  ModelicaExtendsClassInstance,
+  ModelicaLibrary,
+  type ModelicaElement,
+} from "./modelica/model.js";
 import { ModelicaPoParser, ModelicaTranslation } from "./modelica/po.js";
 import { ModelicaStoredDefinitionSyntaxNode } from "./modelica/syntax.js";
 import { Scope } from "./scope.js";
@@ -62,9 +68,25 @@ export class Context extends Scope {
     if (!instance) return null;
     const dae = new ModelicaDAE(instance.name ?? "DAE", instance.description);
     instance.accept(new ModelicaFlattener(), ["", dae]);
+    // Check for validation errors (e.g. invalid modification targets)
+    if (instance instanceof ModelicaClassInstance && this.#hasErrors(instance)) return null;
     const out = new StringWriter();
     dae.accept(new ModelicaDAEPrinter(out));
     return out.toString();
+  }
+
+  #hasErrors(instance: ModelicaClassInstance, visited = new Set<ModelicaClassInstance>()): boolean {
+    if (visited.has(instance)) return false;
+    visited.add(instance);
+    if (instance.errors.length > 0) return true;
+    for (const element of instance.declaredElements) {
+      if (element instanceof ModelicaComponentInstance && element.classInstance) {
+        if (this.#hasErrors(element.classInstance, visited)) return true;
+      } else if (element instanceof ModelicaExtendsClassInstance && element.classInstance) {
+        if (this.#hasErrors(element.classInstance, visited)) return true;
+      }
+    }
+    return false;
   }
 
   get fs(): FileSystem {
