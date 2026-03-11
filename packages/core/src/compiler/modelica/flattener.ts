@@ -48,6 +48,7 @@ import {
   ModelicaUnaryExpressionSyntaxNode,
   ModelicaUnsignedIntegerLiteralSyntaxNode,
   ModelicaUnsignedRealLiteralSyntaxNode,
+  ModelicaVariability,
 } from "./syntax.js";
 
 export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE]> {
@@ -83,7 +84,11 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           return m.name && m.expression ? [[m.name, m.expression]] : [];
         }),
       );
-      const expression = node.modification?.expression ?? null;
+      const isCompileTimeEvaluable =
+        node.variability === ModelicaVariability.PARAMETER || node.variability === ModelicaVariability.CONSTANT;
+      const expression = isCompileTimeEvaluable
+        ? (node.modification?.evaluatedExpression ?? null)
+        : (node.modification?.expression ?? null);
       let variable;
       const varExpression = expression;
 

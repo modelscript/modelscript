@@ -28,6 +28,7 @@ import {
   ModelicaComponentReferenceSyntaxNode,
   ModelicaFunctionCallSyntaxNode,
   ModelicaRangeExpressionSyntaxNode,
+  ModelicaSimpleAssignmentStatementSyntaxNode,
   ModelicaStringLiteralSyntaxNode,
   ModelicaSyntaxVisitor,
   ModelicaUnaryExpressionSyntaxNode,
@@ -119,6 +120,17 @@ function getElement2D(arr: ModelicaArray, i: number, j: number): ModelicaExpress
 }
 
 export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpression, Scope> {
+  /** Guard against infinite recursion during function algorithm execution. */
+  #functionCallDepth = 0;
+  static readonly MAX_FUNCTION_CALL_DEPTH = 64;
+  /** When true, function algorithm sections are executed to compute output values. */
+  #evaluateAlgorithms: boolean;
+
+  constructor(evaluateAlgorithms = false) {
+    super();
+    this.#evaluateAlgorithms = evaluateAlgorithms;
+  }
+
   visitArrayConcatenation(node: ModelicaArrayConcatenationSyntaxNode, scope: Scope): ModelicaExpression | null {
     const elements: ModelicaExpression[] = [];
     const shape = [node.expressionLists.length, node.expressionLists[0]?.expressions?.length ?? 0];
@@ -761,9 +773,22 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     if (functionInstance.classKind === ModelicaClassKind.RECORD) {
       return ModelicaExpression.fromClassInstance(functionInstance.clone(new ModelicaModification(scope, parameters)));
     } else if (functionInstance.classKind === ModelicaClassKind.FUNCTION) {
-      const outputParameters = functionInstance.clone(new ModelicaModification(scope, parameters)).outputParameters;
+      const clonedFunction = functionInstance.clone(new ModelicaModification(scope, parameters));
+
+      // Execute algorithm statements to compute output values
+      if (this.#evaluateAlgorithms && this.#functionCallDepth < ModelicaInterpreter.MAX_FUNCTION_CALL_DEPTH) {
+        this.#functionCallDepth++;
+        try {
+          for (const statement of clonedFunction.algorithms) {
+            statement.accept(this, clonedFunction);
+          }
+        } finally {
+          this.#functionCallDepth--;
+        }
+      }
+
       const outputExpressions: ModelicaExpression[] = [];
-      for (const outputParameter of outputParameters) {
+      for (const outputParameter of clonedFunction.outputParameters) {
         const outputExpression = ModelicaExpression.fromClassInstance(outputParameter.classInstance);
         if (outputExpression) outputExpressions.push(outputExpression);
       }
@@ -775,6 +800,19 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     } else {
       return null;
     }
+  }
+
+  visitSimpleAssignmentStatement(node: ModelicaSimpleAssignmentStatementSyntaxNode, scope: Scope): null {
+    const value = node.source?.accept(this, scope);
+    const targetName = node.target?.parts?.[0]?.identifier?.text;
+    if (value && targetName) {
+      const target = scope.resolveSimpleName(targetName);
+      if (target instanceof ModelicaComponentInstance) {
+        const mod = new ModelicaModification(null, [], null, null, value);
+        target.classInstance = target.classInstance?.clone(mod) ?? null;
+      }
+    }
+    return null;
   }
 
   visitStringLiteral(node: ModelicaStringLiteralSyntaxNode): ModelicaExpression | null {

@@ -1747,6 +1747,7 @@ export class ModelicaModification {
   }
 
   #evaluating = false;
+  #evaluatedExpression: ModelicaExpression | null = null;
 
   get expression(): ModelicaExpression | null {
     if (this.#expression) return this.#expression;
@@ -1760,6 +1761,25 @@ export class ModelicaModification {
       this.#evaluating = false;
     }
     return this.#expression;
+  }
+
+  /** Returns the already-evaluated expression without triggering lazy evaluation. */
+  get cachedExpression(): ModelicaExpression | null {
+    return this.#expression;
+  }
+
+  /** Evaluates the expression with function algorithm execution enabled. */
+  get evaluatedExpression(): ModelicaExpression | null {
+    if (this.#evaluatedExpression) return this.#evaluatedExpression;
+    if (this.#evaluating) return null;
+    this.#evaluating = true;
+    try {
+      this.#evaluatedExpression =
+        this.modificationExpression?.expression?.accept(new ModelicaInterpreter(true), this.scope) ?? null;
+    } finally {
+      this.#evaluating = false;
+    }
+    return this.#evaluatedExpression ?? this.#expression;
   }
 
   getModificationArgument(name: string | null | undefined): ModelicaModificationArgument | null {
@@ -1782,8 +1802,8 @@ export class ModelicaModification {
       for (const modificationArgument of this.modificationArguments) {
         hash.update(modificationArgument.hash);
       }
-      if (this.expression) {
-        hash.update(this.expression.hash);
+      if (this.cachedExpression) {
+        hash.update(this.cachedExpression.hash);
       }
       if (this.annotations) {
         hash.update(this.annotations.hash);
@@ -1806,7 +1826,7 @@ export class ModelicaModification {
       ...modification.modificationArguments,
       ...overridingModification.modificationArguments,
     ]);
-    const mergedExpression = overridingModification.expression ?? modification.expression;
+    const mergedExpression = overridingModification.cachedExpression ?? modification.cachedExpression;
     const mergedModificationExpression = mergedExpression
       ? null
       : (overridingModification.modificationExpression ?? modification.modificationExpression);
