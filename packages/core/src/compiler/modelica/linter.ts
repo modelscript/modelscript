@@ -2,13 +2,17 @@
 
 import type { Range, Tree } from "../../util/tree-sitter.js";
 import { Scope } from "../scope.js";
+import { ModelicaArray } from "./dae.js";
 import {
+  ModelicaArrayClassInstance,
   ModelicaClassInstance,
   ModelicaComponentInstance,
+  ModelicaElementModification,
   ModelicaEntity,
   ModelicaExtendsClassInstance,
   ModelicaLibrary,
   ModelicaModelVisitor,
+  ModelicaModificationArgument,
   ModelicaNamedElement,
   ModelicaNode,
   type IModelicaModelVisitor,
@@ -589,5 +593,102 @@ ModelicaLinter.register({
         }
       }
     }
+  },
+});
+
+function checkArrayModDimensions(
+  classInstance: ModelicaClassInstance,
+  modArgs: ModelicaModificationArgument[],
+  diagnosticsCallback: DiagnosticsCallbackWithoutResource,
+  range: Range | null | undefined,
+): void {
+  for (const modArg of modArgs) {
+    const name = modArg.name;
+    if (!name || name === "annotation") continue;
+
+    // Resolve the target element in the component's type
+    const target = classInstance.resolveSimpleName(name, false, true);
+    if (!(target instanceof ModelicaComponentInstance)) continue;
+
+    if (!target.instantiated) target.instantiate();
+    const targetClass = target.classInstance;
+
+    if (targetClass instanceof ModelicaArrayClassInstance) {
+      const shape = targetClass.shape;
+      if (shape.length === 0) continue;
+
+      // Check the modification's own expression (e.g. y = {{...}})
+      const argExpr = modArg.expression;
+      if (argExpr instanceof ModelicaArray && !argExpr.assignable(shape)) {
+        diagnosticsCallback(
+          "error",
+          `Array dimension mismatch: '${name}' has shape [${argExpr.flatShape}] but expected [${shape}].`,
+          range,
+        );
+      }
+
+      // Check sub-modification argument expressions (e.g. y(start = {{...}}))
+      if (modArg instanceof ModelicaElementModification) {
+        for (const subArg of modArg.modificationArguments) {
+          const subExpr = subArg.expression;
+          if (subExpr instanceof ModelicaArray && !subExpr.assignable(shape)) {
+            diagnosticsCallback(
+              "error",
+              `Array dimension mismatch: '${subArg.name}' of '${name}' has shape [${subExpr.flatShape}] but expected [${shape}].`,
+              range,
+            );
+          }
+        }
+      }
+    }
+
+    // Recurse into nested modifications (e.g. arr(y(start = ...)) where arr contains y)
+    if (targetClass && modArg instanceof ModelicaElementModification && modArg.modificationArguments.length > 0) {
+      checkArrayModDimensions(targetClass, modArg.modificationArguments, diagnosticsCallback, range);
+    }
+  }
+}
+
+ModelicaLinter.register({
+  visitComponentInstance(
+    node: ModelicaComponentInstance,
+    diagnosticsCallback: DiagnosticsCallbackWithoutResource,
+  ): void {
+    if (!node.instantiated) node.instantiate();
+    const classInstance = node.classInstance;
+    if (!classInstance) return;
+
+    const modification = node.modification;
+    if (!modification) return;
+
+    const range = node.abstractSyntaxNode?.declaration?.modification ?? null;
+
+    // Direct array component: check top-level and attribute expressions
+    if (classInstance instanceof ModelicaArrayClassInstance) {
+      const shape = classInstance.shape;
+      if (shape.length > 0) {
+        const expr = modification.expression;
+        if (expr instanceof ModelicaArray && !expr.assignable(shape)) {
+          diagnosticsCallback(
+            "error",
+            `Array dimension mismatch: expression has shape [${expr.flatShape}] but '${node.name}' has shape [${shape}].`,
+            range,
+          );
+        }
+        for (const modArg of modification.modificationArguments) {
+          const argExpr = modArg.expression;
+          if (argExpr instanceof ModelicaArray && !argExpr.assignable(shape)) {
+            diagnosticsCallback(
+              "error",
+              `Array dimension mismatch: '${modArg.name}' has shape [${argExpr.flatShape}] but '${node.name}' has shape [${shape}].`,
+              range,
+            );
+          }
+        }
+      }
+    }
+
+    // Recursively check nested modifications against resolved sub-components
+    checkArrayModDimensions(classInstance, modification.modificationArguments, diagnosticsCallback, range);
   },
 });

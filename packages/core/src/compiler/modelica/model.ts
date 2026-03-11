@@ -1695,6 +1695,24 @@ export class ModelicaArrayClassInstance extends ModelicaClassInstance {
       this.instantiated = true;
       return;
     }
+    // Validate array modification dimensions
+    if (expression instanceof ModelicaArray && !expression.assignable(this.shape)) {
+      this.errors.push(
+        `Array dimension mismatch: modification has shape [${expression.flatShape}] but variable has shape [${this.shape}]`,
+      );
+      this.instantiated = true;
+      return;
+    }
+    for (const modArg of this.modification?.modificationArguments ?? []) {
+      const argExpr = modArg.expression;
+      if (argExpr instanceof ModelicaArray && !argExpr.assignable(this.shape)) {
+        this.errors.push(
+          `Array dimension mismatch: modification of '${modArg.name}' has shape [${argExpr.flatShape}] but variable has shape [${this.shape}]`,
+        );
+        this.instantiated = true;
+        return;
+      }
+    }
     const size = this.shape.reduce((acc, cur) => acc * cur);
     const modifications = this.modification?.split(size);
     for (let i = 0; i < size; i++) {
