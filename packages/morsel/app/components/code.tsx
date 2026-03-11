@@ -10,7 +10,7 @@ import {
   ModelicaNamedElement,
   ModelicaStoredDefinitionSyntaxNode,
   type Range,
-  type Scope,
+  Scope,
 } from "@modelscript/core";
 import { Editor, loader, type Monaco, type Theme } from "@monaco-editor/react";
 import { debounce } from "lodash";
@@ -20,6 +20,30 @@ import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import React, { useEffect, useRef } from "react";
 import Parser from "web-tree-sitter";
 import { format } from "~/util/formatter";
+
+/**
+ * Lightweight scope wrapper that holds sibling root-level class instances,
+ * allowing them to reference each other during name resolution.
+ */
+class EditorScope extends Scope {
+  #instances: ModelicaClassInstance[];
+
+  constructor(parent: Scope, instances: ModelicaClassInstance[]) {
+    super(parent);
+    this.#instances = instances;
+  }
+
+  get elements(): IterableIterator<ModelicaElement> {
+    const instances = this.#instances;
+    return (function* () {
+      yield* instances;
+    })();
+  }
+
+  get hash(): string {
+    return "editor";
+  }
+}
 
 const modelicaTokensProvider: languages.IMonarchLanguage = {
   keywords: [
@@ -131,7 +155,7 @@ if (!self.MonacoEnvironment) {
 interface CodeEditorProps {
   content: string;
   context: Context | null;
-  setClassInstance: (classInstance: ModelicaClassInstance) => void;
+  setClassInstances: (classInstances: ModelicaClassInstance[]) => void;
   setEditor: (editor: editor.ICodeEditor) => void;
   onProgress?: (progress: number, message: string) => void;
   theme: Theme;
@@ -140,7 +164,7 @@ interface CodeEditorProps {
 }
 
 export interface CodeEditorHandle {
-  sync: () => Promise<ModelicaClassInstance | null>;
+  sync: () => Promise<ModelicaClassInstance[]>;
   revealComponent: (name: string, searchInstance?: ModelicaClassInstance | null) => void;
 }
 
@@ -760,15 +784,15 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
     }, 100);
   };
 
-  const processContent = (value: string | undefined): ModelicaClassInstance | null => {
-    if (!value || !contextRef.current) return null;
+  const processContent = (value: string | undefined): ModelicaClassInstance[] => {
+    if (!value || !contextRef.current) return [];
     const context = contextRef.current;
 
-    if (!monacoRef.current) return null;
+    if (!monacoRef.current) return [];
 
     const markers: editor.IMarkerData[] = [];
     const model = editorRef.current?.getModel();
-    if (!model) return null;
+    if (!model) return [];
 
     const linter = new ModelicaLinter(
       (type: string, message: string, resource: string | null | undefined, range: Range | null | undefined) => {
@@ -788,7 +812,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
     treeRef.current = tree as any;
     linter.lint(tree);
     const node = ModelicaStoredDefinitionSyntaxNode.new(null, tree.rootNode);
-    let instance: ModelicaClassInstance | null = null;
+    const instances: ModelicaClassInstance[] = [];
     if (node) {
       linter.lint(node);
       let parentScope: Scope = context;
@@ -800,14 +824,25 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
           parentScope = resolved;
         }
       }
-      instance = new ModelicaClassInstance(parentScope, node.classDefinitions[0]);
-      instance.instantiate();
-      linter.lint(instance);
-      props.setClassInstance(instance);
-      classInstanceRef.current = instance;
+      // Use an EditorScope wrapper so sibling classes can reference each other
+      const editorScope = new EditorScope(parentScope, instances);
+      // Two-pass: first create all instances (so they're visible as siblings)
+      for (const classDef of node.classDefinitions) {
+        const instance = new ModelicaClassInstance(editorScope, classDef);
+        instances.push(instance);
+      }
+      // Then instantiate and lint them
+      for (const instance of instances) {
+        instance.instantiate();
+        linter.lint(instance);
+      }
+      if (instances.length > 0) {
+        props.setClassInstances(instances);
+        classInstanceRef.current = instances[0];
+      }
     }
     monacoRef.current.editor.setModelMarkers(model, "owner", markers);
-    return instance;
+    return instances;
   };
 
   const handleDidChangeContent = debounce((value: string | undefined) => {

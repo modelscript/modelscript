@@ -146,7 +146,7 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [decodedContent] = decodeDataUrl(props.dataUrl ?? null);
   const content = decodedContent || "model Example\n\nend Example;";
   const [editor, setEditor] = useState<editor.ICodeEditor | null>(null);
-  const [classInstance, setClassInstance] = useState<ModelicaClassInstance | null>(null);
+  const [classInstances, setClassInstances] = useState<ModelicaClassInstance[]>([]);
   const [context, setContext] = useState<Context | null>(null);
   const [view, setView] = useState<View>(View.SPLIT_COLUMNS);
   const [showResultsView, setShowResultsView] = useState(false);
@@ -190,31 +190,31 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [availableLanguages, setAvailableLanguages] = useState<string[]>([]);
   const translations = useMemo(() => getTranslations(language), [language]);
 
-  // Collect nested models/blocks from the current class instance (recursively for packages with multiple models)
+  // Collect all displayable models/blocks from root-level class instances
+  // Supports multiple root-level models as well as nested models within a single root package
   const nestedModels = useMemo(() => {
-    if (!classInstance) return [];
+    if (classInstances.length === 0) return [];
     const models: ModelicaClassInstance[] = [];
-    const collect = (instance: ModelicaClassInstance) => {
+    const collectNested = (instance: ModelicaClassInstance) => {
       for (const element of instance.elements) {
         if (element instanceof ModelicaClassInstance) {
           if (element.classKind === ModelicaClassKind.MODEL || element.classKind === ModelicaClassKind.BLOCK) {
             models.push(element);
           } else if (element.classKind === ModelicaClassKind.PACKAGE) {
-            collect(element);
+            collectNested(element);
           }
         }
       }
     };
-    collect(classInstance);
-    // Include the top-level model itself when it has nested models
-    if (
-      models.length > 0 &&
-      (classInstance.classKind === ModelicaClassKind.MODEL || classInstance.classKind === ModelicaClassKind.BLOCK)
-    ) {
-      models.unshift(classInstance);
+    for (const rootInstance of classInstances) {
+      if (rootInstance.classKind === ModelicaClassKind.MODEL || rootInstance.classKind === ModelicaClassKind.BLOCK) {
+        models.push(rootInstance);
+      } else if (rootInstance.classKind === ModelicaClassKind.PACKAGE) {
+        collectNested(rootInstance);
+      }
     }
     return models;
-  }, [classInstance]);
+  }, [classInstances]);
 
   useEffect(() => {
     const saved = localStorage.getItem("recentModels");
@@ -489,47 +489,51 @@ export default function MorselEditor(props: MorselEditorProps) {
   }, [content]);
 
   useEffect(() => {
-    if (classInstance && (selectedComponent || expectedComponentNameRef.current)) {
+    const firstInstance = classInstances[0] ?? null;
+    if (firstInstance && (selectedComponent || expectedComponentNameRef.current)) {
       const nameToFind = expectedComponentNameRef.current || selectedComponent?.name;
-      const next = Array.from(classInstance.components).find((c: any) => c.name === nameToFind);
-      setSelectedComponent((next as ModelicaComponentInstance) || null);
+      // Search across all root instances for the component
+      let next: ModelicaComponentInstance | null = null;
+      for (const inst of classInstances) {
+        const found = Array.from(inst.components).find((c: any) => c.name === nameToFind);
+        if (found) {
+          next = found as ModelicaComponentInstance;
+          break;
+        }
+      }
+      setSelectedComponent(next);
       expectedComponentNameRef.current = null;
     } else {
       setSelectedComponent(null);
     }
 
-    if (!isDiagramUpdate.current) {
-      // Check if we should auto-select a specific nested model tab
-      const models: ModelicaClassInstance[] = [];
-      const collectModels = (instance: ModelicaClassInstance) => {
-        for (const element of instance.elements) {
-          if (element instanceof ModelicaClassInstance) {
-            if (element.classKind === ModelicaClassKind.MODEL || element.classKind === ModelicaClassKind.BLOCK) {
-              models.push(element);
-            } else if (element.classKind === ModelicaClassKind.PACKAGE) {
-              collectModels(element);
-            }
+    // Build the models list using the same logic as nestedModels
+    const models: ModelicaClassInstance[] = [];
+    const collectModels = (instance: ModelicaClassInstance) => {
+      for (const element of instance.elements) {
+        if (element instanceof ModelicaClassInstance) {
+          if (element.classKind === ModelicaClassKind.MODEL || element.classKind === ModelicaClassKind.BLOCK) {
+            models.push(element);
+          } else if (element.classKind === ModelicaClassKind.PACKAGE) {
+            collectModels(element);
           }
         }
-      };
-      if (classInstance) {
-        collectModels(classInstance);
-        // Include the top-level model itself when it has nested models
-        if (
-          models.length > 0 &&
-          (classInstance.classKind === ModelicaClassKind.MODEL || classInstance.classKind === ModelicaClassKind.BLOCK)
-        ) {
-          models.unshift(classInstance);
-        }
       }
+    };
+    for (const rootInstance of classInstances) {
+      if (rootInstance.classKind === ModelicaClassKind.MODEL || rootInstance.classKind === ModelicaClassKind.BLOCK) {
+        models.push(rootInstance);
+      } else if (rootInstance.classKind === ModelicaClassKind.PACKAGE) {
+        collectModels(rootInstance);
+      }
+    }
 
+    if (!isDiagramUpdate.current) {
       let targetIndex = 0;
       if (pendingModelNameRef.current && models.length > 1) {
-        // Tree navigation: find the clicked model
         const idx = models.findIndex((m) => m.compositeName === pendingModelNameRef.current);
         if (idx !== -1) targetIndex = idx;
       } else if (models.length > 1) {
-        // In-place edit: preserve current tab, clamped to valid range
         targetIndex = Math.min(selectedModelIndex, models.length - 1);
       }
       pendingModelNameRef.current = null;
@@ -538,48 +542,29 @@ export default function MorselEditor(props: MorselEditorProps) {
       if (models.length > 1) {
         models[targetIndex].instantiate();
         setDiagramClassInstance(models[targetIndex]);
+      } else if (models.length === 1) {
+        setDiagramClassInstance(models[0]);
       } else {
-        setDiagramClassInstance(classInstance);
+        setDiagramClassInstance(firstInstance);
       }
     } else {
-      // Diagram-initiated edit (e.g. component delete): update diagramClassInstance
-      // to reflect new class state without resetting layout/tab selection
-      const models: ModelicaClassInstance[] = [];
-      const collectModels = (instance: ModelicaClassInstance) => {
-        for (const element of instance.elements) {
-          if (element instanceof ModelicaClassInstance) {
-            if (element.classKind === ModelicaClassKind.MODEL || element.classKind === ModelicaClassKind.BLOCK) {
-              models.push(element);
-            } else if (element.classKind === ModelicaClassKind.PACKAGE) {
-              collectModels(element);
-            }
-          }
-        }
-      };
-      if (classInstance) {
-        collectModels(classInstance);
-        // Include the top-level model itself when it has nested models
-        if (
-          models.length > 0 &&
-          (classInstance.classKind === ModelicaClassKind.MODEL || classInstance.classKind === ModelicaClassKind.BLOCK)
-        ) {
-          models.unshift(classInstance);
-        }
-      }
+      // Diagram-initiated edit: preserve tab selection
       if (models.length > 1) {
         const targetIndex = Math.min(selectedModelIndex, models.length - 1);
         models[targetIndex].instantiate();
         setDiagramClassInstance(models[targetIndex]);
+      } else if (models.length === 1) {
+        setDiagramClassInstance(models[0]);
       } else {
-        setDiagramClassInstance(classInstance);
+        setDiagramClassInstance(firstInstance);
       }
     }
     isDiagramUpdate.current = false;
 
-    if (classInstance?.name) {
-      saveRecentModel(classInstance.name, editor?.getValue() || lastLoadedContent);
+    if (firstInstance?.name) {
+      saveRecentModel(firstInstance.name, editor?.getValue() || lastLoadedContent);
     }
-  }, [classInstance]);
+  }, [classInstances]);
 
   useEffect(() => {
     if (view === View.DIAGRAM || isSplit(view)) {
@@ -686,7 +671,7 @@ export default function MorselEditor(props: MorselEditorProps) {
   }, []);
 
   const getNameEdit = (oldName: string, newName: string): editor.IIdentifiedSingleEditOperation | null => {
-    const instance = diagramClassInstance ?? classInstance;
+    const instance = diagramClassInstance ?? classInstances[0] ?? null;
     if (!instance || !editor || !newName) return null;
     const component = Array.from(instance.components).find((c: any) => c.name === oldName);
     if (!component) return null;
@@ -711,7 +696,7 @@ export default function MorselEditor(props: MorselEditorProps) {
     componentName: string,
     newDescription: string,
   ): editor.IIdentifiedSingleEditOperation | null => {
-    const instance = diagramClassInstance ?? classInstance;
+    const instance = diagramClassInstance ?? classInstances[0] ?? null;
     if (!instance || !editor) return null;
     const component = Array.from(instance.components).find((c: any) => c.name === componentName);
     if (!component) return null;
@@ -767,7 +752,7 @@ export default function MorselEditor(props: MorselEditorProps) {
     parameterName: string,
     newValue: string,
   ): editor.IIdentifiedSingleEditOperation | null => {
-    const instance = diagramClassInstance ?? classInstance;
+    const instance = diagramClassInstance ?? classInstances[0] ?? null;
     if (!instance || !editor) return null;
     const component = Array.from(instance.components).find((c: any) => c.name === componentName);
     if (!component) return null;
@@ -917,7 +902,7 @@ export default function MorselEditor(props: MorselEditorProps) {
     height: number,
     rotation: number,
   ): editor.IIdentifiedSingleEditOperation | null => {
-    const instance = diagramClassInstance ?? classInstance;
+    const instance = diagramClassInstance ?? classInstances[0] ?? null;
     if (!instance || !editor) return null;
 
     const component = instance.components ? Array.from(instance.components).find((c) => c.name === name) : null;
@@ -1050,7 +1035,7 @@ export default function MorselEditor(props: MorselEditorProps) {
     edges: { source: string; target: string; points: { x: number; y: number }[] }[],
   ): Map<string, editor.IIdentifiedSingleEditOperation> => {
     const edits = new Map<string, editor.IIdentifiedSingleEditOperation>();
-    const instance = diagramClassInstance ?? classInstance;
+    const instance = diagramClassInstance ?? classInstances[0] ?? null;
     if (!instance || !editor) return edits;
 
     for (const edge of edges) {
@@ -1173,8 +1158,9 @@ export default function MorselEditor(props: MorselEditorProps) {
   };
 
   const handleEdgeDelete = (source: string, target: string) => {
-    if (!classInstance || !editor) return;
-    const connectEq = Array.from(classInstance.connectEquations).find((ce: any) => {
+    const activeInstance = diagramClassInstance ?? classInstances[0];
+    if (!activeInstance || !editor) return;
+    const connectEq = Array.from(activeInstance.connectEquations).find((ce: any) => {
       const c1 = ce.componentReference1?.parts.map((c: any) => c.identifier?.text ?? "").join(".");
       const c2 = ce.componentReference2?.parts.map((c: any) => c.identifier?.text ?? "").join(".");
       return (c1 === source && c2 === target) || (c1 === target && c2 === source);
@@ -1229,7 +1215,8 @@ export default function MorselEditor(props: MorselEditorProps) {
   };
 
   const handleComponentsDelete = (names: string[]) => {
-    if (!classInstance || !editor) return;
+    const activeInstance = diagramClassInstance ?? classInstances[0];
+    if (!activeInstance || !editor) return;
 
     const edits: editor.IIdentifiedSingleEditOperation[] = [];
     const model = editor.getModel();
@@ -1237,7 +1224,7 @@ export default function MorselEditor(props: MorselEditorProps) {
 
     if (model) {
       // Collect connect equation edits for all components
-      Array.from(classInstance.connectEquations).forEach((ce: any) => {
+      Array.from(activeInstance.connectEquations).forEach((ce: any) => {
         const c1 = ce.componentReference1?.parts.map((c: any) => c.identifier?.text ?? "").join(".");
         const c2 = ce.componentReference2?.parts.map((c: any) => c.identifier?.text ?? "").join(".");
         const involvesComponent = [...nameSet].some(
@@ -1285,7 +1272,7 @@ export default function MorselEditor(props: MorselEditorProps) {
 
     // Collect component declaration edits for all components
     for (const name of names) {
-      const component = Array.from(classInstance.components).find((c) => c.name === name);
+      const component = Array.from(activeInstance.components).find((c) => c.name === name);
       if (!component) continue;
       const node = component.abstractSyntaxNode?.parent;
       if (node instanceof ModelicaComponentClauseSyntaxNode) {
@@ -1390,7 +1377,8 @@ export default function MorselEditor(props: MorselEditorProps) {
 
   const handleFlatten = async () => {
     if (!codeEditorRef.current) return;
-    const instance = await codeEditorRef.current.sync();
+    const instances = await codeEditorRef.current.sync();
+    const instance = diagramClassInstance ?? instances[0];
     if (!instance) return;
 
     try {
@@ -1412,7 +1400,8 @@ export default function MorselEditor(props: MorselEditorProps) {
 
   const handleSimulate = async () => {
     if (!codeEditorRef.current || !context) return;
-    const instance = await codeEditorRef.current.sync();
+    const instances = await codeEditorRef.current.sync();
+    const instance = diagramClassInstance ?? instances[0];
     if (!instance) return;
 
     setSimulateDialogOpen(true);
@@ -1494,7 +1483,7 @@ export default function MorselEditor(props: MorselEditorProps) {
 
   return (
     <>
-      <title>{classInstance?.name ? `${classInstance.name} - Morsel` : "Morsel"}</title>
+      <title>{classInstances[0]?.name ? `${classInstances[0].name} - Morsel` : "Morsel"}</title>
       <div className="d-flex flex-column" style={{ height: "100vh", overflow: "hidden" }}>
         <div className="d-flex flex-1" style={{ minHeight: 0 }}>
           {treeVisible && (
@@ -1736,6 +1725,8 @@ export default function MorselEditor(props: MorselEditorProps) {
                                 ? "#8b949e"
                                 : "#656d76",
                           transition: "all 0.15s ease",
+                          display: "inline-grid",
+                          justifyItems: "center",
                         }}
                         onMouseEnter={(e) => {
                           if (selectedModelIndex !== index) {
@@ -1749,7 +1740,11 @@ export default function MorselEditor(props: MorselEditorProps) {
                           }
                         }}
                       >
-                        {model.name ?? `Model ${index + 1}`}
+                        {/* Hidden bold text to reserve the bold width and prevent layout shift */}
+                        <span style={{ gridArea: "1 / 1", visibility: "hidden", fontWeight: 600 }} aria-hidden="true">
+                          {model.name ?? `Model ${index + 1}`}
+                        </span>
+                        <span style={{ gridArea: "1 / 1" }}>{model.name ?? `Model ${index + 1}`}</span>
                       </button>
                     ))}
                   </div>
@@ -1806,7 +1801,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                           if (!name) {
                             setSelectedComponent(null);
                           } else {
-                            const searchInstance = diagramClassInstance ?? classInstance;
+                            const searchInstance = diagramClassInstance ?? classInstances[0];
                             const component = searchInstance?.components
                               ? Array.from(searchInstance.components).find((c) => c.name === name)
                               : null;
@@ -1815,7 +1810,9 @@ export default function MorselEditor(props: MorselEditorProps) {
                           }
                         }}
                         onDrop={(className, x, y) => {
-                          if (!classInstance || !editor) return;
+                          const dropTarget = diagramClassInstance ?? classInstances[0];
+                          if (!dropTarget || !editor) return;
+                          isDiagramUpdate.current = true;
 
                           // Try to get the defaultComponentName annotation from the dropped class
                           const shortName = className.split(".").pop() || "component";
@@ -1836,13 +1833,13 @@ export default function MorselEditor(props: MorselEditorProps) {
 
                           let name = baseName;
                           let i = 1;
-                          const existingNames = new Set(Array.from(classInstance.components).map((c) => c.name));
+                          const existingNames = new Set(Array.from(dropTarget.components).map((c) => c.name));
                           while (existingNames.has(name)) {
                             name = `${baseName}${i}`;
                             i++;
                           }
 
-                          const diagram: IDiagram | null = classInstance.annotation("Diagram");
+                          const diagram: IDiagram | null = dropTarget.annotation("Diagram");
                           const initialScale = diagram?.coordinateSystem?.initialScale ?? 0.1;
                           const extent = diagram?.coordinateSystem?.extent;
 
@@ -1862,6 +1859,13 @@ export default function MorselEditor(props: MorselEditorProps) {
 
                           const model = editor.getModel();
                           if (model) {
+                            // Scope the search to the target model's syntax range
+                            const astNode = (dropTarget as any).abstractSyntaxNode;
+                            const modelStartLine = astNode?.sourceRange ? astNode.startPosition.row : 0;
+                            const modelEndLine = astNode?.sourceRange
+                              ? astNode.endPosition.row
+                              : model.getLineCount() - 1;
+
                             const keywords = [
                               "protected",
                               "initial equation",
@@ -1873,7 +1877,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                             let insertLine = -1;
                             const text = model.getValue();
                             const lines = text.split("\n");
-                            for (let i = 0; i < lines.length; i++) {
+                            for (let i = modelStartLine; i <= modelEndLine; i++) {
                               const line = lines[i].trim();
                               if (keywords.some((kw) => line.startsWith(kw))) {
                                 insertLine = i;
@@ -1887,7 +1891,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                                 endLineNumber: insertLine + 1,
                                 endColumn: 1,
                               };
-                              if (insertLine > 0 && lines[insertLine - 1].trim() === "") {
+                              if (insertLine > modelStartLine && lines[insertLine - 1].trim() === "") {
                                 range.startLineNumber = insertLine;
                                 range.endLineNumber = insertLine + 1;
                               }
@@ -1898,34 +1902,58 @@ export default function MorselEditor(props: MorselEditorProps) {
                                 },
                               ]);
                             } else {
-                              const lastEndIndex = text.lastIndexOf("end");
+                              // Find the last "end" within this model's range
+                              const modelText = lines.slice(modelStartLine, modelEndLine + 1).join("\n");
+                              const lastEndIndex = modelText.lastIndexOf("end");
                               if (lastEndIndex !== -1) {
-                                const pos = model.getPositionAt(lastEndIndex);
-                                let range = {
-                                  startLineNumber: pos.lineNumber,
-                                  startColumn: 1,
-                                  endLineNumber: pos.lineNumber,
-                                  endColumn: 1,
-                                };
-                                if (pos.lineNumber > 1) {
-                                  const prevLineContent = model.getLineContent(pos.lineNumber - 1);
-                                  if (prevLineContent.trim() === "") {
-                                    range.startLineNumber = pos.lineNumber - 1;
-                                    range.endLineNumber = pos.lineNumber;
+                                // Convert offset within modelText back to global line number
+                                const linesBeforeEnd = modelText.substring(0, lastEndIndex).split("\n").length - 1;
+                                const endLineNumber = modelStartLine + linesBeforeEnd + 1; // 1-indexed
+                                const endLineContent = lines[modelStartLine + linesBeforeEnd];
+                                const endCol = endLineContent.lastIndexOf("end");
+                                const beforeEnd = endLineContent.substring(0, endCol).trimEnd();
+
+                                if (beforeEnd !== "") {
+                                  // Single-line model: insert at the "end" keyword column with newlines
+                                  editor.executeEdits("dnd", [
+                                    {
+                                      range: {
+                                        startLineNumber: endLineNumber,
+                                        startColumn: endCol + 1,
+                                        endLineNumber: endLineNumber,
+                                        endColumn: endCol + 1,
+                                      },
+                                      text: "\n" + componentDecl,
+                                    },
+                                  ]);
+                                } else {
+                                  let range = {
+                                    startLineNumber: endLineNumber,
+                                    startColumn: 1,
+                                    endLineNumber: endLineNumber,
+                                    endColumn: 1,
+                                  };
+                                  if (endLineNumber > 1) {
+                                    const prevLineContent = model.getLineContent(endLineNumber - 1);
+                                    if (prevLineContent.trim() === "") {
+                                      range.startLineNumber = endLineNumber - 1;
+                                      range.endLineNumber = endLineNumber;
+                                    }
                                   }
+                                  editor.executeEdits("dnd", [
+                                    {
+                                      range: range,
+                                      text: componentDecl,
+                                    },
+                                  ]);
                                 }
-                                editor.executeEdits("dnd", [
-                                  {
-                                    range: range,
-                                    text: componentDecl,
-                                  },
-                                ]);
                               }
                             }
                           }
                         }}
                         onConnect={(source, target, points) => {
-                          if (!classInstance || !editor) return;
+                          const connectTarget = diagramClassInstance ?? classInstances[0];
+                          if (!connectTarget || !editor) return;
                           isDiagramUpdate.current = true;
 
                           const annotation = points
@@ -1934,13 +1962,27 @@ export default function MorselEditor(props: MorselEditorProps) {
                           const connectEq = `  connect(${source}, ${target})${annotation};\n`;
                           const model = editor.getModel();
                           if (!model) return;
-                          const equationMatches = model.findMatches("equation", false, false, true, null, true);
+
+                          // Scope the search to the target model's syntax range
+                          const astNode = (connectTarget as any).abstractSyntaxNode;
+                          const modelStartLine = astNode?.sourceRange ? astNode.startPosition.row + 1 : 1;
+                          const modelEndLine = astNode?.sourceRange
+                            ? astNode.endPosition.row + 1
+                            : model.getLineCount();
+                          const searchRange = {
+                            startLineNumber: modelStartLine,
+                            startColumn: 1,
+                            endLineNumber: modelEndLine,
+                            endColumn: model.getLineMaxColumn(modelEndLine),
+                          };
+
+                          const equationMatches = model.findMatches("equation", searchRange, false, true, null, true);
                           if (equationMatches.length > 0) {
                             const startLine = equationMatches[0].range.startLineNumber;
                             const text = model.getValue();
                             const lines = text.split("\n");
                             let insertLine = -1;
-                            for (let i = startLine; i < lines.length; i++) {
+                            for (let i = startLine; i < modelEndLine; i++) {
                               const line = lines[i].trim();
                               if (
                                 line.startsWith("public") ||
@@ -1969,7 +2011,14 @@ export default function MorselEditor(props: MorselEditorProps) {
                               return;
                             }
                           }
-                          const endMatches = model.findMatches("^\\s*end\\s+[^;]+;", false, true, false, null, true);
+                          const endMatches = model.findMatches(
+                            "^\\s*end\\s+[^;]+;",
+                            searchRange,
+                            true,
+                            false,
+                            null,
+                            true,
+                          );
                           if (endMatches.length > 0) {
                             const lastEnd = endMatches[endMatches.length - 1];
                             const text = model.getValue();
@@ -1977,7 +2026,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                             let insertLine = lastEnd.range.startLineNumber - 1;
 
                             // Look backwards for annotation before end
-                            for (let i = insertLine - 1; i >= 0; i--) {
+                            for (let i = insertLine - 1; i >= modelStartLine - 1; i--) {
                               const line = lines[i].trim();
                               if (line.startsWith("annotation")) {
                                 insertLine = i;
@@ -2000,17 +2049,22 @@ export default function MorselEditor(props: MorselEditorProps) {
                             ]);
                             return;
                           }
+                          // Fallback: find last "end" within model range
                           const text = model.getValue();
-                          const lastEndIndex = text.lastIndexOf("end");
+                          const lines = text.split("\n");
+                          const modelLines = lines.slice(modelStartLine - 1, modelEndLine);
+                          const modelText = modelLines.join("\n");
+                          const lastEndIndex = modelText.lastIndexOf("end");
                           if (lastEndIndex !== -1) {
-                            const pos = model.getPositionAt(lastEndIndex);
+                            const linesBeforeEnd = modelText.substring(0, lastEndIndex).split("\n").length - 1;
+                            const endLineNumber = modelStartLine + linesBeforeEnd;
                             const insertText = equationMatches.length === 0 ? `equation\n${connectEq}` : connectEq;
                             editor.executeEdits("connect", [
                               {
                                 range: {
-                                  startLineNumber: pos.lineNumber,
+                                  startLineNumber: endLineNumber,
                                   startColumn: 1,
-                                  endLineNumber: pos.lineNumber,
+                                  endLineNumber: endLineNumber,
                                   endColumn: 1,
                                 },
                                 text: insertText,
@@ -2019,7 +2073,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                           }
                         }}
                         onMove={(items) => {
-                          if ((!diagramClassInstance && !classInstance) || !editor) return;
+                          if ((!diagramClassInstance && !classInstances[0]) || !editor) return;
                           isDiagramUpdate.current = true;
                           const edits: editor.IIdentifiedSingleEditOperation[] = [];
                           const allEdges: any[] = [];
@@ -2067,7 +2121,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                           }
                         }}
                         onResize={(name, x, y, width, height, rotation, edges) => {
-                          if ((!diagramClassInstance && !classInstance) || !editor) return;
+                          if ((!diagramClassInstance && !classInstances[0]) || !editor) return;
                           isDiagramUpdate.current = false;
                           const edits: editor.IIdentifiedSingleEditOperation[] = [];
                           const edit = getPlacementEdit(name, x, y, width, height, rotation);
@@ -2100,7 +2154,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                           }
                         }}
                         onEdgeMove={(edges) => {
-                          if ((!diagramClassInstance && !classInstance) || !editor) return;
+                          if ((!diagramClassInstance && !classInstances[0]) || !editor) return;
                           isDiagramUpdate.current = true;
                           const edgeEdits = getConnectEdits(edges);
                           if (edgeEdits.size > 0) {
@@ -2295,7 +2349,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                 ref={codeEditorRef}
                 embed={props.embed}
                 context={context}
-                setClassInstance={setClassInstance}
+                setClassInstances={setClassInstances}
                 setEditor={setEditor}
                 content={content}
                 theme={colorMode === "dark" ? "vs-dark" : "light"}
@@ -2385,11 +2439,11 @@ export default function MorselEditor(props: MorselEditorProps) {
             title={translations.saveModel}
             onClick={async () => {
               const content = editor?.getValue() || "";
-              let filename = classInstance?.name ? `${classInstance.name}.mo` : "model.mo";
+              let filename = classInstances[0]?.name ? `${classInstances[0].name}.mo` : "model.mo";
               if (codeEditorRef.current) {
-                const syncedInstance = await codeEditorRef.current.sync();
-                if (syncedInstance?.name) {
-                  filename = `${syncedInstance.name}.mo`;
+                const syncedInstances = await codeEditorRef.current.sync();
+                if (syncedInstances[0]?.name) {
+                  filename = `${syncedInstances[0].name}.mo`;
                 }
               }
               const blob = new Blob([content], { type: "text/plain" });
@@ -2819,7 +2873,7 @@ export default function MorselEditor(props: MorselEditorProps) {
               <CodeEditor
                 content={flattenedCode}
                 context={null}
-                setClassInstance={() => {}}
+                setClassInstances={() => {}}
                 setEditor={() => {}}
                 theme={colorMode === "dark" ? "vs-dark" : "light"}
                 embed={false}
