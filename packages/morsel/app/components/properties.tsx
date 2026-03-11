@@ -1,12 +1,20 @@
 import { ModelicaComponentInstance, ModelicaVariability } from "@modelscript/core";
 import { ChevronDownIcon, ChevronRightIcon } from "@primer/octicons-react";
-import { Button, Textarea, TextInput, useTheme } from "@primer/react";
+import { Button, Textarea, TextInput, ToggleSwitch, useTheme } from "@primer/react";
 import { useEffect, useState } from "react";
 import type { Translations } from "~/util/i18n";
 import { ComponentIcon } from "./component-list";
 
+function formatUnit(unit: string): string {
+  if (unit === "Ohm") return "Ω";
+  return unit;
+}
+
+import type { Context } from "@modelscript/core";
+
 interface PropertiesWidgetProps {
   component: ModelicaComponentInstance | null;
+  context?: Context | null;
   width?: number;
   onNameChange?: (name: string) => void;
   onDescriptionChange?: (description: string) => void;
@@ -17,11 +25,15 @@ interface PropertiesWidgetProps {
 function ParameterRow({
   parameter,
   value,
+  unit,
+  isBoolean,
   colorMode,
   onParameterChange,
 }: {
   parameter: ModelicaComponentInstance;
   value: string;
+  unit?: string;
+  isBoolean?: boolean;
   colorMode?: string;
   onParameterChange?: (name: string, value: string) => void;
 }) {
@@ -32,6 +44,7 @@ function ParameterRow({
   }, [value, parameter.name]);
 
   useEffect(() => {
+    if (isBoolean) return; // Boolean toggle calls onParameterChange immediately via onClick
     if (localValue === value) return;
 
     const timeoutId = setTimeout(() => {
@@ -41,7 +54,9 @@ function ParameterRow({
     }, 500);
 
     return () => clearTimeout(timeoutId);
-  }, [localValue, value, parameter.name, onParameterChange]);
+  }, [localValue, value, parameter.name, onParameterChange, isBoolean]);
+
+  const isChecked = localValue === "true";
 
   return (
     <div
@@ -70,29 +85,56 @@ function ParameterRow({
         >
           {parameter.localizedName}
         </div>
-        <TextInput
-          size="small"
-          value={localValue === "-" ? "" : localValue}
-          onChange={(e) => {
-            e.stopPropagation();
-            setLocalValue(e.target.value);
-          }}
-          onMouseDown={(e) => e.stopPropagation()}
-          onMouseUp={(e) => e.stopPropagation()}
-          onKeyDown={(e) => {
-            e.stopPropagation();
-            if (e.key === "Enter") {
-              (e.target as HTMLInputElement).blur();
+        {isBoolean ? (
+          <ToggleSwitch
+            size="small"
+            checked={isChecked}
+            aria-labelledby={`param-label-${parameter.name}`}
+            onClick={() => {
+              const newVal = isChecked ? "false" : "true";
+              setLocalValue(newVal);
+              if (onParameterChange) {
+                onParameterChange(parameter.name!, newVal);
+              }
+            }}
+            onChange={() => {
+              /* controlled via onClick */
+            }}
+          />
+        ) : (
+          <TextInput
+            size="small"
+            value={localValue === "-" ? "" : localValue}
+            onChange={(e) => {
+              e.stopPropagation();
+              setLocalValue(e.target.value);
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+            onMouseUp={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === "Enter") {
+                (e.target as HTMLInputElement).blur();
+              }
+            }}
+            onKeyUp={(e) => e.stopPropagation()}
+            onBlur={() => {
+              if (localValue !== value && onParameterChange) {
+                onParameterChange(parameter.name!, localValue);
+              }
+            }}
+            trailingVisual={
+              unit
+                ? () => (
+                    <span style={{ fontSize: 11, color: "var(--fgColor-muted, #656d76)", whiteSpace: "nowrap" }}>
+                      {unit}
+                    </span>
+                  )
+                : undefined
             }
-          }}
-          onKeyUp={(e) => e.stopPropagation()}
-          onBlur={() => {
-            if (localValue !== value && onParameterChange) {
-              onParameterChange(parameter.name!, localValue);
-            }
-          }}
-          style={{ width: 120, height: 24, fontSize: 12 }}
-        />
+            style={{ width: 120, height: 24, fontSize: 12 }}
+          />
+        )}
       </div>
       {parameter.description && (
         <div
@@ -174,7 +216,7 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
 
   const processHtml = (html: string | undefined) => {
     if (!html) return "";
-    const context = component.context;
+    const context = props.context ?? component.context;
     if (!context) return html;
 
     return html.replace(/<img\s+[^>]*src=(["'])modelica:\/\/([^"']+)\1[^>]*>/gi, (match, quote, uriPath) => {
@@ -183,19 +225,22 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
       if (resolvedPath) {
         try {
           const binary = context.fs.readBinary(resolvedPath);
-          let binaryString = "";
-          for (let i = 0; i < binary.length; i++) {
-            binaryString += String.fromCharCode(binary[i]);
+          // Convert Uint8Array to base64 in chunks to avoid stack overflow
+          const chunks: string[] = [];
+          const chunkSize = 8192;
+          for (let i = 0; i < binary.length; i += chunkSize) {
+            chunks.push(String.fromCharCode(...binary.subarray(i, i + chunkSize)));
           }
-          const base64 = btoa(binaryString);
+          const base64 = btoa(chunks.join(""));
           const ext = context.fs.extname(resolvedPath).toLowerCase().substring(1);
           const mimeType = ext === "svg" ? "image/svg+xml" : `image/${ext}`;
           return match.replace(`modelica://${uriPath}`, `data:${mimeType};base64,${base64}`);
         } catch (e) {
-          console.error(`Failed to resolve image ${uri}:`, e);
+          console.warn(`Failed to read image ${uri}:`, e);
         }
       }
-      return match;
+      // Hide unresolvable modelica:// images to avoid broken image icons
+      return match.replace(/src=(["'])modelica:\/\/[^"']+\1/, 'style="display:none"');
     });
   };
 
@@ -343,11 +388,17 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
                 )?.toJSON?.toString() ??
                 (parameter.modification?.expression as any)?.toJSON?.toString() ??
                 "-";
+              const unitExpr = parameter.classInstance?.modification?.getModificationArgument("unit")?.expression;
+              const rawUnit = unitExpr?.toJSON?.toString()?.replace(/^"|"$/g, "") || undefined;
+              const unit = rawUnit ? formatUnit(rawUnit) : undefined;
+              const isBoolean = parameter.classInstance?.name === "Boolean";
               return (
                 <ParameterRow
                   key={parameter.name}
                   parameter={parameter}
                   value={value}
+                  unit={unit}
+                  isBoolean={isBoolean}
                   colorMode={colorMode}
                   onParameterChange={props.onParameterChange}
                 />

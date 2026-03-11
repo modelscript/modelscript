@@ -263,10 +263,7 @@ export function renderText(
   componentInstance?: ModelicaComponentInstance,
 ): Text {
   const rawText = graphicItem.textString ?? graphicItem.string ?? "";
-  const formatUnit = (unit: string): string => {
-    if (unit === "Ohm") return "Ω";
-    return unit;
-  };
+  // Uses the exported formatUnit function below
 
   const replacer = (match: string, name: string): string => {
     const namedElement = classInstance?.resolveName(name.split("."));
@@ -739,4 +736,9 @@ export function convertSmoothPath(points?: IPoint[]): PathCommand[] {
     pathArray.push(["L", ...convertPoint(points[points.length - 1])]);
   }
   return pathArray;
+}
+
+export function formatUnit(unit: string): string {
+  if (unit === "Ohm") return "Ω";
+  return unit;
 }

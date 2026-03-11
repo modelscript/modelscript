@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ModelicaClassInstance, renderIcon } from "@modelscript/core";
+import { ModelicaClassInstance, ModelicaClassKind, renderIcon } from "@modelscript/core";
 import { PackageIcon } from "@primer/octicons-react";
 import { NavList, useTheme } from "@primer/react";
 import React from "react";
@@ -63,7 +63,10 @@ const ComponentList = React.memo(function ComponentList(props: ComponentListProp
     );
   }
 
-  const components = Array.from(classInstance.components);
+  const components = Array.from(classInstance.components).filter(
+    (c) =>
+      c.classInstance?.classKind === ModelicaClassKind.MODEL || c.classInstance?.classKind === ModelicaClassKind.BLOCK,
+  );
 
   if (components.length === 0) {
     return (

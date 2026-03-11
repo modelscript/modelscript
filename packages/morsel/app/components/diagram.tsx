@@ -971,9 +971,12 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       return;
     }
 
-    // Show the spinner and defer heavy rendering to the next frame so the
-    // browser can paint the overlay before the synchronous render blocks.
-    setLoading(true);
+    // Only show the spinner when switching to a different class (e.g. from library tree).
+    // Code edits re-render the same class and don't need a spinner overlay.
+    const isNewClass = lastClassRef.current !== props.classInstance.name;
+    if (isNewClass) {
+      setLoading(true);
+    }
 
     // Capture values needed inside the deferred callback
     const classInstance = props.classInstance;

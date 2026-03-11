@@ -3,6 +3,7 @@
 import {
   Context,
   ModelicaClassInstance,
+  ModelicaComponentClauseSyntaxNode,
   ModelicaComponentInstance,
   ModelicaElement,
   ModelicaEnumerationClassInstance,
@@ -879,25 +880,25 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
       const component: any = Array.from(instance.components).find((c: any) => c.name === name);
       if (!component || !component.abstractSyntaxNode) return;
 
-      let concreteNode = component.abstractSyntaxNode.concreteSyntaxNode;
-      if (!concreteNode) return;
+      const astNode = component.abstractSyntaxNode;
+      if (!astNode.sourceRange) return;
 
+      // Check if the parent (component clause) has only one declaration — if so, use that range
+      const parentNode = astNode.parent;
+      let targetNode = astNode;
       if (
-        concreteNode.type === "component_declaration" &&
-        concreteNode.parent?.type === "component_clause" &&
-        concreteNode.parent.childCount <= 4
+        parentNode instanceof ModelicaComponentClauseSyntaxNode &&
+        parentNode.componentDeclarations.length <= 1 &&
+        parentNode.sourceRange
       ) {
-        const declarations = concreteNode.parent.children.filter((c) => c.type === "component_declaration");
-        if (declarations.length === 1) {
-          concreteNode = concreteNode.parent;
-        }
+        targetNode = parentNode;
       }
 
       const range = {
-        startLineNumber: concreteNode.startPosition.row + 1,
-        startColumn: concreteNode.startPosition.column + 1,
-        endLineNumber: concreteNode.endPosition.row + 1,
-        endColumn: concreteNode.endPosition.column + 1,
+        startLineNumber: targetNode.startPosition.row + 1,
+        startColumn: targetNode.startPosition.column + 1,
+        endLineNumber: targetNode.endPosition.row + 1,
+        endColumn: targetNode.endPosition.column + 1,
       };
 
       editorRef.current.revealRangeInCenter(range);

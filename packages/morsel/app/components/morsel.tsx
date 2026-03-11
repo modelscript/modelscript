@@ -606,8 +606,8 @@ export default function MorselEditor(props: MorselEditorProps) {
         const content = context.fs.read(filePath);
         editor?.setValue(content);
         setLastLoadedContent(content);
-        const node = selectedClass.abstractSyntaxNode?.concreteSyntaxNode as any;
-        if (node) {
+        const node = selectedClass.abstractSyntaxNode;
+        if (node?.sourceRange) {
           editor?.revealRange({
             startLineNumber: node.startPosition.row + 1,
             startColumn: node.startPosition.column + 1,
@@ -623,8 +623,8 @@ export default function MorselEditor(props: MorselEditorProps) {
         }
       }
     } else {
-      const node = selectedClass.abstractSyntaxNode?.concreteSyntaxNode as any;
-      if (node) {
+      const node = selectedClass.abstractSyntaxNode;
+      if (node?.sourceRange) {
         editor?.revealRange({
           startLineNumber: node.startPosition.row + 1,
           startColumn: node.startPosition.column + 1,
@@ -677,8 +677,8 @@ export default function MorselEditor(props: MorselEditorProps) {
     if (!component) return null;
 
     const abstractNode = (component as any).abstractSyntaxNode;
-    const identNode = abstractNode?.declaration?.identifier?.concreteSyntaxNode;
-    if (identNode) {
+    const identNode = abstractNode?.declaration?.identifier;
+    if (identNode?.sourceRange) {
       return {
         range: {
           startLineNumber: identNode.startPosition.row + 1,
@@ -702,12 +702,12 @@ export default function MorselEditor(props: MorselEditorProps) {
     if (!component) return null;
 
     const abstractNode = (component as any).abstractSyntaxNode;
-    const descriptionNode = abstractNode?.description?.concreteSyntaxNode;
+    const descriptionNode = abstractNode?.description;
 
     // Escape quotes for Modelica (double them)
     const escapedDescription = newDescription.replace(/"/g, '""');
 
-    if (descriptionNode) {
+    if (descriptionNode?.sourceRange) {
       return {
         range: {
           startLineNumber: descriptionNode.startPosition.row + 1,
@@ -719,16 +719,16 @@ export default function MorselEditor(props: MorselEditorProps) {
       };
     } else {
       // If no description exists, we need to insert it after the identifier/modification
-      const identNode = abstractNode?.declaration?.identifier?.concreteSyntaxNode;
-      const modificationNode = abstractNode?.declaration?.modification?.concreteSyntaxNode;
-      const subscriptsNode = abstractNode?.declaration?.arraySubscripts?.concreteSyntaxNode;
+      const identNode = abstractNode?.declaration?.identifier;
+      const modificationNode = abstractNode?.declaration?.modification;
+      const subscriptsNode = abstractNode?.declaration?.arraySubscripts;
 
       let pos = null;
-      if (modificationNode) {
+      if (modificationNode?.sourceRange) {
         pos = modificationNode.endPosition;
-      } else if (subscriptsNode) {
+      } else if (subscriptsNode?.sourceRange) {
         pos = subscriptsNode.endPosition;
-      } else if (identNode) {
+      } else if (identNode?.sourceRange) {
         pos = identNode.endPosition;
       }
 
@@ -776,41 +776,30 @@ export default function MorselEditor(props: MorselEditorProps) {
       if (argIndex !== -1) {
         const existingArg = classMod.modificationArguments[argIndex];
         if (shouldRemove) {
-          const argNode = (existingArg as any).concreteSyntaxNode;
-          if (!argNode) return null;
-
-          let startLine = argNode.startPosition.row + 1;
-          let startCol = argNode.startPosition.column + 1;
-          let endLine = argNode.endPosition.row + 1;
-          let endCol = argNode.endPosition.column + 1;
+          let startLine = existingArg.startPosition.row + 1;
+          let startCol = existingArg.startPosition.column + 1;
+          let endLine = existingArg.endPosition.row + 1;
+          let endCol = existingArg.endPosition.column + 1;
 
           const nextArg = classMod.modificationArguments[argIndex + 1];
           if (nextArg) {
-            const nextNode = (nextArg as any).concreteSyntaxNode;
-            if (nextNode) {
-              endLine = nextNode.startPosition.row + 1;
-              endCol = nextNode.startPosition.column + 1;
-            }
+            endLine = nextArg.startPosition.row + 1;
+            endCol = nextArg.startPosition.column + 1;
           } else if (argIndex > 0) {
             const prevArg = classMod.modificationArguments[argIndex - 1];
-            const prevNode = (prevArg as any).concreteSyntaxNode;
-            if (prevNode) {
-              startLine = prevNode.endPosition.row + 1;
-              startCol = prevNode.endPosition.column + 1;
-            }
+            startLine = prevArg.endPosition.row + 1;
+            startCol = prevArg.endPosition.column + 1;
           } else {
-            const classModNode = classMod.concreteSyntaxNode;
-            if (classModNode) {
-              return {
-                range: {
-                  startLineNumber: classModNode.startPosition.row + 1,
-                  startColumn: classModNode.startPosition.column + 1,
-                  endLineNumber: classModNode.endPosition.row + 1,
-                  endColumn: classModNode.endPosition.column + 1,
-                },
-                text: "",
-              };
-            }
+            // Only argument — remove the entire class modification
+            return {
+              range: {
+                startLineNumber: classMod.startPosition.row + 1,
+                startColumn: classMod.startPosition.column + 1,
+                endLineNumber: classMod.endPosition.row + 1,
+                endColumn: classMod.endPosition.column + 1,
+              },
+              text: "",
+            };
           }
 
           return {
@@ -824,58 +813,54 @@ export default function MorselEditor(props: MorselEditorProps) {
           };
         }
 
-        const modNode = (existingArg as any).modification?.concreteSyntaxNode;
-        if (modNode) {
+        // Update existing argument value
+        const existingMod = existingArg.modification;
+        if (existingMod) {
           return {
             range: {
-              startLineNumber: modNode.startPosition.row + 1,
-              startColumn: modNode.startPosition.column + 1,
-              endLineNumber: modNode.endPosition.row + 1,
-              endColumn: modNode.endPosition.column + 1,
+              startLineNumber: existingMod.startPosition.row + 1,
+              startColumn: existingMod.startPosition.column + 1,
+              endLineNumber: existingMod.endPosition.row + 1,
+              endColumn: existingMod.endPosition.column + 1,
             },
             text: `=${newValue}`,
           };
         } else {
-          const argNode = (existingArg as any).concreteSyntaxNode;
-          if (argNode) {
-            return {
-              range: {
-                startLineNumber: argNode.startPosition.row + 1,
-                startColumn: argNode.startPosition.column + 1,
-                endLineNumber: argNode.endPosition.row + 1,
-                endColumn: argNode.endPosition.column + 1,
-              },
-              text: `${parameterName}=${newValue}`,
-            };
-          }
+          return {
+            range: {
+              startLineNumber: existingArg.startPosition.row + 1,
+              startColumn: existingArg.startPosition.column + 1,
+              endLineNumber: existingArg.endPosition.row + 1,
+              endColumn: existingArg.endPosition.column + 1,
+            },
+            text: `${parameterName}=${newValue}`,
+          };
         }
       } else {
+        // Add new argument to existing modification
         if (shouldRemove) return null;
-        const classModNode = classMod.concreteSyntaxNode;
-        if (classModNode) {
-          const lastChild = classModNode.lastChild;
-          if (lastChild && lastChild.text === ")") {
-            const hasArgs = classMod.modificationArguments.length > 0;
-            return {
-              range: {
-                startLineNumber: lastChild.startPosition.row + 1,
-                startColumn: lastChild.startPosition.column + 1,
-                endLineNumber: lastChild.startPosition.row + 1,
-                endColumn: lastChild.startPosition.column + 1,
-              },
-              text: `${hasArgs ? ", " : ""}${parameterName}=${newValue}`,
-            };
-          }
-        }
+        const hasArgs = classMod.modificationArguments.length > 0;
+        // Insert before the closing paren — use the classModification's end position
+        const endPos = classMod.endPosition;
+        return {
+          range: {
+            startLineNumber: endPos.row + 1,
+            startColumn: endPos.column, // before the closing paren
+            endLineNumber: endPos.row + 1,
+            endColumn: endPos.column,
+          },
+          text: `${hasArgs ? ", " : ""}${parameterName}=${newValue}`,
+        };
       }
     } else {
+      // No existing modification — insert after identifier
       if (shouldRemove) return null;
-      const identNode = declNode?.identifier?.concreteSyntaxNode;
-      const subscriptsNode = declNode?.arraySubscripts?.concreteSyntaxNode;
+      const identNode = declNode?.identifier;
+      const subscriptsNode = declNode?.arraySubscripts;
       let pos = null;
-      if (subscriptsNode) {
+      if (subscriptsNode?.sourceRange) {
         pos = subscriptsNode.endPosition;
-      } else if (identNode) {
+      } else if (identNode?.sourceRange) {
         pos = identNode.endPosition;
       }
 
@@ -914,8 +899,8 @@ export default function MorselEditor(props: MorselEditorProps) {
     const h = Math.round(height);
     const r = Math.round(-(rotation ?? 0));
     const abstractNode = (component as any).abstractSyntaxNode;
-    const node = abstractNode?.concreteSyntaxNode;
-    if (node) {
+    if (abstractNode?.sourceRange) {
+      const node = abstractNode;
       const startLine = node.startPosition.row + 1;
       const startCol = node.startPosition.column + 1;
       const endLine = node.endPosition.row + 1;
@@ -1047,8 +1032,8 @@ export default function MorselEditor(props: MorselEditorProps) {
 
       if (!connectEq) continue;
 
-      const node = connectEq.concreteSyntaxNode;
-      if (node) {
+      if (connectEq.sourceRange) {
+        const node = connectEq;
         // Use a unique key for the map to avoid duplicates
         const key = `${node.startPosition.row}:${node.startPosition.column}`;
         if (edits.has(key)) continue;
@@ -1166,8 +1151,8 @@ export default function MorselEditor(props: MorselEditorProps) {
       return (c1 === source && c2 === target) || (c1 === target && c2 === source);
     });
     if (!connectEq) return;
-    const node = connectEq.concreteSyntaxNode;
-    if (node) {
+    if (connectEq.sourceRange) {
+      const node = connectEq;
       const startLine = node.startPosition.row + 1;
       const startCol = node.startPosition.column + 1;
       const endLine = node.endPosition.row + 1;
@@ -1231,8 +1216,8 @@ export default function MorselEditor(props: MorselEditorProps) {
           (name) => c1 === name || c1.startsWith(`${name}.`) || c2 === name || c2.startsWith(`${name}.`),
         );
         if (involvesComponent) {
-          const node = ce.concreteSyntaxNode;
-          if (node) {
+          if (ce.sourceRange) {
+            const node = ce;
             const startLine = node.startPosition.row + 1;
             const startCol = node.startPosition.column + 1;
             const endLine = node.endPosition.row + 1;
@@ -1276,11 +1261,11 @@ export default function MorselEditor(props: MorselEditorProps) {
       if (!component) continue;
       const node = component.abstractSyntaxNode?.parent;
       if (node instanceof ModelicaComponentClauseSyntaxNode) {
-        if (node.componentDeclarations.length <= 1 && node.concreteSyntaxNode) {
-          const startLine = node.concreteSyntaxNode.startPosition.row + 1;
-          const startCol = node.concreteSyntaxNode.startPosition.column + 1;
-          const endLine = node.concreteSyntaxNode.endPosition.row + 1;
-          const endCol = node.concreteSyntaxNode.endPosition.column + 1;
+        if (node.componentDeclarations.length <= 1 && node.sourceRange) {
+          const startLine = node.startPosition.row + 1;
+          const startCol = node.startPosition.column + 1;
+          const endLine = node.endPosition.row + 1;
+          const endCol = node.endPosition.column + 1;
           let range = {
             startLineNumber: startLine,
             startColumn: startCol,
@@ -1314,23 +1299,23 @@ export default function MorselEditor(props: MorselEditorProps) {
         } else if (node.componentDeclarations.length >= 1) {
           const index = node.componentDeclarations.findIndex((c) => c.declaration?.identifier?.text === name);
           const componentDeclaration = node.componentDeclarations[index];
-          if (componentDeclaration?.concreteSyntaxNode) {
-            let startLine = componentDeclaration.concreteSyntaxNode.startPosition.row + 1;
-            let startCol = componentDeclaration.concreteSyntaxNode.startPosition.column + 1;
-            let endLine = componentDeclaration.concreteSyntaxNode.endPosition.row + 1;
-            let endCol = componentDeclaration.concreteSyntaxNode.endPosition.column + 1;
+          if (componentDeclaration?.sourceRange) {
+            let startLine = componentDeclaration.startPosition.row + 1;
+            let startCol = componentDeclaration.startPosition.column + 1;
+            let endLine = componentDeclaration.endPosition.row + 1;
+            let endCol = componentDeclaration.endPosition.column + 1;
 
             if (index > 0) {
               const prevDecl = node.componentDeclarations[index - 1];
-              if (prevDecl.concreteSyntaxNode) {
-                startLine = prevDecl.concreteSyntaxNode.endPosition.row + 1;
-                startCol = prevDecl.concreteSyntaxNode.endPosition.column + 1;
+              if (prevDecl.sourceRange) {
+                startLine = prevDecl.endPosition.row + 1;
+                startCol = prevDecl.endPosition.column + 1;
               }
             } else if (node.componentDeclarations.length > 1) {
               const nextDecl = node.componentDeclarations[1];
-              if (nextDecl.concreteSyntaxNode) {
-                endLine = nextDecl.concreteSyntaxNode.startPosition.row + 1;
-                endCol = nextDecl.concreteSyntaxNode.startPosition.column + 1;
+              if (nextDecl.sourceRange) {
+                endLine = nextDecl.startPosition.row + 1;
+                endCol = nextDecl.startPosition.column + 1;
               }
             }
             let range = {
@@ -1489,7 +1474,11 @@ export default function MorselEditor(props: MorselEditorProps) {
 
   return (
     <>
-      <title>{classInstances[0]?.name ? `${classInstances[0].name} - Morsel` : "Morsel"}</title>
+      <title>
+        {(nestedModels[selectedModelIndex] ?? nestedModels[0])?.name
+          ? `${(nestedModels[selectedModelIndex] ?? nestedModels[0])?.name} - Morsel`
+          : "Morsel"}
+      </title>
       <div className="d-flex flex-column" style={{ height: "100vh", overflow: "hidden" }}>
         <div className="d-flex flex-1" style={{ minHeight: 0 }}>
           {treeVisible && (
@@ -2220,6 +2209,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                         <PropertiesWidget
                           key={selectedComponent.name || "none"}
                           component={selectedComponent}
+                          context={context}
                           width={propertiesWidth}
                           translations={translations}
                           onNameChange={(newName) => {
@@ -2242,6 +2232,8 @@ export default function MorselEditor(props: MorselEditorProps) {
                             const edit = getParameterEdit(selectedComponent.name!, name, value);
                             if (edit) {
                               editor.executeEdits("parameter-change", [edit]);
+                              // Trigger immediate reparse so AST is fresh for next edit
+                              codeEditorRef.current?.sync();
                             }
                           }}
                         />
