@@ -537,3 +537,57 @@ ModelicaLinter.register({
     }
   },
 });
+
+ModelicaLinter.register({
+  visitComponentInstance(
+    node: ModelicaComponentInstance,
+    diagnosticsCallback: DiagnosticsCallbackWithoutResource,
+  ): void {
+    const modSyntaxNode = node.abstractSyntaxNode?.declaration?.modification;
+    const classModArgs = modSyntaxNode?.classModification?.modificationArguments ?? [];
+    if (classModArgs.length < 2) return;
+
+    // Build element modifications grouped by top-level name
+    const byName = new Map<string, ModelicaElementModificationSyntaxNode[]>();
+    for (const arg of classModArgs) {
+      if (arg instanceof ModelicaElementModificationSyntaxNode) {
+        const name = arg.name?.parts?.[0]?.text;
+        if (!name) continue;
+        if (!byName.has(name)) byName.set(name, []);
+        byName.get(name)?.push(arg);
+      }
+    }
+
+    for (const [name, mods] of byName) {
+      if (mods.length <= 1) continue;
+      // Collect full dot-paths that set a value (have a modification expression)
+      const paths: { path: string; syntaxNode: ModelicaElementModificationSyntaxNode }[] = [];
+      for (const mod of mods) {
+        const fullPath = mod.name?.parts?.map((c) => c.text ?? "").join(".") ?? name;
+        if (mod.modification?.modificationExpression) {
+          paths.push({ path: fullPath, syntaxNode: mod });
+        }
+        // Also check sub-arguments for nested paths
+        for (const subArg of mod.modification?.classModification?.modificationArguments ?? []) {
+          if (subArg instanceof ModelicaElementModificationSyntaxNode && subArg.modification?.modificationExpression) {
+            const subPath = fullPath + "." + (subArg.name?.parts?.map((c) => c.text ?? "").join(".") ?? "");
+            paths.push({ path: subPath, syntaxNode: subArg });
+          }
+        }
+      }
+      // Check for duplicate paths
+      const seen = new Map<string, ModelicaElementModificationSyntaxNode>();
+      for (const { path, syntaxNode } of paths) {
+        if (seen.has(path)) {
+          diagnosticsCallback(
+            "error",
+            `Duplicate modification of element ${path} on component ${node.name}.`,
+            syntaxNode,
+          );
+        } else {
+          seen.set(path, syntaxNode);
+        }
+      }
+    }
+  },
+});

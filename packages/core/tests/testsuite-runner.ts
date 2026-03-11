@@ -422,7 +422,6 @@ function main(): void {
   const report = generateCtrfReport(allResults, globalStart, globalStop);
   fs.writeFileSync(ctrfPath, JSON.stringify(report, null, 2) + "\n");
   console.log(`\n${DIM}CTRF report written to ${ctrfPath}${RESET}`);
-
 }
 
 main();

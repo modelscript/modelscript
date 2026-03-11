@@ -1246,6 +1246,30 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
     this.instantiated = true;
   }
 
+  #checkDuplicateModifications(args: ModelicaModificationArgument[]): void {
+    // Group element modifications by name to detect duplicates
+    const byName = new Map<string, ModelicaElementModification[]>();
+    for (const arg of args) {
+      if (arg instanceof ModelicaElementModification && arg.name) {
+        if (!byName.has(arg.name)) byName.set(arg.name, []);
+        byName.get(arg.name)?.push(arg);
+      }
+    }
+    for (const [name, mods] of byName) {
+      if (mods.length <= 1) continue;
+      // Check if multiple mods set a value expression at the same leaf level
+      const withExpr = mods.filter((m) => m.nameComponents.length === 1 && m.modificationExpression);
+      if (withExpr.length > 1 && this.parent) {
+        this.parent.errors.push(`Duplicate modification of element ${name} on component ${this.name}.`);
+        continue;
+      }
+      // Recurse into sub-arguments to check for nested duplicates
+      const subArgs: ModelicaModificationArgument[] = [];
+      for (const m of mods) subArgs.push(...m.extract());
+      this.#checkDuplicateModifications(subArgs);
+    }
+  }
+
   mergeModifications(): ModelicaModification {
     const outerModificationArgument = this.parent?.modification?.getModificationArgument(this.name) ?? null;
     const modificationArguments: ModelicaModificationArgument[] = [];
@@ -1258,6 +1282,9 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
         modificationArguments.push(ModelicaElementRedeclaration.new(this.parent, modificationArgumentSyntaxNode));
       }
     }
+    // Check for duplicate modifications within the declaration's own args.
+    // e.g. b(a.x = 1.0, a(x = 2.0)) — both modify a.x from the same declaration.
+    this.#checkDuplicateModifications(modificationArguments);
     if (outerModificationArgument instanceof ModelicaElementModification) {
       modificationArguments.push(...outerModificationArgument.extract());
     }
