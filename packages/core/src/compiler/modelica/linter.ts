@@ -30,6 +30,7 @@ import {
   ModelicaComponentReferencePartSyntaxNode,
   ModelicaComponentReferenceSyntaxNode,
   ModelicaCompoundImportClauseSyntaxNode,
+  ModelicaConnectEquationSyntaxNode,
   ModelicaDescriptionSyntaxNode,
   ModelicaElementModificationSyntaxNode,
   ModelicaEquationSectionSyntaxNode,
@@ -480,19 +481,33 @@ ModelicaLinter.register({
     // Balanced model check only applies to models and blocks
     if (node.classKind !== ModelicaClassKind.MODEL && node.classKind !== ModelicaClassKind.BLOCK) return;
 
-    // Count unknowns: components that are not parameters or constants
+    // Count unknowns: only primitive-type (Real, Integer, Boolean, String) components
+    // that are not parameters or constants.
+    // Compound component instances (models, blocks, connectors) are internally balanced
+    // and contribute 0 net unknowns at the parent level.
     let nVariables = 0;
     for (const component of node.components) {
       if (
         component.variability !== ModelicaVariability.PARAMETER &&
         component.variability !== ModelicaVariability.CONSTANT
       ) {
-        nVariables++;
+        const classKind = component.classInstance?.classKind;
+        // Only count primitive-type variables; skip compound types (MODEL, BLOCK, CONNECTOR, etc.)
+        if (classKind == null || classKind === ModelicaClassKind.TYPE || classKind === ModelicaClassKind.CLASS) {
+          nVariables++;
+        }
       }
     }
 
-    // Count equations from equation sections
-    let nEquations = Array.from(node.equations).length;
+    // Count equations from equation sections, excluding connect() equations.
+    // Connect equations expand into topology-based equations (potential equality + flow balance)
+    // and cannot be counted 1:1.
+    let nEquations = 0;
+    for (const equation of node.equations) {
+      if (!(equation instanceof ModelicaConnectEquationSyntaxNode)) {
+        nEquations++;
+      }
+    }
 
     // Each algorithm section contributes as many equations as assigned variables.
     // As a simplification, count each statement as one equation.
