@@ -374,7 +374,7 @@ function main(): void {
     const moFiles = fs
       .readdirSync(suiteDir)
       .filter((f) => f.endsWith(".mo"))
-      .sort();
+      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 
     if (moFiles.length === 0) continue;
 
