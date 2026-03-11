@@ -401,8 +401,18 @@ function renderDiagram(
       const newNodes: NodeMetadata[] = [];
       nodes.forEach((metadata, id) => {
         const node = g.getCellById(id);
-        if (node && node.isNode()) (node as any).prop(metadata);
-        else newNodes.push(metadata as any);
+        if (node && node.isNode()) {
+          // Remove stale ports before updating — .prop() deep-merges and won't
+          // remove ports that disappeared (e.g. conditional ports toggled off).
+          const existingPorts = (node as any).getPorts?.() ?? [];
+          const newPortIds = new Set(((metadata as any).ports?.items ?? []).map((p: any) => p.id));
+          for (const port of existingPorts) {
+            if (port.id && !newPortIds.has(port.id)) {
+              (node as any).removePort(port.id);
+            }
+          }
+          (node as any).prop(metadata);
+        } else newNodes.push(metadata as any);
       });
       if (newNodes.length > 0) g.addNodes(newNodes);
 

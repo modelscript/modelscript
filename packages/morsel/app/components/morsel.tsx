@@ -2229,7 +2229,23 @@ export default function MorselEditor(props: MorselEditorProps) {
                           }}
                           onParameterChange={(name, value) => {
                             if (!selectedComponent || !editor) return;
-                            const edit = getParameterEdit(selectedComponent.name!, name, value);
+                            // If the new value matches the parameter's default (from the
+                            // declared type), remove the modifier entirely instead of
+                            // keeping a redundant explicit override.
+                            let effectiveValue = value;
+                            const declaredType = selectedComponent.declaredType;
+                            if (declaredType) {
+                              for (const el of declaredType.elements) {
+                                if (el instanceof ModelicaComponentInstance && el.name === name) {
+                                  const defaultExpr = (el.modification?.expression as any)?.toJSON?.toString();
+                                  if (defaultExpr !== undefined && defaultExpr === value) {
+                                    effectiveValue = "";
+                                  }
+                                  break;
+                                }
+                              }
+                            }
+                            const edit = getParameterEdit(selectedComponent.name!, name, effectiveValue);
                             if (edit) {
                               editor.executeEdits("parameter-change", [edit]);
                               // Trigger immediate reparse so AST is fresh for next edit
