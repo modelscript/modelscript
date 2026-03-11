@@ -25,8 +25,13 @@ import {
   ModelicaBinaryExpressionSyntaxNode,
   ModelicaBooleanLiteralSyntaxNode,
   ModelicaClassKind,
+  ModelicaComplexAssignmentStatementSyntaxNode,
   ModelicaComponentReferenceSyntaxNode,
+  ModelicaForStatementSyntaxNode,
   ModelicaFunctionCallSyntaxNode,
+  ModelicaIfStatementSyntaxNode,
+  ModelicaOutputExpressionListSyntaxNode,
+  ModelicaProcedureCallStatementSyntaxNode,
   ModelicaRangeExpressionSyntaxNode,
   ModelicaSimpleAssignmentStatementSyntaxNode,
   ModelicaStringLiteralSyntaxNode,
@@ -34,6 +39,7 @@ import {
   ModelicaUnaryExpressionSyntaxNode,
   ModelicaUnsignedIntegerLiteralSyntaxNode,
   ModelicaUnsignedRealLiteralSyntaxNode,
+  ModelicaWhileStatementSyntaxNode,
 } from "./syntax.js";
 
 /** Set of Modelica built-in array function names handled directly by the interpreter. */
@@ -118,6 +124,12 @@ function getElement2D(arr: ModelicaArray, i: number, j: number): ModelicaExpress
   if (row instanceof ModelicaArray) return row.elements[j] ?? null;
   return null;
 }
+
+/** Control flow signal for break statements inside while loops. */
+const BreakSignal = Symbol("BreakSignal");
+
+/** Control flow signal for return statements inside functions. */
+const ReturnSignal = Symbol("ReturnSignal");
 
 export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpression, Scope> {
   /** Guard against infinite recursion during function algorithm execution. */
@@ -773,7 +785,22 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     if (functionInstance.classKind === ModelicaClassKind.RECORD) {
       return ModelicaExpression.fromClassInstance(functionInstance.clone(new ModelicaModification(scope, parameters)));
     } else if (functionInstance.classKind === ModelicaClassKind.FUNCTION) {
-      const clonedFunction = functionInstance.clone(new ModelicaModification(scope, parameters));
+      const modification = new ModelicaModification(scope, parameters);
+      // When evaluating algorithms, create a fresh clone to avoid mutating cached instances.
+      // The clone cache returns the same instance on repeated calls, so algorithm execution
+      // (which mutates output parameters in-place) would corrupt the cache.
+      let clonedFunction: ModelicaClassInstance;
+      if (this.#evaluateAlgorithms && functionInstance.abstractSyntaxNode) {
+        const mergedModification = ModelicaModification.merge(functionInstance.modification, modification);
+        clonedFunction = ModelicaClassInstance.new(
+          functionInstance.parent,
+          functionInstance.abstractSyntaxNode,
+          mergedModification,
+        );
+        clonedFunction.instantiate();
+      } else {
+        clonedFunction = functionInstance.clone(modification);
+      }
 
       // Execute algorithm statements to compute output values
       if (this.#evaluateAlgorithms && this.#functionCallDepth < ModelicaInterpreter.MAX_FUNCTION_CALL_DEPTH) {
@@ -782,6 +809,8 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
           for (const statement of clonedFunction.algorithms) {
             statement.accept(this, clonedFunction);
           }
+        } catch (e) {
+          if (e !== ReturnSignal) throw e;
         } finally {
           this.#functionCallDepth--;
         }
@@ -813,6 +842,220 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
       }
     }
     return null;
+  }
+
+  /**
+   * Evaluate a function call from a procedure call or complex assignment statement.
+   * These nodes have separate functionReference and functionCallArguments fields
+   * instead of being wrapped in a ModelicaFunctionCallSyntaxNode.
+   */
+  private callFunction(
+    functionReference: ModelicaComponentReferenceSyntaxNode | null,
+    functionCallArguments: ModelicaFunctionCallSyntaxNode["functionCallArguments"],
+    scope: Scope,
+  ): ModelicaExpression | null {
+    const functionInstance = scope.resolveComponentReference(functionReference);
+    if (!(functionInstance instanceof ModelicaClassInstance)) return null;
+    if (functionInstance.classKind !== ModelicaClassKind.FUNCTION) return null;
+
+    const parameters: ModelicaParameterModification[] = [];
+    const inputParameters = Array.from(functionInstance.inputParameters);
+    if (functionCallArguments?.arguments) {
+      for (let i = 0; i < functionCallArguments.arguments.length; i++) {
+        const name = inputParameters[i]?.name;
+        const expression = functionCallArguments.arguments[i]?.expression;
+        if (name && expression) parameters.push(new ModelicaParameterModification(scope, name, expression));
+      }
+    }
+    for (const namedArgument of functionCallArguments?.namedArguments ?? []) {
+      const name = namedArgument.identifier?.text;
+      const expression = namedArgument.argument?.expression;
+      if (name && expression) parameters.push(new ModelicaParameterModification(scope, name, expression));
+    }
+
+    const modification = new ModelicaModification(scope, parameters);
+    let clonedFunction: ModelicaClassInstance;
+    if (this.#evaluateAlgorithms && functionInstance.abstractSyntaxNode) {
+      const mergedModification = ModelicaModification.merge(functionInstance.modification, modification);
+      clonedFunction = ModelicaClassInstance.new(
+        functionInstance.parent,
+        functionInstance.abstractSyntaxNode,
+        mergedModification,
+      );
+      clonedFunction.instantiate();
+    } else {
+      clonedFunction = functionInstance.clone(modification);
+    }
+
+    if (this.#evaluateAlgorithms && this.#functionCallDepth < ModelicaInterpreter.MAX_FUNCTION_CALL_DEPTH) {
+      this.#functionCallDepth++;
+      try {
+        for (const statement of clonedFunction.algorithms) {
+          statement.accept(this, clonedFunction);
+        }
+      } catch (e) {
+        if (e !== ReturnSignal) throw e;
+      } finally {
+        this.#functionCallDepth--;
+      }
+    }
+
+    const outputExpressions: ModelicaExpression[] = [];
+    for (const outputParameter of clonedFunction.outputParameters) {
+      const outputExpression = ModelicaExpression.fromClassInstance(outputParameter.classInstance);
+      if (outputExpression) outputExpressions.push(outputExpression);
+    }
+    if (outputExpressions.length <= 1) {
+      return outputExpressions[0] ?? null;
+    } else {
+      return new ModelicaArray([outputExpressions.length], outputExpressions);
+    }
+  }
+
+  visitProcedureCallStatement(node: ModelicaProcedureCallStatementSyntaxNode, scope: Scope): null {
+    this.callFunction(node.functionReference, node.functionCallArguments, scope);
+    return null;
+  }
+
+  visitComplexAssignmentStatement(node: ModelicaComplexAssignmentStatementSyntaxNode, scope: Scope): null {
+    const result = this.callFunction(node.functionReference, node.functionCallArguments, scope);
+    if (!result || !node.outputExpressionList) return null;
+
+    // Extract output values — result is either a single expression or an array of expressions
+    const outputs = result instanceof ModelicaArray ? result.elements : [result];
+    const targets = node.outputExpressionList.outputs;
+
+    for (let i = 0; i < Math.min(outputs.length, targets.length); i++) {
+      const targetExpr = targets[i];
+      const value = outputs[i];
+      if (!targetExpr || !value) continue;
+
+      // Target should be a component reference
+      if (targetExpr instanceof ModelicaComponentReferenceSyntaxNode) {
+        const targetName = targetExpr.parts?.[0]?.identifier?.text;
+        if (targetName) {
+          const target = scope.resolveSimpleName(targetName);
+          if (target instanceof ModelicaComponentInstance) {
+            const mod = new ModelicaModification(null, [], null, null, value);
+            target.classInstance = target.classInstance?.clone(mod) ?? null;
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  visitOutputExpressionList(node: ModelicaOutputExpressionListSyntaxNode, scope: Scope): ModelicaExpression | null {
+    // For single-element output lists (parenthesized expressions), unwrap the inner expression
+    if (node.outputs.length === 1 && node.outputs[0]) {
+      return node.outputs[0].accept(this, scope);
+    }
+    return null;
+  }
+
+  visitIfStatement(node: ModelicaIfStatementSyntaxNode, scope: Scope): null {
+    // Evaluate the main condition
+    const condition = node.condition?.accept(this, scope);
+    if (condition instanceof ModelicaBooleanLiteral && condition.value) {
+      for (const statement of node.statements) {
+        statement.accept(this, scope);
+      }
+      return null;
+    }
+    // Evaluate elseif clauses
+    for (const elseIfClause of node.elseIfStatementClauses) {
+      const elseIfCondition = elseIfClause.condition?.accept(this, scope);
+      if (elseIfCondition instanceof ModelicaBooleanLiteral && elseIfCondition.value) {
+        for (const statement of elseIfClause.statements) {
+          statement.accept(this, scope);
+        }
+        return null;
+      }
+    }
+    // Execute else branch
+    for (const statement of node.elseStatements) {
+      statement.accept(this, scope);
+    }
+    return null;
+  }
+
+  visitWhileStatement(node: ModelicaWhileStatementSyntaxNode, scope: Scope): null {
+    const MAX_ITERATIONS = 10000;
+    for (let i = 0; i < MAX_ITERATIONS; i++) {
+      const condition = node.condition?.accept(this, scope);
+      if (!(condition instanceof ModelicaBooleanLiteral) || !condition.value) break;
+      try {
+        for (const statement of node.statements) {
+          statement.accept(this, scope);
+        }
+      } catch (e) {
+        if (e === BreakSignal) break;
+        throw e;
+      }
+    }
+    return null;
+  }
+
+  visitForStatement(node: ModelicaForStatementSyntaxNode, scope: Scope): null {
+    for (const forIndex of node.forIndexes) {
+      const varName = forIndex.identifier?.text;
+      if (!varName) continue;
+
+      const rangeExpr = forIndex.expression;
+      if (!rangeExpr) continue;
+
+      // Evaluate the range to get iteration values
+      const values: number[] = [];
+      if (rangeExpr instanceof ModelicaRangeExpressionSyntaxNode) {
+        const startExpr = rangeExpr.startExpression?.accept(this, scope);
+        const stopExpr = rangeExpr.stopExpression?.accept(this, scope);
+        const stepExpr = rangeExpr.stepExpression?.accept(this, scope);
+        const start = toNumber(startExpr ?? null);
+        const stop = toNumber(stopExpr ?? null);
+        const step = stepExpr ? toNumber(stepExpr) : 1;
+        if (start == null || stop == null || step == null || step === 0) continue;
+        if (step > 0) {
+          for (let v = start; v <= stop; v += step) values.push(v);
+        } else {
+          for (let v = start; v >= stop; v += step) values.push(v);
+        }
+      } else {
+        const evaluated = rangeExpr.accept(this, scope);
+        if (evaluated instanceof ModelicaArray) {
+          for (const el of evaluated.elements) {
+            const v = toNumber(el);
+            if (v != null) values.push(v);
+          }
+        }
+      }
+
+      // Execute body for each iteration value
+      for (const val of values) {
+        const bindings = new Map<string, ModelicaClassInstance>();
+        const mod = new ModelicaModification(scope, [], null, null, new ModelicaIntegerLiteral(val));
+        const instance = new ModelicaIntegerClassInstance(scope, mod);
+        instance.instantiate();
+        bindings.set(varName, instance);
+        const loopScope = new ModelicaLoopScope(scope, bindings);
+        try {
+          for (const statement of node.statements) {
+            statement.accept(this, loopScope);
+          }
+        } catch (e) {
+          if (e === BreakSignal) break;
+          throw e;
+        }
+      }
+    }
+    return null;
+  }
+
+  visitBreakStatement(): never {
+    throw BreakSignal;
+  }
+
+  visitReturnStatement(): never {
+    throw ReturnSignal;
   }
 
   visitStringLiteral(node: ModelicaStringLiteralSyntaxNode): ModelicaExpression | null {

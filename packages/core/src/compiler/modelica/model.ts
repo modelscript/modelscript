@@ -1746,19 +1746,21 @@ export class ModelicaModification {
     this.#expression = expression ?? null;
   }
 
+  #evaluated = false;
   #evaluating = false;
   #evaluatedExpression: ModelicaExpression | null = null;
+  #evaluatedWithAlgorithms = false;
+  #evaluatingWithAlgorithms = false;
 
   get expression(): ModelicaExpression | null {
     if (this.#expression) return this.#expression;
-    if (this.#evaluating) {
-      return null;
-    }
+    if (this.#evaluated || this.#evaluating) return this.#expression;
     this.#evaluating = true;
     try {
       this.#expression = this.modificationExpression?.expression?.accept(new ModelicaInterpreter(), this.scope) ?? null;
     } finally {
       this.#evaluating = false;
+      this.#evaluated = true;
     }
     return this.#expression;
   }
@@ -1771,13 +1773,16 @@ export class ModelicaModification {
   /** Evaluates the expression with function algorithm execution enabled. */
   get evaluatedExpression(): ModelicaExpression | null {
     if (this.#evaluatedExpression) return this.#evaluatedExpression;
-    if (this.#evaluating) return null;
-    this.#evaluating = true;
+    if (this.#evaluatedWithAlgorithms || this.#evaluatingWithAlgorithms) {
+      return this.#evaluatedExpression ?? this.#expression;
+    }
+    this.#evaluatingWithAlgorithms = true;
     try {
       this.#evaluatedExpression =
         this.modificationExpression?.expression?.accept(new ModelicaInterpreter(true), this.scope) ?? null;
     } finally {
-      this.#evaluating = false;
+      this.#evaluatingWithAlgorithms = false;
+      this.#evaluatedWithAlgorithms = true;
     }
     return this.#evaluatedExpression ?? this.#expression;
   }
