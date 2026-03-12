@@ -368,7 +368,11 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<
     node: ModelicaFunctionCallSyntaxNode,
     args: [string, ModelicaClassInstance, ModelicaDAE],
   ): ModelicaExpression | null {
-    const functionName = node.functionReference?.parts?.map((p) => p.identifier?.text ?? "").join(".") ?? "";
+    // Use parts-based name for regular ComponentReference functions.
+    // Fall back to functionReferenceName for keyword functions (der/initial/pure).
+    const functionName =
+      node.functionReference?.parts?.map((p) => p.identifier?.text ?? "").join(".") ||
+      (node.functionReferenceName ?? "");
     const flatArgs: ModelicaExpression[] = [];
     for (const arg of node.functionCallArguments?.arguments ?? []) {
       const flatArg = arg.expression?.accept(this, args);

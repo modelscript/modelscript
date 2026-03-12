@@ -4771,6 +4771,8 @@ export class ModelicaFunctionCallSyntaxNode
 {
   functionCallArguments: ModelicaFunctionCallArgumentsSyntaxNode | null;
   functionReference: ModelicaComponentReferenceSyntaxNode | null;
+  /** Raw text of the function reference (handles keyword functions like der/initial/pure) */
+  functionReferenceName: string | null;
 
   constructor(
     parent: ModelicaSyntaxNode | null,
@@ -4778,9 +4780,11 @@ export class ModelicaFunctionCallSyntaxNode
     abstractSyntaxNode?: IModelicaFunctionCallSyntaxNode | null,
   ) {
     super(parent, concreteSyntaxNode, abstractSyntaxNode);
+    const funcRefNode = concreteSyntaxNode?.childForFieldName("functionReference");
+    this.functionReferenceName = funcRefNode?.text ?? null;
     this.functionReference = ModelicaComponentReferenceSyntaxNode.new(
       this,
-      concreteSyntaxNode?.childForFieldName("functionReference"),
+      funcRefNode,
       abstractSyntaxNode?.functionReference,
     );
     this.functionCallArguments = ModelicaFunctionCallArgumentsSyntaxNode.new(
