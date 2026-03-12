@@ -1648,7 +1648,10 @@ export class ModelicaArrayClassInstance extends ModelicaClassInstance {
     arraySubscripts: ModelicaSubscriptSyntaxNode[],
     modification?: ModelicaModification | null,
   ) {
-    super(parent, elementClassInstance?.abstractSyntaxNode, modification);
+    // Pass null for abstractSyntaxNode to avoid inheriting the element type's
+    // short class modifications (e.g. start={1,0,0}) at the outer array level.
+    // The element type's modifications flow through the element clone instead.
+    super(parent, null, modification);
     this.#elementClassInstance = elementClassInstance;
     this.#arraySubscripts = arraySubscripts;
   }
@@ -1711,8 +1714,19 @@ export class ModelicaArrayClassInstance extends ModelicaClassInstance {
     while (elementClassInstance instanceof ModelicaShortClassInstance) {
       elementClassInstance = elementClassInstance.classInstance;
     }
+    // Save the directly-declared shape before appending inner type dimensions.
+    // Modification arguments (e.g. start={1,0,0}) belong to the element type's
+    // shape, not the full combined shape.
+    const declaredShape = [...this.shape];
+    let effectiveModification = this.modification;
     if (elementClassInstance instanceof ModelicaArrayClassInstance) {
       this.shape.push(...elementClassInstance.shape);
+      // Merge the inner array class's modification so it can be properly split
+      // across the combined flat elements. E.g. T2=T1[2] where T1=Real[3](start={1,0,0}):
+      // the inner mod start={1,0,0} is replicated for each outer element.
+      if (elementClassInstance.modification) {
+        effectiveModification = ModelicaModification.merge(effectiveModification, elementClassInstance.modification);
+      }
       elementClassInstance = elementClassInstance.elementClassInstance;
     }
     this.name = (declaredElementClassInstance?.name ?? "?") + "[" + this.shape.join(", ") + "]";
@@ -1728,18 +1742,23 @@ export class ModelicaArrayClassInstance extends ModelicaClassInstance {
       this.instantiated = true;
       return;
     }
-    for (const modArg of this.modification?.modificationArguments ?? []) {
-      const argExpr = modArg.expression;
-      if (argExpr instanceof ModelicaArray && !argExpr.assignable(this.shape)) {
-        this.errors.push(
-          `Array dimension mismatch: modification of '${modArg.name}' has shape [${argExpr.flatShape}] but variable has shape [${this.shape}]`,
-        );
-        this.instantiated = true;
-        return;
+    // Only validate modification arguments if the shape is entirely from declared subscripts.
+    // When inner dimensions were appended from the element type, the modification arguments
+    // belong to the element type which validates them itself.
+    if (declaredShape.length === 0 || declaredShape.length >= this.shape.length) {
+      for (const modArg of effectiveModification?.modificationArguments ?? []) {
+        const argExpr = modArg.expression;
+        if (argExpr instanceof ModelicaArray && !argExpr.assignable(this.shape)) {
+          this.errors.push(
+            `Array dimension mismatch: modification of '${modArg.name}' has shape [${argExpr.flatShape}] but variable has shape [${this.shape}]`,
+          );
+          this.instantiated = true;
+          return;
+        }
       }
     }
     const size = this.shape.reduce((acc, cur) => acc * cur);
-    const modifications = this.modification?.split(size);
+    const modifications = effectiveModification?.split(size);
     for (let i = 0; i < size; i++) {
       this.declaredElements.push(elementClassInstance.clone(modifications?.[i]));
     }
