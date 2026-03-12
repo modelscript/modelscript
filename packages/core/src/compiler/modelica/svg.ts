@@ -95,18 +95,19 @@ export function renderIcon(
   componentInstance?: ModelicaComponentInstance,
   ports?: boolean,
   svg?: Svg,
+  skipText?: boolean,
 ): Svg | null {
   svg = svg ? svg : new Svg();
   for (const extendsClassInstance of classInstance.extendsClassInstances) {
     if (extendsClassInstance.classInstance)
-      renderIcon(extendsClassInstance.classInstance, componentInstance, ports, svg);
+      renderIcon(extendsClassInstance.classInstance, componentInstance, ports, svg, skipText);
   }
   const icon: IIcon | null = classInstance.annotation("Icon");
   if (!icon) return svg;
   applyCoordinateSystem(svg, icon.coordinateSystem);
   const group = svg.group();
   for (const graphicItem of icon.graphics ?? [])
-    renderGraphicItem(group, graphicItem, classInstance, componentInstance);
+    renderGraphicItem(group, graphicItem, classInstance, componentInstance, skipText);
   if (ports) {
     for (const component of classInstance.components) {
       const condition = evaluateCondition(component);
@@ -115,7 +116,7 @@ export function renderIcon(
       const connectorClassInstance = component.classInstance;
       if (!connectorClassInstance || connectorClassInstance.classKind !== ModelicaClassKind.CONNECTOR) continue;
 
-      const connectorSvg = renderIcon(connectorClassInstance);
+      const connectorSvg = renderIcon(connectorClassInstance, undefined, false, undefined, skipText);
       if (connectorSvg) {
         if (condition === undefined) connectorSvg.opacity(0.5);
         applyPortPlacement(connectorSvg, component);
@@ -131,6 +132,7 @@ export function renderGraphicItem(
   graphicItem: IGraphicItem,
   classInstance?: ModelicaClassInstance,
   componentInstance?: ModelicaComponentInstance,
+  skipText?: boolean,
 ): Shape {
   const graphicItemGroup = group.group();
   const [ox, oy] = convertPoint(graphicItem.origin, [0, 0]);
@@ -154,6 +156,10 @@ export function renderGraphicItem(
       shape = renderRectangle(graphicItemGroup, graphicItem as IRectangle);
       break;
     case "Text":
+      if (skipText) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return graphicItemGroup as any;
+      }
       shape = renderText(graphicItemGroup, graphicItem as IText, classInstance, componentInstance);
       break;
     default:

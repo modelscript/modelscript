@@ -21,7 +21,7 @@ import {
 } from "@modelscript/core";
 import type { Theme } from "@monaco-editor/react";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { invertColorHelmlab, invertMarkupColors, renderDiagramX6, renderIconX6 } from "../util/x6";
+import { invertColorHelmlab, invertMarkupColors, invertSvgColors, renderDiagramX6, renderIconX6 } from "../util/x6";
 
 export interface DiagramEditorHandle {
   fitContent: () => void;
@@ -32,7 +32,7 @@ export interface DiagramEditorHandle {
 interface DiagramEditorProps {
   classInstance: ModelicaClassInstance | null;
   onSelect?: (componentName: string | null) => void;
-  onDrop?: (className: string, x: number, y: number) => void;
+  onDrop?: (className: string, x: number, y: number, iconSvg?: string | null) => void;
   onConnect?: (source: string, target: string, points?: { x: number; y: number }[]) => void;
   onMove?: (
     items: {
@@ -70,6 +70,10 @@ function renderDiagram(
   lastZoomRef: React.MutableRefObject<{ zoom: number; tx: number; ty: number } | null>,
 ) {
   const isDark = theme === "vs-dark";
+
+  // Remove any placeholder node from a previous drop
+  const placeholder = g.getCellById("__drop_placeholder__");
+  if (placeholder) g.removeCell(placeholder);
 
   const nodes = new Map<string, NodeMetadata>();
   const edges: EdgeMetadata[] = [];
@@ -1064,14 +1068,68 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
           const data = e.dataTransfer.getData("application/json");
           if (data && graph) {
             try {
-              const { className, classKind } = JSON.parse(data);
+              const { className, classKind, iconSvg } = JSON.parse(data);
               // Only allow models, blocks, and connectors to be dropped
               if (classKind && classKind !== "model" && classKind !== "block" && classKind !== "connector") {
                 return;
               }
               const p = graph.clientToLocal(e.clientX, e.clientY);
+
+              // Immediately add a placeholder node with the tree icon SVG
+              if (iconSvg) {
+                const size = 20;
+                // Remove any previous placeholder
+                const existing = graph.getCellById("__drop_placeholder__");
+                if (existing) graph.removeCell(existing);
+
+                const isDark = props.theme === "vs-dark";
+                const displaySvg = isDark ? invertSvgColors(iconSvg, true) : iconSvg;
+
+                // Patch the SVG to have explicit width/height so it scales to the placeholder container
+                const fittedSvg = displaySvg.replace(
+                  /^<svg/,
+                  `<svg width="${size}" height="${size}" style="overflow:visible"`,
+                );
+
+                graph.addNode({
+                  id: "__drop_placeholder__",
+                  x: p.x - size / 2,
+                  y: p.y - size / 2,
+                  width: size,
+                  height: size,
+                  zIndex: 10,
+                  markup: {
+                    tagName: "foreignObject",
+                    attrs: { width: size, height: size, style: "overflow:visible" },
+                    children: [
+                      {
+                        ns: "http://www.w3.org/1999/xhtml",
+                        tagName: "div",
+                        attrs: {
+                          style: `width:${size}px;height:${size}px;overflow:visible;animation:drop-placeholder-pulse 1.2s ease-in-out infinite, drop-placeholder-appear 0.2s ease-out;`,
+                        },
+                      },
+                    ],
+                  } as any,
+                } as any);
+
+                // Inject SVG HTML into the placeholder after X6 renders it
+                requestAnimationFrame(() => {
+                  const placeholderNode = graph.getCellById("__drop_placeholder__");
+                  if (placeholderNode) {
+                    const view = graph.findView(placeholderNode);
+                    if (view) {
+                      const innerDiv = view.container.querySelector("div");
+                      if (innerDiv) {
+                        innerDiv.innerHTML = fittedSvg;
+                      }
+                    }
+                  }
+                });
+              }
+
               if (props.onDrop) {
-                props.onDrop(className, p.x, p.y);
+                props.onDrop(className, p.x, p.y, iconSvg);
               }
             } catch (e) {
               console.error(e);
@@ -1104,7 +1162,19 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
           />
         </div>
       )}
-      <style>{`@keyframes diagram-spin { to { transform: rotate(360deg); } }`}</style>
+      <style>{`
+        @keyframes diagram-spin { to { transform: rotate(360deg); } }
+        @keyframes drop-placeholder-pulse {
+          0%, 100% { opacity: 0.6; transform: scale(1); }
+          50% { opacity: 0.9; transform: scale(1.04); }
+        }
+        @keyframes drop-placeholder-appear {
+          0% { opacity: 0; transform: scale(0.3); }
+          50% { opacity: 1; transform: scale(1.15); }
+          70% { transform: scale(0.92); }
+          100% { opacity: 1; transform: scale(1); }
+        }
+      `}</style>
     </div>
   );
 });

@@ -31,7 +31,7 @@ const ClassIcon = React.memo(function ClassIcon(props: ClassIconProps) {
     const cached = iconSvgCache.get(cacheKey);
     if (cached !== undefined) return cached;
     try {
-      const svg = renderIcon(props.classInstance, undefined, true, undefined);
+      const svg = renderIcon(props.classInstance, undefined, true, undefined, true);
       const result = svg && svg.children().length > 0 ? svg.svg() : null;
       iconSvgCache.set(cacheKey, result);
       return result;
@@ -107,7 +107,7 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
   const handleMouseEnter = () => {
     setHovered(true);
     if (!dragImageRef.current) {
-      const svg = renderIcon(element, undefined, true, undefined);
+      const svg = renderIcon(element, undefined, true, undefined, true);
       if (svg) {
         svg.size(40, 40);
         const svgString = svg.svg();
@@ -158,7 +158,11 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
         onDragStart={(e) => {
           e.dataTransfer.setData(
             "application/json",
-            JSON.stringify({ className: element.compositeName, classKind: element.classKind }),
+            JSON.stringify({
+              className: element.compositeName,
+              classKind: element.classKind,
+              iconSvg: iconSvgCache.get(element.compositeName) ?? null,
+            }),
           );
           e.dataTransfer.effectAllowed = "copy";
 
@@ -330,7 +334,11 @@ const SearchResultNode = React.memo(function SearchResultNode(props: TreeNodePro
       onDragStart={(e) => {
         e.dataTransfer.setData(
           "application/json",
-          JSON.stringify({ className: element.compositeName, classKind: element.classKind }),
+          JSON.stringify({
+            className: element.compositeName,
+            classKind: element.classKind,
+            iconSvg: iconSvgCache.get(element.compositeName) ?? null,
+          }),
         );
         e.dataTransfer.effectAllowed = "copy";
       }}
