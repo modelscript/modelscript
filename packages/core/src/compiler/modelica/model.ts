@@ -1678,8 +1678,9 @@ export class ModelicaArrayClassInstance extends ModelicaClassInstance {
     let i = 0;
     for (const arraySubscript of this.#arraySubscripts) {
       if (arraySubscript.flexible) {
-        if (expression instanceof ModelicaArray) this.shape.push(expression.shape[i] ?? 0);
+        if (expression instanceof ModelicaArray) this.shape.push(expression.flatShape[i] ?? 0);
         else this.shape.push(0);
+        i++;
         continue;
       }
       const length = arraySubscript.expression?.accept(new ModelicaInterpreter(), this);
@@ -1784,6 +1785,9 @@ export class ModelicaModification {
     if (this.#evaluatedWithAlgorithms || this.#evaluatingWithAlgorithms) {
       return this.#evaluatedExpression ?? this.#expression;
     }
+    // If a pre-set expression exists (e.g. from split()), use it instead of
+    // re-evaluating the syntax node which may still reference the unsplit value.
+    if (this.#expression) return this.#expression;
     this.#evaluatingWithAlgorithms = true;
     try {
       this.#evaluatedExpression =

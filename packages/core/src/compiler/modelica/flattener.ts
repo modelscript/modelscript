@@ -163,15 +163,21 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       args[1].variables.push(variable);
     } else if (node.classInstance instanceof ModelicaArrayClassInstance) {
       // Capture the array-level binding expression BEFORE iterating elements.
-      // Element-level modifications (split from the array's modification) include
-      // both attributes AND the split binding value.  We want to keep attributes on
-      // each element variable but emit the binding as a separate equation.
       const arrayBindingExpression = node.modification?.expression ?? null;
+
+      // For parameter/constant variables, split the binding into per-element values.
+      const isCompileTimeEvaluable =
+        node.variability === ModelicaVariability.PARAMETER || node.variability === ModelicaVariability.CONSTANT;
+      const flatBindingElements =
+        isCompileTimeEvaluable && arrayBindingExpression instanceof ModelicaArray
+          ? [...arrayBindingExpression.flatElements]
+          : null;
 
       const shape = node.classInstance.shape;
       const index = new Array(shape.length).fill(1);
+      let elementIndex = 0;
       for (const declaredElement of node.classInstance.declaredElements) {
-        const elementName = name + "[" + index.join(", ") + "]";
+        const elementName = name + "[" + index.join(",") + "]";
         if (
           declaredElement instanceof ModelicaPredefinedClassInstance ||
           declaredElement instanceof ModelicaEnumerationClassInstance
@@ -181,9 +187,17 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
               m.name && m.expression ? [[m.name, m.expression]] : [],
             ),
           );
-          // If an array-level binding exists, do NOT inline the per-element
-          // expression on the variable — it belongs in the equation section.
-          const expression = arrayBindingExpression ? null : (declaredElement.modification?.expression ?? null);
+          // For parameter arrays with a binding, use the split element value.
+          // For non-parameter arrays with a binding, suppress inline (emit equation later).
+          // Otherwise use the element's own modification expression.
+          let expression: ModelicaExpression | null;
+          if (flatBindingElements) {
+            expression = flatBindingElements[elementIndex] ?? null;
+          } else if (arrayBindingExpression) {
+            expression = null;
+          } else {
+            expression = declaredElement.modification?.expression ?? null;
+          }
           const varExpression = expression;
           let variable;
           if (declaredElement instanceof ModelicaBooleanClassInstance) {
@@ -250,14 +264,25 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         } else {
           declaredElement?.accept(this, [elementName, args[1]]);
         }
+        elementIndex++;
         if (!this.incrementIndex(index, shape)) break;
       }
 
-      // Emit the array-level binding as a separate equation: name = expr
-      if (arrayBindingExpression) {
+      // For non-parameter arrays, emit the array-level binding as a separate equation
+      // Skip if the outermost dimension is 0 (completely empty array)
+      if (arrayBindingExpression && !flatBindingElements && (shape[0] ?? 0) > 0) {
+        // Cast integer literals to Real when the element type is Real
+        const firstElement = node.classInstance.declaredElements[0];
+        const isRealArray =
+          firstElement instanceof ModelicaRealClassInstance ||
+          (firstElement instanceof ModelicaArrayClassInstance &&
+            firstElement.elementClassInstance instanceof ModelicaRealClassInstance);
+        const rhs = isRealArray
+          ? (castToReal(arrayBindingExpression) ?? arrayBindingExpression)
+          : arrayBindingExpression;
         // Use a RealVariable as a lightweight name-reference for the LHS.
         const lhs = new ModelicaRealVariable(name, null, new Map(), null);
-        args[1].equations.push(new ModelicaSimpleEquation(lhs, arrayBindingExpression));
+        args[1].equations.push(new ModelicaSimpleEquation(lhs, rhs));
       }
     } else {
       node.classInstance?.accept(this, [name, args[1]]);
@@ -388,6 +413,13 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<
       for (const variable of args[2].variables) {
         if (variable.name === name) return variable;
       }
+      // If exact match not found, look for array element variables with this prefix
+      // This handles references like x[:] or bare array name y
+      const prefix = name + "[";
+      const arrayElements = args[2].variables.filter((v) => v.name.startsWith(prefix));
+      if (arrayElements.length > 0) {
+        return new ModelicaArray([arrayElements.length], arrayElements);
+      }
     }
     return null;
   }
@@ -399,6 +431,21 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<
     let expression1 = node.expression1?.accept(this, args);
     let expression2 = node.expression2?.accept(this, args);
     if (expression1 && expression2) {
+      // Expand array-to-array equations into per-element scalar equations
+      if (expression1 instanceof ModelicaArray && expression2 instanceof ModelicaArray) {
+        const flat1 = [...expression1.flatElements];
+        const flat2 = [...expression2.flatElements];
+        const count = Math.min(flat1.length, flat2.length);
+        for (let i = 0; i < count; i++) {
+          let e1 = flat1[i];
+          let e2 = flat2[i];
+          if (!e1 || !e2) continue;
+          if (e1 instanceof ModelicaRealVariable) e2 = castToReal(e2) ?? e2;
+          if (e2 instanceof ModelicaRealVariable) e1 = castToReal(e1) ?? e1;
+          args[2].equations.push(new ModelicaSimpleEquation(e1, e2));
+        }
+        return null;
+      }
       // Widen integers to Real when the other side is a Real variable
       if (expression1 instanceof ModelicaRealVariable) expression2 = castToReal(expression2) ?? expression2;
       if (expression2 instanceof ModelicaRealVariable) expression1 = castToReal(expression1) ?? expression1;

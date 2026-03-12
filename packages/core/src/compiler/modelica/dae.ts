@@ -1502,10 +1502,24 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
   }
 
   visitArray(node: ModelicaArray): void {
+    // If elements are already nested (sub-arrays), or shape is 1D, print directly
+    if (node.shape.length <= 1 || node.elements.some((e) => e instanceof ModelicaArray)) {
+      this.out.write("{");
+      for (let i = 0; i < node.elements.length; i++) {
+        node.elements[i]?.accept(this);
+        if (i < node.elements.length - 1) this.out.write(", ");
+      }
+      this.out.write("}");
+      return;
+    }
+
+    // Reconstruct nested structure from flat elements + multi-dimensional shape
+    const innerSize = node.shape.slice(1).reduce((a, b) => a * b, 1);
     this.out.write("{");
-    for (let i = 0; i < node.elements.length; i++) {
-      node.elements[i]?.accept(this);
-      if (i < node.elements.length - 1) this.out.write(", ");
+    for (let r = 0; r < (node.shape[0] ?? 0); r++) {
+      if (r > 0) this.out.write(", ");
+      const row = new ModelicaArray(node.shape.slice(1), node.elements.slice(r * innerSize, (r + 1) * innerSize));
+      this.visitArray(row);
     }
     this.out.write("}");
   }

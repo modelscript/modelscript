@@ -82,7 +82,14 @@ function buildFilledArray(shape: number[], value: ModelicaExpression): ModelicaA
   const [first, ...rest] = shape;
   const n = first ?? 0;
   if (!Number.isInteger(n) || n < 0 || n > 1_000_000) {
-    return new ModelicaArray([0], []);
+    return new ModelicaArray(
+      shape.map(() => 0),
+      [],
+    );
+  }
+  if (n === 0) {
+    // Empty array — preserve full shape for size() queries
+    return new ModelicaArray(shape, []);
   }
   const elements: ModelicaExpression[] = [];
   for (let i = 0; i < n; i++) {
@@ -173,6 +180,30 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
 
   visitBooleanLiteral(node: ModelicaBooleanLiteralSyntaxNode): ModelicaBooleanLiteral {
     return new ModelicaBooleanLiteral(node.value);
+  }
+
+  visitRangeExpression(node: ModelicaRangeExpressionSyntaxNode, scope: Scope): ModelicaExpression | null {
+    const startExpr = node.startExpression?.accept(this, scope);
+    const stopExpr = node.stopExpression?.accept(this, scope);
+    const stepExpr = node.stepExpression?.accept(this, scope);
+    const start = toNumber(startExpr ?? null);
+    const stop = toNumber(stopExpr ?? null);
+    const step = stepExpr ? toNumber(stepExpr) : 1;
+    if (start == null || stop == null || step == null || step === 0) return null;
+
+    const isReal =
+      startExpr instanceof ModelicaRealLiteral ||
+      stopExpr instanceof ModelicaRealLiteral ||
+      stepExpr instanceof ModelicaRealLiteral;
+    const elements: ModelicaExpression[] = [];
+    if (step > 0) {
+      for (let v = start; v <= stop; v += step)
+        elements.push(isReal ? new ModelicaRealLiteral(v) : new ModelicaIntegerLiteral(v));
+    } else {
+      for (let v = start; v >= stop; v += step)
+        elements.push(isReal ? new ModelicaRealLiteral(v) : new ModelicaIntegerLiteral(v));
+    }
+    return new ModelicaArray([elements.length], elements);
   }
 
   visitComponentReference(node: ModelicaComponentReferenceSyntaxNode, scope: Scope): ModelicaExpression | null {
