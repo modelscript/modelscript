@@ -2766,6 +2766,7 @@ export default function MorselEditor(props: MorselEditorProps) {
         )}
         {loadingProgress < 100 && (
           <div
+            id="morsel-app-loader"
             style={{
               position: "fixed",
               inset: 0,
