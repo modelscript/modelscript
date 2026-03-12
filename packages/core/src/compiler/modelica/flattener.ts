@@ -1,23 +1,32 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import type { ModelicaElseIfClause, ModelicaElseWhenClause } from "./dae.js";
 import {
   ModelicaArray,
   ModelicaBinaryExpression,
   ModelicaBooleanLiteral,
   ModelicaBooleanVariable,
+  ModelicaColonExpression,
   ModelicaDAE,
   ModelicaEnumerationVariable,
+  ModelicaEquation,
   ModelicaExpression,
+  ModelicaForEquation,
   ModelicaFunctionCallExpression,
   ModelicaIfElseExpression,
+  ModelicaIfEquation,
   ModelicaIntegerLiteral,
   ModelicaIntegerVariable,
+  ModelicaNameExpression,
+  ModelicaRangeExpression,
   ModelicaRealLiteral,
   ModelicaRealVariable,
   ModelicaSimpleEquation,
   ModelicaStringLiteral,
   ModelicaStringVariable,
+  ModelicaSubscriptedExpression,
   ModelicaUnaryExpression,
+  ModelicaWhenEquation,
 } from "./dae.js";
 import {
   ModelicaArrayClassInstance,
@@ -39,9 +48,14 @@ import {
   ModelicaBinaryExpressionSyntaxNode,
   ModelicaBooleanLiteralSyntaxNode,
   ModelicaComponentReferenceSyntaxNode,
+  ModelicaExpressionSyntaxNode,
+  ModelicaForEquationSyntaxNode,
   ModelicaFunctionArgumentSyntaxNode,
   ModelicaFunctionCallSyntaxNode,
   ModelicaIfElseExpressionSyntaxNode,
+  ModelicaIfEquationSyntaxNode,
+  ModelicaOutputExpressionListSyntaxNode,
+  ModelicaRangeExpressionSyntaxNode,
   ModelicaSimpleEquationSyntaxNode,
   ModelicaStringLiteralSyntaxNode,
   ModelicaSyntaxVisitor,
@@ -49,6 +63,7 @@ import {
   ModelicaUnsignedIntegerLiteralSyntaxNode,
   ModelicaUnsignedRealLiteralSyntaxNode,
   ModelicaVariability,
+  ModelicaWhenEquationSyntaxNode,
 } from "./syntax.js";
 
 export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE]> {
@@ -381,6 +396,22 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<
     return new ModelicaFunctionCallExpression(functionName, flatArgs);
   }
 
+  visitOutputExpressionList(
+    node: ModelicaOutputExpressionListSyntaxNode,
+    args: [string, ModelicaClassInstance, ModelicaDAE],
+  ): ModelicaExpression | null {
+    // Unwrap single-element parenthesized expressions like (1:3)
+    const outputs = node.outputs.filter((o): o is ModelicaExpressionSyntaxNode => o != null);
+    if (outputs.length === 1) return outputs[0]?.accept(this, args) ?? null;
+    // Multi-output: build as array
+    const elements: ModelicaExpression[] = [];
+    for (const output of outputs) {
+      const expr = output.accept(this, args);
+      if (expr) elements.push(expr);
+    }
+    return elements.length > 0 ? new ModelicaArray([elements.length], elements) : null;
+  }
+
   visitIfElseExpression(
     node: ModelicaIfElseExpressionSyntaxNode,
     args: [string, ModelicaClassInstance, ModelicaDAE],
@@ -414,6 +445,28 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<
           return enumerationLiteral;
       }
     } else {
+      // Check for subscripts on the last part (e.g. z[j, i, :])
+      const lastPart = node.parts?.[node.parts.length - 1];
+      const subscriptNodes = lastPart?.arraySubscripts?.subscripts ?? [];
+      if (subscriptNodes.length > 0) {
+        // Build subscript expressions
+        const subscripts: ModelicaExpression[] = [];
+        let hasSymbolic = false;
+        for (const sub of subscriptNodes) {
+          if (sub.flexible) {
+            subscripts.push(new ModelicaColonExpression());
+          } else if (sub.expression) {
+            const subExpr = sub.expression.accept(this, args);
+            if (subExpr instanceof ModelicaNameExpression) hasSymbolic = true;
+            subscripts.push(subExpr ?? new ModelicaNameExpression("?"));
+          }
+        }
+        // Only use symbolic subscript path when subscripts contain unresolvable names
+        // (e.g. loop variables like i, j). Otherwise fall through to normal expansion.
+        if (hasSymbolic) {
+          return new ModelicaSubscriptedExpression(new ModelicaNameExpression(name), subscripts);
+        }
+      }
       for (const variable of args[2].variables) {
         if (variable.name === name) return variable;
       }
@@ -425,7 +478,79 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<
         return new ModelicaArray([arrayElements.length], arrayElements);
       }
     }
+    // Fall back to a symbolic name for unresolved references (e.g. loop variables)
+    return new ModelicaNameExpression(name);
+  }
+
+  // Collects equations into a temporary DAE and returns them
+  private flattenEquations(
+    equations: { accept: (v: ModelicaSyntaxFlattener, a: [string, ModelicaClassInstance, ModelicaDAE]) => unknown }[],
+    args: [string, ModelicaClassInstance, ModelicaDAE],
+  ): ModelicaEquation[] {
+    const collected: ModelicaEquation[] = [];
+    for (const eq of equations) {
+      eq.accept(this, [args[0], args[1], { ...args[2], equations: collected } as ModelicaDAE]);
+    }
+    return collected;
+  }
+
+  visitForEquation(node: ModelicaForEquationSyntaxNode, args: [string, ModelicaClassInstance, ModelicaDAE]): null {
+    const innerEquations = this.flattenEquations(node.equations ?? [], args);
+    // Wrap in for-equation(s) from innermost to outermost
+    let equations = innerEquations;
+    for (let i = node.forIndexes.length - 1; i >= 0; i--) {
+      const forIndex = node.forIndexes[i];
+      if (!forIndex) continue;
+      const indexName = forIndex.identifier?.text ?? "?";
+      const range = forIndex.expression?.accept(this, args);
+      if (!range) continue;
+      const forEq = new ModelicaForEquation(indexName, range, equations);
+      equations = [forEq];
+    }
+    for (const eq of equations) args[2].equations.push(eq);
     return null;
+  }
+
+  visitIfEquation(node: ModelicaIfEquationSyntaxNode, args: [string, ModelicaClassInstance, ModelicaDAE]): null {
+    const condition = node.condition?.accept(this, args);
+    if (!condition) return null;
+    const thenEquations = this.flattenEquations(node.equations ?? [], args);
+    const elseIfClauses: ModelicaElseIfClause[] = [];
+    for (const clause of node.elseIfEquationClauses ?? []) {
+      const clauseCondition = clause.condition?.accept(this, args);
+      if (!clauseCondition) continue;
+      const clauseEquations = this.flattenEquations(clause.equations ?? [], args);
+      elseIfClauses.push({ condition: clauseCondition, equations: clauseEquations });
+    }
+    const elseEquations = this.flattenEquations(node.elseEquations ?? [], args);
+    args[2].equations.push(new ModelicaIfEquation(condition, thenEquations, elseIfClauses, elseEquations));
+    return null;
+  }
+
+  visitWhenEquation(node: ModelicaWhenEquationSyntaxNode, args: [string, ModelicaClassInstance, ModelicaDAE]): null {
+    const condition = node.condition?.accept(this, args);
+    if (!condition) return null;
+    const bodyEquations = this.flattenEquations(node.equations ?? [], args);
+    const elseWhenClauses: ModelicaElseWhenClause[] = [];
+    for (const clause of node.elseWhenEquationClauses ?? []) {
+      const clauseCondition = clause.condition?.accept(this, args);
+      if (!clauseCondition) continue;
+      const clauseEquations = this.flattenEquations(clause.equations ?? [], args);
+      elseWhenClauses.push({ condition: clauseCondition, equations: clauseEquations });
+    }
+    args[2].equations.push(new ModelicaWhenEquation(condition, bodyEquations, elseWhenClauses));
+    return null;
+  }
+
+  visitRangeExpression(
+    node: ModelicaRangeExpressionSyntaxNode,
+    args: [string, ModelicaClassInstance, ModelicaDAE],
+  ): ModelicaExpression | null {
+    const start = node.startExpression?.accept(this, args);
+    const stop = node.stopExpression?.accept(this, args);
+    const step = node.stepExpression?.accept(this, args) ?? null;
+    if (!start || !stop) return null;
+    return new ModelicaRangeExpression(start, stop, step);
   }
 
   visitSimpleEquation(

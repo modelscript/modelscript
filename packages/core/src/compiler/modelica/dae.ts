@@ -213,6 +213,154 @@ export class ModelicaSimpleEquation extends ModelicaEquation {
   }
 }
 
+export class ModelicaForEquation extends ModelicaEquation {
+  indexName: string;
+  range: ModelicaExpression;
+  equations: ModelicaEquation[];
+
+  constructor(indexName: string, range: ModelicaExpression, equations: ModelicaEquation[]) {
+    super();
+    this.indexName = indexName;
+    this.range = range;
+    this.equations = equations;
+  }
+
+  override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
+    return visitor.visitForEquation(this, argument);
+  }
+
+  override get hash(): string {
+    const hash = createHash("sha256");
+    hash.update("for");
+    hash.update(this.indexName);
+    hash.update(this.range.hash);
+    for (const eq of this.equations) hash.update(eq.hash);
+    return hash.digest("hex");
+  }
+
+  override get toJSON(): JSONValue {
+    return {
+      "@type": "ForEquation",
+      indexName: this.indexName,
+      range: this.range.toJSON,
+      equations: this.equations.map((e) => e.toJSON),
+    };
+  }
+
+  override get toRDF(): Triple[] {
+    return [];
+  }
+}
+
+export interface ModelicaElseIfClause {
+  condition: ModelicaExpression;
+  equations: ModelicaEquation[];
+}
+
+export class ModelicaIfEquation extends ModelicaEquation {
+  condition: ModelicaExpression;
+  equations: ModelicaEquation[];
+  elseIfClauses: ModelicaElseIfClause[];
+  elseEquations: ModelicaEquation[];
+
+  constructor(
+    condition: ModelicaExpression,
+    equations: ModelicaEquation[],
+    elseIfClauses: ModelicaElseIfClause[],
+    elseEquations: ModelicaEquation[],
+  ) {
+    super();
+    this.condition = condition;
+    this.equations = equations;
+    this.elseIfClauses = elseIfClauses;
+    this.elseEquations = elseEquations;
+  }
+
+  override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
+    return visitor.visitIfEquation(this, argument);
+  }
+
+  override get hash(): string {
+    const hash = createHash("sha256");
+    hash.update("if");
+    hash.update(this.condition.hash);
+    for (const eq of this.equations) hash.update(eq.hash);
+    for (const clause of this.elseIfClauses) {
+      hash.update(clause.condition.hash);
+      for (const eq of clause.equations) hash.update(eq.hash);
+    }
+    for (const eq of this.elseEquations) hash.update(eq.hash);
+    return hash.digest("hex");
+  }
+
+  override get toJSON(): JSONValue {
+    return {
+      "@type": "IfEquation",
+      condition: this.condition.toJSON,
+      equations: this.equations.map((e) => e.toJSON),
+      elseIfClauses: this.elseIfClauses.map((c) => ({
+        condition: c.condition.toJSON,
+        equations: c.equations.map((e) => e.toJSON),
+      })),
+      elseEquations: this.elseEquations.map((e) => e.toJSON),
+    };
+  }
+
+  override get toRDF(): Triple[] {
+    return [];
+  }
+}
+
+export interface ModelicaElseWhenClause {
+  condition: ModelicaExpression;
+  equations: ModelicaEquation[];
+}
+
+export class ModelicaWhenEquation extends ModelicaEquation {
+  condition: ModelicaExpression;
+  equations: ModelicaEquation[];
+  elseWhenClauses: ModelicaElseWhenClause[];
+
+  constructor(condition: ModelicaExpression, equations: ModelicaEquation[], elseWhenClauses: ModelicaElseWhenClause[]) {
+    super();
+    this.condition = condition;
+    this.equations = equations;
+    this.elseWhenClauses = elseWhenClauses;
+  }
+
+  override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
+    return visitor.visitWhenEquation(this, argument);
+  }
+
+  override get hash(): string {
+    const hash = createHash("sha256");
+    hash.update("when");
+    hash.update(this.condition.hash);
+    for (const eq of this.equations) hash.update(eq.hash);
+    for (const clause of this.elseWhenClauses) {
+      hash.update(clause.condition.hash);
+      for (const eq of clause.equations) hash.update(eq.hash);
+    }
+    return hash.digest("hex");
+  }
+
+  override get toJSON(): JSONValue {
+    return {
+      "@type": "WhenEquation",
+      condition: this.condition.toJSON,
+      equations: this.equations.map((e) => e.toJSON),
+      elseWhenClauses: this.elseWhenClauses.map((c) => ({
+        condition: c.condition.toJSON,
+        equations: c.equations.map((e) => e.toJSON),
+      })),
+    };
+  }
+
+  override get toRDF(): Triple[] {
+    return [];
+  }
+}
+
 export abstract class ModelicaExpression {
   abstract accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R;
 
@@ -598,6 +746,127 @@ export class ModelicaBinaryExpression extends ModelicaSimpleExpression {
 }
 
 export abstract class ModelicaPrimaryExpression extends ModelicaSimpleExpression {}
+
+/** A symbolic name expression (e.g. loop variable i, j) */
+export class ModelicaNameExpression extends ModelicaPrimaryExpression {
+  name: string;
+
+  constructor(name: string) {
+    super();
+    this.name = name;
+  }
+
+  override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
+    return visitor.visitNameExpression(this, argument);
+  }
+
+  override get hash(): string {
+    return createHash("sha256").update("name").update(this.name).digest("hex");
+  }
+
+  override get toJSON(): JSONValue {
+    return { "@type": "NameExpression", name: this.name };
+  }
+
+  override get toRDF(): Triple[] {
+    return [];
+  }
+}
+
+/** A range expression like 1:4 or 1:2:10 */
+export class ModelicaRangeExpression extends ModelicaSimpleExpression {
+  start: ModelicaExpression;
+  step: ModelicaExpression | null;
+  end: ModelicaExpression;
+
+  constructor(start: ModelicaExpression, end: ModelicaExpression, step?: ModelicaExpression | null) {
+    super();
+    this.start = start;
+    this.end = end;
+    this.step = step ?? null;
+  }
+
+  override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
+    return visitor.visitRangeExpression(this, argument);
+  }
+
+  override get hash(): string {
+    const hash = createHash("sha256");
+    hash.update("range");
+    hash.update(this.start.hash);
+    if (this.step) hash.update(this.step.hash);
+    hash.update(this.end.hash);
+    return hash.digest("hex");
+  }
+
+  override get toJSON(): JSONValue {
+    return {
+      "@type": "RangeExpression",
+      start: this.start.toJSON,
+      step: this.step?.toJSON ?? null,
+      end: this.end.toJSON,
+    };
+  }
+
+  override get toRDF(): Triple[] {
+    return [];
+  }
+}
+
+/** The colon `:` expression representing a whole-dimension slice */
+export class ModelicaColonExpression extends ModelicaPrimaryExpression {
+  override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
+    return visitor.visitColonExpression(this, argument);
+  }
+
+  override get hash(): string {
+    return createHash("sha256").update("colon").digest("hex");
+  }
+
+  override get toJSON(): JSONValue {
+    return { "@type": "ColonExpression" };
+  }
+
+  override get toRDF(): Triple[] {
+    return [];
+  }
+}
+
+/** A subscripted expression like z[j, i, :] */
+export class ModelicaSubscriptedExpression extends ModelicaPrimaryExpression {
+  base: ModelicaExpression;
+  subscripts: ModelicaExpression[];
+
+  constructor(base: ModelicaExpression, subscripts: ModelicaExpression[]) {
+    super();
+    this.base = base;
+    this.subscripts = subscripts;
+  }
+
+  override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
+    return visitor.visitSubscriptedExpression(this, argument);
+  }
+
+  override get hash(): string {
+    const hash = createHash("sha256");
+    hash.update("subscripted");
+    hash.update(this.base.hash);
+    for (const s of this.subscripts) hash.update(s.hash);
+    return hash.digest("hex");
+  }
+
+  override get toJSON(): JSONValue {
+    return {
+      "@type": "SubscriptedExpression",
+      base: this.base.toJSON,
+      subscripts: this.subscripts.map((s) => s.toJSON),
+    };
+  }
+
+  override get toRDF(): Triple[] {
+    return [];
+  }
+}
 
 export class ModelicaArray extends ModelicaPrimaryExpression {
   elements: ModelicaExpression[];
@@ -1391,21 +1660,31 @@ export interface IModelicaDAEVisitor<R, A> {
 
   visitBooleanVariable(node: ModelicaBooleanVariable, argument?: A): R;
 
+  visitColonExpression(node: ModelicaColonExpression, argument?: A): R;
+
   visitDAE(node: ModelicaDAE, argument?: A): R;
 
   visitEnumerationLiteral(node: ModelicaEnumerationLiteral, argument?: A): R;
 
   visitEnumerationVariable(node: ModelicaEnumerationVariable, argument?: A): R;
 
+  visitForEquation(node: ModelicaForEquation, argument?: A): R;
+
   visitFunctionCallExpression(node: ModelicaFunctionCallExpression, argument?: A): R;
 
   visitIfElseExpression(node: ModelicaIfElseExpression, argument?: A): R;
+
+  visitIfEquation(node: ModelicaIfEquation, argument?: A): R;
 
   visitIntegerLiteral(node: ModelicaIntegerLiteral, argument?: A): R;
 
   visitIntegerVariable(node: ModelicaIntegerVariable, argument?: A): R;
 
+  visitNameExpression(node: ModelicaNameExpression, argument?: A): R;
+
   visitObject(node: ModelicaObject, argument?: A): R;
+
+  visitRangeExpression(node: ModelicaRangeExpression, argument?: A): R;
 
   visitRealLiteral(node: ModelicaRealLiteral, argument?: A): R;
 
@@ -1413,11 +1692,15 @@ export interface IModelicaDAEVisitor<R, A> {
 
   visitSimpleEquation(node: ModelicaSimpleEquation, argument?: A): R;
 
+  visitSubscriptedExpression(node: ModelicaSubscriptedExpression, argument?: A): R;
+
   visitStringLiteral(node: ModelicaStringLiteral, argument?: A): R;
 
   visitStringVariable(node: ModelicaStringVariable, argument?: A): R;
 
   visitUnaryExpression(node: ModelicaUnaryExpression, argument?: A): R;
+
+  visitWhenEquation(node: ModelicaWhenEquation, argument?: A): R;
 }
 
 export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void, A> {
@@ -1436,6 +1719,9 @@ export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void,
   // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
   visitBooleanVariable(node: ModelicaBooleanVariable, argument?: A): void {}
 
+  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
+  visitColonExpression(node: ModelicaColonExpression, argument?: A): void {}
+
   visitDAE(node: ModelicaDAE, argument?: A): void {
     for (const variable of node.variables) variable.accept(this, argument);
     for (const equation of node.equations) equation.accept(this, argument);
@@ -1447,8 +1733,23 @@ export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void,
   // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
   visitEnumerationVariable(node: ModelicaEnumerationVariable, argument?: A): void {}
 
+  visitForEquation(node: ModelicaForEquation, argument?: A): void {
+    node.range.accept(this, argument);
+    for (const eq of node.equations) eq.accept(this, argument);
+  }
+
   visitFunctionCallExpression(node: ModelicaFunctionCallExpression, argument?: A): void {
     for (const arg of node.args) arg.accept(this, argument);
+  }
+
+  visitIfEquation(node: ModelicaIfEquation, argument?: A): void {
+    node.condition.accept(this, argument);
+    for (const eq of node.equations) eq.accept(this, argument);
+    for (const clause of node.elseIfClauses) {
+      clause.condition.accept(this, argument);
+      for (const eq of clause.equations) eq.accept(this, argument);
+    }
+    for (const eq of node.elseEquations) eq.accept(this, argument);
   }
 
   visitIfElseExpression(node: ModelicaIfElseExpression, argument?: A): void {
@@ -1467,8 +1768,17 @@ export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void,
   // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
   visitIntegerVariable(node: ModelicaIntegerVariable, argument?: A): void {}
 
+  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
+  visitNameExpression(node: ModelicaNameExpression, argument?: A): void {}
+
   visitObject(node: ModelicaObject, argument?: A): void {
     for (const element of node.elements.values()) element.accept(this, argument);
+  }
+
+  visitRangeExpression(node: ModelicaRangeExpression, argument?: A): void {
+    node.start.accept(this, argument);
+    if (node.step) node.step.accept(this, argument);
+    node.end.accept(this, argument);
   }
 
   // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
@@ -1488,8 +1798,22 @@ export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void,
   // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
   visitStringVariable(node: ModelicaStringVariable, argument?: A): void {}
 
+  visitSubscriptedExpression(node: ModelicaSubscriptedExpression, argument?: A): void {
+    node.base.accept(this, argument);
+    for (const s of node.subscripts) s.accept(this, argument);
+  }
+
   visitUnaryExpression(node: ModelicaUnaryExpression, argument?: A): void {
     node.operand.accept(this, argument);
+  }
+
+  visitWhenEquation(node: ModelicaWhenEquation, argument?: A): void {
+    node.condition.accept(this, argument);
+    for (const eq of node.equations) eq.accept(this, argument);
+    for (const clause of node.elseWhenClauses) {
+      clause.condition.accept(this, argument);
+      for (const eq of clause.equations) eq.accept(this, argument);
+    }
   }
 }
 
@@ -1587,6 +1911,10 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     this.out.write("end " + node.name + ";");
   }
 
+  visitColonExpression(): void {
+    this.out.write(":");
+  }
+
   visitEnumerationLiteral(node: ModelicaEnumerationLiteral): void {
     if (node.typeName) {
       this.out.write(node.typeName + "." + node.stringValue);
@@ -1599,6 +1927,17 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     this.out.write(String(node.name));
   }
 
+  visitForEquation(node: ModelicaForEquation): void {
+    this.out.write("  for " + node.indexName + " in ");
+    node.range.accept(this);
+    this.out.write(" loop\n");
+    for (const eq of node.equations) {
+      this.out.write("  ");
+      eq.accept(this);
+    }
+    this.out.write("  end for;\n");
+  }
+
   visitFunctionCallExpression(node: ModelicaFunctionCallExpression): void {
     this.out.write(node.functionName + "(");
     for (let i = 0; i < node.args.length; i++) {
@@ -1606,6 +1945,33 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
       node.args[i]?.accept(this);
     }
     this.out.write(")");
+  }
+
+  visitIfEquation(node: ModelicaIfEquation): void {
+    this.out.write("  if ");
+    node.condition.accept(this);
+    this.out.write(" then\n");
+    for (const eq of node.equations) {
+      this.out.write("  ");
+      eq.accept(this);
+    }
+    for (const clause of node.elseIfClauses) {
+      this.out.write("  elseif ");
+      clause.condition.accept(this);
+      this.out.write(" then\n");
+      for (const eq of clause.equations) {
+        this.out.write("  ");
+        eq.accept(this);
+      }
+    }
+    if (node.elseEquations.length > 0) {
+      this.out.write("  else\n");
+      for (const eq of node.elseEquations) {
+        this.out.write("  ");
+        eq.accept(this);
+      }
+    }
+    this.out.write("  end if;\n");
   }
 
   visitIfElseExpression(node: ModelicaIfElseExpression): void {
@@ -1631,6 +1997,10 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     this.out.write(node.name);
   }
 
+  visitNameExpression(node: ModelicaNameExpression): void {
+    this.out.write(node.name);
+  }
+
   visitObject(node: ModelicaObject): void {
     this.out.write("{");
     let i = 0;
@@ -1640,6 +2010,16 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
       if (i++ < Object.keys(node.elements).length - 1) this.out.write(", ");
     }
     this.out.write("}");
+  }
+
+  visitRangeExpression(node: ModelicaRangeExpression): void {
+    node.start.accept(this);
+    this.out.write(":");
+    if (node.step) {
+      node.step.accept(this);
+      this.out.write(":");
+    }
+    node.end.accept(this);
   }
 
   visitRealLiteral(node: ModelicaRealLiteral): void {
@@ -1671,9 +2051,40 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     this.out.write(node.name);
   }
 
+  visitSubscriptedExpression(node: ModelicaSubscriptedExpression): void {
+    node.base.accept(this);
+    this.out.write("[");
+    for (let i = 0; i < node.subscripts.length; i++) {
+      if (i > 0) this.out.write(", ");
+      node.subscripts[i]?.accept(this);
+    }
+    this.out.write("]");
+  }
+
   visitUnaryExpression(node: ModelicaUnaryExpression): void {
-    this.out.write("(" + node.operator);
+    const sep = /[a-z]/i.test(node.operator) ? " " : "";
+    this.out.write("(" + node.operator + sep);
     node.operand.accept(this);
     this.out.write(")");
+  }
+
+  visitWhenEquation(node: ModelicaWhenEquation): void {
+    this.out.write("  when ");
+    node.condition.accept(this);
+    this.out.write(" then\n");
+    for (const eq of node.equations) {
+      this.out.write("  ");
+      eq.accept(this);
+    }
+    for (const clause of node.elseWhenClauses) {
+      this.out.write("  elsewhen ");
+      clause.condition.accept(this);
+      this.out.write(" then\n");
+      for (const eq of clause.equations) {
+        this.out.write("  ");
+        eq.accept(this);
+      }
+    }
+    this.out.write("  end when;\n");
   }
 }
