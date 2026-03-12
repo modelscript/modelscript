@@ -15,6 +15,7 @@ export class ModelicaDAE {
   name: string;
   description: string | null;
   equations: ModelicaEquation[] = [];
+  algorithms: ModelicaAssignmentStatement[] = [];
   variables: ModelicaVariable[] = [];
 
   constructor(name: string, description?: string | null) {
@@ -35,6 +36,9 @@ export class ModelicaDAE {
     for (const equation of this.equations) {
       hash.update(equation.hash);
     }
+    for (const stmt of this.algorithms) {
+      hash.update(stmt.hash);
+    }
     return hash.digest("hex");
   }
 
@@ -45,6 +49,7 @@ export class ModelicaDAE {
       description: this.description,
       variables: this.variables.map((v) => v.toJSON),
       equations: this.equations.map((e) => e.toJSON),
+      algorithms: this.algorithms.map((s) => s.toJSON),
     };
   }
 
@@ -357,6 +362,40 @@ export class ModelicaWhenEquation extends ModelicaEquation {
   }
 
   override get toRDF(): Triple[] {
+    return [];
+  }
+}
+
+export class ModelicaAssignmentStatement {
+  target: ModelicaExpression;
+  source: ModelicaExpression;
+
+  constructor(target: ModelicaExpression, source: ModelicaExpression) {
+    this.target = target;
+    this.source = source;
+  }
+
+  accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
+    return visitor.visitAssignmentStatement(this, argument);
+  }
+
+  get hash(): string {
+    const hash = createHash("sha256");
+    hash.update("assign");
+    hash.update(this.target.hash);
+    hash.update(this.source.hash);
+    return hash.digest("hex");
+  }
+
+  get toJSON(): JSONValue {
+    return {
+      "@type": "AssignmentStatement",
+      target: this.target.toJSON,
+      source: this.source.toJSON,
+    };
+  }
+
+  get toRDF(): Triple[] {
     return [];
   }
 }
@@ -1656,6 +1695,8 @@ export interface IModelicaDAEVisitor<R, A> {
 
   visitBinaryExpression(node: ModelicaBinaryExpression, argument?: A): R;
 
+  visitAssignmentStatement(node: ModelicaAssignmentStatement, argument?: A): R;
+
   visitBooleanLiteral(node: ModelicaBooleanLiteral, argument?: A): R;
 
   visitBooleanVariable(node: ModelicaBooleanVariable, argument?: A): R;
@@ -1704,6 +1745,11 @@ export interface IModelicaDAEVisitor<R, A> {
 }
 
 export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void, A> {
+  visitAssignmentStatement(node: ModelicaAssignmentStatement, argument?: A): void {
+    node.target.accept(this, argument);
+    node.source.accept(this, argument);
+  }
+
   visitArray(node: ModelicaArray, argument?: A): void {
     for (const element of node.elements) element.accept(this, argument);
   }
@@ -1848,6 +1894,14 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     this.out.write("}");
   }
 
+  visitAssignmentStatement(node: ModelicaAssignmentStatement): void {
+    this.out.write("  ");
+    node.target.accept(this);
+    this.out.write(" := ");
+    node.source.accept(this);
+    this.out.write(";\n");
+  }
+
   visitBinaryExpression(node: ModelicaBinaryExpression): void {
     this.out.write("(");
     node.operand1.accept(this);
@@ -1907,6 +1961,10 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     if (node.equations.length > 0) {
       this.out.write("equation\n");
       for (const equation of node.equations) equation.accept(this);
+    }
+    if (node.algorithms.length > 0) {
+      this.out.write("algorithm\n");
+      for (const stmt of node.algorithms) stmt.accept(this);
     }
     this.out.write("end " + node.name + ";");
   }

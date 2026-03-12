@@ -27,6 +27,7 @@ import {
   ModelicaClassKind,
   ModelicaComplexAssignmentStatementSyntaxNode,
   ModelicaComponentReferenceSyntaxNode,
+  ModelicaEndExpressionSyntaxNode,
   ModelicaForStatementSyntaxNode,
   ModelicaFunctionCallSyntaxNode,
   ModelicaIfStatementSyntaxNode,
@@ -153,10 +154,17 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
   static readonly MAX_FUNCTION_CALL_DEPTH = 64;
   /** When true, function algorithm sections are executed to compute output values. */
   #evaluateAlgorithms: boolean;
+  /** Current `end` value for array subscript evaluation. */
+  #endValue: number | null = null;
 
   constructor(evaluateAlgorithms = false) {
     super();
     this.#evaluateAlgorithms = evaluateAlgorithms;
+  }
+
+  /** Set the current `end` value for array subscript evaluation. */
+  set endValue(value: number | null) {
+    this.#endValue = value;
   }
 
   visitArrayConcatenation(node: ModelicaArrayConcatenationSyntaxNode, scope: Scope): ModelicaExpression | null {
@@ -218,13 +226,39 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
   visitComponentReference(node: ModelicaComponentReferenceSyntaxNode, scope: Scope): ModelicaExpression | null {
     const namedElement = scope.resolveComponentReference(node);
     if (!namedElement) return null;
-    if (namedElement instanceof ModelicaClassInstance) return ModelicaExpression.fromClassInstance(namedElement);
+    let result: ModelicaExpression | null;
+    if (namedElement instanceof ModelicaClassInstance) result = ModelicaExpression.fromClassInstance(namedElement);
     else if (namedElement instanceof ModelicaComponentInstance) {
       if (!namedElement.instantiated && !namedElement.instantiating) namedElement.instantiate();
-      return ModelicaExpression.fromClassInstance(namedElement.classInstance);
+      result = ModelicaExpression.fromClassInstance(namedElement.classInstance);
     } else {
       throw new Error();
     }
+    // Handle array subscripts like b[end] or b[2]
+    const subscripts = node.parts[node.parts.length - 1]?.arraySubscripts?.subscripts;
+    if (result instanceof ModelicaArray && subscripts && subscripts.length > 0) {
+      for (const sub of subscripts) {
+        if (!(result instanceof ModelicaArray)) break;
+        // Set end value for this array dimension
+        const prevEnd = this.#endValue;
+        this.#endValue = result.shape[0] ?? 0;
+        const indexExpr = sub.expression?.accept(this, scope);
+        this.#endValue = prevEnd;
+        if (indexExpr instanceof ModelicaIntegerLiteral) {
+          const idx = indexExpr.value - 1; // 1-indexed to 0-indexed
+          result = result.elements[idx] ?? null;
+        } else {
+          return null; // Cannot resolve subscript statically
+        }
+      }
+    }
+    return result;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  visitEndExpression(_node: ModelicaEndExpressionSyntaxNode, _scope: Scope): ModelicaExpression | null {
+    if (this.#endValue != null) return new ModelicaIntegerLiteral(this.#endValue);
+    return null;
   }
 
   /**

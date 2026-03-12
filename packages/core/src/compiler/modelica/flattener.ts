@@ -3,6 +3,7 @@
 import type { ModelicaElseIfClause, ModelicaElseWhenClause } from "./dae.js";
 import {
   ModelicaArray,
+  ModelicaAssignmentStatement,
   ModelicaBinaryExpression,
   ModelicaBooleanLiteral,
   ModelicaBooleanVariable,
@@ -28,7 +29,7 @@ import {
   ModelicaUnaryExpression,
   ModelicaWhenEquation,
 } from "./dae.js";
-import { buildFilledArray } from "./interpreter.js";
+import { buildFilledArray, ModelicaInterpreter } from "./interpreter.js";
 import {
   ModelicaArrayClassInstance,
   ModelicaBooleanClassInstance,
@@ -57,6 +58,7 @@ import {
   ModelicaIfEquationSyntaxNode,
   ModelicaOutputExpressionListSyntaxNode,
   ModelicaRangeExpressionSyntaxNode,
+  ModelicaSimpleAssignmentStatementSyntaxNode,
   ModelicaSimpleEquationSyntaxNode,
   ModelicaStringLiteralSyntaxNode,
   ModelicaSyntaxVisitor,
@@ -95,6 +97,9 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     }
     for (const equationSyntaxNode of node.abstractSyntaxNode?.equations ?? []) {
       equationSyntaxNode.accept(new ModelicaSyntaxFlattener(), [args[0], node, args[1]]);
+    }
+    for (const algorithm of node.algorithms) {
+      algorithm.accept(new ModelicaSyntaxFlattener(), [args[0], node, args[1]]);
     }
   }
 
@@ -490,6 +495,31 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<
         if (hasSymbolic) {
           return new ModelicaSubscriptedExpression(new ModelicaNameExpression(name), subscripts);
         }
+        // Try to resolve subscripts to integer indices using the interpreter
+        // This handles cases like a[end-b[end]] where the subscript evaluates to a literal
+        const baseName =
+          (args[0] === "" ? "" : args[0] + ".") + node.parts.map((c) => c.identifier?.text ?? "").join(".");
+        const arrayPrefix = baseName + "[";
+        const arraySize = args[2].variables.filter((v) => v.name.startsWith(arrayPrefix)).length;
+        const interp = new ModelicaInterpreter();
+        interp.endValue = arraySize > 0 ? arraySize : null;
+        const resolvedIndices: number[] = [];
+        for (const sub of subscriptNodes) {
+          if (sub.flexible) break;
+          if (!sub.expression) break;
+          const indexExpr = sub.expression.accept(interp, args[1]);
+          if (indexExpr instanceof ModelicaIntegerLiteral) {
+            resolvedIndices.push(indexExpr.value);
+          } else {
+            break;
+          }
+        }
+        if (resolvedIndices.length === subscriptNodes.length) {
+          const indexedName = baseName + "[" + resolvedIndices.join(",") + "]";
+          for (const variable of args[2].variables) {
+            if (variable.name === indexedName) return variable;
+          }
+        }
       }
       for (const variable of args[2].variables) {
         if (variable.name === name) return variable;
@@ -563,6 +593,18 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<
       elseWhenClauses.push({ condition: clauseCondition, equations: clauseEquations });
     }
     args[2].equations.push(new ModelicaWhenEquation(condition, bodyEquations, elseWhenClauses));
+    return null;
+  }
+
+  visitSimpleAssignmentStatement(
+    node: ModelicaSimpleAssignmentStatementSyntaxNode,
+    args: [string, ModelicaClassInstance, ModelicaDAE],
+  ): null {
+    const target = node.target?.accept(this, args);
+    const source = node.source?.accept(this, args);
+    if (target && source) {
+      args[2].algorithms.push(new ModelicaAssignmentStatement(target, source));
+    }
     return null;
   }
 
