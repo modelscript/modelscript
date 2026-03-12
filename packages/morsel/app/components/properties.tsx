@@ -160,10 +160,12 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
 
   const [localName, setLocalName] = useState(component?.name || "");
   const [localDescription, setLocalDescription] = useState(component?.description || "");
+  const [descriptionEditing, setDescriptionEditing] = useState(false);
 
   useEffect(() => {
     setLocalName(component?.name || "");
     setLocalDescription(component?.description || "");
+    setDescriptionEditing(false);
   }, [component?.name, component?.description]);
 
   useEffect(() => {
@@ -323,17 +325,23 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
               </div>
             </div>
           </div>
-          {localDescription ? (
+          {localDescription || descriptionEditing ? (
             <div>
               <div className="f6 color-fg-muted" style={{ opacity: 0.4 }}>
                 {translations.description}
               </div>
               <Textarea
                 block
+                autoFocus={descriptionEditing && !localDescription}
                 value={localDescription}
                 onChange={(e) => setLocalDescription(e.target.value)}
                 onBlur={() => {
-                  if (localDescription !== (component.description || "") && onDescriptionChange) {
+                  if (!localDescription) {
+                    setDescriptionEditing(false);
+                    if (component.description && onDescriptionChange) {
+                      onDescriptionChange("");
+                    }
+                  } else if (localDescription !== (component.description || "") && onDescriptionChange) {
                     onDescriptionChange(localDescription);
                   }
                 }}
@@ -350,7 +358,7 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
               <Button
                 variant="invisible"
                 size="small"
-                onClick={() => setLocalDescription(" ")}
+                onClick={() => setDescriptionEditing(true)}
                 style={{
                   fontSize: 12,
                   color: "var(--fgColor-muted, #656d76)",

@@ -708,6 +708,33 @@ export default function MorselEditor(props: MorselEditorProps) {
     const escapedDescription = newDescription.replace(/"/g, '""');
 
     if (descriptionNode?.sourceRange) {
+      if (newDescription === "") {
+        // Remove the description AND any preceding whitespace
+        const model = editor.getModel();
+        const descStartLine = descriptionNode.startPosition.row + 1;
+        const descStartCol = descriptionNode.startPosition.column + 1;
+        const descEndLine = descriptionNode.endPosition.row + 1;
+        const descEndCol = descriptionNode.endPosition.column + 1;
+        // Look backwards from the description start to consume preceding whitespace
+        let removeStartCol = descStartCol;
+        if (model) {
+          const lineContent = model.getLineContent(descStartLine);
+          let col = descStartCol - 2; // 0-indexed position before description
+          while (col >= 0 && (lineContent[col] === " " || lineContent[col] === "\t")) {
+            col--;
+          }
+          removeStartCol = col + 2; // back to 1-indexed
+        }
+        return {
+          range: {
+            startLineNumber: descStartLine,
+            startColumn: removeStartCol,
+            endLineNumber: descEndLine,
+            endColumn: descEndCol,
+          },
+          text: "",
+        };
+      }
       return {
         range: {
           startLineNumber: descriptionNode.startPosition.row + 1,
@@ -718,6 +745,8 @@ export default function MorselEditor(props: MorselEditorProps) {
         text: `"${escapedDescription}"`, // No leading space when replacing existing description
       };
     } else {
+      // No existing description — nothing to remove
+      if (newDescription === "") return null;
       // If no description exists, we need to insert it after the identifier/modification
       const identNode = abstractNode?.declaration?.identifier;
       const modificationNode = abstractNode?.declaration?.modification;
