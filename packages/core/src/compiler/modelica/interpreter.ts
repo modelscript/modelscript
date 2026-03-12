@@ -71,11 +71,19 @@ const BUILTIN_ARRAY_FUNCTIONS = new Set([
  * Helper: build a (possibly nested) ModelicaArray filled with `value`.
  * `shape` is e.g. [2, 3] for a 2×3 matrix.
  */
-function buildFilledArray(shape: number[], value: ModelicaExpression): ModelicaArray {
+export function buildFilledArray(shape: number[], value: ModelicaExpression): ModelicaArray {
   if (shape.length === 1) {
     const n = shape[0] ?? 0;
     if (!Number.isInteger(n) || n < 0 || n > 1_000_000) {
       return new ModelicaArray([0], []);
+    }
+    // When the value is itself an array, produce a higher-dimensional result
+    // e.g. fill({1,0,0}, 3) → {{1,0,0},{1,0,0},{1,0,0}} with shape [3,3]
+    if (value instanceof ModelicaArray) {
+      const innerElements = flattenArray(value);
+      const elements: ModelicaExpression[] = [];
+      for (let i = 0; i < n; i++) elements.push(...innerElements);
+      return new ModelicaArray([n, ...value.shape], elements);
     }
     return new ModelicaArray([n], Array(n).fill(value));
   }
@@ -89,7 +97,8 @@ function buildFilledArray(shape: number[], value: ModelicaExpression): ModelicaA
   }
   if (n === 0) {
     // Empty array — preserve full shape for size() queries
-    return new ModelicaArray(shape, []);
+    const innerShape = value instanceof ModelicaArray ? value.shape : [];
+    return new ModelicaArray([...shape, ...innerShape], []);
   }
   const elements: ModelicaExpression[] = [];
   for (let i = 0; i < n; i++) {

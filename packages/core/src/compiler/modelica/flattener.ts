@@ -28,6 +28,7 @@ import {
   ModelicaUnaryExpression,
   ModelicaWhenEquation,
 } from "./dae.js";
+import { buildFilledArray } from "./interpreter.js";
 import {
   ModelicaArrayClassInstance,
   ModelicaBooleanClassInstance,
@@ -65,6 +66,16 @@ import {
   ModelicaVariability,
   ModelicaWhenEquationSyntaxNode,
 } from "./syntax.js";
+
+/** Extract an integer shape array from a list of expressions (all must be ModelicaIntegerLiteral). */
+function extractShape(args: ModelicaExpression[]): number[] | null {
+  const shape: number[] = [];
+  for (const arg of args) {
+    if (arg instanceof ModelicaIntegerLiteral) shape.push(arg.value);
+    else return null;
+  }
+  return shape.length > 0 ? shape : null;
+}
 
 export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE]> {
   visitArrayClassInstance(node: ModelicaArrayClassInstance, args: [string, ModelicaDAE]): void {
@@ -392,6 +403,19 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<
     for (const arg of node.functionCallArguments?.arguments ?? []) {
       const flatArg = arg.expression?.accept(this, args);
       if (flatArg) flatArgs.push(flatArg);
+    }
+    // Evaluate built-in array constructors at flatten time
+    if (functionName === "fill" && flatArgs.length >= 2) {
+      const shape = extractShape(flatArgs.slice(1));
+      if (shape && flatArgs[0]) return buildFilledArray(shape, flatArgs[0]);
+    }
+    if (functionName === "zeros" && flatArgs.length >= 1) {
+      const shape = extractShape(flatArgs);
+      if (shape) return buildFilledArray(shape, new ModelicaIntegerLiteral(0));
+    }
+    if (functionName === "ones" && flatArgs.length >= 1) {
+      const shape = extractShape(flatArgs);
+      if (shape) return buildFilledArray(shape, new ModelicaIntegerLiteral(1));
     }
     return new ModelicaFunctionCallExpression(functionName, flatArgs);
   }
