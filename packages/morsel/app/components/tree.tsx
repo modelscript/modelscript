@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Context, ModelicaClassInstance, ModelicaLibrary, renderIcon } from "@modelscript/core";
+import { Context, ModelicaClassInstance, ModelicaEntity, ModelicaLibrary, renderIcon } from "@modelscript/core";
 import { ChevronDownIcon, ChevronRightIcon, PackageIcon } from "@primer/octicons-react";
 import { NavList, useTheme } from "@primer/react";
 import React from "react";
@@ -278,42 +278,197 @@ const LibraryGroup = React.memo(function LibraryGroup(props: LibraryGroupProps) 
   );
 });
 
+const SEARCH_RESULT_LIMIT = 50;
+const SEARCH_CHUNK_SIZE = 100;
+
+interface SearchState {
+  results: ModelicaClassInstance[];
+  searching: boolean;
+  totalMatches: number;
+  done: boolean;
+}
+
+const SearchResultNode = React.memo(function SearchResultNode(props: TreeNodeProps) {
+  const { element, onSelect, onHighlight, selectedClassName } = props;
+  const [hovered, setHovered] = React.useState(false);
+  const isSelected = selectedClassName != null && element.compositeName === selectedClassName;
+
+  return (
+    <li
+      style={{
+        listStyle: "none",
+        display: "flex",
+        alignItems: "center",
+        padding: "6px 8px",
+        paddingLeft: "8px",
+        margin: "0 8px",
+        cursor: "pointer",
+        fontSize: 14,
+        color: "var(--fgColor-default, var(--color-fg-default))",
+        backgroundColor: isSelected
+          ? "var(--control-transparent-bgColor-selected, var(--color-action-list-item-default-selected-bg, rgba(177, 186, 196, 0.2)))"
+          : hovered
+            ? "var(--control-transparent-bgColor-hover, var(--color-action-list-item-default-hover-bg, rgba(177, 186, 196, 0.12)))"
+            : "transparent",
+        borderRadius: 6,
+        gap: 8,
+        userSelect: "none",
+        transition: "background-color 0.1s ease",
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onClick={(e) => {
+        e.stopPropagation();
+        onHighlight?.(element.compositeName);
+      }}
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        onHighlight?.(element.compositeName);
+        onSelect(element);
+      }}
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData(
+          "application/json",
+          JSON.stringify({ className: element.compositeName, classKind: element.classKind }),
+        );
+        e.dataTransfer.effectAllowed = "copy";
+      }}
+    >
+      <span style={{ display: "flex", alignItems: "center", flexShrink: 0 }}>
+        <ClassIcon classInstance={element} />
+      </span>
+      <div
+        style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+        title={element.localizedCompositeName ?? undefined}
+      >
+        {element.localizedCompositeName}
+      </div>
+    </li>
+  );
+});
+
 const TreeWidget = React.memo(function TreeWidget(props: TreeWidgetProps) {
-  const elements: React.ReactNode[] = [];
   const filter = props.filter?.toLowerCase() ?? "";
+  const [searchState, setSearchState] = React.useState<SearchState>({
+    results: [],
+    searching: false,
+    totalMatches: 0,
+    done: false,
+  });
 
-  if (props.context) {
-    if (filter) {
-      const matchingClasses: ModelicaClassInstance[] = [];
+  // Async chunked search
+  React.useEffect(() => {
+    if (!filter || !props.context) {
+      setSearchState({ results: [], searching: false, totalMatches: 0, done: false });
+      return;
+    }
 
-      const flatten = (element: ModelicaClassInstance | ModelicaLibrary) => {
-        if (element instanceof ModelicaClassInstance) {
-          if (element.compositeName.toLowerCase().includes(filter)) {
-            matchingClasses.push(element);
-          }
-          for (const child of element.elements) {
-            if (child instanceof ModelicaClassInstance) {
-              flatten(child);
-            }
-          }
-        } else if (element instanceof ModelicaLibrary) {
-          for (const child of element.elements) {
-            if (child instanceof ModelicaClassInstance) {
-              flatten(child);
-            }
-          }
+    let cancelled = false;
+    setSearchState({ searching: true, results: [], totalMatches: 0, done: false });
+
+    // Collect all traversable roots into a flat work queue
+    // Use ModelicaEntity tree (cheap load()) instead of .elements (expensive instantiate())
+    type WorkItem = { entity: ModelicaEntity; prefix: string } | { instance: ModelicaClassInstance | ModelicaLibrary };
+    const workQueue: WorkItem[] = [];
+    for (const element of props.context.elements) {
+      if (element instanceof ModelicaLibrary) {
+        // Seed with the library's root entity
+        const entity = element.entity;
+        entity.load();
+        workQueue.push({ entity, prefix: "" });
+      } else if (element instanceof ModelicaEntity) {
+        element.load();
+        workQueue.push({ entity: element, prefix: "" });
+      } else if (element instanceof ModelicaClassInstance) {
+        // User code — fall back to instance traversal
+        workQueue.push({ instance: element });
+      }
+    }
+
+    const results: ModelicaClassInstance[] = [];
+    let totalMatches = 0;
+    let queueIndex = 0;
+
+    const processChunk = () => {
+      if (cancelled) return;
+
+      let processed = 0;
+      while (queueIndex < workQueue.length && processed < SEARCH_CHUNK_SIZE) {
+        if (results.length >= SEARCH_RESULT_LIMIT && totalMatches > SEARCH_RESULT_LIMIT) {
+          // We have enough results and know there are more — stop early
+          break;
         }
-      };
+        const item = workQueue[queueIndex++];
+        processed++;
 
-      for (const element of props.context.elements) {
-        if (element instanceof ModelicaClassInstance || element instanceof ModelicaLibrary) {
-          flatten(element);
+        if ("entity" in item) {
+          const { entity, prefix } = item;
+          const compositeName = prefix ? `${prefix}.${entity.name}` : (entity.name ?? "");
+          if (compositeName.toLowerCase().includes(filter)) {
+            totalMatches++;
+            if (results.length < SEARCH_RESULT_LIMIT) {
+              results.push(entity);
+            }
+          }
+          // Enqueue sub-entities (cheap: just reads directory listing)
+          for (const sub of entity.subEntities) {
+            sub.load();
+            workQueue.push({ entity: sub, prefix: compositeName });
+          }
+        } else {
+          // Fallback for non-entity class instances (user code)
+          const ci = item.instance;
+          if (ci instanceof ModelicaClassInstance) {
+            if (ci.compositeName.toLowerCase().includes(filter)) {
+              totalMatches++;
+              if (results.length < SEARCH_RESULT_LIMIT) {
+                results.push(ci);
+              }
+            }
+            for (const child of ci.elements) {
+              if (child instanceof ModelicaClassInstance) {
+                workQueue.push({ instance: child });
+              }
+            }
+          } else if (ci instanceof ModelicaLibrary) {
+            for (const child of ci.elements) {
+              if (child instanceof ModelicaClassInstance) {
+                workQueue.push({ instance: child });
+              }
+            }
+          }
         }
       }
 
-      elements.push(
-        ...matchingClasses.map((c) => (
-          <TreeNode
+      if (cancelled) return;
+
+      if (queueIndex >= workQueue.length || results.length >= SEARCH_RESULT_LIMIT) {
+        // Done
+        setSearchState({ results: [...results], searching: false, totalMatches, done: true });
+      } else {
+        // Yield to main thread, then continue
+        setSearchState({ results: [...results], searching: true, totalMatches, done: false });
+        setTimeout(processChunk, 0);
+      }
+    };
+
+    // Start on next frame to let React commit the "searching" state first
+    setTimeout(processChunk, 0);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [filter, props.context, props.version]);
+
+  // Build element list
+  const elements: React.ReactNode[] = [];
+
+  if (props.context) {
+    if (filter) {
+      for (const c of searchState.results) {
+        elements.push(
+          <SearchResultNode
             key={c.compositeName}
             element={c}
             onSelect={props.onSelect}
@@ -322,9 +477,71 @@ const TreeWidget = React.memo(function TreeWidget(props: TreeWidgetProps) {
             showQualifiedName={true}
             language={props.language}
             selectedClassName={props.selectedClassName}
-          />
-        )),
-      );
+          />,
+        );
+      }
+      if (searchState.searching) {
+        elements.push(
+          <li
+            key="__searching__"
+            style={{
+              listStyle: "none",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "12px 8px",
+              margin: "0 8px",
+              fontSize: 13,
+              color: "var(--fgColor-muted, var(--color-fg-muted))",
+              gap: 8,
+            }}
+          >
+            <span
+              style={{
+                display: "inline-block",
+                width: 12,
+                height: 12,
+                border: "2px solid var(--fgColor-muted, rgba(125, 133, 144, 0.4))",
+                borderTopColor: "var(--fgColor-default, var(--color-fg-default))",
+                borderRadius: "50%",
+                animation: "tree-spinner 0.6s linear infinite",
+              }}
+            />
+            Searching…
+          </li>,
+        );
+      } else if (searchState.totalMatches > SEARCH_RESULT_LIMIT) {
+        elements.push(
+          <li
+            key="__more__"
+            style={{
+              listStyle: "none",
+              padding: "8px 16px",
+              fontSize: 12,
+              color: "var(--fgColor-muted, var(--color-fg-muted))",
+              textAlign: "center",
+              fontStyle: "italic",
+            }}
+          >
+            Showing {SEARCH_RESULT_LIMIT} of {searchState.totalMatches}+ results
+          </li>,
+        );
+      } else if (searchState.done && searchState.results.length === 0) {
+        elements.push(
+          <li
+            key="__empty__"
+            style={{
+              listStyle: "none",
+              padding: "12px 16px",
+              fontSize: 13,
+              color: "var(--fgColor-muted, var(--color-fg-muted))",
+              textAlign: "center",
+            }}
+          >
+            No results found
+          </li>,
+        );
+      }
     } else {
       for (const element of props.context.elements) {
         if (element instanceof ModelicaClassInstance) {
