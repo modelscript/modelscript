@@ -1219,8 +1219,10 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
     if (element instanceof ModelicaClassInstance) {
       this.#declaredType = element;
       // Validate modification arguments against the resolved type's elements.
-      // Skip predefined types (Real, Integer, etc.) which use start/min/max attributes.
-      if (this.modification && !(element instanceof ModelicaPredefinedClassInstance)) {
+      // Skip predefined types (Real, Integer, etc.) and their aliases/arrays
+      // which use start/min/max attributes rather than named sub-components.
+      const isPredefined = ModelicaComponentInstance.#isPredefinedType(element);
+      if (this.modification && !isPredefined) {
         const typeElementNames = new Set<string>();
         for (const el of element.elements) {
           if (el instanceof ModelicaNamedElement && el.name) {
@@ -1252,6 +1254,20 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
       this.modification?.annotations,
     );
     this.instantiated = true;
+  }
+
+  /** Check if a class instance ultimately resolves to a predefined type (Real, Integer, etc.). */
+  static #isPredefinedType(instance: ModelicaClassInstance): boolean {
+    if (instance instanceof ModelicaPredefinedClassInstance) return true;
+    if (instance instanceof ModelicaShortClassInstance) {
+      if (!instance.instantiated && !instance.instantiating) instance.instantiate();
+      if (instance.classInstance) return ModelicaComponentInstance.#isPredefinedType(instance.classInstance);
+    }
+    if (instance instanceof ModelicaArrayClassInstance) {
+      const elementInstance = instance.elementClassInstance;
+      if (elementInstance) return ModelicaComponentInstance.#isPredefinedType(elementInstance);
+    }
+    return false;
   }
 
   #checkDuplicateModifications(args: ModelicaModificationArgument[]): void {
