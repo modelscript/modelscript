@@ -253,7 +253,8 @@ function formatNumber(value: number): string {
     const mantissaStr = Number.isInteger(mantissa) ? String(mantissa) : parseFloat(mantissa.toPrecision(4)).toString();
     return `${mantissaStr}e${eng}`;
   }
-  return String(value);
+  const rounded = parseFloat(value.toFixed(3));
+  return String(rounded);
 }
 
 export function renderText(
