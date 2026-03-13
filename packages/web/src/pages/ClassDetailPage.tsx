@@ -9,6 +9,7 @@ import Box from "../components/Box";
 import Breadcrumbs from "../components/Breadcrumbs";
 import { ClassTreeNode } from "../components/ClassTree";
 import { buildClassTree } from "../components/classTreeUtils";
+import InvertedSvg from "../components/InvertedSvg";
 
 /* ─── styled helpers ─── */
 
@@ -162,9 +163,8 @@ const DiagramWrap = styled.div`
   min-height: 120px;
   overflow: auto;
 
-  img {
+  svg {
     max-width: 100%;
-    filter: var(--diagram-filter);
   }
 `;
 
@@ -318,13 +318,11 @@ const ClassDetailPage: React.FC = () => {
               overflow: "hidden",
             }}
           >
-            <img
+            <InvertedSvg
               src={`${getIconUrl(name!, version!, className!)}?t=${retryCount}`}
               alt=""
-              style={{ width: 36, height: 36, filter: "var(--diagram-filter)" }}
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = "none";
-              }}
+              width={36}
+              height={36}
             />
           </Box>
           <Box>
@@ -362,11 +360,11 @@ const ClassDetailPage: React.FC = () => {
         {/* ── Main column ── */}
         <div>
           {/* Class diagram */}
-          {!diagramError && diagramLoaded && (
-            <>
+          {!diagramError && (
+            <div style={diagramLoaded ? undefined : { position: "absolute", opacity: 0, pointerEvents: "none" }}>
               <SectionTitle as="h3">Diagram</SectionTitle>
               <DiagramWrap>
-                <img
+                <InvertedSvg
                   src={`${getDiagramUrl(name!, version!, className!)}?t=${retryCount}`}
                   alt={`${className} diagram`}
                   onLoad={() => setDiagramLoaded(true)}
@@ -379,23 +377,7 @@ const ClassDetailPage: React.FC = () => {
                   }}
                 />
               </DiagramWrap>
-            </>
-          )}
-          {/* Hidden loader to trigger loading */}
-          {!diagramError && !diagramLoaded && (
-            <img
-              src={`${getDiagramUrl(name!, version!, className!)}?t=${retryCount}`}
-              alt=""
-              style={{ display: "none" }}
-              onLoad={() => setDiagramLoaded(true)}
-              onError={() => {
-                if (jobStatus && jobStatus !== "completed" && jobStatus !== "failed") {
-                  setTimeout(() => setRetryCount((p) => p + 1), 3000);
-                } else {
-                  setDiagramError(true);
-                }
-              }}
-            />
+            </div>
           )}
 
           {/* Documentation */}
@@ -488,18 +470,7 @@ const ClassDetailPage: React.FC = () => {
                   {cls.components.map((comp) => (
                     <NavList.Item key={comp.component_name} style={{ color: "var(--color-text-primary)" }}>
                       <NavList.LeadingVisual>
-                        <img
-                          src={getIconUrl(name!, version!, comp.type_name)}
-                          alt=""
-                          style={{ width: 32, height: 32, filter: "var(--diagram-filter)" }}
-                          onError={(e) => {
-                            const img = e.target as HTMLImageElement;
-                            img.style.display = "none";
-                            const fallback = document.createElement("span");
-                            fallback.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="32" height="32" fill="var(--color-text-muted)"><path d="M8.878.392a1.75 1.75 0 0 0-1.756 0l-5.25 3.045A1.75 1.75 0 0 0 1 4.951v6.098c0 .624.332 1.2.872 1.514l5.25 3.045a1.75 1.75 0 0 0 1.756 0l5.25-3.045c.54-.313.872-.89.872-1.514V4.951c0-.624-.332-1.2-.872-1.514ZM7.875 1.69a.25.25 0 0 1 .25 0l4.63 2.685L8 7.133 3.245 4.375ZM2.5 5.677l5 2.9v5.765l-4.63-2.685a.25.25 0 0 1-.124-.216L2.5 5.677Zm6.5 8.665V8.578l5-2.9v5.764a.25.25 0 0 1-.124.216L8.5 14.342Z"></path></svg>`;
-                            img.parentNode?.appendChild(fallback);
-                          }}
-                        />
+                        <InvertedSvg src={getIconUrl(name!, version!, comp.type_name)} alt="" width={32} height={32} />
                       </NavList.LeadingVisual>
                       <Box fontWeight="bold" style={{ color: "var(--color-text-heading)" }}>
                         {comp.component_name}

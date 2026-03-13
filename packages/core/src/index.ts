@@ -12,6 +12,7 @@ export * from "./compiler/modelica/svg.js";
 export * from "./compiler/modelica/syntax.js";
 export * from "./compiler/modelica/types.js";
 export * from "./compiler/scope.js";
+export * from "./util/color-inversion.js";
 export * from "./util/enum.js";
 export * from "./util/filesystem.js";
 export * from "./util/io.js";

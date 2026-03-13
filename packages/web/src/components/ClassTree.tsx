@@ -5,6 +5,7 @@ import { Link } from "react-router-dom";
 import styled from "styled-components";
 import { getIconUrl } from "../api";
 import type { TreeNode } from "./classTreeUtils";
+import InvertedSvg from "./InvertedSvg";
 
 /* ─── styled components ─── */
 
@@ -80,14 +81,7 @@ export const ClassTreeNode: React.FC<{
         ) : (
           <span style={{ width: 14, flexShrink: 0 }} />
         )}
-        <img
-          src={iconUrl}
-          alt=""
-          style={{ width: 16, height: 16, flexShrink: 0, filter: "var(--diagram-filter)" }}
-          onError={(e) => {
-            (e.target as HTMLImageElement).style.display = "none";
-          }}
-        />
+        <InvertedSvg src={iconUrl} alt="" width={16} height={16} />
         <span>{node.name}</span>
         <Label
           variant="secondary"

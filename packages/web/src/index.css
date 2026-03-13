@@ -57,9 +57,6 @@
   --color-btn-secondary-border: rgba(255, 255, 255, 0.1);
   --color-btn-secondary-text: #c9d1d9;
 
-  /* Diagrams: in dark mode we invert (Modelica diagrams are black on white) */
-  --diagram-filter: invert(1) hue-rotate(180deg);
-
   /* Tree active */
   --color-tree-active-bg: rgba(88, 166, 255, 0.12);
 
@@ -124,9 +121,6 @@
   --color-btn-secondary-bg: rgba(0, 0, 0, 0.06);
   --color-btn-secondary-border: rgba(0, 0, 0, 0.12);
   --color-btn-secondary-text: #1f2328;
-
-  /* Diagrams: light mode shows them naturally */
-  --diagram-filter: none;
 
   /* Tree active */
   --color-tree-active-bg: rgba(102, 57, 230, 0.1);

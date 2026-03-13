@@ -15,6 +15,7 @@ import {
 } from "../api";
 import Box from "../components/Box";
 import Breadcrumbs from "../components/Breadcrumbs";
+import InvertedSvg from "../components/InvertedSvg";
 
 /* ─── styled helpers ─── */
 
@@ -198,9 +199,8 @@ const DiagramWrap = styled.div`
   min-height: 120px;
   overflow: auto;
 
-  img {
+  svg {
     max-width: 100%;
-    filter: var(--diagram-filter);
   }
 `;
 
@@ -298,14 +298,7 @@ const ClassTreeNode: React.FC<{
         ) : (
           <span style={{ width: 14, flexShrink: 0 }} />
         )}
-        <img
-          src={iconUrl}
-          alt=""
-          style={{ width: 16, height: 16, flexShrink: 0, filter: "var(--diagram-filter)" }}
-          onError={(e) => {
-            (e.target as HTMLImageElement).style.display = "none";
-          }}
-        />
+        <InvertedSvg src={iconUrl} alt="" width={16} height={16} />
         <span>{node.name}</span>
         <Label
           variant="secondary"
@@ -469,19 +462,7 @@ const LibraryDetailPage: React.FC = () => {
               overflow: "hidden",
             }}
           >
-            <img
-              src={getIconUrl(name!, version!, name!)}
-              alt=""
-              style={{ width: 36, height: 36, filter: "var(--diagram-filter)" }}
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = "none";
-                // Show fallback icon
-                const parent = (e.target as HTMLImageElement).parentElement;
-                if (parent && !parent.querySelector("svg")) {
-                  // Icon will remain as gradient background
-                }
-              }}
-            />
+            <InvertedSvg src={getIconUrl(name!, version!, name!)} alt="" width={36} height={36} />
           </Box>
           <Box>
             <Box display="flex" alignItems="center" gap="8px">
@@ -518,36 +499,23 @@ const LibraryDetailPage: React.FC = () => {
         {/* ── Main column ── */}
         <div>
           {/* Root class diagram */}
-          {!diagramError && diagramLoaded && (
-            <DiagramWrap>
-              <img
-                src={`${getDiagramUrl(name!, version!, name!)}?t=${retryCount}`}
-                alt={`${name} diagram`}
-                onLoad={() => setDiagramLoaded(true)}
-                onError={() => {
-                  if (jobStatus && jobStatus !== "completed" && jobStatus !== "failed") {
-                    setTimeout(() => setRetryCount((p) => p + 1), 3000);
-                  } else {
-                    setDiagramError(true);
-                  }
-                }}
-              />
-            </DiagramWrap>
-          )}
-          {!diagramError && !diagramLoaded && (
-            <img
-              src={`${getDiagramUrl(name!, version!, name!)}?t=${retryCount}`}
-              alt=""
-              style={{ display: "none" }}
-              onLoad={() => setDiagramLoaded(true)}
-              onError={() => {
-                if (jobStatus && jobStatus !== "completed" && jobStatus !== "failed") {
-                  setTimeout(() => setRetryCount((p) => p + 1), 3000);
-                } else {
-                  setDiagramError(true);
-                }
-              }}
-            />
+          {!diagramError && (
+            <div style={diagramLoaded ? undefined : { position: "absolute", opacity: 0, pointerEvents: "none" }}>
+              <DiagramWrap>
+                <InvertedSvg
+                  src={`${getDiagramUrl(name!, version!, name!)}?t=${retryCount}`}
+                  alt={`${name} diagram`}
+                  onLoad={() => setDiagramLoaded(true)}
+                  onError={() => {
+                    if (jobStatus && jobStatus !== "completed" && jobStatus !== "failed") {
+                      setTimeout(() => setRetryCount((p) => p + 1), 3000);
+                    } else {
+                      setDiagramError(true);
+                    }
+                  }}
+                />
+              </DiagramWrap>
+            </div>
           )}
 
           {/* Documentation */}

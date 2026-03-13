@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
-  Arrow,
   computeHeight,
   computeIconPlacement,
   computePortPlacement,
@@ -39,75 +38,13 @@ export interface X6Markup {
   textContent?: string;
 }
 
-// ── Helmlab-based color inversion for dark mode ─────────────────────────
+// ── Color inversion for dark mode (core algorithm from @modelscript/core) ──
 
-import { Helmlab } from "helmlab";
-
-const hl = new Helmlab();
-
-/** Multiplicative brightness boost applied in sRGB after L-inversion. */
-const BRIGHTNESS_BOOST = 2.25;
-
-/** Clamp and round to 0-255. */
-function clamp255(v: number): number {
-  return Math.round(Math.max(0, Math.min(255, v)));
-}
-
-/**
- * Invert a CSS color using Helmlab lightness inversion.
- * Handles rgb(), #rrggbb, and #rgb formats.
- * L is flipped (1 - L) in Helmlab space, then brightness is
- * boosted in sRGB to avoid hue shifts from Lab-space manipulation.
- * Helmlab accounts for the Helmholtz-Kohlrausch effect and
- * has better dark-region perceptual uniformity than CIELAB.
- */
-const helmlabCache = new Map<string, string>();
-
-export function invertColorHelmlab(color: string): string {
-  const cached = helmlabCache.get(color);
-  if (cached !== undefined) return cached;
-
-  let result = color;
-
-  // Try rgb() format
-  const rgbMatch = color.match(/rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/);
-  if (rgbMatch) {
-    const [, rs, gs, bs] = rgbMatch;
-    const [L, a, b] = hl.fromSrgb([+rs / 255, +gs / 255, +bs / 255]);
-    const [r2, g2, b2] = hl.toSrgb([1 - L, a, b]);
-    result = `rgb(${clamp255(r2 * 255 * BRIGHTNESS_BOOST)}, ${clamp255(g2 * 255 * BRIGHTNESS_BOOST)}, ${clamp255(b2 * 255 * BRIGHTNESS_BOOST)})`;
-    helmlabCache.set(color, result);
-    return result;
-  }
-  // Try #rrggbb or #rgb hex format
-  const hexMatch = color.match(/^#([0-9a-fA-F]{3,8})$/);
-  if (hexMatch) {
-    let hex = hexMatch[1];
-    if (hex.length === 3) {
-      hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
-    }
-    if (hex.length >= 6) {
-      const r = parseInt(hex.slice(0, 2), 16) / 255;
-      const g = parseInt(hex.slice(2, 4), 16) / 255;
-      const bv = parseInt(hex.slice(4, 6), 16) / 255;
-      const [L, a, b] = hl.fromSrgb([r, g, bv]);
-      const [r2, g2, b2] = hl.toSrgb([1 - L, a, b]);
-      result = `rgb(${clamp255(r2 * 255 * BRIGHTNESS_BOOST)}, ${clamp255(g2 * 255 * BRIGHTNESS_BOOST)}, ${clamp255(b2 * 255 * BRIGHTNESS_BOOST)})`;
-    }
-  }
-
-  helmlabCache.set(color, result);
-  return result;
-}
+import { invertColorHelmlab, invertSvgColors } from "@modelscript/core";
+export { invertColorHelmlab, invertSvgColors };
 
 /** Regex that matches rgb() or hex color values. */
 const COLOR_VALUE_RE = /rgb\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*\)|#[0-9a-fA-F]{3,8}\b/g;
-
-/** Invert all color values (rgb() and hex) in a string using Helmlab. */
-export function invertSvgColors(str: string, isDark: boolean): string {
-  if (!isDark) return str;
-  return str.replace(COLOR_VALUE_RE, (match) => invertColorHelmlab(match));
-}
 
 function invertAllColors(str: string): string {
   return str.replace(COLOR_VALUE_RE, (match) => invertColorHelmlab(match));
@@ -496,11 +433,7 @@ export function renderTextX6(
   };
 }
 
-export function applyCoordinateSystemX6(
-  markup: X6Markup,
-  coordinateSystem?: ICoordinateSystem,
-  isRoot: boolean = true,
-): void {
+export function applyCoordinateSystemX6(markup: X6Markup, coordinateSystem?: ICoordinateSystem, isRoot = true): void {
   const [x1, y1] = convertPoint(coordinateSystem?.extent?.[0], [-100, -100]);
   const [x2, y2] = convertPoint(coordinateSystem?.extent?.[1], [100, 100]);
   const x = Math.min(x1, x2);
@@ -567,7 +500,7 @@ export function applyFillX6(shape: X6Markup, filledShape: IFilledShape, defs: X6
   shape.attrs.style = (shape.attrs.style as string) + `; fill: ${fillValue} !important;`;
 }
 
-function getStableId(prefix: string, params: any): string {
+function getStableId(prefix: string, params: unknown): string {
   // A simple way to get a stable ID from params
   const str = JSON.stringify(params);
   let hash = 0;
@@ -735,54 +668,55 @@ export function applyLineArrowsX6(shape: X6Markup, graphicItem: ILine): void {
   if (!shape.attrs) shape.attrs = {};
   const arrowSize = graphicItem.arrowSize ?? 3;
   if (arrowSize <= 0) return;
-  const [startArrow, endArrow] = graphicItem.arrow ?? [Arrow.NONE, Arrow.NONE];
-  const marker = function (arrow: Arrow): (marker: Marker) => Marker {
-    switch (arrow) {
-      case Arrow.OPEN:
-        return (marker: Marker): Marker => {
-          marker
-            .path([
-              ["M", 0, 0],
-              ["L", 10, 5],
-              ["L", 0, 10],
-            ])
-            .fill("none")
-            .stroke({
-              color: convertColor(graphicItem.color, "rgb(0,0,0)"),
-              width: (graphicItem.thickness ?? 0.25) * 2,
-            })
-            .attr("vector-effect", "non-scaling-stroke");
-          applyMarkerAttributesX6(marker);
-          return marker;
-        };
-      case Arrow.HALF:
-        return (marker: Marker): Marker => {
-          marker
-            .path([
-              ["M", 0, 0],
-              ["L", 10, 5],
-            ])
-            .fill("none")
-            .stroke({
-              color: convertColor(graphicItem.color, "rgb(0,0,0)"),
-              width: (graphicItem.thickness ?? 0.25) * 2,
-            })
-            .attr("vector-effect", "non-scaling-stroke");
-          applyMarkerAttributesX6(marker);
-          return marker;
-        };
-      default:
-        return (marker: Marker): Marker => {
-          marker
-            .path([["M", 0, 0], ["L", 10, 5], ["L", 0, 10], ["z"]])
-            .fill(convertColor(graphicItem.color, "rgb(0,0,0)"));
-          applyMarkerAttributesX6(marker);
-          return marker;
-        };
-    }
-  };
-  //if (startArrow && startArrow !== Arrow.NONE) shape.marker("start", arrowSize, arrowSize, marker(startArrow));
-  //if (endArrow && endArrow !== Arrow.NONE) shape.marker("end", arrowSize, arrowSize, marker(endArrow));
+  // TODO: Re-enable arrow markers when X6 markup supports them.
+  // const [startArrow, endArrow] = graphicItem.arrow ?? [Arrow.NONE, Arrow.NONE];
+  // const marker = function (arrow: Arrow): (marker: Marker) => Marker {
+  //   switch (arrow) {
+  //     case Arrow.OPEN:
+  //       return (marker: Marker): Marker => {
+  //         marker
+  //           .path([
+  //             ["M", 0, 0],
+  //             ["L", 10, 5],
+  //             ["L", 0, 10],
+  //           ])
+  //           .fill("none")
+  //           .stroke({
+  //             color: convertColor(graphicItem.color, "rgb(0,0,0)"),
+  //             width: (graphicItem.thickness ?? 0.25) * 2,
+  //           })
+  //           .attr("vector-effect", "non-scaling-stroke");
+  //         applyMarkerAttributesX6(marker);
+  //         return marker;
+  //       };
+  //     case Arrow.HALF:
+  //       return (marker: Marker): Marker => {
+  //         marker
+  //           .path([
+  //             ["M", 0, 0],
+  //             ["L", 10, 5],
+  //           ])
+  //           .fill("none")
+  //           .stroke({
+  //             color: convertColor(graphicItem.color, "rgb(0,0,0)"),
+  //             width: (graphicItem.thickness ?? 0.25) * 2,
+  //           })
+  //           .attr("vector-effect", "non-scaling-stroke");
+  //         applyMarkerAttributesX6(marker);
+  //         return marker;
+  //       };
+  //     default:
+  //       return (marker: Marker): Marker => {
+  //         marker
+  //           .path([["M", 0, 0], ["L", 10, 5], ["L", 0, 10], ["z"]])
+  //           .fill(convertColor(graphicItem.color, "rgb(0,0,0)"));
+  //         applyMarkerAttributesX6(marker);
+  //         return marker;
+  //       };
+  //   }
+  // };
+  // if (startArrow && startArrow !== Arrow.NONE) shape.marker("start", arrowSize, arrowSize, marker(startArrow));
+  // if (endArrow && endArrow !== Arrow.NONE) shape.marker("end", arrowSize, arrowSize, marker(endArrow));
 }
 
 export function applyLineStyleX6(shape: X6Markup, graphicItem: IFilledShape | ILine): void {
