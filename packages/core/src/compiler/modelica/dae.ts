@@ -17,8 +17,6 @@ export class ModelicaDAE {
   equations: ModelicaEquation[] = [];
   algorithms: ModelicaStatement[][] = [];
   variables: ModelicaVariable[] = [];
-  /** Temporary flat collector used by the syntax flattener during algorithm processing. */
-  _stmtCollector: ModelicaStatement[] = [];
 
   constructor(name: string, description?: string | null) {
     this.name = name;
