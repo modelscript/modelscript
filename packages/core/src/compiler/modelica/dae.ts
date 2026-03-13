@@ -15,8 +15,10 @@ export class ModelicaDAE {
   name: string;
   description: string | null;
   equations: ModelicaEquation[] = [];
-  algorithms: ModelicaStatement[] = [];
+  algorithms: ModelicaStatement[][] = [];
   variables: ModelicaVariable[] = [];
+  /** Temporary flat collector used by the syntax flattener during algorithm processing. */
+  _stmtCollector: ModelicaStatement[] = [];
 
   constructor(name: string, description?: string | null) {
     this.name = name;
@@ -36,8 +38,8 @@ export class ModelicaDAE {
     for (const equation of this.equations) {
       hash.update(equation.hash);
     }
-    for (const stmt of this.algorithms) {
-      hash.update(stmt.hash);
+    for (const section of this.algorithms) {
+      for (const stmt of section) hash.update(stmt.hash);
     }
     return hash.digest("hex");
   }
@@ -49,7 +51,7 @@ export class ModelicaDAE {
       description: this.description,
       variables: this.variables.map((v) => v.toJSON),
       equations: this.equations.map((e) => e.toJSON),
-      algorithms: this.algorithms.map((s) => s.toJSON),
+      algorithms: this.algorithms.map((section) => section.map((s) => s.toJSON)),
     };
   }
 
@@ -1634,6 +1636,7 @@ export abstract class ModelicaVariable extends ModelicaPrimaryExpression {
   variability: ModelicaVariability | null;
   causality: string | null;
   isFinal: boolean;
+  isProtected: boolean;
 
   constructor(
     name: string,
@@ -1643,6 +1646,7 @@ export abstract class ModelicaVariable extends ModelicaPrimaryExpression {
     description?: string | null,
     causality?: string | null,
     isFinal?: boolean,
+    isProtected?: boolean,
   ) {
     super();
     this.name = name;
@@ -1652,6 +1656,7 @@ export abstract class ModelicaVariable extends ModelicaPrimaryExpression {
     this.description = description ?? null;
     this.causality = causality ?? null;
     this.isFinal = isFinal ?? false;
+    this.isProtected = isProtected ?? false;
   }
 
   override get hash(): string {
@@ -1860,8 +1865,9 @@ export class ModelicaEnumerationVariable extends ModelicaVariable {
     enumerationLiterals?: ModelicaEnumerationLiteral[] | null,
     causality?: string | null,
     isFinal?: boolean,
+    isProtected?: boolean,
   ) {
-    super(name, expression, attributes, variability, description, causality, isFinal);
+    super(name, expression, attributes, variability, description, causality, isFinal, isProtected);
     this.enumerationLiterals = enumerationLiterals ?? [];
   }
 
@@ -2230,10 +2236,15 @@ export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void,
 
 export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
   out: Writer;
+  #depth = 0;
 
   constructor(out: Writer) {
     super();
     this.out = out;
+  }
+
+  private indent(): string {
+    return "  ".repeat(this.#depth + 1);
   }
 
   visitArray(node: ModelicaArray): void {
@@ -2260,7 +2271,7 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
   }
 
   visitAssignmentStatement(node: ModelicaAssignmentStatement): void {
-    this.out.write("  ");
+    this.out.write(this.indent());
     node.target.accept(this);
     this.out.write(" := ");
     node.source.accept(this);
@@ -2269,11 +2280,11 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   visitBreakStatement(node: ModelicaBreakStatement): void {
-    this.out.write("  break;\n");
+    this.out.write(this.indent() + "break;\n");
   }
 
   visitComplexAssignmentStatement(node: ModelicaComplexAssignmentStatement): void {
-    this.out.write("  (");
+    this.out.write(this.indent() + "(");
     for (let i = 0; i < node.targets.length; i++) {
       if (i > 0) this.out.write(", ");
       const target = node.targets[i];
@@ -2285,91 +2296,96 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
   }
 
   visitForStatement(node: ModelicaForStatement): void {
-    this.out.write("  for " + node.indexName + " in ");
+    this.out.write(this.indent() + "for " + node.indexName + " in ");
     node.range.accept(this);
     this.out.write(" loop\n");
+    this.#depth++;
     for (const stmt of node.statements) {
-      this.out.write("  ");
       stmt.accept(this);
     }
-    this.out.write("  end for;\n");
+    this.#depth--;
+    this.out.write(this.indent() + "end for;\n");
   }
 
   visitWhileStatement(node: ModelicaWhileStatement): void {
-    this.out.write("  while ");
+    this.out.write(this.indent() + "while ");
     node.condition.accept(this);
     this.out.write(" loop\n");
+    this.#depth++;
     for (const stmt of node.statements) {
-      this.out.write("  ");
       stmt.accept(this);
     }
-    this.out.write("  end while;\n");
+    this.#depth--;
+    this.out.write(this.indent() + "end while;\n");
   }
 
   visitIfStatement(node: ModelicaIfStatement): void {
-    this.out.write("  if ");
+    this.out.write(this.indent() + "if ");
     node.condition.accept(this);
     this.out.write(" then\n");
+    this.#depth++;
     for (const stmt of node.statements) {
-      this.out.write("  ");
       stmt.accept(this);
     }
+    this.#depth--;
     for (const clause of node.elseIfClauses) {
-      this.out.write("  elseif ");
+      this.out.write(this.indent() + "elseif ");
       clause.condition.accept(this);
       this.out.write(" then\n");
+      this.#depth++;
       for (const stmt of clause.statements) {
-        this.out.write("  ");
         stmt.accept(this);
       }
+      this.#depth--;
     }
     if (node.elseStatements.length > 0) {
-      this.out.write("  else\n");
+      this.out.write(this.indent() + "else\n");
+      this.#depth++;
       for (const stmt of node.elseStatements) {
-        this.out.write("  ");
         stmt.accept(this);
       }
+      this.#depth--;
     }
-    this.out.write("  end if;\n");
+    this.out.write(this.indent() + "end if;\n");
   }
 
   visitProcedureCallStatement(node: ModelicaProcedureCallStatement): void {
-    this.out.write("  ");
+    this.out.write(this.indent());
     node.call.accept(this);
     this.out.write(";\n");
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   visitReturnStatement(node: ModelicaReturnStatement): void {
-    this.out.write("  return;\n");
+    this.out.write(this.indent() + "return;\n");
   }
 
   visitWhenStatement(node: ModelicaWhenStatement): void {
-    this.out.write("  when ");
+    this.out.write(this.indent() + "when ");
     node.condition.accept(this);
     this.out.write(" then\n");
+    this.#depth++;
     for (const stmt of node.statements) {
-      this.out.write("  ");
       stmt.accept(this);
     }
+    this.#depth--;
     for (const clause of node.elseWhenClauses) {
-      this.out.write("  elsewhen ");
+      this.out.write(this.indent() + "elsewhen ");
       clause.condition.accept(this);
       this.out.write(" then\n");
+      this.#depth++;
       for (const stmt of clause.statements) {
-        this.out.write("  ");
         stmt.accept(this);
       }
+      this.#depth--;
     }
-    this.out.write("  end when;\n");
+    this.out.write(this.indent() + "end when;\n");
   }
 
   visitBinaryExpression(node: ModelicaBinaryExpression): void {
-    this.out.write("(");
     node.operand1.accept(this);
     this.out.write(" " + node.operator + " ");
     node.operand2.accept(this);
-    this.out.write(")");
   }
 
   visitBooleanLiteral(node: ModelicaBooleanLiteral): void {
@@ -2386,6 +2402,7 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     this.out.write("\n");
     for (const variable of node.variables) {
       this.out.write("  ");
+      if (variable.isProtected) this.out.write("protected ");
       if (variable.isFinal) this.out.write("final ");
       if (variable.causality) this.out.write(variable.causality + " ");
       if (variable.variability) this.out.write(variable.variability + " ");
@@ -2424,9 +2441,9 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
       this.out.write("equation\n");
       for (const equation of node.equations) equation.accept(this);
     }
-    if (node.algorithms.length > 0) {
+    for (const section of node.algorithms) {
       this.out.write("algorithm\n");
-      for (const stmt of node.algorithms) stmt.accept(this);
+      for (const stmt of section) stmt.accept(this);
     }
     this.out.write("end " + node.name + ";");
   }
@@ -2583,9 +2600,8 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
 
   visitUnaryExpression(node: ModelicaUnaryExpression): void {
     const sep = /[a-z]/i.test(node.operator) ? " " : "";
-    this.out.write("(" + node.operator + sep);
+    this.out.write(node.operator + sep);
     node.operand.accept(this);
-    this.out.write(")");
   }
 
   visitWhenEquation(node: ModelicaWhenEquation): void {

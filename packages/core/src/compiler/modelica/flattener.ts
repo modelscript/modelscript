@@ -57,6 +57,7 @@ import {
   ModelicaArrayConcatenationSyntaxNode,
   ModelicaArrayConstructorSyntaxNode,
   ModelicaBinaryExpressionSyntaxNode,
+  ModelicaBinaryOperator,
   ModelicaBooleanLiteralSyntaxNode,
   ModelicaBreakStatementSyntaxNode,
   ModelicaComplexAssignmentStatementSyntaxNode,
@@ -78,6 +79,7 @@ import {
   ModelicaStringLiteralSyntaxNode,
   ModelicaSyntaxVisitor,
   ModelicaUnaryExpressionSyntaxNode,
+  ModelicaUnaryOperator,
   ModelicaUnsignedIntegerLiteralSyntaxNode,
   ModelicaUnsignedRealLiteralSyntaxNode,
   ModelicaVariability,
@@ -115,8 +117,15 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     for (const equationSyntaxNode of node.abstractSyntaxNode?.equations ?? []) {
       equationSyntaxNode.accept(new ModelicaSyntaxFlattener(), [args[0], node, args[1]]);
     }
-    for (const algorithm of node.algorithms) {
-      algorithm.accept(new ModelicaSyntaxFlattener(), [args[0], node, args[1]]);
+    for (const algorithmSection of node.algorithmSections) {
+      const collector: ModelicaStatement[] = [];
+      args[1]._stmtCollector = collector;
+      for (const statement of algorithmSection.statements) {
+        statement.accept(new ModelicaSyntaxFlattener(), [args[0], node, args[1]]);
+      }
+      if (collector.length > 0) {
+        args[1].algorithms.push(collector);
+      }
     }
   }
 
@@ -124,6 +133,8 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     const name = args[0] === "" ? (node.name ?? "?") : args[0] + "." + node.name;
     const causality = node.abstractSyntaxNode?.parent?.causality ?? null;
     const isFinal = (node.abstractSyntaxNode?.parent as { final?: boolean })?.final ?? false;
+    const isProtected =
+      (node.abstractSyntaxNode?.parent?.parent as { visibility?: string })?.visibility === "protected";
 
     if (node.classInstance instanceof ModelicaPredefinedClassInstance) {
       const attributes = new Map(
@@ -149,6 +160,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           node.modification?.description ?? node.description,
           causality,
           isFinal,
+          isProtected,
         );
       } else if (node.classInstance instanceof ModelicaIntegerClassInstance) {
         variable = new ModelicaIntegerVariable(
@@ -159,6 +171,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           node.modification?.description ?? node.description,
           causality,
           isFinal,
+          isProtected,
         );
       } else if (node.classInstance instanceof ModelicaRealClassInstance) {
         for (const key of ["start", "min", "max", "nominal"]) {
@@ -175,6 +188,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           node.modification?.description ?? node.description,
           causality,
           isFinal,
+          isProtected,
         );
       } else if (node.classInstance instanceof ModelicaStringClassInstance) {
         variable = new ModelicaStringVariable(
@@ -207,6 +221,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         node.classInstance.enumerationLiterals,
         causality,
         isFinal,
+        isProtected,
       );
       args[1].variables.push(variable);
     } else if (node.classInstance instanceof ModelicaArrayClassInstance) {
@@ -397,7 +412,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<
     const operand1 = node.operand1?.accept(this, args);
     const operand2 = node.operand2?.accept(this, args);
     const operator = node.operator;
-    if (operator && operand1 && operand2) return new ModelicaBinaryExpression(operator, operand1, operand2);
+    if (operator && operand1 && operand2) return canonicalizeBinaryExpression(operator, operand1, operand2, args[2]);
     return null;
   }
 
@@ -620,7 +635,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<
     const target = node.target?.accept(this, args);
     const source = node.source?.accept(this, args);
     if (target && source) {
-      args[2].algorithms.push(new ModelicaAssignmentStatement(target, source));
+      args[2]._stmtCollector.push(new ModelicaAssignmentStatement(target, source));
     }
     return null;
   }
@@ -636,7 +651,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<
       if (flatArg) flatArgs.push(flatArg);
     }
     const call = new ModelicaFunctionCallExpression(functionName, flatArgs);
-    args[2].algorithms.push(new ModelicaProcedureCallStatement(call));
+    args[2]._stmtCollector.push(new ModelicaProcedureCallStatement(call));
     return null;
   }
 
@@ -658,7 +673,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<
       if (flatArg) flatArgs.push(flatArg);
     }
     const source = new ModelicaFunctionCallExpression(functionName, flatArgs);
-    args[2].algorithms.push(new ModelicaComplexAssignmentStatement(targets, source));
+    args[2]._stmtCollector.push(new ModelicaComplexAssignmentStatement(targets, source));
     return null;
   }
 
@@ -666,7 +681,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<
     node: ModelicaBreakStatementSyntaxNode,
     args: [string, ModelicaClassInstance, ModelicaDAE],
   ): null {
-    args[2].algorithms.push(new ModelicaBreakStatement());
+    args[2]._stmtCollector.push(new ModelicaBreakStatement());
     return null;
   }
 
@@ -674,7 +689,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<
     node: ModelicaReturnStatementSyntaxNode,
     args: [string, ModelicaClassInstance, ModelicaDAE],
   ): null {
-    args[2].algorithms.push(new ModelicaReturnStatement());
+    args[2]._stmtCollector.push(new ModelicaReturnStatement());
     return null;
   }
 
@@ -684,9 +699,12 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<
     args: [string, ModelicaClassInstance, ModelicaDAE],
   ): ModelicaStatement[] {
     const collected: ModelicaStatement[] = [];
+    const prevCollector = args[2]._stmtCollector;
+    args[2]._stmtCollector = collected;
     for (const stmt of statements) {
-      stmt.accept(this, [args[0], args[1], { ...args[2], algorithms: collected } as ModelicaDAE]);
+      stmt.accept(this, args);
     }
+    args[2]._stmtCollector = prevCollector;
     return collected;
   }
 
@@ -702,7 +720,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<
       const forStmt = new ModelicaForStatement(indexName, range, statements);
       statements = [forStmt];
     }
-    for (const stmt of statements) args[2].algorithms.push(stmt);
+    for (const stmt of statements) args[2]._stmtCollector.push(stmt);
     return null;
   }
 
@@ -718,7 +736,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<
       elseIfClauses.push({ condition: clauseCondition, statements: clauseStatements });
     }
     const elseStatements = this.flattenStatements(node.elseStatements ?? [], args);
-    args[2].algorithms.push(new ModelicaIfStatement(condition, thenStatements, elseIfClauses, elseStatements));
+    args[2]._stmtCollector.push(new ModelicaIfStatement(condition, thenStatements, elseIfClauses, elseStatements));
     return null;
   }
 
@@ -733,7 +751,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<
       const clauseStatements = this.flattenStatements(clause.statements ?? [], args);
       elseWhenClauses.push({ condition: clauseCondition, statements: clauseStatements });
     }
-    args[2].algorithms.push(new ModelicaWhenStatement(condition, thenStatements, elseWhenClauses));
+    args[2]._stmtCollector.push(new ModelicaWhenStatement(condition, thenStatements, elseWhenClauses));
     return null;
   }
 
@@ -744,7 +762,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<
     const condition = node.condition?.accept(this, args);
     if (!condition) return null;
     const statements = this.flattenStatements(node.statements ?? [], args);
-    args[2].algorithms.push(new ModelicaWhileStatement(condition, statements));
+    args[2]._stmtCollector.push(new ModelicaWhileStatement(condition, statements));
     return null;
   }
 
@@ -828,4 +846,58 @@ function castToReal(expression: ModelicaExpression | null): ModelicaExpression |
     );
   }
   return expression;
+}
+
+function isLiteral(expr: ModelicaExpression): boolean {
+  return (
+    expr instanceof ModelicaIntegerLiteral ||
+    expr instanceof ModelicaRealLiteral ||
+    expr instanceof ModelicaBooleanLiteral ||
+    expr instanceof ModelicaStringLiteral
+  );
+}
+
+function canonicalizeBinaryExpression(
+  operator: ModelicaBinaryOperator,
+  operand1: ModelicaExpression,
+  operand2: ModelicaExpression,
+  dae?: ModelicaDAE,
+): ModelicaExpression {
+  if (operator === ModelicaBinaryOperator.DIVISION && operand2 instanceof ModelicaIntegerLiteral) {
+    const reciprocal = new ModelicaRealLiteral(1.0 / operand2.value);
+    const castOp1 = wrapIntegerAsReal(operand1, dae);
+    return new ModelicaBinaryExpression(ModelicaBinaryOperator.MULTIPLICATION, reciprocal, castOp1);
+  }
+  if (operator === ModelicaBinaryOperator.SUBTRACTION && isLiteral(operand2)) {
+    const negated = new ModelicaUnaryExpression(ModelicaUnaryOperator.UNARY_MINUS, operand2);
+    return new ModelicaBinaryExpression(ModelicaBinaryOperator.ADDITION, negated, operand1);
+  }
+  if (operator === ModelicaBinaryOperator.SUBTRACTION && dae) {
+    const op2 = wrapIntegerAsReal(operand2, dae);
+    if (op2 !== operand2) {
+      return new ModelicaBinaryExpression(operator, operand1, op2);
+    }
+  }
+  if (
+    (operator === ModelicaBinaryOperator.ADDITION || operator === ModelicaBinaryOperator.MULTIPLICATION) &&
+    !isLiteral(operand1) &&
+    isLiteral(operand2)
+  ) {
+    return new ModelicaBinaryExpression(operator, operand2, operand1);
+  }
+
+  return new ModelicaBinaryExpression(operator, operand1, operand2);
+}
+
+function wrapIntegerAsReal(expr: ModelicaExpression, dae?: ModelicaDAE): ModelicaExpression {
+  if (expr instanceof ModelicaIntegerVariable) {
+    return new ModelicaFunctionCallExpression("/*Real*/", [expr]);
+  }
+  if (dae && expr instanceof ModelicaNameExpression) {
+    const variable = dae.variables.find((v) => v.name === expr.name);
+    if (variable instanceof ModelicaIntegerVariable) {
+      return new ModelicaFunctionCallExpression("/*Real*/", [expr]);
+    }
+  }
+  return expr;
 }
