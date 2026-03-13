@@ -3794,7 +3794,7 @@ export class ModelicaWhenStatementSyntaxNode
       concreteSyntaxNode?.childForFieldName("condition"),
       abstractSyntaxNode?.condition,
     );
-    this.statements = ModelicaComponentReferenceSyntaxNode.newArray(
+    this.statements = ModelicaStatementSyntaxNode.newArray(
       this,
       concreteSyntaxNode?.childrenForFieldName("statement"),
       abstractSyntaxNode?.statements,
@@ -3847,7 +3847,7 @@ export class ModelicaElseWhenStatementClauseSyntaxNode
       concreteSyntaxNode?.childForFieldName("condition"),
       abstractSyntaxNode?.condition,
     );
-    this.statements = ModelicaComponentReferenceSyntaxNode.newArray(
+    this.statements = ModelicaStatementSyntaxNode.newArray(
       this,
       concreteSyntaxNode?.childrenForFieldName("statement"),
       abstractSyntaxNode?.statements,

@@ -7,27 +7,36 @@ import {
   ModelicaBinaryExpression,
   ModelicaBooleanLiteral,
   ModelicaBooleanVariable,
+  ModelicaBreakStatement,
   ModelicaColonExpression,
+  ModelicaComplexAssignmentStatement,
   ModelicaDAE,
   ModelicaEnumerationVariable,
   ModelicaEquation,
   ModelicaExpression,
   ModelicaForEquation,
+  ModelicaForStatement,
   ModelicaFunctionCallExpression,
   ModelicaIfElseExpression,
   ModelicaIfEquation,
+  ModelicaIfStatement,
   ModelicaIntegerLiteral,
   ModelicaIntegerVariable,
   ModelicaNameExpression,
+  ModelicaProcedureCallStatement,
   ModelicaRangeExpression,
   ModelicaRealLiteral,
   ModelicaRealVariable,
+  ModelicaReturnStatement,
   ModelicaSimpleEquation,
+  ModelicaStatement,
   ModelicaStringLiteral,
   ModelicaStringVariable,
   ModelicaSubscriptedExpression,
   ModelicaUnaryExpression,
   ModelicaWhenEquation,
+  ModelicaWhenStatement,
+  ModelicaWhileStatement,
 } from "./dae.js";
 import { buildFilledArray, ModelicaInterpreter } from "./interpreter.js";
 import {
@@ -49,15 +58,21 @@ import {
   ModelicaArrayConstructorSyntaxNode,
   ModelicaBinaryExpressionSyntaxNode,
   ModelicaBooleanLiteralSyntaxNode,
+  ModelicaBreakStatementSyntaxNode,
+  ModelicaComplexAssignmentStatementSyntaxNode,
   ModelicaComponentReferenceSyntaxNode,
   ModelicaExpressionSyntaxNode,
   ModelicaForEquationSyntaxNode,
+  ModelicaForStatementSyntaxNode,
   ModelicaFunctionArgumentSyntaxNode,
   ModelicaFunctionCallSyntaxNode,
   ModelicaIfElseExpressionSyntaxNode,
   ModelicaIfEquationSyntaxNode,
+  ModelicaIfStatementSyntaxNode,
   ModelicaOutputExpressionListSyntaxNode,
+  ModelicaProcedureCallStatementSyntaxNode,
   ModelicaRangeExpressionSyntaxNode,
+  ModelicaReturnStatementSyntaxNode,
   ModelicaSimpleAssignmentStatementSyntaxNode,
   ModelicaSimpleEquationSyntaxNode,
   ModelicaStringLiteralSyntaxNode,
@@ -67,6 +82,8 @@ import {
   ModelicaUnsignedRealLiteralSyntaxNode,
   ModelicaVariability,
   ModelicaWhenEquationSyntaxNode,
+  ModelicaWhenStatementSyntaxNode,
+  ModelicaWhileStatementSyntaxNode,
 } from "./syntax.js";
 
 /** Extract an integer shape array from a list of expressions (all must be ModelicaIntegerLiteral). */
@@ -605,6 +622,129 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<
     if (target && source) {
       args[2].algorithms.push(new ModelicaAssignmentStatement(target, source));
     }
+    return null;
+  }
+
+  visitProcedureCallStatement(
+    node: ModelicaProcedureCallStatementSyntaxNode,
+    args: [string, ModelicaClassInstance, ModelicaDAE],
+  ): null {
+    const functionName = node.functionReference?.parts?.map((p) => p.identifier?.text ?? "").join(".") ?? "";
+    const flatArgs: ModelicaExpression[] = [];
+    for (const arg of node.functionCallArguments?.arguments ?? []) {
+      const flatArg = arg.expression?.accept(this, args);
+      if (flatArg) flatArgs.push(flatArg);
+    }
+    const call = new ModelicaFunctionCallExpression(functionName, flatArgs);
+    args[2].algorithms.push(new ModelicaProcedureCallStatement(call));
+    return null;
+  }
+
+  visitComplexAssignmentStatement(
+    node: ModelicaComplexAssignmentStatementSyntaxNode,
+    args: [string, ModelicaClassInstance, ModelicaDAE],
+  ): null {
+    const targets: (ModelicaExpression | null)[] = [];
+    if (node.outputExpressionList) {
+      for (const expr of node.outputExpressionList.outputs) {
+        if (expr) targets.push(expr.accept(this, args) ?? null);
+        else targets.push(null);
+      }
+    }
+    const functionName = node.functionReference?.parts?.map((p) => p.identifier?.text ?? "").join(".") ?? "";
+    const flatArgs: ModelicaExpression[] = [];
+    for (const arg of node.functionCallArguments?.arguments ?? []) {
+      const flatArg = arg.expression?.accept(this, args);
+      if (flatArg) flatArgs.push(flatArg);
+    }
+    const source = new ModelicaFunctionCallExpression(functionName, flatArgs);
+    args[2].algorithms.push(new ModelicaComplexAssignmentStatement(targets, source));
+    return null;
+  }
+
+  visitBreakStatement(
+    node: ModelicaBreakStatementSyntaxNode,
+    args: [string, ModelicaClassInstance, ModelicaDAE],
+  ): null {
+    args[2].algorithms.push(new ModelicaBreakStatement());
+    return null;
+  }
+
+  visitReturnStatement(
+    node: ModelicaReturnStatementSyntaxNode,
+    args: [string, ModelicaClassInstance, ModelicaDAE],
+  ): null {
+    args[2].algorithms.push(new ModelicaReturnStatement());
+    return null;
+  }
+
+  // Collects statements into a temporary DAE and returns them
+  private flattenStatements(
+    statements: { accept: (v: ModelicaSyntaxFlattener, a: [string, ModelicaClassInstance, ModelicaDAE]) => unknown }[],
+    args: [string, ModelicaClassInstance, ModelicaDAE],
+  ): ModelicaStatement[] {
+    const collected: ModelicaStatement[] = [];
+    for (const stmt of statements) {
+      stmt.accept(this, [args[0], args[1], { ...args[2], algorithms: collected } as ModelicaDAE]);
+    }
+    return collected;
+  }
+
+  visitForStatement(node: ModelicaForStatementSyntaxNode, args: [string, ModelicaClassInstance, ModelicaDAE]): null {
+    const innerStatements = this.flattenStatements(node.statements ?? [], args);
+    let statements = innerStatements;
+    for (let i = node.forIndexes.length - 1; i >= 0; i--) {
+      const forIndex = node.forIndexes[i];
+      if (!forIndex) continue;
+      const indexName = forIndex.identifier?.text ?? "?";
+      const range = forIndex.expression?.accept(this, args);
+      if (!range) continue;
+      const forStmt = new ModelicaForStatement(indexName, range, statements);
+      statements = [forStmt];
+    }
+    for (const stmt of statements) args[2].algorithms.push(stmt);
+    return null;
+  }
+
+  visitIfStatement(node: ModelicaIfStatementSyntaxNode, args: [string, ModelicaClassInstance, ModelicaDAE]): null {
+    const condition = node.condition?.accept(this, args);
+    if (!condition) return null;
+    const thenStatements = this.flattenStatements(node.statements ?? [], args);
+    const elseIfClauses: { condition: ModelicaExpression; statements: ModelicaStatement[] }[] = [];
+    for (const clause of node.elseIfStatementClauses ?? []) {
+      const clauseCondition = clause.condition?.accept(this, args);
+      if (!clauseCondition) continue;
+      const clauseStatements = this.flattenStatements(clause.statements ?? [], args);
+      elseIfClauses.push({ condition: clauseCondition, statements: clauseStatements });
+    }
+    const elseStatements = this.flattenStatements(node.elseStatements ?? [], args);
+    args[2].algorithms.push(new ModelicaIfStatement(condition, thenStatements, elseIfClauses, elseStatements));
+    return null;
+  }
+
+  visitWhenStatement(node: ModelicaWhenStatementSyntaxNode, args: [string, ModelicaClassInstance, ModelicaDAE]): null {
+    const condition = node.condition?.accept(this, args);
+    if (!condition) return null;
+    const thenStatements = this.flattenStatements(node.statements ?? [], args);
+    const elseWhenClauses: { condition: ModelicaExpression; statements: ModelicaStatement[] }[] = [];
+    for (const clause of node.elseWhenStatementClauses ?? []) {
+      const clauseCondition = clause.condition?.accept(this, args);
+      if (!clauseCondition) continue;
+      const clauseStatements = this.flattenStatements(clause.statements ?? [], args);
+      elseWhenClauses.push({ condition: clauseCondition, statements: clauseStatements });
+    }
+    args[2].algorithms.push(new ModelicaWhenStatement(condition, thenStatements, elseWhenClauses));
+    return null;
+  }
+
+  visitWhileStatement(
+    node: ModelicaWhileStatementSyntaxNode,
+    args: [string, ModelicaClassInstance, ModelicaDAE],
+  ): null {
+    const condition = node.condition?.accept(this, args);
+    if (!condition) return null;
+    const statements = this.flattenStatements(node.statements ?? [], args);
+    args[2].algorithms.push(new ModelicaWhileStatement(condition, statements));
     return null;
   }
 

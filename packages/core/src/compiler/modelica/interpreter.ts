@@ -40,6 +40,7 @@ import {
   ModelicaUnaryExpressionSyntaxNode,
   ModelicaUnsignedIntegerLiteralSyntaxNode,
   ModelicaUnsignedRealLiteralSyntaxNode,
+  ModelicaWhenStatementSyntaxNode,
   ModelicaWhileStatementSyntaxNode,
 } from "./syntax.js";
 
@@ -1049,6 +1050,26 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     // Execute else branch
     for (const statement of node.elseStatements) {
       statement.accept(this, scope);
+    }
+    return null;
+  }
+
+  visitWhenStatement(node: ModelicaWhenStatementSyntaxNode, scope: Scope): null {
+    const condition = node.condition?.accept(this, scope);
+    if (condition instanceof ModelicaBooleanLiteral && condition.value) {
+      for (const statement of node.statements) {
+        statement.accept(this, scope);
+      }
+      return null;
+    }
+    for (const elseWhenClause of node.elseWhenStatementClauses) {
+      const elseWhenCondition = elseWhenClause.condition?.accept(this, scope);
+      if (elseWhenCondition instanceof ModelicaBooleanLiteral && elseWhenCondition.value) {
+        for (const statement of elseWhenClause.statements) {
+          statement.accept(this, scope);
+        }
+        return null;
+      }
     }
     return null;
   }

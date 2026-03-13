@@ -15,7 +15,7 @@ export class ModelicaDAE {
   name: string;
   description: string | null;
   equations: ModelicaEquation[] = [];
-  algorithms: ModelicaAssignmentStatement[] = [];
+  algorithms: ModelicaStatement[] = [];
   variables: ModelicaVariable[] = [];
 
   constructor(name: string, description?: string | null) {
@@ -366,11 +366,19 @@ export class ModelicaWhenEquation extends ModelicaEquation {
   }
 }
 
-export class ModelicaAssignmentStatement {
+export abstract class ModelicaStatement {
+  abstract accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R;
+  abstract get hash(): string;
+  abstract get toJSON(): JSONValue;
+  abstract get toRDF(): Triple[];
+}
+
+export class ModelicaAssignmentStatement extends ModelicaStatement {
   target: ModelicaExpression;
   source: ModelicaExpression;
 
   constructor(target: ModelicaExpression, source: ModelicaExpression) {
+    super();
     this.target = target;
     this.source = source;
   }
@@ -396,6 +404,301 @@ export class ModelicaAssignmentStatement {
   }
 
   get toRDF(): Triple[] {
+    return [];
+  }
+}
+
+export class ModelicaForStatement extends ModelicaStatement {
+  indexName: string;
+  range: ModelicaExpression;
+  statements: ModelicaStatement[];
+
+  constructor(indexName: string, range: ModelicaExpression, statements: ModelicaStatement[]) {
+    super();
+    this.indexName = indexName;
+    this.range = range;
+    this.statements = statements;
+  }
+
+  override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
+    return visitor.visitForStatement(this, argument);
+  }
+
+  override get hash(): string {
+    const hash = createHash("sha256");
+    hash.update("for_stmt");
+    hash.update(this.indexName);
+    hash.update(this.range.hash);
+    for (const s of this.statements) hash.update(s.hash);
+    return hash.digest("hex");
+  }
+
+  override get toJSON(): JSONValue {
+    return {
+      "@type": "ForStatement",
+      indexName: this.indexName,
+      range: this.range.toJSON,
+      statements: this.statements.map((s) => s.toJSON),
+    };
+  }
+
+  override get toRDF(): Triple[] {
+    return [];
+  }
+}
+
+export class ModelicaWhileStatement extends ModelicaStatement {
+  condition: ModelicaExpression;
+  statements: ModelicaStatement[];
+
+  constructor(condition: ModelicaExpression, statements: ModelicaStatement[]) {
+    super();
+    this.condition = condition;
+    this.statements = statements;
+  }
+
+  override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
+    return visitor.visitWhileStatement(this, argument);
+  }
+
+  override get hash(): string {
+    const hash = createHash("sha256");
+    hash.update("while_stmt");
+    hash.update(this.condition.hash);
+    for (const s of this.statements) hash.update(s.hash);
+    return hash.digest("hex");
+  }
+
+  override get toJSON(): JSONValue {
+    return {
+      "@type": "WhileStatement",
+      condition: this.condition.toJSON,
+      statements: this.statements.map((s) => s.toJSON),
+    };
+  }
+
+  override get toRDF(): Triple[] {
+    return [];
+  }
+}
+
+export class ModelicaReturnStatement extends ModelicaStatement {
+  override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
+    return visitor.visitReturnStatement(this, argument);
+  }
+
+  override get hash(): string {
+    const hash = createHash("sha256");
+    hash.update("return_stmt");
+    return hash.digest("hex");
+  }
+
+  override get toJSON(): JSONValue {
+    return {
+      "@type": "ReturnStatement",
+    };
+  }
+
+  override get toRDF(): Triple[] {
+    return [];
+  }
+}
+
+export class ModelicaBreakStatement extends ModelicaStatement {
+  override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
+    return visitor.visitBreakStatement(this, argument);
+  }
+
+  override get hash(): string {
+    const hash = createHash("sha256");
+    hash.update("break_stmt");
+    return hash.digest("hex");
+  }
+
+  override get toJSON(): JSONValue {
+    return {
+      "@type": "BreakStatement",
+    };
+  }
+
+  override get toRDF(): Triple[] {
+    return [];
+  }
+}
+
+export class ModelicaProcedureCallStatement extends ModelicaStatement {
+  constructor(public call: ModelicaFunctionCallExpression) {
+    super();
+  }
+
+  override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
+    return visitor.visitProcedureCallStatement(this, argument);
+  }
+
+  override get hash(): string {
+    const hash = createHash("sha256");
+    hash.update("procedure_call");
+    hash.update(this.call.hash);
+    return hash.digest("hex");
+  }
+
+  override get toJSON(): JSONValue {
+    return {
+      "@type": "ProcedureCallStatement",
+      call: this.call.toJSON,
+    };
+  }
+
+  override get toRDF(): Triple[] {
+    return [];
+  }
+}
+
+export class ModelicaComplexAssignmentStatement extends ModelicaStatement {
+  constructor(
+    public targets: (ModelicaExpression | null)[],
+    public source: ModelicaExpression,
+  ) {
+    super();
+  }
+
+  override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
+    return visitor.visitComplexAssignmentStatement(this, argument);
+  }
+
+  override get hash(): string {
+    const hash = createHash("sha256");
+    hash.update("complex_assign");
+    for (const target of this.targets) {
+      if (target) hash.update(target.hash);
+      else hash.update("null");
+    }
+    hash.update(this.source.hash);
+    return hash.digest("hex");
+  }
+
+  override get toJSON(): JSONValue {
+    return {
+      "@type": "ComplexAssignmentStatement",
+      targets: this.targets.map((t) => t?.toJSON ?? null),
+      source: this.source.toJSON,
+    };
+  }
+
+  override get toRDF(): Triple[] {
+    return [];
+  }
+}
+
+export interface ModelicaElseIfStatementClause {
+  condition: ModelicaExpression;
+  statements: ModelicaStatement[];
+}
+
+export class ModelicaIfStatement extends ModelicaStatement {
+  condition: ModelicaExpression;
+  statements: ModelicaStatement[];
+  elseIfClauses: ModelicaElseIfStatementClause[];
+  elseStatements: ModelicaStatement[];
+
+  constructor(
+    condition: ModelicaExpression,
+    statements: ModelicaStatement[],
+    elseIfClauses: ModelicaElseIfStatementClause[],
+    elseStatements: ModelicaStatement[],
+  ) {
+    super();
+    this.condition = condition;
+    this.statements = statements;
+    this.elseIfClauses = elseIfClauses;
+    this.elseStatements = elseStatements;
+  }
+
+  override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
+    return visitor.visitIfStatement(this, argument);
+  }
+
+  override get hash(): string {
+    const hash = createHash("sha256");
+    hash.update("if_stmt");
+    hash.update(this.condition.hash);
+    for (const s of this.statements) hash.update(s.hash);
+    for (const clause of this.elseIfClauses) {
+      hash.update(clause.condition.hash);
+      for (const s of clause.statements) hash.update(s.hash);
+    }
+    for (const s of this.elseStatements) hash.update(s.hash);
+    return hash.digest("hex");
+  }
+
+  override get toJSON(): JSONValue {
+    return {
+      "@type": "IfStatement",
+      condition: this.condition.toJSON,
+      statements: this.statements.map((s) => s.toJSON),
+      elseIfClauses: this.elseIfClauses.map((c) => ({
+        condition: c.condition.toJSON,
+        statements: c.statements.map((s) => s.toJSON),
+      })),
+      elseStatements: this.elseStatements.map((s) => s.toJSON),
+    };
+  }
+
+  override get toRDF(): Triple[] {
+    return [];
+  }
+}
+
+export interface ModelicaElseWhenStatementClause {
+  condition: ModelicaExpression;
+  statements: ModelicaStatement[];
+}
+
+export class ModelicaWhenStatement extends ModelicaStatement {
+  condition: ModelicaExpression;
+  statements: ModelicaStatement[];
+  elseWhenClauses: ModelicaElseWhenStatementClause[];
+
+  constructor(
+    condition: ModelicaExpression,
+    statements: ModelicaStatement[],
+    elseWhenClauses: ModelicaElseWhenStatementClause[],
+  ) {
+    super();
+    this.condition = condition;
+    this.statements = statements;
+    this.elseWhenClauses = elseWhenClauses;
+  }
+
+  override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
+    return visitor.visitWhenStatement(this, argument);
+  }
+
+  override get hash(): string {
+    const hash = createHash("sha256");
+    hash.update("when_stmt");
+    hash.update(this.condition.hash);
+    for (const s of this.statements) hash.update(s.hash);
+    for (const clause of this.elseWhenClauses) {
+      hash.update(clause.condition.hash);
+      for (const s of clause.statements) hash.update(s.hash);
+    }
+    return hash.digest("hex");
+  }
+
+  override get toJSON(): JSONValue {
+    return {
+      "@type": "WhenStatement",
+      condition: this.condition.toJSON,
+      statements: this.statements.map((s) => s.toJSON),
+      elseWhenClauses: this.elseWhenClauses.map((c) => ({
+        condition: c.condition.toJSON,
+        statements: c.statements.map((s) => s.toJSON),
+      })),
+    };
+  }
+
+  override get toRDF(): Triple[] {
     return [];
   }
 }
@@ -1697,6 +2000,22 @@ export interface IModelicaDAEVisitor<R, A> {
 
   visitAssignmentStatement(node: ModelicaAssignmentStatement, argument?: A): R;
 
+  visitBreakStatement(node: ModelicaBreakStatement, argument?: A): R;
+
+  visitComplexAssignmentStatement(node: ModelicaComplexAssignmentStatement, argument?: A): R;
+
+  visitForStatement(node: ModelicaForStatement, argument?: A): R;
+
+  visitIfStatement(node: ModelicaIfStatement, argument?: A): R;
+
+  visitProcedureCallStatement(node: ModelicaProcedureCallStatement, argument?: A): R;
+
+  visitReturnStatement(node: ModelicaReturnStatement, argument?: A): R;
+
+  visitWhenStatement(node: ModelicaWhenStatement, argument?: A): R;
+
+  visitWhileStatement(node: ModelicaWhileStatement, argument?: A): R;
+
   visitBooleanLiteral(node: ModelicaBooleanLiteral, argument?: A): R;
 
   visitBooleanVariable(node: ModelicaBooleanVariable, argument?: A): R;
@@ -1748,6 +2067,52 @@ export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void,
   visitAssignmentStatement(node: ModelicaAssignmentStatement, argument?: A): void {
     node.target.accept(this, argument);
     node.source.accept(this, argument);
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
+  visitBreakStatement(node: ModelicaBreakStatement, argument?: A): void {}
+
+  visitComplexAssignmentStatement(node: ModelicaComplexAssignmentStatement, argument?: A): void {
+    for (const target of node.targets) {
+      if (target) target.accept(this, argument);
+    }
+    node.source.accept(this, argument);
+  }
+
+  visitForStatement(node: ModelicaForStatement, argument?: A): void {
+    node.range.accept(this, argument);
+    for (const stmt of node.statements) stmt.accept(this, argument);
+  }
+
+  visitIfStatement(node: ModelicaIfStatement, argument?: A): void {
+    node.condition.accept(this, argument);
+    for (const stmt of node.statements) stmt.accept(this, argument);
+    for (const clause of node.elseIfClauses) {
+      clause.condition.accept(this, argument);
+      for (const stmt of clause.statements) stmt.accept(this, argument);
+    }
+    for (const stmt of node.elseStatements) stmt.accept(this, argument);
+  }
+
+  visitProcedureCallStatement(node: ModelicaProcedureCallStatement, argument?: A): void {
+    node.call.accept(this, argument);
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
+  visitReturnStatement(node: ModelicaReturnStatement, argument?: A): void {}
+
+  visitWhenStatement(node: ModelicaWhenStatement, argument?: A): void {
+    node.condition.accept(this, argument);
+    for (const stmt of node.statements) stmt.accept(this, argument);
+    for (const clause of node.elseWhenClauses) {
+      clause.condition.accept(this, argument);
+      for (const stmt of clause.statements) stmt.accept(this, argument);
+    }
+  }
+
+  visitWhileStatement(node: ModelicaWhileStatement, argument?: A): void {
+    node.condition.accept(this, argument);
+    for (const stmt of node.statements) stmt.accept(this, argument);
   }
 
   visitArray(node: ModelicaArray, argument?: A): void {
@@ -1900,6 +2265,103 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     this.out.write(" := ");
     node.source.accept(this);
     this.out.write(";\n");
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  visitBreakStatement(node: ModelicaBreakStatement): void {
+    this.out.write("  break;\n");
+  }
+
+  visitComplexAssignmentStatement(node: ModelicaComplexAssignmentStatement): void {
+    this.out.write("  (");
+    for (let i = 0; i < node.targets.length; i++) {
+      if (i > 0) this.out.write(", ");
+      const target = node.targets[i];
+      if (target) target.accept(this);
+    }
+    this.out.write(") := ");
+    node.source.accept(this);
+    this.out.write(";\n");
+  }
+
+  visitForStatement(node: ModelicaForStatement): void {
+    this.out.write("  for " + node.indexName + " in ");
+    node.range.accept(this);
+    this.out.write(" loop\n");
+    for (const stmt of node.statements) {
+      this.out.write("  ");
+      stmt.accept(this);
+    }
+    this.out.write("  end for;\n");
+  }
+
+  visitWhileStatement(node: ModelicaWhileStatement): void {
+    this.out.write("  while ");
+    node.condition.accept(this);
+    this.out.write(" loop\n");
+    for (const stmt of node.statements) {
+      this.out.write("  ");
+      stmt.accept(this);
+    }
+    this.out.write("  end while;\n");
+  }
+
+  visitIfStatement(node: ModelicaIfStatement): void {
+    this.out.write("  if ");
+    node.condition.accept(this);
+    this.out.write(" then\n");
+    for (const stmt of node.statements) {
+      this.out.write("  ");
+      stmt.accept(this);
+    }
+    for (const clause of node.elseIfClauses) {
+      this.out.write("  elseif ");
+      clause.condition.accept(this);
+      this.out.write(" then\n");
+      for (const stmt of clause.statements) {
+        this.out.write("  ");
+        stmt.accept(this);
+      }
+    }
+    if (node.elseStatements.length > 0) {
+      this.out.write("  else\n");
+      for (const stmt of node.elseStatements) {
+        this.out.write("  ");
+        stmt.accept(this);
+      }
+    }
+    this.out.write("  end if;\n");
+  }
+
+  visitProcedureCallStatement(node: ModelicaProcedureCallStatement): void {
+    this.out.write("  ");
+    node.call.accept(this);
+    this.out.write(";\n");
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  visitReturnStatement(node: ModelicaReturnStatement): void {
+    this.out.write("  return;\n");
+  }
+
+  visitWhenStatement(node: ModelicaWhenStatement): void {
+    this.out.write("  when ");
+    node.condition.accept(this);
+    this.out.write(" then\n");
+    for (const stmt of node.statements) {
+      this.out.write("  ");
+      stmt.accept(this);
+    }
+    for (const clause of node.elseWhenClauses) {
+      this.out.write("  elsewhen ");
+      clause.condition.accept(this);
+      this.out.write(" then\n");
+      for (const stmt of clause.statements) {
+        this.out.write("  ");
+        stmt.accept(this);
+      }
+    }
+    this.out.write("  end when;\n");
   }
 
   visitBinaryExpression(node: ModelicaBinaryExpression): void {
