@@ -632,8 +632,9 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
 
   visitSimpleAssignmentStatement(node: ModelicaSimpleAssignmentStatementSyntaxNode, ctx: FlattenerContext): null {
     const target = node.target?.accept(this, ctx);
-    const source = node.source?.accept(this, ctx);
+    let source = node.source?.accept(this, ctx);
     if (target && source) {
+      if (isRealTyped(target, ctx.dae)) source = castToReal(source) ?? source;
       ctx.stmtCollector.push(new ModelicaAssignmentStatement(target, source));
     }
     return null;
@@ -645,6 +646,19 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     for (const arg of node.functionCallArguments?.arguments ?? []) {
       const flatArg = arg.expression?.accept(this, ctx);
       if (flatArg) flatArgs.push(flatArg);
+    }
+    // Coerce integer arguments to Real for built-in functions that expect Real args
+    const realArgBuiltins = new Set(["reinit", "assert", "terminate"]);
+    if (realArgBuiltins.has(functionName)) {
+      for (let i = 0; i < flatArgs.length; i++) {
+        const coerced = castToReal(flatArgs[i] ?? null);
+        if (coerced) flatArgs[i] = coerced;
+      }
+    } else if (flatArgs.some((a) => isRealTyped(a, ctx.dae))) {
+      for (let i = 0; i < flatArgs.length; i++) {
+        const coerced = castToReal(flatArgs[i] ?? null);
+        if (coerced) flatArgs[i] = coerced;
+      }
     }
     const call = new ModelicaFunctionCallExpression(functionName, flatArgs);
     ctx.stmtCollector.push(new ModelicaProcedureCallStatement(call));
@@ -774,9 +788,9 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         }
         return null;
       }
-      // Widen integers to Real when the other side is a Real variable
-      if (expression1 instanceof ModelicaRealVariable) expression2 = castToReal(expression2) ?? expression2;
-      if (expression2 instanceof ModelicaRealVariable) expression1 = castToReal(expression1) ?? expression1;
+      // Widen integers to Real when the other side is Real-typed
+      if (isRealTyped(expression1, ctx.dae)) expression2 = castToReal(expression2) ?? expression2;
+      if (isRealTyped(expression2, ctx.dae)) expression1 = castToReal(expression1) ?? expression1;
       ctx.dae.equations.push(
         new ModelicaSimpleEquation(
           expression1,
@@ -817,7 +831,57 @@ function castToReal(expression: ModelicaExpression | null): ModelicaExpression |
       expression.elements.map((e) => castToReal(e) as ModelicaExpression),
     );
   }
+  if (expression instanceof ModelicaUnaryExpression) {
+    const operand = castToReal(expression.operand) ?? expression.operand;
+    if (operand !== expression.operand) return new ModelicaUnaryExpression(expression.operator, operand);
+  }
+  if (expression instanceof ModelicaBinaryExpression) {
+    const op1 = castToReal(expression.operand1) ?? expression.operand1;
+    const op2 = castToReal(expression.operand2) ?? expression.operand2;
+    if (op1 !== expression.operand1 || op2 !== expression.operand2)
+      return new ModelicaBinaryExpression(expression.operator, op1, op2);
+  }
+  if (expression instanceof ModelicaFunctionCallExpression) {
+    const args = expression.args.map((a) => castToReal(a) ?? a);
+    if (args.some((a, i) => a !== expression.args[i]))
+      return new ModelicaFunctionCallExpression(expression.functionName, args);
+  }
+  if (expression instanceof ModelicaRangeExpression) {
+    const start = castToReal(expression.start) ?? expression.start;
+    const end = castToReal(expression.end) ?? expression.end;
+    const step = expression.step ? castToReal(expression.step) : null;
+    if (start !== expression.start || end !== expression.end || step !== expression.step)
+      return new ModelicaRangeExpression(start, end, step);
+  }
+  if (expression instanceof ModelicaIfElseExpression) {
+    const thenExpr = castToReal(expression.thenExpression) ?? expression.thenExpression;
+    const elseExpr = castToReal(expression.elseExpression) ?? expression.elseExpression;
+    const elseIfClauses = expression.elseIfClauses.map((c) => ({
+      condition: c.condition,
+      expression: castToReal(c.expression) ?? c.expression,
+    }));
+    if (thenExpr !== expression.thenExpression || elseExpr !== expression.elseExpression)
+      return new ModelicaIfElseExpression(expression.condition, thenExpr, elseIfClauses, elseExpr);
+  }
   return expression;
+}
+
+function isRealTyped(expr: ModelicaExpression, dae?: ModelicaDAE): boolean {
+  if (expr instanceof ModelicaRealVariable) return true;
+  if (expr instanceof ModelicaRealLiteral) return true;
+  if (expr instanceof ModelicaBinaryExpression)
+    return isRealTyped(expr.operand1, dae) || isRealTyped(expr.operand2, dae);
+  if (expr instanceof ModelicaUnaryExpression) return isRealTyped(expr.operand, dae);
+  if (expr instanceof ModelicaNameExpression && dae) {
+    const v = dae.variables.find((variable) => variable.name === expr.name);
+    if (v instanceof ModelicaRealVariable) return true;
+  }
+  if (expr instanceof ModelicaNameExpression && expr.name === "time") return true;
+  if (expr instanceof ModelicaSubscriptedExpression) return isRealTyped(expr.base, dae);
+  if (expr instanceof ModelicaFunctionCallExpression) {
+    return expr.args.some((a) => isRealTyped(a, dae));
+  }
+  return false;
 }
 
 function isLiteral(expr: ModelicaExpression): boolean {
@@ -840,6 +904,9 @@ function canonicalizeBinaryExpression(
     const castOp1 = wrapIntegerAsReal(operand1, dae);
     return new ModelicaBinaryExpression(ModelicaBinaryOperator.MULTIPLICATION, reciprocal, castOp1);
   }
+  // Promote integer operands to Real when the other operand is Real-typed
+  if (isRealTyped(operand1, dae)) operand2 = castToReal(operand2) ?? operand2;
+  if (isRealTyped(operand2, dae)) operand1 = castToReal(operand1) ?? operand1;
   if (operator === ModelicaBinaryOperator.SUBTRACTION && isLiteral(operand2)) {
     const negated = new ModelicaUnaryExpression(ModelicaUnaryOperator.UNARY_MINUS, operand2);
     return new ModelicaBinaryExpression(ModelicaBinaryOperator.ADDITION, negated, operand1);
