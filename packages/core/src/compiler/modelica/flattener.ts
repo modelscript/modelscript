@@ -42,6 +42,7 @@ import { buildFilledArray, ModelicaInterpreter } from "./interpreter.js";
 import {
   ModelicaArrayClassInstance,
   ModelicaBooleanClassInstance,
+  ModelicaClassInstance,
   ModelicaComponentInstance,
   ModelicaEntity,
   ModelicaEnumerationClassInstance,
@@ -51,7 +52,6 @@ import {
   ModelicaPredefinedClassInstance,
   ModelicaRealClassInstance,
   ModelicaStringClassInstance,
-  type ModelicaClassInstance,
 } from "./model.js";
 import {
   ModelicaArrayConcatenationSyntaxNode,
@@ -60,6 +60,7 @@ import {
   ModelicaBinaryOperator,
   ModelicaBooleanLiteralSyntaxNode,
   ModelicaBreakStatementSyntaxNode,
+  ModelicaClassKind,
   ModelicaComplexAssignmentStatementSyntaxNode,
   ModelicaComponentReferenceSyntaxNode,
   ModelicaExpressionSyntaxNode,
@@ -70,6 +71,7 @@ import {
   ModelicaIfElseExpressionSyntaxNode,
   ModelicaIfEquationSyntaxNode,
   ModelicaIfStatementSyntaxNode,
+  ModelicaLongClassSpecifierSyntaxNode,
   ModelicaOutputExpressionListSyntaxNode,
   ModelicaProcedureCallStatementSyntaxNode,
   ModelicaRangeExpressionSyntaxNode,
@@ -460,7 +462,152 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       const shape = extractShape(flatArgs);
       if (shape) return buildFilledArray(shape, new ModelicaIntegerLiteral(1));
     }
-    return new ModelicaFunctionCallExpression(functionName, flatArgs);
+    const result = new ModelicaFunctionCallExpression(functionName, flatArgs);
+    // Collect function definition if it's a user-defined function
+    this.#collectFunctionDefinition(functionName, ctx);
+    return result;
+  }
+
+  /** Built-in function names that should not be looked up as user-defined functions. */
+  static readonly #builtinFunctions = new Set([
+    "abs",
+    "acos",
+    "actualStream",
+    "asin",
+    "assert",
+    "atan",
+    "atan2",
+    "backSample",
+    "cardinality",
+    "cat",
+    "ceil",
+    "change",
+    "Clock",
+    "cos",
+    "cosh",
+    "cross",
+    "delay",
+    "der",
+    "diagonal",
+    "div",
+    "edge",
+    "end",
+    "exp",
+    "fill",
+    "floor",
+    "hold",
+    "homotopy",
+    "identity",
+    "initial",
+    "initialState",
+    "inStream",
+    "integer",
+    "interval",
+    "linspace",
+    "log",
+    "log10",
+    "matrix",
+    "max",
+    "min",
+    "mod",
+    "noClock",
+    "noEvent",
+    "ones",
+    "pre",
+    "previous",
+    "print",
+    "product",
+    "promote",
+    "reinit",
+    "rem",
+    "rooted",
+    "sample",
+    "scalar",
+    "semiLinear",
+    "shiftSample",
+    "sign",
+    "sin",
+    "sinh",
+    "size",
+    "skew",
+    "smooth",
+    "spatialDistribution",
+    "sqrt",
+    "subSample",
+    "sum",
+    "superSample",
+    "symmetric",
+    "tan",
+    "tanh",
+    "terminal",
+    "terminate",
+    "transpose",
+    "vector",
+    "zeros",
+    "String",
+    "Integer",
+    "Real",
+    "Boolean",
+  ]);
+
+  /** Resolve a function name and flatten its definition into ctx.dae.functions. */
+  #collectFunctionDefinition(functionName: string, ctx: FlattenerContext): void {
+    // Skip built-in functions
+    const simpleName = functionName.includes(".") ? (functionName.split(".").pop() ?? functionName) : functionName;
+    if (ModelicaSyntaxFlattener.#builtinFunctions.has(simpleName)) return;
+    if (ModelicaSyntaxFlattener.#builtinFunctions.has(functionName)) return;
+    // Skip if already collected
+    if (ctx.dae.functions.some((f) => f.name === functionName)) return;
+
+    // Resolve the function name via the class instance scope
+    const parts = functionName.split(".");
+    const resolved = ctx.classInstance.resolveName(parts);
+    if (!(resolved instanceof ModelicaClassInstance)) return;
+    if (resolved.classKind !== ModelicaClassKind.FUNCTION && resolved.classKind !== ModelicaClassKind.OPERATOR_FUNCTION)
+      return;
+
+    // Flatten the function into a sub-DAE
+    const fnDae = new ModelicaDAE(functionName);
+    fnDae.classKind = "function";
+    resolved.instantiate();
+
+    // Get function description
+    fnDae.description =
+      resolved.abstractSyntaxNode?.classSpecifier?.description?.strings?.map((d) => d.text ?? "")?.join(" ") ?? null;
+
+    // Flatten the function's elements, equations, and algorithm sections
+    const flattener = new ModelicaFlattener();
+    flattener.visitClassInstance(resolved, ["", fnDae]);
+
+    // Check for external function clause
+    const classSpecifier = resolved.abstractSyntaxNode?.classSpecifier;
+    if (classSpecifier instanceof ModelicaLongClassSpecifierSyntaxNode) {
+      const ext = classSpecifier.externalFunctionClause;
+      if (ext) {
+        const lang = ext.languageSpecification?.language?.text ?? "";
+        const call = ext.externalFunctionCall;
+        let declText = "external";
+        if (lang) declText += ` "${lang}"`;
+        if (call) {
+          const callName = call.functionName?.text ?? "";
+          const argNames: string[] = [];
+          for (const expr of call.arguments?.expressions ?? []) {
+            // External function arguments are typically simple identifiers
+            argNames.push(String(expr));
+          }
+          const returnVar = call.output?.parts?.map((p) => p.identifier?.text ?? "").join(".") ?? "";
+          if (returnVar) {
+            declText += ` ${returnVar} = ${callName}(${argNames.join(", ")})`;
+          } else if (callName) {
+            declText += ` ${callName}(${argNames.join(", ")})`;
+          }
+        }
+        declText += ";";
+        fnDae.externalDecl = declText;
+      }
+    }
+
+    ctx.dae.functions.push(fnDae);
   }
 
   visitOutputExpressionList(

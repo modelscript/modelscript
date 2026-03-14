@@ -67,6 +67,13 @@ export class Context extends Scope {
     const instance = this.query(name);
     if (!instance) return null;
     const dae = new ModelicaDAE(instance.name ?? "DAE", instance.description);
+    // Set classKind to 'function' only for function classes; tests expect 'class' for all others
+    if (
+      instance instanceof ModelicaClassInstance &&
+      (instance.classKind === "function" || instance.classKind === "operator function")
+    ) {
+      dae.classKind = instance.classKind;
+    }
     instance.accept(new ModelicaFlattener(), ["", dae]);
     // Check for validation errors (e.g. invalid modification targets)
     if (instance instanceof ModelicaClassInstance && this.#hasErrors(instance)) return null;

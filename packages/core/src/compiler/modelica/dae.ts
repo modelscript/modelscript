@@ -14,9 +14,14 @@ import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } fr
 export class ModelicaDAE {
   name: string;
   description: string | null;
+  classKind = "class";
   equations: ModelicaEquation[] = [];
   algorithms: ModelicaStatement[][] = [];
   variables: ModelicaVariable[] = [];
+  /** Flattened function definitions referenced by equations/algorithms. */
+  functions: ModelicaDAE[] = [];
+  /** External function declaration text (e.g. `external "C" ...`). */
+  externalDecl: string | null = null;
 
   constructor(name: string, description?: string | null) {
     this.name = name;
@@ -30,6 +35,7 @@ export class ModelicaDAE {
   get hash(): string {
     const hash = createHash("sha256");
     hash.update(this.name);
+    for (const fn of this.functions) hash.update(fn.hash);
     for (const variable of this.variables) {
       hash.update(variable.hash);
     }
@@ -47,6 +53,7 @@ export class ModelicaDAE {
       "@type": "DAE",
       name: this.name,
       description: this.description,
+      functions: this.functions.map((f) => f.toJSON),
       variables: this.variables.map((v) => v.toJSON),
       equations: this.equations.map((e) => e.toJSON),
       algorithms: this.algorithms.map((section) => section.map((s) => s.toJSON)),
@@ -2433,7 +2440,12 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
   }
 
   visitDAE(node: ModelicaDAE): void {
-    this.out.write("class " + node.name);
+    // Emit function definitions before the class
+    for (const fn of node.functions) {
+      this.#emitFunction(fn);
+      this.out.write("\n\n");
+    }
+    this.out.write(node.classKind + " " + node.name);
     if (node.description) this.out.write(' "' + node.description + '"');
     this.out.write("\n");
     for (const variable of node.variables) {
@@ -2448,6 +2460,27 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
       for (const stmt of section) stmt.accept(this);
     }
     this.out.write("end " + node.name + ";");
+  }
+
+  #emitFunction(fn: ModelicaDAE): void {
+    this.out.write(fn.classKind + " " + fn.name);
+    if (fn.description) this.out.write(' "' + fn.description + '"');
+    this.out.write("\n");
+    for (const variable of fn.variables) {
+      this.#emitVariable(variable);
+    }
+    if (fn.equations.length > 0) {
+      this.out.write("equation\n");
+      for (const equation of fn.equations) equation.accept(this);
+    }
+    for (const section of fn.algorithms) {
+      this.out.write("algorithm\n");
+      for (const stmt of section) stmt.accept(this);
+    }
+    if (fn.externalDecl) {
+      this.out.write("  " + fn.externalDecl + "\n");
+    }
+    this.out.write("end " + fn.name + ";");
   }
 
   visitColonExpression(): void {
