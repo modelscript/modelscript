@@ -177,21 +177,37 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
    * @param node - The component instance.
    * @param args - A tuple of `[prefixString, activeDAE]`.
    */
+  // Track outer component variability for propagation into compound type sub-components
+  #outerVariability: ModelicaVariability | null = null;
+
   visitComponentInstance(node: ModelicaComponentInstance, args: [string, ModelicaDAE]): void {
     const name = args[0] === "" ? (node.name ?? "?") : args[0] + "." + node.name;
 
+    // Use the more restrictive variability between the outer context and this component's own
+    const effectiveVariability = this.#outerVariability ?? node.variability;
+
     if (node.classInstance instanceof ModelicaPredefinedClassInstance) {
-      this.#flattenPredefinedClass(node, name, args);
+      this.#flattenPredefinedClass(node, name, args, effectiveVariability);
     } else if (node.classInstance instanceof ModelicaEnumerationClassInstance) {
       this.#flattenEnumerationClass(node, name, args);
     } else if (node.classInstance instanceof ModelicaArrayClassInstance) {
       this.#flattenArrayClass(node, name, args);
     } else {
+      // For compound types (records, models), propagate outer variability to inner components
+      const saved = this.#outerVariability;
+      this.#outerVariability = effectiveVariability;
       node.classInstance?.accept(this, [name, args[1]]);
+      this.#outerVariability = saved;
     }
   }
 
-  #flattenPredefinedClass(node: ModelicaComponentInstance, name: string, args: [string, ModelicaDAE]): void {
+  #flattenPredefinedClass(
+    node: ModelicaComponentInstance,
+    name: string,
+    args: [string, ModelicaDAE],
+    effectiveVariability?: ModelicaVariability | null,
+  ): void {
+    const variability = effectiveVariability ?? node.variability;
     const { causality, isFinal, isProtected } = node;
     const attributes = new Map(
       node.modification?.modificationArguments.flatMap((m) => {
@@ -200,7 +216,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       }),
     );
     const isCompileTimeEvaluable =
-      node.variability === ModelicaVariability.PARAMETER || node.variability === ModelicaVariability.CONSTANT;
+      variability === ModelicaVariability.PARAMETER || variability === ModelicaVariability.CONSTANT;
     let expression: ModelicaExpression | null;
     if (isCompileTimeEvaluable) {
       expression = node.modification?.evaluatedExpression ?? null;
@@ -238,7 +254,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         name,
         varExpression,
         attributes,
-        node.variability,
+        variability,
         node.modification?.description ?? node.description,
         causality,
         isFinal,
@@ -249,7 +265,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         name,
         varExpression,
         attributes,
-        node.variability,
+        variability,
         node.modification?.description ?? node.description,
         causality,
         isFinal,
@@ -266,7 +282,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         name,
         castToReal(varExpression),
         attributes,
-        node.variability,
+        variability,
         node.modification?.description ?? node.description,
         causality,
         isFinal,
@@ -277,7 +293,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         name,
         varExpression,
         attributes,
-        node.variability,
+        variability,
         node.modification?.description ?? node.description,
         causality,
         isFinal,
@@ -614,6 +630,13 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     if (functionName === "ones" && flatArgs.length >= 1) {
       const shape = extractShape(flatArgs);
       if (shape) return buildFilledArray(shape, new ModelicaIntegerLiteral(1));
+    }
+    // Coerce integer literal arguments to Real when any sibling argument is Real-typed
+    if (flatArgs.some((a) => isRealTyped(a, ctx.dae))) {
+      for (let i = 0; i < flatArgs.length; i++) {
+        const coerced = castToReal(flatArgs[i] ?? null);
+        if (coerced && coerced !== flatArgs[i]) flatArgs[i] = coerced;
+      }
     }
     const result = new ModelicaFunctionCallExpression(functionName, flatArgs);
     // Collect function definition if it's a user-defined function

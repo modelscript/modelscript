@@ -2608,10 +2608,11 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
   }
 
   visitRealLiteral(node: ModelicaRealLiteral): void {
+    // Modelica uses e308 not e+308; strip the + from positive exponents
     if (Number.isInteger(node.value)) {
-      this.out.write(node.value.toFixed(1));
+      this.out.write(node.value.toFixed(1).replace("e+", "e"));
     } else {
-      this.out.write(node.value.toString());
+      this.out.write(node.value.toString().replace("e+", "e"));
     }
   }
 
