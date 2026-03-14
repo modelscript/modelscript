@@ -1295,7 +1295,11 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
           ?.causality ?? null;
     }
     // Check if this component comes from a protected extends clause
-    if (!this.isProtected && this.parent?.isProtectedElement(this.name)) {
+    if (
+      !this.isProtected &&
+      this.parent instanceof ModelicaClassInstance &&
+      this.parent.isProtectedElement(this.name)
+    ) {
       this.isProtected = true;
     }
     this.instantiated = true;

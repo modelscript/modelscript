@@ -520,28 +520,52 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
   #evaluateSize(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
     const argNodes = node.functionCallArguments?.arguments ?? [];
     const arrayRefExpr = argNodes[0]?.expression;
-    const dimArg = argNodes[1]?.expression?.accept(this, scope);
-    if (!arrayRefExpr || !(dimArg instanceof ModelicaIntegerLiteral)) return null;
+    if (!arrayRefExpr) return null;
 
-    const componentRef = arrayRefExpr;
-    const namedElement = scope.resolveComponentReference(
-      componentRef as unknown as ModelicaComponentReferenceSyntaxNode,
-    );
-    let arrayClassInstance: ModelicaArrayClassInstance | null = null;
-    if (namedElement instanceof ModelicaComponentInstance) {
-      if (!namedElement.instantiated && !namedElement.instantiating) namedElement.instantiate();
-      if (namedElement.classInstance instanceof ModelicaArrayClassInstance) {
-        arrayClassInstance = namedElement.classInstance;
+    const dimArgExpr = argNodes[1]?.expression;
+    const dimArg = dimArgExpr?.accept(this, scope) ?? null;
+
+    // Try resolving via component reference first (handles ModelicaArrayClassInstance shapes)
+    let shape: number[] | null = null;
+    if (arrayRefExpr instanceof ModelicaComponentReferenceSyntaxNode) {
+      const namedElement = scope.resolveComponentReference(arrayRefExpr);
+      let arrayClassInstance: ModelicaArrayClassInstance | null = null;
+      if (namedElement instanceof ModelicaComponentInstance) {
+        if (!namedElement.instantiated && !namedElement.instantiating) namedElement.instantiate();
+        if (namedElement.classInstance instanceof ModelicaArrayClassInstance) {
+          arrayClassInstance = namedElement.classInstance;
+        }
+      } else if (namedElement instanceof ModelicaArrayClassInstance) {
+        arrayClassInstance = namedElement;
       }
-    } else if (namedElement instanceof ModelicaArrayClassInstance) {
-      arrayClassInstance = namedElement;
+      if (arrayClassInstance) {
+        shape = arrayClassInstance.shape;
+      }
     }
-    if (!arrayClassInstance) return null;
 
-    const dimIndex = dimArg.value;
-    const dimSize = arrayClassInstance.shape[dimIndex - 1];
-    if (dimSize == null) return null;
-    return new ModelicaIntegerLiteral(dimSize);
+    // Fallback: evaluate the expression and get shape from the resulting array
+    if (!shape) {
+      const evaluated = arrayRefExpr.accept(this, scope);
+      if (evaluated) {
+        shape = getArrayShape(evaluated);
+      }
+    }
+
+    if (!shape || shape.length === 0) return null;
+
+    if (dimArg instanceof ModelicaIntegerLiteral) {
+      // 2-arg form: size(x, dim) — return the size of the given dimension
+      const dimIndex = dimArg.value;
+      const dimSize = shape[dimIndex - 1];
+      if (dimSize == null) return null;
+      return new ModelicaIntegerLiteral(dimSize);
+    } else if (!dimArgExpr) {
+      // 1-arg form: size(x) — return the full shape as an array
+      const elements = shape.map((s) => new ModelicaIntegerLiteral(s));
+      return new ModelicaArray([elements.length], elements);
+    }
+
+    return null;
   }
 
   #evaluateZeros(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
