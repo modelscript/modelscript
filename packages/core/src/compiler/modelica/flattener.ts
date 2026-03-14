@@ -788,6 +788,25 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     return result;
   }
 
+  /** Recursively scan an AST syntax node for function call references and collect their definitions. */
+  collectFunctionRefsFromAST(node: ModelicaExpressionSyntaxNode | null | undefined, ctx: FlattenerContext): void {
+    if (!node) return;
+    if (node instanceof ModelicaFunctionCallSyntaxNode) {
+      const funcName =
+        node.functionReference?.parts?.map((p) => p.identifier?.text ?? "").join(".") ||
+        (node.functionReferenceName ?? "");
+      if (funcName) this.#collectFunctionDefinition(funcName, ctx);
+      // Also scan arguments recursively
+      for (const arg of node.functionCallArguments?.arguments ?? []) {
+        this.collectFunctionRefsFromAST(arg.expression, ctx);
+      }
+    } else if (node instanceof ModelicaBinaryExpressionSyntaxNode) {
+      this.collectFunctionRefsFromAST(node.operand1, ctx);
+      this.collectFunctionRefsFromAST(node.operand2, ctx);
+    }
+    // For other compound types, recurse into known child expression properties
+  }
+
   /** Resolve a function name and flatten its definition into ctx.dae.functions. */
   #collectFunctionDefinition(functionName: string, ctx: FlattenerContext): void {
     // Skip built-in functions
@@ -813,9 +832,139 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     fnDae.description =
       resolved.abstractSyntaxNode?.classSpecifier?.description?.strings?.map((d) => d.text ?? "")?.join(" ") ?? null;
 
-    // Flatten the function's elements, equations, and algorithm sections
-    const flattener = new ModelicaFlattener();
-    flattener.visitClassInstance(resolved, ["", fnDae]);
+    // Flatten function components (parameters/variables) with compact array notation.
+    // Unlike model flattening, function definitions should keep array params as
+    // `input Real[3] a` instead of expanding to `input Real a[1]; input Real a[2]; ...`
+    for (const element of resolved.elements) {
+      if (!(element instanceof ModelicaComponentInstance)) continue;
+      if (!element.classInstance) continue;
+      element.instantiate();
+
+      const compName = element.name ?? "";
+      const causality = element.causality ?? null;
+      const variability = element.variability ?? null;
+      const isProtected = element.isProtected ?? false;
+
+      // Determine array dimensions (if any)
+      let arrayPrefix = "";
+      if (element.classInstance instanceof ModelicaArrayClassInstance) {
+        const shape = element.classInstance.shape;
+        if (shape && shape.length > 0) {
+          // Use colon notation for flexible dims, numeric for fixed
+          const dims = shape.map((d) => (d === 0 ? ":" : String(d)));
+          arrayPrefix = `[${dims.join(", ")}]`;
+        }
+      }
+
+      // Get the binding expression — prefer the symbolic (syntax-flattened) form
+      // over the evaluatedExpression to preserve forms like max(3, i1) and 5.0.
+      let expression: ModelicaExpression | null = null;
+      if (element.modification?.modificationExpression?.expression) {
+        const syntaxFlattener = new ModelicaSyntaxFlattener();
+        expression =
+          element.modification.modificationExpression.expression.accept(syntaxFlattener, {
+            prefix: "",
+            classInstance: resolved,
+            dae: fnDae,
+            stmtCollector: [],
+          }) ?? null;
+      }
+      if (!expression && element.modification?.evaluatedExpression) {
+        expression = element.modification.evaluatedExpression;
+      }
+      if (!expression && element.modification?.expression) {
+        expression = element.modification.expression;
+      }
+
+      // Encode array dims in the variable name for emission.
+      // Format: "name" for scalars, "\0dims\0name" for arrays (\0 is null separator)
+      // The emitter will parse this to output "Type[dims] name".
+      const varName = arrayPrefix ? `\0${arrayPrefix}\0${compName}` : compName;
+      const description = element.modification?.description ?? element.description ?? null;
+      let variable: ModelicaVariable;
+      // Determine element type — for arrays, check the elementClassInstance
+      const typeInstance =
+        element.classInstance instanceof ModelicaArrayClassInstance
+          ? element.classInstance.elementClassInstance
+          : element.classInstance;
+      if (typeInstance instanceof ModelicaIntegerClassInstance) {
+        variable = new ModelicaIntegerVariable(
+          varName,
+          expression,
+          new Map(),
+          variability,
+          description,
+          causality,
+          false,
+          isProtected,
+        );
+      } else if (typeInstance instanceof ModelicaBooleanClassInstance) {
+        variable = new ModelicaBooleanVariable(
+          varName,
+          expression,
+          new Map(),
+          variability,
+          description,
+          causality,
+          false,
+          isProtected,
+        );
+      } else if (typeInstance instanceof ModelicaStringClassInstance) {
+        variable = new ModelicaStringVariable(
+          varName,
+          expression,
+          new Map(),
+          variability,
+          description,
+          causality,
+          false,
+          isProtected,
+        );
+      } else {
+        // Coerce integer literals to real for Real-typed function params (e.g. 5 → 5.0)
+        if (expression instanceof ModelicaIntegerLiteral) {
+          expression = new ModelicaRealLiteral(expression.value);
+        }
+        variable = new ModelicaRealVariable(
+          varName,
+          expression,
+          new Map(),
+          variability,
+          description,
+          causality,
+          false,
+          isProtected,
+        );
+      }
+      fnDae.variables.push(variable);
+    }
+
+    // Flatten algorithm and equation sections (these still use the standard path)
+
+    for (const equationSection of resolved.equationSections) {
+      for (const eq of equationSection.equations) {
+        eq.accept(new ModelicaSyntaxFlattener(), {
+          prefix: "",
+          classInstance: resolved,
+          dae: fnDae,
+          stmtCollector: [],
+        });
+      }
+    }
+    for (const algorithmSection of resolved.algorithmSections) {
+      const collector: ModelicaStatement[] = [];
+      for (const statement of algorithmSection.statements) {
+        statement.accept(new ModelicaSyntaxFlattener(), {
+          prefix: "",
+          classInstance: resolved,
+          dae: fnDae,
+          stmtCollector: collector,
+        });
+      }
+      if (collector.length > 0) {
+        fnDae.algorithms.push(collector);
+      }
+    }
 
     // Check for external function clause
     const classSpecifier = resolved.abstractSyntaxNode?.classSpecifier;

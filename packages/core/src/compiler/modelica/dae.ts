@@ -2457,19 +2457,29 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     if (variable.variability) this.out.write(variable.variability + " ");
     if (variable.causality) this.out.write(variable.causality + " ");
     if (variable instanceof ModelicaBooleanVariable) {
-      this.out.write("Boolean ");
+      this.out.write("Boolean");
     } else if (variable instanceof ModelicaIntegerVariable) {
-      this.out.write("Integer ");
+      this.out.write("Integer");
     } else if (variable instanceof ModelicaRealVariable) {
-      this.out.write("Real ");
+      this.out.write("Real");
     } else if (variable instanceof ModelicaStringVariable) {
-      this.out.write("String ");
+      this.out.write("String");
     } else if (variable instanceof ModelicaEnumerationVariable) {
-      this.out.write("enumeration(" + variable.enumerationLiterals.map((e) => e.stringValue).join(", ") + ") ");
+      this.out.write("enumeration(" + variable.enumerationLiterals.map((e) => e.stringValue).join(", ") + ")");
     } else {
       throw new Error("invalid variable");
     }
-    this.out.write(variable.name);
+    // Handle array dimension prefix (encoded as \0[dims]\0name in the variable name)
+    let varName = variable.name;
+    if (varName.startsWith("\0")) {
+      const parts = varName.split("\0");
+      // parts = ["", "[dims]", "name"]
+      if (parts.length >= 3) {
+        this.out.write(parts[1] ?? ""); // [dims] — no space before
+        varName = parts[2] ?? "";
+      }
+    }
+    this.out.write(" " + varName);
     if (variable.attributes.size > 0) {
       this.out.write("(");
       let i = 0;
