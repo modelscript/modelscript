@@ -96,7 +96,7 @@ interface FlattenerContext {
   dae: ModelicaDAE;
   stmtCollector: ModelicaStatement[];
   /** Bindings for for-loop index variables (used during equation unrolling). */
-  loopVariables?: Map<string, number>;
+  loopVariables?: Map<string, number | ModelicaExpression>;
 }
 
 /** Extract an integer shape array from a list of expressions (all must be ModelicaIntegerLiteral). */
@@ -867,7 +867,9 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     // But first check if there's a loop variable binding for equation unrolling
     const simpleName = node.parts.length === 1 ? (node.parts[0]?.identifier?.text ?? null) : null;
     if (simpleName && ctx.loopVariables?.has(simpleName)) {
-      return new ModelicaIntegerLiteral(ctx.loopVariables.get(simpleName) ?? 0);
+      const loopVal = ctx.loopVariables.get(simpleName);
+      if (loopVal instanceof ModelicaExpression) return loopVal;
+      return new ModelicaIntegerLiteral(loopVal ?? 0);
     }
     return new ModelicaNameExpression(name);
   }
@@ -913,6 +915,33 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     const rangeExpr = forIndex.expression?.accept(this, ctx);
     const values = this.#evaluateRange(rangeExpr);
     if (!values) {
+      // Try to resolve as an enum type for enum range unrolling
+      const origExpr = forIndex.expression;
+      if (origExpr && "parts" in origExpr) {
+        const namedElement = ctx.classInstance.resolveComponentReference(
+          origExpr as ModelicaComponentReferenceSyntaxNode,
+        );
+        let enumClass: ModelicaEnumerationClassInstance | null = null;
+        if (namedElement instanceof ModelicaEnumerationClassInstance) {
+          enumClass = namedElement;
+        } else if (namedElement instanceof ModelicaComponentInstance) {
+          if (!namedElement.instantiated && !namedElement.instantiating) namedElement.instantiate();
+          if (namedElement.classInstance instanceof ModelicaEnumerationClassInstance) {
+            enumClass = namedElement.classInstance;
+          }
+        }
+        if (enumClass?.enumerationLiterals) {
+          const className = ctx.dae.name;
+          const typeName = enumClass.name ?? "";
+          const loopVars = new Map(ctx.loopVariables ?? []);
+          for (const literal of enumClass.enumerationLiterals) {
+            const qualifiedName = className + "." + typeName + "." + literal.stringValue;
+            loopVars.set(indexName, new ModelicaNameExpression(qualifiedName));
+            this.#unrollForEquation(forIndexes, indexPos + 1, equations, { ...ctx, loopVariables: loopVars });
+          }
+          return;
+        }
+      }
       // Can't evaluate range — fall back to emitting as a for-equation node
       const innerEquations = this.flattenEquations(equations, ctx);
       let eqs = innerEquations;
