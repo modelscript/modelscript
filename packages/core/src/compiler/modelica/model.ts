@@ -1165,6 +1165,10 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
   isFinal: boolean;
   /** Whether this component is in a `protected` section or from a `protected extends`. */
   isProtected: boolean;
+  /** Whether this component is declared `inner`. */
+  isInner: boolean;
+  /** Whether this component is declared `outer`. */
+  isOuter: boolean;
 
   constructor(
     parent: ModelicaClassInstance | null,
@@ -1182,6 +1186,8 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
     this.variability = this.abstractSyntaxNode?.parent?.variability ?? null;
     this.isFinal = (this.abstractSyntaxNode?.parent as { final?: boolean })?.final ?? false;
     this.isProtected = (this.abstractSyntaxNode?.parent?.parent as { visibility?: string })?.visibility === "protected";
+    this.isInner = (this.abstractSyntaxNode?.parent as { inner?: boolean })?.inner ?? false;
+    this.isOuter = (this.abstractSyntaxNode?.parent as { outer?: boolean })?.outer ?? false;
   }
 
   get classInstance(): ModelicaClassInstance | null {

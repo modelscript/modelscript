@@ -196,6 +196,10 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
   #emittedVarNames = new Set<string>();
 
   visitComponentInstance(node: ModelicaComponentInstance, args: [string, ModelicaDAE]): void {
+    // Skip pure `outer` components — they reference an `inner` declaration higher up
+    // and should not generate their own variables. `inner outer` still generates a variable.
+    if (node.isOuter && !node.isInner) return;
+
     const name = args[0] === "" ? (node.name ?? "?") : args[0] + "." + node.name;
 
     // Use the more restrictive variability between the outer context and this component's own
@@ -1093,8 +1097,35 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     node: ModelicaComponentReferenceSyntaxNode,
     ctx: FlattenerContext,
   ): ModelicaExpression | null {
+    // Resolve outer references: if the first part refers to an `outer` component,
+    // find the corresponding `inner` declaration by walking up the instance hierarchy
+    let effectivePrefix = ctx.prefix;
+    const firstPartName = node.parts?.[0]?.identifier?.text;
+    if (firstPartName && ctx.classInstance) {
+      const resolved = ctx.classInstance.resolveSimpleName(firstPartName, false, true);
+      if (resolved instanceof ModelicaComponentInstance && resolved.isOuter && !resolved.isInner) {
+        // Walk up the instance hierarchy to find the inner declaration
+        let scope = ctx.classInstance.parent instanceof ModelicaClassInstance ? ctx.classInstance.parent : null;
+        let prefixParts = effectivePrefix.split(".");
+        // Remove one prefix level for each scope we walk up
+        while (scope) {
+          prefixParts = prefixParts.slice(0, -1);
+          // Check if this scope has an inner component with the same name
+          for (const el of scope.declaredElements) {
+            if (el instanceof ModelicaComponentInstance && el.name === firstPartName && el.isInner) {
+              // Found the inner — use its prefix
+              effectivePrefix = prefixParts.join(".");
+              scope = null; // break outer while
+              break;
+            }
+          }
+          if (scope) scope = scope.parent instanceof ModelicaClassInstance ? scope.parent : null;
+        }
+      }
+    }
     const name =
-      (ctx.prefix === "" ? "" : ctx.prefix + ".") + node.parts.map((c) => c.identifier?.text ?? "<ERROR>").join(".");
+      (effectivePrefix === "" ? "" : effectivePrefix + ".") +
+      node.parts.map((c) => c.identifier?.text ?? "<ERROR>").join(".");
     if (ctx.classInstance instanceof ModelicaEnumerationClassInstance) {
       for (const enumerationLiteral of ctx.classInstance.enumerationLiterals ?? []) {
         if (enumerationLiteral.stringValue === node.parts?.[(node.parts?.length ?? 1) - 1]?.identifier?.text)
@@ -1127,7 +1158,8 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         // First try to resolve using the already-flattened subscript expressions
         // (this handles loop variables resolved via loopVariables binding)
         const baseName =
-          (ctx.prefix === "" ? "" : ctx.prefix + ".") + node.parts.map((c) => c.identifier?.text ?? "").join(".");
+          (effectivePrefix === "" ? "" : effectivePrefix + ".") +
+          node.parts.map((c) => c.identifier?.text ?? "").join(".");
         const resolvedFromFlattener: number[] = [];
         for (const sub of subscripts) {
           if (sub instanceof ModelicaIntegerLiteral) {
