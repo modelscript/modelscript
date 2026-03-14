@@ -11,6 +11,7 @@ import {
   ModelicaColonExpression,
   ModelicaComplexAssignmentStatement,
   ModelicaDAE,
+  ModelicaEnumerationLiteral,
   ModelicaEnumerationVariable,
   ModelicaEquation,
   ModelicaExpression,
@@ -917,24 +918,62 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     if (!values) {
       // Try to resolve as an enum type for enum range unrolling
       const origExpr = forIndex.expression;
-      if (origExpr && "parts" in origExpr) {
-        const namedElement = ctx.classInstance.resolveComponentReference(
-          origExpr as ModelicaComponentReferenceSyntaxNode,
-        );
+      if (origExpr) {
         let enumClass: ModelicaEnumerationClassInstance | null = null;
-        if (namedElement instanceof ModelicaEnumerationClassInstance) {
-          enumClass = namedElement;
-        } else if (namedElement instanceof ModelicaComponentInstance) {
-          if (!namedElement.instantiated && !namedElement.instantiating) namedElement.instantiate();
-          if (namedElement.classInstance instanceof ModelicaEnumerationClassInstance) {
-            enumClass = namedElement.classInstance;
+        let literalsToIterate: ModelicaEnumerationLiteral[] | null = null;
+
+        if ("parts" in origExpr) {
+          const namedElement = ctx.classInstance.resolveComponentReference(
+            origExpr as ModelicaComponentReferenceSyntaxNode,
+          );
+          if (namedElement instanceof ModelicaEnumerationClassInstance) {
+            enumClass = namedElement;
+          } else if (namedElement instanceof ModelicaComponentInstance) {
+            if (!namedElement.instantiated && !namedElement.instantiating) namedElement.instantiate();
+            if (namedElement.classInstance instanceof ModelicaEnumerationClassInstance) {
+              enumClass = namedElement.classInstance;
+            }
+          }
+          if (enumClass?.enumerationLiterals) {
+            literalsToIterate = enumClass.enumerationLiterals;
+          }
+        } else if (origExpr instanceof ModelicaRangeExpressionSyntaxNode) {
+          const startExpr = origExpr.startExpression;
+          const stopExpr = origExpr.stopExpression;
+          if (startExpr && stopExpr && "parts" in startExpr && "parts" in stopExpr) {
+            const startElement = ctx.classInstance.resolveComponentReference(
+              startExpr as ModelicaComponentReferenceSyntaxNode,
+            );
+            const stopElement = ctx.classInstance.resolveComponentReference(
+              stopExpr as ModelicaComponentReferenceSyntaxNode,
+            );
+
+            if (
+              startElement instanceof ModelicaEnumerationClassInstance &&
+              stopElement instanceof ModelicaEnumerationClassInstance &&
+              startElement.value &&
+              stopElement.value
+            ) {
+              enumClass = startElement;
+              const startOrd = startElement.value.ordinalValue;
+              const stopOrd = stopElement.value.ordinalValue;
+              if (enumClass.enumerationLiterals) {
+                literalsToIterate = [];
+                for (const literal of enumClass.enumerationLiterals) {
+                  if (literal.ordinalValue >= startOrd && literal.ordinalValue <= stopOrd) {
+                    literalsToIterate.push(literal);
+                  }
+                }
+              }
+            }
           }
         }
-        if (enumClass?.enumerationLiterals) {
+
+        if (enumClass && literalsToIterate) {
           const className = ctx.dae.name;
           const typeName = enumClass.name ?? "";
           const loopVars = new Map(ctx.loopVariables ?? []);
-          for (const literal of enumClass.enumerationLiterals) {
+          for (const literal of literalsToIterate) {
             const qualifiedName = className + "." + typeName + "." + literal.stringValue;
             loopVars.set(indexName, new ModelicaNameExpression(qualifiedName));
             this.#unrollForEquation(forIndexes, indexPos + 1, equations, { ...ctx, loopVariables: loopVars });
