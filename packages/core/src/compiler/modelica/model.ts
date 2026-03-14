@@ -1254,10 +1254,11 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
       if (element instanceof ModelicaClassInstance) {
         this.#declaredType = element;
         // Validate modification arguments against the resolved type's elements.
-        // Skip predefined types (Real, Integer, etc.) and their aliases/arrays
-        // which use start/min/max attributes rather than named sub-components.
+        // Skip predefined types (Real, Integer, etc.) and enumeration types,
+        // which use built-in attributes (start/min/max/quantity/fixed) rather than named sub-components.
         const isPredefined = ModelicaComponentInstance.#isPredefinedType(element);
-        if (this.modification && !isPredefined) {
+        const isEnumeration = element instanceof ModelicaEnumerationClassInstance;
+        if (this.modification && !isPredefined && !isEnumeration) {
           const typeElementNames = new Set<string>();
           for (const el of element.elements) {
             if (el instanceof ModelicaNamedElement && el.name) {
