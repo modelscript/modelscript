@@ -2579,7 +2579,7 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
   }
 
   visitStringLiteral(node: ModelicaStringLiteral): void {
-    this.out.write(node.value);
+    this.out.write('"' + node.value + '"');
   }
 
   visitStringVariable(node: ModelicaStringVariable): void {
