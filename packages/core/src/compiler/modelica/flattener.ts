@@ -162,9 +162,40 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       );
       const isCompileTimeEvaluable =
         node.variability === ModelicaVariability.PARAMETER || node.variability === ModelicaVariability.CONSTANT;
-      const expression = isCompileTimeEvaluable
-        ? (node.modification?.evaluatedExpression ?? null)
-        : (node.modification?.expression ?? null);
+      let expression: ModelicaExpression | null;
+      if (isCompileTimeEvaluable) {
+        expression = node.modification?.evaluatedExpression ?? null;
+        // Fall back to regular expression or syntax flattener for parameters
+        // that reference other non-evaluable expressions (e.g., sqrt(a), function calls)
+        if (!expression) {
+          expression = node.modification?.expression ?? null;
+        }
+        if (!expression && node.modification?.modificationExpression?.expression) {
+          const syntaxFlattener = new ModelicaSyntaxFlattener();
+          expression =
+            node.modification.modificationExpression.expression.accept(syntaxFlattener, {
+              prefix: args[0],
+              classInstance: node.parent ?? ({} as ModelicaClassInstance),
+              dae: args[1],
+              stmtCollector: [],
+            }) ?? null;
+        }
+      } else {
+        // Try interpreter evaluation first (handles constants, simple expressions)
+        expression = node.modification?.expression ?? null;
+        // Fall back to syntax flattener for runtime expressions the interpreter can't evaluate
+        // (e.g., time, function calls, if-else, component references to other variables)
+        if (!expression && node.modification?.modificationExpression?.expression) {
+          const syntaxFlattener = new ModelicaSyntaxFlattener();
+          expression =
+            node.modification.modificationExpression.expression.accept(syntaxFlattener, {
+              prefix: args[0],
+              classInstance: node.parent ?? ({} as ModelicaClassInstance),
+              dae: args[1],
+              stmtCollector: [],
+            }) ?? null;
+        }
+      }
       let variable;
       const varExpression = expression;
 
