@@ -143,6 +143,21 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
    * @param args - A tuple of `[prefixString, activeDAE]` to pass context down.
    */
   visitClassInstance(node: ModelicaClassInstance, args: [string, ModelicaDAE]): void {
+    // Scan for structural parameters: parameters used in conditional component declarations
+    // These must be marked `final` since they determine class structure.
+    const savedStructural = new Set(this.#structuralFinalParams);
+    for (const element of node.elements) {
+      if (element instanceof ModelicaComponentInstance) {
+        const condAttr = (
+          element.abstractSyntaxNode as {
+            conditionAttribute?: { condition?: ModelicaExpressionSyntaxNode | null };
+          } | null
+        )?.conditionAttribute?.condition;
+        if (condAttr) {
+          this.#collectStructuralParams(condAttr, args[0]);
+        }
+      }
+    }
     for (const element of node.elements) {
       if (element instanceof ModelicaComponentInstance) element.accept(this, args);
     }
@@ -182,6 +197,30 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         }
       }
     }
+    // Restore previous structural params
+    this.#structuralFinalParams = savedStructural;
+  }
+
+  /**
+   * Collect parameter names referenced in a condition expression for structural final marking.
+   * Walks the AST to find component references and adds their flattened names.
+   */
+  #collectStructuralParams(expr: ModelicaExpressionSyntaxNode, prefix: string): void {
+    if (expr instanceof ModelicaComponentReferenceSyntaxNode) {
+      const firstName = expr.parts[0]?.identifier?.text;
+      if (firstName) {
+        const fullName = prefix === "" ? firstName : prefix + "." + firstName;
+        this.#structuralFinalParams.add(fullName);
+      }
+    }
+    // Recurse into sub-expressions (e.g., `not b`, `b1 and b2`)
+    if ("children" in expr && Array.isArray(expr.children)) {
+      for (const child of expr.children) {
+        if (child instanceof ModelicaExpressionSyntaxNode) {
+          this.#collectStructuralParams(child, prefix);
+        }
+      }
+    }
   }
 
   /**
@@ -194,6 +233,8 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
   #outerVariability: ModelicaVariability | null = null;
   // Track emitted variable names to prevent duplicates from diamond inheritance
   #emittedVarNames = new Set<string>();
+  // Track parameter names that are structurally significant (used in conditional component declarations)
+  #structuralFinalParams = new Set<string>();
 
   visitComponentInstance(node: ModelicaComponentInstance, args: [string, ModelicaDAE]): void {
     // Skip pure `outer` components — they reference an `inner` declaration higher up
@@ -237,7 +278,9 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     effectiveVariability?: ModelicaVariability | null,
   ): void {
     const variability = effectiveVariability ?? node.variability;
-    const { causality, isFinal, isProtected } = node;
+    const { causality, isProtected } = node;
+    // Check structural final: parameter used in conditional component condition
+    const isFinal = node.isFinal || this.#structuralFinalParams.has(name);
     const attributes = new Map(
       node.modification?.modificationArguments.flatMap((m) => {
         if (m.name === "annotation") return [];
