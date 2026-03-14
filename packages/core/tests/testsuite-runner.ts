@@ -101,6 +101,8 @@ function parseTestFile(filePath: string): TestCase | null {
     const nameMatch = line.match(/^\/\/\s*name:\s*(.+)/);
     if (nameMatch) {
       name = (nameMatch[1] ?? "").trim();
+      // Strip .mo suffix — some tests include it but class names don't have it
+      if (name.endsWith(".mo")) name = name.slice(0, -3);
       continue;
     }
 

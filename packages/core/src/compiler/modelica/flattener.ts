@@ -200,6 +200,16 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     // and should not generate their own variables. `inner outer` still generates a variable.
     if (node.isOuter && !node.isInner) return;
 
+    // Evaluate conditional components (e.g., `Real x if false;`)
+    const conditionExpr = (
+      node.abstractSyntaxNode as { conditionAttribute?: { condition?: ModelicaExpressionSyntaxNode | null } } | null
+    )?.conditionAttribute?.condition;
+    if (conditionExpr) {
+      const interp = new ModelicaInterpreter();
+      const conditionValue = conditionExpr.accept(interp, node.parent ?? undefined);
+      if (conditionValue instanceof ModelicaBooleanLiteral && !conditionValue.value) return;
+    }
+
     const name = args[0] === "" ? (node.name ?? "?") : args[0] + "." + node.name;
 
     // Use the more restrictive variability between the outer context and this component's own
