@@ -521,7 +521,9 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
             subscripts.push(new ModelicaColonExpression());
           } else if (sub.expression) {
             const subExpr = sub.expression.accept(this, ctx);
-            if (subExpr instanceof ModelicaNameExpression) hasSymbolic = true;
+            // Treat any non-concrete subscript as symbolic (not just bare names).
+            // e.g. `a[1+i]` produces a BinaryExpression — still symbolic.
+            if (subExpr && !(subExpr instanceof ModelicaIntegerLiteral)) hasSymbolic = true;
             subscripts.push(subExpr ?? new ModelicaNameExpression("?"));
           }
         }
