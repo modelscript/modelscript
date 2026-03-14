@@ -2513,7 +2513,7 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
       this.out.write("initial algorithm\n");
       for (const stmt of section) stmt.accept(this);
     }
-    this.out.write("end " + node.name + ";");
+    this.out.write("end " + node.name + ";\n");
   }
 
   #emitFunction(fn: ModelicaDAE): void {

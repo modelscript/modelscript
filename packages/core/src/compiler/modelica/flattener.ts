@@ -1298,6 +1298,29 @@ function canonicalizeBinaryExpression(
       }
       return new ModelicaRealLiteral(result);
     }
+    // Constant fold comparison operators with two numeric literals
+    let boolResult: boolean | null = null;
+    switch (operator) {
+      case ModelicaBinaryOperator.LESS_THAN:
+        boolResult = v1 < v2;
+        break;
+      case ModelicaBinaryOperator.LESS_THAN_OR_EQUAL:
+        boolResult = v1 <= v2;
+        break;
+      case ModelicaBinaryOperator.GREATER_THAN:
+        boolResult = v1 > v2;
+        break;
+      case ModelicaBinaryOperator.GREATER_THAN_OR_EQUAL:
+        boolResult = v1 >= v2;
+        break;
+      case ModelicaBinaryOperator.EQUALITY:
+        boolResult = v1 === v2;
+        break;
+      case ModelicaBinaryOperator.INEQUALITY:
+        boolResult = v1 !== v2;
+        break;
+    }
+    if (boolResult != null) return new ModelicaBooleanLiteral(boolResult);
   }
   if (operator === ModelicaBinaryOperator.DIVISION && operand2 instanceof ModelicaIntegerLiteral) {
     const reciprocal = new ModelicaRealLiteral(1.0 / operand2.value);
@@ -1311,10 +1334,19 @@ function canonicalizeBinaryExpression(
     const negated = new ModelicaUnaryExpression(ModelicaUnaryOperator.UNARY_MINUS, operand2);
     return new ModelicaBinaryExpression(ModelicaBinaryOperator.ADDITION, negated, operand1);
   }
-  if (operator === ModelicaBinaryOperator.SUBTRACTION && dae) {
-    const op2 = wrapIntegerAsReal(operand2, dae);
-    if (op2 !== operand2) {
-      return new ModelicaBinaryExpression(operator, operand1, op2);
+  // Wrap integer variables with /*Real*/ when used with Real operands in any arithmetic context
+  if (dae) {
+    if (isRealTyped(operand1, dae)) {
+      const op2 = wrapIntegerAsReal(operand2, dae);
+      if (op2 !== operand2) {
+        return new ModelicaBinaryExpression(operator, operand1, op2);
+      }
+    }
+    if (isRealTyped(operand2, dae)) {
+      const op1 = wrapIntegerAsReal(operand1, dae);
+      if (op1 !== operand1) {
+        return new ModelicaBinaryExpression(operator, op1, operand2);
+      }
     }
   }
   if (
