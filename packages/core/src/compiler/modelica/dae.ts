@@ -18,6 +18,10 @@ export class ModelicaDAE {
   classKind = "class";
   equations: ModelicaEquation[] = [];
   algorithms: ModelicaStatement[][] = [];
+  /** Equations from `initial equation` sections. */
+  initialEquations: ModelicaEquation[] = [];
+  /** Algorithm sections from `initial algorithm` sections. */
+  initialAlgorithms: ModelicaStatement[][] = [];
   variables: ModelicaVariable[] = [];
   /** Flattened function definitions referenced by equations/algorithms. */
   functions: ModelicaDAE[] = [];
@@ -2470,6 +2474,14 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     }
     for (const section of node.algorithms) {
       this.out.write("algorithm\n");
+      for (const stmt of section) stmt.accept(this);
+    }
+    if (node.initialEquations.length > 0) {
+      this.out.write("initial equation\n");
+      for (const equation of node.initialEquations) equation.accept(this);
+    }
+    for (const section of node.initialAlgorithms) {
+      this.out.write("initial algorithm\n");
       for (const stmt of section) stmt.accept(this);
     }
     this.out.write("end " + node.name + ";");

@@ -147,13 +147,20 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     for (const declaredElement of node.declaredElements) {
       if (declaredElement instanceof ModelicaExtendsClassInstance) declaredElement.accept(this, args);
     }
-    for (const equationSyntaxNode of node.abstractSyntaxNode?.equations ?? []) {
-      equationSyntaxNode.accept(new ModelicaSyntaxFlattener(), {
-        prefix: args[0],
-        classInstance: node,
-        dae: args[1],
-        stmtCollector: [],
-      });
+    for (const equationSection of node.equationSections) {
+      const target = equationSection.initial ? args[1].initialEquations : args[1].equations;
+      const savedEquations = args[1].equations;
+      // Temporarily redirect equation collection to the right target
+      args[1].equations = target;
+      for (const eq of equationSection.equations) {
+        eq.accept(new ModelicaSyntaxFlattener(), {
+          prefix: args[0],
+          classInstance: node,
+          dae: args[1],
+          stmtCollector: [],
+        });
+      }
+      args[1].equations = savedEquations;
     }
     for (const algorithmSection of node.algorithmSections) {
       const collector: ModelicaStatement[] = [];
@@ -166,7 +173,11 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         });
       }
       if (collector.length > 0) {
-        args[1].algorithms.push(collector);
+        if (algorithmSection.initial) {
+          args[1].initialAlgorithms.push(collector);
+        } else {
+          args[1].algorithms.push(collector);
+        }
       }
     }
   }
@@ -631,6 +642,9 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       const shape = extractShape(flatArgs);
       if (shape) return buildFilledArray(shape, new ModelicaIntegerLiteral(1));
     }
+    // Evaluate built-in math/arithmetic functions at flatten time when all args are literals
+    const foldedResult = tryFoldBuiltinFunction(functionName, flatArgs);
+    if (foldedResult) return foldedResult;
     // Coerce integer literal arguments to Real when any sibling argument is Real-typed
     if (flatArgs.some((a) => isRealTyped(a, ctx.dae))) {
       for (let i = 0; i < flatArgs.length; i++) {
@@ -986,6 +1000,8 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     }
     const call = new ModelicaFunctionCallExpression(functionName, flatArgs);
     ctx.stmtCollector.push(new ModelicaProcedureCallStatement(call));
+    // Collect function definition if it's a user-defined function
+    this.#collectFunctionDefinition(functionName, ctx);
     return null;
   }
 
@@ -1005,6 +1021,8 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     }
     const source = new ModelicaFunctionCallExpression(functionName, flatArgs);
     ctx.stmtCollector.push(new ModelicaComplexAssignmentStatement(targets, source));
+    // Collect function definition if it's a user-defined function
+    this.#collectFunctionDefinition(functionName, ctx);
     return null;
   }
 
@@ -1263,4 +1281,81 @@ function wrapIntegerAsReal(expr: ModelicaExpression, dae?: ModelicaDAE): Modelic
     }
   }
   return expr;
+}
+
+/**
+ * Try to evaluate a built-in function call with literal arguments at compile time.
+ * Returns the evaluated result as a literal, or null if evaluation is not possible.
+ */
+function tryFoldBuiltinFunction(functionName: string, args: ModelicaExpression[]): ModelicaExpression | null {
+  // Extract numeric values from all arguments
+  const numArgs: number[] = [];
+  for (const arg of args) {
+    if (arg instanceof ModelicaRealLiteral || arg instanceof ModelicaIntegerLiteral) {
+      numArgs.push(arg.value);
+    } else {
+      return null; // Non-literal argument — can't fold
+    }
+  }
+
+  // Single-argument math functions
+  if (numArgs.length === 1) {
+    const x = numArgs[0] ?? 0;
+    const realFns: Record<string, (x: number) => number> = {
+      sin: Math.sin,
+      cos: Math.cos,
+      tan: Math.tan,
+      asin: Math.asin,
+      acos: Math.acos,
+      atan: Math.atan,
+      sinh: Math.sinh,
+      cosh: Math.cosh,
+      tanh: Math.tanh,
+      exp: Math.exp,
+      log: Math.log,
+      log10: Math.log10,
+      sqrt: Math.sqrt,
+      abs: Math.abs,
+      sign: Math.sign,
+    };
+    const fn = realFns[functionName];
+    if (fn) {
+      const result = fn(x);
+      if (!Number.isFinite(result)) return null;
+      return new ModelicaRealLiteral(result);
+    }
+    // Integer-returning functions
+    const intFns: Record<string, (x: number) => number> = {
+      ceil: Math.ceil,
+      floor: Math.floor,
+      integer: Math.floor,
+    };
+    const intFn = intFns[functionName];
+    if (intFn) {
+      const result = intFn(x);
+      if (!Number.isFinite(result)) return null;
+      return new ModelicaIntegerLiteral(result);
+    }
+  }
+
+  // Two-argument functions
+  if (numArgs.length === 2) {
+    const [a, b] = numArgs as [number, number];
+    switch (functionName) {
+      case "max":
+        return new ModelicaRealLiteral(Math.max(a, b));
+      case "min":
+        return new ModelicaRealLiteral(Math.min(a, b));
+      case "mod":
+        return b !== 0 ? new ModelicaRealLiteral(a - Math.floor(a / b) * b) : null;
+      case "rem":
+        return b !== 0 ? new ModelicaRealLiteral(a - Math.trunc(a / b) * b) : null;
+      case "div":
+        return b !== 0 ? new ModelicaIntegerLiteral(Math.trunc(a / b)) : null;
+      case "atan2":
+        return new ModelicaRealLiteral(Math.atan2(a, b));
+    }
+  }
+
+  return null;
 }
