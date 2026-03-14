@@ -1246,64 +1246,67 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
   }
 
   override instantiate(): void {
-    logger.debug("Instantiating element: " + this.name);
     if (this.instantiated) return;
     if (this.instantiating) throw Error("reentrant error: component is already being instantiated");
     this.instantiating = true;
-    const element = this.parent?.resolveTypeSpecifier(this.abstractSyntaxNode?.parent?.typeSpecifier);
-    if (element instanceof ModelicaClassInstance) {
-      this.#declaredType = element;
-      // Validate modification arguments against the resolved type's elements.
-      // Skip predefined types (Real, Integer, etc.) and their aliases/arrays
-      // which use start/min/max attributes rather than named sub-components.
-      const isPredefined = ModelicaComponentInstance.#isPredefinedType(element);
-      if (this.modification && !isPredefined) {
-        const typeElementNames = new Set<string>();
-        for (const el of element.elements) {
-          if (el instanceof ModelicaNamedElement && el.name) {
-            typeElementNames.add(el.name);
+    try {
+      const element = this.parent?.resolveTypeSpecifier(this.abstractSyntaxNode?.parent?.typeSpecifier);
+      if (element instanceof ModelicaClassInstance) {
+        this.#declaredType = element;
+        // Validate modification arguments against the resolved type's elements.
+        // Skip predefined types (Real, Integer, etc.) and their aliases/arrays
+        // which use start/min/max attributes rather than named sub-components.
+        const isPredefined = ModelicaComponentInstance.#isPredefinedType(element);
+        if (this.modification && !isPredefined) {
+          const typeElementNames = new Set<string>();
+          for (const el of element.elements) {
+            if (el instanceof ModelicaNamedElement && el.name) {
+              typeElementNames.add(el.name);
+            }
           }
-        }
-        for (const modArg of this.modification.modificationArguments) {
-          const name = modArg.name;
-          if (name && name !== "annotation" && !typeElementNames.has(name)) {
-            if (this.parent) {
-              this.parent.errors.push(
-                `In modifier of '${this.name}', class or component '${name}' not found in '${element.name}'.`,
-              );
+          for (const modArg of this.modification.modificationArguments) {
+            const name = modArg.name;
+            if (name && name !== "annotation" && !typeElementNames.has(name)) {
+              if (this.parent) {
+                this.parent.errors.push(
+                  `In modifier of '${this.name}', class or component '${name}' not found in '${element.name}'.`,
+                );
+              }
             }
           }
         }
+        const arraySubscripts = [...(this.abstractSyntaxNode?.arraySubscripts ?? [])];
+        if (arraySubscripts.length === 0) {
+          this.classInstance = element.clone(this.modification);
+        } else {
+          this.classInstance = new ModelicaArrayClassInstance(this, element, arraySubscripts, this.modification);
+          this.classInstance.instantiate();
+        }
       }
-      const arraySubscripts = [...(this.abstractSyntaxNode?.arraySubscripts ?? [])];
-      if (arraySubscripts.length === 0) {
-        this.classInstance = element.clone(this.modification);
-      } else {
-        this.classInstance = new ModelicaArrayClassInstance(this, element, arraySubscripts, this.modification);
-        this.classInstance.instantiate();
+      this.annotations = ModelicaElement.instantiateAnnotations(
+        this.parent,
+        this.abstractSyntaxNode?.annotationClause,
+        this.modification?.annotations,
+      );
+      // Refine prefixes after instantiation:
+      // Fall back to declared type's class specifier for causality (handles type aliases like 'type InputReal = input Real;')
+      if (!this.causality && this.#declaredType) {
+        this.causality =
+          (this.#declaredType.abstractSyntaxNode?.classSpecifier as { causality?: ModelicaCausality | null })
+            ?.causality ?? null;
       }
+      // Check if this component comes from a protected extends clause
+      if (
+        !this.isProtected &&
+        this.parent instanceof ModelicaClassInstance &&
+        this.parent.isProtectedElement(this.name)
+      ) {
+        this.isProtected = true;
+      }
+      this.instantiated = true;
+    } finally {
+      this.instantiating = false;
     }
-    this.annotations = ModelicaElement.instantiateAnnotations(
-      this.parent,
-      this.abstractSyntaxNode?.annotationClause,
-      this.modification?.annotations,
-    );
-    // Refine prefixes after instantiation:
-    // Fall back to declared type's class specifier for causality (handles type aliases like 'type InputReal = input Real;')
-    if (!this.causality && this.#declaredType) {
-      this.causality =
-        (this.#declaredType.abstractSyntaxNode?.classSpecifier as { causality?: ModelicaCausality | null })
-          ?.causality ?? null;
-    }
-    // Check if this component comes from a protected extends clause
-    if (
-      !this.isProtected &&
-      this.parent instanceof ModelicaClassInstance &&
-      this.parent.isProtectedElement(this.name)
-    ) {
-      this.isProtected = true;
-    }
-    this.instantiated = true;
   }
 
   /** Check if a class instance ultimately resolves to a predefined type (Real, Integer, etc.). */

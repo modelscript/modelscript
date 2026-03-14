@@ -725,8 +725,11 @@ export abstract class ModelicaExpression {
   abstract get toRDF(): Triple[];
 
   static fromClassInstance(classInstance: ModelicaClassInstance | null | undefined): ModelicaExpression | null {
-    if (!classInstance) return null;
+    if (!classInstance) {
+      return null;
+    }
     if (!classInstance.instantiated && !classInstance.instantiating) classInstance.instantiate();
+
     if (classInstance instanceof ModelicaArrayClassInstance) {
       const elements: ModelicaExpression[] = [];
       for (const element of classInstance.elements ?? []) {

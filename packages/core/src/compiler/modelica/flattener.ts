@@ -35,6 +35,7 @@ import {
   ModelicaStringVariable,
   ModelicaSubscriptedExpression,
   ModelicaUnaryExpression,
+  ModelicaVariable,
   ModelicaWhenEquation,
   ModelicaWhenStatement,
   ModelicaWhileStatement,
@@ -227,10 +228,10 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         return m.name && m.expression ? [[m.name, m.expression]] : [];
       }),
     );
-    const isCompileTimeEvaluable =
-      variability === ModelicaVariability.PARAMETER || variability === ModelicaVariability.CONSTANT;
+
     let expression: ModelicaExpression | null;
-    if (isCompileTimeEvaluable) {
+    if (variability === ModelicaVariability.CONSTANT) {
+      // Constants should be fully evaluated
       expression = node.modification?.evaluatedExpression ?? null;
       if (!expression) {
         expression = node.modification?.expression ?? null;
@@ -244,6 +245,26 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
             dae: args[1],
             stmtCollector: [],
           }) ?? null;
+      }
+    } else if (variability === ModelicaVariability.PARAMETER) {
+      // Parameters: prefer symbolic expression over evaluated literal.
+      // Parameters can change between simulations so we want to keep references
+      // like sqrt(a) instead of collapsing to 2.236...
+      // First try the syntax flattener on the raw AST modification expression
+      expression = null;
+      if (node.modification?.modificationExpression?.expression) {
+        const syntaxFlattener = new ModelicaSyntaxFlattener();
+        expression =
+          node.modification.modificationExpression.expression.accept(syntaxFlattener, {
+            prefix: args[0],
+            classInstance: node.parent ?? ({} as ModelicaClassInstance),
+            dae: args[1],
+            stmtCollector: [],
+          }) ?? null;
+      }
+      // Only fall back to evaluatedExpression if no symbolic form exists
+      if (!expression) {
+        expression = node.modification?.evaluatedExpression ?? null;
       }
     } else {
       expression = node.modification?.expression ?? null;
@@ -635,11 +656,81 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     const functionName =
       node.functionReference?.parts?.map((p) => p.identifier?.text ?? "").join(".") ||
       (node.functionReferenceName ?? "");
-    const flatArgs: ModelicaExpression[] = [];
+    let flatArgs: ModelicaExpression[] = [];
     for (const arg of node.functionCallArguments?.arguments ?? []) {
       const flatArg = arg.expression?.accept(this, ctx);
       if (flatArg) flatArgs.push(flatArg);
     }
+
+    // Resolve arguments: substitute constant/parameter values for structural built-in
+    // function evaluation (size, fill, zeros, ones, ndims). Math built-in functions
+    // (sqrt, sin, cos, etc.) and user-defined functions should preserve parameter
+    // references like f(a) when a is a parameter.
+    const simpleName = functionName.includes(".") ? (functionName.split(".").pop() ?? functionName) : functionName;
+    const structuralBuiltins = new Set(["size", "fill", "zeros", "ones", "ndims"]);
+    const isStructuralBuiltin = structuralBuiltins.has(simpleName) || structuralBuiltins.has(functionName);
+
+    let hasParameterArg = false;
+    flatArgs = flatArgs.map((arg) => {
+      let resolvedArg = arg;
+      if (resolvedArg instanceof ModelicaVariable) {
+        if (resolvedArg.variability === ModelicaVariability.PARAMETER) {
+          hasParameterArg = true;
+          // Only substitute parameter values for built-in functions
+          if (isStructuralBuiltin) {
+            if (resolvedArg.expression && isLiteral(resolvedArg.expression)) {
+              resolvedArg = resolvedArg.expression;
+            } else if (resolvedArg.expression instanceof ModelicaArray) {
+              resolvedArg = resolvedArg.expression;
+            }
+          }
+        } else if (resolvedArg.variability === ModelicaVariability.CONSTANT) {
+          // Always substitute constant values
+          if (resolvedArg.expression && isLiteral(resolvedArg.expression)) {
+            resolvedArg = resolvedArg.expression;
+          } else if (resolvedArg.expression instanceof ModelicaArray) {
+            resolvedArg = resolvedArg.expression;
+          }
+        }
+      }
+
+      if (resolvedArg instanceof ModelicaNameExpression) {
+        const componentNames = resolvedArg.name.split(".");
+        const resolved = ctx.classInstance.resolveName(componentNames);
+        if (resolved instanceof ModelicaComponentInstance) {
+          if (!resolved.instantiated && !resolved.instantiating) {
+            resolved.instantiate();
+          }
+          if (resolved.variability === ModelicaVariability.PARAMETER) {
+            hasParameterArg = true;
+            // Only substitute parameter values for built-in functions
+            if (
+              isStructuralBuiltin &&
+              resolved.classInstance &&
+              (resolved.modification?.expression != null || resolved.modification?.evaluatedExpression != null)
+            ) {
+              const expr = ModelicaExpression.fromClassInstance(resolved.classInstance);
+              if (expr && (isLiteral(expr) || expr instanceof ModelicaArray)) {
+                resolvedArg = expr;
+              }
+            }
+          } else if (resolved.variability === ModelicaVariability.CONSTANT) {
+            // Always substitute constant values
+            if (
+              resolved.classInstance &&
+              (resolved.modification?.expression != null || resolved.modification?.evaluatedExpression != null)
+            ) {
+              const expr = ModelicaExpression.fromClassInstance(resolved.classInstance);
+              if (expr && (isLiteral(expr) || expr instanceof ModelicaArray)) {
+                resolvedArg = expr;
+              }
+            }
+          }
+        }
+      }
+      return resolvedArg;
+    });
+
     // Evaluate built-in array constructors at flatten time
     if (functionName === "fill" && flatArgs.length >= 2) {
       const shape = extractShape(flatArgs.slice(1));
@@ -653,6 +744,22 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       const shape = extractShape(flatArgs);
       if (shape) return buildFilledArray(shape, new ModelicaIntegerLiteral(1));
     }
+    // Evaluate size function
+    if (functionName === "size" && flatArgs.length >= 1) {
+      const arrayArg = flatArgs[0];
+      if (arrayArg instanceof ModelicaArray) {
+        if (flatArgs.length === 1) {
+          const totalSize = arrayArg.shape.reduce((a, b) => a * b, 1);
+          return new ModelicaIntegerLiteral(totalSize);
+        } else if (flatArgs.length === 2 && flatArgs[1] instanceof ModelicaIntegerLiteral) {
+          const dim = flatArgs[1].value;
+          if (dim >= 1 && dim <= arrayArg.shape.length) {
+            return new ModelicaIntegerLiteral(arrayArg.shape[dim - 1] ?? 0);
+          }
+        }
+      }
+    }
+
     // Evaluate built-in math/arithmetic functions at flatten time when all args are literals
     const foldedResult = tryFoldBuiltinFunction(functionName, flatArgs);
     if (foldedResult) return foldedResult;
@@ -664,6 +771,18 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       }
     }
     const result = new ModelicaFunctionCallExpression(functionName, flatArgs);
+
+    // Only inline user-defined function calls when ALL arguments are compile-time constants.
+    // Parameters are NOT constants — they can change between simulations.
+    if (!hasParameterArg && flatArgs.every((arg) => isLiteral(arg) || arg instanceof ModelicaArray)) {
+      const interp = new ModelicaInterpreter(true);
+      const evalResult = node.accept(interp, ctx.classInstance);
+      if (evalResult) {
+        this.#collectFunctionDefinition(functionName, ctx);
+        return evalResult;
+      }
+    }
+
     // Collect function definition if it's a user-defined function
     this.#collectFunctionDefinition(functionName, ctx);
     return result;
