@@ -2402,8 +2402,8 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
       this.out.write("  ");
       if (variable.isProtected) this.out.write("protected ");
       if (variable.isFinal) this.out.write("final ");
-      if (variable.causality) this.out.write(variable.causality + " ");
       if (variable.variability) this.out.write(variable.variability + " ");
+      if (variable.causality) this.out.write(variable.causality + " ");
       if (variable instanceof ModelicaBooleanVariable) {
         this.out.write("Boolean ");
       } else if (variable instanceof ModelicaIntegerVariable) {

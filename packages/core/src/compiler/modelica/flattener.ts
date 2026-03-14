@@ -147,7 +147,10 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
 
   visitComponentInstance(node: ModelicaComponentInstance, args: [string, ModelicaDAE]): void {
     const name = args[0] === "" ? (node.name ?? "?") : args[0] + "." + node.name;
-    const causality = node.abstractSyntaxNode?.parent?.causality ?? null;
+    const causality =
+      node.abstractSyntaxNode?.parent?.causality ??
+      (node.declaredType?.abstractSyntaxNode?.classSpecifier as { causality?: string | null })?.causality ??
+      null;
     const isFinal = (node.abstractSyntaxNode?.parent as { final?: boolean })?.final ?? false;
     const isProtected =
       (node.abstractSyntaxNode?.parent?.parent as { visibility?: string })?.visibility === "protected";
