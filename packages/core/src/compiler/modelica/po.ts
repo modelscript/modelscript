@@ -1,11 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+/**
+ * Represents a parsed entry from a Gettext Portable Object (PO) file.
+ */
 export interface PoEntry {
   msgid: string;
   msgstr: string;
   msgctxt?: string;
 }
 
+/**
+ * A simple parser for extracting translation entries from PO file content.
+ */
 export const ModelicaPoParser = {
   parse(content: string): PoEntry[] {
     const entries: PoEntry[] = [];
@@ -57,6 +63,9 @@ function parseStringValue(s: string): string {
   return (match?.[1] ?? "").replace(/\\n/g, "\n").replace(/\\"/g, '"').replace(/\\\\/g, "\\");
 }
 
+/**
+ * Manages a dictionary of translations and resolves strings by msgid and context.
+ */
 export class ModelicaTranslation {
   private translations = new Map<string, string>();
 

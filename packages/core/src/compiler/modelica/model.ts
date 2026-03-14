@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+/* eslint-disable @typescript-eslint/no-unused-vars */
 
 import { createHash } from "../../util/hash.js";
 
@@ -321,17 +322,18 @@ export abstract class ModelicaElement extends ModelicaNode {
     return context.translate(id, msgctxt);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  #translateObject(obj: any) {
+  #translateObject(obj: unknown) {
     if (!obj || typeof obj !== "object") return;
-    for (const key in obj) {
-      const val = obj[key];
+    const record = obj as Record<string, unknown>;
+    for (const key in record) {
+      const val = record[key];
       if (typeof val === "string") {
-        obj[key] = this.translate(val);
+        record[key] = this.translate(val);
       } else if (typeof val === "object") {
         this.#translateObject(val);
       }
     }
+    return;
   }
 }
 
@@ -1035,6 +1037,7 @@ export class ModelicaEntity extends ModelicaClassInstance {
   path: string;
   subEntities: ModelicaEntity[] = [];
   unstructured = false;
+  #entityHash: string | null = null;
 
   constructor(parent: Scope, path: string) {
     super(parent);
@@ -1059,8 +1062,6 @@ export class ModelicaEntity extends ModelicaClassInstance {
       yield* elements;
     })();
   }
-
-  #entityHash: string | null = null;
 
   override get hash(): string {
     if (this.#entityHash) return this.#entityHash;
@@ -2475,8 +2476,9 @@ export abstract class ModelicaModelVisitor<A> implements IModelicaModelVisitor<v
     for (const element of node.elements) element.accept(this, argument);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
-  visitBooleanClassInstance(node: ModelicaBooleanClassInstance, argument?: A): void {}
+  visitBooleanClassInstance(node: ModelicaBooleanClassInstance, argument?: A): void {
+    /* no-op */
+  }
 
   visitClassInstance(node: ModelicaClassInstance, argument?: A): void {
     for (const element of node.elements) element.accept(this, argument);
@@ -2494,18 +2496,21 @@ export abstract class ModelicaModelVisitor<A> implements IModelicaModelVisitor<v
     for (const element of node.elements) element.accept(this, argument);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
-  visitIntegerClassInstance(node: ModelicaIntegerClassInstance, argument?: A): void {}
+  visitIntegerClassInstance(node: ModelicaIntegerClassInstance, argument?: A): void {
+    /* no-op */
+  }
 
   visitLibrary(node: ModelicaLibrary, argument?: A): void {
     for (const element of node.elements) element.accept(this, argument);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
-  visitRealClassInstance(node: ModelicaRealClassInstance, argument?: A): void {}
+  visitRealClassInstance(node: ModelicaRealClassInstance, argument?: A): void {
+    /* no-op */
+  }
 
-  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
-  visitStringClassInstance(node: ModelicaStringClassInstance, argument?: A): void {}
+  visitStringClassInstance(node: ModelicaStringClassInstance, argument?: A): void {
+    /* no-op */
+  }
 }
 
 export class ModelicaModelPrinter extends ModelicaModelVisitor<number> {

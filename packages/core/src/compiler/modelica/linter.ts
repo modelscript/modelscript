@@ -62,6 +62,9 @@ import {
   type ModelicaWithinDirectiveSyntaxNode,
 } from "./syntax.js";
 
+/**
+ * Callback function signature for reporting diagnostic messages.
+ */
 export type DiagnosticsCallback = (
   type: string,
   message: string,
@@ -69,12 +72,18 @@ export type DiagnosticsCallback = (
   range: Range | null | undefined,
 ) => void;
 
+/**
+ * Diagnostics callback without specifying the resource string.
+ */
 export type DiagnosticsCallbackWithoutResource = (
   type: string,
   message: string,
   range: Range | null | undefined,
 ) => void;
 
+/**
+ * Main linter class coordinating syntax-level and model-level checks for Modelica.
+ */
 export class ModelicaLinter {
   #diagnosticsCallback: DiagnosticsCallback;
   #modelicaModelLinter: ModelicaModelLinter;
@@ -90,6 +99,14 @@ export class ModelicaLinter {
     this.#modelicaModelLinter = new ModelicaModelLinter(diagnosticsCallback, this.#modelicaSyntaxLinter);
   }
 
+  /**
+   * Applies registered custom linting rules to a particular AST node.
+   *
+   * @param methodName - The specific visitor method name triggering the rules (e.g., "visitClassInstance").
+   * @param node - The Modelica AST or semantic node being visited.
+   * @param diagnosticsCallback - The callback to execute when a rule produces a diagnostic.
+   * @param resource - An optional string identifier (like file path) representing the source resource.
+   */
   static applyRules<T>(
     methodName: string,
     node: T,
@@ -98,13 +115,20 @@ export class ModelicaLinter {
   ): void {
     ModelicaLinter.#rules.forEach((rule) => {
       if (methodName in rule && typeof rule[methodName as keyof typeof rule] === "function")
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (rule as any)[methodName](node, (type: string, message: string, range: Range | null | undefined) =>
-          diagnosticsCallback(type, message, resource, range),
+        (rule as Record<string, (...args: unknown[]) => void>)[methodName]?.(
+          node,
+          (type: string, message: string, range: Range | null | undefined) =>
+            diagnosticsCallback(type, message, resource, range),
         );
     });
   }
 
+  /**
+   * Lints a given syntax tree, AST node, or semantic Modelica object.
+   *
+   * @param node - The root node or tree-sitter parse tree to begin linting from.
+   * @param resource - An optional string identifier (like file path) representing the source resource.
+   */
   lint(node: ModelicaNode | ModelicaSyntaxNode | Tree, resource?: string | null): void {
     if (node instanceof ModelicaNode) {
       node.accept(this.#modelicaModelLinter, resource);
@@ -131,6 +155,11 @@ export class ModelicaLinter {
     }
   }
 
+  /**
+   * Registers custom programmatic linting rules to be applied during traversal.
+   *
+   * @param rule - An object mapping visitor method names to rule-checking functions.
+   */
   static register(
     rule: Partial<
       | IModelicaModelVisitor<void, DiagnosticsCallbackWithoutResource>
@@ -141,11 +170,20 @@ export class ModelicaLinter {
   }
 }
 
+/**
+ * Linter running diagnostics across the populated semantic Modelica object model.
+ */
 export class ModelicaModelLinter extends ModelicaModelVisitor<string | null | undefined> {
   #diagnosticsCallback: DiagnosticsCallback;
   #modelicaSyntaxLinter: ModelicaSyntaxLinter;
   #visited = new Set<string>();
 
+  /**
+   * Initializes a new ModelicaModelLinter.
+   *
+   * @param diagnosticsCallback - The diagnostic reporting callback.
+   * @param modelicaSyntaxLinter - A reference to the syntax linter for delegating deeper AST checks.
+   */
   constructor(diagnosticsCallback: DiagnosticsCallback, modelicaSyntaxLinter: ModelicaSyntaxLinter) {
     super();
     this.#diagnosticsCallback = diagnosticsCallback;
@@ -204,9 +242,17 @@ export class ModelicaModelLinter extends ModelicaModelVisitor<string | null | un
   }
 }
 
+/**
+ * Linter running text-based and syntax-tree-level diagnostics on raw Modelica code.
+ */
 export class ModelicaSyntaxLinter extends ModelicaSyntaxVisitor<void, string | null | undefined> {
   #diagnosticsCallback: DiagnosticsCallback;
 
+  /**
+   * Initializes a new ModelicaSyntaxLinter.
+   *
+   * @param diagnosticsCallback - The diagnostic reporting callback.
+   */
   constructor(diagnosticsCallback: DiagnosticsCallback) {
     super();
     this.#diagnosticsCallback = diagnosticsCallback;
@@ -611,6 +657,15 @@ ModelicaLinter.register({
   },
 });
 
+/**
+ * Recursively checks array dimensional matches between an array type declaration
+ * and its modifying expressions or substructure modifications.
+ *
+ * @param classInstance - The array class instance describing the element type and expected shape.
+ * @param modArgs - A list of modification arguments applied to the array.
+ * @param diagnosticsCallback - The diagnostic reporting callback.
+ * @param range - The syntax trace range to associate with any produced errors.
+ */
 function checkArrayModDimensions(
   classInstance: ModelicaClassInstance,
   modArgs: ModelicaModificationArgument[],

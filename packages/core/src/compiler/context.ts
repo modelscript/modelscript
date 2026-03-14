@@ -16,6 +16,9 @@ import { ModelicaPoParser, ModelicaTranslation } from "./modelica/po.js";
 import { ModelicaStoredDefinitionSyntaxNode } from "./modelica/syntax.js";
 import { Scope } from "./scope.js";
 
+/**
+ * The compiler context managing file system resources, translations, plugins, and loaded Modelica code.
+ */
 export class Context extends Scope {
   #classes: ModelicaClassInstance[] = [];
   #fs: FileSystem;
@@ -25,6 +28,11 @@ export class Context extends Scope {
 
   static #parsers = new Map<string, Parser>();
 
+  /**
+   * Initializes a new compiler Context.
+   *
+   * @param fs - The FileSystem implementation to use for reading files and checking paths.
+   */
   constructor(fs: FileSystem) {
     super(null);
     this.#fs = fs;
@@ -32,6 +40,12 @@ export class Context extends Scope {
 
   readonly hash = "root";
 
+  /**
+   * Adds and parses a Modelica library from the specified file system path.
+   *
+   * @param path - The absolute file system path to the directory or file representing the library.
+   * @returns The loaded ModelicaLibrary instance, or null if the path does not point to a valid library.
+   */
   addLibrary(path: string): ModelicaLibrary | null {
     let library = this.getLibrary(path);
     if (library) return library;
@@ -52,6 +66,11 @@ export class Context extends Scope {
     return library;
   }
 
+  /**
+   * Gets all loaded Modelica elements across the context and its loaded libraries.
+   *
+   * @returns An iterable iterator over all top-level ModelicaElements.
+   */
   get elements(): IterableIterator<ModelicaElement> {
     const classes = this.#classes;
     const libraries = this.#libraries;
@@ -63,6 +82,12 @@ export class Context extends Scope {
     })();
   }
 
+  /**
+   * Flattens a loaded Modelica class by name, generating the flattened DAE textual representation.
+   *
+   * @param name - The fully qualified name of the Modelica class to flatten.
+   * @returns The flattened DAE (Differential Algebraic Equation) output as a string, or null if the class is not found or has errors.
+   */
   flatten(name: string): string | null {
     const instance = this.query(name);
     if (!instance) return null;
@@ -82,6 +107,13 @@ export class Context extends Scope {
     return out.toString();
   }
 
+  /**
+   * Recursively checks if a given Modelica class instance or its dependencies have validation errors.
+   *
+   * @param instance - The class instance to validate.
+   * @param visited - A set of already visited class instances to prevent infinite loops (used internally).
+   * @returns True if any errors are found, false otherwise.
+   */
   #hasErrors(instance: ModelicaClassInstance, visited = new Set<ModelicaClassInstance>()): boolean {
     if (visited.has(instance)) return false;
     visited.add(instance);
@@ -96,10 +128,21 @@ export class Context extends Scope {
     return false;
   }
 
+  /**
+   * Retrieves the current FileSystem instance used by the context.
+   *
+   * @returns The active FileSystem instance.
+   */
   get fs(): FileSystem {
     return this.#fs;
   }
 
+  /**
+   * Retrieves an already loaded library by its file system path.
+   *
+   * @param path - The file system path of the library to retrieve.
+   * @returns The ModelicaLibrary if loaded, otherwise null.
+   */
   getLibrary(path: string): ModelicaLibrary | null {
     for (const library of this.#libraries) {
       if (library.path == path) return library;
@@ -107,12 +150,24 @@ export class Context extends Scope {
     return null;
   }
 
+  /**
+   * Retrieves a registered tree-sitter parser for a specific file extension.
+   *
+   * @param extname - The file extension (e.g., ".mo") to find a parser for.
+   * @returns The tree-sitter Parser instance.
+   * @throws Error if no parser is registered for the given extension.
+   */
   getParser(extname: string): Parser {
     const parser = Context.#parsers.get(extname);
     if (!parser) throw new Error(`no parser registered for extension '${extname}'`);
     return parser;
   }
 
+  /**
+   * Lists all loaded libraries within this context.
+   *
+   * @returns An iterable iterator over all loaded ModelicaLibrary instances.
+   */
   listLibraries(): IterableIterator<ModelicaLibrary> {
     const libraries = this.#libraries;
     return (function* () {
@@ -120,6 +175,11 @@ export class Context extends Scope {
     })();
   }
 
+  /**
+   * Parses and loads raw Modelica source code into the context's classes array.
+   *
+   * @param input - The raw Modelica source code string.
+   */
   load(input: string): void {
     const tree = this.parse(".mo", input);
     const node = ModelicaStoredDefinitionSyntaxNode.new(null, tree.rootNode);
@@ -127,19 +187,43 @@ export class Context extends Scope {
       this.#classes.push(ModelicaClassInstance.new(this, classDefinition));
   }
 
+  /**
+   * Parses source code using the registered parser for the given extension.
+   *
+   * @param extname - The file extension determining which parser to use.
+   * @param input - The source code to parse.
+   * @param oldTree - An optional previous tree-sitter Tree for incremental parsing.
+   * @returns The parsed tree-sitter Tree.
+   */
   parse(extname: string, input: string, oldTree?: Tree): Tree {
     const parser = this.getParser(extname);
     return parser.parse(input, oldTree, { bufferSize: input.length * 2 });
   }
 
+  /**
+   * Registers a tree-sitter parser for a specific file extension globally.
+   *
+   * @param extname - The file extension (e.g., ".mo").
+   * @param parser - The tree-sitter Parser instance to register.
+   */
   static registerParser(extname: string, parser: Parser) {
     Context.#parsers.set(extname, parser);
   }
 
+  /**
+   * Gets the currently active translation language for the context.
+   *
+   * @returns The active language code (e.g., "en_US") or null if none is set.
+   */
   get language(): string | null {
     return this.#language;
   }
 
+  /**
+   * Sets the active translation language for the context, loading PO files if necessary.
+   *
+   * @param lang - The language code to set (e.g., "en_US"), or null to disable translation.
+   */
   setLanguage(lang: string | null) {
     this.#language = lang;
     if (lang && !this.#translations.has(lang)) {
@@ -150,6 +234,12 @@ export class Context extends Scope {
     }
   }
 
+  /**
+   * Loads translation entries from PO files within a specific library for a given language.
+   *
+   * @param library - The library to load translations for.
+   * @param lang - The language code corresponding to the PO files.
+   */
   loadTranslationsForLibrary(library: ModelicaLibrary, lang: string) {
     const translation = this.#translations.get(lang);
     if (!translation) return;
@@ -170,12 +260,24 @@ export class Context extends Scope {
     }
   }
 
+  /**
+   * Translates a string identifier into the currently active language, matching on an optional context.
+   *
+   * @param id - The message identifier to translate.
+   * @param ctxt - The optional context string for disambiguation.
+   * @returns The translated string, or the original message identifier if no translation exists.
+   */
   translate(id: string, ctxt?: string): string {
     if (!this.#language) return id;
     const translation = this.#translations.get(this.#language);
     return translation?.translate(id, ctxt) ?? id;
   }
 
+  /**
+   * Scans loaded libraries to determine which translation languages are available.
+   *
+   * @returns An array of available language codes (e.g., ["de", "en_US", "fr"]).
+   */
   availableLanguages(): string[] {
     const languages = new Set<string>();
     for (const library of this.#libraries) {
@@ -197,6 +299,12 @@ export class Context extends Scope {
     return [...languages].sort();
   }
 
+  /**
+   * Removes a loaded library from the context.
+   *
+   * @param path - The file system path of the library to remove.
+   * @returns True if the library was found and removed, false otherwise.
+   */
   removeLibrary(path: string): boolean {
     let i = this.#libraries.length;
     while (i--) {
@@ -208,6 +316,12 @@ export class Context extends Scope {
     return false;
   }
 
+  /**
+   * Resolves a 'modelica://' URI into an absolute file system path.
+   *
+   * @param uri - The Modelica URI to resolve.
+   * @returns The resolved absolute file path, or null if the URI is invalid or the library is not found.
+   */
   resolveURI(uri: string): string | null {
     if (!uri.startsWith("modelica://")) return null;
     const parts = uri.substring(11).split("/");

@@ -109,15 +109,37 @@ function extractShape(args: ModelicaExpression[]): number[] | null {
   return shape.length > 0 ? shape : null;
 }
 
+/**
+ * Visitor that traverses the semantic Modelica object model and flattens it into a DAE structure.
+ * This class handles the instantiation and flattening of arrays, records, blocks, models, and variables.
+ */
 export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE]> {
+  /**
+   * Visits an array class instance during topological traversal and delegates to visitClassInstance.
+   *
+   * @param node - The array class instance payload.
+   * @param args - A tuple of `[prefixString, activeDAE]`.
+   */
   visitArrayClassInstance(node: ModelicaArrayClassInstance, args: [string, ModelicaDAE]): void {
     this.visitClassInstance(node, args);
   }
 
+  /**
+   * Visits a root entity diagram instance during topological traversal and delegates to visitClassInstance.
+   *
+   * @param node - The top-level Modelica entity node.
+   * @param args - A tuple of `[prefixString, activeDAE]`.
+   */
   visitEntity(node: ModelicaEntity, args: [string, ModelicaDAE]): void {
     this.visitClassInstance(node, args);
   }
 
+  /**
+   * Visits a class instance, flattening its components, equations, algorithm sections, and extended elements.
+   *
+   * @param node - The class instance to flatten.
+   * @param args - A tuple of `[prefixString, activeDAE]` to pass context down.
+   */
   visitClassInstance(node: ModelicaClassInstance, args: [string, ModelicaDAE]): void {
     for (const element of node.elements) {
       if (element instanceof ModelicaComponentInstance) element.accept(this, args);
@@ -149,257 +171,265 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     }
   }
 
+  /**
+   * Visits a component instance and creates corresponding DAE variables (scalars or arrays) based on its type.
+   *
+   * @param node - The component instance.
+   * @param args - A tuple of `[prefixString, activeDAE]`.
+   */
   visitComponentInstance(node: ModelicaComponentInstance, args: [string, ModelicaDAE]): void {
     const name = args[0] === "" ? (node.name ?? "?") : args[0] + "." + node.name;
-    const { causality, isFinal, isProtected } = node;
 
     if (node.classInstance instanceof ModelicaPredefinedClassInstance) {
-      const attributes = new Map(
-        node.modification?.modificationArguments.flatMap((m) => {
-          if (m.name === "annotation") return [];
-          return m.name && m.expression ? [[m.name, m.expression]] : [];
-        }),
-      );
-      const isCompileTimeEvaluable =
-        node.variability === ModelicaVariability.PARAMETER || node.variability === ModelicaVariability.CONSTANT;
-      let expression: ModelicaExpression | null;
-      if (isCompileTimeEvaluable) {
-        expression = node.modification?.evaluatedExpression ?? null;
-        // Fall back to regular expression or syntax flattener for parameters
-        // that reference other non-evaluable expressions (e.g., sqrt(a), function calls)
-        if (!expression) {
-          expression = node.modification?.expression ?? null;
-        }
-        if (!expression && node.modification?.modificationExpression?.expression) {
-          const syntaxFlattener = new ModelicaSyntaxFlattener();
-          expression =
-            node.modification.modificationExpression.expression.accept(syntaxFlattener, {
-              prefix: args[0],
-              classInstance: node.parent ?? ({} as ModelicaClassInstance),
-              dae: args[1],
-              stmtCollector: [],
-            }) ?? null;
-        }
-      } else {
-        // Try interpreter evaluation first (handles constants, simple expressions)
-        expression = node.modification?.expression ?? null;
-        // Fall back to syntax flattener for runtime expressions the interpreter can't evaluate
-        // (e.g., time, function calls, if-else, component references to other variables)
-        if (!expression && node.modification?.modificationExpression?.expression) {
-          const syntaxFlattener = new ModelicaSyntaxFlattener();
-          expression =
-            node.modification.modificationExpression.expression.accept(syntaxFlattener, {
-              prefix: args[0],
-              classInstance: node.parent ?? ({} as ModelicaClassInstance),
-              dae: args[1],
-              stmtCollector: [],
-            }) ?? null;
-        }
-      }
-      let variable;
-      const varExpression = expression;
-
-      if (node.classInstance instanceof ModelicaBooleanClassInstance) {
-        variable = new ModelicaBooleanVariable(
-          name,
-          varExpression,
-          attributes,
-          node.variability,
-          node.modification?.description ?? node.description,
-          causality,
-          isFinal,
-          isProtected,
-        );
-      } else if (node.classInstance instanceof ModelicaIntegerClassInstance) {
-        variable = new ModelicaIntegerVariable(
-          name,
-          varExpression,
-          attributes,
-          node.variability,
-          node.modification?.description ?? node.description,
-          causality,
-          isFinal,
-          isProtected,
-        );
-      } else if (node.classInstance instanceof ModelicaRealClassInstance) {
-        for (const key of ["start", "min", "max", "nominal"]) {
-          if (attributes.has(key)) {
-            const casted = castToReal(attributes.get(key) ?? null);
-            if (casted) attributes.set(key, casted);
-          }
-        }
-        variable = new ModelicaRealVariable(
-          name,
-          castToReal(varExpression),
-          attributes,
-          node.variability,
-          node.modification?.description ?? node.description,
-          causality,
-          isFinal,
-          isProtected,
-        );
-      } else if (node.classInstance instanceof ModelicaStringClassInstance) {
-        variable = new ModelicaStringVariable(
-          name,
-          varExpression,
-          attributes,
-          node.variability,
-          node.modification?.description ?? node.description,
-          causality,
-          isFinal,
-        );
-      }
-      if (variable) {
-        args[1].variables.push(variable);
-      }
+      this.#flattenPredefinedClass(node, name, args);
     } else if (node.classInstance instanceof ModelicaEnumerationClassInstance) {
-      const attributes = new Map(
-        node.modification?.modificationArguments.flatMap((m) =>
-          m.name && m.expression ? [[m.name, m.expression]] : [],
-        ),
-      );
-      const expression = node.modification?.expression ?? null;
-      const varExpression = expression;
-      const variable = new ModelicaEnumerationVariable(
-        name,
-        varExpression,
-        attributes,
-        node.variability,
-        node.modification?.description ?? node.description,
-        node.classInstance.enumerationLiterals,
-        causality,
-        isFinal,
-        isProtected,
-      );
-      args[1].variables.push(variable);
+      this.#flattenEnumerationClass(node, name, args);
     } else if (node.classInstance instanceof ModelicaArrayClassInstance) {
-      // Capture the array-level binding expression BEFORE iterating elements.
-      const arrayBindingExpression = node.modification?.expression ?? null;
-
-      // For parameter/constant variables, split the binding into per-element values.
-      const isCompileTimeEvaluable =
-        node.variability === ModelicaVariability.PARAMETER || node.variability === ModelicaVariability.CONSTANT;
-      const flatBindingElements =
-        isCompileTimeEvaluable && arrayBindingExpression instanceof ModelicaArray
-          ? [...arrayBindingExpression.flatElements]
-          : null;
-
-      const shape = node.classInstance.shape;
-      const index = new Array(shape.length).fill(1);
-      let elementIndex = 0;
-      for (const declaredElement of node.classInstance.declaredElements) {
-        const elementName = name + "[" + index.join(",") + "]";
-        if (
-          declaredElement instanceof ModelicaPredefinedClassInstance ||
-          declaredElement instanceof ModelicaEnumerationClassInstance
-        ) {
-          const attributes = new Map(
-            declaredElement.modification?.modificationArguments.flatMap((m) =>
-              m.name && m.expression ? [[m.name, m.expression]] : [],
-            ),
-          );
-          // For parameter arrays with a binding, use the split element value.
-          // For non-parameter arrays with a binding, suppress inline (emit equation later).
-          // Otherwise use the element's own modification expression.
-          let expression: ModelicaExpression | null;
-          if (flatBindingElements) {
-            expression = flatBindingElements[elementIndex] ?? null;
-          } else if (arrayBindingExpression) {
-            expression = null;
-          } else {
-            expression = declaredElement.modification?.expression ?? null;
-          }
-          const varExpression = expression;
-          let variable;
-          if (declaredElement instanceof ModelicaBooleanClassInstance) {
-            variable = new ModelicaBooleanVariable(
-              elementName,
-              varExpression,
-              attributes,
-              node.variability,
-              declaredElement.modification?.description ?? declaredElement.description,
-              causality,
-              isFinal,
-            );
-          } else if (declaredElement instanceof ModelicaIntegerClassInstance) {
-            variable = new ModelicaIntegerVariable(
-              elementName,
-              varExpression,
-              attributes,
-              node.variability,
-              declaredElement.modification?.description ?? declaredElement.description,
-              causality,
-              isFinal,
-            );
-          } else if (declaredElement instanceof ModelicaRealClassInstance) {
-            for (const key of ["start", "min", "max", "nominal"]) {
-              if (attributes.has(key)) {
-                const casted = castToReal(attributes.get(key) ?? null);
-                if (casted) attributes.set(key, casted);
-              }
-            }
-            variable = new ModelicaRealVariable(
-              elementName,
-              castToReal(varExpression),
-              attributes,
-              node.variability,
-              declaredElement.modification?.description ?? declaredElement.description,
-              causality,
-              isFinal,
-            );
-          } else if (declaredElement instanceof ModelicaStringClassInstance) {
-            variable = new ModelicaStringVariable(
-              elementName,
-              varExpression,
-              attributes,
-              node.variability,
-              declaredElement.modification?.description ?? declaredElement.description,
-              causality,
-              isFinal,
-            );
-          } else if (declaredElement instanceof ModelicaEnumerationClassInstance) {
-            variable = new ModelicaEnumerationVariable(
-              elementName,
-              varExpression,
-              attributes,
-              node.variability,
-              declaredElement.modification?.description ?? declaredElement.description,
-              declaredElement.enumerationLiterals,
-              causality,
-              isFinal,
-            );
-          }
-          if (variable) {
-            args[1].variables.push(variable);
-          }
-        } else {
-          declaredElement?.accept(this, [elementName, args[1]]);
-        }
-        elementIndex++;
-        if (!this.incrementIndex(index, shape)) break;
-      }
-
-      // For non-parameter arrays, emit the array-level binding as a separate equation
-      // Skip if the outermost dimension is 0 (completely empty array)
-      if (arrayBindingExpression && !flatBindingElements && (shape[0] ?? 0) > 0) {
-        // Cast integer literals to Real when the element type is Real
-        const firstElement = node.classInstance.declaredElements[0];
-        const isRealArray =
-          firstElement instanceof ModelicaRealClassInstance ||
-          (firstElement instanceof ModelicaArrayClassInstance &&
-            firstElement.elementClassInstance instanceof ModelicaRealClassInstance);
-        const rhs = isRealArray
-          ? (castToReal(arrayBindingExpression) ?? arrayBindingExpression)
-          : arrayBindingExpression;
-        // Use a RealVariable as a lightweight name-reference for the LHS.
-        const lhs = new ModelicaRealVariable(name, null, new Map(), null);
-        args[1].equations.push(new ModelicaSimpleEquation(lhs, rhs));
-      }
+      this.#flattenArrayClass(node, name, args);
     } else {
       node.classInstance?.accept(this, [name, args[1]]);
     }
   }
 
+  #flattenPredefinedClass(node: ModelicaComponentInstance, name: string, args: [string, ModelicaDAE]): void {
+    const { causality, isFinal, isProtected } = node;
+    const attributes = new Map(
+      node.modification?.modificationArguments.flatMap((m) => {
+        if (m.name === "annotation") return [];
+        return m.name && m.expression ? [[m.name, m.expression]] : [];
+      }),
+    );
+    const isCompileTimeEvaluable =
+      node.variability === ModelicaVariability.PARAMETER || node.variability === ModelicaVariability.CONSTANT;
+    let expression: ModelicaExpression | null;
+    if (isCompileTimeEvaluable) {
+      expression = node.modification?.evaluatedExpression ?? null;
+      if (!expression) {
+        expression = node.modification?.expression ?? null;
+      }
+      if (!expression && node.modification?.modificationExpression?.expression) {
+        const syntaxFlattener = new ModelicaSyntaxFlattener();
+        expression =
+          node.modification.modificationExpression.expression.accept(syntaxFlattener, {
+            prefix: args[0],
+            classInstance: node.parent ?? ({} as ModelicaClassInstance),
+            dae: args[1],
+            stmtCollector: [],
+          }) ?? null;
+      }
+    } else {
+      expression = node.modification?.expression ?? null;
+      if (!expression && node.modification?.modificationExpression?.expression) {
+        const syntaxFlattener = new ModelicaSyntaxFlattener();
+        expression =
+          node.modification.modificationExpression.expression.accept(syntaxFlattener, {
+            prefix: args[0],
+            classInstance: node.parent ?? ({} as ModelicaClassInstance),
+            dae: args[1],
+            stmtCollector: [],
+          }) ?? null;
+      }
+    }
+    let variable;
+    const varExpression = expression;
+
+    if (node.classInstance instanceof ModelicaBooleanClassInstance) {
+      variable = new ModelicaBooleanVariable(
+        name,
+        varExpression,
+        attributes,
+        node.variability,
+        node.modification?.description ?? node.description,
+        causality,
+        isFinal,
+        isProtected,
+      );
+    } else if (node.classInstance instanceof ModelicaIntegerClassInstance) {
+      variable = new ModelicaIntegerVariable(
+        name,
+        varExpression,
+        attributes,
+        node.variability,
+        node.modification?.description ?? node.description,
+        causality,
+        isFinal,
+        isProtected,
+      );
+    } else if (node.classInstance instanceof ModelicaRealClassInstance) {
+      for (const key of ["start", "min", "max", "nominal"]) {
+        if (attributes.has(key)) {
+          const casted = castToReal(attributes.get(key) ?? null);
+          if (casted) attributes.set(key, casted);
+        }
+      }
+      variable = new ModelicaRealVariable(
+        name,
+        castToReal(varExpression),
+        attributes,
+        node.variability,
+        node.modification?.description ?? node.description,
+        causality,
+        isFinal,
+        isProtected,
+      );
+    } else if (node.classInstance instanceof ModelicaStringClassInstance) {
+      variable = new ModelicaStringVariable(
+        name,
+        varExpression,
+        attributes,
+        node.variability,
+        node.modification?.description ?? node.description,
+        causality,
+        isFinal,
+      );
+    }
+    if (variable) {
+      args[1].variables.push(variable);
+    }
+  }
+
+  #flattenEnumerationClass(node: ModelicaComponentInstance, name: string, args: [string, ModelicaDAE]): void {
+    const { causality, isFinal, isProtected } = node;
+    const attributes = new Map(
+      node.modification?.modificationArguments.flatMap((m) => (m.name && m.expression ? [[m.name, m.expression]] : [])),
+    );
+    const expression = node.modification?.expression ?? null;
+    const varExpression = expression;
+    const variable = new ModelicaEnumerationVariable(
+      name,
+      varExpression,
+      attributes,
+      node.variability,
+      node.modification?.description ?? node.description,
+      (node.classInstance as ModelicaEnumerationClassInstance).enumerationLiterals,
+      causality,
+      isFinal,
+      isProtected,
+    );
+    args[1].variables.push(variable);
+  }
+
+  #flattenArrayClass(node: ModelicaComponentInstance, name: string, args: [string, ModelicaDAE]): void {
+    const { causality, isFinal } = node;
+    const arrayClassInstance = node.classInstance as ModelicaArrayClassInstance;
+    const arrayBindingExpression = node.modification?.expression ?? null;
+    const isCompileTimeEvaluable =
+      node.variability === ModelicaVariability.PARAMETER || node.variability === ModelicaVariability.CONSTANT;
+    const flatBindingElements =
+      isCompileTimeEvaluable && arrayBindingExpression instanceof ModelicaArray
+        ? [...arrayBindingExpression.flatElements]
+        : null;
+
+    const shape = arrayClassInstance.shape;
+    const index = new Array(shape.length).fill(1);
+    let elementIndex = 0;
+    for (const declaredElement of arrayClassInstance.declaredElements) {
+      const elementName = name + "[" + index.join(",") + "]";
+      if (
+        declaredElement instanceof ModelicaPredefinedClassInstance ||
+        declaredElement instanceof ModelicaEnumerationClassInstance
+      ) {
+        const attributes = new Map(
+          declaredElement.modification?.modificationArguments.flatMap((m) =>
+            m.name && m.expression ? [[m.name, m.expression]] : [],
+          ),
+        );
+        let expression: ModelicaExpression | null;
+        if (flatBindingElements) {
+          expression = flatBindingElements[elementIndex] ?? null;
+        } else if (arrayBindingExpression) {
+          expression = null;
+        } else {
+          expression = declaredElement.modification?.expression ?? null;
+        }
+        const varExpression = expression;
+        let variable;
+        if (declaredElement instanceof ModelicaBooleanClassInstance) {
+          variable = new ModelicaBooleanVariable(
+            elementName,
+            varExpression,
+            attributes,
+            node.variability,
+            declaredElement.modification?.description ?? declaredElement.description,
+            causality,
+            isFinal,
+          );
+        } else if (declaredElement instanceof ModelicaIntegerClassInstance) {
+          variable = new ModelicaIntegerVariable(
+            elementName,
+            varExpression,
+            attributes,
+            node.variability,
+            declaredElement.modification?.description ?? declaredElement.description,
+            causality,
+            isFinal,
+          );
+        } else if (declaredElement instanceof ModelicaRealClassInstance) {
+          for (const key of ["start", "min", "max", "nominal"]) {
+            if (attributes.has(key)) {
+              const casted = castToReal(attributes.get(key) ?? null);
+              if (casted) attributes.set(key, casted);
+            }
+          }
+          variable = new ModelicaRealVariable(
+            elementName,
+            castToReal(varExpression),
+            attributes,
+            node.variability,
+            declaredElement.modification?.description ?? declaredElement.description,
+            causality,
+            isFinal,
+          );
+        } else if (declaredElement instanceof ModelicaStringClassInstance) {
+          variable = new ModelicaStringVariable(
+            elementName,
+            varExpression,
+            attributes,
+            node.variability,
+            declaredElement.modification?.description ?? declaredElement.description,
+            causality,
+            isFinal,
+          );
+        } else if (declaredElement instanceof ModelicaEnumerationClassInstance) {
+          variable = new ModelicaEnumerationVariable(
+            elementName,
+            varExpression,
+            attributes,
+            node.variability,
+            declaredElement.modification?.description ?? declaredElement.description,
+            declaredElement.enumerationLiterals,
+            causality,
+            isFinal,
+          );
+        }
+        if (variable) {
+          args[1].variables.push(variable);
+        }
+      } else {
+        declaredElement?.accept(this, [elementName, args[1]]);
+      }
+      elementIndex++;
+      if (!this.incrementIndex(index, shape)) break;
+    }
+
+    if (arrayBindingExpression && !flatBindingElements && (shape[0] ?? 0) > 0) {
+      const firstElement = arrayClassInstance.declaredElements[0];
+      const isRealArray =
+        firstElement instanceof ModelicaRealClassInstance ||
+        (firstElement instanceof ModelicaArrayClassInstance &&
+          firstElement.elementClassInstance instanceof ModelicaRealClassInstance);
+      const rhs = isRealArray ? (castToReal(arrayBindingExpression) ?? arrayBindingExpression) : arrayBindingExpression;
+      const lhs = new ModelicaRealVariable(name, null, new Map(), null);
+      args[1].equations.push(new ModelicaSimpleEquation(lhs, rhs));
+    }
+  }
+
+  /**
+   * Visits an inherited extends class block, flattening its components and equations.
+   *
+   * @param node - The instantiated extends block holding inheritance context.
+   * @param args - A tuple of `[prefixString, activeDAE]`.
+   */
   visitExtendsClassInstance(node: ModelicaExtendsClassInstance, args: [string, ModelicaDAE]): void {
     if (!node.classInstance) return;
     for (const declaredElement of node.classInstance.declaredElements ?? []) {
@@ -415,6 +445,13 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     }
   }
 
+  /**
+   * Increments an n-dimensional array index iterator, following row-major lexicographical order.
+   *
+   * @param index - The mutable current array index vector (1-indexed).
+   * @param shape - The multidimensional bounds/shape of the array.
+   * @returns True if the index was successfully incremented, false if the iteration has crossed its bounds.
+   */
   incrementIndex(index: number[], shape: number[]): boolean {
     for (let i = shape.length - 1; i >= 0; i--) {
       const length = shape[i] ?? -1;
@@ -428,77 +465,11 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
   }
 }
 
+/**
+ * Internal visitor class specifically to flatten Modelica AST syntax models
+ * (equations, expressions, algorithms) during the DAE translation process.
+ */
 class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, FlattenerContext> {
-  visitArrayConcatenation(
-    node: ModelicaArrayConcatenationSyntaxNode,
-    ctx: FlattenerContext,
-  ): ModelicaExpression | null {
-    const elements: ModelicaExpression[] = [];
-    const shape = [node.expressionLists.length, node.expressionLists[0]?.expressions?.length ?? 0];
-    for (const expressionList of node.expressionLists ?? []) {
-      for (const expression of expressionList.expressions ?? []) {
-        const element = expression.accept(this, ctx);
-        if (element != null) elements.push(element);
-      }
-    }
-    return new ModelicaArray(shape, elements);
-  }
-
-  visitArrayConstructor(node: ModelicaArrayConstructorSyntaxNode, ctx: FlattenerContext): ModelicaExpression | null {
-    const elements: ModelicaExpression[] = [];
-    for (const expression of node.expressionList?.expressions ?? []) {
-      const element = expression.accept(this, ctx);
-      if (element != null) elements.push(element);
-    }
-    return new ModelicaArray([elements.length], elements);
-  }
-
-  visitBinaryExpression(node: ModelicaBinaryExpressionSyntaxNode, ctx: FlattenerContext): ModelicaExpression | null {
-    const operand1 = node.operand1?.accept(this, ctx);
-    const operand2 = node.operand2?.accept(this, ctx);
-    const operator = node.operator;
-    if (operator && operand1 && operand2) return canonicalizeBinaryExpression(operator, operand1, operand2, ctx.dae);
-    return null;
-  }
-
-  visitBooleanLiteral(node: ModelicaBooleanLiteralSyntaxNode): ModelicaBooleanLiteral {
-    return new ModelicaBooleanLiteral(node.value);
-  }
-
-  visitFunctionArgument(node: ModelicaFunctionArgumentSyntaxNode, ctx: FlattenerContext): ModelicaExpression | null {
-    return node.expression?.accept(this, ctx) ?? null;
-  }
-
-  visitFunctionCall(node: ModelicaFunctionCallSyntaxNode, ctx: FlattenerContext): ModelicaExpression | null {
-    // Use parts-based name for regular ComponentReference functions.
-    // Fall back to functionReferenceName for keyword functions (der/initial/pure).
-    const functionName =
-      node.functionReference?.parts?.map((p) => p.identifier?.text ?? "").join(".") ||
-      (node.functionReferenceName ?? "");
-    const flatArgs: ModelicaExpression[] = [];
-    for (const arg of node.functionCallArguments?.arguments ?? []) {
-      const flatArg = arg.expression?.accept(this, ctx);
-      if (flatArg) flatArgs.push(flatArg);
-    }
-    // Evaluate built-in array constructors at flatten time
-    if (functionName === "fill" && flatArgs.length >= 2) {
-      const shape = extractShape(flatArgs.slice(1));
-      if (shape && flatArgs[0]) return buildFilledArray(shape, flatArgs[0]);
-    }
-    if (functionName === "zeros" && flatArgs.length >= 1) {
-      const shape = extractShape(flatArgs);
-      if (shape) return buildFilledArray(shape, new ModelicaIntegerLiteral(0));
-    }
-    if (functionName === "ones" && flatArgs.length >= 1) {
-      const shape = extractShape(flatArgs);
-      if (shape) return buildFilledArray(shape, new ModelicaIntegerLiteral(1));
-    }
-    const result = new ModelicaFunctionCallExpression(functionName, flatArgs);
-    // Collect function definition if it's a user-defined function
-    this.#collectFunctionDefinition(functionName, ctx);
-    return result;
-  }
-
   /** Built-in function names that should not be looked up as user-defined functions. */
   static readonly #builtinFunctions = new Set([
     "abs",
@@ -580,6 +551,75 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     "Real",
     "Boolean",
   ]);
+  visitArrayConcatenation(
+    node: ModelicaArrayConcatenationSyntaxNode,
+    ctx: FlattenerContext,
+  ): ModelicaExpression | null {
+    const elements: ModelicaExpression[] = [];
+    const shape = [node.expressionLists.length, node.expressionLists[0]?.expressions?.length ?? 0];
+    for (const expressionList of node.expressionLists ?? []) {
+      for (const expression of expressionList.expressions ?? []) {
+        const element = expression.accept(this, ctx);
+        if (element != null) elements.push(element);
+      }
+    }
+    return new ModelicaArray(shape, elements);
+  }
+
+  visitArrayConstructor(node: ModelicaArrayConstructorSyntaxNode, ctx: FlattenerContext): ModelicaExpression | null {
+    const elements: ModelicaExpression[] = [];
+    for (const expression of node.expressionList?.expressions ?? []) {
+      const element = expression.accept(this, ctx);
+      if (element != null) elements.push(element);
+    }
+    return new ModelicaArray([elements.length], elements);
+  }
+
+  visitBinaryExpression(node: ModelicaBinaryExpressionSyntaxNode, ctx: FlattenerContext): ModelicaExpression | null {
+    const operand1 = node.operand1?.accept(this, ctx);
+    const operand2 = node.operand2?.accept(this, ctx);
+    const operator = node.operator;
+    if (operator && operand1 && operand2) return canonicalizeBinaryExpression(operator, operand1, operand2, ctx.dae);
+    return null;
+  }
+
+  visitBooleanLiteral(node: ModelicaBooleanLiteralSyntaxNode): ModelicaBooleanLiteral {
+    return new ModelicaBooleanLiteral(node.value);
+  }
+
+  visitFunctionArgument(node: ModelicaFunctionArgumentSyntaxNode, ctx: FlattenerContext): ModelicaExpression | null {
+    return node.expression?.accept(this, ctx) ?? null;
+  }
+
+  visitFunctionCall(node: ModelicaFunctionCallSyntaxNode, ctx: FlattenerContext): ModelicaExpression | null {
+    // Use parts-based name for regular ComponentReference functions.
+    // Fall back to functionReferenceName for keyword functions (der/initial/pure).
+    const functionName =
+      node.functionReference?.parts?.map((p) => p.identifier?.text ?? "").join(".") ||
+      (node.functionReferenceName ?? "");
+    const flatArgs: ModelicaExpression[] = [];
+    for (const arg of node.functionCallArguments?.arguments ?? []) {
+      const flatArg = arg.expression?.accept(this, ctx);
+      if (flatArg) flatArgs.push(flatArg);
+    }
+    // Evaluate built-in array constructors at flatten time
+    if (functionName === "fill" && flatArgs.length >= 2) {
+      const shape = extractShape(flatArgs.slice(1));
+      if (shape && flatArgs[0]) return buildFilledArray(shape, flatArgs[0]);
+    }
+    if (functionName === "zeros" && flatArgs.length >= 1) {
+      const shape = extractShape(flatArgs);
+      if (shape) return buildFilledArray(shape, new ModelicaIntegerLiteral(0));
+    }
+    if (functionName === "ones" && flatArgs.length >= 1) {
+      const shape = extractShape(flatArgs);
+      if (shape) return buildFilledArray(shape, new ModelicaIntegerLiteral(1));
+    }
+    const result = new ModelicaFunctionCallExpression(functionName, flatArgs);
+    // Collect function definition if it's a user-defined function
+    this.#collectFunctionDefinition(functionName, ctx);
+    return result;
+  }
 
   /** Resolve a function name and flatten its definition into ctx.dae.functions. */
   #collectFunctionDefinition(functionName: string, ctx: FlattenerContext): void {

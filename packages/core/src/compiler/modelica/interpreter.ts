@@ -71,7 +71,10 @@ const BUILTIN_ARRAY_FUNCTIONS = new Set([
 
 /**
  * Helper: build a (possibly nested) ModelicaArray filled with `value`.
- * `shape` is e.g. [2, 3] for a 2×3 matrix.
+ *
+ * @param shape - An array of integers describing the target dimensions (e.g., [2, 3] for a 2x3 matrix).
+ * @param value - The Modelica expression to use as the constant fill value.
+ * @returns A new ModelicaArray instance representing the correctly shaped tensor of identical values.
  */
 export function buildFilledArray(shape: number[], value: ModelicaExpression): ModelicaArray {
   if (shape.length === 1) {
@@ -109,14 +112,24 @@ export function buildFilledArray(shape: number[], value: ModelicaExpression): Mo
   return new ModelicaArray([n], elements);
 }
 
-/** Extract a numeric value from an expression (Integer or Real literal). */
+/**
+ * Extract a numeric value from an expression if it is an Integer or Real literal.
+ *
+ * @param expr - The evaluated ModelicaExpression to inspect.
+ * @returns The primitive numeric value if it is a literal, or null otherwise.
+ */
 function toNumber(expr: ModelicaExpression | null): number | null {
   if (expr instanceof ModelicaIntegerLiteral) return expr.value;
   if (expr instanceof ModelicaRealLiteral) return expr.value;
   return null;
 }
 
-/** Flatten a potentially nested ModelicaArray into a 1D list of leaf expressions. */
+/**
+ * Flatten a potentially nested ModelicaArray into a 1D list of leaf expressions.
+ *
+ * @param expr - The nested array expression (or scalar value) to flatten.
+ * @returns A flat array of leaf ModelicaExpressions.
+ */
 function flattenArray(expr: ModelicaExpression): ModelicaExpression[] {
   if (expr instanceof ModelicaArray) {
     const result: ModelicaExpression[] = [];
@@ -126,7 +139,12 @@ function flattenArray(expr: ModelicaExpression): ModelicaExpression[] {
   return [expr];
 }
 
-/** Get the shape of a ModelicaArray expression. */
+/**
+ * Extract the multidimensional shape vector of a ModelicaArray expression.
+ *
+ * @param expr - The evaluated ModelicaExpression to analyze.
+ * @returns An array of integers representing the dimension extents (e.g., [2, 3]). Returns an empty array [] for scalars.
+ */
 function getArrayShape(expr: ModelicaExpression): number[] {
   if (!(expr instanceof ModelicaArray)) return [];
   const shape = [expr.elements.length];
@@ -136,7 +154,14 @@ function getArrayShape(expr: ModelicaExpression): number[] {
   return shape;
 }
 
-/** Get element at [i,j] of a 2D array. */
+/**
+ * Retrieve the element at index `[i, j]` of a 2D ModelicaArray.
+ *
+ * @param arr - The 2-dimensional array expression.
+ * @param i - The row index.
+ * @param j - The column index.
+ * @returns The target ModelicaExpression if found, otherwise null.
+ */
 function getElement2D(arr: ModelicaArray, i: number, j: number): ModelicaExpression | null {
   const row = arr.elements[i];
   if (row instanceof ModelicaArray) return row.elements[j] ?? null;
@@ -149,6 +174,9 @@ const BreakSignal = Symbol("BreakSignal");
 /** Control flow signal for return statements inside functions. */
 const ReturnSignal = Symbol("ReturnSignal");
 
+/**
+ * Visitor that interprets Modelica syntax expressions and evaluates them into runtime values.
+ */
 export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpression, Scope> {
   /** Guard against infinite recursion during function algorithm execution. */
   #functionCallDepth = 0;
@@ -158,6 +186,11 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
   /** Current `end` value for array subscript evaluation. */
   #endValue: number | null = null;
 
+  /**
+   * Initializes a new ModelicaInterpreter.
+   *
+   * @param evaluateAlgorithms - If true, the interpreter will actively execute function algorithm sections to compute values. Defaults to false.
+   */
   constructor(evaluateAlgorithms = false) {
     super();
     this.#evaluateAlgorithms = evaluateAlgorithms;
@@ -168,6 +201,13 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     this.#endValue = value;
   }
 
+  /**
+   * Visits an array concatenation expression, evaluating each sub-expression and shaping the final array.
+   *
+   * @param node - The array concatenation syntax node (e.g., `[a, b; c, d]`).
+   * @param scope - The current scope for name resolution.
+   * @returns The evaluated ModelicaArray, or null if evaluation fails.
+   */
   visitArrayConcatenation(node: ModelicaArrayConcatenationSyntaxNode, scope: Scope): ModelicaExpression | null {
     const elements: ModelicaExpression[] = [];
     const shape = [node.expressionLists.length, node.expressionLists[0]?.expressions?.length ?? 0];
@@ -180,6 +220,13 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     return new ModelicaArray(shape, elements);
   }
 
+  /**
+   * Visits an array constructor expression, evaluating elements to build an array.
+   *
+   * @param node - The array constructor syntax node (e.g., `{1, 2, 3}`).
+   * @param scope - The current scope for name resolution.
+   * @returns The evaluated ModelicaArray (1D), or null if evaluation fails.
+   */
   visitArrayConstructor(node: ModelicaArrayConstructorSyntaxNode, scope: Scope): ModelicaExpression | null {
     const elements: ModelicaExpression[] = [];
     for (const expression of node.expressionList?.expressions ?? []) {
@@ -189,6 +236,13 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     return new ModelicaArray([elements.length], elements);
   }
 
+  /**
+   * Visits a binary expression, pushing evaluation to its operands.
+   *
+   * @param node - The binary expression syntax node (e.g., `a + b`).
+   * @param scope - The current scope for name resolution.
+   * @returns The resulting ModelicaBinaryExpression, or null if evaluation fails.
+   */
   visitBinaryExpression(node: ModelicaBinaryExpressionSyntaxNode, scope: Scope): ModelicaExpression | null {
     const operand1 = node.operand1?.accept(this, scope);
     const operand2 = node.operand2?.accept(this, scope);
@@ -196,10 +250,23 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     return null;
   }
 
+  /**
+   * Visits a boolean literal.
+   *
+   * @param node - The boolean literal syntax node.
+   * @returns The evaluated ModelicaBooleanLiteral.
+   */
   visitBooleanLiteral(node: ModelicaBooleanLiteralSyntaxNode): ModelicaBooleanLiteral {
     return new ModelicaBooleanLiteral(node.value);
   }
 
+  /**
+   * Visits a range expression, evaluating the start, stop, and step expressions.
+   *
+   * @param node - The range expression syntax node (e.g., `1:2:10`).
+   * @param scope - The current scope for name resolution.
+   * @returns A ModelicaArray containing the generated sequence, or null if evaluation fails.
+   */
   visitRangeExpression(node: ModelicaRangeExpressionSyntaxNode, scope: Scope): ModelicaExpression | null {
     const startExpr = node.startExpression?.accept(this, scope);
     const stopExpr = node.stopExpression?.accept(this, scope);
@@ -224,6 +291,14 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     return new ModelicaArray([elements.length], elements);
   }
 
+  /**
+   * Visits a component reference, resolving the name to its corresponding value or expression.
+   * Handles static array subscript evaluation if subscripts are provided.
+   *
+   * @param node - The component reference syntax node.
+   * @param scope - The current scope for name resolution.
+   * @returns The resolved ModelicaExpression, or null if unresolved.
+   */
   visitComponentReference(node: ModelicaComponentReferenceSyntaxNode, scope: Scope): ModelicaExpression | null {
     const namedElement = scope.resolveComponentReference(node);
     if (!namedElement) return null;
@@ -256,6 +331,13 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     return result;
   }
 
+  /**
+   * Visits an 'end' expression used inside array subscripts.
+   *
+   * @param _node - The end expression syntax node.
+   * @param _scope - The current scope.
+   * @returns The evaluated end integer value based on the current dimension, or null if unknown.
+   */
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   visitEndExpression(_node: ModelicaEndExpressionSyntaxNode, _scope: Scope): ModelicaExpression | null {
     if (this.#endValue != null) return new ModelicaIntegerLiteral(this.#endValue);
@@ -374,464 +456,475 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     scope: Scope,
   ): ModelicaExpression | null | undefined {
     switch (name) {
-      // fill(s, n1, n2, ...) → array of shape [n1, n2, ...] filled with s
-      case "fill": {
-        const args = this.evaluateArgs(node, scope);
-        const value = args[0];
-        if (!value) return null;
-        const shape: number[] = [];
-        for (let i = 1; i < args.length; i++) {
-          const dim = args[i];
-          if (dim instanceof ModelicaIntegerLiteral) shape.push(dim.value);
-          else return null;
-        }
-        if (shape.length === 0) return null;
-        return buildFilledArray(shape, value);
-      }
-
-      // size(A, i) → integer size of dimension i of array A
-      case "size": {
-        const argNodes = node.functionCallArguments?.arguments ?? [];
-        // First argument: component reference to an array variable
-        const arrayRefExpr = argNodes[0]?.expression;
-        // Second argument: dimension index
-        const dimArg = argNodes[1]?.expression?.accept(this, scope);
-        if (!arrayRefExpr || !(dimArg instanceof ModelicaIntegerLiteral)) return null;
-
-        // Resolve the component reference to find its ModelicaArrayClassInstance
-        const componentRef = arrayRefExpr;
-        const namedElement = scope.resolveComponentReference(
-          componentRef as unknown as ModelicaComponentReferenceSyntaxNode,
-        );
-        let arrayClassInstance: ModelicaArrayClassInstance | null = null;
-        if (namedElement instanceof ModelicaComponentInstance) {
-          if (!namedElement.instantiated && !namedElement.instantiating) namedElement.instantiate();
-          if (namedElement.classInstance instanceof ModelicaArrayClassInstance) {
-            arrayClassInstance = namedElement.classInstance;
-          }
-        } else if (namedElement instanceof ModelicaArrayClassInstance) {
-          arrayClassInstance = namedElement;
-        }
-        if (!arrayClassInstance) return null;
-
-        const dimIndex = dimArg.value; // 1-based
-        const dimSize = arrayClassInstance.shape[dimIndex - 1];
-        if (dimSize == null) return null;
-        return new ModelicaIntegerLiteral(dimSize);
-      }
-
-      // zeros(n1, n2, ...) → fill(0, n1, n2, ...)
-      case "zeros": {
-        const args = this.evaluateArgs(node, scope);
-        const shape: number[] = [];
-        for (const arg of args) {
-          if (arg instanceof ModelicaIntegerLiteral) shape.push(arg.value);
-          else return null;
-        }
-        if (shape.length === 0) return null;
-        return buildFilledArray(shape, new ModelicaIntegerLiteral(0));
-      }
-
-      // ones(n1, n2, ...) → fill(1, n1, n2, ...)
-      case "ones": {
-        const args = this.evaluateArgs(node, scope);
-        const shape: number[] = [];
-        for (const arg of args) {
-          if (arg instanceof ModelicaIntegerLiteral) shape.push(arg.value);
-          else return null;
-        }
-        if (shape.length === 0) return null;
-        return buildFilledArray(shape, new ModelicaIntegerLiteral(1));
-      }
-
-      // linspace(x1, x2, n) → {x1, x1 + (x2-x1)/(n-1), ..., x2}
-      case "linspace": {
-        const args = this.evaluateArgs(node, scope);
-        const x1Expr = args[0];
-        const x2Expr = args[1];
-        const nExpr = args[2];
-        if (!x1Expr || !x2Expr || !(nExpr instanceof ModelicaIntegerLiteral)) return null;
-        const n = nExpr.value;
-        if (n < 2) return null;
-
-        const x1 = toNumber(x1Expr);
-        const x2 = toNumber(x2Expr);
-        if (x1 == null || x2 == null) return null;
-
-        const elements: ModelicaExpression[] = [];
-        for (let i = 0; i < n; i++) {
-          elements.push(new ModelicaRealLiteral(x1 + ((x2 - x1) * i) / (n - 1)));
-        }
-        return new ModelicaArray([n], elements);
-      }
-
-      // promote(A, n) — adds trailing dimensions of size 1
-      case "promote": {
-        const args = this.evaluateArgs(node, scope);
-        const A = args[0];
-        const nExpr = args[1];
-        if (!A || !(nExpr instanceof ModelicaIntegerLiteral)) return null;
-        const targetNdims = nExpr.value;
-        const currentShape = getArrayShape(A);
-        const currentNdims = currentShape.length;
-        if (targetNdims <= currentNdims) return A;
-        let result: ModelicaExpression = A;
-        for (let i = currentNdims; i < targetNdims; i++) {
-          result = new ModelicaArray([1], [result]);
-        }
-        return result;
-      }
-
-      // ndims(A) — number of dimensions
-      case "ndims": {
-        const args = this.evaluateArgs(node, scope);
-        const A = args[0];
-        if (!A) return null;
-        return new ModelicaIntegerLiteral(getArrayShape(A).length);
-      }
-
-      // scalar(A) — convert array of size 1 to scalar
-      case "scalar": {
-        const args = this.evaluateArgs(node, scope);
-        const A = args[0];
-        if (!A) return null;
-        const flat = flattenArray(A);
-        if (flat.length === 1 && flat[0]) return flat[0];
-        return null;
-      }
-
-      // vector(A) — convert to 1D vector
-      case "vector": {
-        const args = this.evaluateArgs(node, scope);
-        const A = args[0];
-        if (!A) return null;
-        const flat = flattenArray(A);
-        return new ModelicaArray([flat.length], flat);
-      }
-
-      // matrix(A) — convert to 2D matrix
-      case "matrix": {
-        const args = this.evaluateArgs(node, scope);
-        const A = args[0];
-        if (!A) return null;
-        const shape = getArrayShape(A);
-        if (shape.length === 0) {
-          // scalar → 1×1 matrix
-          return new ModelicaArray([1], [new ModelicaArray([1], [A])]);
-        } else if (shape.length === 1) {
-          // vector → 1×n matrix
-          return new ModelicaArray([1], [A]);
-        } else if (shape.length === 2) {
-          return A; // already 2D
-        }
-        return null;
-      }
-
-      // identity(n) → n×n identity matrix
-      case "identity": {
-        const args = this.evaluateArgs(node, scope);
-        const nExpr = args[0];
-        if (!(nExpr instanceof ModelicaIntegerLiteral)) return null;
-        const n = nExpr.value;
-        const rows: ModelicaExpression[] = [];
-        for (let i = 0; i < n; i++) {
-          const row: ModelicaExpression[] = [];
-          for (let j = 0; j < n; j++) {
-            row.push(new ModelicaIntegerLiteral(i === j ? 1 : 0));
-          }
-          rows.push(new ModelicaArray([n], row));
-        }
-        return new ModelicaArray([n], rows);
-      }
-
-      // diagonal(v) → diagonal matrix from vector v
-      case "diagonal": {
-        const args = this.evaluateArgs(node, scope);
-        const v = args[0];
-        if (!(v instanceof ModelicaArray)) return null;
-        const n = v.elements.length;
-        const rows: ModelicaExpression[] = [];
-        for (let i = 0; i < n; i++) {
-          const row: ModelicaExpression[] = [];
-          for (let j = 0; j < n; j++) {
-            row.push(i === j ? (v.elements[i] ?? new ModelicaIntegerLiteral(0)) : new ModelicaIntegerLiteral(0));
-          }
-          rows.push(new ModelicaArray([n], row));
-        }
-        return new ModelicaArray([n], rows);
-      }
-
-      // min(A), min(x, y), min(... for ...)
-      case "min": {
-        // Comprehension form: min(expr for i in 1:n)
-        if (node.functionCallArguments?.comprehensionClause) {
-          const values = this.evaluateComprehension(node, scope);
-          if (!values || values.length === 0) return null;
-          let minVal: number | null = null;
-          let isReal = false;
-          for (const e of values) {
-            const v = toNumber(e);
-            if (v == null) return null;
-            if (minVal == null || v < minVal) minVal = v;
-            if (e instanceof ModelicaRealLiteral) isReal = true;
-          }
-          if (minVal == null) return null;
-          return isReal ? new ModelicaRealLiteral(minVal) : new ModelicaIntegerLiteral(minVal);
-        }
-        const args = this.evaluateArgs(node, scope);
-        if (args.length === 2) {
-          // min(x, y)
-          const x = toNumber(args[0] ?? null);
-          const y = toNumber(args[1] ?? null);
-          if (x == null || y == null) return null;
-          const minVal = Math.min(x, y);
-          if (args[0] instanceof ModelicaRealLiteral || args[1] instanceof ModelicaRealLiteral) {
-            return new ModelicaRealLiteral(minVal);
-          }
-          return new ModelicaIntegerLiteral(minVal);
-        } else if (args.length === 1 && args[0]) {
-          // min(A) — minimum of all elements
-          const flat = flattenArray(args[0]);
-          let minVal: number | null = null;
-          let isReal = false;
-          for (const e of flat) {
-            const v = toNumber(e);
-            if (v == null) return null;
-            if (minVal == null || v < minVal) minVal = v;
-            if (e instanceof ModelicaRealLiteral) isReal = true;
-          }
-          if (minVal == null) return null;
-          return isReal ? new ModelicaRealLiteral(minVal) : new ModelicaIntegerLiteral(minVal);
-        }
-        return null;
-      }
-
-      // max(A), max(x, y), max(... for ...)
-      case "max": {
-        if (node.functionCallArguments?.comprehensionClause) {
-          const values = this.evaluateComprehension(node, scope);
-          if (!values || values.length === 0) return null;
-          let maxVal: number | null = null;
-          let isReal = false;
-          for (const e of values) {
-            const v = toNumber(e);
-            if (v == null) return null;
-            if (maxVal == null || v > maxVal) maxVal = v;
-            if (e instanceof ModelicaRealLiteral) isReal = true;
-          }
-          if (maxVal == null) return null;
-          return isReal ? new ModelicaRealLiteral(maxVal) : new ModelicaIntegerLiteral(maxVal);
-        }
-        const args = this.evaluateArgs(node, scope);
-        if (args.length === 2) {
-          const x = toNumber(args[0] ?? null);
-          const y = toNumber(args[1] ?? null);
-          if (x == null || y == null) return null;
-          const maxVal = Math.max(x, y);
-          if (args[0] instanceof ModelicaRealLiteral || args[1] instanceof ModelicaRealLiteral) {
-            return new ModelicaRealLiteral(maxVal);
-          }
-          return new ModelicaIntegerLiteral(maxVal);
-        } else if (args.length === 1 && args[0]) {
-          const flat = flattenArray(args[0]);
-          let maxVal: number | null = null;
-          let isReal = false;
-          for (const e of flat) {
-            const v = toNumber(e);
-            if (v == null) return null;
-            if (maxVal == null || v > maxVal) maxVal = v;
-            if (e instanceof ModelicaRealLiteral) isReal = true;
-          }
-          if (maxVal == null) return null;
-          return isReal ? new ModelicaRealLiteral(maxVal) : new ModelicaIntegerLiteral(maxVal);
-        }
-        return null;
-      }
-
-      // sum(A), sum(... for ...)
-      case "sum": {
-        if (node.functionCallArguments?.comprehensionClause) {
-          const values = this.evaluateComprehension(node, scope);
-          if (!values || values.length === 0) return null;
-          let total = 0;
-          let isReal = false;
-          for (const e of values) {
-            const v = toNumber(e);
-            if (v == null) return null;
-            total += v;
-            if (e instanceof ModelicaRealLiteral) isReal = true;
-          }
-          return isReal ? new ModelicaRealLiteral(total) : new ModelicaIntegerLiteral(total);
-        }
-        const args = this.evaluateArgs(node, scope);
-        if (args.length === 1 && args[0]) {
-          const flat = flattenArray(args[0]);
-          let total = 0;
-          let isReal = false;
-          for (const e of flat) {
-            const v = toNumber(e);
-            if (v == null) return null;
-            total += v;
-            if (e instanceof ModelicaRealLiteral) isReal = true;
-          }
-          return isReal ? new ModelicaRealLiteral(total) : new ModelicaIntegerLiteral(total);
-        }
-        return null;
-      }
-
-      // product(A), product(... for ...)
-      case "product": {
-        if (node.functionCallArguments?.comprehensionClause) {
-          const values = this.evaluateComprehension(node, scope);
-          if (!values || values.length === 0) return null;
-          let total = 1;
-          let isReal = false;
-          for (const e of values) {
-            const v = toNumber(e);
-            if (v == null) return null;
-            total *= v;
-            if (e instanceof ModelicaRealLiteral) isReal = true;
-          }
-          return isReal ? new ModelicaRealLiteral(total) : new ModelicaIntegerLiteral(total);
-        }
-        const args = this.evaluateArgs(node, scope);
-        if (args.length === 1 && args[0]) {
-          const flat = flattenArray(args[0]);
-          let total = 1;
-          let isReal = false;
-          for (const e of flat) {
-            const v = toNumber(e);
-            if (v == null) return null;
-            total *= v;
-            if (e instanceof ModelicaRealLiteral) isReal = true;
-          }
-          return isReal ? new ModelicaRealLiteral(total) : new ModelicaIntegerLiteral(total);
-        }
-        return null;
-      }
-
-      // transpose(A) — transpose a 2D matrix
-      case "transpose": {
-        const args = this.evaluateArgs(node, scope);
-        const A = args[0];
-        if (!(A instanceof ModelicaArray)) return null;
-        const shape = getArrayShape(A);
-        if (shape.length !== 2) return null;
-        const [nRows, nCols] = shape;
-        if (nRows == null || nCols == null) return null;
-        const rows: ModelicaExpression[] = [];
-        for (let j = 0; j < nCols; j++) {
-          const row: ModelicaExpression[] = [];
-          for (let i = 0; i < nRows; i++) {
-            row.push(getElement2D(A, i, j) ?? new ModelicaIntegerLiteral(0));
-          }
-          rows.push(new ModelicaArray([nRows], row));
-        }
-        return new ModelicaArray([nCols], rows);
-      }
-
-      // outerProduct(x, y) — x * y^T for vectors
-      case "outerProduct": {
-        const args = this.evaluateArgs(node, scope);
-        const x = args[0];
-        const y = args[1];
-        if (!(x instanceof ModelicaArray) || !(y instanceof ModelicaArray)) return null;
-        const n = x.elements.length;
-        const m = y.elements.length;
-        const rows: ModelicaExpression[] = [];
-        for (let i = 0; i < n; i++) {
-          const row: ModelicaExpression[] = [];
-          for (let j = 0; j < m; j++) {
-            const xi = toNumber(x.elements[i] ?? null);
-            const yj = toNumber(y.elements[j] ?? null);
-            if (xi == null || yj == null) return null;
-            row.push(new ModelicaRealLiteral(xi * yj));
-          }
-          rows.push(new ModelicaArray([m], row));
-        }
-        return new ModelicaArray([n], rows);
-      }
-
-      // symmetric(A) — returns symmetric matrix: upper triangle from A
-      case "symmetric": {
-        const args = this.evaluateArgs(node, scope);
-        const A = args[0];
-        if (!(A instanceof ModelicaArray)) return null;
-        const shape = getArrayShape(A);
-        if (shape.length !== 2 || shape[0] !== shape[1]) return null;
-        const n = shape[0] ?? 0;
-        const rows: ModelicaExpression[] = [];
-        for (let i = 0; i < n; i++) {
-          const row: ModelicaExpression[] = [];
-          for (let j = 0; j < n; j++) {
-            if (j >= i) {
-              row.push(getElement2D(A, i, j) ?? new ModelicaIntegerLiteral(0));
-            } else {
-              row.push(getElement2D(A, j, i) ?? new ModelicaIntegerLiteral(0));
-            }
-          }
-          rows.push(new ModelicaArray([n], row));
-        }
-        return new ModelicaArray([n], rows);
-      }
-
-      // cross(x, y) — cross product of 3-vectors
-      case "cross": {
-        const args = this.evaluateArgs(node, scope);
-        const x = args[0];
-        const y = args[1];
-        if (!(x instanceof ModelicaArray) || !(y instanceof ModelicaArray)) return null;
-        if (x.elements.length !== 3 || y.elements.length !== 3) return null;
-        const x1 = toNumber(x.elements[0] ?? null),
-          x2 = toNumber(x.elements[1] ?? null),
-          x3 = toNumber(x.elements[2] ?? null);
-        const y1 = toNumber(y.elements[0] ?? null),
-          y2 = toNumber(y.elements[1] ?? null),
-          y3 = toNumber(y.elements[2] ?? null);
-        if (x1 == null || x2 == null || x3 == null || y1 == null || y2 == null || y3 == null) return null;
-        return new ModelicaArray(
-          [3],
-          [
-            new ModelicaRealLiteral(x2 * y3 - x3 * y2),
-            new ModelicaRealLiteral(x3 * y1 - x1 * y3),
-            new ModelicaRealLiteral(x1 * y2 - x2 * y1),
-          ],
-        );
-      }
-
-      // skew(x) — skew-symmetric matrix from 3-vector
-      case "skew": {
-        const args = this.evaluateArgs(node, scope);
-        const x = args[0];
-        if (!(x instanceof ModelicaArray) || x.elements.length !== 3) return null;
-        const x1 = toNumber(x.elements[0] ?? null),
-          x2 = toNumber(x.elements[1] ?? null),
-          x3 = toNumber(x.elements[2] ?? null);
-        if (x1 == null || x2 == null || x3 == null) return null;
-        return new ModelicaArray(
-          [3],
-          [
-            new ModelicaArray(
-              [3],
-              [new ModelicaRealLiteral(0), new ModelicaRealLiteral(-x3), new ModelicaRealLiteral(x2)],
-            ),
-            new ModelicaArray(
-              [3],
-              [new ModelicaRealLiteral(x3), new ModelicaRealLiteral(0), new ModelicaRealLiteral(-x1)],
-            ),
-            new ModelicaArray(
-              [3],
-              [new ModelicaRealLiteral(-x2), new ModelicaRealLiteral(x1), new ModelicaRealLiteral(0)],
-            ),
-          ],
-        );
-      }
-
+      case "fill":
+        return this.#evaluateFill(node, scope);
+      case "size":
+        return this.#evaluateSize(node, scope);
+      case "zeros":
+        return this.#evaluateZeros(node, scope);
+      case "ones":
+        return this.#evaluateOnes(node, scope);
+      case "linspace":
+        return this.#evaluateLinspace(node, scope);
+      case "promote":
+        return this.#evaluatePromote(node, scope);
+      case "ndims":
+        return this.#evaluateNdims(node, scope);
+      case "scalar":
+        return this.#evaluateScalar(node, scope);
+      case "vector":
+        return this.#evaluateVector(node, scope);
+      case "matrix":
+        return this.#evaluateMatrix(node, scope);
+      case "identity":
+        return this.#evaluateIdentity(node, scope);
+      case "diagonal":
+        return this.#evaluateDiagonal(node, scope);
+      case "min":
+        return this.#evaluateMin(node, scope);
+      case "max":
+        return this.#evaluateMax(node, scope);
+      case "sum":
+        return this.#evaluateSum(node, scope);
+      case "product":
+        return this.#evaluateProduct(node, scope);
+      case "transpose":
+        return this.#evaluateTranspose(node, scope);
+      case "outerProduct":
+        return this.#evaluateOuterProduct(node, scope);
+      case "symmetric":
+        return this.#evaluateSymmetric(node, scope);
+      case "cross":
+        return this.#evaluateCross(node, scope);
+      case "skew":
+        return this.#evaluateSkew(node, scope);
       default:
-        return undefined; // Not a built-in function
+        return undefined;
     }
   }
 
+  #evaluateFill(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
+    const args = this.evaluateArgs(node, scope);
+    const value = args[0];
+    if (!value) return null;
+    const shape: number[] = [];
+    for (let i = 1; i < args.length; i++) {
+      const dim = args[i];
+      if (dim instanceof ModelicaIntegerLiteral) shape.push(dim.value);
+      else return null;
+    }
+    if (shape.length === 0) return null;
+    return buildFilledArray(shape, value);
+  }
+
+  #evaluateSize(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
+    const argNodes = node.functionCallArguments?.arguments ?? [];
+    const arrayRefExpr = argNodes[0]?.expression;
+    const dimArg = argNodes[1]?.expression?.accept(this, scope);
+    if (!arrayRefExpr || !(dimArg instanceof ModelicaIntegerLiteral)) return null;
+
+    const componentRef = arrayRefExpr;
+    const namedElement = scope.resolveComponentReference(
+      componentRef as unknown as ModelicaComponentReferenceSyntaxNode,
+    );
+    let arrayClassInstance: ModelicaArrayClassInstance | null = null;
+    if (namedElement instanceof ModelicaComponentInstance) {
+      if (!namedElement.instantiated && !namedElement.instantiating) namedElement.instantiate();
+      if (namedElement.classInstance instanceof ModelicaArrayClassInstance) {
+        arrayClassInstance = namedElement.classInstance;
+      }
+    } else if (namedElement instanceof ModelicaArrayClassInstance) {
+      arrayClassInstance = namedElement;
+    }
+    if (!arrayClassInstance) return null;
+
+    const dimIndex = dimArg.value;
+    const dimSize = arrayClassInstance.shape[dimIndex - 1];
+    if (dimSize == null) return null;
+    return new ModelicaIntegerLiteral(dimSize);
+  }
+
+  #evaluateZeros(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
+    const args = this.evaluateArgs(node, scope);
+    const shape: number[] = [];
+    for (const arg of args) {
+      if (arg instanceof ModelicaIntegerLiteral) shape.push(arg.value);
+      else return null;
+    }
+    if (shape.length === 0) return null;
+    return buildFilledArray(shape, new ModelicaIntegerLiteral(0));
+  }
+
+  #evaluateOnes(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
+    const args = this.evaluateArgs(node, scope);
+    const shape: number[] = [];
+    for (const arg of args) {
+      if (arg instanceof ModelicaIntegerLiteral) shape.push(arg.value);
+      else return null;
+    }
+    if (shape.length === 0) return null;
+    return buildFilledArray(shape, new ModelicaIntegerLiteral(1));
+  }
+
+  #evaluateLinspace(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
+    const args = this.evaluateArgs(node, scope);
+    const x1Expr = args[0];
+    const x2Expr = args[1];
+    const nExpr = args[2];
+    if (!x1Expr || !x2Expr || !(nExpr instanceof ModelicaIntegerLiteral)) return null;
+    const n = nExpr.value;
+    if (n < 2) return null;
+
+    const x1 = toNumber(x1Expr);
+    const x2 = toNumber(x2Expr);
+    if (x1 == null || x2 == null) return null;
+
+    const elements: ModelicaExpression[] = [];
+    for (let i = 0; i < n; i++) {
+      elements.push(new ModelicaRealLiteral(x1 + ((x2 - x1) * i) / (n - 1)));
+    }
+    return new ModelicaArray([n], elements);
+  }
+
+  #evaluatePromote(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
+    const args = this.evaluateArgs(node, scope);
+    const A = args[0];
+    const nExpr = args[1];
+    if (!A || !(nExpr instanceof ModelicaIntegerLiteral)) return null;
+    const targetNdims = nExpr.value;
+    const currentShape = getArrayShape(A);
+    const currentNdims = currentShape.length;
+    if (targetNdims <= currentNdims) return A;
+    let result: ModelicaExpression = A;
+    for (let i = currentNdims; i < targetNdims; i++) {
+      result = new ModelicaArray([1], [result]);
+    }
+    return result;
+  }
+
+  #evaluateNdims(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
+    const args = this.evaluateArgs(node, scope);
+    const A = args[0];
+    if (!A) return null;
+    return new ModelicaIntegerLiteral(getArrayShape(A).length);
+  }
+
+  #evaluateScalar(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
+    const args = this.evaluateArgs(node, scope);
+    const A = args[0];
+    if (!A) return null;
+    const flat = flattenArray(A);
+    if (flat.length === 1 && flat[0]) return flat[0];
+    return null;
+  }
+
+  #evaluateVector(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
+    const args = this.evaluateArgs(node, scope);
+    const A = args[0];
+    if (!A) return null;
+    const flat = flattenArray(A);
+    return new ModelicaArray([flat.length], flat);
+  }
+
+  #evaluateMatrix(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
+    const args = this.evaluateArgs(node, scope);
+    const A = args[0];
+    if (!A) return null;
+    const shape = getArrayShape(A);
+    if (shape.length === 0) {
+      return new ModelicaArray([1], [new ModelicaArray([1], [A])]);
+    } else if (shape.length === 1) {
+      return new ModelicaArray([1], [A]);
+    } else if (shape.length === 2) {
+      return A;
+    }
+    return null;
+  }
+
+  #evaluateIdentity(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
+    const args = this.evaluateArgs(node, scope);
+    const nExpr = args[0];
+    if (!(nExpr instanceof ModelicaIntegerLiteral)) return null;
+    const n = nExpr.value;
+    const rows: ModelicaExpression[] = [];
+    for (let i = 0; i < n; i++) {
+      const row: ModelicaExpression[] = [];
+      for (let j = 0; j < n; j++) {
+        row.push(new ModelicaIntegerLiteral(i === j ? 1 : 0));
+      }
+      rows.push(new ModelicaArray([n], row));
+    }
+    return new ModelicaArray([n], rows);
+  }
+
+  #evaluateDiagonal(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
+    const args = this.evaluateArgs(node, scope);
+    const v = args[0];
+    if (!(v instanceof ModelicaArray)) return null;
+    const n = v.elements.length;
+    const rows: ModelicaExpression[] = [];
+    for (let i = 0; i < n; i++) {
+      const row: ModelicaExpression[] = [];
+      for (let j = 0; j < n; j++) {
+        row.push(i === j ? (v.elements[i] ?? new ModelicaIntegerLiteral(0)) : new ModelicaIntegerLiteral(0));
+      }
+      rows.push(new ModelicaArray([n], row));
+    }
+    return new ModelicaArray([n], rows);
+  }
+
+  #evaluateMin(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
+    if (node.functionCallArguments?.comprehensionClause) {
+      const values = this.evaluateComprehension(node, scope);
+      if (!values || values.length === 0) return null;
+      let minVal: number | null = null;
+      let isReal = false;
+      for (const e of values) {
+        const v = toNumber(e);
+        if (v == null) return null;
+        if (minVal == null || v < minVal) minVal = v;
+        if (e instanceof ModelicaRealLiteral) isReal = true;
+      }
+      if (minVal == null) return null;
+      return isReal ? new ModelicaRealLiteral(minVal) : new ModelicaIntegerLiteral(minVal);
+    }
+    const args = this.evaluateArgs(node, scope);
+    if (args.length === 2) {
+      const x = toNumber(args[0] ?? null);
+      const y = toNumber(args[1] ?? null);
+      if (x == null || y == null) return null;
+      const minVal = Math.min(x, y);
+      if (args[0] instanceof ModelicaRealLiteral || args[1] instanceof ModelicaRealLiteral) {
+        return new ModelicaRealLiteral(minVal);
+      }
+      return new ModelicaIntegerLiteral(minVal);
+    } else if (args.length === 1 && args[0]) {
+      const flat = flattenArray(args[0]);
+      let minVal: number | null = null;
+      let isReal = false;
+      for (const e of flat) {
+        const v = toNumber(e);
+        if (v == null) return null;
+        if (minVal == null || v < minVal) minVal = v;
+        if (e instanceof ModelicaRealLiteral) isReal = true;
+      }
+      if (minVal == null) return null;
+      return isReal ? new ModelicaRealLiteral(minVal) : new ModelicaIntegerLiteral(minVal);
+    }
+    return null;
+  }
+
+  #evaluateMax(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
+    if (node.functionCallArguments?.comprehensionClause) {
+      const values = this.evaluateComprehension(node, scope);
+      if (!values || values.length === 0) return null;
+      let maxVal: number | null = null;
+      let isReal = false;
+      for (const e of values) {
+        const v = toNumber(e);
+        if (v == null) return null;
+        if (maxVal == null || v > maxVal) maxVal = v;
+        if (e instanceof ModelicaRealLiteral) isReal = true;
+      }
+      if (maxVal == null) return null;
+      return isReal ? new ModelicaRealLiteral(maxVal) : new ModelicaIntegerLiteral(maxVal);
+    }
+    const args = this.evaluateArgs(node, scope);
+    if (args.length === 2) {
+      const x = toNumber(args[0] ?? null);
+      const y = toNumber(args[1] ?? null);
+      if (x == null || y == null) return null;
+      const maxVal = Math.max(x, y);
+      if (args[0] instanceof ModelicaRealLiteral || args[1] instanceof ModelicaRealLiteral) {
+        return new ModelicaRealLiteral(maxVal);
+      }
+      return new ModelicaIntegerLiteral(maxVal);
+    } else if (args.length === 1 && args[0]) {
+      const flat = flattenArray(args[0]);
+      let maxVal: number | null = null;
+      let isReal = false;
+      for (const e of flat) {
+        const v = toNumber(e);
+        if (v == null) return null;
+        if (maxVal == null || v > maxVal) maxVal = v;
+        if (e instanceof ModelicaRealLiteral) isReal = true;
+      }
+      if (maxVal == null) return null;
+      return isReal ? new ModelicaRealLiteral(maxVal) : new ModelicaIntegerLiteral(maxVal);
+    }
+    return null;
+  }
+
+  #evaluateSum(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
+    if (node.functionCallArguments?.comprehensionClause) {
+      const values = this.evaluateComprehension(node, scope);
+      if (!values || values.length === 0) return null;
+      let total = 0;
+      let isReal = false;
+      for (const e of values) {
+        const v = toNumber(e);
+        if (v == null) return null;
+        total += v;
+        if (e instanceof ModelicaRealLiteral) isReal = true;
+      }
+      return isReal ? new ModelicaRealLiteral(total) : new ModelicaIntegerLiteral(total);
+    }
+    const args = this.evaluateArgs(node, scope);
+    if (args.length === 1 && args[0]) {
+      const flat = flattenArray(args[0]);
+      let total = 0;
+      let isReal = false;
+      for (const e of flat) {
+        const v = toNumber(e);
+        if (v == null) return null;
+        total += v;
+        if (e instanceof ModelicaRealLiteral) isReal = true;
+      }
+      return isReal ? new ModelicaRealLiteral(total) : new ModelicaIntegerLiteral(total);
+    }
+    return null;
+  }
+
+  #evaluateProduct(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
+    if (node.functionCallArguments?.comprehensionClause) {
+      const values = this.evaluateComprehension(node, scope);
+      if (!values || values.length === 0) return null;
+      let total = 1;
+      let isReal = false;
+      for (const e of values) {
+        const v = toNumber(e);
+        if (v == null) return null;
+        total *= v;
+        if (e instanceof ModelicaRealLiteral) isReal = true;
+      }
+      return isReal ? new ModelicaRealLiteral(total) : new ModelicaIntegerLiteral(total);
+    }
+    const args = this.evaluateArgs(node, scope);
+    if (args.length === 1 && args[0]) {
+      const flat = flattenArray(args[0]);
+      let total = 1;
+      let isReal = false;
+      for (const e of flat) {
+        const v = toNumber(e);
+        if (v == null) return null;
+        total *= v;
+        if (e instanceof ModelicaRealLiteral) isReal = true;
+      }
+      return isReal ? new ModelicaRealLiteral(total) : new ModelicaIntegerLiteral(total);
+    }
+    return null;
+  }
+
+  #evaluateTranspose(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
+    const args = this.evaluateArgs(node, scope);
+    const A = args[0];
+    if (!(A instanceof ModelicaArray)) return null;
+    const shape = getArrayShape(A);
+    if (shape.length !== 2) return null;
+    const [nRows, nCols] = shape;
+    if (nRows == null || nCols == null) return null;
+    const rows: ModelicaExpression[] = [];
+    for (let j = 0; j < nCols; j++) {
+      const row: ModelicaExpression[] = [];
+      for (let i = 0; i < nRows; i++) {
+        row.push(getElement2D(A, i, j) ?? new ModelicaIntegerLiteral(0));
+      }
+      rows.push(new ModelicaArray([nRows], row));
+    }
+    return new ModelicaArray([nCols], rows);
+  }
+
+  #evaluateOuterProduct(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
+    const args = this.evaluateArgs(node, scope);
+    const x = args[0];
+    const y = args[1];
+    if (!(x instanceof ModelicaArray) || !(y instanceof ModelicaArray)) return null;
+    const n = x.elements.length;
+    const m = y.elements.length;
+    const rows: ModelicaExpression[] = [];
+    for (let i = 0; i < n; i++) {
+      const row: ModelicaExpression[] = [];
+      for (let j = 0; j < m; j++) {
+        const xi = toNumber(x.elements[i] ?? null);
+        const yj = toNumber(y.elements[j] ?? null);
+        if (xi == null || yj == null) return null;
+        row.push(new ModelicaRealLiteral(xi * yj));
+      }
+      rows.push(new ModelicaArray([m], row));
+    }
+    return new ModelicaArray([n], rows);
+  }
+
+  #evaluateSymmetric(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
+    const args = this.evaluateArgs(node, scope);
+    const A = args[0];
+    if (!(A instanceof ModelicaArray)) return null;
+    const shape = getArrayShape(A);
+    if (shape.length !== 2 || shape[0] !== shape[1]) return null;
+    const n = shape[0] ?? 0;
+    const rows: ModelicaExpression[] = [];
+    for (let i = 0; i < n; i++) {
+      const row: ModelicaExpression[] = [];
+      for (let j = 0; j < n; j++) {
+        if (j >= i) {
+          row.push(getElement2D(A, i, j) ?? new ModelicaIntegerLiteral(0));
+        } else {
+          row.push(getElement2D(A, j, i) ?? new ModelicaIntegerLiteral(0));
+        }
+      }
+      rows.push(new ModelicaArray([n], row));
+    }
+    return new ModelicaArray([n], rows);
+  }
+
+  #evaluateCross(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
+    const args = this.evaluateArgs(node, scope);
+    const x = args[0];
+    const y = args[1];
+    if (!(x instanceof ModelicaArray) || !(y instanceof ModelicaArray)) return null;
+    if (x.elements.length !== 3 || y.elements.length !== 3) return null;
+    const x1 = toNumber(x.elements[0] ?? null),
+      x2 = toNumber(x.elements[1] ?? null),
+      x3 = toNumber(x.elements[2] ?? null);
+    const y1 = toNumber(y.elements[0] ?? null),
+      y2 = toNumber(y.elements[1] ?? null),
+      y3 = toNumber(y.elements[2] ?? null);
+    if (x1 == null || x2 == null || x3 == null || y1 == null || y2 == null || y3 == null) return null;
+    return new ModelicaArray(
+      [3],
+      [
+        new ModelicaRealLiteral(x2 * y3 - x3 * y2),
+        new ModelicaRealLiteral(x3 * y1 - x1 * y3),
+        new ModelicaRealLiteral(x1 * y2 - x2 * y1),
+      ],
+    );
+  }
+
+  #evaluateSkew(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
+    const args = this.evaluateArgs(node, scope);
+    const x = args[0];
+    if (!(x instanceof ModelicaArray) || x.elements.length !== 3) return null;
+    const x1 = toNumber(x.elements[0] ?? null),
+      x2 = toNumber(x.elements[1] ?? null),
+      x3 = toNumber(x.elements[2] ?? null);
+    if (x1 == null || x2 == null || x3 == null) return null;
+    return new ModelicaArray(
+      [3],
+      [
+        new ModelicaArray([3], [new ModelicaRealLiteral(0), new ModelicaRealLiteral(-x3), new ModelicaRealLiteral(x2)]),
+        new ModelicaArray([3], [new ModelicaRealLiteral(x3), new ModelicaRealLiteral(0), new ModelicaRealLiteral(-x1)]),
+        new ModelicaArray([3], [new ModelicaRealLiteral(-x2), new ModelicaRealLiteral(x1), new ModelicaRealLiteral(0)]),
+      ],
+    );
+  }
+
+  /**
+   * Visits a generic function call node, evaluating arguments and interpreting built-in or user-defined functions.
+   *
+   * @param node - The function call syntax node.
+   * @param scope - The current scope for resolving the function definition.
+   * @returns The evaluated result expression (scalar or array), or null if the function is unresolvable or fails.
+   */
   visitFunctionCall(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
     // Check for built-in array functions first
     const funcName =
@@ -906,6 +999,13 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     }
   }
 
+  /**
+   * Visits a simple assignment statement (e.g., `v := expr;`), evaluating the source and mutating the target component.
+   *
+   * @param node - The simple assignment syntax node.
+   * @param scope - The current scope to update.
+   * @returns `null` in all cases, as assignment statements do not return expressions.
+   */
   visitSimpleAssignmentStatement(node: ModelicaSimpleAssignmentStatementSyntaxNode, scope: Scope): null {
     const value = node.source?.accept(this, scope);
     const targetName = node.target?.parts?.[0]?.identifier?.text;
@@ -987,11 +1087,25 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     }
   }
 
+  /**
+   * Visits a procedure call statement, executing the referenced function specifically for its side effects.
+   *
+   * @param node - The procedure call syntax node.
+   * @param scope - The current scope.
+   * @returns `null` in all cases.
+   */
   visitProcedureCallStatement(node: ModelicaProcedureCallStatementSyntaxNode, scope: Scope): null {
     this.callFunction(node.functionReference, node.functionCallArguments, scope);
     return null;
   }
 
+  /**
+   * Visits a complex assignment statement (e.g., `(x, y) := f(z)`), evaluating the function and assigning matching outputs.
+   *
+   * @param node - The complex assignment syntax node.
+   * @param scope - The current scope to update outputs in.
+   * @returns `null` in all cases.
+   */
   visitComplexAssignmentStatement(node: ModelicaComplexAssignmentStatementSyntaxNode, scope: Scope): null {
     const result = this.callFunction(node.functionReference, node.functionCallArguments, scope);
     if (!result || !node.outputExpressionList) return null;
@@ -1020,6 +1134,13 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     return null;
   }
 
+  /**
+   * Visits an output expression list, primarily unwrapping single parenthesized expressions.
+   *
+   * @param node - The output expression list syntax node.
+   * @param scope - The current scope.
+   * @returns The evaluated inner expression, or null if it's an un-handled multiple output list.
+   */
   visitOutputExpressionList(node: ModelicaOutputExpressionListSyntaxNode, scope: Scope): ModelicaExpression | null {
     // For single-element output lists (parenthesized expressions), unwrap the inner expression
     if (node.outputs.length === 1 && node.outputs[0]) {
@@ -1028,6 +1149,13 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     return null;
   }
 
+  /**
+   * Visits an if-statement inside an algorithm section, evaluating branches sequentially and executing the first true branch.
+   *
+   * @param node - The if-statement syntax node.
+   * @param scope - The current scope.
+   * @returns `null` in all cases.
+   */
   visitIfStatement(node: ModelicaIfStatementSyntaxNode, scope: Scope): null {
     // Evaluate the main condition
     const condition = node.condition?.accept(this, scope);
@@ -1054,6 +1182,13 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     return null;
   }
 
+  /**
+   * Visits a when-statement, evaluating branches and executing the first true branch block.
+   *
+   * @param node - The when-statement syntax node.
+   * @param scope - The current scope.
+   * @returns `null` in all cases.
+   */
   visitWhenStatement(node: ModelicaWhenStatementSyntaxNode, scope: Scope): null {
     const condition = node.condition?.accept(this, scope);
     if (condition instanceof ModelicaBooleanLiteral && condition.value) {
@@ -1074,6 +1209,14 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     return null;
   }
 
+  /**
+   * Visits a while-statement, evaluating the condition and executing the body loop iteratively.
+   * Handles inner `break` signals automatically. Imposes a hard iteration limit to prevent infinite loops.
+   *
+   * @param node - The while-statement syntax node.
+   * @param scope - The looping scope.
+   * @returns `null` in all cases.
+   */
   visitWhileStatement(node: ModelicaWhileStatementSyntaxNode, scope: Scope): null {
     const MAX_ITERATIONS = 10000;
     for (let i = 0; i < MAX_ITERATIONS; i++) {
@@ -1091,6 +1234,13 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     return null;
   }
 
+  /**
+   * Visits a for-statement, executing the body repeatedly across iterating ranges for each index variable.
+   *
+   * @param node - The for-statement syntax node.
+   * @param scope - The base scope, which gets extended with the loop iteration variables.
+   * @returns `null` in all cases.
+   */
   visitForStatement(node: ModelicaForStatementSyntaxNode, scope: Scope): null {
     for (const forIndex of node.forIndexes) {
       const varName = forIndex.identifier?.text;
@@ -1145,33 +1295,74 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     return null;
   }
 
+  /**
+   * Initiates a break control flow signal.
+   *
+   * @throws A special BreakSignal symbol.
+   */
   visitBreakStatement(): never {
     throw BreakSignal;
   }
 
+  /**
+   * Initiates a return control flow signal.
+   *
+   * @throws A special ReturnSignal symbol.
+   */
   visitReturnStatement(): never {
     throw ReturnSignal;
   }
 
+  /**
+   * Visits a string literal.
+   *
+   * @param node - The string literal syntax node.
+   * @returns The evaluated ModelicaStringLiteral.
+   */
   visitStringLiteral(node: ModelicaStringLiteralSyntaxNode): ModelicaExpression | null {
     return new ModelicaStringLiteral(node.text ?? "");
   }
 
+  /**
+   * Visits a unary expression.
+   *
+   * @param node - The unary expression syntax node.
+   * @param scope - The current scope.
+   * @returns The evaluated ModelicaUnaryExpression.
+   */
   visitUnaryExpression(node: ModelicaUnaryExpressionSyntaxNode, scope: Scope): ModelicaExpression | null {
     const operand = node.operand?.accept(this, scope);
     if (node.operator && operand) return ModelicaUnaryExpression.new(node.operator, operand);
     return null;
   }
 
+  /**
+   * Visits an unsigned integer literal.
+   *
+   * @param node - The literal syntax node.
+   * @returns The typed integer literal.
+   */
   visitUnsignedIntegerLiteral(node: ModelicaUnsignedIntegerLiteralSyntaxNode): ModelicaIntegerLiteral {
     return new ModelicaIntegerLiteral(node.value);
   }
 
+  /**
+   * Visits an unsigned real literal.
+   *
+   * @param node - The literal syntax node.
+   * @returns The typed real literal.
+   */
   visitUnsignedRealLiteral(node: ModelicaUnsignedRealLiteralSyntaxNode): ModelicaRealLiteral {
     return new ModelicaRealLiteral(node.value);
   }
 }
 
+/**
+ * Evaluates a condition attribute (e.g., for conditional component instantiations).
+ *
+ * @param component - The component instance holding the condition attribute.
+ * @returns The evaluated boolean result. Returns true if no condition is present. Returns undefined if evaluation fails.
+ */
 export function evaluateCondition(component: ModelicaComponentInstance): boolean | undefined {
   const node = component.abstractSyntaxNode;
   if (!node || !("conditionAttribute" in node) || !node.conditionAttribute?.condition) return true;

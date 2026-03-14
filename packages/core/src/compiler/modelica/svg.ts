@@ -57,6 +57,9 @@ import {
   type ITransformation,
 } from "./types.js";
 
+/**
+ * Renders the Diagram view of a Modelica class instance as an SVG.
+ */
 export function renderDiagram(classInstance: ModelicaClassInstance, svg?: Svg): Svg | null {
   svg = svg ? svg : new Svg();
   for (const extendsClassInstance of classInstance.extendsClassInstances) {
@@ -90,6 +93,9 @@ export function renderDiagram(classInstance: ModelicaClassInstance, svg?: Svg): 
   return svg;
 }
 
+/**
+ * Renders the Icon view of a Modelica component or class as an SVG.
+ */
 export function renderIcon(
   classInstance: ModelicaClassInstance,
   componentInstance?: ModelicaComponentInstance,
@@ -127,6 +133,9 @@ export function renderIcon(
   return svg;
 }
 
+/**
+ * Renders a specific Modelica AST graphic definition into its corresponding SVG abstraction.
+ */
 export function renderGraphicItem(
   group: G,
   graphicItem: IGraphicItem,
@@ -157,14 +166,12 @@ export function renderGraphicItem(
       break;
     case "Text":
       if (skipText) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return graphicItemGroup as any;
+        return graphicItemGroup as unknown as Shape;
       }
       shape = renderText(graphicItemGroup, graphicItem as IText, classInstance, componentInstance);
       break;
     default:
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return graphicItemGroup as any;
+      return graphicItemGroup as unknown as Shape;
   }
   applyVisibility(shape, graphicItem);
   return shape;
@@ -442,8 +449,7 @@ export function applyFontSize(shape: Text, graphicItem: IText): void {
       const midSize = Math.floor((minSize + maxSize) / 2);
       shape.attr({ "font-size": midSize });
       // We use a small tolerance (1px) to avoid rounding issues that might differ between browsers
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      if ((shape.node as any).getComputedTextLength() <= width + 0.5) {
+      if ((shape.node as unknown as { getComputedTextLength: () => number }).getComputedTextLength() <= width + 0.5) {
         bestSize = midSize;
         minSize = midSize + 1;
       } else {
@@ -667,6 +673,9 @@ export function computePortPlacement(component: ModelicaComponentInstance): Tran
   return computeTransform(iconTransformation, icon?.coordinateSystem);
 }
 
+/**
+ * Extracted transformation data (origin, rotation, scale) for positioning components.
+ */
 export interface TransformData {
   scaleX: number;
   scaleY: number;

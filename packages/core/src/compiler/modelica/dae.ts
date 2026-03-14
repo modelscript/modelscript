@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+/* eslint-disable @typescript-eslint/no-unused-vars */
 
 import { createHash } from "../../util/hash.js";
 import type { Writer } from "../../util/io.js";
@@ -2080,8 +2081,9 @@ export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void,
     node.source.accept(this, argument);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
-  visitBreakStatement(node: ModelicaBreakStatement, argument?: A): void {}
+  visitBreakStatement(node: ModelicaBreakStatement, argument?: A): void {
+    /* no-op */
+  }
 
   visitComplexAssignmentStatement(node: ModelicaComplexAssignmentStatement, argument?: A): void {
     for (const target of node.targets) {
@@ -2109,8 +2111,9 @@ export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void,
     node.call.accept(this, argument);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
-  visitReturnStatement(node: ModelicaReturnStatement, argument?: A): void {}
+  visitReturnStatement(node: ModelicaReturnStatement, argument?: A): void {
+    /* no-op */
+  }
 
   visitWhenStatement(node: ModelicaWhenStatement, argument?: A): void {
     node.condition.accept(this, argument);
@@ -2135,25 +2138,30 @@ export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void,
     node.operand2.accept(this, argument);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
-  visitBooleanLiteral(node: ModelicaBooleanLiteral, argument?: A): void {}
+  visitBooleanLiteral(node: ModelicaBooleanLiteral, argument?: A): void {
+    /* no-op */
+  }
 
-  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
-  visitBooleanVariable(node: ModelicaBooleanVariable, argument?: A): void {}
+  visitBooleanVariable(node: ModelicaBooleanVariable, argument?: A): void {
+    /* no-op */
+  }
 
-  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
-  visitColonExpression(node: ModelicaColonExpression, argument?: A): void {}
+  visitColonExpression(node: ModelicaColonExpression, argument?: A): void {
+    /* no-op */
+  }
 
   visitDAE(node: ModelicaDAE, argument?: A): void {
     for (const variable of node.variables) variable.accept(this, argument);
     for (const equation of node.equations) equation.accept(this, argument);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
-  visitEnumerationLiteral(node: ModelicaEnumerationLiteral, argument?: A): void {}
+  visitEnumerationLiteral(node: ModelicaEnumerationLiteral, argument?: A): void {
+    /* no-op */
+  }
 
-  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
-  visitEnumerationVariable(node: ModelicaEnumerationVariable, argument?: A): void {}
+  visitEnumerationVariable(node: ModelicaEnumerationVariable, argument?: A): void {
+    /* no-op */
+  }
 
   visitForEquation(node: ModelicaForEquation, argument?: A): void {
     node.range.accept(this, argument);
@@ -2184,14 +2192,17 @@ export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void,
     node.elseExpression.accept(this, argument);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
-  visitIntegerLiteral(node: ModelicaIntegerLiteral, argument?: A): void {}
+  visitIntegerLiteral(node: ModelicaIntegerLiteral, argument?: A): void {
+    /* no-op */
+  }
 
-  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
-  visitIntegerVariable(node: ModelicaIntegerVariable, argument?: A): void {}
+  visitIntegerVariable(node: ModelicaIntegerVariable, argument?: A): void {
+    /* no-op */
+  }
 
-  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
-  visitNameExpression(node: ModelicaNameExpression, argument?: A): void {}
+  visitNameExpression(node: ModelicaNameExpression, argument?: A): void {
+    /* no-op */
+  }
 
   visitObject(node: ModelicaObject, argument?: A): void {
     for (const element of node.elements.values()) element.accept(this, argument);
@@ -2203,22 +2214,26 @@ export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void,
     node.end.accept(this, argument);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
-  visitRealLiteral(node: ModelicaRealLiteral, argument?: A): void {}
+  visitRealLiteral(node: ModelicaRealLiteral, argument?: A): void {
+    /* no-op */
+  }
 
-  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
-  visitRealVariable(node: ModelicaRealVariable, argument?: A): void {}
+  visitRealVariable(node: ModelicaRealVariable, argument?: A): void {
+    /* no-op */
+  }
 
   visitSimpleEquation(node: ModelicaSimpleEquation, argument?: A): void {
     node.expression1.accept(this, argument);
     node.expression2.accept(this, argument);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
-  visitStringLiteral(node: ModelicaStringLiteral, argument?: A): void {}
+  visitStringLiteral(node: ModelicaStringLiteral, argument?: A): void {
+    /* no-op */
+  }
 
-  // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
-  visitStringVariable(node: ModelicaStringVariable, argument?: A): void {}
+  visitStringVariable(node: ModelicaStringVariable, argument?: A): void {
+    /* no-op */
+  }
 
   visitSubscriptedExpression(node: ModelicaSubscriptedExpression, argument?: A): void {
     node.base.accept(this, argument);
@@ -2283,7 +2298,6 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     this.out.write(";\n");
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   visitBreakStatement(node: ModelicaBreakStatement): void {
     this.out.write(this.indent() + "break;\n");
   }
@@ -2360,7 +2374,6 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     this.out.write(";\n");
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   visitReturnStatement(node: ModelicaReturnStatement): void {
     this.out.write(this.indent() + "return;\n");
   }
