@@ -192,6 +192,8 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
    */
   // Track outer component variability for propagation into compound type sub-components
   #outerVariability: ModelicaVariability | null = null;
+  // Track emitted variable names to prevent duplicates from diamond inheritance
+  #emittedVarNames = new Set<string>();
 
   visitComponentInstance(node: ModelicaComponentInstance, args: [string, ModelicaDAE]): void {
     const name = args[0] === "" ? (node.name ?? "?") : args[0] + "." + node.name;
@@ -333,7 +335,12 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       );
     }
     if (variable) {
-      args[1].variables.push(variable);
+      // Skip duplicate variables from diamond inheritance
+      // (same component inherited through multiple extends paths)
+      if (!this.#emittedVarNames.has(variable.name)) {
+        this.#emittedVarNames.add(variable.name);
+        args[1].variables.push(variable);
+      }
     }
   }
 
@@ -355,7 +362,10 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       isFinal,
       isProtected,
     );
-    args[1].variables.push(variable);
+    if (!this.#emittedVarNames.has(variable.name)) {
+      this.#emittedVarNames.add(variable.name);
+      args[1].variables.push(variable);
+    }
   }
 
   #flattenArrayClass(node: ModelicaComponentInstance, name: string, args: [string, ModelicaDAE]): void {
@@ -462,7 +472,10 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           );
         }
         if (variable) {
-          args[1].variables.push(variable);
+          if (!this.#emittedVarNames.has(variable.name)) {
+            this.#emittedVarNames.add(variable.name);
+            args[1].variables.push(variable);
+          }
         }
       } else {
         declaredElement?.accept(this, [elementName, args[1]]);
@@ -491,16 +504,48 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
    */
   visitExtendsClassInstance(node: ModelicaExtendsClassInstance, args: [string, ModelicaDAE]): void {
     if (!node.classInstance) return;
+    // Components from base classes are already yielded by the `elements` iterator,
+    // so we only need to handle equations and algorithms from the base class.
+
+    // Process recursive extends
     for (const declaredElement of node.classInstance.declaredElements ?? []) {
       if (declaredElement instanceof ModelicaExtendsClassInstance) declaredElement.accept(this, args);
     }
-    for (const equationSyntaxNode of node.classInstance.abstractSyntaxNode?.equations ?? []) {
-      equationSyntaxNode.accept(new ModelicaSyntaxFlattener(), {
-        prefix: args[0],
-        classInstance: node.classInstance,
-        dae: args[1],
-        stmtCollector: [],
-      });
+
+    // Process equation sections from base class
+    for (const equationSection of node.classInstance.equationSections) {
+      const target = equationSection.initial ? args[1].initialEquations : args[1].equations;
+      const savedEquations = args[1].equations;
+      args[1].equations = target;
+      for (const eq of equationSection.equations) {
+        eq.accept(new ModelicaSyntaxFlattener(), {
+          prefix: args[0],
+          classInstance: node.classInstance,
+          dae: args[1],
+          stmtCollector: [],
+        });
+      }
+      args[1].equations = savedEquations;
+    }
+
+    // Process algorithm sections from base class
+    for (const algorithmSection of node.classInstance.algorithmSections) {
+      const collector: ModelicaStatement[] = [];
+      for (const statement of algorithmSection.statements) {
+        statement.accept(new ModelicaSyntaxFlattener(), {
+          prefix: args[0],
+          classInstance: node.classInstance,
+          dae: args[1],
+          stmtCollector: collector,
+        });
+      }
+      if (collector.length > 0) {
+        if (algorithmSection.initial) {
+          args[1].initialAlgorithms.push(collector);
+        } else {
+          args[1].algorithms.push(collector);
+        }
+      }
     }
   }
 
