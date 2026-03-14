@@ -740,6 +740,19 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     const elseExpr = node.elseExpression?.accept(this, ctx);
     if (!condition || !thenExpr || !elseExpr) return null;
 
+    // Constant fold: if the condition is a literal boolean, return the appropriate branch
+    if (condition instanceof ModelicaBooleanLiteral) {
+      if (condition.value) return thenExpr;
+      // Check elseif clauses
+      for (const clause of node.elseIfExpressionClauses ?? []) {
+        const clauseCondition = clause.condition?.accept(this, ctx);
+        if (clauseCondition instanceof ModelicaBooleanLiteral && clauseCondition.value) {
+          return clause.expression?.accept(this, ctx) ?? null;
+        }
+      }
+      return elseExpr;
+    }
+
     const elseIfClauses: { condition: ModelicaExpression; expression: ModelicaExpression }[] = [];
     for (const clause of node.elseIfExpressionClauses ?? []) {
       const clauseCondition = clause.condition?.accept(this, ctx);
@@ -1151,8 +1164,16 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
   visitUnaryExpression(node: ModelicaUnaryExpressionSyntaxNode, ctx: FlattenerContext): ModelicaExpression | null {
     const operand = node.operand?.accept(this, ctx);
     const operator = node.operator;
-    if (operator && operand) return new ModelicaUnaryExpression(operator, operand);
-    return null;
+    if (!operator || !operand) return null;
+    // Constant fold: negate/plus numeric literals directly
+    if (operator === ModelicaUnaryOperator.UNARY_MINUS) {
+      if (operand instanceof ModelicaRealLiteral) return new ModelicaRealLiteral(-operand.value);
+      if (operand instanceof ModelicaIntegerLiteral) return new ModelicaIntegerLiteral(-operand.value);
+    }
+    if (operator === ModelicaUnaryOperator.UNARY_PLUS) {
+      if (operand instanceof ModelicaRealLiteral || operand instanceof ModelicaIntegerLiteral) return operand;
+    }
+    return new ModelicaUnaryExpression(operator, operand);
   }
 
   visitUnsignedIntegerLiteral(node: ModelicaUnsignedIntegerLiteralSyntaxNode): ModelicaIntegerLiteral | null {
@@ -1352,13 +1373,19 @@ function tryFoldBuiltinFunction(functionName: string, args: ModelicaExpression[]
       log: Math.log,
       log10: Math.log10,
       sqrt: Math.sqrt,
-      abs: Math.abs,
-      sign: Math.sign,
     };
     const fn = realFns[functionName];
     if (fn) {
       const result = fn(x);
       if (!Number.isFinite(result)) return null;
+      return new ModelicaRealLiteral(result);
+    }
+    // abs and sign preserve Integer type: abs(Integer) -> Integer, abs(Real) -> Real
+    if (functionName === "abs" || functionName === "sign") {
+      const mathFn = functionName === "abs" ? Math.abs : Math.sign;
+      const result = mathFn(x);
+      if (!Number.isFinite(result)) return null;
+      if (args[0] instanceof ModelicaIntegerLiteral) return new ModelicaIntegerLiteral(result);
       return new ModelicaRealLiteral(result);
     }
     // Integer-returning functions

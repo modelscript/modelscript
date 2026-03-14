@@ -2656,8 +2656,15 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
       // Small integers: use toFixed(1) to ensure decimal point (e.g. 3 -> 3.0)
       this.out.write(node.value.toFixed(1));
     } else {
-      // Large numbers or fractional: use toString (gives scientific notation for large values)
-      this.out.write(node.value.toString().replace("e+", "e"));
+      // Large numbers or fractional: format with full precision
+      // For very large integers, toString() doesn't use sci notation, so use toExponential
+      let str: string;
+      if (Number.isInteger(node.value) && Math.abs(node.value) >= 1e15) {
+        str = node.value.toExponential();
+      } else {
+        str = node.value.toString();
+      }
+      this.out.write(str.replace("e+", "e"));
     }
   }
 
