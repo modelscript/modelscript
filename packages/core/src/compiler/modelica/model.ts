@@ -1771,7 +1771,7 @@ export class ModelicaArrayClassInstance extends ModelicaClassInstance {
           if (enumClass?.enumerationLiterals) {
             const literals = enumClass.enumerationLiterals;
             this.shape.push(literals.length);
-            const typeName = enumClass.name ?? "";
+            const typeName = enumClass.compositeName ?? "";
             this.enumDimensions.set(i, {
               typeName,
               literals: literals.map((l) => l.stringValue),

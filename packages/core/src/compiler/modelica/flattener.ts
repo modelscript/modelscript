@@ -357,9 +357,8 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         const enumInfo = arrayClassInstance.enumDimensions.get(dim);
         if (enumInfo) {
           const literal = enumInfo.literals[idx - 1];
-          // Qualify with class name: ClassName.EnumType.literal
-          const className = args[1].name;
-          return className + "." + enumInfo.typeName + "." + literal;
+          // Qualify with full enum type path
+          return enumInfo.typeName + "." + literal;
         }
         return String(idx);
       });
@@ -970,11 +969,10 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         }
 
         if (enumClass && literalsToIterate) {
-          const className = ctx.dae.name;
-          const typeName = enumClass.name ?? "";
+          const typeName = enumClass.compositeName ?? "";
           const loopVars = new Map(ctx.loopVariables ?? []);
           for (const literal of literalsToIterate) {
-            const qualifiedName = className + "." + typeName + "." + literal.stringValue;
+            const qualifiedName = typeName + "." + literal.stringValue;
             loopVars.set(indexName, new ModelicaNameExpression(qualifiedName));
             this.#unrollForEquation(forIndexes, indexPos + 1, equations, { ...ctx, loopVariables: loopVars });
           }
@@ -1315,8 +1313,12 @@ function isRealTyped(expr: ModelicaExpression, dae?: ModelicaDAE): boolean {
     return isRealTyped(expr.operand1, dae) || isRealTyped(expr.operand2, dae);
   if (expr instanceof ModelicaUnaryExpression) return isRealTyped(expr.operand, dae);
   if (expr instanceof ModelicaNameExpression && dae) {
-    const v = dae.variables.find((variable) => variable.name === expr.name);
-    if (v instanceof ModelicaRealVariable) return true;
+    const exactMatch = dae.variables.find((variable) => variable.name === expr.name);
+    if (exactMatch instanceof ModelicaRealVariable) return true;
+
+    const prefix = expr.name + "[";
+    const arrayElement = dae.variables.find((variable) => variable.name.startsWith(prefix));
+    if (arrayElement instanceof ModelicaRealVariable) return true;
   }
   if (expr instanceof ModelicaNameExpression && expr.name === "time") return true;
   if (expr instanceof ModelicaSubscriptedExpression) return isRealTyped(expr.base, dae);
