@@ -2394,46 +2394,50 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     this.out.write(node.name);
   }
 
+  #emitVariable(variable: ModelicaVariable): void {
+    this.out.write("  ");
+    if (variable.isProtected) this.out.write("protected ");
+    if (variable.isFinal) this.out.write("final ");
+    if (variable.variability) this.out.write(variable.variability + " ");
+    if (variable.causality) this.out.write(variable.causality + " ");
+    if (variable instanceof ModelicaBooleanVariable) {
+      this.out.write("Boolean ");
+    } else if (variable instanceof ModelicaIntegerVariable) {
+      this.out.write("Integer ");
+    } else if (variable instanceof ModelicaRealVariable) {
+      this.out.write("Real ");
+    } else if (variable instanceof ModelicaStringVariable) {
+      this.out.write("String ");
+    } else if (variable instanceof ModelicaEnumerationVariable) {
+      this.out.write("enumeration(" + variable.enumerationLiterals.map((e) => e.stringValue).join(", ") + ") ");
+    } else {
+      throw new Error("invalid variable");
+    }
+    this.out.write(variable.name);
+    if (variable.attributes.size > 0) {
+      this.out.write("(");
+      let i = 0;
+      for (const entry of variable.attributes.entries()) {
+        this.out.write(entry[0] + " = ");
+        entry[1].accept(this);
+        if (++i < variable.attributes.size) this.out.write(", ");
+      }
+      this.out.write(")");
+    }
+    if (variable.expression) {
+      this.out.write(" = ");
+      variable.expression.accept(this);
+    }
+    if (variable.description) this.out.write(' "' + variable.description + '"');
+    this.out.write(";\n");
+  }
+
   visitDAE(node: ModelicaDAE): void {
     this.out.write("class " + node.name);
     if (node.description) this.out.write(' "' + node.description + '"');
     this.out.write("\n");
     for (const variable of node.variables) {
-      this.out.write("  ");
-      if (variable.isProtected) this.out.write("protected ");
-      if (variable.isFinal) this.out.write("final ");
-      if (variable.variability) this.out.write(variable.variability + " ");
-      if (variable.causality) this.out.write(variable.causality + " ");
-      if (variable instanceof ModelicaBooleanVariable) {
-        this.out.write("Boolean ");
-      } else if (variable instanceof ModelicaIntegerVariable) {
-        this.out.write("Integer ");
-      } else if (variable instanceof ModelicaRealVariable) {
-        this.out.write("Real ");
-      } else if (variable instanceof ModelicaStringVariable) {
-        this.out.write("String ");
-      } else if (variable instanceof ModelicaEnumerationVariable) {
-        this.out.write("enumeration(" + variable.enumerationLiterals.map((e) => e.stringValue).join(", ") + ") ");
-      } else {
-        throw new Error("invalid variable");
-      }
-      this.out.write(variable.name);
-      if (variable.attributes.size > 0) {
-        this.out.write("(");
-        let i = 0;
-        for (const entry of variable.attributes.entries()) {
-          this.out.write(entry[0] + " = ");
-          entry[1].accept(this);
-          if (++i < variable.attributes.size) this.out.write(", ");
-        }
-        this.out.write(")");
-      }
-      if (variable.expression) {
-        this.out.write(" = ");
-        variable.expression.accept(this);
-      }
-      if (variable.description) this.out.write(' "' + variable.description + '"');
-      this.out.write(";\n");
+      this.#emitVariable(variable);
     }
     if (node.equations.length > 0) {
       this.out.write("equation\n");

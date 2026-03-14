@@ -49,6 +49,7 @@ import {
   ModelicaSubscriptSyntaxNode,
   ModelicaUnqualifiedImportClauseSyntaxNode,
   ModelicaVariability,
+  ModelicaVisibility,
   type ModelicaComponentDeclarationSyntaxNode,
 } from "./syntax.js";
 
@@ -339,10 +340,15 @@ export class ModelicaExtendsClassInstance extends ModelicaElement {
   #modification: ModelicaModification;
   classInstance: ModelicaClassInstance | null = null;
 
+  /** Visibility of the element section containing this extends clause (public/protected). */
+  visibility: ModelicaVisibility | null;
+
   constructor(parent: ModelicaClassInstance | null, abstractSyntaxNode?: ModelicaExtendsClauseSyntaxNode | null) {
     super(parent);
     this.#abstractSyntaxNode = abstractSyntaxNode ?? null;
     this.#modification = this.mergeModifications();
+    this.visibility =
+      (this.#abstractSyntaxNode?.parent as { visibility?: ModelicaVisibility | null })?.visibility ?? null;
   }
 
   get abstractSyntaxNode(): ModelicaExtendsClauseSyntaxNode | null {
@@ -696,15 +702,11 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
   }
 
   get inputParameters(): IterableIterator<ModelicaComponentInstance> {
-    const classKind = this.abstractSyntaxNode?.classPrefixes?.classKind;
+    const classKind = this.classKind;
     const components = this.components;
     return (function* () {
       for (const component of components) {
-        if (
-          component.abstractSyntaxNode?.parent?.causality === ModelicaCausality.INPUT ||
-          classKind === ModelicaClassKind.RECORD
-        )
-          yield component;
+        if (component.causality === ModelicaCausality.INPUT || classKind === ModelicaClassKind.RECORD) yield component;
       }
     })();
   }
@@ -798,9 +800,25 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     const components = this.components;
     return (function* () {
       for (const component of components) {
-        if (component.abstractSyntaxNode?.parent?.causality === ModelicaCausality.OUTPUT) yield component;
+        if (component.causality === ModelicaCausality.OUTPUT) yield component;
       }
     })();
+  }
+
+  /** Check if a named element originates from a `protected extends` clause. */
+  isProtectedElement(name: string | null): boolean {
+    if (!name) return false;
+    if (!this.instantiated && !this.instantiating) this.instantiate();
+    for (const element of this.declaredElements) {
+      if (element instanceof ModelicaExtendsClassInstance) {
+        if (element.visibility === ModelicaVisibility.PROTECTED && element.classInstance) {
+          for (const el of element.classInstance.elements) {
+            if (el instanceof ModelicaComponentInstance && el.name === name) return true;
+          }
+        }
+      }
+    }
+    return false;
   }
 
   get qualifiedImports(): Map<string, ModelicaClassInstance> {
@@ -1137,6 +1155,15 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
   #classInstance: ModelicaClassInstance | null = null;
   #declaredType: ModelicaClassInstance | null = null;
 
+  /** Causality prefix (input/output) from the component clause or declared type. */
+  causality: ModelicaCausality | null;
+  /** Variability prefix (parameter/constant/discrete) from the component clause. */
+  variability: ModelicaVariability | null;
+  /** Whether this component is declared `final`. */
+  isFinal: boolean;
+  /** Whether this component is in a `protected` section or from a `protected extends`. */
+  isProtected: boolean;
+
   constructor(
     parent: ModelicaClassInstance | null,
     abstractSyntaxNode: ModelicaComponentDeclarationSyntaxNode | ModelicaComponentDeclaration1SyntaxNode | null,
@@ -1147,6 +1174,12 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
     this.name = this.abstractSyntaxNode?.declaration?.identifier?.text ?? null;
     this.description = this.abstractSyntaxNode?.description?.strings?.map((d) => d.text ?? "")?.join(" ") ?? null;
     this.#modification = modification ?? this.mergeModifications();
+
+    // Compute prefixes from AST during construction
+    this.causality = this.abstractSyntaxNode?.parent?.causality ?? null;
+    this.variability = this.abstractSyntaxNode?.parent?.variability ?? null;
+    this.isFinal = (this.abstractSyntaxNode?.parent as { final?: boolean })?.final ?? false;
+    this.isProtected = (this.abstractSyntaxNode?.parent?.parent as { visibility?: string })?.visibility === "protected";
   }
 
   get classInstance(): ModelicaClassInstance | null {
@@ -1253,6 +1286,17 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
       this.abstractSyntaxNode?.annotationClause,
       this.modification?.annotations,
     );
+    // Refine prefixes after instantiation:
+    // Fall back to declared type's class specifier for causality (handles type aliases like 'type InputReal = input Real;')
+    if (!this.causality && this.#declaredType) {
+      this.causality =
+        (this.#declaredType.abstractSyntaxNode?.classSpecifier as { causality?: ModelicaCausality | null })
+          ?.causality ?? null;
+    }
+    // Check if this component comes from a protected extends clause
+    if (!this.isProtected && this.parent?.isProtectedElement(this.name)) {
+      this.isProtected = true;
+    }
     this.instantiated = true;
   }
 
@@ -1367,10 +1411,6 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
 
   override get parent(): ModelicaClassInstance | null {
     return super.parent as ModelicaClassInstance | null;
-  }
-
-  get variability(): ModelicaVariability | null {
-    return this.abstractSyntaxNode?.parent?.variability ?? null;
   }
 }
 
