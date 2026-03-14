@@ -351,7 +351,18 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     const index = new Array(shape.length).fill(1);
     let elementIndex = 0;
     for (const declaredElement of arrayClassInstance.declaredElements) {
-      const elementName = name + "[" + index.join(",") + "]";
+      // Build subscript string using enum literal names for enum dimensions
+      const subscriptParts = index.map((idx: number, dim: number) => {
+        const enumInfo = arrayClassInstance.enumDimensions.get(dim);
+        if (enumInfo) {
+          const literal = enumInfo.literals[idx - 1];
+          // Qualify with class name: ClassName.EnumType.literal
+          const className = args[1].name;
+          return className + "." + enumInfo.typeName + "." + literal;
+        }
+        return String(idx);
+      });
+      const elementName = name + "[" + subscriptParts.join(",") + "]";
       if (
         declaredElement instanceof ModelicaPredefinedClassInstance ||
         declaredElement instanceof ModelicaEnumerationClassInstance

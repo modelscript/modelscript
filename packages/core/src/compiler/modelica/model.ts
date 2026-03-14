@@ -27,6 +27,7 @@ import {
   ModelicaClassModificationSyntaxNode,
   ModelicaComponentClauseSyntaxNode,
   ModelicaComponentDeclaration1SyntaxNode,
+  ModelicaComponentReferenceSyntaxNode,
   ModelicaCompoundImportClauseSyntaxNode,
   ModelicaConnectEquationSyntaxNode,
   ModelicaElementModificationSyntaxNode,
@@ -1686,6 +1687,8 @@ export class ModelicaArrayClassInstance extends ModelicaClassInstance {
   #arraySubscripts: ModelicaSubscriptSyntaxNode[];
   #elementClassInstance: ModelicaClassInstance | null;
   shape: number[] = [];
+  /** Maps dimension index → enum literal info for enum-dimensioned arrays */
+  enumDimensions = new Map<number, { typeName: string; literals: string[] }>();
 
   constructor(
     parent: Scope | null,
@@ -1748,8 +1751,36 @@ export class ModelicaArrayClassInstance extends ModelicaClassInstance {
         continue;
       }
       const length = arraySubscript.expression?.accept(new ModelicaInterpreter(), this);
-      if (length instanceof ModelicaIntegerLiteral) this.shape.push(length.value);
-      else this.shape.push(0);
+      if (length instanceof ModelicaIntegerLiteral) {
+        this.shape.push(length.value);
+      } else {
+        // Try to resolve as an enum type for enum-dimensioned arrays like Real A[E]
+        let resolved = false;
+        const subExpr = arraySubscript.expression;
+        if (subExpr && "parts" in subExpr) {
+          const namedElement = this.resolveComponentReference(subExpr as ModelicaComponentReferenceSyntaxNode);
+          let enumClass: ModelicaEnumerationClassInstance | null = null;
+          if (namedElement instanceof ModelicaEnumerationClassInstance) {
+            enumClass = namedElement;
+          } else if (namedElement instanceof ModelicaComponentInstance) {
+            if (!namedElement.instantiated && !namedElement.instantiating) namedElement.instantiate();
+            let ci = namedElement.classInstance;
+            while (ci instanceof ModelicaShortClassInstance) ci = ci.classInstance;
+            if (ci instanceof ModelicaEnumerationClassInstance) enumClass = ci;
+          }
+          if (enumClass?.enumerationLiterals) {
+            const literals = enumClass.enumerationLiterals;
+            this.shape.push(literals.length);
+            const typeName = enumClass.name ?? "";
+            this.enumDimensions.set(i, {
+              typeName,
+              literals: literals.map((l) => l.stringValue),
+            });
+            resolved = true;
+          }
+        }
+        if (!resolved) this.shape.push(0);
+      }
       i++;
     }
 
