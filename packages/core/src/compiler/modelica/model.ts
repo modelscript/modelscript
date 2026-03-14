@@ -395,13 +395,27 @@ export class ModelicaExtendsClassInstance extends ModelicaElement {
     return hash.digest("hex");
   }
 
+  // Global tracking of extends chains to detect cycles (A extends B extends A)
+  static #extendsChain = new Set<string>();
+
   override instantiate(): void {
     if (this.instantiated) return;
     if (this.instantiating) throw Error("reentrant error: class is already being instantiated");
     this.instantiating = true;
     const element = this.parent?.resolveTypeSpecifier(this.abstractSyntaxNode?.typeSpecifier);
     if (element instanceof ModelicaClassInstance) {
-      this.classInstance = element.clone(this.#modification);
+      // Detect extends cycles using compositeName (unique per class in the scope tree)
+      const baseName = element.compositeName ?? element.name ?? "";
+      if (baseName && ModelicaExtendsClassInstance.#extendsChain.has(baseName)) {
+        this.parent?.errors.push(`Extends cycle detected: '${this.parent?.name}' extends '${element.name}'.`);
+      } else {
+        if (baseName) ModelicaExtendsClassInstance.#extendsChain.add(baseName);
+        try {
+          this.classInstance = element.clone(this.#modification);
+        } finally {
+          if (baseName) ModelicaExtendsClassInstance.#extendsChain.delete(baseName);
+        }
+      }
     }
     this.annotations = ModelicaElement.instantiateAnnotations(this.parent, this.abstractSyntaxNode?.annotationClause);
     this.instantiated = true;

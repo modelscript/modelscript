@@ -73,6 +73,9 @@ export abstract class Scope {
     return namedElement;
   }
 
+  // Guard against re-entrant name resolution (self-referencing imports like `import A.Units.*` inside `A`)
+  static #resolving = new Map<Scope, Set<string>>();
+
   resolveSimpleName(
     identifier: ModelicaIdentifierSyntaxNode | string | null | undefined,
     global = false,
@@ -80,21 +83,35 @@ export abstract class Scope {
   ): ModelicaNamedElement | null {
     const simpleName = identifier instanceof ModelicaIdentifierSyntaxNode ? identifier?.text : identifier;
     if (!simpleName) return null;
-    let scope: Scope | null = global ? this.root : this;
-    while (scope) {
-      for (const element of scope.elements) {
-        if (element instanceof ModelicaNamedElement && element.name === simpleName) return element;
-      }
-      if (scope instanceof ModelicaClassInstance) {
-        const element = scope.qualifiedImports.get(simpleName);
-        if (element != null) return element;
-        for (const unqualifiedImport of scope.unqualifiedImports) {
-          const element = unqualifiedImport.resolveSimpleName(identifier);
-          if (element != null) return element;
+
+    // Re-entrant guard: prevent infinite recursion from self-referencing imports
+    let scopeSet = Scope.#resolving.get(this);
+    if (scopeSet?.has(simpleName)) return null;
+    if (!scopeSet) {
+      scopeSet = new Set<string>();
+      Scope.#resolving.set(this, scopeSet);
+    }
+    scopeSet.add(simpleName);
+    try {
+      let scope: Scope | null = global ? this.root : this;
+      while (scope) {
+        for (const element of scope.elements) {
+          if (element instanceof ModelicaNamedElement && element.name === simpleName) return element;
         }
+        if (scope instanceof ModelicaClassInstance) {
+          const element = scope.qualifiedImports.get(simpleName);
+          if (element != null) return element;
+          for (const unqualifiedImport of scope.unqualifiedImports) {
+            const element = unqualifiedImport.resolveSimpleName(identifier);
+            if (element != null) return element;
+          }
+        }
+        if (!encapsulated) scope = scope.parent;
+        else break;
       }
-      if (!encapsulated) scope = scope.parent;
-      else break;
+    } finally {
+      scopeSet.delete(simpleName);
+      if (scopeSet.size === 0) Scope.#resolving.delete(this);
     }
     switch (simpleName) {
       case "Boolean":

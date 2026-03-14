@@ -280,6 +280,11 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
       startExpr instanceof ModelicaRealLiteral ||
       stopExpr instanceof ModelicaRealLiteral ||
       stepExpr instanceof ModelicaRealLiteral;
+
+    // Guard against infinite/huge ranges (e.g., 1:1e-300:10)
+    const estimatedCount = Math.abs((stop - start) / step) + 1;
+    if (!isFinite(estimatedCount) || estimatedCount > 100_000) return null;
+
     const elements: ModelicaExpression[] = [];
     if (step > 0) {
       for (let v = start; v <= stop; v += step)
