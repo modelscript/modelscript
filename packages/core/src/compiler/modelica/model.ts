@@ -1199,6 +1199,13 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
     this.causality = this.abstractSyntaxNode?.parent?.causality ?? null;
     this.variability = this.abstractSyntaxNode?.parent?.variability ?? null;
     this.isFinal = (this.abstractSyntaxNode?.parent as { final?: boolean })?.final ?? false;
+    // Also check if the outer modification carries a `final` flag (e.g., extends Base(final x = 2))
+    if (!this.isFinal) {
+      const outerMod = this.parent?.modification?.getModificationArgument(this.name);
+      if (outerMod instanceof ModelicaElementModification && outerMod.final) {
+        this.isFinal = true;
+      }
+    }
     this.isProtected = (this.abstractSyntaxNode?.parent?.parent as { visibility?: string })?.visibility === "protected";
     this.isInner = (this.abstractSyntaxNode?.parent as { inner?: boolean })?.inner ?? false;
     this.isOuter = (this.abstractSyntaxNode?.parent as { outer?: boolean })?.outer ?? false;
@@ -2172,6 +2179,7 @@ export class ModelicaElementModification extends ModelicaModificationArgument {
   description: string | null;
   modificationArguments: ModelicaModificationArgument[] = [];
   annotations: ModelicaModification | null = null;
+  final: boolean;
 
   constructor(
     scope: Scope | null,
@@ -2180,6 +2188,7 @@ export class ModelicaElementModification extends ModelicaModificationArgument {
     modificationExpression?: ModelicaModificationExpressionSyntaxNode | null,
     description?: string | null,
     expression?: ModelicaExpression | null,
+    final?: boolean,
   ) {
     super(scope);
     this.#nameComponents = makeWeakRefArray(nameComponents);
@@ -2187,6 +2196,7 @@ export class ModelicaElementModification extends ModelicaModificationArgument {
     this.#modificationExpression = makeWeakRef(modificationExpression);
     this.description = description ?? null;
     this.#expression = expression ?? null;
+    this.final = final ?? false;
   }
 
   #evaluating = false;
@@ -2271,6 +2281,7 @@ export class ModelicaElementModification extends ModelicaModificationArgument {
       abstractSyntaxNode.modification?.modificationExpression,
       abstractSyntaxNode.description?.strings?.map((d) => d.text ?? "")?.join(" "),
       null,
+      abstractSyntaxNode.final,
     );
     mod.annotations = abstractSyntaxNode.annotationClause
       ? ModelicaModification.new(scope, abstractSyntaxNode.annotationClause)
