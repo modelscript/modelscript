@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/class-literal-property-style */
 
 import { createHash } from "../../util/hash.js";
 
@@ -2376,7 +2376,7 @@ export class ModelicaClassRedeclaration extends ModelicaElementRedeclaration {
   }
 
   get expression(): ModelicaExpression | null {
-    throw new Error("Method not implemented.");
+    return null;
   }
 
   get hash(): string {
@@ -2421,7 +2421,7 @@ export class ModelicaComponentRedeclaration extends ModelicaElementRedeclaration
   }
 
   get expression(): ModelicaExpression | null {
-    throw new Error("Method not implemented.");
+    return null;
   }
 
   get hash(): string {
