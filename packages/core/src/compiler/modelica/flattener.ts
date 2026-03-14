@@ -93,6 +93,8 @@ interface FlattenerContext {
   classInstance: ModelicaClassInstance;
   dae: ModelicaDAE;
   stmtCollector: ModelicaStatement[];
+  /** Bindings for for-loop index variables (used during equation unrolling). */
+  loopVariables?: Map<string, number>;
 }
 
 /** Extract an integer shape array from a list of expressions (all must be ModelicaIntegerLiteral). */
@@ -524,14 +526,29 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
           }
         }
         // Only use symbolic subscript path when subscripts contain unresolvable names
-        // (e.g. loop variables like i, j). Otherwise fall through to normal expansion.
+        // (e.g. loop variables like i, j in preserved for-statements). Otherwise resolve concretely.
         if (hasSymbolic) {
           return new ModelicaSubscriptedExpression(new ModelicaNameExpression(name), subscripts);
         }
-        // Try to resolve subscripts to integer indices using the interpreter
-        // This handles cases like a[end-b[end]] where the subscript evaluates to a literal
+        // First try to resolve using the already-flattened subscript expressions
+        // (this handles loop variables resolved via loopVariables binding)
         const baseName =
           (ctx.prefix === "" ? "" : ctx.prefix + ".") + node.parts.map((c) => c.identifier?.text ?? "").join(".");
+        const resolvedFromFlattener: number[] = [];
+        for (const sub of subscripts) {
+          if (sub instanceof ModelicaIntegerLiteral) {
+            resolvedFromFlattener.push(sub.value);
+          } else {
+            break;
+          }
+        }
+        if (resolvedFromFlattener.length === subscriptNodes.length) {
+          const indexedName = baseName + "[" + resolvedFromFlattener.join(",") + "]";
+          for (const variable of ctx.dae.variables) {
+            if (variable.name === indexedName) return variable;
+          }
+        }
+        // Fall back to the interpreter for more complex expressions (e.g. a[end-b[end]])
         const arrayPrefix = baseName + "[";
         const arraySize = ctx.dae.variables.filter((v) => v.name.startsWith(arrayPrefix)).length;
         const interp = new ModelicaInterpreter();
@@ -565,7 +582,12 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         return new ModelicaArray([arrayElements.length], arrayElements);
       }
     }
-    // Fall back to a symbolic name for unresolved references (e.g. loop variables)
+    // Fall back to a symbolic name for unresolved references (e.g. loop variables in preserved for-statements)
+    // But first check if there's a loop variable binding for equation unrolling
+    const simpleName = node.parts.length === 1 ? (node.parts[0]?.identifier?.text ?? null) : null;
+    if (simpleName && ctx.loopVariables?.has(simpleName)) {
+      return new ModelicaIntegerLiteral(ctx.loopVariables.get(simpleName) ?? 0);
+    }
     return new ModelicaNameExpression(name);
   }
 
@@ -581,18 +603,80 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
   }
 
   visitForEquation(node: ModelicaForEquationSyntaxNode, ctx: FlattenerContext): null {
-    const innerEquations = this.flattenEquations(node.equations ?? [], ctx);
-    let equations = innerEquations;
-    for (let i = node.forIndexes.length - 1; i >= 0; i--) {
-      const forIndex = node.forIndexes[i];
-      if (!forIndex) continue;
-      const indexName = forIndex.identifier?.text ?? "?";
-      const range = forIndex.expression?.accept(this, ctx);
-      if (!range) continue;
-      const forEq = new ModelicaForEquation(indexName, range, equations);
-      equations = [forEq];
+    // Unroll for-equations: evaluate range, substitute index variable, emit individual equations
+    // Process from outermost to innermost index
+    this.#unrollForEquation(node.forIndexes, 0, node.equations ?? [], ctx);
+    return null;
+  }
+
+  #unrollForEquation(
+    forIndexes: readonly {
+      identifier?: { text?: string | null } | null;
+      expression?: { accept: (v: ModelicaSyntaxFlattener, a: FlattenerContext) => unknown } | null;
+    }[],
+    indexPos: number,
+    equations: { accept: (v: ModelicaSyntaxFlattener, a: FlattenerContext) => unknown }[],
+    ctx: FlattenerContext,
+  ): void {
+    if (indexPos >= forIndexes.length) {
+      // Base case: all indices bound — flatten the inner equations
+      for (const eq of equations) {
+        eq.accept(this, ctx);
+      }
+      return;
     }
-    for (const eq of equations) ctx.dae.equations.push(eq);
+    const forIndex = forIndexes[indexPos];
+    if (!forIndex) return;
+    const indexName = forIndex.identifier?.text ?? "?";
+    // Evaluate the range expression
+    const rangeExpr = forIndex.expression?.accept(this, ctx);
+    const values = this.#evaluateRange(rangeExpr);
+    if (!values) {
+      // Can't evaluate range — fall back to emitting as a for-equation node
+      const innerEquations = this.flattenEquations(equations, ctx);
+      let eqs = innerEquations;
+      for (let i = forIndexes.length - 1; i >= indexPos; i--) {
+        const fi = forIndexes[i];
+        if (!fi) continue;
+        const name = fi.identifier?.text ?? "?";
+        const range = fi.expression?.accept(this, ctx);
+        if (!range) continue;
+        eqs = [new ModelicaForEquation(name, range as ModelicaExpression, eqs)];
+      }
+      for (const eq of eqs) ctx.dae.equations.push(eq);
+      return;
+    }
+    // Iterate over each value in the range
+    const loopVars = new Map(ctx.loopVariables ?? []);
+    for (const value of values) {
+      loopVars.set(indexName, value);
+      this.#unrollForEquation(forIndexes, indexPos + 1, equations, { ...ctx, loopVariables: loopVars });
+    }
+  }
+
+  /** Evaluate an expression to an array of integer values (for range unrolling). */
+  #evaluateRange(expr: unknown): number[] | null {
+    if (expr instanceof ModelicaRangeExpression) {
+      const startVal = this.#evaluateIntExpr(expr.start);
+      const endVal = this.#evaluateIntExpr(expr.end);
+      if (startVal === null || endVal === null) return null;
+      const stepVal = expr.step ? this.#evaluateIntExpr(expr.step) : 1;
+      if (stepVal === null || stepVal === 0) return null;
+      const result: number[] = [];
+      if (stepVal > 0) {
+        for (let i = startVal; i <= endVal; i += stepVal) result.push(i);
+      } else {
+        for (let i = startVal; i >= endVal; i += stepVal) result.push(i);
+      }
+      return result;
+    }
+    return null;
+  }
+
+  /** Try to extract an integer value from an expression. */
+  #evaluateIntExpr(expr: ModelicaExpression): number | null {
+    if (expr instanceof ModelicaIntegerLiteral) return expr.value;
+    if (expr instanceof ModelicaRealLiteral) return Math.round(expr.value);
     return null;
   }
 
