@@ -2405,9 +2405,38 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
   }
 
   visitBinaryExpression(node: ModelicaBinaryExpression): void {
-    node.operand1.accept(this);
+    // Parenthesize unary negation operands in multiplicative/power contexts
+    // In Modelica, -a * b means -(a*b), so (-a) * b needs explicit parentheses
+    const needsNegParens =
+      node.operator === ModelicaBinaryOperator.MULTIPLICATION ||
+      node.operator === ModelicaBinaryOperator.DIVISION ||
+      node.operator === ModelicaBinaryOperator.EXPONENTIATION ||
+      node.operator === ModelicaBinaryOperator.ELEMENTWISE_MULTIPLICATION ||
+      node.operator === ModelicaBinaryOperator.ELEMENTWISE_DIVISION ||
+      node.operator === ModelicaBinaryOperator.ELEMENTWISE_EXPONENTIATION;
+    if (
+      needsNegParens &&
+      node.operand1 instanceof ModelicaUnaryExpression &&
+      node.operand1.operator === ModelicaUnaryOperator.UNARY_MINUS
+    ) {
+      this.out.write("(");
+      node.operand1.accept(this);
+      this.out.write(")");
+    } else {
+      node.operand1.accept(this);
+    }
     this.out.write(" " + node.operator + " ");
-    node.operand2.accept(this);
+    if (
+      needsNegParens &&
+      node.operand2 instanceof ModelicaUnaryExpression &&
+      node.operand2.operator === ModelicaUnaryOperator.UNARY_MINUS
+    ) {
+      this.out.write("(");
+      node.operand2.accept(this);
+      this.out.write(")");
+    } else {
+      node.operand2.accept(this);
+    }
   }
 
   visitBooleanLiteral(node: ModelicaBooleanLiteral): void {
@@ -2621,9 +2650,13 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
 
   visitRealLiteral(node: ModelicaRealLiteral): void {
     // Modelica uses e308 not e+308; strip the + from positive exponents
-    if (Number.isInteger(node.value)) {
-      this.out.write(node.value.toFixed(1).replace("e+", "e"));
+    if (node.value === 0) {
+      this.out.write("0.0");
+    } else if (Number.isInteger(node.value) && Math.abs(node.value) < 1e15) {
+      // Small integers: use toFixed(1) to ensure decimal point (e.g. 3 -> 3.0)
+      this.out.write(node.value.toFixed(1));
     } else {
+      // Large numbers or fractional: use toString (gives scientific notation for large values)
       this.out.write(node.value.toString().replace("e+", "e"));
     }
   }

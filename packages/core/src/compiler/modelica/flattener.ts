@@ -1241,6 +1241,43 @@ function canonicalizeBinaryExpression(
   operand2: ModelicaExpression,
   dae?: ModelicaDAE,
 ): ModelicaExpression {
+  // Constant fold: evaluate binary operations with two numeric literal operands
+  if (
+    (operand1 instanceof ModelicaRealLiteral || operand1 instanceof ModelicaIntegerLiteral) &&
+    (operand2 instanceof ModelicaRealLiteral || operand2 instanceof ModelicaIntegerLiteral)
+  ) {
+    const v1 = operand1.value;
+    const v2 = operand2.value;
+    let result: number | null = null;
+    switch (operator) {
+      case ModelicaBinaryOperator.ADDITION:
+        result = v1 + v2;
+        break;
+      case ModelicaBinaryOperator.SUBTRACTION:
+        result = v1 - v2;
+        break;
+      case ModelicaBinaryOperator.MULTIPLICATION:
+        result = v1 * v2;
+        break;
+      case ModelicaBinaryOperator.DIVISION:
+        result = v2 !== 0 ? v1 / v2 : null;
+        break;
+      case ModelicaBinaryOperator.EXPONENTIATION:
+        result = v1 ** v2;
+        break;
+    }
+    if (result != null && Number.isFinite(result)) {
+      // Return Integer if both operands were Integer and the result is an exact integer
+      if (
+        operand1 instanceof ModelicaIntegerLiteral &&
+        operand2 instanceof ModelicaIntegerLiteral &&
+        Number.isInteger(result)
+      ) {
+        return new ModelicaIntegerLiteral(result);
+      }
+      return new ModelicaRealLiteral(result);
+    }
+  }
   if (operator === ModelicaBinaryOperator.DIVISION && operand2 instanceof ModelicaIntegerLiteral) {
     const reciprocal = new ModelicaRealLiteral(1.0 / operand2.value);
     const castOp1 = wrapIntegerAsReal(operand1, dae);
