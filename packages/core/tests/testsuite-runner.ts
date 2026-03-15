@@ -23,6 +23,7 @@ import path from "node:path";
 import Parser from "tree-sitter";
 import { NodeFileSystem } from "../../../packages/cli/src/util/filesystem.js";
 import { Context } from "../src/compiler/context.js";
+import { generateHtmlReport } from "./ctrf-to-html.js";
 
 // ── Tree-sitter setup ────────────────────────────────────────────────────────
 
@@ -444,6 +445,10 @@ function main(): void {
   const report = generateCtrfReport(allResults, globalStart, globalStop);
   fs.writeFileSync(ctrfPath, JSON.stringify(report, null, 2) + "\n");
   console.log(`\n${DIM}CTRF report written to ${ctrfPath}${RESET}`);
+
+  // Generate HTML report
+  const htmlPath = path.join(ctrfDir, "ctrf-testsuite-report.html");
+  generateHtmlReport(ctrfPath, htmlPath);
 }
 
 main();
