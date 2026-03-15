@@ -1069,15 +1069,56 @@ export class ModelicaBinaryExpression extends ModelicaSimpleExpression {
         return null;
       } else if (operand2 instanceof ModelicaStringLiteral) {
         switch (operator) {
-          case ModelicaBinaryOperator.EQUALITY:
-          case ModelicaBinaryOperator.INEQUALITY:
           case ModelicaBinaryOperator.ADDITION:
+            return new ModelicaStringLiteral(operand1.value + operand2.value);
+          case ModelicaBinaryOperator.EQUALITY:
+            return new ModelicaBooleanLiteral(operand1.value === operand2.value);
+          case ModelicaBinaryOperator.INEQUALITY:
+            return new ModelicaBooleanLiteral(operand1.value !== operand2.value);
           default:
             return null;
         }
       } else {
         return new ModelicaBinaryExpression(operator, operand1, operand2);
       }
+    } else if (operand1 instanceof ModelicaArray && operand2 instanceof ModelicaArray) {
+      // Element-wise array binary operations
+      const scalarOp = (operator.startsWith(".") ? operator.substring(1) : operator) as ModelicaBinaryOperator;
+      if (operand1.elements.length === operand2.elements.length) {
+        const newElements: ModelicaExpression[] = [];
+        for (let i = 0; i < operand1.elements.length; i++) {
+          const a = operand1.elements[i];
+          const b = operand2.elements[i];
+          if (!a || !b) return new ModelicaBinaryExpression(operator, operand1, operand2);
+          const el = ModelicaBinaryExpression.new(scalarOp, a, b);
+          if (!el) return new ModelicaBinaryExpression(operator, operand1, operand2);
+          newElements.push(el);
+        }
+        return new ModelicaArray(operand1.shape, newElements);
+      }
+      return new ModelicaBinaryExpression(operator, operand1, operand2);
+    } else if (operand1 instanceof ModelicaArray && !(operand2 instanceof ModelicaArray)) {
+      // Broadcast scalar to array (e.g., 1 .+ {1, 2, 3})
+      const scalarOp = (operator.startsWith(".") ? operator.substring(1) : operator) as ModelicaBinaryOperator;
+      const newElements: ModelicaExpression[] = [];
+      for (const el of operand1.elements) {
+        if (!el) return new ModelicaBinaryExpression(operator, operand1, operand2);
+        const result = ModelicaBinaryExpression.new(scalarOp, el, operand2);
+        if (!result) return new ModelicaBinaryExpression(operator, operand1, operand2);
+        newElements.push(result);
+      }
+      return new ModelicaArray(operand1.shape, newElements);
+    } else if (!(operand1 instanceof ModelicaArray) && operand2 instanceof ModelicaArray) {
+      // Broadcast scalar to array (e.g., {1, 2, 3} .+ 1)
+      const scalarOp = (operator.startsWith(".") ? operator.substring(1) : operator) as ModelicaBinaryOperator;
+      const newElements: ModelicaExpression[] = [];
+      for (const el of operand2.elements) {
+        if (!el) return new ModelicaBinaryExpression(operator, operand1, operand2);
+        const result = ModelicaBinaryExpression.new(scalarOp, operand1, el);
+        if (!result) return new ModelicaBinaryExpression(operator, operand1, operand2);
+        newElements.push(result);
+      }
+      return new ModelicaArray(operand2.shape, newElements);
     } else {
       return new ModelicaBinaryExpression(operator, operand1, operand2);
     }

@@ -40,6 +40,7 @@ import {
   ModelicaWhenEquation,
   ModelicaWhenStatement,
   ModelicaWhileStatement,
+  type ModelicaObject,
 } from "./dae.js";
 import { buildFilledArray, ModelicaInterpreter } from "./interpreter.js";
 import {
@@ -370,6 +371,9 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
   // Track outer `protected` flag for propagation into compound type sub-components
   // When `protected A a` is declared, all inner components inherit `protected`
   #outerProtected = false;
+  // Track parent record object expression for propagating field values to sub-components
+  // When r1 = R(1.0, 2.0, 3.0), the ModelicaObject{x:1.0, y:2.0, z:3.0} is carried here
+  #parentObjectExpression: ModelicaObject | null = null;
   // Track emitted variable names to prevent duplicates from diamond inheritance
   #emittedVarNames = new Set<string>();
   // Track parameter names that are structurally significant (used in conditional component declarations)
@@ -406,13 +410,22 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       const savedVar = this.#outerVariability;
       const savedFinal = this.#outerFinal;
       const savedProtected = this.#outerProtected;
+      const savedParentObj = this.#parentObjectExpression;
       this.#outerVariability = effectiveVariability;
       this.#outerFinal = this.#outerFinal || node.isFinal;
       this.#outerProtected = this.#outerProtected || node.isProtected;
+      // If the record component has a binding that evaluates to a ModelicaObject
+      // (e.g. r1 = R(1.0, 2.0, 3.0)), carry it so sub-component bindings can be extracted
+      const modExpr = node.modification?.expression ?? null;
+      this.#parentObjectExpression =
+        modExpr && typeof modExpr === "object" && "elements" in modExpr && modExpr.elements instanceof Map
+          ? (modExpr as ModelicaObject)
+          : null;
       node.classInstance?.accept(this, [name, args[1]]);
       this.#outerVariability = savedVar;
       this.#outerFinal = savedFinal;
       this.#outerProtected = savedProtected;
+      this.#parentObjectExpression = savedParentObj;
     }
   }
 
@@ -451,6 +464,10 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       if (!expression) {
         expression = node.modification?.expression ?? null;
       }
+      // Look up field value from parent record object expression (e.g., r1 = R(1.0, 2.0, 3.0))
+      if (!expression && this.#parentObjectExpression && node.name) {
+        expression = this.#parentObjectExpression.elements.get(node.name) ?? null;
+      }
       if (!expression && node.modification?.modificationExpression?.expression) {
         const syntaxFlattener = new ModelicaSyntaxFlattener();
         expression =
@@ -485,6 +502,10 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       }
     } else {
       expression = node.modification?.expression ?? null;
+      // Look up field value from parent record object expression
+      if (!expression && this.#parentObjectExpression && node.name) {
+        expression = this.#parentObjectExpression.elements.get(node.name) ?? null;
+      }
       if (!expression && node.modification?.modificationExpression?.expression) {
         const syntaxFlattener = new ModelicaSyntaxFlattener();
         expression =
@@ -1383,6 +1404,9 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     });
 
     // Evaluate built-in array constructors at flatten time
+    if (functionName === "array" && flatArgs.length >= 1) {
+      return new ModelicaArray([flatArgs.length], flatArgs);
+    }
     if (functionName === "fill" && flatArgs.length >= 2) {
       const shape = extractShape(flatArgs.slice(1));
       if (shape && flatArgs[0]) return buildFilledArray(shape, flatArgs[0]);

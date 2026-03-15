@@ -5,6 +5,7 @@ import {
   ModelicaArray,
   ModelicaBinaryExpression,
   ModelicaBooleanLiteral,
+  ModelicaEnumerationLiteral,
   ModelicaExpression,
   ModelicaIntegerLiteral,
   ModelicaObject,
@@ -69,6 +70,8 @@ const BUILTIN_ARRAY_FUNCTIONS = new Set([
   "symmetric",
   "cross",
   "skew",
+  "array",
+  "cat",
 ]);
 
 /**
@@ -646,6 +649,10 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
         return this.#evaluateCross(node, scope);
       case "skew":
         return this.#evaluateSkew(node, scope);
+      case "array":
+        return this.#evaluateArrayFunc(node, scope);
+      case "cat":
+        return this.#evaluateCat(node, scope);
       default:
         return undefined;
     }
@@ -862,6 +869,16 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     }
     const args = this.evaluateArgs(node, scope);
     if (args.length === 2) {
+      // Handle enumeration min
+      const a0 = args[0];
+      const a1 = args[1];
+      if (a0 instanceof ModelicaEnumerationLiteral && a1 instanceof ModelicaEnumerationLiteral) {
+        return a0.ordinalValue <= a1.ordinalValue ? a0 : a1;
+      }
+      // Handle boolean min (false < true)
+      if (a0 instanceof ModelicaBooleanLiteral && a1 instanceof ModelicaBooleanLiteral) {
+        return new ModelicaBooleanLiteral(a0.value && a1.value);
+      }
       const x = toNumber(args[0] ?? null);
       const y = toNumber(args[1] ?? null);
       if (x == null || y == null) return null;
@@ -903,6 +920,16 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     }
     const args = this.evaluateArgs(node, scope);
     if (args.length === 2) {
+      // Handle enumeration max
+      const a0 = args[0];
+      const a1 = args[1];
+      if (a0 instanceof ModelicaEnumerationLiteral && a1 instanceof ModelicaEnumerationLiteral) {
+        return a0.ordinalValue >= a1.ordinalValue ? a0 : a1;
+      }
+      // Handle boolean max (false < true)
+      if (a0 instanceof ModelicaBooleanLiteral && a1 instanceof ModelicaBooleanLiteral) {
+        return new ModelicaBooleanLiteral(a0.value || a1.value);
+      }
       const x = toNumber(args[0] ?? null);
       const y = toNumber(args[1] ?? null);
       if (x == null || y == null) return null;
@@ -1088,6 +1115,37 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
         new ModelicaArray([3], [new ModelicaRealLiteral(-x2), new ModelicaRealLiteral(x1), new ModelicaRealLiteral(0)]),
       ],
     );
+  }
+
+  #evaluateArrayFunc(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
+    const args = this.evaluateArgs(node, scope);
+    if (args.length === 0) return null;
+    return new ModelicaArray(
+      [args.length],
+      args.filter((a): a is ModelicaExpression => a != null),
+    );
+  }
+
+  #evaluateCat(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
+    const args = this.evaluateArgs(node, scope);
+    if (args.length < 2) return null;
+    const dimExpr = args[0];
+    if (!(dimExpr instanceof ModelicaIntegerLiteral)) return null;
+    const dim = dimExpr.value;
+    // For dim=1 (simplest case), concatenate the elements of all arrays
+    if (dim === 1) {
+      const elements: ModelicaExpression[] = [];
+      for (let i = 1; i < args.length; i++) {
+        const a = args[i];
+        if (a instanceof ModelicaArray) {
+          elements.push(...a.elements.filter((e): e is ModelicaExpression => e != null));
+        } else if (a) {
+          elements.push(a);
+        }
+      }
+      return new ModelicaArray([elements.length], elements);
+    }
+    return null;
   }
 
   /**
