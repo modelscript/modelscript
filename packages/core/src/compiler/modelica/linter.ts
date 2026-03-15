@@ -1364,3 +1364,26 @@ ModelicaLinter.register(ModelicaErrorCode.CONNECT_FLOW_MISMATCH, {
     }
   },
 });
+
+ModelicaLinter.register(ModelicaErrorCode.DIVISION_BY_ZERO, {
+  visitBinaryExpression(
+    node: ModelicaBinaryExpressionSyntaxNode,
+    diagnosticsCallback: DiagnosticsCallbackWithoutResource,
+  ): void {
+    if (node.operator === "/" || node.operator === "./") {
+      if (
+        (node.operand2 instanceof ModelicaUnsignedIntegerLiteralSyntaxNode ||
+          node.operand2 instanceof ModelicaUnsignedRealLiteralSyntaxNode) &&
+        node.operand2.value === 0
+      ) {
+        // We only have the text of the LHS for the message
+        const lhsText = (node.operand1 as { text?: string })?.text ?? "<expression>";
+        diagnosticsCallback(
+          ModelicaErrorCode.DIVISION_BY_ZERO.severity,
+          `[M${ModelicaErrorCode.DIVISION_BY_ZERO.code}] ${ModelicaErrorCode.DIVISION_BY_ZERO.message(lhsText)}`,
+          node,
+        );
+      }
+    }
+  },
+});

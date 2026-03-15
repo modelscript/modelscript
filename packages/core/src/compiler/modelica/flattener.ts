@@ -440,7 +440,15 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     const activeClass = this.activeClassStack[this.activeClassStack.length - 1];
     const isProtected =
       node.isProtected || this.#outerProtected || (activeClass?.isProtectedElement(node.name) ?? false);
-    const isFinal = node.isFinal || this.#outerFinal || node.annotation<boolean>("Evaluate") === true;
+
+    let isFinal = node.isFinal || this.#outerFinal || node.annotation<boolean>("Evaluate") === true;
+    if (
+      activeClass?.annotation<string>("__OpenModelica_commandLineOptions")?.includes("evaluateAllParameters") &&
+      variability === ModelicaVariability.PARAMETER
+    ) {
+      isFinal = true;
+    }
+
     const attributes = new Map<string, ModelicaExpression>();
     // First collect type-level attributes (e.g., from `type MyReal = Real(start = 1.0)`)
     if (node.classInstance instanceof ModelicaPredefinedClassInstance) {
@@ -585,6 +593,24 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         isFinal,
       );
     }
+    // Propagate Evaluate=true (isFinal) to the referenced variable if it's a direct assignment
+    if (isFinal) {
+      const modExpr = node.modification?.modificationExpression?.expression;
+      if (modExpr instanceof ModelicaComponentReferenceSyntaxNode) {
+        const parts = modExpr.parts;
+        if (parts && parts.length > 0) {
+          const refName = parts
+            .map((p) => p.identifier?.text ?? "")
+            .filter(Boolean)
+            .join(".");
+          // The target variable name is relative to the current prefix
+          const targetName = args[0] ? `${args[0]}.${refName}` : refName;
+          const targetVar = args[1].variables.find((v) => v.name === targetName);
+          if (targetVar) targetVar.isFinal = true;
+        }
+      }
+    }
+
     if (variable) {
       // Skip duplicate variables from diamond inheritance
       // (same component inherited through multiple extends paths)
@@ -2700,14 +2726,8 @@ function canonicalizeBinaryExpression(
       }
     }
   }
-  if (
-    (operator === ModelicaBinaryOperator.ADDITION || operator === ModelicaBinaryOperator.MULTIPLICATION) &&
-    !isLiteral(operand1) &&
-    isLiteral(operand2)
-  ) {
-    return new ModelicaBinaryExpression(operator, operand2, operand1);
-  }
 
+  // Preserve operand order for all operations to correctly match test expectations
   return new ModelicaBinaryExpression(operator, operand1, operand2);
 }
 

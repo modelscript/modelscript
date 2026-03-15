@@ -217,6 +217,12 @@ export const ModelicaErrorCode = {
     message: (elementName: string, modText: string) =>
       `Protected element '${elementName}' may not be modified, got '${modText}'.`,
   },
+  DIVISION_BY_ZERO: {
+    code: 5005,
+    rule: "division-by-zero",
+    severity: "error",
+    message: (lhs: string) => `Division by zero: ${lhs} / 0.`,
+  },
 } as const satisfies Record<string, ErrorCodeDef>;
 
 // Derive the union type of all error code keys

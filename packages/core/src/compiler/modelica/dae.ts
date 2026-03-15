@@ -960,6 +960,7 @@ export class ModelicaBinaryExpression extends ModelicaSimpleExpression {
           case ModelicaBinaryOperator.MULTIPLICATION:
             return new ModelicaIntegerLiteral(operand1.value * operand2.value);
           case ModelicaBinaryOperator.DIVISION:
+            if (operand2.value === 0) return null;
             return new ModelicaIntegerLiteral(operand1.value / operand2.value);
           case ModelicaBinaryOperator.EXPONENTIATION:
             return new ModelicaIntegerLiteral(operand1.value ** operand2.value);
@@ -987,6 +988,7 @@ export class ModelicaBinaryExpression extends ModelicaSimpleExpression {
           case ModelicaBinaryOperator.MULTIPLICATION:
             return new ModelicaRealLiteral(operand1.value * operand2.value);
           case ModelicaBinaryOperator.DIVISION:
+            if (operand2.value === 0) return null;
             return new ModelicaRealLiteral(operand1.value / operand2.value);
           case ModelicaBinaryOperator.EXPONENTIATION:
             return new ModelicaRealLiteral(operand1.value ** operand2.value);
@@ -1022,6 +1024,7 @@ export class ModelicaBinaryExpression extends ModelicaSimpleExpression {
           case ModelicaBinaryOperator.MULTIPLICATION:
             return new ModelicaRealLiteral(operand1.value * operand2.value);
           case ModelicaBinaryOperator.DIVISION:
+            if (operand2.value === 0) return null;
             return new ModelicaRealLiteral(operand1.value / operand2.value);
           case ModelicaBinaryOperator.EXPONENTIATION:
             return new ModelicaRealLiteral(operand1.value ** operand2.value);
@@ -1049,6 +1052,7 @@ export class ModelicaBinaryExpression extends ModelicaSimpleExpression {
           case ModelicaBinaryOperator.MULTIPLICATION:
             return new ModelicaRealLiteral(operand1.value * operand2.value);
           case ModelicaBinaryOperator.DIVISION:
+            if (operand2.value === 0) return null;
             return new ModelicaRealLiteral(operand1.value / operand2.value);
           case ModelicaBinaryOperator.EXPONENTIATION:
             return new ModelicaRealLiteral(operand1.value ** operand2.value);
