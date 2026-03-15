@@ -1071,6 +1071,154 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     return classSpecifier instanceof ModelicaShortClassSpecifierSyntaxNode && classSpecifier.enumeration;
   }
 
+  /**
+   * Check if `this` class is type-compatible with `other` per Modelica §6.4.
+   *
+   * A is type-compatible with B if:
+   * - Both are the same predefined type (Real, Integer, Boolean, String)
+   *   - Special: Integer is type-compatible with Real (implicit coercion §10.6.13)
+   * - Both are the same enumeration type (by qualified name)
+   * - Both are arrays with compatible element types and matching shape
+   * - For compound types: every public component of `other` exists in `this`
+   *   with a recursively type-compatible type, matching variability, causality, and flow prefix.
+   *
+   * @param other - The class instance to check compatibility against.
+   * @param visited - Internal set to guard against infinite recursion.
+   * @returns true if `this` is type-compatible with `other`.
+   */
+  isTypeCompatibleWith(other: ModelicaClassInstance, visited = new Set<string>()): boolean {
+    // Same instance — trivially compatible
+    if (this === other) return true;
+
+    // Guard against infinite recursion
+    const key = `${this.compositeName}:${other.compositeName}`;
+    if (visited.has(key)) return true; // assume compatible for recursive types
+    visited.add(key);
+
+    // Predefined type checks
+    if (this instanceof ModelicaPredefinedClassInstance || other instanceof ModelicaPredefinedClassInstance) {
+      // Same predefined type
+      if (this.name === other.name) return true;
+      // Integer → Real coercion (§10.6.13)
+      if (this.name === "Real" && other.name === "Integer") return true;
+      if (this.name === "Integer" && other.name === "Real") return true;
+      return false;
+    }
+
+    // Enumeration checks — must be same enumeration (by qualified name)
+    if (this instanceof ModelicaEnumerationClassInstance || other instanceof ModelicaEnumerationClassInstance) {
+      if (!(this instanceof ModelicaEnumerationClassInstance) || !(other instanceof ModelicaEnumerationClassInstance)) {
+        return false;
+      }
+      return this.compositeName === other.compositeName;
+    }
+
+    // Array checks — element types must be compatible, same shape
+    if (this instanceof ModelicaArrayClassInstance || other instanceof ModelicaArrayClassInstance) {
+      if (!(this instanceof ModelicaArrayClassInstance) || !(other instanceof ModelicaArrayClassInstance)) {
+        return false;
+      }
+      // Shape must match
+      if (this.shape.length !== other.shape.length) return false;
+      for (let i = 0; i < this.shape.length; i++) {
+        if (this.shape[i] !== other.shape[i]) return false;
+      }
+      // Element types must be compatible
+      const thisElem = this.elementClassInstance;
+      const otherElem = other.elementClassInstance;
+      if (!thisElem || !otherElem) return thisElem === otherElem;
+      return thisElem.isTypeCompatibleWith(otherElem, visited);
+    }
+
+    // Compound type: every public component in `other` must exist in `this`
+    // with matching name, compatible type, and matching prefixes
+    if (!this.instantiated && !this.instantiating) this.instantiate();
+    if (!other.instantiated && !other.instantiating) other.instantiate();
+
+    const thisComponents = new Map<string, ModelicaComponentInstance>();
+    for (const comp of this.components) {
+      if (comp.name) thisComponents.set(comp.name, comp);
+    }
+
+    for (const otherComp of other.components) {
+      if (!otherComp.name) continue;
+      // Skip protected components — type compatibility only applies to public interface
+      if (otherComp.isProtected) continue;
+
+      const thisComp = thisComponents.get(otherComp.name);
+      if (!thisComp) return false; // missing component
+
+      // Variability must match
+      if (thisComp.variability !== otherComp.variability) return false;
+
+      // Causality must match
+      if (thisComp.causality !== otherComp.causality) return false;
+
+      // Flow prefix must match
+      if (thisComp.flowPrefix !== otherComp.flowPrefix) return false;
+
+      // Recursively check component types
+      if (!thisComp.instantiated) thisComp.instantiate();
+      if (!otherComp.instantiated) otherComp.instantiate();
+      const thisType = thisComp.classInstance;
+      const otherType = otherComp.classInstance;
+      if (thisType && otherType) {
+        if (!thisType.isTypeCompatibleWith(otherType, visited)) return false;
+      } else if (thisType !== otherType) {
+        // One is null, the other isn't
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  /**
+   * Check if `this` class is plug-compatible with `other` per Modelica §6.5.
+   *
+   * Plug compatibility is stricter than type compatibility:
+   * - `this` must be type-compatible with `other`
+   * - `this` must have no extra public components that `other` doesn't have
+   *   (exact public component set match)
+   *
+   * Used for connect() equations where connectors must be plug-compatible.
+   *
+   * @param other - The class instance to check compatibility against.
+   * @returns true if `this` is plug-compatible with `other`.
+   */
+  isPlugCompatibleWith(other: ModelicaClassInstance): boolean {
+    const visited = new Set<string>();
+
+    // Must be type-compatible first
+    if (!this.isTypeCompatibleWith(other, visited)) return false;
+
+    // For predefined types, enumerations, and arrays: type compatibility is sufficient
+    if (
+      this instanceof ModelicaPredefinedClassInstance ||
+      this instanceof ModelicaEnumerationClassInstance ||
+      this instanceof ModelicaArrayClassInstance
+    ) {
+      return true;
+    }
+
+    // Plug compatibility: `this` must have no extra public components
+    if (!this.instantiated && !this.instantiating) this.instantiate();
+    if (!other.instantiated && !other.instantiating) other.instantiate();
+
+    const otherComponentNames = new Set<string>();
+    for (const comp of other.components) {
+      if (comp.name && !comp.isProtected) otherComponentNames.add(comp.name);
+    }
+
+    for (const comp of this.components) {
+      if (comp.name && !comp.isProtected && !otherComponentNames.has(comp.name)) {
+        return false; // extra component in `this`
+      }
+    }
+
+    return true;
+  }
+
   get outputParameters(): IterableIterator<ModelicaComponentInstance> {
     const components = this.components;
     return (function* () {
