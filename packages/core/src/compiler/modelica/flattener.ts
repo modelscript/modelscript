@@ -465,8 +465,10 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         expression = node.modification?.expression ?? null;
       }
       // Look up field value from parent record object expression (e.g., r1 = R(1.0, 2.0, 3.0))
-      if (!expression && this.#parentObjectExpression && node.name) {
-        expression = this.#parentObjectExpression.elements.get(node.name) ?? null;
+      // Parent object values take priority over type defaults (e.g., constant R r1 = R(4.0, 5.0, 6.0))
+      if (this.#parentObjectExpression && node.name) {
+        const parentVal = this.#parentObjectExpression.elements.get(node.name);
+        if (parentVal) expression = parentVal;
       }
       if (!expression && node.modification?.modificationExpression?.expression) {
         const syntaxFlattener = new ModelicaSyntaxFlattener();
@@ -501,12 +503,11 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         expression = node.modification?.evaluatedExpression ?? null;
       }
     } else {
-      expression = node.modification?.expression ?? null;
-      // Look up field value from parent record object expression
-      if (!expression && this.#parentObjectExpression && node.name) {
-        expression = this.#parentObjectExpression.elements.get(node.name) ?? null;
-      }
-      if (!expression && node.modification?.modificationExpression?.expression) {
+      // For non-constant, non-parameter: prefer symbolic reference from syntax flattener
+      // (e.g., `r1.x` → ModelicaNameExpression("r1.x")) so constant folding can resolve it
+      // from the DAE where record constructor values are properly applied.
+      expression = null;
+      if (node.modification?.modificationExpression?.expression) {
         const syntaxFlattener = new ModelicaSyntaxFlattener();
         expression =
           node.modification.modificationExpression.expression.accept(syntaxFlattener, {
@@ -516,6 +517,16 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
             stmtCollector: [],
             structuralFinalParams: this.#structuralFinalParams,
           }) ?? null;
+      }
+      // Fall back to interpreter-evaluated expression
+      if (!expression) {
+        expression = node.modification?.expression ?? null;
+      }
+      // Look up field value from parent record object expression
+      // Parent object values take priority over type defaults
+      if (this.#parentObjectExpression && node.name) {
+        const parentVal = this.#parentObjectExpression.elements.get(node.name);
+        if (parentVal) expression = parentVal;
       }
     }
     let variable;
