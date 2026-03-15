@@ -51,6 +51,7 @@ interface TestResult {
   file: string;
   status: "passed" | "failed" | "skipped";
   duration: number;
+  cpuTime: number;
   message?: string;
 }
 
@@ -66,10 +67,12 @@ interface CtrfReport {
       other: number;
       start: number;
       stop: number;
+      cpuTime: number;
     };
     tests: {
       name: string;
       duration: number;
+      cpuTime: number;
       status: "passed" | "failed" | "skipped" | "pending";
       rawStatus: string;
       type: string;
@@ -168,6 +171,13 @@ function parseTestFile(filePath: string): TestCase | null {
 
 function runTestCase(testCase: TestCase): TestResult {
   const start = performance.now();
+  const cpuStart = process.cpuUsage();
+
+  /** Capture CPU time in ms since cpuStart (user + system). */
+  const cpuMs = () => {
+    const delta = process.cpuUsage(cpuStart);
+    return (delta.user + delta.system) / 1000;
+  };
 
   try {
     const context = new Context(new NodeFileSystem());
@@ -183,6 +193,7 @@ function runTestCase(testCase: TestCase): TestResult {
           file: testCase.file,
           status: "passed",
           duration: performance.now() - start,
+          cpuTime: cpuMs(),
         };
       }
 
@@ -191,6 +202,7 @@ function runTestCase(testCase: TestCase): TestResult {
         file: testCase.file,
         status: "failed",
         duration: performance.now() - start,
+        cpuTime: cpuMs(),
         message: `Expected flattening to fail but got result:\n${flattenedResult}`,
       };
     }
@@ -202,6 +214,7 @@ function runTestCase(testCase: TestCase): TestResult {
         file: testCase.file,
         status: "failed",
         duration: performance.now() - start,
+        cpuTime: cpuMs(),
         message: "Flattening returned null (expected a result)",
       };
     }
@@ -215,6 +228,7 @@ function runTestCase(testCase: TestCase): TestResult {
         file: testCase.file,
         status: "passed",
         duration: performance.now() - start,
+        cpuTime: cpuMs(),
       };
     } else {
       return {
@@ -222,6 +236,7 @@ function runTestCase(testCase: TestCase): TestResult {
         file: testCase.file,
         status: "failed",
         duration: performance.now() - start,
+        cpuTime: cpuMs(),
         message: `Output mismatch:\n--- Expected ---\n${expected}\n--- Actual ---\n${actual}`,
       };
     }
@@ -233,6 +248,7 @@ function runTestCase(testCase: TestCase): TestResult {
         file: testCase.file,
         status: "passed",
         duration: performance.now() - start,
+        cpuTime: cpuMs(),
       };
     }
 
@@ -241,6 +257,7 @@ function runTestCase(testCase: TestCase): TestResult {
       file: testCase.file,
       status: "failed",
       duration: performance.now() - start,
+      cpuTime: cpuMs(),
       message: `Exception: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
@@ -263,7 +280,7 @@ function printResult(result: TestResult): void {
         ? `${YELLOW}○${RESET}`
         : `${RED}✗${RESET}`;
 
-  const duration = `${DIM}(${result.duration.toFixed(0)}ms)${RESET}`;
+  const duration = `${DIM}(${result.duration.toFixed(0)}ms, cpu ${result.cpuTime.toFixed(0)}ms)${RESET}`;
   console.log(`  ${icon} ${result.name} ${duration}`);
 
   if (result.message) {
@@ -307,10 +324,12 @@ function generateCtrfReport(results: TestResult[], startTime: number, stopTime: 
         other: 0,
         start: Math.floor(startTime),
         stop: Math.floor(stopTime),
+        cpuTime: Math.floor(results.reduce((sum, r) => sum + r.cpuTime, 0)),
       },
       tests: results.map((r) => ({
         name: r.name,
         duration: Math.floor(r.duration),
+        cpuTime: Math.floor(r.cpuTime),
         status: r.status === "skipped" ? "pending" : r.status,
         rawStatus: r.status,
         type: "unit",
@@ -395,6 +414,7 @@ function main(): void {
           file: filePath,
           status: "skipped",
           duration: 0,
+          cpuTime: 0,
           message: "Could not parse test metadata",
         });
         continue;
