@@ -354,6 +354,9 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
   // Track outer `final` flag for propagation into compound type sub-components
   // When `final A a(x = 1.0)` is declared, all inner parameters inherit `final`
   #outerFinal = false;
+  // Track outer `protected` flag for propagation into compound type sub-components
+  // When `protected A a` is declared, all inner components inherit `protected`
+  #outerProtected = false;
   // Track emitted variable names to prevent duplicates from diamond inheritance
   #emittedVarNames = new Set<string>();
   // Track parameter names that are structurally significant (used in conditional component declarations)
@@ -386,14 +389,17 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     } else if (node.classInstance instanceof ModelicaArrayClassInstance) {
       this.#flattenArrayClass(node, name, args);
     } else {
-      // For compound types (records, models), propagate outer variability and final to inner components
+      // For compound types (records, models), propagate outer variability, final, and protected to inner components
       const savedVar = this.#outerVariability;
       const savedFinal = this.#outerFinal;
+      const savedProtected = this.#outerProtected;
       this.#outerVariability = effectiveVariability;
       this.#outerFinal = this.#outerFinal || node.isFinal;
+      this.#outerProtected = this.#outerProtected || node.isProtected;
       node.classInstance?.accept(this, [name, args[1]]);
       this.#outerVariability = savedVar;
       this.#outerFinal = savedFinal;
+      this.#outerProtected = savedProtected;
     }
   }
 
@@ -404,7 +410,8 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     effectiveVariability?: ModelicaVariability | null,
   ): void {
     const variability = effectiveVariability ?? node.variability;
-    const { causality, isProtected } = node;
+    const { causality } = node;
+    const isProtected = node.isProtected || this.#outerProtected;
     // Check structural final: parameter used in conditional component condition
     const isFinal = node.isFinal || this.#outerFinal || this.#structuralFinalParams.has(name);
     const attributes = new Map<string, ModelicaExpression>();
@@ -537,7 +544,8 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
   }
 
   #flattenEnumerationClass(node: ModelicaComponentInstance, name: string, args: [string, ModelicaDAE]): void {
-    const { causality, isFinal, isProtected } = node;
+    const { causality, isFinal } = node;
+    const isProtected = node.isProtected || this.#outerProtected;
     const attributes = new Map<string, ModelicaExpression>();
     // First collect type-level attributes (e.g., from `type E = enumeration(...)(start = E.two)`)
     if (node.classInstance instanceof ModelicaEnumerationClassInstance) {
