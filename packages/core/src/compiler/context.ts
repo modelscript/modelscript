@@ -110,6 +110,7 @@ export class Context extends Scope {
     }
     const flattener = new ModelicaFlattener();
     instance.accept(flattener, ["", dae]);
+    flattener.generateFlowBalanceEquations(dae);
     flattener.foldDAEConstants(dae);
     // Remove function definitions that are no longer referenced after constant folding.
     // Functions used only in constant bindings (now folded to literals) should not appear in output.

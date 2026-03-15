@@ -58,6 +58,7 @@ import {
   ModelicaStringClassInstance,
 } from "./model.js";
 import {
+  ModelicaAlgorithmSectionSyntaxNode,
   ModelicaArrayConcatenationSyntaxNode,
   ModelicaArrayConstructorSyntaxNode,
   ModelicaBinaryExpressionSyntaxNode,
@@ -68,6 +69,7 @@ import {
   ModelicaComplexAssignmentStatementSyntaxNode,
   ModelicaComponentReferenceSyntaxNode,
   ModelicaConnectEquationSyntaxNode,
+  ModelicaEquationSectionSyntaxNode,
   ModelicaExpressionSyntaxNode,
   ModelicaFlow,
   ModelicaForEquationSyntaxNode,
@@ -77,6 +79,7 @@ import {
   ModelicaIfElseExpressionSyntaxNode,
   ModelicaIfEquationSyntaxNode,
   ModelicaIfStatementSyntaxNode,
+  ModelicaInheritanceModificationSyntaxNode,
   ModelicaLongClassSpecifierSyntaxNode,
   ModelicaOutputExpressionListSyntaxNode,
   ModelicaProcedureCallStatementSyntaxNode,
@@ -104,6 +107,12 @@ interface FlattenerContext {
   stmtCollector: ModelicaStatement[];
   loopVariables?: Map<string, number | ModelicaExpression>;
   structuralFinalParams?: Set<string>;
+  /** Names of components removed via `break` in the current extends clause. */
+  brokenNames?: Set<string>;
+  /** Shared set for tracking flow variables that appear in connect equations. */
+  connectedFlowVars?: Set<string>;
+  /** Canonical keys of connect equations removed via `break connect(...)`. */
+  brokenConnects?: Set<string>;
 }
 
 /** Extract an integer shape array from a list of expressions (all must be ModelicaIntegerLiteral). */
@@ -188,38 +197,42 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     for (const declaredElement of node.declaredElements) {
       if (declaredElement instanceof ModelicaExtendsClassInstance) declaredElement.accept(this, args);
     }
-    for (const equationSection of node.equationSections) {
-      const target = equationSection.initial ? args[1].initialEquations : args[1].equations;
-      const savedEquations = args[1].equations;
-      // Temporarily redirect equation collection to the right target
-      args[1].equations = target;
-      for (const eq of equationSection.equations) {
-        eq.accept(new ModelicaSyntaxFlattener(), {
-          prefix: args[0],
-          classInstance: node,
-          dae: args[1],
-          stmtCollector: [],
-          structuralFinalParams: this.#structuralFinalParams,
-        });
-      }
-      args[1].equations = savedEquations;
-    }
-    for (const algorithmSection of node.algorithmSections) {
-      const collector: ModelicaStatement[] = [];
-      for (const statement of algorithmSection.statements) {
-        statement.accept(new ModelicaSyntaxFlattener(), {
-          prefix: args[0],
-          classInstance: node,
-          dae: args[1],
-          stmtCollector: collector,
-          structuralFinalParams: this.#structuralFinalParams,
-        });
-      }
-      if (collector.length > 0) {
-        if (algorithmSection.initial) {
-          args[1].initialAlgorithms.push(collector);
-        } else {
-          args[1].algorithms.push(collector);
+    // Process only locally-declared equation/algorithm sections (not inherited ones).
+    // Inherited equations are handled by visitExtendsClassInstance with proper break context.
+    const localSections = node.abstractSyntaxNode?.sections ?? [];
+    for (const section of localSections) {
+      if (section instanceof ModelicaEquationSectionSyntaxNode) {
+        const target = section.initial ? args[1].initialEquations : args[1].equations;
+        const savedEquations = args[1].equations;
+        args[1].equations = target;
+        for (const eq of section.equations) {
+          eq.accept(new ModelicaSyntaxFlattener(), {
+            prefix: args[0],
+            classInstance: node,
+            dae: args[1],
+            stmtCollector: [],
+            structuralFinalParams: this.#structuralFinalParams,
+            connectedFlowVars: this.#connectedFlowVars,
+          });
+        }
+        args[1].equations = savedEquations;
+      } else if (section instanceof ModelicaAlgorithmSectionSyntaxNode) {
+        const collector: ModelicaStatement[] = [];
+        for (const statement of section.statements) {
+          statement.accept(new ModelicaSyntaxFlattener(), {
+            prefix: args[0],
+            classInstance: node,
+            dae: args[1],
+            stmtCollector: collector,
+            structuralFinalParams: this.#structuralFinalParams,
+          });
+        }
+        if (collector.length > 0) {
+          if (section.initial) {
+            args[1].initialAlgorithms.push(collector);
+          } else {
+            args[1].algorithms.push(collector);
+          }
         }
       }
     }
@@ -376,21 +389,19 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
   #parentObjectExpression: ModelicaObject | null = null;
   // Track emitted variable names to prevent duplicates from diamond inheritance
   #emittedVarNames = new Set<string>();
+  // Track all flow variable names emitted as DAE variables (for flow balance post-processing)
+  #allFlowVars = new Set<string>();
+  // Track flow variable names that appear in connect equations (populated during equation processing)
+  #connectedFlowVars = new Set<string>();
   // Track parameter names that are structurally significant (used in conditional component declarations)
   #structuralFinalParams = new Set<string>();
+  // Carry outer brokenConnects through nested extends chains
+  #outerBrokenConnects = new Set<string>();
 
   visitComponentInstance(node: ModelicaComponentInstance, args: [string, ModelicaDAE]): void {
     // Skip pure `outer` components — they reference an `inner` declaration higher up
     // and should not generate their own variables. `inner outer` still generates a variable.
     if (node.isOuter && !node.isInner) return;
-
-    // Skip components removed by the `break` modifier in an extends clause.
-    // Only check at the top level (empty prefix) — nested sub-components (e.g., y.x)
-    // should not be matched by a `break x` targeting the top-level component x.
-    if (args[0] === "") {
-      const activeClass = this.activeClassStack[this.activeClassStack.length - 1];
-      if (activeClass?.isBrokenElement(node.name)) return;
-    }
 
     // Evaluate conditional components (e.g., `Real x if false;`)
     const conditionExpr = (
@@ -625,6 +636,11 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       if (!this.#emittedVarNames.has(variable.name)) {
         this.#emittedVarNames.add(variable.name);
         args[1].variables.push(variable);
+        // Track flow variables for flow balance post-processing.
+        // Cap at 10,000 to avoid performance issues with huge array models (e.g., cells[1000,100]).
+        if (node.flowPrefix === ModelicaFlow.FLOW && this.#allFlowVars.size < 10_000) {
+          this.#allFlowVars.add(variable.name);
+        }
       }
     }
   }
@@ -853,45 +869,97 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     // Components from base classes are already yielded by the `elements` iterator,
     // so we only need to handle equations and algorithms from the base class.
 
-    // Process recursive extends
+    // Collect broken names and broken connects from this extends clause
+    const brokenNames = new Set<string>();
+    const brokenConnects = new Set<string>();
+    const modEntries =
+      node.abstractSyntaxNode?.classOrInheritanceModification?.modificationArgumentOrInheritanceModifications ?? [];
+    for (const entry of modEntries) {
+      if (entry instanceof ModelicaInheritanceModificationSyntaxNode) {
+        if (entry.identifier?.text) {
+          brokenNames.add(entry.identifier.text);
+        }
+        if (entry.connectEquation) {
+          // Extract component reference names from break connect(ref1, ref2)
+          const ref1 = entry.connectEquation.componentReference1;
+          const ref2 = entry.connectEquation.componentReference2;
+          // Include array subscripts in the key (e.g. c1[i] not just c1)
+          const refText = (ref: typeof ref1) =>
+            ref?.parts
+              .map((p) => {
+                let name = p.identifier?.text ?? "";
+                if (p.arraySubscripts?.subscripts?.length) {
+                  const out = new StringWriter();
+                  p.arraySubscripts.accept(new ModelicaSyntaxPrinter(out));
+                  name += out.toString();
+                }
+                return name;
+              })
+              .join(".") ?? "";
+          const name1 = refText(ref1);
+          const name2 = refText(ref2);
+          if (name1 && name2) {
+            // Use sorted canonical key so connect(a,b) matches connect(b,a)
+            const key = [name1, name2].sort().join(",");
+            brokenConnects.add(key);
+          }
+        }
+      }
+    }
+
+    // Merge with any outer broken connects propagated from parent extends
+    for (const key of this.#outerBrokenConnects) {
+      brokenConnects.add(key);
+    }
+
+    // Process recursive extends, propagating broken connects to nested chains
     for (const declaredElement of node.classInstance.declaredElements ?? []) {
-      if (declaredElement instanceof ModelicaExtendsClassInstance) declaredElement.accept(this, args);
+      if (declaredElement instanceof ModelicaExtendsClassInstance) {
+        const savedBrokenConnects = this.#outerBrokenConnects;
+        this.#outerBrokenConnects = brokenConnects;
+        declaredElement.accept(this, args);
+        this.#outerBrokenConnects = savedBrokenConnects;
+      }
     }
 
-    // Process equation sections from base class
-    for (const equationSection of node.classInstance.equationSections) {
-      const target = equationSection.initial ? args[1].initialEquations : args[1].equations;
-      const savedEquations = args[1].equations;
-      args[1].equations = target;
-      for (const eq of equationSection.equations) {
-        eq.accept(new ModelicaSyntaxFlattener(), {
-          prefix: args[0],
-          classInstance: node.classInstance,
-          dae: args[1],
-          stmtCollector: [],
-          structuralFinalParams: this.#structuralFinalParams,
-        });
-      }
-      args[1].equations = savedEquations;
-    }
-
-    // Process algorithm sections from base class
-    for (const algorithmSection of node.classInstance.algorithmSections) {
-      const collector: ModelicaStatement[] = [];
-      for (const statement of algorithmSection.statements) {
-        statement.accept(new ModelicaSyntaxFlattener(), {
-          prefix: args[0],
-          classInstance: node.classInstance,
-          dae: args[1],
-          stmtCollector: collector,
-          structuralFinalParams: this.#structuralFinalParams,
-        });
-      }
-      if (collector.length > 0) {
-        if (algorithmSection.initial) {
-          args[1].initialAlgorithms.push(collector);
-        } else {
-          args[1].algorithms.push(collector);
+    // Process only locally-declared equation/algorithm sections from the base class.
+    // Inherited equations from nested extends are handled by the recursive processing above.
+    const localSections = node.classInstance.abstractSyntaxNode?.sections ?? [];
+    for (const section of localSections) {
+      if (section instanceof ModelicaEquationSectionSyntaxNode) {
+        const target = section.initial ? args[1].initialEquations : args[1].equations;
+        const savedEquations = args[1].equations;
+        args[1].equations = target;
+        for (const eq of section.equations) {
+          eq.accept(new ModelicaSyntaxFlattener(), {
+            prefix: args[0],
+            classInstance: node.classInstance,
+            dae: args[1],
+            stmtCollector: [],
+            structuralFinalParams: this.#structuralFinalParams,
+            connectedFlowVars: this.#connectedFlowVars,
+            ...(brokenNames.size > 0 ? { brokenNames } : {}),
+            ...(brokenConnects.size > 0 ? { brokenConnects } : {}),
+          });
+        }
+        args[1].equations = savedEquations;
+      } else if (section instanceof ModelicaAlgorithmSectionSyntaxNode) {
+        const collector: ModelicaStatement[] = [];
+        for (const statement of section.statements) {
+          statement.accept(new ModelicaSyntaxFlattener(), {
+            prefix: args[0],
+            classInstance: node.classInstance,
+            dae: args[1],
+            stmtCollector: collector,
+            structuralFinalParams: this.#structuralFinalParams,
+          });
+        }
+        if (collector.length > 0) {
+          if (section.initial) {
+            args[1].initialAlgorithms.push(collector);
+          } else {
+            args[1].algorithms.push(collector);
+          }
         }
       }
     }
@@ -901,6 +969,21 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
    * Performs a topological-sort-like evaluation by repeatedly folding constant and parameter expressions
    * until no more simplifications can be made. This resolves forward references between constants.
    */
+  /**
+   * Generate flow balance equations for unconnected flow variables.
+   * Per the Modelica spec, every flow variable that does not appear in any
+   * `connect` equation must have `f = 0.0` added automatically.
+   */
+  generateFlowBalanceEquations(dae: ModelicaDAE) {
+    for (const flowVar of this.#allFlowVars) {
+      if (!this.#connectedFlowVars.has(flowVar)) {
+        dae.equations.push(
+          new ModelicaSimpleEquation(new ModelicaNameExpression(flowVar), new ModelicaRealLiteral(0.0)),
+        );
+      }
+    }
+  }
+
   foldDAEConstants(dae: ModelicaDAE) {
     let changed = true;
     let iterations = 0;
@@ -2277,6 +2360,57 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     const ref2 = node.componentReference2;
     if (!ref1 || !ref2) return null;
 
+    // Check if this entire connect equation was removed via `break connect(...)`
+    if (ctx.brokenConnects && ctx.brokenConnects.size > 0) {
+      // Include array subscripts in the key to match (e.g. c1[i] not just c1)
+      const refText = (ref: ModelicaComponentReferenceSyntaxNode) =>
+        ref.parts
+          .map((p) => {
+            let name = p.identifier?.text ?? "";
+            if (p.arraySubscripts?.subscripts?.length) {
+              const out = new StringWriter();
+              p.arraySubscripts.accept(new ModelicaSyntaxPrinter(out));
+              name += out.toString();
+            }
+            return name;
+          })
+          .join(".");
+      const localName1 = refText(ref1);
+      const localName2 = refText(ref2);
+      const key = [localName1, localName2].sort().join(",");
+      if (ctx.brokenConnects.has(key)) return null;
+    }
+
+    // Check if either side's root component has been removed via `break`
+    const rootName1 = ref1.parts[0]?.identifier?.text;
+    const rootName2 = ref2.parts[0]?.identifier?.text;
+    const broken1 = !!(rootName1 && ctx.brokenNames?.has(rootName1));
+    const broken2 = !!(rootName2 && ctx.brokenNames?.has(rootName2));
+
+    // If both sides are broken, skip the entire connect equation
+    if (broken1 && broken2) return null;
+
+    // If one side is broken, only emit flow sum-to-zero for the remaining side
+    if (broken1 || broken2) {
+      const activeRef = broken1 ? ref2 : ref1;
+      const activeName = this.#resolveConnectName(activeRef, ctx);
+      const activeComp = this.#resolveConnectComponent(activeRef, ctx);
+      if (!activeName || !activeComp) return null;
+      const leaves = this.#collectConnectorLeaves(activeComp, activeName);
+      for (const [, info] of leaves) {
+        if (info.isFlow) {
+          // Flow variable on remaining side: f = 0.0
+          ctx.dae.equations.push(
+            new ModelicaSimpleEquation(new ModelicaNameExpression(info.fullName), new ModelicaRealLiteral(0.0)),
+          );
+          // Mark as connected so generic flow balance doesn't duplicate
+          ctx.connectedFlowVars?.add(info.fullName);
+        }
+        // Potential (non-flow) variables: no equation needed when one side is broken
+      }
+      return null;
+    }
+
     // Build prefixed names for both sides
     const name1 = this.#resolveConnectName(ref1, ctx);
     const name2 = this.#resolveConnectName(ref2, ctx);
@@ -2304,6 +2438,9 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
           new ModelicaNameExpression(info2.fullName),
         );
         ctx.dae.equations.push(new ModelicaSimpleEquation(lhs, new ModelicaRealLiteral(0.0)));
+        // Track these flow variables as connected
+        ctx.connectedFlowVars?.add(info1.fullName);
+        ctx.connectedFlowVars?.add(info2.fullName);
       } else {
         // Potential variables: a.x = b.x
         ctx.dae.equations.push(
@@ -2329,7 +2466,14 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         const subs: string[] = [];
         for (const sub of p.arraySubscripts.subscripts) {
           const val = sub.expression?.accept(new ModelicaInterpreter(), ctx.classInstance);
-          subs.push(val?.toString() ?? "");
+          // Extract the numeric value from the interpreter result
+          if (val instanceof ModelicaIntegerLiteral) {
+            subs.push(String(val.value));
+          } else if (val instanceof ModelicaRealLiteral) {
+            subs.push(String(val.value));
+          } else {
+            subs.push(val?.toString() ?? "");
+          }
         }
         name += "[" + subs.join(",") + "]";
       }

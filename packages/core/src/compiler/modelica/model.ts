@@ -423,6 +423,27 @@ export class ModelicaExtendsClassInstance extends ModelicaElement {
         if (baseName) ModelicaExtendsClassInstance.#extendsChain.add(baseName);
         try {
           this.classInstance = element.clone(this.#modification);
+          // Validate that modification targets exist in the base class.
+          // This catches e.g. `extends B(m(x=1))` when `m` was broken in `B`.
+          if (this.classInstance && this.#modification) {
+            const elementNames = new Set<string>();
+            for (const el of this.classInstance.elements) {
+              if (el instanceof ModelicaNamedElement && el.name) elementNames.add(el.name);
+            }
+            for (const modArg of this.#modification.modificationArguments) {
+              if (modArg.name && modArg.name !== "annotation" && !elementNames.has(modArg.name)) {
+                this.parent?.diagnostics.push(
+                  makeDiagnostic(
+                    ModelicaErrorCode.MODIFIER_NOT_FOUND,
+                    null,
+                    modArg.name,
+                    this.parent?.name ?? "",
+                    element.name ?? "",
+                  ),
+                );
+              }
+            }
+          }
         } finally {
           if (baseName) ModelicaExtendsClassInstance.#extendsChain.delete(baseName);
         }
@@ -657,6 +678,21 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
         }
       }
 
+      // Collect names of components removed via `break` in extends clauses.
+      const brokenNames = new Set<string>();
+      for (const element of self.declaredElements) {
+        if (element instanceof ModelicaExtendsClassInstance) {
+          const modEntries =
+            element.abstractSyntaxNode?.classOrInheritanceModification
+              ?.modificationArgumentOrInheritanceModifications ?? [];
+          for (const entry of modEntries) {
+            if (entry instanceof ModelicaInheritanceModificationSyntaxNode && entry.identifier?.text) {
+              brokenNames.add(entry.identifier.text);
+            }
+          }
+        }
+      }
+
       // First pass through extends: collect inherited properties for redeclared names
       const inheritedProps = new Map<
         string,
@@ -719,9 +755,9 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
               if (
                 inheritedElement instanceof ModelicaComponentInstance &&
                 inheritedElement.name &&
-                redeclaredNames.has(inheritedElement.name)
+                (redeclaredNames.has(inheritedElement.name) || brokenNames.has(inheritedElement.name))
               ) {
-                continue; // Skip — redeclared in the body
+                continue; // Skip — redeclared in the body or removed via `break`
               }
               yield inheritedElement;
             }
