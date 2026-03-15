@@ -2570,7 +2570,7 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
       for (const stmt of section) stmt.accept(this);
     }
     if (fn.externalDecl) {
-      this.out.write("  " + fn.externalDecl + "\n");
+      this.out.write("\n  " + fn.externalDecl + "\n");
     }
     this.out.write("end " + fn.name + ";");
   }

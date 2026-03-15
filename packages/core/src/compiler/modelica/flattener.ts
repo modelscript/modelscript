@@ -427,7 +427,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     const activeClass = this.activeClassStack[this.activeClassStack.length - 1];
     const isProtected =
       node.isProtected || this.#outerProtected || (activeClass?.isProtectedElement(node.name) ?? false);
-    const isFinal = node.isFinal || this.#outerFinal;
+    const isFinal = node.isFinal || this.#outerFinal || node.annotation<boolean>("Evaluate") === true;
     const attributes = new Map<string, ModelicaExpression>();
     // First collect type-level attributes (e.g., from `type MyReal = Real(start = 1.0)`)
     if (node.classInstance instanceof ModelicaPredefinedClassInstance) {
@@ -1061,8 +1061,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       );
     } else if (expr instanceof ModelicaVariable) {
       if (
-        (expr.variability === ModelicaVariability.CONSTANT ||
-          (expr.variability === ModelicaVariability.PARAMETER && expr.isFinal)) &&
+        (expr.variability === ModelicaVariability.CONSTANT || expr.variability === ModelicaVariability.PARAMETER) &&
         expr.expression
       ) {
         if (!visited.has(expr.name)) {
@@ -1659,6 +1658,20 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
             declText += ` ${returnVar} = ${callName}(${argNames.join(", ")})`;
           } else if (callName) {
             declText += ` ${callName}(${argNames.join(", ")})`;
+          }
+        } else {
+          // No explicit external call — synthesize default: output = functionName(inputs...)
+          const fnName = resolved.name;
+          const inputNames: string[] = [];
+          let outputName: string | null = null;
+          for (const v of fnDae.variables) {
+            if (v.causality === "input") inputNames.push(v.name);
+            else if (v.causality === "output" && !outputName) outputName = v.name;
+          }
+          if (outputName) {
+            declText += ` ${outputName} = ${fnName}(${inputNames.join(", ")})`;
+          } else {
+            declText += ` ${fnName}(${inputNames.join(", ")})`;
           }
         }
         declText += ";";
