@@ -158,6 +158,14 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         if (condAttr) {
           this.#collectStructuralParams(condAttr, args[0]);
         }
+        // Check binding expression for if-expressions on array components only.
+        // Only mark condition params as structural when branches have provably different shapes.
+        if (element.classInstance instanceof ModelicaArrayClassInstance) {
+          const bindingExpr = element.abstractSyntaxNode?.declaration?.modification?.modificationExpression?.expression;
+          if (bindingExpr) {
+            this.#scanExprForStructuralIfParams(bindingExpr, args[0]);
+          }
+        }
       }
     }
     for (const element of node.elements) {
@@ -226,18 +234,31 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
   }
 
   /**
-   * Scan an expression AST for if-expressions and collect parameter refs from their conditions.
-   * This handles cases like `Real x = if b then {1,2} else {3,4,5}` where `b` is structural.
+   * Scan an expression AST for if-expressions whose branches have different array shapes.
+   * When branches differ in size (e.g., `if b then {1,2} else {3,4,5}`), the condition
+   * parameters are structural and must be marked `final`.
    */
   #scanExprForStructuralIfParams(expr: ModelicaExpressionSyntaxNode, prefix: string): void {
     if (expr instanceof ModelicaIfElseExpressionSyntaxNode) {
-      // Extract parameter references from the if condition
-      if (expr.condition) {
-        this.#collectStructuralParams(expr.condition, prefix);
-      }
+      // Collect shapes of all branches
+      const shapes: (number | null)[] = [];
+      if (expr.expression) shapes.push(this.#getStaticArraySize(expr.expression));
       for (const clause of expr.elseIfExpressionClauses) {
-        if (clause.condition) {
-          this.#collectStructuralParams(clause.condition, prefix);
+        if (clause.expression) shapes.push(this.#getStaticArraySize(clause.expression));
+      }
+      if (expr.elseExpression) shapes.push(this.#getStaticArraySize(expr.elseExpression));
+
+      // Only mark as structural if we found at least two known shapes that differ
+      const knownShapes = shapes.filter((s): s is number => s !== null);
+      const hasDifferentShapes = knownShapes.length >= 2 && !knownShapes.every((s) => s === knownShapes[0]);
+      if (hasDifferentShapes) {
+        if (expr.condition) {
+          this.#collectStructuralParams(expr.condition, prefix);
+        }
+        for (const clause of expr.elseIfExpressionClauses) {
+          if (clause.condition) {
+            this.#collectStructuralParams(clause.condition, prefix);
+          }
         }
       }
     }
@@ -249,6 +270,75 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         }
       }
     }
+  }
+
+  /**
+   * Determine the static array size of an expression AST node, if possible.
+   * Returns the element count for array constructors like `{1, 2, 3}`,
+   * or null if the size can't be statically determined.
+   */
+  #getStaticArraySize(expr: ModelicaExpressionSyntaxNode): number | null {
+    // `{a, b, c}` → ModelicaArrayConstructorSyntaxNode with expression list
+    if (expr instanceof ModelicaArrayConstructorSyntaxNode) {
+      if (expr.comprehensionClause) return null; // `array(x for i in ...)` — can't determine
+      return expr.expressionList?.expressions?.length ?? null;
+    }
+    // Matrix/concatenation: `[a, b; c, d]` → ModelicaArrayConcatenationSyntaxNode
+    if (expr instanceof ModelicaArrayConcatenationSyntaxNode) {
+      if (expr.expressionLists.length === 1) {
+        return expr.expressionLists[0]?.expressions?.length ?? null;
+      }
+      // Multi-row array: return number of rows
+      return expr.expressionLists.length;
+    }
+    // Component references, binary expressions, etc. → unknown
+    return null;
+  }
+
+  /**
+   * Fold a `ModelicaIfElseExpression` whose condition is a structural final parameter.
+   * Resolves the parameter value in the parent class instance and returns the selected branch.
+   * Returns null if the condition can't be resolved.
+   */
+  #foldStructuralIfExpression(
+    expr: ModelicaIfElseExpression,
+    node: ModelicaComponentInstance,
+  ): ModelicaExpression | null {
+    const condValue = this.#resolveConditionBool(expr.condition, node);
+    if (condValue === true) return expr.thenExpression;
+    if (condValue === false) {
+      // Check elseif clauses
+      for (const clause of expr.elseIfClauses) {
+        const clauseValue = this.#resolveConditionBool(clause.condition, node);
+        if (clauseValue === true) return clause.expression;
+        if (clauseValue !== false) return null; // can't determine
+      }
+      return expr.elseExpression;
+    }
+    return null;
+  }
+
+  /**
+   * Resolve a condition expression to a boolean value using the parent class instance.
+   * Returns true/false if resolvable, null otherwise.
+   */
+  #resolveConditionBool(condition: ModelicaExpression, node: ModelicaComponentInstance): boolean | null {
+    if (condition instanceof ModelicaBooleanLiteral) return condition.value;
+    // Handle ModelicaBooleanVariable — the syntax flattener creates variable nodes for
+    // component references. The variable's expression holds the binding value.
+    if (condition instanceof ModelicaVariable && condition.expression instanceof ModelicaBooleanLiteral) {
+      return condition.expression.value;
+    }
+    if (condition instanceof ModelicaNameExpression && node.parent) {
+      const paramName = condition.name;
+      // Look up the parameter in the parent class instance
+      const resolved = node.parent.resolveSimpleName?.(paramName, false, true);
+      if (resolved instanceof ModelicaComponentInstance) {
+        const paramValue = resolved.modification?.expression;
+        if (paramValue instanceof ModelicaBooleanLiteral) return paramValue.value;
+      }
+    }
+    return null;
   }
 
   /**
@@ -456,7 +546,25 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
   #flattenArrayClass(node: ModelicaComponentInstance, name: string, args: [string, ModelicaDAE]): void {
     const { causality, isFinal } = node;
     const arrayClassInstance = node.classInstance as ModelicaArrayClassInstance;
-    const arrayBindingExpression = node.modification?.expression ?? null;
+    let arrayBindingExpression = node.modification?.expression ?? null;
+    // If the interpreter couldn't evaluate the binding (e.g., if-expression with parameter
+    // condition), try the syntax flattener which can handle symbolic expressions
+    if (!arrayBindingExpression && node.modification?.modificationExpression?.expression) {
+      const syntaxFlattener = new ModelicaSyntaxFlattener();
+      arrayBindingExpression =
+        node.modification.modificationExpression.expression.accept(syntaxFlattener, {
+          prefix: args[0],
+          classInstance: node.parent ?? ({} as ModelicaClassInstance),
+          dae: args[1],
+          stmtCollector: [],
+        }) ?? null;
+    }
+    // Fold if-expressions whose conditions are structural final parameters.
+    // The syntax flattener preserves `if b then {1.0, 2.0} else {3.0, 4.0, 5.0}` symbolically,
+    // but structural parameters must be resolved at compile time for shape determination.
+    if (arrayBindingExpression instanceof ModelicaIfElseExpression) {
+      arrayBindingExpression = this.#foldStructuralIfExpression(arrayBindingExpression, node) ?? arrayBindingExpression;
+    }
     const isCompileTimeEvaluable =
       node.variability === ModelicaVariability.PARAMETER || node.variability === ModelicaVariability.CONSTANT;
     const flatBindingElements =
