@@ -384,6 +384,14 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     // and should not generate their own variables. `inner outer` still generates a variable.
     if (node.isOuter && !node.isInner) return;
 
+    // Skip components removed by the `break` modifier in an extends clause.
+    // Only check at the top level (empty prefix) — nested sub-components (e.g., y.x)
+    // should not be matched by a `break x` targeting the top-level component x.
+    if (args[0] === "") {
+      const activeClass = this.activeClassStack[this.activeClassStack.length - 1];
+      if (activeClass?.isBrokenElement(node.name)) return;
+    }
+
     // Evaluate conditional components (e.g., `Real x if false;`)
     const conditionExpr = (
       node.abstractSyntaxNode as { conditionAttribute?: { condition?: ModelicaExpressionSyntaxNode | null } } | null

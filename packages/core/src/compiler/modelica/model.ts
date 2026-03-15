@@ -42,6 +42,7 @@ import {
   ModelicaFlow,
   ModelicaIdentifierSyntaxNode,
   ModelicaImportClauseSyntaxNode,
+  ModelicaInheritanceModificationSyntaxNode,
   ModelicaLongClassSpecifierSyntaxNode,
   ModelicaModificationArgumentSyntaxNode,
   ModelicaModificationExpressionSyntaxNode,
@@ -1245,6 +1246,25 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
         if (element.visibility === ModelicaVisibility.PROTECTED && element.classInstance) {
           for (const el of element.classInstance.elements) {
             if (el instanceof ModelicaComponentInstance && el.name === name) return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  /** Check if a named element has been removed via the `break` modifier in an extends clause. */
+  isBrokenElement(name: string | null): boolean {
+    if (!name) return false;
+    if (!this.instantiated && !this.instantiating) this.instantiate();
+    for (const element of this.declaredElements) {
+      if (element instanceof ModelicaExtendsClassInstance) {
+        const modEntries =
+          element.abstractSyntaxNode?.classOrInheritanceModification?.modificationArgumentOrInheritanceModifications ??
+          [];
+        for (const entry of modEntries) {
+          if (entry instanceof ModelicaInheritanceModificationSyntaxNode && entry.identifier?.text === name) {
+            return true;
           }
         }
       }
