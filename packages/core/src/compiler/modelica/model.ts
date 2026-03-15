@@ -426,22 +426,28 @@ export class ModelicaExtendsClassInstance extends ModelicaElement {
     const mergedModificationArguments: ModelicaModificationArgument[] = [
       ...(this.parent?.modification?.modificationArguments ?? []),
     ];
+    // Collect names from outer (parent) modification so extends args don't override them
+    const outerNames = new Set(mergedModificationArguments.map((a) => a.name));
     if (this.abstractSyntaxNode?.classOrInheritanceModification != null) {
       const modificationArguments: ModelicaModificationArgument[] = [];
       for (const modificationArgumentOrInheritanceModification of this.abstractSyntaxNode
         ?.classOrInheritanceModification?.modificationArgumentOrInheritanceModifications ?? []) {
         if (modificationArgumentOrInheritanceModification instanceof ModelicaModificationArgumentSyntaxNode) {
           if (modificationArgumentOrInheritanceModification instanceof ModelicaElementModificationSyntaxNode) {
-            if (
-              modificationArguments.filter(
-                (m) => m.name === modificationArgumentOrInheritanceModification.identifier?.text,
-              ).length > 0
-            )
-              continue;
+            const argName = modificationArgumentOrInheritanceModification.identifier?.text;
+            if (modificationArguments.filter((m) => m.name === argName).length > 0) continue;
+            // Skip extends clause args that conflict with outer (parent) args — outer has priority
+            if (argName && outerNames.has(argName)) continue;
             modificationArguments.push(
               ModelicaElementModification.new(this.parent, modificationArgumentOrInheritanceModification),
             );
           } else if (modificationArgumentOrInheritanceModification instanceof ModelicaElementRedeclarationSyntaxNode) {
+            // Also skip extends-clause redeclares when they conflict with outer redeclares
+            const redeclName =
+              modificationArgumentOrInheritanceModification.componentClause?.componentDeclaration?.declaration
+                ?.identifier?.text ??
+              modificationArgumentOrInheritanceModification.shortClassDefinition?.identifier?.text;
+            if (redeclName && outerNames.has(redeclName)) continue;
             modificationArguments.push(
               ModelicaElementRedeclaration.new(this.parent, modificationArgumentOrInheritanceModification),
             );
@@ -629,6 +635,57 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     return (function* () {
       const visited = new Set<ModelicaClassInstance>([self]);
 
+      // Collect names of body-level redeclare elements.
+      // These replace inherited components from extends and should be filtered.
+      const redeclaredNames = new Set<string>();
+      for (const element of self.declaredElements) {
+        if (element instanceof ModelicaComponentInstance) {
+          const componentClause = element.abstractSyntaxNode?.parent as { redeclare?: boolean } | null;
+          if (componentClause?.redeclare && element.name) {
+            redeclaredNames.add(element.name);
+          }
+        }
+      }
+
+      // First pass through extends: collect inherited properties for redeclared names
+      const inheritedProps = new Map<
+        string,
+        {
+          variability: ModelicaVariability | null;
+          causality: ModelicaCausality | null;
+          conditionAttribute: { condition?: ModelicaExpressionSyntaxNode | null } | null;
+        }
+      >();
+      if (redeclaredNames.size > 0) {
+        for (const element of self.declaredElements) {
+          if (element instanceof ModelicaExtendsClassInstance) {
+            if (!element.instantiated && !element.instantiating) element.instantiate();
+            const baseClass = element.classInstance;
+            if (baseClass) {
+              for (const inheritedElement of baseClass.elements) {
+                if (
+                  inheritedElement instanceof ModelicaComponentInstance &&
+                  inheritedElement.name &&
+                  redeclaredNames.has(inheritedElement.name)
+                ) {
+                  const condAttr =
+                    (
+                      inheritedElement.abstractSyntaxNode as {
+                        conditionAttribute?: { condition?: ModelicaExpressionSyntaxNode | null } | null;
+                      } | null
+                    )?.conditionAttribute ?? null;
+                  inheritedProps.set(inheritedElement.name, {
+                    variability: inheritedElement.variability,
+                    causality: inheritedElement.causality,
+                    conditionAttribute: condAttr,
+                  });
+                }
+              }
+            }
+          }
+        }
+      }
+
       // Yield elements in declaration order, inlining extends at their position
       for (const element of self.declaredElements) {
         if (element instanceof ModelicaExtendsClassInstance) {
@@ -636,9 +693,44 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
           const baseClass = element.classInstance;
           if (baseClass && !visited.has(baseClass)) {
             visited.add(baseClass);
-            yield* baseClass.elements;
+            // Filter out elements that have been redeclared in the body
+            for (const inheritedElement of baseClass.elements) {
+              if (
+                inheritedElement instanceof ModelicaComponentInstance &&
+                inheritedElement.name &&
+                redeclaredNames.has(inheritedElement.name)
+              ) {
+                continue; // Skip — redeclared in the body
+              }
+              yield inheritedElement;
+            }
           }
         } else {
+          // For body-level redeclare elements, inherit variability/causality from the replaced component
+          if (element instanceof ModelicaComponentInstance && element.name && redeclaredNames.has(element.name)) {
+            const inherited = inheritedProps.get(element.name);
+            if (inherited) {
+              if (!element.variability && inherited.variability) {
+                element.variability = inherited.variability;
+              }
+              if (!element.causality && inherited.causality) {
+                element.causality = inherited.causality;
+              }
+              // Carry over 'if false' condition: if the inherited component had a conditional
+              // that evaluates to false, skip the redeclared component too
+              if (inherited.conditionAttribute?.condition) {
+                const interp = new ModelicaInterpreter();
+                const condValue = inherited.conditionAttribute.condition.accept(interp, element.parent ?? undefined);
+                if (
+                  condValue != null &&
+                  typeof (condValue as unknown as { value?: unknown }).value === "boolean" &&
+                  !(condValue as unknown as { value: boolean }).value
+                ) {
+                  continue; // Skip — conditional is false
+                }
+              }
+            }
+          }
           yield element;
         }
       }
@@ -738,11 +830,84 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     this.#importClauses = [];
     this.#qualifiedImports = new Map<string, ModelicaClassInstance>();
     this.#unqualifiedImports = [];
+
+    // Pre-scan AST body for element-level redeclare class/component definitions.
+    // Augment this.modification so ExtendsClassInstance.mergeModifications() includes them,
+    // allowing inherited components to resolve redeclared types and components.
+    const bodyRedeclareArgs: ModelicaModificationArgument[] = [];
+    for (const elementSyntaxNode of this.abstractSyntaxNode?.elements ?? []) {
+      if (elementSyntaxNode instanceof ModelicaClassDefinitionSyntaxNode && elementSyntaxNode.redeclare) {
+        const className = elementSyntaxNode.identifier?.text;
+        if (className) {
+          // Create a synthetic class redeclare modification argument
+          const classInstance = ModelicaClassInstance.new(this, elementSyntaxNode, null);
+          bodyRedeclareArgs.push({
+            name: className,
+            scope: this,
+            each: false,
+            final: false,
+            get expression(): ModelicaExpression | null {
+              return null;
+            },
+            get hash(): string {
+              return `body-redeclare-class-${className}`;
+            },
+            get abstractSyntaxNode(): ModelicaElementRedeclarationSyntaxNode {
+              return null as unknown as ModelicaElementRedeclarationSyntaxNode;
+            },
+            classInstance,
+            split: () => [],
+          } as unknown as ModelicaClassRedeclaration);
+        }
+      } else if (elementSyntaxNode instanceof ModelicaComponentClauseSyntaxNode && elementSyntaxNode.redeclare) {
+        for (const componentDecl of elementSyntaxNode.componentDeclarations) {
+          const compName = componentDecl.declaration?.identifier?.text;
+          if (compName) {
+            const compInstance = new ModelicaComponentInstance(this, componentDecl);
+            bodyRedeclareArgs.push({
+              name: compName,
+              scope: this,
+              each: false,
+              final: false,
+              get expression(): ModelicaExpression | null {
+                return null;
+              },
+              get hash(): string {
+                return `body-redeclare-comp-${compName}`;
+              },
+              get abstractSyntaxNode(): ModelicaElementRedeclarationSyntaxNode {
+                return null as unknown as ModelicaElementRedeclarationSyntaxNode;
+              },
+              componentInstance: compInstance,
+              split: () => [],
+            } as unknown as ModelicaComponentRedeclaration);
+          }
+        }
+      }
+    }
+    if (bodyRedeclareArgs.length > 0) {
+      const existingArgs = this.modification?.modificationArguments ?? [];
+      const existingNames = new Set(existingArgs.map((a) => a.name));
+      // Only add body-level redeclares that aren't already in an outer modification
+      const newArgs = bodyRedeclareArgs.filter((a) => !existingNames.has(a.name));
+      if (newArgs.length > 0) {
+        this.#modification = new ModelicaModification(
+          this,
+          [...existingArgs, ...newArgs],
+          this.#modification?.modificationExpression ?? null,
+          this.#modification?.description ?? null,
+          this.#modification?.expression ?? null,
+        );
+      }
+    }
+
     for (const elementSyntaxNode of this.abstractSyntaxNode?.elements ?? []) {
       if (elementSyntaxNode instanceof ModelicaClassDefinitionSyntaxNode) {
         const redeclaration = this.modification?.getModificationArgument(elementSyntaxNode.identifier?.text);
-        if (redeclaration instanceof ModelicaClassRedeclaration && redeclaration.classInstance) {
-          this.declaredElements.push(redeclaration.classInstance);
+        const redeclareClassInstance = (redeclaration as { classInstance?: ModelicaClassInstance | null } | null)
+          ?.classInstance;
+        if (redeclareClassInstance) {
+          this.declaredElements.push(redeclareClassInstance);
         } else {
           this.declaredElements.push(
             ModelicaClassInstance.new(
@@ -758,7 +923,55 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
             componentDeclarationSyntaxNode.declaration?.identifier?.text,
           );
           if (redeclaration instanceof ModelicaComponentRedeclaration && redeclaration.componentInstance) {
-            this.declaredElements.push(redeclaration.componentInstance);
+            // Merge original declaration's modifiers onto the redeclared component
+            const originalModSyntax = componentDeclarationSyntaxNode.declaration?.modification;
+            if (originalModSyntax?.classModification || originalModSyntax?.modificationExpression) {
+              // Extract modification arguments from the original replaceable declaration
+              const originalArgs: ModelicaModificationArgument[] = [];
+              for (const arg of originalModSyntax.classModification?.modificationArguments ?? []) {
+                if (arg instanceof ModelicaElementModificationSyntaxNode) {
+                  originalArgs.push(ModelicaElementModification.new(this, arg));
+                } else if (arg instanceof ModelicaElementRedeclarationSyntaxNode) {
+                  originalArgs.push(ModelicaElementRedeclaration.new(this, arg));
+                }
+              }
+              // Get existing modification from redeclared component, then merge
+              const redeclaredMod = redeclaration.componentInstance.modification;
+              const mergedArgs = [...(redeclaredMod?.modificationArguments ?? [])];
+              // Add original args that don't conflict with redeclare's own args
+              const redeclaredNames = new Set(mergedArgs.map((a) => a.name));
+              for (const origArg of originalArgs) {
+                if (!redeclaredNames.has(origArg.name)) {
+                  mergedArgs.push(origArg);
+                }
+              }
+              // Determine binding expression: redeclare's wins, else original's
+              const bindingExpr =
+                redeclaredMod?.expression ??
+                originalModSyntax?.modificationExpression?.expression?.accept(new ModelicaInterpreter(), this) ??
+                null;
+              const mergedMod = new ModelicaModification(this, mergedArgs, null, null, bindingExpr);
+              // Create a new component instance with the merged modification
+              const mergedComponent = new ModelicaComponentInstance(
+                this,
+                redeclaration.componentInstance.abstractSyntaxNode,
+                mergedMod,
+              );
+              // Propagate final from redeclaration and variability from original
+              if (redeclaration.final) mergedComponent.isFinal = true;
+              if (!mergedComponent.variability && elementSyntaxNode.variability) {
+                mergedComponent.variability = elementSyntaxNode.variability;
+              }
+              this.declaredElements.push(mergedComponent);
+            } else {
+              const comp = redeclaration.componentInstance;
+              // Propagate final from redeclaration and variability from original
+              if (redeclaration.final) comp.isFinal = true;
+              if (!comp.variability && elementSyntaxNode.variability) {
+                comp.variability = elementSyntaxNode.variability;
+              }
+              this.declaredElements.push(comp);
+            }
           } else {
             this.declaredElements.push(new ModelicaComponentInstance(this, componentDeclarationSyntaxNode));
           }
@@ -2438,11 +2651,15 @@ export abstract class ModelicaElementRedeclaration extends ModelicaModificationA
 }
 
 export class ModelicaClassRedeclaration extends ModelicaElementRedeclaration {
-  classInstance: ModelicaShortClassInstance | null;
+  classInstance: ModelicaClassInstance | null;
 
   constructor(scope: Scope | null, abstractSyntaxNode: ModelicaElementRedeclarationSyntaxNode) {
     super(scope, abstractSyntaxNode);
-    this.classInstance = new ModelicaShortClassInstance(scope, abstractSyntaxNode.shortClassDefinition);
+    if (abstractSyntaxNode.shortClassDefinition) {
+      this.classInstance = ModelicaClassInstance.new(scope, abstractSyntaxNode.shortClassDefinition);
+    } else {
+      this.classInstance = null;
+    }
   }
 
   get expression(): ModelicaExpression | null {
