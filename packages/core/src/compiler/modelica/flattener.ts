@@ -349,6 +349,9 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
    */
   // Track outer component variability for propagation into compound type sub-components
   #outerVariability: ModelicaVariability | null = null;
+  // Track outer `final` flag for propagation into compound type sub-components
+  // When `final A a(x = 1.0)` is declared, all inner parameters inherit `final`
+  #outerFinal = false;
   // Track emitted variable names to prevent duplicates from diamond inheritance
   #emittedVarNames = new Set<string>();
   // Track parameter names that are structurally significant (used in conditional component declarations)
@@ -381,11 +384,14 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     } else if (node.classInstance instanceof ModelicaArrayClassInstance) {
       this.#flattenArrayClass(node, name, args);
     } else {
-      // For compound types (records, models), propagate outer variability to inner components
-      const saved = this.#outerVariability;
+      // For compound types (records, models), propagate outer variability and final to inner components
+      const savedVar = this.#outerVariability;
+      const savedFinal = this.#outerFinal;
       this.#outerVariability = effectiveVariability;
+      this.#outerFinal = this.#outerFinal || node.isFinal;
       node.classInstance?.accept(this, [name, args[1]]);
-      this.#outerVariability = saved;
+      this.#outerVariability = savedVar;
+      this.#outerFinal = savedFinal;
     }
   }
 
@@ -398,7 +404,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     const variability = effectiveVariability ?? node.variability;
     const { causality, isProtected } = node;
     // Check structural final: parameter used in conditional component condition
-    const isFinal = node.isFinal || this.#structuralFinalParams.has(name);
+    const isFinal = node.isFinal || this.#outerFinal || this.#structuralFinalParams.has(name);
     const attributes = new Map(
       node.modification?.modificationArguments.flatMap((m) => {
         if (m.name === "annotation") return [];
