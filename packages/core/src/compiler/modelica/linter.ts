@@ -3,7 +3,7 @@
 import type { Range, Tree } from "../../util/tree-sitter.js";
 import { Scope } from "../scope.js";
 import { ModelicaArray } from "./dae.js";
-import { ModelicaErrorCode } from "./errors.js";
+import { ModelicaErrorCode, type ErrorCodeDef } from "./errors.js";
 import {
   ModelicaArrayClassInstance,
   ModelicaClassInstance,
@@ -35,7 +35,11 @@ import {
   ModelicaDescriptionSyntaxNode,
   ModelicaElementModificationSyntaxNode,
   ModelicaEquationSectionSyntaxNode,
+  ModelicaEquationSyntaxNode,
   ModelicaExtendsClauseSyntaxNode,
+  ModelicaFlow,
+  ModelicaFunctionCallSyntaxNode,
+  ModelicaIfEquationSyntaxNode,
   ModelicaInheritanceModificationSyntaxNode,
   ModelicaModificationExpressionSyntaxNode,
   ModelicaModificationSyntaxNode,
@@ -83,16 +87,27 @@ export type DiagnosticsCallbackWithoutResource = (
 ) => void;
 
 /**
+ * A single entry in the linter rule registry, pairing the visitor
+ * implementation with the error codes it may emit.
+ */
+export interface LinterRuleRegistration {
+  /** The error‑code definitions this rule may emit. */
+  errorCodes: ErrorCodeDef[];
+  /** The visitor object that implements the rule logic. */
+  rule: Partial<
+    | IModelicaModelVisitor<void, DiagnosticsCallbackWithoutResource>
+    | IModelicaSyntaxVisitor<void, DiagnosticsCallbackWithoutResource>
+  >;
+}
+
+/**
  * Main linter class coordinating syntax-level and model-level checks for Modelica.
  */
 export class ModelicaLinter {
   #diagnosticsCallback: DiagnosticsCallback;
   #modelicaModelLinter: ModelicaModelLinter;
   #modelicaSyntaxLinter: ModelicaSyntaxLinter;
-  static #rules: Partial<
-    | IModelicaModelVisitor<void, DiagnosticsCallbackWithoutResource>
-    | IModelicaSyntaxVisitor<void, DiagnosticsCallbackWithoutResource>
-  >[] = [];
+  static #rules: LinterRuleRegistration[] = [];
 
   constructor(diagnosticsCallback: DiagnosticsCallback) {
     this.#diagnosticsCallback = diagnosticsCallback;
@@ -114,7 +129,7 @@ export class ModelicaLinter {
     diagnosticsCallback: DiagnosticsCallback,
     resource: string | null | undefined,
   ): void {
-    ModelicaLinter.#rules.forEach((rule) => {
+    ModelicaLinter.#rules.forEach(({ rule }) => {
       if (methodName in rule && typeof rule[methodName as keyof typeof rule] === "function")
         (rule as Record<string, (...args: unknown[]) => void>)[methodName]?.(
           node,
@@ -159,15 +174,25 @@ export class ModelicaLinter {
   /**
    * Registers custom programmatic linting rules to be applied during traversal.
    *
+   * @param errorCodes - One or more `ErrorCodeDef` values from `ModelicaErrorCode` that the rule may emit.
    * @param rule - An object mapping visitor method names to rule-checking functions.
    */
   static register(
+    errorCodes: ErrorCodeDef | ErrorCodeDef[],
     rule: Partial<
       | IModelicaModelVisitor<void, DiagnosticsCallbackWithoutResource>
       | IModelicaSyntaxVisitor<void, DiagnosticsCallbackWithoutResource>
     >,
   ) {
-    ModelicaLinter.#rules.push(rule);
+    const codes = Array.isArray(errorCodes) ? errorCodes : [errorCodes];
+    ModelicaLinter.#rules.push({ errorCodes: codes, rule });
+  }
+
+  /**
+   * Returns the full list of registered lint‑rule entries for introspection.
+   */
+  static get registeredRules(): readonly LinterRuleRegistration[] {
+    return ModelicaLinter.#rules;
   }
 }
 
@@ -438,7 +463,7 @@ export class ModelicaSyntaxLinter extends ModelicaSyntaxVisitor<void, string | n
   }
 }
 
-ModelicaLinter.register({
+ModelicaLinter.register(ModelicaErrorCode.DUPLICATE_ELEMENT, {
   visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
     const names = new Set();
     for (const element of node.elements) {
@@ -463,7 +488,7 @@ ModelicaLinter.register({
   },
 });
 
-ModelicaLinter.register({
+ModelicaLinter.register(ModelicaErrorCode.IDENTIFIER_MISMATCH, {
   visitLongClassSpecifier(
     node: ModelicaLongClassSpecifierSyntaxNode,
     diagnosticsCallback: DiagnosticsCallbackWithoutResource,
@@ -478,7 +503,7 @@ ModelicaLinter.register({
   },
 });
 
-ModelicaLinter.register({
+ModelicaLinter.register(ModelicaErrorCode.CLASS_NOT_FOUND, {
   visitComponentInstance(
     node: ModelicaComponentInstance,
     diagnosticsCallback: DiagnosticsCallbackWithoutResource,
@@ -519,7 +544,7 @@ class ModelicaExpressionNameResolutionVisitor extends ModelicaSyntaxVisitor<void
   }
 }
 
-ModelicaLinter.register({
+ModelicaLinter.register(ModelicaErrorCode.NAME_NOT_FOUND, {
   visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
     const visitor = new ModelicaExpressionNameResolutionVisitor(node);
     for (const equationSection of node.equationSections) {
@@ -531,7 +556,7 @@ ModelicaLinter.register({
   },
 });
 
-ModelicaLinter.register({
+ModelicaLinter.register(ModelicaErrorCode.UNBALANCED_MODEL, {
   visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
     // Balanced model check only applies to models and blocks
     if (node.classKind !== ModelicaClassKind.MODEL && node.classKind !== ModelicaClassKind.BLOCK) return;
@@ -578,7 +603,7 @@ ModelicaLinter.register({
   },
 });
 
-ModelicaLinter.register({
+ModelicaLinter.register(ModelicaErrorCode.MODIFIER_NOT_FOUND, {
   visitComponentInstance(
     node: ModelicaComponentInstance,
     diagnosticsCallback: DiagnosticsCallbackWithoutResource,
@@ -611,7 +636,7 @@ ModelicaLinter.register({
   },
 });
 
-ModelicaLinter.register({
+ModelicaLinter.register(ModelicaErrorCode.DUPLICATE_MODIFICATION, {
   visitComponentInstance(
     node: ModelicaComponentInstance,
     diagnosticsCallback: DiagnosticsCallbackWithoutResource,
@@ -727,7 +752,7 @@ function checkArrayModDimensions(
   }
 }
 
-ModelicaLinter.register({
+ModelicaLinter.register(ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH, {
   visitComponentInstance(
     node: ModelicaComponentInstance,
     diagnosticsCallback: DiagnosticsCallbackWithoutResource,
@@ -807,7 +832,7 @@ function componentRefText(ref: ModelicaComponentReferenceSyntaxNode | null): str
 }
 
 // Rule: Connect equation — both sides must be connectors and plug-compatible
-ModelicaLinter.register({
+ModelicaLinter.register([ModelicaErrorCode.NOT_A_CONNECTOR, ModelicaErrorCode.NOT_PLUG_COMPATIBLE], {
   visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
     for (const equation of node.equations) {
       if (!(equation instanceof ModelicaConnectEquationSyntaxNode)) continue;
@@ -864,7 +889,7 @@ ModelicaLinter.register({
 });
 
 // Rule: Modification argument type checking — modifier targets must have compatible types
-ModelicaLinter.register({
+ModelicaLinter.register(ModelicaErrorCode.TYPE_MISMATCH_MODIFIER, {
   visitComponentInstance(
     node: ModelicaComponentInstance,
     diagnosticsCallback: DiagnosticsCallbackWithoutResource,
@@ -919,7 +944,7 @@ ModelicaLinter.register({
 });
 
 // Rule: Binding equation type checking — component = expr must have compatible types
-ModelicaLinter.register({
+ModelicaLinter.register(ModelicaErrorCode.TYPE_MISMATCH_BINDING, {
   visitComponentInstance(
     node: ModelicaComponentInstance,
     diagnosticsCallback: DiagnosticsCallbackWithoutResource,
@@ -959,7 +984,7 @@ ModelicaLinter.register({
 });
 
 // Rule: Redeclare type compatibility — redeclared type must be compatible with constraining type
-ModelicaLinter.register({
+ModelicaLinter.register(ModelicaErrorCode.REDECLARE_TYPE_MISMATCH, {
   visitComponentInstance(
     node: ModelicaComponentInstance,
     diagnosticsCallback: DiagnosticsCallbackWithoutResource,
@@ -997,7 +1022,7 @@ ModelicaLinter.register({
 });
 
 // Rule: Equation LHS/RHS type checking — both sides of an equation must have compatible types
-ModelicaLinter.register({
+ModelicaLinter.register(ModelicaErrorCode.EQUATION_TYPE_MISMATCH, {
   visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
     for (const equation of node.equations) {
       if (!(equation instanceof ModelicaSimpleEquationSyntaxNode)) continue;
@@ -1036,7 +1061,7 @@ ModelicaLinter.register({
 });
 
 // Rule: Replaceable constrainedby validation — default type must be compatible with constraining type
-ModelicaLinter.register({
+ModelicaLinter.register(ModelicaErrorCode.CONSTRAINEDBY_TYPE_MISMATCH, {
   visitComponentInstance(
     node: ModelicaComponentInstance,
     diagnosticsCallback: DiagnosticsCallbackWithoutResource,
@@ -1072,54 +1097,269 @@ ModelicaLinter.register({
   },
 });
 
-// Rule: Function call argument type checking — argument types must match parameter types
-ModelicaLinter.register({
-  visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
-    for (const equation of node.equations) {
-      if (!(equation instanceof ModelicaSimpleEquationSyntaxNode)) continue;
+// Rule: Function call type checking — argument types and return type must match
+ModelicaLinter.register(
+  [ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH, ModelicaErrorCode.FUNCTION_RETURN_TYPE_MISMATCH],
+  {
+    visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+      // Walk equations and algorithm sections to find function calls
+      const checkFunctionCalls = (equations: Iterable<ModelicaEquationSyntaxNode>) => {
+        for (const equation of equations) {
+          if (!(equation instanceof ModelicaSimpleEquationSyntaxNode)) continue;
 
-      // Look for function call expressions on the RHS
-      // Pattern: x = f(a, b, ...) where f resolves to a function
-      const expr2 = equation.expression2;
-      if (!expr2) continue;
+          const expr2 = equation.expression2;
+          if (!expr2) continue;
 
-      // Function calls appear as component references with function application
-      // We check if the expression is a function call syntax node
-      if (!(expr2 instanceof ModelicaComponentReferenceSyntaxNode)) continue;
+          // Function calls show up as ModelicaFunctionCallSyntaxNode
+          if (expr2 instanceof ModelicaFunctionCallSyntaxNode) {
+            const funcRef = expr2.functionReference;
+            if (!funcRef) continue;
 
-      // Resolve the function name
-      const funcElement = node.resolveName(expr2.parts.map((p) => p.identifier?.text ?? ""));
-      if (!(funcElement instanceof ModelicaClassInstance)) continue;
-      if (funcElement.classKind !== ModelicaClassKind.FUNCTION && funcElement.classKind !== "operator function")
-        continue;
+            // Resolve the function
+            const funcElement = node.resolveName(funcRef.parts.map((p) => p.identifier?.text ?? ""));
+            if (!(funcElement instanceof ModelicaClassInstance)) continue;
+            if (funcElement.classKind !== ModelicaClassKind.FUNCTION && funcElement.classKind !== "operator function")
+              continue;
 
-      // Get function input parameters
-      const inputParams = [...funcElement.inputParameters];
-      if (inputParams.length === 0) continue;
+            // Check positional argument types against input parameter types
+            const inputParams = [...funcElement.inputParameters];
+            const args = expr2.functionCallArguments?.arguments ?? [];
+            for (let i = 0; i < Math.min(args.length, inputParams.length); i++) {
+              const argExpr = args[i]?.expression;
+              const param = inputParams[i];
+              if (!argExpr || !param) continue;
 
-      // Check the LHS type against the function's output parameters
-      const expr1 = equation.expression1;
-      if (expr1 instanceof ModelicaComponentReferenceSyntaxNode) {
-        const lhsComp = resolveToComponent(node, expr1);
-        if (lhsComp) {
-          if (!lhsComp.instantiated) lhsComp.instantiate();
-          const lhsType = lhsComp.classInstance;
-          const outputParams = [...funcElement.outputParameters];
-          if (lhsType && outputParams.length > 0) {
-            const firstOutput = outputParams[0];
-            if (firstOutput) {
-              if (!firstOutput.instantiated) firstOutput.instantiate();
-              const outputType = firstOutput.classInstance;
-              if (outputType && !lhsType.isTypeCompatibleWith(outputType)) {
+              if (argExpr instanceof ModelicaComponentReferenceSyntaxNode) {
+                const argComp = resolveToComponent(node, argExpr);
+                if (!argComp) continue;
+                if (!argComp.instantiated) argComp.instantiate();
+                const argType = argComp.classInstance;
+
+                if (!param.instantiated) param.instantiate();
+                const paramType = param.classInstance;
+
+                if (argType && paramType && !paramType.isTypeCompatibleWith(argType)) {
+                  diagnosticsCallback(
+                    ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH.severity,
+                    `[M${ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH.code}] ${ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH.message(funcElement.name ?? "", param.name ?? `arg${i + 1}`, paramType.name ?? "", argType.name ?? "")}`,
+                    argExpr,
+                  );
+                }
+              }
+            }
+
+            // Check named argument types
+            for (const namedArg of expr2.functionCallArguments?.namedArguments ?? []) {
+              const argName = namedArg.identifier?.text;
+              if (!argName) continue;
+              const argExpr = namedArg.argument?.expression;
+              if (!argExpr || !(argExpr instanceof ModelicaComponentReferenceSyntaxNode)) continue;
+
+              // Find the matching input parameter
+              const matchedParam = inputParams.find((p) => p.name === argName);
+              if (!matchedParam) continue;
+
+              const argComp = resolveToComponent(node, argExpr);
+              if (!argComp) continue;
+              if (!argComp.instantiated) argComp.instantiate();
+              const argType = argComp.classInstance;
+
+              if (!matchedParam.instantiated) matchedParam.instantiate();
+              const paramType = matchedParam.classInstance;
+
+              if (argType && paramType && !paramType.isTypeCompatibleWith(argType)) {
                 diagnosticsCallback(
-                  ModelicaErrorCode.FUNCTION_RETURN_TYPE_MISMATCH.severity,
-                  `[M${ModelicaErrorCode.FUNCTION_RETURN_TYPE_MISMATCH.code}] ${ModelicaErrorCode.FUNCTION_RETURN_TYPE_MISMATCH.message(funcElement.name ?? "", lhsType.name ?? "", outputType.name ?? "")}`,
-                  expr1,
+                  ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH.severity,
+                  `[M${ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH.code}] ${ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH.message(funcElement.name ?? "", argName, paramType.name ?? "", argType.name ?? "")}`,
+                  argExpr,
                 );
+              }
+            }
+
+            // Check return type
+            const expr1 = equation.expression1;
+            if (expr1 instanceof ModelicaComponentReferenceSyntaxNode) {
+              const lhsComp = resolveToComponent(node, expr1);
+              if (lhsComp) {
+                if (!lhsComp.instantiated) lhsComp.instantiate();
+                const lhsType = lhsComp.classInstance;
+                const outputParams = [...funcElement.outputParameters];
+                if (lhsType && outputParams.length > 0) {
+                  const firstOutput = outputParams[0];
+                  if (firstOutput) {
+                    if (!firstOutput.instantiated) firstOutput.instantiate();
+                    const outputType = firstOutput.classInstance;
+                    if (outputType && !lhsType.isTypeCompatibleWith(outputType)) {
+                      diagnosticsCallback(
+                        ModelicaErrorCode.FUNCTION_RETURN_TYPE_MISMATCH.severity,
+                        `[M${ModelicaErrorCode.FUNCTION_RETURN_TYPE_MISMATCH.code}] ${ModelicaErrorCode.FUNCTION_RETURN_TYPE_MISMATCH.message(funcElement.name ?? "", lhsType.name ?? "", outputType.name ?? "")}`,
+                        expr1,
+                      );
+                    }
+                  }
+                }
               }
             }
           }
         }
+      };
+      checkFunctionCalls(node.equations);
+    },
+  },
+);
+
+// Rule: Extends compatibility — redeclared elements in extends must be type-compatible
+ModelicaLinter.register(ModelicaErrorCode.EXTENDS_TYPE_MISMATCH, {
+  visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+    for (const element of node.declaredElements) {
+      if (!(element instanceof ModelicaExtendsClassInstance)) continue;
+      const baseClass = element.classInstance;
+      if (!baseClass) continue;
+
+      // Check each component in the base class that has been redeclared in the derived class
+      for (const baseElement of baseClass.elements) {
+        if (!(baseElement instanceof ModelicaComponentInstance)) continue;
+
+        // Look for a component with the same name in the derived class
+        const derivedElement = node.resolveSimpleName(baseElement.name ?? "", false, true);
+        if (!(derivedElement instanceof ModelicaComponentInstance)) continue;
+        if (derivedElement === baseElement) continue; // Same element, not redeclared
+
+        if (!baseElement.instantiated) baseElement.instantiate();
+        if (!derivedElement.instantiated) derivedElement.instantiate();
+
+        const baseType = baseElement.classInstance;
+        const derivedType = derivedElement.classInstance;
+        if (!baseType || !derivedType) continue;
+
+        if (!derivedType.isTypeCompatibleWith(baseType)) {
+          diagnosticsCallback(
+            ModelicaErrorCode.EXTENDS_TYPE_MISMATCH.severity,
+            `[M${ModelicaErrorCode.EXTENDS_TYPE_MISMATCH.code}] ${ModelicaErrorCode.EXTENDS_TYPE_MISMATCH.message(node.name ?? "", baseElement.name ?? "", derivedType.name ?? "", baseType.name ?? "")}`,
+            derivedElement.abstractSyntaxNode?.declaration?.identifier,
+          );
+        }
+      }
+    }
+  },
+});
+
+// Rule: If-equation branch consistency — all branches should assign type-compatible values
+ModelicaLinter.register(ModelicaErrorCode.IF_BRANCH_TYPE_MISMATCH, {
+  visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+    for (const equation of node.equations) {
+      if (!(equation instanceof ModelicaIfEquationSyntaxNode)) continue;
+
+      // Collect assignments from each branch
+      const collectAssignments = (eqs: ModelicaEquationSyntaxNode[]): Map<string, ModelicaClassInstance> => {
+        const assignments = new Map<string, ModelicaClassInstance>();
+        for (const eq of eqs) {
+          if (!(eq instanceof ModelicaSimpleEquationSyntaxNode)) continue;
+          const lhs = eq.expression1;
+          const rhs = eq.expression2;
+          if (!(lhs instanceof ModelicaComponentReferenceSyntaxNode)) continue;
+          if (!(rhs instanceof ModelicaComponentReferenceSyntaxNode)) continue;
+
+          const rhsComp = resolveToComponent(node, rhs);
+          if (!rhsComp) continue;
+          if (!rhsComp.instantiated) rhsComp.instantiate();
+          const rhsType = rhsComp.classInstance;
+          if (!rhsType) continue;
+
+          assignments.set(componentRefText(lhs), rhsType);
+        }
+        return assignments;
+      };
+
+      // Get the "then" branch assignments as reference types
+      const thenAssignments = collectAssignments(equation.equations);
+      if (thenAssignments.size === 0) continue;
+
+      // Check elseif branches
+      for (const elseIfClause of equation.elseIfEquationClauses) {
+        const branchAssignments = collectAssignments(elseIfClause.equations);
+        for (const [varName, thenType] of thenAssignments) {
+          const branchType = branchAssignments.get(varName);
+          if (branchType && !thenType.isTypeCompatibleWith(branchType)) {
+            diagnosticsCallback(
+              ModelicaErrorCode.IF_BRANCH_TYPE_MISMATCH.severity,
+              `[M${ModelicaErrorCode.IF_BRANCH_TYPE_MISMATCH.code}] ${ModelicaErrorCode.IF_BRANCH_TYPE_MISMATCH.message(varName, branchType.name ?? "", thenType.name ?? "")}`,
+              elseIfClause,
+            );
+          }
+        }
+      }
+
+      // Check else branch
+      if (equation.elseEquations.length > 0) {
+        const elseAssignments = collectAssignments(equation.elseEquations);
+        for (const [varName, thenType] of thenAssignments) {
+          const elseType = elseAssignments.get(varName);
+          if (elseType && !thenType.isTypeCompatibleWith(elseType)) {
+            diagnosticsCallback(
+              ModelicaErrorCode.IF_BRANCH_TYPE_MISMATCH.severity,
+              `[M${ModelicaErrorCode.IF_BRANCH_TYPE_MISMATCH.code}] ${ModelicaErrorCode.IF_BRANCH_TYPE_MISMATCH.message(varName, elseType.name ?? "", thenType.name ?? "")}`,
+              equation,
+            );
+          }
+        }
+      }
+    }
+  },
+});
+
+// Rule: Connect flow variable matching — connectors in connect() should have matching flow variables
+ModelicaLinter.register(ModelicaErrorCode.CONNECT_FLOW_MISMATCH, {
+  visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+    for (const equation of node.equations) {
+      if (!(equation instanceof ModelicaConnectEquationSyntaxNode)) continue;
+
+      const comp1 = resolveToComponent(node, equation.componentReference1);
+      const comp2 = resolveToComponent(node, equation.componentReference2);
+      if (!comp1 || !comp2) continue;
+
+      if (!comp1.instantiated) comp1.instantiate();
+      if (!comp2.instantiated) comp2.instantiate();
+
+      const type1 = comp1.classInstance;
+      const type2 = comp2.classInstance;
+      if (!type1 || !type2) continue;
+
+      // Both must be connectors (already checked by NOT_A_CONNECTOR rule)
+      if (type1.classKind !== ModelicaClassKind.CONNECTOR && type1.classKind !== ModelicaClassKind.EXPANDABLE_CONNECTOR)
+        continue;
+      if (type2.classKind !== ModelicaClassKind.CONNECTOR && type2.classKind !== ModelicaClassKind.EXPANDABLE_CONNECTOR)
+        continue;
+
+      // Collect flow variable names from each connector
+      const flowVars1 = new Set<string>();
+      for (const c of type1.components) {
+        if (c.flowPrefix === ModelicaFlow.FLOW && c.name) flowVars1.add(c.name);
+      }
+      const flowVars2 = new Set<string>();
+      for (const c of type2.components) {
+        if (c.flowPrefix === ModelicaFlow.FLOW && c.name) flowVars2.add(c.name);
+      }
+
+      // Check that flow variable sets are identical
+      let mismatch = flowVars1.size !== flowVars2.size;
+      if (!mismatch) {
+        for (const v of flowVars1) {
+          if (!flowVars2.has(v)) {
+            mismatch = true;
+            break;
+          }
+        }
+      }
+
+      if (mismatch) {
+        const ref1Text = componentRefText(equation.componentReference1);
+        const ref2Text = componentRefText(equation.componentReference2);
+        diagnosticsCallback(
+          ModelicaErrorCode.CONNECT_FLOW_MISMATCH.severity,
+          `[M${ModelicaErrorCode.CONNECT_FLOW_MISMATCH.code}] ${ModelicaErrorCode.CONNECT_FLOW_MISMATCH.message(ref1Text, ref2Text)}`,
+          equation,
+        );
       }
     }
   },

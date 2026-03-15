@@ -28,7 +28,7 @@ export interface ModelicaDiagnostic {
 // Error code definition
 // ---------------------------------------------------------------------------
 
-interface ErrorCodeDef {
+export interface ErrorCodeDef {
   code: number;
   rule: string;
   severity: DiagnosticSeverity;
@@ -188,6 +188,27 @@ export const ModelicaErrorCode = {
     severity: "error",
     message: (componentName: string, defaultType: string, constrainingType: string) =>
       `Replaceable '${componentName}': default type '${defaultType}' is not compatible with constraining type '${constrainingType}'.`,
+  },
+  EXTENDS_TYPE_MISMATCH: {
+    code: 3008,
+    rule: "extends-type-mismatch",
+    severity: "error",
+    message: (className: string, redeclaredName: string, newType: string, originalType: string) =>
+      `In extends of '${className}': redeclared '${redeclaredName}' of type '${newType}' is not compatible with original type '${originalType}'.`,
+  },
+  IF_BRANCH_TYPE_MISMATCH: {
+    code: 5003,
+    rule: "if-branch-type-mismatch",
+    severity: "error",
+    message: (varName: string, branchType: string, expectedType: string) =>
+      `If-equation branch type mismatch: '${varName}' assigned type '${branchType}' but expected '${expectedType}'.`,
+  },
+  CONNECT_FLOW_MISMATCH: {
+    code: 5004,
+    rule: "connect-flow-mismatch",
+    severity: "warning",
+    message: (ref1: string, ref2: string) =>
+      `In connect(${ref1}, ${ref2}): flow variable sets differ between connectors.`,
   },
 } as const satisfies Record<string, ErrorCodeDef>;
 
