@@ -49,7 +49,7 @@
     "n3": "^2.0.1",
     "semver": "^7.7.1",
     "svgdom": "^0.1.22",
-    "tree-sitter": "^0.21.1",
+    "tree-sitter": "^0.25.0",
     "xml-formatter": "^3.6.7",
     "yauzl": "^3.2.0"
   },
