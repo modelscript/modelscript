@@ -847,7 +847,20 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           variable.variability === ModelicaVariability.PARAMETER
         ) {
           if (variable.expression) {
-            const newExpr = this.#foldExpression(variable.expression, dae);
+            let newExpr = this.#foldExpression(variable.expression, dae);
+            // Coerce folded result to match the variable's declared type
+            if (variable instanceof ModelicaIntegerVariable && newExpr instanceof ModelicaRealLiteral) {
+              // For identity values (e.g., min() for Integer), use Modelica-standard values
+              if (newExpr.value >= 8e304) newExpr = new ModelicaIntegerLiteral(0, "4611686018427387903");
+              else if (newExpr.value <= -8e304) newExpr = new ModelicaIntegerLiteral(0, "-4611686018427387903");
+              else newExpr = new ModelicaIntegerLiteral(Math.trunc(newExpr.value));
+            } else if (variable instanceof ModelicaBooleanVariable && newExpr instanceof ModelicaRealLiteral) {
+              // Identity values for Boolean min/max: min() → true, max() → false
+              if (newExpr.value > 0) newExpr = new ModelicaBooleanLiteral(true);
+              else newExpr = new ModelicaBooleanLiteral(false);
+            } else if (variable instanceof ModelicaBooleanVariable && newExpr instanceof ModelicaIntegerLiteral) {
+              newExpr = new ModelicaBooleanLiteral(newExpr.value !== 0);
+            }
             if (newExpr !== variable.expression && newExpr.hash !== variable.expression.hash) {
               variable.expression = newExpr;
               changed = true;
@@ -1096,7 +1109,44 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           }
         }
 
-        // Return a partially or fully folded SubscriptedExpression if not found as a literal variable
+        // Expand range subscripts on constant arrays: x[2:3] → {x[2], x[3]}
+        if (
+          base instanceof ModelicaNameExpression &&
+          subscripts.length === 1 &&
+          subscripts[0] instanceof ModelicaRangeExpression
+        ) {
+          const range = subscripts[0] as ModelicaRangeExpression;
+          const foldedStart = this.#foldExpression(range.start, dae, visited);
+          const foldedEnd = this.#foldExpression(range.end, dae, visited);
+          if (foldedStart instanceof ModelicaIntegerLiteral && foldedEnd instanceof ModelicaIntegerLiteral) {
+            const start = foldedStart.value;
+            const end = foldedEnd.value;
+            const step = range.step
+              ? ((this.#foldExpression(range.step, dae, visited) as ModelicaIntegerLiteral)?.value ?? 1)
+              : 1;
+            const elements: ModelicaExpression[] = [];
+            for (let i = start; step > 0 ? i <= end : i >= end; i += step) {
+              const flatName = base.name + "[" + i + "]";
+              const variable = dae.variables.find((v) => v.name === flatName);
+              if (
+                variable &&
+                (variable.variability === ModelicaVariability.CONSTANT ||
+                  variable.variability === ModelicaVariability.PARAMETER) &&
+                variable.expression
+              ) {
+                const folded = this.#foldExpression(variable.expression, dae, visited);
+                elements.push(folded);
+              } else {
+                elements.push(new ModelicaSubscriptedExpression(base, [new ModelicaIntegerLiteral(i)]));
+              }
+            }
+            if (elements.length > 0) {
+              return new ModelicaArray([elements.length], elements);
+            }
+          }
+        }
+
+        // Return a partially or fully folded SubscriptedExpression
         return new ModelicaSubscriptedExpression(base, subscripts);
       }
     }
@@ -1699,6 +1749,22 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     const name =
       (effectivePrefix === "" ? "" : effectivePrefix + ".") +
       node.parts.map((c) => c.identifier?.text ?? "<ERROR>").join(".");
+    // Resolve enum literal references like E.one when E is an enumeration type
+    if (node.parts.length === 2 && ctx.classInstance) {
+      const typeName = node.parts[0]?.identifier?.text;
+      if (typeName) {
+        const resolved = ctx.classInstance.resolveSimpleName(typeName, false, true);
+        if (resolved instanceof ModelicaClassInstance) {
+          const classInst = resolved instanceof ModelicaComponentInstance ? resolved.classInstance : resolved;
+          if (classInst instanceof ModelicaEnumerationClassInstance) {
+            const memberName = node.parts[1]?.identifier?.text;
+            for (const enumerationLiteral of classInst.enumerationLiterals ?? []) {
+              if (enumerationLiteral.stringValue === memberName) return enumerationLiteral;
+            }
+          }
+        }
+      }
+    }
     if (ctx.classInstance instanceof ModelicaEnumerationClassInstance) {
       for (const enumerationLiteral of ctx.classInstance.enumerationLiterals ?? []) {
         if (enumerationLiteral.stringValue === node.parts?.[(node.parts?.length ?? 1) - 1]?.identifier?.text)

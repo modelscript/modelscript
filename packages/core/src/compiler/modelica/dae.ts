@@ -1438,10 +1438,12 @@ export class ModelicaBooleanLiteral extends ModelicaLiteral {
 
 export class ModelicaIntegerLiteral extends ModelicaLiteral {
   value: number;
+  rawText: string | null;
 
-  constructor(value: number) {
+  constructor(value: number, rawText?: string | null) {
     super();
     this.value = value;
+    this.rawText = rawText ?? null;
   }
 
   override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
@@ -2652,7 +2654,7 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
   }
 
   visitIntegerLiteral(node: ModelicaIntegerLiteral): void {
-    this.out.write(String(node.value));
+    this.out.write(node.rawText ?? String(node.value));
   }
 
   visitIntegerVariable(node: ModelicaIntegerVariable): void {
@@ -2700,6 +2702,8 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
       } else {
         str = node.value.toString();
       }
+      // Modelica uses 'e304' not 'e+304' — strip the '+' from positive exponents
+      str = str.replace("e+", "e");
       this.out.write(str);
     }
   }
