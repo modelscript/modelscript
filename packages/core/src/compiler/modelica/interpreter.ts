@@ -30,6 +30,7 @@ import {
   ModelicaEndExpressionSyntaxNode,
   ModelicaForStatementSyntaxNode,
   ModelicaFunctionCallSyntaxNode,
+  ModelicaIfElseExpressionSyntaxNode,
   ModelicaIfStatementSyntaxNode,
   ModelicaOutputExpressionListSyntaxNode,
   ModelicaProcedureCallStatementSyntaxNode,
@@ -294,6 +295,38 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
         elements.push(isReal ? new ModelicaRealLiteral(v) : new ModelicaIntegerLiteral(v));
     }
     return new ModelicaArray([elements.length], elements);
+  }
+
+  /**
+   * Visits an if-else expression, evaluating the condition and returning the appropriate branch.
+   * Only constant-folds when the condition evaluates to a literal boolean.
+   *
+   * @param node - The if-else expression syntax node.
+   * @param scope - The current scope for name resolution.
+   * @returns The evaluated branch expression, or null if the condition can't be resolved.
+   */
+  visitIfElseExpression(node: ModelicaIfElseExpressionSyntaxNode, scope: Scope): ModelicaExpression | null {
+    // Only constant-fold when the condition is a direct boolean literal in the AST
+    // (e.g., `if true then...`), not a resolved parameter reference. This preserves
+    // `if b then 1.0 else 2.0` for the flattener to handle symbolically.
+    if (!(node.condition instanceof ModelicaBooleanLiteralSyntaxNode)) {
+      return null;
+    }
+    const condValue = node.condition.value;
+    if (condValue) {
+      return node.expression?.accept(this, scope) ?? null;
+    }
+    // Check elseif clauses
+    for (const clause of node.elseIfExpressionClauses ?? []) {
+      if (clause.condition instanceof ModelicaBooleanLiteralSyntaxNode && clause.condition.value) {
+        return clause.expression?.accept(this, scope) ?? null;
+      }
+      // If elseif condition is not a literal, can't fold further
+      if (!(clause.condition instanceof ModelicaBooleanLiteralSyntaxNode)) {
+        return null;
+      }
+    }
+    return node.elseExpression?.accept(this, scope) ?? null;
   }
 
   /**

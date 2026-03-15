@@ -144,10 +144,12 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
    */
   visitClassInstance(node: ModelicaClassInstance, args: [string, ModelicaDAE]): void {
     // Scan for structural parameters: parameters used in conditional component declarations
-    // These must be marked `final` since they determine class structure.
+    // or in if-expression conditions in bindings. These must be marked `final`
+    // since they determine class structure.
     const savedStructural = new Set(this.#structuralFinalParams);
     for (const element of node.elements) {
       if (element instanceof ModelicaComponentInstance) {
+        // Check conditionAttribute (e.g., `Real x if b`)
         const condAttr = (
           element.abstractSyntaxNode as {
             conditionAttribute?: { condition?: ModelicaExpressionSyntaxNode | null };
@@ -218,6 +220,32 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       for (const child of expr.children) {
         if (child instanceof ModelicaExpressionSyntaxNode) {
           this.#collectStructuralParams(child, prefix);
+        }
+      }
+    }
+  }
+
+  /**
+   * Scan an expression AST for if-expressions and collect parameter refs from their conditions.
+   * This handles cases like `Real x = if b then {1,2} else {3,4,5}` where `b` is structural.
+   */
+  #scanExprForStructuralIfParams(expr: ModelicaExpressionSyntaxNode, prefix: string): void {
+    if (expr instanceof ModelicaIfElseExpressionSyntaxNode) {
+      // Extract parameter references from the if condition
+      if (expr.condition) {
+        this.#collectStructuralParams(expr.condition, prefix);
+      }
+      for (const clause of expr.elseIfExpressionClauses) {
+        if (clause.condition) {
+          this.#collectStructuralParams(clause.condition, prefix);
+        }
+      }
+    }
+    // Recurse into sub-expressions
+    if ("children" in expr && Array.isArray(expr.children)) {
+      for (const child of expr.children) {
+        if (child instanceof ModelicaExpressionSyntaxNode) {
+          this.#scanExprForStructuralIfParams(child, prefix);
         }
       }
     }
