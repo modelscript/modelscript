@@ -1082,6 +1082,62 @@ export class ModelicaBinaryExpression extends ModelicaSimpleExpression {
         return new ModelicaBinaryExpression(operator, operand1, operand2);
       }
     } else if (operand1 instanceof ModelicaArray && operand2 instanceof ModelicaArray) {
+      // Non-elementwise * between arrays: vector dot product or matrix multiplication
+      if (operator === ModelicaBinaryOperator.MULTIPLICATION) {
+        const s1 = operand1.shape;
+        const s2 = operand2.shape;
+        const numVal = (e: ModelicaExpression | null | undefined): number | null => {
+          if (e instanceof ModelicaIntegerLiteral) return e.value;
+          if (e instanceof ModelicaRealLiteral) return e.value;
+          return null;
+        };
+        // 1D × 1D: vector dot product → scalar
+        if (s1.length === 1 && s2.length === 1 && s1[0] === s2[0]) {
+          let sum = 0;
+          let isReal = false;
+          for (let i = 0; i < (s1[0] ?? 0); i++) {
+            const a = numVal(operand1.elements[i]);
+            const b = numVal(operand2.elements[i]);
+            if (a == null || b == null) return new ModelicaBinaryExpression(operator, operand1, operand2);
+            sum += a * b;
+            if (
+              operand1.elements[i] instanceof ModelicaRealLiteral ||
+              operand2.elements[i] instanceof ModelicaRealLiteral
+            )
+              isReal = true;
+          }
+          return isReal ? new ModelicaRealLiteral(sum) : new ModelicaIntegerLiteral(sum);
+        }
+        // 2D × 2D: matrix multiplication (stored as array of row-arrays)
+        if (s1.length === 1 && s2.length === 1) {
+          const rows1 = operand1.elements;
+          const rows2 = operand2.elements;
+          if (rows1[0] instanceof ModelicaArray && rows2[0] instanceof ModelicaArray) {
+            const m = s1[0] ?? 0;
+            const n = (rows2[0] as ModelicaArray).elements.length;
+            const k = (rows1[0] as ModelicaArray).elements.length;
+            const resultRows: ModelicaExpression[] = [];
+            for (let i = 0; i < m; i++) {
+              const row1 = rows1[i] as ModelicaArray | undefined;
+              if (!row1) return new ModelicaBinaryExpression(operator, operand1, operand2);
+              const rowElements: ModelicaExpression[] = [];
+              for (let j = 0; j < n; j++) {
+                let sum = 0;
+                for (let p = 0; p < k; p++) {
+                  const a = numVal(row1.elements[p]);
+                  const row2 = rows2[p] as ModelicaArray | undefined;
+                  const b = numVal(row2?.elements[j]);
+                  if (a == null || b == null) return new ModelicaBinaryExpression(operator, operand1, operand2);
+                  sum += a * b;
+                }
+                rowElements.push(new ModelicaRealLiteral(sum));
+              }
+              resultRows.push(new ModelicaArray([n], rowElements));
+            }
+            return new ModelicaArray([m], resultRows);
+          }
+        }
+      }
       // Element-wise array binary operations
       const scalarOp = (operator.startsWith(".") ? operator.substring(1) : operator) as ModelicaBinaryOperator;
       if (operand1.elements.length === operand2.elements.length) {

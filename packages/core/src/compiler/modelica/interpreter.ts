@@ -30,6 +30,7 @@ import {
   ModelicaComplexAssignmentStatementSyntaxNode,
   ModelicaComponentReferenceSyntaxNode,
   ModelicaEndExpressionSyntaxNode,
+  ModelicaExpressionSyntaxNode,
   ModelicaForStatementSyntaxNode,
   ModelicaFunctionCallSyntaxNode,
   ModelicaIfElseExpressionSyntaxNode,
@@ -234,6 +235,42 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
    * @returns The evaluated ModelicaArray (1D), or null if evaluation fails.
    */
   visitArrayConstructor(node: ModelicaArrayConstructorSyntaxNode, scope: Scope): ModelicaExpression | null {
+    // Handle array comprehension: {expr for i in range}
+    if (node.comprehensionClause?.expression && node.comprehensionClause.forIndexes.length > 0) {
+      const comp = node.comprehensionClause;
+      const results: ModelicaExpression[] = [];
+      const body = comp.expression;
+      if (!body) return null;
+
+      const iterate = (depth: number, currentScope: Scope): boolean => {
+        if (depth >= comp.forIndexes.length) {
+          const result = body.accept(this, currentScope);
+          if (result) results.push(result);
+          return true;
+        }
+        const forIndex = comp.forIndexes[depth];
+        if (!forIndex) return false;
+        const varName = forIndex.identifier?.text;
+        if (!varName || !forIndex.expression) return false;
+        const values = this.#evaluateIteratorRange(forIndex.expression, currentScope);
+        if (!values) return false;
+        for (const val of values) {
+          const mod = new ModelicaModification(currentScope, [], null, null, new ModelicaIntegerLiteral(val));
+          const instance = new ModelicaIntegerClassInstance(currentScope, mod);
+          instance.instantiate();
+          const bindings = new Map<string, ModelicaClassInstance>();
+          bindings.set(varName, instance);
+          const innerScope = new ModelicaLoopScope(currentScope, bindings);
+          iterate(depth + 1, innerScope);
+        }
+        return true;
+      };
+
+      if (!iterate(0, scope)) return null;
+      if (results.length === 0) return new ModelicaArray([0], []);
+      return new ModelicaArray([results.length], results);
+    }
+
     const elements: ModelicaExpression[] = [];
     for (const expression of node.expressionList?.expressions ?? []) {
       const element = expression.accept(this, scope);
@@ -502,98 +539,85 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
   private evaluateArgs(node: ModelicaFunctionCallSyntaxNode, scope: Scope): (ModelicaExpression | null)[] {
     return (node.functionCallArguments?.arguments ?? []).map((arg) => arg.expression?.accept(this, scope) ?? null);
   }
-
   /**
    * Evaluate a comprehension clause, e.g. `sum(expr for i in 1:n)`.
    * Returns the array of evaluated body expressions for each iteration.
+   * Supports dependent multi-iterator ranges like `sum(j for j in 1:i, i in 1:4)`.
    */
   private evaluateComprehension(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression[] | null {
     const comp = node.functionCallArguments?.comprehensionClause;
     if (!comp?.expression || !comp.forIndexes.length) return null;
 
-    // Evaluate all for-indexes to get their iteration ranges
-    const iterators: { name: string; values: number[] }[] = [];
-    for (const forIndex of comp.forIndexes) {
-      const varName = forIndex.identifier?.text;
-      if (!varName) return null;
-
-      const rangeExpr = forIndex.expression;
-      if (!rangeExpr) return null;
-
-      if (rangeExpr instanceof ModelicaRangeExpressionSyntaxNode) {
-        const startExpr = rangeExpr.startExpression?.accept(this, scope);
-        const stopExpr = rangeExpr.stopExpression?.accept(this, scope);
-        const stepExpr = rangeExpr.stepExpression?.accept(this, scope);
-        const start = toNumber(startExpr ?? null);
-        const stop = toNumber(stopExpr ?? null);
-        const step = stepExpr ? toNumber(stepExpr) : 1;
-        if (start == null || stop == null || step == null || step === 0) return null;
-
-        const values: number[] = [];
-        if (step > 0) {
-          for (let v = start; v <= stop; v += step) values.push(v);
-        } else {
-          for (let v = start; v >= stop; v += step) values.push(v);
-        }
-        iterators.push({ name: varName, values });
-      } else {
-        // Could be an array expression
-        const evaluated = rangeExpr.accept(this, scope);
-        if (evaluated instanceof ModelicaArray) {
-          const values: number[] = [];
-          for (const el of evaluated.elements) {
-            const v = toNumber(el);
-            if (v == null) return null;
-            values.push(v);
-          }
-          iterators.push({ name: varName, values });
-        } else {
-          return null;
-        }
-      }
-    }
-
-    // Generate cartesian product of all iterators and evaluate body
     const results: ModelicaExpression[] = [];
-    const indices = iterators.map(() => 0);
     const body = comp.expression;
 
-    while (true) {
-      // Create bindings for current iteration
-      const bindings = new Map<string, ModelicaClassInstance>();
-      for (let k = 0; k < iterators.length; k++) {
-        const iter = iterators[k];
-        if (!iter) break;
-        const val = iter.values[indices[k] ?? 0];
-        if (val == null) break;
-        const mod = new ModelicaModification(scope, [], null, null, new ModelicaIntegerLiteral(val));
-        const instance = new ModelicaIntegerClassInstance(scope, mod);
+    // Recursive helper: iterate over forIndexes[depth], evaluating ranges in currentScope
+    // so that inner ranges can reference outer iterator variables
+    const iterate = (depth: number, currentScope: Scope): boolean => {
+      if (depth >= comp.forIndexes.length) {
+        // All iterators bound — evaluate body
+        const result = body.accept(this, currentScope);
+        if (result) results.push(result);
+        return true;
+      }
+
+      const forIndex = comp.forIndexes[depth];
+      if (!forIndex) return false;
+      const varName = forIndex.identifier?.text;
+      if (!varName) return false;
+      const rangeExpr = forIndex.expression;
+      if (!rangeExpr) return false;
+
+      // Evaluate range in CURRENT scope (which includes outer iterator bindings)
+      const values = this.#evaluateIteratorRange(rangeExpr, currentScope);
+      if (!values) return false;
+
+      for (const val of values) {
+        const mod = new ModelicaModification(currentScope, [], null, null, new ModelicaIntegerLiteral(val));
+        const instance = new ModelicaIntegerClassInstance(currentScope, mod);
         instance.instantiate();
-        bindings.set(iter.name, instance);
+        const bindings = new Map<string, ModelicaClassInstance>();
+        bindings.set(varName, instance);
+        const innerScope = new ModelicaLoopScope(currentScope, bindings);
+        iterate(depth + 1, innerScope);
       }
+      return true;
+    };
 
-      const loopScope = new ModelicaLoopScope(scope, bindings);
-      const result = body.accept(this, loopScope);
-      if (result) results.push(result);
-
-      // Advance indices (rightmost first)
-      let carry = true;
-      for (let k = iterators.length - 1; k >= 0; k--) {
-        const iter = iterators[k];
-        if (!iter) continue;
-        const idx = (indices[k] ?? 0) + 1;
-        if (idx < iter.values.length) {
-          indices[k] = idx;
-          carry = false;
-          break;
-        } else {
-          indices[k] = 0;
-        }
-      }
-      if (carry) break;
-    }
-
+    if (!iterate(0, scope)) return null;
     return results;
+  }
+
+  /** Evaluate a for-index range expression to an array of numeric values. */
+  #evaluateIteratorRange(rangeExpr: ModelicaExpressionSyntaxNode, scope: Scope): number[] | null {
+    if (rangeExpr instanceof ModelicaRangeExpressionSyntaxNode) {
+      const startExpr = rangeExpr.startExpression?.accept(this, scope);
+      const stopExpr = rangeExpr.stopExpression?.accept(this, scope);
+      const stepExpr = rangeExpr.stepExpression?.accept(this, scope);
+      const start = toNumber(startExpr ?? null);
+      const stop = toNumber(stopExpr ?? null);
+      const step = stepExpr ? toNumber(stepExpr) : 1;
+      if (start == null || stop == null || step == null || step === 0) return null;
+      const values: number[] = [];
+      if (step > 0) {
+        for (let v = start; v <= stop; v += step) values.push(v);
+      } else {
+        for (let v = start; v >= stop; v += step) values.push(v);
+      }
+      return values;
+    }
+    // Could be an array expression like {1.0, 2, 3, 4}
+    const evaluated = rangeExpr.accept(this, scope);
+    if (evaluated instanceof ModelicaArray) {
+      const values: number[] = [];
+      for (const el of evaluated.elements) {
+        const v = toNumber(el);
+        if (v == null) return null;
+        values.push(v);
+      }
+      return values;
+    }
+    return null;
   }
 
   /**
@@ -1118,6 +1142,12 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
   }
 
   #evaluateArrayFunc(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
+    // Handle array comprehension: {expr for i in range} = array(expr for i in range)
+    if (node.functionCallArguments?.comprehensionClause) {
+      const values = this.evaluateComprehension(node, scope);
+      if (!values || values.length === 0) return new ModelicaArray([0], []);
+      return new ModelicaArray([values.length], values);
+    }
     const args = this.evaluateArgs(node, scope);
     if (args.length === 0) return null;
     return new ModelicaArray(
@@ -1148,6 +1178,19 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     return null;
   }
 
+  /** Recursively compute der(array) = zeros with same shape */
+  #derArray(arr: ModelicaArray): ModelicaArray {
+    const elements: ModelicaExpression[] = [];
+    for (const el of arr.elements) {
+      if (el instanceof ModelicaArray) {
+        elements.push(this.#derArray(el));
+      } else {
+        elements.push(new ModelicaRealLiteral(0));
+      }
+    }
+    return new ModelicaArray([...arr.shape], elements);
+  }
+
   /**
    * Visits a generic function call node, evaluating arguments and interpreting built-in or user-defined functions.
    *
@@ -1159,9 +1202,30 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     // Check for built-in array functions first
     const funcName =
       node.functionReference?.parts?.length === 1 ? (node.functionReference.parts[0]?.identifier?.text ?? null) : null;
+    // Also get the raw function reference name (handles keyword functions like der)
+    const rawFuncName = funcName ?? node.functionReferenceName;
     if (funcName && BUILTIN_ARRAY_FUNCTIONS.has(funcName)) {
       const result = this.evaluateBuiltinFunction(funcName, node, scope);
       if (result !== undefined) return result;
+    }
+
+    // Handle type conversion functions
+    if (rawFuncName === "Integer") {
+      const args = this.evaluateArgs(node, scope);
+      const arg = args[0];
+      if (arg instanceof ModelicaEnumerationLiteral) return new ModelicaIntegerLiteral(arg.ordinalValue);
+      if (arg instanceof ModelicaBooleanLiteral) return new ModelicaIntegerLiteral(arg.value ? 1 : 0);
+      return null;
+    }
+
+    // der(constant) = 0; der(constant_array) = zeros with same shape
+    if (rawFuncName === "der") {
+      const args = this.evaluateArgs(node, scope);
+      const arg = args[0];
+      if (arg instanceof ModelicaIntegerLiteral || arg instanceof ModelicaRealLiteral)
+        return new ModelicaRealLiteral(0);
+      if (arg instanceof ModelicaArray) return this.#derArray(arg);
+      return null;
     }
 
     const functionInstance = scope.resolveComponentReference(node.functionReference);
