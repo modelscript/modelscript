@@ -17,6 +17,7 @@ import {
   ModelicaExpression,
   ModelicaIntegerLiteral,
 } from "./dae.js";
+import { ModelicaErrorCode, makeDiagnostic, type ModelicaDiagnostic } from "./errors.js";
 import { ModelicaInterpreter } from "./interpreter.js";
 import {
   ModelicaAlgorithmSectionSyntaxNode,
@@ -409,7 +410,14 @@ export class ModelicaExtendsClassInstance extends ModelicaElement {
       // Detect extends cycles using compositeName (unique per class in the scope tree)
       const baseName = element.compositeName ?? element.name ?? "";
       if (baseName && ModelicaExtendsClassInstance.#extendsChain.has(baseName)) {
-        this.parent?.errors.push(`Extends cycle detected: '${this.parent?.name}' extends '${element.name}'.`);
+        this.parent?.diagnostics.push(
+          makeDiagnostic(
+            ModelicaErrorCode.EXTENDS_CYCLE,
+            this.abstractSyntaxNode?.typeSpecifier,
+            this.parent?.name ?? "",
+            element.name ?? "",
+          ),
+        );
       } else {
         if (baseName) ModelicaExtendsClassInstance.#extendsChain.add(baseName);
         try {
@@ -516,7 +524,7 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
   classKind: ModelicaClassKind;
   cloneCache = new Map<string, ModelicaClassInstance>();
   declaredElements: ModelicaElement[] = [];
-  errors: string[] = [];
+  diagnostics: ModelicaDiagnostic[] = [];
 
   constructor(
     parent: Scope | null,
@@ -1717,8 +1725,8 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
             const name = modArg.name;
             if (name && name !== "annotation" && !typeElementNames.has(name)) {
               if (this.parent) {
-                this.parent.errors.push(
-                  `In modifier of '${this.name}', class or component '${name}' not found in '${element.name}'.`,
+                this.parent.diagnostics.push(
+                  makeDiagnostic(ModelicaErrorCode.MODIFIER_NOT_FOUND, null, name, this.name ?? "", element.name ?? ""),
                 );
               }
             }
@@ -1786,7 +1794,9 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
       // Check if multiple mods set a value expression at the same leaf level
       const withExpr = mods.filter((m) => m.nameComponents.length === 1 && m.modificationExpression);
       if (withExpr.length > 1 && this.parent) {
-        this.parent.errors.push(`Duplicate modification of element ${name} on component ${this.name}.`);
+        this.parent.diagnostics.push(
+          makeDiagnostic(ModelicaErrorCode.DUPLICATE_MODIFICATION, null, name, this.name ?? ""),
+        );
         continue;
       }
       // Recurse into sub-arguments to check for nested duplicates
@@ -2333,8 +2343,14 @@ export class ModelicaArrayClassInstance extends ModelicaClassInstance {
     }
     // Validate array modification dimensions
     if (expression instanceof ModelicaArray && !expression.assignable(this.shape)) {
-      this.errors.push(
-        `Array dimension mismatch: modification has shape [${expression.flatShape}] but variable has shape [${this.shape}]`,
+      this.diagnostics.push(
+        makeDiagnostic(
+          ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH,
+          null,
+          "modification",
+          String(expression.flatShape),
+          String(this.shape),
+        ),
       );
       this.instantiated = true;
       return;
@@ -2346,8 +2362,14 @@ export class ModelicaArrayClassInstance extends ModelicaClassInstance {
       for (const modArg of effectiveModification?.modificationArguments ?? []) {
         const argExpr = modArg.expression;
         if (argExpr instanceof ModelicaArray && !argExpr.assignable(this.shape)) {
-          this.errors.push(
-            `Array dimension mismatch: modification of '${modArg.name}' has shape [${argExpr.flatShape}] but variable has shape [${this.shape}]`,
+          this.diagnostics.push(
+            makeDiagnostic(
+              ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH,
+              null,
+              `modification of '${modArg.name}'`,
+              String(argExpr.flatShape),
+              String(this.shape),
+            ),
           );
           this.instantiated = true;
           return;

@@ -117,7 +117,7 @@ export class Context extends Scope {
   #hasErrors(instance: ModelicaClassInstance, visited = new Set<ModelicaClassInstance>()): boolean {
     if (visited.has(instance)) return false;
     visited.add(instance);
-    if (instance.errors.length > 0) return true;
+    if (instance.diagnostics.length > 0) return true;
     for (const element of instance.declaredElements) {
       if (element instanceof ModelicaComponentInstance && element.classInstance) {
         if (this.#hasErrors(element.classInstance, visited)) return true;
