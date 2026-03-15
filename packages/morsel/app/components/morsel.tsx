@@ -51,22 +51,27 @@ import {
 } from "@primer/react";
 import { Zip } from "@zenfs/archives";
 import { configure, InMemory } from "@zenfs/core";
-import { editor } from "monaco-editor";
+import type { editor } from "monaco-editor";
 import { type DataUrl } from "parse-data-url";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Parser from "web-tree-sitter";
 import { mountLibrary, WebFileSystem } from "~/util/filesystem";
 import { getTranslations, uiLanguages } from "~/util/i18n";
-import AddLibraryModal from "./add-library-modal";
-import CodeEditor, { type CodeEditorHandle } from "./code";
+import type { CodeEditorHandle } from "./code";
 import ComponentList from "./component-list";
-import DiagramEditor, { type DiagramEditorHandle } from "./diagram";
+import type { DiagramEditorHandle } from "./diagram";
 import OpenFileDropzone from "./open-file-dropzone";
 import PropertiesWidget from "./properties";
-import { SimulationResults } from "./simulation-results";
 import { Splash, type ModelData } from "./splash";
 import TreeWidget from "./tree";
 import { VariablesTree } from "./variables-tree";
+
+import AddLibraryModal from "./add-library-modal";
+const CodeEditor = React.lazy(() => import("./code"));
+const DiagramEditor = React.lazy(() => import("./diagram"));
+const SimulationResults = React.lazy(() =>
+  import("./simulation-results").then((m) => ({ default: m.SimulationResults })),
+);
 
 const EXAMPLE_PATHS = [
   {
@@ -1816,211 +1821,251 @@ export default function MorselEditor(props: MorselEditorProps) {
                     }}
                   >
                     <div className="flex-1 overflow-hidden" style={{ minWidth: 0 }}>
-                      <DiagramEditor
-                        ref={diagramEditorRef}
-                        classInstance={diagramClassInstance}
-                        selectedName={selectedComponent?.name}
-                        theme={colorMode === "dark" ? "vs-dark" : "light"}
-                        onSelect={(name) => {
-                          if (!name) {
-                            setSelectedComponent(null);
-                          } else {
-                            const searchInstance = diagramClassInstance ?? classInstances[0];
-                            const component = searchInstance?.components
-                              ? Array.from(searchInstance.components).find((c) => c.name === name)
-                              : null;
-                            setSelectedComponent(component || null);
-                            codeEditorRef.current?.revealComponent(name, searchInstance);
-                          }
-                        }}
-                        onDrop={(className, x, y) => {
-                          const dropTarget = diagramClassInstance ?? classInstances[0];
-                          if (!dropTarget || !editor) return;
-                          isDiagramUpdate.current = true;
-
-                          // Try to get the defaultComponentName annotation from the dropped class
-                          const shortName = className.split(".").pop() || "component";
-                          let baseName = shortName.toLowerCase();
-                          try {
-                            const droppedClass = context?.query(className);
-                            if (droppedClass instanceof ModelicaClassInstance) {
-                              const defaultName = droppedClass.annotation<string>("defaultComponentName");
-                              if (defaultName) {
-                                baseName = droppedClass.translate(defaultName);
-                              } else {
-                                baseName = droppedClass.localizedName.toLowerCase();
-                              }
-                            }
-                          } catch {
-                            // query may throw during lazy instantiation; proceed with default baseName
-                          }
-
-                          let name = baseName;
-                          let i = 1;
-                          const existingNames = new Set(Array.from(dropTarget.components).map((c) => c.name));
-                          while (existingNames.has(name)) {
-                            name = `${baseName}${i}`;
-                            i++;
-                          }
-
-                          const diagram: IDiagram | null = dropTarget.annotation("Diagram");
-                          const initialScale = diagram?.coordinateSystem?.initialScale ?? 0.1;
-                          const extent = diagram?.coordinateSystem?.extent;
-
-                          let width = 200;
-                          let height = 200;
-
-                          if (extent && extent.length >= 2) {
-                            width = Math.abs(extent[1][0] - extent[0][0]);
-                            height = Math.abs(extent[1][1] - extent[0][1]);
-                          }
-
-                          const w = width * initialScale;
-                          const h = height * initialScale;
-
-                          const annotation = `annotation(Placement(transformation(origin={${Math.round(x)},${-Math.round(y)}}, extent={{-${w / 2},-${h / 2}},{${w / 2},${h / 2}}})))`;
-                          const componentDecl = `  ${className} ${name} ${annotation};\n`;
-
-                          const model = editor.getModel();
-                          if (model) {
-                            // Scope the search to the target model's syntax range
-                            const astNode = (dropTarget as any).abstractSyntaxNode;
-                            const modelStartLine = astNode?.sourceRange ? astNode.startPosition.row : 0;
-                            const modelEndLine = astNode?.sourceRange
-                              ? astNode.endPosition.row
-                              : model.getLineCount() - 1;
-
-                            const keywords = [
-                              "protected",
-                              "initial equation",
-                              "initial algorithm",
-                              "equation",
-                              "algorithm",
-                              "end",
-                            ];
-                            let insertLine = -1;
-                            const text = model.getValue();
-                            const lines = text.split("\n");
-                            for (let i = modelStartLine; i <= modelEndLine; i++) {
-                              const line = lines[i].trim();
-                              if (keywords.some((kw) => line.startsWith(kw))) {
-                                insertLine = i;
-                                break;
-                              }
-                            }
-                            if (insertLine !== -1) {
-                              let range = {
-                                startLineNumber: insertLine + 1,
-                                startColumn: 1,
-                                endLineNumber: insertLine + 1,
-                                endColumn: 1,
-                              };
-                              if (insertLine > modelStartLine && lines[insertLine - 1].trim() === "") {
-                                range.startLineNumber = insertLine;
-                                range.endLineNumber = insertLine + 1;
-                              }
-                              editor.executeEdits("dnd", [
-                                {
-                                  range: range,
-                                  text: componentDecl,
-                                },
-                              ]);
+                      <Suspense fallback={null}>
+                        <DiagramEditor
+                          ref={diagramEditorRef}
+                          classInstance={diagramClassInstance}
+                          selectedName={selectedComponent?.name}
+                          theme={colorMode === "dark" ? "vs-dark" : "light"}
+                          onSelect={(name) => {
+                            if (!name) {
+                              setSelectedComponent(null);
                             } else {
-                              // Find the last "end" within this model's range
-                              const modelText = lines.slice(modelStartLine, modelEndLine + 1).join("\n");
-                              const lastEndIndex = modelText.lastIndexOf("end");
-                              if (lastEndIndex !== -1) {
-                                // Convert offset within modelText back to global line number
-                                const linesBeforeEnd = modelText.substring(0, lastEndIndex).split("\n").length - 1;
-                                const endLineNumber = modelStartLine + linesBeforeEnd + 1; // 1-indexed
-                                const endLineContent = lines[modelStartLine + linesBeforeEnd];
-                                const endCol = endLineContent.lastIndexOf("end");
-                                const beforeEnd = endLineContent.substring(0, endCol).trimEnd();
+                              const searchInstance = diagramClassInstance ?? classInstances[0];
+                              const component = searchInstance?.components
+                                ? Array.from(searchInstance.components).find((c) => c.name === name)
+                                : null;
+                              setSelectedComponent(component || null);
+                              codeEditorRef.current?.revealComponent(name, searchInstance);
+                            }
+                          }}
+                          onDrop={(className, x, y) => {
+                            const dropTarget = diagramClassInstance ?? classInstances[0];
+                            if (!dropTarget || !editor) return;
+                            isDiagramUpdate.current = true;
 
-                                if (beforeEnd !== "") {
-                                  // Single-line model: insert at the "end" keyword column with newlines
-                                  editor.executeEdits("dnd", [
-                                    {
-                                      range: {
-                                        startLineNumber: endLineNumber,
-                                        startColumn: endCol + 1,
-                                        endLineNumber: endLineNumber,
-                                        endColumn: endCol + 1,
-                                      },
-                                      text: "\n" + componentDecl,
-                                    },
-                                  ]);
+                            // Try to get the defaultComponentName annotation from the dropped class
+                            const shortName = className.split(".").pop() || "component";
+                            let baseName = shortName.toLowerCase();
+                            try {
+                              const droppedClass = context?.query(className);
+                              if (droppedClass instanceof ModelicaClassInstance) {
+                                const defaultName = droppedClass.annotation<string>("defaultComponentName");
+                                if (defaultName) {
+                                  baseName = droppedClass.translate(defaultName);
                                 } else {
-                                  let range = {
-                                    startLineNumber: endLineNumber,
-                                    startColumn: 1,
-                                    endLineNumber: endLineNumber,
-                                    endColumn: 1,
-                                  };
-                                  if (endLineNumber > 1) {
-                                    const prevLineContent = model.getLineContent(endLineNumber - 1);
-                                    if (prevLineContent.trim() === "") {
-                                      range.startLineNumber = endLineNumber - 1;
-                                      range.endLineNumber = endLineNumber;
+                                  baseName = droppedClass.localizedName.toLowerCase();
+                                }
+                              }
+                            } catch {
+                              // query may throw during lazy instantiation; proceed with default baseName
+                            }
+
+                            let name = baseName;
+                            let i = 1;
+                            const existingNames = new Set(Array.from(dropTarget.components).map((c) => c.name));
+                            while (existingNames.has(name)) {
+                              name = `${baseName}${i}`;
+                              i++;
+                            }
+
+                            const diagram: IDiagram | null = dropTarget.annotation("Diagram");
+                            const initialScale = diagram?.coordinateSystem?.initialScale ?? 0.1;
+                            const extent = diagram?.coordinateSystem?.extent;
+
+                            let width = 200;
+                            let height = 200;
+
+                            if (extent && extent.length >= 2) {
+                              width = Math.abs(extent[1][0] - extent[0][0]);
+                              height = Math.abs(extent[1][1] - extent[0][1]);
+                            }
+
+                            const w = width * initialScale;
+                            const h = height * initialScale;
+
+                            const annotation = `annotation(Placement(transformation(origin={${Math.round(x)},${-Math.round(y)}}, extent={{-${w / 2},-${h / 2}},{${w / 2},${h / 2}}})))`;
+                            const componentDecl = `  ${className} ${name} ${annotation};\n`;
+
+                            const model = editor.getModel();
+                            if (model) {
+                              // Scope the search to the target model's syntax range
+                              const astNode = (dropTarget as any).abstractSyntaxNode;
+                              const modelStartLine = astNode?.sourceRange ? astNode.startPosition.row : 0;
+                              const modelEndLine = astNode?.sourceRange
+                                ? astNode.endPosition.row
+                                : model.getLineCount() - 1;
+
+                              const keywords = [
+                                "protected",
+                                "initial equation",
+                                "initial algorithm",
+                                "equation",
+                                "algorithm",
+                                "end",
+                              ];
+                              let insertLine = -1;
+                              const text = model.getValue();
+                              const lines = text.split("\n");
+                              for (let i = modelStartLine; i <= modelEndLine; i++) {
+                                const line = lines[i].trim();
+                                if (keywords.some((kw) => line.startsWith(kw))) {
+                                  insertLine = i;
+                                  break;
+                                }
+                              }
+                              if (insertLine !== -1) {
+                                let range = {
+                                  startLineNumber: insertLine + 1,
+                                  startColumn: 1,
+                                  endLineNumber: insertLine + 1,
+                                  endColumn: 1,
+                                };
+                                if (insertLine > modelStartLine && lines[insertLine - 1].trim() === "") {
+                                  range.startLineNumber = insertLine;
+                                  range.endLineNumber = insertLine + 1;
+                                }
+                                editor.executeEdits("dnd", [
+                                  {
+                                    range: range,
+                                    text: componentDecl,
+                                  },
+                                ]);
+                              } else {
+                                // Find the last "end" within this model's range
+                                const modelText = lines.slice(modelStartLine, modelEndLine + 1).join("\n");
+                                const lastEndIndex = modelText.lastIndexOf("end");
+                                if (lastEndIndex !== -1) {
+                                  // Convert offset within modelText back to global line number
+                                  const linesBeforeEnd = modelText.substring(0, lastEndIndex).split("\n").length - 1;
+                                  const endLineNumber = modelStartLine + linesBeforeEnd + 1; // 1-indexed
+                                  const endLineContent = lines[modelStartLine + linesBeforeEnd];
+                                  const endCol = endLineContent.lastIndexOf("end");
+                                  const beforeEnd = endLineContent.substring(0, endCol).trimEnd();
+
+                                  if (beforeEnd !== "") {
+                                    // Single-line model: insert at the "end" keyword column with newlines
+                                    editor.executeEdits("dnd", [
+                                      {
+                                        range: {
+                                          startLineNumber: endLineNumber,
+                                          startColumn: endCol + 1,
+                                          endLineNumber: endLineNumber,
+                                          endColumn: endCol + 1,
+                                        },
+                                        text: "\n" + componentDecl,
+                                      },
+                                    ]);
+                                  } else {
+                                    let range = {
+                                      startLineNumber: endLineNumber,
+                                      startColumn: 1,
+                                      endLineNumber: endLineNumber,
+                                      endColumn: 1,
+                                    };
+                                    if (endLineNumber > 1) {
+                                      const prevLineContent = model.getLineContent(endLineNumber - 1);
+                                      if (prevLineContent.trim() === "") {
+                                        range.startLineNumber = endLineNumber - 1;
+                                        range.endLineNumber = endLineNumber;
+                                      }
                                     }
+                                    editor.executeEdits("dnd", [
+                                      {
+                                        range: range,
+                                        text: componentDecl,
+                                      },
+                                    ]);
                                   }
-                                  editor.executeEdits("dnd", [
-                                    {
-                                      range: range,
-                                      text: componentDecl,
-                                    },
-                                  ]);
                                 }
                               }
                             }
-                          }
-                        }}
-                        onConnect={(source, target, points) => {
-                          const connectTarget = diagramClassInstance ?? classInstances[0];
-                          if (!connectTarget || !editor) return;
-                          isDiagramUpdate.current = true;
+                          }}
+                          onConnect={(source, target, points) => {
+                            const connectTarget = diagramClassInstance ?? classInstances[0];
+                            if (!connectTarget || !editor) return;
+                            isDiagramUpdate.current = true;
 
-                          const annotation = points
-                            ? ` annotation(Line(points={${points.map((p) => `{${p.x},${p.y}}`).join(", ")}}, color={0, 0, 255}))`
-                            : " annotation(Line(color={0, 0, 255}))";
-                          const connectEq = `  connect(${source}, ${target})${annotation};\n`;
-                          const model = editor.getModel();
-                          if (!model) return;
+                            const annotation = points
+                              ? ` annotation(Line(points={${points.map((p) => `{${p.x},${p.y}}`).join(", ")}}, color={0, 0, 255}))`
+                              : " annotation(Line(color={0, 0, 255}))";
+                            const connectEq = `  connect(${source}, ${target})${annotation};\n`;
+                            const model = editor.getModel();
+                            if (!model) return;
 
-                          // Scope the search to the target model's syntax range
-                          const astNode = (connectTarget as any).abstractSyntaxNode;
-                          const modelStartLine = astNode?.sourceRange ? astNode.startPosition.row + 1 : 1;
-                          const modelEndLine = astNode?.sourceRange
-                            ? astNode.endPosition.row + 1
-                            : model.getLineCount();
-                          const searchRange = {
-                            startLineNumber: modelStartLine,
-                            startColumn: 1,
-                            endLineNumber: modelEndLine,
-                            endColumn: model.getLineMaxColumn(modelEndLine),
-                          };
+                            // Scope the search to the target model's syntax range
+                            const astNode = (connectTarget as any).abstractSyntaxNode;
+                            const modelStartLine = astNode?.sourceRange ? astNode.startPosition.row + 1 : 1;
+                            const modelEndLine = astNode?.sourceRange
+                              ? astNode.endPosition.row + 1
+                              : model.getLineCount();
+                            const searchRange = {
+                              startLineNumber: modelStartLine,
+                              startColumn: 1,
+                              endLineNumber: modelEndLine,
+                              endColumn: model.getLineMaxColumn(modelEndLine),
+                            };
 
-                          const equationMatches = model.findMatches("equation", searchRange, false, true, null, true);
-                          if (equationMatches.length > 0) {
-                            const startLine = equationMatches[0].range.startLineNumber;
-                            const text = model.getValue();
-                            const lines = text.split("\n");
-                            let insertLine = -1;
-                            for (let i = startLine; i < modelEndLine; i++) {
-                              const line = lines[i].trim();
-                              if (
-                                line.startsWith("public") ||
-                                line.startsWith("protected") ||
-                                line.startsWith("initial equation") ||
-                                line.startsWith("algorithm") ||
-                                line.startsWith("annotation") ||
-                                line.startsWith("end")
-                              ) {
-                                insertLine = i;
-                                break;
+                            const equationMatches = model.findMatches("equation", searchRange, false, true, null, true);
+                            if (equationMatches.length > 0) {
+                              const startLine = equationMatches[0].range.startLineNumber;
+                              const text = model.getValue();
+                              const lines = text.split("\n");
+                              let insertLine = -1;
+                              for (let i = startLine; i < modelEndLine; i++) {
+                                const line = lines[i].trim();
+                                if (
+                                  line.startsWith("public") ||
+                                  line.startsWith("protected") ||
+                                  line.startsWith("initial equation") ||
+                                  line.startsWith("algorithm") ||
+                                  line.startsWith("annotation") ||
+                                  line.startsWith("end")
+                                ) {
+                                  insertLine = i;
+                                  break;
+                                }
+                              }
+                              if (insertLine !== -1) {
+                                editor.executeEdits("connect", [
+                                  {
+                                    range: {
+                                      startLineNumber: insertLine + 1,
+                                      startColumn: 1,
+                                      endLineNumber: insertLine + 1,
+                                      endColumn: 1,
+                                    },
+                                    text: connectEq,
+                                  },
+                                ]);
+                                return;
                               }
                             }
-                            if (insertLine !== -1) {
+                            const endMatches = model.findMatches(
+                              "^\\s*end\\s+[^;]+;",
+                              searchRange,
+                              true,
+                              false,
+                              null,
+                              true,
+                            );
+                            if (endMatches.length > 0) {
+                              const lastEnd = endMatches[endMatches.length - 1];
+                              const text = model.getValue();
+                              const lines = text.split("\n");
+                              let insertLine = lastEnd.range.startLineNumber - 1;
+
+                              // Look backwards for annotation before end
+                              for (let i = insertLine - 1; i >= modelStartLine - 1; i--) {
+                                const line = lines[i].trim();
+                                if (line.startsWith("annotation")) {
+                                  insertLine = i;
+                                } else if (line !== "") {
+                                  break;
+                                }
+                              }
+
+                              const insertText = equationMatches.length === 0 ? `equation\n${connectEq}` : connectEq;
                               editor.executeEdits("connect", [
                                 {
                                   range: {
@@ -2029,166 +2074,128 @@ export default function MorselEditor(props: MorselEditorProps) {
                                     endLineNumber: insertLine + 1,
                                     endColumn: 1,
                                   },
-                                  text: connectEq,
+                                  text: insertText,
                                 },
                               ]);
                               return;
                             }
-                          }
-                          const endMatches = model.findMatches(
-                            "^\\s*end\\s+[^;]+;",
-                            searchRange,
-                            true,
-                            false,
-                            null,
-                            true,
-                          );
-                          if (endMatches.length > 0) {
-                            const lastEnd = endMatches[endMatches.length - 1];
+                            // Fallback: find last "end" within model range
                             const text = model.getValue();
                             const lines = text.split("\n");
-                            let insertLine = lastEnd.range.startLineNumber - 1;
+                            const modelLines = lines.slice(modelStartLine - 1, modelEndLine);
+                            const modelText = modelLines.join("\n");
+                            const lastEndIndex = modelText.lastIndexOf("end");
+                            if (lastEndIndex !== -1) {
+                              const linesBeforeEnd = modelText.substring(0, lastEndIndex).split("\n").length - 1;
+                              const endLineNumber = modelStartLine + linesBeforeEnd;
+                              const insertText = equationMatches.length === 0 ? `equation\n${connectEq}` : connectEq;
+                              editor.executeEdits("connect", [
+                                {
+                                  range: {
+                                    startLineNumber: endLineNumber,
+                                    startColumn: 1,
+                                    endLineNumber: endLineNumber,
+                                    endColumn: 1,
+                                  },
+                                  text: insertText,
+                                },
+                              ]);
+                            }
+                          }}
+                          onMove={(items) => {
+                            if ((!diagramClassInstance && !classInstances[0]) || !editor) return;
+                            isDiagramUpdate.current = true;
+                            const edits: editor.IIdentifiedSingleEditOperation[] = [];
+                            const allEdges: any[] = [];
+                            items.forEach((item) => {
+                              const edit = getPlacementEdit(
+                                item.name,
+                                item.x,
+                                item.y,
+                                item.width,
+                                item.height,
+                                item.rotation,
+                              );
+                              if (edit) edits.push(edit);
+                              if (item.edges) allEdges.push(...item.edges);
+                            });
 
-                            // Look backwards for annotation before end
-                            for (let i = insertLine - 1; i >= modelStartLine - 1; i--) {
-                              const line = lines[i].trim();
-                              if (line.startsWith("annotation")) {
-                                insertLine = i;
-                              } else if (line !== "") {
-                                break;
-                              }
+                            if (allEdges.length > 0) {
+                              const edgeEdits = getConnectEdits(allEdges);
+                              edgeEdits.forEach((edit) => edits.push(edit));
                             }
 
-                            const insertText = equationMatches.length === 0 ? `equation\n${connectEq}` : connectEq;
-                            editor.executeEdits("connect", [
-                              {
-                                range: {
-                                  startLineNumber: insertLine + 1,
-                                  startColumn: 1,
-                                  endLineNumber: insertLine + 1,
-                                  endColumn: 1,
-                                },
-                                text: insertText,
-                              },
-                            ]);
-                            return;
-                          }
-                          // Fallback: find last "end" within model range
-                          const text = model.getValue();
-                          const lines = text.split("\n");
-                          const modelLines = lines.slice(modelStartLine - 1, modelEndLine);
-                          const modelText = modelLines.join("\n");
-                          const lastEndIndex = modelText.lastIndexOf("end");
-                          if (lastEndIndex !== -1) {
-                            const linesBeforeEnd = modelText.substring(0, lastEndIndex).split("\n").length - 1;
-                            const endLineNumber = modelStartLine + linesBeforeEnd;
-                            const insertText = equationMatches.length === 0 ? `equation\n${connectEq}` : connectEq;
-                            editor.executeEdits("connect", [
-                              {
-                                range: {
-                                  startLineNumber: endLineNumber,
-                                  startColumn: 1,
-                                  endLineNumber: endLineNumber,
-                                  endColumn: 1,
-                                },
-                                text: insertText,
-                              },
-                            ]);
-                          }
-                        }}
-                        onMove={(items) => {
-                          if ((!diagramClassInstance && !classInstances[0]) || !editor) return;
-                          isDiagramUpdate.current = true;
-                          const edits: editor.IIdentifiedSingleEditOperation[] = [];
-                          const allEdges: any[] = [];
-                          items.forEach((item) => {
-                            const edit = getPlacementEdit(
-                              item.name,
-                              item.x,
-                              item.y,
-                              item.width,
-                              item.height,
-                              item.rotation,
-                            );
+                            if (edits.length > 0) {
+                              // Sort edits by position (descending) and remove overlaps
+                              edits.sort((a, b) => {
+                                if (a.range.startLineNumber !== b.range.startLineNumber)
+                                  return a.range.startLineNumber - b.range.startLineNumber;
+                                return a.range.startColumn - b.range.startColumn;
+                              });
+                              const filtered = edits.filter((edit, i) => {
+                                if (i === 0) return true;
+                                const prev = edits[i - 1];
+                                // Skip if this edit starts before the previous one ends
+                                if (
+                                  edit.range.startLineNumber < prev.range.endLineNumber ||
+                                  (edit.range.startLineNumber === prev.range.endLineNumber &&
+                                    edit.range.startColumn < prev.range.endColumn)
+                                ) {
+                                  return false;
+                                }
+                                return true;
+                              });
+                              if (filtered.length > 0) {
+                                editor.executeEdits("move", filtered);
+                              }
+                            }
+                          }}
+                          onResize={(name, x, y, width, height, rotation, edges) => {
+                            if ((!diagramClassInstance && !classInstances[0]) || !editor) return;
+                            isDiagramUpdate.current = false;
+                            const edits: editor.IIdentifiedSingleEditOperation[] = [];
+                            const edit = getPlacementEdit(name, x, y, width, height, rotation);
                             if (edit) edits.push(edit);
-                            if (item.edges) allEdges.push(...item.edges);
-                          });
-
-                          if (allEdges.length > 0) {
-                            const edgeEdits = getConnectEdits(allEdges);
-                            edgeEdits.forEach((edit) => edits.push(edit));
-                          }
-
-                          if (edits.length > 0) {
-                            // Sort edits by position (descending) and remove overlaps
-                            edits.sort((a, b) => {
-                              if (a.range.startLineNumber !== b.range.startLineNumber)
-                                return a.range.startLineNumber - b.range.startLineNumber;
-                              return a.range.startColumn - b.range.startColumn;
-                            });
-                            const filtered = edits.filter((edit, i) => {
-                              if (i === 0) return true;
-                              const prev = edits[i - 1];
-                              // Skip if this edit starts before the previous one ends
-                              if (
-                                edit.range.startLineNumber < prev.range.endLineNumber ||
-                                (edit.range.startLineNumber === prev.range.endLineNumber &&
-                                  edit.range.startColumn < prev.range.endColumn)
-                              ) {
-                                return false;
-                              }
-                              return true;
-                            });
-                            if (filtered.length > 0) {
-                              editor.executeEdits("move", filtered);
+                            if (edges) {
+                              const edgeEdits = getConnectEdits(edges);
+                              edgeEdits.forEach((edit) => edits.push(edit));
                             }
-                          }
-                        }}
-                        onResize={(name, x, y, width, height, rotation, edges) => {
-                          if ((!diagramClassInstance && !classInstances[0]) || !editor) return;
-                          isDiagramUpdate.current = false;
-                          const edits: editor.IIdentifiedSingleEditOperation[] = [];
-                          const edit = getPlacementEdit(name, x, y, width, height, rotation);
-                          if (edit) edits.push(edit);
-                          if (edges) {
+                            if (edits.length > 0) {
+                              edits.sort((a, b) => {
+                                if (a.range.startLineNumber !== b.range.startLineNumber)
+                                  return a.range.startLineNumber - b.range.startLineNumber;
+                                return a.range.startColumn - b.range.startColumn;
+                              });
+                              const filtered = edits.filter((edit, i) => {
+                                if (i === 0) return true;
+                                const prev = edits[i - 1];
+                                if (
+                                  edit.range.startLineNumber < prev.range.endLineNumber ||
+                                  (edit.range.startLineNumber === prev.range.endLineNumber &&
+                                    edit.range.startColumn < prev.range.endColumn)
+                                ) {
+                                  return false;
+                                }
+                                return true;
+                              });
+                              if (filtered.length > 0) {
+                                editor.executeEdits("resize", filtered);
+                              }
+                            }
+                          }}
+                          onEdgeMove={(edges) => {
+                            if ((!diagramClassInstance && !classInstances[0]) || !editor) return;
+                            isDiagramUpdate.current = true;
                             const edgeEdits = getConnectEdits(edges);
-                            edgeEdits.forEach((edit) => edits.push(edit));
-                          }
-                          if (edits.length > 0) {
-                            edits.sort((a, b) => {
-                              if (a.range.startLineNumber !== b.range.startLineNumber)
-                                return a.range.startLineNumber - b.range.startLineNumber;
-                              return a.range.startColumn - b.range.startColumn;
-                            });
-                            const filtered = edits.filter((edit, i) => {
-                              if (i === 0) return true;
-                              const prev = edits[i - 1];
-                              if (
-                                edit.range.startLineNumber < prev.range.endLineNumber ||
-                                (edit.range.startLineNumber === prev.range.endLineNumber &&
-                                  edit.range.startColumn < prev.range.endColumn)
-                              ) {
-                                return false;
-                              }
-                              return true;
-                            });
-                            if (filtered.length > 0) {
-                              editor.executeEdits("resize", filtered);
+                            if (edgeEdits.size > 0) {
+                              editor.executeEdits("edge-move", Array.from(edgeEdits.values()));
                             }
-                          }
-                        }}
-                        onEdgeMove={(edges) => {
-                          if ((!diagramClassInstance && !classInstances[0]) || !editor) return;
-                          isDiagramUpdate.current = true;
-                          const edgeEdits = getConnectEdits(edges);
-                          if (edgeEdits.size > 0) {
-                            editor.executeEdits("edge-move", Array.from(edgeEdits.values()));
-                          }
-                        }}
-                        onEdgeDelete={handleEdgeDelete}
-                        onComponentDelete={handleComponentDelete}
-                        onComponentsDelete={handleComponentsDelete}
-                      />
+                          }}
+                          onEdgeDelete={handleEdgeDelete}
+                          onComponentDelete={handleComponentDelete}
+                          onComponentsDelete={handleComponentsDelete}
+                        />
+                      </Suspense>
                     </div>
                     {selectedComponent && (
                       <>
@@ -2299,11 +2306,13 @@ export default function MorselEditor(props: MorselEditorProps) {
                     }}
                   >
                     {simulationJobId && simulationStatus?.status === "completed" ? (
-                      <SimulationResults
-                        jobId={simulationJobId}
-                        selectedVariables={selectedSimulationVariables}
-                        onVariablesLoaded={handleVariablesLoaded}
-                      />
+                      <Suspense fallback={null}>
+                        <SimulationResults
+                          jobId={simulationJobId}
+                          selectedVariables={selectedSimulationVariables}
+                          onVariablesLoaded={handleVariablesLoaded}
+                        />
+                      </Suspense>
                     ) : (
                       <div
                         style={{
@@ -2388,15 +2397,17 @@ export default function MorselEditor(props: MorselEditorProps) {
                 minHeight: 0,
               }}
             >
-              <CodeEditor
-                ref={codeEditorRef}
-                embed={props.embed}
-                context={context}
-                setClassInstances={setClassInstances}
-                setEditor={setEditor}
-                content={content}
-                theme={colorMode === "dark" ? "vs-dark" : "light"}
-              />
+              <Suspense fallback={null}>
+                <CodeEditor
+                  ref={codeEditorRef}
+                  embed={props.embed}
+                  context={context}
+                  setClassInstances={setClassInstances}
+                  setEditor={setEditor}
+                  content={content}
+                  theme={colorMode === "dark" ? "vs-dark" : "light"}
+                />
+              </Suspense>
             </div>
           </div>
         </div>
@@ -2914,15 +2925,17 @@ export default function MorselEditor(props: MorselEditorProps) {
             ]}
           >
             <div style={{ height: "60vh", border: "1px solid " + (colorMode === "dark" ? "#30363d" : "#d0d7de") }}>
-              <CodeEditor
-                content={flattenedCode}
-                context={null}
-                setClassInstances={() => {}}
-                setEditor={() => {}}
-                theme={colorMode === "dark" ? "vs-dark" : "light"}
-                embed={false}
-                readOnly={true}
-              />
+              <Suspense fallback={null}>
+                <CodeEditor
+                  content={flattenedCode}
+                  context={null}
+                  setClassInstances={() => {}}
+                  setEditor={() => {}}
+                  theme={colorMode === "dark" ? "vs-dark" : "light"}
+                  embed={false}
+                  readOnly={true}
+                />
+              </Suspense>
             </div>
           </Dialog>
         )}

@@ -14,7 +14,7 @@ import {
   Scope,
 } from "@modelscript/core";
 import { Editor, loader, type Monaco, type Theme } from "@monaco-editor/react";
-import { debounce } from "lodash";
+import debounce from "lodash/debounce";
 import * as monaco from "monaco-editor";
 import { editor, languages } from "monaco-editor";
 import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";

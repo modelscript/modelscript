@@ -17,7 +17,7 @@ export default defineConfig(({ isSsrBuild }) => {
       tsconfigPaths(),
       isSsrBuild === false &&
         nodePolyfills({
-          include: ["buffer", "fs", "path", "process", "stream", "util", "vm"],
+          include: ["buffer", "fs", "path", "process"],
           protocolImports: false,
         }),
       isSsrBuild === false &&
@@ -34,6 +34,20 @@ export default defineConfig(({ isSsrBuild }) => {
           ],
         }),
     ],
+    build: {
+      rollupOptions: {
+        output: isSsrBuild
+          ? {}
+          : {
+              manualChunks: {
+                monaco: ["monaco-editor"],
+                x6: ["@antv/x6", "@antv/layout"],
+                primer: ["@primer/react"],
+                recharts: ["recharts"],
+              },
+            },
+      },
+    },
     server: {
       port: 5173,
       strictPort: true,
