@@ -2300,8 +2300,34 @@ export class ModelicaArrayClassInstance extends ModelicaClassInstance {
     let i = 0;
     for (const arraySubscript of this.#arraySubscripts) {
       if (arraySubscript.flexible) {
-        if (expression instanceof ModelicaArray) this.shape.push(expression.flatShape[i] ?? 0);
-        else this.shape.push(0);
+        if (expression instanceof ModelicaArray) {
+          this.shape.push(expression.flatShape[i] ?? 0);
+        } else {
+          // Try evaluatedExpression for component reference bindings like a[1].x
+          const evalExpr = this.modification?.evaluatedExpression;
+          if (evalExpr instanceof ModelicaArray) {
+            this.shape.push(evalExpr.flatShape[i] ?? 0);
+          } else {
+            // Try to infer size from the modification expression's syntax node
+            const modExprNode = this.modification?.modificationExpression?.expression;
+            if (modExprNode) {
+              // Navigate up to the enclosing class scope where sibling components are visible
+              let evalScope: Scope | null = this.parent;
+              while (evalScope && !(evalScope instanceof ModelicaClassInstance)) {
+                evalScope = evalScope.parent;
+              }
+              if (evalScope) {
+                const result = modExprNode.accept(new ModelicaInterpreter(), evalScope);
+                if (result instanceof ModelicaArray) {
+                  this.shape.push(result.flatShape[i] ?? 0);
+                  i++;
+                  continue;
+                }
+              }
+            }
+            this.shape.push(0);
+          }
+        }
         i++;
         continue;
       }

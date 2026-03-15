@@ -7,6 +7,7 @@ import {
   ModelicaBooleanLiteral,
   ModelicaExpression,
   ModelicaIntegerLiteral,
+  ModelicaObject,
   ModelicaRealLiteral,
   ModelicaStringLiteral,
   ModelicaUnaryExpression,
@@ -339,6 +340,14 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
    * @returns The resolved ModelicaExpression, or null if unresolved.
    */
   visitComponentReference(node: ModelicaComponentReferenceSyntaxNode, scope: Scope): ModelicaExpression | null {
+    // Check if any non-terminal part has subscripts — if so, we need step-by-step resolution
+    const hasIntermediateSubscripts =
+      node.parts.length > 1 && node.parts.slice(0, -1).some((p) => p.arraySubscripts?.subscripts?.length);
+
+    if (hasIntermediateSubscripts) {
+      return this.#resolveStepByStep(node, scope);
+    }
+
     const namedElement = scope.resolveComponentReference(node);
     if (!namedElement) return null;
     let result: ModelicaExpression | null;
@@ -349,25 +358,125 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     } else {
       throw new Error();
     }
-    // Handle array subscripts like b[end] or b[2]
-    const subscripts = node.parts[node.parts.length - 1]?.arraySubscripts?.subscripts;
+    // Handle array subscripts on the last part
+    const lastPart = node.parts[node.parts.length - 1];
+    const subscripts = lastPart?.arraySubscripts?.subscripts;
     if (result instanceof ModelicaArray && subscripts && subscripts.length > 0) {
       for (const sub of subscripts) {
         if (!(result instanceof ModelicaArray)) break;
-        // Set end value for this array dimension
         const prevEnd = this.#endValue;
         this.#endValue = result.shape[0] ?? 0;
         const indexExpr = sub.expression?.accept(this, scope);
         this.#endValue = prevEnd;
         if (indexExpr instanceof ModelicaIntegerLiteral) {
-          const idx = indexExpr.value - 1; // 1-indexed to 0-indexed
+          const idx = indexExpr.value - 1;
           result = result.elements[idx] ?? null;
         } else {
-          return null; // Cannot resolve subscript statically
+          return null;
         }
       }
     }
     return result;
+  }
+
+  /**
+   * Resolve a multi-part component reference step by step, handling intermediate subscripts.
+   * For `a[1].x`: resolves `a` → array expression, applies `[1]`, then extracts `.x` member.
+   */
+  #resolveStepByStep(node: ModelicaComponentReferenceSyntaxNode, scope: Scope): ModelicaExpression | null {
+    const parts = node.parts;
+    if (parts.length === 0) return null;
+
+    // Resolve first part
+    const firstName = parts[0]?.identifier;
+    const firstElement = scope.resolveSimpleName(firstName);
+    if (!firstElement) return null;
+
+    let result: ModelicaExpression | null;
+    if (firstElement instanceof ModelicaClassInstance) {
+      result = ModelicaExpression.fromClassInstance(firstElement);
+    } else if (firstElement instanceof ModelicaComponentInstance) {
+      if (!firstElement.instantiated && !firstElement.instantiating) firstElement.instantiate();
+      result = ModelicaExpression.fromClassInstance(firstElement.classInstance);
+    } else {
+      return null;
+    }
+
+    // Apply subscripts on first part — handle multi-dimensional flat arrays
+    const firstSubscripts = parts[0]?.arraySubscripts?.subscripts;
+    if (result instanceof ModelicaArray && firstSubscripts && firstSubscripts.length > 0) {
+      for (const sub of firstSubscripts) {
+        if (!(result instanceof ModelicaArray)) break;
+        const prevEnd = this.#endValue;
+        this.#endValue = result.shape[0] ?? 0;
+        const indexExpr = sub.expression?.accept(this, scope);
+        this.#endValue = prevEnd;
+        if (indexExpr instanceof ModelicaIntegerLiteral) {
+          const idx = indexExpr.value - 1;
+          if (result.shape.length > 1) {
+            // Multi-dimensional: compute stride and extract row slice
+            const stride = result.shape.slice(1).reduce((a, b) => a * b, 1);
+            const start = idx * stride;
+            const rowElements = result.elements.slice(start, start + stride);
+            result = new ModelicaArray(result.shape.slice(1), rowElements);
+          } else {
+            result = result.elements[idx] ?? null;
+          }
+        } else {
+          return null;
+        }
+      }
+    }
+
+    // Process remaining parts (member access + optional subscripts)
+    for (let i = 1; i < parts.length; i++) {
+      if (!result) return null;
+      const memberName = parts[i]?.identifier?.text;
+      if (!memberName) return null;
+
+      // Extract member from ModelicaObject or distribute over array
+      result = this.#extractMember(result, memberName);
+
+      // Apply subscripts on this part
+      const subscripts = parts[i]?.arraySubscripts?.subscripts;
+      if (result instanceof ModelicaArray && subscripts && subscripts.length > 0) {
+        for (const sub of subscripts) {
+          if (!(result instanceof ModelicaArray)) break;
+          const prevEnd = this.#endValue;
+          this.#endValue = result.shape[0] ?? 0;
+          const indexExpr = sub.expression?.accept(this, scope);
+          this.#endValue = prevEnd;
+          if (indexExpr instanceof ModelicaIntegerLiteral) {
+            result = result.elements[indexExpr.value - 1] ?? null;
+          } else {
+            return null;
+          }
+        }
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Extract a named member from an expression.
+   * If expr is a ModelicaObject, extracts the member directly.
+   * If expr is a ModelicaArray, distributes the member access over elements.
+   */
+  #extractMember(expr: ModelicaExpression, memberName: string): ModelicaExpression | null {
+    if (expr instanceof ModelicaObject) {
+      return expr.elements.get(memberName) ?? null;
+    } else if (expr instanceof ModelicaArray) {
+      const elements: ModelicaExpression[] = [];
+      for (const el of expr.elements) {
+        if (!el) return null;
+        const member = this.#extractMember(el, memberName);
+        if (!member) return null;
+        elements.push(member);
+      }
+      return new ModelicaArray(expr.shape, elements);
+    }
+    return null;
   }
 
   /**
