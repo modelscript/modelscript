@@ -99,7 +99,9 @@ export class Context extends Scope {
     ) {
       dae.classKind = instance.classKind;
     }
-    instance.accept(new ModelicaFlattener(), ["", dae]);
+    const flattener = new ModelicaFlattener();
+    instance.accept(flattener, ["", dae]);
+    flattener.foldDAEConstants(dae);
     // Check for validation errors (e.g. invalid modification targets)
     if (instance instanceof ModelicaClassInstance && this.#hasErrors(instance)) return null;
     const out = new StringWriter();

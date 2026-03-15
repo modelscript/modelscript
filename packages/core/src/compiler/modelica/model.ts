@@ -1716,9 +1716,25 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
         const isEnumeration = element instanceof ModelicaEnumerationClassInstance;
         if (this.modification && !isPredefined && !isEnumeration) {
           const typeElementNames = new Set<string>();
+          const protectedElementNames = new Set<string>();
           for (const el of element.elements) {
             if (el instanceof ModelicaNamedElement && el.name) {
               typeElementNames.add(el.name);
+              if (el instanceof ModelicaComponentInstance && el.isProtected) {
+                protectedElementNames.add(el.name);
+              }
+            }
+          }
+          // Also check elements from protected extends clauses
+          for (const declEl of element.declaredElements) {
+            if (declEl instanceof ModelicaExtendsClassInstance) {
+              if (declEl.visibility === ModelicaVisibility.PROTECTED && declEl.classInstance) {
+                for (const exEl of declEl.classInstance.elements) {
+                  if (exEl instanceof ModelicaComponentInstance && exEl.name) {
+                    protectedElementNames.add(exEl.name);
+                  }
+                }
+              }
             }
           }
           for (const modArg of this.modification.modificationArguments) {
@@ -1729,6 +1745,10 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
                   makeDiagnostic(ModelicaErrorCode.MODIFIER_NOT_FOUND, null, name, this.name ?? "", element.name ?? ""),
                 );
               }
+            }
+            // Check if modification targets a protected element
+            if (name && protectedElementNames.has(name)) {
+              throw new Error(`Protected element '${name}' may not be modified, got '${name} = ...'.`);
             }
           }
         }
@@ -2255,6 +2275,10 @@ export class ModelicaArrayClassInstance extends ModelicaClassInstance {
   get elementClassInstance(): ModelicaClassInstance | null {
     this.instantiate();
     return this.#elementClassInstance;
+  }
+
+  get arraySubscripts(): ModelicaSubscriptSyntaxNode[] {
+    return this.#arraySubscripts;
   }
 
   override get hash(): string {

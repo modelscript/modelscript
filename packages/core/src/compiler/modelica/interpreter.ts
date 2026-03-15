@@ -91,7 +91,8 @@ export function buildFilledArray(shape: number[], value: ModelicaExpression): Mo
       for (let i = 0; i < n; i++) elements.push(...innerElements);
       return new ModelicaArray([n, ...value.shape], elements);
     }
-    return new ModelicaArray([n], Array(n).fill(value));
+    const arr = new ModelicaArray([n], Array(n).fill(value));
+    return arr;
   }
   const [first, ...rest] = shape;
   const n = first ?? 0;

@@ -738,6 +738,12 @@ export abstract class ModelicaExpression {
           if (expression) elements.push(expression);
         }
       }
+      // If we couldn't evaluate elements (e.g. disabled function algorithms),
+      // returning an empty array here masks the original AST from the flattener.
+      // Return null to signal evaluation failure unless the array is genuinely sized 0.
+      if (elements.length === 0 && classInstance.shape.some((d) => d > 0)) {
+        return null;
+      }
       return new ModelicaArray(classInstance.shape, elements);
     } else if (classInstance instanceof ModelicaEnumerationClassInstance) {
       return classInstance.value;
@@ -1307,9 +1313,6 @@ export class ModelicaArray extends ModelicaPrimaryExpression {
           return flatElements as ModelicaPrimaryExpression[];
         }
       }
-      console.warn(
-        `Array split mismatch: elements ${flatElements.length} (flat) vs ${this.elements.length} (raw) != count ${count}. Proceeding with partial/mismatched data.`,
-      );
       if (index) {
         return flatElements[index] as ModelicaPrimaryExpression;
       } else {
@@ -2482,11 +2485,29 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     this.out.write(" " + varName);
     if (variable.attributes.size > 0) {
       this.out.write("(");
+      const attrPriority: Record<string, number> = {
+        value: 1,
+        min: 2,
+        max: 3,
+        start: 4,
+        fixed: 5,
+        nominal: 6,
+        quantity: 7,
+        unit: 8,
+        displayUnit: 9,
+        stateSelect: 10,
+      };
+      const sortedEntries = Array.from(variable.attributes.entries()).sort((a, b) => {
+        const pA = attrPriority[a[0]] ?? 99;
+        const pB = attrPriority[b[0]] ?? 99;
+        if (pA !== pB) return pA - pB;
+        return a[0].localeCompare(b[0]);
+      });
       let i = 0;
-      for (const entry of variable.attributes.entries()) {
-        this.out.write(entry[0] + " = ");
-        entry[1].accept(this);
-        if (++i < variable.attributes.size) this.out.write(", ");
+      for (const [key, expr] of sortedEntries) {
+        this.out.write(key + " = ");
+        expr.accept(this);
+        if (++i < sortedEntries.length) this.out.write(", ");
       }
       this.out.write(")");
     }
@@ -2507,6 +2528,7 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     this.out.write(node.classKind + " " + node.name);
     if (node.description) this.out.write(' "' + node.description + '"');
     this.out.write("\n");
+
     for (const variable of node.variables) {
       this.#emitVariable(variable);
     }
@@ -2533,6 +2555,7 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     this.out.write(fn.classKind + " " + fn.name);
     if (fn.description) this.out.write(' "' + fn.description + '"');
     this.out.write("\n");
+
     for (const variable of fn.variables) {
       this.#emitVariable(variable);
     }

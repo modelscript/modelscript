@@ -210,6 +210,13 @@ export const ModelicaErrorCode = {
     message: (ref1: string, ref2: string) =>
       `In connect(${ref1}, ${ref2}): flow variable sets differ between connectors.`,
   },
+  PROTECTED_MODIFICATION: {
+    code: 4005,
+    rule: "protected-modification",
+    severity: "error",
+    message: (elementName: string, modText: string) =>
+      `Protected element '${elementName}' may not be modified, got '${modText}'.`,
+  },
 } as const satisfies Record<string, ErrorCodeDef>;
 
 // Derive the union type of all error code keys
