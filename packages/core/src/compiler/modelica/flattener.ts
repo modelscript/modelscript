@@ -975,12 +975,11 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
    * `connect` equation must have `f = 0.0` added automatically.
    */
   generateFlowBalanceEquations(dae: ModelicaDAE) {
+    // In Modelica, every top-level flow variable gets a boundary flow balance equation
+    // f = 0.0, regardless of internal connections. This is separate from the connect
+    // sum-to-zero equation which handles internal flow relationships.
     for (const flowVar of this.#allFlowVars) {
-      if (!this.#connectedFlowVars.has(flowVar)) {
-        dae.equations.push(
-          new ModelicaSimpleEquation(new ModelicaNameExpression(flowVar), new ModelicaRealLiteral(0.0)),
-        );
-      }
+      dae.equations.push(new ModelicaSimpleEquation(new ModelicaNameExpression(flowVar), new ModelicaRealLiteral(0.0)));
     }
   }
 
@@ -1096,7 +1095,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         );
         return new ModelicaArray(op1.shape, foldedElements);
       }
-      return new ModelicaUnaryExpression(expr.operator, op1);
+      return op1 === expr.operand ? expr : new ModelicaUnaryExpression(expr.operator, op1);
     } else if (expr instanceof ModelicaFunctionCallExpression) {
       const args = expr.args.map((a) => this.#foldExpression(a, dae, visited));
       const folded = tryFoldBuiltinFunction(expr.functionName, args);
@@ -2390,24 +2389,10 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     // If both sides are broken, skip the entire connect equation
     if (broken1 && broken2) return null;
 
-    // If one side is broken, only emit flow sum-to-zero for the remaining side
+    // If one side is broken, skip the connect equation entirely.
+    // The generic flow balance (f = 0.0) for the remaining side
+    // is handled by generateFlowBalanceEquations.
     if (broken1 || broken2) {
-      const activeRef = broken1 ? ref2 : ref1;
-      const activeName = this.#resolveConnectName(activeRef, ctx);
-      const activeComp = this.#resolveConnectComponent(activeRef, ctx);
-      if (!activeName || !activeComp) return null;
-      const leaves = this.#collectConnectorLeaves(activeComp, activeName);
-      for (const [, info] of leaves) {
-        if (info.isFlow) {
-          // Flow variable on remaining side: f = 0.0
-          ctx.dae.equations.push(
-            new ModelicaSimpleEquation(new ModelicaNameExpression(info.fullName), new ModelicaRealLiteral(0.0)),
-          );
-          // Mark as connected so generic flow balance doesn't duplicate
-          ctx.connectedFlowVars?.add(info.fullName);
-        }
-        // Potential (non-flow) variables: no equation needed when one side is broken
-      }
       return null;
     }
 
@@ -2431,12 +2416,13 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       if (!info2) continue;
 
       if (info1.isFlow) {
-        // Flow variables: a.f + b.f = 0.0
-        const lhs = new ModelicaBinaryExpression(
+        // Flow variables: -(a.f + b.f) = 0.0
+        const sum = new ModelicaBinaryExpression(
           ModelicaBinaryOperator.ADDITION,
           new ModelicaNameExpression(info1.fullName),
           new ModelicaNameExpression(info2.fullName),
         );
+        const lhs = new ModelicaUnaryExpression(ModelicaUnaryOperator.UNARY_MINUS, sum);
         ctx.dae.equations.push(new ModelicaSimpleEquation(lhs, new ModelicaRealLiteral(0.0)));
         // Track these flow variables as connected
         ctx.connectedFlowVars?.add(info1.fullName);

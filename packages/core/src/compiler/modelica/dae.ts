@@ -2843,7 +2843,11 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
   visitUnaryExpression(node: ModelicaUnaryExpression): void {
     const sep = /[a-z]/i.test(node.operator) ? " " : "";
     this.out.write(node.operator + sep);
+    // Add parentheses when the operand is a binary expression to preserve precedence
+    const needsParens = node.operand instanceof ModelicaBinaryExpression;
+    if (needsParens) this.out.write("(");
     node.operand.accept(this);
+    if (needsParens) this.out.write(")");
   }
 
   visitWhenEquation(node: ModelicaWhenEquation): void {
