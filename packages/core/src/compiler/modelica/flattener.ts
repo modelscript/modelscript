@@ -2849,6 +2849,14 @@ function canonicalizeBinaryExpression(
     const negated = new ModelicaUnaryExpression(ModelicaUnaryOperator.UNARY_MINUS, operand2);
     return new ModelicaBinaryExpression(ModelicaBinaryOperator.ADDITION, negated, operand1);
   }
+  // Canonicalize commutative operations: put literals on the left
+  if (
+    (operator === ModelicaBinaryOperator.ADDITION || operator === ModelicaBinaryOperator.MULTIPLICATION) &&
+    !isLiteral(operand1) &&
+    isLiteral(operand2)
+  ) {
+    return new ModelicaBinaryExpression(operator, operand2, operand1);
+  }
   // Wrap integer variables with /*Real*/ when used with Real operands in any arithmetic context
   if (dae) {
     if (isRealTyped(operand1, dae)) {
