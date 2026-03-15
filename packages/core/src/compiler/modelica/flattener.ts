@@ -1604,7 +1604,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     const target = node.target?.accept(this, ctx);
     let source = node.source?.accept(this, ctx);
     if (target && source) {
-      if (isRealTyped(target, ctx.dae)) source = castToReal(source) ?? source;
+      if (isRealTyped(target, ctx.dae)) source = coerceToReal(source, ctx.dae) ?? source;
       ctx.stmtCollector.push(new ModelicaAssignmentStatement(target, source));
     }
     return null;
@@ -1922,8 +1922,8 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         return null;
       }
       // Widen integers to Real when the other side is Real-typed
-      if (isRealTyped(expression1, ctx.dae)) expression2 = castToReal(expression2) ?? expression2;
-      if (isRealTyped(expression2, ctx.dae)) expression1 = castToReal(expression1) ?? expression1;
+      if (isRealTyped(expression1, ctx.dae)) expression2 = coerceToReal(expression2, ctx.dae) ?? expression2;
+      if (isRealTyped(expression2, ctx.dae)) expression1 = coerceToReal(expression1, ctx.dae) ?? expression1;
       ctx.dae.equations.push(
         new ModelicaSimpleEquation(
           expression1,
@@ -2003,6 +2003,43 @@ function castToReal(expression: ModelicaExpression | null): ModelicaExpression |
     }));
     if (thenExpr !== expression.thenExpression || elseExpr !== expression.elseExpression)
       return new ModelicaIfElseExpression(expression.condition, thenExpr, elseIfClauses, elseExpr);
+  }
+  return expression;
+}
+
+// Like castToReal, but also wraps non-literal Integer-typed expressions
+// in type-cast comments (e.g. wrapping i as  Real  (i) ).
+// Use only in equation/statement contexts where the type cast should be visible in the output.
+function coerceToReal(expression: ModelicaExpression | null, dae?: ModelicaDAE): ModelicaExpression | null {
+  if (!expression) return null;
+  // First try castToReal for literal/structural conversion
+  const casted = castToReal(expression);
+  if (casted !== expression) return casted;
+  // Wrap Integer variables in /*Real*/(...)
+  if (expression instanceof ModelicaIntegerVariable) {
+    return new ModelicaFunctionCallExpression("/*Real*/", [expression]);
+  }
+  if (expression instanceof ModelicaEnumerationLiteral) {
+    return new ModelicaFunctionCallExpression("/*Real*/", [expression]);
+  }
+  // Check if a named expression refers to a non-Real variable (Integer, Boolean, etc.)
+  if (expression instanceof ModelicaNameExpression && dae) {
+    const variable = dae.variables.find((v) => v.name === expression.name);
+    if (variable && !(variable instanceof ModelicaRealVariable)) {
+      return new ModelicaFunctionCallExpression("/*Real*/", [expression]);
+    }
+  }
+  // Recurse into binary expressions
+  if (expression instanceof ModelicaBinaryExpression) {
+    const op1 = coerceToReal(expression.operand1, dae) ?? expression.operand1;
+    const op2 = coerceToReal(expression.operand2, dae) ?? expression.operand2;
+    if (op1 !== expression.operand1 || op2 !== expression.operand2)
+      return new ModelicaBinaryExpression(expression.operator, op1, op2);
+  }
+  // Recurse into unary expressions
+  if (expression instanceof ModelicaUnaryExpression) {
+    const operand = coerceToReal(expression.operand, dae) ?? expression.operand;
+    if (operand !== expression.operand) return new ModelicaUnaryExpression(expression.operator, operand);
   }
   return expression;
 }
