@@ -538,9 +538,21 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
 
   #flattenEnumerationClass(node: ModelicaComponentInstance, name: string, args: [string, ModelicaDAE]): void {
     const { causality, isFinal, isProtected } = node;
-    const attributes = new Map(
-      node.modification?.modificationArguments.flatMap((m) => (m.name && m.expression ? [[m.name, m.expression]] : [])),
-    );
+    const attributes = new Map<string, ModelicaExpression>();
+    // First collect type-level attributes (e.g., from `type E = enumeration(...)(start = E.two)`)
+    if (node.classInstance instanceof ModelicaEnumerationClassInstance) {
+      for (const m of node.classInstance.modification?.modificationArguments ?? []) {
+        if (m.name && m.expression) {
+          attributes.set(m.name, m.expression);
+        }
+      }
+    }
+    // Then overlay component-level attributes (which take priority)
+    for (const m of node.modification?.modificationArguments ?? []) {
+      if (m.name && m.expression) {
+        attributes.set(m.name, m.expression);
+      }
+    }
     const expression = node.modification?.expression ?? null;
     const varExpression = expression;
     const variable = new ModelicaEnumerationVariable(
