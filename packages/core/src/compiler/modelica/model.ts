@@ -30,6 +30,7 @@ import {
   ModelicaComponentReferenceSyntaxNode,
   ModelicaCompoundImportClauseSyntaxNode,
   ModelicaConnectEquationSyntaxNode,
+  ModelicaConstrainingClauseSyntaxNode,
   ModelicaElementModificationSyntaxNode,
   ModelicaElementRedeclarationSyntaxNode,
   ModelicaElementSyntaxNode,
@@ -655,6 +656,7 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
           causality: ModelicaCausality | null;
           conditionAttribute: { condition?: ModelicaExpressionSyntaxNode | null } | null;
           conditionScope: Scope | null;
+          constrainingClause: ModelicaConstrainingClauseSyntaxNode | null;
         }
       >();
       if (redeclaredNames.size > 0) {
@@ -675,11 +677,19 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
                         conditionAttribute?: { condition?: ModelicaExpressionSyntaxNode | null } | null;
                       } | null
                     )?.conditionAttribute ?? null;
+                  // Capture constraining clause from the original replaceable component
+                  const ccClause =
+                    (
+                      inheritedElement.abstractSyntaxNode?.parent as {
+                        constrainingClause?: ModelicaConstrainingClauseSyntaxNode | null;
+                      }
+                    )?.constrainingClause ?? null;
                   inheritedProps.set(inheritedElement.name, {
                     variability: inheritedElement.variability,
                     causality: inheritedElement.causality,
                     conditionAttribute: condAttr,
                     conditionScope: inheritedElement.parent,
+                    constrainingClause: ccClause,
                   });
                 }
               }
@@ -717,6 +727,14 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
               }
               if (!element.causality && inherited.causality) {
                 element.causality = inherited.causality;
+              }
+              // Carry constraining clause from original replaceable to redeclared component
+              // If the redeclare has its own constrainedby, use that instead
+              if (inherited.constrainingClause && !element.constrainingModificationArgs) {
+                element.constrainingModificationArgs = ModelicaComponentInstance.extractConstrainingArgs(
+                  inherited.constrainingClause,
+                  element.parent,
+                );
               }
               // Carry over 'if false' condition: if the inherited component had a conditional
               // that evaluates to false, skip the redeclared component too
@@ -951,6 +969,14 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
                   mergedArgs.push(origArg);
                 }
               }
+              // Merge constraining clause modifiers as lowest-priority defaults (recursive)
+              if (elementSyntaxNode.constrainingClause) {
+                const ccArgs = ModelicaComponentInstance.extractConstrainingArgs(
+                  elementSyntaxNode.constrainingClause,
+                  this,
+                );
+                ModelicaComponentInstance.mergeArgsRecursively(mergedArgs, ccArgs);
+              }
               // Determine binding expression: redeclare's wins, else original's
               const bindingExpr =
                 redeclaredMod?.expression ??
@@ -975,6 +1001,18 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
               if (redeclaration.final) comp.isFinal = true;
               if (!comp.variability && elementSyntaxNode.variability) {
                 comp.variability = elementSyntaxNode.variability;
+              }
+              // Carry constraining clause from original replaceable to redeclared component
+              // Merge recursively into existing modification since mergeModifications() already ran
+              if (elementSyntaxNode.constrainingClause) {
+                const ccArgs = ModelicaComponentInstance.extractConstrainingArgs(
+                  elementSyntaxNode.constrainingClause,
+                  this,
+                );
+                const mod = comp.modification;
+                if (mod) {
+                  ModelicaComponentInstance.mergeArgsRecursively(mod.modificationArguments, ccArgs);
+                }
               }
               this.declaredElements.push(comp);
             }
@@ -1405,6 +1443,9 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
   isOuter: boolean;
   /** Flow prefix (flow/stream) from the component clause. */
   flowPrefix: ModelicaFlow | null;
+  /** Constraining clause modifiers from the original replaceable declaration.
+   *  These are applied as lowest-priority defaults during mergeModifications(). */
+  constrainingModificationArgs: ModelicaModificationArgument[] | null = null;
 
   constructor(
     parent: ModelicaClassInstance | null,
@@ -1415,6 +1456,15 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
     this.#abstractSyntaxNode = abstractSyntaxNode;
     this.name = this.abstractSyntaxNode?.declaration?.identifier?.text ?? null;
     this.description = this.abstractSyntaxNode?.description?.strings?.map((d) => d.text ?? "")?.join(" ") ?? null;
+
+    // Extract constraining clause from the component's own declaration BEFORE mergeModifications
+    const ownCC =
+      (this.abstractSyntaxNode?.parent as { constrainingClause?: ModelicaConstrainingClauseSyntaxNode | null })
+        ?.constrainingClause ?? null;
+    if (ownCC) {
+      this.constrainingModificationArgs = ModelicaComponentInstance.extractConstrainingArgs(ownCC, parent);
+    }
+
     this.#modification = modification ?? this.mergeModifications();
 
     // Compute prefixes from AST during construction
@@ -1645,10 +1695,12 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
           : null,
         ModelicaModification.merge(outerModificationArgument.annotations, annotationFromArg),
       );
+      this.#mergeConstrainingArgs(mod);
       return mod;
     } else if (outerModificationArgument instanceof ModelicaParameterModification) {
       const mod = new ModelicaModification(this, filteredArgs, null, null, outerModificationArgument.expression);
       mod.annotations = annotationFromArg;
+      this.#mergeConstrainingArgs(mod);
       return mod;
     }
     const mod = new ModelicaModification(this, filteredArgs, modificationSyntaxNode?.modificationExpression);
@@ -1658,7 +1710,54 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
         ? ModelicaModification.new(this.parent, this.abstractSyntaxNode.annotationClause)
         : null,
     );
+    this.#mergeConstrainingArgs(mod);
     return mod;
+  }
+
+  /**
+   * Merge constraining clause modifiers as lowest-priority defaults into a modification.
+   * Uses recursive merge: when both sides have an arg with the same name, sub-arguments
+   * from the constraining clause are recursively merged into the existing arg rather than
+   * being skipped entirely. Existing expressions always take priority.
+   */
+  #mergeConstrainingArgs(mod: ModelicaModification): void {
+    if (this.constrainingModificationArgs && this.constrainingModificationArgs.length > 0) {
+      ModelicaComponentInstance.mergeArgsRecursively(mod.modificationArguments, this.constrainingModificationArgs);
+    }
+  }
+
+  /**
+   * Recursively merge `source` modification arguments into `target` as lowest-priority defaults.
+   *
+   * For each source arg:
+   * - If no target arg has the same name → append the source arg
+   * - If a target arg has the same name AND both are `ModelicaElementModification`:
+   *   - Recursively merge source's sub-arguments into target's sub-arguments
+   *   - Only set the target's expression from source if target has no expression
+   * - Otherwise (name collision with non-element-modification) → skip (target wins)
+   */
+  static mergeArgsRecursively(target: ModelicaModificationArgument[], source: ModelicaModificationArgument[]): void {
+    const targetByName = new Map<string, ModelicaModificationArgument>();
+    for (const t of target) {
+      if (t.name) targetByName.set(t.name, t);
+    }
+    for (const srcArg of source) {
+      if (!srcArg.name) continue;
+      const existing = targetByName.get(srcArg.name);
+      if (!existing) {
+        // New name — add directly
+        target.push(srcArg);
+        targetByName.set(srcArg.name, srcArg);
+      } else if (existing instanceof ModelicaElementModification && srcArg instanceof ModelicaElementModification) {
+        // Same name, both are element modifications — recurse into sub-args
+        if (srcArg.modificationArguments.length > 0) {
+          ModelicaComponentInstance.mergeArgsRecursively(existing.modificationArguments, srcArg.modificationArguments);
+        }
+        // Only set expression from source if target has none
+        // (We don't override — existing expression wins)
+      }
+      // else: name collision with different types — skip (existing wins)
+    }
   }
 
   override get modification(): ModelicaModification | null {
@@ -1671,6 +1770,26 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
 
   override get parent(): ModelicaClassInstance | null {
     return super.parent as ModelicaClassInstance | null;
+  }
+
+  /**
+   * Extract modification arguments from a constraining clause.
+   * Converts the constraining clause's classModification into ModelicaModificationArgument[],
+   * which can be merged as lowest-priority defaults.
+   */
+  static extractConstrainingArgs(
+    constrainingClause: ModelicaConstrainingClauseSyntaxNode,
+    scope: ModelicaClassInstance | null,
+  ): ModelicaModificationArgument[] {
+    const args: ModelicaModificationArgument[] = [];
+    for (const modArg of constrainingClause.classModification?.modificationArguments ?? []) {
+      if (modArg instanceof ModelicaElementModificationSyntaxNode) {
+        args.push(ModelicaElementModification.new(scope, modArg));
+      } else if (modArg instanceof ModelicaElementRedeclarationSyntaxNode) {
+        args.push(ModelicaElementRedeclaration.new(scope, modArg));
+      }
+    }
+    return args;
   }
 }
 
