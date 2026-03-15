@@ -407,12 +407,21 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     const { causality, isProtected } = node;
     // Check structural final: parameter used in conditional component condition
     const isFinal = node.isFinal || this.#outerFinal || this.#structuralFinalParams.has(name);
-    const attributes = new Map(
-      node.modification?.modificationArguments.flatMap((m) => {
-        if (m.name === "annotation") return [];
-        return m.name && m.expression ? [[m.name, m.expression]] : [];
-      }),
-    );
+    const attributes = new Map<string, ModelicaExpression>();
+    // First collect type-level attributes (e.g., from `type MyReal = Real(start = 1.0)`)
+    if (node.classInstance instanceof ModelicaPredefinedClassInstance) {
+      for (const m of node.classInstance.modification?.modificationArguments ?? []) {
+        if (m.name && m.name !== "annotation" && m.expression) {
+          attributes.set(m.name, m.expression);
+        }
+      }
+    }
+    // Then overlay component-level attributes (which take priority)
+    for (const m of node.modification?.modificationArguments ?? []) {
+      if (m.name && m.name !== "annotation" && m.expression) {
+        attributes.set(m.name, m.expression);
+      }
+    }
 
     let expression: ModelicaExpression | null;
     if (variability === ModelicaVariability.CONSTANT) {

@@ -654,6 +654,7 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
           variability: ModelicaVariability | null;
           causality: ModelicaCausality | null;
           conditionAttribute: { condition?: ModelicaExpressionSyntaxNode | null } | null;
+          conditionScope: Scope | null;
         }
       >();
       if (redeclaredNames.size > 0) {
@@ -678,6 +679,7 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
                     variability: inheritedElement.variability,
                     causality: inheritedElement.causality,
                     conditionAttribute: condAttr,
+                    conditionScope: inheritedElement.parent,
                   });
                 }
               }
@@ -720,7 +722,11 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
               // that evaluates to false, skip the redeclared component too
               if (inherited.conditionAttribute?.condition) {
                 const interp = new ModelicaInterpreter();
-                const condValue = inherited.conditionAttribute.condition.accept(interp, element.parent ?? undefined);
+                // Evaluate condition in the inherited component's scope, not the body-level redeclare's scope
+                const condValue = inherited.conditionAttribute.condition.accept(
+                  interp,
+                  inherited.conditionScope ?? element.parent ?? undefined,
+                );
                 if (
                   condValue != null &&
                   typeof (condValue as unknown as { value?: unknown }).value === "boolean" &&
