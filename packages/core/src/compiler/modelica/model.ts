@@ -37,6 +37,7 @@ import {
   ModelicaEquationSyntaxNode,
   ModelicaExpressionSyntaxNode,
   ModelicaExtendsClauseSyntaxNode,
+  ModelicaFlow,
   ModelicaIdentifierSyntaxNode,
   ModelicaImportClauseSyntaxNode,
   ModelicaLongClassSpecifierSyntaxNode,
@@ -1183,6 +1184,8 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
   isInner: boolean;
   /** Whether this component is declared `outer`. */
   isOuter: boolean;
+  /** Flow prefix (flow/stream) from the component clause. */
+  flowPrefix: ModelicaFlow | null;
 
   constructor(
     parent: ModelicaClassInstance | null,
@@ -1209,6 +1212,7 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
     this.isProtected = (this.abstractSyntaxNode?.parent?.parent as { visibility?: string })?.visibility === "protected";
     this.isInner = (this.abstractSyntaxNode?.parent as { inner?: boolean })?.inner ?? false;
     this.isOuter = (this.abstractSyntaxNode?.parent as { outer?: boolean })?.outer ?? false;
+    this.flowPrefix = (this.abstractSyntaxNode?.parent as { flow?: ModelicaFlow | null })?.flow ?? null;
   }
 
   get classInstance(): ModelicaClassInstance | null {

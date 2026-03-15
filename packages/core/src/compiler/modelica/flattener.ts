@@ -65,7 +65,9 @@ import {
   ModelicaClassKind,
   ModelicaComplexAssignmentStatementSyntaxNode,
   ModelicaComponentReferenceSyntaxNode,
+  ModelicaConnectEquationSyntaxNode,
   ModelicaExpressionSyntaxNode,
+  ModelicaFlow,
   ModelicaForEquationSyntaxNode,
   ModelicaForStatementSyntaxNode,
   ModelicaFunctionArgumentSyntaxNode,
@@ -1739,6 +1741,165 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     const step = node.stepExpression?.accept(this, ctx) ?? null;
     if (!start || !stop) return null;
     return new ModelicaRangeExpression(start, stop, step);
+  }
+
+  /**
+   * Expand `connect(a, b)` into scalar equations:
+   * - Potential (non-flow) variables: equality equations (`a.x = b.x`)
+   * - Flow variables: sum-to-zero equations (`a.f + b.f = 0.0`)
+   */
+  visitConnectEquation(node: ModelicaConnectEquationSyntaxNode, ctx: FlattenerContext): null {
+    const ref1 = node.componentReference1;
+    const ref2 = node.componentReference2;
+    if (!ref1 || !ref2) return null;
+
+    // Build prefixed names for both sides
+    const name1 = this.#resolveConnectName(ref1, ctx);
+    const name2 = this.#resolveConnectName(ref2, ctx);
+    if (!name1 || !name2) return null;
+
+    // Resolve the component instances
+    const comp1 = this.#resolveConnectComponent(ref1, ctx);
+    const comp2 = this.#resolveConnectComponent(ref2, ctx);
+    if (!comp1 || !comp2) return null;
+
+    // Collect leaf variables from both connector sides
+    const leaves1 = this.#collectConnectorLeaves(comp1, name1);
+    const leaves2 = this.#collectConnectorLeaves(comp2, name2);
+
+    // Match variables by their local name suffix and generate equations
+    for (const [localName, info1] of leaves1) {
+      const info2 = leaves2.get(localName);
+      if (!info2) continue;
+
+      if (info1.isFlow) {
+        // Flow variables: a.f + b.f = 0.0
+        const lhs = new ModelicaBinaryExpression(
+          ModelicaBinaryOperator.ADDITION,
+          new ModelicaNameExpression(info1.fullName),
+          new ModelicaNameExpression(info2.fullName),
+        );
+        ctx.dae.equations.push(new ModelicaSimpleEquation(lhs, new ModelicaRealLiteral(0.0)));
+      } else {
+        // Potential variables: a.x = b.x
+        ctx.dae.equations.push(
+          new ModelicaSimpleEquation(
+            new ModelicaNameExpression(info1.fullName),
+            new ModelicaNameExpression(info2.fullName),
+          ),
+        );
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Resolve a component reference in a connect equation to its full flattened name.
+   */
+  #resolveConnectName(ref: ModelicaComponentReferenceSyntaxNode, ctx: FlattenerContext): string | null {
+    const parts = ref.parts.map((p) => {
+      let name = p.identifier?.text ?? "";
+      // Handle array subscripts on the reference (e.g., c[1])
+      if (p.arraySubscripts?.subscripts?.length) {
+        const subs: string[] = [];
+        for (const sub of p.arraySubscripts.subscripts) {
+          const val = sub.expression?.accept(new ModelicaInterpreter(), ctx.classInstance);
+          subs.push(val?.toString() ?? "");
+        }
+        name += "[" + subs.join(",") + "]";
+      }
+      return name;
+    });
+    const localName = parts.join(".");
+    return ctx.prefix === "" ? localName : ctx.prefix + "." + localName;
+  }
+
+  /**
+   * Resolve a component reference to the ModelicaComponentInstance it points to.
+   */
+  #resolveConnectComponent(
+    ref: ModelicaComponentReferenceSyntaxNode,
+    ctx: FlattenerContext,
+  ): ModelicaComponentInstance | null {
+    const firstName = ref.parts[0]?.identifier?.text;
+    if (!firstName) return null;
+    const firstResolved = ctx.classInstance.resolveSimpleName?.(firstName, false, true);
+    if (!(firstResolved instanceof ModelicaComponentInstance)) return null;
+    let resolved: ModelicaComponentInstance = firstResolved;
+
+    // Walk through multi-part references (e.g., m.c -> resolve c within m's class)
+    for (let i = 1; i < ref.parts.length; i++) {
+      const partName = ref.parts[i]?.identifier?.text;
+      if (!partName) return null;
+      const classInst = resolved.classInstance;
+      if (!classInst) return null;
+      // For array class instances, look in the element class instance
+      let lookupClass: ModelicaClassInstance | null = classInst;
+      if (classInst instanceof ModelicaArrayClassInstance) {
+        lookupClass = classInst.elementClassInstance;
+      }
+      if (!lookupClass) return null;
+      const inner = lookupClass.resolveSimpleName?.(partName, false, true);
+      if (!(inner instanceof ModelicaComponentInstance)) return null;
+      resolved = inner as ModelicaComponentInstance;
+    }
+    return resolved;
+  }
+
+  /**
+   * Collect leaf variable info from a connector component.
+   * Returns a map from local variable name to {fullName, isFlow}.
+   */
+  #collectConnectorLeaves(
+    comp: ModelicaComponentInstance,
+    prefix: string,
+  ): Map<string, { fullName: string; isFlow: boolean }> {
+    const result = new Map<string, { fullName: string; isFlow: boolean }>();
+    const classInst = comp.classInstance;
+    if (!classInst) return result;
+
+    // For predefined types (Real, Integer, etc.), this component IS the leaf
+    if (classInst instanceof ModelicaPredefinedClassInstance) {
+      result.set("", { fullName: prefix, isFlow: comp.flowPrefix === ModelicaFlow.FLOW });
+      return result;
+    }
+
+    // For array class instances, look at element class instance's elements
+    const lookupClass =
+      classInst instanceof ModelicaArrayClassInstance
+        ? (classInst as ModelicaArrayClassInstance).elementClassInstance
+        : classInst;
+    if (!lookupClass) return result;
+
+    // Enumerate sub-components
+    for (const element of lookupClass.elements) {
+      if (!(element instanceof ModelicaComponentInstance)) continue;
+      if (!element.name) continue;
+
+      const elemClass = element.classInstance;
+      if (elemClass instanceof ModelicaPredefinedClassInstance) {
+        // Leaf variable
+        result.set(element.name, {
+          fullName: prefix + "." + element.name,
+          isFlow: element.flowPrefix === ModelicaFlow.FLOW,
+        });
+      } else if (elemClass instanceof ModelicaArrayClassInstance) {
+        // Array of predefined types - enumerate elements
+        const shape = (elemClass as ModelicaArrayClassInstance).shape;
+        if (shape.length === 1 && shape[0] !== undefined) {
+          for (let idx = 1; idx <= shape[0]; idx++) {
+            result.set(element.name + "[" + idx + "]", {
+              fullName: prefix + "." + element.name + "[" + idx + "]",
+              isFlow: element.flowPrefix === ModelicaFlow.FLOW,
+            });
+          }
+        }
+      }
+      // TODO: Handle nested connector types recursively
+    }
+
+    return result;
   }
 
   visitSimpleEquation(node: ModelicaSimpleEquationSyntaxNode, ctx: FlattenerContext): null {
