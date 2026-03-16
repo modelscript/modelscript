@@ -2646,20 +2646,44 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
   }
 
   visitBinaryExpression(node: ModelicaBinaryExpression): void {
-    // Parenthesize unary negation operands in multiplicative/power contexts
-    // In Modelica, -a * b means -(a*b), so (-a) * b needs explicit parentheses
-    const needsNegParens =
+    // Determine if the current operator is multiplicative/power (higher precedence)
+    const isHighPrec =
       node.operator === ModelicaBinaryOperator.MULTIPLICATION ||
       node.operator === ModelicaBinaryOperator.DIVISION ||
       node.operator === ModelicaBinaryOperator.EXPONENTIATION ||
       node.operator === ModelicaBinaryOperator.ELEMENTWISE_MULTIPLICATION ||
       node.operator === ModelicaBinaryOperator.ELEMENTWISE_DIVISION ||
       node.operator === ModelicaBinaryOperator.ELEMENTWISE_EXPONENTIATION;
-    if (
-      needsNegParens &&
-      node.operand1 instanceof ModelicaUnaryExpression &&
-      node.operand1.operator === ModelicaUnaryOperator.UNARY_MINUS
-    ) {
+
+    // Check if an operand needs parentheses: lower-precedence binary expr or unary minus
+    const needsParens = (operand: ModelicaExpression): boolean => {
+      if (
+        isHighPrec &&
+        operand instanceof ModelicaUnaryExpression &&
+        operand.operator === ModelicaUnaryOperator.UNARY_MINUS
+      ) {
+        return true;
+      }
+      // Parenthesize additive/relational operands inside multiplicative/power operations
+      if (isHighPrec && operand instanceof ModelicaBinaryExpression) {
+        const op = operand.operator;
+        if (
+          op === ModelicaBinaryOperator.ADDITION ||
+          op === ModelicaBinaryOperator.SUBTRACTION ||
+          op === ModelicaBinaryOperator.LESS_THAN ||
+          op === ModelicaBinaryOperator.LESS_THAN_OR_EQUAL ||
+          op === ModelicaBinaryOperator.GREATER_THAN ||
+          op === ModelicaBinaryOperator.GREATER_THAN_OR_EQUAL ||
+          op === ModelicaBinaryOperator.EQUALITY ||
+          op === ModelicaBinaryOperator.INEQUALITY
+        ) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    if (needsParens(node.operand1)) {
       this.out.write("(");
       node.operand1.accept(this);
       this.out.write(")");
@@ -2667,11 +2691,7 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
       node.operand1.accept(this);
     }
     this.out.write(" " + node.operator + " ");
-    if (
-      needsNegParens &&
-      node.operand2 instanceof ModelicaUnaryExpression &&
-      node.operand2.operator === ModelicaUnaryOperator.UNARY_MINUS
-    ) {
+    if (needsParens(node.operand2)) {
       this.out.write("(");
       node.operand2.accept(this);
       this.out.write(")");
@@ -2767,20 +2787,20 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     for (const variable of node.variables) {
       this.#emitVariable(variable);
     }
-    if (node.equations.length > 0) {
-      this.out.write("equation\n");
-      for (const equation of node.equations) equation.accept(this);
-    }
-    for (const section of node.algorithms) {
-      this.out.write("algorithm\n");
-      for (const stmt of section) stmt.accept(this);
-    }
     if (node.initialEquations.length > 0) {
       this.out.write("initial equation\n");
       for (const equation of node.initialEquations) equation.accept(this);
     }
     for (const section of node.initialAlgorithms) {
       this.out.write("initial algorithm\n");
+      for (const stmt of section) stmt.accept(this);
+    }
+    if (node.equations.length > 0) {
+      this.out.write("equation\n");
+      for (const equation of node.equations) equation.accept(this);
+    }
+    for (const section of node.algorithms) {
+      this.out.write("algorithm\n");
       for (const stmt of section) stmt.accept(this);
     }
     this.out.write("end " + node.name + ";\n");
