@@ -83,6 +83,13 @@ export class Context extends Scope {
   }
 
   /**
+   * Returns the array of top-level classes loaded via `load()`.
+   */
+  get classes(): readonly ModelicaClassInstance[] {
+    return this.#classes;
+  }
+
+  /**
    * Flattens a loaded Modelica class by name, generating the flattened DAE textual representation.
    *
    * @param name - The fully qualified name of the Modelica class to flatten.

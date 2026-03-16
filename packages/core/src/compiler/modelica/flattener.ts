@@ -528,6 +528,19 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
             structuralFinalParams: this.#structuralFinalParams,
           }) ?? null;
       }
+      // Even if the constant was evaluated, collect any function definitions
+      // referenced in the raw binding expression (e.g., constant Integer s = mySize({1,2,3}))
+      const rawConstExpr = node.modification?.modificationExpression?.expression;
+      if (rawConstExpr) {
+        const syntaxFlattener = new ModelicaSyntaxFlattener();
+        syntaxFlattener.collectFunctionRefsFromAST(rawConstExpr, {
+          prefix: args[0],
+          classInstance: node.parent ?? ({} as ModelicaClassInstance),
+          dae: args[1],
+          stmtCollector: [],
+          structuralFinalParams: this.#structuralFinalParams,
+        });
+      }
     } else if (variability === ModelicaVariability.PARAMETER) {
       // Parameters: prefer symbolic expression over evaluated literal.
       // Parameters can change between simulations so we want to keep references
@@ -611,9 +624,29 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           if (casted) attributes.set(key, casted);
         }
       }
+      let realBinding = castToReal(varExpression);
+      // Wrap non-builtin function calls returning Integer with /*Real*/(...)
+      if (
+        realBinding instanceof ModelicaFunctionCallExpression &&
+        realBinding === varExpression &&
+        realBinding.functionName !== "/*Real*/" &&
+        !BUILTIN_FUNCTIONS.has(realBinding.functionName)
+      ) {
+        // Resolve the function to check if its output is non-Real (e.g. Integer)
+        const parts = realBinding.functionName.split(".");
+        const resolved = node.parent?.resolveName(parts);
+        if (resolved instanceof ModelicaClassInstance) {
+          for (const comp of resolved.components) {
+            if (comp.causality === "output" && comp.classInstance instanceof ModelicaIntegerClassInstance) {
+              realBinding = new ModelicaFunctionCallExpression("/*Real*/", [realBinding]);
+              break;
+            }
+          }
+        }
+      }
       variable = new ModelicaRealVariable(
         name,
-        castToReal(varExpression),
+        realBinding,
         attributes,
         variability,
         node.modification?.description ?? node.description,
@@ -1646,7 +1679,10 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       const funcName =
         node.functionReference?.parts?.map((p) => p.identifier?.text ?? "").join(".") ||
         (node.functionReferenceName ?? "");
-      if (funcName) this.#collectFunctionDefinition(funcName, ctx);
+      if (funcName) {
+        const qualifiedName = this.#resolveFullyQualifiedName(funcName, ctx);
+        this.#collectFunctionDefinition(qualifiedName, ctx);
+      }
       // Also scan arguments recursively
       for (const arg of node.functionCallArguments?.arguments ?? []) {
         this.collectFunctionRefsFromAST(arg.expression, ctx);

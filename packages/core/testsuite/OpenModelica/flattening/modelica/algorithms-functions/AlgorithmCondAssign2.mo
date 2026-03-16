@@ -1,4 +1,4 @@
-// name:     AlgorithmCondAssign2
+// name:     AlgorithmCondAssign
 // keywords: for statement, if statement
 // status:   correct
 //
@@ -19,12 +19,12 @@ algorithm
   end if;
 end CondAssignFunc;
 
-model AlgorithmCondAssign2
+model CondAssignFuncCall
   Real a, b;
 equation
   (a, b) = CondAssignFunc(5);
   annotation(__OpenModelica_commandLineOptions="-d=-newInst");
-end AlgorithmCondAssign2;
+end CondAssignFuncCall;
 
 // Result:
 // function CondAssignFunc
@@ -40,10 +40,10 @@ end AlgorithmCondAssign2;
 //   end if;
 // end CondAssignFunc;
 //
-// class AlgorithmCondAssign2
+// class CondAssignFuncCall
 //   Real a;
 //   Real b;
 // equation
 //   (a, b) = (400.0, 45.0);
-// end AlgorithmCondAssign2;
+// end CondAssignFuncCall;
 // endResult

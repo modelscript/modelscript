@@ -54,6 +54,8 @@ interface TestResult {
   duration: number;
   cpuTime: number;
   message?: string;
+  keywords?: string;
+  testStatus?: string;
 }
 
 interface CtrfReport {
@@ -82,6 +84,8 @@ interface CtrfReport {
       flaky: boolean;
       suite: string;
       message?: string;
+      keywords?: string;
+      testStatus?: string;
     }[];
   };
 }
@@ -105,8 +109,6 @@ function parseTestFile(filePath: string): TestCase | null {
     const nameMatch = line.match(/^\/\/\s*name:\s*(.+)/);
     if (nameMatch) {
       name = (nameMatch[1] ?? "").trim();
-      // Strip .mo suffix — some tests include it but class names don't have it
-      if (name.endsWith(".mo")) name = name.slice(0, -3);
       continue;
     }
 
@@ -135,7 +137,9 @@ function parseTestFile(filePath: string): TestCase | null {
     }
   }
 
-  if (!name || !status) return null;
+  // Fall back to filename stem if no name header
+  if (!name) name = path.basename(filePath, ".mo");
+  if (!status) return null;
 
   // Find the Result: / endResult block
   const resultStartIdx = lines.findIndex((l) => /^\/\/\s*Result:/.test(l));
@@ -180,87 +184,47 @@ function runTestCase(testCase: TestCase): TestResult {
     return (delta.user + delta.system) / 1000;
   };
 
+  /** Build a TestResult with common fields pre-filled. */
+  const makeResult = (status: "passed" | "failed" | "skipped", message?: string): TestResult => ({
+    name: testCase.metadata.name,
+    keywords: testCase.metadata.keywords,
+    testStatus: testCase.metadata.status,
+    file: testCase.file,
+    status,
+    duration: performance.now() - start,
+    cpuTime: cpuMs(),
+    ...(message ? { message } : {}),
+  });
+
   try {
     const context = new Context(new NodeFileSystem());
     context.load(testCase.source);
 
-    const flattenedResult = context.flatten(testCase.metadata.name);
+    // Flatten the last top-level class from the loaded source
+    const classes = context.classes;
+    const lastClassName =
+      classes.length > 0 ? (classes[classes.length - 1]?.name ?? testCase.metadata.name) : testCase.metadata.name;
+    const flattenedResult = context.flatten(lastClassName);
 
     if (testCase.metadata.status === "incorrect") {
       // For incorrect tests: flattening should fail (return null or throw)
-      if (flattenedResult === null) {
-        return {
-          name: testCase.metadata.name,
-          file: testCase.file,
-          status: "passed",
-          duration: performance.now() - start,
-          cpuTime: cpuMs(),
-        };
-      }
-
-      return {
-        name: testCase.metadata.name,
-        file: testCase.file,
-        status: "failed",
-        duration: performance.now() - start,
-        cpuTime: cpuMs(),
-        message: `Expected flattening to fail but got result:\n${flattenedResult}`,
-      };
+      if (flattenedResult === null) return makeResult("passed");
+      return makeResult("failed", `Expected flattening to fail but got result:\n${flattenedResult}`);
     }
 
     // For correct tests: compare flattened output with expected
     if (flattenedResult === null) {
-      return {
-        name: testCase.metadata.name,
-        file: testCase.file,
-        status: "failed",
-        duration: performance.now() - start,
-        cpuTime: cpuMs(),
-        message: "Flattening returned null (expected a result)",
-      };
+      return makeResult("failed", "Flattening returned null (expected a result)");
     }
 
     const actual = flattenedResult.trim();
     const expected = testCase.expectedResult.trim();
 
-    if (actual === expected) {
-      return {
-        name: testCase.metadata.name,
-        file: testCase.file,
-        status: "passed",
-        duration: performance.now() - start,
-        cpuTime: cpuMs(),
-      };
-    } else {
-      return {
-        name: testCase.metadata.name,
-        file: testCase.file,
-        status: "failed",
-        duration: performance.now() - start,
-        cpuTime: cpuMs(),
-        message: `Output mismatch:\n--- Expected ---\n${expected}\n--- Actual ---\n${actual}`,
-      };
-    }
+    if (actual === expected) return makeResult("passed");
+    return makeResult("failed", `Output mismatch:\n--- Expected ---\n${expected}\n--- Actual ---\n${actual}`);
   } catch (error) {
-    if (testCase.metadata.status === "incorrect") {
-      // Throwing is acceptable for incorrect tests
-      return {
-        name: testCase.metadata.name,
-        file: testCase.file,
-        status: "passed",
-        duration: performance.now() - start,
-        cpuTime: cpuMs(),
-      };
-    }
-
-    return {
-      name: testCase.metadata.name,
-      file: testCase.file,
-      status: "failed",
-      duration: performance.now() - start,
-      cpuTime: cpuMs(),
-      message: `Exception: ${error instanceof Error ? error.message : String(error)}`,
-    };
+    if (testCase.metadata.status === "incorrect") return makeResult("passed");
+    return makeResult("failed", `Exception: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -339,6 +303,8 @@ function generateCtrfReport(results: TestResult[], startTime: number, stopTime: 
         flaky: false,
         suite: path.basename(path.dirname(r.file)),
         ...(r.message ? { message: r.message } : {}),
+        ...(r.keywords ? { keywords: r.keywords } : {}),
+        ...(r.testStatus ? { testStatus: r.testStatus } : {}),
       })),
     },
   };

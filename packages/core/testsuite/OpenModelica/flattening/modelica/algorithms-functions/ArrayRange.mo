@@ -1,4 +1,3 @@
-// name:     ArrayRange
 // status: incorrect
 
 model ArrayRange

@@ -1,4 +1,4 @@
-// name:     AlgorithmCondAssign1
+// name:     AlgorithmCondAssign
 // keywords: for statement, if statement
 // status:   correct
 //
@@ -7,7 +7,7 @@
 //
 
 
-model AlgorithmCondAssign1
+model CondAssign
   Real x(start = 35);
   Real y(start = 45);
   parameter Real z = 0;
@@ -19,11 +19,11 @@ algorithm
     y := 500;
   end if;
   annotation(__OpenModelica_commandLineOptions="-d=-newInst");
-end AlgorithmCondAssign1;
+end CondAssign;
 
 
 // Result:
-// class AlgorithmCondAssign1
+// class CondAssign
 //   Real x(start = 35.0);
 //   Real y(start = 45.0);
 //   parameter Real z = 0.0;
@@ -34,5 +34,5 @@ end AlgorithmCondAssign1;
 //   if z > 10.0 then
 //     y := 500.0;
 //   end if;
-// end AlgorithmCondAssign1;
+// end CondAssign;
 // endResult
