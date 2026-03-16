@@ -469,7 +469,9 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     effectiveVariability?: ModelicaVariability | null,
   ): void {
     const variability = effectiveVariability ?? node.variability;
-    const { causality } = node;
+    // For sub-components (prefixed with a dot path), strip input/output causality
+    // since it only applies at the inner model's scope, not the outer model
+    const causality = name.includes(".") ? null : node.causality;
     const activeClass = this.activeClassStack[this.activeClassStack.length - 1];
     const isProtected =
       node.isProtected || this.#outerProtected || (activeClass?.isProtectedElement(node.name) ?? false);
@@ -2237,8 +2239,8 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         ctx.dae.diagnostics.push(makeDiagnostic(ModelicaErrorCode.ASSIGNMENT_TO_CONSTANT, node.target, target.name));
         return null;
       }
-      // Check for assignment to input component (not allowed in function bodies)
-      if (target instanceof ModelicaVariable && target.causality === "input") {
+      // Check for assignment to input component (only disallowed in function bodies)
+      if (ctx.dae.classKind === "function" && target instanceof ModelicaVariable && target.causality === "input") {
         ctx.dae.diagnostics.push(makeDiagnostic(ModelicaErrorCode.ASSIGNMENT_TO_INPUT, node.target, target.name));
         return null;
       }
