@@ -3,7 +3,7 @@
 
 # ModelScript
 
-[![CI/CD](https://github.com/modelscript/modelscript/actions/workflows/ci.yml/badge.svg)](https://github.com/modelscript/modelscript/actions/workflows/ci.yml)
+[![CI/CD](https://github.com/modelscript/modelscript/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/modelscript/modelscript/actions/workflows/ci.yml)
 
 ModelScript is a comprehensive Modelica compilation, analysis, and visualization framework. It provides a robust engine for parsing Modelica code, performing semantic analysis, flattening models, and rendering interactive diagrams.
 
