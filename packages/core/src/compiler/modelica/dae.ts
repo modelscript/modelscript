@@ -2872,7 +2872,7 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     node.base.accept(this);
     this.out.write("[");
     for (let i = 0; i < node.subscripts.length; i++) {
-      if (i > 0) this.out.write(", ");
+      if (i > 0) this.out.write(",");
       node.subscripts[i]?.accept(this);
     }
     this.out.write("]");

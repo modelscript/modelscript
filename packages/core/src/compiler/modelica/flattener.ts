@@ -2311,13 +2311,126 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       const forIndex = node.forIndexes[i];
       if (!forIndex) continue;
       const indexName = forIndex.identifier?.text ?? "?";
-      const range = forIndex.expression?.accept(this, ctx);
+      let range = forIndex.expression?.accept(this, ctx) ?? null;
+
+      // Infer implicit range from array indexing context when no explicit range
+      if (!range) {
+        range = this.#inferImplicitRange(indexName, node.statements ?? [], ctx);
+      }
+
       if (!range) continue;
       const forStmt = new ModelicaForStatement(indexName, range, statements);
       statements = [forStmt];
     }
     for (const stmt of statements) ctx.stmtCollector.push(stmt);
     return null;
+  }
+
+  /**
+   * Infer the implicit range for a for-loop variable by scanning inner statements
+   * for array subscripts that use the variable as an index.
+   * For `for i loop a[i] := ...`, if `a` has 4 elements, the range is `1:4`.
+   * For multi-dimensional arrays like `a[i,j]`, extracts the correct dimension.
+   */
+  #inferImplicitRange(
+    indexName: string,
+    statements: readonly { accept: (v: ModelicaSyntaxFlattener, a: FlattenerContext) => unknown }[],
+    ctx: FlattenerContext,
+  ): ModelicaExpression | null {
+    for (const stmt of statements) {
+      // Check assignment statements: a[i] := ... or ... := a[i]
+      if (stmt instanceof ModelicaSimpleAssignmentStatementSyntaxNode) {
+        // Check both target and source for array references
+        const refs = [stmt.target, stmt.source].filter(Boolean);
+        for (const ref of refs) {
+          if (ref instanceof ModelicaComponentReferenceSyntaxNode) {
+            const result = this.#findDimensionForIndex(indexName, ref, ctx);
+            if (result) return result;
+          }
+        }
+      }
+      // Recurse into nested for-statements
+      if (stmt instanceof ModelicaForStatementSyntaxNode) {
+        const result = this.#inferImplicitRange(indexName, stmt.statements ?? [], ctx);
+        if (result) return result;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Check a component reference for subscripts that use the given loop variable.
+   * Returns a range expression for the matching dimension, or null.
+   */
+  #findDimensionForIndex(
+    indexName: string,
+    ref: ModelicaComponentReferenceSyntaxNode,
+    ctx: FlattenerContext,
+  ): ModelicaExpression | null {
+    for (const part of ref.parts) {
+      const subscripts = part.arraySubscripts?.subscripts ?? [];
+      if (subscripts.length === 0) continue;
+
+      // Find which subscript position(s) reference the loop variable
+      for (let dimIdx = 0; dimIdx < subscripts.length; dimIdx++) {
+        const sub = subscripts[dimIdx];
+        if (!sub?.expression) continue;
+        if (!this.#expressionReferencesName(sub.expression, indexName)) continue;
+
+        // Found the loop variable in subscript position dimIdx
+        const arrName = part.identifier?.text ?? "";
+        const qualifiedName = (ctx.prefix === "" ? "" : ctx.prefix + ".") + arrName;
+        const dimSize = this.#getArrayDimensionSize(qualifiedName, dimIdx, subscripts.length, ctx);
+        if (dimSize > 0) {
+          return new ModelicaRangeExpression(new ModelicaIntegerLiteral(1), new ModelicaIntegerLiteral(dimSize), null);
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Recursively check whether a syntax expression references a given name.
+   * Handles component references, binary expressions, unary expressions, and function calls.
+   */
+  #expressionReferencesName(expr: ModelicaExpressionSyntaxNode, name: string): boolean {
+    if (expr instanceof ModelicaComponentReferenceSyntaxNode) {
+      return expr.parts.length === 1 && expr.parts[0]?.identifier?.text === name;
+    }
+    if (expr instanceof ModelicaBinaryExpressionSyntaxNode) {
+      return (
+        (expr.operand1 != null && this.#expressionReferencesName(expr.operand1, name)) ||
+        (expr.operand2 != null && this.#expressionReferencesName(expr.operand2, name))
+      );
+    }
+    if (expr instanceof ModelicaUnaryExpressionSyntaxNode) {
+      return expr.operand != null && this.#expressionReferencesName(expr.operand, name);
+    }
+    return false;
+  }
+
+  /**
+   * Get the size of a specific dimension of an array from the DAE variables.
+   * For `a[2,3]` (variables: a[1,1], a[1,2], a[1,3], a[2,1], a[2,2], a[2,3]):
+   *   dimension 0 → 2, dimension 1 → 3
+   */
+  #getArrayDimensionSize(qualifiedName: string, dimIdx: number, totalDims: number, ctx: FlattenerContext): number {
+    const prefix = qualifiedName + "[";
+    const arrayVars = ctx.dae.variables.filter((v) => v.name.startsWith(prefix));
+    if (arrayVars.length === 0) return 0;
+
+    // For 1D arrays, just return total count
+    if (totalDims <= 1) return arrayVars.length;
+
+    // For multi-dimensional arrays, extract the max index at the requested dimension
+    const indices = new Set<number>();
+    for (const v of arrayVars) {
+      const inside = v.name.substring(prefix.length, v.name.length - 1); // e.g. "1,2"
+      const parts = inside.split(",");
+      const idx = parseInt(parts[dimIdx] ?? "", 10);
+      if (!isNaN(idx)) indices.add(idx);
+    }
+    return indices.size > 0 ? Math.max(...indices) : 0;
   }
 
   visitIfStatement(node: ModelicaIfStatementSyntaxNode, ctx: FlattenerContext): null {
@@ -2763,14 +2876,19 @@ function coerceToReal(expression: ModelicaExpression | null, dae?: ModelicaDAE):
     return new ModelicaFunctionCallExpression("/*Real*/", [expression]);
   }
   // Check if a named expression refers to a non-Real variable (Integer, Boolean, etc.)
+  // or an unresolved name (e.g. loop variables which are Integer by default)
   if (expression instanceof ModelicaNameExpression && dae) {
     const variable = dae.variables.find((v) => v.name === expression.name);
-    if (variable && !(variable instanceof ModelicaRealVariable)) {
+    if (!variable || !(variable instanceof ModelicaRealVariable)) {
       return new ModelicaFunctionCallExpression("/*Real*/", [expression]);
     }
   }
   // Recurse into binary expressions
   if (expression instanceof ModelicaBinaryExpression) {
+    // If neither operand is already Real-typed, wrap the entire expression
+    if (!isRealTyped(expression.operand1, dae) && !isRealTyped(expression.operand2, dae)) {
+      return new ModelicaFunctionCallExpression("/*Real*/", [expression]);
+    }
     const op1 = coerceToReal(expression.operand1, dae) ?? expression.operand1;
     const op2 = coerceToReal(expression.operand2, dae) ?? expression.operand2;
     if (op1 !== expression.operand1 || op2 !== expression.operand2)
