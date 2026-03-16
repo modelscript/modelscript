@@ -1,0 +1,23 @@
+{
+  "name": "@modelscript/lsp",
+  "version": "0.0.0",
+  "browser": "./dist/browserServerMain.js",
+  "scripts": {
+    "build": "webpack --mode production --devtool hidden-source-map",
+    "compile": "webpack",
+    "watch": "webpack --watch"
+  },
+  "dependencies": {
+    "vscode-languageserver": "^9.0.1",
+    "vscode-languageserver-textdocument": "^1.0.11"
+  },
+  "devDependencies": {
+    "ts-loader": "^9.5.1",
+    "typescript": "^5.9.2",
+    "webpack": "^5.90.1",
+    "webpack-cli": "^5.1.4"
+  },
+  "engines": {
+    "node": "*"
+  }
+}
