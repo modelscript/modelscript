@@ -1433,6 +1433,25 @@ ModelicaLinter.register(ModelicaErrorCode.ASSIGNMENT_TYPE_MISMATCH, {
   },
 });
 
+ModelicaLinter.register(ModelicaErrorCode.ASSIGNMENT_TO_CONSTANT, {
+  visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+    for (const statement of node.algorithms) {
+      if (!(statement instanceof ModelicaSimpleAssignmentStatementSyntaxNode)) continue;
+      const targetRef = statement.target;
+      if (!(targetRef instanceof ModelicaComponentReferenceSyntaxNode)) continue;
+      const targetComp = resolveToComponent(node, targetRef);
+      if (!targetComp) continue;
+      if (targetComp.variability === ModelicaVariability.CONSTANT) {
+        diagnosticsCallback(
+          ModelicaErrorCode.ASSIGNMENT_TO_CONSTANT.severity,
+          `[M${ModelicaErrorCode.ASSIGNMENT_TO_CONSTANT.code}] ${ModelicaErrorCode.ASSIGNMENT_TO_CONSTANT.message(componentRefText(targetRef))}`,
+          statement,
+        );
+      }
+    }
+  },
+});
+
 ModelicaLinter.register(ModelicaErrorCode.FOR_ITERATOR_NOT_1D, {
   visitForStatement(
     node: ModelicaForStatementSyntaxNode,

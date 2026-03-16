@@ -237,6 +237,12 @@ export const ModelicaErrorCode = {
     message: (iteratorName: string, shape: string) =>
       `Iterator '${iteratorName}' has type [${shape}], but expected a 1D array expression.`,
   },
+  ASSIGNMENT_TO_CONSTANT: {
+    code: 5008,
+    rule: "assignment-to-constant",
+    severity: "error",
+    message: (componentName: string) => `Trying to assign to constant component '${componentName}'.`,
+  },
 } as const satisfies Record<string, ErrorCodeDef>;
 
 // Derive the union type of all error code keys

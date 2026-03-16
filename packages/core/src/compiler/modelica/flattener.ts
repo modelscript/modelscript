@@ -2222,6 +2222,11 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     const target = node.target?.accept(this, ctx);
     let source = node.source?.accept(this, ctx);
     if (target && source) {
+      // Check for assignment to constant component
+      if (target instanceof ModelicaVariable && target.variability === ModelicaVariability.CONSTANT) {
+        ctx.dae.diagnostics.push(makeDiagnostic(ModelicaErrorCode.ASSIGNMENT_TO_CONSTANT, node.target, target.name));
+        return null;
+      }
       // Check for type mismatch: Integer := Real is not allowed
       if (isIntegerTyped(target, ctx.dae) && isRealTyped(source, ctx.dae)) {
         const targetName = target instanceof ModelicaVariable ? target.name : target.toString();
