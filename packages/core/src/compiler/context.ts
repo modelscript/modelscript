@@ -105,8 +105,10 @@ export class Context extends Scope {
     flattener.foldDAEConstants(dae);
     // Check for validation errors (e.g. invalid modification targets)
     if (instance instanceof ModelicaClassInstance && this.#hasErrors(instance)) return null;
-    // Check for flattener-level diagnostics (e.g. invalid for-loop iterators)
-    if (dae.diagnostics.some((d) => d.severity === "error")) return null;
+    // Check for flattener-level diagnostics (e.g. invalid for-loop iterators, assignment to input/constant)
+    const hasDAEErrors = (d: ModelicaDAE): boolean =>
+      d.diagnostics.some((diag) => diag.severity === "error") || d.functions.some(hasDAEErrors);
+    if (hasDAEErrors(dae)) return null;
     const out = new StringWriter();
     dae.accept(new ModelicaDAEPrinter(out));
     return out.toString();

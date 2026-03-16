@@ -233,6 +233,39 @@ export class ModelicaSimpleEquation extends ModelicaEquation {
   }
 }
 
+/** Represents a standalone function call as an equation (e.g., `assert(...)`, `Func(2)`). */
+export class ModelicaFunctionCallEquation extends ModelicaEquation {
+  call: ModelicaFunctionCallExpression;
+
+  constructor(call: ModelicaFunctionCallExpression, description?: string | null) {
+    super(description);
+    this.call = call;
+  }
+
+  override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
+    return visitor.visitFunctionCallEquation(this, argument);
+  }
+
+  override get hash(): string {
+    const hash = createHash("sha256");
+    hash.update("function_call_equation");
+    hash.update(this.call.hash);
+    return hash.digest("hex");
+  }
+
+  override get toJSON(): JSONValue {
+    return {
+      "@type": "FunctionCallEquation",
+      call: this.call.toJSON,
+      description: this.description,
+    };
+  }
+
+  override get toRDF(): Triple[] {
+    return [];
+  }
+}
+
 export class ModelicaForEquation extends ModelicaEquation {
   indexName: string;
   range: ModelicaExpression;
@@ -2190,6 +2223,8 @@ export interface IModelicaDAEVisitor<R, A> {
 
   visitForEquation(node: ModelicaForEquation, argument?: A): R;
 
+  visitFunctionCallEquation(node: ModelicaFunctionCallEquation, argument?: A): R;
+
   visitFunctionCallExpression(node: ModelicaFunctionCallExpression, argument?: A): R;
 
   visitIfElseExpression(node: ModelicaIfElseExpression, argument?: A): R;
@@ -2316,6 +2351,10 @@ export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void,
   visitForEquation(node: ModelicaForEquation, argument?: A): void {
     node.range.accept(this, argument);
     for (const eq of node.equations) eq.accept(this, argument);
+  }
+
+  visitFunctionCallEquation(node: ModelicaFunctionCallEquation, argument?: A): void {
+    node.call.accept(this, argument);
   }
 
   visitFunctionCallExpression(node: ModelicaFunctionCallExpression, argument?: A): void {
@@ -2742,6 +2781,12 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
       eq.accept(this);
     }
     this.out.write("  end for;\n");
+  }
+
+  visitFunctionCallEquation(node: ModelicaFunctionCallEquation): void {
+    this.out.write("  ");
+    node.call.accept(this);
+    this.out.write(";\n");
   }
 
   visitFunctionCallExpression(node: ModelicaFunctionCallExpression): void {

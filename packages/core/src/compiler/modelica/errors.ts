@@ -243,6 +243,12 @@ export const ModelicaErrorCode = {
     severity: "error",
     message: (componentName: string) => `Trying to assign to constant component '${componentName}'.`,
   },
+  ASSIGNMENT_TO_INPUT: {
+    code: 5009,
+    rule: "assignment-to-input",
+    severity: "error",
+    message: (componentName: string) => `Trying to assign to input component '${componentName}'.`,
+  },
 } as const satisfies Record<string, ErrorCodeDef>;
 
 // Derive the union type of all error code keys

@@ -19,6 +19,7 @@ import {
   ModelicaExpression,
   ModelicaForEquation,
   ModelicaForStatement,
+  ModelicaFunctionCallEquation,
   ModelicaFunctionCallExpression,
   ModelicaIfElseExpression,
   ModelicaIfEquation,
@@ -90,6 +91,7 @@ import {
   ModelicaReturnStatementSyntaxNode,
   ModelicaSimpleAssignmentStatementSyntaxNode,
   ModelicaSimpleEquationSyntaxNode,
+  ModelicaSpecialEquationSyntaxNode,
   ModelicaStringLiteralSyntaxNode,
   ModelicaSyntaxPrinter,
   ModelicaSyntaxVisitor,
@@ -2227,6 +2229,11 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         ctx.dae.diagnostics.push(makeDiagnostic(ModelicaErrorCode.ASSIGNMENT_TO_CONSTANT, node.target, target.name));
         return null;
       }
+      // Check for assignment to input component (not allowed in function bodies)
+      if (target instanceof ModelicaVariable && target.causality === "input") {
+        ctx.dae.diagnostics.push(makeDiagnostic(ModelicaErrorCode.ASSIGNMENT_TO_INPUT, node.target, target.name));
+        return null;
+      }
       // Check for type mismatch: Integer := Real is not allowed
       if (isIntegerTyped(target, ctx.dae) && isRealTyped(source, ctx.dae)) {
         const targetName = target instanceof ModelicaVariable ? target.name : target.toString();
@@ -2814,6 +2821,31 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         ),
       );
     }
+    return null;
+  }
+
+  visitSpecialEquation(node: ModelicaSpecialEquationSyntaxNode, ctx: FlattenerContext): null {
+    const rawName = node.functionReference?.parts?.map((p) => p.identifier?.text ?? "").join(".") ?? "";
+    const isGlobal = node.functionReference?.global === true;
+    const isBuiltin = !rawName.includes(".") && ModelicaSyntaxFlattener.#isBuiltinFunction(rawName);
+    const functionName = isGlobal || isBuiltin ? rawName : this.#resolveFullyQualifiedName(rawName, ctx);
+    const flatArgs: ModelicaExpression[] = [];
+    for (const arg of node.functionCallArguments?.arguments ?? []) {
+      const flatArg = arg.expression?.accept(this, ctx);
+      if (flatArg) flatArgs.push(flatArg);
+    }
+    // Coerce integer arguments to Real for built-in functions that expect Real args
+    const realArgBuiltins = new Set(["assert", "terminate"]);
+    if (realArgBuiltins.has(functionName)) {
+      for (let i = 0; i < flatArgs.length; i++) {
+        const coerced = castToReal(flatArgs[i] ?? null);
+        if (coerced) flatArgs[i] = coerced;
+      }
+    }
+    const call = new ModelicaFunctionCallExpression(functionName, flatArgs);
+    ctx.dae.equations.push(new ModelicaFunctionCallEquation(call));
+    // Collect function definition if it's a user-defined function
+    this.#collectFunctionDefinition(functionName, ctx);
     return null;
   }
 
