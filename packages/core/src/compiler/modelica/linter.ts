@@ -43,6 +43,7 @@ import {
   ModelicaInheritanceModificationSyntaxNode,
   ModelicaModificationExpressionSyntaxNode,
   ModelicaModificationSyntaxNode,
+  ModelicaSimpleAssignmentStatementSyntaxNode,
   ModelicaSimpleEquationSyntaxNode,
   ModelicaSimpleImportClauseSyntaxNode,
   ModelicaStringLiteralSyntaxNode,
@@ -1382,6 +1383,44 @@ ModelicaLinter.register(ModelicaErrorCode.DIVISION_BY_ZERO, {
           ModelicaErrorCode.DIVISION_BY_ZERO.severity,
           `[M${ModelicaErrorCode.DIVISION_BY_ZERO.code}] ${ModelicaErrorCode.DIVISION_BY_ZERO.message(lhsText)}`,
           node,
+        );
+      }
+    }
+  },
+});
+
+// Rule: Algorithm assignment type checking — target := source must have compatible types
+ModelicaLinter.register(ModelicaErrorCode.ASSIGNMENT_TYPE_MISMATCH, {
+  visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+    for (const statement of node.algorithms) {
+      if (!(statement instanceof ModelicaSimpleAssignmentStatementSyntaxNode)) continue;
+
+      const targetRef = statement.target;
+      const sourceRef = statement.source;
+
+      if (
+        !(targetRef instanceof ModelicaComponentReferenceSyntaxNode) ||
+        !(sourceRef instanceof ModelicaComponentReferenceSyntaxNode)
+      ) {
+        continue;
+      }
+
+      const targetComp = resolveToComponent(node, targetRef);
+      const sourceComp = resolveToComponent(node, sourceRef);
+      if (!targetComp || !sourceComp) continue;
+
+      if (!targetComp.instantiated) targetComp.instantiate();
+      if (!sourceComp.instantiated) sourceComp.instantiate();
+
+      const targetType = targetComp.classInstance;
+      const sourceType = sourceComp.classInstance;
+      if (!targetType || !sourceType) continue;
+
+      if (!targetType.isTypeCompatibleWith(sourceType)) {
+        diagnosticsCallback(
+          ModelicaErrorCode.ASSIGNMENT_TYPE_MISMATCH.severity,
+          `[M${ModelicaErrorCode.ASSIGNMENT_TYPE_MISMATCH.code}] ${ModelicaErrorCode.ASSIGNMENT_TYPE_MISMATCH.message(componentRefText(targetRef), targetType.name ?? "", componentRefText(sourceRef), sourceType.name ?? "")}`,
+          statement,
         );
       }
     }

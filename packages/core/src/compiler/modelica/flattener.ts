@@ -42,6 +42,7 @@ import {
   ModelicaWhileStatement,
   type ModelicaObject,
 } from "./dae.js";
+import { makeDiagnostic, ModelicaErrorCode } from "./errors.js";
 import { buildFilledArray, ModelicaInterpreter } from "./interpreter.js";
 import {
   ModelicaArrayClassInstance,
@@ -2210,6 +2211,22 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     const target = node.target?.accept(this, ctx);
     let source = node.source?.accept(this, ctx);
     if (target && source) {
+      // Check for type mismatch: Integer := Real is not allowed
+      if (isIntegerTyped(target, ctx.dae) && isRealTyped(source, ctx.dae)) {
+        const targetName = target instanceof ModelicaVariable ? target.name : target.toString();
+        const sourceName = source instanceof ModelicaVariable ? source.name : source.toString();
+        ctx.classInstance.diagnostics.push(
+          makeDiagnostic(
+            ModelicaErrorCode.ASSIGNMENT_TYPE_MISMATCH,
+            node.target,
+            targetName,
+            "Integer",
+            sourceName,
+            "Real",
+          ),
+        );
+        return null;
+      }
       if (isRealTyped(target, ctx.dae)) source = coerceToReal(source, ctx.dae) ?? source;
       ctx.stmtCollector.push(new ModelicaAssignmentStatement(target, source));
     }
@@ -2716,6 +2733,20 @@ function isRealTyped(expr: ModelicaExpression, dae?: ModelicaDAE): boolean {
   if (expr instanceof ModelicaSubscriptedExpression) return isRealTyped(expr.base, dae);
   if (expr instanceof ModelicaFunctionCallExpression) {
     return expr.args.some((a) => isRealTyped(a, dae));
+  }
+  return false;
+}
+
+function isIntegerTyped(expr: ModelicaExpression, dae?: ModelicaDAE): boolean {
+  if (expr instanceof ModelicaIntegerVariable) return true;
+  if (expr instanceof ModelicaIntegerLiteral) return true;
+  if (expr instanceof ModelicaNameExpression && dae) {
+    const exactMatch = dae.variables.find((variable) => variable.name === expr.name);
+    if (exactMatch instanceof ModelicaIntegerVariable) return true;
+
+    const prefix = expr.name + "[";
+    const arrayElement = dae.variables.find((variable) => variable.name.startsWith(prefix));
+    if (arrayElement instanceof ModelicaIntegerVariable) return true;
   }
   return false;
 }

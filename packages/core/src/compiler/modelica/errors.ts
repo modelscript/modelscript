@@ -223,6 +223,13 @@ export const ModelicaErrorCode = {
     severity: "error",
     message: (lhs: string) => `Division by zero: ${lhs} / 0.`,
   },
+  ASSIGNMENT_TYPE_MISMATCH: {
+    code: 5006,
+    rule: "assignment-type-mismatch",
+    severity: "error",
+    message: (target: string, targetType: string, source: string, sourceType: string) =>
+      `Type mismatch in assignment in ${target} := ${source} of ${targetType} := ${sourceType}.`,
+  },
 } as const satisfies Record<string, ErrorCodeDef>;
 
 // Derive the union type of all error code keys
