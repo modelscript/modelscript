@@ -1,0 +1,92 @@
+{
+  "name": "Modelica",
+  "scopeName": "source.modelica",
+  "fileTypes": ["mo"],
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#keywords" },
+    { "include": "#type-keywords" },
+    { "include": "#operators" },
+    { "include": "#identifiers" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.modelica",
+          "match": "//.*$"
+        },
+        {
+          "name": "comment.block.modelica",
+          "begin": "/\\*",
+          "end": "\\*/"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.modelica",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.modelica",
+              "match": "\\\\."
+            }
+          ]
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.float.modelica",
+          "match": "\\b\\d+\\.\\d+([eE][+-]?\\d+)?\\b"
+        },
+        {
+          "name": "constant.numeric.integer.modelica",
+          "match": "\\b\\d+\\b"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.modelica",
+          "match": "\\b(algorithm|and|annotation|block|break|class|connect|connector|constant|constrainedby|der|discrete|each|else|elseif|elsewhen|encapsulated|end|enumeration|equation|expandable|extends|external|false|final|flow|for|function|if|import|impure|initial|inner|input|loop|model|not|operator|or|outer|output|package|parameter|partial|protected|public|pure|record|redeclare|replaceable|return|stream|then|true|type|when|while|within)\\b"
+        }
+      ]
+    },
+    "type-keywords": {
+      "patterns": [
+        {
+          "name": "support.type.modelica",
+          "match": "\\b(Boolean|Integer|Real|String)\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.modelica",
+          "match": "(:=|<=|>=|<>|==|\\+|-|\\*|/|\\^|<|>|=)"
+        }
+      ]
+    },
+    "identifiers": {
+      "patterns": [
+        {
+          "name": "variable.other.modelica",
+          "match": "\\b[_a-zA-Z][_a-zA-Z0-9]*\\b"
+        },
+        {
+          "name": "variable.other.quoted.modelica",
+          "match": "'[^']*'"
+        }
+      ]
+    }
+  }
+}

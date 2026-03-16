@@ -32,6 +32,13 @@
         }
       }
     ],
+    "grammars": [
+      {
+        "language": "modelica",
+        "scopeName": "source.modelica",
+        "path": "./syntaxes/modelica.tmLanguage.json"
+      }
+    ],
     "languages": [
       {
         "id": "modelica",
