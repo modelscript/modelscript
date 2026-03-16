@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "prebuild": "node ../../scripts/download-msl.js && cp -n ../../scripts/ModelicaStandardLibrary_v4.1.0.zip public/ModelicaStandardLibrary_v4.1.0.zip 2>/dev/null; true",
     "build": "react-router build",
     "dev": "react-router dev",
     "start": "react-router-serve ./build/server/index.js",

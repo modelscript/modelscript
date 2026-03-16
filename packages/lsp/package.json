@@ -3,13 +3,15 @@
   "version": "0.0.0",
   "browser": "./dist/browserServerMain.js",
   "scripts": {
-    "build": "webpack --mode production --devtool hidden-source-map",
-    "compile": "webpack",
+    "prebuild": "node ../../scripts/download-msl.js",
+    "build": "node ../../scripts/download-msl.js && webpack --mode production --devtool hidden-source-map",
+    "compile": "node ../../scripts/download-msl.js && webpack",
     "lint": "eslint src --ext ts",
     "watch": "webpack --watch"
   },
   "dependencies": {
     "@modelscript/core": "0.0.0",
+    "fflate": "^0.8.2",
     "vscode-languageserver": "^9.0.1",
     "vscode-languageserver-textdocument": "^1.0.11",
     "web-tree-sitter": "^0.24.5"

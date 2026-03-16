@@ -1,9 +1,4 @@
-import {
-  BrowserMessageReader,
-  BrowserMessageWriter,
-  Connection,
-  createConnection,
-} from "vscode-languageserver/browser";
+import { BrowserMessageReader, BrowserMessageWriter, createConnection } from "vscode-languageserver/browser";
 
 import {
   CompletionItem,
@@ -22,6 +17,8 @@ import {
 import { TextDocument } from "vscode-languageserver-textdocument";
 
 import Parser from "web-tree-sitter";
+
+import { unzipSync } from "fflate";
 
 import {
   Context,
@@ -149,15 +146,68 @@ const messageWriter = new BrowserMessageWriter(self);
 
 const connection = createConnection(messageReader, messageWriter);
 
-/* Filesystem backed by LSP requests to the VS Code client */
+/* In-memory filesystem backed by zip contents */
+
+interface MemFile {
+  content: string;
+  binary: Uint8Array;
+}
+
+interface MemDir {
+  children: Map<string, boolean>; // name → isDirectory
+}
 
 class BrowserFileSystem implements FileSystem {
-  // Used for future async workspace file reads via LSP requests
-  // eslint-disable-next-line no-unused-private-class-members
-  readonly #connection: Connection;
+  readonly #files = new Map<string, MemFile>();
+  readonly #dirs = new Map<string, MemDir>();
 
-  constructor(conn: Connection) {
-    this.#connection = conn;
+  /** Normalise a path: collapse double-slashes, remove trailing slash */
+  #norm(p: string): string {
+    return p.replace(/\/+/g, "/").replace(/\/$/, "") || "/";
+  }
+
+  /** Add a file from zip decompression */
+  addFile(path: string, data: Uint8Array): void {
+    const p = this.#norm(path);
+    const decoder = new TextDecoder();
+    this.#files.set(p, { content: decoder.decode(data), binary: data });
+    // Ensure parent directories exist
+    const parts = p.split("/");
+    for (let i = 1; i < parts.length; i++) {
+      const dir = parts.slice(0, i).join("/") || "/";
+      const child = parts[i];
+      const isDir = i < parts.length - 1;
+      if (!this.#dirs.has(dir)) {
+        this.#dirs.set(dir, { children: new Map() });
+      }
+      const dirEntry = this.#dirs.get(dir);
+      if (!dirEntry) continue;
+      if (!dirEntry.children.has(child)) {
+        dirEntry.children.set(child, isDir);
+      } else if (isDir) {
+        // Upgrade from file to dir if needed
+        dirEntry.children.set(child, true);
+      }
+    }
+  }
+
+  /** Register a directory (for leaf directories that may have no files) */
+  addDir(path: string): void {
+    const p = this.#norm(path);
+    if (!this.#dirs.has(p)) {
+      this.#dirs.set(p, { children: new Map() });
+    }
+    // Ensure parent chain
+    const parts = p.split("/");
+    for (let i = 1; i < parts.length; i++) {
+      const dir = parts.slice(0, i).join("/") || "/";
+      const child = parts[i];
+      if (!this.#dirs.has(dir)) {
+        this.#dirs.set(dir, { children: new Map() });
+      }
+      const dirEntry = this.#dirs.get(dir);
+      if (dirEntry) dirEntry.children.set(child, true);
+    }
   }
 
   basename(path: string): string {
@@ -168,28 +218,66 @@ class BrowserFileSystem implements FileSystem {
     return dot >= 0 ? path.substring(dot) : "";
   }
   join(...paths: string[]): string {
-    return paths.join("/");
+    const joined = paths.join("/");
+    return this.#norm(joined);
   }
   read(path: string): string {
-    // Synchronous read not supported in browser — returns empty
-    // Tree-sitter parsing uses text from the document sync, not from filesystem
-    console.warn("BrowserFileSystem.read called for:", path);
+    const p = this.#norm(path);
+    const file = this.#files.get(p);
+    if (file) return file.content;
     return "";
   }
-  readBinary(): Uint8Array {
+  readBinary(path: string): Uint8Array {
+    const p = this.#norm(path);
+    const file = this.#files.get(p);
+    if (file) return file.binary;
     return new Uint8Array();
   }
-  readdir(): Dirent[] {
-    return [];
+  readdir(path: string): Dirent[] {
+    const p = this.#norm(path);
+    const dir = this.#dirs.get(p);
+    if (!dir) return [];
+    const entries: Dirent[] = [];
+    for (const [name, isDir] of dir.children) {
+      entries.push({
+        name,
+        parentPath: p,
+        isDirectory: () => isDir,
+        isFile: () => !isDir,
+      });
+    }
+    return entries;
   }
   resolve(...paths: string[]): string {
-    return paths.join("/");
+    return this.#norm(paths.join("/"));
   }
   readonly sep = "/";
-  stat(): Stats | null {
+  stat(path: string): Stats | null {
+    const p = this.#norm(path);
+    const epoch = new Date(0);
+    if (this.#files.has(p)) {
+      const file = this.#files.get(p);
+      const size = file ? file.binary.length : 0;
+      return {
+        isDirectory: () => false,
+        isFile: () => true,
+        atime: epoch,
+        ctime: epoch,
+        mtime: epoch,
+        size,
+      };
+    }
+    if (this.#dirs.has(p)) {
+      return { isDirectory: () => true, isFile: () => false, atime: epoch, ctime: epoch, mtime: epoch, size: 0 };
+    }
     return null;
   }
 }
+
+/* Shared filesystem + context (populated with MSL during init) */
+
+const sharedFs = new BrowserFileSystem();
+let sharedContext: Context | null = null;
 
 /* Tree-sitter state */
 
@@ -315,9 +403,59 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
     Context.registerParser(".mo", parser);
     parserReady = true;
     console.log("Tree-sitter Modelica parser initialized");
+
+    // Load the Modelica Standard Library from the bundled zip
+    await loadMSL(serverDistBase);
   } catch (e) {
     console.error("Failed to initialize tree-sitter:", e);
     parserReady = false;
+  }
+}
+
+/** Fetch and decompress the bundled MSL zip, populate the shared filesystem and context */
+async function loadMSL(serverDistBase: string): Promise<void> {
+  try {
+    const response = await fetch(`${serverDistBase}/ModelicaStandardLibrary_v4.1.0.zip`);
+    if (!response.ok) {
+      console.warn("MSL zip not found — library features will be unavailable");
+      return;
+    }
+    const buffer = await response.arrayBuffer();
+    const zipData = new Uint8Array(buffer);
+    const files = unzipSync(zipData);
+
+    let fileCount = 0;
+    for (const [name, data] of Object.entries(files)) {
+      // Skip directory entries (empty data with trailing slash)
+      if (name.endsWith("/")) {
+        sharedFs.addDir(`/lib/${name.slice(0, -1)}`);
+        continue;
+      }
+      sharedFs.addFile(`/lib/${name}`, data);
+      fileCount++;
+    }
+    console.log(`MSL loaded: ${fileCount} files`);
+
+    // Create the shared context and register MSL libraries
+    sharedContext = new Context(sharedFs);
+    const libEntries = sharedFs.readdir("/lib");
+    const hasPackage = libEntries.some((e) => e.name === "package.mo");
+    if (hasPackage) {
+      sharedContext.addLibrary("/lib");
+    } else {
+      for (const entry of libEntries) {
+        if (entry.isDirectory()) {
+          try {
+            sharedContext.addLibrary(`/lib/${entry.name}`);
+          } catch (e) {
+            console.warn(`Failed to load library from /lib/${entry.name}:`, e);
+          }
+        }
+      }
+    }
+    console.log("MSL libraries registered in shared context");
+  } catch (e) {
+    console.error("Failed to load MSL zip:", e);
   }
 }
 
@@ -448,7 +586,8 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
 
   if (parserReady && parser) {
     // Full tree-sitter + ModelicaLinter pipeline (matching morsel's processContent)
-    const context = new Context(new BrowserFileSystem(connection));
+    // Use the shared context (with MSL loaded) when available, otherwise a bare context
+    const context = sharedContext ?? new Context(sharedFs);
     const linter = new ModelicaLinter(
       (_type: string, message: string, _resource: string | null | undefined, range: Range | null | undefined) => {
         if (!range) return;

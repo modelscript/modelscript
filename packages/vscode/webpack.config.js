@@ -133,6 +133,10 @@ const browserServerConfig = {
           from: path.resolve(__dirname, "..", "tree-sitter-modelica", "tree-sitter-modelica.wasm"),
           to: path.join(__dirname, "server", "dist", "tree-sitter-modelica.wasm"),
         },
+        {
+          from: path.resolve(__dirname, "..", "..", "scripts", "ModelicaStandardLibrary_v4.1.0.zip"),
+          to: path.join(__dirname, "server", "dist", "ModelicaStandardLibrary_v4.1.0.zip"),
+        },
       ],
     }),
   ],
