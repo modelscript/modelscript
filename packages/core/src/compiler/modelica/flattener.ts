@@ -2327,6 +2327,16 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       const indexName = forIndex.identifier?.text ?? "?";
       let range = forIndex.expression?.accept(this, ctx) ?? null;
 
+      // Reject multi-dimensional array iterators (Modelica spec: only 1D arrays allowed)
+      if (range instanceof ModelicaArray && range.elements.some((e) => e instanceof ModelicaArray)) {
+        const innerShape = range.elements.find((e) => e instanceof ModelicaArray) as ModelicaArray;
+        const fullShape = [range.shape[0] ?? 0, ...(innerShape?.shape ?? [])];
+        ctx.dae.diagnostics.push(
+          makeDiagnostic(ModelicaErrorCode.FOR_ITERATOR_NOT_1D, forIndex.expression, indexName, fullShape.join(", ")),
+        );
+        return null;
+      }
+
       // Infer implicit range from array indexing context when no explicit range
       if (!range) {
         range = this.#inferImplicitRange(indexName, node.statements ?? [], ctx);

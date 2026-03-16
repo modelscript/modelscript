@@ -230,6 +230,13 @@ export const ModelicaErrorCode = {
     message: (target: string, targetType: string, source: string, sourceType: string) =>
       `Type mismatch in assignment in ${target} := ${source} of ${targetType} := ${sourceType}.`,
   },
+  FOR_ITERATOR_NOT_1D: {
+    code: 5007,
+    rule: "for-iterator-not-1d",
+    severity: "error",
+    message: (iteratorName: string, shape: string) =>
+      `Iterator '${iteratorName}' has type [${shape}], but expected a 1D array expression.`,
+  },
 } as const satisfies Record<string, ErrorCodeDef>;
 
 // Derive the union type of all error code keys

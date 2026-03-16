@@ -4,6 +4,7 @@
 import { createHash } from "../../util/hash.js";
 import type { Writer } from "../../util/io.js";
 import type { JSONValue, Triple } from "../../util/types.js";
+import type { ModelicaDiagnostic } from "./errors.js";
 import {
   ModelicaArrayClassInstance,
   ModelicaClassInstance,
@@ -27,6 +28,8 @@ export class ModelicaDAE {
   functions: ModelicaDAE[] = [];
   /** External function declaration text (e.g. `external "C" ...`). */
   externalDecl: string | null = null;
+  /** Diagnostics emitted during flattening (e.g. type errors, invalid iterators). */
+  diagnostics: ModelicaDiagnostic[] = [];
 
   constructor(name: string, description?: string | null) {
     this.name = name;

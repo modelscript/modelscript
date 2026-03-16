@@ -23,6 +23,7 @@ import {
   type ModelicaStringClassInstance,
 } from "./model.js";
 import {
+  ModelicaArrayConstructorSyntaxNode,
   ModelicaBinaryExpressionSyntaxNode,
   ModelicaBooleanLiteralSyntaxNode,
   ModelicaClassKind,
@@ -38,6 +39,7 @@ import {
   ModelicaEquationSyntaxNode,
   ModelicaExtendsClauseSyntaxNode,
   ModelicaFlow,
+  ModelicaForStatementSyntaxNode,
   ModelicaFunctionCallSyntaxNode,
   ModelicaIfEquationSyntaxNode,
   ModelicaInheritanceModificationSyntaxNode,
@@ -461,6 +463,10 @@ export class ModelicaSyntaxLinter extends ModelicaSyntaxVisitor<void, string | n
   visitWithinDirective(node: ModelicaWithinDirectiveSyntaxNode, resource: string | null | undefined): void {
     ModelicaLinter.applyRules("visitWithinDirective", node, this.#diagnosticsCallback, resource);
     super.visitWithinDirective(node, resource);
+  }
+  visitForStatement(node: ModelicaForStatementSyntaxNode, resource: string | null | undefined): void {
+    ModelicaLinter.applyRules("visitForStatement", node, this.#diagnosticsCallback, resource);
+    super.visitForStatement(node, resource);
   }
 }
 
@@ -1421,6 +1427,36 @@ ModelicaLinter.register(ModelicaErrorCode.ASSIGNMENT_TYPE_MISMATCH, {
           ModelicaErrorCode.ASSIGNMENT_TYPE_MISMATCH.severity,
           `[M${ModelicaErrorCode.ASSIGNMENT_TYPE_MISMATCH.code}] ${ModelicaErrorCode.ASSIGNMENT_TYPE_MISMATCH.message(componentRefText(targetRef), targetType.name ?? "", componentRefText(sourceRef), sourceType.name ?? "")}`,
           statement,
+        );
+      }
+    }
+  },
+});
+
+ModelicaLinter.register(ModelicaErrorCode.FOR_ITERATOR_NOT_1D, {
+  visitForStatement(
+    node: ModelicaForStatementSyntaxNode,
+    diagnosticsCallback: DiagnosticsCallbackWithoutResource,
+  ): void {
+    for (const forIndex of node.forIndexes) {
+      const expr = forIndex.expression;
+      if (!(expr instanceof ModelicaArrayConstructorSyntaxNode)) continue;
+      const elements = expr.expressionList?.expressions ?? [];
+      // If any element is itself an array constructor, the iterator is multi-dimensional
+      if (elements.some((e) => e instanceof ModelicaArrayConstructorSyntaxNode)) {
+        const outerLen = elements.length;
+        const innerLen =
+          (
+            elements.find((e) => e instanceof ModelicaArrayConstructorSyntaxNode) as
+              | ModelicaArrayConstructorSyntaxNode
+              | undefined
+          )?.expressionList?.expressions?.length ?? 0;
+        const shape = `${outerLen}, ${innerLen}`;
+        const iteratorName = forIndex.identifier?.text ?? "?";
+        diagnosticsCallback(
+          ModelicaErrorCode.FOR_ITERATOR_NOT_1D.severity,
+          `[M${ModelicaErrorCode.FOR_ITERATOR_NOT_1D.code}] ${ModelicaErrorCode.FOR_ITERATOR_NOT_1D.message(iteratorName, shape)}`,
+          forIndex.expression,
         );
       }
     }
