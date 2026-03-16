@@ -1815,6 +1815,51 @@ export class ModelicaFunctionCallExpression extends ModelicaExpression {
   }
 }
 
+/**
+ * Represents a comprehension/reduction expression, e.g. `sum(expr for i in range)`.
+ * Used in function body flattening where reduction expressions must be preserved symbolically.
+ */
+export class ModelicaComprehensionExpression extends ModelicaExpression {
+  functionName: string;
+  bodyExpression: ModelicaExpression;
+  iterators: { name: string; range: ModelicaExpression }[];
+
+  constructor(
+    functionName: string,
+    bodyExpression: ModelicaExpression,
+    iterators: { name: string; range: ModelicaExpression }[],
+  ) {
+    super();
+    this.functionName = functionName;
+    this.bodyExpression = bodyExpression;
+    this.iterators = iterators;
+  }
+
+  override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
+    return visitor.visitComprehensionExpression(this, argument);
+  }
+
+  override get hash(): string {
+    const hash = createHash("sha256");
+    hash.update("comprehension");
+    hash.update(this.functionName);
+    hash.update(this.bodyExpression.hash);
+    for (const it of this.iterators) {
+      hash.update(it.name);
+      hash.update(it.range.hash);
+    }
+    return hash.digest("hex");
+  }
+
+  override get toJSON(): JSONValue {
+    return null;
+  }
+
+  override get toRDF(): Triple[] {
+    return [];
+  }
+}
+
 export abstract class ModelicaVariable extends ModelicaPrimaryExpression {
   attributes: Map<string, ModelicaExpression>;
   name: string;
@@ -2227,6 +2272,8 @@ export interface IModelicaDAEVisitor<R, A> {
 
   visitFunctionCallExpression(node: ModelicaFunctionCallExpression, argument?: A): R;
 
+  visitComprehensionExpression(node: ModelicaComprehensionExpression, argument?: A): R;
+
   visitIfElseExpression(node: ModelicaIfElseExpression, argument?: A): R;
 
   visitIfEquation(node: ModelicaIfEquation, argument?: A): R;
@@ -2359,6 +2406,11 @@ export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void,
 
   visitFunctionCallExpression(node: ModelicaFunctionCallExpression, argument?: A): void {
     for (const arg of node.args) arg.accept(this, argument);
+  }
+
+  visitComprehensionExpression(node: ModelicaComprehensionExpression, argument?: A): void {
+    node.bodyExpression.accept(this, argument);
+    for (const it of node.iterators) it.range.accept(this, argument);
   }
 
   visitIfEquation(node: ModelicaIfEquation, argument?: A): void {
@@ -2754,6 +2806,13 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
       this.out.write("\n  " + fn.externalDecl + "\n");
     }
     this.out.write("end " + fn.name + ";");
+
+    // Recursively emit nested function definitions (e.g., inner functions
+    // collected during body flattening of component-scoped functions)
+    for (const nestedFn of fn.functions) {
+      this.out.write("\n\n");
+      this.#emitFunction(nestedFn);
+    }
   }
 
   visitColonExpression(): void {
@@ -2794,6 +2853,16 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     for (let i = 0; i < node.args.length; i++) {
       if (i > 0) this.out.write(", ");
       node.args[i]?.accept(this);
+    }
+    this.out.write(")");
+  }
+
+  visitComprehensionExpression(node: ModelicaComprehensionExpression): void {
+    this.out.write(node.functionName + "(");
+    node.bodyExpression.accept(this);
+    for (const it of node.iterators) {
+      this.out.write(" for " + it.name + " in ");
+      it.range.accept(this);
     }
     this.out.write(")");
   }

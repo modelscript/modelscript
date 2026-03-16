@@ -12,6 +12,7 @@ import {
   ModelicaBreakStatement,
   ModelicaColonExpression,
   ModelicaComplexAssignmentStatement,
+  ModelicaComprehensionExpression,
   ModelicaDAE,
   ModelicaEnumerationLiteral,
   ModelicaEnumerationVariable,
@@ -57,6 +58,7 @@ import {
   ModelicaExtendsClassInstance,
   ModelicaIntegerClassInstance,
   ModelicaModelVisitor,
+  ModelicaNamedElement,
   ModelicaPredefinedClassInstance,
   ModelicaRealClassInstance,
   ModelicaStringClassInstance,
@@ -118,6 +120,8 @@ interface FlattenerContext {
   connectedFlowVars?: Set<string>;
   /** Canonical keys of connect equations removed via `break connect(...)`. */
   brokenConnects?: Set<string>;
+  /** Prefix for component-scoped function specialization (e.g., "N$n1"). */
+  componentFunctionPrefix?: string;
 }
 
 /** Extract an integer shape array from a list of expressions (all must be ModelicaIntegerLiteral). */
@@ -1207,6 +1211,13 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         }
       }
       return new ModelicaFunctionCallExpression(expr.functionName, args);
+    } else if (expr instanceof ModelicaComprehensionExpression) {
+      const newBody = this.#foldExpression(expr.bodyExpression, dae, visited, inlineParameters);
+      const newIterators = expr.iterators.map((it) => ({
+        name: it.name,
+        range: this.#foldExpression(it.range, dae, visited, inlineParameters),
+      }));
+      return new ModelicaComprehensionExpression(expr.functionName, newBody, newIterators);
     } else if (expr instanceof ModelicaArray) {
       const newElements = expr.elements.map((e) => this.#foldExpression(e, dae, visited, inlineParameters));
       return new ModelicaArray(expr.shape, newElements);
@@ -1410,13 +1421,49 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
   visitFunctionCall(node: ModelicaFunctionCallSyntaxNode, ctx: FlattenerContext): ModelicaExpression | null {
     // Use parts-based name for regular ComponentReference functions.
     // Fall back to functionReferenceName for keyword functions (der/initial/pure).
-    const functionName =
+    let functionName =
       node.functionReference?.parts?.map((p) => p.identifier?.text ?? "").join(".") ||
       (node.functionReferenceName ?? "");
     let flatArgs: ModelicaExpression[] = [];
     for (const arg of node.functionCallArguments?.arguments ?? []) {
       const flatArg = arg.expression?.accept(this, ctx);
       if (flatArg) flatArgs.push(flatArg);
+    }
+
+    // Handle comprehension/reduction expressions: sum(expr for i in range)
+    const compClause = node.functionCallArguments?.comprehensionClause;
+    if (compClause && compClause.expression && compClause.forIndexes.length > 0) {
+      // Flatten iterator ranges first
+      const iterators: { name: string; range: ModelicaExpression }[] = [];
+      const loopVars = new Map(ctx.loopVariables);
+      for (const forIndex of compClause.forIndexes) {
+        const iterName = forIndex.identifier?.text ?? "";
+        const range = forIndex.expression?.accept(this, ctx);
+        if (iterName && range) {
+          iterators.push({ name: iterName, range });
+          // Use a name expression so the iterator variable stays symbolic in the body
+          loopVars.set(iterName, new ModelicaNameExpression(iterName));
+        }
+      }
+      // Flatten the body expression with loop variables in scope
+      const bodyCtx: FlattenerContext = { ...ctx, loopVariables: loopVars };
+      const bodyExpr = compClause.expression.accept(this, bodyCtx);
+      if (bodyExpr) {
+        // Apply component-scoped function name resolution
+        const compScopedResult = this.#resolveComponentScopedFunction(functionName, ctx);
+        if (compScopedResult) {
+          functionName = compScopedResult.specializedName;
+        } else {
+          functionName = this.#resolveFullyQualifiedName(functionName, ctx);
+        }
+        this.#collectFunctionDefinition(
+          functionName,
+          ctx,
+          compScopedResult?.resolvedFunction,
+          compScopedResult?.componentPrefix,
+        );
+        return new ModelicaComprehensionExpression(functionName, bodyExpr, iterators);
+      }
     }
 
     // Resolve arguments: substitute constant/parameter values for structural built-in
@@ -1559,6 +1606,18 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         if (coerced && coerced !== flatArgs[i]) flatArgs[i] = coerced;
       }
     }
+    // Component-scoped function specialization:
+    // When a function is called through a component reference (e.g., n1.f(time)),
+    // create a specialized copy with instance-specific constants.
+    let resolvedOverride: ModelicaClassInstance | undefined;
+    let componentPrefix: string | undefined;
+    const compScopedResult = this.#resolveComponentScopedFunction(functionName, ctx);
+    if (compScopedResult) {
+      functionName = compScopedResult.specializedName;
+      resolvedOverride = compScopedResult.resolvedFunction;
+      componentPrefix = compScopedResult.componentPrefix;
+    }
+
     const result = new ModelicaFunctionCallExpression(functionName, flatArgs);
 
     // Only inline user-defined function calls when ALL arguments are compile-time constants.
@@ -1567,13 +1626,13 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       const interp = new ModelicaInterpreter(true);
       const evalResult = node.accept(interp, ctx.classInstance);
       if (evalResult) {
-        this.#collectFunctionDefinition(functionName, ctx);
+        this.#collectFunctionDefinition(functionName, ctx, resolvedOverride, componentPrefix);
         return evalResult;
       }
     }
 
     // Collect function definition if it's a user-defined function
-    this.#collectFunctionDefinition(functionName, ctx);
+    this.#collectFunctionDefinition(functionName, ctx, resolvedOverride, componentPrefix);
     return result;
   }
 
@@ -1623,8 +1682,81 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     return nameSegments.length > 0 ? nameSegments.join(".") : functionName;
   }
 
+  /**
+   * Detect a component-scoped function call (e.g., n1.f where n1 is a component of type N).
+   * Returns the specialized name (N$n1.f), the resolved function class, and the component prefix.
+   */
+  #resolveComponentScopedFunction(
+    rawName: string,
+    ctx: FlattenerContext,
+  ): { specializedName: string; resolvedFunction: ModelicaClassInstance; componentPrefix: string } | null {
+    // If we're already inside a component-scoped function body, rewrite sibling function calls
+    if (ctx.componentFunctionPrefix) {
+      // e.g., inside N$n1.f, a call to x() should become N$n1.x()
+      // Check if the function resolves to a sibling function in the enclosing type class
+      const typePrefix = ctx.componentFunctionPrefix?.split("$")[0] ?? ""; // "N"
+      const fqName = this.#resolveFullyQualifiedName(rawName, ctx);
+      if (typePrefix && fqName.startsWith(typePrefix + ".")) {
+        const localFuncName = fqName.substring(typePrefix.length + 1); // "x"
+        const specializedName = `${ctx.componentFunctionPrefix}.${localFuncName}`;
+        const resolved = ctx.classInstance.resolveName(rawName.split("."));
+        if (resolved instanceof ModelicaClassInstance) {
+          return {
+            specializedName,
+            resolvedFunction: resolved,
+            componentPrefix: ctx.componentFunctionPrefix,
+          };
+        }
+      }
+      return null;
+    }
+
+    // Check if the first part of the name resolves to a component instance
+    const parts = rawName.split(".");
+    if (parts.length < 2) return null;
+
+    const firstResolved = ctx.classInstance.resolveSimpleName(parts[0]);
+    if (!(firstResolved instanceof ModelicaComponentInstance)) return null;
+
+    // It's a component-scoped function call
+    if (!firstResolved.instantiated && !firstResolved.instantiating) firstResolved.instantiate();
+    const classInst = firstResolved.classInstance;
+    if (!classInst) return null;
+
+    const typeName = classInst.name;
+    if (!typeName) return null;
+
+    // Resolve the function through the component's class instance
+    const funcParts = parts.slice(1);
+    let resolved: ModelicaNamedElement | null = classInst;
+    for (const part of funcParts) {
+      if (!resolved) return null;
+      resolved = resolved.resolveSimpleName(part, false, true);
+      if (!resolved) return null;
+    }
+    if (!(resolved instanceof ModelicaClassInstance)) return null;
+    if (
+      resolved.classKind !== ModelicaClassKind.FUNCTION &&
+      resolved.classKind !== ModelicaClassKind.OPERATOR_FUNCTION
+    ) {
+      return null;
+    }
+
+    const componentPath = parts.slice(0, -1).join("."); // "n1"
+    const funcName = funcParts.join("."); // "f"
+    const componentPrefix = `${typeName}$${componentPath}`; // "N$n1"
+    const specializedName = `${componentPrefix}.${funcName}`; // "N$n1.f"
+
+    return { specializedName, resolvedFunction: resolved, componentPrefix };
+  }
+
   /** Resolve a function name and flatten its definition into ctx.dae.functions. */
-  #collectFunctionDefinition(functionName: string, ctx: FlattenerContext): void {
+  #collectFunctionDefinition(
+    functionName: string,
+    ctx: FlattenerContext,
+    resolvedOverride?: ModelicaClassInstance,
+    componentPrefix?: string,
+  ): void {
     // Skip built-in functions (only unqualified names are builtins; qualified names
     // like Modelica.Utilities.Streams.print are user-defined even if simple name matches)
     if (!functionName.includes(".") && ModelicaSyntaxFlattener.#isBuiltinFunction(functionName)) return;
@@ -1633,12 +1765,18 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     if (ModelicaSyntaxFlattener.#collectingFunctions.has(functionName)) return;
     ModelicaSyntaxFlattener.#collectingFunctions.add(functionName);
 
-    // Resolve the function name via the class instance scope
-    const parts = functionName.split(".");
-    const resolved = ctx.classInstance.resolveName(parts);
-    if (!(resolved instanceof ModelicaClassInstance)) {
-      ModelicaSyntaxFlattener.#collectingFunctions.delete(functionName);
-      return;
+    // Resolve the function class — use override if provided (for component-scoped functions)
+    let resolved: ModelicaClassInstance;
+    if (resolvedOverride) {
+      resolved = resolvedOverride;
+    } else {
+      const parts = functionName.split(".");
+      const r = ctx.classInstance.resolveName(parts);
+      if (!(r instanceof ModelicaClassInstance)) {
+        ModelicaSyntaxFlattener.#collectingFunctions.delete(functionName);
+        return;
+      }
+      resolved = r;
     }
     if (
       resolved.classKind !== ModelicaClassKind.FUNCTION &&
@@ -1660,6 +1798,25 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     // Flatten function components (parameters/variables) with compact array notation.
     // Unlike model flattening, function definitions should keep array params as
     // `input Real[3] a` instead of expanding to `input Real a[1]; input Real a[2]; ...`
+
+    // For component-scoped functions, collect enclosing class constants to substitute
+    // in body expressions (e.g., constant c in N gets its value from n1's modification).
+    const enclosingConstants = new Map<string, ModelicaExpression | number>();
+    if (componentPrefix && resolved.parent instanceof ModelicaClassInstance) {
+      for (const parentEl of resolved.parent.elements) {
+        if (parentEl instanceof ModelicaComponentInstance && parentEl.name) {
+          const v = parentEl.variability;
+          if (v === ModelicaVariability.CONSTANT) {
+            let val = parentEl.modification?.evaluatedExpression ?? parentEl.modification?.expression;
+            // Coerce integer to real if the component type is Real
+            if (val instanceof ModelicaIntegerLiteral && parentEl.classInstance instanceof ModelicaRealClassInstance) {
+              val = new ModelicaRealLiteral(val.value);
+            }
+            if (val) enclosingConstants.set(parentEl.name, val);
+          }
+        }
+      }
+    }
     for (const element of resolved.elements) {
       if (!(element instanceof ModelicaComponentInstance)) continue;
       if (!element.classInstance) continue;
@@ -1704,6 +1861,8 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
             classInstance: resolved,
             dae: fnDae,
             stmtCollector: [],
+            loopVariables: enclosingConstants,
+            ...(componentPrefix ? { componentFunctionPrefix: componentPrefix } : {}),
           }) ?? null;
       }
       if (!expression && element.modification?.evaluatedExpression) {
@@ -1777,7 +1936,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     }
 
     // Register the function definition early to prevent infinite recursion when
-    // the function body references itself (directly or via name resolution)
+    // the function body references itself (directly or via name resolution).
     ctx.dae.functions.push(fnDae);
 
     // Flatten algorithm and equation sections (these still use the standard path)
@@ -1789,6 +1948,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
           classInstance: resolved,
           dae: fnDae,
           stmtCollector: [],
+          ...(componentPrefix ? { componentFunctionPrefix: componentPrefix } : {}),
         });
       }
     }
@@ -1800,6 +1960,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
           classInstance: resolved,
           dae: fnDae,
           stmtCollector: collector,
+          ...(componentPrefix ? { componentFunctionPrefix: componentPrefix } : {}),
         });
       }
       if (collector.length > 0) {
@@ -3153,6 +3314,24 @@ function canonicalizeBinaryExpression(
         break;
     }
     if (boolResult != null) return new ModelicaBooleanLiteral(boolResult);
+  }
+  // Multiplicative identity: 1 * x → x, x * 1 → x
+  if (
+    operator === ModelicaBinaryOperator.MULTIPLICATION ||
+    operator === ModelicaBinaryOperator.ELEMENTWISE_MULTIPLICATION
+  ) {
+    if (
+      (operand1 instanceof ModelicaRealLiteral || operand1 instanceof ModelicaIntegerLiteral) &&
+      operand1.value === 1
+    ) {
+      return operand2;
+    }
+    if (
+      (operand2 instanceof ModelicaRealLiteral || operand2 instanceof ModelicaIntegerLiteral) &&
+      operand2.value === 1
+    ) {
+      return operand1;
+    }
   }
   if (operator === ModelicaBinaryOperator.DIVISION && operand2 instanceof ModelicaIntegerLiteral) {
     const reciprocal = new ModelicaRealLiteral(1.0 / operand2.value);
