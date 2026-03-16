@@ -1634,9 +1634,17 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     // Resolve the function name via the class instance scope
     const parts = functionName.split(".");
     const resolved = ctx.classInstance.resolveName(parts);
-    if (!(resolved instanceof ModelicaClassInstance)) return;
-    if (resolved.classKind !== ModelicaClassKind.FUNCTION && resolved.classKind !== ModelicaClassKind.OPERATOR_FUNCTION)
+    if (!(resolved instanceof ModelicaClassInstance)) {
+      ModelicaSyntaxFlattener.#collectingFunctions.delete(functionName);
       return;
+    }
+    if (
+      resolved.classKind !== ModelicaClassKind.FUNCTION &&
+      resolved.classKind !== ModelicaClassKind.OPERATOR_FUNCTION
+    ) {
+      ModelicaSyntaxFlattener.#collectingFunctions.delete(functionName);
+      return;
+    }
 
     // Flatten the function into a sub-DAE
     const fnDae = new ModelicaDAE(functionName);
@@ -1842,8 +1850,8 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         fnDae.externalDecl = declText;
       }
     }
-
     // fnDae was already pushed earlier to prevent recursion
+    ModelicaSyntaxFlattener.#collectingFunctions.delete(functionName);
   }
 
   visitOutputExpressionList(
