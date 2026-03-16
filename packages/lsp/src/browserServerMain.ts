@@ -649,8 +649,46 @@ connection.onRequest("textDocument/semanticTokens/full", (params) => {
   return computeSemanticTokens(document);
 });
 
-// Basic keyword completions for Modelica
-connection.onCompletion((): CompletionItem[] => {
+// Completion provider — dot-path resolution (matching morsel) + keyword fallback
+connection.onCompletion((params): CompletionItem[] => {
+  const document = documents.get(params.textDocument.uri);
+  if (!document) {
+    return [];
+  }
+
+  const position = params.position;
+  const text = document.getText();
+  const lines = text.split("\n");
+  const lineContent = lines[position.line] ?? "";
+  const textUntilPosition = lineContent.substring(0, position.character);
+
+  // Check for dot-path completion (e.g. "SomeModel." or "Modelica.SIunits.")
+  const match = textUntilPosition.match(/([a-zA-Z0-9_]+(\.[a-zA-Z0-9_]+)*)\.$/);
+  if (match) {
+    const path = match[1];
+    const instances = documentInstances.get(params.textDocument.uri);
+    const context = documentContexts.get(params.textDocument.uri);
+    const scope: Scope | undefined = instances?.[0] ?? context;
+
+    if (scope) {
+      const element = scope.resolveName(path.split("."));
+      if (element) {
+        const items: CompletionItem[] = [];
+        for (const child of element.elements) {
+          if (child instanceof ModelicaNamedElement && child.name) {
+            items.push({
+              label: child.name,
+              kind: child instanceof ModelicaClassInstance ? CompletionItemKind.Class : CompletionItemKind.Field,
+              detail: child.description ?? undefined,
+            });
+          }
+        }
+        return items;
+      }
+    }
+  }
+
+  // Fallback: keyword completions
   const allKeywords = [...keywords, ...typeKeywords];
   return allKeywords.map((kw, index) => ({
     label: kw,
