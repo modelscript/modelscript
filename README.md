@@ -3,16 +3,24 @@
 
 # ModelScript
 
+[![CI/CD](https://github.com/modelscript/modelscript/actions/workflows/ci.yml/badge.svg)](https://github.com/modelscript/modelscript/actions/workflows/ci.yml)
+
 ModelScript is a comprehensive Modelica compilation, analysis, and visualization framework. It provides a robust engine for parsing Modelica code, performing semantic analysis, flattening models, and rendering interactive diagrams.
 
 ## Monorepo Structure
 
-This project is a monorepo managed with **Lerna** and **npm workspaces**.
+This project is a monorepo managed with **Lerna**, **Nx**, and **npm workspaces**.
 
-- **[Core](./src/)**: The central compiler engine (`@modelscript/core`), providing Modelica parsing, DAE generation, and semantic analysis.
-- **[CLI](./packages/cli/)**: The `msc` command-line interface (`@modelscript/cli`) for running compilation tasks from the terminal.
-- **[Morsel](./packages/morsel/)**: A visual Modelica editor and diagram viewer (`@modelscript/morsel`) built with React and React Router.
-- **[Grammar](./packages/tree-sitter-modelica/)**: A high-performance tree-sitter grammar for Modelica.
+| Package                                                                 | Description                                                                   |
+| ----------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| [`@modelscript/core`](./packages/core/)                                 | Central compiler engine — parsing, semantic analysis, DAE generation, linting |
+| [`@modelscript/cli`](./packages/cli/)                                   | `msc` command-line interface for compilation tasks                            |
+| [`@modelscript/api`](./packages/api/)                                   | REST API server for ModelScript services                                      |
+| [`@modelscript/morsel`](./packages/morsel/)                             | Visual Modelica editor and diagram viewer (React)                             |
+| [`@modelscript/web`](./packages/web/)                                   | Web frontend for browsing Modelica libraries                                  |
+| [`@modelscript/lsp`](./packages/lsp/)                                   | Language Server Protocol implementation for Modelica                          |
+| [`@modelscript/vscode`](./packages/vscode/)                             | VS Code extension with syntax highlighting and language support               |
+| [`@modelscript/tree-sitter-modelica`](./packages/tree-sitter-modelica/) | Tree-sitter grammar for Modelica                                              |
 
 ## Core Features
 
@@ -20,14 +28,15 @@ This project is a monorepo managed with **Lerna** and **npm workspaces**.
 - **Semantic Analysis**: Full scope and name resolution for complex Modelica hierarchies.
 - **Flattening**: Transforming hierarchical Modelica models into flat Differential Algebraic Equations (DAE).
 - **Diagram Rendering**: Generating interactive SVG diagrams and X6-based visual representations.
+- **Language Server**: Modelica language support with semantic highlighting, completions, and hover.
 - **i18n Support**: Extracting translatable strings from Modelica models for internationalization.
 
 ## Getting Started
 
 ### Prerequisites
 
-- **Node.js**: Version 22 or later.
-- **emsdk**: Required for building the Tree-sitter parser to WebAssembly.
+- **Node.js** ≥ 22 (see `.nvmrc`)
+- **emsdk** (required for building the Tree-sitter WASM parser):
   ```bash
   git clone https://github.com/emscripten-core/emsdk.git
   cd emsdk
@@ -38,30 +47,63 @@ This project is a monorepo managed with **Lerna** and **npm workspaces**.
 
 ### Installation
 
-Clone the repository and install dependencies:
-
 ```bash
 git clone https://github.com/modelscript/modelscript.git
 cd modelscript
 npm install
 ```
 
-### Building the Project
+### Building
 
-Build all packages from the root:
+Build all packages (in dependency order via Nx):
 
 ```bash
 npm run build
 ```
 
-This runs the build scripts for all packages in the correct dependency order.
+### Running (Development)
+
+Start the API server, Morsel editor, and Web frontend concurrently:
+
+```bash
+npm run dev
+```
+
+This launches:
+
+| Service               | URL                   |
+| --------------------- | --------------------- |
+| Morsel (editor)       | http://localhost:5173 |
+| Web (library browser) | http://localhost:5174 |
+| API                   | http://localhost:3000 |
 
 ### Testing
 
-Run the test suite across all modules:
+Run the test suite across all packages:
 
 ```bash
 npm test
+```
+
+### Linting
+
+```bash
+npm run lint
+```
+
+### Formatting
+
+```bash
+npm run format
+```
+
+### Docker
+
+```bash
+npm run docker:build   # Build images
+npm run docker:up      # Start containers
+npm run docker:down    # Stop containers
+npm run docker:logs    # Tail logs
 ```
 
 ## License

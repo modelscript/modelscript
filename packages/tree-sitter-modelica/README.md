@@ -1,63 +1,43 @@
 <div align="center"><b>&#1576;&#1587;&#1605; &#1575;&#1604;&#1604;&#1607; &#1575;&#1604;&#1585;&#1581;&#1605;&#1606; &#1575;&#1604;&#1585;&#1581;&#1610;&#1605;</b></div>
 <div align="center">In the name of Allah, the Compassionate, the Merciful</div>
 
-# Modelica Grammar for Tree-sitter
+# @modelscript/tree-sitter-modelica
 
-This package (`@modelscript/tree-sitter-modelica`) provides a high-performance **Tree-sitter** grammar for the Modelica language. It is used by the ModelScript compiler for efficient, incremental parsing.
+Tree-sitter grammar for the Modelica language. Produces both a native Node.js binding and a WebAssembly build for browser use.
 
-## Features
+## Prerequisites
 
-- **High Performance**: Designed for incremental parsing and low-latency syntax highlighting.
-- **Robust Modelica Support**: Covers the core Modelica language syntax, including class definitions, equations, algorithms, and annotations.
-- **WASM Support**: Compiled to WASM for use in web-based environments (like the Morsel editor).
+- **tree-sitter-cli** (`npm install -g tree-sitter-cli`)
+- **emsdk** (for WASM build)
+- **node-gyp** build tools
 
-## Development
+## Scripts
 
-The grammar is defined in `grammar.js`.
+| Command         | Description                                    |
+| --------------- | ---------------------------------------------- |
+| `npm run build` | Generate, build native binding, and build WASM |
+| `npm run clean` | Remove `build/` and `src/` output              |
+| `npm test`      | Run grammar binding tests                      |
+| `npm start`     | Launch tree-sitter playground                  |
 
-### Prerequisites
-
-- [Tree-sitter CLI](https://tree-sitter.github.io/tree-sitter/creating-parsers#installation)
-- [emsdk](https://emscripten.org/docs/getting_started/downloads.html) (required for WASM build)
-
-### Building the Grammar
-
-Generate the C and WASM parser:
+## Building
 
 ```bash
 npm run build
 ```
 
-### Running Tests
+This generates the parser from `grammar.js`, builds the native Node.js binding, and produces `tree-sitter-modelica.wasm`.
 
-Execute the tree-sitter test suite:
+## Testing
 
 ```bash
 npm test
 ```
 
-### Playground
-
-Launch the tree-sitter playground to interactively test the grammar:
+## Playground
 
 ```bash
 npm start
 ```
 
-## Usage in Node.js
-
-```javascript
-const Parser = require("tree-sitter");
-const Modelica = require("@modelscript/tree-sitter-modelica");
-
-const parser = new Parser();
-parser.setLanguage(Modelica);
-
-const sourceCode = "model M end M;";
-const tree = parser.parse(sourceCode);
-console.log(tree.rootNode.toString());
-```
-
-## License
-
-ModelScript is licensed under the **AGPL-3.0-or-later**.
+Opens the tree-sitter web playground for interactively testing the grammar.
