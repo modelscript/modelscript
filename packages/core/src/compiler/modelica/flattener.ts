@@ -2324,15 +2324,65 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     const condition = node.condition?.accept(this, ctx);
     if (!condition) return null;
     const thenStatements = this.flattenStatements(node.statements ?? [], ctx);
-    const elseIfClauses: { condition: ModelicaExpression; statements: ModelicaStatement[] }[] = [];
+
+    // Collect all elseif clauses
+    const allElseIfClauses: { condition: ModelicaExpression; statements: ModelicaStatement[] }[] = [];
     for (const clause of node.elseIfStatementClauses ?? []) {
       const clauseCondition = clause.condition?.accept(this, ctx);
       if (!clauseCondition) continue;
       const clauseStatements = this.flattenStatements(clause.statements ?? [], ctx);
-      elseIfClauses.push({ condition: clauseCondition, statements: clauseStatements });
+      allElseIfClauses.push({ condition: clauseCondition, statements: clauseStatements });
     }
     const elseStatements = this.flattenStatements(node.elseStatements ?? [], ctx);
-    ctx.stmtCollector.push(new ModelicaIfStatement(condition, thenStatements, elseIfClauses, elseStatements));
+
+    // --- Constant folding optimization ---
+    // Build the chain: [main condition + body, ...elseif conditions + bodies] + else body
+    interface Branch {
+      condition: ModelicaExpression;
+      statements: ModelicaStatement[];
+    }
+    const branches: Branch[] = [{ condition, statements: thenStatements }, ...allElseIfClauses];
+
+    // Walk the branches and optimize constant booleans
+    const keptBranches: Branch[] = [];
+    let resolvedElse: ModelicaStatement[] = elseStatements;
+
+    for (const branch of branches) {
+      if (branch.condition instanceof ModelicaBooleanLiteral) {
+        if (branch.condition.value) {
+          // Condition is `true`: take this branch, everything after becomes dead
+          if (keptBranches.length === 0) {
+            // This is the first live branch — emit its body directly (no if needed)
+            for (const stmt of branch.statements) ctx.stmtCollector.push(stmt);
+            return null;
+          } else {
+            // This is an elseif with `true` — it becomes the final else
+            resolvedElse = branch.statements;
+            break; // No need to check further branches
+          }
+        } else {
+          // Condition is `false`: skip this branch entirely
+          continue;
+        }
+      } else {
+        // Non-constant condition: keep this branch
+        keptBranches.push(branch);
+      }
+    }
+
+    // After processing: if no branches remain, emit the else body directly
+    if (keptBranches.length === 0) {
+      for (const stmt of resolvedElse) ctx.stmtCollector.push(stmt);
+      return null;
+    }
+
+    // Build the optimized if-statement from remaining branches
+    const mainBranch = keptBranches[0];
+    if (!mainBranch) return null;
+    const remainingElseIfs = keptBranches.slice(1);
+    ctx.stmtCollector.push(
+      new ModelicaIfStatement(mainBranch.condition, mainBranch.statements, remainingElseIfs, resolvedElse),
+    );
     return null;
   }
 
