@@ -2206,33 +2206,47 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         }
         // Try the interpreter for subscripts containing parameters (e.g. work[x] where x=4)
         // This must happen BEFORE the symbolic fallback to resolve structural parameters.
+        // BUT skip interpreter resolution when subscripts reference loop variables,
+        // since the interpreter would resolve them via the class scope (e.g. constant k=4)
+        // instead of keeping them symbolic as for-loop iterators.
+        let hasLoopVarSubscript = false;
+        if (ctx.loopVariables) {
+          for (const sub of subscripts) {
+            if (sub instanceof ModelicaNameExpression && ctx.loopVariables.has(sub.name)) {
+              hasLoopVarSubscript = true;
+              break;
+            }
+          }
+        }
         const arrayPrefix = baseName + "[";
         const arraySize = ctx.dae.variables.filter((v) => v.name.startsWith(arrayPrefix)).length;
         const interp = new ModelicaInterpreter();
         interp.endValue = arraySize > 0 ? arraySize : null;
         const resolvedIndices: number[] = [];
         let rangeIndices: number[] | null = null;
-        for (const sub of subscriptNodes) {
-          if (sub.flexible) break;
-          if (!sub.expression) break;
-          const indexExpr = sub.expression.accept(interp, ctx.classInstance);
-          if (indexExpr instanceof ModelicaIntegerLiteral) {
-            resolvedIndices.push(indexExpr.value);
-          } else if (indexExpr instanceof ModelicaArray) {
-            // Range subscript evaluated to an array of indices (e.g. x:-1:2 → [4,3,2])
-            const indices: number[] = [];
-            for (const el of indexExpr.elements) {
-              if (el instanceof ModelicaIntegerLiteral) indices.push(el.value);
-              else {
-                break;
+        if (!hasLoopVarSubscript) {
+          for (const sub of subscriptNodes) {
+            if (sub.flexible) break;
+            if (!sub.expression) break;
+            const indexExpr = sub.expression.accept(interp, ctx.classInstance);
+            if (indexExpr instanceof ModelicaIntegerLiteral) {
+              resolvedIndices.push(indexExpr.value);
+            } else if (indexExpr instanceof ModelicaArray) {
+              // Range subscript evaluated to an array of indices (e.g. x:-1:2 → [4,3,2])
+              const indices: number[] = [];
+              for (const el of indexExpr.elements) {
+                if (el instanceof ModelicaIntegerLiteral) indices.push(el.value);
+                else {
+                  break;
+                }
               }
+              if (indices.length === indexExpr.elements.length && indices.length > 0) {
+                rangeIndices = indices;
+              }
+              break;
+            } else {
+              break;
             }
-            if (indices.length === indexExpr.elements.length && indices.length > 0) {
-              rangeIndices = indices;
-            }
-            break;
-          } else {
-            break;
           }
         }
         if (resolvedIndices.length === subscriptNodes.length) {
@@ -2266,6 +2280,14 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
           return new ModelicaSubscriptedExpression(new ModelicaNameExpression(name), subscripts);
         }
       }
+      // Check for loop variable bindings FIRST — loop variables shadow class-level constants
+      // e.g. `for k in 1:5 loop z[k] := ...` where class also has `constant Integer k = 4`
+      const simpleName = node.parts.length === 1 ? (node.parts[0]?.identifier?.text ?? null) : null;
+      if (simpleName && ctx.loopVariables?.has(simpleName)) {
+        const loopVal = ctx.loopVariables.get(simpleName);
+        if (loopVal instanceof ModelicaExpression) return loopVal;
+        return new ModelicaIntegerLiteral(loopVal ?? 0);
+      }
       for (const variable of ctx.dae.variables) {
         if (variable.name === name) return variable;
       }
@@ -2284,14 +2306,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         }
       }
     }
-    // Fall back to a symbolic name for unresolved references (e.g. loop variables in preserved for-statements)
-    // But first check if there's a loop variable binding for equation unrolling
-    const simpleName = node.parts.length === 1 ? (node.parts[0]?.identifier?.text ?? null) : null;
-    if (simpleName && ctx.loopVariables?.has(simpleName)) {
-      const loopVal = ctx.loopVariables.get(simpleName);
-      if (loopVal instanceof ModelicaExpression) return loopVal;
-      return new ModelicaIntegerLiteral(loopVal ?? 0);
-    }
+    // Fall back to a symbolic name for unresolved references
     return new ModelicaNameExpression(name);
   }
 
@@ -2634,7 +2649,15 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
   }
 
   visitForStatement(node: ModelicaForStatementSyntaxNode, ctx: FlattenerContext): null {
-    const innerStatements = this.flattenStatements(node.statements ?? [], ctx);
+    // Add for-loop index variables to loopVariables BEFORE flattening inner statements
+    // so they shadow any class-level constants/variables with the same name
+    const loopVars = new Map(ctx.loopVariables ?? []);
+    for (const forIndex of node.forIndexes) {
+      const indexName = forIndex?.identifier?.text;
+      if (indexName) loopVars.set(indexName, new ModelicaNameExpression(indexName));
+    }
+    const innerCtx: FlattenerContext = { ...ctx, loopVariables: loopVars };
+    const innerStatements = this.flattenStatements(node.statements ?? [], innerCtx);
     let statements = innerStatements;
     for (let i = node.forIndexes.length - 1; i >= 0; i--) {
       const forIndex = node.forIndexes[i];
