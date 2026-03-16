@@ -1481,3 +1481,21 @@ ModelicaLinter.register(ModelicaErrorCode.FOR_ITERATOR_NOT_1D, {
     }
   },
 });
+
+ModelicaLinter.register(ModelicaErrorCode.EXTERNAL_WITH_ALGORITHM, {
+  visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+    if (node.classKind !== ModelicaClassKind.FUNCTION && node.classKind !== ModelicaClassKind.OPERATOR_FUNCTION) return;
+    const classSpecifier = node.abstractSyntaxNode?.classSpecifier;
+    if (!classSpecifier) return;
+    if (!("externalFunctionClause" in classSpecifier) || !classSpecifier.externalFunctionClause) return;
+    // Check for algorithm sections (directly declared or inherited via extends)
+    const hasAlgorithm = [...node.algorithmSections].length > 0;
+    if (hasAlgorithm) {
+      diagnosticsCallback(
+        ModelicaErrorCode.EXTERNAL_WITH_ALGORITHM.severity,
+        `[M${ModelicaErrorCode.EXTERNAL_WITH_ALGORITHM.code}] ${ModelicaErrorCode.EXTERNAL_WITH_ALGORITHM.message()}`,
+        node.abstractSyntaxNode?.identifier,
+      );
+    }
+  },
+});

@@ -217,6 +217,12 @@ export const ModelicaErrorCode = {
     message: (elementName: string, modText: string) =>
       `Protected element '${elementName}' may not be modified, got '${modText}'.`,
   },
+  EXTERNAL_WITH_ALGORITHM: {
+    code: 4006,
+    rule: "external-with-algorithm",
+    severity: "error",
+    message: () => "Element is not allowed in function context: algorithm",
+  },
   DIVISION_BY_ZERO: {
     code: 5005,
     rule: "division-by-zero",

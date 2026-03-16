@@ -2018,6 +2018,11 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     }
     // fnDae was already pushed earlier to prevent recursion
     ModelicaSyntaxFlattener.#collectingFunctions.delete(functionName);
+
+    // Validate: external functions cannot have algorithm sections (directly or inherited)
+    if (fnDae.externalDecl && [...resolved.algorithmSections].length > 0) {
+      fnDae.diagnostics.push(makeDiagnostic(ModelicaErrorCode.EXTERNAL_WITH_ALGORITHM, null));
+    }
   }
 
   visitOutputExpressionList(
