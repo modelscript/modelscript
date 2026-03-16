@@ -2861,7 +2861,15 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
   }
 
   visitStringLiteral(node: ModelicaStringLiteral): void {
-    this.out.write('"' + node.value + '"');
+    // Unescape standard escape sequences for output
+    const indent = "  ".repeat(this.#depth + 1);
+    const unescaped = node.value
+      .replace(/\\n/g, "\n" + indent)
+      .replace(/\\t/g, "\t")
+      .replace(/\\r/g, "\r")
+      .replace(/\\\\/g, "\\")
+      .replace(/\\"/g, '"');
+    this.out.write('"' + unescaped + '"');
   }
 
   visitStringVariable(node: ModelicaStringVariable): void {

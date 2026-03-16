@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { StringWriter } from "../../util/io.js";
+import { BUILTIN_FUNCTIONS } from "./builtins.js";
 import type { ModelicaElseIfClause, ModelicaElseWhenClause } from "./dae.js";
 import {
   ModelicaArray,
@@ -1327,87 +1328,15 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
  * (equations, expressions, algorithms) during the DAE translation process.
  */
 class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, FlattenerContext> {
-  /** Built-in function names that should not be looked up as user-defined functions. */
-  static readonly #builtinFunctions = new Set([
-    "abs",
-    "acos",
-    "actualStream",
-    "asin",
-    "assert",
-    "atan",
-    "atan2",
-    "backSample",
-    "cardinality",
-    "cat",
-    "ceil",
-    "change",
-    "Clock",
-    "cos",
-    "cosh",
-    "cross",
-    "delay",
-    "der",
-    "diagonal",
-    "div",
-    "edge",
-    "end",
-    "exp",
-    "fill",
-    "floor",
-    "hold",
-    "homotopy",
-    "identity",
-    "initial",
-    "initialState",
-    "inStream",
-    "integer",
-    "interval",
-    "linspace",
-    "log",
-    "log10",
-    "matrix",
-    "max",
-    "min",
-    "mod",
-    "noClock",
-    "noEvent",
-    "ones",
-    "pre",
-    "previous",
-    "print",
-    "product",
-    "promote",
-    "reinit",
-    "rem",
-    "rooted",
-    "sample",
-    "scalar",
-    "semiLinear",
-    "shiftSample",
-    "sign",
-    "sin",
-    "sinh",
-    "size",
-    "skew",
-    "smooth",
-    "spatialDistribution",
-    "sqrt",
-    "subSample",
-    "sum",
-    "superSample",
-    "symmetric",
-    "tan",
-    "tanh",
-    "terminal",
-    "terminate",
-    "transpose",
-    "vector",
-    "zeros",
-    "String",
-    "Integer",
-    "Real",
-    "Boolean",
-  ]);
+  /** Tracks functions currently being collected, to prevent re-entrant recursion. */
+  static #collectingFunctions = new Set<string>();
+  /**
+   * Check if a function name refers to a built-in Modelica function.
+   * Uses the typed definitions in builtins.ts.
+   */
+  static #isBuiltinFunction(name: string): boolean {
+    return BUILTIN_FUNCTIONS.has(name);
+  }
   visitArrayConcatenation(
     node: ModelicaArrayConcatenationSyntaxNode,
     ctx: FlattenerContext,
@@ -1568,11 +1497,33 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       }
     }
 
+    // Expand default arguments from built-in function signatures
+    const builtinDef = BUILTIN_FUNCTIONS.get(functionName);
+    if (builtinDef) {
+      while (flatArgs.length < builtinDef.inputs.length) {
+        const param = builtinDef.inputs[flatArgs.length];
+        if (param?.defaultValue === undefined) break;
+        if (typeof param.defaultValue === "boolean") {
+          flatArgs.push(new ModelicaBooleanLiteral(param.defaultValue));
+        } else {
+          flatArgs.push(new ModelicaIntegerLiteral(param.defaultValue));
+        }
+      }
+    }
     // Evaluate built-in math/arithmetic functions at flatten time when all args are literals
     const foldedResult = tryFoldBuiltinFunction(functionName, flatArgs);
     if (foldedResult) return foldedResult;
-    // Coerce integer literal arguments to Real when any sibling argument is Real-typed
-    if (flatArgs.some((a) => isRealTyped(a, ctx.dae))) {
+    // Per-parameter type coercion: coerce integer args to Real only where the
+    // built-in function signature expects a Real parameter
+    if (builtinDef) {
+      for (let i = 0; i < flatArgs.length && i < builtinDef.inputs.length; i++) {
+        if (builtinDef.inputs[i]?.type === "Real") {
+          const coerced = castToReal(flatArgs[i] ?? null);
+          if (coerced && coerced !== flatArgs[i]) flatArgs[i] = coerced;
+        }
+      }
+    } else if (flatArgs.some((a) => isRealTyped(a, ctx.dae))) {
+      // Fallback for non-builtin functions: blanket coercion
       for (let i = 0; i < flatArgs.length; i++) {
         const coerced = castToReal(flatArgs[i] ?? null);
         if (coerced && coerced !== flatArgs[i]) flatArgs[i] = coerced;
@@ -1615,14 +1566,42 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     // For other compound types, recurse into known child expression properties
   }
 
+  /**
+   * Resolve a potentially import-aliased function name to its fully qualified form.
+   * E.g. `Streams.print` → `Modelica.Utilities.Streams.print` when
+   * `import Modelica.Utilities.Streams;` is in scope.
+   */
+  #resolveFullyQualifiedName(functionName: string, ctx: FlattenerContext): string {
+    const parts = functionName.split(".");
+    const resolved = ctx.classInstance.resolveName(parts);
+    if (!(resolved instanceof ModelicaClassInstance)) return functionName;
+
+    // Build FQ name by walking the parent chain
+    const nameSegments: string[] = [];
+    let current: ModelicaClassInstance | null = resolved;
+    while (current) {
+      const name = current.name;
+      if (!name) break;
+      // Stop at the library root (ModelicaLibrary)
+      if (current.parent === null || current.parent === undefined) {
+        nameSegments.unshift(name);
+        break;
+      }
+      nameSegments.unshift(name);
+      current = current.parent instanceof ModelicaClassInstance ? current.parent : null;
+    }
+    return nameSegments.length > 0 ? nameSegments.join(".") : functionName;
+  }
+
   /** Resolve a function name and flatten its definition into ctx.dae.functions. */
   #collectFunctionDefinition(functionName: string, ctx: FlattenerContext): void {
-    // Skip built-in functions
-    const simpleName = functionName.includes(".") ? (functionName.split(".").pop() ?? functionName) : functionName;
-    if (ModelicaSyntaxFlattener.#builtinFunctions.has(simpleName)) return;
-    if (ModelicaSyntaxFlattener.#builtinFunctions.has(functionName)) return;
-    // Skip if already collected
+    // Skip built-in functions (only unqualified names are builtins; qualified names
+    // like Modelica.Utilities.Streams.print are user-defined even if simple name matches)
+    if (!functionName.includes(".") && ModelicaSyntaxFlattener.#isBuiltinFunction(functionName)) return;
+    // Skip if already collected or currently being collected (prevents recursion)
     if (ctx.dae.functions.some((f) => f.name === functionName)) return;
+    if (ModelicaSyntaxFlattener.#collectingFunctions.has(functionName)) return;
+    ModelicaSyntaxFlattener.#collectingFunctions.add(functionName);
 
     // Resolve the function name via the class instance scope
     const parts = functionName.split(".");
@@ -1759,6 +1738,10 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       fnDae.variables.push(variable);
     }
 
+    // Register the function definition early to prevent infinite recursion when
+    // the function body references itself (directly or via name resolution)
+    ctx.dae.functions.push(fnDae);
+
     // Flatten algorithm and equation sections (these still use the standard path)
 
     for (const equationSection of resolved.equationSections) {
@@ -1832,7 +1815,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       }
     }
 
-    ctx.dae.functions.push(fnDae);
+    // fnDae was already pushed earlier to prevent recursion
   }
 
   visitOutputExpressionList(
@@ -1912,9 +1895,10 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         }
       }
     }
-    const name =
-      (effectivePrefix === "" ? "" : effectivePrefix + ".") +
-      node.parts.map((c) => c.identifier?.text ?? "<ERROR>").join(".");
+    const rawName = node.parts.map((c) => c.identifier?.text ?? "<ERROR>").join(".");
+    // Built-in variables like 'time' should never be prefixed
+    const isBuiltinVar = rawName === "time";
+    const name = isBuiltinVar ? rawName : (effectivePrefix === "" ? "" : effectivePrefix + ".") + rawName;
     // Resolve enum literal references like E.one when E is an enumeration type
     if (node.parts.length === 2 && ctx.classInstance) {
       const typeName = node.parts[0]?.identifier?.text;
@@ -2235,7 +2219,11 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
   }
 
   visitProcedureCallStatement(node: ModelicaProcedureCallStatementSyntaxNode, ctx: FlattenerContext): null {
-    const functionName = node.functionReference?.parts?.map((p) => p.identifier?.text ?? "").join(".") ?? "";
+    const rawName = node.functionReference?.parts?.map((p) => p.identifier?.text ?? "").join(".") ?? "";
+    // Don't resolve FQ names for global references (.print) or unqualified builtins
+    const isGlobal = node.functionReference?.global === true;
+    const isBuiltin = !rawName.includes(".") && ModelicaSyntaxFlattener.#isBuiltinFunction(rawName);
+    const functionName = isGlobal || isBuiltin ? rawName : this.#resolveFullyQualifiedName(rawName, ctx);
     const flatArgs: ModelicaExpression[] = [];
     for (const arg of node.functionCallArguments?.arguments ?? []) {
       const flatArg = arg.expression?.accept(this, ctx);
@@ -2836,7 +2824,14 @@ function castToReal(expression: ModelicaExpression | null): ModelicaExpression |
       return new ModelicaBinaryExpression(expression.operator, op1, op2);
   }
   if (expression instanceof ModelicaFunctionCallExpression) {
-    const args = expression.args.map((a) => castToReal(a) ?? a);
+    // Use per-parameter coercion for built-in functions; only coerce args whose
+    // corresponding parameter type is Real according to the function signature
+    const builtinDef = BUILTIN_FUNCTIONS.get(expression.functionName);
+    if (builtinDef && builtinDef.outputType !== "Real") return expression;
+    const args = expression.args.map((a, i) => {
+      if (builtinDef && builtinDef.inputs[i]?.type !== "Real") return a;
+      return castToReal(a) ?? a;
+    });
     if (args.some((a, i) => a !== expression.args[i]))
       return new ModelicaFunctionCallExpression(expression.functionName, args);
   }
@@ -2919,6 +2914,10 @@ function isRealTyped(expr: ModelicaExpression, dae?: ModelicaDAE): boolean {
   if (expr instanceof ModelicaNameExpression && expr.name === "time") return true;
   if (expr instanceof ModelicaSubscriptedExpression) return isRealTyped(expr.base, dae);
   if (expr instanceof ModelicaFunctionCallExpression) {
+    // Use the function's output type from the built-in signatures
+    const builtinDef = BUILTIN_FUNCTIONS.get(expr.functionName);
+    if (builtinDef) return builtinDef.outputType === "Real";
+    // Fallback for non-builtin functions: if any arg is Real, assume output is Real
     return expr.args.some((a) => isRealTyped(a, dae));
   }
   return false;
@@ -3085,10 +3084,12 @@ function canonicalizeBinaryExpression(
     return new ModelicaBinaryExpression(ModelicaBinaryOperator.ADDITION, negated, operand1);
   }
   // Canonicalize commutative operations: put literals on the left
+  // (but NOT for string concatenation, which is not commutative)
   if (
     (operator === ModelicaBinaryOperator.ADDITION || operator === ModelicaBinaryOperator.MULTIPLICATION) &&
     !isLiteral(operand1) &&
-    isLiteral(operand2)
+    isLiteral(operand2) &&
+    !(operand2 instanceof ModelicaStringLiteral)
   ) {
     return new ModelicaBinaryExpression(operator, operand2, operand1);
   }
