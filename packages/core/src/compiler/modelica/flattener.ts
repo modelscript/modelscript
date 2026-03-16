@@ -3336,6 +3336,15 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     if (operator === ModelicaUnaryOperator.UNARY_MINUS) {
       if (operand instanceof ModelicaRealLiteral) return new ModelicaRealLiteral(-operand.value);
       if (operand instanceof ModelicaIntegerLiteral) return new ModelicaIntegerLiteral(-operand.value);
+      // Distribute negation into first factor of multiplication: -(a * b) → (-a) * b
+      if (
+        operand instanceof ModelicaBinaryExpression &&
+        (operand.operator === ModelicaBinaryOperator.MULTIPLICATION ||
+          operand.operator === ModelicaBinaryOperator.ELEMENTWISE_MULTIPLICATION)
+      ) {
+        const negatedFirst = new ModelicaUnaryExpression(ModelicaUnaryOperator.UNARY_MINUS, operand.operand1);
+        return new ModelicaBinaryExpression(operand.operator, negatedFirst, operand.operand2);
+      }
     }
     if (operator === ModelicaUnaryOperator.UNARY_PLUS) {
       if (operand instanceof ModelicaRealLiteral || operand instanceof ModelicaIntegerLiteral) return operand;

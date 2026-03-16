@@ -2742,14 +2742,14 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
       this.out.write("(");
       const attrPriority: Record<string, number> = {
         value: 1,
-        min: 2,
-        max: 3,
-        start: 4,
-        fixed: 5,
-        nominal: 6,
-        quantity: 7,
-        unit: 8,
-        displayUnit: 9,
+        unit: 2,
+        displayUnit: 3,
+        min: 4,
+        max: 5,
+        start: 6,
+        fixed: 7,
+        nominal: 8,
+        quantity: 9,
         stateSelect: 10,
       };
       const sortedEntries = Array.from(variable.attributes.entries()).sort((a, b) => {
