@@ -19,7 +19,7 @@ COPY scripts scripts
 COPY packages/core packages/core
 COPY packages/tree-sitter-modelica packages/tree-sitter-modelica
 COPY packages/morsel packages/morsel
-RUN node scripts/download-msl.js && cp scripts/ModelicaStandardLibrary_v4.1.0.zip packages/morsel/public/
+RUN node scripts/download-msl.cjs && cp scripts/ModelicaStandardLibrary_v4.1.0.zip packages/morsel/public/
 RUN npm run build -w packages/core && npm run build -w packages/morsel
 
 # ---- Production ----

@@ -1,0 +1,13 @@
+.vscode-test-web/
+src/
+test-data/
+node_modules/
+*.ts
+**/*.map
+**/*.LICENSE.txt
+*.vsix
+tsconfig.json
+webpack.config.js
+.eslintrc*
+eslint.config.*
+.gitignore

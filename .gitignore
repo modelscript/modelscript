@@ -1,10 +1,71 @@
-dist/
+# Dependencies
 node_modules/
+
+# Build outputs
+dist/
+build/
+prebuilds/
 coverage/
 ctrf/
+
+# Compiled / binary artifacts
 *.wasm
-*.db*
-packages/api/data/
+*.tsbuildinfo
+*.a
+*.so
+*.so.*
+*.dylib
+*.dll
+*.pc
+*.exp
+*.lib
+*.obj
+*.o
+
+# Archives
+*.tar.gz
+*.tgz
+*.zip
+*.vsix
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Environment / secrets
+.env
+*.local
+
+# OS files
+.DS_Store
+
+# Editor directories
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
 
 # Nx caching
 .nx/
+
+# VS Code test artifacts
+.vscode-test-web/
+
+# Database files
+*.db*
+
+# API data (published libraries)
+packages/api/data/
+
+# React Router (morsel)
+packages/morsel/.react-router/
+
+# Tree-sitter generated sources
+packages/tree-sitter-modelica/src/
+packages/tree-sitter-modelica/examples/*/

@@ -1,14 +1,38 @@
 {
-  "name": "@modelscript/vscode",
+  "name": "vscode",
   "displayName": "ModelScript",
   "version": "0.0.0",
-  "description": "Modelica language support for VS Code",
+  "description": "Modelica language support — syntax highlighting, completions, hover, diagnostics, formatting, and bundled MSL",
+  "categories": [
+    "Programming Languages",
+    "Linters",
+    "Formatters"
+  ],
+  "keywords": [
+    "modelica",
+    "simulation",
+    "modeling",
+    "MSL",
+    "systems engineering"
+  ],
+  "homepage": "https://modelscript.org",
+  "bugs": {
+    "url": "https://github.com/modelscript/modelscript/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/modelscript/modelscript.git",
+    "directory": "packages/vscode"
+  },
+  "license": "AGPL-3.0-or-later",
+  "qna": "marketplace",
   "publisher": "modelscript",
   "browser": "./dist/browserClientMain",
   "scripts": {
     "build": "webpack --mode production --devtool hidden-source-map",
     "compile": "webpack",
     "dev": "webpack --watch",
+    "package": "npx @vscode/vsce package --no-dependencies",
     "test-web": "npm run compile && vscode-test-web --browserType=chromium --quality stable --port 3100 --extensionDevelopmentPath=. ./test-data",
     "watch": "webpack --watch"
   },
@@ -49,10 +73,15 @@
         "extensions": [
           ".mo"
         ],
-        "configuration": "./language-configuration.json"
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./images/icon.png",
+          "dark": "./images/icon.png"
+        }
       }
     ]
   },
+  "activationEvents": [],
   "dependencies": {
     "@modelscript/lsp": "0.0.0",
     "vscode-languageclient": "^9.0.1"
@@ -62,6 +91,7 @@
     "@stylistic/eslint-plugin": "^2.9.0",
     "@types/vscode": "^1.100.0",
     "@vscode/test-web": "^0.0.80",
+    "@vscode/vsce": "^3.7.1",
     "copy-webpack-plugin": "^12.0.2",
     "eslint": "^9.13.0",
     "path-browserify": "^1.0.1",
@@ -73,5 +103,10 @@
   },
   "engines": {
     "vscode": "^1.100.0"
+  },
+  "icon": "images/icon.png",
+  "galleryBanner": {
+    "color": "#0d1b2a",
+    "theme": "dark"
   }
 }

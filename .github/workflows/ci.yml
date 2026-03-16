@@ -24,16 +24,12 @@ jobs:
         id: cache-msl
         uses: actions/cache@v4
         with:
-          path: packages/morsel/public/ModelicaStandardLibrary_v4.1.0.zip
+          path: scripts/ModelicaStandardLibrary_v4.1.0.zip
           key: ${{ runner.os }}-msl-v4.1.0
       - name: Install Dependencies
         run: npm ci
-      - name: MSL Download Check
-        run: |
-          mkdir -p packages/morsel/public
-          if [ "${{ steps.cache-msl.outputs.cache-hit }}" != 'true' ]; then
-            curl -L https://github.com/modelica/ModelicaStandardLibrary/releases/download/v4.1.0/ModelicaStandardLibrary_v4.1.0.zip -o packages/morsel/public/ModelicaStandardLibrary_v4.1.0.zip
-          fi
+      - name: Download MSL
+        run: node scripts/download-msl.cjs
       - name: Run Build
         run: npx lerna run build
       - name: Run Tests
@@ -46,6 +42,14 @@ jobs:
         if: always()
       - name: Run Lint
         run: npx lerna run lint
+      - name: Package VS Code Extension
+        run: npx @vscode/vsce package --no-dependencies
+        working-directory: packages/vscode
+      - name: Upload VSIX Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: modelscript-vsix
+          path: packages/vscode/*.vsix
       - name: SPA fallback for GitHub Pages
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         run: cp packages/morsel/build/client/index.html packages/morsel/build/client/404.html
@@ -56,3 +60,8 @@ jobs:
           personal_token: ${{ secrets.MODELSCRIPT_MORSEL_DEPLOY_PAT }}
           external_repository: modelscript-morsel/modelscript-morsel.github.io
           publish_dir: ./packages/morsel/build/client
+      # Uncomment to auto-publish to VS Code Marketplace on main branch pushes:
+      # - name: Publish to VS Code Marketplace
+      #   if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+      #   run: npx @vscode/vsce publish --no-dependencies -p ${{ secrets.VSCE_PAT }}
+      #   working-directory: packages/vscode
