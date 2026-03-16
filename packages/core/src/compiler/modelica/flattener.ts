@@ -2642,6 +2642,29 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       const indexName = forIndex.identifier?.text ?? "?";
       let range = forIndex.expression?.accept(this, ctx) ?? null;
 
+      // Expand enumeration type references: `for e in E` → `for e in {Pkg.E.one, Pkg.E.two, ...}`
+      if (range instanceof ModelicaNameExpression && forIndex.expression && "parts" in forIndex.expression) {
+        const namedElement = ctx.classInstance.resolveComponentReference(
+          forIndex.expression as ModelicaComponentReferenceSyntaxNode,
+        );
+        let enumClass: ModelicaEnumerationClassInstance | null = null;
+        if (namedElement instanceof ModelicaEnumerationClassInstance) {
+          enumClass = namedElement;
+        } else if (namedElement instanceof ModelicaComponentInstance) {
+          if (!namedElement.instantiated && !namedElement.instantiating) namedElement.instantiate();
+          if (namedElement.classInstance instanceof ModelicaEnumerationClassInstance) {
+            enumClass = namedElement.classInstance;
+          }
+        }
+        if (enumClass?.enumerationLiterals && enumClass.enumerationLiterals.length > 0) {
+          const typeName = this.#resolveFullyQualifiedName(range.name, ctx);
+          const elements = enumClass.enumerationLiterals.map(
+            (lit) => new ModelicaNameExpression(typeName + "." + lit.stringValue),
+          );
+          range = new ModelicaArray([elements.length], elements);
+        }
+      }
+
       // Reject multi-dimensional array iterators (Modelica spec: only 1D arrays allowed)
       if (range instanceof ModelicaArray && range.elements.some((e) => e instanceof ModelicaArray)) {
         const innerShape = range.elements.find((e) => e instanceof ModelicaArray) as ModelicaArray;

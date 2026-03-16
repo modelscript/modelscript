@@ -17,6 +17,7 @@ import {
   ModelicaArrayClassInstance,
   ModelicaClassInstance,
   ModelicaComponentInstance,
+  ModelicaEnumerationClassInstance,
   ModelicaIntegerClassInstance,
   ModelicaModification,
   ModelicaParameterModification,
@@ -719,6 +720,20 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
       }
       if (arrayClassInstance) {
         shape = arrayClassInstance.shape;
+      }
+      // Handle size(E, 1) where E is an enumeration type — return count of literals
+      if (!shape) {
+        let enumClass: ModelicaEnumerationClassInstance | null = null;
+        if (namedElement instanceof ModelicaEnumerationClassInstance) {
+          enumClass = namedElement;
+        } else if (namedElement instanceof ModelicaComponentInstance) {
+          if (namedElement.classInstance instanceof ModelicaEnumerationClassInstance) {
+            enumClass = namedElement.classInstance;
+          }
+        }
+        if (enumClass?.enumerationLiterals) {
+          shape = [enumClass.enumerationLiterals.length];
+        }
       }
     }
 

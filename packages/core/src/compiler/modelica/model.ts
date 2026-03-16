@@ -40,6 +40,7 @@ import {
   ModelicaExpressionSyntaxNode,
   ModelicaExtendsClauseSyntaxNode,
   ModelicaFlow,
+  ModelicaFunctionCallSyntaxNode,
   ModelicaIdentifierSyntaxNode,
   ModelicaImportClauseSyntaxNode,
   ModelicaInheritanceModificationSyntaxNode,
@@ -2387,7 +2388,13 @@ export class ModelicaArrayClassInstance extends ModelicaClassInstance {
         i++;
         continue;
       }
-      const length = arraySubscript.expression?.accept(new ModelicaInterpreter(), this);
+      // Navigate up to the enclosing class scope to avoid re-entrant instantiation
+      // when evaluating expressions like size(E, 1) where E is a sibling type
+      let evalScope: Scope | null = this.parent;
+      while (evalScope && !(evalScope instanceof ModelicaClassInstance)) {
+        evalScope = evalScope.parent;
+      }
+      const length = arraySubscript.expression?.accept(new ModelicaInterpreter(), evalScope ?? this);
       if (length instanceof ModelicaIntegerLiteral) {
         this.shape.push(length.value);
       } else {
@@ -2395,7 +2402,9 @@ export class ModelicaArrayClassInstance extends ModelicaClassInstance {
         let resolved = false;
         const subExpr = arraySubscript.expression;
         if (subExpr && "parts" in subExpr) {
-          const namedElement = this.resolveComponentReference(subExpr as ModelicaComponentReferenceSyntaxNode);
+          const namedElement = (evalScope ?? this).resolveComponentReference(
+            subExpr as ModelicaComponentReferenceSyntaxNode,
+          );
           let enumClass: ModelicaEnumerationClassInstance | null = null;
           if (namedElement instanceof ModelicaEnumerationClassInstance) {
             enumClass = namedElement;
@@ -2414,6 +2423,32 @@ export class ModelicaArrayClassInstance extends ModelicaClassInstance {
               literals: literals.map((l) => l.stringValue),
             });
             resolved = true;
+          }
+        }
+        // Handle size(EnumType, dim) calls — resolve the first argument as an enum type
+        if (!resolved && subExpr && "functionReferenceName" in subExpr) {
+          const funcName = (subExpr as ModelicaFunctionCallSyntaxNode).functionReferenceName ?? "";
+          if (funcName === "size") {
+            const sizeArgs = (subExpr as ModelicaFunctionCallSyntaxNode).functionCallArguments?.arguments ?? [];
+            const firstArg = sizeArgs[0]?.expression;
+            if (firstArg && "parts" in firstArg) {
+              const namedElement = (evalScope ?? this).resolveComponentReference(
+                firstArg as ModelicaComponentReferenceSyntaxNode,
+              );
+              let enumClass: ModelicaEnumerationClassInstance | null = null;
+              if (namedElement instanceof ModelicaEnumerationClassInstance) {
+                enumClass = namedElement;
+              } else if (namedElement instanceof ModelicaComponentInstance) {
+                if (!namedElement.instantiated && !namedElement.instantiating) namedElement.instantiate();
+                let ci = namedElement.classInstance;
+                while (ci instanceof ModelicaShortClassInstance) ci = ci.classInstance;
+                if (ci instanceof ModelicaEnumerationClassInstance) enumClass = ci;
+              }
+              if (enumClass?.enumerationLiterals) {
+                this.shape.push(enumClass.enumerationLiterals.length);
+                resolved = true;
+              }
+            }
           }
         }
         if (!resolved) this.shape.push(0);
