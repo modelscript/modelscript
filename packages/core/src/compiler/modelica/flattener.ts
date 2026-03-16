@@ -1178,6 +1178,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         }
       }
       // Distribute single-argument functions (like der, sin, abs) over arrays
+      // but NOT user-defined functions that take array parameters
       if (args.length === 1 && args[0] instanceof ModelicaArray) {
         const arr = args[0];
         const nonDistributive = new Set([
@@ -1198,7 +1199,9 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           "cross",
           "vector",
         ]);
-        if (!nonDistributive.has(expr.functionName)) {
+        // User-defined functions (those in dae.functions) should not be distributed
+        const isUserDefined = dae?.functions.some((f) => f.name === expr.functionName) ?? false;
+        if (!nonDistributive.has(expr.functionName) && !isUserDefined) {
           const newElements = arr.elements.map((e) =>
             this.#foldExpression(
               new ModelicaFunctionCallExpression(expr.functionName, [e]),
@@ -1622,7 +1625,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
 
     // Only inline user-defined function calls when ALL arguments are compile-time constants.
     // Parameters are NOT constants — they can change between simulations.
-    if (!hasParameterArg && flatArgs.every((arg) => isLiteral(arg) || arg instanceof ModelicaArray)) {
+    if (!hasParameterArg && flatArgs.every((arg) => isLiteral(arg) || isLiteralArray(arg))) {
       const interp = new ModelicaInterpreter(true);
       const evalResult = node.accept(interp, ctx.classInstance);
       if (evalResult) {
@@ -2194,6 +2197,13 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       const arrayElements = ctx.dae.variables.filter((v) => v.name.startsWith(prefix));
       if (arrayElements.length > 0) {
         return new ModelicaArray([arrayElements.length], arrayElements);
+      }
+      // Check for encoded array function parameters (\0[dims]\0name) — return a
+      // name expression with the bare name so the printer outputs it cleanly.
+      for (const variable of ctx.dae.variables) {
+        if (variable.name.startsWith("\0") && variable.name.endsWith("\0" + name)) {
+          return new ModelicaNameExpression(name);
+        }
       }
     }
     // Fall back to a symbolic name for unresolved references (e.g. loop variables in preserved for-statements)
@@ -2966,6 +2976,25 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         ctx.dae.equations.push(new ModelicaSimpleEquation(expression1, tupleRHS));
         return null;
       }
+      // When the LHS is an expanded array of variables and the RHS is a function
+      // call, use a compact name expression for the LHS instead of the full array.
+      // E.g., {result[1], result[2], result[3]} = ewm(...) → result = ewm(...)
+      if (expression1 instanceof ModelicaArray && expression2 instanceof ModelicaFunctionCallExpression) {
+        const elements = [...expression1.flatElements];
+        if (elements.length > 0) {
+          // Extract common root name from all indexed elements
+          const rootNames = elements.map((e) => {
+            const name = e instanceof ModelicaVariable ? e.name : e instanceof ModelicaNameExpression ? e.name : null;
+            if (!name) return null;
+            const bracketIdx = name.indexOf("[");
+            return bracketIdx >= 0 ? name.substring(0, bracketIdx) : null;
+          });
+          const firstRoot = rootNames[0];
+          if (firstRoot && rootNames.every((r) => r === firstRoot)) {
+            expression1 = new ModelicaNameExpression(firstRoot);
+          }
+        }
+      }
       // Expand array-to-array equations into per-element scalar equations
       if (expression1 instanceof ModelicaArray && expression2 instanceof ModelicaArray) {
         const flat1 = [...expression1.flatElements];
@@ -3118,7 +3147,19 @@ function coerceToReal(expression: ModelicaExpression | null, dae?: ModelicaDAE):
   // or an unresolved name (e.g. loop variables which are Integer by default)
   if (expression instanceof ModelicaNameExpression && dae) {
     const variable = dae.variables.find((v) => v.name === expression.name);
-    if (!variable || !(variable instanceof ModelicaRealVariable)) {
+    if (variable instanceof ModelicaRealVariable) {
+      // Already Real-typed, no coercion needed
+    } else if (!variable) {
+      // Check for encoded array function parameters (e.g., positionvector[1] → \0[3]\0positionvector)
+      const bracketIdx = expression.name.indexOf("[");
+      const baseName = bracketIdx >= 0 ? expression.name.substring(0, bracketIdx) : expression.name;
+      const encodedMatch = dae.variables.find((v) => v.name.startsWith("\0") && v.name.endsWith("\0" + baseName));
+      if (encodedMatch instanceof ModelicaRealVariable) {
+        // Element of a Real array, no coercion needed
+      } else {
+        return new ModelicaFunctionCallExpression("/*Real*/", [expression]);
+      }
+    } else {
       return new ModelicaFunctionCallExpression("/*Real*/", [expression]);
     }
   }
@@ -3154,6 +3195,10 @@ function isRealTyped(expr: ModelicaExpression, dae?: ModelicaDAE): boolean {
     const prefix = expr.name + "[";
     const arrayElement = dae.variables.find((variable) => variable.name.startsWith(prefix));
     if (arrayElement instanceof ModelicaRealVariable) return true;
+
+    // Check for encoded array function parameters (\0[dims]\0name)
+    const encodedMatch = dae.variables.find((v) => v.name.startsWith("\0") && v.name.endsWith("\0" + expr.name));
+    if (encodedMatch instanceof ModelicaRealVariable) return true;
   }
   if (expr instanceof ModelicaNameExpression && expr.name === "time") return true;
   if (expr instanceof ModelicaSubscriptedExpression) return isRealTyped(expr.base, dae);
@@ -3191,6 +3236,35 @@ function isLiteral(expr: ModelicaExpression): boolean {
   );
 }
 
+/** Check if an expression is a ModelicaArray whose elements are all literals (recursively). */
+function isLiteralArray(expr: ModelicaExpression): boolean {
+  if (!(expr instanceof ModelicaArray)) return false;
+  return expr.elements.every((e) => isLiteral(e) || isLiteralArray(e));
+}
+
+/**
+ * Expand an array-typed function variable (encoded as \0[dims]\0name) into a
+ * ModelicaArray of indexed ModelicaNameExpression elements.
+ * E.g., \0[3]\0positionvector → {positionvector[1], positionvector[2], positionvector[3]}
+ */
+function expandArrayVariable(variable: ModelicaVariable): ModelicaArray | null {
+  const name = variable.name;
+  if (!name.startsWith("\0")) return null;
+  const secondNull = name.indexOf("\0", 1);
+  if (secondNull < 0) return null;
+  const dimsStr = name.substring(1, secondNull); // "[3]"
+  const baseName = name.substring(secondNull + 1); // "positionvector"
+  // Parse dimensions — for now handle simple 1D arrays like [3]
+  const dimMatch = dimsStr.match(/^\[(\d+)\]$/);
+  if (!dimMatch) return null;
+  const size = parseInt(dimMatch[1] ?? "0", 10);
+  const elements: ModelicaExpression[] = [];
+  for (let i = 1; i <= size; i++) {
+    elements.push(new ModelicaNameExpression(`${baseName}[${i}]`));
+  }
+  return new ModelicaArray([size], elements);
+}
+
 function canonicalizeBinaryExpression(
   operator: ModelicaBinaryOperator,
   operand1: ModelicaExpression,
@@ -3222,6 +3296,25 @@ function canonicalizeBinaryExpression(
   ) {
     return new ModelicaStringLiteral(operand1.value + operand2.value);
   }
+  // Expand array-typed function parameters (encoded as \0[dims]\0name) into
+  // ModelicaArray of indexed name expressions for scalar-array binary operations.
+  // Look up from the DAE since the operands are ModelicaNameExpressions at this point.
+  if (dae && operand1 instanceof ModelicaNameExpression) {
+    const op1Name = operand1.name;
+    const encoded = dae.variables.find((v) => v.name.startsWith("\0") && v.name.endsWith("\0" + op1Name));
+    if (encoded) {
+      const expanded = expandArrayVariable(encoded);
+      if (expanded) operand1 = expanded;
+    }
+  }
+  if (dae && operand2 instanceof ModelicaNameExpression) {
+    const op2Name = operand2.name;
+    const encoded = dae.variables.find((v) => v.name.startsWith("\0") && v.name.endsWith("\0" + op2Name));
+    if (encoded) {
+      const expanded = expandArrayVariable(encoded);
+      if (expanded) operand2 = expanded;
+    }
+  }
 
   // Constant fold array operations (elementwise)
   const isElementwiseOp = operator.startsWith(".");
@@ -3243,13 +3336,15 @@ function canonicalizeBinaryExpression(
     }
   } else if (operand1 instanceof ModelicaArray && isLiteral(operand2)) {
     if (scalarOp === "+" || scalarOp === "-" || scalarOp === "*" || scalarOp === "/") {
-      const newElements = operand1.elements.map((e) => canonicalizeBinaryExpression(scalarOp, e, operand2, dae));
+      // Build elements directly to preserve source operand order (array * scalar)
+      const newElements = operand1.elements.map((e) => new ModelicaBinaryExpression(scalarOp, e, operand2));
       return new ModelicaArray(operand1.shape, newElements);
     }
   } else if (isLiteral(operand1) && operand2 instanceof ModelicaArray) {
     if (scalarOp === "+" || scalarOp === "-" || scalarOp === "*" || scalarOp === "/") {
-      const newElements = (operand2 as ModelicaArray).elements.map((e) =>
-        canonicalizeBinaryExpression(scalarOp, operand1, e, dae),
+      // Build elements directly to preserve source operand order (scalar * array)
+      const newElements = (operand2 as ModelicaArray).elements.map(
+        (e) => new ModelicaBinaryExpression(scalarOp, operand1, e),
       );
       return new ModelicaArray(operand2.shape, newElements);
     }
