@@ -26,12 +26,15 @@ import Parser from "web-tree-sitter";
 import {
   Context,
   ModelicaClassInstance,
+  ModelicaComponentInstance,
+  ModelicaElement,
+  ModelicaEnumerationClassInstance,
   ModelicaLinter,
+  ModelicaNamedElement,
   ModelicaStoredDefinitionSyntaxNode,
   Scope,
   type Dirent,
   type FileSystem,
-  type ModelicaElement,
   type Range,
   type Stats,
 } from "@modelscript/core";
@@ -212,6 +215,86 @@ class EditorScope extends Scope {
   }
 
   readonly hash = "editor";
+}
+
+/* Per-document state for hover resolution */
+
+const documentInstances = new Map<string, ModelicaClassInstance[]>();
+const documentContexts = new Map<string, Context>();
+
+/* Resolve a modification/annotation path element to its named element */
+
+function resolvePathElement(node: Parser.SyntaxNode, scope: Scope): ModelicaNamedElement | null {
+  let pathNode: Parser.SyntaxNode | null = node;
+  const parameterPath: string[] = [];
+  let baseElement: ModelicaNamedElement | null = null;
+  let foundBase = false;
+
+  while (pathNode) {
+    if (pathNode.type === "ElementModification") {
+      const nameNode = pathNode.children.find((c: Parser.SyntaxNode) => c.type === "Name");
+      if (nameNode) {
+        parameterPath.unshift(...nameNode.text.split("."));
+      }
+    } else if (pathNode.type === "NamedArgument") {
+      const identNode = pathNode.childForFieldName("identifier");
+      if (identNode) {
+        parameterPath.unshift(identNode.text);
+      }
+    }
+
+    // If we hit a FunctionCall, it's a base (potential record constructor)
+    if (pathNode.type === "FunctionCall") {
+      const refNode = pathNode.children.find((c: Parser.SyntaxNode) => c.type === "ComponentReference");
+      if (refNode) {
+        const funcRef = refNode.text;
+        baseElement = scope.resolveName(funcRef.split("."));
+        if (!baseElement) {
+          const annotationClass = ModelicaElement.annotationClassInstance;
+          if (annotationClass) {
+            baseElement = annotationClass.resolveSimpleName(funcRef);
+            if (!baseElement && funcRef.includes(".")) {
+              baseElement = annotationClass.resolveName(funcRef.split("."));
+            }
+          }
+        }
+        if (baseElement) {
+          foundBase = true;
+          break;
+        }
+      }
+    }
+
+    if (pathNode.type === "AnnotationClause") {
+      baseElement = ModelicaElement.annotationClassInstance;
+      foundBase = true;
+      break;
+    }
+
+    if (
+      pathNode.type === "ComponentClause" ||
+      pathNode.type === "ShortClassSpecifier" ||
+      pathNode.type === "ExtendsClause"
+    ) {
+      const typeSpecNode = pathNode.children.find((c: Parser.SyntaxNode) => c.type === "TypeSpecifier");
+      if (typeSpecNode) {
+        baseElement = scope.resolveName(typeSpecNode.text.split("."));
+        foundBase = true;
+        break;
+      }
+    }
+
+    pathNode = pathNode.parent;
+  }
+
+  if (foundBase && baseElement) {
+    return baseElement instanceof ModelicaClassInstance
+      ? baseElement.resolveName(parameterPath)
+      : baseElement instanceof ModelicaComponentInstance
+        ? (baseElement.classInstance?.resolveName(parameterPath) ?? null)
+        : null;
+  }
+  return null;
 }
 
 /* Initialize tree-sitter parser */
@@ -409,6 +492,10 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
           console.error("Lint error for instance:", e);
         }
       }
+
+      // Cache instances and context for hover resolution
+      documentInstances.set(textDocument.uri, instances);
+      documentContexts.set(textDocument.uri, context);
     }
   } else {
     // Fallback: basic regex validation when tree-sitter is not available
@@ -573,45 +660,170 @@ connection.onCompletion((): CompletionItem[] => {
 });
 
 connection.onHover((params) => {
+  if (!parserReady || !parser) {
+    return null;
+  }
+
   const document = documents.get(params.textDocument.uri);
   if (!document) {
     return null;
   }
 
   const position = params.position;
-  const offset = document.offsetAt(position);
   const text = document.getText();
+  const lines = text.split("\n");
+  const lineContent = lines[position.line] ?? "";
 
-  let start = offset;
-  let end = offset;
-  while (start > 0 && /\w/.test(text[start - 1])) start--;
-  while (end < text.length && /\w/.test(text[end])) end++;
-  const word = text.substring(start, end);
+  // Find the word under cursor
+  let wordStart = position.character;
+  let wordEnd = position.character;
+  while (wordStart > 0 && /[_a-zA-Z0-9]/.test(lineContent[wordStart - 1])) wordStart--;
+  while (wordEnd < lineContent.length && /[_a-zA-Z0-9]/.test(lineContent[wordEnd])) wordEnd++;
+  const word = lineContent.substring(wordStart, wordEnd);
+  if (!word) return null;
 
-  const hoverInfo: Record<string, string> = {
-    model: "Defines a Modelica model class.",
-    connector: "Defines a Modelica connector for physical connections.",
-    package: "Defines a Modelica package for organizing classes.",
-    function: "Defines a Modelica function.",
-    parameter: "A variable whose value is fixed during simulation.",
-    equation: "Begins the equation section of a class.",
-    algorithm: "Begins the algorithmic section of a class.",
-    der: "Time derivative operator.",
-    connect: "Creates a connection between two connectors.",
-    flow: "Prefix indicating a flow variable in a connector.",
-    stream: "Prefix indicating a stream variable in a connector.",
-  };
+  // Expand to full dotted path (e.g. Modelica.SIunits.Voltage)
+  let start = wordStart;
+  let end = wordEnd;
+  while (start > 0 && (lineContent[start - 1] === "." || /[a-zA-Z0-9_]/.test(lineContent[start - 1]))) start--;
+  while (end < lineContent.length && (lineContent[end] === "." || /[a-zA-Z0-9_]/.test(lineContent[end]))) end++;
+  if (lineContent[end - 1] === ".") end--;
+  const fullPath = lineContent.substring(start, end);
 
-  if (word in hoverInfo) {
-    return {
-      contents: {
-        kind: "markdown" as const,
-        value: `**${word}**\n\n${hoverInfo[word]}`,
-      },
-    };
+  // Get cached scope from validation
+  const instances = documentInstances.get(params.textDocument.uri);
+  const context = documentContexts.get(params.textDocument.uri);
+  const scope: Scope | undefined = instances?.[0] ?? context;
+  if (!scope) return null;
+
+  // Ensure annotation class is initialized
+  if (!ModelicaElement.annotationClassInstance && context) {
+    ModelicaElement.initializeAnnotationClass(context);
   }
 
-  return null;
+  try {
+    const tree = parser.parse(text);
+    try {
+      const rootNode = tree.rootNode;
+      const searchRow = position.line;
+      const searchCol = Math.max(0, wordStart);
+      const searchEndCol = wordEnd;
+
+      const current: Parser.SyntaxNode | null = rootNode.descendantForPosition(
+        { row: searchRow, column: searchCol },
+        { row: searchRow, column: searchEndCol },
+      );
+
+      let element: ModelicaNamedElement | null = null;
+
+      // Unified path resolution for modifications and arguments
+      let currentPathNode: Parser.SyntaxNode | null = current;
+      let isOverValue = false;
+      let isOverName = false;
+
+      while (currentPathNode) {
+        if (
+          currentPathNode.type === "Name" &&
+          (currentPathNode.parent?.type === "ElementModification" ||
+            currentPathNode.parent?.type === "ElementRedeclaration")
+        ) {
+          isOverName = true;
+          break;
+        }
+        if (currentPathNode.type === "IDENT" && currentPathNode.parent?.type === "NamedArgument") {
+          isOverName = true;
+          break;
+        }
+        if (
+          currentPathNode.type === "Modification" ||
+          currentPathNode.type === "FunctionCallArguments" ||
+          currentPathNode.type === "ArgumentList"
+        ) {
+          isOverValue = true;
+        }
+        if (
+          currentPathNode.type === "ElementModification" ||
+          currentPathNode.type === "NamedArgument" ||
+          currentPathNode.type === "FunctionCall"
+        ) {
+          break;
+        }
+        currentPathNode = currentPathNode.parent;
+      }
+
+      if ((isOverName || isOverValue) && currentPathNode) {
+        const resolved = resolvePathElement(currentPathNode, scope);
+
+        if (isOverName) {
+          element = resolved;
+        } else if (isOverValue && resolved) {
+          const typeScope =
+            resolved instanceof ModelicaComponentInstance
+              ? resolved.classInstance
+              : resolved instanceof ModelicaClassInstance
+                ? resolved
+                : null;
+          if (typeScope) {
+            element = typeScope.resolveName(fullPath.split("."));
+            if (!element && fullPath !== word) {
+              element = typeScope.resolveName(word.split("."));
+            }
+          }
+        }
+      }
+
+      if (!element) {
+        element = scope.resolveName(fullPath.split("."));
+        if (!element && fullPath !== word) {
+          element = scope.resolveName(word.split("."));
+          if (element) {
+            start = wordStart;
+            end = wordEnd;
+          }
+        }
+      }
+
+      if (element instanceof ModelicaNamedElement) {
+        const contents: string[] = [];
+        if (element instanceof ModelicaEnumerationClassInstance && element.value) {
+          const value = element.value;
+          contents.push(`**enumeration literal** \`${value.stringValue}\` : \`${element.name}\``);
+          if (value.description) {
+            contents.push(value.description);
+          }
+        } else if (element instanceof ModelicaClassInstance) {
+          contents.push(`**${element.classKind}** \`${element.compositeName}\``);
+        } else if (element instanceof ModelicaComponentInstance) {
+          const typeName = element.declaredType?.compositeName ?? element.classInstance?.compositeName ?? "UnknownType";
+          contents.push(`**component** \`${element.name}\` : \`${typeName}\``);
+        } else {
+          contents.push(`\`${element.name}\``);
+        }
+
+        if (element.description && !(element instanceof ModelicaEnumerationClassInstance && element.value)) {
+          contents.push(element.description);
+        }
+
+        return {
+          contents: {
+            kind: "markdown" as const,
+            value: contents.join("\n\n"),
+          },
+          range: {
+            start: { line: position.line, character: start },
+            end: { line: position.line, character: end },
+          },
+        };
+      }
+
+      return null;
+    } finally {
+      tree.delete();
+    }
+  } catch (e) {
+    console.error("Hover resolution failed:", e);
+    return null;
+  }
 });
 
 /* Document formatting — uses tree-sitter parse + format() */
