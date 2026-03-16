@@ -1,0 +1,38 @@
+// name:     AlgorithmCondAssign1
+// keywords: for statement, if statement
+// status:   correct
+//
+// Assignments within if-Statements
+// Drmodelica: 9.1  if-Statement (p. 292)
+//
+
+
+model AlgorithmCondAssign1
+  Real x(start = 35);
+  Real y(start = 45);
+  parameter Real z = 0;
+algorithm
+  if x > 5 then
+    x := 400;
+  end if;
+  if z > 10 then
+    y := 500;
+  end if;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
+end AlgorithmCondAssign1;
+
+
+// Result:
+// class AlgorithmCondAssign1
+//   Real x(start = 35.0);
+//   Real y(start = 45.0);
+//   parameter Real z = 0.0;
+// algorithm
+//   if x > 5.0 then
+//     x := 400.0;
+//   end if;
+//   if z > 10.0 then
+//     y := 500.0;
+//   end if;
+// end AlgorithmCondAssign1;
+// endResult

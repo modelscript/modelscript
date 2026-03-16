@@ -35,6 +35,7 @@ import {
   ModelicaStringLiteral,
   ModelicaStringVariable,
   ModelicaSubscriptedExpression,
+  ModelicaTupleExpression,
   ModelicaUnaryExpression,
   ModelicaVariable,
   ModelicaWhenEquation,
@@ -1847,7 +1848,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       const expr = output.accept(this, ctx);
       if (expr) elements.push(expr);
     }
-    return elements.length > 0 ? new ModelicaArray([elements.length], elements) : null;
+    return elements.length > 0 ? new ModelicaTupleExpression(elements) : null;
   }
 
   visitIfElseExpression(node: ModelicaIfElseExpressionSyntaxNode, ctx: FlattenerContext): ModelicaExpression | null {
@@ -2577,6 +2578,24 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     let expression1 = node.expression1?.accept(this, ctx);
     let expression2 = node.expression2?.accept(this, ctx);
     if (expression1 && expression2) {
+      // When the LHS is a tuple (output expression list), wrap the RHS as a
+      // matching tuple instead of splitting into per-element scalar equations.
+      if (expression1 instanceof ModelicaTupleExpression && expression2 instanceof ModelicaArray) {
+        const flat2 = [...expression2.flatElements];
+        // Coerce Integer elements to Real where the LHS element is Real-typed
+        const coerced: ModelicaExpression[] = [];
+        for (let i = 0; i < flat2.length; i++) {
+          let rhs = flat2[i];
+          const lhs = expression1.elements[i];
+          if (rhs && lhs && isRealTyped(lhs, ctx.dae)) {
+            rhs = coerceToReal(rhs, ctx.dae) ?? rhs;
+          }
+          if (rhs) coerced.push(rhs);
+        }
+        const tupleRHS = new ModelicaTupleExpression(coerced);
+        ctx.dae.equations.push(new ModelicaSimpleEquation(expression1, tupleRHS));
+        return null;
+      }
       // Expand array-to-array equations into per-element scalar equations
       if (expression1 instanceof ModelicaArray && expression2 instanceof ModelicaArray) {
         const flat1 = [...expression1.flatElements];

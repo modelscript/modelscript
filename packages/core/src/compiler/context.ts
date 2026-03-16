@@ -3,16 +3,7 @@
 import type { FileSystem } from "../util/filesystem.js";
 import { StringWriter } from "../util/io.js";
 import type { Parser, Tree } from "../util/tree-sitter.js";
-import {
-  ModelicaArray,
-  ModelicaBinaryExpression,
-  ModelicaDAE,
-  ModelicaDAEPrinter,
-  ModelicaFunctionCallExpression,
-  ModelicaSimpleEquation,
-  ModelicaUnaryExpression,
-  type ModelicaExpression,
-} from "./modelica/dae.js";
+import { ModelicaDAE, ModelicaDAEPrinter } from "./modelica/dae.js";
 import { ModelicaFlattener } from "./modelica/flattener.js";
 import {
   ModelicaClassInstance,
@@ -112,32 +103,6 @@ export class Context extends Scope {
     instance.accept(flattener, ["", dae]);
     flattener.generateFlowBalanceEquations(dae);
     flattener.foldDAEConstants(dae);
-    // Remove function definitions that are no longer referenced after constant folding.
-    // Functions used only in constant bindings (now folded to literals) should not appear in output.
-    if (dae.functions.length > 0) {
-      const referencedFunctions = new Set<string>();
-      const collectRefs = (expr: ModelicaExpression | null): void => {
-        if (!expr) return;
-        if (expr instanceof ModelicaFunctionCallExpression) referencedFunctions.add(expr.functionName);
-        if ("operand1" in expr) collectRefs((expr as ModelicaBinaryExpression).operand1);
-        if ("operand2" in expr) collectRefs((expr as ModelicaBinaryExpression).operand2);
-        if ("operand" in expr) collectRefs((expr as ModelicaUnaryExpression).operand);
-        if ("args" in expr && Array.isArray((expr as ModelicaFunctionCallExpression).args)) {
-          for (const a of (expr as ModelicaFunctionCallExpression).args) collectRefs(a);
-        }
-        if (expr instanceof ModelicaArray) {
-          for (const e of expr.elements) collectRefs(e);
-        }
-      };
-      for (const v of dae.variables) collectRefs(v.expression);
-      for (const eq of dae.equations) {
-        if (eq instanceof ModelicaSimpleEquation) {
-          collectRefs(eq.expression1);
-          collectRefs(eq.expression2);
-        }
-      }
-      dae.functions = dae.functions.filter((f) => referencedFunctions.has(f.name));
-    }
     // Check for validation errors (e.g. invalid modification targets)
     if (instance instanceof ModelicaClassInstance && this.#hasErrors(instance)) return null;
     const out = new StringWriter();

@@ -1455,6 +1455,38 @@ export class ModelicaArray extends ModelicaPrimaryExpression {
   }
 }
 
+/**
+ * Represents a tuple expression like `(a, b)` from output expression lists.
+ * Unlike `ModelicaArray`, tuples are NOT split into per-element scalar equations.
+ */
+export class ModelicaTupleExpression extends ModelicaExpression {
+  elements: ModelicaExpression[];
+
+  constructor(elements: ModelicaExpression[]) {
+    super();
+    this.elements = elements;
+  }
+
+  override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
+    return visitor.visitTupleExpression(this, argument);
+  }
+
+  override get hash(): string {
+    const hash = createHash("sha256");
+    hash.update("tuple");
+    for (const element of this.elements) hash.update(element.hash);
+    return hash.digest("hex");
+  }
+
+  override get toJSON(): JSONValue {
+    return this.elements.map((e) => e.toJSON);
+  }
+
+  override get toRDF(): Triple[] {
+    return [];
+  }
+}
+
 export class ModelicaObject extends ModelicaPrimaryExpression {
   #classInstance: ModelicaClassInstance | null;
   elements: Map<string, ModelicaExpression>;
@@ -2179,6 +2211,8 @@ export interface IModelicaDAEVisitor<R, A> {
 
   visitSubscriptedExpression(node: ModelicaSubscriptedExpression, argument?: A): R;
 
+  visitTupleExpression(node: ModelicaTupleExpression, argument?: A): R;
+
   visitStringLiteral(node: ModelicaStringLiteral, argument?: A): R;
 
   visitStringVariable(node: ModelicaStringVariable, argument?: A): R;
@@ -2351,6 +2385,10 @@ export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void,
   visitSubscriptedExpression(node: ModelicaSubscriptedExpression, argument?: A): void {
     node.base.accept(this, argument);
     for (const s of node.subscripts) s.accept(this, argument);
+  }
+
+  visitTupleExpression(node: ModelicaTupleExpression, argument?: A): void {
+    for (const element of node.elements) element.accept(this, argument);
   }
 
   visitUnaryExpression(node: ModelicaUnaryExpression, argument?: A): void {
@@ -2838,6 +2876,15 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
       node.subscripts[i]?.accept(this);
     }
     this.out.write("]");
+  }
+
+  visitTupleExpression(node: ModelicaTupleExpression): void {
+    this.out.write("(");
+    for (let i = 0; i < node.elements.length; i++) {
+      if (i > 0) this.out.write(", ");
+      node.elements[i]?.accept(this);
+    }
+    this.out.write(")");
   }
 
   visitUnaryExpression(node: ModelicaUnaryExpression): void {
