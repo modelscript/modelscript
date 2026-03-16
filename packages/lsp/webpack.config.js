@@ -5,6 +5,7 @@
 /** @typedef {import('webpack').Configuration} WebpackConfig **/
 
 const path = require("path");
+const webpack = require("webpack");
 
 /** @type WebpackConfig */
 const browserServerConfig = {
@@ -22,10 +23,33 @@ const browserServerConfig = {
     devtoolModuleFilenameTemplate: "../[resource-path]",
   },
   resolve: {
-    mainFields: ["module", "main"],
+    mainFields: ["browser", "module", "main"],
     extensions: [".ts", ".js"],
     alias: {},
-    fallback: {},
+    fallback: {
+      // Node.js built-ins needed by pino (used by @modelscript/core logger)
+      assert: false,
+      buffer: false,
+      child_process: false,
+      crypto: false,
+      diagnostics_channel: false,
+      events: false,
+      fs: false,
+      http: false,
+      module: false,
+      https: false,
+      net: false,
+      os: false,
+      path: false,
+      process: false,
+      stream: false,
+      string_decoder: false,
+      tls: false,
+      url: false,
+      util: false,
+      worker_threads: false,
+      zlib: false,
+    },
   },
   module: {
     rules: [
@@ -40,6 +64,15 @@ const browserServerConfig = {
       },
     ],
   },
+  plugins: [
+    new webpack.DefinePlugin({
+      "process.env": JSON.stringify({}),
+      "process.browser": JSON.stringify(true),
+    }),
+    new webpack.NormalModuleReplacementPlugin(/^node:/, (resource) => {
+      resource.request = resource.request.replace(/^node:/, "");
+    }),
+  ],
   performance: {
     hints: false,
   },

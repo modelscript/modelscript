@@ -13,7 +13,9 @@ export async function activate(context: ExtensionContext) {
   const clientOptions: LanguageClientOptions = {
     documentSelector,
     synchronize: {},
-    initializationOptions: {},
+    initializationOptions: {
+      extensionUri: context.extensionUri.toString(),
+    },
   };
 
   client = createWorkerLanguageClient(context, clientOptions);

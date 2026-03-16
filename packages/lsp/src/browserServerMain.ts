@@ -1,4 +1,9 @@
-import { BrowserMessageReader, BrowserMessageWriter, createConnection } from "vscode-languageserver/browser";
+import {
+  BrowserMessageReader,
+  BrowserMessageWriter,
+  Connection,
+  createConnection,
+} from "vscode-languageserver/browser";
 
 import {
   CompletionItem,
@@ -16,6 +21,21 @@ import {
 
 import { TextDocument } from "vscode-languageserver-textdocument";
 
+import Parser from "web-tree-sitter";
+
+import {
+  Context,
+  ModelicaClassInstance,
+  ModelicaLinter,
+  ModelicaStoredDefinitionSyntaxNode,
+  Scope,
+  type Dirent,
+  type FileSystem,
+  type ModelicaElement,
+  type Range,
+  type Stats,
+} from "@modelscript/core";
+
 console.log("ModelScript language server starting...");
 
 /* Browser-specific connection setup */
@@ -24,6 +44,98 @@ const messageReader = new BrowserMessageReader(self);
 const messageWriter = new BrowserMessageWriter(self);
 
 const connection = createConnection(messageReader, messageWriter);
+
+/* Filesystem backed by LSP requests to the VS Code client */
+
+class BrowserFileSystem implements FileSystem {
+  // Used for future async workspace file reads via LSP requests
+  // eslint-disable-next-line no-unused-private-class-members
+  readonly #connection: Connection;
+
+  constructor(conn: Connection) {
+    this.#connection = conn;
+  }
+
+  basename(path: string): string {
+    return path.split("/").pop() || path;
+  }
+  extname(path: string): string {
+    const dot = path.lastIndexOf(".");
+    return dot >= 0 ? path.substring(dot) : "";
+  }
+  join(...paths: string[]): string {
+    return paths.join("/");
+  }
+  read(path: string): string {
+    // Synchronous read not supported in browser — returns empty
+    // Tree-sitter parsing uses text from the document sync, not from filesystem
+    console.warn("BrowserFileSystem.read called for:", path);
+    return "";
+  }
+  readBinary(): Uint8Array {
+    return new Uint8Array();
+  }
+  readdir(): Dirent[] {
+    return [];
+  }
+  resolve(...paths: string[]): string {
+    return paths.join("/");
+  }
+  readonly sep = "/";
+  stat(): Stats | null {
+    return null;
+  }
+}
+
+/* Tree-sitter state */
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let parser: any = null;
+let parserReady = false;
+
+/* Scope wrapper for editor-level class instances (matching morsel's EditorScope) */
+
+class EditorScope extends Scope {
+  #instances: ModelicaClassInstance[];
+
+  constructor(parent: Scope, instances: ModelicaClassInstance[]) {
+    super(parent);
+    this.#instances = instances;
+  }
+
+  get elements(): IterableIterator<ModelicaElement> {
+    const instances = this.#instances;
+    return (function* () {
+      yield* instances;
+    })();
+  }
+
+  readonly hash = "editor";
+}
+
+/* Initialize tree-sitter parser */
+
+async function initTreeSitter(extensionUri: string): Promise<void> {
+  try {
+    // Construct absolute URLs for WASM files using the extension URI
+    const serverDistBase = `${extensionUri}/server/dist`;
+
+    await Parser.init({
+      locateFile: (file: string) => {
+        return `${serverDistBase}/${file}`;
+      },
+    });
+    const Modelica = await Parser.Language.load(`${serverDistBase}/tree-sitter-modelica.wasm`);
+    parser = new Parser();
+    parser.setLanguage(Modelica);
+    Context.registerParser(".mo", parser);
+    parserReady = true;
+    console.log("Tree-sitter Modelica parser initialized");
+  } catch (e) {
+    console.error("Failed to initialize tree-sitter:", e);
+    parserReady = false;
+  }
+}
 
 /* Modelica keyword lists (matching morsel's code.tsx) */
 
@@ -111,7 +223,15 @@ const legend: SemanticTokensLegend = { tokenTypes, tokenModifiers };
 
 /* Language server initialization */
 
-connection.onInitialize((): InitializeResult => {
+connection.onInitialize((params): InitializeResult => {
+  // Get the extension URI from initializationOptions
+  const extensionUri = params.initializationOptions?.extensionUri as string;
+  if (extensionUri) {
+    initTreeSitter(extensionUri);
+  } else {
+    console.warn("No extensionUri provided — tree-sitter disabled");
+  }
+
   const capabilities: ServerCapabilities = {
     textDocumentSync: TextDocumentSyncKind.Full,
     completionProvider: {
@@ -135,29 +255,80 @@ documents.onDidChangeContent((change) => {
   validateTextDocument(change.document);
 });
 
+/* Diagnostic validation — uses tree-sitter + ModelicaLinter when available */
+
 async function validateTextDocument(textDocument: TextDocument): Promise<void> {
   const diagnostics: Diagnostic[] = [];
   const text = textDocument.getText();
 
-  // Basic validation: check for unclosed block comments
-  const openComments = (text.match(/\/\*/g) || []).length;
-  const closeComments = (text.match(/\*\//g) || []).length;
-  if (openComments > closeComments) {
-    diagnostics.push({
-      severity: DiagnosticSeverity.Error,
-      range: {
-        start: textDocument.positionAt(text.lastIndexOf("/*")),
-        end: textDocument.positionAt(text.lastIndexOf("/*") + 2),
+  if (parserReady && parser) {
+    // Full tree-sitter + ModelicaLinter pipeline (matching morsel's processContent)
+    const context = new Context(new BrowserFileSystem(connection));
+    const linter = new ModelicaLinter(
+      (_type: string, message: string, _resource: string | null | undefined, range: Range | null | undefined) => {
+        if (!range) return;
+        diagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          range: {
+            start: { line: range.startPosition.row, character: range.startPosition.column },
+            end: { line: range.endPosition.row, character: range.endPosition.column },
+          },
+          message,
+          source: "modelscript",
+        });
       },
-      message: "Unclosed block comment.",
-      source: "modelscript",
-    });
+    );
+
+    // Parse with tree-sitter
+    const tree = context.parse(".mo", text);
+
+    // Lint the raw parse tree (catches ERROR and MISSING nodes)
+    linter.lint(tree);
+
+    // Build syntax nodes and lint them
+    const node = ModelicaStoredDefinitionSyntaxNode.new(null, tree.rootNode);
+    if (node) {
+      linter.lint(node);
+
+      // Instantiate classes and run semantic linting
+      const instances: ModelicaClassInstance[] = [];
+      const editorScope = new EditorScope(context, instances);
+
+      for (const classDef of node.classDefinitions) {
+        const instance = new ModelicaClassInstance(editorScope, classDef);
+        instances.push(instance);
+      }
+
+      for (const instance of instances) {
+        try {
+          instance.instantiate();
+          linter.lint(instance);
+        } catch (e) {
+          console.error("Lint error for instance:", e);
+        }
+      }
+    }
+  } else {
+    // Fallback: basic regex validation when tree-sitter is not available
+    const openComments = (text.match(/\/\*/g) || []).length;
+    const closeComments = (text.match(/\*\//g) || []).length;
+    if (openComments > closeComments) {
+      diagnostics.push({
+        severity: DiagnosticSeverity.Error,
+        range: {
+          start: textDocument.positionAt(text.lastIndexOf("/*")),
+          end: textDocument.positionAt(text.lastIndexOf("/*") + 2),
+        },
+        message: "Unclosed block comment.",
+        source: "modelscript",
+      });
+    }
   }
 
   connection.sendDiagnostics({ uri: textDocument.uri, diagnostics });
 }
 
-/* Semantic tokens provider — regex-based tokenizer matching morsel's tree-sitter logic */
+/* Semantic tokens provider — regex-based tokenizer matching morsel's token types */
 
 function computeSemanticTokens(textDocument: TextDocument): SemanticTokens {
   const builder = new SemanticTokensBuilder();
@@ -185,10 +356,10 @@ function tokenizeLine(builder: SemanticTokensBuilder, line: string, lineIndex: n
     // Line comment
     if (line[i] === "/" && i + 1 < line.length && line[i + 1] === "/") {
       builder.push(lineIndex, i, line.length - i, tokenTypes.indexOf("comment"), 0);
-      return; // rest of line is comment
+      return;
     }
 
-    // Block comment start (partial — we just color what's on this line)
+    // Block comment start
     if (line[i] === "/" && i + 1 < line.length && line[i + 1] === "*") {
       const endIdx = line.indexOf("*/", i + 2);
       if (endIdx !== -1) {
@@ -206,10 +377,10 @@ function tokenizeLine(builder: SemanticTokensBuilder, line: string, lineIndex: n
       const start = i;
       i++;
       while (i < line.length && line[i] !== '"') {
-        if (line[i] === "\\") i++; // skip escape
+        if (line[i] === "\\") i++;
         i++;
       }
-      if (i < line.length) i++; // closing quote
+      if (i < line.length) i++;
       builder.push(lineIndex, start, i - start, tokenTypes.indexOf("string"), 0);
       continue;
     }
@@ -218,7 +389,6 @@ function tokenizeLine(builder: SemanticTokensBuilder, line: string, lineIndex: n
     if (/\d/.test(line[i])) {
       const start = i;
       while (i < line.length && /[\d.]/.test(line[i])) i++;
-      // Scientific notation
       if (i < line.length && /[eE]/.test(line[i])) {
         i++;
         if (i < line.length && /[+-]/.test(line[i])) i++;
@@ -231,7 +401,6 @@ function tokenizeLine(builder: SemanticTokensBuilder, line: string, lineIndex: n
     // Operators
     if ("+-*/^=<>:".includes(line[i])) {
       const start = i;
-      // Two-character operators
       if (i + 1 < line.length) {
         const two = line.substring(i, i + 2);
         if ([":=", "<=", ">=", "<>", "=="].includes(two)) {
@@ -256,7 +425,6 @@ function tokenizeLine(builder: SemanticTokensBuilder, line: string, lineIndex: n
       } else if (typeKeywords.includes(word)) {
         builder.push(lineIndex, start, word.length, tokenTypes.indexOf("type"), 0);
       } else {
-        // Peek ahead to classify: if followed by a space and then an identifier, it's likely a type
         const rest = line.substring(i).trimStart();
         if (/^[_a-zA-Z]/.test(rest)) {
           builder.push(lineIndex, start, word.length, tokenTypes.indexOf("type"), 0);
@@ -280,7 +448,6 @@ function tokenizeLine(builder: SemanticTokensBuilder, line: string, lineIndex: n
       continue;
     }
 
-    // Skip other characters
     i++;
   }
 }
@@ -296,7 +463,6 @@ connection.onRequest("textDocument/semanticTokens/full", (params) => {
 // Basic keyword completions for Modelica
 connection.onCompletion((): CompletionItem[] => {
   const allKeywords = [...keywords, ...typeKeywords];
-
   return allKeywords.map((kw, index) => ({
     label: kw,
     kind: CompletionItemKind.Keyword,
@@ -314,7 +480,6 @@ connection.onHover((params) => {
   const offset = document.offsetAt(position);
   const text = document.getText();
 
-  // Extract the word under the cursor
   let start = offset;
   let end = offset;
   while (start > 0 && /\w/.test(text[start - 1])) start--;

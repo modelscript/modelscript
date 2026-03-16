@@ -24,7 +24,7 @@ export default defineConfig(({ isSsrBuild }) => {
         viteStaticCopy({
           targets: [
             {
-              src: "./node_modules/web-tree-sitter/tree-sitter.wasm",
+              src: "../../node_modules/web-tree-sitter/tree-sitter.wasm",
               dest: "",
             },
             {

@@ -2,8 +2,8 @@
   "compilerOptions": {
     "target": "ES2024",
     "lib": ["ES2024", "WebWorker"],
-    "module": "commonjs",
-    "moduleResolution": "node",
+    "module": "ES2022",
+    "moduleResolution": "bundler",
     "sourceMap": true,
     "strict": true
   },

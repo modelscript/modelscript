@@ -6,6 +6,8 @@
 /** @typedef {import('webpack').Configuration} WebpackConfig **/
 
 const path = require("path");
+const CopyPlugin = require("copy-webpack-plugin");
+const webpack = require("webpack");
 
 /** @type WebpackConfig */
 const browserClientConfig = {
@@ -67,10 +69,33 @@ const browserServerConfig = {
     devtoolModuleFilenameTemplate: "../[resource-path]",
   },
   resolve: {
-    mainFields: ["module", "main"],
+    mainFields: ["browser", "module", "main"],
     extensions: [".ts", ".js"],
     alias: {},
-    fallback: {},
+    fallback: {
+      // Node.js built-ins needed by pino (used by @modelscript/core logger)
+      assert: false,
+      buffer: false,
+      child_process: false,
+      crypto: false,
+      diagnostics_channel: false,
+      events: false,
+      fs: false,
+      http: false,
+      module: false,
+      https: false,
+      net: false,
+      os: false,
+      path: false,
+      process: false,
+      stream: false,
+      string_decoder: false,
+      tls: false,
+      url: false,
+      util: false,
+      worker_threads: false,
+      zlib: false,
+    },
   },
   module: {
     rules: [
@@ -88,6 +113,29 @@ const browserServerConfig = {
       },
     ],
   },
+  plugins: [
+    // Stub process.env for pino and other Node.js code
+    new webpack.DefinePlugin({
+      "process.env": JSON.stringify({}),
+      "process.browser": JSON.stringify(true),
+    }),
+    // Handle node: scheme URIs used by pino and other Node.js modules
+    new webpack.NormalModuleReplacementPlugin(/^node:/, (resource) => {
+      resource.request = resource.request.replace(/^node:/, "");
+    }),
+    new CopyPlugin({
+      patterns: [
+        {
+          from: path.resolve(__dirname, "..", "..", "node_modules", "web-tree-sitter", "tree-sitter.wasm"),
+          to: path.join(__dirname, "server", "dist", "tree-sitter.wasm"),
+        },
+        {
+          from: path.resolve(__dirname, "..", "tree-sitter-modelica", "tree-sitter-modelica.wasm"),
+          to: path.join(__dirname, "server", "dist", "tree-sitter-modelica.wasm"),
+        },
+      ],
+    }),
+  ],
   performance: {
     hints: false,
   },
