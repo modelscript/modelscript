@@ -2836,6 +2836,23 @@ function canonicalizeBinaryExpression(
   operand2: ModelicaExpression,
   dae?: ModelicaDAE,
 ): ModelicaExpression {
+  // Substitute constant variables with their literal binding values
+  if (
+    operand1 instanceof ModelicaVariable &&
+    operand1.variability === ModelicaVariability.CONSTANT &&
+    operand1.expression &&
+    isLiteral(operand1.expression)
+  ) {
+    operand1 = operand1.expression;
+  }
+  if (
+    operand2 instanceof ModelicaVariable &&
+    operand2.variability === ModelicaVariability.CONSTANT &&
+    operand2.expression &&
+    isLiteral(operand2.expression)
+  ) {
+    operand2 = operand2.expression;
+  }
   // Constant fold string concatenation
   if (
     operator === ModelicaBinaryOperator.ADDITION &&
