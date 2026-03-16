@@ -202,24 +202,33 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     }
     // Process only locally-declared equation/algorithm sections (not inherited ones).
     // Inherited equations are handled by visitExtendsClassInstance with proper break context.
-    const localSections = node.abstractSyntaxNode?.sections ?? [];
+    const localSections = [...(node.abstractSyntaxNode?.sections ?? [])];
+    // Process equation sections in reverse order to match OpenModelica's flattening behavior
+    // (later equation sections appear before earlier ones in the output)
+    const equationSections = localSections.filter(
+      (s): s is ModelicaEquationSectionSyntaxNode => s instanceof ModelicaEquationSectionSyntaxNode,
+    );
+    for (let i = equationSections.length - 1; i >= 0; i--) {
+      const section = equationSections[i];
+      if (!section) continue;
+      const target = section.initial ? args[1].initialEquations : args[1].equations;
+      const savedEquations = args[1].equations;
+      args[1].equations = target;
+      for (const eq of section.equations) {
+        eq.accept(new ModelicaSyntaxFlattener(), {
+          prefix: args[0],
+          classInstance: node,
+          dae: args[1],
+          stmtCollector: [],
+          structuralFinalParams: this.#structuralFinalParams,
+          connectedFlowVars: this.#connectedFlowVars,
+        });
+      }
+      args[1].equations = savedEquations;
+    }
+    // Process algorithm sections in declaration order
     for (const section of localSections) {
-      if (section instanceof ModelicaEquationSectionSyntaxNode) {
-        const target = section.initial ? args[1].initialEquations : args[1].equations;
-        const savedEquations = args[1].equations;
-        args[1].equations = target;
-        for (const eq of section.equations) {
-          eq.accept(new ModelicaSyntaxFlattener(), {
-            prefix: args[0],
-            classInstance: node,
-            dae: args[1],
-            stmtCollector: [],
-            structuralFinalParams: this.#structuralFinalParams,
-            connectedFlowVars: this.#connectedFlowVars,
-          });
-        }
-        args[1].equations = savedEquations;
-      } else if (section instanceof ModelicaAlgorithmSectionSyntaxNode) {
+      if (section instanceof ModelicaAlgorithmSectionSyntaxNode) {
         const collector: ModelicaStatement[] = [];
         for (const statement of section.statements) {
           statement.accept(new ModelicaSyntaxFlattener(), {
@@ -998,7 +1007,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           variable.variability === ModelicaVariability.PARAMETER
         ) {
           if (variable.expression) {
-            let newExpr = this.#foldExpression(variable.expression, dae);
+            let newExpr = this.#foldExpression(variable.expression, dae, new Set<string>(), true);
             // Coerce folded result to match the variable's declared type
             if (variable instanceof ModelicaIntegerVariable && newExpr instanceof ModelicaRealLiteral) {
               // For identity values (e.g., min() for Integer), use Modelica-standard values
@@ -1074,13 +1083,18 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
    * Recursively folds a flattened DAE expression at compile time into literals.
    * Useful for extracting array shapes and literal values from bound constants.
    */
-  #foldExpression(expr: ModelicaExpression, dae?: ModelicaDAE, visited = new Set<string>()): ModelicaExpression {
+  #foldExpression(
+    expr: ModelicaExpression,
+    dae?: ModelicaDAE,
+    visited = new Set<string>(),
+    inlineParameters = false,
+  ): ModelicaExpression {
     if (expr instanceof ModelicaBinaryExpression) {
-      const op1 = this.#foldExpression(expr.operand1, dae, visited);
-      const op2 = this.#foldExpression(expr.operand2, dae, visited);
+      const op1 = this.#foldExpression(expr.operand1, dae, visited, inlineParameters);
+      const op2 = this.#foldExpression(expr.operand2, dae, visited, inlineParameters);
       return canonicalizeBinaryExpression(expr.operator, op1, op2, dae);
     } else if (expr instanceof ModelicaUnaryExpression) {
-      const op1 = this.#foldExpression(expr.operand, dae, visited);
+      const op1 = this.#foldExpression(expr.operand, dae, visited, inlineParameters);
       if (isLiteral(op1)) {
         if (expr.operator === ModelicaUnaryOperator.UNARY_MINUS) {
           if (op1 instanceof ModelicaRealLiteral) return new ModelicaRealLiteral(-op1.value);
@@ -1094,13 +1108,18 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       // Distribute unary negation over arrays: -{1,2,3} → {-1,-2,-3}
       if (expr.operator === ModelicaUnaryOperator.UNARY_MINUS && op1 instanceof ModelicaArray) {
         const foldedElements = op1.elements.map((e) =>
-          this.#foldExpression(new ModelicaUnaryExpression(ModelicaUnaryOperator.UNARY_MINUS, e), dae, visited),
+          this.#foldExpression(
+            new ModelicaUnaryExpression(ModelicaUnaryOperator.UNARY_MINUS, e),
+            dae,
+            visited,
+            inlineParameters,
+          ),
         );
         return new ModelicaArray(op1.shape, foldedElements);
       }
       return op1 === expr.operand ? expr : new ModelicaUnaryExpression(expr.operator, op1);
     } else if (expr instanceof ModelicaFunctionCallExpression) {
-      const args = expr.args.map((a) => this.#foldExpression(a, dae, visited));
+      const args = expr.args.map((a) => this.#foldExpression(a, dae, visited, inlineParameters));
       const folded = tryFoldBuiltinFunction(expr.functionName, args);
       if (folded) return folded;
 
@@ -1173,51 +1192,57 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         ]);
         if (!nonDistributive.has(expr.functionName)) {
           const newElements = arr.elements.map((e) =>
-            this.#foldExpression(new ModelicaFunctionCallExpression(expr.functionName, [e]), dae, visited),
+            this.#foldExpression(
+              new ModelicaFunctionCallExpression(expr.functionName, [e]),
+              dae,
+              visited,
+              inlineParameters,
+            ),
           );
           return new ModelicaArray(arr.shape, newElements);
         }
       }
       return new ModelicaFunctionCallExpression(expr.functionName, args);
     } else if (expr instanceof ModelicaArray) {
-      const newElements = expr.elements.map((e) => this.#foldExpression(e, dae, visited));
+      const newElements = expr.elements.map((e) => this.#foldExpression(e, dae, visited, inlineParameters));
       return new ModelicaArray(expr.shape, newElements);
     } else if (expr instanceof ModelicaIfElseExpression) {
-      const cond = this.#foldExpression(expr.condition, dae, visited);
+      const cond = this.#foldExpression(expr.condition, dae, visited, inlineParameters);
       if (cond instanceof ModelicaBooleanLiteral) {
-        if (cond.value) return this.#foldExpression(expr.thenExpression, dae, visited);
+        if (cond.value) return this.#foldExpression(expr.thenExpression, dae, visited, inlineParameters);
 
         for (const elseif of expr.elseIfClauses) {
-          const elifCond = this.#foldExpression(elseif.condition, dae, visited);
+          const elifCond = this.#foldExpression(elseif.condition, dae, visited, inlineParameters);
           if (elifCond instanceof ModelicaBooleanLiteral) {
-            if (elifCond.value) return this.#foldExpression(elseif.expression, dae, visited);
+            if (elifCond.value) return this.#foldExpression(elseif.expression, dae, visited, inlineParameters);
           } else {
             // Cannot guarantee compile-time evaluation beyond this point
             break;
           }
         }
-        return this.#foldExpression(expr.elseExpression, dae, visited);
+        return this.#foldExpression(expr.elseExpression, dae, visited, inlineParameters);
       }
 
       // If we cannot fully evaluate the condition, at least construct a folded nested expression
       const newElseIfs = expr.elseIfClauses.map((ei) => ({
-        condition: this.#foldExpression(ei.condition, dae, visited),
-        expression: this.#foldExpression(ei.expression, dae, visited),
+        condition: this.#foldExpression(ei.condition, dae, visited, inlineParameters),
+        expression: this.#foldExpression(ei.expression, dae, visited, inlineParameters),
       }));
       return new ModelicaIfElseExpression(
         cond,
-        this.#foldExpression(expr.thenExpression, dae, visited),
+        this.#foldExpression(expr.thenExpression, dae, visited, inlineParameters),
         newElseIfs,
-        this.#foldExpression(expr.elseExpression, dae, visited),
+        this.#foldExpression(expr.elseExpression, dae, visited, inlineParameters),
       );
     } else if (expr instanceof ModelicaVariable) {
       if (
+        inlineParameters &&
         (expr.variability === ModelicaVariability.CONSTANT || expr.variability === ModelicaVariability.PARAMETER) &&
         expr.expression
       ) {
         if (!visited.has(expr.name)) {
           const newVisited = new Set(visited).add(expr.name);
-          const folded = this.#foldExpression(expr.expression, dae, newVisited);
+          const folded = this.#foldExpression(expr.expression, dae, newVisited, inlineParameters);
           if (isLiteral(folded) || folded instanceof ModelicaArray) return folded;
         }
       }
@@ -1227,19 +1252,19 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         if (
           variable &&
           (variable.variability === ModelicaVariability.CONSTANT ||
-            variable.variability === ModelicaVariability.PARAMETER) &&
+            (inlineParameters && variable.variability === ModelicaVariability.PARAMETER)) &&
           variable.expression
         ) {
           const newVisited = new Set(visited).add(expr.name);
-          const folded = this.#foldExpression(variable.expression, dae, newVisited);
+          const folded = this.#foldExpression(variable.expression, dae, newVisited, inlineParameters);
           if (isLiteral(folded) || folded instanceof ModelicaArray) return folded;
         }
       }
     } else if (expr instanceof ModelicaSubscriptedExpression) {
       if (dae) {
         // Evaluate base and subscripts
-        const base = this.#foldExpression(expr.base, dae, visited);
-        const subscripts = expr.subscripts.map((s) => this.#foldExpression(s, dae, visited));
+        const base = this.#foldExpression(expr.base, dae, visited, inlineParameters);
+        const subscripts = expr.subscripts.map((s) => this.#foldExpression(s, dae, visited, inlineParameters));
 
         // If it's a direct reference to a flattened scalar variable element like intArray[1]
         if (base instanceof ModelicaNameExpression && subscripts.every((s) => s instanceof ModelicaIntegerLiteral)) {
@@ -1249,11 +1274,11 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
             if (
               variable &&
               (variable.variability === ModelicaVariability.CONSTANT ||
-                variable.variability === ModelicaVariability.PARAMETER) &&
+                (inlineParameters && variable.variability === ModelicaVariability.PARAMETER)) &&
               variable.expression
             ) {
               const newVisited = new Set(visited).add(flatName);
-              const folded = this.#foldExpression(variable.expression, dae, newVisited);
+              const folded = this.#foldExpression(variable.expression, dae, newVisited, inlineParameters);
               if (isLiteral(folded) || folded instanceof ModelicaArray) return folded;
             }
           }
@@ -1266,13 +1291,14 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           subscripts[0] instanceof ModelicaRangeExpression
         ) {
           const range = subscripts[0] as ModelicaRangeExpression;
-          const foldedStart = this.#foldExpression(range.start, dae, visited);
-          const foldedEnd = this.#foldExpression(range.end, dae, visited);
+          const foldedStart = this.#foldExpression(range.start, dae, visited, inlineParameters);
+          const foldedEnd = this.#foldExpression(range.end, dae, visited, inlineParameters);
           if (foldedStart instanceof ModelicaIntegerLiteral && foldedEnd instanceof ModelicaIntegerLiteral) {
             const start = foldedStart.value;
             const end = foldedEnd.value;
             const step = range.step
-              ? ((this.#foldExpression(range.step, dae, visited) as ModelicaIntegerLiteral)?.value ?? 1)
+              ? ((this.#foldExpression(range.step, dae, visited, inlineParameters) as ModelicaIntegerLiteral)?.value ??
+                1)
               : 1;
             const elements: ModelicaExpression[] = [];
             for (let i = start; step > 0 ? i <= end : i >= end; i += step) {
@@ -1281,10 +1307,10 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
               if (
                 variable &&
                 (variable.variability === ModelicaVariability.CONSTANT ||
-                  variable.variability === ModelicaVariability.PARAMETER) &&
+                  (inlineParameters && variable.variability === ModelicaVariability.PARAMETER)) &&
                 variable.expression
               ) {
-                const folded = this.#foldExpression(variable.expression, dae, visited);
+                const folded = this.#foldExpression(variable.expression, dae, visited, inlineParameters);
                 elements.push(folded);
               } else {
                 elements.push(new ModelicaSubscriptedExpression(base, [new ModelicaIntegerLiteral(i)]));
