@@ -1290,7 +1290,8 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     } else if (expr instanceof ModelicaVariable) {
       if (
         inlineParameters &&
-        (expr.variability === ModelicaVariability.CONSTANT || expr.variability === ModelicaVariability.PARAMETER) &&
+        (expr.variability === ModelicaVariability.CONSTANT ||
+          (expr.variability === ModelicaVariability.PARAMETER && expr.isFinal)) &&
         expr.expression
       ) {
         if (!visited.has(expr.name)) {
@@ -1305,7 +1306,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         if (
           variable &&
           (variable.variability === ModelicaVariability.CONSTANT ||
-            (inlineParameters && variable.variability === ModelicaVariability.PARAMETER)) &&
+            (inlineParameters && variable.variability === ModelicaVariability.PARAMETER && variable.isFinal)) &&
           variable.expression
         ) {
           const newVisited = new Set(visited).add(expr.name);
@@ -1409,6 +1410,16 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
 class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, FlattenerContext> {
   /** Tracks functions currently being collected, to prevent re-entrant recursion. */
   static #collectingFunctions = new Set<string>();
+
+  /** Recursively check if a function with the given name exists anywhere in the DAE hierarchy. */
+  static #hasFunctionInDAE(dae: ModelicaDAE, name: string): boolean {
+    for (const fn of dae.functions) {
+      if (fn.name === name) return true;
+      // Check sub-functions within this function's DAE
+      if (ModelicaSyntaxFlattener.#hasFunctionInDAE(fn, name)) return true;
+    }
+    return false;
+  }
   /**
    * Check if a function name refers to a built-in Modelica function.
    * Uses the typed definitions in builtins.ts.
@@ -2100,8 +2111,10 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     // Skip built-in functions (only unqualified names are builtins; qualified names
     // like Modelica.Utilities.Streams.print are user-defined even if simple name matches)
     if (!functionName.includes(".") && ModelicaSyntaxFlattener.#isBuiltinFunction(functionName)) return;
-    // Skip if already collected or currently being collected (prevents recursion)
-    if (ctx.dae.functions.some((f) => f.name === functionName)) return;
+    // Skip if already collected or currently being collected (prevents recursion).
+    // Check recursively through all nested function DAEs to avoid duplicates when
+    // the same function is referenced both inside a function body and at class level.
+    if (ModelicaSyntaxFlattener.#hasFunctionInDAE(ctx.dae, functionName)) return;
     if (ModelicaSyntaxFlattener.#collectingFunctions.has(functionName)) return;
     ModelicaSyntaxFlattener.#collectingFunctions.add(functionName);
 
