@@ -144,6 +144,12 @@ export const ModelicaErrorCode = {
     message: (funcName: string, expectedType: string, actualType: string) =>
       `Function '${funcName}' returns type '${actualType}' but '${expectedType}' expected.`,
   },
+  ARRAY_INDEX_TYPE_MISMATCH: {
+    code: 3009,
+    rule: "array-index-type-mismatch",
+    severity: "error",
+    message: (actualType: string) => `Array index type mismatch: expected Integer or Boolean, but got '${actualType}'.`,
+  },
 
   // ── 4xxx: Structural / Semantic ───────────────────────────────────────
   EXTENDS_CYCLE: {
@@ -179,6 +185,13 @@ export const ModelicaErrorCode = {
     severity: "warning",
     message: (varName: string) =>
       `Invalid public variable ${varName}, function variables that are not input/output must be protected.`,
+  },
+  ARRAY_SUBSCRIPT_COUNT_MISMATCH: {
+    code: 4008,
+    rule: "array-subscript-count-mismatch",
+    severity: "error",
+    message: (componentName: string, actualCount: string, expectedCount: string) =>
+      `Array subscript count mismatch: '${componentName}' has ${expectedCount} dimension(s), but was indexed with ${actualCount} subscript(s).`,
   },
 
   // ── 5xxx: Equations & Algorithms ──────────────────────────────────────

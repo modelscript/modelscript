@@ -6,21 +6,21 @@ import { ModelicaArray } from "./dae.js";
 import { ModelicaErrorCode, type ErrorCodeDef } from "./errors.js";
 import {
   ModelicaArrayClassInstance,
+  ModelicaBooleanClassInstance,
   ModelicaClassInstance,
   ModelicaComponentInstance,
   ModelicaElementModification,
   ModelicaEntity,
   ModelicaExtendsClassInstance,
+  ModelicaIntegerClassInstance,
   ModelicaLibrary,
   ModelicaModelVisitor,
   ModelicaModificationArgument,
   ModelicaNamedElement,
   ModelicaNode,
+  ModelicaRealClassInstance,
+  ModelicaStringClassInstance,
   type IModelicaModelVisitor,
-  type ModelicaBooleanClassInstance,
-  type ModelicaIntegerClassInstance,
-  type ModelicaRealClassInstance,
-  type ModelicaStringClassInstance,
 } from "./model.js";
 import {
   ModelicaArrayConstructorSyntaxNode,
@@ -1008,6 +1008,149 @@ function componentRefText(ref: ModelicaComponentReferenceSyntaxNode | null): str
   return ref.parts.map((p) => p.identifier?.text ?? "?").join(".");
 }
 
+/**
+ * Custom syntax visitor to traverse expression ASTs inside a class instance
+ * and validate array subscript dimensionalities and valid types.
+ */
+class ArraySubscriptChecker extends ModelicaSyntaxVisitor<null, null> {
+  #diagnosticsCallback: DiagnosticsCallbackWithoutResource;
+  #scope: ModelicaClassInstance;
+
+  constructor(diagnosticsCallback: DiagnosticsCallbackWithoutResource, scope: ModelicaClassInstance) {
+    super();
+    this.#diagnosticsCallback = diagnosticsCallback;
+    this.#scope = scope;
+  }
+
+  visitComponentReference(node: ModelicaComponentReferenceSyntaxNode, context: null): null {
+    if (!node.parts || node.parts.length === 0) return super.visitComponentReference(node, context);
+
+    let currentElement: ModelicaComponentInstance | null = null;
+    const firstResolved = this.#scope.resolveSimpleName(node.parts[0]?.identifier, node.global);
+    if (firstResolved instanceof ModelicaComponentInstance) {
+      currentElement = firstResolved;
+    } else {
+      return super.visitComponentReference(node, context);
+    }
+
+    for (let i = 0; i < node.parts.length; i++) {
+      const part = node.parts[i];
+      if (!part || !currentElement) break;
+
+      const subscripts = part.arraySubscripts?.subscripts;
+      if (subscripts && subscripts.length > 0) {
+        if (!currentElement.instantiated && !currentElement.instantiating) currentElement.instantiate();
+        const classInst = currentElement.classInstance;
+
+        let expectedCount = 0;
+        if (classInst instanceof ModelicaArrayClassInstance) {
+          expectedCount = classInst.shape.length;
+        }
+
+        if (expectedCount > 0 && expectedCount !== subscripts.length) {
+          this.#diagnosticsCallback(
+            ModelicaErrorCode.ARRAY_SUBSCRIPT_COUNT_MISMATCH.severity,
+            ModelicaErrorCode.ARRAY_SUBSCRIPT_COUNT_MISMATCH.code,
+            ModelicaErrorCode.ARRAY_SUBSCRIPT_COUNT_MISMATCH.message(
+              currentElement.name ?? "?",
+              String(subscripts.length),
+              String(expectedCount),
+            ),
+            part.arraySubscripts,
+          );
+        }
+
+        // Validate index Types: Reject Real / String values
+        for (const sub of subscripts) {
+          if (
+            sub.expression instanceof ModelicaUnsignedRealLiteralSyntaxNode ||
+            (sub.expression instanceof ModelicaUnaryExpressionSyntaxNode &&
+              sub.expression.operand instanceof ModelicaUnsignedRealLiteralSyntaxNode)
+          ) {
+            this.#diagnosticsCallback(
+              ModelicaErrorCode.ARRAY_INDEX_TYPE_MISMATCH.severity,
+              ModelicaErrorCode.ARRAY_INDEX_TYPE_MISMATCH.code,
+              ModelicaErrorCode.ARRAY_INDEX_TYPE_MISMATCH.message("Real"),
+              sub.expression,
+            );
+          } else if (sub.expression instanceof ModelicaStringLiteralSyntaxNode) {
+            this.#diagnosticsCallback(
+              ModelicaErrorCode.ARRAY_INDEX_TYPE_MISMATCH.severity,
+              ModelicaErrorCode.ARRAY_INDEX_TYPE_MISMATCH.code,
+              ModelicaErrorCode.ARRAY_INDEX_TYPE_MISMATCH.message("String"),
+              sub.expression,
+            );
+          } else if (sub.expression instanceof ModelicaComponentReferenceSyntaxNode) {
+            const indexComp = resolveToComponent(this.#scope, sub.expression);
+            if (indexComp) {
+              if (!indexComp.instantiated && !indexComp.instantiating) indexComp.instantiate();
+              const indexClass = indexComp.classInstance;
+              if (indexClass instanceof ModelicaRealClassInstance) {
+                this.#diagnosticsCallback(
+                  ModelicaErrorCode.ARRAY_INDEX_TYPE_MISMATCH.severity,
+                  ModelicaErrorCode.ARRAY_INDEX_TYPE_MISMATCH.code,
+                  ModelicaErrorCode.ARRAY_INDEX_TYPE_MISMATCH.message("Real"),
+                  sub.expression,
+                );
+              } else if (indexClass instanceof ModelicaStringClassInstance) {
+                this.#diagnosticsCallback(
+                  ModelicaErrorCode.ARRAY_INDEX_TYPE_MISMATCH.severity,
+                  ModelicaErrorCode.ARRAY_INDEX_TYPE_MISMATCH.code,
+                  ModelicaErrorCode.ARRAY_INDEX_TYPE_MISMATCH.message("String"),
+                  sub.expression,
+                );
+              }
+            }
+          }
+        }
+      }
+
+      // Advance to the next part in the reference chain (e.g. `a[1].b`)
+      if (i < node.parts.length - 1) {
+        if (!currentElement.instantiated && !currentElement.instantiating) currentElement.instantiate();
+        const classInst: ModelicaClassInstance | null = currentElement.classInstance;
+        let nextScope: ModelicaClassInstance | null = classInst;
+        // "unwrap" the array if we are probing into the shape of its elements
+        if (classInst instanceof ModelicaArrayClassInstance) {
+          nextScope = classInst.elementClassInstance;
+        }
+        if (!nextScope) break;
+
+        const nextElement = nextScope.resolveSimpleName(node.parts[i + 1]?.identifier, false, true);
+        if (!(nextElement instanceof ModelicaComponentInstance)) break;
+        currentElement = nextElement;
+      }
+    }
+
+    return super.visitComponentReference(node, context);
+  }
+}
+
+// Rule: Array Subscript Count && Type mismatched indexing
+ModelicaLinter.register(
+  [ModelicaErrorCode.ARRAY_SUBSCRIPT_COUNT_MISMATCH, ModelicaErrorCode.ARRAY_INDEX_TYPE_MISMATCH],
+  {
+    visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+      const checker = new ArraySubscriptChecker(diagnosticsCallback, node);
+
+      // Run checker on all equations (equations are syntax nodes)
+      for (const eq of node.equations) {
+        eq.accept(checker, null);
+      }
+      // Run checker on all algorithms (algorithms are syntax nodes)
+      for (const alg of node.algorithms) {
+        alg.accept(checker, null);
+      }
+      // Run checker on component syntax nodes to capture modifications
+      for (const element of node.elements) {
+        if (element instanceof ModelicaComponentInstance) {
+          element.abstractSyntaxNode?.accept(checker, null);
+        }
+      }
+    },
+  },
+);
+
 // Rule: Connect equation — both sides must be connectors and plug-compatible
 ModelicaLinter.register([ModelicaErrorCode.NOT_A_CONNECTOR, ModelicaErrorCode.NOT_PLUG_COMPATIBLE], {
   visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
@@ -1656,8 +1799,22 @@ ModelicaLinter.register(ModelicaErrorCode.ASSIGNMENT_TYPE_MISMATCH, {
       if (!targetComp.instantiated) targetComp.instantiate();
       if (!sourceComp.instantiated) sourceComp.instantiate();
 
-      const targetType = targetComp.classInstance;
-      const sourceType = sourceComp.classInstance;
+      let targetType = targetComp.classInstance;
+      let sourceType = sourceComp.classInstance;
+
+      // If resolving an array subscript, unwrap the element type for comparison
+      const targetSubscripts = targetRef.parts[targetRef.parts.length - 1]?.arraySubscripts?.subscripts;
+      if (targetSubscripts && targetSubscripts.length > 0 && targetType instanceof ModelicaArrayClassInstance) {
+        // Assume all subscripts have been provided since partial indexing is complex statically
+        targetType = targetType.elementClassInstance;
+      }
+
+      const sourceSubscripts = sourceRef.parts[sourceRef.parts.length - 1]?.arraySubscripts?.subscripts;
+      if (sourceSubscripts && sourceSubscripts.length > 0 && sourceType instanceof ModelicaArrayClassInstance) {
+        // Assume all subscripts have been provided
+        sourceType = sourceType.elementClassInstance;
+      }
+
       if (!targetType || !sourceType) continue;
 
       if (!targetType.isTypeCompatibleWith(sourceType)) {

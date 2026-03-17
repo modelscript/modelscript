@@ -1664,7 +1664,9 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     // Collect function definition BEFORE type coercion so we can use per-parameter types
     this.#collectFunctionDefinition(functionName, ctx, resolvedOverride, componentPrefix);
 
-    // Expand default arguments for user-defined functions
+    // Expand default arguments for user-defined functions, but ONLY if they are inherently
+    // literals structurally. Injecting other parameter-reliant defaults (e.g. `y = 2.0 * x`)
+    // into the caller's DAE overrides closures incorrectly.
     if (!builtinDef) {
       const funcDef = ctx.dae.functions.find((f) => f.name === functionName);
       if (funcDef) {
@@ -1672,7 +1674,11 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         while (flatArgs.length < inputVars.length) {
           const param = inputVars[flatArgs.length];
           if (!param?.expression) break;
-          flatArgs.push(param.expression);
+          if (isLiteral(param.expression) || isLiteralArray(param.expression)) {
+            flatArgs.push(param.expression);
+          } else {
+            break;
+          }
         }
       }
     }
@@ -1708,8 +1714,19 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       if (isLiteral(expr) || isLiteralArray(expr)) return true;
       if (expr instanceof ModelicaNameExpression) {
         const variable = ctx.dae.variables.find((v) => v.name === expr.name);
-        if (variable?.variability === ModelicaVariability.CONSTANT && variable.expression) {
-          return isLiteral(variable.expression) || isLiteralArray(variable.expression);
+        if (variable) {
+          if (variable.variability === ModelicaVariability.CONSTANT && variable.expression) {
+            return isLiteral(variable.expression) || isLiteralArray(variable.expression);
+          }
+        } else {
+          // If not found in flat DAE variables, check class instance hierarchy (for constants not yet flattened)
+          const resolved = ctx.classInstance.resolveName(expr.name.split("."));
+          if (resolved instanceof ModelicaComponentInstance) {
+            if (resolved.variability === ModelicaVariability.CONSTANT && resolved.modification?.expression) {
+              const flattenedExpr = resolved.modification.expression;
+              if (flattenedExpr) return isLiteral(flattenedExpr) || isLiteralArray(flattenedExpr);
+            }
+          }
         }
       }
       if (expr instanceof ModelicaVariable) {
@@ -1940,7 +1957,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     // For component-scoped functions, collect enclosing class constants to substitute
     // in body expressions (e.g., constant c in N gets its value from n1's modification).
     const enclosingConstants = new Map<string, ModelicaExpression | number>();
-    if (componentPrefix && resolved.parent instanceof ModelicaClassInstance) {
+    if (resolved.parent instanceof ModelicaClassInstance) {
       for (const parentEl of resolved.parent.elements) {
         if (parentEl instanceof ModelicaComponentInstance && parentEl.name) {
           const v = parentEl.variability;
@@ -2266,21 +2283,60 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       // Check for subscripts on the last part (e.g. z[j, i, :])
       const lastPart = node.parts?.[node.parts.length - 1];
       const subscriptNodes = lastPart?.arraySubscripts?.subscripts ?? [];
+
       if (subscriptNodes.length > 0) {
+        // Type checking and dimension validation on the array subscript inputs
+        if (ctx.classInstance) {
+          const typeRef = ctx.classInstance.resolveSimpleName(node.parts[0]?.identifier, node.global);
+          if (typeRef instanceof ModelicaComponentInstance) {
+            if (!typeRef.instantiated && !typeRef.instantiating) typeRef.instantiate();
+            const classInst = typeRef.classInstance;
+
+            let expectedCount = 0;
+            if (classInst instanceof ModelicaArrayClassInstance) {
+              expectedCount = classInst.shape.length;
+            }
+
+            // Subscript dimension matching against explicitly assigned sizes
+            if (subscriptNodes.length > 0 && expectedCount > 0 && expectedCount !== subscriptNodes.length) {
+              ctx.dae.diagnostics.push(
+                makeDiagnostic(
+                  ModelicaErrorCode.ARRAY_SUBSCRIPT_COUNT_MISMATCH,
+                  lastPart?.arraySubscripts,
+                  typeRef.name ?? "?",
+                  String(subscriptNodes.length),
+                  String(expectedCount),
+                ),
+              );
+            }
+          }
+        }
+
         // Build subscript expressions
         const subscripts: ModelicaExpression[] = [];
-        let hasSymbolic = false;
+
         for (const sub of subscriptNodes) {
           if (sub.flexible) {
             subscripts.push(new ModelicaColonExpression());
           } else if (sub.expression) {
             const subExpr = sub.expression.accept(this, ctx);
-            // Treat any non-concrete subscript as symbolic (not just bare names).
-            // e.g. `a[1+i]` produces a BinaryExpression — still symbolic.
-            if (subExpr && !(subExpr instanceof ModelicaIntegerLiteral)) hasSymbolic = true;
+
+            // Validate Subscript type validity
+            if (subExpr instanceof ModelicaRealLiteral) {
+              ctx.dae.diagnostics.push(
+                makeDiagnostic(ModelicaErrorCode.ARRAY_INDEX_TYPE_MISMATCH, sub.expression, "Real"),
+              );
+            } else if (subExpr instanceof ModelicaStringLiteral) {
+              ctx.dae.diagnostics.push(
+                makeDiagnostic(ModelicaErrorCode.ARRAY_INDEX_TYPE_MISMATCH, sub.expression, "String"),
+              );
+            } else {
+              // No longer tracking hasSymbolic
+            }
             subscripts.push(subExpr ?? new ModelicaNameExpression("?"));
           }
         }
+
         // First try to resolve using the already-flattened subscript expressions
         // (this handles loop variables resolved via loopVariables binding)
         const baseName =
@@ -2372,17 +2428,28 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         }
         // Only fall back to symbolic subscripts when neither flattener nor interpreter
         // could resolve them (e.g. loop variables in preserved for-statements).
-        if (hasSymbolic) {
+        let hasSymbolicLoopVar = false;
+        for (const sub of subscripts) {
+          if (sub && !(sub instanceof ModelicaIntegerLiteral)) hasSymbolicLoopVar = true;
+        }
+
+        if (hasSymbolicLoopVar) {
+          return new ModelicaSubscriptedExpression(new ModelicaNameExpression(name), subscripts);
+        } else {
+          // Fall back to a fully symbolic subscripted expression if we couldn't resolve the array elements
+          // This keeps `X[1]` as `X[1]` instead of stripping the subscript and returning `X`.
           return new ModelicaSubscriptedExpression(new ModelicaNameExpression(name), subscripts);
         }
       }
+
       // Check for loop variable bindings FIRST — loop variables shadow class-level constants
       // e.g. `for k in 1:5 loop z[k] := ...` where class also has `constant Integer k = 4`
-      const simpleName = node.parts.length === 1 ? (node.parts[0]?.identifier?.text ?? null) : null;
-      if (simpleName && ctx.loopVariables?.has(simpleName)) {
-        const loopVal = ctx.loopVariables.get(simpleName);
+      const simpleNameStr = node.parts.length === 1 ? node.parts[0]?.identifier?.text : undefined;
+      if (typeof simpleNameStr === "string" && ctx.loopVariables && ctx.loopVariables.has(simpleNameStr)) {
+        const loopVal = ctx.loopVariables.get(simpleNameStr);
         if (loopVal instanceof ModelicaExpression) return loopVal;
-        return new ModelicaIntegerLiteral(loopVal ?? 0);
+        if (typeof loopVal === "number") return new ModelicaIntegerLiteral(loopVal);
+        return new ModelicaIntegerLiteral(0);
       }
       for (const variable of ctx.dae.variables) {
         if (variable.name === name) return variable;
