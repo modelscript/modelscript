@@ -1703,7 +1703,29 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
 
     // Only inline user-defined function calls when ALL arguments are compile-time constants.
     // Parameters are NOT constants — they can change between simulations.
-    if (!hasParameterArg && flatArgs.every((arg) => isLiteral(arg) || isLiteralArray(arg))) {
+    // Check for: literals, literal arrays, or constant variable references with known values.
+    const isConstantEvaluable = (expr: ModelicaExpression): boolean => {
+      if (isLiteral(expr) || isLiteralArray(expr)) return true;
+      if (expr instanceof ModelicaNameExpression) {
+        const variable = ctx.dae.variables.find((v) => v.name === expr.name);
+        if (variable?.variability === ModelicaVariability.CONSTANT && variable.expression) {
+          return isLiteral(variable.expression) || isLiteralArray(variable.expression);
+        }
+      }
+      if (expr instanceof ModelicaVariable) {
+        if (expr.variability === ModelicaVariability.CONSTANT && expr.expression) {
+          return isLiteral(expr.expression) || isLiteralArray(expr.expression);
+        }
+      }
+      if (expr instanceof ModelicaSubscriptedExpression) {
+        return isConstantEvaluable(expr.base) && expr.subscripts.every(isConstantEvaluable);
+      }
+      if (expr instanceof ModelicaArray) {
+        return expr.elements.every(isConstantEvaluable);
+      }
+      return false;
+    };
+    if (!hasParameterArg && flatArgs.every((arg) => isConstantEvaluable(arg))) {
       const interp = new ModelicaInterpreter(true);
       const evalResult = node.accept(interp, ctx.classInstance);
       if (evalResult) {

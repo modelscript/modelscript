@@ -1412,7 +1412,14 @@ ModelicaLinter.register(
                   if (firstOutput) {
                     if (!firstOutput.instantiated) firstOutput.instantiate();
                     const outputType = firstOutput.classInstance;
-                    if (outputType && !lhsType.isTypeCompatibleWith(outputType)) {
+
+                    // Skip flexible/unresolved array return types (e.g. Real[:] or Real[size(x,1)])
+                    if (
+                      outputType instanceof ModelicaArrayClassInstance &&
+                      (outputType.arraySubscripts.some((s) => s.flexible) || outputType.shape.some((d) => d === 0))
+                    ) {
+                      // Flexible/unresolved return type — skip check
+                    } else if (outputType && !lhsType.isTypeCompatibleWith(outputType)) {
                       diagnosticsCallback(
                         ModelicaErrorCode.FUNCTION_RETURN_TYPE_MISMATCH.severity,
                         ModelicaErrorCode.FUNCTION_RETURN_TYPE_MISMATCH.code,

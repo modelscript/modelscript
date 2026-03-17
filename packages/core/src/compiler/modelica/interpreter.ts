@@ -45,6 +45,7 @@ import {
   ModelicaUnaryExpressionSyntaxNode,
   ModelicaUnsignedIntegerLiteralSyntaxNode,
   ModelicaUnsignedRealLiteralSyntaxNode,
+  ModelicaVariability,
   ModelicaWhenStatementSyntaxNode,
   ModelicaWhileStatementSyntaxNode,
 } from "./syntax.js";
@@ -467,7 +468,16 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     if (namedElement instanceof ModelicaClassInstance) result = ModelicaExpression.fromClassInstance(namedElement);
     else if (namedElement instanceof ModelicaComponentInstance) {
       if (!namedElement.instantiated && !namedElement.instantiating) namedElement.instantiate();
-      result = ModelicaExpression.fromClassInstance(namedElement.classInstance);
+      if (namedElement.variability === ModelicaVariability.CONSTANT) {
+        const modExpr = namedElement.modification?.evaluatedExpression ?? namedElement.modification?.expression;
+        if (modExpr instanceof ModelicaExpression) {
+          result = modExpr;
+        } else {
+          result = ModelicaExpression.fromClassInstance(namedElement.classInstance);
+        }
+      } else {
+        result = ModelicaExpression.fromClassInstance(namedElement.classInstance);
+      }
     } else {
       throw new Error();
     }
@@ -810,7 +820,7 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     }
 
     // Fallback: evaluate the expression and get shape from the resulting array
-    if (!shape) {
+    if (!shape || shape.length === 0 || shape.some((d) => d === 0)) {
       const evaluated = arrayRefExpr.accept(this, scope);
       if (evaluated) {
         shape = getArrayShape(evaluated);
@@ -1589,14 +1599,55 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
    */
   visitSimpleAssignmentStatement(node: ModelicaSimpleAssignmentStatementSyntaxNode, scope: Scope): null {
     const value = node.source?.accept(this, scope);
+    if (!value) return null;
+
+    const lastPart = node.target?.parts?.[node.target.parts.length - 1];
     const targetName = node.target?.parts?.[0]?.identifier?.text;
-    if (value && targetName) {
-      const target = scope.resolveSimpleName(targetName);
-      if (target instanceof ModelicaComponentInstance) {
-        const mod = new ModelicaModification(null, [], null, null, value);
+    if (!targetName) return null;
+
+    const target = scope.resolveSimpleName(targetName);
+    if (!(target instanceof ModelicaComponentInstance)) return null;
+
+    const subscripts = lastPart?.arraySubscripts?.subscripts;
+    if (subscripts && subscripts.length > 0) {
+      if (!target.instantiated && !target.instantiating) target.instantiate();
+      // Get the existing array, clone it (to avoid mutating the literal definition), and update the element
+      const currentExpr = ModelicaExpression.fromClassInstance(target.classInstance);
+      if (currentExpr instanceof ModelicaArray) {
+        // Deep clone array elements to allow mutation
+        const cloneArray = (arr: ModelicaArray): ModelicaArray => {
+          return new ModelicaArray(
+            arr.shape,
+            arr.elements.map((e) => (e instanceof ModelicaArray ? cloneArray(e) : e)),
+          );
+        };
+        const newArray = cloneArray(currentExpr);
+        let currentLevel = newArray;
+        for (let i = 0; i < subscripts.length; i++) {
+          const subExpr = subscripts[i]?.expression?.accept(this, scope);
+          let index = 1;
+          if (subExpr instanceof ModelicaIntegerLiteral) index = subExpr.value;
+          else if (subExpr instanceof ModelicaRealLiteral) index = Math.floor(subExpr.value);
+
+          if (i === subscripts.length - 1) {
+            currentLevel.elements[index - 1] = value;
+          } else {
+            const nextLevel = currentLevel.elements[index - 1];
+            if (nextLevel instanceof ModelicaArray) {
+              currentLevel = nextLevel;
+            } else {
+              break;
+            }
+          }
+        }
+        const mod = new ModelicaModification(null, [], null, null, newArray);
         target.classInstance = target.classInstance?.clone(mod) ?? null;
       }
+    } else {
+      const mod = new ModelicaModification(null, [], null, null, value);
+      target.classInstance = target.classInstance?.clone(mod) ?? null;
     }
+
     return null;
   }
 
