@@ -1341,6 +1341,14 @@ ModelicaLinter.register(
                 if (!param.instantiated) param.instantiate();
                 const paramType = param.classInstance;
 
+                // Skip flexible-size array params (e.g. Real[:]) — any matching base type is accepted
+                if (
+                  paramType instanceof ModelicaArrayClassInstance &&
+                  paramType.arraySubscripts.some((s) => s.flexible)
+                ) {
+                  continue;
+                }
+
                 if (argType && paramType && !paramType.isTypeCompatibleWith(argType)) {
                   diagnosticsCallback(
                     ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH.severity,

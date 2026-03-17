@@ -1654,6 +1654,19 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     // Collect function definition BEFORE type coercion so we can use per-parameter types
     this.#collectFunctionDefinition(functionName, ctx, resolvedOverride, componentPrefix);
 
+    // Expand default arguments for user-defined functions
+    if (!builtinDef) {
+      const funcDef = ctx.dae.functions.find((f) => f.name === functionName);
+      if (funcDef) {
+        const inputVars = funcDef.variables.filter((v) => v.causality === "input");
+        while (flatArgs.length < inputVars.length) {
+          const param = inputVars[flatArgs.length];
+          if (!param?.expression) break;
+          flatArgs.push(param.expression);
+        }
+      }
+    }
+
     // Per-parameter type coercion: coerce integer args to Real only where the
     // function signature expects a Real parameter
     if (!builtinDef) {
