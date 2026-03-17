@@ -58,7 +58,9 @@ import {
   ModelicaExtendsClassInstance,
   ModelicaIntegerClassInstance,
   ModelicaModelVisitor,
+  ModelicaModification,
   ModelicaNamedElement,
+  ModelicaParameterModification,
   ModelicaPredefinedClassInstance,
   ModelicaRealClassInstance,
   ModelicaStringClassInstance,
@@ -1597,6 +1599,81 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     // Evaluate size function
     if (functionName === "size" && flatArgs.length >= 1) {
       const arrayArg = flatArgs[0];
+      // If the array argument is a function call, try to determine the output array size
+      // from the function's signature without evaluating it (structural size inference).
+      // E.g., size(test2(b), 1): test2 returns Real[size(a,1)] where a maps to b, so size = size(b,1).
+      if (
+        arrayArg instanceof ModelicaFunctionCallExpression &&
+        flatArgs.length === 2 &&
+        flatArgs[1] instanceof ModelicaIntegerLiteral
+      ) {
+        const innerFuncDef = ctx.dae.functions.find((f) => f.name === arrayArg.functionName);
+        if (innerFuncDef) {
+          const outputVars = innerFuncDef.variables.filter((v) => v.causality === "output");
+          const outVar = outputVars[0];
+          if (outputVars.length === 1 && outVar) {
+            // Output variable has array dimensions encoded in its name: "\0[dims]\0name"
+            const nameMatch = outVar.name.match(/^\0\[([^\]]+)\]\0/);
+            if (nameMatch && nameMatch[1]) {
+              // Split dimensions by commas, but respect nested parentheses
+              // e.g. "size(a, 1), 3" → ["size(a, 1)", "3"]
+              const dims: string[] = [];
+              let depth = 0;
+              let current = "";
+              for (const ch of nameMatch[1]) {
+                if (ch === "(") depth++;
+                else if (ch === ")") depth--;
+                if (ch === "," && depth === 0) {
+                  dims.push(current.trim());
+                  current = "";
+                } else {
+                  current += ch;
+                }
+              }
+              if (current.trim()) dims.push(current.trim());
+
+              const dimIdx = flatArgs[1].value - 1;
+              const dimExpr = dimIdx >= 0 && dimIdx < dims.length ? dims[dimIdx] : undefined;
+              if (dimExpr) {
+                // Check if it's a size(paramName, n) pattern like "size(a, 1)"
+                const sizeMatch = dimExpr.match(/^size\((\w+),\s*(\d+)\)$/);
+                if (sizeMatch && sizeMatch[1] && sizeMatch[2]) {
+                  const paramName = sizeMatch[1];
+                  const sizeDim = parseInt(sizeMatch[2], 10);
+                  // Map the function's parameter to the caller's argument
+                  const inputVars = innerFuncDef.variables.filter((v) => v.causality === "input");
+                  // Variable names may be encoded as "\0[dims]\0name" for arrays — strip the encoding
+                  const stripEncoding = (n: string) => n.replace(/^\0\[[^\]]*\]\0/, "");
+                  const paramIdx = inputVars.findIndex((v) => stripEncoding(v.name) === paramName);
+                  if (paramIdx >= 0 && paramIdx < arrayArg.args.length) {
+                    const callerArg = arrayArg.args[paramIdx];
+                    // If callerArg is a literal array, get its shape directly
+                    if (callerArg instanceof ModelicaArray && sizeDim >= 1 && sizeDim <= callerArg.shape.length) {
+                      return new ModelicaIntegerLiteral(callerArg.shape[sizeDim - 1] ?? 0);
+                    }
+                    // If callerArg is a name expression, resolve its array shape
+                    if (callerArg instanceof ModelicaNameExpression) {
+                      const resolved = ctx.classInstance.resolveName(callerArg.name.split("."));
+                      if (
+                        resolved instanceof ModelicaComponentInstance &&
+                        resolved.classInstance instanceof ModelicaArrayClassInstance
+                      ) {
+                        const shape = resolved.classInstance.shape;
+                        if (sizeDim >= 1 && sizeDim <= shape.length) {
+                          return new ModelicaIntegerLiteral(shape[sizeDim - 1] ?? 0);
+                        }
+                      }
+                    }
+                  }
+                } else if (/^\d+$/.test(dimExpr)) {
+                  // Literal dimension like "3"
+                  return new ModelicaIntegerLiteral(parseInt(dimExpr, 10));
+                }
+              }
+            }
+          }
+        }
+      }
       if (arrayArg instanceof ModelicaArray) {
         if (flatArgs.length === 1) {
           const totalSize = arrayArg.shape.reduce((a, b) => a * b, 1);
@@ -1809,6 +1886,51 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         const evalResult = node.accept(interp, ctx.classInstance);
         if (evalResult) {
           return evalResult;
+        }
+        // Fallback: the interpreter failed on the original AST (e.g., because the original
+        // args contained parameter-dependent sub-expressions like size(test2(b), 1) that
+        // were resolved during flattening but remain in the AST). If all flattened args
+        // are still constant, try evaluating by manually applying the flattened literal
+        // args to the function instance.
+        if (!builtinDef && flatArgs.every((a) => isLiteral(a) || isLiteralArray(a))) {
+          const funcInstance = ctx.classInstance.resolveName(functionName.split("."));
+          if (funcInstance instanceof ModelicaClassInstance && funcInstance.classKind === ModelicaClassKind.FUNCTION) {
+            const inputParams = Array.from(funcInstance.inputParameters);
+            if (flatArgs.length <= inputParams.length) {
+              const params: ModelicaParameterModification[] = [];
+              for (let i = 0; i < flatArgs.length; i++) {
+                const pName = inputParams[i]?.name;
+                if (pName && flatArgs[i]) {
+                  params.push(new ModelicaParameterModification(ctx.classInstance, pName, null, flatArgs[i]));
+                }
+              }
+              const mod = new ModelicaModification(ctx.classInstance, params);
+              if (funcInstance.abstractSyntaxNode) {
+                try {
+                  const mergedMod = ModelicaModification.merge(funcInstance.modification, mod);
+                  const clone = ModelicaClassInstance.new(
+                    funcInstance.parent,
+                    funcInstance.abstractSyntaxNode,
+                    mergedMod,
+                  );
+                  clone.instantiate();
+                  const interpFallback = new ModelicaInterpreter(true);
+                  for (const stmt of clone.algorithms) {
+                    stmt.accept(interpFallback, clone);
+                  }
+                  const outParams = Array.from(clone.outputParameters);
+                  if (outParams.length === 1 && outParams[0]?.classInstance) {
+                    const outExpr = ModelicaExpression.fromClassInstance(outParams[0].classInstance);
+                    if (outExpr && (isLiteral(outExpr) || isLiteralArray(outExpr))) {
+                      return outExpr;
+                    }
+                  }
+                } catch {
+                  // Evaluation failed — fall through to symbolic result
+                }
+              }
+            }
+          }
         }
       }
     }
