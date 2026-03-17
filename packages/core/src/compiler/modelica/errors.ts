@@ -193,6 +193,12 @@ export const ModelicaErrorCode = {
     message: (componentName: string, actualCount: string, expectedCount: string) =>
       `Array subscript count mismatch: '${componentName}' has ${expectedCount} dimension(s), but was indexed with ${actualCount} subscript(s).`,
   },
+  FUNCTION_DEFAULT_ARG_CYCLE: {
+    code: 4009,
+    rule: "function-default-arg-cycle",
+    severity: "error",
+    message: (paramName: string) => `The default value of ${paramName} causes a cyclic dependency.`,
+  },
 
   // ── 5xxx: Equations & Algorithms ──────────────────────────────────────
   EQUATION_TYPE_MISMATCH: {

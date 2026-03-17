@@ -1921,3 +1921,88 @@ ModelicaLinter.register(ModelicaErrorCode.FUNCTION_PUBLIC_VARIABLE, {
     }
   },
 });
+
+// ── Function default argument cyclic dependency ─────────────────────────
+// Detects when function input parameters' default values form a cycle
+// (e.g. y = 2*x + z, z = x / y → y ↔ z).
+ModelicaLinter.register(ModelicaErrorCode.FUNCTION_DEFAULT_ARG_CYCLE, {
+  visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+    if (node.classKind !== ModelicaClassKind.FUNCTION && node.classKind !== ModelicaClassKind.OPERATOR_FUNCTION) return;
+
+    // Collect input parameters
+    const inputElements: ModelicaComponentInstance[] = [];
+    for (const e of node.elements) {
+      if (e instanceof ModelicaComponentInstance && e.causality === "input") {
+        inputElements.push(e);
+      }
+    }
+    if (inputElements.length < 2) return;
+
+    const inputNames = new Set(inputElements.map((e) => e.name ?? ""));
+
+    // Build dependency graph: paramName → set of other input params referenced in its default
+    const deps = new Map<string, Set<string>>();
+
+    /** Recursively collect component-reference identifier names from an AST node */
+    const collectRefs = (expr: unknown, refs: Set<string>) => {
+      if (!expr || typeof expr !== "object") return;
+      const exprObj = expr as Record<string, unknown>;
+      if (Array.isArray(exprObj["parts"])) {
+        for (const part of exprObj["parts"] as Record<string, unknown>[]) {
+          const id = (part["identifier"] as Record<string, unknown> | null)?.["text"];
+          if (typeof id === "string" && inputNames.has(id)) refs.add(id);
+        }
+      }
+      for (const key of Object.keys(exprObj)) {
+        const child = exprObj[key];
+        if (child && typeof child === "object") {
+          if (Array.isArray(child)) {
+            for (const item of child) collectRefs(item, refs);
+          } else {
+            collectRefs(child, refs);
+          }
+        }
+      }
+    };
+
+    for (const el of inputElements) {
+      const paramName = el.name ?? "";
+      const defaultExpr = el.modification?.modificationExpression?.expression;
+      if (!defaultExpr) continue;
+      const refs = new Set<string>();
+      collectRefs(defaultExpr, refs);
+      refs.delete(paramName);
+      if (refs.size > 0) deps.set(paramName, refs);
+    }
+    if (deps.size === 0) return;
+
+    // DFS cycle detection
+    const visited = new Set<string>();
+    const inStack = new Set<string>();
+    const hasCycle = (n: string): boolean => {
+      if (inStack.has(n)) return true;
+      if (visited.has(n)) return false;
+      visited.add(n);
+      inStack.add(n);
+      for (const dep of deps.get(n) ?? []) {
+        if (hasCycle(dep)) return true;
+      }
+      inStack.delete(n);
+      return false;
+    };
+
+    for (const paramName of deps.keys()) {
+      if (hasCycle(paramName)) {
+        // Find the element for source location
+        const el = inputElements.find((e) => e.name === paramName);
+        diagnosticsCallback(
+          ModelicaErrorCode.FUNCTION_DEFAULT_ARG_CYCLE.severity,
+          ModelicaErrorCode.FUNCTION_DEFAULT_ARG_CYCLE.code,
+          ModelicaErrorCode.FUNCTION_DEFAULT_ARG_CYCLE.message(paramName),
+          el?.abstractSyntaxNode?.declaration?.identifier,
+        );
+        return; // Report only the first cycle
+      }
+    }
+  },
+});

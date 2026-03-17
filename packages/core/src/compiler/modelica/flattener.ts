@@ -1972,6 +1972,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         }
       }
     }
+
     for (const element of resolved.elements) {
       if (!(element instanceof ModelicaComponentInstance)) continue;
       if (!element.classInstance) continue;
