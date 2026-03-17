@@ -1611,7 +1611,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     }
 
     // Expand default arguments from built-in function signatures
-    const builtinDef = BUILTIN_FUNCTIONS.get(functionName);
+    let builtinDef = BUILTIN_FUNCTIONS.get(functionName);
     if (builtinDef) {
       while (flatArgs.length < builtinDef.inputs.length) {
         const param = builtinDef.inputs[flatArgs.length];
@@ -1649,6 +1649,16 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     } else if (!ModelicaSyntaxFlattener.#isBuiltinFunction(functionName)) {
       // Resolve to fully qualified name for user-defined functions
       functionName = this.#resolveFullyQualifiedName(functionName, ctx);
+    }
+
+    // Check if the function resolves to an external clause mapping to a builtin
+    // (e.g. `function f = Modelica.Math.atan2` where atan2 has `external "C" y=atan2(u1,u2)`)
+    if (!builtinDef) {
+      const externalBuiltin = this.#resolveExternalBuiltin(functionName, ctx);
+      if (externalBuiltin) {
+        functionName = externalBuiltin;
+        builtinDef = BUILTIN_FUNCTIONS.get(functionName);
+      }
     }
 
     // Collect function definition BEFORE type coercion so we can use per-parameter types
@@ -1751,6 +1761,41 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       current = current.parent instanceof ModelicaClassInstance ? current.parent : null;
     }
     return nameSegments.length > 0 ? nameSegments.join(".") : functionName;
+  }
+
+  /**
+   * Check if a function (following extends chains) has an external clause
+   * that maps to a builtin function. If so, return the builtin name.
+   * This handles cases like `function f = Modelica.Math.atan2` where
+   * `Modelica.Math.atan2` has `external "C" y=atan2(u1,u2)`.
+   */
+  #resolveExternalBuiltin(functionName: string, ctx: FlattenerContext): string | null {
+    const parts = functionName.split(".");
+    const resolved = ctx.classInstance.resolveName(parts);
+    if (!(resolved instanceof ModelicaClassInstance)) return null;
+
+    // Instantiate to resolve short class defs
+    if (!resolved.instantiated && !resolved.instantiating) resolved.instantiate();
+
+    // Check candidates: the resolved class itself, and for short class defs,
+    // the inner classInstance (which is the cloned target class)
+    const candidates: ModelicaClassInstance[] = [resolved];
+    const inner = (resolved as { classInstance?: ModelicaClassInstance | null }).classInstance;
+    if (inner) candidates.push(inner);
+
+    for (const cls of candidates) {
+      const classSpecifier = cls.abstractSyntaxNode?.classSpecifier;
+      if (classSpecifier instanceof ModelicaLongClassSpecifierSyntaxNode) {
+        const ext = classSpecifier.externalFunctionClause;
+        if (ext) {
+          const callName = ext.externalFunctionCall?.functionName?.text ?? cls.name ?? "";
+          if (callName && ModelicaSyntaxFlattener.#isBuiltinFunction(callName)) {
+            return callName;
+          }
+        }
+      }
+    }
+    return null;
   }
 
   /**
