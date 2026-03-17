@@ -23,6 +23,7 @@ import path from "node:path";
 import Parser from "tree-sitter";
 import { NodeFileSystem } from "../../../packages/cli/src/util/filesystem.js";
 import { Context } from "../src/compiler/context.js";
+import { ModelicaLinter } from "../src/compiler/modelica/linter.js";
 import { generateHtmlReport } from "./ctrf-to-html.js";
 
 // ── Tree-sitter setup ────────────────────────────────────────────────────────
@@ -101,11 +102,8 @@ function parseTestFile(filePath: string): TestCase | null {
   let keywords = "";
   let status = "";
   const descriptionLines: string[] = [];
-  let headerEnd = 0;
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i] ?? "";
-
+  for (const line of lines) {
     const nameMatch = line.match(/^\/\/\s*name:\s*(.+)/);
     if (nameMatch) {
       name = (nameMatch[1] ?? "").trim();
@@ -132,7 +130,6 @@ function parseTestFile(filePath: string): TestCase | null {
     }
 
     if (status && !line.startsWith("//")) {
-      headerEnd = i;
       break;
     }
   }
@@ -145,9 +142,9 @@ function parseTestFile(filePath: string): TestCase | null {
   const resultStartIdx = lines.findIndex((l) => /^\/\/\s*Result:/.test(l));
   const resultEndIdx = lines.findIndex((l) => /^\/\/\s*endResult/.test(l));
 
-  // Extract source code (between header and Result:)
+  // Extract source: full file content up to Result: marker (preserves tree-sitter positions)
   const sourceEnd = resultStartIdx >= 0 ? resultStartIdx : lines.length;
-  const source = lines.slice(headerEnd, sourceEnd).join("\n").trim();
+  const source = lines.slice(0, sourceEnd).join("\n").trim();
 
   // Extract expected result (strip leading "// ")
   let expectedResult = "";
@@ -174,7 +171,7 @@ function parseTestFile(filePath: string): TestCase | null {
 
 // ── Test execution ───────────────────────────────────────────────────────────
 
-function runTestCase(testCase: TestCase): TestResult {
+function runTestCase(testCase: TestCase, testsuiteRoot: string): TestResult {
   const start = performance.now();
   const cpuStart = process.cpuUsage();
 
@@ -186,7 +183,7 @@ function runTestCase(testCase: TestCase): TestResult {
 
   /** Build a TestResult with common fields pre-filled. */
   const makeResult = (status: "passed" | "failed" | "skipped", message?: string): TestResult => ({
-    name: testCase.metadata.name,
+    name: path.basename(testCase.file),
     keywords: testCase.metadata.keywords,
     testStatus: testCase.metadata.status,
     file: testCase.file,
@@ -206,8 +203,59 @@ function runTestCase(testCase: TestCase): TestResult {
       classes.length > 0 ? (classes[classes.length - 1]?.name ?? testCase.metadata.name) : testCase.metadata.name;
     const flattenedResult = context.flatten(lastClassName);
 
+    // Run the linter to collect diagnostics
+    interface DiagEntry {
+      type: string;
+      code: number;
+      message: string;
+      resource: string | null;
+      range: import("../src/util/tree-sitter.js").Range | null;
+    }
+    const diagnostics: DiagEntry[] = [];
+    const linter = new ModelicaLinter(
+      (
+        type: string,
+        code: number,
+        message: string,
+        resource: string | null | undefined,
+        range: import("../src/util/tree-sitter.js").Range | null | undefined,
+      ) => {
+        // Collect diagnostics, excluding noisy rules for flattening tests
+        if (code !== 4004) {
+          diagnostics.push({ type, code, message, resource: resource ?? null, range: range ?? null });
+        }
+      },
+    );
+    for (const cls of context.classes) {
+      linter.lint(cls, testCase.file);
+    }
+
+    // Format collected diagnostics into lines
+    const formatDiagLines = () =>
+      diagnostics.map((d) => {
+        const severity = d.type.charAt(0).toUpperCase() + d.type.slice(1);
+        const codeStr = d.code > 0 ? `[M${d.code}] ` : "";
+        if (d.range) {
+          const r = d.range;
+          const startPos = `${r.startPosition.row + 1}:${r.startPosition.column + 1}`;
+          const endPos = `${r.endPosition.row + 1}:${r.endPosition.column + 1}`;
+          const relPath = d.resource ? path.relative(testsuiteRoot, d.resource) : "";
+          const prefix = relPath ? `${relPath.split(path.sep).slice(1).join("/")}:` : "";
+          return `[${prefix}${startPos}-${endPos}] ${severity}: ${codeStr}${d.message}`;
+        }
+        return `${severity}: ${codeStr}${d.message}`;
+      });
+
     if (testCase.metadata.status === "incorrect") {
-      // For incorrect tests: flattening should fail (return null or throw)
+      // For incorrect tests: compare lint errors against expected output
+      const diagLines = formatDiagLines();
+      if (diagLines.length > 0) {
+        const actual = diagLines.join("\n");
+        const expected = testCase.expectedResult.trim();
+        if (actual === expected) return makeResult("passed");
+        return makeResult("failed", `Output mismatch:\n--- Expected ---\n${expected}\n--- Actual ---\n${actual}`);
+      }
+      // No lint errors found: flattening should fail (return null or throw)
       if (flattenedResult === null) return makeResult("passed");
       return makeResult("failed", `Expected flattening to fail but got result:\n${flattenedResult}`);
     }
@@ -217,7 +265,11 @@ function runTestCase(testCase: TestCase): TestResult {
       return makeResult("failed", "Flattening returned null (expected a result)");
     }
 
-    const actual = flattenedResult.trim();
+    let actual = flattenedResult.trim();
+    const diagLines = formatDiagLines();
+    if (diagLines.length > 0) {
+      actual += "\n" + diagLines.join("\n");
+    }
     const expected = testCase.expectedResult.trim();
 
     if (actual === expected) return makeResult("passed");
@@ -387,7 +439,7 @@ function main(): void {
         continue;
       }
 
-      const result = runTestCase(testCase);
+      const result = runTestCase(testCase, testsuiteRoot);
       suiteResults.push(result);
       printResult(result);
     }

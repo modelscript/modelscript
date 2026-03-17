@@ -9,12 +9,5 @@ algorithm
 end AssignmentErrorConstant;
 
 // Result:
-// Error processing file: AssignmentErrorConstant.mo
-// [flattening/modelica/algorithms-functions/AssignmentErrorConstant.mo:7:3-7:11:writable] Error: Trying to assign to constant component r.
-// Error: Error occurred while flattening model AssignmentErrorConstant
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// [flattening/modelica/algorithms-functions/AssignmentErrorConstant.mo:7:3-7:12] Error: [M5008] Trying to assign to constant component 'r'.
 // endResult

@@ -173,6 +173,13 @@ export const ModelicaErrorCode = {
     message: (classKind: string, name: string, nEquations: string, nVariables: string) =>
       `The ${classKind} '${name}' is not balanced: ${nEquations} equation(s) and ${nVariables} variable(s).`,
   },
+  FUNCTION_PUBLIC_VARIABLE: {
+    code: 4007,
+    rule: "function-public-variable",
+    severity: "warning",
+    message: (varName: string) =>
+      `Invalid public variable ${varName}, function variables that are not input/output must be protected.`,
+  },
 
   // ── 5xxx: Equations & Algorithms ──────────────────────────────────────
   EQUATION_TYPE_MISMATCH: {
@@ -294,9 +301,19 @@ export function makeDiagnostic(
 }
 
 /**
- * Format a diagnostic as a string with its error code prefix.
- * E.g. "[M3001] Type mismatch: ..."
+ * Format a diagnostic as a string with source range and severity.
+ * E.g. "[path/to/file.mo:13:3-13:15] Warning: Invalid public variable ..."
+ * When no range is available, falls back to "[M3001] Severity: message".
  */
-export function formatDiagnostic(diag: ModelicaDiagnostic): string {
-  return `[M${diag.code}] ${diag.message}`;
+export function formatDiagnostic(diag: ModelicaDiagnostic, resource?: string | null): string {
+  const severity = diag.severity.charAt(0).toUpperCase() + diag.severity.slice(1);
+  if (diag.range) {
+    const r = diag.range;
+    // Tree-sitter positions are 0-indexed; display as 1-indexed
+    const start = `${r.startPosition.row + 1}:${r.startPosition.column + 1}`;
+    const end = `${r.endPosition.row + 1}:${r.endPosition.column + 1}`;
+    const prefix = resource ? `${resource}:` : "";
+    return `[${prefix}${start}-${end}] ${severity}: ${diag.message}`;
+  }
+  return `[M${diag.code}] ${severity}: ${diag.message}`;
 }

@@ -39,6 +39,7 @@ import {
   ModelicaEquationSyntaxNode,
   ModelicaExtendsClauseSyntaxNode,
   ModelicaFlow,
+  ModelicaForEquationSyntaxNode,
   ModelicaForStatementSyntaxNode,
   ModelicaFunctionCallSyntaxNode,
   ModelicaIfEquationSyntaxNode,
@@ -75,6 +76,7 @@ import {
  */
 export type DiagnosticsCallback = (
   type: string,
+  code: number,
   message: string,
   resource: string | null | undefined,
   range: Range | null | undefined,
@@ -85,6 +87,7 @@ export type DiagnosticsCallback = (
  */
 export type DiagnosticsCallbackWithoutResource = (
   type: string,
+  code: number,
   message: string,
   range: Range | null | undefined,
 ) => void;
@@ -136,8 +139,8 @@ export class ModelicaLinter {
       if (methodName in rule && typeof rule[methodName as keyof typeof rule] === "function")
         (rule as Record<string, (...args: unknown[]) => void>)[methodName]?.(
           node,
-          (type: string, message: string, range: Range | null | undefined) =>
-            diagnosticsCallback(type, message, resource, range),
+          (type: string, code: number, message: string, range: Range | null | undefined) =>
+            diagnosticsCallback(type, code, message, resource, range),
         );
     });
   }
@@ -157,10 +160,11 @@ export class ModelicaLinter {
       const cursor = node.walk();
       while (cursor.currentNode) {
         if (cursor.currentNode.isError) {
-          this.#diagnosticsCallback("error", "Parse error.", resource, cursor.currentNode);
+          this.#diagnosticsCallback("error", 0, "Parse error.", resource, cursor.currentNode);
         } else if (cursor.currentNode.isMissing) {
           this.#diagnosticsCallback(
             "error",
+            0,
             "Parse error: '" + cursor.nodeType + "' expected.",
             resource,
             cursor.currentNode,
@@ -242,6 +246,9 @@ export class ModelicaModelLinter extends ModelicaModelVisitor<string | null | un
   visitEntity(node: ModelicaEntity): void {
     node.storedDefinitionSyntaxNode?.accept(this.#modelicaSyntaxLinter, node.path);
     ModelicaLinter.applyRules("visitEntity", node, this.#diagnosticsCallback, node.path);
+    // Entity extends ClassInstance — apply class-level rules too so semantic
+    // rules (e.g. ASSIGNMENT_TYPE_MISMATCH) fire for standalone .mo files.
+    ModelicaLinter.applyRules("visitClassInstance", node, this.#diagnosticsCallback, node.path);
     super.visitEntity(node, node.path);
   }
 
@@ -484,7 +491,8 @@ ModelicaLinter.register(ModelicaErrorCode.DUPLICATE_ELEMENT, {
           }
           diagnosticsCallback(
             ModelicaErrorCode.DUPLICATE_ELEMENT.severity,
-            `[M${ModelicaErrorCode.DUPLICATE_ELEMENT.code}] ${ModelicaErrorCode.DUPLICATE_ELEMENT.message(element.name ?? "")}`,
+            ModelicaErrorCode.DUPLICATE_ELEMENT.code,
+            ModelicaErrorCode.DUPLICATE_ELEMENT.message(element.name ?? ""),
             range,
           );
         } else {
@@ -503,7 +511,8 @@ ModelicaLinter.register(ModelicaErrorCode.IDENTIFIER_MISMATCH, {
     if (node.identifier?.text !== node.endIdentifier?.text) {
       diagnosticsCallback(
         ModelicaErrorCode.IDENTIFIER_MISMATCH.severity,
-        `[M${ModelicaErrorCode.IDENTIFIER_MISMATCH.code}] ${ModelicaErrorCode.IDENTIFIER_MISMATCH.message()}`,
+        ModelicaErrorCode.IDENTIFIER_MISMATCH.code,
+        ModelicaErrorCode.IDENTIFIER_MISMATCH.message(),
         node.identifier,
       );
     }
@@ -520,15 +529,106 @@ ModelicaLinter.register(ModelicaErrorCode.CLASS_NOT_FOUND, {
       const typeSpecifier = node.abstractSyntaxNode?.parent?.typeSpecifier;
       diagnosticsCallback(
         ModelicaErrorCode.CLASS_NOT_FOUND.severity,
-        `[M${ModelicaErrorCode.CLASS_NOT_FOUND.code}] ${ModelicaErrorCode.CLASS_NOT_FOUND.message(typeSpecifier?.text ?? "", node.parent?.name ?? "")}`,
+        ModelicaErrorCode.CLASS_NOT_FOUND.code,
+        ModelicaErrorCode.CLASS_NOT_FOUND.message(typeSpecifier?.text ?? "", node.parent?.name ?? ""),
         typeSpecifier,
       );
     }
   },
 });
 
+/**
+ * Built-in Modelica names that are always in scope.
+ * These include:
+ *  - time: the independent simulation variable
+ *  - der, pre, edge, change, reinit, initial, terminal, sample, noEvent, smooth, delay, cardinality,
+ *    inStream, actualStream: built-in operators
+ *  - assert, print, terminate: built-in assertions/utilities
+ *  - abs, sign, sqrt, exp, log, log10, sin, cos, tan, asin, acos, atan, atan2, sinh, cosh, tanh,
+ *    floor, ceil, integer, mod, rem, div, max, min, sum, product, ndims, size, zeros, ones, fill,
+ *    identity, diagonal, transpose, cat, scalar, vector, matrix, cross, skew, outerProduct, symmetric,
+ *    String, Integer, Boolean, Real, Modelica: built-in functions and types
+ */
+const BUILTIN_MODELICA_NAMES = new Set([
+  // Independent variable
+  "time",
+  // Built-in operators
+  "der",
+  "pre",
+  "edge",
+  "change",
+  "reinit",
+  "initial",
+  "terminal",
+  "sample",
+  "noEvent",
+  "smooth",
+  "delay",
+  "cardinality",
+  "inStream",
+  "actualStream",
+  // Assertions / utilities
+  "assert",
+  "print",
+  "terminate",
+  // Mathematical functions
+  "abs",
+  "sign",
+  "sqrt",
+  "exp",
+  "log",
+  "log10",
+  "sin",
+  "cos",
+  "tan",
+  "asin",
+  "acos",
+  "atan",
+  "atan2",
+  "sinh",
+  "cosh",
+  "tanh",
+  "floor",
+  "ceil",
+  "integer",
+  "mod",
+  "rem",
+  "div",
+  // Array / reduction functions
+  "max",
+  "min",
+  "sum",
+  "product",
+  "ndims",
+  "size",
+  "zeros",
+  "ones",
+  "fill",
+  "identity",
+  "diagonal",
+  "transpose",
+  "cat",
+  "scalar",
+  "vector",
+  "matrix",
+  "cross",
+  "skew",
+  "outerProduct",
+  "symmetric",
+  // Type names
+  "String",
+  "Integer",
+  "Boolean",
+  "Real",
+  // Modelica package
+  "Modelica",
+  // Enumerations
+  "enumeration",
+]);
+
 class ModelicaExpressionNameResolutionVisitor extends ModelicaSyntaxVisitor<void, DiagnosticsCallbackWithoutResource> {
   #scope: Scope;
+  #localNames = new Set<string>();
 
   constructor(scope: Scope) {
     super();
@@ -540,13 +640,63 @@ class ModelicaExpressionNameResolutionVisitor extends ModelicaSyntaxVisitor<void
     diagnosticsCallback: DiagnosticsCallbackWithoutResource,
   ): void {
     const fullPath = node.parts.map((p) => p.identifier?.text).join(".");
+    const firstName = fullPath.split(".")[0] ?? fullPath;
+
+    // Skip built-in names and for-loop iterator variables
+    if (BUILTIN_MODELICA_NAMES.has(firstName) || this.#localNames.has(firstName)) {
+      return;
+    }
+
     const resolved = this.#scope.resolveName(fullPath.split("."));
     if (!resolved) {
       diagnosticsCallback(
         ModelicaErrorCode.NAME_NOT_FOUND.severity,
-        `[M${ModelicaErrorCode.NAME_NOT_FOUND.code}] ${ModelicaErrorCode.NAME_NOT_FOUND.message(fullPath)}`,
+        ModelicaErrorCode.NAME_NOT_FOUND.code,
+        ModelicaErrorCode.NAME_NOT_FOUND.message(fullPath),
         node,
       );
+    }
+  }
+
+  override visitForStatement(
+    node: ModelicaForStatementSyntaxNode,
+    diagnosticsCallback: DiagnosticsCallbackWithoutResource,
+  ): void {
+    // Add for-loop iterator names to local scope
+    const iteratorNames: string[] = [];
+    for (const forIndex of node.forIndexes) {
+      const name = forIndex.identifier?.text;
+      if (name) {
+        iteratorNames.push(name);
+        this.#localNames.add(name);
+      }
+    }
+    // Visit body with iterators in scope
+    super.visitForStatement(node, diagnosticsCallback);
+    // Remove iterator names after leaving the for-loop
+    for (const name of iteratorNames) {
+      this.#localNames.delete(name);
+    }
+  }
+
+  override visitForEquation(
+    node: ModelicaForEquationSyntaxNode,
+    diagnosticsCallback: DiagnosticsCallbackWithoutResource,
+  ): void {
+    // Add for-loop iterator names to local scope
+    const iteratorNames: string[] = [];
+    for (const forIndex of node.forIndexes) {
+      const name = forIndex.identifier?.text;
+      if (name) {
+        iteratorNames.push(name);
+        this.#localNames.add(name);
+      }
+    }
+    // Visit body with iterators in scope
+    super.visitForEquation(node, diagnosticsCallback);
+    // Remove iterator names after leaving the for-loop
+    for (const name of iteratorNames) {
+      this.#localNames.delete(name);
     }
   }
 }
@@ -603,7 +753,13 @@ ModelicaLinter.register(ModelicaErrorCode.UNBALANCED_MODEL, {
     if (nEquations !== nVariables) {
       diagnosticsCallback(
         ModelicaErrorCode.UNBALANCED_MODEL.severity,
-        `[M${ModelicaErrorCode.UNBALANCED_MODEL.code}] ${ModelicaErrorCode.UNBALANCED_MODEL.message(String(node.classKind), node.name ?? "", String(nEquations), String(nVariables))}`,
+        ModelicaErrorCode.UNBALANCED_MODEL.code,
+        ModelicaErrorCode.UNBALANCED_MODEL.message(
+          String(node.classKind),
+          node.name ?? "",
+          String(nEquations),
+          String(nVariables),
+        ),
         node.abstractSyntaxNode?.identifier,
       );
     }
@@ -635,7 +791,8 @@ ModelicaLinter.register(ModelicaErrorCode.MODIFIER_NOT_FOUND, {
       if (name && name !== "annotation" && !declaredNames.has(name)) {
         diagnosticsCallback(
           ModelicaErrorCode.MODIFIER_NOT_FOUND.severity,
-          `[M${ModelicaErrorCode.MODIFIER_NOT_FOUND.code}] ${ModelicaErrorCode.MODIFIER_NOT_FOUND.message(name, node.name ?? "", classInstance.name ?? "")}`,
+          ModelicaErrorCode.MODIFIER_NOT_FOUND.code,
+          ModelicaErrorCode.MODIFIER_NOT_FOUND.message(name, node.name ?? "", classInstance.name ?? ""),
           node.abstractSyntaxNode?.declaration?.identifier,
         );
       }
@@ -686,7 +843,8 @@ ModelicaLinter.register(ModelicaErrorCode.DUPLICATE_MODIFICATION, {
         if (seen.has(path)) {
           diagnosticsCallback(
             ModelicaErrorCode.DUPLICATE_MODIFICATION.severity,
-            `[M${ModelicaErrorCode.DUPLICATE_MODIFICATION.code}] ${ModelicaErrorCode.DUPLICATE_MODIFICATION.message(path, node.name ?? "")}`,
+            ModelicaErrorCode.DUPLICATE_MODIFICATION.code,
+            ModelicaErrorCode.DUPLICATE_MODIFICATION.message(path, node.name ?? ""),
             syntaxNode,
           );
         } else {
@@ -732,7 +890,8 @@ function checkArrayModDimensions(
       if (argExpr instanceof ModelicaArray && !argExpr.assignable(shape)) {
         diagnosticsCallback(
           ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.severity,
-          `[M${ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.code}] ${ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.message(`'${name}'`, String(argExpr.flatShape), String(shape))}`,
+          ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.code,
+          ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.message(`'${name}'`, String(argExpr.flatShape), String(shape)),
           range,
         );
       }
@@ -744,7 +903,12 @@ function checkArrayModDimensions(
           if (subExpr instanceof ModelicaArray && !subExpr.assignable(shape)) {
             diagnosticsCallback(
               ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.severity,
-              `[M${ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.code}] ${ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.message(`'${subArg.name}' of '${name}'`, String(subExpr.flatShape), String(shape))}`,
+              ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.code,
+              ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.message(
+                `'${subArg.name}' of '${name}'`,
+                String(subExpr.flatShape),
+                String(shape),
+              ),
               range,
             );
           }
@@ -781,7 +945,8 @@ ModelicaLinter.register(ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH, {
         if (expr instanceof ModelicaArray && !expr.assignable(shape)) {
           diagnosticsCallback(
             ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.severity,
-            `[M${ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.code}] ${ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.message("expression", String(expr.flatShape), String(shape))}`,
+            ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.code,
+            ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.message("expression", String(expr.flatShape), String(shape)),
             range,
           );
         }
@@ -790,7 +955,12 @@ ModelicaLinter.register(ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH, {
           if (argExpr instanceof ModelicaArray && !argExpr.assignable(shape)) {
             diagnosticsCallback(
               ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.severity,
-              `[M${ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.code}] ${ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.message(`'${modArg.name}'`, String(argExpr.flatShape), String(shape))}`,
+              ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.code,
+              ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.message(
+                `'${modArg.name}'`,
+                String(argExpr.flatShape),
+                String(shape),
+              ),
               range,
             );
           }
@@ -867,7 +1037,8 @@ ModelicaLinter.register([ModelicaErrorCode.NOT_A_CONNECTOR, ModelicaErrorCode.NO
       ) {
         diagnosticsCallback(
           ModelicaErrorCode.NOT_A_CONNECTOR.severity,
-          `[M${ModelicaErrorCode.NOT_A_CONNECTOR.code}] ${ModelicaErrorCode.NOT_A_CONNECTOR.message(ref1Text, ref2Text, ref1Text)}`,
+          ModelicaErrorCode.NOT_A_CONNECTOR.code,
+          ModelicaErrorCode.NOT_A_CONNECTOR.message(ref1Text, ref2Text, ref1Text),
           equation.componentReference1,
         );
       }
@@ -878,7 +1049,8 @@ ModelicaLinter.register([ModelicaErrorCode.NOT_A_CONNECTOR, ModelicaErrorCode.NO
       ) {
         diagnosticsCallback(
           ModelicaErrorCode.NOT_A_CONNECTOR.severity,
-          `[M${ModelicaErrorCode.NOT_A_CONNECTOR.code}] ${ModelicaErrorCode.NOT_A_CONNECTOR.message(ref1Text, ref2Text, ref2Text)}`,
+          ModelicaErrorCode.NOT_A_CONNECTOR.code,
+          ModelicaErrorCode.NOT_A_CONNECTOR.message(ref1Text, ref2Text, ref2Text),
           equation.componentReference2,
         );
       }
@@ -887,7 +1059,8 @@ ModelicaLinter.register([ModelicaErrorCode.NOT_A_CONNECTOR, ModelicaErrorCode.NO
       if (!type1.isPlugCompatibleWith(type2)) {
         diagnosticsCallback(
           ModelicaErrorCode.NOT_PLUG_COMPATIBLE.severity,
-          `[M${ModelicaErrorCode.NOT_PLUG_COMPATIBLE.code}] ${ModelicaErrorCode.NOT_PLUG_COMPATIBLE.message(ref1Text, ref2Text)}`,
+          ModelicaErrorCode.NOT_PLUG_COMPATIBLE.code,
+          ModelicaErrorCode.NOT_PLUG_COMPATIBLE.message(ref1Text, ref2Text),
           equation,
         );
       }
@@ -940,7 +1113,8 @@ ModelicaLinter.register(ModelicaErrorCode.TYPE_MISMATCH_MODIFIER, {
           if (exprType && targetType && !targetType.isTypeCompatibleWith(exprType)) {
             diagnosticsCallback(
               ModelicaErrorCode.TYPE_MISMATCH_MODIFIER.severity,
-              `[M${ModelicaErrorCode.TYPE_MISMATCH_MODIFIER.code}] ${ModelicaErrorCode.TYPE_MISMATCH_MODIFIER.message(name, targetType.name ?? "", exprType.name ?? "")}`,
+              ModelicaErrorCode.TYPE_MISMATCH_MODIFIER.code,
+              ModelicaErrorCode.TYPE_MISMATCH_MODIFIER.message(name, targetType.name ?? "", exprType.name ?? ""),
               modArg.modificationExpression,
             );
           }
@@ -981,7 +1155,13 @@ ModelicaLinter.register(ModelicaErrorCode.TYPE_MISMATCH_BINDING, {
         if (exprType && !classInstance.isTypeCompatibleWith(exprType)) {
           diagnosticsCallback(
             ModelicaErrorCode.TYPE_MISMATCH_BINDING.severity,
-            `[M${ModelicaErrorCode.TYPE_MISMATCH_BINDING.code}] ${ModelicaErrorCode.TYPE_MISMATCH_BINDING.message(node.name ?? "", classInstance.name ?? "", componentRefText(exprSyntax), exprType.name ?? "")}`,
+            ModelicaErrorCode.TYPE_MISMATCH_BINDING.code,
+            ModelicaErrorCode.TYPE_MISMATCH_BINDING.message(
+              node.name ?? "",
+              classInstance.name ?? "",
+              componentRefText(exprSyntax),
+              exprType.name ?? "",
+            ),
             modSyntax?.modificationExpression,
           );
         }
@@ -1021,7 +1201,12 @@ ModelicaLinter.register(ModelicaErrorCode.REDECLARE_TYPE_MISMATCH, {
     if (!classInstance.isTypeCompatibleWith(constrainingElement)) {
       diagnosticsCallback(
         ModelicaErrorCode.REDECLARE_TYPE_MISMATCH.severity,
-        `[M${ModelicaErrorCode.REDECLARE_TYPE_MISMATCH.code}] ${ModelicaErrorCode.REDECLARE_TYPE_MISMATCH.message(node.name ?? "", classInstance.name ?? "", constrainingElement.name ?? "")}`,
+        ModelicaErrorCode.REDECLARE_TYPE_MISMATCH.code,
+        ModelicaErrorCode.REDECLARE_TYPE_MISMATCH.message(
+          node.name ?? "",
+          classInstance.name ?? "",
+          constrainingElement.name ?? "",
+        ),
         node.abstractSyntaxNode?.declaration?.identifier,
       );
     }
@@ -1059,7 +1244,13 @@ ModelicaLinter.register(ModelicaErrorCode.EQUATION_TYPE_MISMATCH, {
       if (!type1.isTypeCompatibleWith(type2)) {
         diagnosticsCallback(
           ModelicaErrorCode.EQUATION_TYPE_MISMATCH.severity,
-          `[M${ModelicaErrorCode.EQUATION_TYPE_MISMATCH.code}] ${ModelicaErrorCode.EQUATION_TYPE_MISMATCH.message(componentRefText(expr1), type1.name ?? "", componentRefText(expr2), type2.name ?? "")}`,
+          ModelicaErrorCode.EQUATION_TYPE_MISMATCH.code,
+          ModelicaErrorCode.EQUATION_TYPE_MISMATCH.message(
+            componentRefText(expr1),
+            type1.name ?? "",
+            componentRefText(expr2),
+            type2.name ?? "",
+          ),
           equation,
         );
       }
@@ -1097,7 +1288,12 @@ ModelicaLinter.register(ModelicaErrorCode.CONSTRAINEDBY_TYPE_MISMATCH, {
     if (!classInstance.isTypeCompatibleWith(constrainingElement)) {
       diagnosticsCallback(
         ModelicaErrorCode.CONSTRAINEDBY_TYPE_MISMATCH.severity,
-        `[M${ModelicaErrorCode.CONSTRAINEDBY_TYPE_MISMATCH.code}] ${ModelicaErrorCode.CONSTRAINEDBY_TYPE_MISMATCH.message(node.name ?? "", classInstance.name ?? "", constrainingElement.name ?? "")}`,
+        ModelicaErrorCode.CONSTRAINEDBY_TYPE_MISMATCH.code,
+        ModelicaErrorCode.CONSTRAINEDBY_TYPE_MISMATCH.message(
+          node.name ?? "",
+          classInstance.name ?? "",
+          constrainingElement.name ?? "",
+        ),
         node.abstractSyntaxNode?.declaration?.identifier,
       );
     }
@@ -1148,7 +1344,13 @@ ModelicaLinter.register(
                 if (argType && paramType && !paramType.isTypeCompatibleWith(argType)) {
                   diagnosticsCallback(
                     ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH.severity,
-                    `[M${ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH.code}] ${ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH.message(funcElement.name ?? "", param.name ?? `arg${i + 1}`, paramType.name ?? "", argType.name ?? "")}`,
+                    ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH.code,
+                    ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH.message(
+                      funcElement.name ?? "",
+                      param.name ?? `arg${i + 1}`,
+                      paramType.name ?? "",
+                      argType.name ?? "",
+                    ),
                     argExpr,
                   );
                 }
@@ -1177,7 +1379,13 @@ ModelicaLinter.register(
               if (argType && paramType && !paramType.isTypeCompatibleWith(argType)) {
                 diagnosticsCallback(
                   ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH.severity,
-                  `[M${ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH.code}] ${ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH.message(funcElement.name ?? "", argName, paramType.name ?? "", argType.name ?? "")}`,
+                  ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH.code,
+                  ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH.message(
+                    funcElement.name ?? "",
+                    argName,
+                    paramType.name ?? "",
+                    argType.name ?? "",
+                  ),
                   argExpr,
                 );
               }
@@ -1199,7 +1407,12 @@ ModelicaLinter.register(
                     if (outputType && !lhsType.isTypeCompatibleWith(outputType)) {
                       diagnosticsCallback(
                         ModelicaErrorCode.FUNCTION_RETURN_TYPE_MISMATCH.severity,
-                        `[M${ModelicaErrorCode.FUNCTION_RETURN_TYPE_MISMATCH.code}] ${ModelicaErrorCode.FUNCTION_RETURN_TYPE_MISMATCH.message(funcElement.name ?? "", lhsType.name ?? "", outputType.name ?? "")}`,
+                        ModelicaErrorCode.FUNCTION_RETURN_TYPE_MISMATCH.code,
+                        ModelicaErrorCode.FUNCTION_RETURN_TYPE_MISMATCH.message(
+                          funcElement.name ?? "",
+                          lhsType.name ?? "",
+                          outputType.name ?? "",
+                        ),
                         expr1,
                       );
                     }
@@ -1242,7 +1455,13 @@ ModelicaLinter.register(ModelicaErrorCode.EXTENDS_TYPE_MISMATCH, {
         if (!derivedType.isTypeCompatibleWith(baseType)) {
           diagnosticsCallback(
             ModelicaErrorCode.EXTENDS_TYPE_MISMATCH.severity,
-            `[M${ModelicaErrorCode.EXTENDS_TYPE_MISMATCH.code}] ${ModelicaErrorCode.EXTENDS_TYPE_MISMATCH.message(node.name ?? "", baseElement.name ?? "", derivedType.name ?? "", baseType.name ?? "")}`,
+            ModelicaErrorCode.EXTENDS_TYPE_MISMATCH.code,
+            ModelicaErrorCode.EXTENDS_TYPE_MISMATCH.message(
+              node.name ?? "",
+              baseElement.name ?? "",
+              derivedType.name ?? "",
+              baseType.name ?? "",
+            ),
             derivedElement.abstractSyntaxNode?.declaration?.identifier,
           );
         }
@@ -1290,7 +1509,8 @@ ModelicaLinter.register(ModelicaErrorCode.IF_BRANCH_TYPE_MISMATCH, {
           if (branchType && !thenType.isTypeCompatibleWith(branchType)) {
             diagnosticsCallback(
               ModelicaErrorCode.IF_BRANCH_TYPE_MISMATCH.severity,
-              `[M${ModelicaErrorCode.IF_BRANCH_TYPE_MISMATCH.code}] ${ModelicaErrorCode.IF_BRANCH_TYPE_MISMATCH.message(varName, branchType.name ?? "", thenType.name ?? "")}`,
+              ModelicaErrorCode.IF_BRANCH_TYPE_MISMATCH.code,
+              ModelicaErrorCode.IF_BRANCH_TYPE_MISMATCH.message(varName, branchType.name ?? "", thenType.name ?? ""),
               elseIfClause,
             );
           }
@@ -1305,7 +1525,8 @@ ModelicaLinter.register(ModelicaErrorCode.IF_BRANCH_TYPE_MISMATCH, {
           if (elseType && !thenType.isTypeCompatibleWith(elseType)) {
             diagnosticsCallback(
               ModelicaErrorCode.IF_BRANCH_TYPE_MISMATCH.severity,
-              `[M${ModelicaErrorCode.IF_BRANCH_TYPE_MISMATCH.code}] ${ModelicaErrorCode.IF_BRANCH_TYPE_MISMATCH.message(varName, elseType.name ?? "", thenType.name ?? "")}`,
+              ModelicaErrorCode.IF_BRANCH_TYPE_MISMATCH.code,
+              ModelicaErrorCode.IF_BRANCH_TYPE_MISMATCH.message(varName, elseType.name ?? "", thenType.name ?? ""),
               equation,
             );
           }
@@ -1364,7 +1585,8 @@ ModelicaLinter.register(ModelicaErrorCode.CONNECT_FLOW_MISMATCH, {
         const ref2Text = componentRefText(equation.componentReference2);
         diagnosticsCallback(
           ModelicaErrorCode.CONNECT_FLOW_MISMATCH.severity,
-          `[M${ModelicaErrorCode.CONNECT_FLOW_MISMATCH.code}] ${ModelicaErrorCode.CONNECT_FLOW_MISMATCH.message(ref1Text, ref2Text)}`,
+          ModelicaErrorCode.CONNECT_FLOW_MISMATCH.code,
+          ModelicaErrorCode.CONNECT_FLOW_MISMATCH.message(ref1Text, ref2Text),
           equation,
         );
       }
@@ -1387,7 +1609,8 @@ ModelicaLinter.register(ModelicaErrorCode.DIVISION_BY_ZERO, {
         const lhsText = (node.operand1 as { text?: string })?.text ?? "<expression>";
         diagnosticsCallback(
           ModelicaErrorCode.DIVISION_BY_ZERO.severity,
-          `[M${ModelicaErrorCode.DIVISION_BY_ZERO.code}] ${ModelicaErrorCode.DIVISION_BY_ZERO.message(lhsText)}`,
+          ModelicaErrorCode.DIVISION_BY_ZERO.code,
+          ModelicaErrorCode.DIVISION_BY_ZERO.message(lhsText),
           node,
         );
       }
@@ -1425,7 +1648,13 @@ ModelicaLinter.register(ModelicaErrorCode.ASSIGNMENT_TYPE_MISMATCH, {
       if (!targetType.isTypeCompatibleWith(sourceType)) {
         diagnosticsCallback(
           ModelicaErrorCode.ASSIGNMENT_TYPE_MISMATCH.severity,
-          `[M${ModelicaErrorCode.ASSIGNMENT_TYPE_MISMATCH.code}] ${ModelicaErrorCode.ASSIGNMENT_TYPE_MISMATCH.message(componentRefText(targetRef), targetType.name ?? "", componentRefText(sourceRef), sourceType.name ?? "")}`,
+          ModelicaErrorCode.ASSIGNMENT_TYPE_MISMATCH.code,
+          ModelicaErrorCode.ASSIGNMENT_TYPE_MISMATCH.message(
+            componentRefText(targetRef),
+            targetType.name ?? "",
+            componentRefText(sourceRef),
+            sourceType.name ?? "",
+          ),
           statement,
         );
       }
@@ -1444,7 +1673,8 @@ ModelicaLinter.register(ModelicaErrorCode.ASSIGNMENT_TO_CONSTANT, {
       if (targetComp.variability === ModelicaVariability.CONSTANT) {
         diagnosticsCallback(
           ModelicaErrorCode.ASSIGNMENT_TO_CONSTANT.severity,
-          `[M${ModelicaErrorCode.ASSIGNMENT_TO_CONSTANT.code}] ${ModelicaErrorCode.ASSIGNMENT_TO_CONSTANT.message(componentRefText(targetRef))}`,
+          ModelicaErrorCode.ASSIGNMENT_TO_CONSTANT.code,
+          ModelicaErrorCode.ASSIGNMENT_TO_CONSTANT.message(componentRefText(targetRef)),
           statement,
         );
       }
@@ -1474,7 +1704,8 @@ ModelicaLinter.register(ModelicaErrorCode.FOR_ITERATOR_NOT_1D, {
         const iteratorName = forIndex.identifier?.text ?? "?";
         diagnosticsCallback(
           ModelicaErrorCode.FOR_ITERATOR_NOT_1D.severity,
-          `[M${ModelicaErrorCode.FOR_ITERATOR_NOT_1D.code}] ${ModelicaErrorCode.FOR_ITERATOR_NOT_1D.message(iteratorName, shape)}`,
+          ModelicaErrorCode.FOR_ITERATOR_NOT_1D.code,
+          ModelicaErrorCode.FOR_ITERATOR_NOT_1D.message(iteratorName, shape),
           forIndex.expression,
         );
       }
@@ -1493,9 +1724,28 @@ ModelicaLinter.register(ModelicaErrorCode.EXTERNAL_WITH_ALGORITHM, {
     if (hasAlgorithm) {
       diagnosticsCallback(
         ModelicaErrorCode.EXTERNAL_WITH_ALGORITHM.severity,
-        `[M${ModelicaErrorCode.EXTERNAL_WITH_ALGORITHM.code}] ${ModelicaErrorCode.EXTERNAL_WITH_ALGORITHM.message()}`,
+        ModelicaErrorCode.EXTERNAL_WITH_ALGORITHM.code,
+        ModelicaErrorCode.EXTERNAL_WITH_ALGORITHM.message(),
         node.abstractSyntaxNode?.identifier,
       );
+    }
+  },
+});
+
+ModelicaLinter.register(ModelicaErrorCode.FUNCTION_PUBLIC_VARIABLE, {
+  visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+    if (node.classKind !== ModelicaClassKind.FUNCTION && node.classKind !== ModelicaClassKind.OPERATOR_FUNCTION) return;
+    for (const element of node.elements) {
+      if (!(element instanceof ModelicaComponentInstance)) continue;
+      // Public variables that are not input or output are invalid in functions
+      if (!element.causality && !element.isProtected) {
+        diagnosticsCallback(
+          ModelicaErrorCode.FUNCTION_PUBLIC_VARIABLE.severity,
+          ModelicaErrorCode.FUNCTION_PUBLIC_VARIABLE.code,
+          ModelicaErrorCode.FUNCTION_PUBLIC_VARIABLE.message(element.name ?? ""),
+          element.abstractSyntaxNode?.declaration?.identifier,
+        );
+      }
     }
   },
 });

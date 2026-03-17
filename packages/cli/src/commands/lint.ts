@@ -32,14 +32,26 @@ export const Lint: CommandModule<{}, LintArgs> = {
   handler: (args) => {
     const diagnosticsMap = new Map<
       string | null,
-      { type: string; message: string; resource: string | null | undefined; range: Range | null | undefined }[]
+      {
+        type: string;
+        code: number;
+        message: string;
+        resource: string | null | undefined;
+        range: Range | null | undefined;
+      }[]
     >();
     const linter = new ModelicaLinter(
-      (type: string, message: string, resource: string | null | undefined, range: Range | null | undefined) => {
+      (
+        type: string,
+        code: number,
+        message: string,
+        resource: string | null | undefined,
+        range: Range | null | undefined,
+      ) => {
         if (!diagnosticsMap.has(resource ?? null)) {
           diagnosticsMap.set(resource ?? null, []);
         }
-        diagnosticsMap.get(resource ?? null)?.push({ type, message, resource, range });
+        diagnosticsMap.get(resource ?? null)?.push({ type, code, message, resource, range });
       },
     );
 
@@ -69,8 +81,25 @@ export const Lint: CommandModule<{}, LintArgs> = {
       for (const diagnostic of diagnostics) {
         const row = String((diagnostic.range?.startPosition?.row ?? 0) + 1).padStart(maxLengthRow);
         const col = String((diagnostic.range?.startPosition?.column ?? 0) + 1).padEnd(maxLengthCol);
-        console.log("  " + row + ":" + col + "  " + diagnostic.type.padEnd(maxLengthType) + "  " + diagnostic.message);
+        const codeStr = diagnostic.code > 0 ? `[M${diagnostic.code}] ` : "";
+        console.log(
+          "  " + row + ":" + col + "  " + diagnostic.type.padEnd(maxLengthType) + "  " + codeStr + diagnostic.message,
+        );
       }
+    }
+
+    // Print summary of errors and warnings
+    let totalErrors = 0;
+    let totalWarnings = 0;
+    for (const diagnostics of diagnosticsMap.values()) {
+      if (!diagnostics) continue;
+      for (const d of diagnostics) {
+        if (d.type === "error") totalErrors++;
+        else totalWarnings++;
+      }
+    }
+    if (totalErrors > 0 || totalWarnings > 0) {
+      console.log(`\n${totalErrors} error(s), ${totalWarnings} warning(s) found.`);
     }
   },
 };

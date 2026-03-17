@@ -1147,7 +1147,6 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
       if (this.name === other.name) return true;
       // Integer → Real coercion (§10.6.13)
       if (this.name === "Real" && other.name === "Integer") return true;
-      if (this.name === "Integer" && other.name === "Real") return true;
       return false;
     }
 

@@ -589,7 +589,13 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
     // Use the shared context (with MSL loaded) when available, otherwise a bare context
     const context = sharedContext ?? new Context(sharedFs);
     const linter = new ModelicaLinter(
-      (_type: string, message: string, _resource: string | null | undefined, range: Range | null | undefined) => {
+      (
+        _type: string,
+        _code: number,
+        message: string,
+        _resource: string | null | undefined,
+        range: Range | null | undefined,
+      ) => {
         if (!range) return;
         diagnostics.push({
           severity: DiagnosticSeverity.Error,
