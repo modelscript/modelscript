@@ -745,7 +745,25 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     const isProtected =
       node.isProtected || this.#outerProtected || (activeClass?.isProtectedElement(node.name) ?? false);
     const arrayClassInstance = node.classInstance as ModelicaArrayClassInstance;
+    const hasFlexibleDim = arrayClassInstance.shape.some((d) => d === 0);
     let arrayBindingExpression = node.modification?.expression ?? null;
+    // For arrays with flexible dimensions (e.g., Real r[:] = fun(5)), the basic
+    // interpreter may return an empty/wrong-shape array because it can't execute
+    // function algorithm bodies. Re-evaluate from the raw AST with algorithm
+    // execution enabled to get the correct result.
+    if (
+      hasFlexibleDim &&
+      node.modification?.modificationExpression?.expression &&
+      (!(arrayBindingExpression instanceof ModelicaArray) || arrayBindingExpression.shape.some((d: number) => d === 0))
+    ) {
+      const freshResult = node.modification.modificationExpression.expression.accept(
+        new ModelicaInterpreter(true),
+        node.parent ?? ({} as ModelicaClassInstance),
+      );
+      if (freshResult instanceof ModelicaArray && freshResult.shape.every((d: number) => d > 0)) {
+        arrayBindingExpression = freshResult;
+      }
+    }
     // If the interpreter couldn't evaluate the binding (e.g., if-expression with parameter
     // condition), try the syntax flattener which can handle symbolic expressions
     if (!arrayBindingExpression && node.modification?.modificationExpression?.expression) {
@@ -758,6 +776,19 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           stmtCollector: [],
           structuralFinalParams: this.#structuralFinalParams,
         }) ?? null;
+    }
+    // Collect function definitions from the raw binding expression even when the
+    // interpreter already evaluated the binding (e.g., fun(5) → {1,1,1,1,1}).
+    // Without this, the function definition wouldn't appear in the DAE output.
+    if (arrayBindingExpression && node.modification?.modificationExpression?.expression) {
+      const syntaxFlattener = new ModelicaSyntaxFlattener();
+      syntaxFlattener.collectFunctionRefsFromAST(node.modification.modificationExpression.expression, {
+        prefix: args[0],
+        classInstance: node.parent ?? ({} as ModelicaClassInstance),
+        dae: args[1],
+        stmtCollector: [],
+        structuralFinalParams: this.#structuralFinalParams,
+      });
     }
     // Fold if-expressions whose conditions are structural final parameters.
     // The syntax flattener preserves `if b then {1.0, 2.0} else {3.0, 4.0, 5.0}` symbolically,
@@ -902,11 +933,13 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     }
 
     if (arrayBindingExpression && !flatBindingElements && (shape[0] ?? 0) > 0) {
-      const firstElement = arrayClassInstance.declaredElements[0];
+      // Use elementClassInstance for type check — it's always set even for unsized arrays [:],
+      // whereas declaredElements may be empty for flexible-dimension arrays.
+      const elementType = arrayClassInstance.elementClassInstance ?? arrayClassInstance.declaredElements[0];
       const isRealArray =
-        firstElement instanceof ModelicaRealClassInstance ||
-        (firstElement instanceof ModelicaArrayClassInstance &&
-          firstElement.elementClassInstance instanceof ModelicaRealClassInstance);
+        elementType instanceof ModelicaRealClassInstance ||
+        (elementType instanceof ModelicaArrayClassInstance &&
+          elementType.elementClassInstance instanceof ModelicaRealClassInstance);
       const rhs = isRealArray ? (castToReal(arrayBindingExpression) ?? arrayBindingExpression) : arrayBindingExpression;
       const lhs = new ModelicaRealVariable(name, null, new Map(), null);
       args[1].equations.push(new ModelicaSimpleEquation(lhs, rhs));
