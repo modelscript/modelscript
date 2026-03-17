@@ -366,3 +366,13 @@ export const BUILTIN_FUNCTIONS: ReadonlyMap<string, BuiltinFunctionDef> = new Ma
   ["Boolean", { inputs: [{ name: "x", type: "Boolean" }], outputType: "Boolean" }],
   ["end", { inputs: [], outputType: "Integer" }],
 ]);
+
+/**
+ * Map of built-in Modelica variable names → their types.
+ * These are predefined variables available in all model scopes.
+ *
+ * Reference: Modelica Specification §3.7.2
+ */
+export const BUILTIN_VARIABLES: ReadonlyMap<string, "Real" | "Integer" | "Boolean" | "String"> = new Map([
+  ["time", "Real"],
+]);

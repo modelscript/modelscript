@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { StringWriter } from "../../util/io.js";
-import { BUILTIN_FUNCTIONS } from "./builtins.js";
+import { BUILTIN_FUNCTIONS, BUILTIN_VARIABLES } from "./builtins.js";
 import type { ModelicaElseIfClause, ModelicaElseWhenClause } from "./dae.js";
 import {
   ModelicaArray,
@@ -1663,14 +1663,14 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         const inputVars = funcDef.variables.filter((v) => v.causality === "input");
         for (let i = 0; i < flatArgs.length && i < inputVars.length; i++) {
           if (inputVars[i] instanceof ModelicaRealVariable) {
-            const coerced = castToReal(flatArgs[i] ?? null);
+            const coerced = coerceToReal(flatArgs[i] ?? null, ctx.dae);
             if (coerced && coerced !== flatArgs[i]) flatArgs[i] = coerced;
           }
         }
       } else if (flatArgs.some((a) => isRealTyped(a, ctx.dae))) {
         // Fallback: blanket coercion when function definition not available
         for (let i = 0; i < flatArgs.length; i++) {
-          const coerced = castToReal(flatArgs[i] ?? null);
+          const coerced = coerceToReal(flatArgs[i] ?? null, ctx.dae);
           if (coerced && coerced !== flatArgs[i]) flatArgs[i] = coerced;
         }
       }
@@ -3495,21 +3495,29 @@ function coerceToReal(expression: ModelicaExpression | null, dae?: ModelicaDAE):
   // Check if a named expression refers to a non-Real variable (Integer, Boolean, etc.)
   // or an unresolved name (e.g. loop variables which are Integer by default)
   if (expression instanceof ModelicaNameExpression && dae) {
-    const variable = dae.variables.find((v) => v.name === expression.name);
-    if (variable instanceof ModelicaRealVariable) {
+    // Check built-in variables first (e.g., time is Real)
+    const builtinType = BUILTIN_VARIABLES.get(expression.name);
+    if (builtinType === "Real") {
       // Already Real-typed, no coercion needed
-    } else if (!variable) {
-      // Check for encoded array function parameters (e.g., positionvector[1] → \0[3]\0positionvector)
-      const bracketIdx = expression.name.indexOf("[");
-      const baseName = bracketIdx >= 0 ? expression.name.substring(0, bracketIdx) : expression.name;
-      const encodedMatch = dae.variables.find((v) => v.name.startsWith("\0") && v.name.endsWith("\0" + baseName));
-      if (encodedMatch instanceof ModelicaRealVariable) {
-        // Element of a Real array, no coercion needed
+    } else if (builtinType) {
+      return new ModelicaFunctionCallExpression("/*Real*/", [expression]);
+    } else {
+      const variable = dae.variables.find((v) => v.name === expression.name);
+      if (variable instanceof ModelicaRealVariable) {
+        // Already Real-typed, no coercion needed
+      } else if (!variable) {
+        // Check for encoded array function parameters (e.g., positionvector[1] → \0[3]\0positionvector)
+        const bracketIdx = expression.name.indexOf("[");
+        const baseName = bracketIdx >= 0 ? expression.name.substring(0, bracketIdx) : expression.name;
+        const encodedMatch = dae.variables.find((v) => v.name.startsWith("\0") && v.name.endsWith("\0" + baseName));
+        if (encodedMatch instanceof ModelicaRealVariable) {
+          // Element of a Real array, no coercion needed
+        } else {
+          return new ModelicaFunctionCallExpression("/*Real*/", [expression]);
+        }
       } else {
         return new ModelicaFunctionCallExpression("/*Real*/", [expression]);
       }
-    } else {
-      return new ModelicaFunctionCallExpression("/*Real*/", [expression]);
     }
   }
   // Recurse into binary expressions
