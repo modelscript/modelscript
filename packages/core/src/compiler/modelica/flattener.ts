@@ -1664,20 +1664,38 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     // Collect function definition BEFORE type coercion so we can use per-parameter types
     this.#collectFunctionDefinition(functionName, ctx, resolvedOverride, componentPrefix);
 
-    // Expand default arguments for user-defined functions, but ONLY if they are inherently
-    // literals structurally. Injecting other parameter-reliant defaults (e.g. `y = 2.0 * x`)
-    // into the caller's DAE overrides closures incorrectly.
+    // Expand default arguments for user-defined functions.
+    // Literal defaults (e.g. eps=1e-6) are always expanded.
+    // Non-literal defaults are expanded only if they reference names external to the
+    // function (e.g. r=p where p is from the enclosing model). Defaults that only
+    // reference other function inputs (e.g. y=2*x) are left for the interpreter.
     if (!builtinDef) {
       const funcDef = ctx.dae.functions.find((f) => f.name === functionName);
       if (funcDef) {
         const inputVars = funcDef.variables.filter((v) => v.causality === "input");
+        const funcLocalNames = new Set(funcDef.variables.map((v) => v.name));
+
+        /** Check if an expression references names outside the function scope */
+        const refsExternal = (expr: ModelicaExpression): boolean => {
+          if (expr instanceof ModelicaNameExpression) return !funcLocalNames.has(expr.name);
+          if (expr instanceof ModelicaBinaryExpression) {
+            return refsExternal(expr.operand1) || refsExternal(expr.operand2);
+          }
+          if (expr instanceof ModelicaUnaryExpression) return refsExternal(expr.operand);
+          if (expr instanceof ModelicaFunctionCallExpression) return expr.args.some(refsExternal);
+          if (expr instanceof ModelicaArray) return expr.elements.some(refsExternal);
+          return false;
+        };
+
         while (flatArgs.length < inputVars.length) {
           const param = inputVars[flatArgs.length];
           if (!param?.expression) break;
           if (isLiteral(param.expression) || isLiteralArray(param.expression)) {
             flatArgs.push(param.expression);
+          } else if (refsExternal(param.expression)) {
+            flatArgs.push(param.expression);
           } else {
-            break;
+            break; // Internal-only default — let interpreter handle it
           }
         }
       }
@@ -1743,10 +1761,55 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       return false;
     };
     if (!hasParameterArg && flatArgs.every((arg) => isConstantEvaluable(arg))) {
-      const interp = new ModelicaInterpreter(true);
-      const evalResult = node.accept(interp, ctx.classInstance);
-      if (evalResult) {
-        return evalResult;
+      // Also check that unfilled default arguments (those beyond flatArgs) don't reference
+      // names external to the function (e.g. model variables). Defaults that only reference
+      // other function inputs (like `y = 2*x`) are fine — the interpreter resolves them
+      // within the function scope. But defaults referencing external model variables
+      // (like `r = p` where `p` is a model variable) cannot be evaluated at compile time.
+      let defaultsAreConstant = true;
+      if (!builtinDef) {
+        const funcDef = ctx.dae.functions.find((f) => f.name === functionName);
+        if (funcDef) {
+          const inputVars = funcDef.variables.filter((v) => v.causality === "input");
+          // Names that are local to the function (inputs, outputs, protected vars)
+          const funcLocalNames = new Set(funcDef.variables.map((v) => v.name));
+
+          /** Check if a default expression references any name outside the function scope */
+          const referencesExternalName = (expr: ModelicaExpression): boolean => {
+            if (expr instanceof ModelicaNameExpression) {
+              return !funcLocalNames.has(expr.name);
+            }
+            if (expr instanceof ModelicaBinaryExpression) {
+              return referencesExternalName(expr.operand1) || referencesExternalName(expr.operand2);
+            }
+            if (expr instanceof ModelicaUnaryExpression) {
+              return referencesExternalName(expr.operand);
+            }
+            if (expr instanceof ModelicaFunctionCallExpression) {
+              return expr.args.some(referencesExternalName);
+            }
+            if (expr instanceof ModelicaArray) {
+              return expr.elements.some(referencesExternalName);
+            }
+            return false;
+          };
+
+          for (let i = flatArgs.length; i < inputVars.length; i++) {
+            const defaultExpr = inputVars[i]?.expression;
+            if (!defaultExpr) continue;
+            if (referencesExternalName(defaultExpr)) {
+              defaultsAreConstant = false;
+              break;
+            }
+          }
+        }
+      }
+      if (defaultsAreConstant) {
+        const interp = new ModelicaInterpreter(true);
+        const evalResult = node.accept(interp, ctx.classInstance);
+        if (evalResult) {
+          return evalResult;
+        }
       }
     }
 
