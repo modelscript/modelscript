@@ -199,6 +199,26 @@ export const ModelicaErrorCode = {
     severity: "error",
     message: (paramName: string) => `The default value of ${paramName} causes a cyclic dependency.`,
   },
+  FUNCTION_INVALID_VAR_TYPE: {
+    code: 4010,
+    rule: "function-invalid-var-type",
+    severity: "error",
+    message: (typeName: string, varName: string) => `Invalid type .${typeName} for function component ${varName}.`,
+  },
+  FUNCTION_PROTECTED_IO: {
+    code: 4011,
+    rule: "function-protected-io",
+    severity: "error",
+    message: (varName: string) =>
+      `Invalid protected variable ${varName}, function variables that are input/output must be public.`,
+  },
+  FUNCTION_ARG_VARIABILITY: {
+    code: 4012,
+    rule: "function-arg-variability",
+    severity: "error",
+    message: (paramName: string, argExpr: string, funcName: string, requiredVariability: string) =>
+      `Function argument ${paramName}=${argExpr} in call to ${funcName} has variability continuous which is not a ${requiredVariability} expression.`,
+  },
 
   // ── 5xxx: Equations & Algorithms ──────────────────────────────────────
   EQUATION_TYPE_MISMATCH: {

@@ -422,23 +422,35 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
    * @returns The evaluated branch expression, or null if the condition can't be resolved.
    */
   visitIfElseExpression(node: ModelicaIfElseExpressionSyntaxNode, scope: Scope): ModelicaExpression | null {
-    // Only constant-fold when the condition is a direct boolean literal in the AST
-    // (e.g., `if true then...`), not a resolved parameter reference. This preserves
-    // `if b then 1.0 else 2.0` for the flattener to handle symbolically.
-    if (!(node.condition instanceof ModelicaBooleanLiteralSyntaxNode)) {
-      return null;
+    // Try to evaluate the condition. If it reduces to a boolean literal, fold the if-expression.
+    // This handles cases like `if n == 1 then {1} else {1, 2}` during CEval where n has a known value.
+    let condResult: ModelicaExpression | null = null;
+    if (node.condition instanceof ModelicaBooleanLiteralSyntaxNode) {
+      condResult = new ModelicaBooleanLiteral(node.condition.value);
+    } else {
+      condResult = node.condition?.accept(this, scope) ?? null;
     }
-    const condValue = node.condition.value;
-    if (condValue) {
-      return node.expression?.accept(this, scope) ?? null;
+    if (condResult instanceof ModelicaBooleanLiteral) {
+      if (condResult.value) {
+        return node.expression?.accept(this, scope) ?? null;
+      }
+    } else {
+      // Condition didn't evaluate to a boolean — can't fold
+      return null;
     }
     // Check elseif clauses
     for (const clause of node.elseIfExpressionClauses ?? []) {
-      if (clause.condition instanceof ModelicaBooleanLiteralSyntaxNode && clause.condition.value) {
+      let elseIfCond: ModelicaExpression | null = null;
+      if (clause.condition instanceof ModelicaBooleanLiteralSyntaxNode) {
+        elseIfCond = new ModelicaBooleanLiteral(clause.condition.value);
+      } else {
+        elseIfCond = clause.condition?.accept(this, scope) ?? null;
+      }
+      if (elseIfCond instanceof ModelicaBooleanLiteral && elseIfCond.value) {
         return clause.expression?.accept(this, scope) ?? null;
       }
-      // If elseif condition is not a literal, can't fold further
-      if (!(clause.condition instanceof ModelicaBooleanLiteralSyntaxNode)) {
+      // If elseif condition didn't evaluate to a boolean, can't fold further
+      if (!(elseIfCond instanceof ModelicaBooleanLiteral)) {
         return null;
       }
     }
@@ -1612,7 +1624,10 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     if (subscripts && subscripts.length > 0) {
       if (!target.instantiated && !target.instantiating) target.instantiate();
       // Get the existing array, clone it (to avoid mutating the literal definition), and update the element
-      const currentExpr = ModelicaExpression.fromClassInstance(target.classInstance);
+      let currentExpr = ModelicaExpression.fromClassInstance(target.classInstance);
+      if (!currentExpr && target.classInstance instanceof ModelicaArrayClassInstance) {
+        currentExpr = buildFilledArray(target.classInstance.shape, new ModelicaIntegerLiteral(0));
+      }
       if (currentExpr instanceof ModelicaArray) {
         // Deep clone array elements to allow mutation
         const cloneArray = (arr: ModelicaArray): ModelicaArray => {
@@ -1622,24 +1637,49 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
           );
         };
         const newArray = cloneArray(currentExpr);
-        let currentLevel = newArray;
-        for (let i = 0; i < subscripts.length; i++) {
-          const subExpr = subscripts[i]?.expression?.accept(this, scope);
-          let index = 1;
-          if (subExpr instanceof ModelicaIntegerLiteral) index = subExpr.value;
-          else if (subExpr instanceof ModelicaRealLiteral) index = Math.floor(subExpr.value);
 
-          if (i === subscripts.length - 1) {
-            currentLevel.elements[index - 1] = value;
-          } else {
-            const nextLevel = currentLevel.elements[index - 1];
-            if (nextLevel instanceof ModelicaArray) {
-              currentLevel = nextLevel;
+        // Handle slice assignment: subscript may evaluate to an array of indices (e.g., r[1:10])
+        if (subscripts.length === 1) {
+          const subExpr = subscripts[0]?.expression?.accept(this, scope);
+          if (subExpr instanceof ModelicaArray && value instanceof ModelicaArray) {
+            // Slice assignment: r[{1,3,5}] := {v1, v2, v3}
+            for (let j = 0; j < subExpr.elements.length; j++) {
+              const idxExpr = subExpr.elements[j];
+              if (idxExpr instanceof ModelicaIntegerLiteral) {
+                newArray.elements[idxExpr.value - 1] = value.elements[j] ?? new ModelicaIntegerLiteral(0);
+              }
+            }
+          } else if (subExpr instanceof ModelicaIntegerLiteral) {
+            // Scalar assignment: r[i] := v
+            newArray.elements[subExpr.value - 1] = value;
+          } else if (subExpr instanceof ModelicaRealLiteral) {
+            newArray.elements[Math.floor(subExpr.value) - 1] = value;
+          }
+        } else {
+          // Multi-dimensional subscript (e.g., locX[1,index])
+          let currentLevel = newArray;
+          for (let i = 0; i < subscripts.length; i++) {
+            const subExpr = subscripts[i]?.expression?.accept(this, scope);
+            let index = 1;
+            if (subExpr instanceof ModelicaIntegerLiteral) index = subExpr.value;
+            else if (subExpr instanceof ModelicaRealLiteral) index = Math.floor(subExpr.value);
+
+            if (i === subscripts.length - 1) {
+              currentLevel.elements[index - 1] = value;
             } else {
-              break;
+              const nextLevel = currentLevel.elements[index - 1];
+              if (nextLevel instanceof ModelicaArray) {
+                currentLevel = nextLevel;
+              } else {
+                // Auto-vivify: create a zero-filled sub-array for uninitialized dimensions
+                const newLevel = buildFilledArray(currentExpr.shape.slice(i + 1), new ModelicaIntegerLiteral(0));
+                currentLevel.elements[index - 1] = newLevel;
+                currentLevel = newLevel;
+              }
             }
           }
         }
+
         const mod = new ModelicaModification(null, [], null, null, newArray);
         target.classInstance = target.classInstance?.clone(mod) ?? null;
       }

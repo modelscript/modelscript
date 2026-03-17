@@ -2006,3 +2006,131 @@ ModelicaLinter.register(ModelicaErrorCode.FUNCTION_DEFAULT_ARG_CYCLE, {
     }
   },
 });
+
+// ── Invalid function variable types ─────────────────────────────────────
+// Function inputs/outputs must be of valid types: predefined (Real, Integer, etc.),
+// record, type, or enumeration — not model, block, or connector.
+ModelicaLinter.register(ModelicaErrorCode.FUNCTION_INVALID_VAR_TYPE, {
+  visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+    if (node.classKind !== ModelicaClassKind.FUNCTION && node.classKind !== ModelicaClassKind.OPERATOR_FUNCTION) return;
+    for (const element of node.elements) {
+      if (!(element instanceof ModelicaComponentInstance)) continue;
+      if (!element.causality) continue; // only check input/output
+      if (!element.instantiated) element.instantiate();
+      const classKind = element.classInstance?.classKind;
+      if (
+        classKind === ModelicaClassKind.MODEL ||
+        classKind === ModelicaClassKind.BLOCK ||
+        classKind === ModelicaClassKind.CONNECTOR ||
+        classKind === ModelicaClassKind.EXPANDABLE_CONNECTOR
+      ) {
+        const typeName = element.classInstance?.name ?? "";
+        diagnosticsCallback(
+          ModelicaErrorCode.FUNCTION_INVALID_VAR_TYPE.severity,
+          ModelicaErrorCode.FUNCTION_INVALID_VAR_TYPE.code,
+          ModelicaErrorCode.FUNCTION_INVALID_VAR_TYPE.message(typeName, element.name ?? ""),
+          element.abstractSyntaxNode?.declaration?.identifier,
+        );
+      }
+    }
+  },
+});
+
+// ── Protected input/output in functions ─────────────────────────────────
+// Input and output variables in functions must be public, not protected.
+ModelicaLinter.register(ModelicaErrorCode.FUNCTION_PROTECTED_IO, {
+  visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+    if (node.classKind !== ModelicaClassKind.FUNCTION && node.classKind !== ModelicaClassKind.OPERATOR_FUNCTION) return;
+    for (const element of node.elements) {
+      if (!(element instanceof ModelicaComponentInstance)) continue;
+      if (element.causality && element.isProtected) {
+        diagnosticsCallback(
+          ModelicaErrorCode.FUNCTION_PROTECTED_IO.severity,
+          ModelicaErrorCode.FUNCTION_PROTECTED_IO.code,
+          ModelicaErrorCode.FUNCTION_PROTECTED_IO.message(element.name ?? ""),
+          element.abstractSyntaxNode?.declaration?.identifier,
+        );
+      }
+    }
+  },
+});
+
+// ── Function argument variability mismatch ──────────────────────────────
+// When a function parameter has `constant` variability, the actual argument
+// at each call site must also be a constant expression.
+ModelicaLinter.register(ModelicaErrorCode.FUNCTION_ARG_VARIABILITY, {
+  visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+    // Only check models/blocks (the callers)
+    if (node.classKind === ModelicaClassKind.FUNCTION || node.classKind === ModelicaClassKind.OPERATOR_FUNCTION) return;
+
+    // Walk equation and algorithm sections looking for function calls
+    const checkFunctionCall = (callNode: ModelicaFunctionCallSyntaxNode) => {
+      const funcRef = callNode.functionReference;
+      if (!funcRef) return;
+      // Resolve the function name to a class instance
+      const funcParts = funcRef.parts.map((p) => p.identifier?.text ?? "");
+      const resolved = node.resolveName(funcParts);
+      if (!(resolved instanceof ModelicaClassInstance)) return;
+      if (resolved.classKind !== ModelicaClassKind.FUNCTION) return;
+
+      const inputParams = Array.from(resolved.inputParameters);
+      const args = callNode.functionCallArguments?.arguments ?? [];
+      for (let i = 0; i < Math.min(inputParams.length, args.length); i++) {
+        const param = inputParams[i];
+        if (!param || param.variability !== ModelicaVariability.CONSTANT) continue;
+        // Check if the argument is a component reference to a non-constant
+        const argExpr = args[i]?.expression;
+        if (argExpr instanceof ModelicaComponentReferenceSyntaxNode) {
+          const argName = argExpr.parts.map((p) => p.identifier?.text ?? "").join(".");
+          const argParts = argExpr.parts.map((p) => p.identifier?.text ?? "");
+          const argResolved = node.resolveName(argParts);
+          if (argResolved instanceof ModelicaComponentInstance) {
+            if (argResolved.variability !== ModelicaVariability.CONSTANT) {
+              diagnosticsCallback(
+                ModelicaErrorCode.FUNCTION_ARG_VARIABILITY.severity,
+                ModelicaErrorCode.FUNCTION_ARG_VARIABILITY.code,
+                ModelicaErrorCode.FUNCTION_ARG_VARIABILITY.message(
+                  param.name ?? "",
+                  argName,
+                  resolved.name ?? "",
+                  "constant",
+                ),
+                argExpr,
+              );
+            }
+          }
+        }
+      }
+    };
+
+    // Scan equation sections
+    const scanForCalls = (syntaxNode: unknown) => {
+      if (!syntaxNode || typeof syntaxNode !== "object") return;
+      if (syntaxNode instanceof ModelicaFunctionCallSyntaxNode) {
+        checkFunctionCall(syntaxNode);
+      }
+      const obj = syntaxNode as Record<string, unknown>;
+      for (const key of Object.keys(obj)) {
+        if (key === "parent") continue;
+        const child = obj[key];
+        if (child && typeof child === "object") {
+          if (Array.isArray(child)) {
+            for (const item of child) scanForCalls(item);
+          } else {
+            scanForCalls(child);
+          }
+        }
+      }
+    };
+
+    for (const section of node.equationSections) scanForCalls(section);
+    for (const section of node.algorithmSections) scanForCalls(section);
+    // Also scan component bindings (e.g., `Real b = f(a)`)
+    for (const element of node.elements) {
+      if (element instanceof ModelicaComponentInstance) {
+        const bindingExpr = element.abstractSyntaxNode?.declaration?.modification?.modificationExpression?.expression;
+        if (bindingExpr) scanForCalls(bindingExpr);
+      }
+    }
+  },
+});

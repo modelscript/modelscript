@@ -15,10 +15,36 @@ export interface BuiltinParam {
   readonly defaultValue?: number | boolean;
 }
 
-/** Info for a built-in function definition. */
+/** A single signature (set of inputs + output type). */
+export interface BuiltinSignature {
+  readonly inputs: readonly BuiltinParam[];
+  readonly outputType: "Real" | "Integer" | "Boolean" | "String" | null;
+}
+
+/**
+ * Info for a built-in function definition.
+ * For polymorphic functions (e.g. min/max which accept both Integer and Real),
+ * provide `overloads` with multiple signatures. The first matching overload is used.
+ * When `overloads` is absent, `inputs`/`outputType` define the single signature.
+ */
 export interface BuiltinFunctionDef {
   readonly inputs: readonly BuiltinParam[];
   readonly outputType: "Real" | "Integer" | "Boolean" | "String" | null;
+  readonly overloads?: readonly BuiltinSignature[];
+  /** Whether this function can be used as a reduction operator (e.g., `max(i for i in range)`). */
+  readonly reduction?: true;
+  /** Fold an array of numeric constants for reduction (e.g., Math.max for max, Math.min for min). */
+  readonly foldConstants?: (values: number[]) => number;
+  /** Identity value returned when the reduction function is called with zero arguments. */
+  readonly identityValue?: number;
+  /** Evaluate a single-argument call at compile time with a numeric literal input. */
+  readonly fold1?: (x: number) => number;
+  /** Evaluate a two-argument call at compile time with numeric literal inputs. */
+  readonly fold2?: (a: number, b: number) => number;
+  /** Domain validation for a single numeric argument. Throws if invalid. */
+  readonly domainCheck?: (x: number) => void;
+  /** If true, abs/sign-style: output type matches input type (Integer→Integer, Real→Real). */
+  readonly preserveIntegerType?: true;
 }
 
 /**
@@ -28,10 +54,23 @@ export interface BuiltinFunctionDef {
  */
 export const BUILTIN_FUNCTIONS: ReadonlyMap<string, BuiltinFunctionDef> = new Map<string, BuiltinFunctionDef>([
   // §3.7.1 Numeric Functions and Conversion Functions
-  ["abs", { inputs: [{ name: "v", type: "Real" }], outputType: "Real" }],
-  ["sign", { inputs: [{ name: "v", type: "Real" }], outputType: "Integer" }],
-  ["sqrt", { inputs: [{ name: "v", type: "Real" }], outputType: "Real" }],
-  ["integer", { inputs: [{ name: "x", type: "Real" }], outputType: "Integer" }],
+  ["abs", { inputs: [{ name: "v", type: "Real" }], outputType: "Real", fold1: Math.abs, preserveIntegerType: true }],
+  [
+    "sign",
+    { inputs: [{ name: "v", type: "Real" }], outputType: "Integer", fold1: Math.sign, preserveIntegerType: true },
+  ],
+  [
+    "sqrt",
+    {
+      inputs: [{ name: "v", type: "Real" }],
+      outputType: "Real",
+      fold1: Math.sqrt,
+      domainCheck: (x) => {
+        if (x < 0) throw new Error(`Argument ${x} of sqrt is out of range (x >= 0)`);
+      },
+    },
+  ],
+  ["integer", { inputs: [{ name: "x", type: "Real" }], outputType: "Integer", fold1: Math.floor }],
 
   // §3.7.1.2 String Conversion (Real variant)
   [
@@ -48,7 +87,7 @@ export const BUILTIN_FUNCTIONS: ReadonlyMap<string, BuiltinFunctionDef> = new Ma
   ],
 
   // §3.7.2 Derivative and Special Purpose Operators
-  ["der", { inputs: [{ name: "x", type: "Real" }], outputType: "Real" }],
+  ["der", { inputs: [{ name: "x", type: "Real" }], outputType: "Real", fold1: () => 0.0 }],
   [
     "delay",
     {
@@ -133,12 +172,12 @@ export const BUILTIN_FUNCTIONS: ReadonlyMap<string, BuiltinFunctionDef> = new Ma
   ],
 
   // §3.7.4 Mathematical Functions
-  ["sin", { inputs: [{ name: "u", type: "Real" }], outputType: "Real" }],
-  ["cos", { inputs: [{ name: "u", type: "Real" }], outputType: "Real" }],
-  ["tan", { inputs: [{ name: "u", type: "Real" }], outputType: "Real" }],
-  ["asin", { inputs: [{ name: "u", type: "Real" }], outputType: "Real" }],
-  ["acos", { inputs: [{ name: "u", type: "Real" }], outputType: "Real" }],
-  ["atan", { inputs: [{ name: "u", type: "Real" }], outputType: "Real" }],
+  ["sin", { inputs: [{ name: "u", type: "Real" }], outputType: "Real", fold1: Math.sin }],
+  ["cos", { inputs: [{ name: "u", type: "Real" }], outputType: "Real", fold1: Math.cos }],
+  ["tan", { inputs: [{ name: "u", type: "Real" }], outputType: "Real", fold1: Math.tan }],
+  ["asin", { inputs: [{ name: "u", type: "Real" }], outputType: "Real", fold1: Math.asin }],
+  ["acos", { inputs: [{ name: "u", type: "Real" }], outputType: "Real", fold1: Math.acos }],
+  ["atan", { inputs: [{ name: "u", type: "Real" }], outputType: "Real", fold1: Math.atan }],
   [
     "atan2",
     {
@@ -147,14 +186,35 @@ export const BUILTIN_FUNCTIONS: ReadonlyMap<string, BuiltinFunctionDef> = new Ma
         { name: "u2", type: "Real" },
       ],
       outputType: "Real",
+      fold2: Math.atan2,
     },
   ],
-  ["sinh", { inputs: [{ name: "u", type: "Real" }], outputType: "Real" }],
-  ["cosh", { inputs: [{ name: "u", type: "Real" }], outputType: "Real" }],
-  ["tanh", { inputs: [{ name: "u", type: "Real" }], outputType: "Real" }],
-  ["exp", { inputs: [{ name: "u", type: "Real" }], outputType: "Real" }],
-  ["log", { inputs: [{ name: "u", type: "Real" }], outputType: "Real" }],
-  ["log10", { inputs: [{ name: "u", type: "Real" }], outputType: "Real" }],
+  ["sinh", { inputs: [{ name: "u", type: "Real" }], outputType: "Real", fold1: Math.sinh }],
+  ["cosh", { inputs: [{ name: "u", type: "Real" }], outputType: "Real", fold1: Math.cosh }],
+  ["tanh", { inputs: [{ name: "u", type: "Real" }], outputType: "Real", fold1: Math.tanh }],
+  ["exp", { inputs: [{ name: "u", type: "Real" }], outputType: "Real", fold1: Math.exp }],
+  [
+    "log",
+    {
+      inputs: [{ name: "u", type: "Real" }],
+      outputType: "Real",
+      fold1: Math.log,
+      domainCheck: (x) => {
+        if (x <= 0) throw new Error(`Argument ${x} of log is out of range (x > 0)`);
+      },
+    },
+  ],
+  [
+    "log10",
+    {
+      inputs: [{ name: "u", type: "Real" }],
+      outputType: "Real",
+      fold1: Math.log10,
+      domainCheck: (x) => {
+        if (x <= 0) throw new Error(`Argument ${x} of log10 is out of range (x > 0)`);
+      },
+    },
+  ],
 
   // §3.7.5 Array Functions
   ["ndims", { inputs: [{ name: "A", type: "Real" }], outputType: "Integer" }],
@@ -204,6 +264,26 @@ export const BUILTIN_FUNCTIONS: ReadonlyMap<string, BuiltinFunctionDef> = new Ma
         { name: "y", type: "Real" },
       ],
       outputType: "Real",
+      reduction: true,
+      foldConstants: (v) => Math.min(...v),
+      identityValue: 8.777798510069901e304,
+      fold2: Math.min,
+      overloads: [
+        {
+          inputs: [
+            { name: "x", type: "Integer" },
+            { name: "y", type: "Integer" },
+          ],
+          outputType: "Integer",
+        },
+        {
+          inputs: [
+            { name: "x", type: "Real" },
+            { name: "y", type: "Real" },
+          ],
+          outputType: "Real",
+        },
+      ],
     },
   ],
   [
@@ -214,10 +294,48 @@ export const BUILTIN_FUNCTIONS: ReadonlyMap<string, BuiltinFunctionDef> = new Ma
         { name: "y", type: "Real" },
       ],
       outputType: "Real",
+      reduction: true,
+      foldConstants: (v) => Math.max(...v),
+      identityValue: -8.777798510069901e304,
+      fold2: Math.max,
+      overloads: [
+        {
+          inputs: [
+            { name: "x", type: "Integer" },
+            { name: "y", type: "Integer" },
+          ],
+          outputType: "Integer",
+        },
+        {
+          inputs: [
+            { name: "x", type: "Real" },
+            { name: "y", type: "Real" },
+          ],
+          outputType: "Real",
+        },
+      ],
     },
   ],
-  ["sum", { inputs: [{ name: "A", type: "Real" }], outputType: "Real" }],
-  ["product", { inputs: [{ name: "A", type: "Real" }], outputType: "Real" }],
+  [
+    "sum",
+    {
+      inputs: [{ name: "A", type: "Real" }],
+      outputType: "Real",
+      reduction: true,
+      foldConstants: (v) => v.reduce((a, b) => a + b, 0),
+      identityValue: 0,
+    },
+  ],
+  [
+    "product",
+    {
+      inputs: [{ name: "A", type: "Real" }],
+      outputType: "Real",
+      reduction: true,
+      foldConstants: (v) => v.reduce((a, b) => a * b, 1),
+      identityValue: 1,
+    },
+  ],
   ["transpose", { inputs: [{ name: "A", type: "Real" }], outputType: "Real" }],
   ["symmetric", { inputs: [{ name: "A", type: "Real" }], outputType: "Real" }],
   [
@@ -254,8 +372,8 @@ export const BUILTIN_FUNCTIONS: ReadonlyMap<string, BuiltinFunctionDef> = new Ma
   ],
 
   // §3.7.6 Reduction Expressions
-  ["ceil", { inputs: [{ name: "x", type: "Real" }], outputType: "Real" }],
-  ["floor", { inputs: [{ name: "x", type: "Real" }], outputType: "Real" }],
+  ["ceil", { inputs: [{ name: "x", type: "Real" }], outputType: "Real", fold1: Math.ceil }],
+  ["floor", { inputs: [{ name: "x", type: "Real" }], outputType: "Real", fold1: Math.floor }],
   [
     "div",
     {
@@ -264,6 +382,7 @@ export const BUILTIN_FUNCTIONS: ReadonlyMap<string, BuiltinFunctionDef> = new Ma
         { name: "y", type: "Real" },
       ],
       outputType: "Integer",
+      fold2: (a, b) => (b !== 0 ? Math.trunc(a / b) : NaN),
     },
   ],
   [
@@ -274,6 +393,7 @@ export const BUILTIN_FUNCTIONS: ReadonlyMap<string, BuiltinFunctionDef> = new Ma
         { name: "y", type: "Real" },
       ],
       outputType: "Real",
+      fold2: (a, b) => (b !== 0 ? a - Math.floor(a / b) * b : NaN),
     },
   ],
   [
@@ -284,6 +404,7 @@ export const BUILTIN_FUNCTIONS: ReadonlyMap<string, BuiltinFunctionDef> = new Ma
         { name: "y", type: "Real" },
       ],
       outputType: "Real",
+      fold2: (a, b) => (b !== 0 ? a - Math.trunc(a / b) * b : NaN),
     },
   ],
 

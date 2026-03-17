@@ -767,7 +767,7 @@ export abstract class ModelicaExpression {
     if (!classInstance.instantiated && !classInstance.instantiating) classInstance.instantiate();
 
     if (classInstance instanceof ModelicaArrayClassInstance) {
-      const elements: ModelicaExpression[] = [];
+      let elements: ModelicaExpression[] = [];
       for (const element of classInstance.elements ?? []) {
         if (element instanceof ModelicaClassInstance) {
           const expression = ModelicaExpression.fromClassInstance(element);
@@ -780,7 +780,18 @@ export abstract class ModelicaExpression {
       if (elements.length === 0 && classInstance.shape.some((d) => d > 0)) {
         return null;
       }
-      return new ModelicaArray(classInstance.shape, elements);
+
+      // Reconstruct nested ModelicaArray structure for multi-dimensional arrays
+      for (let i = classInstance.shape.length - 1; i >= 1; i--) {
+        const length = classInstance.shape[i] ?? 0;
+        const chunks: ModelicaExpression[] = [];
+        for (let j = 0; j < elements.length; j += length) {
+          chunks.push(new ModelicaArray(classInstance.shape.slice(i), elements.slice(j, j + length)));
+        }
+        elements = chunks;
+      }
+
+      return new ModelicaArray([classInstance.shape[0] ?? 0], elements);
     } else if (classInstance instanceof ModelicaEnumerationClassInstance) {
       return classInstance.value;
     } else if (classInstance instanceof ModelicaPredefinedClassInstance) {
@@ -2998,15 +3009,17 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
   }
 
   visitStringLiteral(node: ModelicaStringLiteral): void {
-    // Unescape standard escape sequences for output
+    // Handle two parser behaviors:
+    // 1. \\n is stored as 2-char escape sequence → unescape to actual newline + indentation
+    // 2. \\\" is stored as bare " (parser already unescaped) → re-escape to \\"
     const indent = "  ".repeat(this.#depth + 1);
-    const unescaped = node.value
-      .replace(/\\n/g, "\n" + indent)
-      .replace(/\\t/g, "\t")
-      .replace(/\\r/g, "\r")
-      .replace(/\\\\/g, "\\")
-      .replace(/\\"/g, '"');
-    this.out.write('"' + unescaped + '"');
+    const result = node.value
+      .replace(/\\n/g, "\n" + indent) // unescape \\n → actual newline + indent
+      .replace(/\\t/g, "\t") // unescape \\t → tab
+      .replace(/\\r/g, "\r") // unescape \\r → carriage return
+      .replace(/\\\\/g, "\\") // unescape \\\\ → backslash
+      .replace(/"/g, '\\"'); // re-escape bare quotes: " → \\"
+    this.out.write('"' + result + '"');
   }
 
   visitStringVariable(node: ModelicaStringVariable): void {
