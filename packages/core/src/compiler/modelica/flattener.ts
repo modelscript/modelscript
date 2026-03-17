@@ -1635,12 +1635,6 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
           if (coerced && coerced !== flatArgs[i]) flatArgs[i] = coerced;
         }
       }
-    } else if (flatArgs.some((a) => isRealTyped(a, ctx.dae))) {
-      // Fallback for non-builtin functions: blanket coercion
-      for (let i = 0; i < flatArgs.length; i++) {
-        const coerced = castToReal(flatArgs[i] ?? null);
-        if (coerced && coerced !== flatArgs[i]) flatArgs[i] = coerced;
-      }
     }
     // Component-scoped function specialization:
     // When a function is called through a component reference (e.g., n1.f(time)),
@@ -1657,6 +1651,31 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       functionName = this.#resolveFullyQualifiedName(functionName, ctx);
     }
 
+    // Collect function definition BEFORE type coercion so we can use per-parameter types
+    this.#collectFunctionDefinition(functionName, ctx, resolvedOverride, componentPrefix);
+
+    // Per-parameter type coercion: coerce integer args to Real only where the
+    // function signature expects a Real parameter
+    if (!builtinDef) {
+      const funcDef = ctx.dae.functions.find((f) => f.name === functionName);
+
+      if (funcDef) {
+        const inputVars = funcDef.variables.filter((v) => v.causality === "input");
+        for (let i = 0; i < flatArgs.length && i < inputVars.length; i++) {
+          if (inputVars[i] instanceof ModelicaRealVariable) {
+            const coerced = castToReal(flatArgs[i] ?? null);
+            if (coerced && coerced !== flatArgs[i]) flatArgs[i] = coerced;
+          }
+        }
+      } else if (flatArgs.some((a) => isRealTyped(a, ctx.dae))) {
+        // Fallback: blanket coercion when function definition not available
+        for (let i = 0; i < flatArgs.length; i++) {
+          const coerced = castToReal(flatArgs[i] ?? null);
+          if (coerced && coerced !== flatArgs[i]) flatArgs[i] = coerced;
+        }
+      }
+    }
+
     const result = new ModelicaFunctionCallExpression(functionName, flatArgs);
 
     // Only inline user-defined function calls when ALL arguments are compile-time constants.
@@ -1665,13 +1684,10 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       const interp = new ModelicaInterpreter(true);
       const evalResult = node.accept(interp, ctx.classInstance);
       if (evalResult) {
-        this.#collectFunctionDefinition(functionName, ctx, resolvedOverride, componentPrefix);
         return evalResult;
       }
     }
 
-    // Collect function definition if it's a user-defined function
-    this.#collectFunctionDefinition(functionName, ctx, resolvedOverride, componentPrefix);
     return result;
   }
 
@@ -3428,11 +3444,14 @@ function castToReal(expression: ModelicaExpression | null): ModelicaExpression |
   }
   if (expression instanceof ModelicaFunctionCallExpression) {
     // Use per-parameter coercion for built-in functions; only coerce args whose
-    // corresponding parameter type is Real according to the function signature
+    // corresponding parameter type is Real according to the function signature.
+    // For user-defined functions, do NOT coerce arguments here — they handle
+    // their own per-parameter coercion during function call flattening.
     const builtinDef = BUILTIN_FUNCTIONS.get(expression.functionName);
-    if (builtinDef && builtinDef.outputType !== "Real") return expression;
+    if (!builtinDef) return expression; // User-defined: already correctly coerced
+    if (builtinDef.outputType !== "Real") return expression;
     const args = expression.args.map((a, i) => {
-      if (builtinDef && builtinDef.inputs[i]?.type !== "Real") return a;
+      if (builtinDef.inputs[i]?.type !== "Real") return a;
       return castToReal(a) ?? a;
     });
     if (args.some((a, i) => a !== expression.args[i]))

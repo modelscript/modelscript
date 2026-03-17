@@ -77,6 +77,78 @@ const BUILTIN_ARRAY_FUNCTIONS = new Set([
 ]);
 
 /**
+ * Set of Modelica built-in math, conversion, and special function names
+ * handled directly by the interpreter.
+ * Per Modelica 3.6 spec §3.7.1–3.7.4.
+ */
+const BUILTIN_MATH_FUNCTIONS = new Set([
+  // Numeric / conversion (§3.7.1)
+  "abs",
+  "sign",
+  "sqrt",
+  "Integer",
+  "String",
+  // Event-triggering math (§3.7.2)
+  "div",
+  "mod",
+  "rem",
+  "ceil",
+  "floor",
+  "integer",
+  // Elementary math (§3.7.3)
+  "sin",
+  "cos",
+  "tan",
+  "asin",
+  "acos",
+  "atan",
+  "atan2",
+  "sinh",
+  "cosh",
+  "tanh",
+  "asinh",
+  "acosh",
+  "atanh",
+  "exp",
+  "log",
+  "log10",
+  // Derivative / special-purpose (§3.7.4)
+  "der",
+  "noEvent",
+  "smooth",
+  "homotopy",
+  "semiLinear",
+]);
+
+/** Single-argument elementary math functions that always return Real. */
+const ELEMENTARY_MATH: Record<string, (x: number) => number> = {
+  sin: Math.sin,
+  cos: Math.cos,
+  tan: Math.tan,
+  asin: Math.asin,
+  acos: Math.acos,
+  atan: Math.atan,
+  sinh: Math.sinh,
+  cosh: Math.cosh,
+  tanh: Math.tanh,
+  asinh: Math.asinh,
+  acosh: Math.acosh,
+  atanh: Math.atanh,
+  exp: Math.exp,
+  log: Math.log,
+  log10: Math.log10,
+  sqrt: Math.sqrt,
+};
+
+/** Math functions whose return type depends on whether the input is Integer or Real. */
+const TYPED_MATH: Record<string, (x: number) => number> = {
+  abs: Math.abs, // Integer→Integer, Real→Real  (§3.7.1)
+  sign: Math.sign, // Integer→Integer, Real→Real  (§3.7.1)
+  ceil: Math.ceil, // Real→Real  (§3.7.2)
+  floor: Math.floor, // Real→Real (§3.7.2)
+};
+
+/**
  * Helper: build a (possibly nested) ModelicaArray filled with `value`.
  *
  * @param shape - An array of integers describing the target dimensions (e.g., [2, 3] for a 2x3 matrix).
@@ -1207,6 +1279,219 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
   }
 
   /**
+   * Handle Modelica built-in math, conversion, and special-purpose functions.
+   * Returns the result expression, `null` if evaluation fails, or `undefined`
+   * if the function name is not recognised (so the caller can fall through).
+   */
+  private evaluateBuiltinMathFunction(
+    name: string,
+    node: ModelicaFunctionCallSyntaxNode,
+    scope: Scope,
+  ): ModelicaExpression | null | undefined {
+    // Elementary single-arg math (always → Real)
+    const elemFn = ELEMENTARY_MATH[name];
+    if (elemFn) return this.#evaluateElementaryMath(elemFn, node, scope);
+
+    // Typed single-arg math (preserves Integer for abs/sign)
+    const typedFn = TYPED_MATH[name];
+    if (typedFn) return this.#evaluateTypedMath(name, typedFn, node, scope);
+
+    switch (name) {
+      case "atan2":
+        return this.#evaluateAtan2(node, scope);
+      case "div":
+        return this.#evaluateDiv(node, scope);
+      case "mod":
+        return this.#evaluateMod(node, scope);
+      case "rem":
+        return this.#evaluateRem(node, scope);
+      case "integer":
+        return this.#evaluateIntegerFunc(node, scope);
+      case "Integer":
+        return this.#evaluateIntegerConversion(node, scope);
+      case "String":
+        return this.#evaluateStringConversion(node, scope);
+      case "der":
+        return this.#evaluateDer(node, scope);
+      case "noEvent":
+        return this.#evaluateNoEvent(node, scope);
+      case "smooth":
+        return this.#evaluateSmooth(node, scope);
+      case "homotopy":
+        return this.#evaluateHomotopy(node, scope);
+      case "semiLinear":
+        return this.#evaluateSemiLinear(node, scope);
+      default:
+        return undefined;
+    }
+  }
+
+  /** Evaluate a single-argument elementary math function (always returns Real). */
+  #evaluateElementaryMath(
+    fn: (x: number) => number,
+    node: ModelicaFunctionCallSyntaxNode,
+    scope: Scope,
+  ): ModelicaExpression | null {
+    const args = this.evaluateArgs(node, scope);
+    const arg = args[0];
+    const numVal =
+      arg instanceof ModelicaIntegerLiteral ? arg.value : arg instanceof ModelicaRealLiteral ? arg.value : null;
+    if (numVal !== null) {
+      const result = fn(numVal);
+      if (Number.isFinite(result)) return new ModelicaRealLiteral(result);
+    }
+    return null;
+  }
+
+  /** Evaluate abs/sign/ceil/floor — preserves Integer type for abs and sign. */
+  #evaluateTypedMath(
+    name: string,
+    fn: (x: number) => number,
+    node: ModelicaFunctionCallSyntaxNode,
+    scope: Scope,
+  ): ModelicaExpression | null {
+    const args = this.evaluateArgs(node, scope);
+    const arg = args[0];
+    const numVal =
+      arg instanceof ModelicaIntegerLiteral ? arg.value : arg instanceof ModelicaRealLiteral ? arg.value : null;
+    if (numVal !== null) {
+      const result = fn(numVal);
+      if (Number.isFinite(result)) {
+        if ((name === "abs" || name === "sign") && arg instanceof ModelicaIntegerLiteral) {
+          return new ModelicaIntegerLiteral(result);
+        }
+        return new ModelicaRealLiteral(result);
+      }
+    }
+    return null;
+  }
+
+  /** atan2(y, x) — four-quadrant inverse tangent (§3.7.3). */
+  #evaluateAtan2(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
+    const args = this.evaluateArgs(node, scope);
+    const y = toNumber(args[0] ?? null);
+    const x = toNumber(args[1] ?? null);
+    if (y != null && x != null) {
+      const result = Math.atan2(y, x);
+      if (Number.isFinite(result)) return new ModelicaRealLiteral(result);
+    }
+    return null;
+  }
+
+  /** div(x, y) — algebraic quotient truncated toward zero (§3.7.2). */
+  #evaluateDiv(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
+    const args = this.evaluateArgs(node, scope);
+    const x = toNumber(args[0] ?? null);
+    const y = toNumber(args[1] ?? null);
+    if (x != null && y != null && y !== 0) {
+      const result = Math.trunc(x / y);
+      if (args[0] instanceof ModelicaRealLiteral || args[1] instanceof ModelicaRealLiteral) {
+        return new ModelicaRealLiteral(result);
+      }
+      return new ModelicaIntegerLiteral(result);
+    }
+    return null;
+  }
+
+  /** mod(x, y) — integer modulus: x - floor(x/y)*y (§3.7.2). */
+  #evaluateMod(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
+    const args = this.evaluateArgs(node, scope);
+    const x = toNumber(args[0] ?? null);
+    const y = toNumber(args[1] ?? null);
+    if (x != null && y != null && y !== 0) {
+      const result = x - Math.floor(x / y) * y;
+      if (args[0] instanceof ModelicaRealLiteral || args[1] instanceof ModelicaRealLiteral) {
+        return new ModelicaRealLiteral(result);
+      }
+      return new ModelicaIntegerLiteral(result);
+    }
+    return null;
+  }
+
+  /** rem(x, y) — integer remainder: x - div(x,y)*y (§3.7.2). */
+  #evaluateRem(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
+    const args = this.evaluateArgs(node, scope);
+    const x = toNumber(args[0] ?? null);
+    const y = toNumber(args[1] ?? null);
+    if (x != null && y != null && y !== 0) {
+      const result = x - Math.trunc(x / y) * y;
+      if (args[0] instanceof ModelicaRealLiteral || args[1] instanceof ModelicaRealLiteral) {
+        return new ModelicaRealLiteral(result);
+      }
+      return new ModelicaIntegerLiteral(result);
+    }
+    return null;
+  }
+
+  /** integer(x) — largest integer not greater than x, returns Integer (§3.7.2). */
+  #evaluateIntegerFunc(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
+    const args = this.evaluateArgs(node, scope);
+    const numVal = toNumber(args[0] ?? null);
+    if (numVal != null) return new ModelicaIntegerLiteral(Math.floor(numVal));
+    return null;
+  }
+
+  /** Integer(e) — ordinal number of enumeration value (§3.7.1). */
+  #evaluateIntegerConversion(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
+    const args = this.evaluateArgs(node, scope);
+    const arg = args[0];
+    if (arg instanceof ModelicaEnumerationLiteral) return new ModelicaIntegerLiteral(arg.ordinalValue);
+    if (arg instanceof ModelicaBooleanLiteral) return new ModelicaIntegerLiteral(arg.value ? 1 : 0);
+    return null;
+  }
+
+  /** String(value) — convert scalar to string representation (§3.7.1). */
+  #evaluateStringConversion(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
+    const args = this.evaluateArgs(node, scope);
+    const arg = args[0];
+    if (arg instanceof ModelicaIntegerLiteral) return new ModelicaStringLiteral(String(arg.value));
+    if (arg instanceof ModelicaRealLiteral) return new ModelicaStringLiteral(String(arg.value));
+    if (arg instanceof ModelicaBooleanLiteral) return new ModelicaStringLiteral(arg.value ? "true" : "false");
+    if (arg instanceof ModelicaEnumerationLiteral) return new ModelicaStringLiteral(arg.stringValue);
+    if (arg instanceof ModelicaStringLiteral) return arg;
+    return null;
+  }
+
+  /** der(constant) = 0; der(constant_array) = zeros with same shape (§3.7.4). */
+  #evaluateDer(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
+    const args = this.evaluateArgs(node, scope);
+    const arg = args[0];
+    if (arg instanceof ModelicaIntegerLiteral || arg instanceof ModelicaRealLiteral) return new ModelicaRealLiteral(0);
+    if (arg instanceof ModelicaArray) return this.#derArray(arg);
+    return null;
+  }
+
+  /** noEvent(expr) — suppress event generation, passthrough for constant folding (§3.7.4). */
+  #evaluateNoEvent(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
+    const args = this.evaluateArgs(node, scope);
+    return args[0] ?? null;
+  }
+
+  /** smooth(p, expr) — declare smoothness order, passthrough for constant folding (§3.7.4). */
+  #evaluateSmooth(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
+    const args = this.evaluateArgs(node, scope);
+    return args[1] ?? null;
+  }
+
+  /** homotopy(actual, simplified) — return actual for flattening purposes (§3.7.4). */
+  #evaluateHomotopy(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
+    const args = this.evaluateArgs(node, scope);
+    return args[0] ?? null;
+  }
+
+  /** semiLinear(x, k1, k2) — if x ≥ 0 then x*k1 else x*k2 (§3.7.4). */
+  #evaluateSemiLinear(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
+    const args = this.evaluateArgs(node, scope);
+    const x = toNumber(args[0] ?? null);
+    const k1 = toNumber(args[1] ?? null);
+    const k2 = toNumber(args[2] ?? null);
+    if (x != null && k1 != null && k2 != null) {
+      return new ModelicaRealLiteral(x >= 0 ? x * k1 : x * k2);
+    }
+    return null;
+  }
+
+  /**
    * Visits a generic function call node, evaluating arguments and interpreting built-in or user-defined functions.
    *
    * @param node - The function call syntax node.
@@ -1224,23 +1509,10 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
       if (result !== undefined) return result;
     }
 
-    // Handle type conversion functions
-    if (rawFuncName === "Integer") {
-      const args = this.evaluateArgs(node, scope);
-      const arg = args[0];
-      if (arg instanceof ModelicaEnumerationLiteral) return new ModelicaIntegerLiteral(arg.ordinalValue);
-      if (arg instanceof ModelicaBooleanLiteral) return new ModelicaIntegerLiteral(arg.value ? 1 : 0);
-      return null;
-    }
-
-    // der(constant) = 0; der(constant_array) = zeros with same shape
-    if (rawFuncName === "der") {
-      const args = this.evaluateArgs(node, scope);
-      const arg = args[0];
-      if (arg instanceof ModelicaIntegerLiteral || arg instanceof ModelicaRealLiteral)
-        return new ModelicaRealLiteral(0);
-      if (arg instanceof ModelicaArray) return this.#derArray(arg);
-      return null;
+    // Handle built-in math/conversion/special functions
+    if (rawFuncName && BUILTIN_MATH_FUNCTIONS.has(rawFuncName)) {
+      const result = this.evaluateBuiltinMathFunction(rawFuncName, node, scope);
+      if (result !== undefined) return result;
     }
 
     const functionInstance = scope.resolveComponentReference(node.functionReference);
