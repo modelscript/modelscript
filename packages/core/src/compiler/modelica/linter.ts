@@ -1267,6 +1267,28 @@ ModelicaLinter.register(ModelicaErrorCode.TYPE_MISMATCH_MODIFIER, {
   },
 });
 
+/** Get the Modelica type name for a literal syntax node, or null if not a literal. */
+function getLiteralTypeName(
+  node: import("./syntax.js").ModelicaExpressionSyntaxNode | null | undefined,
+): string | null {
+  if (!node) return null;
+  if (node instanceof ModelicaBooleanLiteralSyntaxNode) return "Boolean";
+  if (node instanceof ModelicaStringLiteralSyntaxNode) return "String";
+  if (node instanceof ModelicaUnsignedIntegerLiteralSyntaxNode) return "Integer";
+  if (node instanceof ModelicaUnsignedRealLiteralSyntaxNode) return "Real";
+  // Negated literals (e.g. -1)
+  if (node instanceof ModelicaUnaryExpressionSyntaxNode) {
+    if (node.operand instanceof ModelicaUnsignedIntegerLiteralSyntaxNode) return "Integer";
+    if (node.operand instanceof ModelicaUnsignedRealLiteralSyntaxNode) return "Real";
+  }
+  return null;
+}
+
+/** Check if a Modelica type can be implicitly converted to another (Integer → Real). */
+function isImplicitlyConvertible(fromType: string, toType: string): boolean {
+  return fromType === "Integer" && toType === "Real";
+}
+
 // Rule: Binding equation type checking — component = expr must have compatible types
 ModelicaLinter.register(ModelicaErrorCode.TYPE_MISMATCH_BINDING, {
   visitComponentInstance(
@@ -1288,8 +1310,7 @@ ModelicaLinter.register(ModelicaErrorCode.TYPE_MISMATCH_BINDING, {
     const modSyntax = node.abstractSyntaxNode?.declaration?.modification;
     const exprSyntax = modSyntax?.modificationExpression?.expression;
 
-    // Only check component references — literals and complex expressions
-    // would require full type inference
+    // Check component reference bindings
     if (exprSyntax instanceof ModelicaComponentReferenceSyntaxNode) {
       const resolvedComp = resolveToComponent(node.parent ?? node, exprSyntax);
       if (resolvedComp) {
@@ -1308,6 +1329,28 @@ ModelicaLinter.register(ModelicaErrorCode.TYPE_MISMATCH_BINDING, {
             modSyntax?.modificationExpression,
           );
         }
+      }
+    }
+
+    // Check literal bindings against declared types (e.g. `Real z = true` is invalid)
+    const literalType = getLiteralTypeName(exprSyntax);
+    if (literalType) {
+      const declaredType =
+        classInstance instanceof ModelicaArrayClassInstance
+          ? classInstance.elementClassInstance?.name
+          : classInstance.name;
+      if (declaredType && literalType !== declaredType && !isImplicitlyConvertible(literalType, declaredType)) {
+        diagnosticsCallback(
+          ModelicaErrorCode.TYPE_MISMATCH_BINDING.severity,
+          ModelicaErrorCode.TYPE_MISMATCH_BINDING.code,
+          ModelicaErrorCode.TYPE_MISMATCH_BINDING.message(
+            node.name ?? "",
+            declaredType,
+            String((bindingExpr as { value?: unknown }).value ?? "?"),
+            literalType,
+          ),
+          modSyntax?.modificationExpression,
+        );
       }
     }
   },

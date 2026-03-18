@@ -1874,14 +1874,26 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     // Check if the function resolves to an external clause mapping to a builtin
     // (e.g. `function f = Modelica.Math.atan2` where atan2 has `external "C" y=atan2(u1,u2)`)
     if (!builtinDef) {
+      const originalName = functionName;
       const externalBuiltin = this.#resolveExternalBuiltin(functionName, ctx);
       if (externalBuiltin) {
+        // Before switching to the builtin name, collect the function definition for
+        // user-defined wrappers that have their OWN external clause (e.g. `mylog`
+        // with `external "C" y=log(x)`). Skip aliases like `function f = X.atan2`.
+        const parts = originalName.split(".");
+        const resolved = ctx.classInstance.resolveName(parts);
+        if (resolved instanceof ModelicaClassInstance) {
+          const specifier = resolved.abstractSyntaxNode?.classSpecifier;
+          if (specifier instanceof ModelicaLongClassSpecifierSyntaxNode && specifier.externalFunctionClause) {
+            this.#collectFunctionDefinition(originalName, ctx, resolvedOverride, componentPrefix);
+          }
+        }
         functionName = externalBuiltin;
         builtinDef = BUILTIN_FUNCTIONS.get(functionName);
       }
     }
 
-    // Collect function definition BEFORE type coercion so we can use per-parameter types
+    // Collect function definition (skips builtins automatically)
     this.#collectFunctionDefinition(functionName, ctx, resolvedOverride, componentPrefix);
 
     // Expand default arguments for user-defined functions.
@@ -3140,6 +3152,24 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         return null;
       }
       if (isRealTyped(target, ctx.dae)) source = coerceToReal(source, ctx.dae) ?? source;
+
+      // Collapse expanded array targets back to a single name when RHS is a function call.
+      // e.g., {x[1], x[2], ..., x[9]} := joinThreeVectors2(...) → x := joinThreeVectors2(...)
+      let effectiveTarget: ModelicaExpression = target;
+      if (
+        target instanceof ModelicaArray &&
+        source instanceof ModelicaFunctionCallExpression &&
+        target.elements.length > 0 &&
+        target.elements.every((e) => e instanceof ModelicaVariable)
+      ) {
+        const firstName = (target.elements[0] as ModelicaVariable).name;
+        const bracketIdx = firstName.indexOf("[");
+        if (bracketIdx > 0) {
+          const arrayBaseName = firstName.substring(0, bracketIdx);
+          effectiveTarget = new ModelicaNameExpression(arrayBaseName);
+        }
+      }
+
       // Add [1] tuple indexing when a multi-output function is assigned to a single target.
       // e.g., invA := LAPACK.dgetri(LU, pivots) → invA := LAPACK.dgetri(LU, pivots)[1]
       if (source) {
@@ -3155,7 +3185,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
           }
         }
       }
-      ctx.stmtCollector.push(new ModelicaAssignmentStatement(target, source));
+      ctx.stmtCollector.push(new ModelicaAssignmentStatement(effectiveTarget, source));
     }
     return null;
   }

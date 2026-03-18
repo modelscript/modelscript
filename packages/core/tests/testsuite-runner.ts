@@ -37,7 +37,7 @@ Context.registerParser(".mo", parser);
 interface TestCaseMetadata {
   name: string;
   keywords: string;
-  status: "correct" | "incorrect";
+  status: "correct" | "incorrect" | "skipped";
   description: string;
 }
 
@@ -161,7 +161,7 @@ function parseTestFile(filePath: string): TestCase | null {
     metadata: {
       name,
       keywords,
-      status: status === "incorrect" ? "incorrect" : "correct",
+      status: status === "incorrect" ? "incorrect" : status === "skipped" ? "skipped" : "correct",
       description: descriptionLines.join(" "),
     },
     source,
@@ -435,6 +435,18 @@ function main(): void {
           duration: 0,
           cpuTime: 0,
           message: "Could not parse test metadata",
+        });
+        continue;
+      }
+
+      if (testCase.metadata.status === "skipped") {
+        suiteResults.push({
+          name: moFile,
+          file: filePath,
+          status: "skipped",
+          duration: 0,
+          cpuTime: 0,
+          message: "Test marked as skipped",
         });
         continue;
       }
