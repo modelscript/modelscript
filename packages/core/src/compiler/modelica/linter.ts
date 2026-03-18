@@ -887,7 +887,11 @@ function checkArrayModDimensions(
 
       // Check the modification's own expression (e.g. y = {{...}})
       const argExpr = modArg.expression;
-      if (argExpr instanceof ModelicaArray && !argExpr.assignable(shape)) {
+      if (
+        argExpr instanceof ModelicaArray &&
+        !(argExpr.flatShape.includes(0) && argExpr.flatShape.some((d: number) => d > 0)) &&
+        !argExpr.assignable(shape)
+      ) {
         diagnosticsCallback(
           ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.severity,
           ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.code,
@@ -900,7 +904,11 @@ function checkArrayModDimensions(
       if (modArg instanceof ModelicaElementModification) {
         for (const subArg of modArg.modificationArguments) {
           const subExpr = subArg.expression;
-          if (subExpr instanceof ModelicaArray && !subExpr.assignable(shape)) {
+          if (
+            subExpr instanceof ModelicaArray &&
+            !(subExpr.flatShape.includes(0) && subExpr.flatShape.some((d: number) => d > 0)) &&
+            !subExpr.assignable(shape)
+          ) {
             diagnosticsCallback(
               ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.severity,
               ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.code,
@@ -942,7 +950,11 @@ ModelicaLinter.register(ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH, {
       const shape = classInstance.shape;
       if (shape.length > 0) {
         const expr = modification.expression;
-        if (expr instanceof ModelicaArray && !expr.assignable(shape)) {
+        if (
+          expr instanceof ModelicaArray &&
+          !(expr.flatShape.includes(0) && expr.flatShape.some((d: number) => d > 0)) &&
+          !expr.assignable(shape)
+        ) {
           diagnosticsCallback(
             ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.severity,
             ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.code,
@@ -952,7 +964,11 @@ ModelicaLinter.register(ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH, {
         }
         for (const modArg of modification.modificationArguments) {
           const argExpr = modArg.expression;
-          if (argExpr instanceof ModelicaArray && !argExpr.assignable(shape)) {
+          if (
+            argExpr instanceof ModelicaArray &&
+            !(argExpr.flatShape.includes(0) && argExpr.flatShape.some((d: number) => d > 0)) &&
+            !argExpr.assignable(shape)
+          ) {
             diagnosticsCallback(
               ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.severity,
               ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.code,

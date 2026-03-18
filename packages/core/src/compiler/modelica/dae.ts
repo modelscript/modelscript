@@ -575,6 +575,7 @@ export class ModelicaBreakStatement extends ModelicaStatement {
 }
 
 export class ModelicaProcedureCallStatement extends ModelicaStatement {
+  isReturn = false;
   constructor(public call: ModelicaFunctionCallExpression) {
     super();
   }
@@ -1827,6 +1828,45 @@ export class ModelicaFunctionCallExpression extends ModelicaExpression {
 }
 
 /**
+ * Represents a partial function application expression, e.g.
+ * `function dhydCalc(qNom = expr)` in a function call argument position.
+ * Flattened output format: `function FullyQualifiedName(#(arg1), #(arg2))`.
+ */
+export class ModelicaPartialFunctionExpression extends ModelicaExpression {
+  functionName: string;
+  namedArgs: { name: string; value: ModelicaExpression }[];
+
+  constructor(functionName: string, namedArgs: { name: string; value: ModelicaExpression }[]) {
+    super();
+    this.functionName = functionName;
+    this.namedArgs = namedArgs;
+  }
+
+  override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
+    return visitor.visitPartialFunctionExpression(this, argument);
+  }
+
+  override get hash(): string {
+    const hash = createHash("sha256");
+    hash.update("partialfunc");
+    hash.update(this.functionName);
+    for (const arg of this.namedArgs) {
+      hash.update(arg.name);
+      hash.update(arg.value.hash);
+    }
+    return hash.digest("hex");
+  }
+
+  override get toJSON(): JSONValue {
+    return null;
+  }
+
+  override get toRDF(): Triple[] {
+    return [];
+  }
+}
+
+/**
  * Represents a comprehension/reduction expression, e.g. `sum(expr for i in range)`.
  * Used in function body flattening where reduction expressions must be preserved symbolically.
  */
@@ -2283,6 +2323,8 @@ export interface IModelicaDAEVisitor<R, A> {
 
   visitFunctionCallExpression(node: ModelicaFunctionCallExpression, argument?: A): R;
 
+  visitPartialFunctionExpression(node: ModelicaPartialFunctionExpression, argument?: A): R;
+
   visitComprehensionExpression(node: ModelicaComprehensionExpression, argument?: A): R;
 
   visitIfElseExpression(node: ModelicaIfElseExpression, argument?: A): R;
@@ -2417,6 +2459,10 @@ export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void,
 
   visitFunctionCallExpression(node: ModelicaFunctionCallExpression, argument?: A): void {
     for (const arg of node.args) arg.accept(this, argument);
+  }
+
+  visitPartialFunctionExpression(node: ModelicaPartialFunctionExpression, argument?: A): void {
+    for (const arg of node.namedArgs) arg.value.accept(this, argument);
   }
 
   visitComprehensionExpression(node: ModelicaComprehensionExpression, argument?: A): void {
@@ -2626,6 +2672,7 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
 
   visitProcedureCallStatement(node: ModelicaProcedureCallStatement): void {
     this.out.write(this.indent());
+    if (node.isReturn) this.out.write("return ");
     node.call.accept(this);
     this.out.write(";\n");
   }
@@ -2884,6 +2931,15 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     for (let i = 0; i < node.args.length; i++) {
       if (i > 0) this.out.write(", ");
       node.args[i]?.accept(this);
+    }
+    this.out.write(")");
+  }
+
+  visitPartialFunctionExpression(node: ModelicaPartialFunctionExpression): void {
+    this.out.write("function " + node.functionName + "(");
+    for (let i = 0; i < node.namedArgs.length; i++) {
+      if (i > 0) this.out.write(", ");
+      node.namedArgs[i]?.value.accept(this);
     }
     this.out.write(")");
   }

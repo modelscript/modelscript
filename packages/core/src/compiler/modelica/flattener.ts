@@ -28,6 +28,7 @@ import {
   ModelicaIntegerLiteral,
   ModelicaIntegerVariable,
   ModelicaNameExpression,
+  ModelicaPartialFunctionExpression,
   ModelicaProcedureCallStatement,
   ModelicaRangeExpression,
   ModelicaRealLiteral,
@@ -84,6 +85,7 @@ import {
   ModelicaForStatementSyntaxNode,
   ModelicaFunctionArgumentSyntaxNode,
   ModelicaFunctionCallSyntaxNode,
+  ModelicaFunctionPartialApplicationSyntaxNode,
   ModelicaIfElseExpressionSyntaxNode,
   ModelicaIfEquationSyntaxNode,
   ModelicaIfStatementSyntaxNode,
@@ -921,9 +923,12 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         arrayBindingExpression = freshResult;
       }
     }
-    // If the interpreter couldn't evaluate the binding (e.g., if-expression with parameter
-    // condition), try the syntax flattener which can handle symbolic expressions
-    if (!arrayBindingExpression && node.modification?.modificationExpression?.expression) {
+    // If the interpreter couldn't evaluate the binding (returned null or a malformed
+    // array with 0-dimensions), try the syntax flattener which handles symbolic expressions
+    const hasMalformedBinding =
+      arrayBindingExpression instanceof ModelicaArray && arrayBindingExpression.flatShape.includes(0);
+    if ((!arrayBindingExpression || hasMalformedBinding) && node.modification?.modificationExpression?.expression) {
+      if (hasMalformedBinding) arrayBindingExpression = null;
       const syntaxFlattener = new ModelicaSyntaxFlattener();
       arrayBindingExpression =
         node.modification.modificationExpression.expression.accept(syntaxFlattener, {
@@ -1590,6 +1595,42 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
   }
 
   visitArrayConstructor(node: ModelicaArrayConstructorSyntaxNode, ctx: FlattenerContext): ModelicaExpression | null {
+    // Handle array comprehension: {expr for i in range}
+    if (node.comprehensionClause?.expression && node.comprehensionClause.forIndexes.length > 0) {
+      const comp = node.comprehensionClause;
+      const body = comp.expression;
+      if (!body) return null;
+
+      const results: ModelicaExpression[] = [];
+
+      const iterate = (depth: number, innerCtx: FlattenerContext): void => {
+        if (depth >= comp.forIndexes.length) {
+          const result = body.accept(this, innerCtx);
+          if (result) results.push(result);
+          return;
+        }
+        const forIndex = comp.forIndexes[depth];
+        if (!forIndex) return;
+        const indexName = forIndex.identifier?.text;
+        if (!indexName || !forIndex.expression) return;
+
+        // Evaluate the range expression
+        const rangeExpr = forIndex.expression.accept(this, innerCtx);
+        const values = this.#evaluateRange(rangeExpr);
+        if (!values) return;
+
+        for (const value of values) {
+          const loopVars = new Map(innerCtx.loopVariables ?? []);
+          loopVars.set(indexName, value);
+          iterate(depth + 1, { ...innerCtx, loopVariables: loopVars });
+        }
+      };
+
+      iterate(0, ctx);
+      if (results.length === 0) return new ModelicaArray([0], []);
+      return new ModelicaArray([results.length], results);
+    }
+
     const elements: ModelicaExpression[] = [];
     for (const expression of node.expressionList?.expressions ?? []) {
       const element = expression.accept(this, ctx);
@@ -1611,7 +1652,37 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
   }
 
   visitFunctionArgument(node: ModelicaFunctionArgumentSyntaxNode, ctx: FlattenerContext): ModelicaExpression | null {
+    if (node.functionPartialApplication) {
+      return node.functionPartialApplication.accept(this, ctx);
+    }
     return node.expression?.accept(this, ctx) ?? null;
+  }
+
+  visitFunctionPartialApplication(
+    node: ModelicaFunctionPartialApplicationSyntaxNode,
+    ctx: FlattenerContext,
+  ): ModelicaExpression | null {
+    // Resolve the function name from the type specifier
+    const rawName = node.typeSpecifier?.text ?? "";
+    if (!rawName) return null;
+
+    // Resolve to fully qualified name
+    const functionName = this.#resolveFullyQualifiedName(rawName, ctx);
+
+    // Collect function definition so it appears in the DAE output
+    this.#collectFunctionDefinition(functionName, ctx);
+
+    // Flatten bound named arguments
+    const namedArgs: { name: string; value: ModelicaExpression }[] = [];
+    for (const namedArg of node.namedArguments) {
+      const argName = namedArg.identifier?.text ?? "";
+      const argValue = namedArg.argument?.expression?.accept(this, ctx);
+      if (argName && argValue) {
+        namedArgs.push({ name: argName, value: argValue });
+      }
+    }
+
+    return new ModelicaPartialFunctionExpression(functionName, namedArgs);
   }
 
   visitFunctionCall(node: ModelicaFunctionCallSyntaxNode, ctx: FlattenerContext): ModelicaExpression | null {
@@ -1622,7 +1693,12 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       (node.functionReferenceName ?? "");
     let flatArgs: ModelicaExpression[] = [];
     for (const arg of node.functionCallArguments?.arguments ?? []) {
-      const flatArg = arg.expression?.accept(this, ctx);
+      let flatArg: ModelicaExpression | null = null;
+      if (arg.functionPartialApplication) {
+        flatArg = this.visitFunctionPartialApplication(arg.functionPartialApplication, ctx);
+      } else {
+        flatArg = arg.expression?.accept(this, ctx) ?? null;
+      }
       if (flatArg) flatArgs.push(flatArg);
     }
 
@@ -2490,6 +2566,11 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         });
       }
       if (collector.length > 0) {
+        // Mark the last procedure call as a return call when it's recursive (OMC convention)
+        const lastStmt = collector[collector.length - 1];
+        if (lastStmt instanceof ModelicaProcedureCallStatement && lastStmt.call.functionName === functionName) {
+          lastStmt.isReturn = true;
+        }
         fnDae.algorithms.push(collector);
       }
     }
@@ -3043,6 +3124,10 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
   #evaluateIntExpr(expr: ModelicaExpression): number | null {
     if (expr instanceof ModelicaIntegerLiteral) return expr.value;
     if (expr instanceof ModelicaRealLiteral) return Math.round(expr.value);
+    // Follow through DAE variables that have known literal expressions (e.g., parameter Integer n = 3)
+    if (expr instanceof ModelicaVariable && expr.expression) {
+      return this.#evaluateIntExpr(expr.expression);
+    }
     return null;
   }
 

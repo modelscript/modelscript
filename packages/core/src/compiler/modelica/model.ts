@@ -2481,8 +2481,12 @@ export class ModelicaArrayClassInstance extends ModelicaClassInstance {
       this.instantiated = true;
       return;
     }
-    // Validate array modification dimensions
-    if (expression instanceof ModelicaArray && !expression.assignable(this.shape)) {
+    // Validate array modification dimensions (skip when expression has unknown dims — 0 means unevaluated)
+    if (
+      expression instanceof ModelicaArray &&
+      !expression.flatShape.includes(0) &&
+      !expression.assignable(this.shape)
+    ) {
       this.diagnostics.push(
         makeDiagnostic(
           ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH,
