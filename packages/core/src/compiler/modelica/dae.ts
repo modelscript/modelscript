@@ -1652,10 +1652,12 @@ export class ModelicaIntegerLiteral extends ModelicaLiteral {
 
 export class ModelicaRealLiteral extends ModelicaLiteral {
   value: number;
+  originalText: string | undefined;
 
-  constructor(value: number) {
+  constructor(value: number, originalText?: string) {
     super();
     this.value = value;
+    this.originalText = originalText;
   }
 
   override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
@@ -3042,6 +3044,9 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
       let str: string;
       if (Number.isInteger(node.value) && Math.abs(node.value) >= 1e15) {
         str = node.value.toExponential();
+      } else if (node.originalText && /[eE]/.test(node.originalText)) {
+        // Preserve scientific notation from source, normalize: lowercase e, remove trailing dot
+        str = node.originalText.toLowerCase().replace(/\.e/, "e");
       } else {
         str = node.value.toString();
       }

@@ -46,6 +46,7 @@ import {
   ModelicaInheritanceModificationSyntaxNode,
   ModelicaModificationExpressionSyntaxNode,
   ModelicaModificationSyntaxNode,
+  ModelicaProcedureCallStatementSyntaxNode,
   ModelicaSimpleAssignmentStatementSyntaxNode,
   ModelicaSimpleEquationSyntaxNode,
   ModelicaSimpleImportClauseSyntaxNode,
@@ -1641,6 +1642,86 @@ ModelicaLinter.register(
         }
       };
       checkFunctionCalls(node.equations);
+
+      // Walk algorithm sections for procedure calls with function partial application args
+      for (const section of node.algorithmSections) {
+        for (const stmt of section.statements) {
+          if (!(stmt instanceof ModelicaProcedureCallStatementSyntaxNode)) continue;
+          const funcRef = stmt.functionReference;
+          if (!funcRef) continue;
+
+          const funcElement = node.resolveName(funcRef.parts.map((p) => p.identifier?.text ?? ""));
+          if (!(funcElement instanceof ModelicaClassInstance)) continue;
+          if (funcElement.classKind !== ModelicaClassKind.FUNCTION && funcElement.classKind !== "operator function")
+            continue;
+
+          const inputParams = [...funcElement.inputParameters];
+          const args = stmt.functionCallArguments?.arguments ?? [];
+          for (let i = 0; i < Math.min(args.length, inputParams.length); i++) {
+            const arg = args[i];
+            const param = inputParams[i];
+            if (!arg || !param) continue;
+
+            // Check function partial application argument type compatibility
+            if (arg.functionPartialApplication) {
+              const fpa = arg.functionPartialApplication;
+              const fpaName = fpa.typeSpecifier?.text ?? "";
+              if (!fpaName) continue;
+
+              // Resolve the referenced function
+              const fpaFunc = node.resolveName(fpaName.split("."));
+              if (!(fpaFunc instanceof ModelicaClassInstance)) continue;
+              if (fpaFunc.classKind !== ModelicaClassKind.FUNCTION) continue;
+
+              // Resolve the expected parameter type (should be a partial function class)
+              if (!param.instantiated) param.instantiate();
+              const paramType = param.classInstance;
+              if (!paramType || paramType.classKind !== ModelicaClassKind.FUNCTION) continue;
+
+              // Compare input parameter types
+              const fpaInputs = [...fpaFunc.inputParameters];
+              const expectedInputs = [...paramType.inputParameters];
+
+              // Exclude bound named arguments from fpaInputs comparison
+              const boundNames = new Set(fpa.namedArguments.map((na) => na.identifier?.text ?? ""));
+              const unboundFpaInputs = fpaInputs.filter((p) => !boundNames.has(p.name ?? ""));
+
+              let mismatch = false;
+              if (unboundFpaInputs.length !== expectedInputs.length) {
+                mismatch = true;
+              } else {
+                for (let j = 0; j < expectedInputs.length; j++) {
+                  const expParam = expectedInputs[j];
+                  const actParam = unboundFpaInputs[j];
+                  if (!expParam || !actParam) continue;
+                  if (!expParam.instantiated) expParam.instantiate();
+                  if (!actParam.instantiated) actParam.instantiate();
+                  const expType = expParam.classInstance;
+                  const actType = actParam.classInstance;
+                  if (expType && actType && !expType.isTypeCompatibleWith(actType)) {
+                    mismatch = true;
+                    break;
+                  }
+                }
+              }
+
+              if (mismatch) {
+                diagnosticsCallback(
+                  ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH.severity,
+                  ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH.code,
+                  ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH.message(
+                    funcElement.name ?? "",
+                    param.name ?? `arg${i + 1}`,
+                    paramType.name ?? "",
+                    fpaFunc.name ?? "",
+                  ),
+                  fpa,
+                );
+              }
+            }
+          }
+        }
+      }
     },
   },
 );

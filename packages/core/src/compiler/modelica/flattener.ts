@@ -4184,7 +4184,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
   }
 
   visitUnsignedRealLiteral(node: ModelicaUnsignedRealLiteralSyntaxNode): ModelicaRealLiteral | null {
-    return new ModelicaRealLiteral(node.value);
+    return new ModelicaRealLiteral(node.value, node.text ?? undefined);
   }
 }
 
