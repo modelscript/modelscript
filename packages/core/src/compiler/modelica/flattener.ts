@@ -599,12 +599,12 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
             activeClassStack: this.activeClassStack,
           });
         }
-        if (collector.length > 0) {
-          if (section.initial) {
+        if (section.initial) {
+          if (collector.length > 0) {
             args[1].initialAlgorithms.push(collector);
-          } else {
-            args[1].algorithms.push(collector);
           }
+        } else {
+          args[1].algorithms.push(collector);
         }
       }
     }
@@ -1157,6 +1157,17 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     const arrayClassInstance = node.classInstance as ModelicaArrayClassInstance;
     const hasFlexibleDim = arrayClassInstance.shape.some((d) => d === 0);
     let arrayBindingExpression = node.modification?.expression ?? null;
+    // If the interpreter returned a ModelicaArray of ModelicaObjects (type structure, not values),
+    // discard it so the syntax flattener can produce proper qualified name references.
+    if (
+      arrayBindingExpression instanceof ModelicaArray &&
+      arrayBindingExpression.elements.length > 0 &&
+      arrayBindingExpression.elements.every(
+        (e) => e && typeof e === "object" && "elements" in e && (e as ModelicaObject).elements instanceof Map,
+      )
+    ) {
+      arrayBindingExpression = null;
+    }
     // For arrays with flexible dimensions (e.g., Real r[:] = fun(5)), the basic
     // interpreter may return an empty/wrong-shape array because it can't execute
     // function algorithm bodies. Re-evaluate from the raw AST with algorithm
@@ -1362,7 +1373,21 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         elementType instanceof ModelicaRealClassInstance ||
         (elementType instanceof ModelicaArrayClassInstance &&
           elementType.elementClassInstance instanceof ModelicaRealClassInstance);
-      const rhs = isRealArray ? (castToReal(arrayBindingExpression) ?? arrayBindingExpression) : arrayBindingExpression;
+      let rhs = isRealArray ? (castToReal(arrayBindingExpression) ?? arrayBindingExpression) : arrayBindingExpression;
+
+      // Expand name references (e.g., w.axisColor_x) to per-element subscripted arrays
+      // (e.g., {w.axisColor_x[1], w.axisColor_x[2], w.axisColor_x[3]})
+      if (rhs instanceof ModelicaNameExpression || rhs instanceof ModelicaVariable) {
+        const totalElements = shape.reduce((a: number, b: number) => a * b, 1);
+        if (totalElements > 0) {
+          const elements: ModelicaExpression[] = [];
+          for (let i = 1; i <= totalElements; i++) {
+            elements.push(new ModelicaSubscriptedExpression(rhs, [new ModelicaIntegerLiteral(i)]));
+          }
+          rhs = new ModelicaArray([totalElements], elements);
+        }
+      }
+
       const lhs = new ModelicaRealVariable(name, null, new Map(), null);
       args[1].equations.push(new ModelicaSimpleEquation(lhs, rhs));
     }
@@ -1466,12 +1491,12 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
             activeClassStack: this.activeClassStack,
           });
         }
-        if (collector.length > 0) {
-          if (section.initial) {
+        if (section.initial) {
+          if (collector.length > 0) {
             args[1].initialAlgorithms.push(collector);
-          } else {
-            args[1].algorithms.push(collector);
           }
+        } else {
+          args[1].algorithms.push(collector);
         }
       }
     }
@@ -4299,6 +4324,10 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
             }
           }
         }
+      }
+      // Skip zero-element array assignments (e.g., Real r[0]; r := f(time) is a no-op)
+      if (effectiveTarget instanceof ModelicaArray && effectiveTarget.elements.length === 0) {
+        return null;
       }
       ctx.stmtCollector.push(new ModelicaAssignmentStatement(effectiveTarget, source));
     }
