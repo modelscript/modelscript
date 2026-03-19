@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { StringWriter } from "../../util/io.js";
-import { Scope } from "../scope.js";
+
 import { BUILTIN_FUNCTIONS, BUILTIN_VARIABLES } from "./builtins.js";
 import type { ModelicaElseIfClause, ModelicaElseWhenClause } from "./dae.js";
 import {
@@ -134,6 +134,8 @@ interface FlattenerContext {
   componentFunctionPrefix?: string;
   /** Top-level DAE for collecting function definitions (avoids nesting inside function DAEs). */
   rootDae?: ModelicaDAE;
+  /** Instance composition hierarchy for outer/inner resolution. */
+  activeClassStack?: ModelicaClassInstance[];
 }
 
 /** Extract an integer shape array from a list of expressions (all must be ModelicaIntegerLiteral). */
@@ -371,6 +373,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           stmtCollector: [],
           structuralFinalParams: this.#structuralFinalParams,
           connectedFlowVars: this.#connectedFlowVars,
+          activeClassStack: this.activeClassStack,
         });
       }
       args[1].equations = savedEquations;
@@ -386,6 +389,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
             dae: args[1],
             stmtCollector: collector,
             structuralFinalParams: this.#structuralFinalParams,
+            activeClassStack: this.activeClassStack,
           });
         }
         if (collector.length > 0) {
@@ -565,20 +569,21 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     // Exception: when there is no corresponding `inner` in any enclosing scope, keep the
     // `outer` declaration as-is (OpenModelica behavior) so the variable is still emitted.
     if (node.isOuter && !node.isInner) {
-      // Search ancestor class instances for a matching `inner` component
+      // Search ancestor class instances for a matching `inner` component.
+      // Walk the instance composition hierarchy (activeClassStack) rather than the
+      // class definition hierarchy (node.parent.parent), because `inner` declarations
+      // are in enclosing model instances, not in the type definition chain.
       let hasInner = false;
-      let scope: Scope | null = node.parent?.parent ?? null;
-      while (scope) {
-        if (scope instanceof ModelicaClassInstance) {
-          for (const el of scope.declaredElements) {
-            if (el instanceof ModelicaComponentInstance && el.isInner && el.name === node.name) {
-              hasInner = true;
-              break;
-            }
+      for (let i = this.activeClassStack.length - 1; i >= 0; i--) {
+        const ancestorClass = this.activeClassStack[i];
+        if (!ancestorClass) continue;
+        for (const el of ancestorClass.elements) {
+          if (el instanceof ModelicaComponentInstance && el.isInner && el.name === node.name) {
+            hasInner = true;
+            break;
           }
-          if (hasInner) break;
         }
-        scope = scope.parent;
+        if (hasInner) break;
       }
       if (hasInner) return;
       // No matching `inner` found — keep the outer declaration (will emit warning via linter)
@@ -689,6 +694,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
             dae: args[1],
             stmtCollector: [],
             structuralFinalParams: this.#structuralFinalParams,
+            activeClassStack: this.activeClassStack,
           }) ?? null;
       }
       // Even if the constant was evaluated, collect any function definitions
@@ -702,6 +708,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           dae: args[1],
           stmtCollector: [],
           structuralFinalParams: this.#structuralFinalParams,
+          activeClassStack: this.activeClassStack,
         });
       }
     } else if (variability === ModelicaVariability.PARAMETER) {
@@ -963,6 +970,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           dae: args[1],
           stmtCollector: [],
           structuralFinalParams: this.#structuralFinalParams,
+          activeClassStack: this.activeClassStack,
         }) ?? null;
     }
     // Collect function definitions from the raw binding expression even when the
@@ -976,6 +984,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         dae: args[1],
         stmtCollector: [],
         structuralFinalParams: this.#structuralFinalParams,
+        activeClassStack: this.activeClassStack,
       });
     }
     // Fold if-expressions whose conditions are structural final parameters.
@@ -1037,6 +1046,10 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         let expression: ModelicaExpression | null;
         if (flatBindingElements) {
           expression = flatBindingElements[elementIndex] ?? null;
+        } else if (arrayBindingExpression && isCompileTimeEvaluable) {
+          // Create per-element binding by subscripting the array expression: expr[i, j]
+          const subscripts = index.map((idx: number) => new ModelicaIntegerLiteral(idx));
+          expression = new ModelicaSubscriptedExpression(arrayBindingExpression, subscripts);
         } else if (arrayBindingExpression) {
           expression = null;
         } else {
@@ -1120,9 +1133,9 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       if (!this.incrementIndex(index, shape)) break;
     }
 
-    if (arrayBindingExpression && !flatBindingElements && (shape[0] ?? 0) > 0) {
-      // Use elementClassInstance for type check — it's always set even for unsized arrays [:],
-      // whereas declaredElements may be empty for flexible-dimension arrays.
+    if (arrayBindingExpression && !flatBindingElements && !isCompileTimeEvaluable && (shape[0] ?? 0) > 0) {
+      // For non-parameter arrays with symbolic bindings, emit a whole-array equation.
+      // Parameter arrays use per-element subscripted bindings instead (see above).
       const elementType = arrayClassInstance.elementClassInstance ?? arrayClassInstance.declaredElements[0];
       const isRealArray =
         elementType instanceof ModelicaRealClassInstance ||
@@ -1214,6 +1227,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
             stmtCollector: [],
             structuralFinalParams: this.#structuralFinalParams,
             connectedFlowVars: this.#connectedFlowVars,
+            activeClassStack: this.activeClassStack,
             ...(brokenNames.size > 0 ? { brokenNames } : {}),
             ...(brokenConnects.size > 0 ? { brokenConnects } : {}),
           });
@@ -1228,6 +1242,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
             dae: args[1],
             stmtCollector: collector,
             structuralFinalParams: this.#structuralFinalParams,
+            activeClassStack: this.activeClassStack,
           });
         }
         if (collector.length > 0) {
@@ -3293,22 +3308,23 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     if (firstPartName && ctx.classInstance) {
       const resolved = ctx.classInstance.resolveSimpleName(firstPartName, false, true);
       if (resolved instanceof ModelicaComponentInstance && resolved.isOuter && !resolved.isInner) {
-        // Walk up the instance hierarchy to find the inner declaration
-        let scope = ctx.classInstance.parent instanceof ModelicaClassInstance ? ctx.classInstance.parent : null;
+        // Walk up the instance hierarchy (activeClassStack) to find the inner declaration.
+        // The prefix needs to be stripped one level for each stack frame we ascend.
+        const stack = ctx.activeClassStack ?? [];
         let prefixParts = effectivePrefix.split(".");
-        // Remove one prefix level for each scope we walk up
-        while (scope) {
+        for (let i = stack.length - 1; i >= 0; i--) {
           prefixParts = prefixParts.slice(0, -1);
-          // Check if this scope has an inner component with the same name
-          for (const el of scope.declaredElements) {
+          const ancestorClass = stack[i];
+          if (!ancestorClass) continue;
+          let found = false;
+          for (const el of ancestorClass.elements) {
             if (el instanceof ModelicaComponentInstance && el.name === firstPartName && el.isInner) {
-              // Found the inner — use its prefix
               effectivePrefix = prefixParts.join(".");
-              scope = null; // break outer while
+              found = true;
               break;
             }
           }
-          if (scope) scope = scope.parent instanceof ModelicaClassInstance ? scope.parent : null;
+          if (found) break;
         }
       }
     }

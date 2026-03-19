@@ -218,6 +218,8 @@ export class ModelicaModelLinter extends ModelicaModelVisitor<string | null | un
   #diagnosticsCallback: DiagnosticsCallback;
   #modelicaSyntaxLinter: ModelicaSyntaxLinter;
   #visited = new Set<string>();
+  /** Set of component names that have been declared as `inner` during traversal. */
+  #knownInners = new Set<string>();
 
   /**
    * Initializes a new ModelicaModelLinter.
@@ -245,10 +247,19 @@ export class ModelicaModelLinter extends ModelicaModelVisitor<string | null | un
   }
 
   visitComponentInstance(node: ModelicaComponentInstance, resource: string | null | undefined): void {
+    // Track inner components for outer/inner resolution across the model tree
+    if (node.isInner && node.name) {
+      this.#knownInners.add(node.name);
+    }
     // Do NOT call super.visitComponentInstance - that would recurse into the component's
     // type definition elements (via classInstance.elements), causing infinite recursion
     // for models with cyclic type references. The type itself is linted when visited as a class.
     ModelicaLinter.applyRules("visitComponentInstance", node, this.#diagnosticsCallback, resource);
+  }
+
+  /** Returns the set of component names that have been declared as `inner` during linting. */
+  get knownInners(): ReadonlySet<string> {
+    return this.#knownInners;
   }
 
   visitEntity(node: ModelicaEntity): void {
@@ -2556,36 +2567,61 @@ ModelicaLinter.register(ModelicaErrorCode.UNUSED_INPUT_VARIABLE, {
 
 ModelicaLinter.register(ModelicaErrorCode.MISSING_INNER, {
   visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
-    for (const element of node.elements) {
-      if (!(element instanceof ModelicaComponentInstance)) continue;
-      if (!element.isOuter || element.isInner) continue;
+    // Traverse the composition hierarchy of the entity to find all outer components
+    // and checking if they have corresponding inner components in their instance chain.
+    const inPath = new Set<ModelicaClassInstance>();
 
-      // Search ancestor class instances for a matching `inner` component
-      let hasInner = false;
-      let scope: Scope | null = node.parent;
-      while (scope) {
-        if (scope instanceof ModelicaClassInstance) {
-          for (const el of scope.declaredElements) {
-            if (el instanceof ModelicaComponentInstance && el.isInner && el.name === element.name) {
-              hasInner = true;
-              break;
+    const traverse = (currentClass: ModelicaClassInstance, stack: ModelicaClassInstance[]) => {
+      if (inPath.has(currentClass)) return; // Prevent infinite recursion on cyclic types
+      inPath.add(currentClass);
+      stack.push(currentClass);
+
+      for (const el of currentClass.elements) {
+        if (el instanceof ModelicaComponentInstance) {
+          // Check outer condition
+          if (el.isOuter && !el.isInner && el.name) {
+            let hasInner = false;
+            for (let i = stack.length - 1; i >= 0; i--) {
+              const ancestorClass = stack[i];
+              if (!ancestorClass) continue;
+              for (const ancestorEl of ancestorClass.elements) {
+                if (
+                  ancestorEl instanceof ModelicaComponentInstance &&
+                  ancestorEl.isInner &&
+                  ancestorEl.name === el.name
+                ) {
+                  hasInner = true;
+                  break;
+                }
+              }
+              if (hasInner) break;
+            }
+
+            if (!hasInner) {
+              const typeName = el.abstractSyntaxNode?.parent?.typeSpecifier?.text ?? "Unknown";
+              const scopeName =
+                el.parent instanceof ModelicaClassInstance ? (el.parent.compositeName ?? el.parent.name ?? "") : "";
+
+              diagnosticsCallback(
+                ModelicaErrorCode.MISSING_INNER.severity,
+                ModelicaErrorCode.MISSING_INNER.code,
+                ModelicaErrorCode.MISSING_INNER.message(typeName, el.name, scopeName),
+                el.abstractSyntaxNode?.parent ?? el.abstractSyntaxNode,
+              );
             }
           }
-          if (hasInner) break;
+
+          // Recurse into the component's type definition
+          if (el.classInstance) {
+            traverse(el.classInstance, stack);
+          }
         }
-        scope = scope.parent;
       }
-      if (hasInner) continue;
 
-      // Get type name for the warning (e.g., "Real")
-      const typeName = element.abstractSyntaxNode?.parent?.typeSpecifier?.text ?? "Unknown";
+      stack.pop();
+      inPath.delete(currentClass); // Allow visiting via different composition paths
+    };
 
-      diagnosticsCallback(
-        ModelicaErrorCode.MISSING_INNER.severity,
-        ModelicaErrorCode.MISSING_INNER.code,
-        ModelicaErrorCode.MISSING_INNER.message(typeName, element.name ?? "", node.compositeName ?? node.name ?? ""),
-        element.abstractSyntaxNode?.parent ?? element.abstractSyntaxNode,
-      );
-    }
+    traverse(node, []);
   },
 });

@@ -257,7 +257,15 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string): TestResult {
         }
       },
     );
+    const targetClass = context.query(lastClassName);
+    const classesToLint = new Set<ModelicaClassInstance>();
+    if (targetClass instanceof ModelicaClassInstance) classesToLint.add(targetClass);
     for (const cls of context.classes) {
+      if (cls.classKind === "function" || cls.classKind === "operator function" || cls.classKind === "record") {
+        classesToLint.add(cls);
+      }
+    }
+    for (const cls of classesToLint) {
       linter.lint(cls, testCase.file);
       if (cls.abstractSyntaxNode) {
         linter.lint(cls.abstractSyntaxNode, testCase.file);
