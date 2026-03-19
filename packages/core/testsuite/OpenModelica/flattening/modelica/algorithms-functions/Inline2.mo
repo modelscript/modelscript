@@ -1,6 +1,6 @@
-// name: Inline2
+// name:     Inline2
 // keywords: inline, function
-// status: skipped
+// status:   correct
 //
 // Test case for inline annotations
 //
@@ -31,11 +31,25 @@ equation
 end Inline2;
 
 // Result:
+// function simpleInline
+//   input Integer inInt;
+//   output Integer outInt;
+// algorithm
+//   outInt := inInt + simpleInline2(10 + inInt);
+// end simpleInline;
+//
+// function simpleInline2
+//   input Integer inInt2;
+//   output Integer outInt2;
+// algorithm
+//   outInt2 := 3 * inInt2;
+// end simpleInline2;
+//
 // class Inline2
-// Integer x;
-// Integer y;
+//   Integer x;
+//   Integer y;
 // equation
 //   x = 2;
-//   Real(y) = Real(32 + 4 * x) * Real(62 + 4 * x) / 2.0;
+//   /*Real*/(y) = 0.5 * /*Real*/(2 + simpleInline(x)) * /*Real*/(simpleInline(8 + x));
 // end Inline2;
 // endResult

@@ -27,7 +27,6 @@ equation
   annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end FunctionBreak;
 
-
 // Result:
 // function f
 //   input Real y;

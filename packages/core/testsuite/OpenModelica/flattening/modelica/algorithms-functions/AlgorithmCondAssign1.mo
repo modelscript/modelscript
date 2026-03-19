@@ -1,4 +1,4 @@
-// name:     AlgorithmCondAssign
+// name:     AlgorithmCondAssign1
 // keywords: for statement, if statement
 // status:   correct
 //
@@ -20,7 +20,6 @@ algorithm
   end if;
   annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end CondAssign;
-
 
 // Result:
 // class CondAssign

@@ -1047,6 +1047,7 @@ export abstract class ModelicaClassSpecifierSyntaxNode
 
 export interface IModelicaLongClassSpecifierSyntaxNode extends IModelicaClassSpecifierSyntaxNode {
   classModification: IModelicaClassModificationSyntaxNode | null;
+  elementAnnotationClauses: IModelicaAnnotationClauseSyntaxNode[];
   endIdentifier: IModelicaIdentifierSyntaxNode | null;
   extends: boolean;
   externalFunctionClause: IModelicaExternalFunctionClauseSyntaxNode | null;
@@ -1058,6 +1059,7 @@ export class ModelicaLongClassSpecifierSyntaxNode
   implements IModelicaLongClassSpecifierSyntaxNode
 {
   classModification: ModelicaClassModificationSyntaxNode | null;
+  elementAnnotationClauses: ModelicaAnnotationClauseSyntaxNode[];
   endIdentifier: ModelicaIdentifierSyntaxNode | null;
   extends: boolean;
   externalFunctionClause: ModelicaExternalFunctionClauseSyntaxNode | null;
@@ -1090,6 +1092,38 @@ export class ModelicaLongClassSpecifierSyntaxNode
       concreteSyntaxNode?.childForFieldName("endIdentifier"),
       abstractSyntaxNode?.endIdentifier,
     );
+
+    // Collect ElementAnnotation nodes from sections and treat them as class annotations.
+    // Each annotation preserves its original source range for in-place editing.
+    this.elementAnnotationClauses = [];
+    if (concreteSyntaxNode) {
+      for (const sectionNode of concreteSyntaxNode.childrenForFieldName("section")) {
+        for (const elementNode of sectionNode.childrenForFieldName("element")) {
+          if (elementNode.type === "ElementAnnotation") {
+            const annotationNode = elementNode.namedChildren.find((c) => c.type === "AnnotationClause");
+            if (annotationNode) {
+              const clause = ModelicaAnnotationClauseSyntaxNode.new(this, annotationNode);
+              if (clause) this.elementAnnotationClauses.push(clause);
+            }
+          }
+        }
+      }
+    } else if (abstractSyntaxNode?.elementAnnotationClauses) {
+      for (const abs of abstractSyntaxNode.elementAnnotationClauses) {
+        const clause = ModelicaAnnotationClauseSyntaxNode.new(this, undefined, abs);
+        if (clause) this.elementAnnotationClauses.push(clause);
+      }
+    }
+  }
+
+  /**
+   * Returns all annotation clauses (element-level + class-level) in source order.
+   * Each annotation preserves its original source range for in-place editing.
+   */
+  get allAnnotationClauses(): ModelicaAnnotationClauseSyntaxNode[] {
+    const result = [...this.elementAnnotationClauses];
+    if (this.annotationClause) result.push(this.annotationClause);
+    return result;
   }
 
   override accept<R, A>(visitor: IModelicaSyntaxVisitor<R, A>, argument?: A): R {
@@ -2758,6 +2792,7 @@ export class ModelicaShortClassDefinitionSyntaxNode
 }
 
 export interface IModelicaEquationSectionSyntaxNode extends IModelicaSyntaxNode {
+  annotationClause: IModelicaAnnotationClauseSyntaxNode | null;
   equations: IModelicaEquationSyntaxNode[];
   initial: boolean;
 }
@@ -2766,6 +2801,7 @@ export class ModelicaEquationSectionSyntaxNode
   extends ModelicaSyntaxNode
   implements IModelicaEquationSectionSyntaxNode
 {
+  annotationClause: ModelicaAnnotationClauseSyntaxNode | null;
   equations: ModelicaEquationSyntaxNode[];
   initial: boolean;
 
@@ -2780,6 +2816,11 @@ export class ModelicaEquationSectionSyntaxNode
       this,
       concreteSyntaxNode?.childrenForFieldName("equation"),
       abstractSyntaxNode?.equations,
+    );
+    this.annotationClause = ModelicaAnnotationClauseSyntaxNode.new(
+      this,
+      concreteSyntaxNode?.childForFieldName("annotationClause"),
+      abstractSyntaxNode?.annotationClause,
     );
   }
 
@@ -2802,6 +2843,7 @@ export class ModelicaEquationSectionSyntaxNode
 }
 
 export interface IModelicaAlgorithmSectionSyntaxNode extends IModelicaSyntaxNode {
+  annotationClause: IModelicaAnnotationClauseSyntaxNode | null;
   initial: boolean;
   statements: IModelicaStatementSyntaxNode[];
 }
@@ -2810,6 +2852,7 @@ export class ModelicaAlgorithmSectionSyntaxNode
   extends ModelicaSyntaxNode
   implements IModelicaAlgorithmSectionSyntaxNode
 {
+  annotationClause: ModelicaAnnotationClauseSyntaxNode | null;
   initial: boolean;
   statements: ModelicaStatementSyntaxNode[];
 
@@ -2824,6 +2867,11 @@ export class ModelicaAlgorithmSectionSyntaxNode
       this,
       concreteSyntaxNode?.childrenForFieldName("statement"),
       abstractSyntaxNode?.statements,
+    );
+    this.annotationClause = ModelicaAnnotationClauseSyntaxNode.new(
+      this,
+      concreteSyntaxNode?.childForFieldName("annotationClause"),
+      abstractSyntaxNode?.annotationClause,
     );
   }
 

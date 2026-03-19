@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { StringWriter } from "../../util/io.js";
 import type { Range, Tree } from "../../util/tree-sitter.js";
 import { Scope } from "../scope.js";
 import { ModelicaArray } from "./dae.js";
@@ -23,12 +24,14 @@ import {
   type IModelicaModelVisitor,
 } from "./model.js";
 import {
+  ModelicaAlgorithmSectionSyntaxNode,
   ModelicaArrayConstructorSyntaxNode,
   ModelicaBinaryExpressionSyntaxNode,
   ModelicaBooleanLiteralSyntaxNode,
   ModelicaClassKind,
   ModelicaClassModificationSyntaxNode,
   ModelicaClassOrInheritanceModificationSyntaxNode,
+  ModelicaComplexAssignmentStatementSyntaxNode,
   ModelicaComponentReferencePartSyntaxNode,
   ModelicaComponentReferenceSyntaxNode,
   ModelicaCompoundImportClauseSyntaxNode,
@@ -43,21 +46,25 @@ import {
   ModelicaForStatementSyntaxNode,
   ModelicaFunctionCallSyntaxNode,
   ModelicaIfEquationSyntaxNode,
+  ModelicaIfStatementSyntaxNode,
   ModelicaInheritanceModificationSyntaxNode,
   ModelicaModificationExpressionSyntaxNode,
   ModelicaModificationSyntaxNode,
+  ModelicaOutputExpressionListSyntaxNode,
   ModelicaProcedureCallStatementSyntaxNode,
   ModelicaSimpleAssignmentStatementSyntaxNode,
   ModelicaSimpleEquationSyntaxNode,
   ModelicaSimpleImportClauseSyntaxNode,
   ModelicaStringLiteralSyntaxNode,
   ModelicaSyntaxNode,
+  ModelicaSyntaxPrinter,
   ModelicaSyntaxVisitor,
   ModelicaUnaryExpressionSyntaxNode,
   ModelicaUnqualifiedImportClauseSyntaxNode,
   ModelicaUnsignedIntegerLiteralSyntaxNode,
   ModelicaUnsignedRealLiteralSyntaxNode,
   ModelicaVariability,
+  ModelicaWhenStatementSyntaxNode,
   type IModelicaSyntaxVisitor,
   type ModelicaClassDefinitionSyntaxNode,
   type ModelicaComponentClauseSyntaxNode,
@@ -293,6 +300,11 @@ export class ModelicaSyntaxLinter extends ModelicaSyntaxVisitor<void, string | n
   constructor(diagnosticsCallback: DiagnosticsCallback) {
     super();
     this.#diagnosticsCallback = diagnosticsCallback;
+  }
+
+  visitOutputExpressionList(node: ModelicaOutputExpressionListSyntaxNode, resource: string | null | undefined): void {
+    ModelicaLinter.applyRules("visitOutputExpressionList", node, this.#diagnosticsCallback, resource);
+    super.visitOutputExpressionList(node, resource);
   }
 
   visitBinaryExpression(node: ModelicaBinaryExpressionSyntaxNode, resource: string | null | undefined): void {
@@ -953,7 +965,8 @@ ModelicaLinter.register(ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH, {
         const expr = modification.expression;
         if (
           expr instanceof ModelicaArray &&
-          !(expr.flatShape.includes(0) && expr.flatShape.some((d: number) => d > 0)) &&
+          !expr.flatShape.includes(0) &&
+          !shape.includes(0) &&
           !expr.assignable(shape)
         ) {
           diagnosticsCallback(
@@ -967,7 +980,8 @@ ModelicaLinter.register(ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH, {
           const argExpr = modArg.expression;
           if (
             argExpr instanceof ModelicaArray &&
-            !(argExpr.flatShape.includes(0) && argExpr.flatShape.some((d: number) => d > 0)) &&
+            !argExpr.flatShape.includes(0) &&
+            !shape.includes(0) &&
             !argExpr.assignable(shape)
           ) {
             diagnosticsCallback(
@@ -1503,6 +1517,43 @@ ModelicaLinter.register(ModelicaErrorCode.CONSTRAINEDBY_TYPE_MISMATCH, {
   },
 });
 
+/**
+ * Build an OpenModelica-style function type signature string.
+ * E.g.: `.M.wrongType<function>(#Integer i, #Integer i2 := 1) => #NORETCALL#`
+ */
+function formatFuncTypeSignature(cls: ModelicaClassInstance): string {
+  const name = "." + (cls.compositeName ?? cls.name ?? "");
+  const builtinTypes = new Set(["Integer", "Real", "Boolean", "String"]);
+  const params: string[] = [];
+  for (const el of cls.elements) {
+    if (!(el instanceof ModelicaComponentInstance)) continue;
+    if (el.causality !== "input") continue;
+    let typeName = el.classInstance?.name ?? "Unknown";
+    if (builtinTypes.has(typeName)) typeName = `#${typeName}`;
+    let paramStr = `${typeName} ${el.name ?? "?"}`;
+    // Check for default value in the component declaration
+    // Path: ComponentDeclaration -> declaration -> modification -> modificationExpression -> expression
+    const declNode = el.abstractSyntaxNode as unknown as
+      | { declaration?: { modification?: { modificationExpression?: { expression?: { text?: string } } } } }
+      | null
+      | undefined;
+    const modText = declNode?.declaration?.modification?.modificationExpression?.expression?.text;
+    if (modText) {
+      paramStr += ` := ${modText}`;
+    }
+    params.push(paramStr);
+  }
+  // Check for output (return type)
+  let returnType = "#NORETCALL#";
+  for (const el of cls.elements) {
+    if (!(el instanceof ModelicaComponentInstance)) continue;
+    if (el.causality !== "output") continue;
+    returnType = el.classInstance?.name ?? "Unknown";
+    break;
+  }
+  return `${name}<function>(${params.join(", ")}) => ${returnType}`;
+}
+
 // Rule: Function call type checking — argument types and return type must match
 ModelicaLinter.register(
   [ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH, ModelicaErrorCode.FUNCTION_RETURN_TYPE_MISMATCH],
@@ -1553,17 +1604,41 @@ ModelicaLinter.register(
                 }
 
                 if (argType && paramType && !paramType.isTypeCompatibleWith(argType)) {
-                  diagnosticsCallback(
-                    ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH.severity,
-                    ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH.code,
-                    ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH.message(
-                      funcElement.name ?? "",
-                      param.name ?? `arg${i + 1}`,
-                      paramType.name ?? "",
-                      argType.name ?? "",
-                    ),
-                    argExpr,
-                  );
+                  // Auto-vectorization (§12.4.6): array arg with scalar param is valid
+                  // if the array's element type matches the param type
+                  const isVectorizable =
+                    argType instanceof ModelicaArrayClassInstance &&
+                    !(paramType instanceof ModelicaArrayClassInstance) &&
+                    argType.elementClassInstance != null &&
+                    paramType.isTypeCompatibleWith(argType.elementClassInstance);
+                  if (!isVectorizable) {
+                    const isArgFunc =
+                      argType instanceof ModelicaClassInstance &&
+                      (argType.classKind === ModelicaClassKind.FUNCTION || argType.classKind === "operator function");
+                    const isParamFunc =
+                      paramType instanceof ModelicaClassInstance &&
+                      (paramType.classKind === ModelicaClassKind.FUNCTION ||
+                        paramType.classKind === "operator function");
+                    const argDisplayName =
+                      isArgFunc && argType instanceof ModelicaClassInstance
+                        ? (argType.compositeName ?? argType.name ?? "")
+                        : (argComp?.name ?? "");
+                    const callExpr = `${funcElement.compositeName ?? funcElement.name ?? ""}(${param.name ?? ""}=${argDisplayName})`;
+                    const argSig =
+                      isArgFunc && argType instanceof ModelicaClassInstance
+                        ? formatFuncTypeSignature(argType)
+                        : (argType.name ?? "");
+                    const expSig =
+                      isParamFunc && paramType instanceof ModelicaClassInstance
+                        ? formatFuncTypeSignature(paramType)
+                        : (paramType.name ?? "");
+                    diagnosticsCallback(
+                      ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH.severity,
+                      ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH.code,
+                      ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH.message(callExpr, String(i + 1), argSig, expSig),
+                      argExpr,
+                    );
+                  }
                 }
               }
             }
@@ -1588,14 +1663,19 @@ ModelicaLinter.register(
               const paramType = matchedParam.classInstance;
 
               if (argType && paramType && !paramType.isTypeCompatibleWith(argType)) {
+                const argCompName = argType.compositeName ?? argType.name ?? "";
+                const callExpr = `${funcElement.compositeName ?? funcElement.name ?? ""}(${argName}=${argCompName})`;
+                const argSig = formatFuncTypeSignature(argType);
+                const expSig = formatFuncTypeSignature(paramType);
+                const paramIndex = inputParams.findIndex((p) => p.name === argName);
                 diagnosticsCallback(
                   ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH.severity,
                   ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH.code,
                   ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH.message(
-                    funcElement.name ?? "",
-                    argName,
-                    paramType.name ?? "",
-                    argType.name ?? "",
+                    callExpr,
+                    String(paramIndex + 1),
+                    argSig,
+                    expSig,
                   ),
                   argExpr,
                 );
@@ -1623,16 +1703,24 @@ ModelicaLinter.register(
                     ) {
                       // Flexible/unresolved return type — skip check
                     } else if (outputType && !lhsType.isTypeCompatibleWith(outputType)) {
-                      diagnosticsCallback(
-                        ModelicaErrorCode.FUNCTION_RETURN_TYPE_MISMATCH.severity,
-                        ModelicaErrorCode.FUNCTION_RETURN_TYPE_MISMATCH.code,
-                        ModelicaErrorCode.FUNCTION_RETURN_TYPE_MISMATCH.message(
-                          funcElement.name ?? "",
-                          lhsType.name ?? "",
-                          outputType.name ?? "",
-                        ),
-                        expr1,
-                      );
+                      // Auto-vectorization (§12.4.6): scalar return assigned to array LHS is valid
+                      const isVectorizable =
+                        lhsType instanceof ModelicaArrayClassInstance &&
+                        !(outputType instanceof ModelicaArrayClassInstance) &&
+                        lhsType.elementClassInstance != null &&
+                        outputType.isTypeCompatibleWith(lhsType.elementClassInstance);
+                      if (!isVectorizable) {
+                        diagnosticsCallback(
+                          ModelicaErrorCode.FUNCTION_RETURN_TYPE_MISMATCH.severity,
+                          ModelicaErrorCode.FUNCTION_RETURN_TYPE_MISMATCH.code,
+                          ModelicaErrorCode.FUNCTION_RETURN_TYPE_MISMATCH.message(
+                            funcElement.name ?? "",
+                            lhsType.name ?? "",
+                            outputType.name ?? "",
+                          ),
+                          expr1,
+                        );
+                      }
                     }
                   }
                 }
@@ -1706,15 +1794,13 @@ ModelicaLinter.register(
               }
 
               if (mismatch) {
+                const callExpr = `${funcElement.compositeName ?? funcElement.name ?? ""}(${param.name ?? ""}=${fpaFunc.compositeName ?? fpaFunc.name ?? ""})`;
+                const argSig = formatFuncTypeSignature(fpaFunc);
+                const expSig = formatFuncTypeSignature(paramType);
                 diagnosticsCallback(
                   ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH.severity,
                   ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH.code,
-                  ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH.message(
-                    funcElement.name ?? "",
-                    param.name ?? `arg${i + 1}`,
-                    paramType.name ?? "",
-                    fpaFunc.name ?? "",
-                  ),
+                  ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH.message(callExpr, String(i + 1), argSig, expSig),
                   fpa,
                 );
               }
@@ -1920,6 +2006,44 @@ ModelicaLinter.register(ModelicaErrorCode.DIVISION_BY_ZERO, {
 ModelicaLinter.register(ModelicaErrorCode.ASSIGNMENT_TYPE_MISMATCH, {
   visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
     for (const statement of node.algorithms) {
+      if (statement instanceof ModelicaComplexAssignmentStatementSyntaxNode) {
+        const functionRef = statement.functionReference;
+        if (!functionRef) continue;
+
+        const funcElement = node.resolveName(functionRef.parts.map((p) => p.identifier?.text ?? ""));
+        if (!(funcElement instanceof ModelicaClassInstance)) continue;
+
+        const outputParams = [...funcElement.outputParameters];
+        const actualOutputs = statement.outputExpressionList?.outputs ?? [];
+
+        if (actualOutputs.length !== outputParams.length) {
+          const lhsText = `(${actualOutputs
+            .map((o) => (o instanceof ModelicaComponentReferenceSyntaxNode ? componentRefText(o) : "_"))
+            .join(", ")})`;
+          const rhsText = `${componentRefText(functionRef)}()`;
+
+          const lhsTypes = actualOutputs
+            .map((o) => {
+              if (o instanceof ModelicaComponentReferenceSyntaxNode) {
+                const oc = resolveToComponent(node, o);
+                return oc?.classInstance?.name ?? "Real";
+              }
+              return "Real";
+            })
+            .join(", ");
+
+          const rhsTypes = outputParams.map((c) => c.classInstance?.name ?? "Real").join(", ");
+
+          diagnosticsCallback(
+            ModelicaErrorCode.ASSIGNMENT_TYPE_MISMATCH.severity,
+            ModelicaErrorCode.ASSIGNMENT_TYPE_MISMATCH.code,
+            ModelicaErrorCode.ASSIGNMENT_TYPE_MISMATCH.message(lhsText, `(${lhsTypes})`, rhsText, `(${rhsTypes})`),
+            statement,
+          );
+        }
+        continue;
+      }
+
       if (!(statement instanceof ModelicaSimpleAssignmentStatementSyntaxNode)) continue;
 
       const targetRef = statement.target;
@@ -2012,7 +2136,7 @@ ModelicaLinter.register(ModelicaErrorCode.FOR_ITERATOR_NOT_1D, {
               | ModelicaArrayConstructorSyntaxNode
               | undefined
           )?.expressionList?.expressions?.length ?? 0;
-        const shape = `${outerLen}, ${innerLen}`;
+        const shape = `Integer[${outerLen}, ${innerLen}]`;
         const iteratorName = forIndex.identifier?.text ?? "?";
         diagnosticsCallback(
           ModelicaErrorCode.FOR_ITERATOR_NOT_1D.severity,
@@ -2040,6 +2164,33 @@ ModelicaLinter.register(ModelicaErrorCode.EXTERNAL_WITH_ALGORITHM, {
         ModelicaErrorCode.EXTERNAL_WITH_ALGORITHM.message(),
         node.abstractSyntaxNode?.identifier,
       );
+
+      // Also emit CLASS_NOT_FOUND for call sites in the parent model that reference
+      // this broken function (matching OMC behavior)
+      const funcName = node.name;
+      const parentClass = node.parent instanceof ModelicaClassInstance ? node.parent : null;
+      if (funcName && parentClass?.abstractSyntaxNode) {
+        const parentSpecifier = parentClass.abstractSyntaxNode.classSpecifier;
+        if (parentSpecifier && "sections" in parentSpecifier) {
+          for (const section of parentSpecifier.sections ?? []) {
+            if (!("statements" in section)) continue;
+            const algSection = section as ModelicaAlgorithmSectionSyntaxNode;
+            for (const stmt of algSection.statements ?? []) {
+              if (stmt instanceof ModelicaProcedureCallStatementSyntaxNode) {
+                const refName = stmt.functionReference?.parts?.[0]?.identifier?.text;
+                if (refName === funcName) {
+                  diagnosticsCallback(
+                    ModelicaErrorCode.CLASS_NOT_FOUND.severity,
+                    ModelicaErrorCode.CLASS_NOT_FOUND.code,
+                    `Class ${funcName} not found in scope ${parentClass.name ?? ""} (looking for a function or record).`,
+                    stmt,
+                  );
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
 });
@@ -2271,6 +2422,170 @@ ModelicaLinter.register(ModelicaErrorCode.FUNCTION_ARG_VARIABILITY, {
         const bindingExpr = element.abstractSyntaxNode?.declaration?.modification?.modificationExpression?.expression;
         if (bindingExpr) scanForCalls(bindingExpr);
       }
+    }
+  },
+});
+
+// Rule: Nested when-statements are not allowed in Modelica
+ModelicaLinter.register(ModelicaErrorCode.NESTED_WHEN, {
+  visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+    // Walk algorithm sections looking for nested when statements
+    for (const section of node.algorithmSections) {
+      for (const stmt of section.statements) {
+        if (stmt instanceof ModelicaWhenStatementSyntaxNode) {
+          // Check all statements inside this when (and elsewhen) for nested when
+          const checkForNestedWhen = (stmts: readonly ModelicaSyntaxNode[]): void => {
+            for (const s of stmts) {
+              if (s instanceof ModelicaWhenStatementSyntaxNode) {
+                diagnosticsCallback(
+                  ModelicaErrorCode.NESTED_WHEN.severity,
+                  ModelicaErrorCode.NESTED_WHEN.code,
+                  ModelicaErrorCode.NESTED_WHEN.message(),
+                  stmt, // report on the outer when
+                );
+                return;
+              }
+              // Walk into if-else branches
+              if (s instanceof ModelicaIfStatementSyntaxNode) {
+                checkForNestedWhen(s.statements);
+                for (const clause of s.elseIfStatementClauses) checkForNestedWhen(clause.statements);
+                checkForNestedWhen(s.elseStatements);
+              }
+            }
+          };
+          checkForNestedWhen(stmt.statements);
+          for (const clause of stmt.elseWhenStatementClauses) checkForNestedWhen(clause.statements);
+        }
+      }
+    }
+  },
+});
+
+// Rule: Tuple expressions validation
+const tupleDiagReportedParents = new WeakSet<ModelicaSyntaxNode>();
+ModelicaLinter.register(ModelicaErrorCode.TUPLE_EXPRESSION_CONTEXT, {
+  visitOutputExpressionList(
+    node: ModelicaOutputExpressionListSyntaxNode,
+    diagnosticsCallback: DiagnosticsCallbackWithoutResource,
+  ): void {
+    // Only flag actual tuples (multiple elements) - single element output lists are just parenthesized expressions
+    if (node.outputs.length <= 1) return;
+
+    let isValid = false;
+    let current: ModelicaSyntaxNode | null = node.parent;
+    let enclosingStatement: ModelicaSyntaxNode | null = null;
+
+    while (current) {
+      if (current instanceof ModelicaComplexAssignmentStatementSyntaxNode) {
+        if (current.outputExpressionList === node) {
+          isValid = true;
+          break;
+        }
+        if (!enclosingStatement) enclosingStatement = current;
+      } else if (current instanceof ModelicaSimpleEquationSyntaxNode) {
+        if (current.expression1 === node) {
+          if (current.expression2 instanceof ModelicaFunctionCallSyntaxNode) {
+            isValid = true;
+            break;
+          }
+        }
+        if (!enclosingStatement) enclosingStatement = current;
+      } else if (!enclosingStatement) {
+        enclosingStatement = current;
+      }
+      current = current.parent;
+    }
+
+    if (!isValid) {
+      // Deduplicate: only report once per enclosing statement/equation
+      if (enclosingStatement && tupleDiagReportedParents.has(enclosingStatement)) return;
+      if (enclosingStatement) tupleDiagReportedParents.add(enclosingStatement);
+
+      // Reconstruct expression text via the printer visitor
+      const writer = new StringWriter();
+      const printer = new ModelicaSyntaxPrinter(writer);
+      node.accept(printer, 0);
+      const exprText = writer.toString();
+
+      diagnosticsCallback(
+        ModelicaErrorCode.TUPLE_EXPRESSION_CONTEXT.severity,
+        ModelicaErrorCode.TUPLE_EXPRESSION_CONTEXT.code,
+        ModelicaErrorCode.TUPLE_EXPRESSION_CONTEXT.message(exprText),
+        node,
+      );
+    }
+  },
+});
+
+// Rule: Unused input variables in external functions
+ModelicaLinter.register(ModelicaErrorCode.UNUSED_INPUT_VARIABLE, {
+  visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+    if (node.classKind !== ModelicaClassKind.FUNCTION) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const specifier = node.abstractSyntaxNode?.classSpecifier as any;
+    if (!specifier || !("externalFunctionClause" in specifier) || !specifier.externalFunctionClause) return;
+
+    const ext = specifier.externalFunctionClause;
+    const call = ext.externalFunctionCall;
+    if (call) {
+      const usedArgs: string[] = [];
+      const printer = new ModelicaSyntaxPrinter(new StringWriter());
+      for (const expr of call.arguments?.expressions ?? []) {
+        const writer = new StringWriter();
+        printer.out = writer;
+        expr.accept(printer, 0);
+        usedArgs.push(writer.toString());
+      }
+      for (const inputInst of node.declaredElements) {
+        if (inputInst instanceof ModelicaComponentInstance && inputInst.causality === "input") {
+          const name = inputInst.name;
+          if (name && !usedArgs.some((arg) => new RegExp("\\b" + name + "\\b").test(arg))) {
+            const syntaxNode = inputInst.abstractSyntaxNode;
+            diagnosticsCallback(
+              ModelicaErrorCode.UNUSED_INPUT_VARIABLE.severity,
+              ModelicaErrorCode.UNUSED_INPUT_VARIABLE.code,
+              ModelicaErrorCode.UNUSED_INPUT_VARIABLE.message(name, "." + (node.compositeName || "unnamed")),
+              syntaxNode,
+            );
+          }
+        }
+      }
+    }
+  },
+});
+
+ModelicaLinter.register(ModelicaErrorCode.MISSING_INNER, {
+  visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+    for (const element of node.elements) {
+      if (!(element instanceof ModelicaComponentInstance)) continue;
+      if (!element.isOuter || element.isInner) continue;
+
+      // Search ancestor class instances for a matching `inner` component
+      let hasInner = false;
+      let scope: Scope | null = node.parent;
+      while (scope) {
+        if (scope instanceof ModelicaClassInstance) {
+          for (const el of scope.declaredElements) {
+            if (el instanceof ModelicaComponentInstance && el.isInner && el.name === element.name) {
+              hasInner = true;
+              break;
+            }
+          }
+          if (hasInner) break;
+        }
+        scope = scope.parent;
+      }
+      if (hasInner) continue;
+
+      // Get type name for the warning (e.g., "Real")
+      const typeName = element.abstractSyntaxNode?.parent?.typeSpecifier?.text ?? "Unknown";
+
+      diagnosticsCallback(
+        ModelicaErrorCode.MISSING_INNER.severity,
+        ModelicaErrorCode.MISSING_INNER.code,
+        ModelicaErrorCode.MISSING_INNER.message(typeName, element.name ?? "", node.compositeName ?? node.name ?? ""),
+        element.abstractSyntaxNode?.parent ?? element.abstractSyntaxNode,
+      );
     }
   },
 });

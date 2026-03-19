@@ -1,5 +1,5 @@
-// name: AlgorithmElseOpt
-// status: correct
+// name:     AlgorithmElseOpt
+// status:   correct
 
 class AlgorithmElseOpt
   function f

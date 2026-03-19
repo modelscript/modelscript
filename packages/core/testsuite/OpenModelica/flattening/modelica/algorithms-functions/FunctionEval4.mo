@@ -28,6 +28,7 @@ end FunctionEval4;
 //   y := x + 4.0;
 // end f;
 //
+
 // Result:
 // function f
 //   input Real x;

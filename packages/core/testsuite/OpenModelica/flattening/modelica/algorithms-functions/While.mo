@@ -1,6 +1,6 @@
-// name: While
+// name:     While
 // keywords: while
-// status: correct
+// status:   correct
 //
 // Tests a simple while-loop
 //

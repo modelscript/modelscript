@@ -32,7 +32,6 @@ equation
   annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end FunctionBubblesort;
 
-
 // Result:
 // function bubblesort
 //   input Real[:] x;

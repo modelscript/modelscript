@@ -676,6 +676,11 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
           if (componentClause?.redeclare && element.name) {
             redeclaredNames.add(element.name);
           }
+        } else if (element instanceof ModelicaClassInstance) {
+          const astNode = element.abstractSyntaxNode;
+          if (astNode instanceof ModelicaClassDefinitionSyntaxNode && astNode.redeclare && element.name) {
+            redeclaredNames.add(element.name);
+          }
         }
       }
 
@@ -754,7 +759,7 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
             // Filter out elements that have been redeclared in the body
             for (const inheritedElement of baseClass.elements) {
               if (
-                inheritedElement instanceof ModelicaComponentInstance &&
+                inheritedElement instanceof ModelicaNamedElement &&
                 inheritedElement.name &&
                 (redeclaredNames.has(inheritedElement.name) || brokenNames.has(inheritedElement.name))
               ) {
@@ -804,6 +809,52 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
           yield element;
         }
       }
+
+      // For `redeclare function extends <name>`, yield inherited elements from the
+      // base class in the parent's extends chain. This handles implicit inheritance
+      // of parameters like input/output from the original replaceable function.
+      const hasExtends =
+        self.abstractSyntaxNode?.classSpecifier instanceof ModelicaLongClassSpecifierSyntaxNode &&
+        self.abstractSyntaxNode.classSpecifier.extends;
+      if (hasExtends && self.name && self.parent instanceof ModelicaClassInstance) {
+        // Collect names of elements already declared locally
+        const localNames = new Set<string>();
+        for (const element of self.declaredElements) {
+          if (element instanceof ModelicaNamedElement && element.name) {
+            localNames.add(element.name);
+          }
+        }
+        // Find the original base function from the parent's extends chain.
+        // We re-resolve the extends type specifier to get the ORIGINAL (unmodified)
+        // base class, because ext.classInstance is a clone with body-level
+        // redeclare modifications applied (which replace the original function).
+        for (const ext of self.parent.extendsClassInstances) {
+          // Re-resolve to get the unmodified base class
+          const originalBase = self.parent.resolveTypeSpecifier(ext.abstractSyntaxNode?.typeSpecifier);
+          if (!(originalBase instanceof ModelicaClassInstance)) continue;
+          if (!originalBase.instantiated && !originalBase.instantiating) originalBase.instantiate();
+          for (const baseElement of originalBase.declaredElements) {
+            if (
+              baseElement instanceof ModelicaClassInstance &&
+              baseElement.name === self.name &&
+              !visited.has(baseElement)
+            ) {
+              visited.add(baseElement);
+              for (const inheritedElement of baseElement.elements) {
+                if (
+                  inheritedElement instanceof ModelicaNamedElement &&
+                  inheritedElement.name &&
+                  localNames.has(inheritedElement.name)
+                ) {
+                  continue;
+                }
+                yield inheritedElement;
+              }
+              break;
+            }
+          }
+        }
+      }
     })();
   }
 
@@ -826,6 +877,52 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     return (function* () {
       for (const equationSection of equationSections) {
         yield* equationSection.equations;
+      }
+    })();
+  }
+
+  get initialEquationSections(): IterableIterator<ModelicaEquationSectionSyntaxNode> {
+    const extendsClassInstances = this.extendsClassInstances;
+    const abstractSyntaxNode = this.abstractSyntaxNode;
+    return (function* () {
+      for (const extendsClassInstance of extendsClassInstances) {
+        for (const section of extendsClassInstance.classInstance?.abstractSyntaxNode?.sections ?? [])
+          if (section instanceof ModelicaEquationSectionSyntaxNode && section.initial) yield section;
+      }
+      for (const section of abstractSyntaxNode?.sections ?? []) {
+        if (section instanceof ModelicaEquationSectionSyntaxNode && section.initial) yield section;
+      }
+    })();
+  }
+
+  get initialEquations(): IterableIterator<ModelicaEquationSyntaxNode> {
+    const initialEquationSections = this.initialEquationSections;
+    return (function* () {
+      for (const equationSection of initialEquationSections) {
+        yield* equationSection.equations;
+      }
+    })();
+  }
+
+  get initialAlgorithmSections(): IterableIterator<ModelicaAlgorithmSectionSyntaxNode> {
+    const extendsClassInstances = this.extendsClassInstances;
+    const abstractSyntaxNode = this.abstractSyntaxNode;
+    return (function* () {
+      for (const extendsClassInstance of extendsClassInstances) {
+        for (const section of extendsClassInstance.classInstance?.abstractSyntaxNode?.sections ?? [])
+          if (section instanceof ModelicaAlgorithmSectionSyntaxNode && section.initial) yield section;
+      }
+      for (const section of abstractSyntaxNode?.sections ?? []) {
+        if (section instanceof ModelicaAlgorithmSectionSyntaxNode && section.initial) yield section;
+      }
+    })();
+  }
+
+  get initialAlgorithms(): IterableIterator<ModelicaStatementSyntaxNode> {
+    const initialAlgorithmSections = this.initialAlgorithmSections;
+    return (function* () {
+      for (const algorithmSection of initialAlgorithmSections) {
+        yield* algorithmSection.statements;
       }
     })();
   }

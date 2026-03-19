@@ -6,6 +6,7 @@
 
 /// <reference types="tree-sitter-cli/dsl" />
 // @ts-check
+/* global module, grammar, seq, choice, optional, repeat, repeat1, field, prec, token */
 
 const PREC = {
   LOGICAL_OR: 4,
@@ -21,7 +22,15 @@ const PREC = {
 module.exports = grammar({
   name: "modelica",
   extras: ($) => [/\s/, $.BLOCK_COMMENT, $.LINE_COMMENT],
-  conflicts: ($) => [[$.Name], [$.EquationSection], [$.ElseIfEquationClause], [$.ElseWhenEquationClause]],
+  conflicts: ($) => [
+    [$.Name],
+    [$.EquationSection],
+    [$.ElseIfEquationClause],
+    [$.ElseWhenEquationClause],
+    [$.ElementSection],
+    [$.InitialElementSection],
+    [$.AlgorithmSection],
+  ],
   word: ($) => $.IDENT,
   rules: {
     // A.2.1 Stored Definition – Within
@@ -51,7 +60,7 @@ module.exports = grammar({
         ";",
       ),
 
-    ClassPrefixes: ($) =>
+    ClassPrefixes: () =>
       seq(
         optional(field("partial", "partial")),
         choice(
@@ -155,12 +164,15 @@ module.exports = grammar({
         ")",
       ),
 
-    InitialElementSection: ($) => repeat1(field("element", $._Element)),
+    InitialElementSection: ($) => seq(repeat1(field("element", $._Element))),
 
     ElementSection: ($) =>
       seq(field("visibility", choice("protected", "public")), repeat(field("element", $._Element))),
 
-    _Element: ($) => choice($.ClassDefinition, $.ComponentClause, $.ExtendsClause, $._ImportClause),
+    _Element: ($) =>
+      choice($.ClassDefinition, $.ComponentClause, $.ExtendsClause, $._ImportClause, $.ElementAnnotation),
+
+    ElementAnnotation: ($) => prec(-1, seq($.AnnotationClause, ";")),
 
     _ImportClause: ($) => choice($.SimpleImportClause, $.CompoundImportClause, $.UnqualifiedImportClause),
 
@@ -330,10 +342,20 @@ module.exports = grammar({
     // A.2.6 Equations
 
     EquationSection: ($) =>
-      seq(optional(field("initial", "initial")), "equation", repeat(field("equation", $._Equation))),
+      seq(
+        optional(field("initial", "initial")),
+        "equation",
+        repeat(field("equation", $._Equation)),
+        optional(seq(field("annotationClause", $.AnnotationClause), ";")),
+      ),
 
     AlgorithmSection: ($) =>
-      seq(optional(field("initial", "initial")), "algorithm", repeat(field("statement", $._Statement))),
+      seq(
+        optional(field("initial", "initial")),
+        "algorithm",
+        repeat(field("statement", $._Statement)),
+        optional(seq(field("annotationClause", $.AnnotationClause), ";")),
+      ),
 
     _Equation: ($) =>
       choice($.SimpleEquation, $.SpecialEquation, $.IfEquation, $.ForEquation, $.ConnectEquation, $.WhenEquation),
@@ -615,7 +637,7 @@ module.exports = grammar({
         $.EndExpression,
       ),
 
-    EndExpression: ($) => "end",
+    EndExpression: () => "end",
 
     _Literal: ($) => choice($.UNSIGNED_INTEGER, $.UNSIGNED_REAL, $.BOOLEAN, $.STRING),
 
@@ -699,9 +721,10 @@ module.exports = grammar({
 
     // A.1 Lexical conventions
 
-    BOOLEAN: ($) => choice("false", "true"),
+    BOOLEAN: () => choice("false", "true"),
 
-    IDENT: ($) =>
+    /* eslint-disable no-misleading-character-class */
+    IDENT: () =>
       token(
         choice(
           seq(
@@ -755,8 +778,9 @@ module.exports = grammar({
           ),
         ),
       ),
+    /* eslint-enable no-misleading-character-class */
 
-    STRING: ($) =>
+    STRING: () =>
       token(
         seq(
           '"',
@@ -765,9 +789,9 @@ module.exports = grammar({
         ),
       ),
 
-    UNSIGNED_INTEGER: ($) => /[0-9]+/,
+    UNSIGNED_INTEGER: () => /[0-9]+/,
 
-    UNSIGNED_REAL: ($) =>
+    UNSIGNED_REAL: () =>
       token(
         choice(
           seq(/[0-9]+/, ".", optional(/[0-9]+/)),
@@ -777,11 +801,11 @@ module.exports = grammar({
       ),
 
     // https://stackoverflow.com/questions/13014947/regex-to-match-a-c-style-multiline-comment/36328890#36328890
-    BLOCK_COMMENT: ($) => token(seq("/*", /[^*]*\*+([^/*][^*]*\*+)*/, "/")),
+    BLOCK_COMMENT: () => token(seq("/*", /[^*]*\*+([^/*][^*]*\*+)*/, "/")),
 
-    LINE_COMMENT: ($n) => token(seq("//", /[^\r\n]*/)),
+    LINE_COMMENT: () => token(seq("//", /[^\r\n]*/)),
 
-    BOM: ($) => /\u00EF\u00BB\u00BF/,
+    BOM: () => /\u00EF\u00BB\u00BF/,
   },
 });
 

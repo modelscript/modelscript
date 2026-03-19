@@ -1,4 +1,4 @@
-// name:     ElementWiseMultiplication.mo
+// name:     ElementWiseMultiplication
 // keywords: function, array, algorithm
 // status:   correct
 //

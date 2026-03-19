@@ -21,5 +21,7 @@ algorithm
 end FunctionInvalidVar1;
 
 // Result:
-// [flattening/modelica/algorithms-functions/FunctionInvalidVar1.mo:13:11-13:12] Error: [M4010] Invalid type .M for function component m.
+// Error processing file: FunctionInvalidVar1.mo
+// [flattening/modelica/algorithms-functions/FunctionInvalidVar1.mo:13:3-13:12:writable] Error: Invalid type .M for function component m.
+// Error: Error occurred while flattening model FunctionInvalidVar1
 // endResult

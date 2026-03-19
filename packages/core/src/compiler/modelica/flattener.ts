@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { StringWriter } from "../../util/io.js";
+import { Scope } from "../scope.js";
 import { BUILTIN_FUNCTIONS, BUILTIN_VARIABLES } from "./builtins.js";
 import type { ModelicaElseIfClause, ModelicaElseWhenClause } from "./dae.js";
 import {
@@ -14,6 +15,7 @@ import {
   ModelicaComplexAssignmentStatement,
   ModelicaComprehensionExpression,
   ModelicaDAE,
+  ModelicaDAEPrinter,
   ModelicaEnumerationLiteral,
   ModelicaEnumerationVariable,
   ModelicaEquation,
@@ -45,6 +47,7 @@ import {
   ModelicaWhenEquation,
   ModelicaWhenStatement,
   ModelicaWhileStatement,
+  type ModelicaFunctionTypeSignature,
   type ModelicaObject,
 } from "./dae.js";
 import { makeDiagnostic, ModelicaErrorCode } from "./errors.js";
@@ -110,6 +113,9 @@ import {
   ModelicaWhenStatementSyntaxNode,
   ModelicaWhileStatementSyntaxNode,
 } from "./syntax.js";
+
+/** Module-level counter for generating unique temp variable names in comprehensions. */
+let tmpVarCounter = 1;
 
 interface FlattenerContext {
   prefix: string;
@@ -556,7 +562,27 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
   visitComponentInstance(node: ModelicaComponentInstance, args: [string, ModelicaDAE]): void {
     // Skip pure `outer` components — they reference an `inner` declaration higher up
     // and should not generate their own variables. `inner outer` still generates a variable.
-    if (node.isOuter && !node.isInner) return;
+    // Exception: when there is no corresponding `inner` in any enclosing scope, keep the
+    // `outer` declaration as-is (OpenModelica behavior) so the variable is still emitted.
+    if (node.isOuter && !node.isInner) {
+      // Search ancestor class instances for a matching `inner` component
+      let hasInner = false;
+      let scope: Scope | null = node.parent?.parent ?? null;
+      while (scope) {
+        if (scope instanceof ModelicaClassInstance) {
+          for (const el of scope.declaredElements) {
+            if (el instanceof ModelicaComponentInstance && el.isInner && el.name === node.name) {
+              hasInner = true;
+              break;
+            }
+          }
+          if (hasInner) break;
+        }
+        scope = scope.parent;
+      }
+      if (hasInner) return;
+      // No matching `inner` found — keep the outer declaration (will emit warning via linter)
+    }
 
     // Evaluate conditional components (e.g., `Real x if false;`)
     const conditionExpr = (
@@ -1601,7 +1627,9 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       const body = comp.expression;
       if (!body) return null;
 
+      // First, try to evaluate the range. If it can be resolved, expand the comprehension.
       const results: ModelicaExpression[] = [];
+      let rangeResolvable = true;
 
       const iterate = (depth: number, innerCtx: FlattenerContext): void => {
         if (depth >= comp.forIndexes.length) {
@@ -1617,7 +1645,10 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         // Evaluate the range expression
         const rangeExpr = forIndex.expression.accept(this, innerCtx);
         const values = this.#evaluateRange(rangeExpr);
-        if (!values) return;
+        if (!values) {
+          rangeResolvable = false;
+          return;
+        }
 
         for (const value of values) {
           const loopVars = new Map(innerCtx.loopVariables ?? []);
@@ -1627,14 +1658,55 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       };
 
       iterate(0, ctx);
-      if (results.length === 0) return new ModelicaArray([0], []);
-      return new ModelicaArray([results.length], results);
+
+      if (rangeResolvable) {
+        if (results.length === 0) return new ModelicaArray([0], []);
+        return new ModelicaArray([results.length], results);
+      }
+
+      // Range couldn't be evaluated — preserve as symbolic comprehension: array(expr for i in range)
+      const iterators: { name: string; range: ModelicaExpression }[] = [];
+      const loopVars = new Map(ctx.loopVariables);
+      for (const forIndex of comp.forIndexes) {
+        const iterName = forIndex.identifier?.text ?? "";
+        const range = forIndex.expression?.accept(this, ctx);
+        if (iterName && range) {
+          iterators.push({ name: iterName, range });
+          loopVars.set(iterName, new ModelicaNameExpression(iterName));
+        }
+      }
+      const bodyCtx: FlattenerContext = { ...ctx, loopVariables: loopVars };
+      const bodyExpr = body.accept(this, bodyCtx);
+      if (bodyExpr) {
+        return new ModelicaComprehensionExpression("array", bodyExpr, iterators);
+      }
+      return new ModelicaArray([0], []);
     }
 
     const elements: ModelicaExpression[] = [];
     for (const expression of node.expressionList?.expressions ?? []) {
       const element = expression.accept(this, ctx);
       if (element != null) elements.push(element);
+    }
+    // If all elements are ModelicaArray with the same shape, flatten into a single
+    // multi-dimensional array. e.g., {{{1,2},{3,4},{5,6}}} where each element is
+    // a [3,2] array → flatten to shape [1,3,2] with 6 flat scalar elements.
+    if (elements.length > 0 && elements.every((e) => e instanceof ModelicaArray)) {
+      const firstArr = elements[0] as ModelicaArray;
+      const innerShape = firstArr.shape;
+      const allSameShape = elements.every(
+        (e) =>
+          e instanceof ModelicaArray &&
+          e.shape.length === innerShape.length &&
+          e.shape.every((d, idx) => d === innerShape[idx]),
+      );
+      if (allSameShape) {
+        const flatElements: ModelicaExpression[] = [];
+        for (const e of elements) {
+          flatElements.push(...(e as ModelicaArray).elements);
+        }
+        return new ModelicaArray([elements.length, ...innerShape], flatElements);
+      }
     }
     return new ModelicaArray([elements.length], elements);
   }
@@ -1879,6 +1951,88 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     // Evaluate built-in math/arithmetic functions at flatten time when all args are literals
     const foldedResult = tryFoldBuiltinFunction(functionName, flatArgs);
     if (foldedResult) return foldedResult;
+
+    // Symbolic linspace expansion: linspace(x1, x2, n) → array(/*Real*/(-1+i) / /*Real*/(-1+n) for i in 1:n)
+    // when n is not a literal (e.g., a parameter like m)
+    if (functionName === "linspace" && flatArgs.length >= 3) {
+      const x1 = flatArgs[0];
+      const x2 = flatArgs[1];
+      const n = flatArgs[2];
+      // Expand only when n is symbolic (not an integer literal — if it were, tryFoldBuiltinFunction would have handled it)
+      if (n && !(n instanceof ModelicaIntegerLiteral)) {
+        // linspace(x1, x2, n) = x1 + (x2-x1)*(i-1)/(n-1) for i in 1:n
+        // With x1=0, x2=1: (i-1)/(n-1) = (-1+i)/(-1+n)
+        const iMinus1 = new ModelicaBinaryExpression(
+          ModelicaBinaryOperator.ADDITION,
+          new ModelicaIntegerLiteral(-1),
+          new ModelicaNameExpression("i"),
+        );
+        const nMinus1 = new ModelicaBinaryExpression(
+          ModelicaBinaryOperator.ADDITION,
+          new ModelicaIntegerLiteral(-1),
+          n,
+        );
+        const x1Val =
+          x1 instanceof ModelicaIntegerLiteral ? x1.value : x1 instanceof ModelicaRealLiteral ? x1.value : null;
+        const x2Val =
+          x2 instanceof ModelicaIntegerLiteral ? x2.value : x2 instanceof ModelicaRealLiteral ? x2.value : null;
+        let body: ModelicaExpression;
+        if (x1Val === 0 && x2Val === 1) {
+          // Simple case: array(/*Real*/(-1+i) / /*Real*/(-1+n) for i in 1:n)
+          body = new ModelicaBinaryExpression(
+            ModelicaBinaryOperator.DIVISION,
+            new ModelicaFunctionCallExpression("/*Real*/", [iMinus1]),
+            new ModelicaFunctionCallExpression("/*Real*/", [nMinus1]),
+          );
+        } else {
+          // General case: x1 + (x2-x1) * /*Real*/(-1+i) / /*Real*/(-1+n)
+          const range =
+            x2Val != null && x1Val != null
+              ? new ModelicaRealLiteral(x2Val - x1Val)
+              : new ModelicaBinaryExpression(
+                  ModelicaBinaryOperator.SUBTRACTION,
+                  x2 ?? new ModelicaRealLiteral(0),
+                  x1 ?? new ModelicaRealLiteral(0),
+                );
+          const ratio = new ModelicaBinaryExpression(
+            ModelicaBinaryOperator.DIVISION,
+            new ModelicaFunctionCallExpression("/*Real*/", [iMinus1]),
+            new ModelicaFunctionCallExpression("/*Real*/", [nMinus1]),
+          );
+          const scaled = new ModelicaBinaryExpression(ModelicaBinaryOperator.MULTIPLICATION, range, ratio);
+          body =
+            x1Val === 0
+              ? scaled
+              : new ModelicaBinaryExpression(ModelicaBinaryOperator.ADDITION, x1 ?? new ModelicaRealLiteral(0), scaled);
+        }
+        return new ModelicaComprehensionExpression("array", body, [
+          { name: "i", range: new ModelicaRangeExpression(new ModelicaIntegerLiteral(1), n, null) },
+        ]);
+      }
+    }
+
+    // Builtin vectorization: scalar builtins (cos, sin, etc.) applied to array variables
+    // cos(phi) → array(cos($tmpVarN) for $tmpVarN in phi) when phi is an array name expression
+    if (builtinDef && builtinDef.inputs.length === 1 && builtinDef.fold1 && flatArgs.length === 1) {
+      const arg = flatArgs[0];
+      if (arg instanceof ModelicaNameExpression) {
+        // Check if this argument refers to an array variable in the DAE
+        const isArrayVar =
+          ctx.dae.variables.some((v) => v.name === arg.name && v.name.includes("[")) ||
+          ctx.dae.variables.some((v) => v.name.startsWith("\0") && v.name.endsWith("\0" + arg.name));
+        // For function body context: check if the arg is a known array-typed param
+        const funcDef = ctx.dae.functions.find((f) =>
+          f.variables.some(
+            (v) => v.name.includes("\0" + arg.name) || (v.name.includes("[") && v.name.startsWith(arg.name)),
+          ),
+        );
+        if (isArrayVar || funcDef) {
+          const tmpVarName = `$tmpVar${tmpVarCounter++}`;
+          const bodyExpr = new ModelicaFunctionCallExpression(functionName, [new ModelicaNameExpression(tmpVarName)]);
+          return new ModelicaComprehensionExpression("array", bodyExpr, [{ name: tmpVarName, range: arg }]);
+        }
+      }
+    }
     // Per-parameter type coercion: coerce integer args to Real only where the
     // built-in function signature expects a Real parameter.
     // For polymorphic builtins (with overloads), pick the best matching signature
@@ -1947,10 +2101,12 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       functionName = this.#resolveFullyQualifiedName(functionName, ctx);
     }
 
+    const originalName = functionName;
+    let isExternalBuiltinAlias = false;
+
     // Check if the function resolves to an external clause mapping to a builtin
     // (e.g. `function f = Modelica.Math.atan2` where atan2 has `external "C" y=atan2(u1,u2)`)
     if (!builtinDef) {
-      const originalName = functionName;
       const externalBuiltin = this.#resolveExternalBuiltin(functionName, ctx);
       if (externalBuiltin) {
         // Before switching to the builtin name, collect the function definition for
@@ -1961,7 +2117,17 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         if (resolved instanceof ModelicaClassInstance) {
           const specifier = resolved.abstractSyntaxNode?.classSpecifier;
           if (specifier instanceof ModelicaLongClassSpecifierSyntaxNode && specifier.externalFunctionClause) {
-            this.#collectFunctionDefinition(originalName, ctx, resolvedOverride, componentPrefix);
+            const lang = specifier.externalFunctionClause.languageSpecification?.language?.text ?? "";
+            if (lang === "builtin") {
+              // Platform builtin — use unqualified name, don't collect
+              isExternalBuiltinAlias = true;
+            } else {
+              // User-defined wrapper with external "C"/"FORTRAN" — collect the function definition
+              this.#collectFunctionDefinition(originalName, ctx, resolvedOverride, componentPrefix);
+            }
+          } else {
+            // Short class alias — don't collect the alias as a function definition
+            isExternalBuiltinAlias = true;
           }
         }
         functionName = externalBuiltin;
@@ -1969,10 +2135,18 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       }
     }
 
-    // Collect function definition (skips builtins automatically)
-    this.#collectFunctionDefinition(functionName, ctx, resolvedOverride, componentPrefix);
+    // Collect function definition (skips builtins automatically; also skip short class aliases to builtins)
+    if (!isExternalBuiltinAlias) {
+      this.#collectFunctionDefinition(originalName, ctx, resolvedOverride, componentPrefix);
+    }
 
-    // Expand default arguments for user-defined functions.
+    // Re-attempt constant folding after external builtin resolution
+    // (e.g., mylog(100) → log(100) → 4.605...)
+    if (builtinDef) {
+      const foldedResult = tryFoldBuiltinFunction(functionName, flatArgs);
+      if (foldedResult) return foldedResult;
+    }
+
     // Literal defaults (e.g. eps=1e-6) are always expanded.
     // Non-literal defaults are expanded only if they reference names external to the
     // function (e.g. r=p where p is from the enclosing model). Defaults that only
@@ -2024,6 +2198,325 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
 
       if (funcDef) {
         const inputVars = funcDef.variables.filter((v) => v.causality === "input");
+
+        // Auto-vectorization scalarization (§12.4.6):
+        // When a function takes scalar inputs but receives array arguments,
+        // scalarize the call into individual scalar calls wrapped in a ModelicaArray.
+        // e.g., foo({a,b,c}) where foo(Real x) → {foo(a), foo(b), foo(c)}
+        // Only scalarize when ALL scalar parameters receive ModelicaArray arguments.
+        let vectorizationSize = -1;
+        let vectorizationShape: number[] = [];
+        const isScalarParam: boolean[] = [];
+        let allScalarParamsHaveArrayArgs = true;
+        for (let i = 0; i < flatArgs.length && i < inputVars.length; i++) {
+          // A scalar parameter has no encoded array prefix (\0[dims]\0name)
+          const paramIsScalar = !inputVars[i]?.name?.startsWith("\0");
+          isScalarParam.push(paramIsScalar);
+          if (paramIsScalar && flatArgs[i] instanceof ModelicaArray) {
+            const arr = flatArgs[i] as ModelicaArray;
+            if (vectorizationSize < 0) {
+              vectorizationSize = arr.elements.length;
+              vectorizationShape = [...arr.shape];
+            }
+          } else if (paramIsScalar && vectorizationSize >= 0 && !(flatArgs[i] instanceof ModelicaArray)) {
+            // A scalar param without array arg — can't vectorize cleanly
+            allScalarParamsHaveArrayArgs = false;
+          }
+        }
+        if (vectorizationSize > 0 && allScalarParamsHaveArrayArgs) {
+          // Reject vectorization if any array param also receives a higher-dimensional
+          // array needing slicing (§12.4.6 only covers scalar params). OMC rejects this.
+          let rejectedVectorization = false;
+          for (let i = 0; i < flatArgs.length && i < inputVars.length; i++) {
+            if (!isScalarParam[i] && flatArgs[i] instanceof ModelicaArray) {
+              const arr = flatArgs[i] as ModelicaArray;
+              if (arr.shape[0] === vectorizationSize) {
+                allScalarParamsHaveArrayArgs = false;
+                rejectedVectorization = true;
+                break;
+              }
+            }
+          }
+          if (rejectedVectorization) {
+            // Build the "No matching function found" diagnostic
+            // 1. Render args as text for callExpr
+            const argTexts: string[] = [];
+            for (const arg of flatArgs) {
+              const out = new StringWriter();
+              const printer = new ModelicaDAEPrinter(out);
+              arg?.accept(printer);
+              argTexts.push(out.toString());
+            }
+            const callExpr = `${originalName}(${argTexts.join(", ")})`;
+
+            // 2. Infer arg types for the call signature
+            const inferArgType = (arg: ModelicaExpression | null | undefined): string => {
+              if (!arg) return "?";
+              if (arg instanceof ModelicaIntegerLiteral) return "Integer";
+              if (arg instanceof ModelicaRealLiteral) return "Real";
+              if (arg instanceof ModelicaBooleanLiteral) return "Boolean";
+              if (arg instanceof ModelicaStringLiteral) return "String";
+              if (arg instanceof ModelicaArray) {
+                // Get shape and element type
+                const shape = arg.shape;
+                const flatEl = [...arg.flatElements];
+                const elemType = flatEl.length > 0 ? inferArgType(flatEl[0]) : "?";
+                return `${elemType}[${shape.join(", ")}]`;
+              }
+              return "Real"; // fallback
+            };
+
+            // Helper to get type name from variable class
+            const varTypeName = (v: ModelicaVariable | undefined): string => {
+              if (!v) return "Real";
+              if (v instanceof ModelicaIntegerVariable) return "Integer";
+              if (v instanceof ModelicaBooleanVariable) return "Boolean";
+              if (v instanceof ModelicaStringVariable) return "String";
+              return "Real";
+            };
+
+            // 3. Build call type signature: .foo<function>(Integer[3] x, Integer[3, 2] x2) => Real
+            const callParamSigs: string[] = [];
+            for (let i = 0; i < Math.min(flatArgs.length, inputVars.length); i++) {
+              const paramName = inputVars[i]?.name?.replace(/\0.*\0/, "") ?? `arg${i}`;
+              const argTypeName = inferArgType(flatArgs[i]);
+              callParamSigs.push(`${argTypeName} ${paramName}`);
+            }
+            const outputVars = funcDef.variables.filter((v) => v.causality === "output");
+            const retTypeName = outputVars.length > 0 ? varTypeName(outputVars[0]) : "()";
+            const callSig = `.${functionName}<function>(${callParamSigs.join(", ")}) => ${retTypeName} in component <NO COMPONENT>`;
+
+            // 4. Build candidate signature: .foo<function>(Real x, Real[2] x2) => Real
+            const candParamSigs: string[] = [];
+            for (const iv of inputVars) {
+              const rawName = iv.name ?? "";
+              const isArrayParam = rawName.startsWith("\0");
+              const baseType = varTypeName(iv);
+              if (isArrayParam) {
+                // Extract dims and name from encoded format: \0[dims]\0name
+                const parts = rawName.split("\0").filter(Boolean);
+                const dimsStr = parts[0]?.replace(/^\[/, "").replace(/\]$/, "") ?? "";
+                const varName = parts[1] ?? "";
+                candParamSigs.push(`${baseType}[${dimsStr}] ${varName}`);
+              } else {
+                candParamSigs.push(`${baseType} ${rawName}`);
+              }
+            }
+            const candSig = `.${functionName}<function>(${candParamSigs.join(", ")}) => ${retTypeName}`;
+
+            ctx.dae.diagnostics.push(
+              makeDiagnostic(ModelicaErrorCode.NO_MATCHING_FUNCTION, node, callExpr, callSig, candSig),
+            );
+            return null;
+          }
+        }
+        if (vectorizationSize > 0 && allScalarParamsHaveArrayArgs) {
+          // Build array of scalar calls
+          const callName = isExternalBuiltinAlias ? functionName : originalName;
+          const scalarCalls: ModelicaExpression[] = [];
+          for (let ei = 0; ei < vectorizationSize; ei++) {
+            const scalarArgs: ModelicaExpression[] = [];
+            for (let ai = 0; ai < flatArgs.length; ai++) {
+              const arg = flatArgs[ai];
+              if (isScalarParam[ai] && arg instanceof ModelicaArray && arg.elements.length === vectorizationSize) {
+                // Extract the i-th element for this scalar parameter
+                scalarArgs.push(arg.elements[ei] as ModelicaExpression);
+              } else if (!isScalarParam[ai] && arg instanceof ModelicaArray) {
+                // For array parameters, extract the i-th "slice" along the vectorization dim
+                // e.g., for Real[2] x2 with arg {{1,2},{3,4},{5,6}}, extract {1,2}, {3,4}, {5,6}
+                if (arg.elements.length === vectorizationSize) {
+                  scalarArgs.push(arg.elements[ei] as ModelicaExpression);
+                } else {
+                  scalarArgs.push(arg);
+                }
+              } else {
+                // Non-vectorized arg (same scalar for all calls)
+                scalarArgs.push(arg as ModelicaExpression);
+              }
+            }
+            // Coerce integer args to Real for Real parameters
+            for (let ai = 0; ai < scalarArgs.length && ai < inputVars.length; ai++) {
+              if (inputVars[ai] instanceof ModelicaRealVariable) {
+                const coerced = coerceToReal(scalarArgs[ai] ?? null, ctx.dae);
+                if (coerced && coerced !== scalarArgs[ai]) scalarArgs[ai] = coerced;
+              }
+            }
+            scalarCalls.push(new ModelicaFunctionCallExpression(callName, scalarArgs));
+          }
+          // Try to constant-evaluate each scalarized call via the interpreter
+          const funcInstance = ctx.classInstance.resolveName(functionName.split("."));
+          if (funcInstance instanceof ModelicaClassInstance && funcInstance.classKind === ModelicaClassKind.FUNCTION) {
+            const funcInputParams = Array.from(funcInstance.inputParameters);
+            for (let ci = 0; ci < scalarCalls.length; ci++) {
+              const call = scalarCalls[ci];
+              if (!(call instanceof ModelicaFunctionCallExpression)) continue;
+              if (!call.args.every((a) => isLiteral(a) || isLiteralArray(a))) continue;
+              try {
+                const params: ModelicaParameterModification[] = [];
+                for (let pi = 0; pi < call.args.length && pi < funcInputParams.length; pi++) {
+                  const pName = funcInputParams[pi]?.name;
+                  if (pName && call.args[pi]) {
+                    params.push(
+                      new ModelicaParameterModification(
+                        ctx.classInstance,
+                        pName,
+                        null,
+                        call.args[pi] as ModelicaExpression,
+                      ),
+                    );
+                  }
+                }
+                const mod = new ModelicaModification(ctx.classInstance, params);
+                if (funcInstance.abstractSyntaxNode) {
+                  const mergedMod = ModelicaModification.merge(funcInstance.modification, mod);
+                  const clone = ModelicaClassInstance.new(
+                    funcInstance.parent,
+                    funcInstance.abstractSyntaxNode,
+                    mergedMod,
+                  );
+                  clone.instantiate();
+                  const interpFallback = new ModelicaInterpreter(true);
+                  for (const stmt of clone.algorithms) {
+                    stmt.accept(interpFallback, clone);
+                  }
+                  const outParams = Array.from(clone.outputParameters);
+                  if (outParams.length >= 1 && outParams[0]?.classInstance) {
+                    const outExpr = ModelicaExpression.fromClassInstance(outParams[0].classInstance);
+                    if (outExpr && (isLiteral(outExpr) || isLiteralArray(outExpr))) {
+                      scalarCalls[ci] = outExpr;
+                    }
+                  }
+                }
+              } catch {
+                // Evaluation failed — keep the symbolic call
+              }
+            }
+          }
+          return new ModelicaArray(vectorizationShape, scalarCalls);
+        }
+
+        // Array-param vectorization: when array params receive higher-dimensional args
+        // e.g., foo(1, {{{1,2},{3,4},{5,6}}}) where foo(Real x, Real[2] x2)
+        // The arg for x2 has shape [1,3,2] but x2 expects [2] — strip outer [1,3] dims
+        if (vectorizationSize <= 0) {
+          let arrayVecSize = -1;
+          for (let i = 0; i < flatArgs.length && i < inputVars.length; i++) {
+            if (!isScalarParam[i] && flatArgs[i] instanceof ModelicaArray) {
+              const arr = flatArgs[i] as ModelicaArray;
+              // Count declared dims from the encoded name: \0[dim1,dim2,...]\0varName
+              const paramName = inputVars[i]?.name ?? "";
+              const dimMatch = paramName.match(/^\0\[([^\]]*)\]\0/);
+              const declaredDimCount = dimMatch ? (dimMatch[1] ?? "").split(",").length : 0;
+              const argDimCount = arr.shape.length;
+              if (argDimCount > declaredDimCount) {
+                // Extra outer dims — compute vectorization size as product of extra dims
+                const extraDims = arr.shape.slice(0, argDimCount - declaredDimCount);
+                const vecSize = extraDims.reduce((a, b) => a * b, 1);
+                if (arrayVecSize < 0) {
+                  arrayVecSize = vecSize;
+                }
+              }
+            }
+          }
+
+          if (arrayVecSize > 0) {
+            const callName = isExternalBuiltinAlias ? functionName : originalName;
+            const scalarCalls: ModelicaExpression[] = [];
+            for (let ei = 0; ei < arrayVecSize; ei++) {
+              const scalarArgs: ModelicaExpression[] = [];
+              for (let ai = 0; ai < flatArgs.length && ai < inputVars.length; ai++) {
+                if (isScalarParam[ai]) {
+                  // Scalar params broadcast — same value for all calls
+                  scalarArgs.push(flatArgs[ai] as ModelicaExpression);
+                } else if (flatArgs[ai] instanceof ModelicaArray) {
+                  const arr = flatArgs[ai] as ModelicaArray;
+                  const paramName = inputVars[ai]?.name ?? "";
+                  const dimMatch = paramName.match(/^\0\[([^\]]*)\]\0/);
+                  const declaredDimCount = dimMatch ? (dimMatch[1] ?? "").split(",").length : 0;
+                  const argDimCount = arr.shape.length;
+                  if (argDimCount > declaredDimCount) {
+                    // Flatten outer dims and extract the i-th slice
+                    const innerSize = arr.shape.slice(argDimCount - declaredDimCount).reduce((a, b) => a * b, 1);
+                    const start = ei * innerSize;
+                    const sliceElements = arr.elements.slice(start, start + innerSize);
+                    const innerShape = arr.shape.slice(argDimCount - declaredDimCount);
+                    if (innerShape.length === 0) {
+                      scalarArgs.push(sliceElements[0] ?? arr);
+                    } else {
+                      scalarArgs.push(new ModelicaArray(innerShape, sliceElements));
+                    }
+                  } else {
+                    scalarArgs.push(arr);
+                  }
+                } else {
+                  scalarArgs.push(flatArgs[ai] as ModelicaExpression);
+                }
+              }
+              // Coerce integer args to Real for Real parameters
+              for (let ai = 0; ai < scalarArgs.length && ai < inputVars.length; ai++) {
+                if (inputVars[ai] instanceof ModelicaRealVariable) {
+                  const coerced = coerceToReal(scalarArgs[ai] ?? null, ctx.dae);
+                  if (coerced && coerced !== scalarArgs[ai]) scalarArgs[ai] = coerced;
+                }
+              }
+              scalarCalls.push(new ModelicaFunctionCallExpression(callName, scalarArgs));
+            }
+            // Try to constant-evaluate each call via the interpreter
+            const funcInstance = ctx.classInstance.resolveName(functionName.split("."));
+            if (
+              funcInstance instanceof ModelicaClassInstance &&
+              funcInstance.classKind === ModelicaClassKind.FUNCTION
+            ) {
+              const funcInputParams = Array.from(funcInstance.inputParameters);
+              for (let ci = 0; ci < scalarCalls.length; ci++) {
+                const call = scalarCalls[ci];
+                if (!(call instanceof ModelicaFunctionCallExpression)) continue;
+                if (!call.args.every((a) => isLiteral(a) || isLiteralArray(a))) continue;
+                try {
+                  const params: ModelicaParameterModification[] = [];
+                  for (let pi = 0; pi < call.args.length && pi < funcInputParams.length; pi++) {
+                    const pName = funcInputParams[pi]?.name;
+                    if (pName && call.args[pi]) {
+                      params.push(
+                        new ModelicaParameterModification(
+                          ctx.classInstance,
+                          pName,
+                          null,
+                          call.args[pi] as ModelicaExpression,
+                        ),
+                      );
+                    }
+                  }
+                  const mod = new ModelicaModification(ctx.classInstance, params);
+                  if (funcInstance.abstractSyntaxNode) {
+                    const mergedMod = ModelicaModification.merge(funcInstance.modification, mod);
+                    const clone = ModelicaClassInstance.new(
+                      funcInstance.parent,
+                      funcInstance.abstractSyntaxNode,
+                      mergedMod,
+                    );
+                    clone.instantiate();
+                    const interpFallback = new ModelicaInterpreter(true);
+                    for (const stmt of clone.algorithms) {
+                      stmt.accept(interpFallback, clone);
+                    }
+                    const outParams = Array.from(clone.outputParameters);
+                    if (outParams.length >= 1 && outParams[0]?.classInstance) {
+                      const outExpr = ModelicaExpression.fromClassInstance(outParams[0].classInstance);
+                      if (outExpr && (isLiteral(outExpr) || isLiteralArray(outExpr))) {
+                        scalarCalls[ci] = outExpr;
+                      }
+                    }
+                  }
+                } catch {
+                  // evaluation failed — keep symbolic call
+                }
+              }
+            }
+            return new ModelicaArray([arrayVecSize], scalarCalls);
+          }
+        }
+
         for (let i = 0; i < flatArgs.length && i < inputVars.length; i++) {
           if (inputVars[i] instanceof ModelicaRealVariable) {
             const coerced = coerceToReal(flatArgs[i] ?? null, ctx.dae);
@@ -2039,7 +2532,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       }
     }
 
-    const result = new ModelicaFunctionCallExpression(functionName, flatArgs);
+    const result = new ModelicaFunctionCallExpression(isExternalBuiltinAlias ? functionName : originalName, flatArgs);
 
     // Only inline user-defined function calls when ALL arguments are compile-time constants.
     // Parameters are NOT constants — they can change between simulations.
@@ -2434,6 +2927,22 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
           const dims = subs.map((sub, i) => {
             if (sub.flexible && !sub.expression) return ":";
             if (sub.expression) {
+              // Flatten the subscript expression through the canonicalizing
+              // flattener so that e.g. `size(matr,2)-1` becomes `-1 + size(matr,2)`
+              const syntaxFlattener = new ModelicaSyntaxFlattener();
+              const flatExpr = sub.expression.accept(syntaxFlattener, {
+                prefix: "",
+                classInstance: resolved,
+                dae: fnDae,
+                stmtCollector: [],
+              });
+              if (flatExpr) {
+                const out = new StringWriter();
+                const printer = new ModelicaDAEPrinter(out);
+                flatExpr.accept(printer);
+                return out.toString().trim() || ":";
+              }
+              // Fall back to syntax printer if flattening fails
               const out = new StringWriter();
               const printer = new ModelicaSyntaxPrinter(out);
               sub.expression.accept(printer, 0);
@@ -2516,6 +3025,35 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
           isProtected,
         );
       } else {
+        // Check if the type is a function class (e.g., partialScalarFunction)
+        let functionType: ModelicaFunctionTypeSignature | null = null;
+        if (
+          typeInstance instanceof ModelicaClassInstance &&
+          (typeInstance.classKind === ModelicaClassKind.FUNCTION ||
+            typeInstance.classKind === ModelicaClassKind.OPERATOR_FUNCTION)
+        ) {
+          // Extract function signature: inputs and outputs
+          if (!typeInstance.instantiated) typeInstance.instantiate();
+          const inputs: { name: string; typeName: string }[] = [];
+          const outputs: { name: string; typeName: string }[] = [];
+          for (const comp of typeInstance.components) {
+            const compTypeInstance =
+              comp.classInstance instanceof ModelicaArrayClassInstance
+                ? comp.classInstance.elementClassInstance
+                : comp.classInstance;
+            let typeName = "Real";
+            if (compTypeInstance instanceof ModelicaIntegerClassInstance) typeName = "Integer";
+            else if (compTypeInstance instanceof ModelicaBooleanClassInstance) typeName = "Boolean";
+            else if (compTypeInstance instanceof ModelicaStringClassInstance) typeName = "String";
+            if (comp.causality?.toString() === "input") {
+              inputs.push({ name: comp.name ?? "", typeName });
+            } else if (comp.causality?.toString() === "output") {
+              outputs.push({ name: comp.name ?? "", typeName });
+            }
+          }
+          functionType = { inputs, outputs };
+        }
+
         // Coerce integer literals to real for Real-typed function params (e.g. 5 → 5.0, {{0,1}} → {{0.0,1.0}})
         if (expression) {
           const coerced = castToReal(expression);
@@ -2530,10 +3068,51 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
           causality,
           false,
           isProtected,
+          functionType,
         );
       }
       fnDae.variables.push(variable);
     }
+
+    // Sort function variables to match OMC ordering:
+    // 1. input variables (source order)
+    // 2. output variables (source order)
+    // 3. protected/local variables: scalars before arrays
+    fnDae.variables.sort((a, b) => {
+      // Separate non-protected (input/output) from protected.
+      // Preserve source order for inputs/outputs — important for functions
+      // that use extends, where output vars may appear between inputs.
+      const isProtectedVar = (v: ModelicaVariable) => (v.isProtected ? 1 : 0);
+      const pa = isProtectedVar(a);
+      const pb = isProtectedVar(b);
+      if (pa !== pb) return pa - pb;
+      // Within protected group, match OMC ordering:
+      // 0: scalars without size()-dependent initializers
+      // 1: scalars with parametric/size()-dependent initializers
+      // 2: arrays
+      if (pa === 1) {
+        const containsSizeCall = (expr: ModelicaExpression): boolean => {
+          if (expr instanceof ModelicaFunctionCallExpression) {
+            if (expr.functionName === "size") return true;
+            return expr.args.some(containsSizeCall);
+          }
+          if (expr instanceof ModelicaBinaryExpression) {
+            return containsSizeCall(expr.operand1) || containsSizeCall(expr.operand2);
+          }
+          if (expr instanceof ModelicaUnaryExpression) {
+            return containsSizeCall(expr.operand);
+          }
+          return false;
+        };
+        const protectedOrder = (v: ModelicaVariable) => {
+          if (v.name.startsWith("\0")) return 2; // array
+          if (v.expression && containsSizeCall(v.expression)) return 1;
+          return 0;
+        };
+        return protectedOrder(a) - protectedOrder(b);
+      }
+      return 0; // preserve source order for inputs/outputs
+    });
 
     // Register the function definition early to prevent infinite recursion when
     // the function body references itself (directly or via name resolution).
@@ -2566,11 +3145,29 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         });
       }
       if (collector.length > 0) {
-        // Mark the last procedure call as a return call when it's recursive (OMC convention)
-        const lastStmt = collector[collector.length - 1];
-        if (lastStmt instanceof ModelicaProcedureCallStatement && lastStmt.call.functionName === functionName) {
-          lastStmt.isReturn = true;
-        }
+        // Mark recursive procedure calls as return calls (OMC convention)
+        // This walks into if-else branches to find recursive calls at tail position
+        const markRecursiveReturns = (stmts: ModelicaStatement[]): void => {
+          if (stmts.length === 0) return;
+          const last = stmts[stmts.length - 1];
+          if (last instanceof ModelicaProcedureCallStatement && last.call.functionName === functionName) {
+            last.isReturn = true;
+          } else if (
+            last instanceof ModelicaAssignmentStatement &&
+            last.source instanceof ModelicaFunctionCallExpression &&
+            last.source.functionName === functionName
+          ) {
+            // Convert `b := f(...)` to `return f(...)` for recursive tail calls
+            const returnStmt = new ModelicaProcedureCallStatement(last.source);
+            returnStmt.isReturn = true;
+            stmts[stmts.length - 1] = returnStmt;
+          } else if (last instanceof ModelicaIfStatement) {
+            markRecursiveReturns(last.statements);
+            for (const clause of last.elseIfClauses) markRecursiveReturns(clause.statements);
+            markRecursiveReturns(last.elseStatements);
+          }
+        };
+        markRecursiveReturns(collector);
         fnDae.algorithms.push(collector);
       }
     }
@@ -2643,13 +3240,13 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     ctx: FlattenerContext,
   ): ModelicaExpression | null {
     // Unwrap single-element parenthesized expressions like (1:3)
-    const outputs = node.outputs.filter((o): o is ModelicaExpressionSyntaxNode => o != null);
-    if (outputs.length === 1) return outputs[0]?.accept(this, ctx) ?? null;
-    // Multi-output: build as array
-    const elements: ModelicaExpression[] = [];
-    for (const output of outputs) {
-      const expr = output.accept(this, ctx);
-      if (expr) elements.push(expr);
+    if (node.outputs.length === 1) return node.outputs[0]?.accept(this, ctx) ?? null;
+
+    // Multi-output: build as array with potential nulls (wildcards `_`)
+    const elements: (ModelicaExpression | null)[] = [];
+    for (const output of node.outputs) {
+      const expr = output ? output.accept(this, ctx) : null;
+      elements.push(expr ?? null);
     }
     return elements.length > 0 ? new ModelicaTupleExpression(elements) : null;
   }
@@ -3321,7 +3918,16 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       if (flatArg) flatArgs.push(flatArg);
     }
     const source = new ModelicaFunctionCallExpression(functionName, flatArgs);
-    ctx.stmtCollector.push(new ModelicaComplexAssignmentStatement(targets, source));
+    // If only one non-null target, convert to simple assignment with tuple indexing: y := F(x)[idx]
+    const nonNullTargets = targets.map((t, i) => ({ target: t, index: i })).filter((t) => t.target !== null);
+    if (nonNullTargets.length === 1 && nonNullTargets[0]) {
+      const target = nonNullTargets[0].target;
+      const index = nonNullTargets[0].index;
+      const subscripted = new ModelicaSubscriptedExpression(source, [new ModelicaIntegerLiteral(index + 1)]);
+      if (target) ctx.stmtCollector.push(new ModelicaAssignmentStatement(target, subscripted));
+    } else {
+      ctx.stmtCollector.push(new ModelicaComplexAssignmentStatement(targets, source));
+    }
     // Collect function definition if it's a user-defined function
     this.#collectFunctionDefinition(functionName, ctx);
     return null;
@@ -3393,8 +3999,15 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       if (range instanceof ModelicaArray && range.elements.some((e) => e instanceof ModelicaArray)) {
         const innerShape = range.elements.find((e) => e instanceof ModelicaArray) as ModelicaArray;
         const fullShape = [range.shape[0] ?? 0, ...(innerShape?.shape ?? [])];
+        // Determine element type for OMC-style message (e.g. "Integer[4, 2]")
+        let elemType = "Real";
+        const deepElem = innerShape?.elements?.[0];
+        if (deepElem instanceof ModelicaIntegerLiteral) elemType = "Integer";
+        else if (deepElem instanceof ModelicaBooleanLiteral) elemType = "Boolean";
+        else if (deepElem instanceof ModelicaStringLiteral) elemType = "String";
+        const shapeStr = `${elemType}[${fullShape.join(", ")}]`;
         ctx.dae.diagnostics.push(
-          makeDiagnostic(ModelicaErrorCode.FOR_ITERATOR_NOT_1D, forIndex.expression, indexName, fullShape.join(", ")),
+          makeDiagnostic(ModelicaErrorCode.FOR_ITERATOR_NOT_1D, forIndex.expression, indexName, shapeStr),
         );
         return null;
       }
@@ -3891,32 +4504,95 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     ) {
       // LHS can be a ModelicaVariable (resolved from DAE) or a ModelicaNameExpression
       let isScalarLHS = false;
+      let lhsName: string | null = null;
       if (expression1 instanceof ModelicaVariable && !expression1.name.includes("[")) {
-        isScalarLHS = true;
+        lhsName = expression1.name;
       } else if (expression1 instanceof ModelicaNameExpression && !expression1.name.includes("[")) {
-        isScalarLHS = true;
+        lhsName = expression1.name;
       }
-      if (isScalarLHS) {
-        // The LHS is a scalar — this array RHS likely came from a multi-return function
-        expression2 = expression2.elements[0] ?? expression2;
+      if (lhsName) {
+        const rootName = lhsName;
+        const hasIndexedVars = ctx.dae.variables.some((v) => v.name.startsWith(rootName + "["));
+        isScalarLHS = !hasIndexedVars;
+        if (isScalarLHS) {
+          // The LHS is a scalar — this array RHS likely came from a multi-return function
+          expression2 = expression2.elements[0] ?? expression2;
+        } else {
+          // LHS is an array name, RHS is a literal array — expand into per-element equations
+          const arrayVars = ctx.dae.variables
+            .filter((v) => v.name.startsWith(rootName + "["))
+            .sort((a, b) => a.name.localeCompare(b.name));
+          const flatRhs = [...expression2.flatElements];
+          if (arrayVars.length === flatRhs.length) {
+            for (let i = 0; i < arrayVars.length; i++) {
+              const arrayVar = arrayVars[i];
+              if (!arrayVar) continue;
+              const lhs = new ModelicaNameExpression(arrayVar.name);
+              let rhs = flatRhs[i];
+              if (!rhs) continue;
+              if (arrayVars[i] instanceof ModelicaRealVariable) rhs = castToReal(rhs) ?? rhs;
+              ctx.dae.equations.push(new ModelicaSimpleEquation(lhs, rhs));
+            }
+            return null;
+          }
+        }
       }
     }
     if (expression1 && expression2) {
+      if (expression2 instanceof ModelicaFunctionCallExpression) {
+        const funcCall = expression2;
+        const funcDef = ctx.dae.functions.find((f) => f.name === funcCall.functionName);
+        if (funcDef) {
+          const outputs = funcDef.variables.filter((v) => v.causality === "output");
+          if (outputs.length > 1) {
+            if (!(expression1 instanceof ModelicaTupleExpression)) {
+              // Implicit tuple expansion: b = func() -> (b, _, _) = func()
+              const tupleElements: (ModelicaExpression | null)[] = [expression1];
+              for (let i = 1; i < outputs.length; i++) tupleElements.push(null);
+              expression1 = new ModelicaTupleExpression(tupleElements);
+            } else if (expression1.elements.length < outputs.length) {
+              // Pad existing tuple: (a, b) = func() -> (a, b, _) = func()
+              const tupleElements: (ModelicaExpression | null)[] = [...expression1.elements];
+              while (tupleElements.length < outputs.length) tupleElements.push(null);
+              expression1 = new ModelicaTupleExpression(tupleElements);
+            }
+          }
+        }
+      }
+
       // When the LHS is a tuple (output expression list), wrap the RHS as a
       // matching tuple instead of splitting into per-element scalar equations.
       if (expression1 instanceof ModelicaTupleExpression && expression2 instanceof ModelicaArray) {
         const flat2 = [...expression2.flatElements];
-        // Coerce Integer elements to Real where the LHS element is Real-typed
-        const coerced: ModelicaExpression[] = [];
-        for (let i = 0; i < flat2.length; i++) {
-          let rhs = flat2[i];
-          const lhs = expression1.elements[i];
-          if (rhs && lhs && isRealTyped(lhs, ctx.dae)) {
-            rhs = coerceToReal(rhs, ctx.dae) ?? rhs;
+        // Build RHS tuple elements respecting the structure of the LHS tuple.
+        // If a LHS element is an array (e.g., {b[1],...,b[30]}), group the
+        // corresponding RHS values into a ModelicaArray sub-expression.
+        const rhsElements: ModelicaExpression[] = [];
+        let rhsIdx = 0;
+        for (const lhsElem of expression1.elements) {
+          if (lhsElem instanceof ModelicaArray) {
+            // LHS element is an array — consume that many RHS values and wrap in array
+            const count = lhsElem.elements.length;
+            const subValues: ModelicaExpression[] = [];
+            for (let k = 0; k < count && rhsIdx < flat2.length; k++, rhsIdx++) {
+              let rhs = flat2[rhsIdx];
+              if (rhs && isRealTyped(lhsElem.elements[k] ?? lhsElem, ctx.dae)) {
+                rhs = coerceToReal(rhs, ctx.dae) ?? rhs;
+              }
+              if (rhs) subValues.push(rhs);
+            }
+            rhsElements.push(new ModelicaArray([subValues.length], subValues));
+          } else {
+            // Scalar LHS element — consume one RHS value
+            let rhs = flat2[rhsIdx];
+            if (rhs && lhsElem && isRealTyped(lhsElem, ctx.dae)) {
+              rhs = coerceToReal(rhs, ctx.dae) ?? rhs;
+            }
+            if (rhs) rhsElements.push(rhs);
+            rhsIdx++;
           }
-          if (rhs) coerced.push(rhs);
         }
-        const tupleRHS = new ModelicaTupleExpression(coerced);
+        const tupleRHS = new ModelicaTupleExpression(rhsElements);
         ctx.dae.equations.push(new ModelicaSimpleEquation(expression1, tupleRHS));
         return null;
       }
@@ -4336,7 +5012,18 @@ function isRealTyped(expr: ModelicaExpression, dae?: ModelicaDAE): boolean {
   if (expr instanceof ModelicaFunctionCallExpression) {
     // Use the function's output type from the built-in signatures
     const builtinDef = BUILTIN_FUNCTIONS.get(expr.functionName);
-    if (builtinDef) return builtinDef.outputType === "Real";
+    if (builtinDef) {
+      // For polymorphic functions with Integer overloads (e.g., max, min),
+      // check if the Integer overload matches (all args are integer-typed).
+      // If so, the output is Integer, not Real.
+      if (builtinDef.overloads) {
+        const intOverload = builtinDef.overloads.find((o) => o.outputType === "Integer");
+        if (intOverload && expr.args.every((a) => isIntegerTyped(a, dae))) {
+          return false;
+        }
+      }
+      return builtinDef.outputType === "Real";
+    }
     // Fallback for non-builtin functions: if any arg is Real, assume output is Real
     return expr.args.some((a) => isRealTyped(a, dae));
   }
@@ -4356,6 +5043,20 @@ function isIntegerTyped(expr: ModelicaExpression, dae?: ModelicaDAE): boolean {
     const prefix = expr.name + "[";
     const arrayElement = dae.variables.find((variable) => variable.name.startsWith(prefix));
     if (arrayElement instanceof ModelicaIntegerVariable) return true;
+  }
+  if (expr instanceof ModelicaFunctionCallExpression) {
+    const builtinDef = BUILTIN_FUNCTIONS.get(expr.functionName);
+    if (builtinDef) {
+      if (builtinDef.outputType === "Integer") return true;
+      // For polymorphic functions, check if Integer overload matches
+      if (builtinDef.overloads) {
+        const intOverload = builtinDef.overloads.find((o) => o.outputType === "Integer");
+        if (intOverload && expr.args.every((a) => isIntegerTyped(a, dae))) return true;
+      }
+    }
+    // Fallback for non-builtin functions: if all args are Integer, assume output is Integer
+    if (!builtinDef && expr.args.length > 0 && expr.args.every((a) => isIntegerTyped(a, dae))) return true;
+    return false;
   }
   return false;
 }
@@ -4544,6 +5245,43 @@ function canonicalizeBinaryExpression(
     }
     if (boolResult != null) return new ModelicaBooleanLiteral(boolResult);
   }
+  // Subtraction cancellation: x - x → 0
+  if (operator === ModelicaBinaryOperator.SUBTRACTION && operand1.hash === operand2.hash) {
+    return new ModelicaIntegerLiteral(0);
+  }
+  // Additive identity: 0 + x → x, x + 0 → x
+  if (operator === ModelicaBinaryOperator.ADDITION) {
+    if (
+      (operand1 instanceof ModelicaRealLiteral || operand1 instanceof ModelicaIntegerLiteral) &&
+      operand1.value === 0
+    ) {
+      return operand2;
+    }
+    if (
+      (operand2 instanceof ModelicaRealLiteral || operand2 instanceof ModelicaIntegerLiteral) &&
+      operand2.value === 0
+    ) {
+      return operand1;
+    }
+  }
+  // Multiplicative zero: 0 * x → 0, x * 0 → 0
+  if (
+    operator === ModelicaBinaryOperator.MULTIPLICATION ||
+    operator === ModelicaBinaryOperator.ELEMENTWISE_MULTIPLICATION
+  ) {
+    if (
+      (operand1 instanceof ModelicaRealLiteral || operand1 instanceof ModelicaIntegerLiteral) &&
+      operand1.value === 0
+    ) {
+      return operand1;
+    }
+    if (
+      (operand2 instanceof ModelicaRealLiteral || operand2 instanceof ModelicaIntegerLiteral) &&
+      operand2.value === 0
+    ) {
+      return operand2;
+    }
+  }
   // Multiplicative identity: 1 * x → x, x * 1 → x
   if (
     operator === ModelicaBinaryOperator.MULTIPLICATION ||
@@ -4568,21 +5306,139 @@ function canonicalizeBinaryExpression(
     return new ModelicaBinaryExpression(ModelicaBinaryOperator.MULTIPLICATION, reciprocal, castOp1);
   }
   // Promote integer operands to Real when the other operand is Real-typed
-  if (isRealTyped(operand1, dae)) operand2 = castToReal(operand2) ?? operand2;
-  if (isRealTyped(operand2, dae)) operand1 = castToReal(operand1) ?? operand1;
+  // Try wrapIntegerAsReal first (produces /*Real*/ casts); only fall back to castToReal
+  // for expressions that wrapIntegerAsReal cannot handle.
+  if (isRealTyped(operand1, dae)) {
+    const wrapped = wrapIntegerAsReal(operand2, dae);
+    operand2 = wrapped !== operand2 ? wrapped : (castToReal(operand2) ?? operand2);
+  }
+  if (isRealTyped(operand2, dae)) {
+    const wrapped = wrapIntegerAsReal(operand1, dae);
+    operand1 = wrapped !== operand1 ? wrapped : (castToReal(operand1) ?? operand1);
+  }
   if (operator === ModelicaBinaryOperator.SUBTRACTION && isLiteral(operand2)) {
     const negated = new ModelicaUnaryExpression(ModelicaUnaryOperator.UNARY_MINUS, operand2);
     return new ModelicaBinaryExpression(ModelicaBinaryOperator.ADDITION, negated, operand1);
   }
+  // Subtraction partial cancellation: (a + x) - x → a, (x + a) - x → a
+  if (
+    operator === ModelicaBinaryOperator.SUBTRACTION &&
+    operand1 instanceof ModelicaBinaryExpression &&
+    operand1.operator === ModelicaBinaryOperator.ADDITION
+  ) {
+    if (operand1.operand2.hash === operand2.hash) {
+      return operand1.operand1;
+    }
+    if (operand1.operand1.hash === operand2.hash) {
+      return operand1.operand2;
+    }
+  }
+  // Canonicalize a - c * expr → a + (-c) * expr when c is a numeric literal
+  if (
+    operator === ModelicaBinaryOperator.SUBTRACTION &&
+    operand2 instanceof ModelicaBinaryExpression &&
+    operand2.operator === ModelicaBinaryOperator.MULTIPLICATION &&
+    isLiteral(operand2.operand1)
+  ) {
+    const negatedCoeff = new ModelicaUnaryExpression(ModelicaUnaryOperator.UNARY_MINUS, operand2.operand1);
+    const negatedMul = new ModelicaBinaryExpression(
+      ModelicaBinaryOperator.MULTIPLICATION,
+      negatedCoeff,
+      operand2.operand2,
+    );
+    return new ModelicaBinaryExpression(ModelicaBinaryOperator.ADDITION, operand1, negatedMul);
+  }
+  // Algebraic simplification: x + c * x → (1 + c) * x (and symmetric forms)
+  // e.g., x[j] + x[j] * 0.01 → 0.01 * x[j] + x[j] (after lit-left) → 1.01 * x[j]
+  if (operator === ModelicaBinaryOperator.ADDITION) {
+    // Check for pattern: a + c * a or c * a + a
+    const tryFold = (baseExpr: ModelicaExpression, multExpr: ModelicaExpression): ModelicaExpression | null => {
+      if (multExpr instanceof ModelicaBinaryExpression && multExpr.operator === ModelicaBinaryOperator.MULTIPLICATION) {
+        // c * a: check if multExpr.operand2 matches baseExpr
+        if (isLiteral(multExpr.operand1) && multExpr.operand2.hash === baseExpr.hash) {
+          const c = multExpr.operand1;
+          const one =
+            c instanceof ModelicaIntegerLiteral ? new ModelicaIntegerLiteral(1) : new ModelicaRealLiteral(1.0);
+          const newCoeff = canonicalizeBinaryExpression(ModelicaBinaryOperator.ADDITION, one, c, dae);
+          return canonicalizeBinaryExpression(ModelicaBinaryOperator.MULTIPLICATION, newCoeff, baseExpr, dae);
+        }
+        // a * c: check if multExpr.operand1 matches baseExpr
+        if (isLiteral(multExpr.operand2) && multExpr.operand1.hash === baseExpr.hash) {
+          const c = multExpr.operand2;
+          const one =
+            c instanceof ModelicaIntegerLiteral ? new ModelicaIntegerLiteral(1) : new ModelicaRealLiteral(1.0);
+          const newCoeff = canonicalizeBinaryExpression(ModelicaBinaryOperator.ADDITION, one, c, dae);
+          return canonicalizeBinaryExpression(ModelicaBinaryOperator.MULTIPLICATION, newCoeff, baseExpr, dae);
+        }
+      }
+      return null;
+    };
+    const folded = tryFold(operand1, operand2) ?? tryFold(operand2, operand1);
+    if (folded) return folded;
+  }
   // Canonicalize commutative operations: put literals on the left
   // (but NOT for string concatenation, which is not commutative)
+  // Recurse through canonicalize so subsequent rules (e.g., additive constant collection) trigger.
   if (
     (operator === ModelicaBinaryOperator.ADDITION || operator === ModelicaBinaryOperator.MULTIPLICATION) &&
     !isLiteral(operand1) &&
     isLiteral(operand2) &&
     !(operand2 instanceof ModelicaStringLiteral)
   ) {
-    return new ModelicaBinaryExpression(operator, operand2, operand1);
+    return canonicalizeBinaryExpression(operator, operand2, operand1, dae);
+  }
+  // Additive constant collection: c1 + (c2 + x) → (c1 + c2) + x
+  // Collects numeric constants in addition chains for constant folding.
+  if (operator === ModelicaBinaryOperator.ADDITION && isLiteral(operand1)) {
+    if (
+      operand2 instanceof ModelicaBinaryExpression &&
+      operand2.operator === ModelicaBinaryOperator.ADDITION &&
+      isLiteral(operand2.operand1)
+    ) {
+      const folded = canonicalizeBinaryExpression(ModelicaBinaryOperator.ADDITION, operand1, operand2.operand1, dae);
+      return canonicalizeBinaryExpression(ModelicaBinaryOperator.ADDITION, folded, operand2.operand2, dae);
+    }
+  }
+  // Re-associate multiplications to float literal factors left:
+  // (expr * literal) * other → literal * (expr * other)
+  // (literal * expr) already handled by lit-left above; this covers the case
+  // where the inner multiplication produced literal on the right.
+  if (
+    operator === ModelicaBinaryOperator.MULTIPLICATION &&
+    operand1 instanceof ModelicaBinaryExpression &&
+    operand1.operator === ModelicaBinaryOperator.MULTIPLICATION
+  ) {
+    // (a * c) * b where c is literal → c * (a * b)
+    if (isLiteral(operand1.operand2) && !isLiteral(operand1.operand1)) {
+      const inner = canonicalizeBinaryExpression(
+        ModelicaBinaryOperator.MULTIPLICATION,
+        operand1.operand1,
+        operand2,
+        dae,
+      );
+      return canonicalizeBinaryExpression(ModelicaBinaryOperator.MULTIPLICATION, operand1.operand2, inner, dae);
+    }
+    // (c * a) * b where c is literal → c * (a * b)
+    if (isLiteral(operand1.operand1) && !isLiteral(operand2)) {
+      const inner = canonicalizeBinaryExpression(
+        ModelicaBinaryOperator.MULTIPLICATION,
+        operand1.operand2,
+        operand2,
+        dae,
+      );
+      return canonicalizeBinaryExpression(ModelicaBinaryOperator.MULTIPLICATION, operand1.operand1, inner, dae);
+    }
+  }
+  // Right-side re-association (left-associative output): a * (c * b) → (c * a) * b when c is literal
+  if (
+    operator === ModelicaBinaryOperator.MULTIPLICATION &&
+    operand2 instanceof ModelicaBinaryExpression &&
+    operand2.operator === ModelicaBinaryOperator.MULTIPLICATION &&
+    isLiteral(operand2.operand1) &&
+    !isLiteral(operand1)
+  ) {
+    const left = canonicalizeBinaryExpression(ModelicaBinaryOperator.MULTIPLICATION, operand2.operand1, operand1, dae);
+    return canonicalizeBinaryExpression(ModelicaBinaryOperator.MULTIPLICATION, left, operand2.operand2, dae);
   }
   // Wrap integer variables with /*Real*/ when used with Real operands in any arithmetic context
   if (dae) {
@@ -4611,6 +5467,36 @@ function wrapIntegerAsReal(expr: ModelicaExpression, dae?: ModelicaDAE): Modelic
   if (dae && expr instanceof ModelicaNameExpression) {
     const variable = dae.variables.find((v) => v.name === expr.name);
     if (variable instanceof ModelicaIntegerVariable) {
+      return new ModelicaFunctionCallExpression("/*Real*/", [expr]);
+    }
+  }
+  // Wrap entire Integer-typed function calls
+  if (expr instanceof ModelicaFunctionCallExpression && expr.functionName !== "/*Real*/") {
+    if (isIntegerTyped(expr, dae)) {
+      return new ModelicaFunctionCallExpression("/*Real*/", [expr]);
+    }
+    // For user-defined functions: if not recognized as Real and all args are Integer, wrap
+    const builtinDef = BUILTIN_FUNCTIONS.get(expr.functionName);
+    if (!builtinDef && expr.args.length > 0 && expr.args.every((a) => isIntegerTyped(a, dae))) {
+      return new ModelicaFunctionCallExpression("/*Real*/", [expr]);
+    }
+  }
+  // Wrap Integer-typed binary expressions that contain user-defined function calls.
+  // This produces /*Real*/(2 + f(x)) instead of 2.0 + f(x) (OMC-compatible).
+  if (expr instanceof ModelicaBinaryExpression && isIntegerTyped(expr, dae)) {
+    const containsUserFunctionCall = (e: ModelicaExpression): boolean => {
+      if (
+        e instanceof ModelicaFunctionCallExpression &&
+        e.functionName !== "/*Real*/" &&
+        !BUILTIN_FUNCTIONS.has(e.functionName)
+      )
+        return true;
+      if (e instanceof ModelicaBinaryExpression)
+        return containsUserFunctionCall(e.operand1) || containsUserFunctionCall(e.operand2);
+      if (e instanceof ModelicaUnaryExpression) return containsUserFunctionCall(e.operand);
+      return false;
+    };
+    if (containsUserFunctionCall(expr)) {
       return new ModelicaFunctionCallExpression("/*Real*/", [expr]);
     }
   }

@@ -54,19 +54,6 @@ equation
 end FunctionInverse;
 
 // Result:
-// function inv
-//   input Real[:, size(A, 1)] A;
-//   output Real[size(A, 1), size(A, 2)] invA;
-//   protected Integer info;
-//   protected Integer[size(A, 1)] pivots;
-//   protected Real[size(A, 1), size(A, 2)] LU;
-// algorithm
-//   (LU, pivots, info) := LAPACK.dgetrf(A);
-//   assert(info == 0, "Calculating an inverse matrix with function
-//   \"Matrices.inv\" is not possible, since matrix A is singular.");
-//   invA := LAPACK.dgetri(LU, pivots)[1];
-// end inv;
-//
 // function LAPACK.dgetrf
 //   input Real[:, :] A;
 //   output Real[size(A, 1), size(A, 2)] LU = A;
@@ -88,6 +75,19 @@ end FunctionInverse;
 //
 //   external "FORTRAN 77" dgetri(size(LU, 1), inv, lda, pivots, work, lwork, info);
 // end LAPACK.dgetri;
+//
+// function inv
+//   input Real[:, size(A, 1)] A;
+//   output Real[size(A, 1), size(A, 2)] invA;
+//   protected Integer info;
+//   protected Integer[size(A, 1)] pivots;
+//   protected Real[size(A, 1), size(A, 2)] LU;
+// algorithm
+//   (LU, pivots, info) := LAPACK.dgetrf(A);
+//   assert(info == 0, "Calculating an inverse matrix with function
+//   \"Matrices.inv\" is not possible, since matrix A is singular.");
+//   invA := LAPACK.dgetri(LU, pivots)[1];
+// end inv;
 //
 // class FunctionInverse
 //   parameter Integer N = 3;
@@ -123,6 +123,4 @@ end FunctionInverse;
 //   B = {{1.0, 0.0, 0.0}, {0.0, 1.0, 0.0}, {0.0, 0.0, 1.0}};
 //   C = inv({{A[1,1], A[1,2], A[1,3]}, {A[2,1], A[2,2], A[2,3]}, {A[3,1], A[3,2], A[3,3]}}) * B;
 // end FunctionInverse;
-// [flattening/modelica/algorithms-functions/FunctionInverse.mo:25:44-25:47] Error: [M4003] Array dimension mismatch: expression has shape [0] but expected [0,0].
-// [flattening/modelica/algorithms-functions/FunctionInverse.mo:36:47-36:51] Error: [M4003] Array dimension mismatch: expression has shape [0] but expected [0,0].
 // endResult

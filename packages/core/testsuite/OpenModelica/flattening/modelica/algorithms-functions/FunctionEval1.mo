@@ -27,6 +27,7 @@ end FunctionEval1;
 //   y := x + 1.0;
 // end f;
 //
+
 // Result:
 // function f
 //   input Real x;

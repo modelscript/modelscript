@@ -1,6 +1,6 @@
-// name: Inline5
+// name:     Inline5
 // keywords: inline, function
-// status: skipped
+// status:   correct
 //
 // Test case for inline annotations
 //
@@ -24,11 +24,18 @@ equation
 end Inline5;
 
 // Result:
+// function Inline5.simpleInline
+//   input Integer inInt;
+//   output Integer outInt;
+// algorithm
+//   outInt := 5 * inInt;
+// end Inline5.simpleInline;
+//
 // class Inline5
-// Integer x;
-// Integer y;
+//   Integer x;
+//   Integer y;
 // equation
 //   x = 2;
-//   Real(y) = Real(2 + (5 + x - x) * x) * Real((13 + x - (8 + x)) * (8 + x)) / 2.0;
+//   /*Real*/(y) = 0.5 * /*Real*/(2 + Inline5.simpleInline(x)) * /*Real*/(Inline5.simpleInline(8 + x));
 // end Inline5;
 // endResult

@@ -1,6 +1,6 @@
-// name: ForNested
+// name:     ForNested
 // keywords: for
-// status: correct
+// status:   correct
 //
 // Tests a nested for loop
 //

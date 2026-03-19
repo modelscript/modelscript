@@ -1,6 +1,6 @@
-// name: Inline1
+// name:     Inline1
 // keywords: inline, function
-// status: skipped
+// status:   correct
 //
 // Test case for inline annotations
 //
@@ -23,11 +23,18 @@ equation
 end Inline1;
 
 // Result:
+// function simpleInline
+//   input Integer inInt;
+//   output Integer outInt;
+// algorithm
+//   outInt := 5 * inInt;
+// end simpleInline;
+//
 // class Inline1
-// Integer x;
-// Integer y;
+//   Integer x;
+//   Integer y;
 // equation
 //   x = 2;
-//   Real(y) = Real(2 + (5 + x - x) * x) * Real((13 + x - (8 + x)) * (8 + x)) / 2.0;
+//   /*Real*/(y) = 0.5 * /*Real*/(2 + simpleInline(x)) * /*Real*/(simpleInline(8 + x));
 // end Inline1;
 // endResult

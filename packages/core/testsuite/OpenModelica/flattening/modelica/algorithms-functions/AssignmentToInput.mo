@@ -1,6 +1,6 @@
-// name: AssignmentToInput
+// name:     AssignmentToInput
 // keywords: assignment input bug1819
-// status: correct
+// status:   correct
 //
 // Tests assignment to input in model scope.
 //

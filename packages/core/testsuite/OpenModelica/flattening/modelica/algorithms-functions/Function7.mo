@@ -19,6 +19,9 @@ equation
   x = f(z);
   annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Function7;
+
 // Result:
-// [flattening/modelica/algorithms-functions/Function7.mo:19:3-19:4] Error: [M3007] Function 'f' returns type 'Real' but 'String' expected.
+// Error processing file: Function7.mo
+// [flattening/modelica/algorithms-functions/Function7.mo:19:3-19:11:writable] Error: Function 'f' returns type 'Real' but 'String' expected.
+// Error: Error occurred while flattening model Function7
 // endResult

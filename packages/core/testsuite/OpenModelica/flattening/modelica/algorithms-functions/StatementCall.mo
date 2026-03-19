@@ -24,10 +24,35 @@ algorithm
 end StatementCall;
 
 // Result:
-// class StatementCall
-// Real px;
-// Real py;
+// function Modelica.Math.cos "Cosine"
+//   input Real u(quantity = "Angle", unit = "rad", displayUnit = "deg") "Independent variable";
+//   output Real y "Dependent variable y=cos(u)";
 // algorithm
-//   (px, py) := PointOnCircle(1.2,2.0);
+//   y := cos(u);
+// end Modelica.Math.cos;
+// 
+// function Modelica.Math.sin "Sine"
+//   input Real u(quantity = "Angle", unit = "rad", displayUnit = "deg") "Independent variable";
+//   output Real y "Dependent variable y=sin(u)";
+// algorithm
+//   y := sin(u);
+// end Modelica.Math.sin;
+// 
+// function PointOnCircle
+//   input Real angle "Angle in radians";
+//   input Real radius;
+//   output Real x;
+//   output Real y;
+// algorithm
+//   x := radius * Modelica.Math.cos(angle);
+//   y := radius * Modelica.Math.sin(angle);
+// end PointOnCircle;
+// 
+// class StatementCall
+//   Real px;
+//   Real py;
+// algorithm
+//   px := 0.7247155089533472;
+//   py := 1.8640781719344526;
 // end StatementCall;
 // endResult

@@ -1,4 +1,4 @@
-// name:     ComponentFunctions.mo [BUG: #2854]
+// name:     ComponentFunctions
 // keywords: function calls via component
 // status:   correct
 //

@@ -19,7 +19,6 @@ equation
   annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end MultFuncCall;
 
-
 // Result:
 // function Multiply
 //   input Real x;

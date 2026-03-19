@@ -155,6 +155,7 @@ model M1_solutions_E03_Faculty_FacultyCall
   extends M1_solutions.E03.Faculty.FacultyCall;
   annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end M1_solutions_E03_Faculty_FacultyCall;
+
 // Result:
 // function M1_solutions.E03.Faculty.faculty
 //   input Integer n;

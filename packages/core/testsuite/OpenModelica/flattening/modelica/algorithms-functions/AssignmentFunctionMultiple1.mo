@@ -1,6 +1,6 @@
-// name: AssignmentFunctionMultiple1
+// name:     AssignmentFunctionMultiple1
 // keywords: assignment, function
-// status: correct
+// status:   correct
 //
 // Tests assignment to a function call with multiple outputs
 //

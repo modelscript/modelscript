@@ -23,6 +23,7 @@ algorithm
   y:=pkg.factorial(2);
   annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end RecursiveFunctionCall;
+
 // Result:
 // function pkg.factorial
 //   input Integer n;

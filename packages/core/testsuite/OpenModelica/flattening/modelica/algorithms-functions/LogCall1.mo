@@ -18,7 +18,6 @@ equation
   annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end LogCall1;
 
-
 // Result:
 // function mylog "Natural logarithm"
 //   input Real x;

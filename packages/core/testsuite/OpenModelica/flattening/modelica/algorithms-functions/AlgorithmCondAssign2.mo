@@ -1,4 +1,4 @@
-// name:     AlgorithmCondAssign
+// name:     AlgorithmCondAssign2
 // keywords: for statement, if statement
 // status:   correct
 //

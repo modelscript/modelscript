@@ -95,6 +95,7 @@ end FunctionEval9;
 //   y := 7.0 + x;
 // end test3;
 //
+
 // Result:
 // function test
 //   input Real x;

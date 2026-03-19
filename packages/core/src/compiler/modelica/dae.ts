@@ -1508,9 +1508,9 @@ export class ModelicaArray extends ModelicaPrimaryExpression {
  * Unlike `ModelicaArray`, tuples are NOT split into per-element scalar equations.
  */
 export class ModelicaTupleExpression extends ModelicaExpression {
-  elements: ModelicaExpression[];
+  elements: (ModelicaExpression | null)[];
 
-  constructor(elements: ModelicaExpression[]) {
+  constructor(elements: (ModelicaExpression | null)[]) {
     super();
     this.elements = elements;
   }
@@ -1521,13 +1521,15 @@ export class ModelicaTupleExpression extends ModelicaExpression {
 
   override get hash(): string {
     const hash = createHash("sha256");
-    hash.update("tuple");
-    for (const element of this.elements) hash.update(element.hash);
+    for (const element of this.elements) {
+      if (element) hash.update(element.hash);
+      else hash.update("null");
+    }
     return hash.digest("hex");
   }
 
   override get toJSON(): JSONValue {
-    return this.elements.map((e) => e.toJSON);
+    return this.elements.map((e) => e?.toJSON ?? null);
   }
 
   override get toRDF(): Triple[] {
@@ -1913,6 +1915,15 @@ export class ModelicaComprehensionExpression extends ModelicaExpression {
   }
 }
 
+/**
+ * Describes a function-typed parameter's signature.
+ * Used when a function parameter has type = another function (e.g., partialScalarFunction).
+ */
+export interface ModelicaFunctionTypeSignature {
+  inputs: { name: string; typeName: string }[];
+  outputs: { name: string; typeName: string }[];
+}
+
 export abstract class ModelicaVariable extends ModelicaPrimaryExpression {
   attributes: Map<string, ModelicaExpression>;
   name: string;
@@ -1922,6 +1933,7 @@ export abstract class ModelicaVariable extends ModelicaPrimaryExpression {
   causality: string | null;
   isFinal: boolean;
   isProtected: boolean;
+  functionType: ModelicaFunctionTypeSignature | null;
 
   constructor(
     name: string,
@@ -1932,6 +1944,7 @@ export abstract class ModelicaVariable extends ModelicaPrimaryExpression {
     causality?: string | null,
     isFinal?: boolean,
     isProtected?: boolean,
+    functionType?: ModelicaFunctionTypeSignature | null,
   ) {
     super();
     this.name = name;
@@ -1942,6 +1955,7 @@ export abstract class ModelicaVariable extends ModelicaPrimaryExpression {
     this.causality = causality ?? null;
     this.isFinal = isFinal ?? false;
     this.isProtected = isProtected ?? false;
+    this.functionType = functionType ?? null;
   }
 
   override get hash(): string {
@@ -2541,7 +2555,9 @@ export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void,
   }
 
   visitTupleExpression(node: ModelicaTupleExpression, argument?: A): void {
-    for (const element of node.elements) element.accept(this, argument);
+    for (const element of node.elements) {
+      if (element) element.accept(this, argument);
+    }
   }
 
   visitUnaryExpression(node: ModelicaUnaryExpression, argument?: A): void {
@@ -2612,6 +2628,7 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
       if (i > 0) this.out.write(", ");
       const target = node.targets[i];
       if (target) target.accept(this);
+      else this.out.write("_");
     }
     this.out.write(") := ");
     node.source.accept(this);
@@ -2774,7 +2791,13 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     if (variable.isFinal) this.out.write("final ");
     if (variable.variability) this.out.write(variable.variability + " ");
     if (variable.causality) this.out.write(variable.causality + " ");
-    if (variable instanceof ModelicaBooleanVariable) {
+    if (variable.functionType) {
+      // Function-typed parameter: emit f<function>(#Real u) => #Real format
+      const ft = variable.functionType;
+      const inputParts = ft.inputs.map((inp) => `#${inp.typeName} ${inp.name}`).join(", ");
+      const outputType = ft.outputs.length > 0 ? `#${ft.outputs[0]?.typeName ?? "Real"}` : "#Real";
+      this.out.write(`${variable.name}<function>(${inputParts}) => ${outputType}`);
+    } else if (variable instanceof ModelicaBooleanVariable) {
       this.out.write("Boolean");
     } else if (variable instanceof ModelicaIntegerVariable) {
       this.out.write("Integer");
@@ -2835,8 +2858,9 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
   }
 
   visitDAE(node: ModelicaDAE): void {
-    // Emit function definitions before the class
-    for (const fn of node.functions) {
+    // Emit function definitions before the class, sorted alphabetically by name (matching OMC)
+    const sortedFunctions = [...node.functions].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    for (const fn of sortedFunctions) {
       this.#emitFunction(fn);
       this.out.write("\n\n");
     }
@@ -2941,7 +2965,9 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     this.out.write("function " + node.functionName + "(");
     for (let i = 0; i < node.namedArgs.length; i++) {
       if (i > 0) this.out.write(", ");
+      this.out.write("#(");
       node.namedArgs[i]?.value.accept(this);
+      this.out.write(")");
     }
     this.out.write(")");
   }
@@ -3032,25 +3058,28 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
   }
 
   visitRealLiteral(node: ModelicaRealLiteral): void {
-    // Modelica uses e+308 for positive exponents
+    // Modelica real literal formatting matching OMC conventions:
+    // - 0 → "0.0"
+    // - Integer-valued → "N.0" (toFixed(1))
+    // - |value| >= 0.001 → decimal notation (e.g., 0.1, 0.001)
+    // - |value| < 0.001 → scientific notation (e.g., 1e-4, 1e-13)
+    // - Very large integers → scientific notation
     if (node.value === 0) {
       this.out.write("0.0");
     } else if (Number.isInteger(node.value) && Math.abs(node.value) < 1e15) {
-      // Small integers: use toFixed(1) to ensure decimal point (e.g. 3 -> 3.0)
       this.out.write(node.value.toFixed(1));
     } else {
-      // Large numbers or fractional: format with full precision
-      // For very large integers, toString() doesn't use sci notation, so use toExponential
       let str: string;
       if (Number.isInteger(node.value) && Math.abs(node.value) >= 1e15) {
         str = node.value.toExponential();
-      } else if (node.originalText && /[eE]/.test(node.originalText)) {
-        // Preserve scientific notation from source, normalize: lowercase e, remove trailing dot
-        str = node.originalText.toLowerCase().replace(/\.e/, "e");
+      } else if (Math.abs(node.value) < 0.001) {
+        // Small fractional values: use scientific notation
+        str = node.value.toExponential();
       } else {
+        // Normal fractional values: use decimal notation
         str = node.value.toString();
       }
-      // Modelica uses 'e304' not 'e+304' — strip the '+' from positive exponents
+      // Modelica uses 'e-4' not 'e+4' — strip the '+' from positive exponents
       str = str.replace("e+", "e");
       this.out.write(str);
     }
@@ -3101,7 +3130,9 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     this.out.write("(");
     for (let i = 0; i < node.elements.length; i++) {
       if (i > 0) this.out.write(", ");
-      node.elements[i]?.accept(this);
+      const el = node.elements[i];
+      if (el) el.accept(this);
+      else this.out.write("_");
     }
     this.out.write(")");
   }

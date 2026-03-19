@@ -1,4 +1,5 @@
-// status: incorrect
+// name:     Ticket4786
+// status:   incorrect
 
 model M
 
@@ -27,5 +28,10 @@ algorithm
 end M;
 
 // Result:
-// [flattening/modelica/algorithms-functions/Ticket4786.mo:25:8-25:28] Error: [M3006] In call to 'f': argument 'func' expects type 'FuncT' but got 'wrongType'.
+// Error processing file: Ticket4786.mo
+// [flattening/modelica/algorithms-functions/Ticket4786.mo:26:3-26:29:writable] Error: Type mismatch for positional argument 2 in M.f(func=M.wrongType). The argument has type:
+//   .M.wrongType<function>(#Integer i, #Integer i2 := 1) => #NORETCALL#
+// expected type:
+//   .M.f.FuncT<function>(#String s) => #NORETCALL#
+// Error: Error occurred while flattening model M
 // endResult

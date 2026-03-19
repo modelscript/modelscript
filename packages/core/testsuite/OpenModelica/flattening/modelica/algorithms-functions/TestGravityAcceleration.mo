@@ -108,6 +108,7 @@ end TestGravityAcceleration;
 //   gravity := if gravityType == GravityTypes.UniformGravity then {g[1],g[2],g[3]} else if gravityType == GravityTypes.PointGravity then {-1.0 * (mue * r[1]) / (Math.length({r[1],r[2],r[3]}) * (r[1] ^ 2.0 + r[2] ^ 2.0 + r[3] ^ 2.0)),-1.0 * (mue * r[2]) / (Math.length({r[1],r[2],r[3]}) * (r[1] ^ 2.0 + r[2] ^ 2.0 + r[3] ^ 2.0)),-1.0 * (mue * r[3]) / (Math.length({r[1],r[2],r[3]}) * (r[1] ^ 2.0 + r[2] ^ 2.0 + r[3] ^ 2.0))} else {0.0,0.0,0.0};
 // end TestGravityAcceleration.w__gravityAcceleration;
 //
+
 // Result:
 // function Math.length "Return length of a vectorReturn length of a vector (better as norm(), if further symbolic processing is performed)"
 //   input Real[:] v "Vector";
@@ -150,5 +151,4 @@ end TestGravityAcceleration;
 //   gravity[3] = 0.0;
 // end TestGravityAcceleration;
 // [flattening/modelica/algorithms-functions/TestGravityAcceleration.mo:58:7-61:19:writable] Error: Cyclically dependent constants or parameters found in scope : {gravityType}, {g}, {mue} (ignore with -d=ignoreCycles).
-//
 // endResult

@@ -21,5 +21,7 @@ model FunctionDefaultArgsCycle
 end FunctionDefaultArgsCycle;
 
 // Result:
-// [flattening/modelica/algorithms-functions/FunctionDefaultArgsCycle.mo:11:14-11:15] Error: [M4009] The default value of y causes a cyclic dependency.
+// Error processing file: FunctionDefaultArgsCycle.mo
+// [flattening/modelica/algorithms-functions/FunctionDefaultArgsCycle.mo:19:3-19:16:writable] Error: The default value of y causes a cyclic dependency.
+// Error: Error occurred while flattening model FunctionDefaultArgsCycle
 // endResult

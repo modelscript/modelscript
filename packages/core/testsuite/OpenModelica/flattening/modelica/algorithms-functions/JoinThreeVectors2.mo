@@ -1,4 +1,4 @@
-// name:     joinThreeVectors2
+// name:     JoinThreeVectors2
 // keywords: external functions
 // status:   correct
 //

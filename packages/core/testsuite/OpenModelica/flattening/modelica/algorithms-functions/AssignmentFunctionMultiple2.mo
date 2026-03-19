@@ -1,6 +1,6 @@
-// name: AssignmentFunctionMultiple2
+// name:     AssignmentFunctionMultiple2
 // keywords: assignment, function
-// status: correct
+// status:   correct
 //
 // Tests assignment to a function call with multiple outputs, omitting one of the outputs
 //
@@ -38,6 +38,6 @@ end AssignmentFunctionMultiple2;
 //   Real y;
 // algorithm
 //   x := 2.0;
-//   (y, ) := F(x);
+//   y := F(x)[1];
 // end AssignmentFunctionMultiple2;
 // endResult

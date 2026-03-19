@@ -1,5 +1,5 @@
-// name: FunctionProtectedInput
-// status: incorrect
+// name:     FunctionProtectedInput
+// status:   incorrect
 
 model FunctionProtectedInput
 
@@ -18,6 +18,8 @@ equation
 end FunctionProtectedInput;
 
 // Result:
-// [flattening/modelica/algorithms-functions/FunctionProtectedInput.mo:8:14-8:17] Error: [M4011] Invalid protected variable inR, function variables that are input/output must be public.
-// [flattening/modelica/algorithms-functions/FunctionProtectedInput.mo:9:15-9:19] Error: [M4011] Invalid protected variable outR, function variables that are input/output must be public.
+// Error processing file: FunctionProtectedInput.mo
+// [flattening/modelica/algorithms-functions/FunctionProtectedInput.mo:8:3-8:17:writable] Error: Invalid protected variable inR, function variables that are input/output must be public.
+// [flattening/modelica/algorithms-functions/FunctionProtectedInput.mo:8:3-8:17:writable] Error: Invalid protected variable outR, function variables that are input/output must be public.
+// Error: Error occurred while flattening model FunctionProtectedInput
 // endResult

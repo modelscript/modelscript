@@ -1,5 +1,5 @@
-// name: AlgorithmNoRetCall
-// status: correct
+// name:     AlgorithmNoRetCall
+// status:   correct
 
 package Modelica
 package Utilities

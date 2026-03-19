@@ -22,5 +22,7 @@ algorithm
 end FunctionInvalidVar2;
 
 // Result:
-// [flattening/modelica/algorithms-functions/FunctionInvalidVar2.mo:14:11-14:12] Error: [M4010] Invalid type .C for function component c.
+// Error processing file: FunctionInvalidVar2.mo
+// [flattening/modelica/algorithms-functions/FunctionInvalidVar2.mo:14:3-14:12:writable] Error: Invalid type .C for function component c.
+// Error: Error occurred while flattening model FunctionInvalidVar2
 // endResult

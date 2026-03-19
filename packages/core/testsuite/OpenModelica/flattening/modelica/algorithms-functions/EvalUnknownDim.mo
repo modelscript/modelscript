@@ -1,4 +1,5 @@
-// status: correct
+// name:     EvalUnknownDim
+// status:   correct
 
 model EvalUnknownDim
   function mySize
@@ -13,6 +14,7 @@ model EvalUnknownDim
   constant Integer s = mySize({1,2,3});
   annotation(__OpenModelica_commandLineOptions="+d=-gen -d=-newInst");
 end EvalUnknownDim;
+
 // Result:
 // function EvalUnknownDim.mySize
 //   input Real[:] r;

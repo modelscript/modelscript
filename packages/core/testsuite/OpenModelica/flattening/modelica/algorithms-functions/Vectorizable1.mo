@@ -1,0 +1,49 @@
+// name:     Vectorizable1
+// keywords: vectorized calls
+// status:   correct
+//
+// This tests vectorized calls.
+//
+function foo
+  input Real x;
+  output Real y;
+algorithm
+  y:=x+1;
+end foo;
+
+
+model Vectorizable1
+  Real x[3];
+  Real s[2];
+  Real a,b,c;
+equation
+  x=foo({a,b,c})+foo({1,2,3});
+  der(s)=-fill(1,2);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
+end Vectorizable1;
+
+// Result:
+// function foo
+//   input Real x;
+//   output Real y;
+// algorithm
+//   y := 1.0 + x;
+// end foo;
+//
+// class Vectorizable1
+//   Real x[1];
+//   Real x[2];
+//   Real x[3];
+//   Real s[1];
+//   Real s[2];
+//   Real a;
+//   Real b;
+//   Real c;
+// equation
+//   x[1] = 2.0 + foo(a);
+//   x[2] = 3.0 + foo(b);
+//   x[3] = 4.0 + foo(c);
+//   der(s[1]) = -1.0;
+//   der(s[2]) = -1.0;
+// end Vectorizable1;
+// endResult

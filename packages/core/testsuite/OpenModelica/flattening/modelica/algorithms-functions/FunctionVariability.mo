@@ -1,6 +1,6 @@
-// name: FunctionVariability
+// name:     FunctionVariability
 // keywords: function variability
-// status: incorrect
+// status:   incorrect
 
 function f
   constant input Real x;
@@ -15,5 +15,7 @@ model FunctionVariability
 end FunctionVariability;
 
 // Result:
-// [flattening/modelica/algorithms-functions/FunctionVariability.mo:13:17-13:18] Error: [M4012] Function argument x=a in call to f has variability continuous which is not a constant expression.
+// Error processing file: FunctionVariability.mo
+// [flattening/modelica/algorithms-functions/FunctionVariability.mo:13:3-13:19:writable] Error: Function argument x=a in call to f has variability continuous which is not a constant expression.
+// Error: Error occurred while flattening model FunctionVariability
 // endResult

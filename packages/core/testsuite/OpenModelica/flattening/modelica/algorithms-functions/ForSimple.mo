@@ -1,6 +1,6 @@
-// name: ForSimple
+// name:     ForSimple
 // keywords: for
-// status: correct
+// status:   correct
 //
 // Tests a simple for statement
 //

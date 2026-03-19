@@ -1,6 +1,6 @@
-// name: InvalidFunctionBinding
+// name:     InvalidFunctionBinding
 // keywords: function binding bug1773
-// status: incorrect
+// status:   incorrect
 //
 // Checks that a component with an invalid binding causes the instantiation to
 // fail.
@@ -21,5 +21,7 @@ model InvalidFunctionBinding
 end InvalidFunctionBinding;
 
 // Result:
-// [flattening/modelica/algorithms-functions/InvalidFunctionBinding.mo:13:22-13:26] Error: [M3001] Type mismatch: 'z' of type 'Real' cannot be assigned from 'true' of type 'Boolean'.
+// Error processing file: InvalidFunctionBinding.mo
+// [flattening/modelica/algorithms-functions/InvalidFunctionBinding.mo:13:3-13:26:writable] Error: Type mismatch: 'z' of type 'Real' cannot be assigned from 'true' of type 'Boolean'.
+// Error: Error occurred while flattening model InvalidFunctionBinding
 // endResult

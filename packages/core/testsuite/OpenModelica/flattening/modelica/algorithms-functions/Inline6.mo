@@ -1,6 +1,6 @@
-// name: Inline6
+// name:     Inline6
 // keywords: inline, function
-// status: skipped
+// status:   correct
 //
 // Test case for inline annotations
 //
@@ -23,9 +23,16 @@ equation
 end Inline6;
 
 // Result:
+// function simpleInline
+//   input Integer[:] inInt;
+//   output Integer outInt;
+// algorithm
+//   outInt := inInt[1];
+// end simpleInline;
+//
 // class Inline6
-// Integer x[1];
-// Integer y;
+//   Integer x[1];
+//   Integer y;
 // equation
 //   x[1] = 2;
 //   y = simpleInline({x[1]});

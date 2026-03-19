@@ -1,6 +1,6 @@
-// name: Inline3
+// name:     Inline3
 // keywords: inline, function
-// status: skipped
+// status:   correct
 //
 // Test case for inline annotations
 //
@@ -23,11 +23,18 @@ equation
 end Inline3;
 
 // Result:
+// function inlineFac
+//   input Integer n;
+//   output Integer res;
+// algorithm
+//   res := if n == 1 then 1 else n * inlineFac(-1 + n);
+// end inlineFac;
+//
 // class Inline3
-// Integer x;
-// Integer y;
+//   Integer x;
+//   Integer y;
 // equation
 //   x = 5;
-//   y = if x == 1 then 1 else x * inlineFac(x - 1);
+//   y = inlineFac(x);
 // end Inline3;
 // endResult

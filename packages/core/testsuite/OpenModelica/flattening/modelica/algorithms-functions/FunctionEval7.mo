@@ -64,6 +64,7 @@ end FunctionEval7;
 //   y := test3(x) + test3(4.0);
 // end test;
 //
+
 // Result:
 // function test
 //   input Real x;

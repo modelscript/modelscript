@@ -1,6 +1,6 @@
-// name: AssignmentFunction
+// name:     AssignmentFunction
 // keywords: assignment, function
-// status: correct
+// status:   correct
 //
 // Tests assignment to a simple function call
 //

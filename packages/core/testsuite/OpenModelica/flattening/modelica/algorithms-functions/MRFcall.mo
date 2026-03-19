@@ -1,4 +1,4 @@
-// name:     MultipleResultsFunction
+// name:     MRFcall
 // keywords: multiple results
 // status:   correct
 //

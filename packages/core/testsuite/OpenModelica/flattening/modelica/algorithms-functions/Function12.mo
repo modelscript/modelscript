@@ -33,6 +33,7 @@ equation
   end when;
   annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end BaseSampler;
+
 // Result:
 // class BaseSampler
 //   input Real u;

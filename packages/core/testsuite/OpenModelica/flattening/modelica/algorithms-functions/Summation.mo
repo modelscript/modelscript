@@ -21,7 +21,6 @@ algorithm
   annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Summation;
 
-
 // Result:
 // class Summation
 //   Real sum;

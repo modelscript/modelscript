@@ -134,8 +134,11 @@ export const ModelicaErrorCode = {
     code: 3006,
     rule: "function-arg-type-mismatch",
     severity: "error",
-    message: (funcName: string, paramName: string, expectedType: string, actualType: string) =>
-      `In call to '${funcName}': argument '${paramName}' expects type '${expectedType}' but got '${actualType}'.`,
+    message: (callExpr: string, argPosition: string, argTypeSignature: string, expectedTypeSignature: string) =>
+      `Type mismatch for positional argument ${argPosition} in ${callExpr}. The argument has type:\n` +
+      `  ${argTypeSignature}\n` +
+      `expected type:\n` +
+      `  ${expectedTypeSignature}`,
   },
   FUNCTION_RETURN_TYPE_MISMATCH: {
     code: 3007,
@@ -219,6 +222,18 @@ export const ModelicaErrorCode = {
     message: (paramName: string, argExpr: string, funcName: string, requiredVariability: string) =>
       `Function argument ${paramName}=${argExpr} in call to ${funcName} has variability continuous which is not a ${requiredVariability} expression.`,
   },
+  MISSING_INNER: {
+    code: 0,
+    rule: "missing-inner",
+    severity: "warning",
+    message: (typeName: string, componentName: string, scopeName: string) =>
+      `No corresponding 'inner' declaration found for component .${typeName} ${componentName} declared as 'outer'.\n` +
+      `  The existing 'inner' components are:\n` +
+      `    There are no 'inner' components defined in the model in any of the parent scopes of 'outer' component's scope: ${scopeName}.\n` +
+      `  Check if you have not misspelled the 'outer' component name.\n` +
+      `  Please declare an 'inner' component with the same name in the top scope.\n` +
+      `  Continuing flattening by only considering the 'outer' component declaration.`,
+  },
 
   // ── 5xxx: Equations & Algorithms ──────────────────────────────────────
   EQUATION_TYPE_MISMATCH: {
@@ -280,26 +295,52 @@ export const ModelicaErrorCode = {
     rule: "assignment-type-mismatch",
     severity: "error",
     message: (target: string, targetType: string, source: string, sourceType: string) =>
-      `Type mismatch in assignment in ${target} := ${source} of ${targetType} := ${sourceType}.`,
+      `Type mismatch in assignment in ${target} := ${source} of ${targetType} := ${sourceType}`,
   },
   FOR_ITERATOR_NOT_1D: {
     code: 5007,
     rule: "for-iterator-not-1d",
     severity: "error",
     message: (iteratorName: string, shape: string) =>
-      `Iterator '${iteratorName}' has type [${shape}], but expected a 1D array expression.`,
+      `Iterator ${iteratorName}, has type ${shape}, but expected a 1D array expression.`,
   },
   ASSIGNMENT_TO_CONSTANT: {
     code: 5008,
     rule: "assignment-to-constant",
     severity: "error",
-    message: (componentName: string) => `Trying to assign to constant component '${componentName}'.`,
+    message: (componentName: string) => `Trying to assign to constant component ${componentName}.`,
   },
   ASSIGNMENT_TO_INPUT: {
     code: 5009,
     rule: "assignment-to-input",
     severity: "error",
     message: (componentName: string) => `Trying to assign to input component '${componentName}'.`,
+  },
+  NESTED_WHEN: {
+    code: 4013,
+    rule: "nested-when-statement",
+    severity: "error",
+    message: () => "Nested when statements are not allowed.",
+  },
+  TUPLE_EXPRESSION_CONTEXT: {
+    code: 4014,
+    rule: "tuple-expression-context",
+    severity: "error",
+    message: (exprText: string) =>
+      `Tuple expressions may only occur on the left side of an assignment or equation with a single function call on the right side.${exprText ? ` Got the following expression: ${exprText}.` : ""}`,
+  },
+  NO_MATCHING_FUNCTION: {
+    code: 3010,
+    rule: "no-matching-function",
+    severity: "error",
+    message: (callExpr: string, callSig: string, candidateSig: string) =>
+      `No matching function found for ${callExpr}\nof type\n  ${callSig}\ncandidates are \n  ${candidateSig}`,
+  },
+  UNUSED_INPUT_VARIABLE: {
+    code: 0,
+    rule: "unused-input-variable",
+    severity: "warning",
+    message: (varName: string, funcName: string) => `Unused input variable ${varName} in function ${funcName}.`,
   },
 } as const satisfies Record<string, ErrorCodeDef>;
 

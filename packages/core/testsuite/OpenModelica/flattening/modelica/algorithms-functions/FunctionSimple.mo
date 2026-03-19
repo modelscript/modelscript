@@ -1,6 +1,6 @@
-// name: FunctionSimple
+// name:     FunctionSimple
 // keywords: function
-// status: correct
+// status:   correct
 //
 // Tests simple function declaration and calling
 //

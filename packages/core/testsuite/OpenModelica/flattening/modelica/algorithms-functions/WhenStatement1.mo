@@ -20,7 +20,6 @@ equation
   annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end WhenStat;
 
-
 // Result:
 // class WhenStat
 //   Real x(start = 1.0);

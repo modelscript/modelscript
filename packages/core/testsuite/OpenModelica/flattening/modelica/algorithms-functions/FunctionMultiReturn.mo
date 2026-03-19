@@ -1,4 +1,4 @@
-// name:     FunctionReturn
+// name:     FunctionMultiReturn
 // keywords: function return
 // status:   correct
 //

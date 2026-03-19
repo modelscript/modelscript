@@ -1,4 +1,5 @@
-// status: skipped
+// name:     PrefixPartialFunctionApplication
+// status:   correct
 // From: https://trac.openmodelica.org/OpenModelica/ticket/4795
 
 package ModelicaServices  "ModelicaServices (OpenModelica implementation) - Models and functions used in the Modelica Standard Library requiring a tool specific implementation"
@@ -85,7 +86,7 @@ end SimpleModelWithSubstructure_TC01;
 //
 // class SimpleModelWithSubstructure_TC01
 //   parameter Real simpleModelWithSubstructure1.qNom[1,1] = 0.0;
-//   parameter Real simpleModelWithSubstructure1.qNom[1,2] = 0.0001;
+//   parameter Real simpleModelWithSubstructure1.qNom[1,2] = 1e-4;
 //   parameter Real simpleModelWithSubstructure1.qNom[2,1] = 5.0;
 //   parameter Real simpleModelWithSubstructure1.qNom[2,2] = 0.001;
 //   parameter Real simpleModelWithSubstructure1.qNom[3,1] = 10.0;

@@ -1,6 +1,6 @@
-// name: AssignmentSimple
+// name:     AssignmentSimple
 // keywords: assignment
-// status: correct
+// status:   correct
 //
 // Tests simple assignment
 //

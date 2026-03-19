@@ -1,6 +1,6 @@
-// name: FunctionCall
+// name:     FunctionCall
 // keywords: function
-// status: correct
+// status:   correct
 //
 // Tests function calls
 //

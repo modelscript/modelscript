@@ -21,7 +21,6 @@ equation
   annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end AlgorithmSection;
 
-
 // Result:
 // class AlgorithmSection
 //   Real x;

@@ -98,7 +98,7 @@ export class Context extends Scope {
   flatten(name: string): string | null {
     const instance = this.query(name);
     if (!instance) return null;
-    const dae = new ModelicaDAE(instance.name ?? "DAE", instance.description);
+    const dae = new ModelicaDAE(name ?? instance.name ?? "DAE", instance.description);
     // Set classKind to 'function' only for function classes; tests expect 'class' for all others
     if (
       instance instanceof ModelicaClassInstance &&

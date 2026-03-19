@@ -33,26 +33,26 @@ equation
 end Faculty4;
 
 // Result:
-function multiply
-  input Real x;
-  input Real y;
-  output Real z;
-algorithm
-  z := x * y;
-end multiply;
-
-class Faculty4
-  parameter Integer x(min = 0) = 4;
-  output Integer y;
-  protected Integer work[1];
-  protected Integer work[2];
-  protected Integer work[3];
-  protected Integer work[4];
-equation
-  y = work[4];
-  /*Real*/(work[4]) = multiply(/*Real*/(work[3]), /*Real*/(1 + work[3]));
-  /*Real*/(work[3]) = multiply(/*Real*/(work[2]), /*Real*/(1 + work[2]));
-  /*Real*/(work[2]) = multiply(/*Real*/(work[1]), /*Real*/(1 + work[1]));
-  work[1] = 1;
-end Faculty4;
+// function multiply
+//   input Real x;
+//   input Real y;
+//   output Real z;
+// algorithm
+//   z := x * y;
+// end multiply;
+//
+// class Faculty4
+//   parameter Integer x(min = 0) = 4;
+//   output Integer y;
+//   protected Integer work[1];
+//   protected Integer work[2];
+//   protected Integer work[3];
+//   protected Integer work[4];
+// equation
+//   y = work[4];
+//   /*Real*/(work[4]) = multiply(/*Real*/(work[3]), /*Real*/(1 + work[3]));
+//   /*Real*/(work[3]) = multiply(/*Real*/(work[2]), /*Real*/(1 + work[2]));
+//   /*Real*/(work[2]) = multiply(/*Real*/(work[1]), /*Real*/(1 + work[1]));
+//   work[1] = 1;
+// end Faculty4;
 // endResult

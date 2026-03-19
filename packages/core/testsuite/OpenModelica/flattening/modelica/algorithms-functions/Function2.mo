@@ -38,5 +38,4 @@ end Function2;
 //   x = f(z);
 // end Function2;
 // [flattening/modelica/algorithms-functions/Function2.mo:13:8-13:15] Warning: [M4007] Invalid public variable toomuch, function variables that are not input/output must be protected.
-//
 // endResult
