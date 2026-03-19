@@ -3559,6 +3559,33 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         }
         return new ModelicaArray([arrayElements.length], arrayElements);
       }
+      // Zero-size array: if the component is a zero-size array (e.g., x[n] where n=0),
+      // no DAE variables were emitted. Return an empty array so that expressions
+      // involving it (e.g., A*x, der(x)) can be simplified/eliminated.
+      // Important: distinguish between truly zero-size (from an evaluated parameter)
+      // and flexible/unsized (from colon [:] subscripts that couldn't be resolved).
+      // Also skip inside function definitions where dimensions like Real[m] with
+      // input parameter m are not truly zero — they're unresolved at compile time.
+      if (ctx.classInstance && ctx.classInstance.classKind !== ModelicaClassKind.FUNCTION) {
+        const firstName = node.parts[0]?.identifier?.text;
+        if (firstName) {
+          const resolved = ctx.classInstance.resolveSimpleName(firstName, false, true);
+          if (
+            resolved instanceof ModelicaComponentInstance &&
+            resolved.classInstance instanceof ModelicaArrayClassInstance
+          ) {
+            const arrInst = resolved.classInstance;
+            const shape = arrInst.shape;
+            // Only treat as zero-size if at least one dimension is 0 AND the
+            // corresponding subscript is NOT a flexible [:] colon.
+            const subscripts = arrInst.arraySubscripts;
+            const hasTrueZeroDim = shape.some((d, i) => d === 0 && !subscripts[i]?.flexible);
+            if (hasTrueZeroDim) {
+              return new ModelicaArray([0], []);
+            }
+          }
+        }
+      }
       // Check for encoded array function parameters (\0[dims]\0name) — return a
       // name expression with the bare name so the printer outputs it cleanly.
       for (const variable of ctx.dae.variables) {
@@ -4493,6 +4520,11 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     // This preserves C = inv({{A[1,1],...}}) * B instead of {{C[1,1],...}} = ... * {{B[1,1],...}}
     if (expression1) expression1 = this.collapseArrayToName(expression1);
     if (expression2) expression2 = this.collapseArraysInExpr(expression2);
+    // Skip equations involving zero-size arrays (e.g., der(x) = A*x where x[0] is empty).
+    // Empty arrays arise from zero-dimensional components and produce vacuous equations.
+    const hasEmptyArray = (e: ModelicaExpression | null | undefined): boolean =>
+      e instanceof ModelicaArray && e.shape.some((d) => d === 0);
+    if (hasEmptyArray(expression1) || hasEmptyArray(expression2)) return null;
     // When a scalar LHS has a multi-return function call RHS that was constant-evaluated
     // to an array (e.g., y = f(4) where f returns {8.0, 12.0}), extract only the first output.
     // We detect this when: (1) LHS is a scalar variable (not an array),
@@ -5156,6 +5188,41 @@ function canonicalizeBinaryExpression(
   const scalarOp = (isElementwiseOp ? operator.substring(1) : operator) as ModelicaBinaryOperator;
 
   if (operand1 instanceof ModelicaArray && operand2 instanceof ModelicaArray) {
+    // Matrix-vector multiplication: M[m,n] * v[n] → w[m] where w[i] = sum(M[i,j] * v[j])
+    // This applies only to non-elementwise * (Modelica semantics).
+    if (
+      !isElementwiseOp &&
+      operator === ModelicaBinaryOperator.MULTIPLICATION &&
+      operand1.shape.length === 2 &&
+      operand2.shape.length === 1
+    ) {
+      const nRows = operand1.shape[0] ?? 0;
+      const nCols = operand1.shape[1] ?? 0;
+      const vecLen = operand2.shape[0] ?? 0;
+      if (nCols === vecLen && nCols > 0 && nRows > 0) {
+        // operand1.elements are row arrays: [row0, row1, ...]
+        const resultElements: ModelicaExpression[] = [];
+        for (let i = 0; i < nRows; i++) {
+          const row = operand1.elements[i];
+          const rowElements = row instanceof ModelicaArray ? row.elements : [row];
+          // Build dot product: row[0]*v[0] + row[1]*v[1] + ...
+          let dotProduct: ModelicaExpression | null = null;
+          for (let j = 0; j < nCols; j++) {
+            const mij = rowElements[j];
+            const vj = operand2.elements[j];
+            if (!mij || !vj) continue;
+            const term = canonicalizeBinaryExpression(ModelicaBinaryOperator.MULTIPLICATION, mij, vj, dae);
+            if (!dotProduct) {
+              dotProduct = term;
+            } else {
+              dotProduct = canonicalizeBinaryExpression(ModelicaBinaryOperator.ADDITION, dotProduct, term, dae);
+            }
+          }
+          resultElements.push(dotProduct ?? new ModelicaIntegerLiteral(0));
+        }
+        return new ModelicaArray([nRows], resultElements);
+      }
+    }
     if (scalarOp === "+" || scalarOp === "-" || scalarOp === "*" || scalarOp === "/") {
       if (operand1.elements.length === operand2.elements.length) {
         const newElements = operand1.elements.map((e1, i) =>
@@ -5244,6 +5311,23 @@ function canonicalizeBinaryExpression(
         break;
     }
     if (boolResult != null) return new ModelicaBooleanLiteral(boolResult);
+  }
+  // Empty (zero-size) array elimination: operations with empty arrays collapse.
+  // Multiplication with an empty array yields the empty array (zero-size product → 0).
+  // Addition with an empty array yields the other operand (additive identity).
+  const isEmptyArray = (e: ModelicaExpression) => e instanceof ModelicaArray && e.shape.some((d) => d === 0);
+  if (isEmptyArray(operand1) || isEmptyArray(operand2)) {
+    if (
+      operator === ModelicaBinaryOperator.MULTIPLICATION ||
+      operator === ModelicaBinaryOperator.ELEMENTWISE_MULTIPLICATION
+    ) {
+      return isEmptyArray(operand1) ? operand1 : operand2;
+    }
+    if (operator === ModelicaBinaryOperator.ADDITION || operator === ModelicaBinaryOperator.SUBTRACTION) {
+      return isEmptyArray(operand1) ? operand2 : operand1;
+    }
+    // For any other operator, return the empty array
+    return isEmptyArray(operand1) ? operand1 : operand2;
   }
   // Subtraction cancellation: x - x → 0
   if (operator === ModelicaBinaryOperator.SUBTRACTION && operand1.hash === operand2.hash) {
