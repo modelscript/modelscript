@@ -248,6 +248,18 @@ export abstract class ModelicaElement extends ModelicaNode {
   ): ModelicaNamedElement[] {
     const clauseModification = annotationClause ? ModelicaModification.new(classInstance, annotationClause) : null;
     const modification = ModelicaModification.merge(clauseModification, modificationAnnotations);
+    return ModelicaElement.instantiateAnnotationsFromModification(classInstance, modification);
+  }
+
+  /**
+   * Instantiate annotations from a pre-merged modification.  This is the
+   * core implementation used by both `instantiateAnnotations` (single clause)
+   * and the class-level annotation merging path.
+   */
+  static instantiateAnnotationsFromModification(
+    classInstance: ModelicaClassInstance | null,
+    modification: ModelicaModification | null | undefined,
+  ): ModelicaNamedElement[] {
     if (!ModelicaElement.#annotationClassInstance && classInstance?.context) {
       ModelicaElement.initializeAnnotationClass(classInstance.context);
     }
@@ -1190,11 +1202,21 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     for (const element of this.declaredElements) {
       if (element instanceof ModelicaExtendsClassInstance) element.instantiate();
     }
-    this.annotations = ModelicaElement.instantiateAnnotations(
-      this,
-      this.abstractSyntaxNode?.annotationClause,
-      this.modification?.annotations,
-    );
+    // Collect and merge all class-level annotation clauses.
+    // The LongClassSpecifier's classAnnotationClauses getter dynamically
+    // yields annotations from ElementAnnotation entries, section-level
+    // annotationClauses, and the specifier's own annotationClause.
+    const specifier = this.abstractSyntaxNode?.classSpecifier;
+    let mergedAnnotationMod: ModelicaModification | null = null;
+    if (specifier instanceof ModelicaLongClassSpecifierSyntaxNode) {
+      for (const clause of specifier.classAnnotationClauses) {
+        mergedAnnotationMod = ModelicaModification.merge(mergedAnnotationMod, ModelicaModification.new(this, clause));
+      }
+    } else if (this.abstractSyntaxNode?.annotationClause) {
+      mergedAnnotationMod = ModelicaModification.new(this, this.abstractSyntaxNode.annotationClause);
+    }
+    mergedAnnotationMod = ModelicaModification.merge(mergedAnnotationMod, this.modification?.annotations ?? null);
+    this.annotations = ModelicaElement.instantiateAnnotationsFromModification(this, mergedAnnotationMod);
     this.description =
       this.abstractSyntaxNode?.classSpecifier?.description?.strings?.map((d) => d.text ?? "")?.join(" ") ?? null;
     this.instantiated = true;

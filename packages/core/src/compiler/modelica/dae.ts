@@ -1478,11 +1478,13 @@ export class ModelicaArray extends ModelicaPrimaryExpression {
   }
 
   override get toJSON(): JSONValue {
+    const fullShape = this.flatShape;
     let elements: JSONValue = [...this.flatElements].map((e) => e.toJSON);
-    for (let i = this.shape.length - 1; i >= 1; i--) {
-      const length = this.shape[i] ?? 0;
+    for (let i = fullShape.length - 1; i >= 1; i--) {
+      const length = fullShape[i] ?? 0;
       const chunks: JSONValue[] = [];
-      for (let j = 0; j < elements.length; j += length) chunks.push(elements.slice(j, j + length));
+      for (let j = 0; j < (elements as JSONValue[]).length; j += length)
+        chunks.push((elements as JSONValue[]).slice(j, j + length));
       elements = chunks;
     }
     return elements;

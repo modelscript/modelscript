@@ -257,6 +257,12 @@ export abstract class ModelicaSyntaxNode implements IModelicaSyntaxNode {
           concreteSyntaxNode,
           abstractSyntaxNode as IModelicaComponentClauseSyntaxNode,
         );
+      case ModelicaElementAnnotationSyntaxNode.type:
+        return new ModelicaElementAnnotationSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaElementAnnotationSyntaxNode,
+        );
       case ModelicaComponentDeclarationSyntaxNode.type:
         return new ModelicaComponentDeclarationSyntaxNode(
           parent,
@@ -790,6 +796,12 @@ export abstract class ModelicaElementSyntaxNode extends ModelicaSyntaxNode {
           concreteSyntaxNode,
           abstractSyntaxNode as IModelicaComponentClauseSyntaxNode,
         );
+      case ModelicaElementAnnotationSyntaxNode.type:
+        return new ModelicaElementAnnotationSyntaxNode(
+          parent,
+          concreteSyntaxNode,
+          abstractSyntaxNode as IModelicaElementAnnotationSyntaxNode,
+        );
       default:
         return null;
     }
@@ -1047,7 +1059,6 @@ export abstract class ModelicaClassSpecifierSyntaxNode
 
 export interface IModelicaLongClassSpecifierSyntaxNode extends IModelicaClassSpecifierSyntaxNode {
   classModification: IModelicaClassModificationSyntaxNode | null;
-  elementAnnotationClauses: IModelicaAnnotationClauseSyntaxNode[];
   endIdentifier: IModelicaIdentifierSyntaxNode | null;
   extends: boolean;
   externalFunctionClause: IModelicaExternalFunctionClauseSyntaxNode | null;
@@ -1059,7 +1070,6 @@ export class ModelicaLongClassSpecifierSyntaxNode
   implements IModelicaLongClassSpecifierSyntaxNode
 {
   classModification: ModelicaClassModificationSyntaxNode | null;
-  elementAnnotationClauses: ModelicaAnnotationClauseSyntaxNode[];
   endIdentifier: ModelicaIdentifierSyntaxNode | null;
   extends: boolean;
   externalFunctionClause: ModelicaExternalFunctionClauseSyntaxNode | null;
@@ -1092,38 +1102,35 @@ export class ModelicaLongClassSpecifierSyntaxNode
       concreteSyntaxNode?.childForFieldName("endIdentifier"),
       abstractSyntaxNode?.endIdentifier,
     );
-
-    // Collect ElementAnnotation nodes from sections and treat them as class annotations.
-    // Each annotation preserves its original source range for in-place editing.
-    this.elementAnnotationClauses = [];
-    if (concreteSyntaxNode) {
-      for (const sectionNode of concreteSyntaxNode.childrenForFieldName("section")) {
-        for (const elementNode of sectionNode.childrenForFieldName("element")) {
-          if (elementNode.type === "ElementAnnotation") {
-            const annotationNode = elementNode.namedChildren.find((c) => c.type === "AnnotationClause");
-            if (annotationNode) {
-              const clause = ModelicaAnnotationClauseSyntaxNode.new(this, annotationNode);
-              if (clause) this.elementAnnotationClauses.push(clause);
-            }
-          }
-        }
-      }
-    } else if (abstractSyntaxNode?.elementAnnotationClauses) {
-      for (const abs of abstractSyntaxNode.elementAnnotationClauses) {
-        const clause = ModelicaAnnotationClauseSyntaxNode.new(this, undefined, abs);
-        if (clause) this.elementAnnotationClauses.push(clause);
-      }
-    }
   }
 
   /**
-   * Returns all annotation clauses (element-level + class-level) in source order.
-   * Each annotation preserves its original source range for in-place editing.
+   * Dynamically collects all class-level annotation clauses in source order:
+   *  - ElementAnnotation entries from element sections
+   *  - Section-level annotationClauses from equation/algorithm sections
+   *  - The specifier's own annotationClause
    */
-  get allAnnotationClauses(): ModelicaAnnotationClauseSyntaxNode[] {
-    const result = [...this.elementAnnotationClauses];
-    if (this.annotationClause) result.push(this.annotationClause);
-    return result;
+  get classAnnotationClauses(): IterableIterator<ModelicaAnnotationClauseSyntaxNode> {
+    const sections = this.sections;
+    const specifierClause = this.annotationClause;
+    return (function* () {
+      for (const section of sections) {
+        if (section instanceof ModelicaElementSectionSyntaxNode) {
+          for (const element of section.elements) {
+            if (element instanceof ModelicaElementAnnotationSyntaxNode && element.annotationClause) {
+              yield element.annotationClause;
+            }
+          }
+        } else if (
+          (section instanceof ModelicaEquationSectionSyntaxNode ||
+            section instanceof ModelicaAlgorithmSectionSyntaxNode) &&
+          section.annotationClause
+        ) {
+          yield section.annotationClause;
+        }
+      }
+      if (specifierClause) yield specifierClause;
+    })();
   }
 
   override accept<R, A>(visitor: IModelicaSyntaxVisitor<R, A>, argument?: A): R {
@@ -1593,6 +1600,47 @@ export class ModelicaElementSectionSyntaxNode
           "Initial" + ModelicaElementSectionSyntaxNode.type,
           ModelicaVisibility.PUBLIC,
         );
+      default:
+        return null;
+    }
+  }
+}
+
+export interface IModelicaElementAnnotationSyntaxNode extends IModelicaElementSyntaxNode {
+  annotationClause: IModelicaAnnotationClauseSyntaxNode | null;
+}
+
+export class ModelicaElementAnnotationSyntaxNode
+  extends ModelicaElementSyntaxNode
+  implements IModelicaElementAnnotationSyntaxNode
+{
+  annotationClause: ModelicaAnnotationClauseSyntaxNode | null;
+
+  constructor(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaElementAnnotationSyntaxNode | null,
+  ) {
+    super(parent, concreteSyntaxNode, abstractSyntaxNode);
+    this.annotationClause = ModelicaAnnotationClauseSyntaxNode.new(
+      this,
+      concreteSyntaxNode?.namedChildren?.find((c) => c.type === "AnnotationClause"),
+      abstractSyntaxNode?.annotationClause,
+    );
+  }
+
+  override accept<R, A>(visitor: IModelicaSyntaxVisitor<R, A>, argument?: A): R {
+    return visitor.visitElementAnnotation(this, argument);
+  }
+
+  static override new(
+    parent: ModelicaSyntaxNode | null,
+    concreteSyntaxNode?: SyntaxNode | null,
+    abstractSyntaxNode?: IModelicaElementAnnotationSyntaxNode | null,
+  ): ModelicaElementAnnotationSyntaxNode | null {
+    switch (concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]) {
+      case ModelicaElementAnnotationSyntaxNode.type:
+        return new ModelicaElementAnnotationSyntaxNode(parent, concreteSyntaxNode, abstractSyntaxNode);
       default:
         return null;
     }
@@ -5807,6 +5855,7 @@ export interface IModelicaSyntaxVisitor<R, A> {
   visitLanguageSpecification(node: ModelicaLanguageSpecificationSyntaxNode, argument?: A): R;
   visitExternalFunctionCall(node: ModelicaExternalFunctionCallSyntaxNode, argument?: A): R;
   visitElementSection(node: ModelicaElementSectionSyntaxNode, argument?: A): R;
+  visitElementAnnotation(node: ModelicaElementAnnotationSyntaxNode, argument?: A): R;
   visitSimpleImportClause(node: ModelicaSimpleImportClauseSyntaxNode, argument?: A): R;
   visitCompoundImportClause(node: ModelicaCompoundImportClauseSyntaxNode, argument?: A): R;
   visitUnqualifiedImportClause(node: ModelicaUnqualifiedImportClauseSyntaxNode, argument?: A): R;
@@ -5962,6 +6011,11 @@ export abstract class ModelicaSyntaxVisitor<R, A> implements IModelicaSyntaxVisi
 
   visitElementSection(node: ModelicaElementSectionSyntaxNode, argument?: A): R | null {
     for (const element of node.elements) element.accept(this, argument);
+    return null;
+  }
+
+  visitElementAnnotation(node: ModelicaElementAnnotationSyntaxNode, argument?: A): R | null {
+    node.annotationClause?.accept(this, argument);
     return null;
   }
 

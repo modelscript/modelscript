@@ -796,7 +796,13 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
     if (!model) return [];
 
     const linter = new ModelicaLinter(
-      (type: string, message: string, resource: string | null | undefined, range: Range | null | undefined) => {
+      (
+        type: string,
+        _code: number,
+        message: string,
+        _resource: string | null | undefined,
+        range: Range | null | undefined,
+      ) => {
         if (!range) return;
         markers.push({
           message,
@@ -804,7 +810,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
           startColumn: range.startPosition.column + 1,
           endLineNumber: range.endPosition.row + 1,
           endColumn: range.endPosition.column + 1,
-          severity: monaco.MarkerSeverity.Error,
+          severity: type === "warning" ? monaco.MarkerSeverity.Warning : monaco.MarkerSeverity.Error,
         });
       },
     );
