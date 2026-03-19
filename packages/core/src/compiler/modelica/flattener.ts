@@ -159,6 +159,98 @@ const BUILTIN_ARRAY_HANDLERS: ReadonlyMap<string, BuiltinArrayHandler> = new Map
   ["array", (args) => (args.length >= 1 ? new ModelicaArray([args.length], args) : null)],
 
   [
+    "cat",
+    (args, ctx) => {
+      if (args.length < 2) return null;
+      const kLit = args[0];
+      if (!(kLit instanceof ModelicaIntegerLiteral)) return null;
+      const k = kLit.value;
+
+      const expandedArgs: ModelicaArray[] = [];
+      for (let i = 1; i < args.length; i++) {
+        let arg = args[i];
+        if (!arg) return null;
+        if (arg instanceof ModelicaNameExpression || arg instanceof ModelicaSubscriptedExpression) {
+          // Attempt to expand array name references to explicit arrays
+          const tryExpandToArray = (expr: ModelicaExpression): ModelicaArray | null => {
+            if (expr instanceof ModelicaArray) return expr;
+            if (expr instanceof ModelicaSubscriptedExpression && expr.base instanceof ModelicaNameExpression) {
+              const baseName = expr.base.name;
+              if (expr.subscripts.length === 1 && expr.subscripts[0] instanceof ModelicaColonExpression) {
+                const vars = ctx.dae.variables
+                  .filter((v) => v.name.startsWith(baseName + "["))
+                  .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+                if (vars.length > 0) {
+                  return new ModelicaArray(
+                    [vars.length],
+                    vars.map((v) => new ModelicaNameExpression(v.name)),
+                  );
+                }
+              }
+            }
+            if (expr instanceof ModelicaNameExpression) {
+              const vars = ctx.dae.variables
+                .filter((v) => v.name.startsWith(expr.name + "["))
+                .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+              if (vars.length > 0) {
+                return new ModelicaArray(
+                  [vars.length],
+                  vars.map((v) => new ModelicaNameExpression(v.name)),
+                );
+              }
+            }
+            return null;
+          };
+          const exp = tryExpandToArray(arg);
+          if (exp) arg = exp;
+        }
+
+        if (arg instanceof ModelicaArray) {
+          expandedArgs.push(arg);
+        } else {
+          // Scalars are treated as arrays with shape [1]
+          expandedArgs.push(new ModelicaArray([1], [arg]));
+        }
+      }
+
+      if (k === 1) {
+        // Concatenate along first dimension (rows)
+        let totalRows = 0;
+        const elements: ModelicaExpression[] = [];
+        for (const arr of expandedArgs) {
+          const flat = [...arr.flatElements];
+          elements.push(...flat.filter((e): e is ModelicaExpression => e !== null));
+          totalRows += arr.flatShape[0] ?? 1;
+        }
+        const firstShape = expandedArgs[0]?.flatShape ?? [];
+        const resShape = [totalRows, ...firstShape.slice(1)];
+        return new ModelicaArray(resShape, elements);
+      } else if (k === 2) {
+        // Concatenate along second dimension (columns)
+        const firstShape = expandedArgs[0]?.flatShape ?? [];
+        const dim1 = firstShape[0] ?? 1;
+        const resultCols = expandedArgs.reduce((acc, a) => acc + (a.flatShape[1] ?? 1), 0);
+        const resShape = [dim1, resultCols, ...firstShape.slice(2)];
+
+        const resElements = new Array<ModelicaExpression>();
+        for (let row = 0; row < dim1; row++) {
+          for (const arr of expandedArgs) {
+            const rowSize = arr.flatShape[1] ?? 1;
+            const startIdx = row * rowSize;
+            const flat = [...arr.flatElements];
+            for (let c = 0; c < rowSize; c++) {
+              const el = flat[startIdx + c];
+              if (el) resElements.push(el);
+            }
+          }
+        }
+        return new ModelicaArray(resShape, resElements);
+      }
+      return null;
+    },
+  ],
+
+  [
     "fill",
     (args) => {
       if (args.length < 2 || !args[0]) return null;
@@ -264,13 +356,128 @@ const BUILTIN_ARRAY_HANDLERS: ReadonlyMap<string, BuiltinArrayHandler> = new Map
 
       // Direct array shape queries
       if (arrayArg instanceof ModelicaArray) {
+        const shape = arrayArg.flatShape;
         if (args.length === 1) {
-          return new ModelicaIntegerLiteral(arrayArg.shape.reduce((a, b) => a * b, 1));
+          return new ModelicaIntegerLiteral(shape.reduce((a, b) => a * b, 1));
         }
         if (args.length === 2 && args[1] instanceof ModelicaIntegerLiteral) {
           const dim = args[1].value;
-          if (dim >= 1 && dim <= arrayArg.shape.length) {
-            return new ModelicaIntegerLiteral(arrayArg.shape[dim - 1] ?? 0);
+          if (dim >= 1 && dim <= shape.length) {
+            return new ModelicaIntegerLiteral(shape[dim - 1] ?? 0);
+          }
+        }
+      }
+
+      // Resolve size(var, dim) from function variable type encoding.
+      // Function variables have names like "\0[dim1Expr, 2]\0center_pos".
+      // When the requested dimension is a known integer in the encoding, return it directly.
+      // Skip input variables — their dimensions depend on the call site, not the function declaration.
+      if (
+        arrayArg instanceof ModelicaNameExpression &&
+        args.length === 2 &&
+        args[1] instanceof ModelicaIntegerLiteral
+      ) {
+        const varName = arrayArg.name;
+        const funcVar = ctx.dae.variables.find((v) => v.name.endsWith("\0" + varName));
+        if (funcVar && funcVar.causality !== "input") {
+          const nameMatch = funcVar.name.match(/^\0\[([^\]]+)\]\0/);
+          if (nameMatch?.[1]) {
+            // Split dimensions by commas, respecting nested parentheses
+            const dims: string[] = [];
+            let depth = 0;
+            let current = "";
+            for (const ch of nameMatch[1]) {
+              if (ch === "(") depth++;
+              else if (ch === ")") depth--;
+              if (ch === "," && depth === 0) {
+                dims.push(current.trim());
+                current = "";
+              } else {
+                current += ch;
+              }
+            }
+            if (current.trim()) dims.push(current.trim());
+
+            const dimIdx = (args[1] as ModelicaIntegerLiteral).value - 1;
+            const dimExpr = dimIdx >= 0 && dimIdx < dims.length ? dims[dimIdx] : undefined;
+            if (dimExpr && /^\d+$/.test(dimExpr)) {
+              return new ModelicaIntegerLiteral(parseInt(dimExpr, 10));
+            }
+          }
+        }
+      }
+
+      // Resolve size(var, dim) from class instance in model context.
+      // Skip function contexts — the function variable handler above handles those.
+      if (
+        arrayArg instanceof ModelicaNameExpression &&
+        ctx.classInstance &&
+        ctx.classInstance.classKind !== ModelicaClassKind.FUNCTION
+      ) {
+        const resolved = ctx.classInstance.resolveName(arrayArg.name.split("."));
+        if (
+          resolved instanceof ModelicaComponentInstance &&
+          resolved.classInstance instanceof ModelicaArrayClassInstance
+        ) {
+          const originalShape = resolved.classInstance.shape;
+          let shape = originalShape;
+
+          const isUnsized = originalShape.some((d: number) => d === 0);
+          if (isUnsized) {
+            // Try infer from binding expression
+            let arrayBindingExpression =
+              resolved.modification?.evaluatedExpression ?? resolved.modification?.expression;
+            if (!arrayBindingExpression && resolved.modification?.modificationExpression?.expression) {
+              const interp = new ModelicaInterpreter();
+              arrayBindingExpression = resolved.modification.modificationExpression.expression.accept(
+                interp,
+                resolved.parent ?? undefined,
+              );
+            }
+            if (arrayBindingExpression instanceof ModelicaArray) {
+              shape = arrayBindingExpression.flatShape;
+            } else {
+              return null;
+            }
+          }
+
+          if (args.length === 1) {
+            return new ModelicaIntegerLiteral(shape.reduce((a: number, b: number) => a * b, 1));
+          }
+          if (args.length === 2 && args[1] instanceof ModelicaIntegerLiteral) {
+            const dim = args[1].value;
+            if (dim >= 1 && dim <= shape.length) {
+              return new ModelicaIntegerLiteral(shape[dim - 1] ?? 0);
+            }
+          }
+        }
+      }
+      // Fallback: infer shape from flattened DAE variable names
+      if (arrayArg instanceof ModelicaNameExpression && ctx.dae) {
+        const prefix = arrayArg.name + "[";
+        const matchingVars = ctx.dae.variables.filter((v) => v.name.startsWith(prefix));
+
+        if (matchingVars.length > 0) {
+          const dims: number[] = [];
+          for (const v of matchingVars) {
+            const match = v.name.match(/\[([^\]]+)\]$/);
+            if (match?.[1]) {
+              const indices = match[1].split(",").map((s) => parseInt(s.trim(), 10));
+              for (let i = 0; i < indices.length; i++) {
+                dims[i] = Math.max(dims[i] ?? 0, indices[i] ?? 0);
+              }
+            }
+          }
+          if (dims.length > 0) {
+            if (args.length === 1) {
+              return new ModelicaIntegerLiteral(dims.reduce((a, b) => a * b, 1));
+            }
+            if (args.length === 2 && args[1] instanceof ModelicaIntegerLiteral) {
+              const dim = args[1].value;
+              if (dim >= 1 && dim <= dims.length) {
+                return new ModelicaIntegerLiteral(dims[dim - 1] ?? 0);
+              }
+            }
           }
         }
       }
@@ -562,6 +769,9 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
   #structuralFinalParams = new Set<string>();
   // Carry outer brokenConnects through nested extends chains
   #outerBrokenConnects = new Set<string>();
+  // Track current array element index for distributing array-valued modifiers
+  // e.g., A a[2](n={1,2}) → a[1].n=1, a[2].n=2
+  #arrayElementIndex: number | null = null;
 
   visitComponentInstance(node: ModelicaComponentInstance, args: [string, ModelicaDAE]): void {
     // Skip pure `outer` components — they reference an `inner` declaration higher up
@@ -727,6 +937,14 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
             stmtCollector: [],
             structuralFinalParams: this.#structuralFinalParams,
           }) ?? null;
+      }
+      // Distribute array-valued parameter bindings when inside an array element iteration
+      // e.g., A a[2](n={1,2}) → a[1].n=1, a[2].n=2
+      if (expression instanceof ModelicaArray && this.#arrayElementIndex !== null) {
+        const idx = this.#arrayElementIndex;
+        if (idx >= 0 && idx < expression.elements.length) {
+          expression = expression.elements[idx] ?? expression;
+        }
       }
       // Only fall back to evaluatedExpression if no symbolic form exists
       if (!expression) {
@@ -1010,7 +1228,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
 
     // Infer size from binding if this is an unsized array [:]
     if (shape.length >= 1 && shape.some((d) => d === 0) && arrayBindingExpression instanceof ModelicaArray) {
-      shape = arrayBindingExpression.shape;
+      shape = arrayBindingExpression.flatShape;
       const totalElements = shape.reduce((a, b) => a * b, 1);
       declaredElements = new Array(totalElements).fill(arrayClassInstance.elementClassInstance);
       // Ensure element type is appropriate wrapper if necessary
@@ -1127,7 +1345,10 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           }
         }
       } else {
+        const prevArrayElementIndex = this.#arrayElementIndex;
+        this.#arrayElementIndex = elementIndex;
         declaredElement?.accept(this, [elementName, args[1]]);
+        this.#arrayElementIndex = prevArrayElementIndex;
       }
       elementIndex++;
       if (!this.incrementIndex(index, shape)) break;
@@ -1398,7 +1619,32 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       }
       return op1 === expr.operand ? expr : new ModelicaUnaryExpression(expr.operator, op1);
     } else if (expr instanceof ModelicaFunctionCallExpression) {
-      const args = expr.args.map((a) => this.#foldExpression(a, dae, visited, inlineParameters));
+      // For builtin math functions (sqrt, sin, cos, etc.) that have non-literal args,
+      // fold args WITHOUT parameter inlining to preserve expressions like sqrt(a).
+      // Without this guard, foldDAEConstants would inline a→5.0, producing sqrt(5.0),
+      // which would then be evaluated to 2.236... on the next iteration.
+      const isKnownBuiltin = inlineParameters && BUILTIN_FUNCTIONS.has(expr.functionName);
+      // Don't suppress inlining for size() — it's a structural query that needs
+      // parameter values to resolve, unlike math functions like sqrt() where we
+      // want to preserve symbolic expressions.
+      const hadNonLiteralArg = isKnownBuiltin && expr.functionName !== "size" && expr.args.some((a) => !isLiteral(a));
+      const args = hadNonLiteralArg
+        ? expr.args.map((a) => this.#foldExpression(a, dae, visited, false))
+        : expr.args.map((a) => this.#foldExpression(a, dae, visited, inlineParameters));
+
+      if (dae) {
+        const arrayHandler = BUILTIN_ARRAY_HANDLERS.get(expr.functionName);
+        if (arrayHandler) {
+          const result = arrayHandler(args, {
+            dae,
+            classInstance: undefined as unknown as ModelicaClassInstance,
+            prefix: "",
+            stmtCollector: [],
+          });
+          if (result) return this.#foldExpression(result, dae, visited, inlineParameters);
+        }
+      }
+
       const folded = tryFoldBuiltinFunction(expr.functionName, args);
       if (folded) return folded;
 
@@ -1484,7 +1730,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       if (
         inlineParameters &&
         (expr.variability === ModelicaVariability.CONSTANT ||
-          (expr.variability === ModelicaVariability.PARAMETER && expr.isFinal)) &&
+          (expr.variability === ModelicaVariability.PARAMETER && (expr.isFinal || !expr.isProtected))) &&
         expr.expression
       ) {
         if (!visited.has(expr.name)) {
@@ -1569,7 +1815,48 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           }
         }
 
+        // Expand subscripted comprehension: array(expr for i in range)[k] → expr[i:=k]
+        if (
+          base instanceof ModelicaComprehensionExpression &&
+          subscripts.length === 1 &&
+          subscripts[0] instanceof ModelicaIntegerLiteral
+        ) {
+          const k = (subscripts[0] as ModelicaIntegerLiteral).value;
+          const comp = base;
+          if (comp.iterators.length === 1 && comp.iterators[0]) {
+            const iterName = comp.iterators[0].name;
+            const range = comp.iterators[0].range;
+            // Evaluate the range to find start value
+            const foldedRange = this.#foldExpression(range, dae, visited, inlineParameters);
+            let startVal = 1; // default
+            if (foldedRange instanceof ModelicaRangeExpression) {
+              const rs = foldedRange.start;
+              if (rs instanceof ModelicaIntegerLiteral) startVal = rs.value;
+            }
+            const iterValue = startVal + k - 1;
+            // Substitute iterator variable in body expression
+            const substituted = substituteIterator(
+              comp.bodyExpression,
+              iterName,
+              new ModelicaIntegerLiteral(iterValue),
+            );
+            return this.#foldExpression(substituted, dae, visited, inlineParameters);
+          }
+        }
+
         // Return a partially or fully folded SubscriptedExpression
+        // Resolve subscripted name expressions to flat name expressions when
+        // the flat name matches a DAE variable: NameExpr("r.m1.p")[1, 2] → NameExpr("r.m1.p[1,2]")
+        if (
+          dae &&
+          base instanceof ModelicaNameExpression &&
+          subscripts.every((s) => s instanceof ModelicaIntegerLiteral)
+        ) {
+          const flatName = base.name + "[" + subscripts.map((s) => (s as ModelicaIntegerLiteral).value).join(",") + "]";
+          if (dae.variables.some((v) => v.name === flatName)) {
+            return new ModelicaNameExpression(flatName);
+          }
+        }
         return new ModelicaSubscriptedExpression(base, subscripts);
       }
     }
@@ -1624,15 +1911,59 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     node: ModelicaArrayConcatenationSyntaxNode,
     ctx: FlattenerContext,
   ): ModelicaExpression | null {
-    const elements: ModelicaExpression[] = [];
-    const shape = [node.expressionLists.length, node.expressionLists[0]?.expressions?.length ?? 0];
+    const listExprs: ModelicaExpression[] = [];
     for (const expressionList of node.expressionLists ?? []) {
+      const rowExprs: ModelicaExpression[] = [];
       for (const expression of expressionList.expressions ?? []) {
         const element = expression.accept(this, ctx);
-        if (element != null) elements.push(element);
+        if (element != null) rowExprs.push(element);
+      }
+      if (rowExprs.length === 1) {
+        const rowExpr = rowExprs[0];
+        if (rowExpr) listExprs.push(rowExpr);
+      } else if (rowExprs.length > 1) {
+        listExprs.push(new ModelicaFunctionCallExpression("cat", [new ModelicaIntegerLiteral(2), ...rowExprs]));
       }
     }
-    return new ModelicaArray(shape, elements);
+
+    let finalExpr: ModelicaExpression | null = null;
+    if (listExprs.length === 1) {
+      if (node.expressionLists?.length === 1 && node.expressionLists[0]?.expressions?.length === 1) {
+        const expr = listExprs[0];
+        if (expr) {
+          if (expr instanceof ModelicaArray) {
+            finalExpr = new ModelicaFunctionCallExpression("cat", [new ModelicaIntegerLiteral(1), expr]);
+          } else {
+            finalExpr = new ModelicaArray([1, 1], [expr]);
+          }
+        }
+      } else {
+        finalExpr = listExprs[0] ?? null;
+      }
+    } else if (listExprs.length > 1) {
+      finalExpr = new ModelicaFunctionCallExpression("cat", [new ModelicaIntegerLiteral(1), ...listExprs]);
+    }
+
+    if (!finalExpr) return new ModelicaArray([0], []);
+
+    // Attempt to evaluate immediately using BUILTIN_ARRAY_HANDLERS
+    if (finalExpr instanceof ModelicaFunctionCallExpression && finalExpr.functionName === "cat") {
+      const handler = BUILTIN_ARRAY_HANDLERS.get("cat");
+      if (handler) {
+        // Recursively resolve inner cat(2, ...) calls first so the outer cat(1, ...) gets ModelicaArray args
+        const resolvedArgs = finalExpr.args.map((arg) => {
+          if (arg instanceof ModelicaFunctionCallExpression && arg.functionName === "cat") {
+            const inner = handler(arg.args, ctx);
+            if (inner) return inner;
+          }
+          return arg;
+        });
+        const folded = handler(resolvedArgs, ctx);
+        if (folded) return folded;
+      }
+    }
+
+    return finalExpr;
   }
 
   visitArrayConstructor(node: ModelicaArrayConstructorSyntaxNode, ctx: FlattenerContext): ModelicaExpression | null {
@@ -1787,6 +2118,64 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         flatArg = arg.expression?.accept(this, ctx) ?? null;
       }
       if (flatArg) flatArgs.push(flatArg);
+    }
+
+    // Pre-expansion size() resolution: resolve size(var, dim) directly from
+    // class instance BEFORE arg expansion may lose inner dimension info.
+    // E.g., size(b, 2) where b is Real[2, 0] — expansion loses the 0 dimension.
+    if (
+      functionName === "size" &&
+      flatArgs.length === 2 &&
+      flatArgs[1] instanceof ModelicaIntegerLiteral &&
+      ctx.classInstance &&
+      ctx.classInstance.classKind !== ModelicaClassKind.FUNCTION
+    ) {
+      // Check if the first arg is a name reference or an expanded array from one
+      const firstArg = flatArgs[0];
+      let varName: string | null = null;
+      if (firstArg instanceof ModelicaNameExpression) {
+        varName = firstArg.name;
+      } else if (firstArg instanceof ModelicaArray) {
+        // Array was expanded from a component reference — try to recover the name
+        const firstEl = firstArg.elements[0];
+        if (firstEl instanceof ModelicaSubscriptedExpression && firstEl.base instanceof ModelicaNameExpression) {
+          varName = firstEl.base.name;
+        } else if (firstEl instanceof ModelicaVariable) {
+          const m = firstEl.name.match(/^(.+)\[/);
+          if (m?.[1]) varName = m[1];
+        }
+      }
+      if (varName) {
+        // Strip prefix to get local name
+        const localName = varName.includes(".") ? (varName.split(".").pop() ?? varName) : varName;
+        const resolved = ctx.classInstance.resolveName(localName.split("."));
+        if (
+          resolved instanceof ModelicaComponentInstance &&
+          resolved.classInstance instanceof ModelicaArrayClassInstance
+        ) {
+          const originalShape = resolved.classInstance.shape;
+          let shape = originalShape;
+          const isUnsized = originalShape.some((d: number) => d === 0);
+          if (isUnsized) {
+            let arrayBindingExpression =
+              resolved.modification?.evaluatedExpression ?? resolved.modification?.expression;
+            if (!arrayBindingExpression && resolved.modification?.modificationExpression?.expression) {
+              const interp = new ModelicaInterpreter();
+              arrayBindingExpression = resolved.modification.modificationExpression.expression.accept(
+                interp,
+                resolved.parent ?? undefined,
+              );
+            }
+            if (arrayBindingExpression instanceof ModelicaArray) {
+              shape = arrayBindingExpression.flatShape;
+            }
+          }
+          const dim = (flatArgs[1] as ModelicaIntegerLiteral).value;
+          if (dim >= 1 && dim <= shape.length) {
+            return new ModelicaIntegerLiteral(shape[dim - 1] ?? 0);
+          }
+        }
+      }
     }
 
     // Handle comprehension/reduction expressions: sum(expr for i in range)
@@ -1947,6 +2336,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     const arrayHandler = BUILTIN_ARRAY_HANDLERS.get(functionName);
     if (arrayHandler) {
       const result = arrayHandler(flatArgs, ctx);
+
       if (result) return result;
     }
 
@@ -4816,6 +5206,57 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
           }
         }
       }
+
+      // Expand subscripted colon expressions and bare array names to ModelicaArray
+      // e.g., x[:] → {x[1], x[2], ...} or y → {y[1], y[2], ...}
+      // Only expand when needed for array-to-array scalarization
+      const expandSubscriptedColon = (expr: ModelicaExpression): ModelicaArray | null => {
+        if (expr instanceof ModelicaSubscriptedExpression && expr.base instanceof ModelicaNameExpression) {
+          const baseName = expr.base.name;
+          if (expr.subscripts.length === 1 && expr.subscripts[0] instanceof ModelicaColonExpression) {
+            const vars = ctx.dae.variables
+              .filter((v) => v.name.startsWith(baseName + "["))
+              .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+            if (vars.length > 0) {
+              return new ModelicaArray(
+                [vars.length],
+                vars.map((v) => new ModelicaNameExpression(v.name)),
+              );
+            }
+          }
+        }
+        return null;
+      };
+      const expandNameToArray = (expr: ModelicaExpression): ModelicaArray | null => {
+        if (expr instanceof ModelicaNameExpression) {
+          const vars = ctx.dae.variables
+            .filter((v) => v.name.startsWith(expr.name + "["))
+            .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+          if (vars.length > 0) {
+            return new ModelicaArray(
+              [vars.length],
+              vars.map((v) => new ModelicaNameExpression(v.name)),
+            );
+          }
+        }
+        return null;
+      };
+
+      // First expand explicit colon-subscripts (x[:])
+      const colon1 = expandSubscriptedColon(expression1);
+      const colon2 = expandSubscriptedColon(expression2);
+      if (colon1) expression1 = colon1;
+      if (colon2) expression2 = colon2;
+      // Then expand bare names only if the other side is already an array (or was just expanded)
+      if (expression1 instanceof ModelicaArray && !(expression2 instanceof ModelicaArray)) {
+        const exp2 = expandNameToArray(expression2);
+        if (exp2) expression2 = exp2;
+      }
+      if (expression2 instanceof ModelicaArray && !(expression1 instanceof ModelicaArray)) {
+        const exp1 = expandNameToArray(expression1);
+        if (exp1) expression1 = exp1;
+      }
+
       // Expand array-to-array equations into per-element scalar equations
       if (expression1 instanceof ModelicaArray && expression2 instanceof ModelicaArray) {
         const flat1 = [...expression1.flatElements];
@@ -4825,8 +5266,8 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
           let e1 = flat1[i];
           let e2 = flat2[i];
           if (!e1 || !e2) continue;
-          if (e1 instanceof ModelicaRealVariable) e2 = castToReal(e2) ?? e2;
-          if (e2 instanceof ModelicaRealVariable) e1 = castToReal(e1) ?? e1;
+          if (isRealTyped(e1, ctx.dae)) e2 = castToReal(e2) ?? e2;
+          if (isRealTyped(e2, ctx.dae)) e1 = castToReal(e1) ?? e1;
           ctx.dae.equations.push(new ModelicaSimpleEquation(e1, e2));
         }
         return null;
@@ -4910,6 +5351,52 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
   visitUnsignedRealLiteral(node: ModelicaUnsignedRealLiteralSyntaxNode): ModelicaRealLiteral | null {
     return new ModelicaRealLiteral(node.value, node.text ?? undefined);
   }
+}
+
+/**
+ * Recursively substitute all occurrences of a named iterator variable in an expression
+ * with a given replacement value. Used for expanding comprehension subscripts:
+ * array(expr for i in 1:N)[k] → expr{i := k}
+ */
+function substituteIterator(expr: ModelicaExpression, iterName: string, value: ModelicaExpression): ModelicaExpression {
+  if (expr instanceof ModelicaNameExpression && expr.name === iterName) {
+    return value;
+  }
+  if (expr instanceof ModelicaBinaryExpression) {
+    const op1 = substituteIterator(expr.operand1, iterName, value);
+    const op2 = substituteIterator(expr.operand2, iterName, value);
+    return op1 === expr.operand1 && op2 === expr.operand2
+      ? expr
+      : new ModelicaBinaryExpression(expr.operator, op1, op2);
+  }
+  if (expr instanceof ModelicaUnaryExpression) {
+    const op = substituteIterator(expr.operand, iterName, value);
+    return op === expr.operand ? expr : new ModelicaUnaryExpression(expr.operator, op);
+  }
+  if (expr instanceof ModelicaFunctionCallExpression) {
+    const args = expr.args.map((a) => substituteIterator(a, iterName, value));
+    return new ModelicaFunctionCallExpression(expr.functionName, args);
+  }
+  if (expr instanceof ModelicaSubscriptedExpression) {
+    const base = substituteIterator(expr.base, iterName, value);
+    const subs = expr.subscripts.map((s) => substituteIterator(s, iterName, value));
+    return new ModelicaSubscriptedExpression(base, subs);
+  }
+  if (expr instanceof ModelicaArray) {
+    const els = expr.elements.map((e) => substituteIterator(e, iterName, value));
+    return new ModelicaArray(expr.shape, els);
+  }
+  if (expr instanceof ModelicaIfElseExpression) {
+    const cond = substituteIterator(expr.condition, iterName, value);
+    const then_ = substituteIterator(expr.thenExpression, iterName, value);
+    const else_ = substituteIterator(expr.elseExpression, iterName, value);
+    const elseIfs = expr.elseIfClauses.map((ei) => ({
+      condition: substituteIterator(ei.condition, iterName, value),
+      expression: substituteIterator(ei.expression, iterName, value),
+    }));
+    return new ModelicaIfElseExpression(cond, then_, elseIfs, else_);
+  }
+  return expr;
 }
 
 function castToReal(expression: ModelicaExpression | null): ModelicaExpression | null {

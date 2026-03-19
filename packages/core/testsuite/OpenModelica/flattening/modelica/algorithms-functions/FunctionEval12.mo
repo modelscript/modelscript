@@ -42,10 +42,10 @@ end FunctionEval12;
 // algorithm
 //   index := 1;
 //   while index <= size(x, 2) loop
-//     locX[1,index] := x[1,index];
+//     locX[1, index] := x[1, index];
 //     index := 1 + index;
 //   end while;
-//   y := locX[1,size(x, 2)];
+//   y := locX[1, size(x, 2)];
 // end FunctionEval12.myFun;
 //
 // class FunctionEval12

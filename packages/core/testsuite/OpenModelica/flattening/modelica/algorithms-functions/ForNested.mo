@@ -37,7 +37,7 @@ end ForNested;
 // algorithm
 //   for i in 1:4 loop
 //     for j in 1:4 loop
-//       rmatrix[i,j] := /*Real*/(i * j);
+//       rmatrix[i, j] := /*Real*/(i * j);
 //     end for;
 //   end for;
 // end ForNested;

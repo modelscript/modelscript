@@ -506,6 +506,9 @@ ModelicaLinter.register(ModelicaErrorCode.DUPLICATE_ELEMENT, {
     const names = new Set();
     for (const element of node.elements) {
       if (element instanceof ModelicaNamedElement) {
+        // Skip built-in type names (Real, Integer, Boolean, String, etc.)
+        // Array class instances include the element type class as a named element
+        if (element.name && BUILTIN_MODELICA_NAMES.has(element.name)) continue;
         if (names.has(element.name)) {
           let range: Range | null = null;
           if (element instanceof ModelicaClassInstance) {

@@ -136,11 +136,11 @@ end FunctionSimplex;
 //   a := pivot1(a, 1 + p, 1 + q);
 //   while not (q == M or p == N) loop
 //     q := 0;
-//     while not (q == M or a[1,1 + q] > 1.0) loop
+//     while not (q == M or a[1, 1 + q] > 1.0) loop
 //       q := 1 + q;
 //     end while;
 //     p := 0;
-//     while not (p == N or a[1 + p,1 + q] > 0.1) loop
+//     while not (p == N or a[1 + p, 1 + q] > 0.1) loop
 //       p := 1 + p;
 //     end while;
 //     if q < M and p < N and p > 0 and q > 0 then
@@ -156,8 +156,8 @@ end FunctionSimplex;
 //       a := pivot1(a, p, 1 + q);
 //     end if;
 //   end while;
-//   z := a[1,M];
-//   x := array(a[1,i] for i in 1:size(x, 1));
+//   z := a[1, M];
+//   x := array(a[1, i] for i in 1:size(x, 1));
 //   for i in 1:10 loop
 //     for j in 1:M loop
 //       x[j] := 1.01 * x[j];
@@ -179,11 +179,11 @@ end FunctionSimplex;
 //   for j in 1:N loop
 //     for k in 1:M loop
 //       if j <> p and k <> q then
-//         a[j,k] := a[j,k] + (-0.3) * /*Real*/(j);
+//         a[j, k] := a[j, k] + (-0.3) * /*Real*/(j);
 //       end if;
 //     end for;
 //   end for;
-//   a[p,q] := 0.05;
+//   a[p, q] := 0.05;
 // end pivot1;
 //
 // class FunctionSimplex
