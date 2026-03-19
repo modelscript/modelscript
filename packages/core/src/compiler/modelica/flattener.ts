@@ -5741,12 +5741,20 @@ function canonicalizeBinaryExpression(
     }
   } else if (operand1 instanceof ModelicaArray && isLiteral(operand2)) {
     if (scalarOp === "+" || scalarOp === "-" || scalarOp === "*" || scalarOp === "/") {
+      // For + and -, array op scalar is only valid for element-wise operators (.+, .-)
+      if ((scalarOp === "+" || scalarOp === "-") && !isElementwiseOp) {
+        // Don't broadcast — return as symbolic expression
+        return new ModelicaBinaryExpression(operator, operand1, operand2);
+      }
       // Build elements directly to preserve source operand order (array * scalar)
       const newElements = operand1.elements.map((e) => new ModelicaBinaryExpression(scalarOp, e, operand2));
       return new ModelicaArray(operand1.shape, newElements);
     }
   } else if (isLiteral(operand1) && operand2 instanceof ModelicaArray) {
     if (scalarOp === "+" || scalarOp === "-" || scalarOp === "*" || scalarOp === "/") {
+      if ((scalarOp === "+" || scalarOp === "-") && !isElementwiseOp) {
+        return new ModelicaBinaryExpression(operator, operand1, operand2);
+      }
       // Build elements directly to preserve source operand order (scalar * array)
       const newElements = (operand2 as ModelicaArray).elements.map(
         (e) => new ModelicaBinaryExpression(scalarOp, operand1, e),

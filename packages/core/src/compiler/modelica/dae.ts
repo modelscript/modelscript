@@ -1206,6 +1206,14 @@ export class ModelicaBinaryExpression extends ModelicaSimpleExpression {
       }
       return new ModelicaBinaryExpression(operator, operand1, operand2);
     } else if (operand1 instanceof ModelicaArray && !(operand2 instanceof ModelicaArray)) {
+      // For non-element-wise + and -, array op scalar is not allowed (shape mismatch).
+      // Only element-wise operators (.+, .-) and */ can broadcast scalars.
+      if (
+        !operator.startsWith(".") &&
+        (operator === ModelicaBinaryOperator.ADDITION || operator === ModelicaBinaryOperator.SUBTRACTION)
+      ) {
+        return null;
+      }
       // Broadcast scalar to array (e.g., 1 .+ {1, 2, 3})
       const scalarOp = (operator.startsWith(".") ? operator.substring(1) : operator) as ModelicaBinaryOperator;
       const newElements: ModelicaExpression[] = [];
@@ -1217,6 +1225,13 @@ export class ModelicaBinaryExpression extends ModelicaSimpleExpression {
       }
       return new ModelicaArray(operand1.shape, newElements);
     } else if (!(operand1 instanceof ModelicaArray) && operand2 instanceof ModelicaArray) {
+      // For non-element-wise + and -, scalar op array is not allowed (shape mismatch).
+      if (
+        !operator.startsWith(".") &&
+        (operator === ModelicaBinaryOperator.ADDITION || operator === ModelicaBinaryOperator.SUBTRACTION)
+      ) {
+        return null;
+      }
       // Broadcast scalar to array (e.g., {1, 2, 3} .+ 1)
       const scalarOp = (operator.startsWith(".") ? operator.substring(1) : operator) as ModelicaBinaryOperator;
       const newElements: ModelicaExpression[] = [];

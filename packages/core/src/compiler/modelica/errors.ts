@@ -342,6 +342,13 @@ export const ModelicaErrorCode = {
     severity: "warning",
     message: (varName: string, funcName: string) => `Unused input variable ${varName} in function ${funcName}.`,
   },
+  BINARY_OP_TYPE_MISMATCH: {
+    code: 3011,
+    rule: "binary-op-type-mismatch",
+    severity: "error",
+    message: (expr: string, type1: string, type2: string) =>
+      `Cannot resolve type of expression ${expr}. The operands have types ${type1}, ${type2} in component <NO COMPONENT>.`,
+  },
 } as const satisfies Record<string, ErrorCodeDef>;
 
 // Derive the union type of all error code keys

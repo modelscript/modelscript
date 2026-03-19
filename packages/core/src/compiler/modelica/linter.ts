@@ -25,8 +25,10 @@ import {
 } from "./model.js";
 import {
   ModelicaAlgorithmSectionSyntaxNode,
+  ModelicaArrayConcatenationSyntaxNode,
   ModelicaArrayConstructorSyntaxNode,
   ModelicaBinaryExpressionSyntaxNode,
+  ModelicaBinaryOperator,
   ModelicaBooleanLiteralSyntaxNode,
   ModelicaClassKind,
   ModelicaClassModificationSyntaxNode,
@@ -2626,5 +2628,60 @@ ModelicaLinter.register(ModelicaErrorCode.MISSING_INNER, {
     };
 
     traverse(node, []);
+  },
+});
+
+ModelicaLinter.register(ModelicaErrorCode.BINARY_OP_TYPE_MISMATCH, {
+  visitBinaryExpression(
+    node: ModelicaBinaryExpressionSyntaxNode,
+    diagnosticsCallback: DiagnosticsCallbackWithoutResource,
+  ): void {
+    const op = node.operator;
+    // Only check non-element-wise + and -
+    if (op !== ModelicaBinaryOperator.ADDITION && op !== ModelicaBinaryOperator.SUBTRACTION) return;
+
+    const op1 = node.operand1;
+    const op2 = node.operand2;
+    if (!op1 || !op2) return;
+
+    const isArrayExpr = (n: ModelicaSyntaxNode): boolean =>
+      n instanceof ModelicaArrayConcatenationSyntaxNode || n instanceof ModelicaArrayConstructorSyntaxNode;
+
+    const op1IsArray = isArrayExpr(op1);
+    const op2IsArray = isArrayExpr(op2);
+
+    // Array op scalar or scalar op array
+    if (op1IsArray !== op2IsArray) {
+      const writer1 = new StringWriter();
+      const p1 = new ModelicaSyntaxPrinter(writer1);
+      op1.accept(p1, 0);
+      const writer2 = new StringWriter();
+      const p2 = new ModelicaSyntaxPrinter(writer2);
+      op2.accept(p2, 0);
+      const exprText = `${writer1.toString().trim()} ${op} ${writer2.toString().trim()}`;
+
+      // Infer operand type descriptions
+      const arrayNode = op1IsArray ? op1 : op2;
+      let arrayLen = 0;
+      if (arrayNode instanceof ModelicaArrayConcatenationSyntaxNode) {
+        const firstRow = arrayNode.expressionLists[0];
+        arrayLen = firstRow?.expressions?.length ?? 0;
+      } else if (arrayNode instanceof ModelicaArrayConstructorSyntaxNode) {
+        arrayLen = arrayNode.expressionList?.expressions?.length ?? 0;
+      }
+      const arrayType = `Integer[${arrayLen}]`;
+      const scalarType = "Integer";
+
+      diagnosticsCallback(
+        ModelicaErrorCode.BINARY_OP_TYPE_MISMATCH.severity,
+        ModelicaErrorCode.BINARY_OP_TYPE_MISMATCH.code,
+        ModelicaErrorCode.BINARY_OP_TYPE_MISMATCH.message(
+          exprText,
+          op1IsArray ? arrayType : scalarType,
+          op2IsArray ? arrayType : scalarType,
+        ),
+        node,
+      );
+    }
   },
 });
