@@ -3091,8 +3091,8 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
       let str: string;
       if (Number.isInteger(node.value) && Math.abs(node.value) >= 1e15) {
         str = node.value.toExponential();
-      } else if (Math.abs(node.value) < 0.001) {
-        // Small fractional values: use scientific notation
+      } else if (Math.abs(node.value) < 0.0001 && Math.abs(node.value) > 0) {
+        // Very small fractional values: use scientific notation
         str = node.value.toExponential();
       } else {
         // Normal fractional values: use decimal notation
@@ -3100,6 +3100,8 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
       }
       // Modelica uses 'e-4' not 'e+4' — strip the '+' from positive exponents
       str = str.replace("e+", "e");
+      // Pad single-digit exponents to two digits: e-6 → e-06, e6 → e06
+      str = str.replace(/e(-?)(\d)$/, "e$10$2");
       this.out.write(str);
     }
   }
@@ -3139,7 +3141,7 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     node.base.accept(this);
     this.out.write("[");
     for (let i = 0; i < node.subscripts.length; i++) {
-      if (i > 0) this.out.write(", ");
+      if (i > 0) this.out.write(",");
       node.subscripts[i]?.accept(this);
     }
     this.out.write("]");
