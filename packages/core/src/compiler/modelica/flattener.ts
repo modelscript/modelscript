@@ -5783,6 +5783,11 @@ function canonicalizeBinaryExpression(
   const isElementwiseOp = operator.startsWith(".");
   const scalarOp = (isElementwiseOp ? operator.substring(1) : operator) as ModelicaBinaryOperator;
 
+  // Scalar .op scalar → strip the dot prefix (e.g. t .+ u → t + u)
+  if (isElementwiseOp && !(operand1 instanceof ModelicaArray) && !(operand2 instanceof ModelicaArray)) {
+    return canonicalizeBinaryExpression(scalarOp, operand1, operand2, dae);
+  }
+
   if (operand1 instanceof ModelicaArray && operand2 instanceof ModelicaArray) {
     // Matrix-vector multiplication: M[m,n] * v[n] → w[m] where w[i] = sum(M[i,j] * v[j])
     // This applies only to non-elementwise * (Modelica semantics).
@@ -5819,7 +5824,7 @@ function canonicalizeBinaryExpression(
         return new ModelicaArray([nRows], resultElements);
       }
     }
-    if (scalarOp === "+" || scalarOp === "-" || scalarOp === "*" || scalarOp === "/") {
+    if (scalarOp === "+" || scalarOp === "-" || scalarOp === "*" || scalarOp === "/" || scalarOp === "^") {
       if (operand1.elements.length === operand2.elements.length) {
         const newElements = operand1.elements.map((e1, i) =>
           canonicalizeBinaryExpression(
@@ -5832,19 +5837,30 @@ function canonicalizeBinaryExpression(
         return new ModelicaArray(operand1.shape, newElements);
       }
     }
-  } else if (operand1 instanceof ModelicaArray && isLiteral(operand2)) {
-    if (scalarOp === "+" || scalarOp === "-" || scalarOp === "*" || scalarOp === "/") {
+  } else if (operand1 instanceof ModelicaArray && !(operand2 instanceof ModelicaArray)) {
+    // Array op scalar: broadcast when operand2 is any scalar (literal or variable)
+    if (scalarOp === "+" || scalarOp === "-" || scalarOp === "*" || scalarOp === "/" || scalarOp === "^") {
       // For + and -, array op scalar is only valid for element-wise operators (.+, .-)
       if ((scalarOp === "+" || scalarOp === "-") && !isElementwiseOp) {
         // Don't broadcast — return as symbolic expression
         return new ModelicaBinaryExpression(operator, operand1, operand2);
       }
-      // Build elements directly to preserve source operand order (array * scalar)
+      // For non-element-wise * and /, only broadcast with literal scalars
+      if (!isElementwiseOp && !isLiteral(operand2)) {
+        return new ModelicaBinaryExpression(operator, operand1, operand2);
+      }
+      if (isElementwiseOp) {
+        // Element-wise: recurse to handle nested sub-arrays in multi-dim arrays
+        const newElements = operand1.elements.map((e) => canonicalizeBinaryExpression(operator, e, operand2, dae));
+        return new ModelicaArray(operand1.shape, newElements);
+      }
+      // Non-element-wise: preserve source operand order (array * scalar)
       const newElements = operand1.elements.map((e) => new ModelicaBinaryExpression(scalarOp, e, operand2));
       return new ModelicaArray(operand1.shape, newElements);
     }
-  } else if (isLiteral(operand1) && operand2 instanceof ModelicaArray) {
-    if (scalarOp === "+" || scalarOp === "-" || scalarOp === "*" || scalarOp === "/") {
+  } else if (!(operand1 instanceof ModelicaArray) && operand2 instanceof ModelicaArray) {
+    // Scalar op array: broadcast when operand1 is any scalar (literal or variable)
+    if (scalarOp === "+" || scalarOp === "-" || scalarOp === "*" || scalarOp === "/" || scalarOp === "^") {
       if ((scalarOp === "+" || scalarOp === "-") && !isElementwiseOp) {
         return new ModelicaBinaryExpression(operator, operand1, operand2);
       }
@@ -5852,7 +5868,22 @@ function canonicalizeBinaryExpression(
       if (scalarOp === "/" && !isElementwiseOp) {
         throw new Error(`Type mismatch: scalar / array is not a valid operation. Use element-wise ./ instead.`);
       }
-      // Build elements directly to preserve source operand order (scalar * array)
+      // For non-element-wise * and ^, only broadcast with literal scalars
+      if (!isElementwiseOp && !isLiteral(operand1)) {
+        return new ModelicaBinaryExpression(operator, operand1, operand2);
+      }
+      if (isElementwiseOp) {
+        // Element-wise: recurse to handle nested sub-arrays in multi-dim arrays
+        // For commutative ops (+ and *), canonicalize to put element first (matching OMC)
+        const isCommutative = scalarOp === "+" || scalarOp === "*";
+        const newElements = (operand2 as ModelicaArray).elements.map((e) =>
+          isCommutative
+            ? canonicalizeBinaryExpression(operator, e, operand1, dae)
+            : canonicalizeBinaryExpression(operator, operand1, e, dae),
+        );
+        return new ModelicaArray(operand2.shape, newElements);
+      }
+      // Non-element-wise: preserve source operand order (scalar * array)
       const newElements = (operand2 as ModelicaArray).elements.map(
         (e) => new ModelicaBinaryExpression(scalarOp, operand1, e),
       );
