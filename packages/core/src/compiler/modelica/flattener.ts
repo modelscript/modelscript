@@ -5848,6 +5848,10 @@ function canonicalizeBinaryExpression(
       if ((scalarOp === "+" || scalarOp === "-") && !isElementwiseOp) {
         return new ModelicaBinaryExpression(operator, operand1, operand2);
       }
+      // scalar / array is only valid with element-wise ./ operator; plain / is not allowed
+      if (scalarOp === "/" && !isElementwiseOp) {
+        throw new Error(`Type mismatch: scalar / array is not a valid operation. Use element-wise ./ instead.`);
+      }
       // Build elements directly to preserve source operand order (scalar * array)
       const newElements = (operand2 as ModelicaArray).elements.map(
         (e) => new ModelicaBinaryExpression(scalarOp, operand1, e),

@@ -2514,6 +2514,11 @@ export class ModelicaArrayClassInstance extends ModelicaClassInstance {
       }
       const length = arraySubscript.expression?.accept(new ModelicaInterpreter(), evalScope ?? this);
       if (length instanceof ModelicaIntegerLiteral) {
+        if (length.value < 0) {
+          // Negative dimensions are invalid (e.g., Real errArr[-2])
+          const componentName = this.parent instanceof ModelicaComponentInstance ? (this.parent.name ?? "?") : "?";
+          throw new Error(`Negative dimension index (${length.value}) for component ${componentName}.`);
+        }
         this.shape.push(length.value);
       } else {
         // Try to resolve as an enum type for enum-dimensioned arrays like Real A[E]
