@@ -1186,14 +1186,22 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       }
     }
     // If the interpreter couldn't evaluate the binding (returned null or a malformed
-    // array with 0-dimensions), try the syntax flattener which handles symbolic expressions
+    // array with 0-dimensions), try the syntax flattener which handles symbolic expressions.
+    // Also, for non-parameter/non-constant arrays, run the syntax flattener and check if
+    // its result contains symbolic name references (e.g., parameter `alpha`). If so,
+    // prefer the syntax-flattened result to preserve those symbolic references in equations.
+    const isCompileTimeEvaluableEarly =
+      node.variability === ModelicaVariability.PARAMETER || node.variability === ModelicaVariability.CONSTANT;
     const hasMalformedBinding =
       arrayBindingExpression instanceof ModelicaArray && arrayBindingExpression.flatShape.includes(0);
-    if ((!arrayBindingExpression || hasMalformedBinding) && node.modification?.modificationExpression?.expression) {
+    const rawASTExpr = node.modification?.modificationExpression?.expression;
+    let usedSyntaxFlattener = false;
+    if ((!arrayBindingExpression || hasMalformedBinding || !isCompileTimeEvaluableEarly) && rawASTExpr) {
+      const savedBinding = arrayBindingExpression;
       if (hasMalformedBinding) arrayBindingExpression = null;
       const syntaxFlattener = new ModelicaSyntaxFlattener();
-      arrayBindingExpression =
-        node.modification.modificationExpression.expression.accept(syntaxFlattener, {
+      const syntaxResult =
+        rawASTExpr.accept(syntaxFlattener, {
           prefix: args[0],
           classInstance: node.parent ?? ({} as ModelicaClassInstance),
           dae: args[1],
@@ -1201,6 +1209,22 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           structuralFinalParams: this.#structuralFinalParams,
           activeClassStack: this.activeClassStack,
         }) ?? null;
+      if (syntaxResult) {
+        if (!isCompileTimeEvaluableEarly && savedBinding && !hasMalformedBinding) {
+          // For non-compile-time arrays where the interpreter already produced a result,
+          // only prefer the syntax result if it contains symbolic name references
+          // (e.g., parameter `alpha`). Otherwise keep the interpreter result for proper
+          // constant evaluation and type promotion (e.g., identity(N) → {{1.0, 0.0, ...}}).
+          if (expressionHasNameRefs(syntaxResult, args[1])) {
+            arrayBindingExpression = syntaxResult;
+            usedSyntaxFlattener = true;
+          }
+        } else {
+          // Interpreter failed → use syntax flattener as fallback
+          arrayBindingExpression = syntaxResult;
+          usedSyntaxFlattener = true;
+        }
+      }
     }
     // Collect function definitions from the raw binding expression even when the
     // interpreter already evaluated the binding (e.g., fun(5) → {1,1,1,1,1}).
@@ -1373,7 +1397,14 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         elementType instanceof ModelicaRealClassInstance ||
         (elementType instanceof ModelicaArrayClassInstance &&
           elementType.elementClassInstance instanceof ModelicaRealClassInstance);
-      let rhs = isRealArray ? (castToReal(arrayBindingExpression) ?? arrayBindingExpression) : arrayBindingExpression;
+      // Apply castToReal for interpreter-evaluated expressions (which may contain
+      // Integer literals that need promotion in Real array context, e.g., {1, 2, 3.0}
+      // → {1.0, 2.0, 3.0}). Skip for syntax-flattened expressions to preserve the
+      // original literal types alongside symbolic parameter references.
+      let rhs =
+        isRealArray && !usedSyntaxFlattener
+          ? (castToReal(arrayBindingExpression) ?? arrayBindingExpression)
+          : arrayBindingExpression;
 
       // Expand name references (e.g., w.axisColor_x) to per-element subscripted arrays
       // (e.g., {w.axisColor_x[1], w.axisColor_x[2], w.axisColor_x[3]})
@@ -5480,6 +5511,39 @@ function castToReal(expression: ModelicaExpression | null): ModelicaExpression |
       return new ModelicaIfElseExpression(expression.condition, thenExpr, elseIfClauses, elseExpr);
   }
   return expression;
+}
+
+/**
+ * Check if an expression tree contains symbolic references to parameter-variability
+ * variables in the DAE. Used to detect when a syntax-flattened expression preserves
+ * symbolic parameter references (e.g., `alpha`) that the interpreter would collapse.
+ * Constant references (e.g., `FrameColor`) are NOT matched because they should be evaluated.
+ */
+function expressionHasNameRefs(expr: ModelicaExpression, dae: ModelicaDAE): boolean {
+  if (expr instanceof ModelicaNameExpression) {
+    // Check if this name refers to a parameter variable in the DAE
+    const v = dae.variables.find((v) => v.name === expr.name);
+    if (v && v.variability === ModelicaVariability.PARAMETER) return true;
+    // If not found as a DAE variable, it's likely a constant or unresolved — skip
+    return false;
+  }
+  if (expr instanceof ModelicaVariable) {
+    if (expr.variability === ModelicaVariability.PARAMETER) return true;
+    return false;
+  }
+  if (expr instanceof ModelicaArray) {
+    return expr.elements.some((e) => expressionHasNameRefs(e, dae));
+  }
+  if (expr instanceof ModelicaBinaryExpression) {
+    return expressionHasNameRefs(expr.operand1, dae) || expressionHasNameRefs(expr.operand2, dae);
+  }
+  if (expr instanceof ModelicaUnaryExpression) {
+    return expressionHasNameRefs(expr.operand, dae);
+  }
+  if (expr instanceof ModelicaFunctionCallExpression) {
+    return expr.args.some((a) => expressionHasNameRefs(a, dae));
+  }
+  return false;
 }
 
 // Like castToReal, but also wraps non-literal Integer-typed expressions
