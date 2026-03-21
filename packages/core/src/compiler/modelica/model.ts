@@ -560,6 +560,8 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
   cloneCache = new Map<string, ModelicaClassInstance>();
   declaredElements: ModelicaElement[] = [];
   diagnostics: ModelicaDiagnostic[] = [];
+  /** Virtual components added by connect equations to expandable connectors. */
+  virtualComponents = new Map<string, ModelicaComponentInstance>();
 
   constructor(
     parent: Scope | null,
@@ -578,6 +580,11 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
       this.#modification = modification ?? null;
     }
     this.classKind = abstractSyntaxNode?.classPrefixes?.classKind ?? ModelicaClassKind.CLASS;
+  }
+
+  /** True if this class instance is an expandable connector. */
+  get isExpandable(): boolean {
+    return this.classKind === ModelicaClassKind.EXPANDABLE_CONNECTOR;
   }
 
   get algorithmSections(): IterableIterator<ModelicaAlgorithmSectionSyntaxNode> {
@@ -866,6 +873,11 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
             }
           }
         }
+      }
+
+      // Yield virtual components added to expandable connectors by connect equations
+      for (const [, vComp] of self.virtualComponents) {
+        yield vComp;
       }
     })();
   }
@@ -1372,6 +1384,8 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
    */
   isPlugCompatibleWith(other: ModelicaClassInstance): boolean {
     const visited = new Set<string>();
+    // Expandable connectors are plug-compatible with any connector
+    if (this.isExpandable || other.isExpandable) return true;
 
     // Must be type-compatible first
     if (!this.isTypeCompatibleWith(other, visited)) return false;

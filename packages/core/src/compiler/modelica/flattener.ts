@@ -520,6 +520,100 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
   }
 
   activeClassStack: ModelicaClassInstance[] = [];
+  /**
+   * Pre-pass: scan connect equations for references to expandable connector members
+   * that don't exist yet, and create virtual components on the expandable connector.
+   * Per §9.1.3, expandable connectors are dynamically augmented by connect equations.
+   */
+  #augmentExpandableConnectors(node: ModelicaClassInstance): void {
+    for (const section of node.abstractSyntaxNode?.sections ?? []) {
+      if (!(section instanceof ModelicaEquationSectionSyntaxNode)) continue;
+      for (const eq of section.equations) {
+        if (!(eq instanceof ModelicaConnectEquationSyntaxNode)) continue;
+        const ref1 = eq.componentReference1;
+        const ref2 = eq.componentReference2;
+        if (!ref1 || !ref2) continue;
+
+        // Try to augment each side if it references an expandable connector member
+        this.#tryAugmentExpandableRef(ref1, ref2, node);
+        this.#tryAugmentExpandableRef(ref2, ref1, node);
+      }
+    }
+  }
+
+  /**
+   * If `ref` points to a member of an expandable connector that doesn't exist,
+   * create a virtual component using the type from `otherRef`.
+   */
+  #tryAugmentExpandableRef(
+    ref: ModelicaComponentReferenceSyntaxNode,
+    otherRef: ModelicaComponentReferenceSyntaxNode,
+    scope: ModelicaClassInstance,
+  ): void {
+    const parts = ref.parts;
+    if (parts.length < 2) return;
+
+    // Resolve the root component (e.g., "bus" in "bus.speed")
+    const rootName = parts[0]?.identifier?.text;
+    if (!rootName) return;
+    const rootElement = scope.resolveSimpleName(rootName, false, true);
+    if (!(rootElement instanceof ModelicaComponentInstance)) return;
+    if (!rootElement.instantiated && !rootElement.instantiating) rootElement.instantiate();
+
+    const rootClass = rootElement.classInstance;
+    if (!rootClass?.isExpandable) return;
+
+    // Check if the referenced member already exists
+    const memberName = parts[1]?.identifier?.text;
+    if (!memberName) return;
+    const existing = rootClass.resolveSimpleName(memberName, false, true);
+    if (existing) return;
+
+    // Resolve the other side to determine the type
+    const otherRootName = otherRef.parts[0]?.identifier?.text;
+    if (!otherRootName) return;
+    let otherComp: ModelicaComponentInstance | null = null;
+    const otherRootElement = scope.resolveSimpleName(otherRootName, false, true);
+    if (otherRootElement instanceof ModelicaComponentInstance) {
+      otherComp = otherRootElement;
+      // Walk multi-part references (e.g., source.y → resolve y within source's class)
+      for (let i = 1; i < otherRef.parts.length; i++) {
+        const partName = otherRef.parts[i]?.identifier?.text;
+        if (!partName || !otherComp) break;
+        if (!otherComp.instantiated && !otherComp.instantiating) otherComp.instantiate();
+        let lookupClass: ModelicaClassInstance | null = otherComp.classInstance;
+        if (lookupClass instanceof ModelicaArrayClassInstance) {
+          lookupClass = lookupClass.elementClassInstance;
+        }
+        if (!lookupClass) {
+          otherComp = null;
+          break;
+        }
+        const inner = lookupClass.resolveSimpleName(partName, false, true);
+        if (inner instanceof ModelicaComponentInstance) {
+          otherComp = inner;
+        } else {
+          otherComp = null;
+          break;
+        }
+      }
+    }
+
+    if (!otherComp) return;
+    if (!otherComp.instantiated && !otherComp.instantiating) otherComp.instantiate();
+
+    // Create a virtual component on the expandable connector
+    const virtualComp = new ModelicaComponentInstance(rootClass, null);
+    virtualComp.name = memberName;
+    // Copy type from the other side
+    if (otherComp.classInstance) {
+      virtualComp.classInstance = otherComp.classInstance;
+    }
+    virtualComp.flowPrefix = otherComp.flowPrefix;
+    virtualComp.causality = otherComp.causality;
+    virtualComp.variability = otherComp.variability;
+    rootClass.virtualComponents.set(memberName, virtualComp);
+  }
 
   /**
    * Visits a class instance, flattening its components, equations, algorithm sections, and extended elements.
@@ -528,6 +622,9 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
    * @param args - A tuple of `[prefixString, activeDAE]` to pass context down.
    */
   visitClassInstance(node: ModelicaClassInstance, args: [string, ModelicaDAE]): void {
+    // Pre-pass: augment expandable connectors with virtual components from connect equations
+    this.#augmentExpandableConnectors(node);
+
     // Scan for structural parameters: parameters used in conditional component declarations
     // or in if-expression conditions in bindings. These must be marked `final`
     // since they determine class structure.

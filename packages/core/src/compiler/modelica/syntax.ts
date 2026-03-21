@@ -946,7 +946,10 @@ export class ModelicaClassPrefixesSyntaxNode extends ModelicaSyntaxNode implemen
     } else if (concreteSyntaxNode.childForFieldName("block")) {
       this.classKind = ModelicaClassKind.BLOCK;
     } else if (concreteSyntaxNode.childForFieldName("connector")) {
-      this.classKind = ModelicaClassKind.CONNECTOR;
+      this.classKind =
+        concreteSyntaxNode.childForFieldName("expandable") || concreteSyntaxNode.text.includes("expandable")
+          ? ModelicaClassKind.EXPANDABLE_CONNECTOR
+          : ModelicaClassKind.CONNECTOR;
     } else if (concreteSyntaxNode.childForFieldName("type")) {
       this.classKind = ModelicaClassKind.TYPE;
     } else if (concreteSyntaxNode.childForFieldName("package")) {

@@ -34,6 +34,7 @@ import {
   ModelicaBinaryExpressionSyntaxNode,
   ModelicaBinaryOperator,
   ModelicaBooleanLiteralSyntaxNode,
+  ModelicaCausality,
   ModelicaClassKind,
   ModelicaClassModificationSyntaxNode,
   ModelicaClassOrInheritanceModificationSyntaxNode,
@@ -1379,11 +1380,14 @@ ModelicaLinter.register([ModelicaErrorCode.NOT_A_CONNECTOR, ModelicaErrorCode.NO
       const ref1Text = componentRefText(equation.componentReference1);
       const ref2Text = componentRefText(equation.componentReference2);
 
-      // Check both sides are connectors
-      if (
-        type1.classKind !== ModelicaClassKind.CONNECTOR &&
-        type1.classKind !== ModelicaClassKind.EXPANDABLE_CONNECTOR
-      ) {
+      // Check both sides are connectors (or variables with input/output causality)
+      const isConnector1 =
+        type1.isExpandable ||
+        type1.classKind === ModelicaClassKind.CONNECTOR ||
+        comp1.causality === ModelicaCausality.INPUT ||
+        comp1.causality === ModelicaCausality.OUTPUT;
+
+      if (!isConnector1) {
         diagnosticsCallback(
           ModelicaErrorCode.NOT_A_CONNECTOR.severity,
           ModelicaErrorCode.NOT_A_CONNECTOR.code,
@@ -1392,10 +1396,13 @@ ModelicaLinter.register([ModelicaErrorCode.NOT_A_CONNECTOR, ModelicaErrorCode.NO
         );
       }
 
-      if (
-        type2.classKind !== ModelicaClassKind.CONNECTOR &&
-        type2.classKind !== ModelicaClassKind.EXPANDABLE_CONNECTOR
-      ) {
+      const isConnector2 =
+        type2.isExpandable ||
+        type2.classKind === ModelicaClassKind.CONNECTOR ||
+        comp2.causality === ModelicaCausality.INPUT ||
+        comp2.causality === ModelicaCausality.OUTPUT;
+
+      if (!isConnector2) {
         diagnosticsCallback(
           ModelicaErrorCode.NOT_A_CONNECTOR.severity,
           ModelicaErrorCode.NOT_A_CONNECTOR.code,
