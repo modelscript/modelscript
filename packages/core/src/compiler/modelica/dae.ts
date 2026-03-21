@@ -2299,58 +2299,292 @@ function extractDerName(expression: ModelicaExpression): string | null {
  * cannot be evaluated (e.g. unknown variable, unsupported node type).
  */
 function evaluateExpression(expression: ModelicaExpression, env: Map<string, number>): number | null {
-  if (expression instanceof ModelicaRealLiteral) {
-    return expression.value;
+  return ExpressionEvaluator.eval(expression, env);
+}
+
+/**
+ * Full-featured expression evaluator used by the simulator.
+ * Supports arithmetic, boolean comparisons, logical operators, built-in math
+ * functions, event operators (pre, sample, initial, terminal), if-else
+ * expressions, and variable lookups.
+ *
+ * Numeric encoding for booleans: `true` = 1, `false` = 0.
+ */
+export class ExpressionEvaluator {
+  /** Variable environment: name → numeric value. */
+  env: Map<string, number>;
+  /** Previous-step values for `pre()`. */
+  preValues: Map<string, number>;
+  /** Current integration time step (for `sample()` tolerance). */
+  stepSize: number;
+  /** Whether we are at the very first time step. */
+  isInitial: boolean;
+  /** Whether we are at the very last time step. */
+  isTerminal: boolean;
+
+  constructor(env?: Map<string, number>) {
+    this.env = env ?? new Map();
+    this.preValues = new Map();
+    this.stepSize = 0.01;
+    this.isInitial = false;
+    this.isTerminal = false;
   }
-  if (expression instanceof ModelicaIntegerLiteral) {
-    return expression.value;
+
+  /** Convenience wrapper matching the old function signature. */
+  static eval(expression: ModelicaExpression, env: Map<string, number>): number | null {
+    const evaluator = new ExpressionEvaluator(env);
+    return evaluator.evaluate(expression);
   }
-  if (expression instanceof ModelicaBooleanLiteral) {
-    return expression.value ? 1 : 0;
-  }
-  if (expression instanceof ModelicaRealVariable || expression instanceof ModelicaIntegerVariable) {
-    const value = env.get(expression.name);
-    return value !== undefined ? value : null;
-  }
-  if (expression instanceof ModelicaUnaryExpression) {
-    const operand = evaluateExpression(expression.operand, env);
-    if (operand === null) return null;
-    switch (expression.operator) {
-      case ModelicaUnaryOperator.UNARY_MINUS:
-      case ModelicaUnaryOperator.ELEMENTWISE_UNARY_MINUS:
-        return -operand;
-      case ModelicaUnaryOperator.UNARY_PLUS:
-      case ModelicaUnaryOperator.ELEMENTWISE_UNARY_PLUS:
-        return operand;
-      default:
-        return null;
+
+  /** Evaluate a DAE expression to a number (booleans encoded as 0/1). Returns `null` on failure. */
+  evaluate(expression: ModelicaExpression): number | null {
+    if (expression instanceof ModelicaRealLiteral) {
+      return expression.value;
     }
-  }
-  if (expression instanceof ModelicaBinaryExpression) {
-    const left = evaluateExpression(expression.operand1, env);
-    const right = evaluateExpression(expression.operand2, env);
-    if (left === null || right === null) return null;
-    switch (expression.operator) {
-      case ModelicaBinaryOperator.ADDITION:
-      case ModelicaBinaryOperator.ELEMENTWISE_ADDITION:
-        return left + right;
-      case ModelicaBinaryOperator.SUBTRACTION:
-      case ModelicaBinaryOperator.ELEMENTWISE_SUBTRACTION:
-        return left - right;
-      case ModelicaBinaryOperator.MULTIPLICATION:
-      case ModelicaBinaryOperator.ELEMENTWISE_MULTIPLICATION:
-        return left * right;
-      case ModelicaBinaryOperator.DIVISION:
-      case ModelicaBinaryOperator.ELEMENTWISE_DIVISION:
-        return right !== 0 ? left / right : null;
-      case ModelicaBinaryOperator.EXPONENTIATION:
-      case ModelicaBinaryOperator.ELEMENTWISE_EXPONENTIATION:
-        return left ** right;
-      default:
-        return null;
+    if (expression instanceof ModelicaIntegerLiteral) {
+      return expression.value;
     }
+    if (expression instanceof ModelicaBooleanLiteral) {
+      return expression.value ? 1 : 0;
+    }
+    // Variable lookups
+    if (expression instanceof ModelicaRealVariable || expression instanceof ModelicaIntegerVariable) {
+      const value = this.env.get(expression.name);
+      return value !== undefined ? value : null;
+    }
+    if (expression instanceof ModelicaBooleanVariable) {
+      const value = this.env.get(expression.name);
+      return value !== undefined ? value : null;
+    }
+    if (expression instanceof ModelicaNameExpression) {
+      const value = this.env.get(expression.name);
+      return value !== undefined ? value : null;
+    }
+    // Unary expressions
+    if (expression instanceof ModelicaUnaryExpression) {
+      const operand = this.evaluate(expression.operand);
+      if (operand === null) return null;
+      switch (expression.operator) {
+        case ModelicaUnaryOperator.UNARY_MINUS:
+        case ModelicaUnaryOperator.ELEMENTWISE_UNARY_MINUS:
+          return -operand;
+        case ModelicaUnaryOperator.UNARY_PLUS:
+        case ModelicaUnaryOperator.ELEMENTWISE_UNARY_PLUS:
+          return operand;
+        case ModelicaUnaryOperator.LOGICAL_NEGATION:
+          return operand === 0 ? 1 : 0;
+        default:
+          return null;
+      }
+    }
+    // Binary expressions (arithmetic + comparison + logical)
+    if (expression instanceof ModelicaBinaryExpression) {
+      const left = this.evaluate(expression.operand1);
+      const right = this.evaluate(expression.operand2);
+      if (left === null || right === null) return null;
+      switch (expression.operator) {
+        // Arithmetic
+        case ModelicaBinaryOperator.ADDITION:
+        case ModelicaBinaryOperator.ELEMENTWISE_ADDITION:
+          return left + right;
+        case ModelicaBinaryOperator.SUBTRACTION:
+        case ModelicaBinaryOperator.ELEMENTWISE_SUBTRACTION:
+          return left - right;
+        case ModelicaBinaryOperator.MULTIPLICATION:
+        case ModelicaBinaryOperator.ELEMENTWISE_MULTIPLICATION:
+          return left * right;
+        case ModelicaBinaryOperator.DIVISION:
+        case ModelicaBinaryOperator.ELEMENTWISE_DIVISION:
+          return right !== 0 ? left / right : null;
+        case ModelicaBinaryOperator.EXPONENTIATION:
+        case ModelicaBinaryOperator.ELEMENTWISE_EXPONENTIATION:
+          return left ** right;
+        // Comparisons → 0 or 1
+        case ModelicaBinaryOperator.LESS_THAN:
+          return left < right ? 1 : 0;
+        case ModelicaBinaryOperator.LESS_THAN_OR_EQUAL:
+          return left <= right ? 1 : 0;
+        case ModelicaBinaryOperator.GREATER_THAN:
+          return left > right ? 1 : 0;
+        case ModelicaBinaryOperator.GREATER_THAN_OR_EQUAL:
+          return left >= right ? 1 : 0;
+        case ModelicaBinaryOperator.EQUALITY:
+          return left === right ? 1 : 0;
+        case ModelicaBinaryOperator.INEQUALITY:
+          return left !== right ? 1 : 0;
+        // Logical
+        case ModelicaBinaryOperator.LOGICAL_AND:
+          return left !== 0 && right !== 0 ? 1 : 0;
+        case ModelicaBinaryOperator.LOGICAL_OR:
+          return left !== 0 || right !== 0 ? 1 : 0;
+        default:
+          return null;
+      }
+    }
+    // Function calls
+    if (expression instanceof ModelicaFunctionCallExpression) {
+      return this.evaluateFunctionCall(expression);
+    }
+    // If-else expressions
+    if (expression instanceof ModelicaIfElseExpression) {
+      const cond = this.evaluate(expression.condition);
+      if (cond === null) return null;
+      if (cond !== 0) return this.evaluate(expression.thenExpression);
+      for (const clause of expression.elseIfClauses) {
+        const c = this.evaluate(clause.condition);
+        if (c === null) return null;
+        if (c !== 0) return this.evaluate(clause.expression);
+      }
+      return this.evaluate(expression.elseExpression);
+    }
+    return null;
   }
-  return null;
+
+  /** Evaluate a built-in function call. */
+  private evaluateFunctionCall(expr: ModelicaFunctionCallExpression): number | null {
+    const name = expr.functionName;
+    const args = expr.args;
+    const arg0 = args[0] as ModelicaExpression | undefined;
+    const arg1 = args[1] as ModelicaExpression | undefined;
+
+    // Event operators
+    switch (name) {
+      case "pre": {
+        if (!arg0) return null;
+        const varName = this.extractVarName(arg0);
+        if (varName) {
+          const pre = this.preValues.get(varName);
+          if (pre !== undefined) return pre;
+        }
+        return this.evaluate(arg0);
+      }
+      case "edge": {
+        if (!arg0) return null;
+        const current = this.evaluate(arg0);
+        if (current === null) return null;
+        const varName = this.extractVarName(arg0);
+        if (varName) {
+          const pre = this.preValues.get(varName) ?? 0;
+          return current !== 0 && pre === 0 ? 1 : 0;
+        }
+        return current !== 0 ? 1 : 0;
+      }
+      case "change": {
+        if (!arg0) return null;
+        const current = this.evaluate(arg0);
+        if (current === null) return null;
+        const varName = this.extractVarName(arg0);
+        if (varName) {
+          const pre = this.preValues.get(varName) ?? current;
+          return current !== pre ? 1 : 0;
+        }
+        return 0;
+      }
+      case "sample": {
+        if (!arg0 || !arg1) return null;
+        const start = this.evaluate(arg0);
+        const interval = this.evaluate(arg1);
+        if (start === null || interval === null || interval <= 0) return null;
+        const t = this.env.get("time") ?? 0;
+        if (t < start) return 0;
+        const elapsed = t - start;
+        const remainder = elapsed % interval;
+        const tol = this.stepSize * 0.5;
+        return remainder < tol || interval - remainder < tol ? 1 : 0;
+      }
+      case "initial":
+        return this.isInitial ? 1 : 0;
+      case "terminal":
+        return this.isTerminal ? 1 : 0;
+      case "noEvent":
+      case "smooth": {
+        if (name === "smooth" && arg1) return this.evaluate(arg1);
+        if (arg0) return this.evaluate(arg0);
+        return null;
+      }
+    }
+
+    // Math functions (single argument)
+    if (args.length === 1 && arg0) {
+      const a = this.evaluate(arg0);
+      if (a === null) return null;
+      switch (name) {
+        case "sin":
+          return Math.sin(a);
+        case "cos":
+          return Math.cos(a);
+        case "tan":
+          return Math.tan(a);
+        case "asin":
+          return Math.asin(a);
+        case "acos":
+          return Math.acos(a);
+        case "atan":
+          return Math.atan(a);
+        case "sinh":
+          return Math.sinh(a);
+        case "cosh":
+          return Math.cosh(a);
+        case "tanh":
+          return Math.tanh(a);
+        case "exp":
+          return Math.exp(a);
+        case "log":
+          return a > 0 ? Math.log(a) : null;
+        case "log10":
+          return a > 0 ? Math.log10(a) : null;
+        case "sqrt":
+          return a >= 0 ? Math.sqrt(a) : null;
+        case "abs":
+          return Math.abs(a);
+        case "sign":
+          return Math.sign(a);
+        case "ceil":
+          return Math.ceil(a);
+        case "floor":
+          return Math.floor(a);
+        case "integer":
+          return Math.floor(a);
+        case "der":
+          return this.env.get(`der(${this.extractVarName(arg0) ?? ""})`) ?? 0;
+      }
+    }
+
+    // Math functions (two arguments)
+    if (args.length === 2 && arg0 && arg1) {
+      const a = this.evaluate(arg0);
+      const b = this.evaluate(arg1);
+      if (a === null || b === null) return null;
+      switch (name) {
+        case "atan2":
+          return Math.atan2(a, b);
+        case "max":
+          return Math.max(a, b);
+        case "min":
+          return Math.min(a, b);
+        case "mod":
+          return b !== 0 ? a - Math.floor(a / b) * b : null;
+        case "rem":
+          return b !== 0 ? a - Math.trunc(a / b) * b : null;
+        case "div":
+          return b !== 0 ? Math.trunc(a / b) : null;
+      }
+    }
+
+    // homotopy(actual, simplified) — just use actual
+    if (name === "homotopy" && arg0) {
+      return this.evaluate(arg0);
+    }
+
+    return null;
+  }
+
+  /** Extract a variable name from a DAE expression. */
+  private extractVarName(expr: ModelicaExpression): string | null {
+    if (expr instanceof ModelicaVariable) return expr.name;
+    if (expr instanceof ModelicaNameExpression) return expr.name;
+    return null;
+  }
 }
 
 export class ModelicaStateMachine {
