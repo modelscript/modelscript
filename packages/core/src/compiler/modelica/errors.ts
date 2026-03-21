@@ -101,7 +101,7 @@ export const ModelicaErrorCode = {
     rule: "type-mismatch-binding",
     severity: "error",
     message: (componentName: string, expectedType: string, actualExpr: string, actualType: string) =>
-      `Type mismatch: '${componentName}' of type '${expectedType}' cannot be assigned from '${actualExpr}' of type '${actualType}'.`,
+      `Type mismatch in binding ${componentName} = ${actualExpr}, expected subtype of ${expectedType}, got type ${actualType}.`,
   },
   TYPE_MISMATCH_MODIFIER: {
     code: 3002,
@@ -240,8 +240,8 @@ export const ModelicaErrorCode = {
     code: 5001,
     rule: "equation-type-mismatch",
     severity: "error",
-    message: (lhs: string, lhsType: string, rhs: string, rhsType: string) =>
-      `Equation type mismatch: '${lhs}' (${lhsType}) = '${rhs}' (${rhsType}).`,
+    message: (lhsExpanded: string, rhsExpanded: string, lhsType: string, rhsType: string) =>
+      `Type mismatch in equation ${lhsExpanded}=${rhsExpanded} of type ${lhsType}=${rhsType}.`,
   },
   CONSTRAINEDBY_TYPE_MISMATCH: {
     code: 5002,

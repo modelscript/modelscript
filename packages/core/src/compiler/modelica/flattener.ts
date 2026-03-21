@@ -5316,6 +5316,16 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         const exp1 = expandNameToArray(expression1);
         if (exp1) expression1 = exp1;
       }
+      // When both sides are bare name expressions referencing arrays (e.g., x = y where
+      // both are 2D arrays), neither conditional above triggers. Expand both sides.
+      if (!(expression1 instanceof ModelicaArray) && !(expression2 instanceof ModelicaArray)) {
+        const exp1 = expandNameToArray(expression1);
+        const exp2 = expandNameToArray(expression2);
+        if (exp1 && exp2) {
+          expression1 = exp1;
+          expression2 = exp2;
+        }
+      }
 
       // Expand array-to-array equations into per-element scalar equations
       if (expression1 instanceof ModelicaArray && expression2 instanceof ModelicaArray) {

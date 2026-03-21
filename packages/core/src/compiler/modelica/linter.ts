@@ -6,12 +6,14 @@ import { Scope } from "../scope.js";
 import { ModelicaArray } from "./dae.js";
 import { ModelicaErrorCode, type ErrorCodeDef } from "./errors.js";
 import {
+  ENUMERATION_ATTRIBUTE_TYPES,
   ModelicaArrayClassInstance,
   ModelicaBooleanClassInstance,
   ModelicaClassInstance,
   ModelicaComponentInstance,
   ModelicaElementModification,
   ModelicaEntity,
+  ModelicaEnumerationClassInstance,
   ModelicaExtendsClassInstance,
   ModelicaIntegerClassInstance,
   ModelicaLibrary,
@@ -19,8 +21,10 @@ import {
   ModelicaModificationArgument,
   ModelicaNamedElement,
   ModelicaNode,
+  ModelicaPredefinedClassInstance,
   ModelicaRealClassInstance,
   ModelicaStringClassInstance,
+  PREDEFINED_ATTRIBUTE_TYPES,
   type IModelicaModelVisitor,
 } from "./model.js";
 import {
@@ -658,10 +662,12 @@ const BUILTIN_MODELICA_NAMES = new Set([
 class ModelicaExpressionNameResolutionVisitor extends ModelicaSyntaxVisitor<void, DiagnosticsCallbackWithoutResource> {
   #scope: Scope;
   #localNames = new Set<string>();
+  #brokenComponents: Set<string>;
 
-  constructor(scope: Scope) {
+  constructor(scope: Scope, brokenComponents?: Set<string>) {
     super();
     this.#scope = scope;
+    this.#brokenComponents = brokenComponents ?? new Set();
   }
 
   override visitComponentReference(
@@ -673,6 +679,11 @@ class ModelicaExpressionNameResolutionVisitor extends ModelicaSyntaxVisitor<void
 
     // Skip built-in names and for-loop iterator variables
     if (BUILTIN_MODELICA_NAMES.has(firstName) || this.#localNames.has(firstName)) {
+      return;
+    }
+
+    // Skip references through components whose types have broken equations
+    if (this.#brokenComponents.has(firstName)) {
       return;
     }
 
@@ -732,7 +743,54 @@ class ModelicaExpressionNameResolutionVisitor extends ModelicaSyntaxVisitor<void
 
 ModelicaLinter.register(ModelicaErrorCode.NAME_NOT_FOUND, {
   visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
-    const visitor = new ModelicaExpressionNameResolutionVisitor(node);
+    // First pass: check component types' equations for unresolved names.
+    // When a component's type has broken equations (e.g. Capacitor references `i` but
+    // doesn't extend TwoPin), report the error and mark the component as broken so that
+    // references through it (e.g. `comp1.p`) are skipped in the parent class.
+    const brokenComponents = new Set<string>();
+    for (const comp of node.components) {
+      if (!comp.name) continue;
+      const classInstance = comp.classInstance;
+      if (!classInstance) continue;
+      // Only check compound types (models, blocks, etc.) that have their own equations
+      if (classInstance instanceof ModelicaPredefinedClassInstance) continue;
+      if (classInstance instanceof ModelicaEnumerationClassInstance) continue;
+      if (classInstance instanceof ModelicaArrayClassInstance) continue;
+
+      const compVisitor = new ModelicaExpressionNameResolutionVisitor(classInstance);
+      let hasError = false;
+      const checkCallback: DiagnosticsCallbackWithoutResource = (
+        type: string,
+        code: number,
+        message: string,
+        range: Range | null | undefined,
+      ) => {
+        if (hasError) return; // Stop after first error per component (matches OMC behavior)
+        hasError = true;
+        // Report with OMC format: "Variable X not found in scope TypeName$CompName."
+        const varName = message.match(/Name '(.+)' not found/)?.[1] ?? "";
+        diagnosticsCallback(
+          type,
+          code,
+          `Variable ${varName} not found in scope ${classInstance.name ?? ""}$${comp.name}.`,
+          range,
+        );
+      };
+      for (const equationSection of classInstance.equationSections) {
+        if (hasError) break;
+        equationSection.accept(compVisitor, checkCallback);
+      }
+      for (const algorithmSection of classInstance.algorithmSections) {
+        if (hasError) break;
+        algorithmSection.accept(compVisitor, checkCallback);
+      }
+      if (hasError) {
+        brokenComponents.add(comp.name);
+      }
+    }
+
+    // Second pass: visit own equations, skipping references through broken components
+    const visitor = new ModelicaExpressionNameResolutionVisitor(node, brokenComponents);
     for (const equationSection of node.equationSections) {
       equationSection.accept(visitor, diagnosticsCallback);
     }
@@ -803,6 +861,92 @@ ModelicaLinter.register(ModelicaErrorCode.MODIFIER_NOT_FOUND, {
     if (!node.instantiated) node.instantiate();
     const classInstance = node.classInstance;
     if (!classInstance || !classInstance.abstractSyntaxNode) return;
+
+    // For predefined types (Real, Integer, Boolean, String) and enumerations,
+    // modifiers target built-in type attributes (§4.9) which don't appear in
+    // the elements iterator. Validate names and types against the known attribute maps.
+    if (
+      classInstance instanceof ModelicaPredefinedClassInstance ||
+      classInstance instanceof ModelicaEnumerationClassInstance
+    ) {
+      const modification = node.modification;
+      if (!modification) return;
+      const attrMap =
+        classInstance instanceof ModelicaPredefinedClassInstance
+          ? (PREDEFINED_ATTRIBUTE_TYPES[classInstance.name ?? ""] ?? ENUMERATION_ATTRIBUTE_TYPES)
+          : ENUMERATION_ATTRIBUTE_TYPES;
+      for (const modArg of modification.modificationArguments) {
+        const name = modArg.name;
+        if (!name || name === "annotation") continue;
+        const expectedType = attrMap[name];
+        if (!expectedType) {
+          // Unknown attribute name
+          diagnosticsCallback(
+            ModelicaErrorCode.MODIFIER_NOT_FOUND.severity,
+            ModelicaErrorCode.MODIFIER_NOT_FOUND.code,
+            ModelicaErrorCode.MODIFIER_NOT_FOUND.message(name, node.name ?? "", classInstance.name ?? ""),
+            node.abstractSyntaxNode?.declaration?.identifier,
+          );
+          continue;
+        }
+        // Type-check the modifier value
+        if (modArg instanceof ModelicaElementModification) {
+          const exprSyntax = modArg.modificationExpression?.expression;
+          // Check literals (Integer, Real, Boolean, String)
+          const literalType = getLiteralTypeName(exprSyntax);
+          if (literalType && literalType !== expectedType && !isImplicitlyConvertible(literalType, expectedType)) {
+            diagnosticsCallback(
+              ModelicaErrorCode.TYPE_MISMATCH_MODIFIER.severity,
+              ModelicaErrorCode.TYPE_MISMATCH_MODIFIER.code,
+              ModelicaErrorCode.TYPE_MISMATCH_MODIFIER.message(name, expectedType, literalType),
+              modArg.modificationExpression,
+            );
+          }
+          // Check component references (enum literals like enum.a, StateSelect.default)
+          if (!literalType && exprSyntax instanceof ModelicaComponentReferenceSyntaxNode) {
+            const scope = modArg.scope ?? node.parent;
+            if (scope) {
+              const resolvedComp = resolveToComponent(scope as Scope, exprSyntax);
+              if (resolvedComp) {
+                if (!resolvedComp.instantiated) resolvedComp.instantiate();
+                const exprType = resolvedComp.classInstance;
+                // For enumeration attributes, the value must belong to the same enum type
+                if (expectedType === "enumeration" && classInstance instanceof ModelicaEnumerationClassInstance) {
+                  if (
+                    exprType &&
+                    !(exprType instanceof ModelicaEnumerationClassInstance) &&
+                    !classInstance.isTypeCompatibleWith(exprType)
+                  ) {
+                    diagnosticsCallback(
+                      ModelicaErrorCode.TYPE_MISMATCH_MODIFIER.severity,
+                      ModelicaErrorCode.TYPE_MISMATCH_MODIFIER.code,
+                      ModelicaErrorCode.TYPE_MISMATCH_MODIFIER.message(
+                        name,
+                        classInstance.name ?? "enumeration",
+                        exprType.name ?? "",
+                      ),
+                      modArg.modificationExpression,
+                    );
+                  }
+                } else if (expectedType === "StateSelect") {
+                  // StateSelect values must reference the StateSelect enumeration
+                  const refName = exprSyntax.parts.map((p) => p.identifier?.text ?? "").join(".");
+                  if (!refName.startsWith("StateSelect.")) {
+                    diagnosticsCallback(
+                      ModelicaErrorCode.TYPE_MISMATCH_MODIFIER.severity,
+                      ModelicaErrorCode.TYPE_MISMATCH_MODIFIER.code,
+                      ModelicaErrorCode.TYPE_MISMATCH_MODIFIER.message(name, "StateSelect", refName),
+                      modArg.modificationExpression,
+                    );
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      return;
+    }
 
     const modification = node.modification;
     if (!modification) return;
@@ -1475,15 +1619,36 @@ ModelicaLinter.register(ModelicaErrorCode.EQUATION_TYPE_MISMATCH, {
       if (!type1 || !type2) continue;
 
       if (!type1.isTypeCompatibleWith(type2)) {
+        // Build expanded array representation for the error message, e.g.:
+        // {{x[1,1], x[1,2], x[1,3]}, {x[2,1], x[2,2], x[2,3]}}
+        const expandArray = (name: string, type: ModelicaClassInstance): string => {
+          if (!(type instanceof ModelicaArrayClassInstance) || type.shape.length === 0) return name;
+          const shape = type.shape;
+          const buildNested = (dims: number[], indices: number[]): string => {
+            if (dims.length === 0) return `${name}[${indices.join(",")}]`;
+            const dim = dims[0] ?? 0;
+            const rest = dims.slice(1);
+            const elements: string[] = [];
+            for (let i = 1; i <= dim; i++) {
+              elements.push(buildNested(rest, [...indices, i]));
+            }
+            return `{${elements.join(", ")}}`;
+          };
+          return buildNested(shape, []);
+        };
+        const lhsExpanded = expandArray(componentRefText(expr1), type1);
+        const rhsExpanded = expandArray(componentRefText(expr2), type2);
+        const typeName = (t: ModelicaClassInstance): string => {
+          if (t instanceof ModelicaArrayClassInstance) {
+            const elemName = t.elementClassInstance?.name ?? "Real";
+            return `${elemName}[${t.shape.join(", ")}]`;
+          }
+          return t.name ?? "";
+        };
         diagnosticsCallback(
           ModelicaErrorCode.EQUATION_TYPE_MISMATCH.severity,
           ModelicaErrorCode.EQUATION_TYPE_MISMATCH.code,
-          ModelicaErrorCode.EQUATION_TYPE_MISMATCH.message(
-            componentRefText(expr1),
-            type1.name ?? "",
-            componentRefText(expr2),
-            type2.name ?? "",
-          ),
+          ModelicaErrorCode.EQUATION_TYPE_MISMATCH.message(lhsExpanded, rhsExpanded, typeName(type1), typeName(type2)),
           equation,
         );
       }

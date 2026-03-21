@@ -383,6 +383,22 @@ export const BUILTIN_FUNCTIONS: ReadonlyMap<string, BuiltinFunctionDef> = new Ma
       ],
       outputType: "Integer",
       fold2: (a, b) => (b !== 0 ? Math.trunc(a / b) : NaN),
+      overloads: [
+        {
+          inputs: [
+            { name: "x", type: "Integer" },
+            { name: "y", type: "Integer" },
+          ],
+          outputType: "Integer",
+        },
+        {
+          inputs: [
+            { name: "x", type: "Real" },
+            { name: "y", type: "Real" },
+          ],
+          outputType: "Integer",
+        },
+      ],
     },
   ],
   [
@@ -392,8 +408,24 @@ export const BUILTIN_FUNCTIONS: ReadonlyMap<string, BuiltinFunctionDef> = new Ma
         { name: "x", type: "Real" },
         { name: "y", type: "Real" },
       ],
-      outputType: "Real",
+      outputType: "Real", // Used as a fallback; will be inferred from overloads when possible
       fold2: (a, b) => (b !== 0 ? a - Math.floor(a / b) * b : NaN),
+      overloads: [
+        {
+          inputs: [
+            { name: "x", type: "Integer" },
+            { name: "y", type: "Integer" },
+          ],
+          outputType: "Integer",
+        },
+        {
+          inputs: [
+            { name: "x", type: "Real" },
+            { name: "y", type: "Real" },
+          ],
+          outputType: "Real",
+        },
+      ],
     },
   ],
   [
@@ -405,6 +437,22 @@ export const BUILTIN_FUNCTIONS: ReadonlyMap<string, BuiltinFunctionDef> = new Ma
       ],
       outputType: "Real",
       fold2: (a, b) => (b !== 0 ? a - Math.trunc(a / b) * b : NaN),
+      overloads: [
+        {
+          inputs: [
+            { name: "x", type: "Integer" },
+            { name: "y", type: "Integer" },
+          ],
+          outputType: "Integer",
+        },
+        {
+          inputs: [
+            { name: "x", type: "Real" },
+            { name: "y", type: "Real" },
+          ],
+          outputType: "Real",
+        },
+      ],
     },
   ],
 

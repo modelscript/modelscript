@@ -1117,10 +1117,30 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
               // Get existing modification from redeclared component, then merge
               const redeclaredMod = redeclaration.componentInstance.modification;
               const mergedArgs = [...(redeclaredMod?.modificationArguments ?? [])];
+              // Resolve the redeclared type to filter incompatible modifiers
+              // When a component is redeclared with a different type (e.g., Resistor → Capacitor),
+              // modifiers from the original type (e.g., R=100) should not be merged if the new type
+              // doesn't have those elements.
+              const redeclaredTypeSpecifier = redeclaration.componentInstance.abstractSyntaxNode?.parent?.typeSpecifier;
+              const redeclaredType = redeclaredTypeSpecifier
+                ? this.resolveTypeSpecifier(redeclaredTypeSpecifier)
+                : null;
+              const redeclaredTypeElementNames = new Set<string>();
+              if (redeclaredType instanceof ModelicaClassInstance) {
+                for (const el of redeclaredType.elements) {
+                  if (el instanceof ModelicaNamedElement && el.name) {
+                    redeclaredTypeElementNames.add(el.name);
+                  }
+                }
+              }
               // Add original args that don't conflict with redeclare's own args
+              // and that exist in the redeclared type (when the type could be resolved)
               const redeclaredNames = new Set(mergedArgs.map((a) => a.name));
               for (const origArg of originalArgs) {
-                if (!redeclaredNames.has(origArg.name)) {
+                if (
+                  !redeclaredNames.has(origArg.name) &&
+                  (redeclaredTypeElementNames.size === 0 || redeclaredTypeElementNames.has(origArg.name ?? ""))
+                ) {
                   mergedArgs.push(origArg);
                 }
               }
@@ -2181,7 +2201,7 @@ export abstract class ModelicaPredefinedClassInstance extends ModelicaClassInsta
   }
 }
 
-const PREDEFINED_ATTRIBUTES: Record<string, Record<string, string>> = {
+export const PREDEFINED_ATTRIBUTES: Record<string, Record<string, string>> = {
   Real: {
     value: "The value of the variable.",
     quantity: "The quantity name of the variable.",
@@ -2217,7 +2237,7 @@ const PREDEFINED_ATTRIBUTES: Record<string, Record<string, string>> = {
   },
 };
 
-const PREDEFINED_ATTRIBUTE_TYPES: Record<string, Record<string, string>> = {
+export const PREDEFINED_ATTRIBUTE_TYPES: Record<string, Record<string, string>> = {
   Real: {
     value: "Real",
     quantity: "String",
@@ -2251,6 +2271,15 @@ const PREDEFINED_ATTRIBUTE_TYPES: Record<string, Record<string, string>> = {
     start: "String",
     fixed: "Boolean",
   },
+};
+
+export const ENUMERATION_ATTRIBUTE_TYPES: Record<string, string> = {
+  value: "enumeration",
+  quantity: "String",
+  min: "enumeration",
+  max: "enumeration",
+  start: "enumeration",
+  fixed: "Boolean",
 };
 
 export class ModelicaBooleanClassInstance extends ModelicaPredefinedClassInstance {
