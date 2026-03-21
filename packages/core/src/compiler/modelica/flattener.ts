@@ -27,6 +27,7 @@ import {
   ModelicaIfElseExpression,
   ModelicaIfEquation,
   ModelicaIfStatement,
+  ModelicaInitialStateEquation,
   ModelicaIntegerLiteral,
   ModelicaIntegerVariable,
   ModelicaNameExpression,
@@ -37,10 +38,13 @@ import {
   ModelicaRealVariable,
   ModelicaReturnStatement,
   ModelicaSimpleEquation,
+  ModelicaState,
+  ModelicaStateMachine,
   ModelicaStatement,
   ModelicaStringLiteral,
   ModelicaStringVariable,
   ModelicaSubscriptedExpression,
+  ModelicaTransitionEquation,
   ModelicaTupleExpression,
   ModelicaUnaryExpression,
   ModelicaVariable,
@@ -610,6 +614,10 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     }
     // Restore previous structural params
     this.#structuralFinalParams = savedStructural;
+
+    if (this.activeClassStack.length === 0) {
+      this.#assembleStateMachines(args[1]);
+    }
   }
 
   /**
@@ -772,6 +780,8 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
   // Track current array element index for distributing array-valued modifiers
   // e.g., A a[2](n={1,2}) → a[1].n=1, a[2].n=2
   #arrayElementIndex: number | null = null;
+  // Map from fully qualified component name to its generated subset of DAE variables and equations
+  #componentContents = new Map<string, { variables: ModelicaVariable[]; equations: ModelicaEquation[] }>();
 
   visitComponentInstance(node: ModelicaComponentInstance, args: [string, ModelicaDAE]): void {
     // Skip pure `outer` components — they reference an `inner` declaration higher up
@@ -836,7 +846,19 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         modExpr && typeof modExpr === "object" && "elements" in modExpr && modExpr.elements instanceof Map
           ? (modExpr as ModelicaObject)
           : null;
+
+      const startVars = args[1].variables.length;
+      const startEqs = args[1].equations.length;
+
       node.classInstance?.accept(this, [name, args[1]]);
+
+      const endVars = args[1].variables.length;
+      const endEqs = args[1].equations.length;
+      this.#componentContents.set(name, {
+        variables: args[1].variables.slice(startVars, endVars),
+        equations: args[1].equations.slice(startEqs, endEqs),
+      });
+
       this.#outerVariability = savedVar;
       this.#outerFinal = savedFinal;
       this.#outerProtected = savedProtected;
@@ -1936,6 +1958,141 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       }
     }
     return false;
+  }
+
+  /**
+   * Post-processes the flattened DAE to identify and assemble Modelica 3.3 State Machines.
+   * Scans for `transition` and `initialState` equations, identifies state components,
+   * clusters them by scope into `stateMachine` structures, and moves their variables
+   * and equations inside the clustered state containers.
+   */
+  #assembleStateMachines(dae: ModelicaDAE): void {
+    const nodes = new Set<string>();
+    const adjMap = new Map<string, string[]>();
+    const initEqs = new Map<string, ModelicaInitialStateEquation>();
+
+    const addEdge = (u: string, v: string) => {
+      nodes.add(u);
+      nodes.add(v);
+      if (!adjMap.has(u)) adjMap.set(u, []);
+      if (!adjMap.has(v)) adjMap.set(v, []);
+      adjMap.get(u)?.push(v);
+      adjMap.get(v)?.push(u);
+    };
+
+    // Graph Construction
+    for (const eq of dae.equations) {
+      if (eq instanceof ModelicaInitialStateEquation) {
+        nodes.add(eq.stateName);
+        initEqs.set(eq.stateName, eq);
+      } else if (eq instanceof ModelicaTransitionEquation) {
+        addEdge(eq.fromState, eq.toState);
+      }
+    }
+
+    if (nodes.size === 0) return;
+
+    // Connected Components
+    const components: string[][] = [];
+    const visited = new Set<string>();
+    for (const startNode of nodes) {
+      if (!visited.has(startNode)) {
+        const comp: string[] = [];
+        const q = [startNode];
+        visited.add(startNode);
+        while (q.length > 0) {
+          const curr = q.shift();
+          if (!curr) continue;
+          comp.push(curr);
+          const neighbors = adjMap.get(curr) || [];
+          for (const n of neighbors) {
+            if (!visited.has(n)) {
+              visited.add(n);
+              q.push(n);
+            }
+          }
+        }
+        components.push(comp);
+      }
+    }
+
+    const allMachines = new Map<string, { sm: ModelicaStateMachine; parentPrefix: string; rank: number }>();
+
+    // Pass 1: For each connected component, build its StateMachine
+    for (const comp of components) {
+      // Find the init equation to name the machine
+      let smName = comp[0] || "stateMachine";
+      for (const node of comp) {
+        if (initEqs.has(node)) {
+          smName = node;
+          break;
+        }
+      }
+
+      const parentParts = smName.split(".");
+      parentParts.pop();
+      const parentPrefix = parentParts.join(".");
+
+      const stateMachine = new ModelicaStateMachine(smName);
+
+      for (const fullName of comp) {
+        const stateNode = new ModelicaState(fullName);
+
+        // Grab contents generated for this state component
+        const contents = this.#componentContents.get(fullName);
+        if (contents) {
+          // Move variables and equations to the state, intersecting with DAE to avoid duplicated nested captures
+          const varSet = new Set(contents.variables);
+          stateNode.variables = dae.variables.filter((v: ModelicaVariable) => varSet.has(v));
+          dae.variables = dae.variables.filter((v: ModelicaVariable) => !varSet.has(v));
+
+          const eqSet = new Set(contents.equations);
+          stateNode.equations = dae.equations.filter((e: ModelicaEquation) => eqSet.has(e));
+          dae.equations = dae.equations.filter((e: ModelicaEquation) => !eqSet.has(e));
+        }
+
+        stateMachine.states.push(stateNode);
+      }
+
+      // Move transitional equations for this component from dae to stateMachine
+      const compSet = new Set(comp);
+      const smEquations: ModelicaEquation[] = [];
+      dae.equations = dae.equations.filter((eq: ModelicaEquation) => {
+        if (eq instanceof ModelicaInitialStateEquation && compSet.has(eq.stateName)) {
+          smEquations.push(eq);
+          return false;
+        } else if (eq instanceof ModelicaTransitionEquation && compSet.has(eq.fromState)) {
+          smEquations.push(eq);
+          return false;
+        }
+        return true;
+      });
+      stateMachine.equations = smEquations;
+
+      allMachines.set(smName, { sm: stateMachine, parentPrefix, rank: parentPrefix.split(".").length });
+    }
+
+    // Pass 2: Link the hierarchical state machines together (bottom up)
+    const sortedMachines = Array.from(allMachines.values()).sort((a, b) => b.rank - a.rank);
+
+    for (const { sm, parentPrefix } of sortedMachines) {
+      if (!parentPrefix) {
+        dae.stateMachines.push(sm);
+      } else {
+        let foundParent = false;
+        for (const meta of allMachines.values()) {
+          const parentState = meta.sm.states.find((s: ModelicaState) => s.name === parentPrefix);
+          if (parentState) {
+            parentState.stateMachines.push(sm);
+            foundParent = true;
+            break;
+          }
+        }
+        if (!foundParent) {
+          dae.stateMachines.push(sm); // Fallback if parent missing
+        }
+      }
+    }
   }
 }
 
@@ -5605,6 +5762,56 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       const flatArg = arg.expression?.accept(this, ctx);
       if (flatArg) flatArgs.push(flatArg);
     }
+
+    if (functionName === "initialState" && flatArgs[0] instanceof ModelicaNameExpression) {
+      ctx.dae.equations.push(new ModelicaInitialStateEquation(flatArgs[0].name));
+      return null;
+    }
+
+    if (functionName === "transition" && flatArgs.length >= 3) {
+      const fromState = flatArgs[0] instanceof ModelicaNameExpression ? flatArgs[0].name : "";
+      const toState = flatArgs[1] instanceof ModelicaNameExpression ? flatArgs[1].name : "";
+      const condition = flatArgs[2];
+      if (!condition) return null;
+
+      // Parse named arguments for optional transition properties
+      const namedArgsMap = new Map<string, ModelicaExpression>();
+      for (const arg of node.functionCallArguments?.namedArguments ?? []) {
+        const argName = arg.identifier?.text ?? "";
+        const argValue = arg.argument?.expression?.accept(this, ctx);
+        if (argName && argValue) namedArgsMap.set(argName, argValue);
+      }
+
+      const immediateArg = namedArgsMap.get("immediate") ?? flatArgs[3];
+      const resetArg = namedArgsMap.get("reset") ?? flatArgs[4];
+      const synchronizeArg = namedArgsMap.get("synchronize") ?? flatArgs[5];
+      const priorityArg = namedArgsMap.get("priority") ?? flatArgs[6];
+
+      const immediate =
+        immediateArg instanceof ModelicaBooleanLiteral
+          ? immediateArg.value
+          : immediateArg instanceof ModelicaNameExpression && immediateArg.name === "true";
+
+      const reset = resetArg
+        ? resetArg instanceof ModelicaBooleanLiteral
+          ? resetArg.value
+          : resetArg instanceof ModelicaNameExpression && resetArg.name === "true"
+        : true; // default true
+
+      const synchronize = synchronizeArg
+        ? synchronizeArg instanceof ModelicaBooleanLiteral
+          ? synchronizeArg.value
+          : synchronizeArg instanceof ModelicaNameExpression && synchronizeArg.name === "true"
+        : false; // default false
+
+      const priority = priorityArg instanceof ModelicaIntegerLiteral ? priorityArg.value : 1; // default 1
+
+      ctx.dae.equations.push(
+        new ModelicaTransitionEquation(fromState, toState, condition, immediate, reset, synchronize, priority),
+      );
+      return null;
+    }
+
     // Coerce integer arguments to Real for built-in functions that expect Real args
     const realArgBuiltins = new Set<string>([]);
     if (realArgBuiltins.has(functionName)) {

@@ -520,6 +520,24 @@ export const BUILTIN_FUNCTIONS: ReadonlyMap<string, BuiltinFunctionDef> = new Ma
   ["noClock", { inputs: [{ name: "u", type: "Real" }], outputType: "Real" }],
   ["interval", { inputs: [{ name: "u", type: "Real" }], outputType: "Real" }],
   ["initialState", { inputs: [{ name: "state", type: "Real" }], outputType: "Real" }],
+  ["activeState", { inputs: [{ name: "state", type: "Real" }], outputType: "Boolean" }],
+  ["ticksInState", { inputs: [], outputType: "Integer" }],
+  ["timeInState", { inputs: [], outputType: "Real" }],
+  [
+    "transition",
+    {
+      inputs: [
+        { name: "from", type: "Real" },
+        { name: "to", type: "Real" },
+        { name: "condition", type: "Boolean" },
+        { name: "immediate", type: "Boolean", defaultValue: true },
+        { name: "reset", type: "Boolean", defaultValue: true },
+        { name: "synchronize", type: "Boolean", defaultValue: false },
+        { name: "priority", type: "Integer", defaultValue: 1 },
+      ],
+      outputType: null,
+    },
+  ],
 
   // §16.6 Stream Operators
   ["inStream", { inputs: [{ name: "v", type: "Real" }], outputType: "Real" }],

@@ -24,6 +24,7 @@ export class ModelicaDAE {
   /** Algorithm sections from `initial algorithm` sections. */
   initialAlgorithms: ModelicaStatement[][] = [];
   variables: ModelicaVariable[] = [];
+  stateMachines: ModelicaStateMachine[] = [];
   /** Flattened function definitions referenced by equations/algorithms. */
   functions: ModelicaDAE[] = [];
   /** External function declaration text (e.g. `external "C" ...`). */
@@ -47,6 +48,9 @@ export class ModelicaDAE {
     for (const variable of this.variables) {
       hash.update(variable.hash);
     }
+    for (const sm of this.stateMachines) {
+      hash.update(sm.hash);
+    }
     for (const equation of this.equations) {
       hash.update(equation.hash);
     }
@@ -61,6 +65,7 @@ export class ModelicaDAE {
       "@type": "DAE",
       name: this.name,
       description: this.description,
+      stateMachines: this.stateMachines.map((m) => m.toJSON),
       functions: this.functions.map((f) => f.toJSON),
       variables: this.variables.map((v) => v.toJSON),
       equations: this.equations.map((e) => e.toJSON),
@@ -77,6 +82,10 @@ export class ModelicaDAE {
     for (const variable of this.variables) {
       triples.push({ s: id, p: "modelica:variable", o: `_:var_${variable.name}` });
       triples.push(...variable.toRDF);
+    }
+    for (const sm of this.stateMachines) {
+      triples.push({ s: id, p: "modelica:stateMachine", o: `_:sm_${sm.name}` });
+      triples.push(...sm.toRDF);
     }
     for (let i = 0; i < this.equations.length; i++) {
       const eq = this.equations[i];
@@ -2318,6 +2327,166 @@ function evaluateExpression(expression: ModelicaExpression, env: Map<string, num
   return null;
 }
 
+export class ModelicaStateMachine {
+  name: string;
+  states: ModelicaState[] = [];
+  equations: ModelicaEquation[] = [];
+
+  constructor(name: string) {
+    this.name = name;
+  }
+
+  accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
+    return visitor.visitStateMachine(this, argument);
+  }
+
+  get hash(): string {
+    const hash = createHash("sha256");
+    hash.update("statemachine_" + this.name);
+    for (const s of this.states) hash.update(s.hash);
+    for (const e of this.equations) hash.update(e.hash);
+    return hash.digest("hex");
+  }
+
+  get toJSON(): JSONValue {
+    return {
+      "@type": "StateMachine",
+      name: this.name,
+      states: this.states.map((s) => s.toJSON),
+      equations: this.equations.map((e) => e.toJSON),
+    };
+  }
+
+  get toRDF(): Triple[] {
+    return [];
+  }
+}
+
+export class ModelicaState {
+  name: string;
+  variables: ModelicaVariable[] = [];
+  equations: ModelicaEquation[] = [];
+  stateMachines: ModelicaStateMachine[] = [];
+
+  constructor(name: string) {
+    this.name = name;
+  }
+
+  accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
+    return visitor.visitState(this, argument);
+  }
+
+  get hash(): string {
+    const hash = createHash("sha256");
+    hash.update("state_" + this.name);
+    for (const v of this.variables) hash.update(v.hash);
+    for (const e of this.equations) hash.update(e.hash);
+    for (const sm of this.stateMachines) hash.update(sm.hash);
+    return hash.digest("hex");
+  }
+
+  get toJSON(): JSONValue {
+    return {
+      "@type": "State",
+      name: this.name,
+      variables: this.variables.map((v) => v.toJSON),
+      equations: this.equations.map((e) => e.toJSON),
+      stateMachines: this.stateMachines.map((sm) => sm.toJSON),
+    };
+  }
+
+  get toRDF(): Triple[] {
+    return [];
+  }
+}
+
+export class ModelicaInitialStateEquation extends ModelicaEquation {
+  stateName: string;
+
+  constructor(stateName: string) {
+    super();
+    this.stateName = stateName;
+  }
+
+  override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
+    return visitor.visitInitialStateEquation(this, argument);
+  }
+
+  override get hash(): string {
+    return createHash("sha256")
+      .update("initial_state_" + this.stateName)
+      .digest("hex");
+  }
+
+  override get toJSON(): JSONValue {
+    return { "@type": "InitialStateEquation", stateName: this.stateName };
+  }
+
+  override get toRDF(): Triple[] {
+    return [];
+  }
+}
+
+export class ModelicaTransitionEquation extends ModelicaEquation {
+  fromState: string;
+  toState: string;
+  condition: ModelicaExpression;
+  immediate: boolean;
+  reset: boolean;
+  synchronize: boolean;
+  priority: number;
+
+  constructor(
+    fromState: string,
+    toState: string,
+    condition: ModelicaExpression,
+    immediate: boolean,
+    reset: boolean,
+    synchronize: boolean,
+    priority: number,
+  ) {
+    super();
+    this.fromState = fromState;
+    this.toState = toState;
+    this.condition = condition;
+    this.immediate = immediate;
+    this.reset = reset;
+    this.synchronize = synchronize;
+    this.priority = priority;
+  }
+
+  override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
+    return visitor.visitTransitionEquation(this, argument);
+  }
+
+  override get hash(): string {
+    const h = createHash("sha256").update("transition_" + this.fromState + "_" + this.toState);
+    h.update(this.condition.hash);
+    h.update((this.immediate ? 1 : 0).toString());
+    h.update((this.reset ? 1 : 0).toString());
+    h.update((this.synchronize ? 1 : 0).toString());
+    h.update(this.priority.toString());
+    return h.digest("hex");
+  }
+
+  override get toJSON(): JSONValue {
+    return {
+      "@type": "TransitionEquation",
+      from: this.fromState,
+      to: this.toState,
+      condition: this.condition.toJSON,
+      immediate: this.immediate,
+      reset: this.reset,
+      synchronize: this.synchronize,
+      priority: this.priority,
+    };
+  }
+
+  override get toRDF(): Triple[] {
+    return [];
+  }
+}
+
 export interface IModelicaDAEVisitor<R, A> {
   visitArray(node: ModelicaArray, argument?: A): R;
 
@@ -2394,6 +2563,14 @@ export interface IModelicaDAEVisitor<R, A> {
   visitUnaryExpression(node: ModelicaUnaryExpression, argument?: A): R;
 
   visitWhenEquation(node: ModelicaWhenEquation, argument?: A): R;
+
+  visitStateMachine(node: ModelicaStateMachine, argument?: A): R;
+
+  visitState(node: ModelicaState, argument?: A): R;
+
+  visitInitialStateEquation(node: ModelicaInitialStateEquation, argument?: A): R;
+
+  visitTransitionEquation(node: ModelicaTransitionEquation, argument?: A): R;
 }
 
 export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void, A> {
@@ -2591,6 +2768,25 @@ export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void,
       clause.condition.accept(this, argument);
       for (const eq of clause.equations) eq.accept(this, argument);
     }
+  }
+
+  visitStateMachine(node: ModelicaStateMachine, argument?: A): void {
+    for (const s of node.states) s.accept(this, argument);
+    for (const eq of node.equations) eq.accept(this, argument);
+  }
+
+  visitState(node: ModelicaState, argument?: A): void {
+    for (const v of node.variables) v.accept(this, argument);
+    for (const eq of node.equations) eq.accept(this, argument);
+    for (const sm of node.stateMachines) sm.accept(this, argument);
+  }
+
+  visitInitialStateEquation(node: ModelicaInitialStateEquation, argument?: A): void {
+    /* no-op */
+  }
+
+  visitTransitionEquation(node: ModelicaTransitionEquation, argument?: A): void {
+    node.condition.accept(this, argument);
   }
 }
 
@@ -2808,7 +3004,7 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
   }
 
   #emitVariable(variable: ModelicaVariable): void {
-    this.out.write("  ");
+    this.out.write(this.indent());
     if (variable.isProtected) this.out.write("protected ");
     if (variable.isFinal) this.out.write("final ");
     if (variable.variability) this.out.write(variable.variability + " ");
@@ -2893,6 +3089,10 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     for (const variable of node.variables) {
       this.#emitVariable(variable);
     }
+    for (const sm of node.stateMachines || []) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (sm as any).accept(this as any);
+    }
     if (node.initialEquations.length > 0) {
       this.out.write("initial equation\n");
       for (const equation of node.initialEquations) equation.accept(this);
@@ -2958,18 +3158,19 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
   }
 
   visitForEquation(node: ModelicaForEquation): void {
-    this.out.write("  for " + node.indexName + " in ");
+    this.out.write(this.indent() + "for " + node.indexName + " in ");
     node.range.accept(this);
     this.out.write(" loop\n");
+    this.#depth++;
     for (const eq of node.equations) {
-      this.out.write("  ");
       eq.accept(this);
     }
-    this.out.write("  end for;\n");
+    this.#depth--;
+    this.out.write(this.indent() + "end for;\n");
   }
 
   visitFunctionCallEquation(node: ModelicaFunctionCallEquation): void {
-    this.out.write("  ");
+    this.out.write(this.indent());
     node.call.accept(this);
     this.out.write(";\n");
   }
@@ -3005,30 +3206,33 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
   }
 
   visitIfEquation(node: ModelicaIfEquation): void {
-    this.out.write("  if ");
+    this.out.write(this.indent() + "if ");
     node.condition.accept(this);
     this.out.write(" then\n");
+    this.#depth++;
     for (const eq of node.equations) {
-      this.out.write("  ");
       eq.accept(this);
     }
+    this.#depth--;
     for (const clause of node.elseIfClauses) {
-      this.out.write("  elseif ");
+      this.out.write(this.indent() + "elseif ");
       clause.condition.accept(this);
       this.out.write(" then\n");
+      this.#depth++;
       for (const eq of clause.equations) {
-        this.out.write("  ");
         eq.accept(this);
       }
+      this.#depth--;
     }
     if (node.elseEquations.length > 0) {
-      this.out.write("  else\n");
+      this.out.write(this.indent() + "else\n");
+      this.#depth++;
       for (const eq of node.elseEquations) {
-        this.out.write("  ");
         eq.accept(this);
       }
+      this.#depth--;
     }
-    this.out.write("  end if;\n");
+    this.out.write(this.indent() + "end if;\n");
   }
 
   visitIfElseExpression(node: ModelicaIfElseExpression): void {
@@ -3114,7 +3318,7 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
   }
 
   visitSimpleEquation(node: ModelicaSimpleEquation): void {
-    this.out.write("  ");
+    this.out.write(this.indent());
     node.expression1.accept(this);
     this.out.write(" = ");
     node.expression2.accept(this);
@@ -3172,22 +3376,73 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
   }
 
   visitWhenEquation(node: ModelicaWhenEquation): void {
-    this.out.write("  when ");
+    this.out.write(this.indent() + "when ");
     node.condition.accept(this);
     this.out.write(" then\n");
+    this.#depth++;
     for (const eq of node.equations) {
-      this.out.write("  ");
       eq.accept(this);
     }
+    this.#depth--;
     for (const clause of node.elseWhenClauses) {
-      this.out.write("  elsewhen ");
+      this.out.write(this.indent() + "elsewhen ");
       clause.condition.accept(this);
       this.out.write(" then\n");
+      this.#depth++;
       for (const eq of clause.equations) {
-        this.out.write("  ");
         eq.accept(this);
       }
+      this.#depth--;
     }
-    this.out.write("  end when;\n");
+    this.out.write(this.indent() + "end when;\n");
+  }
+
+  visitStateMachine(node: ModelicaStateMachine): void {
+    this.out.write(this.indent() + "stateMachine " + node.name + "\n");
+    this.#depth++;
+    for (const state of node.states) {
+      state.accept(this);
+    }
+    if (node.equations.length > 0) {
+      this.out.write(this.indent() + "equation\n");
+      this.#depth++;
+      for (const eq of node.equations) {
+        eq.accept(this);
+      }
+      this.#depth--;
+    }
+    this.#depth--;
+    this.out.write(this.indent() + "end " + node.name + ";\n");
+  }
+
+  visitState(node: ModelicaState): void {
+    this.out.write(this.indent() + "state " + node.name + "\n");
+    this.#depth++;
+    for (const variable of node.variables) {
+      this.#emitVariable(variable);
+    }
+    for (const sm of node.stateMachines) {
+      sm.accept(this);
+    }
+    if (node.equations.length > 0) {
+      this.out.write(this.indent() + "equation\n");
+      this.#depth++;
+      for (const eq of node.equations) {
+        eq.accept(this);
+      }
+      this.#depth--;
+    }
+    this.#depth--;
+    this.out.write(this.indent() + "end " + node.name + ";\n");
+  }
+
+  visitInitialStateEquation(node: ModelicaInitialStateEquation): void {
+    this.out.write(this.indent() + "initialState(" + node.stateName + ");\n");
+  }
+
+  visitTransitionEquation(node: ModelicaTransitionEquation): void {
+    this.out.write(this.indent() + "transition(" + node.fromState + ", " + node.toState + ", ");
+    node.condition.accept(this);
+    this.out.write(", " + node.immediate + ", " + node.reset + ", " + node.synchronize + ", " + node.priority + ");\n");
   }
 }

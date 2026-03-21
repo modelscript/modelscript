@@ -600,6 +600,21 @@ const BUILTIN_MODELICA_NAMES = new Set([
   "cardinality",
   "inStream",
   "actualStream",
+  // Synchronous Language Elements
+  "Clock",
+  "hold",
+  "previous",
+  "backSample",
+  "shiftSample",
+  "subSample",
+  "superSample",
+  "noClock",
+  "interval",
+  "initialState",
+  "activeState",
+  "ticksInState",
+  "timeInState",
+  "transition",
   // Assertions / utilities
   "assert",
   "print",
@@ -2768,16 +2783,46 @@ ModelicaLinter.register(ModelicaErrorCode.MISSING_INNER, {
             }
 
             if (!hasInner) {
-              const typeName = el.abstractSyntaxNode?.parent?.typeSpecifier?.text ?? "Unknown";
-              const scopeName =
-                el.parent instanceof ModelicaClassInstance ? (el.parent.compositeName ?? el.parent.name ?? "") : "";
+              // Fallback: check lexical scope hierarchy for inner declarations.
+              // This prevents false positives when linting nested reusable type definitions
+              // whose outer components will be satisfied by their lexical parents when instantiated.
+              let lexicalParent = node.parent;
+              let foundLexicalInner = false;
+              while (lexicalParent instanceof ModelicaClassInstance) {
+                const innerMatch = Array.from(lexicalParent.elements).find(
+                  (e) => e instanceof ModelicaComponentInstance && e.isInner && e.name === el.name,
+                );
+                if (innerMatch) {
+                  foundLexicalInner = true;
+                  break;
+                }
+                lexicalParent = lexicalParent.parent;
+              }
 
-              diagnosticsCallback(
-                ModelicaErrorCode.MISSING_INNER.severity,
-                ModelicaErrorCode.MISSING_INNER.code,
-                ModelicaErrorCode.MISSING_INNER.message(typeName, el.name, scopeName),
-                el.abstractSyntaxNode?.parent ?? el.abstractSyntaxNode,
-              );
+              if (!foundLexicalInner) {
+                const typeName = el.abstractSyntaxNode?.parent?.typeSpecifier?.text ?? "Unknown";
+                const scopeName =
+                  el.parent instanceof ModelicaClassInstance ? (el.parent.compositeName ?? el.parent.name ?? "") : "";
+
+                const existingInners: string[] = [];
+                for (let i = stack.length - 1; i >= 0; i--) {
+                  const ancestorClass = stack[i];
+                  if (!ancestorClass) continue;
+                  for (const ancestorEl of ancestorClass.elements) {
+                    if (ancestorEl instanceof ModelicaComponentInstance && ancestorEl.isInner && ancestorEl.name) {
+                      existingInners.push(`'${ancestorEl.name}' in '${ancestorClass.name}'`);
+                    }
+                  }
+                }
+                const innersStr = existingInners.length > 0 ? existingInners.join(", ") : "none";
+
+                diagnosticsCallback(
+                  ModelicaErrorCode.MISSING_INNER.severity,
+                  ModelicaErrorCode.MISSING_INNER.code,
+                  ModelicaErrorCode.MISSING_INNER.message(typeName, el.name, scopeName, innersStr),
+                  el.abstractSyntaxNode?.parent ?? el.abstractSyntaxNode,
+                );
+              }
             }
           }
 

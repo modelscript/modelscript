@@ -226,10 +226,10 @@ export const ModelicaErrorCode = {
     code: 0,
     rule: "missing-inner",
     severity: "warning",
-    message: (typeName: string, componentName: string, scopeName: string) =>
+    message: (typeName: string, componentName: string, scopeName: string, inners: string) =>
       `No corresponding 'inner' declaration found for component .${typeName} ${componentName} declared as 'outer'.\n` +
       `  The existing 'inner' components are:\n` +
-      `    There are no 'inner' components defined in the model in any of the parent scopes of 'outer' component's scope: ${scopeName}.\n` +
+      `    ${inners}\n` +
       `  Check if you have not misspelled the 'outer' component name.\n` +
       `  Please declare an 'inner' component with the same name in the top scope.\n` +
       `  Continuing flattening by only considering the 'outer' component declaration.`,
