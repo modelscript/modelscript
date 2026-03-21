@@ -11,6 +11,7 @@ import {
   ModelicaBooleanLiteral,
   ModelicaBooleanVariable,
   ModelicaBreakStatement,
+  ModelicaClockVariable,
   ModelicaColonExpression,
   ModelicaComplexAssignmentStatement,
   ModelicaComprehensionExpression,
@@ -60,6 +61,7 @@ import {
   ModelicaArrayClassInstance,
   ModelicaBooleanClassInstance,
   ModelicaClassInstance,
+  ModelicaClockClassInstance,
   ModelicaComponentInstance,
   ModelicaEntity,
   ModelicaEnumerationClassInstance,
@@ -1040,6 +1042,17 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         isFinal,
         isProtected,
       );
+    } else if (node.classInstance instanceof ModelicaClockClassInstance) {
+      variable = new ModelicaClockVariable(
+        name,
+        varExpression,
+        attributes,
+        variability,
+        node.modification?.description ?? node.description,
+        causality,
+        isFinal,
+        isProtected,
+      );
     } else if (node.classInstance instanceof ModelicaIntegerClassInstance) {
       variable = new ModelicaIntegerVariable(
         name,
@@ -1644,10 +1657,48 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
             }
             changed = true;
           } else {
-            if (newExpr1 !== equation.expression1 || newExpr2 !== equation.expression2) {
-              changed = true;
+            // Handle name=array equations created by post-fold vectorization
+            // (e.g., y = {hold(z[1]), hold(z[2])} → y[1] = hold(z[1]), y[2] = hold(z[2]))
+            let expanded = false;
+            if (newExpr1 instanceof ModelicaNameExpression && newExpr2 instanceof ModelicaArray) {
+              const vars = dae.variables
+                .filter((v) => v.name.startsWith(newExpr1.name + "["))
+                .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+              const flat2 = [...newExpr2.flatElements];
+              if (vars.length === flat2.length && vars.length > 0) {
+                for (let i = 0; i < vars.length; i++) {
+                  const v = vars[i];
+                  const rhs = flat2[i];
+                  if (!v || !rhs) continue;
+                  const lhs = new ModelicaNameExpression(v.name);
+                  newEquations.push(new ModelicaSimpleEquation(lhs, rhs, equation.description));
+                }
+                expanded = true;
+                changed = true;
+              }
+            } else if (newExpr2 instanceof ModelicaNameExpression && newExpr1 instanceof ModelicaArray) {
+              const vars = dae.variables
+                .filter((v) => v.name.startsWith(newExpr2.name + "["))
+                .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+              const flat1 = [...newExpr1.flatElements];
+              if (vars.length === flat1.length && vars.length > 0) {
+                for (let i = 0; i < vars.length; i++) {
+                  const v = vars[i];
+                  const lhs = flat1[i];
+                  if (!v || !lhs) continue;
+                  const rhs = new ModelicaNameExpression(v.name);
+                  newEquations.push(new ModelicaSimpleEquation(lhs, rhs, equation.description));
+                }
+                expanded = true;
+                changed = true;
+              }
             }
-            newEquations.push(new ModelicaSimpleEquation(newExpr1, newExpr2, equation.description));
+            if (!expanded) {
+              if (newExpr1 !== equation.expression1 || newExpr2 !== equation.expression2) {
+                changed = true;
+              }
+              newEquations.push(new ModelicaSimpleEquation(newExpr1, newExpr2, equation.description));
+            }
           }
         } else {
           newEquations.push(equation);
@@ -2821,11 +2872,37 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
           }
         }
       }
-      for (let i = 0; i < flatArgs.length && i < effectiveInputs.length; i++) {
-        if (effectiveInputs[i]?.type === "Real") {
-          const coerced = castToReal(flatArgs[i] ?? null);
-          if (coerced && coerced !== flatArgs[i]) flatArgs[i] = coerced;
+      // Skip arg coercion for Clock constructor and polymorphic synchronous operators.
+      // Clock is polymorphic (§16.3), and sync ops like hold/previous preserve arg types.
+      if (functionName !== "Clock" && !POLYMORPHIC_SYNC_OPS.has(functionName)) {
+        for (let i = 0; i < flatArgs.length && i < effectiveInputs.length; i++) {
+          if (effectiveInputs[i]?.type === "Real") {
+            const coerced = castToReal(flatArgs[i] ?? null);
+            if (coerced && coerced !== flatArgs[i]) flatArgs[i] = coerced;
+          }
         }
+      }
+    }
+    // Clock constructor is polymorphic (§16.3): Clock(), Clock(Integer, Integer),
+    // Clock(Real), Clock(Boolean, Real), Clock(Clock, String).
+    // Do NOT coerce its args; pass through as-is.
+    // Also add default Clock() for synchronous sample(u) → sample(u, Clock())
+    if (functionName === "sample" && flatArgs.length === 1) {
+      // If the single arg is Real-typed, this is a synchronous sample (not the Boolean sample(start,interval))
+      if (flatArgs[0] && isRealTyped(flatArgs[0], ctx.dae)) {
+        flatArgs.push(new ModelicaFunctionCallExpression("Clock", []));
+      }
+    }
+    // Clock constructor default arguments (§16.3):
+    // Clock(intervalCounter) → Clock(intervalCounter, 1) — rational clock, default resolution=1
+    // Clock(condition) → Clock(condition, 0.0) — event clock, default startInterval=0.0
+    if (functionName === "Clock" && flatArgs.length === 1 && flatArgs[0]) {
+      if (isIntegerTyped(flatArgs[0], ctx.dae)) {
+        // Rational clock: Clock(intervalCounter) → Clock(intervalCounter, 1)
+        flatArgs.push(new ModelicaIntegerLiteral(1));
+      } else if (isBooleanTyped(flatArgs[0], ctx.dae)) {
+        // Event clock: Clock(condition) → Clock(condition, 0.0)
+        flatArgs.push(new ModelicaRealLiteral(0.0));
       }
     }
     // Component-scoped function specialization:
@@ -5934,6 +6011,9 @@ function castToReal(expression: ModelicaExpression | null): ModelicaExpression |
     // corresponding parameter type is Real according to the function signature.
     // For user-defined functions, do NOT coerce arguments here — they handle
     // their own per-parameter coercion during function call flattening.
+    // Skip polymorphic synchronous operators (hold, previous, etc.) — they
+    // preserve the type of their first argument.
+    if (POLYMORPHIC_SYNC_OPS.has(expression.functionName)) return expression;
     const builtinDef = BUILTIN_FUNCTIONS.get(expression.functionName);
     if (!builtinDef) return expression; // User-defined: already correctly coerced
     if (builtinDef.outputType !== "Real") return expression;
@@ -6065,12 +6145,35 @@ function coerceToReal(expression: ModelicaExpression | null, dae?: ModelicaDAE):
     const operand = coerceToReal(expression.operand, dae) ?? expression.operand;
     if (operand !== expression.operand) return new ModelicaUnaryExpression(expression.operator, operand);
   }
+  // Wrap non-Real function calls in /*Real*/ (e.g., hold(3) → /*Real*/(hold(3)))
+  if (expression instanceof ModelicaFunctionCallExpression) {
+    if (!isRealTyped(expression, dae)) {
+      return new ModelicaFunctionCallExpression("/*Real*/", [expression]);
+    }
+  }
   return expression;
 }
+
+/**
+ * Synchronous operators that are polymorphic — they return the same type as their first argument.
+ * e.g., previous(x) returns Integer if x is Integer, Real if x is Real.
+ */
+const POLYMORPHIC_SYNC_OPS = new Set([
+  "previous",
+  "hold",
+  "sample",
+  "interval",
+  "noClock",
+  "subSample",
+  "superSample",
+  "backSample",
+  "shiftSample",
+]);
 
 function isRealTyped(expr: ModelicaExpression, dae?: ModelicaDAE): boolean {
   if (expr instanceof ModelicaRealVariable) return true;
   if (expr instanceof ModelicaRealLiteral) return true;
+  if (expr instanceof ModelicaArray) return expr.elements.some((e) => isRealTyped(e, dae));
   if (expr instanceof ModelicaBinaryExpression)
     return isRealTyped(expr.operand1, dae) || isRealTyped(expr.operand2, dae);
   if (expr instanceof ModelicaUnaryExpression) return isRealTyped(expr.operand, dae);
@@ -6089,6 +6192,10 @@ function isRealTyped(expr: ModelicaExpression, dae?: ModelicaDAE): boolean {
   if (expr instanceof ModelicaNameExpression && expr.name === "time") return true;
   if (expr instanceof ModelicaSubscriptedExpression) return isRealTyped(expr.base, dae);
   if (expr instanceof ModelicaFunctionCallExpression) {
+    // Polymorphic synchronous operators: return type matches first argument type
+    if (POLYMORPHIC_SYNC_OPS.has(expr.functionName)) {
+      return expr.args.length > 0 && expr.args[0] ? isRealTyped(expr.args[0], dae) : false;
+    }
     // Use the function's output type from the built-in signatures
     const builtinDef = BUILTIN_FUNCTIONS.get(expr.functionName);
     if (builtinDef) {
@@ -6124,6 +6231,10 @@ function isIntegerTyped(expr: ModelicaExpression, dae?: ModelicaDAE): boolean {
     if (arrayElement instanceof ModelicaIntegerVariable) return true;
   }
   if (expr instanceof ModelicaFunctionCallExpression) {
+    // Polymorphic synchronous operators: return type matches first argument type
+    if (POLYMORPHIC_SYNC_OPS.has(expr.functionName)) {
+      return expr.args.length > 0 && expr.args[0] ? isIntegerTyped(expr.args[0], dae) : false;
+    }
     const builtinDef = BUILTIN_FUNCTIONS.get(expr.functionName);
     if (builtinDef) {
       if (builtinDef.outputType === "Integer") return true;
@@ -6136,6 +6247,33 @@ function isIntegerTyped(expr: ModelicaExpression, dae?: ModelicaDAE): boolean {
     // Fallback for non-builtin functions: if all args are Integer, assume output is Integer
     if (!builtinDef && expr.args.length > 0 && expr.args.every((a) => isIntegerTyped(a, dae))) return true;
     return false;
+  }
+  return false;
+}
+
+/** Check whether an expression is Boolean-typed (e.g., comparisons, Boolean variables, logical ops). */
+function isBooleanTyped(expr: ModelicaExpression, dae?: ModelicaDAE): boolean {
+  if (expr instanceof ModelicaBooleanLiteral) return true;
+  if (expr instanceof ModelicaBooleanVariable) return true;
+  if (expr instanceof ModelicaBinaryExpression) {
+    // Comparison operators always return Boolean
+    const compOps = new Set(["<", ">", "<=", ">=", "==", "<>"]);
+    if (compOps.has(expr.operator)) return true;
+    // Logical operators (and, or) return Boolean
+    if (expr.operator === "and" || expr.operator === "or") return true;
+    return false;
+  }
+  if (expr instanceof ModelicaUnaryExpression) {
+    if (expr.operator === "not") return true;
+    return false;
+  }
+  if (expr instanceof ModelicaNameExpression && dae) {
+    const exactMatch = dae.variables.find((v) => v.name === expr.name);
+    if (exactMatch instanceof ModelicaBooleanVariable) return true;
+  }
+  if (expr instanceof ModelicaFunctionCallExpression) {
+    const builtinDef = BUILTIN_FUNCTIONS.get(expr.functionName);
+    if (builtinDef?.outputType === "Boolean") return true;
   }
   return false;
 }

@@ -2181,6 +2181,29 @@ export class ModelicaStringVariable extends ModelicaVariable {
   }
 }
 
+export class ModelicaClockVariable extends ModelicaVariable {
+  override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
+    return visitor.visitClockVariable(this, argument);
+  }
+
+  override get toJSON(): string {
+    return this.name;
+  }
+
+  override get toRDF(): Triple[] {
+    const id = `_:var_${this.name}`;
+    const triples: Triple[] = [
+      { s: id, p: "rdf:type", o: "modelica:ClockVariable" },
+      { s: id, p: "modelica:name", o: this.name },
+    ];
+    if (this.expression) {
+      triples.push({ s: id, p: "modelica:expression", o: `_:expr_${this.expression.hash.substring(0, 8)}` });
+      triples.push(...this.expression.toRDF);
+    }
+    return triples;
+  }
+}
+
 export class ModelicaEnumerationVariable extends ModelicaVariable {
   enumerationLiterals: ModelicaEnumerationLiteral[];
 
@@ -2518,6 +2541,8 @@ export interface IModelicaDAEVisitor<R, A> {
 
   visitDAE(node: ModelicaDAE, argument?: A): R;
 
+  visitClockVariable(node: ModelicaClockVariable, argument?: A): R;
+
   visitEnumerationLiteral(node: ModelicaEnumerationLiteral, argument?: A): R;
 
   visitEnumerationVariable(node: ModelicaEnumerationVariable, argument?: A): R;
@@ -2641,6 +2666,10 @@ export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void,
   }
 
   visitBooleanVariable(node: ModelicaBooleanVariable, argument?: A): void {
+    /* no-op */
+  }
+
+  visitClockVariable(node: ModelicaClockVariable, argument?: A): void {
     /* no-op */
   }
 
@@ -3017,6 +3046,8 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
       this.out.write(`${variable.name}<function>(${inputParts}) => ${outputType}`);
     } else if (variable instanceof ModelicaBooleanVariable) {
       this.out.write("Boolean");
+    } else if (variable instanceof ModelicaClockVariable) {
+      this.out.write("Clock");
     } else if (variable instanceof ModelicaIntegerVariable) {
       this.out.write("Integer");
     } else if (variable instanceof ModelicaRealVariable) {
@@ -3341,6 +3372,10 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
   }
 
   visitStringVariable(node: ModelicaStringVariable): void {
+    this.out.write(node.name);
+  }
+
+  visitClockVariable(node: ModelicaClockVariable): void {
     this.out.write(node.name);
   }
 

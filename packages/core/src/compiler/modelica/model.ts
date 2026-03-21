@@ -2438,6 +2438,24 @@ export class ModelicaStringClassInstance extends ModelicaPredefinedClassInstance
   }
 }
 
+export class ModelicaClockClassInstance extends ModelicaPredefinedClassInstance {
+  constructor(parent: Scope | null, modification?: ModelicaModification | null) {
+    super(parent, "Clock", modification);
+  }
+
+  override accept<R, A>(visitor: IModelicaModelVisitor<R, A>, argument?: A): R {
+    return visitor.visitClockClassInstance(this, argument);
+  }
+
+  override clone(modification?: ModelicaModification | null): ModelicaClockClassInstance {
+    if (!this.instantiated && !this.instantiating) this.instantiate();
+    const mergedModification = ModelicaModification.merge(this.modification, modification);
+    const classInstance = new ModelicaClockClassInstance(this.parent, mergedModification);
+    classInstance.instantiate();
+    return classInstance;
+  }
+}
+
 export class ModelicaArrayClassInstance extends ModelicaClassInstance {
   #arraySubscripts: ModelicaSubscriptSyntaxNode[];
   #elementClassInstance: ModelicaClassInstance | null;
@@ -3337,6 +3355,8 @@ export interface IModelicaModelVisitor<R, A> {
 
   visitBooleanClassInstance(node: ModelicaBooleanClassInstance, argument?: A): R;
 
+  visitClockClassInstance(node: ModelicaClockClassInstance, argument?: A): R;
+
   visitClassInstance(node: ModelicaClassInstance, argument?: A): R;
 
   visitComponentInstance(node: ModelicaComponentInstance, argument?: A): R;
@@ -3360,6 +3380,10 @@ export abstract class ModelicaModelVisitor<A> implements IModelicaModelVisitor<v
   }
 
   visitBooleanClassInstance(node: ModelicaBooleanClassInstance, argument?: A): void {
+    /* no-op */
+  }
+
+  visitClockClassInstance(node: ModelicaClockClassInstance, argument?: A): void {
     /* no-op */
   }
 

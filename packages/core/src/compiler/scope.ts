@@ -4,6 +4,7 @@ import { makeWeakRef } from "../util/weak.js";
 import {
   ModelicaBooleanClassInstance,
   ModelicaClassInstance,
+  ModelicaClockClassInstance,
   ModelicaComponentInstance,
   ModelicaElement,
   ModelicaIntegerClassInstance,
@@ -19,6 +20,7 @@ import {
 } from "./modelica/syntax.js";
 
 let scopeBoolean: ModelicaBooleanClassInstance | null = null;
+let scopeClock: ModelicaClockClassInstance | null = null;
 let scopeInteger: ModelicaIntegerClassInstance | null = null;
 let scopeReal: ModelicaRealClassInstance | null = null;
 let scopeString: ModelicaStringClassInstance | null = null;
@@ -117,6 +119,9 @@ export abstract class Scope {
       case "Boolean":
         if (!scopeBoolean) scopeBoolean = new ModelicaBooleanClassInstance(null, null);
         return scopeBoolean;
+      case "Clock":
+        if (!scopeClock) scopeClock = new ModelicaClockClassInstance(null, null);
+        return scopeClock;
       case "Integer":
         if (!scopeInteger) scopeInteger = new ModelicaIntegerClassInstance(null, null);
         return scopeInteger;
