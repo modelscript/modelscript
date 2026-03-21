@@ -268,7 +268,7 @@ export default function MorselEditor(props: MorselEditorProps) {
             );
           }
 
-          const result = simulator.simulate(0, 10, 0.1, { signal: abortController.signal });
+          const result = simulator.simulate(0, 10, 0.001, { signal: abortController.signal });
 
           const chartData = result.t.map((t: number, i: number) => {
             const row: Record<string, number | string> = { time: t };

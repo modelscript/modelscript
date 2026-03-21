@@ -2,6 +2,7 @@
 
 import {
   ExpressionEvaluator,
+  ModelicaBinaryExpression,
   type ModelicaDAE,
   ModelicaDAEVisitor,
   type ModelicaEquation,
@@ -14,7 +15,7 @@ import {
   ModelicaVariable,
   ModelicaWhenEquation,
 } from "./dae.js";
-import { ModelicaVariability } from "./syntax.js";
+import { ModelicaBinaryOperator, ModelicaVariability } from "./syntax.js";
 
 /** Describes a single action inside a when-clause body. */
 interface WhenAction {
@@ -25,15 +26,41 @@ interface WhenAction {
   expr: ModelicaExpression;
 }
 
+/**
+ * Zero-crossing direction: the sign change that triggers the event.
+ * - `negative`: fires when g goes from positive → negative (e.g. `h < 0`)
+ * - `positive`: fires when g goes from negative → positive (e.g. `x > 0`)
+ * - `either`: fires on any sign change
+ */
+type ZeroCrossingDirection = "negative" | "positive" | "either";
+
 /** A when-clause ready for evaluation during simulation. */
 interface WhenClause {
-  /** Condition expression. */
+  /** Condition expression (evaluated as boolean: nonzero = true). */
   condition: ModelicaExpression;
   /** Actions to execute when the condition fires (rising edge). */
   actions: WhenAction[];
   /** Tracks whether the condition was active at the previous time step. */
   wasActive: boolean;
+  /**
+   * If the condition is a relational comparison (e.g. `h < 0`), this evaluates
+   * the continuous zero-crossing function `g(t,y)` whose sign change triggers
+   * the event.  For `h < 0`, g = LHS - RHS = h - 0 = h.
+   * Returns null when the condition cannot be decomposed into a zero-crossing.
+   */
+  zeroCrossingFn: ((evaluator: ExpressionEvaluator) => number | null) | null;
+  /** Which direction of sign change triggers this event. */
+  zeroCrossingDirection: ZeroCrossingDirection;
+  /** Previous value of the zero-crossing function. */
+  gPrev: number;
 }
+
+/** Maximum events processed per integration step to prevent chattering loops. */
+const MAX_EVENTS_PER_STEP = 10;
+/** Bisection tolerance for locating zero-crossing time. */
+const BISECT_TOL = 1e-10;
+/** Maximum bisection iterations. */
+const BISECT_MAX_ITER = 50;
 
 function extractDerName(expr: unknown): string | null {
   if (expr && typeof expr === "object" && "functionName" in expr && "args" in expr) {
@@ -71,6 +98,49 @@ function extractVarName(expr: ModelicaExpression): string | null {
   if (expr instanceof ModelicaVariable) return expr.name;
   if (expr instanceof ModelicaNameExpression) return expr.name;
   return null;
+}
+
+/**
+ * Build a zero-crossing function from a relational condition expression.
+ *
+ * For `LHS < RHS`  or `LHS <= RHS`:  g = LHS - RHS, direction = negative
+ * For `LHS > RHS`  or `LHS >= RHS`:  g = LHS - RHS, direction = positive
+ *
+ * Returns null if the condition is not a simple relational expression.
+ */
+function buildZeroCrossing(condition: ModelicaExpression): {
+  fn: (evaluator: ExpressionEvaluator) => number | null;
+  direction: ZeroCrossingDirection;
+} | null {
+  if (!(condition instanceof ModelicaBinaryExpression)) return null;
+
+  const op = condition.operator;
+  let direction: ZeroCrossingDirection;
+
+  switch (op) {
+    case ModelicaBinaryOperator.LESS_THAN:
+    case ModelicaBinaryOperator.LESS_THAN_OR_EQUAL:
+      direction = "negative";
+      break;
+    case ModelicaBinaryOperator.GREATER_THAN:
+    case ModelicaBinaryOperator.GREATER_THAN_OR_EQUAL:
+      direction = "positive";
+      break;
+    default:
+      return null; // Not a relational operator we can bisect on
+  }
+
+  const lhs = condition.operand1;
+  const rhs = condition.operand2;
+
+  const fn = (evaluator: ExpressionEvaluator): number | null => {
+    const lVal = evaluator.evaluate(lhs);
+    const rVal = evaluator.evaluate(rhs);
+    if (lVal === null || rVal === null) return null;
+    return lVal - rVal; // g = LHS - RHS
+  };
+
+  return { fn, direction };
 }
 
 export class ModelicaSimulator {
@@ -220,7 +290,18 @@ export class ModelicaSimulator {
       }
     }
     if (actions.length === 0) return null;
-    return { condition, actions, wasActive: false };
+
+    // Try to extract a zero-crossing function from the condition
+    const zc = buildZeroCrossing(condition);
+
+    return {
+      condition,
+      actions,
+      wasActive: false,
+      zeroCrossingFn: zc?.fn ?? null,
+      zeroCrossingDirection: zc?.direction ?? "either",
+      gPrev: 0,
+    };
   }
 
   public simulate(
@@ -349,7 +430,141 @@ export class ModelicaSimulator {
     return { t: res.t, y: allY, states: allStates };
   }
 
-  /** RK4 integrator with event detection and reinit support. */
+  // ──────────────────────────────────────────────────────────────────
+  //  RK4 step helper — integrates a single step from (t, y) to (t+h, y_new)
+  // ──────────────────────────────────────────────────────────────────
+  private rk4Step(f: (t: number, y: number[]) => number[], t: number, y: number[], h: number, n: number): number[] {
+    const k1 = f(t, y);
+    const y_k2 = new Array(n);
+    for (let i = 0; i < n; i++) y_k2[i] = (y[i] ?? 0) + 0.5 * h * (k1[i] ?? 0);
+
+    const k2 = f(t + 0.5 * h, y_k2);
+    const y_k3 = new Array(n);
+    for (let i = 0; i < n; i++) y_k3[i] = (y[i] ?? 0) + 0.5 * h * (k2[i] ?? 0);
+
+    const k3 = f(t + 0.5 * h, y_k3);
+    const y_k4 = new Array(n);
+    for (let i = 0; i < n; i++) y_k4[i] = (y[i] ?? 0) + h * (k3[i] ?? 0);
+
+    const k4 = f(t + h, y_k4);
+
+    const y_new = new Array(n);
+    for (let i = 0; i < n; i++) {
+      y_new[i] = (y[i] ?? 0) + (h / 6.0) * ((k1[i] ?? 0) + 2 * (k2[i] ?? 0) + 2 * (k3[i] ?? 0) + (k4[i] ?? 0));
+    }
+    return y_new;
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  //  Evaluate zero-crossing functions for all when-clauses
+  // ──────────────────────────────────────────────────────────────────
+  private evaluateZeroCrossings(evaluator: ExpressionEvaluator, t: number, y: number[], states: string[]): number[] {
+    evaluator.env.set("time", t);
+    for (let i = 0; i < states.length; i++) {
+      const name = states[i];
+      if (name) evaluator.env.set(name, y[i] ?? 0);
+    }
+    return this.whenClauses.map((clause) => {
+      if (clause.zeroCrossingFn) {
+        return clause.zeroCrossingFn(evaluator) ?? 0;
+      }
+      // For non-decomposable conditions, fall back to boolean
+      const condVal = evaluator.evaluate(clause.condition);
+      // Map boolean to a continuous-ish value: true → -1, false → +1
+      return condVal !== null && condVal !== 0 ? -1 : 1;
+    });
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  //  Detect which when-clause had a triggering sign change
+  // ──────────────────────────────────────────────────────────────────
+  private detectTriggeredClause(gPre: number[], gPost: number[]): number {
+    for (let i = 0; i < this.whenClauses.length; i++) {
+      const clause = this.whenClauses[i];
+      if (!clause) continue;
+      const pre = gPre[i] ?? 0;
+      const post = gPost[i] ?? 0;
+
+      if (clause.zeroCrossingDirection === "negative") {
+        // Fires when g goes from > 0 to <= 0
+        if (pre > 0 && post <= 0) return i;
+      } else if (clause.zeroCrossingDirection === "positive") {
+        // Fires when g goes from < 0 to >= 0
+        if (pre < 0 && post >= 0) return i;
+      } else {
+        // "either" — any sign change
+        if ((pre > 0 && post <= 0) || (pre < 0 && post >= 0)) return i;
+      }
+    }
+    return -1;
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  //  Bisect to find the exact zero-crossing time using Illinois method
+  // ──────────────────────────────────────────────────────────────────
+  private bisectEvent(
+    f: (t: number, y: number[]) => number[],
+    tA: number,
+    yA: number[],
+    gA: number,
+    tB: number,
+    gB: number,
+    n: number,
+    clauseIdx: number,
+    evaluator: ExpressionEvaluator,
+    states: string[],
+  ): { t: number; y: number[] } {
+    let tLo = tA;
+    let tHi = tB;
+    let yLo = yA;
+    let gLo = gA;
+    let gHi = gB;
+
+    for (let iter = 0; iter < BISECT_MAX_ITER; iter++) {
+      if (Math.abs(tHi - tLo) < BISECT_TOL) break;
+
+      // Illinois method: use regula falsi with Illinois modification
+      let tMid: number;
+      const denom = gHi - gLo;
+      if (Math.abs(denom) < 1e-15) {
+        tMid = (tLo + tHi) / 2;
+      } else {
+        tMid = tLo - (gLo * (tHi - tLo)) / denom;
+        // Clamp to stay within bounds
+        tMid = Math.max(tLo + BISECT_TOL, Math.min(tHi - BISECT_TOL, tMid));
+      }
+
+      const dt = tMid - tLo;
+      const yMid = this.rk4Step(f, tLo, yLo, dt, n);
+
+      // Evaluate zero-crossing at midpoint
+      const gAll = this.evaluateZeroCrossings(evaluator, tMid, yMid, states);
+      const gMid = gAll[clauseIdx] ?? 0;
+
+      if (gMid * gLo <= 0) {
+        // Root is in [tLo, tMid]
+        tHi = tMid;
+        gHi = gMid;
+      } else {
+        // Root is in [tMid, tHi]
+        tLo = tMid;
+        yLo = yMid;
+        gLo = gMid;
+        // Illinois modification: halve gHi to ensure convergence
+        gHi = gHi / 2;
+      }
+    }
+
+    // Final integration to the located time
+    if (Math.abs(tLo - tA) > BISECT_TOL) {
+      return { t: tLo, y: yLo };
+    }
+    const dtFinal = tLo - tA;
+    const yFinal = dtFinal > BISECT_TOL ? this.rk4Step(f, tA, yA, dtFinal, n) : [...yA];
+    return { t: tLo, y: yFinal };
+  }
+
+  /** RK4 integrator with zero-crossing event detection, bisection, and restart. */
   private rk4WithEvents(
     f: (t: number, y: number[]) => number[],
     t0: number,
@@ -365,78 +580,135 @@ export class ModelicaSimulator {
     const y: number[][] = [];
 
     let current_t = t0;
-    const current_y = [...y0];
+    let current_y = [...y0];
 
     const n = states.length;
 
-    // Evaluate when-conditions at initial time to set wasActive flags
-    if (this.whenClauses.length > 0) {
-      evaluator.isInitial = true;
-      evaluator.isTerminal = false;
-      evaluator.env.set("time", current_t);
-      for (let i = 0; i < states.length; i++) {
-        const name = states[i];
-        if (name) evaluator.env.set(name, current_y[i] ?? 0);
-      }
+    // Evaluate when-conditions at initial time to set wasActive flags and gPrev
+    evaluator.isInitial = true;
+    evaluator.isTerminal = false;
 
-      for (const clause of this.whenClauses) {
-        const condVal = evaluator.evaluate(clause.condition);
-        const isActive = condVal !== null && condVal !== 0;
-        if (isActive) {
-          this.fireWhenActions(clause, evaluator, current_y, stateIndexMap);
-        }
-        clause.wasActive = isActive;
+    const gInit = this.evaluateZeroCrossings(evaluator, current_t, current_y, states);
+    for (let i = 0; i < this.whenClauses.length; i++) {
+      const clause = this.whenClauses[i];
+      if (!clause) continue;
+      clause.gPrev = gInit[i] ?? 0;
+      const condVal = evaluator.evaluate(clause.condition);
+      const isActive = condVal !== null && condVal !== 0;
+      if (isActive) {
+        this.fireWhenActions(clause, evaluator, current_y, stateIndexMap);
       }
-      evaluator.isInitial = false;
+      clause.wasActive = isActive;
     }
+    evaluator.isInitial = false;
 
     t.push(current_t);
     y.push([...current_y]);
+
+    let eventsThisStep = 0;
+    let t_last_event = current_t;
 
     while (current_t < t1) {
       if (signal?.aborted) {
         throw new Error("Simulation aborted");
       }
-      if (current_t + h > t1) h = t1 - current_t;
 
-      const k1 = f(current_t, current_y);
-      const y_k2 = new Array(n);
-      for (let i = 0; i < n; i++) y_k2[i] = (current_y[i] ?? 0) + 0.5 * h * (k1[i] ?? 0);
-
-      const k2 = f(current_t + 0.5 * h, y_k2);
-      const y_k3 = new Array(n);
-      for (let i = 0; i < n; i++) y_k3[i] = (current_y[i] ?? 0) + 0.5 * h * (k2[i] ?? 0);
-
-      const k3 = f(current_t + 0.5 * h, y_k3);
-      const y_k4 = new Array(n);
-      for (let i = 0; i < n; i++) y_k4[i] = (current_y[i] ?? 0) + h * (k3[i] ?? 0);
-
-      const k4 = f(current_t + h, y_k4);
-
-      for (let i = 0; i < n; i++) {
-        current_y[i] =
-          (current_y[i] ?? 0) + (h / 6.0) * ((k1[i] ?? 0) + 2 * (k2[i] ?? 0) + 2 * (k3[i] ?? 0) + (k4[i] ?? 0));
+      // Reset event counter if we've moved forward appreciably
+      if (current_t > t_last_event + h * 0.1) {
+        eventsThisStep = 0;
       }
-      current_t += h;
 
-      // --- Event detection and processing ---
-      if (this.whenClauses.length > 0) {
+      let stepH = h;
+      if (current_t + stepH > t1) stepH = t1 - current_t;
+
+      // 1. Evaluate zero-crossings at the start of the step
+      const gPre = this.evaluateZeroCrossings(evaluator, current_t, current_y, states);
+
+      // 2. Take a tentative RK4 step
+      const y_tentative = this.rk4Step(f, current_t, current_y, stepH, n);
+      const t_tentative = current_t + stepH;
+
+      // 3. Evaluate zero-crossings at the end of the step
+      const gPost = this.evaluateZeroCrossings(evaluator, t_tentative, y_tentative, states);
+
+      // 4. Check for a triggering sign change
+      const triggeredIdx = this.detectTriggeredClause(gPre, gPost);
+
+      const clause = triggeredIdx >= 0 ? this.whenClauses[triggeredIdx] : undefined;
+
+      if (clause && eventsThisStep < MAX_EVENTS_PER_STEP) {
+        eventsThisStep++;
+        t_last_event = current_t;
+
+        // Event detected! Bisect to find the exact event time.
+        const gA = gPre[triggeredIdx] ?? 0;
+        const gB = gPost[triggeredIdx] ?? 0;
+
+        const event = this.bisectEvent(
+          f,
+          current_t,
+          current_y,
+          gA,
+          t_tentative,
+          gB,
+          n,
+          triggeredIdx,
+          evaluator,
+          states,
+        );
+
+        // Record the pre-event state at event time
+        t.push(event.t);
+        y.push([...event.y]);
+
+        // Update pre-values to the state just before the event
+        for (let i = 0; i < states.length; i++) {
+          const name = states[i];
+          if (name) evaluator.preValues.set(name, event.y[i] ?? 0);
+        }
+
+        // Fire the when-clause actions (reinit, assign)
+        evaluator.env.set("time", event.t);
+        for (let i = 0; i < states.length; i++) {
+          const name = states[i];
+          if (name) evaluator.env.set(name, event.y[i] ?? 0);
+        }
+        this.fireWhenActions(clause, evaluator, event.y, stateIndexMap);
+        clause.wasActive = true;
+
+        // Record the post-event state at the same time (discontinuity)
+        t.push(event.t);
+        y.push([...event.y]);
+
+        // Restart integration from the event time with the new state
+        current_t = event.t;
+        current_y = [...event.y];
+
+        // Re-evaluate zero-crossings after the event to update gPrev
+        const gAfter = this.evaluateZeroCrossings(evaluator, current_t, current_y, states);
+        for (let i = 0; i < this.whenClauses.length; i++) {
+          const c = this.whenClauses[i];
+          if (c) c.gPrev = gAfter[i] ?? 0;
+        }
+      } else {
+        // No event — accept the step normally
+        current_t = t_tentative;
+        current_y = y_tentative;
+
+        // Update when-clause state
         evaluator.isTerminal = current_t >= t1 - h * 0.01;
         evaluator.env.set("time", current_t);
         for (let i = 0; i < states.length; i++) {
           const name = states[i];
           if (name) evaluator.env.set(name, current_y[i] ?? 0);
         }
-
-        for (const clause of this.whenClauses) {
+        for (let i = 0; i < this.whenClauses.length; i++) {
+          const clause = this.whenClauses[i];
+          if (!clause) continue;
           const condVal = evaluator.evaluate(clause.condition);
           const isActive = condVal !== null && condVal !== 0;
-
-          if (isActive && !clause.wasActive) {
-            // Rising edge detected — fire actions
-            this.fireWhenActions(clause, evaluator, current_y, stateIndexMap);
-          }
           clause.wasActive = isActive;
+          clause.gPrev = gPost[i] ?? 0;
         }
 
         // Update pre-values for the next step
@@ -444,10 +716,10 @@ export class ModelicaSimulator {
           const name = states[i];
           if (name) evaluator.preValues.set(name, current_y[i] ?? 0);
         }
-      }
 
-      t.push(current_t);
-      y.push([...current_y]);
+        t.push(current_t);
+        y.push([...current_y]);
+      }
     }
 
     return { t, y, states };
