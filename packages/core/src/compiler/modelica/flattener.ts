@@ -142,6 +142,8 @@ interface FlattenerContext {
   rootDae?: ModelicaDAE;
   /** Instance composition hierarchy for outer/inner resolution. */
   activeClassStack?: ModelicaClassInstance[];
+  /** Stream variable connections from connect equations, for inStream() expansion. */
+  streamConnections?: { side1: string; side2: string }[];
 }
 
 /** Extract an integer shape array from a list of expressions (all must be ModelicaIntegerLiteral). */
@@ -1131,6 +1133,9 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     }
 
     if (variable) {
+      // Set flow/stream prefix for connector variables
+      if (node.flowPrefix === ModelicaFlow.FLOW) variable.flowPrefix = "flow";
+      else if (node.flowPrefix === ModelicaFlow.STREAM) variable.flowPrefix = "stream";
       // Skip duplicate variables from diamond inheritance
       // (same component inherited through multiple extends paths)
       if (!this.#emittedVarNames.has(variable.name)) {
@@ -5212,6 +5217,17 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       const info2 = leaves2.get(localName);
       if (!info2) continue;
 
+      if (info1.isStream) {
+        // Stream variables: no direct connect equations generated.
+        // Track the connection for inStream() expansion.
+        if (!ctx.streamConnections) ctx.streamConnections = [];
+        ctx.streamConnections.push({
+          side1: info1.fullName,
+          side2: info2.fullName,
+        });
+        continue;
+      }
+
       if (info1.isFlow) {
         // Flow variables: -(a.f + b.f) = 0.0
         const sum = new ModelicaBinaryExpression(
@@ -5300,19 +5316,23 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
 
   /**
    * Collect leaf variable info from a connector component.
-   * Returns a map from local variable name to {fullName, isFlow}.
+   * Returns a map from local variable name to {fullName, isFlow, isStream}.
    */
   #collectConnectorLeaves(
     comp: ModelicaComponentInstance,
     prefix: string,
-  ): Map<string, { fullName: string; isFlow: boolean }> {
-    const result = new Map<string, { fullName: string; isFlow: boolean }>();
+  ): Map<string, { fullName: string; isFlow: boolean; isStream: boolean }> {
+    const result = new Map<string, { fullName: string; isFlow: boolean; isStream: boolean }>();
     const classInst = comp.classInstance;
     if (!classInst) return result;
 
     // For predefined types (Real, Integer, etc.), this component IS the leaf
     if (classInst instanceof ModelicaPredefinedClassInstance) {
-      result.set("", { fullName: prefix, isFlow: comp.flowPrefix === ModelicaFlow.FLOW });
+      result.set("", {
+        fullName: prefix,
+        isFlow: comp.flowPrefix === ModelicaFlow.FLOW,
+        isStream: comp.flowPrefix === ModelicaFlow.STREAM,
+      });
       return result;
     }
 
@@ -5334,6 +5354,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         result.set(element.name, {
           fullName: prefix + "." + element.name,
           isFlow: element.flowPrefix === ModelicaFlow.FLOW,
+          isStream: element.flowPrefix === ModelicaFlow.STREAM,
         });
       } else if (elemClass instanceof ModelicaArrayClassInstance) {
         // Array of predefined types - enumerate elements
@@ -5343,6 +5364,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
             result.set(element.name + "[" + idx + "]", {
               fullName: prefix + "." + element.name + "[" + idx + "]",
               isFlow: element.flowPrefix === ModelicaFlow.FLOW,
+              isStream: element.flowPrefix === ModelicaFlow.STREAM,
             });
           }
         }
@@ -6168,6 +6190,8 @@ const POLYMORPHIC_SYNC_OPS = new Set([
   "superSample",
   "backSample",
   "shiftSample",
+  "inStream",
+  "actualStream",
 ]);
 
 function isRealTyped(expr: ModelicaExpression, dae?: ModelicaDAE): boolean {

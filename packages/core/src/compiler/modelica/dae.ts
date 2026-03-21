@@ -1960,6 +1960,8 @@ export abstract class ModelicaVariable extends ModelicaPrimaryExpression {
   isFinal: boolean;
   isProtected: boolean;
   functionType: ModelicaFunctionTypeSignature | null;
+  /** Flow prefix ("flow" or "stream") from the component clause. */
+  flowPrefix: string | null;
   /** Override type name for record-typed function parameters (e.g., "Complex" instead of "Real"). */
   customTypeName: string | null;
 
@@ -1984,6 +1986,7 @@ export abstract class ModelicaVariable extends ModelicaPrimaryExpression {
     this.isFinal = isFinal ?? false;
     this.isProtected = isProtected ?? false;
     this.functionType = functionType ?? null;
+    this.flowPrefix = null;
     this.customTypeName = null;
   }
 
