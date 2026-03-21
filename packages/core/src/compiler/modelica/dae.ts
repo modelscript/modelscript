@@ -1951,6 +1951,8 @@ export abstract class ModelicaVariable extends ModelicaPrimaryExpression {
   isFinal: boolean;
   isProtected: boolean;
   functionType: ModelicaFunctionTypeSignature | null;
+  /** Override type name for record-typed function parameters (e.g., "Complex" instead of "Real"). */
+  customTypeName: string | null;
 
   constructor(
     name: string,
@@ -1973,6 +1975,7 @@ export abstract class ModelicaVariable extends ModelicaPrimaryExpression {
     this.isFinal = isFinal ?? false;
     this.isProtected = isProtected ?? false;
     this.functionType = functionType ?? null;
+    this.customTypeName = null;
   }
 
   override get hash(): string {
@@ -2821,7 +2824,7 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     } else if (variable instanceof ModelicaIntegerVariable) {
       this.out.write("Integer");
     } else if (variable instanceof ModelicaRealVariable) {
-      this.out.write("Real");
+      this.out.write(variable.customTypeName ?? "Real");
     } else if (variable instanceof ModelicaStringVariable) {
       this.out.write("String");
     } else if (variable instanceof ModelicaEnumerationVariable) {

@@ -2117,7 +2117,75 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     const operand1 = node.operand1?.accept(this, ctx);
     const operand2 = node.operand2?.accept(this, ctx);
     const operator = node.operator;
-    if (operator && operand1 && operand2) return canonicalizeBinaryExpression(operator, operand1, operand2, ctx.dae);
+    if (!operator || !operand1 || !operand2) return null;
+
+    // Check for operator record dispatch: if either operand is an operator record type,
+    // rewrite `a op b` as `RecordType.'op'.funcName(a, b)` or `RecordType.'op'(a, b)`.
+    const opStr = "'" + operator + "'";
+    const operatorInfo =
+      this.#resolveOperatorRecordFunction(operand1, opStr, ctx) ??
+      this.#resolveOperatorRecordFunction(operand2, opStr, ctx);
+    if (operatorInfo) {
+      const { qualifiedName, resolvedClass } = operatorInfo;
+      this.#collectFunctionDefinition(qualifiedName, ctx, resolvedClass);
+      return new ModelicaFunctionCallExpression(qualifiedName, [operand1, operand2]);
+    }
+
+    return canonicalizeBinaryExpression(operator, operand1, operand2, ctx.dae);
+  }
+
+  /**
+   * Resolve the operator function for a binary expression operand.
+   * Given an operand expression, determines if its type is an `operator record`,
+   * and if so, looks up the operator (e.g., `'*'`) among the record's elements.
+   *
+   * Handles two syntactic forms:
+   * - `operator '*'` containing `function mul` → qualified name: `Complex.'*'.mul`
+   * - `operator function '+'` (shorthand) → qualified name: `Rec.'+'`
+   *
+   * @returns The qualified function name and resolved class, or null.
+   */
+  #resolveOperatorRecordFunction(
+    operand: ModelicaExpression,
+    operatorName: string,
+    ctx: FlattenerContext,
+  ): { qualifiedName: string; resolvedClass: ModelicaClassInstance } | null {
+    // Operand must be a named reference we can resolve to a component
+    if (!(operand instanceof ModelicaNameExpression)) return null;
+    const componentNames = operand.name.split(".");
+    const resolved = ctx.classInstance.resolveName(componentNames);
+    if (!(resolved instanceof ModelicaComponentInstance)) return null;
+    resolved.instantiate();
+
+    // The component's declared type must be an operator record
+    const declaredType = resolved.declaredType;
+    if (!declaredType || declaredType.classKind !== ModelicaClassKind.OPERATOR_RECORD) return null;
+    declaredType.instantiate();
+
+    const typeName = declaredType.name ?? "";
+
+    // Search for the operator element within the record type
+    for (const el of declaredType.elements) {
+      if (!(el instanceof ModelicaClassInstance)) continue;
+
+      // Case 1: `operator function '+'` shorthand — the operator IS the function
+      if (el.classKind === ModelicaClassKind.OPERATOR_FUNCTION && el.name === operatorName) {
+        const qualifiedName = `${typeName}.${operatorName}`;
+        return { qualifiedName, resolvedClass: el };
+      }
+
+      // Case 2: `operator '*'` containing nested `function mul`
+      if (el.classKind === ModelicaClassKind.OPERATOR && el.name === operatorName) {
+        el.instantiate();
+        // Find the first function inside the operator
+        for (const fn of el.elements) {
+          if (fn instanceof ModelicaClassInstance && fn.classKind === ModelicaClassKind.FUNCTION && fn.name) {
+            const qualifiedName = `${typeName}.${operatorName}.${fn.name}`;
+            return { qualifiedName, resolvedClass: fn };
+          }
+        }
+      }
+    }
     return null;
   }
 
@@ -2174,6 +2242,62 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         flatArg = arg.expression?.accept(this, ctx) ?? null;
       }
       if (flatArg) flatArgs.push(flatArg);
+    }
+
+    // Handle record constructor calls: Complex(re=2.0, im=3.0) or Rec(r = 1.0)
+    // Record constructors use the record type name as the function name and may have named arguments.
+    {
+      const resolved = ctx.classInstance.resolveName(functionName.split("."));
+      if (
+        resolved instanceof ModelicaClassInstance &&
+        (resolved.classKind === ModelicaClassKind.OPERATOR_RECORD || resolved.classKind === ModelicaClassKind.RECORD)
+      ) {
+        const qualifiedName = this.#resolveFullyQualifiedName(functionName, ctx);
+        // Collect named arguments and convert to positional order matching record components
+        const namedArgsMap = new Map<string, ModelicaExpression>();
+        for (const namedArg of node.functionCallArguments?.namedArguments ?? []) {
+          const argName = namedArg.identifier?.text ?? "";
+          const argValue = namedArg.argument?.expression?.accept(this, ctx) ?? null;
+          if (argName && argValue) {
+            namedArgsMap.set(argName, argValue);
+          }
+        }
+
+        // Build positional args: named args mapped to component declaration order
+        resolved.instantiate();
+        const components = [...resolved.components].filter((c) => {
+          if (!c.name || c.isProtected) return false;
+          if (c.classInstance instanceof ModelicaClassInstance) {
+            const kind = c.classInstance.classKind;
+            if (kind === ModelicaClassKind.FUNCTION || kind === ModelicaClassKind.OPERATOR_FUNCTION) {
+              return false;
+            }
+          }
+          return true;
+        });
+        const orderedArgs: ModelicaExpression[] = [];
+        let positionalIdx = 0;
+        for (const comp of components) {
+          const compName = comp.name ?? "";
+          if (namedArgsMap.has(compName)) {
+            orderedArgs.push(namedArgsMap.get(compName) ?? new ModelicaIntegerLiteral(0));
+          } else if (positionalIdx < flatArgs.length) {
+            const positionalArg = flatArgs[positionalIdx];
+            if (positionalArg) orderedArgs.push(positionalArg);
+            positionalIdx++;
+          }
+        }
+        // If there were only positional args (no named), use them directly
+        if (namedArgsMap.size === 0 && flatArgs.length > 0) {
+          // positional args already collected
+        } else if (orderedArgs.length > 0) {
+          flatArgs = orderedArgs;
+        }
+
+        // Collect the auto-generated record constructor function
+        this.#collectRecordConstructor(qualifiedName, resolved, ctx);
+        return new ModelicaFunctionCallExpression(qualifiedName, flatArgs);
+      }
     }
 
     // Pre-expansion size() resolution: resolve size(var, dim) directly from
@@ -3285,6 +3409,62 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     return { specializedName, resolvedFunction: resolved, componentPrefix };
   }
 
+  /**
+   * Collect an auto-generated record constructor function for a record/operator record type.
+   * Generates a function with input parameters matching the record's components and
+   * a single output parameter of the record type.
+   * E.g., `function Complex "Automatically generated record constructor for Complex"`
+   */
+  #collectRecordConstructor(recordName: string, recordClass: ModelicaClassInstance, ctx: FlattenerContext): void {
+    const targetDae = ctx.rootDae ?? ctx.dae;
+    if (ModelicaSyntaxFlattener.#hasFunctionInDAE(targetDae, recordName)) return;
+    if (ModelicaSyntaxFlattener.#collectingFunctions.has(recordName)) return;
+    ModelicaSyntaxFlattener.#collectingFunctions.add(recordName);
+
+    const fnDae = new ModelicaDAE(recordName);
+    fnDae.classKind = "function";
+    fnDae.description = `Automatically generated record constructor for ${recordName}`;
+
+    recordClass.instantiate();
+    // Add input parameters for each record component (only non-operator elements)
+    for (const comp of recordClass.components) {
+      if (!comp.name) continue;
+      comp.instantiate();
+      // Skip operator classes (they are not constructor parameters)
+      if (
+        comp.classInstance instanceof ModelicaClassInstance &&
+        (comp.classInstance.classKind === ModelicaClassKind.OPERATOR ||
+          comp.classInstance.classKind === ModelicaClassKind.OPERATOR_FUNCTION)
+      )
+        continue;
+
+      const typeInstance =
+        comp.classInstance instanceof ModelicaArrayClassInstance
+          ? comp.classInstance.elementClassInstance
+          : comp.classInstance;
+
+      let variable: ModelicaVariable;
+      if (typeInstance instanceof ModelicaIntegerClassInstance) {
+        variable = new ModelicaIntegerVariable(comp.name, null, new Map(), null, null, "input");
+      } else if (typeInstance instanceof ModelicaBooleanClassInstance) {
+        variable = new ModelicaBooleanVariable(comp.name, null, new Map(), null, null, "input");
+      } else if (typeInstance instanceof ModelicaStringClassInstance) {
+        variable = new ModelicaStringVariable(comp.name, null, new Map(), null, null, "input");
+      } else {
+        variable = new ModelicaRealVariable(comp.name, null, new Map(), null, null, "input");
+      }
+      fnDae.variables.push(variable);
+    }
+
+    // Add output parameter of the record type
+    const outputVar = new ModelicaRealVariable("res", null, new Map(), null, null, "output");
+    outputVar.customTypeName = recordName;
+    fnDae.variables.push(outputVar);
+
+    targetDae.functions.unshift(fnDae);
+    ModelicaSyntaxFlattener.#collectingFunctions.delete(recordName);
+  }
+
   /** Resolve a function name and flatten its definition into ctx.dae.functions. */
   #collectFunctionDefinition(
     functionName: string,
@@ -3531,6 +3711,16 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
           isProtected,
           functionType,
         );
+
+        // For record-typed parameters (operator record, record), set custom type name
+        // so the DAE prints e.g. "input Complex c1" instead of "input Real c1"
+        if (
+          typeInstance instanceof ModelicaClassInstance &&
+          (typeInstance.classKind === ModelicaClassKind.OPERATOR_RECORD ||
+            typeInstance.classKind === ModelicaClassKind.RECORD)
+        ) {
+          variable.customTypeName = typeInstance.name ?? null;
+        }
       }
       fnDae.variables.push(variable);
     }
@@ -5037,10 +5227,54 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       }
     }
     if (expression1 && expression2) {
+      // Handle record constructor equations: expand or suppress
       if (expression2 instanceof ModelicaFunctionCallExpression) {
         const funcCall = expression2;
+
+        // Suppress no-arg record constructor equations (c1 = Complex()) via direct type resolution
+        // This catches default equations from component initialization before the constructor is collected
+        if (funcCall.args.length === 0) {
+          const resolved = ctx.classInstance.resolveName(funcCall.functionName.split("."));
+          if (
+            resolved instanceof ModelicaClassInstance &&
+            (resolved.classKind === ModelicaClassKind.OPERATOR_RECORD ||
+              resolved.classKind === ModelicaClassKind.RECORD)
+          ) {
+            return null;
+          }
+        }
+
         const funcDef = ctx.dae.functions.find((f) => f.name === funcCall.functionName);
         if (funcDef) {
+          // Expand record constructor equations: c1 = Complex(2.0, 3.0) → c1.re = 2.0; c1.im = 3.0
+          const outputVar = funcDef.variables.find((v) => v.causality === "output");
+          if (
+            outputVar?.customTypeName &&
+            funcCall.functionName === outputVar.customTypeName &&
+            funcCall.args.length > 0
+          ) {
+            // Get the LHS base name
+            const lhsName =
+              expression1 instanceof ModelicaNameExpression
+                ? expression1.name
+                : expression1 instanceof ModelicaVariable
+                  ? expression1.name
+                  : null;
+            if (lhsName) {
+              // Match args to input variables in declaration order
+              const inputVars = funcDef.variables.filter((v) => v.causality === "input");
+              for (let i = 0; i < Math.min(inputVars.length, funcCall.args.length); i++) {
+                const inputVar = inputVars[i];
+                const arg = funcCall.args[i];
+                if (!inputVar || !arg) continue;
+                const fieldName = `${lhsName}.${inputVar.name}`;
+                const lhs = new ModelicaNameExpression(fieldName);
+                ctx.dae.equations.push(new ModelicaSimpleEquation(lhs, arg));
+              }
+              return null;
+            }
+          }
+
           const outputs = funcDef.variables.filter((v) => v.causality === "output");
           if (outputs.length > 1) {
             if (!(expression1 instanceof ModelicaTupleExpression)) {
