@@ -194,15 +194,17 @@ export class ModelicaSimulator {
 
     const y0 = initialValues;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if (typeof (math as any).solveODE === "function") {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const res = (math as any).solveODE(f, [startTime, stopTime], y0, { step });
-      return { t: res.t, y: res.y, states: stateList };
-    } else {
-      const res = this.rk4(f, startTime, stopTime, y0, step, stateList, options?.signal);
-      return { t: res.t, y: res.y, states: stateList };
-    }
+    const res = this.rk4(f, startTime, stopTime, y0, step, stateList, options?.signal);
+
+    // Append derivative columns so both x and der(x) appear in results
+    const derNames = stateVarsArr.map((s) => `der(${s})`);
+    const allStates = [...stateList, ...derNames];
+    const allY = res.y.map((row, idx) => {
+      const derivs = f(res.t[idx] ?? 0, row);
+      return [...row, ...derivs.slice(0, stateVarsArr.length)];
+    });
+
+    return { t: res.t, y: allY, states: allStates };
   }
 
   private rk4(

@@ -237,17 +237,63 @@ export default function MorselEditor(props: MorselEditorProps) {
   }, [treeVisible, props.embed]);
 
   useEffect(() => {
-    if (showResultsView && simulationMode === "local") {
+    if (showResultsView && simulationMode === "local" && classInstances.length > 0) {
+      const instance = diagramClassInstance ?? classInstances[0];
+      if (!instance) return;
+
+      simulateAbortControllerRef.current?.abort();
+      const abortController = new AbortController();
+      simulateAbortControllerRef.current = abortController;
+
       const timer = setTimeout(() => {
-        // @ts-ignore
-        handleSimulate("local");
+        if (!instance.instantiated) {
+          instance.instantiate();
+        }
+
+        setSimulationStatus({ status: "pending", error: null });
+        setLocalSimulationData(null);
+
+        try {
+          const dae = new ModelicaDAE(instance.name || "Model");
+          const flattener = new ModelicaFlattener();
+          instance.accept(flattener, ["", dae]);
+
+          const simulator = new ModelicaSimulator(dae);
+          simulator.prepare();
+          const states = Array.from(simulator.stateVars);
+
+          if (states.length === 0) {
+            throw new Error(
+              "No simulation variables are available to plot for this model. Ensure you have equations defining state variables or parameters.",
+            );
+          }
+
+          const result = simulator.simulate(0, 10, 0.1, { signal: abortController.signal });
+
+          const chartData = result.t.map((t: number, i: number) => {
+            const row: Record<string, number | string> = { time: t };
+            result.states?.forEach((state: string, vIndex: number) => {
+              row[state] = result.y[i]?.[vIndex] ?? 0;
+            });
+            return row;
+          });
+
+          setLocalSimulationData(chartData);
+          setSimulationStatus({ status: "completed" });
+        } catch (e) {
+          if ((e as Error).message === "Simulation aborted") return;
+          setSimulationStatus({
+            status: "failed",
+            error: e instanceof Error ? e.message : String(e),
+          });
+        }
       }, 100);
-      return () => clearTimeout(timer);
+      return () => {
+        clearTimeout(timer);
+        abortController.abort();
+      };
     }
-    // handleSimulate is intentionally omitted from dependencies to avoid loop, since
-    // we only want it responding to content update changes surfaced by Editor
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [classInstances, showResultsView, simulationMode]);
+  }, [classInstances, showResultsView, simulationMode, diagramClassInstance]);
 
   useEffect(() => {
     const saved = localStorage.getItem("recentModels");
@@ -1489,15 +1535,9 @@ export default function MorselEditor(props: MorselEditorProps) {
         const flattener = new ModelicaFlattener();
         instance.accept(flattener, ["", dae]);
 
-        console.log("Local Simulate DAE:", dae);
-        console.log("DAE Equations Length:", dae.equations.length);
-        if (dae.equations.length > 0) {
-          console.log("First Eq JSON:", JSON.stringify(dae.equations[0]));
-        }
-
         const simulator = new ModelicaSimulator(dae);
+        simulator.prepare();
         const states = Array.from(simulator.stateVars);
-        console.log("Extracted States:", states);
 
         if (states.length === 0) {
           throw new Error(
