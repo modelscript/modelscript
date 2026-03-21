@@ -162,6 +162,7 @@ interface CodeEditorProps {
   theme: Theme;
   embed: boolean;
   readOnly?: boolean;
+  externalErrors?: string[];
 }
 
 export interface CodeEditorHandle {
@@ -177,6 +178,9 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
   const treeRef = useRef<Parser.Tree | null>(null);
   const parserRef = useRef<Parser | null>(null);
   const disposablesRef = useRef<monaco.IDisposable[]>([]);
+  const lastProcessedValueRef = useRef<string | undefined>(undefined);
+  const lastProcessedInstancesRef = useRef<ModelicaClassInstance[]>([]);
+  const lastProcessedMarkersRef = useRef<editor.IMarkerData[]>([]);
 
   const resolvePathElement = (node: Parser.SyntaxNode, scope: Scope): ModelicaNamedElement | null => {
     let pathNode: Parser.SyntaxNode | null = node;
@@ -787,6 +791,10 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
 
   const processContent = (value: string | undefined): ModelicaClassInstance[] => {
     if (!value || !contextRef.current) return [];
+    if (value === lastProcessedValueRef.current && lastProcessedInstancesRef.current.length > 0) {
+      return lastProcessedInstancesRef.current;
+    }
+
     const context = contextRef.current;
 
     if (!monacoRef.current) return [];
@@ -848,7 +856,25 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
         classInstanceRef.current = instances[0];
       }
     }
-    monacoRef.current.editor.setModelMarkers(model, "owner", markers);
+
+    lastProcessedMarkersRef.current = markers;
+    const allMarkers = [...markers];
+    if (props.externalErrors) {
+      props.externalErrors.forEach((err) => {
+        allMarkers.push({
+          message: err,
+          startLineNumber: 1,
+          startColumn: 1,
+          endLineNumber: 1,
+          endColumn: 1,
+          severity: monaco.MarkerSeverity.Error,
+        });
+      });
+    }
+
+    monacoRef.current.editor.setModelMarkers(model, "owner", allMarkers);
+    lastProcessedValueRef.current = value;
+    lastProcessedInstancesRef.current = instances;
     return instances;
   };
 
@@ -911,6 +937,28 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
       editorRef.current.setSelection(range);
     },
   }));
+
+  useEffect(() => {
+    if (!monacoRef.current || !editorRef.current) return;
+    const model = editorRef.current.getModel();
+    if (!model) return;
+
+    const allMarkers = [...lastProcessedMarkersRef.current];
+    if (props.externalErrors) {
+      props.externalErrors.forEach((err) => {
+        allMarkers.push({
+          message: err,
+          startLineNumber: 1,
+          startColumn: 1,
+          endLineNumber: 1,
+          endColumn: 1,
+          severity: monaco.MarkerSeverity.Error,
+        });
+      });
+    }
+
+    monacoRef.current.editor.setModelMarkers(model, "owner", allMarkers);
+  }, [props.externalErrors?.join("||")]);
 
   return (
     <Editor

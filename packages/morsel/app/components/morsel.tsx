@@ -13,6 +13,7 @@ import {
   ModelicaDAEPrinter,
   ModelicaEntity,
   ModelicaFlattener,
+  ModelicaSimulator,
   StringWriter,
   type IDiagram,
 } from "@modelscript/core";
@@ -34,6 +35,7 @@ import {
   SponsorTiersIcon,
   StackIcon,
   SunIcon,
+  TriangleDownIcon,
   UnwrapIcon,
   UploadIcon,
   WorkflowIcon,
@@ -146,7 +148,10 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [isSimulateDialogOpen, setSimulateDialogOpen] = useState(false);
   const [simulationStatus, setSimulationStatus] = useState<any>(null);
   const [simulationJobId, setSimulationJobId] = useState<string | null>(null);
+  const [simulationMode, setSimulationMode] = useState<"server" | "local">("local");
+  const [localSimulationData, setLocalSimulationData] = useState<Record<string, number | string>[] | null>(null);
   const simulationIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const simulateAbortControllerRef = useRef<AbortController | null>(null);
   const codeEditorRef = useRef<CodeEditorHandle>(null);
   const [decodedContent] = decodeDataUrl(props.dataUrl ?? null);
   const content = decodedContent || "model Example\n\nend Example;";
@@ -220,6 +225,29 @@ export default function MorselEditor(props: MorselEditorProps) {
     }
     return models;
   }, [classInstances]);
+
+  useEffect(() => {
+    if (!props.embed) {
+      if (treeVisible) {
+        document.body.classList.add("tree-visible");
+      } else {
+        document.body.classList.remove("tree-visible");
+      }
+    }
+  }, [treeVisible, props.embed]);
+
+  useEffect(() => {
+    if (showResultsView && simulationMode === "local") {
+      const timer = setTimeout(() => {
+        // @ts-ignore
+        handleSimulate("local");
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+    // handleSimulate is intentionally omitted from dependencies to avoid loop, since
+    // we only want it responding to content update changes surfaced by Editor
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [classInstances, showResultsView, simulationMode]);
 
   useEffect(() => {
     const saved = localStorage.getItem("recentModels");
@@ -1406,6 +1434,10 @@ export default function MorselEditor(props: MorselEditorProps) {
     const instance = models[selectedModelIndex] ?? models[0];
     if (!instance) return;
 
+    if (!instance.instantiated) {
+      instance.instantiate();
+    }
+
     try {
       const dae = new ModelicaDAE(instance.name || "Model");
       const flattener = new ModelicaFlattener();
@@ -1423,18 +1455,80 @@ export default function MorselEditor(props: MorselEditorProps) {
     }
   };
 
-  const handleSimulate = async () => {
+  const handleSimulate = async (type: "server" | "local" = "server") => {
     if (!codeEditorRef.current || !context) return;
     const instances = await codeEditorRef.current.sync();
     const instance = diagramClassInstance ?? instances[0];
     if (!instance) return;
 
-    setSimulateDialogOpen(true);
-    setSimulationStatus({ status: "pending" });
+    if (!instance.instantiated) {
+      instance.instantiate();
+    }
+
+    setSimulationStatus({ status: "pending", error: null });
     setSimulationJobId(null);
-    setShowResultsView(false);
+    setLocalSimulationData(null);
     setSimulationVariables([]);
     setSelectedSimulationVariables([]);
+
+    if (type === "server") {
+      setSimulateDialogOpen(true);
+    }
+
+    // We do NOT set showResultsView(false) here because if the user is typing
+    // while in Local mode with Results view open, hiding and showing the results
+    // would cause UI flicker AND an infinite React useEffect dependency loop!
+
+    if (type === "local") {
+      simulateAbortControllerRef.current?.abort();
+      const abortController = new AbortController();
+      simulateAbortControllerRef.current = abortController;
+
+      try {
+        const dae = new ModelicaDAE(instance.name || "Model");
+        const flattener = new ModelicaFlattener();
+        instance.accept(flattener, ["", dae]);
+
+        console.log("Local Simulate DAE:", dae);
+        console.log("DAE Equations Length:", dae.equations.length);
+        if (dae.equations.length > 0) {
+          console.log("First Eq JSON:", JSON.stringify(dae.equations[0]));
+        }
+
+        const simulator = new ModelicaSimulator(dae);
+        const states = Array.from(simulator.stateVars);
+        console.log("Extracted States:", states);
+
+        if (states.length === 0) {
+          throw new Error(
+            "No simulation variables are available to plot for this model. Ensure you have equations defining state variables or parameters.",
+          );
+        }
+
+        const result = simulator.simulate(0, 10, 0.1, { signal: abortController.signal });
+
+        const chartData = result.t.map((t: number, i: number) => {
+          const row: Record<string, number | string> = { time: t };
+          result.states?.forEach((state: string, vIndex: number) => {
+            row[state] = result.y[i]?.[vIndex] ?? 0;
+          });
+          return row;
+        });
+
+        setLocalSimulationData(chartData);
+        setSimulationStatus({ status: "completed" });
+        setSimulateDialogOpen(false);
+        setShowResultsView(true);
+        return;
+      } catch (e: any) {
+        if (e.message === "Simulation aborted") {
+          return;
+        }
+        setSimulationStatus({ status: "failed", error: e instanceof Error ? e.message : String(e) });
+        setShowResultsView(true);
+        return;
+      }
+    }
 
     const dependencies = Array.from(context.listLibraries()).map((lib) => ({
       name: lib.name,
@@ -2305,12 +2399,17 @@ export default function MorselEditor(props: MorselEditorProps) {
                       backgroundColor: "var(--color-canvas-default)",
                     }}
                   >
-                    {simulationJobId && simulationStatus?.status === "completed" ? (
+                    {(simulationJobId && simulationStatus?.status === "completed") ||
+                    localSimulationData ||
+                    simulationStatus?.status === "failed" ? (
                       <Suspense fallback={null}>
                         <SimulationResults
                           jobId={simulationJobId}
+                          localData={localSimulationData}
                           selectedVariables={selectedSimulationVariables}
                           onVariablesLoaded={handleVariablesLoaded}
+                          error={simulationStatus?.status === "failed" ? simulationStatus.error : null}
+                          colorMode={colorMode === "dark" ? "dark" : "light"}
                         />
                       </Suspense>
                     ) : (
@@ -2406,6 +2505,9 @@ export default function MorselEditor(props: MorselEditorProps) {
                   setEditor={setEditor}
                   content={content}
                   theme={colorMode === "dark" ? "vs-dark" : "light"}
+                  externalErrors={
+                    simulationStatus?.status === "failed" && simulationStatus.error ? [simulationStatus.error] : []
+                  }
                 />
               </Suspense>
             </div>
@@ -2605,14 +2707,52 @@ export default function MorselEditor(props: MorselEditorProps) {
             />
           </div>
           <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
-          <IconButton
-            icon={PlayIcon}
-            size="small"
-            variant="invisible"
-            aria-label={translations.simulateModel}
-            title={translations.simulateModel}
-            onClick={handleSimulate}
-          />
+          <div
+            style={{
+              display: "flex",
+              alignItems: "stretch",
+              border: `1px solid ${colorMode === "dark" ? "#30363d" : "#d0d7de"}`,
+              borderRadius: "6px",
+              overflow: "hidden",
+            }}
+          >
+            <IconButton
+              icon={PlayIcon}
+              size="small"
+              variant="invisible"
+              aria-label={translations.simulateModel}
+              title={
+                simulationMode === "server"
+                  ? `${translations.simulateModel} (OpenModelica)`
+                  : `${translations.simulateModel} (math.js)`
+              }
+              onClick={() => handleSimulate(simulationMode)}
+              style={{ borderRadius: 0, paddingRight: 4, paddingLeft: 6 }}
+            />
+            <div style={{ width: 1, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
+            <ActionMenu>
+              <ActionMenu.Anchor>
+                <IconButton
+                  icon={TriangleDownIcon}
+                  size="small"
+                  variant="invisible"
+                  aria-label="Simulation mode"
+                  title="Simulation mode"
+                  style={{ borderRadius: 0, paddingLeft: 4, paddingRight: 6 }}
+                />
+              </ActionMenu.Anchor>
+              <ActionMenu.Overlay align="end">
+                <ActionList selectionVariant="single">
+                  <ActionList.Item selected={simulationMode === "server"} onSelect={() => setSimulationMode("server")}>
+                    Server Simulation (OpenModelica)
+                  </ActionList.Item>
+                  <ActionList.Item selected={simulationMode === "local"} onSelect={() => setSimulationMode("local")}>
+                    Local Simulation (math.js)
+                  </ActionList.Item>
+                </ActionList>
+              </ActionMenu.Overlay>
+            </ActionMenu>
+          </div>
           <IconButton
             icon={StackIcon}
             size="small"

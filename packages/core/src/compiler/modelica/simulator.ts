@@ -7,23 +7,30 @@ import {
   ModelicaDAEPrinter,
   ModelicaDAEVisitor,
   type ModelicaExpression,
-  ModelicaFunctionCallExpression,
   ModelicaLiteral,
   ModelicaNameExpression,
   ModelicaSimpleEquation,
 } from "./dae.js";
 
-function extractDerName(expr: ModelicaExpression): string | null {
-  if (expr instanceof ModelicaFunctionCallExpression && expr.functionName === "der") {
-    const arg0 = expr.args[0];
-    const operand = arg0 as unknown as { name?: string };
-    if (expr.args.length === 1 && arg0 && "name" in arg0 && typeof operand.name === "string") {
-      return operand.name ?? "";
+function extractDerName(expr: unknown): string | null {
+  if (expr && typeof expr === "object" && "functionName" in expr && "args" in expr) {
+    const funcExpr = expr as { functionName: string; args: unknown[] };
+    if (funcExpr.functionName === "der" && funcExpr.args.length === 1) {
+      const arg0 = funcExpr.args[0];
+      if (arg0 && typeof arg0 === "object" && "name" in arg0) {
+        const nameVal = (arg0 as { name: unknown }).name;
+        if (typeof nameVal === "string") return nameVal;
+      }
     }
   }
-  if (expr instanceof ModelicaNameExpression && expr.name.startsWith("der(") && expr.name.endsWith(")")) {
-    return expr.name.substring(4, expr.name.length - 1);
+
+  if (expr && typeof expr === "object" && "name" in expr) {
+    const nameVal = (expr as { name: unknown }).name;
+    if (typeof nameVal === "string" && nameVal.startsWith("der(") && nameVal.endsWith(")")) {
+      return nameVal.substring(4, nameVal.length - 1);
+    }
   }
+
   return null;
 }
 
@@ -52,23 +59,31 @@ export class ModelicaSimulator {
     const definedVars = new Set<string>();
 
     for (const eq of this.dae.equations) {
-      if (eq instanceof ModelicaSimpleEquation) {
-        const lhsDer = extractDerName(eq.expression1);
-        const rhsDer = extractDerName(eq.expression2);
+      if (eq && typeof eq === "object" && "expression1" in eq && "expression2" in eq) {
+        const simpleEq = eq as unknown as { expression1: unknown; expression2: unknown };
+        const lhsDer = extractDerName(simpleEq.expression1);
+        const rhsDer = extractDerName(simpleEq.expression2);
 
         if (lhsDer) {
-          assignments.push({ target: lhsDer, expr: eq.expression2, isDerivative: true });
+          assignments.push({ target: lhsDer, expr: simpleEq.expression2 as ModelicaExpression, isDerivative: true });
           this.stateVars.add(lhsDer);
           definedVars.add(`der(${lhsDer})`);
         } else if (rhsDer) {
-          assignments.push({ target: rhsDer, expr: eq.expression1, isDerivative: true });
+          assignments.push({ target: rhsDer, expr: simpleEq.expression1 as ModelicaExpression, isDerivative: true });
           this.stateVars.add(rhsDer);
           definedVars.add(`der(${rhsDer})`);
-        } else if (eq.expression1 instanceof ModelicaNameExpression) {
-          const target = eq.expression1.name;
-          assignments.push({ target, expr: eq.expression2, isDerivative: false });
-          this.algebraicVars.add(target);
-          definedVars.add(target);
+        } else {
+          const isNameExpr1 =
+            simpleEq.expression1 && typeof simpleEq.expression1 === "object" && "name" in simpleEq.expression1;
+          if (isNameExpr1) {
+            const nameVal = (simpleEq.expression1 as { name: unknown }).name;
+            if (typeof nameVal === "string") {
+              const target = nameVal;
+              assignments.push({ target, expr: simpleEq.expression2 as ModelicaExpression, isDerivative: false });
+              this.algebraicVars.add(target);
+              definedVars.add(target);
+            }
+          }
         }
       }
     }
@@ -119,40 +134,28 @@ export class ModelicaSimulator {
     startTime: number,
     stopTime: number,
     step: number,
-  ): { t: number[]; y: number[][]; states?: string[] } {
+    options?: { signal?: AbortSignal },
+  ): { t: number[]; y: number[][]; states: string[] } {
     this.prepare();
 
-    const stateList = Array.from(this.stateVars);
-    const env = new Map<string, number>();
+    const stateVarsArr = Array.from(this.stateVars);
+    const algebraicVarsArr = Array.from(this.algebraicVars);
+    const stateList = [...stateVarsArr, ...algebraicVarsArr];
 
-    // 2. Initial state
-    const initialValues = Array.from(this.stateVars).map((v) => {
-      const variable = this.dae.variables.find((vari) => vari.name === v);
-      if (variable && variable.attributes.has("start")) {
-        const startExpr = variable.attributes.get("start");
-        if (startExpr instanceof ModelicaLiteral) {
-          const literalVal = (startExpr as unknown as { value?: string | number }).value;
+    const initialValues = stateList.map((state) => {
+      for (const eq of this.dae.initialEquations) {
+        if (
+          eq instanceof ModelicaSimpleEquation &&
+          eq.expression1 instanceof ModelicaNameExpression &&
+          eq.expression1.name === state &&
+          eq.expression2 instanceof ModelicaLiteral
+        ) {
+          const literalVal = (eq.expression2 as unknown as { value?: string | number }).value;
           return Number(literalVal || 0.0);
         }
       }
       return 0.0; // Default fallback
     });
-    for (const state of stateList) {
-      env.set(state, 0.0);
-    }
-
-    for (const eq of this.dae.initialEquations) {
-      if (eq instanceof ModelicaSimpleEquation) {
-        if (eq.expression1 instanceof ModelicaNameExpression) {
-          if (eq.expression2 instanceof ModelicaLiteral) {
-            // Approximate fallback for literal values
-            const literalVal = (eq.expression2 as unknown as { value?: string | number }).value;
-            const valStr = literalVal?.toString() || "0";
-            env.set(eq.expression1.name, Number(valStr));
-          }
-        }
-      }
-    }
 
     const toMathjs = (expr: ModelicaExpression): string => {
       const writer = new StringWriter();
@@ -161,20 +164,25 @@ export class ModelicaSimulator {
     };
 
     const compiledEquations = this.sortedEquations.map((seq) => {
-      const exprStr = toMathjs(seq.expr).replace(/\./g, "_");
+      const exprStr = toMathjs(seq.expr).replace(/\.(?=[a-zA-Z_])/g, "_");
       return {
-        target: seq.isDerivative ? `der_${seq.target.replace(/\./g, "_")}` : seq.target.replace(/\./g, "_"),
-        isDerivative: seq.isDerivative,
+        target: seq.isDerivative
+          ? `der_${seq.target.replace(/\.(?=[a-zA-Z_])/g, "_")}`
+          : seq.target.replace(/\.(?=[a-zA-Z_])/g, "_"),
         stateName: seq.target,
         node: math.parse(exprStr),
       };
     });
 
     const f = (t: number, y: number[]) => {
+      if (options?.signal?.aborted) {
+        throw new Error("Simulation aborted");
+      }
+
       const scope: Record<string, number> = { time: t };
       for (let i = 0; i < stateList.length; i++) {
         const stateStr = stateList[i];
-        if (stateStr) scope[stateStr.replace(/\./g, "_")] = y[i] ?? 0.0;
+        if (stateStr) scope[stateStr.replace(/\.(?=[a-zA-Z_])/g, "_")] = y[i] ?? 0.0;
       }
 
       for (const eq of compiledEquations) {
@@ -189,9 +197,11 @@ export class ModelicaSimulator {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if (typeof (math as any).solveODE === "function") {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return (math as any).solveODE(f, [startTime, stopTime], y0, { step });
+      const res = (math as any).solveODE(f, [startTime, stopTime], y0, { step });
+      return { t: res.t, y: res.y, states: stateList };
     } else {
-      return this.rk4(f, startTime, stopTime, y0, step, stateList);
+      const res = this.rk4(f, startTime, stopTime, y0, step, stateList, options?.signal);
+      return { t: res.t, y: res.y, states: stateList };
     }
   }
 
@@ -202,6 +212,7 @@ export class ModelicaSimulator {
     y0: number[],
     h: number,
     states: string[],
+    signal?: AbortSignal,
   ) {
     const t = [];
     const y = [];
@@ -215,6 +226,9 @@ export class ModelicaSimulator {
     const n = states.length;
 
     while (current_t < t1) {
+      if (signal?.aborted) {
+        throw new Error("Simulation aborted");
+      }
       if (current_t + h > t1) h = t1 - current_t;
 
       const k1 = f(current_t, current_y);

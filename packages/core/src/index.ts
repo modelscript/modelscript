@@ -8,6 +8,7 @@ export * from "./compiler/modelica/i18n.js";
 export * from "./compiler/modelica/interpreter.js";
 export * from "./compiler/modelica/linter.js";
 export * from "./compiler/modelica/model.js";
+export * from "./compiler/modelica/simulator.js";
 export * from "./compiler/modelica/svg.js";
 export * from "./compiler/modelica/syntax.js";
 export * from "./compiler/modelica/types.js";

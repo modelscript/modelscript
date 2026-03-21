@@ -4,15 +4,25 @@ import { useEffect, useState } from "react";
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 interface SimulationResultsProps {
-  jobId: string;
+  jobId?: string | null;
+  localData?: Record<string, number | string>[] | null;
+  error?: string | null;
   selectedVariables: string[];
   onVariablesLoaded: (variables: string[]) => void;
+  colorMode?: "light" | "dark";
 }
 
-export function SimulationResults({ jobId, selectedVariables, onVariablesLoaded }: SimulationResultsProps) {
-  const [data, setData] = useState<any[]>([]);
+export function SimulationResults({
+  jobId,
+  localData,
+  error: externalError,
+  selectedVariables,
+  onVariablesLoaded,
+  colorMode = "light",
+}: SimulationResultsProps) {
+  const [data, setData] = useState<Record<string, number | string>[]>(localData || []);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(externalError || null);
 
   useEffect(() => {
     let isMounted = true;
@@ -21,6 +31,39 @@ export function SimulationResults({ jobId, selectedVariables, onVariablesLoaded 
       try {
         setLoading(true);
         setError(null);
+
+        if (externalError) {
+          setError(externalError);
+          setLoading(false);
+          return;
+        }
+
+        if (localData) {
+          if (localData.length > 0) {
+            const headers = Object.keys(localData[0]);
+            const timeCol = headers[0]; // Assuming first column is time
+            const vars = headers.filter((h) => h !== timeCol);
+
+            onVariablesLoaded(vars);
+
+            const chartData = localData.map((row) => {
+              const newRow: Record<string, number | string> = { time: row[timeCol] };
+              vars.forEach((v) => {
+                newRow[v] = row[v];
+              });
+              return newRow;
+            });
+            setData(chartData);
+          }
+          setLoading(false);
+          return;
+        }
+
+        if (!jobId) {
+          setError("No simulation job ID or local data provided.");
+          setLoading(false);
+          return;
+        }
 
         const response = await fetch(`/api/v1/simulate/${jobId}/result`);
         if (!response.ok) {
@@ -43,7 +86,7 @@ export function SimulationResults({ jobId, selectedVariables, onVariablesLoaded 
               return;
             }
 
-            const parsedData = results.data as any[];
+            const parsedData = results.data as Record<string, number | string>[];
             if (parsedData.length > 0) {
               // Extract variable names (all headers except the first column, which is usually 'time')
               const headers = Object.keys(parsedData[0]);
@@ -54,7 +97,7 @@ export function SimulationResults({ jobId, selectedVariables, onVariablesLoaded 
 
               // Map data to ensure x-axis is always 'time' for the chart
               const chartData = parsedData.map((row) => {
-                const newRow: any = { time: row[timeCol] };
+                const newRow: Record<string, number | string> = { time: row[timeCol] };
                 vars.forEach((v) => {
                   newRow[v] = row[v];
                 });
@@ -65,15 +108,15 @@ export function SimulationResults({ jobId, selectedVariables, onVariablesLoaded 
             }
             setLoading(false);
           },
-          error: (err: any) => {
+          error: (err: Error) => {
             if (!isMounted) return;
             setError(`Error parsing CSV: ${err.message}`);
             setLoading(false);
           },
         });
-      } catch (err: any) {
+      } catch (err) {
         if (!isMounted) return;
-        setError(err.message || "An unknown error occurred");
+        setError(err instanceof Error ? err.message : "An unknown error occurred");
         setLoading(false);
       }
     }
@@ -83,7 +126,7 @@ export function SimulationResults({ jobId, selectedVariables, onVariablesLoaded 
     return () => {
       isMounted = false;
     };
-  }, [jobId]); // Only fetch when jobId changes
+  }, [jobId, localData, onVariablesLoaded, externalError]); // Re-run when incoming source data changes
 
   if (loading) {
     return (
@@ -104,9 +147,23 @@ export function SimulationResults({ jobId, selectedVariables, onVariablesLoaded 
 
   if (error) {
     return (
-      <div style={{ padding: "32px", color: "var(--color-danger-fg)" }}>
-        <h2 style={{ margin: 0, marginBottom: "8px", fontSize: "16px", fontWeight: "bold" }}>Error loading results</h2>
-        {error}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          flex: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 24,
+          height: "100%",
+        }}
+      >
+        <div style={{ color: "var(--color-danger-fg)", fontWeight: "bold", marginBottom: 8, fontSize: 16 }}>
+          Simulation Failed
+        </div>
+        <div style={{ color: colorMode === "dark" ? "#8b949e" : "#57606a", fontSize: 14, textAlign: "center" }}>
+          {error}
+        </div>
       </div>
     );
   }
