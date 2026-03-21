@@ -96,6 +96,14 @@ export class Context extends Scope {
    * @returns The flattened DAE (Differential Algebraic Equation) output as a string, or null if the class is not found or has errors.
    */
   flatten(name: string): string | null {
+    const dae = this.flattenDAE(name);
+    if (!dae) return null;
+    const out = new StringWriter();
+    dae.accept(new ModelicaDAEPrinter(out));
+    return out.toString();
+  }
+
+  flattenDAE(name: string): ModelicaDAE | null {
     const instance = this.query(name);
     if (!instance) return null;
     const dae = new ModelicaDAE(name ?? instance.name ?? "DAE", instance.description);
@@ -116,9 +124,8 @@ export class Context extends Scope {
     const hasDAEErrors = (d: ModelicaDAE): boolean =>
       d.diagnostics.some((diag) => diag.severity === "error") || d.functions.some(hasDAEErrors);
     if (hasDAEErrors(dae)) return null;
-    const out = new StringWriter();
-    dae.accept(new ModelicaDAEPrinter(out));
-    return out.toString();
+
+    return dae;
   }
 
   /**
