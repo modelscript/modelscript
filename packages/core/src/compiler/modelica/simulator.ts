@@ -290,6 +290,38 @@ function buildZeroCrossing(condition: ModelicaExpression): {
   return { fn, direction };
 }
 
+/**
+ * Check if two variable names represent an internal connector alias — i.e.,
+ * one is the component-level variable and the other is the corresponding pin
+ * variable of the same component.
+ *
+ * Examples of internal aliases (should be merged):
+ *   `C1.i = C1.p.i`  →  C1.i is the component current, C1.p.i is the pin current
+ *   `C1.v = C1.p.v - C1.n.v`  →  NOT an alias (has subtraction, caught elsewhere)
+ *   `G.p.v = 0.0`  →  NOT an alias (one side is a literal)
+ *
+ * Examples of cross-component constraints (must NOT be merged):
+ *   `L1.p.v = C1.p.v`  →  different components sharing a node
+ *   `C2.n.v = C3.p.v`  →  different components sharing a node
+ */
+function isInternalConnectorAlias(a: string, b: string): boolean {
+  // Check if one name is a prefix of the other with a `.p.` or `.n.` segment.
+  // E.g., "C1.i" and "C1.p.i": "C1" is the common prefix, and "C1.p.i" has `.p.`
+  return isSubPin(a, b) || isSubPin(b, a);
+}
+
+/** Check if `long` is a pin sub-variable of `short` (e.g., "C1.p.i" is sub-pin of "C1.i"). */
+function isSubPin(short: string, long: string): boolean {
+  // short = "C1.i", long = "C1.p.i" → prefix "C1", suffix "i"
+  const lastDotShort = short.lastIndexOf(".");
+  if (lastDotShort < 0) return false;
+  const shortPrefix = short.substring(0, lastDotShort); // "C1"
+  const shortSuffix = short.substring(lastDotShort + 1); // "i"
+
+  // long must be shortPrefix + ".p." + shortSuffix  OR  shortPrefix + ".n." + shortSuffix
+  return long === `${shortPrefix}.p.${shortSuffix}` || long === `${shortPrefix}.n.${shortSuffix}`;
+}
+
 /** Check if an expression is a zero literal (0 or 0.0). */
 function isZeroLiteral(expr: ModelicaExpression): boolean {
   if (expr instanceof ModelicaRealLiteral) return expr.value === 0;
@@ -455,84 +487,7 @@ export class ModelicaSimulator {
     const assignments: { target: string; expr: ModelicaExpression; isDerivative: boolean }[] = [];
     const definedVars = new Set<string>();
 
-    // ── Multi-pass parameter resolution ──
-    // Parameters may reference each other (e.g. `V.signalSource.height = V.signalSource.V`).
-    // Iterate until no new parameters can be resolved.
-    this.parameters.clear();
-    const paramEvaluator = new ExpressionEvaluator();
-    const unresolvedParams: { name: string; expr: ModelicaExpression }[] = [];
-    for (const v of this.dae.variables) {
-      if (v.variability === ModelicaVariability.PARAMETER || v.variability === ModelicaVariability.CONSTANT) {
-        if (v.expression) {
-          const val = paramEvaluator.evaluate(v.expression);
-          if (val !== null) {
-            this.parameters.set(v.name, val);
-            paramEvaluator.env.set(v.name, val);
-          } else {
-            unresolvedParams.push({ name: v.name, expr: v.expression });
-          }
-        }
-      }
-    }
-    // Retry unresolved parameters until convergence.
-    // Also populate the evaluator env with all resolved param names so that
-    // component-scoped references like `C1.c1` (which is really `c1`) can
-    // be resolved by mapping the referenced name to the known value.
-    let changed = true;
-    while (changed && unresolvedParams.length > 0) {
-      changed = false;
-
-      // Before each pass, populate the env with all known parameter aliases.
-      // For each resolved parameter `A`, if another variable has binding `{name: "X.A"}`,
-      // we want `X.A` to resolve. So for each unresolved param with a NameExpression
-      // binding, try to set the binding name to the resolved value.
-      for (const p of unresolvedParams) {
-        if (p.expr instanceof ModelicaNameExpression) {
-          const refName = p.expr.name;
-          if (!paramEvaluator.env.has(refName)) {
-            // Try stripping component prefixes at each dot position.
-            // For "V.signalSource.V", try "signalSource.V" then "V".
-            // Also check if any resolved parameter ends with the suffix.
-            let resolved = false;
-            let dotIdx = refName.indexOf(".");
-            while (dotIdx > 0 && !resolved) {
-              const suffix = refName.substring(dotIdx + 1);
-              // Direct lookup
-              const direct = paramEvaluator.env.get(suffix);
-              if (direct !== undefined) {
-                paramEvaluator.env.set(refName, direct);
-                changed = true;
-                resolved = true;
-                break;
-              }
-              // Check if any param name matches by having same suffix after its own prefix
-              // e.g. refName="V.signalSource.offset", suffix="offset", param="V.offset"
-              for (const [pName, pVal] of paramEvaluator.env) {
-                if (pName.endsWith("." + suffix) || pName === suffix) {
-                  paramEvaluator.env.set(refName, pVal);
-                  changed = true;
-                  resolved = true;
-                  break;
-                }
-              }
-              dotIdx = refName.indexOf(".", dotIdx + 1);
-            }
-          }
-        }
-      }
-
-      for (let i = unresolvedParams.length - 1; i >= 0; i--) {
-        const p = unresolvedParams[i];
-        if (!p) continue;
-        const val = paramEvaluator.evaluate(p.expr);
-        if (val !== null) {
-          this.parameters.set(p.name, val);
-          paramEvaluator.env.set(p.name, val);
-          unresolvedParams.splice(i, 1);
-          changed = true;
-        }
-      }
-    }
+    this.resolveParameters();
 
     // ── Alias elimination via union-find ──
     // Connection equations of the form `A = B` (where both sides are simple variable names)
@@ -566,7 +521,11 @@ export class ModelicaSimulator {
       }
     }
 
-    // First pass: identify alias equations (A = B) and build union-find
+    // First pass: identify alias equations (A = B) and build union-find.
+    // IMPORTANT: only alias *internal connector identities* — equations where
+    // both sides belong to the same component (e.g., `C1.i = C1.p.i`).
+    // Cross-component node voltage constraints (e.g., `L1.p.v = C1.p.v`)
+    // must remain as algebraic equations to preserve independent state variables.
     const nonAliasEquations: ModelicaSimpleEquation[] = [];
     for (const eq of this.dae.equations) {
       if (eq instanceof ModelicaWhenEquation || eq instanceof ModelicaFunctionCallEquation) {
@@ -575,8 +534,7 @@ export class ModelicaSimulator {
       if (eq instanceof ModelicaSimpleEquation) {
         const lhsName = extractVarName(eq.expression1);
         const rhsName = extractVarName(eq.expression2);
-        if (lhsName && rhsName) {
-          // This is an alias equation: A = B
+        if (lhsName && rhsName && isInternalConnectorAlias(lhsName, rhsName)) {
           aliasUnion(lhsName, rhsName);
         } else {
           nonAliasEquations.push(eq);
@@ -1720,6 +1678,82 @@ export class ModelicaSimulator {
     }
   }
 
+  // ──────────────────────────────────────────────────────────────────
+  //  Multi-pass parameter resolution.
+  //  Parameters may reference each other (e.g., `V.signalSource.height = V.signalSource.V`).
+  //  Iterates until no new parameters can be resolved, using suffix-based
+  //  alias matching to resolve component-scoped references.
+  // ──────────────────────────────────────────────────────────────────
+  private resolveParameters(): void {
+    this.parameters.clear();
+    const evaluator = new ExpressionEvaluator();
+    const unresolved: { name: string; expr: ModelicaExpression }[] = [];
+
+    // First pass: resolve all directly evaluable parameters
+    for (const v of this.dae.variables) {
+      if (v.variability === ModelicaVariability.PARAMETER || v.variability === ModelicaVariability.CONSTANT) {
+        if (v.expression) {
+          const val = evaluator.evaluate(v.expression);
+          if (val !== null) {
+            this.parameters.set(v.name, val);
+            evaluator.env.set(v.name, val);
+          } else {
+            unresolved.push({ name: v.name, expr: v.expression });
+          }
+        }
+      }
+    }
+
+    // Iterative passes: resolve parameters that reference other parameters
+    let changed = true;
+    while (changed && unresolved.length > 0) {
+      changed = false;
+
+      // Populate env with suffix-based alias matches for unresolved NameExpression bindings
+      for (const p of unresolved) {
+        if (p.expr instanceof ModelicaNameExpression) {
+          const refName = p.expr.name;
+          if (!evaluator.env.has(refName)) {
+            let resolved = false;
+            let dotIdx = refName.indexOf(".");
+            while (dotIdx > 0 && !resolved) {
+              const suffix = refName.substring(dotIdx + 1);
+              const direct = evaluator.env.get(suffix);
+              if (direct !== undefined) {
+                evaluator.env.set(refName, direct);
+                changed = true;
+                resolved = true;
+                break;
+              }
+              for (const [pName, pVal] of evaluator.env) {
+                if (pName.endsWith("." + suffix) || pName === suffix) {
+                  evaluator.env.set(refName, pVal);
+                  changed = true;
+                  resolved = true;
+                  break;
+                }
+              }
+              dotIdx = refName.indexOf(".", dotIdx + 1);
+            }
+          }
+        }
+      }
+
+      // Try to evaluate remaining unresolved parameters
+      for (let i = unresolved.length - 1; i >= 0; i--) {
+        const p = unresolved[i];
+        if (!p) continue;
+        const val = evaluator.evaluate(p.expr);
+        if (val !== null) {
+          this.parameters.set(p.name, val);
+          evaluator.env.set(p.name, val);
+          unresolved.splice(i, 1);
+          changed = true;
+        }
+      }
+    }
+  }
+
   /** Build a WhenClause from a condition and body equations. */
   private buildWhenClause(condition: ModelicaExpression, equations: ModelicaEquation[]): WhenClause | null {
     const actions: WhenAction[] = [];
@@ -1972,91 +2006,7 @@ export class ModelicaSimulator {
           }
         } else {
           // Newton-Raphson solver for non-linear/linear algebraic system
-          const m = block.vars.length;
-          const x = new Float64Array(m);
-          for (let i = 0; i < m; i++) {
-            x[i] = evaluator.env.get(block.vars[i] ?? "") ?? 0;
-          }
-
-          const MAX_NEWTON = 20;
-          const NEWTON_TOL = 1e-10;
-          let converged = false;
-
-          for (let iter = 0; iter < MAX_NEWTON; iter++) {
-            const R = new Float64Array(m);
-            let maxR = 0;
-            // Evaluate residuals: R_i = x_i - expr_i
-            for (let i = 0; i < m; i++) evaluator.env.set(block.vars[i] ?? "", x[i] ?? 0);
-
-            for (let i = 0; i < m; i++) {
-              const eq = block.eqs[i];
-              if (!eq) continue;
-              const exprVal = evaluator.evaluate(eq.expr);
-              const val = exprVal !== null && isFinite(exprVal) ? exprVal : 0;
-              R[i] = (x[i] ?? 0) - val;
-              maxR = Math.max(maxR, Math.abs(R[i] ?? 0));
-            }
-
-            if (maxR < NEWTON_TOL) {
-              converged = true;
-              break;
-            }
-
-            // Compute Jacobian J = I - d(expr)/dx using finite differences
-            const J: Float64Array[] = [];
-            for (let i = 0; i < m; i++) J.push(new Float64Array(m));
-
-            const sqrtEps = 1.4901161193847656e-8;
-            for (let j = 0; j < m; j++) {
-              const varJ = block.vars[j] ?? "";
-              const xj = x[j] ?? 0;
-              const eps = sqrtEps * Math.max(Math.abs(xj), 1.0);
-              evaluator.env.set(varJ, xj + eps);
-
-              for (let i = 0; i < m; i++) {
-                const eq = block.eqs[i];
-                if (!eq) continue;
-                const exprVal = evaluator.evaluate(eq.expr);
-                const val = exprVal !== null && isFinite(exprVal) ? exprVal : 0;
-                const R_perturbed = (i === j ? xj + eps : (x[i] ?? 0)) - val;
-                const Ji = J[i];
-                if (Ji) Ji[j] = (R_perturbed - (R[i] ?? 0)) / eps;
-              }
-              evaluator.env.set(varJ, xj); // restore
-            }
-
-            // Solve J * dx = -R
-            try {
-              const fact = luFactor(J, m);
-              const negR = new Float64Array(m);
-              for (let i = 0; i < m; i++) negR[i] = -(R[i] ?? 0);
-              luSolve(fact, negR);
-              // Update x
-              for (let i = 0; i < m; i++) {
-                const nx = (x[i] ?? 0) + (negR[i] ?? 0);
-                x[i] = nx;
-                evaluator.env.set(block.vars[i] ?? "", nx);
-              }
-            } catch {
-              throw new Error(`Algebraic loop singular Jacobian at t=${t}. System vars: ${block.vars.join(", ")}`);
-            }
-          }
-
-          if (!converged) {
-            throw new Error(
-              `Algebraic loop Newton solver failed to converge at t=${t}. System vars: ${block.vars.join(", ")}`,
-            );
-          }
-
-          for (let i = 0; i < m; i++) {
-            const eq = block.eqs[i];
-            if (!eq) continue;
-            const key = eq.isDerivative ? `der(${eq.target})` : eq.target;
-            evaluator.env.set(key, x[i] ?? 0);
-            if (!eq.isDerivative) {
-              this.algWarmStart.set(key, x[i] ?? 0);
-            }
-          }
+          this.solveNewtonBlock(block, evaluator, t);
         }
       }
 
@@ -2088,6 +2038,109 @@ export class ModelicaSimulator {
     });
 
     return { t: res.t, y: allY, states: allStates };
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  //  Newton-Raphson solver for a system of algebraic equations.
+  //  Solves: x_i = expr_i(x_0, ..., x_{m-1}) for all i in [0, m).
+  //  Uses finite-difference Jacobian and LU factorization.
+  // ──────────────────────────────────────────────────────────────────
+  private solveNewtonBlock(
+    block: Extract<ExecutionBlock, { type: "system" }>,
+    evaluator: ExpressionEvaluator,
+    t: number,
+  ): void {
+    const m = block.vars.length;
+    const x = new Float64Array(m);
+    const R = new Float64Array(m);
+    const negR = new Float64Array(m);
+
+    // Initialize from current evaluator environment
+    for (let i = 0; i < m; i++) {
+      x[i] = evaluator.env.get(block.vars[i] ?? "") ?? 0;
+    }
+
+    // Pre-allocate Jacobian rows (reused across iterations)
+    const J: Float64Array[] = new Array(m);
+    for (let i = 0; i < m; i++) J[i] = new Float64Array(m);
+
+    const MAX_ITER = 20;
+    const TOL = 1e-10;
+    const SQRT_EPS = 1.4901161193847656e-8;
+    let converged = false;
+
+    for (let iter = 0; iter < MAX_ITER; iter++) {
+      // Set current values into the evaluator
+      for (let i = 0; i < m; i++) evaluator.env.set(block.vars[i] ?? "", x[i] ?? 0);
+
+      // Evaluate residuals: R_i = x_i - expr_i
+      let maxR = 0;
+      for (let i = 0; i < m; i++) {
+        const eq = block.eqs[i];
+        if (!eq) continue;
+        const exprVal = evaluator.evaluate(eq.expr);
+        const val = exprVal !== null && isFinite(exprVal) ? exprVal : 0;
+        R[i] = (x[i] ?? 0) - val;
+        maxR = Math.max(maxR, Math.abs(R[i] ?? 0));
+      }
+
+      if (maxR < TOL) {
+        converged = true;
+        break;
+      }
+
+      // Compute Jacobian J = I - d(expr)/dx via finite differences
+      for (let i = 0; i < m; i++) (J[i] as Float64Array).fill(0);
+
+      for (let j = 0; j < m; j++) {
+        const varJ = block.vars[j] ?? "";
+        const xj = x[j] ?? 0;
+        const eps = SQRT_EPS * Math.max(Math.abs(xj), 1.0);
+        evaluator.env.set(varJ, xj + eps);
+
+        for (let i = 0; i < m; i++) {
+          const eq = block.eqs[i];
+          if (!eq) continue;
+          const exprVal = evaluator.evaluate(eq.expr);
+          const val = exprVal !== null && isFinite(exprVal) ? exprVal : 0;
+          const R_perturbed = (i === j ? xj + eps : (x[i] ?? 0)) - val;
+          const Ji = J[i];
+          if (Ji) Ji[j] = (R_perturbed - (R[i] ?? 0)) / eps;
+        }
+        evaluator.env.set(varJ, xj); // restore
+      }
+
+      // Solve J · Δx = -R via LU factorization
+      try {
+        const fact = luFactor(J, m);
+        for (let i = 0; i < m; i++) negR[i] = -(R[i] ?? 0);
+        luSolve(fact, negR);
+        for (let i = 0; i < m; i++) {
+          const nx = (x[i] ?? 0) + (negR[i] ?? 0);
+          x[i] = nx;
+          evaluator.env.set(block.vars[i] ?? "", nx);
+        }
+      } catch {
+        throw new Error(`Algebraic loop singular Jacobian at t=${t}. System vars: ${block.vars.join(", ")}`);
+      }
+    }
+
+    if (!converged) {
+      throw new Error(
+        `Algebraic loop Newton solver failed to converge at t=${t}. System vars: ${block.vars.join(", ")}`,
+      );
+    }
+
+    // Write converged values back to the evaluator and warm-start cache
+    for (let i = 0; i < m; i++) {
+      const eq = block.eqs[i];
+      if (!eq) continue;
+      const key = eq.isDerivative ? `der(${eq.target})` : eq.target;
+      evaluator.env.set(key, x[i] ?? 0);
+      if (!eq.isDerivative) {
+        this.algWarmStart.set(key, x[i] ?? 0);
+      }
+    }
   }
 
   // ──────────────────────────────────────────────────────────────────
