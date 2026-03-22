@@ -75,11 +75,24 @@ export function simulateRouter(storage: LibraryStorage, jobQueue: JobQueue): exp
           fs.writeFileSync(adhocMoPath, modelSource, "utf8");
         }
 
+        // Build fully qualified model name by extracting the `within` clause
+        // from the model source. When the source has `within A.B.C;`, OMC loads
+        // the class into that package, so simulate() needs `A.B.C.ClassName`.
+        let qualifiedModelName = modelName;
+        if (modelSource) {
+          const withinMatch = modelSource.match(/^\s*within\s+([\w.]+)\s*;/m);
+          if (withinMatch?.[1]) {
+            qualifiedModelName = `${withinMatch[1]}.${modelName}`;
+          }
+        }
+
+        // Use a simple fileNamePrefix so the CSV output path is predictable
+        const fileNamePrefix = modelName.replace(/\./g, "_");
         const mosContents = `
 ${loadModels.join("\n")}
 ${loadFiles.map((f) => `loadFile("${f}");`).join("\n")}
 ${adhocMoPath ? `loadFile("${adhocMoPath}");` : ""}
-simulate(${modelName}, outputFormat="csv");
+simulate(${qualifiedModelName}, outputFormat="csv", fileNamePrefix="${fileNamePrefix}");
 getErrorString();
 `;
 
@@ -91,7 +104,7 @@ getErrorString();
           env: { ...process.env, MODELICAPATH: modelicaPath },
         });
 
-        const csvFilePath = path.join(tmpDir, `${modelName}_res.csv`);
+        const csvFilePath = path.join(tmpDir, `${fileNamePrefix}_res.csv`);
 
         if (!fs.existsSync(csvFilePath)) {
           const logPath = path.join(tmpDir, "simulate.log");
