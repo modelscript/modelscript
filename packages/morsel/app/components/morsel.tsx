@@ -277,7 +277,12 @@ export default function MorselEditor(props: MorselEditorProps) {
             );
           }
 
-          const result = simulator.simulate(0, 10, 0.001, {
+          const exp = dae.experiment;
+          const startTime = exp.startTime ?? 0;
+          const stopTime = exp.stopTime ?? 10;
+          const step = exp.interval ?? (stopTime - startTime) / 1000;
+
+          const result = simulator.simulate(startTime, stopTime, step, {
             signal: abortController.signal,
             parameterOverrides: parameterOverridesRef.current,
           });
@@ -318,7 +323,11 @@ export default function MorselEditor(props: MorselEditorProps) {
     const timer = setTimeout(() => {
       try {
         simulator.prepare();
-        const result = simulator.simulate(0, 10, 0.001, {
+        const exp = simulator.dae.experiment;
+        const startTime = exp.startTime ?? 0;
+        const stopTime = exp.stopTime ?? 10;
+        const step = exp.interval ?? (stopTime - startTime) / 1000;
+        const result = simulator.simulate(startTime, stopTime, step, {
           signal: abortController.signal,
           parameterOverrides,
         });
@@ -1548,7 +1557,14 @@ export default function MorselEditor(props: MorselEditorProps) {
           );
         }
 
-        const result = simulator.simulate(0, 10, 0.1, { signal: abortController.signal, parameterOverrides });
+        const exp2 = simulator.dae.experiment;
+        const startTime2 = exp2.startTime ?? 0;
+        const stopTime2 = exp2.stopTime ?? 10;
+        const step2 = exp2.interval ?? (stopTime2 - startTime2) / 100;
+        const result = simulator.simulate(startTime2, stopTime2, step2, {
+          signal: abortController.signal,
+          parameterOverrides,
+        });
 
         const chartData = result.t.map((t: number, i: number) => {
           const row: Record<string, number | string> = { time: t };

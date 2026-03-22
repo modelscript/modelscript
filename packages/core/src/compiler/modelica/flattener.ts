@@ -144,6 +144,8 @@ interface FlattenerContext {
   activeClassStack?: ModelicaClassInstance[];
   /** Stream variable connections from connect equations, for inStream() expansion. */
   streamConnections?: { side1: string; side2: string }[];
+  /** Deferred flow variable connection pairs for connection-set-based flow balance generation. */
+  flowConnectPairs?: { name1: string; name2: string }[];
 }
 
 /** Extract an integer shape array from a list of expressions (all must be ModelicaIntegerLiteral). */
@@ -686,6 +688,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           structuralFinalParams: this.#structuralFinalParams,
           connectedFlowVars: this.#connectedFlowVars,
           activeClassStack: this.activeClassStack,
+          flowConnectPairs: this.#flowConnectPairs,
         });
       }
       args[1].equations = savedEquations;
@@ -713,11 +716,102 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         }
       }
     }
+    // ── Generate connection-set-based flow balance equations ──
+    // Build connection sets from the deferred flow connect pairs using Union-Find,
+    // then generate one sum-to-zero equation per connection set.
+    if (this.#flowConnectPairs.length > 0) {
+      // Union-Find data structure for grouping flow variables into connection sets
+      const parent = new Map<string, string>();
+      const find = (x: string): string => {
+        let root = x;
+        while (parent.get(root) !== root && parent.has(root)) {
+          root = parent.get(root) ?? root;
+        }
+        // Path compression
+        let cur = x;
+        while (cur !== root) {
+          const next = parent.get(cur) ?? cur;
+          parent.set(cur, root);
+          cur = next;
+        }
+        return root;
+      };
+      const union = (a: string, b: string) => {
+        const ra = find(a);
+        const rb = find(b);
+        if (ra !== rb) parent.set(ra, rb);
+      };
+
+      // Initialize each flow variable as its own parent
+      for (const pair of this.#flowConnectPairs) {
+        if (!parent.has(pair.name1)) parent.set(pair.name1, pair.name1);
+        if (!parent.has(pair.name2)) parent.set(pair.name2, pair.name2);
+        union(pair.name1, pair.name2);
+      }
+
+      // Group flow variables by connection set
+      const connectionSets = new Map<string, Set<string>>();
+      for (const name of parent.keys()) {
+        const root = find(name);
+        let set = connectionSets.get(root);
+        if (!set) {
+          set = new Set<string>();
+          connectionSets.set(root, set);
+        }
+        set.add(name);
+      }
+
+      // Generate one flow balance equation per connection set: sum(all_flows) = 0
+      const dae = args[1];
+      for (const [, flowVars] of connectionSets) {
+        if (flowVars.size <= 1) continue; // Single-element sets don't need balance
+        const names = [...flowVars];
+        // Build: -(f1 + f2 + f3 + ...) = 0
+        const firstName = names[0];
+        if (!firstName) continue;
+        let sum: ModelicaExpression = new ModelicaNameExpression(firstName);
+        for (let i = 1; i < names.length; i++) {
+          const n = names[i];
+          if (!n) continue;
+          sum = new ModelicaBinaryExpression(ModelicaBinaryOperator.ADDITION, sum, new ModelicaNameExpression(n));
+        }
+        const lhs = new ModelicaUnaryExpression(ModelicaUnaryOperator.UNARY_MINUS, sum);
+        dae.equations.push(new ModelicaSimpleEquation(lhs, new ModelicaRealLiteral(0.0)));
+      }
+
+      // Clear pairs so they're not processed again in nested flattening
+      this.#flowConnectPairs = [];
+    }
+
     // Restore previous structural params
     this.#structuralFinalParams = savedStructural;
 
     if (this.activeClassStack.length === 0) {
       this.#assembleStateMachines(args[1]);
+
+      // Extract experiment annotation (StartTime, StopTime, Tolerance, Interval)
+      for (const ann of node.annotations) {
+        if (ann.name === "experiment" && ann instanceof ModelicaClassInstance) {
+          const getNum = (paramName: string): number | undefined => {
+            const mod = ann.modification?.getModificationArgument(paramName);
+            if (mod && "expression" in mod) {
+              const expr = (mod as { expression?: ModelicaExpression | null }).expression;
+              if (expr instanceof ModelicaRealLiteral) return expr.value;
+              if (expr instanceof ModelicaIntegerLiteral) return expr.value;
+            }
+            return undefined;
+          };
+          const exp = args[1].experiment;
+          const startTime = getNum("StartTime");
+          const stopTime = getNum("StopTime");
+          const tolerance = getNum("Tolerance");
+          const interval = getNum("Interval");
+          if (startTime !== undefined) exp.startTime = startTime;
+          if (stopTime !== undefined) exp.stopTime = stopTime;
+          if (tolerance !== undefined) exp.tolerance = tolerance;
+          if (interval !== undefined) exp.interval = interval;
+        }
+      }
     }
   }
 
@@ -874,6 +968,8 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
   #allFlowVars = new Set<string>();
   // Track flow variable names that appear in connect equations (populated during equation processing)
   #connectedFlowVars = new Set<string>();
+  // Deferred flow connection pairs for connection-set-based flow balance generation
+  #flowConnectPairs: { name1: string; name2: string }[] = [];
   // Track parameter names that are structurally significant (used in conditional component declarations)
   #structuralFinalParams = new Set<string>();
   // Carry outer brokenConnects through nested extends chains
@@ -1642,6 +1738,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
             structuralFinalParams: this.#structuralFinalParams,
             connectedFlowVars: this.#connectedFlowVars,
             activeClassStack: this.activeClassStack,
+            flowConnectPairs: this.#flowConnectPairs,
             ...(brokenNames.size > 0 ? { brokenNames } : {}),
             ...(brokenConnects.size > 0 ? { brokenConnects } : {}),
           });
@@ -5326,14 +5423,20 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       }
 
       if (info1.isFlow) {
-        // Flow variables: -(a.f + b.f) = 0.0
-        const sum = new ModelicaBinaryExpression(
-          ModelicaBinaryOperator.ADDITION,
-          new ModelicaNameExpression(info1.fullName),
-          new ModelicaNameExpression(info2.fullName),
-        );
-        const lhs = new ModelicaUnaryExpression(ModelicaUnaryOperator.UNARY_MINUS, sum);
-        ctx.dae.equations.push(new ModelicaSimpleEquation(lhs, new ModelicaRealLiteral(0.0)));
+        // Defer flow equation generation — collect pairs for connection-set-based KCL.
+        // Per Modelica spec §9.2, all flows at a connection set node sum to zero.
+        if (ctx.flowConnectPairs) {
+          ctx.flowConnectPairs.push({ name1: info1.fullName, name2: info2.fullName });
+        } else {
+          // Fallback: generate pairwise equation if flowConnectPairs not available
+          const sum = new ModelicaBinaryExpression(
+            ModelicaBinaryOperator.ADDITION,
+            new ModelicaNameExpression(info1.fullName),
+            new ModelicaNameExpression(info2.fullName),
+          );
+          const lhs = new ModelicaUnaryExpression(ModelicaUnaryOperator.UNARY_MINUS, sum);
+          ctx.dae.equations.push(new ModelicaSimpleEquation(lhs, new ModelicaRealLiteral(0.0)));
+        }
         // Track these flow variables as connected
         ctx.connectedFlowVars?.add(info1.fullName);
         ctx.connectedFlowVars?.add(info2.fullName);

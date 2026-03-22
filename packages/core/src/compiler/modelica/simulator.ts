@@ -10,16 +10,18 @@ import {
   type ModelicaEquation,
   type ModelicaExpression,
   ModelicaFunctionCallEquation,
+  ModelicaFunctionCallExpression,
   ModelicaIntegerLiteral,
   ModelicaIntegerVariable,
   ModelicaNameExpression,
   ModelicaRealLiteral,
   ModelicaRealVariable,
   ModelicaSimpleEquation,
+  ModelicaUnaryExpression,
   ModelicaVariable,
   ModelicaWhenEquation,
 } from "./dae.js";
-import { ModelicaBinaryOperator, ModelicaVariability } from "./syntax.js";
+import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "./syntax.js";
 
 /** Describes a single action inside a when-clause body. */
 interface WhenAction {
@@ -66,6 +68,136 @@ const BISECT_TOL = 1e-10;
 /** Maximum bisection iterations. */
 const BISECT_MAX_ITER = 50;
 
+// ── SDIRK2 implicit solver constants ──
+/** SDIRK2 parameter: γ = 1 - √2/2 ≈ 0.2929 (L-stable, order 2). */
+const SDIRK_GAMMA = 1 - Math.SQRT2 / 2;
+/** Maximum Newton iterations per implicit stage solve. */
+const NEWTON_MAX_ITER = 8;
+/** Newton convergence tolerance (relative to step size). */
+const NEWTON_TOL = 1e-10;
+/** Stiffness probe: max relative RK4-vs-SDIRK2 difference that triggers implicit solver. */
+const STIFFNESS_PROBE_THRESHOLD = 10;
+
+// ── Dense LU decomposition with partial pivoting ──
+
+/** LU factorization result for a dense n×n matrix with row equilibration. */
+interface LUFactorization {
+  /** LU-combined matrix (lower triangle is L with unit diagonal, upper is U). */
+  lu: Float64Array[];
+  /** Pivot permutation indices. */
+  piv: Int32Array;
+  /** Row scaling factors (1/max|row|) applied before factorization. */
+  rowScale: Float64Array;
+  /** Matrix dimension. */
+  n: number;
+}
+
+/** Factor a dense n×n matrix (given as array of Float64Array rows) into PA = LU
+ *  with row equilibration for numerical stability. */
+function luFactor(A: Float64Array[], n: number): LUFactorization {
+  // Copy matrix
+  const lu = A.map((row) => new Float64Array(row));
+  const piv = new Int32Array(n);
+  for (let i = 0; i < n; i++) piv[i] = i;
+
+  // Row equilibration: scale each row by 1/max|entry|
+  const rowScale = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    const row = lu[i];
+    if (!row) continue;
+    let maxVal = 0;
+    for (let j = 0; j < n; j++) {
+      maxVal = Math.max(maxVal, Math.abs(row[j] ?? 0));
+    }
+    const s = maxVal > 1e-30 ? 1.0 / maxVal : 1.0;
+    rowScale[i] = s;
+    for (let j = 0; j < n; j++) {
+      row[j] = (row[j] ?? 0) * s;
+    }
+  }
+
+  for (let k = 0; k < n; k++) {
+    const luK = lu[k];
+    if (!luK) continue;
+    // Find pivot
+    let maxVal = Math.abs(luK[k] ?? 0);
+    let maxIdx = k;
+    for (let i = k + 1; i < n; i++) {
+      const luI = lu[i];
+      if (!luI) continue;
+      const val = Math.abs(luI[k] ?? 0);
+      if (val > maxVal) {
+        maxVal = val;
+        maxIdx = i;
+      }
+    }
+    // Swap rows
+    if (maxIdx !== k) {
+      const rowK = lu[k];
+      const rowMax = lu[maxIdx];
+      if (rowK && rowMax) {
+        lu[k] = rowMax;
+        lu[maxIdx] = rowK;
+      }
+      const tmpP = piv[k] ?? k;
+      piv[k] = piv[maxIdx] ?? maxIdx;
+      piv[maxIdx] = tmpP;
+      // Also swap rowScale entries
+      const tmpS = rowScale[k] ?? 1;
+      rowScale[k] = rowScale[maxIdx] ?? 1;
+      rowScale[maxIdx] = tmpS;
+    }
+    const luKSwapped = lu[k];
+    if (!luKSwapped) continue;
+    const diagVal = luKSwapped[k] ?? 0;
+    if (Math.abs(diagVal) < 1e-30) continue; // Near-singular — skip
+    // Eliminate below
+    for (let i = k + 1; i < n; i++) {
+      const luI = lu[i];
+      if (!luI) continue;
+      const factor = (luI[k] ?? 0) / diagVal;
+      luI[k] = factor; // Store L
+      for (let j = k + 1; j < n; j++) {
+        luI[j] = (luI[j] ?? 0) - factor * (luKSwapped[j] ?? 0);
+      }
+    }
+  }
+  return { lu, piv, rowScale, n };
+}
+
+/** Solve LU·x = b (in-place, overwrites b with x).
+ *  Accounts for row equilibration applied during factorization. */
+function luSolve(fact: LUFactorization, b: Float64Array): void {
+  const { lu, piv, rowScale, n } = fact;
+  // Apply permutation, then row scaling to RHS
+  // After pivoting, rowScale[i] = original scale for the row now at position i
+  const pb = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    const pi = piv[i] ?? i;
+    pb[i] = (b[pi] ?? 0) * (rowScale[i] ?? 1);
+  }
+  // Forward substitution (L·z = pb)
+  for (let i = 1; i < n; i++) {
+    const luI = lu[i];
+    if (!luI) continue;
+    for (let j = 0; j < i; j++) {
+      pb[i] = (pb[i] ?? 0) - (luI[j] ?? 0) * (pb[j] ?? 0);
+    }
+  }
+  // Back substitution (U·x = z)
+  for (let i = n - 1; i >= 0; i--) {
+    const luI = lu[i];
+    if (!luI) continue;
+    for (let j = i + 1; j < n; j++) {
+      pb[i] = (pb[i] ?? 0) - (luI[j] ?? 0) * (pb[j] ?? 0);
+    }
+    const diag = luI[i] ?? 0;
+    pb[i] = Math.abs(diag) > 1e-30 ? (pb[i] ?? 0) / diag : 0;
+  }
+  // Copy result back
+  for (let i = 0; i < n; i++) b[i] = pb[i] ?? 0;
+}
+
 function extractDerName(expr: unknown): string | null {
   if (expr && typeof expr === "object" && "functionName" in expr && "args" in expr) {
     const funcExpr = expr as { functionName: string; args: unknown[] };
@@ -94,6 +226,12 @@ class DependencyVisitor extends ModelicaDAEVisitor<Set<string>> {
     if (deps && !expr.name.startsWith("der(")) {
       deps.add(expr.name);
     }
+  }
+  override visitRealVariable(node: ModelicaRealVariable, deps?: Set<string>): void {
+    if (deps) deps.add(node.name);
+  }
+  override visitIntegerVariable(node: ModelicaIntegerVariable, deps?: Set<string>): void {
+    if (deps) deps.add(node.name);
   }
 }
 
@@ -147,6 +285,133 @@ function buildZeroCrossing(condition: ModelicaExpression): {
   return { fn, direction };
 }
 
+/** Check if an expression is a zero literal (0 or 0.0). */
+function isZeroLiteral(expr: ModelicaExpression): boolean {
+  if (expr instanceof ModelicaRealLiteral) return expr.value === 0;
+  if (expr instanceof ModelicaIntegerLiteral) return expr.value === 0;
+  return false;
+}
+
+/**
+ * Find `der(x)` inside a multiplication expression and return the state
+ * variable name and the coefficient expression.
+ *
+ * Handles patterns like:
+ *   `coeff * der(x)`  →  { varName: x, coeff: coeff }
+ *   `der(x) * coeff`  →  { varName: x, coeff: coeff }
+ *
+ * Returns null if der() is not found in a simple multiplicative position.
+ */
+function findDerInMultiplication(expr: ModelicaExpression): { varName: string; coeff: ModelicaExpression } | null {
+  if (!(expr instanceof ModelicaBinaryExpression)) return null;
+  if (
+    expr.operator !== ModelicaBinaryOperator.MULTIPLICATION &&
+    expr.operator !== ModelicaBinaryOperator.ELEMENTWISE_MULTIPLICATION
+  )
+    return null;
+
+  // Check operand1 for der()
+  const lhsDer = extractDerName(expr.operand1);
+  if (lhsDer) return { varName: lhsDer, coeff: expr.operand2 };
+
+  // Check operand2 for der()
+  const rhsDer = extractDerName(expr.operand2);
+  if (rhsDer) return { varName: rhsDer, coeff: expr.operand1 };
+
+  return null;
+}
+
+/**
+ * Given a sum expression (a + b) or (a + b + c + ...) represented as a nested
+ * binary addition tree, find a "solvable" variable and return it with a negated
+ * expression for the remaining terms.
+ *
+ * @param expr  The sum expression
+ * @param skip  Set of variable names to skip (already defined)
+ *
+ * This handles multi-connector flow balance equations:
+ *   `0 = a.n.f + b.p.f + c.p.f + d.p.f`
+ * If a.n.f is already defined (in skip), it finds b.p.f instead:
+ *   `b.p.f = -(a.n.f + c.p.f + d.p.f)`
+ */
+function tryExtractSolvableVar(
+  expr: ModelicaExpression,
+  skip?: Set<string>,
+): { target: string; rhs: ModelicaExpression } | null {
+  // Simple case: expr is just a name — `0 = x` → `x = 0`
+  const directName = extractVarName(expr);
+  if (directName && (!skip || !skip.has(directName))) {
+    return { target: directName, rhs: new ModelicaRealLiteral(0) };
+  }
+
+  // Flatten nested additions into a list of terms
+  const terms: ModelicaExpression[] = [];
+  const flattenAdd = (e: ModelicaExpression) => {
+    if (
+      e instanceof ModelicaBinaryExpression &&
+      (e.operator === ModelicaBinaryOperator.ADDITION || e.operator === ModelicaBinaryOperator.ELEMENTWISE_ADDITION)
+    ) {
+      flattenAdd(e.operand1);
+      flattenAdd(e.operand2);
+    } else {
+      terms.push(e);
+    }
+  };
+  flattenAdd(expr);
+
+  // Helper: build the "rest" expression from all terms except index i,
+  // then solve for the variable at index i.
+  const buildResult = (
+    i: number,
+    name: string,
+    negated: boolean,
+  ): { target: string; rhs: ModelicaExpression } | null => {
+    const rest = terms.filter((_, idx) => idx !== i);
+    if (rest.length === 0) {
+      return { target: name, rhs: new ModelicaRealLiteral(0) };
+    }
+    let restExpr: ModelicaExpression | undefined = rest[0];
+    if (!restExpr) return null;
+    for (let j = 1; j < rest.length; j++) {
+      const nextTerm = rest[j];
+      if (!nextTerm) continue;
+      restExpr = new ModelicaBinaryExpression(ModelicaBinaryOperator.ADDITION, restExpr, nextTerm);
+    }
+    if (negated) {
+      // -(target) + rest = 0 → target = rest
+      return { target: name, rhs: restExpr };
+    }
+    return {
+      target: name,
+      rhs: new ModelicaUnaryExpression(ModelicaUnaryOperator.UNARY_MINUS, restExpr),
+    };
+  };
+
+  // Pass 1: direct (non-negated) variables — preferred
+  for (let i = 0; i < terms.length; i++) {
+    const term = terms[i];
+    if (!term) continue;
+    const name = extractVarName(term);
+    if (name && (!skip || !skip.has(name))) {
+      return buildResult(i, name, false);
+    }
+  }
+
+  // Pass 2: negated variables — fallback for flow-substituted balance equation terms
+  for (let i = 0; i < terms.length; i++) {
+    const term = terms[i];
+    if (!term) continue;
+    if (term instanceof ModelicaUnaryExpression && term.operator === ModelicaUnaryOperator.UNARY_MINUS) {
+      const name = extractVarName(term.operand);
+      if (name && (!skip || !skip.has(name))) {
+        return buildResult(i, name, true);
+      }
+    }
+  }
+
+  return null;
+}
+
 /** Rich metadata about a single parameter variable for the UI. */
 export interface ParameterInfo {
   name: string;
@@ -168,6 +433,12 @@ export class ModelicaSimulator {
   sortedEquations: { target: string; expr: ModelicaExpression; isDerivative: boolean }[] = [];
   /** When-clauses extracted from the DAE. */
   whenClauses: WhenClause[] = [];
+  /** Whether to use the implicit SDIRK2 solver instead of RK4 (set after divergence detection). */
+  private useImplicitSolver = false;
+  /** Cached LU factorization of (I - γ·h·J) for the implicit solver. */
+  private cachedW: LUFactorization | null = null;
+  /** Step size for which the cached W was computed. */
+  private cachedWStepSize = 0;
 
   constructor(dae: ModelicaDAE) {
     this.dae = dae;
@@ -177,51 +448,1161 @@ export class ModelicaSimulator {
     const assignments: { target: string; expr: ModelicaExpression; isDerivative: boolean }[] = [];
     const definedVars = new Set<string>();
 
-    // Extract parameter and constant values from DAE variable declarations
+    // ── Multi-pass parameter resolution ──
+    // Parameters may reference each other (e.g. `V.signalSource.height = V.signalSource.V`).
+    // Iterate until no new parameters can be resolved.
     this.parameters.clear();
     const paramEvaluator = new ExpressionEvaluator();
+    const unresolvedParams: { name: string; expr: ModelicaExpression }[] = [];
     for (const v of this.dae.variables) {
       if (v.variability === ModelicaVariability.PARAMETER || v.variability === ModelicaVariability.CONSTANT) {
         if (v.expression) {
           const val = paramEvaluator.evaluate(v.expression);
           if (val !== null) {
             this.parameters.set(v.name, val);
-            // Make params available for evaluating other param expressions
             paramEvaluator.env.set(v.name, val);
+          } else {
+            unresolvedParams.push({ name: v.name, expr: v.expression });
+          }
+        }
+      }
+    }
+    // Retry unresolved parameters until convergence.
+    // Also populate the evaluator env with all resolved param names so that
+    // component-scoped references like `C1.c1` (which is really `c1`) can
+    // be resolved by mapping the referenced name to the known value.
+    let changed = true;
+    while (changed && unresolvedParams.length > 0) {
+      changed = false;
+
+      // Before each pass, populate the env with all known parameter aliases.
+      // For each resolved parameter `A`, if another variable has binding `{name: "X.A"}`,
+      // we want `X.A` to resolve. So for each unresolved param with a NameExpression
+      // binding, try to set the binding name to the resolved value.
+      for (const p of unresolvedParams) {
+        if (p.expr instanceof ModelicaNameExpression) {
+          const refName = p.expr.name;
+          if (!paramEvaluator.env.has(refName)) {
+            // Try stripping component prefixes at each dot position.
+            // For "V.signalSource.V", try "signalSource.V" then "V".
+            // Also check if any resolved parameter ends with the suffix.
+            let resolved = false;
+            let dotIdx = refName.indexOf(".");
+            while (dotIdx > 0 && !resolved) {
+              const suffix = refName.substring(dotIdx + 1);
+              // Direct lookup
+              const direct = paramEvaluator.env.get(suffix);
+              if (direct !== undefined) {
+                paramEvaluator.env.set(refName, direct);
+                changed = true;
+                resolved = true;
+                break;
+              }
+              // Check if any param name matches by having same suffix after its own prefix
+              // e.g. refName="V.signalSource.offset", suffix="offset", param="V.offset"
+              for (const [pName, pVal] of paramEvaluator.env) {
+                if (pName.endsWith("." + suffix) || pName === suffix) {
+                  paramEvaluator.env.set(refName, pVal);
+                  changed = true;
+                  resolved = true;
+                  break;
+                }
+              }
+              dotIdx = refName.indexOf(".", dotIdx + 1);
+            }
+          }
+        }
+      }
+
+      for (let i = unresolvedParams.length - 1; i >= 0; i--) {
+        const p = unresolvedParams[i];
+        if (!p) continue;
+        const val = paramEvaluator.evaluate(p.expr);
+        if (val !== null) {
+          this.parameters.set(p.name, val);
+          paramEvaluator.env.set(p.name, val);
+          unresolvedParams.splice(i, 1);
+          changed = true;
+        }
+      }
+    }
+
+    // ── Alias elimination via union-find ──
+    // Connection equations of the form `A = B` (where both sides are simple variable names)
+    // create alias relationships. We build a union-find to canonicalize names, then
+    // substitute canonical names in all other equations.
+    const aliasParent = new Map<string, string>();
+
+    function aliasFind(name: string): string {
+      let root = name;
+      let next = aliasParent.get(root);
+      while (next !== undefined && next !== root) {
+        root = next;
+        next = aliasParent.get(root);
+      }
+      // Path compression
+      let current = name;
+      while (current !== root) {
+        const parent = aliasParent.get(current) ?? current;
+        aliasParent.set(current, root);
+        current = parent;
+      }
+      return root;
+    }
+
+    function aliasUnion(a: string, b: string): void {
+      const rootA = aliasFind(a);
+      const rootB = aliasFind(b);
+      if (rootA !== rootB) {
+        // Prefer shorter names or state variables as canonical
+        aliasParent.set(rootB, rootA);
+      }
+    }
+
+    // First pass: identify alias equations (A = B) and build union-find
+    const nonAliasEquations: ModelicaSimpleEquation[] = [];
+    for (const eq of this.dae.equations) {
+      if (eq instanceof ModelicaWhenEquation || eq instanceof ModelicaFunctionCallEquation) {
+        continue;
+      }
+      if (eq instanceof ModelicaSimpleEquation) {
+        const lhsName = extractVarName(eq.expression1);
+        const rhsName = extractVarName(eq.expression2);
+        if (lhsName && rhsName) {
+          // This is an alias equation: A = B
+          aliasUnion(lhsName, rhsName);
+        } else {
+          nonAliasEquations.push(eq);
+        }
+      }
+    }
+
+    // Build the substitution map: for each aliased variable, map to its canonical name
+    const aliasMap = new Map<string, string>();
+    for (const name of aliasParent.keys()) {
+      const canonical = aliasFind(name);
+      if (canonical !== name) {
+        aliasMap.set(name, canonical);
+      }
+    }
+
+    // Helper: substitute aliased names in an expression
+    const substituteAliases = (expr: ModelicaExpression): ModelicaExpression => {
+      if (expr instanceof ModelicaNameExpression) {
+        const canonical = aliasMap.get(expr.name);
+        if (canonical) return new ModelicaNameExpression(canonical);
+        return expr;
+      }
+      if (expr instanceof ModelicaRealVariable || expr instanceof ModelicaIntegerVariable) {
+        const canonical = aliasMap.get(expr.name);
+        if (canonical) return new ModelicaNameExpression(canonical);
+        return expr;
+      }
+      if (expr instanceof ModelicaBinaryExpression) {
+        const newOp1 = substituteAliases(expr.operand1);
+        const newOp2 = substituteAliases(expr.operand2);
+        if (newOp1 !== expr.operand1 || newOp2 !== expr.operand2) {
+          return new ModelicaBinaryExpression(expr.operator, newOp1, newOp2);
+        }
+        return expr;
+      }
+      if (expr instanceof ModelicaUnaryExpression) {
+        const newOp = substituteAliases(expr.operand);
+        if (newOp !== expr.operand) {
+          return new ModelicaUnaryExpression(expr.operator, newOp);
+        }
+        return expr;
+      }
+      if (expr instanceof ModelicaFunctionCallExpression) {
+        const newArgs = expr.args.map((arg: ModelicaExpression) => substituteAliases(arg));
+        const anyChanged = newArgs.some((arg: ModelicaExpression, idx: number) => arg !== expr.args[idx]);
+        if (anyChanged) return new ModelicaFunctionCallExpression(expr.functionName, newArgs);
+        return expr;
+      }
+      // ModelicaIfElseExpression, literals, etc. — return as-is
+      return expr;
+    };
+
+    // Canonicalize the target name via alias map
+    const canonicalize = (name: string): string => aliasMap.get(name) ?? name;
+
+    // Second pass: process non-alias equations with alias substitution
+
+    // Alias-substitute all equations and split into derivative vs non-derivative
+    const substitutedEquations: { lhs: ModelicaExpression; rhs: ModelicaExpression }[] = [];
+    for (const eq of nonAliasEquations) {
+      substitutedEquations.push({
+        lhs: substituteAliases(eq.expression1),
+        rhs: substituteAliases(eq.expression2),
+      });
+    }
+
+    // ── Pass A: Identify ALL state variables from derivative equations ──
+    // Process explicit `der(x) = expr` and implicit `coeff * der(x) = expr` first,
+    // so that all state variables are known before processing algebraic equations.
+    const algebraicEquations: { lhs: ModelicaExpression; rhs: ModelicaExpression }[] = [];
+
+    for (const { lhs, rhs } of substitutedEquations) {
+      // ── Case 1: der(x) appears directly as LHS or RHS ──
+      const lhsDer = extractDerName(lhs);
+      const rhsDer = extractDerName(rhs);
+
+      if (lhsDer) {
+        const target = canonicalize(lhsDer);
+        assignments.push({ target, expr: rhs, isDerivative: true });
+        this.stateVars.add(target);
+        definedVars.add(`der(${target})`);
+        definedVars.add(target); // state var is defined by ODE integration
+        continue;
+      }
+      if (rhsDer) {
+        const target = canonicalize(rhsDer);
+        assignments.push({ target, expr: lhs, isDerivative: true });
+        this.stateVars.add(target);
+        definedVars.add(`der(${target})`);
+        definedVars.add(target);
+        continue;
+      }
+
+      // ── Case 2: Implicit derivative — coeff * der(x) on one side ──
+      const lhsImplicit = findDerInMultiplication(lhs);
+      const rhsImplicit = findDerInMultiplication(rhs);
+
+      if (rhsImplicit) {
+        const target = canonicalize(rhsImplicit.varName);
+        const divExpr = new ModelicaBinaryExpression(ModelicaBinaryOperator.DIVISION, lhs, rhsImplicit.coeff);
+        assignments.push({ target, expr: divExpr, isDerivative: true });
+        this.stateVars.add(target);
+        definedVars.add(`der(${target})`);
+        definedVars.add(target);
+        continue;
+      }
+      if (lhsImplicit) {
+        const target = canonicalize(lhsImplicit.varName);
+        const divExpr = new ModelicaBinaryExpression(ModelicaBinaryOperator.DIVISION, rhs, lhsImplicit.coeff);
+        assignments.push({ target, expr: divExpr, isDerivative: true });
+        this.stateVars.add(target);
+        definedVars.add(`der(${target})`);
+        definedVars.add(target);
+        continue;
+      }
+
+      // Not a derivative equation — process in the algebraic pass
+      algebraicEquations.push({ lhs, rhs });
+    }
+
+    // ── Connector flow variable elimination ──
+    // The alias pass already handled `X.f = X.p.f` identities (merging X.p.f → X.f).
+    // Remaining connector flow equations are internal flow balance: `0 = X.f + X.n.f`
+    // (or equivalently `-(X.f + X.n.f) = 0`). These give us X.n.f = -(X.f).
+    // Substitute into all other equations to eliminate connector flow variables.
+
+    const pinSubstitutions = new Map<string, ModelicaExpression>();
+    const consumedIndices = new Set<number>();
+
+    // Find internal flow balance equations: 0 = a + b (sum of two connector flow vars)
+    for (let idx = 0; idx < algebraicEquations.length; idx++) {
+      const eq = algebraicEquations[idx];
+      if (!eq) continue;
+
+      // Detect 0 = a + b  or  -(a + b) = 0
+      let body: ModelicaExpression | null = null;
+      if (
+        isZeroLiteral(eq.lhs) &&
+        eq.rhs instanceof ModelicaBinaryExpression &&
+        (eq.rhs.operator === ModelicaBinaryOperator.ADDITION ||
+          eq.rhs.operator === ModelicaBinaryOperator.ELEMENTWISE_ADDITION)
+      ) {
+        body = eq.rhs;
+      } else if (isZeroLiteral(eq.rhs)) {
+        let b: ModelicaExpression = eq.lhs;
+        if (b instanceof ModelicaUnaryExpression && b.operator === ModelicaUnaryOperator.UNARY_MINUS) {
+          b = b.operand;
+        }
+        if (
+          b instanceof ModelicaBinaryExpression &&
+          (b.operator === ModelicaBinaryOperator.ADDITION || b.operator === ModelicaBinaryOperator.ELEMENTWISE_ADDITION)
+        ) {
+          body = b;
+        }
+      }
+
+      if (!body || !(body instanceof ModelicaBinaryExpression)) continue;
+      const aName = extractVarName(body.operand1);
+      const bName = extractVarName(body.operand2);
+      if (!aName || !bName) continue;
+
+      // Check if this is an internal flow balance: X.f + X.n.f = 0
+      // Pattern: one var is X.f, other is X.n.f or X.p.f (same base component)
+      const aCanon = canonicalize(aName);
+      const bCanon = canonicalize(bName);
+      const aParts = aCanon.split(".");
+      const bParts = bCanon.split(".");
+
+      if (aParts.length >= 2 && bParts.length >= 3) {
+        // a = X.f, b = X.n.f  (a is component flow, b is connector flow)
+        const aBase = aParts.slice(0, -1).join(".");
+        const bBase = bParts.slice(0, -2).join(".");
+        const aLast = aParts[aParts.length - 1];
+        const bPin = bParts[bParts.length - 2];
+        const bLast = bParts[bParts.length - 1];
+        if (aBase === bBase && aLast === bLast && (bPin === "p" || bPin === "n")) {
+          // b = -(a): X.n.i = -(X.i)
+          pinSubstitutions.set(bCanon, new ModelicaUnaryExpression(ModelicaUnaryOperator.UNARY_MINUS, body.operand1));
+          consumedIndices.add(idx);
+        }
+      }
+      if (bParts.length >= 2 && aParts.length >= 3) {
+        // b = X.i, a = X.n.i
+        const bBase = bParts.slice(0, -1).join(".");
+        const aBase = aParts.slice(0, -2).join(".");
+        const bLast = bParts[bParts.length - 1];
+        const aPin = aParts[aParts.length - 2];
+        const aLast = aParts[aParts.length - 1];
+        if (aBase === bBase && aLast === bLast && (aPin === "p" || aPin === "n")) {
+          // a = -(b): X.n.i = -(X.i)
+          pinSubstitutions.set(aCanon, new ModelicaUnaryExpression(ModelicaUnaryOperator.UNARY_MINUS, body.operand2));
+          consumedIndices.add(idx);
+        }
+      }
+    }
+
+    // Apply substitutions to all remaining equations
+    if (pinSubstitutions.size > 0) {
+      const substituteInExpr = (expr: ModelicaExpression): ModelicaExpression => {
+        const varName = extractVarName(expr);
+        if (varName) {
+          const canon = canonicalize(varName);
+          const sub = pinSubstitutions.get(canon);
+          if (sub) return sub;
+          return expr;
+        }
+        if (expr instanceof ModelicaBinaryExpression) {
+          const newOp1 = substituteInExpr(expr.operand1);
+          const newOp2 = substituteInExpr(expr.operand2);
+          if (newOp1 !== expr.operand1 || newOp2 !== expr.operand2) {
+            return new ModelicaBinaryExpression(expr.operator, newOp1, newOp2);
+          }
+          return expr;
+        }
+        if (expr instanceof ModelicaUnaryExpression) {
+          const newOp = substituteInExpr(expr.operand);
+          if (newOp !== expr.operand) {
+            return new ModelicaUnaryExpression(expr.operator, newOp);
+          }
+          return expr;
+        }
+        if (expr instanceof ModelicaFunctionCallExpression) {
+          const newArgs = expr.args.map((a) => substituteInExpr(a));
+          const changed = newArgs.some((a, i) => a !== expr.args[i]);
+          if (changed) {
+            return new ModelicaFunctionCallExpression(expr.functionName, newArgs);
+          }
+          return expr;
+        }
+        return expr;
+      };
+
+      const filteredEquations: typeof algebraicEquations = [];
+      for (let idx = 0; idx < algebraicEquations.length; idx++) {
+        if (consumedIndices.has(idx)) continue;
+        const eq = algebraicEquations[idx];
+        if (!eq) continue;
+        filteredEquations.push({
+          lhs: substituteInExpr(eq.lhs),
+          rhs: substituteInExpr(eq.rhs),
+        });
+      }
+      algebraicEquations.length = 0;
+      algebraicEquations.push(...filteredEquations);
+    }
+
+    // ── Pass B: Readiness-based iterative algebraic equation matching ──
+    // Process algebraic equations iteratively until convergence.
+    // An equation is "ready" when all its RHS variables are already defined.
+    // This ensures proper causalization: V.v = f(time,...) gets assigned first,
+    // then R1.p.v = V.v + V.n.v, then R1.v = R1.p.v - R1.n.v (KVL), then
+    // R1.i = R1.v / R1.R_actual (reversed Ohm's law), etc.
+
+    // Helper: collect all variable names referenced in an expression
+    const collectExprVars = (expr: ModelicaExpression): Set<string> => {
+      const vars = new Set<string>();
+      const visitor = new DependencyVisitor();
+      expr.accept(visitor, vars);
+      return vars;
+    };
+
+    // Collect variables that appear as dependencies of derivative equations.
+    // These variables are critical and should be prioritized when extracting
+    // variables from flow balance sums, ensuring they get proper definitions.
+    const derDeps = new Set<string>();
+    for (const a of assignments) {
+      if (a.isDerivative) {
+        const vars = collectExprVars(a.expr);
+        for (const v of vars) {
+          const canon = canonicalize(v);
+          if (!definedVars.has(canon) && !this.parameters.has(canon)) {
+            derDeps.add(canon);
           }
         }
       }
     }
 
-    for (const eq of this.dae.equations) {
-      if (eq instanceof ModelicaWhenEquation) {
-        // When-clauses handled separately below
-        continue;
+    // Helper: count undefined variables in an expression (using canonical names)
+    const countUndefined = (expr: ModelicaExpression): number => {
+      const vars = collectExprVars(expr);
+      let count = 0;
+      for (const v of vars) {
+        const canon = canonicalize(v);
+        if (!definedVars.has(canon) && !this.parameters.has(canon) && canon !== "time") {
+          count++;
+        }
       }
-      if (eq && typeof eq === "object" && "expression1" in eq && "expression2" in eq) {
-        const simpleEq = eq as unknown as { expression1: unknown; expression2: unknown };
-        const lhsDer = extractDerName(simpleEq.expression1);
-        const rhsDer = extractDerName(simpleEq.expression2);
+      return count;
+    };
 
-        if (lhsDer) {
-          assignments.push({ target: lhsDer, expr: simpleEq.expression2 as ModelicaExpression, isDerivative: true });
-          this.stateVars.add(lhsDer);
-          definedVars.add(`der(${lhsDer})`);
-        } else if (rhsDer) {
-          assignments.push({ target: rhsDer, expr: simpleEq.expression1 as ModelicaExpression, isDerivative: true });
-          this.stateVars.add(rhsDer);
-          definedVars.add(`der(${rhsDer})`);
-        } else {
-          const isNameExpr1 =
-            simpleEq.expression1 && typeof simpleEq.expression1 === "object" && "name" in simpleEq.expression1;
-          if (isNameExpr1) {
-            const nameVal = (simpleEq.expression1 as { name: unknown }).name;
-            if (typeof nameVal === "string") {
-              const target = nameVal;
-              assignments.push({ target, expr: simpleEq.expression2 as ModelicaExpression, isDerivative: false });
+    let unmatchedEquations = [...algebraicEquations];
+    let matchingChanged = true;
+    while (matchingChanged) {
+      matchingChanged = false;
+      // Sort: subtraction-form (potential constraints) before multiplication-form.
+      // This ensures potential constraints claim component variables before constitutive
+      // equations, while readiness checking still lets source equations (all-param deps) win.
+      unmatchedEquations.sort((a, b) => {
+        const isSubRHS = (e: { rhs: ModelicaExpression }) =>
+          e.rhs instanceof ModelicaBinaryExpression &&
+          (e.rhs.operator === ModelicaBinaryOperator.SUBTRACTION ||
+            e.rhs.operator === ModelicaBinaryOperator.ELEMENTWISE_SUBTRACTION);
+        const aS = isSubRHS(a) ? 0 : 1;
+        const bS = isSubRHS(b) ? 0 : 1;
+        return aS - bS;
+      });
+      const nextUnmatched: { lhs: ModelicaExpression; rhs: ModelicaExpression }[] = [];
+
+      for (const { lhs, rhs } of unmatchedEquations) {
+        let matched = false;
+
+        // ── Case 3: LHS is a variable name — simple algebraic assignment ──
+        const lhsName = extractVarName(lhs);
+        if (lhsName) {
+          const target = canonicalize(lhsName);
+          if (!definedVars.has(target)) {
+            // Only assign when ALL RHS variables are already defined (readiness check)
+            const undefinedCount = countUndefined(rhs);
+            if (undefinedCount === 0) {
+              assignments.push({ target, expr: rhs, isDerivative: false });
               this.algebraicVars.add(target);
               definedVars.add(target);
+              matchingChanged = true;
+              matched = true;
             }
+            // If undefinedCount > 0, defer to next iteration (don't match yet)
+          } else {
+            // Target already defined — try to reverse the equation to define an RHS variable
+            // Only reverse when exactly 1 RHS variable is undefined
+            const rhsVarName = extractVarName(rhs);
+            if (rhsVarName) {
+              const rhsCanon = canonicalize(rhsVarName);
+              if (!definedVars.has(rhsCanon)) {
+                assignments.push({ target: rhsCanon, expr: lhs, isDerivative: false });
+                this.algebraicVars.add(rhsCanon);
+                definedVars.add(rhsCanon);
+                matchingChanged = true;
+                matched = true;
+              }
+            }
+
+            if (!matched && rhs instanceof ModelicaBinaryExpression) {
+              const op1Name = extractVarName(rhs.operand1);
+              const op2Name = extractVarName(rhs.operand2);
+              const op1Canon = op1Name ? canonicalize(op1Name) : null;
+              const op2Canon = op2Name ? canonicalize(op2Name) : null;
+              const op1Defined = !op1Canon || definedVars.has(op1Canon);
+              const op2Defined = !op2Canon || definedVars.has(op2Canon);
+
+              // Only reverse when exactly one operand is undefined
+              if (op1Defined !== op2Defined) {
+                if (
+                  rhs.operator === ModelicaBinaryOperator.SUBTRACTION ||
+                  rhs.operator === ModelicaBinaryOperator.ELEMENTWISE_SUBTRACTION
+                ) {
+                  if (!op1Defined && op1Canon) {
+                    const expr = new ModelicaBinaryExpression(ModelicaBinaryOperator.ADDITION, lhs, rhs.operand2);
+                    assignments.push({ target: op1Canon, expr, isDerivative: false });
+                    this.algebraicVars.add(op1Canon);
+                    definedVars.add(op1Canon);
+                    matchingChanged = true;
+                    matched = true;
+                  } else if (!op2Defined && op2Canon) {
+                    const expr = new ModelicaBinaryExpression(ModelicaBinaryOperator.SUBTRACTION, rhs.operand1, lhs);
+                    assignments.push({ target: op2Canon, expr, isDerivative: false });
+                    this.algebraicVars.add(op2Canon);
+                    definedVars.add(op2Canon);
+                    matchingChanged = true;
+                    matched = true;
+                  }
+                } else if (
+                  rhs.operator === ModelicaBinaryOperator.ADDITION ||
+                  rhs.operator === ModelicaBinaryOperator.ELEMENTWISE_ADDITION
+                ) {
+                  if (!op1Defined && op1Canon) {
+                    const expr = new ModelicaBinaryExpression(ModelicaBinaryOperator.SUBTRACTION, lhs, rhs.operand2);
+                    assignments.push({ target: op1Canon, expr, isDerivative: false });
+                    this.algebraicVars.add(op1Canon);
+                    definedVars.add(op1Canon);
+                    matchingChanged = true;
+                    matched = true;
+                  } else if (!op2Defined && op2Canon) {
+                    const expr = new ModelicaBinaryExpression(ModelicaBinaryOperator.SUBTRACTION, lhs, rhs.operand1);
+                    assignments.push({ target: op2Canon, expr, isDerivative: false });
+                    this.algebraicVars.add(op2Canon);
+                    definedVars.add(op2Canon);
+                    matchingChanged = true;
+                    matched = true;
+                  }
+                } else if (
+                  rhs.operator === ModelicaBinaryOperator.MULTIPLICATION ||
+                  rhs.operator === ModelicaBinaryOperator.ELEMENTWISE_MULTIPLICATION
+                ) {
+                  if (!op1Defined && op1Canon) {
+                    const expr = new ModelicaBinaryExpression(ModelicaBinaryOperator.DIVISION, lhs, rhs.operand2);
+                    assignments.push({ target: op1Canon, expr, isDerivative: false });
+                    this.algebraicVars.add(op1Canon);
+                    definedVars.add(op1Canon);
+                    matchingChanged = true;
+                    matched = true;
+                  } else if (!op2Defined && op2Canon) {
+                    const expr = new ModelicaBinaryExpression(ModelicaBinaryOperator.DIVISION, lhs, rhs.operand1);
+                    assignments.push({ target: op2Canon, expr, isDerivative: false });
+                    this.algebraicVars.add(op2Canon);
+                    definedVars.add(op2Canon);
+                    matchingChanged = true;
+                    matched = true;
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        if (!matched && !lhsName) {
+          // ── Case 4: LHS is zero — solve for ONE undetermined variable in RHS ──
+          if (isZeroLiteral(lhs)) {
+            const solved = tryExtractSolvableVar(rhs, definedVars);
+            if (solved) {
+              const target = canonicalize(solved.target);
+              if (!definedVars.has(target)) {
+                // Only match if all OTHER vars in the sum are defined
+                const rhsUndefined = countUndefined(rhs);
+                if (rhsUndefined <= 1) {
+                  assignments.push({ target, expr: solved.rhs, isDerivative: false });
+                  this.algebraicVars.add(target);
+                  definedVars.add(target);
+                  matchingChanged = true;
+                  matched = true;
+                }
+              }
+            }
+          }
+
+          // ── Case 5: RHS is zero — solve for ONE undetermined variable in LHS ──
+          if (!matched && isZeroLiteral(rhs)) {
+            let body = lhs;
+            if (body instanceof ModelicaUnaryExpression && body.operator === ModelicaUnaryOperator.UNARY_MINUS) {
+              body = body.operand;
+            }
+            const solved = tryExtractSolvableVar(body, definedVars);
+            if (solved) {
+              const target = canonicalize(solved.target);
+              if (!definedVars.has(target)) {
+                // Only match if all OTHER vars in the sum are defined
+                const bodyUndefined = countUndefined(body);
+                if (bodyUndefined <= 1) {
+                  assignments.push({ target, expr: solved.rhs, isDerivative: false });
+                  this.algebraicVars.add(target);
+                  definedVars.add(target);
+                  matchingChanged = true;
+                  matched = true;
+                }
+              }
+            }
+          }
+        }
+
+        if (!matched) {
+          nextUnmatched.push({ lhs, rhs });
+        }
+      }
+
+      unmatchedEquations = nextUnmatched;
+    }
+
+    // ── Phase 2: Relaxed matching for remaining equations ──
+    // After strict readiness converges, process remaining equations with relaxed
+    // readiness (no dep check). This defines flow variables whose deps form
+    // chains that strict readiness can't resolve. The topological sort ensures
+    // correct evaluation order regardless.
+    let relaxedChanged = true;
+    while (relaxedChanged) {
+      relaxedChanged = false;
+      const stillUnmatched: { lhs: ModelicaExpression; rhs: ModelicaExpression }[] = [];
+
+      // Sort by fewest undefined deps first. This ensures equations with
+      // all-parameter deps (like R1.R_actual = R1.R * 1) are processed before
+      // equations with variable deps (like R1.i = -(R1.n.i)), enabling Ohm's
+      // law reversal (R1.i = R1.v / R1.R_actual) before R1.i gets claimed.
+      unmatchedEquations.sort((a, b) => {
+        const aUndefined = countUndefined(a.rhs) + countUndefined(a.lhs);
+        const bUndefined = countUndefined(b.rhs) + countUndefined(b.lhs);
+        return aUndefined - bUndefined;
+      });
+
+      for (const { lhs, rhs } of unmatchedEquations) {
+        let matched = false;
+        const lhsName = extractVarName(lhs);
+
+        if (lhsName) {
+          const target = canonicalize(lhsName);
+          if (!definedVars.has(target)) {
+            // Relaxed: assign even if RHS deps are undefined
+            assignments.push({ target, expr: rhs, isDerivative: false });
+            this.algebraicVars.add(target);
+            definedVars.add(target);
+            relaxedChanged = true;
+            matched = true;
+          } else {
+            // Target already defined — try reversal (same as Phase 1)
+            const rhsVarName = extractVarName(rhs);
+            if (rhsVarName) {
+              const rhsCanon = canonicalize(rhsVarName);
+              if (!definedVars.has(rhsCanon)) {
+                assignments.push({ target: rhsCanon, expr: lhs, isDerivative: false });
+                this.algebraicVars.add(rhsCanon);
+                definedVars.add(rhsCanon);
+                relaxedChanged = true;
+                matched = true;
+              }
+            }
+            if (!matched && rhs instanceof ModelicaBinaryExpression) {
+              const op1Name = extractVarName(rhs.operand1);
+              const op2Name = extractVarName(rhs.operand2);
+              const op1Canon = op1Name ? canonicalize(op1Name) : null;
+              const op2Canon = op2Name ? canonicalize(op2Name) : null;
+
+              if (
+                rhs.operator === ModelicaBinaryOperator.SUBTRACTION ||
+                rhs.operator === ModelicaBinaryOperator.ELEMENTWISE_SUBTRACTION
+              ) {
+                if (op1Canon && !definedVars.has(op1Canon)) {
+                  const expr = new ModelicaBinaryExpression(ModelicaBinaryOperator.ADDITION, lhs, rhs.operand2);
+                  assignments.push({ target: op1Canon, expr, isDerivative: false });
+                  this.algebraicVars.add(op1Canon);
+                  definedVars.add(op1Canon);
+                  relaxedChanged = true;
+                  matched = true;
+                } else if (op2Canon && !definedVars.has(op2Canon)) {
+                  const expr = new ModelicaBinaryExpression(ModelicaBinaryOperator.SUBTRACTION, rhs.operand1, lhs);
+                  assignments.push({ target: op2Canon, expr, isDerivative: false });
+                  this.algebraicVars.add(op2Canon);
+                  definedVars.add(op2Canon);
+                  relaxedChanged = true;
+                  matched = true;
+                }
+              } else if (
+                rhs.operator === ModelicaBinaryOperator.MULTIPLICATION ||
+                rhs.operator === ModelicaBinaryOperator.ELEMENTWISE_MULTIPLICATION
+              ) {
+                // For multiplication reversal, require the OTHER operand to be defined
+                // (division needs a defined divisor). Only reverse a*b=c to a=c/b when b is defined.
+                const op1Defined = op1Canon ? definedVars.has(op1Canon) : true;
+                const op2Defined = op2Canon ? definedVars.has(op2Canon) : true;
+                if (op1Canon && !op1Defined && op2Defined) {
+                  const expr = new ModelicaBinaryExpression(ModelicaBinaryOperator.DIVISION, lhs, rhs.operand2);
+                  assignments.push({ target: op1Canon, expr, isDerivative: false });
+                  this.algebraicVars.add(op1Canon);
+                  definedVars.add(op1Canon);
+                  relaxedChanged = true;
+                  matched = true;
+                } else if (op2Canon && !op2Defined && op1Defined) {
+                  const expr = new ModelicaBinaryExpression(ModelicaBinaryOperator.DIVISION, lhs, rhs.operand1);
+                  assignments.push({ target: op2Canon, expr, isDerivative: false });
+                  this.algebraicVars.add(op2Canon);
+                  definedVars.add(op2Canon);
+                  relaxedChanged = true;
+                  matched = true;
+                }
+              } else if (
+                rhs.operator === ModelicaBinaryOperator.ADDITION ||
+                rhs.operator === ModelicaBinaryOperator.ELEMENTWISE_ADDITION
+              ) {
+                if (op1Canon && !definedVars.has(op1Canon)) {
+                  const expr = new ModelicaBinaryExpression(ModelicaBinaryOperator.SUBTRACTION, lhs, rhs.operand2);
+                  assignments.push({ target: op1Canon, expr, isDerivative: false });
+                  this.algebraicVars.add(op1Canon);
+                  definedVars.add(op1Canon);
+                  relaxedChanged = true;
+                  matched = true;
+                } else if (op2Canon && !definedVars.has(op2Canon)) {
+                  const expr = new ModelicaBinaryExpression(ModelicaBinaryOperator.SUBTRACTION, lhs, rhs.operand1);
+                  assignments.push({ target: op2Canon, expr, isDerivative: false });
+                  this.algebraicVars.add(op2Canon);
+                  definedVars.add(op2Canon);
+                  relaxedChanged = true;
+                  matched = true;
+                }
+              }
+            }
+          }
+        }
+
+        if (!matched && !lhsName) {
+          // Cases 4 & 5: zero on one side — solve for first solvable var (relaxed)
+          if (isZeroLiteral(lhs)) {
+            const solved = tryExtractSolvableVar(rhs, definedVars);
+            if (solved) {
+              const target = canonicalize(solved.target);
+              if (!definedVars.has(target)) {
+                assignments.push({ target, expr: solved.rhs, isDerivative: false });
+                this.algebraicVars.add(target);
+                definedVars.add(target);
+                relaxedChanged = true;
+                matched = true;
+              }
+            }
+          }
+          if (!matched && isZeroLiteral(rhs)) {
+            let body = lhs;
+            if (body instanceof ModelicaUnaryExpression && body.operator === ModelicaUnaryOperator.UNARY_MINUS) {
+              body = body.operand;
+            }
+            const solved = tryExtractSolvableVar(body, definedVars);
+            if (solved) {
+              const target = canonicalize(solved.target);
+              if (!definedVars.has(target)) {
+                assignments.push({ target, expr: solved.rhs, isDerivative: false });
+                this.algebraicVars.add(target);
+                definedVars.add(target);
+                relaxedChanged = true;
+                matched = true;
+              }
+            }
+          }
+        }
+
+        if (!matched) {
+          stillUnmatched.push({ lhs, rhs });
+        }
+      }
+
+      unmatchedEquations = stillUnmatched;
+    }
+
+    // ── Phase 2.5: Fix undefined derivative dependencies ──
+    // After all matching phases, some variables needed by derivative equations
+    // (e.g. C2.i in der(C2.v) = C2.i / C2.C) may still be undefined because
+    // the flow balance equation that contains them chose a different variable as its target.
+    // For each missing derDeps variable, find a matched assignment whose expression
+    // references it, and create a companion assignment solving for the missing var.
+    for (const missing of derDeps) {
+      if (definedVars.has(missing)) continue;
+
+      // Find an assignment from a DIFFERENT flow balance equation than the one that
+      // originally defined a variable in the same balance sum.
+      // Heuristic: in balance sums after connector flow substitution, a variable
+      // appears NON-NEGATED at its own node and NEGATED at other nodes.
+      // To avoid tautological same-equation companions, prefer assignments
+      // where `missing` appears NEGATED (i.e., from a different balance equation).
+      const findNegatedInExpr = (expr: ModelicaExpression, name: string): boolean => {
+        if (expr instanceof ModelicaUnaryExpression && expr.operator === ModelicaUnaryOperator.UNARY_MINUS) {
+          const inner = extractVarName(expr.operand);
+          if (inner === name) return true;
+          // Also recurse into the operand
+          return findNegatedInExpr(expr.operand, name);
+        }
+        if (expr instanceof ModelicaBinaryExpression) {
+          return findNegatedInExpr(expr.operand1, name) || findNegatedInExpr(expr.operand2, name);
+        }
+        return false;
+      };
+
+      for (const a of assignments) {
+        if (a.isDerivative) continue;
+        const exprVars = collectExprVars(a.expr);
+        const exprVarsCanonicalized = new Set<string>();
+        for (const v of exprVars) exprVarsCanonicalized.add(canonicalize(v));
+        if (!exprVarsCanonicalized.has(missing)) continue;
+
+        // Only use assignments where `missing` appears NEGATED in the expression.
+        // This indicates the variable came from a different flow balance node via
+        // connector flow substitution (X.n.f → -(X.f)), avoiding same-equation tautology.
+        if (!findNegatedInExpr(a.expr, missing)) continue;
+
+        // Reconstruct the original equation as a sum for re-solving.
+        let otherSide: ModelicaExpression;
+        if (a.expr instanceof ModelicaUnaryExpression && a.expr.operator === ModelicaUnaryOperator.UNARY_MINUS) {
+          otherSide = a.expr.operand;
+        } else {
+          otherSide = new ModelicaUnaryExpression(ModelicaUnaryOperator.UNARY_MINUS, a.expr);
+        }
+        const sum = new ModelicaBinaryExpression(
+          ModelicaBinaryOperator.ADDITION,
+          new ModelicaNameExpression(a.target),
+          otherSide,
+        );
+        // Skip all defined vars except `missing`
+        const skipForMissing = new Set(definedVars);
+        skipForMissing.delete(missing);
+        const solved = tryExtractSolvableVar(sum, skipForMissing);
+        if (solved && canonicalize(solved.target) === missing) {
+          assignments.push({ target: missing, expr: solved.rhs, isDerivative: false });
+          this.algebraicVars.add(missing);
+          definedVars.add(missing);
+          break;
+        }
+      }
+    }
+
+    const phase27Corrections: typeof assignments = [];
+    // ── Phase 2.7: Potential-constraint derivative override ──
+    // For each still-undefined derDeps variable, the derivative equation may be
+    // der(X.v) = X.f / X.C, which is useless if X.f = 0 → der(X.v) = 0.
+    // If X.v is potential-constrained (e.g., X.v = A.v - B.v from the topology),
+    // we can compute der(X.v) = der(A.v) - der(B.v) from existing derivatives,
+    // then back-compute X.f = X.C * der(X.v).
+    //
+    // Detection: scan algebraic assignments for `Y := A - X.v` patterns.
+    // Resolve A and Y to state variables through the assignment chain.
+    // If both resolve to state variables, X.v = A - Y → der(X.v) = der(A) - der(Y).
+    const resolveToStateVar = (name: string): string | null => {
+      // Follow the assignment chain: if `name` is defined as `name := stateVar + 0`
+      // or `name := stateVar`, return the state variable. Limited depth.
+      const isVarAssignedZero = (varName: string): boolean => {
+        const a = assignments.find((a2) => !a2.isDerivative && a2.target === varName);
+        return a ? isZeroLiteral(a.expr) : false;
+      };
+      let current = name;
+      for (let depth = 0; depth < 10; depth++) {
+        if (this.stateVars.has(current)) return current;
+        const assign = assignments.find((a) => !a.isDerivative && a.target === current);
+        if (!assign) {
+          // Check reverse: is there a state variable defined as `stateVar := current`?
+          for (const a of assignments) {
+            if (a.isDerivative) continue;
+            const exprName = extractVarName(a.expr);
+            if (exprName && canonicalize(exprName) === current && this.stateVars.has(a.target)) {
+              return a.target;
+            }
+            // Also check stateVar := current - zeroVar or stateVar := current + zeroVar
+            if (a.expr instanceof ModelicaBinaryExpression && this.stateVars.has(a.target)) {
+              const aOp1 = extractVarName(a.expr.operand1);
+              const aOp2 = extractVarName(a.expr.operand2);
+              if (
+                a.expr.operator === ModelicaBinaryOperator.SUBTRACTION ||
+                a.expr.operator === ModelicaBinaryOperator.ELEMENTWISE_SUBTRACTION
+              ) {
+                if (
+                  aOp1 &&
+                  canonicalize(aOp1) === current &&
+                  (isZeroLiteral(a.expr.operand2) || (aOp2 && isVarAssignedZero(canonicalize(aOp2))))
+                ) {
+                  return a.target;
+                }
+              }
+              if (
+                a.expr.operator === ModelicaBinaryOperator.ADDITION ||
+                a.expr.operator === ModelicaBinaryOperator.ELEMENTWISE_ADDITION
+              ) {
+                if (
+                  aOp1 &&
+                  canonicalize(aOp1) === current &&
+                  (isZeroLiteral(a.expr.operand2) || (aOp2 && isVarAssignedZero(canonicalize(aOp2))))
+                ) {
+                  return a.target;
+                }
+                if (
+                  aOp2 &&
+                  canonicalize(aOp2) === current &&
+                  (isZeroLiteral(a.expr.operand1) || (aOp1 && isVarAssignedZero(canonicalize(aOp1))))
+                ) {
+                  return a.target;
+                }
+              }
+            }
+          }
+          return null;
+        }
+        // Check if expr is a bare variable name
+        const varName = extractVarName(assign.expr);
+        if (varName) {
+          current = canonicalize(varName);
+          continue;
+        }
+        // Check if expr is stateVar + 0 or 0 + stateVar
+        // Also handle stateVar + varThatIsZero
+        if (
+          assign.expr instanceof ModelicaBinaryExpression &&
+          (assign.expr.operator === ModelicaBinaryOperator.ADDITION ||
+            assign.expr.operator === ModelicaBinaryOperator.ELEMENTWISE_ADDITION)
+        ) {
+          const op1Name = extractVarName(assign.expr.operand1);
+          const op2Name = extractVarName(assign.expr.operand2);
+          if (
+            op1Name &&
+            (isZeroLiteral(assign.expr.operand2) || (op2Name && isVarAssignedZero(canonicalize(op2Name))))
+          ) {
+            current = canonicalize(op1Name);
+            continue;
+          }
+          if (
+            op2Name &&
+            (isZeroLiteral(assign.expr.operand1) || (op1Name && isVarAssignedZero(canonicalize(op1Name))))
+          ) {
+            current = canonicalize(op2Name);
+            continue;
+          }
+        }
+        // Also check subtraction: stateVar - 0 or stateVar - varThatIsZero
+        if (
+          assign.expr instanceof ModelicaBinaryExpression &&
+          (assign.expr.operator === ModelicaBinaryOperator.SUBTRACTION ||
+            assign.expr.operator === ModelicaBinaryOperator.ELEMENTWISE_SUBTRACTION)
+        ) {
+          const op1Name = extractVarName(assign.expr.operand1);
+          const op2Name = extractVarName(assign.expr.operand2);
+          if (
+            op1Name &&
+            (isZeroLiteral(assign.expr.operand2) || (op2Name && isVarAssignedZero(canonicalize(op2Name))))
+          ) {
+            current = canonicalize(op1Name);
+            continue;
+          }
+        }
+        // Forward chain failed — fall through to reverse check below
+        break;
+      }
+      // Reverse check: is there a state variable defined as `stateVar := current (± 0)`?
+      // Check in assignments
+      for (const a of assignments) {
+        if (a.isDerivative) continue;
+        const exprName = extractVarName(a.expr);
+        if (exprName && canonicalize(exprName) === current && this.stateVars.has(a.target)) {
+          return a.target;
+        }
+        if (a.expr instanceof ModelicaBinaryExpression && this.stateVars.has(a.target)) {
+          const aOp1 = extractVarName(a.expr.operand1);
+          const aOp2 = extractVarName(a.expr.operand2);
+          if (
+            a.expr.operator === ModelicaBinaryOperator.SUBTRACTION ||
+            a.expr.operator === ModelicaBinaryOperator.ELEMENTWISE_SUBTRACTION
+          ) {
+            if (
+              aOp1 &&
+              canonicalize(aOp1) === current &&
+              (isZeroLiteral(a.expr.operand2) || (aOp2 && isVarAssignedZero(canonicalize(aOp2))))
+            ) {
+              return a.target;
+            }
+          }
+          if (
+            a.expr.operator === ModelicaBinaryOperator.ADDITION ||
+            a.expr.operator === ModelicaBinaryOperator.ELEMENTWISE_ADDITION
+          ) {
+            if (
+              aOp1 &&
+              canonicalize(aOp1) === current &&
+              (isZeroLiteral(a.expr.operand2) || (aOp2 && isVarAssignedZero(canonicalize(aOp2))))
+            ) {
+              return a.target;
+            }
+            if (
+              aOp2 &&
+              canonicalize(aOp2) === current &&
+              (isZeroLiteral(a.expr.operand1) || (aOp1 && isVarAssignedZero(canonicalize(aOp1))))
+            ) {
+              return a.target;
+            }
+          }
+        }
+      }
+      // Also check in unmatched equations: stateVar = current (± zeroVar)
+      const checkNameIsCurrentPlusZero = (name: string | null, expr: ModelicaExpression): boolean => {
+        if (name && canonicalize(name) === current) return true;
+        if (expr instanceof ModelicaBinaryExpression) {
+          const eOp1 = extractVarName(expr.operand1);
+          const eOp2 = extractVarName(expr.operand2);
+          if (
+            expr.operator === ModelicaBinaryOperator.SUBTRACTION ||
+            expr.operator === ModelicaBinaryOperator.ELEMENTWISE_SUBTRACTION
+          ) {
+            return !!(
+              eOp1 &&
+              canonicalize(eOp1) === current &&
+              (isZeroLiteral(expr.operand2) || (eOp2 && isVarAssignedZero(canonicalize(eOp2))))
+            );
+          }
+          if (
+            expr.operator === ModelicaBinaryOperator.ADDITION ||
+            expr.operator === ModelicaBinaryOperator.ELEMENTWISE_ADDITION
+          ) {
+            return !!(
+              (eOp1 &&
+                canonicalize(eOp1) === current &&
+                (isZeroLiteral(expr.operand2) || (eOp2 && isVarAssignedZero(canonicalize(eOp2))))) ||
+              (eOp2 &&
+                canonicalize(eOp2) === current &&
+                (isZeroLiteral(expr.operand1) || (eOp1 && isVarAssignedZero(canonicalize(eOp1)))))
+            );
+          }
+        }
+        return false;
+      };
+      for (const { lhs, rhs } of unmatchedEquations) {
+        const lhsName = extractVarName(lhs);
+        const rhsName = extractVarName(rhs);
+        // Check: stateVar(lhs) = current(rhs) ± 0
+        if (lhsName && this.stateVars.has(canonicalize(lhsName)) && checkNameIsCurrentPlusZero(rhsName, rhs)) {
+          return canonicalize(lhsName);
+        }
+        // Check: stateVar(rhs) = current(lhs) ± 0
+        if (rhsName && this.stateVars.has(canonicalize(rhsName)) && checkNameIsCurrentPlusZero(lhsName, lhs)) {
+          return canonicalize(rhsName);
+        }
+      }
+      return null;
+    };
+
+    for (const missing of derDeps) {
+      // Process ALL derDeps, even those already defined by Phase 2.5.
+      // Phase 2.7's voltage-constraint definition is always more accurate
+      // than Phase 2.5's KCL companion (which may be tautological).
+
+      // Find the derivative equation for the state variable associated with `missing`.
+      // Pattern: missing = "Cx.i", state var = "Cx.v", derivative = "der(Cx.v) = Cx.i / Cx.C"
+      const dotIdx = missing.lastIndexOf(".");
+      if (dotIdx < 0) continue;
+      const prefix = missing.substring(0, dotIdx); // e.g., "C2"
+      const candidateState = `${prefix}.v`; // e.g., "C2.v"
+      if (!this.stateVars.has(candidateState)) continue;
+
+      // Find the assignment that defines candidateState via subtraction: Y := A - candidateState
+      for (const a of assignments) {
+        if (a.isDerivative) continue;
+        if (!(a.expr instanceof ModelicaBinaryExpression)) continue;
+        if (
+          a.expr.operator !== ModelicaBinaryOperator.SUBTRACTION &&
+          a.expr.operator !== ModelicaBinaryOperator.ELEMENTWISE_SUBTRACTION
+        )
+          continue;
+
+        const op1Name = extractVarName(a.expr.operand1);
+        const op2Name = extractVarName(a.expr.operand2);
+
+        // Check for: Y := A - candidateState (op2 is the state var)
+        if (op2Name && canonicalize(op2Name) === candidateState && op1Name) {
+          const resolvedA = resolveToStateVar(canonicalize(op1Name));
+          const resolvedY = resolveToStateVar(a.target);
+
+          if (resolvedA && resolvedY && resolvedA !== resolvedY) {
+            // Constraint: candidateState = resolvedA - resolvedY
+            // Override: der(candidateState) := der(resolvedA) - der(resolvedY)
+            const derExpr = new ModelicaBinaryExpression(
+              ModelicaBinaryOperator.SUBTRACTION,
+              new ModelicaNameExpression(`der(${resolvedA})`),
+              new ModelicaNameExpression(`der(${resolvedY})`),
+            );
+            // Do NOT override the derivative in-place — it creates forward
+            // references (der(C3.v) not yet computed). Instead, add BOTH the
+            // derivative override and the current equation as post-sort corrections.
+            // Pass 1: original der(Cx.v) = Cx.i / Cx.C gives 0 (Cx.i = 0 init)
+            // Post-sort pass 2+: der(Cx.v) = der(A) - der(B) → non-zero
+            //                    Cx.i = Cx.C * der(Cx.v) → non-zero
+            phase27Corrections.push({ target: candidateState, expr: derExpr, isDerivative: true });
+
+            // Collect the current equation as a post-sort correction.
+            // We do NOT replace the Phase 2.5 assignment in `assignments` because
+            // that would create a circular dependency in topological sort
+            // (Cx.i → der(Cx.v) → der(A) → ... → Cx.i).
+            // Instead, append it AFTER the sort so iterative evaluation can converge:
+            // Pass 1: Phase 2.5's tautological value provides initial estimate
+            // Pass 2+: Phase 2.7's constraint-based value overrides it
+            const capacitanceParam = `${prefix}.C`;
+            const currentExpr = new ModelicaBinaryExpression(
+              ModelicaBinaryOperator.MULTIPLICATION,
+              new ModelicaNameExpression(capacitanceParam),
+              new ModelicaNameExpression(`der(${candidateState})`),
+            );
+            phase27Corrections.push({ target: missing, expr: currentExpr, isDerivative: false });
+            this.algebraicVars.add(missing);
+            definedVars.add(missing);
+
+            break;
+          }
+        }
+      }
+    }
+
+    // ── Phase 3: Collect reversed equations from redundant constraints ──
+    // For unmatched equations where LHS is defined (e.g. Ohm's law R1.v = R1.R_actual * R1.i
+    // where R1.v is from KVL), collect reversed forms. These will be appended
+    // AFTER the topological sort so they execute last during iterative evaluation,
+    // overriding earlier (potentially degenerate) definitions.
+    const phase3Reversals: typeof assignments = [];
+    for (const { lhs, rhs } of unmatchedEquations) {
+      const lhsName = extractVarName(lhs);
+      if (!lhsName) continue;
+      const lhsCanon = canonicalize(lhsName);
+      if (!definedVars.has(lhsCanon)) continue;
+
+      if (rhs instanceof ModelicaBinaryExpression) {
+        const op1Name = extractVarName(rhs.operand1);
+        const op2Name = extractVarName(rhs.operand2);
+        const op1Canon = op1Name ? canonicalize(op1Name) : null;
+        const op2Canon = op2Name ? canonicalize(op2Name) : null;
+
+        if (
+          rhs.operator === ModelicaBinaryOperator.MULTIPLICATION ||
+          rhs.operator === ModelicaBinaryOperator.ELEMENTWISE_MULTIPLICATION
+        ) {
+          // Use trial evaluation to determine which operand to override.
+          // The operand whose current expression evaluates to null or 0
+          // (degenerate) gets overridden with the constitutive equation reversal.
+          if (op1Canon && definedVars.has(op1Canon) && op2Canon && definedVars.has(op2Canon)) {
+            const idx1 = assignments.findIndex((a) => a.target === op1Canon);
+            const idx2 = assignments.findIndex((a) => a.target === op2Canon);
+            const a1 = idx1 >= 0 ? assignments[idx1] : undefined;
+            const a2 = idx2 >= 0 ? assignments[idx2] : undefined;
+
+            // Trial-evaluate both current expressions
+            const trialEval = new ExpressionEvaluator();
+            for (const [name, value] of this.parameters) {
+              trialEval.env.set(name, value);
+            }
+            for (const v of this.dae.variables) {
+              if (!trialEval.env.has(v.name)) trialEval.env.set(v.name, 0);
+            }
+            const val1 = a1 ? trialEval.evaluate(a1.expr) : 1;
+            const val2 = a2 ? trialEval.evaluate(a2.expr) : 1;
+
+            // Override the degenerate one (null or 0)
+            const degenerate1 = val1 === null || val1 === 0;
+            const degenerate2 = val2 === null || val2 === 0;
+
+            if (degenerate2 && !degenerate1) {
+              // op2 is degenerate — override it
+              const expr = new ModelicaBinaryExpression(ModelicaBinaryOperator.DIVISION, lhs, rhs.operand1);
+              phase3Reversals.push({ target: op2Canon, expr, isDerivative: false });
+            } else if (degenerate1 && !degenerate2) {
+              // op1 is degenerate — override it
+              const expr = new ModelicaBinaryExpression(ModelicaBinaryOperator.DIVISION, lhs, rhs.operand2);
+              phase3Reversals.push({ target: op1Canon, expr, isDerivative: false });
+            }
+            // If both degenerate or both valid, skip override
+          } else if (op1Canon && definedVars.has(op1Canon) && op2Canon) {
+            const expr = new ModelicaBinaryExpression(ModelicaBinaryOperator.DIVISION, lhs, rhs.operand1);
+            phase3Reversals.push({ target: op2Canon, expr, isDerivative: false });
+          } else if (op2Canon && definedVars.has(op2Canon) && op1Canon) {
+            const expr = new ModelicaBinaryExpression(ModelicaBinaryOperator.DIVISION, lhs, rhs.operand2);
+            phase3Reversals.push({ target: op1Canon, expr, isDerivative: false });
           }
         }
       }
@@ -265,6 +1646,12 @@ export class ModelicaSimulator {
     for (const assign of assignments) {
       visit(assign.isDerivative ? `der(${assign.target})` : assign.target);
     }
+
+    // Append Phase 3 reversals at the end — they execute last during
+    // iterative evaluation, overriding degenerate KCL chain definitions
+    // with Ohm's law / other constitutive equations.
+    sorted.push(...phase3Reversals);
+    sorted.push(...phase27Corrections);
 
     this.sortedEquations = sorted;
 
@@ -397,6 +1784,11 @@ export class ModelicaSimulator {
   ): { t: number[]; y: number[][]; states: string[] } {
     this.prepare();
 
+    // Reset solver state for this simulation run
+    this.useImplicitSolver = false;
+    this.cachedW = null;
+    this.cachedWStepSize = 0;
+
     // Apply user-supplied parameter overrides (without re-flattening)
     if (options?.parameterOverrides) {
       for (const [name, value] of options.parameterOverrides) {
@@ -408,7 +1800,9 @@ export class ModelicaSimulator {
 
     const stateVarsArr = Array.from(this.stateVars);
     const algebraicVarsArr = Array.from(this.algebraicVars);
-    const stateList = [...stateVarsArr, ...algebraicVarsArr];
+    // Only ODE states go into the RK4 integration vector.
+    // Algebraic vars are re-evaluated from sorted equations at each timestep.
+    const stateList = stateVarsArr;
 
     // Resolve initial values: check initial equations first, then variable start attributes
     const paramEnv = new Map(this.parameters);
@@ -469,6 +1863,23 @@ export class ModelicaSimulator {
       evaluator.env.set(name, value);
     }
 
+    // Pre-populate all DAE continuous variables with 0 default.
+    // This ensures that variables not computed by any equation (e.g. T_heatPort,
+    // Modelica.Constants.eps, ground pin current) don't cause null cascades.
+    for (const v of this.dae.variables) {
+      if (!evaluator.env.has(v.name)) {
+        evaluator.env.set(v.name, 0);
+      }
+    }
+
+    // Also initialize algebraic variables added by the equation sorter
+    // (e.g. C2.i from Phase 2.7) that may not appear in dae.variables.
+    for (const av of this.algebraicVars) {
+      if (!evaluator.env.has(av)) {
+        evaluator.env.set(av, 0);
+      }
+    }
+
     // Build the environment from current state
     const populateEnv = (t: number, y: number[]) => {
       evaluator.env.set("time", t);
@@ -486,16 +1897,35 @@ export class ModelicaSimulator {
 
       populateEnv(t, y);
 
-      // Evaluate sorted equations (algebraic + derivatives)
-      for (const eq of this.sortedEquations) {
-        const value = evaluator.evaluate(eq.expr);
-        if (value !== null) {
-          if (eq.isDerivative) {
-            evaluator.env.set(`der(${eq.target})`, value);
-          } else {
-            evaluator.env.set(eq.target, value);
+      // Reset all algebraic and derivative variables to ensure idempotent
+      // evaluation. Without this, the evaluator retains stale values from
+      // previous calls, causing the Jacobian computation (which calls f()
+      // with different perturbations) to produce inconsistent derivatives.
+      for (const av of this.algebraicVars) {
+        evaluator.env.set(av, 0);
+      }
+      for (const s of stateList) {
+        if (s) evaluator.env.set(`der(${s})`, 0);
+      }
+
+      // Evaluate sorted equations iteratively to resolve algebraic loops.
+      // Coupled capacitor/inductor currents form cycles through KCL nodes;
+      // a single pass would evaluate with stale zeros. Iterate until
+      // algebraic variable values converge.
+      const MAX_ALG_ITER = 10;
+      const ALG_TOL = 1e-12;
+      for (let algIter = 0; algIter < MAX_ALG_ITER; algIter++) {
+        let maxDelta = 0;
+        for (const eq of this.sortedEquations) {
+          const value = evaluator.evaluate(eq.expr);
+          if (value !== null && isFinite(value)) {
+            const key = eq.isDerivative ? `der(${eq.target})` : eq.target;
+            const prev = evaluator.env.get(key) ?? 0;
+            evaluator.env.set(key, value);
+            maxDelta = Math.max(maxDelta, Math.abs(value - prev));
           }
         }
+        if (maxDelta < ALG_TOL) break;
       }
 
       return stateList.map((state) => evaluator.env.get(`der(${state})`) ?? 0.0);
@@ -513,12 +1943,16 @@ export class ModelicaSimulator {
       options?.signal,
     );
 
-    // Append derivative columns so both x and der(x) appear in results
+    // Build complete result with ODE states + algebraic vars + derivatives.
+    // For each timestep, re-evaluate algebraic equations to get current values.
     const derNames = stateVarsArr.map((s) => `der(${s})`);
-    const allStates = [...stateList, ...derNames];
+    const allStates = [...stateList, ...algebraicVarsArr, ...derNames];
     const allY = res.y.map((row, idx) => {
+      // Re-evaluate to get algebraic values and derivatives at this timestep
       const derivs = f(res.t[idx] ?? 0, row);
-      return [...row, ...derivs.slice(0, stateVarsArr.length)];
+      // Snapshot algebraic variable values from the evaluator env
+      const algValues = algebraicVarsArr.map((name) => evaluator.env.get(name) ?? 0);
+      return [...row, ...algValues, ...derivs.slice(0, stateVarsArr.length)];
     });
 
     return { t: res.t, y: allY, states: allStates };
@@ -547,6 +1981,159 @@ export class ModelicaSimulator {
       y_new[i] = (y[i] ?? 0) + (h / 6.0) * ((k1[i] ?? 0) + 2 * (k2[i] ?? 0) + 2 * (k3[i] ?? 0) + (k4[i] ?? 0));
     }
     return y_new;
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  //  Numerical Jacobian approximation via forward finite differences
+  // ──────────────────────────────────────────────────────────────────
+  private computeJacobian(
+    f: (t: number, y: number[]) => number[],
+    t: number,
+    y: number[],
+    f0: number[],
+    n: number,
+  ): Float64Array[] {
+    const sqrtEps = 1.4901161193847656e-8; // √(2.22e-16)
+    const J: Float64Array[] = [];
+    for (let i = 0; i < n; i++) J.push(new Float64Array(n));
+
+    const yPerturbed = new Array<number>(n);
+    for (let j = 0; j < n; j++) {
+      const yj = y[j] ?? 0;
+      const eps = sqrtEps * Math.max(Math.abs(yj), 1.0);
+      for (let i = 0; i < n; i++) yPerturbed[i] = y[i] ?? 0;
+      yPerturbed[j] = yj + eps;
+      const fPerturbed = f(t, yPerturbed);
+      const invEps = 1.0 / eps;
+      for (let i = 0; i < n; i++) {
+        const col = J[i];
+        if (col) col[j] = ((fPerturbed[i] ?? 0) - (f0[i] ?? 0)) * invEps;
+      }
+    }
+    return J;
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  //  Build and cache the iteration matrix W = I - γ·h·J
+  // ──────────────────────────────────────────────────────────────────
+  private getOrBuildW(
+    f: (t: number, y: number[]) => number[],
+    t: number,
+    y: number[],
+    f0: number[],
+    h: number,
+    n: number,
+  ): LUFactorization {
+    // Always recompute the Jacobian at the current point (t, y).
+    // The Jacobian depends on both time (e.g. signal onset) and state,
+    // so a step-size-only cache key is insufficient.
+
+    const J = this.computeJacobian(f, t, y, f0, n);
+    const ghJ = SDIRK_GAMMA * h;
+
+    // W = I - γ·h·J
+    const W: Float64Array[] = [];
+    for (let i = 0; i < n; i++) {
+      const row = new Float64Array(n);
+      const jRow = J[i];
+      if (jRow) {
+        for (let j = 0; j < n; j++) {
+          row[j] = (i === j ? 1.0 : 0.0) - ghJ * (jRow[j] ?? 0);
+        }
+      }
+      W.push(row);
+    }
+
+    this.cachedW = luFactor(W, n);
+    this.cachedWStepSize = h;
+    return this.cachedW;
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  //  SDIRK2 step — 2-stage singly diagonally implicit Runge-Kutta
+  //  (L-stable, order 2, γ = 1 - √2/2)
+  //
+  //  Stage 1: find k₁ s.t. k₁ = f(t + γh, y + γh·k₁)
+  //  Stage 2: find k₂ s.t. k₂ = f(t + h, y + (1-γ)h·k₁ + γh·k₂)
+  //  y_new = y + h·((1-γ)·k₁ + γ·k₂)
+  // ──────────────────────────────────────────────────────────────────
+  private sdirk2Step(f: (t: number, y: number[]) => number[], t: number, y: number[], h: number, n: number): number[] {
+    const gamma = SDIRK_GAMMA;
+    const gh = gamma * h;
+    const omg = 1.0 - gamma; // 1 - γ
+
+    // ── Stage 1: solve for k₁ s.t. k₁ = f(t + γh, y + γh·k₁) ──
+    const k1 = new Array<number>(n);
+
+    // Evaluate f at the first stage point for initial guess AND Jacobian
+    const tStage1 = t + gh;
+    const f0 = f(tStage1, y); // f(t+γh, y) — Jacobian evaluation point
+    for (let i = 0; i < n; i++) k1[i] = f0[i] ?? 0; // Initial guess
+
+    // Build W = LU(I - γ·h·J) using the stage point where dynamics are active
+    const W = this.getOrBuildW(f, tStage1, y, f0, h, n);
+
+    const yStage = new Array<number>(n);
+    for (let iter = 0; iter < NEWTON_MAX_ITER; iter++) {
+      // y_stage = y + γ·h·k1
+      for (let i = 0; i < n; i++) yStage[i] = (y[i] ?? 0) + gh * (k1[i] ?? 0);
+      const fVal = f(tStage1, yStage);
+
+      // Residual: r = f(t + γh, y + γh·k1) - k1
+      const r = new Float64Array(n);
+      let maxR = 0;
+      for (let i = 0; i < n; i++) {
+        r[i] = (fVal[i] ?? 0) - (k1[i] ?? 0);
+        maxR = Math.max(maxR, Math.abs(r[i] ?? 0));
+      }
+      if (maxR < NEWTON_TOL) break;
+
+      // Solve W · Δk = r
+      luSolve(W, r);
+      for (let i = 0; i < n; i++) k1[i] = (k1[i] ?? 0) + (r[i] ?? 0);
+    }
+
+    // ── Stage 2: solve for k₂ s.t. k₂ = f(t + h, y + (1-γ)h·k₁ + γh·k₂) ──
+    const k2 = new Array<number>(n);
+    for (let i = 0; i < n; i++) k2[i] = k1[i] ?? 0; // Initial guess
+
+    for (let iter = 0; iter < NEWTON_MAX_ITER; iter++) {
+      // y_stage = y + (1-γ)·h·k1 + γ·h·k2
+      for (let i = 0; i < n; i++) {
+        yStage[i] = (y[i] ?? 0) + omg * h * (k1[i] ?? 0) + gh * (k2[i] ?? 0);
+      }
+      const fVal = f(t + h, yStage);
+
+      // Residual: r = f(t + h, y + ...) - k2
+      const r = new Float64Array(n);
+      let maxR = 0;
+      for (let i = 0; i < n; i++) {
+        r[i] = (fVal[i] ?? 0) - (k2[i] ?? 0);
+        maxR = Math.max(maxR, Math.abs(r[i] ?? 0));
+      }
+      if (maxR < NEWTON_TOL) break;
+
+      luSolve(W, r);
+      for (let i = 0; i < n; i++) k2[i] = (k2[i] ?? 0) + (r[i] ?? 0);
+    }
+
+    // ── Assemble solution ──
+    // y_new = y + h · ((1-γ)·k₁ + γ·k₂)
+    const y_new = new Array<number>(n);
+    for (let i = 0; i < n; i++) {
+      y_new[i] = (y[i] ?? 0) + h * (omg * (k1[i] ?? 0) + gamma * (k2[i] ?? 0));
+    }
+    return y_new;
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  //  Generic step dispatcher — routes to RK4 or SDIRK2
+  // ──────────────────────────────────────────────────────────────────
+  private step(f: (t: number, y: number[]) => number[], t: number, y: number[], h: number, n: number): number[] {
+    if (this.useImplicitSolver) {
+      return this.sdirk2Step(f, t, y, h, n);
+    }
+    return this.rk4Step(f, t, y, h, n);
   }
 
   // ──────────────────────────────────────────────────────────────────
@@ -629,7 +2216,7 @@ export class ModelicaSimulator {
       }
 
       const dt = tMid - tLo;
-      const yMid = this.rk4Step(f, tLo, yLo, dt, n);
+      const yMid = this.step(f, tLo, yLo, dt, n);
 
       // Evaluate zero-crossing at midpoint
       const gAll = this.evaluateZeroCrossings(evaluator, tMid, yMid, states);
@@ -654,7 +2241,7 @@ export class ModelicaSimulator {
       return { t: tLo, y: yLo };
     }
     const dtFinal = tLo - tA;
-    const yFinal = dtFinal > BISECT_TOL ? this.rk4Step(f, tA, yA, dtFinal, n) : [...yA];
+    const yFinal = dtFinal > BISECT_TOL ? this.step(f, tA, yA, dtFinal, n) : [...yA];
     return { t: tLo, y: yFinal };
   }
 
@@ -701,6 +2288,7 @@ export class ModelicaSimulator {
 
     let eventsThisStep = 0;
     let t_last_event = current_t;
+    let stiffnessProbeCount = 0;
 
     while (current_t < t1) {
       if (signal?.aborted) {
@@ -718,9 +2306,59 @@ export class ModelicaSimulator {
       // 1. Evaluate zero-crossings at the start of the step
       const gPre = this.evaluateZeroCrossings(evaluator, current_t, current_y, states);
 
-      // 2. Take a tentative RK4 step
-      const y_tentative = this.rk4Step(f, current_t, current_y, stepH, n);
+      // 2. Take a tentative integration step
+      let y_tentative = this.step(f, current_t, current_y, stepH, n);
       const t_tentative = current_t + stepH;
+
+      // 2b. Proactive stiffness detection: compare RK4 vs SDIRK2 for the first
+      //     several non-trivial steps. Stiffness in LC circuits manifests only
+      //     when fast eigenvalues are excited (e.g. at step signal onset), which
+      //     may not be the very first non-zero-derivative step.
+      if (!this.useImplicitSolver && stiffnessProbeCount < 10) {
+        // Check if this step has non-trivial change
+        let maxDelta = 0;
+        for (let i = 0; i < n; i++) {
+          maxDelta = Math.max(maxDelta, Math.abs((y_tentative[i] ?? 0) - (current_y[i] ?? 0)));
+        }
+        if (maxDelta > 1e-10) {
+          stiffnessProbeCount++;
+          // Take an SDIRK2 step from the same state for comparison
+          const y_implicit = this.sdirk2Step(f, current_t, current_y, stepH, n);
+          // Compare: if max relative difference exceeds threshold, system is stiff
+          let maxRelDiff = 0;
+          for (let i = 0; i < n; i++) {
+            const yR = y_tentative[i] ?? 0;
+            const yI = y_implicit[i] ?? 0;
+            const diff = Math.abs(yR - yI);
+            // Scale by the smaller magnitude: if one solver diverges and the
+            // other doesn't, the ratio should be huge, not ~1.
+            const scale = Math.max(Math.min(Math.abs(yR), Math.abs(yI)), 1e-10);
+            maxRelDiff = Math.max(maxRelDiff, diff / scale);
+          }
+          if (maxRelDiff > STIFFNESS_PROBE_THRESHOLD) {
+            this.useImplicitSolver = true;
+            this.cachedW = null;
+            y_tentative = y_implicit; // Use the SDIRK2 result
+          }
+        }
+      }
+
+      // 2c. Fallback: also check for NaN/Inf in case detection missed it
+      if (!this.useImplicitSolver) {
+        let diverged = false;
+        for (let i = 0; i < n; i++) {
+          const v = y_tentative[i] ?? 0;
+          if (!isFinite(v)) {
+            diverged = true;
+            break;
+          }
+        }
+        if (diverged) {
+          this.useImplicitSolver = true;
+          this.cachedW = null;
+          y_tentative = this.step(f, current_t, current_y, stepH, n);
+        }
+      }
 
       // 3. Evaluate zero-crossings at the end of the step
       const gPost = this.evaluateZeroCrossings(evaluator, t_tentative, y_tentative, states);
