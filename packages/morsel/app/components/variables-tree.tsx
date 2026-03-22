@@ -55,7 +55,12 @@ export function VariablesTree({ variables, selectedVariables, onToggleVariable }
     });
 
     return (
-      <TreeView.Item key={node.fullName} id={node.fullName} defaultExpanded={true}>
+      <TreeView.Item
+        key={node.fullName}
+        id={node.fullName}
+        defaultExpanded={true}
+        onSelect={node.isVariable ? () => onToggleVariable(node.fullName) : undefined}
+      >
         <TreeView.LeadingVisual>
           {node.isVariable ? (
             <Checkbox

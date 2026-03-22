@@ -16,6 +16,7 @@ import {
   ModelicaSimulator,
   StringWriter,
   type IDiagram,
+  type ParameterInfo,
 } from "@modelscript/core";
 import {
   ColumnsIcon,
@@ -64,6 +65,7 @@ import ComponentList from "./component-list";
 import type { DiagramEditorHandle } from "./diagram";
 import OpenFileDropzone from "./open-file-dropzone";
 import PropertiesWidget from "./properties";
+import { SimulationParameters } from "./simulation-parameters";
 import { Splash, type ModelData } from "./splash";
 import TreeWidget from "./tree";
 import { VariablesTree } from "./variables-tree";
@@ -162,6 +164,9 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [showResultsView, setShowResultsView] = useState(false);
   const [simulationVariables, setSimulationVariables] = useState<string[]>([]);
   const [selectedSimulationVariables, setSelectedSimulationVariables] = useState<string[]>([]);
+  const [simulationParameters, setSimulationParameters] = useState<ParameterInfo[]>([]);
+  const [parameterOverrides, setParameterOverrides] = useState<Map<string, number>>(new Map());
+  const cachedSimulatorRef = useRef<ModelicaSimulator | null>(null);
   const [lastLoadedContent, setLastLoadedContent] = useState<string>("");
   const [isDirtyDialogOpen, setDirtyDialogOpen] = useState(false);
   const [pendingSelection, setPendingSelection] = useState<ModelicaClassInstance | null>(null);
@@ -236,6 +241,11 @@ export default function MorselEditor(props: MorselEditorProps) {
     }
   }, [treeVisible, props.embed]);
 
+  // Keep a ref so the main effect can read overrides without depending on them
+  const parameterOverridesRef = useRef(parameterOverrides);
+  parameterOverridesRef.current = parameterOverrides;
+
+  // Main auto-simulate: full flatten + simulate when the model changes
   useEffect(() => {
     if (showResultsView && simulationMode === "local" && classInstances.length > 0) {
       const instance = diagramClassInstance ?? classInstances[0];
@@ -250,9 +260,6 @@ export default function MorselEditor(props: MorselEditorProps) {
           instance.instantiate();
         }
 
-        setSimulationStatus({ status: "pending", error: null });
-        setLocalSimulationData(null);
-
         try {
           const dae = new ModelicaDAE(instance.name || "Model");
           const flattener = new ModelicaFlattener();
@@ -260,6 +267,8 @@ export default function MorselEditor(props: MorselEditorProps) {
 
           const simulator = new ModelicaSimulator(dae);
           simulator.prepare();
+          cachedSimulatorRef.current = simulator;
+          setSimulationParameters(simulator.getParameterInfo());
           const states = Array.from(simulator.stateVars);
 
           if (states.length === 0) {
@@ -268,7 +277,10 @@ export default function MorselEditor(props: MorselEditorProps) {
             );
           }
 
-          const result = simulator.simulate(0, 10, 0.001, { signal: abortController.signal });
+          const result = simulator.simulate(0, 10, 0.001, {
+            signal: abortController.signal,
+            parameterOverrides: parameterOverridesRef.current,
+          });
 
           const chartData = result.t.map((t: number, i: number) => {
             const row: Record<string, number | string> = { time: t };
@@ -287,13 +299,48 @@ export default function MorselEditor(props: MorselEditorProps) {
             error: e instanceof Error ? e.message : String(e),
           });
         }
-      }, 100);
+      }, 1000);
       return () => {
         clearTimeout(timer);
         abortController.abort();
       };
     }
   }, [classInstances, showResultsView, simulationMode, diagramClassInstance]);
+
+  // Lightweight re-simulate when only parameter overrides change (skip flattening)
+  useEffect(() => {
+    const simulator = cachedSimulatorRef.current;
+    if (!simulator || !showResultsView || simulationMode !== "local") return;
+    // Skip on first render — the main effect handles initial simulation
+    if (parameterOverrides.size === 0) return;
+
+    const abortController = new AbortController();
+    const timer = setTimeout(() => {
+      try {
+        simulator.prepare();
+        const result = simulator.simulate(0, 10, 0.001, {
+          signal: abortController.signal,
+          parameterOverrides,
+        });
+
+        const chartData = result.t.map((t: number, i: number) => {
+          const row: Record<string, number | string> = { time: t };
+          result.states?.forEach((state: string, vIndex: number) => {
+            row[state] = result.y[i]?.[vIndex] ?? 0;
+          });
+          return row;
+        });
+
+        setLocalSimulationData(chartData);
+      } catch (e) {
+        if ((e as Error).message === "Simulation aborted") return;
+      }
+    }, 300);
+    return () => {
+      clearTimeout(timer);
+      abortController.abort();
+    };
+  }, [parameterOverrides, showResultsView, simulationMode]);
 
   useEffect(() => {
     const saved = localStorage.getItem("recentModels");
@@ -335,54 +382,7 @@ export default function MorselEditor(props: MorselEditorProps) {
       setSimulationVariables(vars);
 
       if (selectedSimulationVariables.length === 0 && vars.length > 0) {
-        // Find the first visual variable (matching VariablesTree sorting)
-        interface Node {
-          name: string;
-          fullName: string;
-          children: Map<string, Node>;
-          isVariable: boolean;
-        }
-
-        const root: Node = { name: "", fullName: "", children: new Map(), isVariable: false };
-        for (const v of vars) {
-          const parts = v.split(".");
-          let current = root;
-          let path = "";
-          for (let i = 0; i < parts.length; i++) {
-            const part = parts[i];
-            path = path ? `${path}.${part}` : part;
-            if (!current.children.has(part)) {
-              current.children.set(part, {
-                name: part,
-                fullName: path,
-                children: new Map(),
-                isVariable: i === parts.length - 1,
-              });
-            }
-            current = current.children.get(part)!;
-          }
-        }
-
-        const findFirst = (node: Node): string | null => {
-          if (node.isVariable) return node.fullName;
-          const sorted = Array.from(node.children.values()).sort((a, b) => {
-            if (a.children.size > 0 && b.children.size === 0) return -1;
-            if (a.children.size === 0 && b.children.size > 0) return 1;
-            return a.name.localeCompare(b.name);
-          });
-          for (const child of sorted) {
-            const res = findFirst(child);
-            if (res) return res;
-          }
-          return null;
-        };
-
-        const first = findFirst(root);
-        if (first) {
-          setSelectedSimulationVariables([first]);
-        } else {
-          setSelectedSimulationVariables([vars[0]]);
-        }
+        // Don't auto-select any variables — let the user pick
       }
     },
     [selectedSimulationVariables.length],
@@ -1537,6 +1537,9 @@ export default function MorselEditor(props: MorselEditorProps) {
 
         const simulator = new ModelicaSimulator(dae);
         simulator.prepare();
+        cachedSimulatorRef.current = simulator;
+        setSimulationParameters(simulator.getParameterInfo());
+        setParameterOverrides(new Map());
         const states = Array.from(simulator.stateVars);
 
         if (states.length === 0) {
@@ -1545,7 +1548,7 @@ export default function MorselEditor(props: MorselEditorProps) {
           );
         }
 
-        const result = simulator.simulate(0, 10, 0.1, { signal: abortController.signal });
+        const result = simulator.simulate(0, 10, 0.1, { signal: abortController.signal, parameterOverrides });
 
         const chartData = result.t.map((t: number, i: number) => {
           const row: Record<string, number | string> = { time: t };
@@ -1775,6 +1778,33 @@ export default function MorselEditor(props: MorselEditorProps) {
                     />
                   )}
                 </div>
+                {showResultsView && simulationParameters.length > 0 && (
+                  <>
+                    <div className="text-bold px-3 py-2 border-top border-bottom bg-canvas-subtle">
+                      Simulation Parameters
+                    </div>
+                    <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
+                      <SimulationParameters
+                        parameters={simulationParameters}
+                        overrides={parameterOverrides}
+                        onChange={(name, value) => {
+                          setParameterOverrides((prev) => {
+                            const next = new Map(prev);
+                            next.set(name, value);
+                            return next;
+                          });
+                        }}
+                        onReset={(name) => {
+                          setParameterOverrides((prev) => {
+                            const next = new Map(prev);
+                            next.delete(name);
+                            return next;
+                          });
+                        }}
+                      />
+                    </div>
+                  </>
+                )}
               </div>
               <div
                 style={{

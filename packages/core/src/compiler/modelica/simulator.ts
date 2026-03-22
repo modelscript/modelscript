@@ -3,14 +3,18 @@
 import {
   ExpressionEvaluator,
   ModelicaBinaryExpression,
+  ModelicaBooleanVariable,
   type ModelicaDAE,
   ModelicaDAEVisitor,
+  ModelicaEnumerationVariable,
   type ModelicaEquation,
   type ModelicaExpression,
   ModelicaFunctionCallEquation,
   ModelicaIntegerLiteral,
+  ModelicaIntegerVariable,
   ModelicaNameExpression,
   ModelicaRealLiteral,
+  ModelicaRealVariable,
   ModelicaSimpleEquation,
   ModelicaVariable,
   ModelicaWhenEquation,
@@ -141,6 +145,18 @@ function buildZeroCrossing(condition: ModelicaExpression): {
   };
 
   return { fn, direction };
+}
+
+/** Rich metadata about a single parameter variable for the UI. */
+export interface ParameterInfo {
+  name: string;
+  type: "real" | "integer" | "boolean" | "enumeration";
+  defaultValue: number;
+  min?: number;
+  max?: number;
+  step: number;
+  unit?: string;
+  enumLiterals?: { ordinal: number; label: string }[];
 }
 
 export class ModelicaSimulator {
@@ -304,13 +320,91 @@ export class ModelicaSimulator {
     };
   }
 
+  /** Metadata about a single parameter variable for the UI. */
+  public getParameterInfo(): ParameterInfo[] {
+    const evaluator = new ExpressionEvaluator(new Map(this.parameters));
+    const infos: ParameterInfo[] = [];
+    for (const v of this.dae.variables) {
+      if (v.variability !== ModelicaVariability.PARAMETER) continue;
+      const defaultValue = this.parameters.get(v.name);
+      if (defaultValue === undefined) continue;
+
+      let type: ParameterInfo["type"] = "real";
+      let step = 0.1;
+      let min: number | undefined;
+      let max: number | undefined;
+      let enumLiterals: { ordinal: number; label: string }[] | undefined;
+
+      if (v instanceof ModelicaBooleanVariable) {
+        type = "boolean";
+        step = 1;
+      } else if (v instanceof ModelicaIntegerVariable) {
+        type = "integer";
+        step = 1;
+        const minExpr = v.min;
+        const maxExpr = v.max;
+        if (minExpr) {
+          const val = evaluator.evaluate(minExpr);
+          if (val !== null) min = val;
+        }
+        if (maxExpr) {
+          const val = evaluator.evaluate(maxExpr);
+          if (val !== null) max = val;
+        }
+      } else if (v instanceof ModelicaEnumerationVariable) {
+        type = "enumeration";
+        step = 1;
+        enumLiterals = v.enumerationLiterals.map((lit) => ({
+          ordinal: lit.ordinalValue,
+          label: lit.stringValue,
+        }));
+      } else if (v instanceof ModelicaRealVariable) {
+        type = "real";
+        step = 0.1;
+        const minExpr = v.min;
+        const maxExpr = v.max;
+        if (minExpr) {
+          const val = evaluator.evaluate(minExpr);
+          if (val !== null) min = val;
+        }
+        if (maxExpr) {
+          const val = evaluator.evaluate(maxExpr);
+          if (val !== null) max = val;
+        }
+      }
+
+      const info: ParameterInfo = { name: v.name, type, defaultValue, step };
+      if (min !== undefined) info.min = min;
+      if (max !== undefined) info.max = max;
+      if (enumLiterals !== undefined) info.enumLiterals = enumLiterals;
+
+      // Extract unit string from Real variables
+      if (v instanceof ModelicaRealVariable && v.unit) {
+        const raw = v.unit.toJSON?.toString?.()?.replace(/^"|"$/g, "");
+        if (raw) info.unit = raw;
+      }
+
+      infos.push(info);
+    }
+    return infos;
+  }
+
   public simulate(
     startTime: number,
     stopTime: number,
     step: number,
-    options?: { signal?: AbortSignal },
+    options?: { signal?: AbortSignal; parameterOverrides?: Map<string, number> },
   ): { t: number[]; y: number[][]; states: string[] } {
     this.prepare();
+
+    // Apply user-supplied parameter overrides (without re-flattening)
+    if (options?.parameterOverrides) {
+      for (const [name, value] of options.parameterOverrides) {
+        if (this.parameters.has(name)) {
+          this.parameters.set(name, value);
+        }
+      }
+    }
 
     const stateVarsArr = Array.from(this.stateVars);
     const algebraicVarsArr = Array.from(this.algebraicVars);
