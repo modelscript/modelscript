@@ -88,7 +88,7 @@ export interface Translations {
 
   // Tabs
   diagram: string;
-  results: string;
+  simulation: string;
 }
 
 const en: Translations = {
@@ -181,7 +181,7 @@ const en: Translations = {
 
   // Tabs
   diagram: "Diagram",
-  results: "Results",
+  simulation: "Simulation",
 };
 
 const ar: Translations = {
@@ -274,7 +274,7 @@ const ar: Translations = {
 
   // Tabs
   diagram: "المخطط",
-  results: "النتائج",
+  simulation: "المحاكاة",
 };
 
 const tr: Translations = {
@@ -367,7 +367,7 @@ const tr: Translations = {
 
   // Tabs
   diagram: "Diyagram",
-  results: "Sonuçlar",
+  simulation: "Simülasyon",
 };
 
 const translations: Record<string, Translations> = { en, ar, tr };

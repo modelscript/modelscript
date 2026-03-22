@@ -1675,98 +1675,102 @@ export default function MorselEditor(props: MorselEditorProps) {
           {treeVisible && (
             <>
               <div style={{ width: treeWidth, display: "flex", flexDirection: "column", minWidth: 200, maxWidth: 600 }}>
-                <div
-                  className="text-bold px-3 py-2 border-bottom bg-canvas-subtle d-flex flex-items-center flex-justify-between"
-                  style={{ gap: 8 }}
-                >
-                  <div
-                    className="d-flex flex-items-center"
-                    style={{ display: isSearchExpanded || libraryFilter ? "none" : "flex" }}
-                  >
-                    {translations.libraries}
-                  </div>
-                  <div className="d-flex flex-items-center flex-1 flex-justify-end" style={{ minWidth: 0 }}>
-                    <TextInput
-                      ref={inputRef}
-                      aria-label={translations.filterClasses}
-                      placeholder={translations.filterClasses}
-                      value={libraryFilter}
-                      onChange={(e) => setLibraryFilter(e.target.value)}
-                      onBlur={() => {
-                        if (!libraryFilter) setIsSearchExpanded(false);
-                      }}
-                      trailingAction={
-                        !isSearching && (isSearchExpanded || libraryFilter) ? (
-                          <TextInput.Action
-                            onClick={() => {
-                              if (libraryFilter) {
-                                setLibraryFilter("");
-                                inputRef.current?.focus();
-                              } else {
-                                setIsSearchExpanded(false);
-                              }
-                            }}
-                            icon={libraryFilter ? XIcon : SearchIcon}
-                            aria-label={libraryFilter ? "Clear search" : "Close search"}
-                          />
-                        ) : undefined
-                      }
-                      trailingVisual={
-                        isSearching && (isSearchExpanded || libraryFilter) ? (
-                          <Spinner size="small" style={{ marginTop: "6px", marginInlineStart: "8px" }} />
-                        ) : undefined
-                      }
-                      className={isSearchExpanded || libraryFilter ? "input-sm" : "input-sm border-0"}
-                      style={{
-                        width: isSearchExpanded || libraryFilter ? "100%" : "0px",
-                        opacity: isSearchExpanded || libraryFilter ? 1 : 0,
-                        padding: isSearchExpanded || libraryFilter ? undefined : "0px",
-                        borderWidth: isSearchExpanded || libraryFilter ? undefined : "0px",
-                        height: "28px",
-                        transition: "all 0.2s ease-in-out",
-                        overflow: "hidden",
-                      }}
-                    />
-                    <IconButton
-                      icon={SearchIcon}
-                      aria-label={translations.filterClasses}
-                      size="small"
-                      variant="invisible"
-                      onClick={() => {
-                        setIsSearchExpanded(true);
-                        setTimeout(() => inputRef.current?.focus(), 50);
-                      }}
-                      style={{
-                        width: isSearchExpanded || libraryFilter ? "0px" : "28px",
-                        opacity: isSearchExpanded || libraryFilter ? 0 : 1,
-                        padding: isSearchExpanded || libraryFilter ? "0px" : undefined,
-                        overflow: "hidden",
-                        transition: "all 0.2s ease-in-out",
-                      }}
-                    />
-                    <IconButton
-                      icon={PlusIcon}
-                      aria-label={translations.addLibrary}
-                      size="small"
-                      variant="invisible"
-                      ref={addLibraryButtonRef}
-                      onClick={() => setIsAddLibraryOpen(true)}
-                    />
-                  </div>
-                </div>
-                <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
-                  <TreeWidget
-                    key={debouncedFilter ? "filtered" : "unfiltered"}
-                    context={context}
-                    onSelect={handleTreeSelect}
-                    onHighlight={setSelectedTreeClassName}
-                    width="100%"
-                    filter={debouncedFilter}
-                    version={contextVersion}
-                    language={language}
-                    selectedClassName={selectedTreeClassName}
-                  />
-                </div>
+                {!showResultsView && (
+                  <>
+                    <div
+                      className="text-bold px-3 py-2 border-bottom bg-canvas-subtle d-flex flex-items-center flex-justify-between"
+                      style={{ gap: 8 }}
+                    >
+                      <div
+                        className="d-flex flex-items-center"
+                        style={{ display: isSearchExpanded || libraryFilter ? "none" : "flex" }}
+                      >
+                        {translations.libraries}
+                      </div>
+                      <div className="d-flex flex-items-center flex-1 flex-justify-end" style={{ minWidth: 0 }}>
+                        <TextInput
+                          ref={inputRef}
+                          aria-label={translations.filterClasses}
+                          placeholder={translations.filterClasses}
+                          value={libraryFilter}
+                          onChange={(e) => setLibraryFilter(e.target.value)}
+                          onBlur={() => {
+                            if (!libraryFilter) setIsSearchExpanded(false);
+                          }}
+                          trailingAction={
+                            !isSearching && (isSearchExpanded || libraryFilter) ? (
+                              <TextInput.Action
+                                onClick={() => {
+                                  if (libraryFilter) {
+                                    setLibraryFilter("");
+                                    inputRef.current?.focus();
+                                  } else {
+                                    setIsSearchExpanded(false);
+                                  }
+                                }}
+                                icon={libraryFilter ? XIcon : SearchIcon}
+                                aria-label={libraryFilter ? "Clear search" : "Close search"}
+                              />
+                            ) : undefined
+                          }
+                          trailingVisual={
+                            isSearching && (isSearchExpanded || libraryFilter) ? (
+                              <Spinner size="small" style={{ marginTop: "6px", marginInlineStart: "8px" }} />
+                            ) : undefined
+                          }
+                          className={isSearchExpanded || libraryFilter ? "input-sm" : "input-sm border-0"}
+                          style={{
+                            width: isSearchExpanded || libraryFilter ? "100%" : "0px",
+                            opacity: isSearchExpanded || libraryFilter ? 1 : 0,
+                            padding: isSearchExpanded || libraryFilter ? undefined : "0px",
+                            borderWidth: isSearchExpanded || libraryFilter ? undefined : "0px",
+                            height: "28px",
+                            transition: "all 0.2s ease-in-out",
+                            overflow: "hidden",
+                          }}
+                        />
+                        <IconButton
+                          icon={SearchIcon}
+                          aria-label={translations.filterClasses}
+                          size="small"
+                          variant="invisible"
+                          onClick={() => {
+                            setIsSearchExpanded(true);
+                            setTimeout(() => inputRef.current?.focus(), 50);
+                          }}
+                          style={{
+                            width: isSearchExpanded || libraryFilter ? "0px" : "28px",
+                            opacity: isSearchExpanded || libraryFilter ? 0 : 1,
+                            padding: isSearchExpanded || libraryFilter ? "0px" : undefined,
+                            overflow: "hidden",
+                            transition: "all 0.2s ease-in-out",
+                          }}
+                        />
+                        <IconButton
+                          icon={PlusIcon}
+                          aria-label={translations.addLibrary}
+                          size="small"
+                          variant="invisible"
+                          ref={addLibraryButtonRef}
+                          onClick={() => setIsAddLibraryOpen(true)}
+                        />
+                      </div>
+                    </div>
+                    <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
+                      <TreeWidget
+                        key={debouncedFilter ? "filtered" : "unfiltered"}
+                        context={context}
+                        onSelect={handleTreeSelect}
+                        onHighlight={setSelectedTreeClassName}
+                        width="100%"
+                        filter={debouncedFilter}
+                        version={contextVersion}
+                        language={language}
+                        selectedClassName={selectedTreeClassName}
+                      />
+                    </div>
+                  </>
+                )}
                 <div className="text-bold px-3 py-2 border-top border-bottom bg-canvas-subtle">
                   {showResultsView ? "Simulation Variables" : translations.components}
                 </div>
@@ -1987,7 +1991,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                       {translations.diagram}
                     </SegmentedControl.Button>
                     <SegmentedControl.Button selected={showResultsView} leadingVisual={PulseIcon}>
-                      {translations.results}
+                      {translations.simulation}
                     </SegmentedControl.Button>
                   </SegmentedControl>
                 </div>

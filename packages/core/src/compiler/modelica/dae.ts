@@ -3885,6 +3885,77 @@ function trySolveForState(
   return null;
 }
 
+/**
+ * Walk an expression tree and find a state variable that appears in a subtraction
+ * position. Returns the state name and the rearranged expression solving for that state.
+ *
+ * For `C3.v = C1.v + 0.0 - C2.v - 0.0`:
+ *   - Flattens to terms: [+C1.v, +0.0, -C2.v, -0.0]
+ *   - C2.v is subtracted and is a state → returns {state: "C2.v", expr: C1.v + 0.0 - C3.v - 0.0}
+ *     (i.e., positive terms minus LHS minus other negative terms)
+ */
+function findSubtractedState(
+  expr: ModelicaExpression,
+  involvedStates: Set<string>,
+  lhsState: string,
+  alreadyDemoted: Set<string>,
+): { state: string; expr: ModelicaExpression } | null {
+  // Flatten addition/subtraction tree into signed terms
+  const terms: { expr: ModelicaExpression; sign: number }[] = [];
+  const flatten = (e: ModelicaExpression, sign: number) => {
+    if (
+      e instanceof ModelicaBinaryExpression &&
+      (e.operator === ModelicaBinaryOperator.ADDITION || e.operator === ModelicaBinaryOperator.ELEMENTWISE_ADDITION)
+    ) {
+      flatten(e.operand1, sign);
+      flatten(e.operand2, sign);
+    } else if (
+      e instanceof ModelicaBinaryExpression &&
+      (e.operator === ModelicaBinaryOperator.SUBTRACTION ||
+        e.operator === ModelicaBinaryOperator.ELEMENTWISE_SUBTRACTION)
+    ) {
+      flatten(e.operand1, sign);
+      flatten(e.operand2, -sign);
+    } else if (e instanceof ModelicaUnaryExpression && e.operator === ModelicaUnaryOperator.UNARY_MINUS) {
+      flatten(e.operand, -sign);
+    } else {
+      terms.push({ expr: e, sign });
+    }
+  };
+  flatten(expr, 1);
+
+  // Find a subtracted state (sign === -1) that is not the LHS and not already demoted
+  for (let i = 0; i < terms.length; i++) {
+    const term = terms[i];
+    if (!term || term.sign !== -1) continue;
+    const name = pantelidesExtractVarName(term.expr);
+    if (!name || name === lhsState || !involvedStates.has(name) || alreadyDemoted.has(name)) continue;
+
+    // Found a subtracted state — rearrange to solve for it.
+    // Original: lhsState = sum_of_terms (where term[i] is -name)
+    // Rearranged: name = sum_of_other_terms - lhsState
+    // Build: (positive terms) - (negative terms except term[i]) - lhsState
+    const otherTerms = terms.filter((_, idx) => idx !== i);
+    // Add -lhsState to the terms
+    otherTerms.push({ expr: new ModelicaNameExpression(lhsState), sign: -1 });
+
+    // Build expression from terms
+    let result: ModelicaExpression | null = null;
+    for (const t of otherTerms) {
+      const termExpr = t.sign < 0 ? new ModelicaUnaryExpression(ModelicaUnaryOperator.UNARY_MINUS, t.expr) : t.expr;
+      if (result === null) {
+        result = termExpr;
+      } else {
+        result = new ModelicaBinaryExpression(ModelicaBinaryOperator.ADDITION, result, termExpr);
+      }
+    }
+    if (!result) result = new ModelicaRealLiteral(0);
+
+    return { state: name, expr: result };
+  }
+  return null;
+}
+
 export interface PantelidesResult {
   dummyDerivatives: Set<string>;
   constraintAssignments: { target: string; expr: ModelicaExpression; isDerivative: boolean }[];
@@ -3925,8 +3996,22 @@ export function pantelidesIndexReduction(
     let constraintExpr: ModelicaExpression | null = null;
 
     if (lhsName && involvedStates.has(lhsName)) {
-      constrainedState = lhsName;
-      constraintExpr = eq.rhs;
+      // LHS is a state. Before defaulting to demoting the LHS, check if a
+      // RHS state in a subtraction position is a better candidate.
+      // In KVL-derived constraints like `C3.v = C1.v - C2.v`, the subtracted
+      // state (C2.v) is typically the one in parallel with an inductor and
+      // should be demoted, not the LHS state (C3.v) which just happened to
+      // have its equation left unmatched due to processing order.
+      const rhsSubtractedState = findSubtractedState(eq.rhs, involvedStates, lhsName, dummyDerivatives);
+      if (rhsSubtractedState) {
+        // Solve for the subtracted state: X = A - B → B = A - X
+        // Rearrange: constrainedState = B, expr = (everything else)
+        constrainedState = rhsSubtractedState.state;
+        constraintExpr = rhsSubtractedState.expr;
+      } else {
+        constrainedState = lhsName;
+        constraintExpr = eq.rhs;
+      }
     } else if (rhsName && involvedStates.has(rhsName)) {
       constrainedState = rhsName;
       constraintExpr = eq.lhs;

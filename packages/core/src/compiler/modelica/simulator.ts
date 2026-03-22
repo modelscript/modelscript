@@ -1244,8 +1244,68 @@ export class ModelicaSimulator {
     // Detect hidden algebraic constraints between state variables in unmatched
     // equations. For each constrained state, demote it to algebraic, differentiate
     // the constraint symbolically, and back-compute dependent variables.
+    //
+    // Before running Pantelides, perform transitive substitution of already-defined
+    // algebraic variables into unmatched equations. This exposes hidden multi-state
+    // constraints. For example, `C2.v = L1.p.v - L1.n.v` only has one state var
+    // (C2.v) because L1.p.v and L1.n.v are algebraic. But after substituting
+    // L1.p.v = C1.v + V.n.v and L1.n.v = C3.v + V.n.v, we get
+    // C2.v = C1.v - C3.v, exposing a 3-state constraint.
+    const algSubstMap = new Map<string, ModelicaExpression>();
+    for (const a of assignments) {
+      if (!a.isDerivative && !this.stateVars.has(a.target)) {
+        algSubstMap.set(a.target, a.expr);
+      }
+    }
+
+    const substituteAlgebraic = (expr: ModelicaExpression, depth: number): ModelicaExpression => {
+      if (depth > 10) return expr; // guard against circular substitution
+      if (
+        expr instanceof ModelicaNameExpression ||
+        expr instanceof ModelicaRealVariable ||
+        expr instanceof ModelicaIntegerVariable
+      ) {
+        const name = expr instanceof ModelicaNameExpression ? expr.name : (expr as ModelicaVariable).name;
+        const sub = algSubstMap.get(name);
+        if (sub && !this.stateVars.has(name) && !this.parameters.has(name)) {
+          return substituteAlgebraic(sub, depth + 1);
+        }
+        return expr;
+      }
+      if (expr instanceof ModelicaBinaryExpression) {
+        const newOp1 = substituteAlgebraic(expr.operand1, depth);
+        const newOp2 = substituteAlgebraic(expr.operand2, depth);
+        if (newOp1 !== expr.operand1 || newOp2 !== expr.operand2) {
+          return new ModelicaBinaryExpression(expr.operator, newOp1, newOp2);
+        }
+        return expr;
+      }
+      if (expr instanceof ModelicaUnaryExpression) {
+        const newOp = substituteAlgebraic(expr.operand, depth);
+        if (newOp !== expr.operand) return new ModelicaUnaryExpression(expr.operator, newOp);
+        return expr;
+      }
+      if (expr instanceof ModelicaFunctionCallExpression) {
+        const newArgs = expr.args.map((a: ModelicaExpression) => substituteAlgebraic(a, depth));
+        const changed = newArgs.some((a: ModelicaExpression, i: number) => a !== expr.args[i]);
+        if (changed) return new ModelicaFunctionCallExpression(expr.functionName, newArgs);
+        return expr;
+      }
+      return expr;
+    };
+
+    const substitutedUnmatched = unmatchedEquations.map((eq) => ({
+      lhs: substituteAlgebraic(eq.lhs, 0),
+      rhs: substituteAlgebraic(eq.rhs, 0),
+    }));
+
     const phase27Corrections: typeof assignments = [];
-    const pantelidesResult = pantelidesIndexReduction(unmatchedEquations, this.stateVars, this.parameters, definedVars);
+    const pantelidesResult = pantelidesIndexReduction(
+      substitutedUnmatched,
+      this.stateVars,
+      this.parameters,
+      definedVars,
+    );
     for (const dummy of pantelidesResult.dummyDerivatives) {
       this.stateVars.delete(dummy);
       this.algebraicVars.add(dummy);
