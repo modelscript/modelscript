@@ -447,6 +447,10 @@ export class ModelicaSimulator {
   private cachedWStepSize = 0;
   /** Warm start values for algebraic variables in the implicit solver. */
   private algWarmStart = new Map<string, number>();
+  /** Alias map: non-canonical variable name → canonical name (e.g., C1.p.v → C1.v). */
+  private aliasMap = new Map<string, string>();
+  /** Negated alias map: variable → canonical name where variable = -canonical (e.g., C1.n.i = -C1.i). */
+  private negatedAliasMap = new Map<string, string>();
 
   constructor(dae: ModelicaDAE) {
     this.dae = dae;
@@ -495,6 +499,7 @@ export class ModelicaSimulator {
     // and flow identities (e.g., C1.i = C1.p.i). All simple A = B equations
     // are valid aliases — they represent the same physical quantity.
     const nonAliasEquations: ModelicaSimpleEquation[] = [];
+    const negatedAliasPairs: [string, string][] = []; // [a, b] meaning a = -b
     for (const eq of this.dae.equations) {
       if (eq instanceof ModelicaWhenEquation || eq instanceof ModelicaFunctionCallEquation) {
         continue;
@@ -506,17 +511,56 @@ export class ModelicaSimulator {
           // This is an alias equation: A = B
           aliasUnion(lhsName, rhsName);
         } else {
+          // Check for negated alias: A + B = 0  or  0 = A + B  →  A = -B
+          // These are collected for the simulation output (to show .n.i variables)
+          // but the equation is still processed normally for matching.
+          const sumExpr =
+            eq.expression1 instanceof ModelicaBinaryExpression
+              ? eq.expression1
+              : eq.expression2 instanceof ModelicaBinaryExpression
+                ? eq.expression2
+                : null;
+          const otherExpr = sumExpr === eq.expression1 ? eq.expression2 : eq.expression1;
+          if (
+            sumExpr &&
+            (sumExpr.operator === ModelicaBinaryOperator.ADDITION ||
+              sumExpr.operator === ModelicaBinaryOperator.ELEMENTWISE_ADDITION)
+          ) {
+            const op1Name = extractVarName(sumExpr.operand1);
+            const op2Name = extractVarName(sumExpr.operand2);
+            const otherZero =
+              (otherExpr instanceof ModelicaRealLiteral && otherExpr.value === 0) ||
+              (otherExpr instanceof ModelicaIntegerLiteral && otherExpr.value === 0);
+            if (op1Name && op2Name && otherZero) {
+              negatedAliasPairs.push([op1Name, op2Name]);
+            }
+          }
           nonAliasEquations.push(eq);
         }
       }
     }
 
     // Build the substitution map: for each aliased variable, map to its canonical name
-    const aliasMap = new Map<string, string>();
+    this.aliasMap = new Map<string, string>();
     for (const name of aliasParent.keys()) {
       const canonical = aliasFind(name);
       if (canonical !== name) {
-        aliasMap.set(name, canonical);
+        this.aliasMap.set(name, canonical);
+      }
+    }
+    const aliasMap = this.aliasMap;
+
+    // Build negated alias map from A + B = 0 pairs (flow balance equations).
+    // After canonicalization, if one name is already canonical (state/algebraic),
+    // the other is its negated alias.
+    this.negatedAliasMap = new Map<string, string>();
+    for (const [a, b] of negatedAliasPairs) {
+      const ca = aliasMap.get(a) ?? a;
+      const cb = aliasMap.get(b) ?? b;
+      // Map both original names to each other's canonical
+      if (ca !== cb) {
+        this.negatedAliasMap.set(b, ca);
+        this.negatedAliasMap.set(a, cb);
       }
     }
 
@@ -1737,13 +1781,49 @@ export class ModelicaSimulator {
     // Build complete result with ODE states + algebraic vars + derivatives.
     // For each timestep, re-evaluate algebraic equations to get current values.
     const derNames = stateVarsArr.map((s) => `der(${s})`);
-    const allStates = [...stateList, ...algebraicVarsArr, ...derNames];
+    const coreStates = [...stateList, ...algebraicVarsArr, ...derNames];
+
+    // Build reverse alias map: for each canonical variable, collect its aliases
+    // so that pin variables (e.g. C1.p.v, C1.n.i) appear in the output.
+    const coreStateSet = new Set(coreStates);
+    interface AliasEntry {
+      alias: string;
+      canonicalIdx: number;
+      canonical: string;
+      sign: number;
+    }
+    const extraEntries: AliasEntry[] = [];
+
+    // Regular aliases (sign = +1)
+    for (const [alias, canonical] of this.aliasMap) {
+      if (coreStateSet.has(alias)) continue;
+      const idx = coreStates.indexOf(canonical);
+      extraEntries.push({ alias, canonicalIdx: idx, canonical, sign: 1 });
+    }
+    // Negated aliases (sign = -1)
+    for (const [alias, canonical] of this.negatedAliasMap) {
+      if (coreStateSet.has(alias) || extraEntries.some((e) => e.alias === alias)) continue;
+      const idx = coreStates.indexOf(canonical);
+      extraEntries.push({ alias, canonicalIdx: idx, canonical, sign: -1 });
+    }
+
+    const allStates = [...coreStates, ...extraEntries.map((e) => e.alias)];
+
     const allY = res.y.map((row, idx) => {
       // Re-evaluate to get algebraic values and derivatives at this timestep
       const derivs = f(res.t[idx] ?? 0, row);
       // Snapshot algebraic variable values from the evaluator env
       const algValues = algebraicVarsArr.map((name) => evaluator.env.get(name) ?? 0);
-      return [...row, ...algValues, ...derivs.slice(0, stateVarsArr.length)];
+      const coreRow = [...row, ...algValues, ...derivs.slice(0, stateVarsArr.length)];
+      // Append alias/negated alias variable values
+      for (const entry of extraEntries) {
+        // Fast path: canonical is in coreStates (use indexed lookup)
+        // Fallback: read from evaluator env (for vars computed inside f() but not in coreStates)
+        const val =
+          entry.canonicalIdx >= 0 ? (coreRow[entry.canonicalIdx] ?? 0) : (evaluator.env.get(entry.canonical) ?? 0);
+        coreRow.push(entry.sign * val);
+      }
+      return coreRow;
     });
 
     return { t: res.t, y: allY, states: allStates };
