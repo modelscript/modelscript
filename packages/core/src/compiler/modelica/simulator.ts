@@ -40,6 +40,11 @@ interface WhenAction {
  */
 type ZeroCrossingDirection = "negative" | "positive" | "either";
 
+/** An execution block for algebraic evaluation. Can be a single assignment or a non-linear system loop. */
+export type ExecutionBlock =
+  | { type: "single"; eq: { target: string; expr: ModelicaExpression; isDerivative: boolean } }
+  | { type: "system"; vars: string[]; eqs: { target: string; expr: ModelicaExpression; isDerivative: boolean }[] };
+
 /** A when-clause ready for evaluation during simulation. */
 interface WhenClause {
   /** Condition expression (evaluated as boolean: nonzero = true). */
@@ -429,8 +434,8 @@ export class ModelicaSimulator {
   stateVars = new Set<string>();
   algebraicVars = new Set<string>();
   /** Parameter/constant values extracted from dae.variables. */
-  parameters = new Map<string, number>();
-  sortedEquations: { target: string; expr: ModelicaExpression; isDerivative: boolean }[] = [];
+  private parameters = new Map<string, number>();
+  private executionBlocks: ExecutionBlock[] = [];
   /** When-clauses extracted from the DAE. */
   whenClauses: WhenClause[] = [];
   /** Whether to use the implicit SDIRK2 solver instead of RK4 (set after divergence detection). */
@@ -439,6 +444,8 @@ export class ModelicaSimulator {
   private cachedW: LUFactorization | null = null;
   /** Step size for which the cached W was computed. */
   private cachedWStepSize = 0;
+  /** Warm start values for algebraic variables in the implicit solver. */
+  private algWarmStart = new Map<string, number>();
 
   constructor(dae: ModelicaDAE) {
     this.dae = dae;
@@ -1615,45 +1622,89 @@ export class ModelicaSimulator {
     const dependencyMap = new Map<string, Set<string>>();
     const visitor = new DependencyVisitor();
 
-    for (const assign of assignments) {
+    // Map targets to their assignments for easy lookup
+    const assignMap = new Map<string, (typeof assignments)[number]>();
+    // Collect phase 3/2.7 corrections first to avoid duplicating equations targeting same var
+    const supplementalAssigns = [...phase3Reversals, ...phase27Corrections];
+
+    for (const assign of [...assignments, ...supplementalAssigns]) {
+      const targetCanonical = assign.isDerivative ? `der(${assign.target})` : assign.target;
+      // If a Phase 2.7/3 override targets the same var, it comes later in the array and overwrites the primary
+      assignMap.set(targetCanonical, assign);
       const deps = new Set<string>();
       assign.expr.accept(visitor, deps);
-      dependencyMap.set(assign.isDerivative ? `der(${assign.target})` : assign.target, deps);
+      dependencyMap.set(targetCanonical, deps);
     }
 
-    const sorted: typeof assignments = [];
-    const visited = new Set<string>();
-    const visiting = new Set<string>();
+    // Tarjan's Strongly Connected Components algorithm
+    const index = new Map<string, number>();
+    const lowlink = new Map<string, number>();
+    const onStack = new Set<string>();
+    const stack: string[] = [];
+    let currentIndex = 0;
+    const blocks: ExecutionBlock[] = [];
 
-    const visit = (key: string) => {
-      if (visited.has(key)) return;
-      if (visiting.has(key)) return;
-      visiting.add(key);
+    const strongconnect = (v: string) => {
+      index.set(v, currentIndex);
+      lowlink.set(v, currentIndex);
+      currentIndex++;
+      stack.push(v);
+      onStack.add(v);
 
-      const deps = dependencyMap.get(key) || new Set();
+      const deps = dependencyMap.get(v) || new Set();
       for (const dep of deps) {
-        if (definedVars.has(dep)) {
-          visit(dep);
+        if (definedVars.has(dep) && assignMap.has(dep)) {
+          // Only traverse edges to computed vars
+          if (!index.has(dep)) {
+            strongconnect(dep);
+            lowlink.set(v, Math.min(lowlink.get(v) ?? currentIndex, lowlink.get(dep) ?? currentIndex));
+          } else if (onStack.has(dep)) {
+            lowlink.set(v, Math.min(lowlink.get(v) ?? currentIndex, index.get(dep) ?? currentIndex));
+          }
         }
       }
 
-      visiting.delete(key);
-      visited.add(key);
-      const assign = assignments.find((a) => (a.isDerivative ? `der(${a.target})` : a.target) === key);
-      if (assign) sorted.push(assign);
+      if (lowlink.get(v) === index.get(v)) {
+        const scc: string[] = [];
+        let w: string | undefined;
+        do {
+          w = stack.pop();
+          if (w === undefined) break;
+          onStack.delete(w);
+          scc.push(w);
+        } while (w !== v);
+
+        // Filter valid assignments
+        const sccEqs: typeof assignments = scc
+          .map((n) => assignMap.get(n))
+          .filter((x): x is (typeof assignments)[number] => x !== undefined);
+
+        const eq0 = sccEqs[0];
+        if (sccEqs.length === 1 && eq0 && !sccSelfLoops(eq0)) {
+          blocks.push({ type: "single", eq: eq0 });
+        } else if (sccEqs.length > 0) {
+          blocks.push({
+            type: "system",
+            vars: scc,
+            eqs: sccEqs,
+          });
+        }
+      }
     };
 
-    for (const assign of assignments) {
-      visit(assign.isDerivative ? `der(${assign.target})` : assign.target);
+    // Helper: checks if a 1-var SCC has a self-loop (u depends on u)
+    const sccSelfLoops = (eq: (typeof assignments)[number]) => {
+      const target = eq.isDerivative ? `der(${eq.target})` : eq.target;
+      return (dependencyMap.get(target) || new Set()).has(target);
+    };
+
+    for (const v of assignMap.keys()) {
+      if (!index.has(v)) {
+        strongconnect(v);
+      }
     }
 
-    // Append Phase 3 reversals at the end — they execute last during
-    // iterative evaluation, overriding degenerate KCL chain definitions
-    // with Ohm's law / other constitutive equations.
-    sorted.push(...phase3Reversals);
-    sorted.push(...phase27Corrections);
-
-    this.sortedEquations = sorted;
+    this.executionBlocks = blocks;
 
     // Extract when-clauses
     this.whenClauses = [];
@@ -1902,30 +1953,111 @@ export class ModelicaSimulator {
       // previous calls, causing the Jacobian computation (which calls f()
       // with different perturbations) to produce inconsistent derivatives.
       for (const av of this.algebraicVars) {
-        evaluator.env.set(av, 0);
+        evaluator.env.set(av, this.algWarmStart.get(av) ?? 0);
       }
       for (const s of stateList) {
         if (s) evaluator.env.set(`der(${s})`, 0);
       }
 
-      // Evaluate sorted equations iteratively to resolve algebraic loops.
-      // Coupled capacitor/inductor currents form cycles through KCL nodes;
-      // a single pass would evaluate with stale zeros. Iterate until
-      // algebraic variable values converge.
-      const MAX_ALG_ITER = 10;
-      const ALG_TOL = 1e-12;
-      for (let algIter = 0; algIter < MAX_ALG_ITER; algIter++) {
-        let maxDelta = 0;
-        for (const eq of this.sortedEquations) {
-          const value = evaluator.evaluate(eq.expr);
+      // Evaluate execution blocks sequentially
+      for (const block of this.executionBlocks) {
+        if (block.type === "single") {
+          const value = evaluator.evaluate(block.eq.expr);
           if (value !== null && isFinite(value)) {
-            const key = eq.isDerivative ? `der(${eq.target})` : eq.target;
-            const prev = evaluator.env.get(key) ?? 0;
+            const key = block.eq.isDerivative ? `der(${block.eq.target})` : block.eq.target;
             evaluator.env.set(key, value);
-            maxDelta = Math.max(maxDelta, Math.abs(value - prev));
+            if (!block.eq.isDerivative) {
+              this.algWarmStart.set(key, value);
+            }
+          }
+        } else {
+          // Newton-Raphson solver for non-linear/linear algebraic system
+          const m = block.vars.length;
+          const x = new Float64Array(m);
+          for (let i = 0; i < m; i++) {
+            x[i] = evaluator.env.get(block.vars[i] ?? "") ?? 0;
+          }
+
+          const MAX_NEWTON = 20;
+          const NEWTON_TOL = 1e-10;
+          let converged = false;
+
+          for (let iter = 0; iter < MAX_NEWTON; iter++) {
+            const R = new Float64Array(m);
+            let maxR = 0;
+            // Evaluate residuals: R_i = x_i - expr_i
+            for (let i = 0; i < m; i++) evaluator.env.set(block.vars[i] ?? "", x[i] ?? 0);
+
+            for (let i = 0; i < m; i++) {
+              const eq = block.eqs[i];
+              if (!eq) continue;
+              const exprVal = evaluator.evaluate(eq.expr);
+              const val = exprVal !== null && isFinite(exprVal) ? exprVal : 0;
+              R[i] = (x[i] ?? 0) - val;
+              maxR = Math.max(maxR, Math.abs(R[i] ?? 0));
+            }
+
+            if (maxR < NEWTON_TOL) {
+              converged = true;
+              break;
+            }
+
+            // Compute Jacobian J = I - d(expr)/dx using finite differences
+            const J: Float64Array[] = [];
+            for (let i = 0; i < m; i++) J.push(new Float64Array(m));
+
+            const sqrtEps = 1.4901161193847656e-8;
+            for (let j = 0; j < m; j++) {
+              const varJ = block.vars[j] ?? "";
+              const xj = x[j] ?? 0;
+              const eps = sqrtEps * Math.max(Math.abs(xj), 1.0);
+              evaluator.env.set(varJ, xj + eps);
+
+              for (let i = 0; i < m; i++) {
+                const eq = block.eqs[i];
+                if (!eq) continue;
+                const exprVal = evaluator.evaluate(eq.expr);
+                const val = exprVal !== null && isFinite(exprVal) ? exprVal : 0;
+                const R_perturbed = (i === j ? xj + eps : (x[i] ?? 0)) - val;
+                const Ji = J[i];
+                if (Ji) Ji[j] = (R_perturbed - (R[i] ?? 0)) / eps;
+              }
+              evaluator.env.set(varJ, xj); // restore
+            }
+
+            // Solve J * dx = -R
+            try {
+              const fact = luFactor(J, m);
+              const negR = new Float64Array(m);
+              for (let i = 0; i < m; i++) negR[i] = -(R[i] ?? 0);
+              luSolve(fact, negR);
+              // Update x
+              for (let i = 0; i < m; i++) {
+                const nx = (x[i] ?? 0) + (negR[i] ?? 0);
+                x[i] = nx;
+                evaluator.env.set(block.vars[i] ?? "", nx);
+              }
+            } catch {
+              throw new Error(`Algebraic loop singular Jacobian at t=${t}. System vars: ${block.vars.join(", ")}`);
+            }
+          }
+
+          if (!converged) {
+            throw new Error(
+              `Algebraic loop Newton solver failed to converge at t=${t}. System vars: ${block.vars.join(", ")}`,
+            );
+          }
+
+          for (let i = 0; i < m; i++) {
+            const eq = block.eqs[i];
+            if (!eq) continue;
+            const key = eq.isDerivative ? `der(${eq.target})` : eq.target;
+            evaluator.env.set(key, x[i] ?? 0);
+            if (!eq.isDerivative) {
+              this.algWarmStart.set(key, x[i] ?? 0);
+            }
           }
         }
-        if (maxDelta < ALG_TOL) break;
       }
 
       return stateList.map((state) => evaluator.env.get(`der(${state})`) ?? 0.0);
@@ -1961,7 +2093,13 @@ export class ModelicaSimulator {
   // ──────────────────────────────────────────────────────────────────
   //  RK4 step helper — integrates a single step from (t, y) to (t+h, y_new)
   // ──────────────────────────────────────────────────────────────────
-  private rk4Step(f: (t: number, y: number[]) => number[], t: number, y: number[], h: number, n: number): number[] {
+  private rk4Step(
+    f: (t: number, y: number[]) => number[],
+    t: number,
+    y: number[],
+    h: number,
+    n: number,
+  ): { y_new: number[]; err: null; converged: boolean } {
     const k1 = f(t, y);
     const y_k2 = new Array(n);
     for (let i = 0; i < n; i++) y_k2[i] = (y[i] ?? 0) + 0.5 * h * (k1[i] ?? 0);
@@ -1980,7 +2118,7 @@ export class ModelicaSimulator {
     for (let i = 0; i < n; i++) {
       y_new[i] = (y[i] ?? 0) + (h / 6.0) * ((k1[i] ?? 0) + 2 * (k2[i] ?? 0) + 2 * (k3[i] ?? 0) + (k4[i] ?? 0));
     }
-    return y_new;
+    return { y_new, err: null, converged: true };
   }
 
   // ──────────────────────────────────────────────────────────────────
@@ -1993,6 +2131,8 @@ export class ModelicaSimulator {
     f0: number[],
     n: number,
   ): Float64Array[] {
+    this.algWarmStart.clear();
+
     const sqrtEps = 1.4901161193847656e-8; // √(2.22e-16)
     const J: Float64Array[] = [];
     for (let i = 0; i < n; i++) J.push(new Float64Array(n));
@@ -2057,7 +2197,13 @@ export class ModelicaSimulator {
   //  Stage 2: find k₂ s.t. k₂ = f(t + h, y + (1-γ)h·k₁ + γh·k₂)
   //  y_new = y + h·((1-γ)·k₁ + γ·k₂)
   // ──────────────────────────────────────────────────────────────────
-  private sdirk2Step(f: (t: number, y: number[]) => number[], t: number, y: number[], h: number, n: number): number[] {
+  private sdirk2Step(
+    f: (t: number, y: number[]) => number[],
+    t: number,
+    y: number[],
+    h: number,
+    n: number,
+  ): { y_new: number[]; err: number[]; converged: boolean } {
     const gamma = SDIRK_GAMMA;
     const gh = gamma * h;
     const omg = 1.0 - gamma; // 1 - γ
@@ -2074,6 +2220,7 @@ export class ModelicaSimulator {
     const W = this.getOrBuildW(f, tStage1, y, f0, h, n);
 
     const yStage = new Array<number>(n);
+    let stage1Converged = false;
     for (let iter = 0; iter < NEWTON_MAX_ITER; iter++) {
       // y_stage = y + γ·h·k1
       for (let i = 0; i < n; i++) yStage[i] = (y[i] ?? 0) + gh * (k1[i] ?? 0);
@@ -2086,17 +2233,25 @@ export class ModelicaSimulator {
         r[i] = (fVal[i] ?? 0) - (k1[i] ?? 0);
         maxR = Math.max(maxR, Math.abs(r[i] ?? 0));
       }
-      if (maxR < NEWTON_TOL) break;
+      if (maxR < NEWTON_TOL) {
+        stage1Converged = true;
+        break;
+      }
 
       // Solve W · Δk = r
       luSolve(W, r);
       for (let i = 0; i < n; i++) k1[i] = (k1[i] ?? 0) + (r[i] ?? 0);
     }
 
+    if (!stage1Converged) {
+      return { y_new: [], err: [], converged: false };
+    }
+
     // ── Stage 2: solve for k₂ s.t. k₂ = f(t + h, y + (1-γ)h·k₁ + γh·k₂) ──
     const k2 = new Array<number>(n);
     for (let i = 0; i < n; i++) k2[i] = k1[i] ?? 0; // Initial guess
 
+    let stage2Converged = false;
     for (let iter = 0; iter < NEWTON_MAX_ITER; iter++) {
       // y_stage = y + (1-γ)·h·k1 + γ·h·k2
       for (let i = 0; i < n; i++) {
@@ -2111,25 +2266,43 @@ export class ModelicaSimulator {
         r[i] = (fVal[i] ?? 0) - (k2[i] ?? 0);
         maxR = Math.max(maxR, Math.abs(r[i] ?? 0));
       }
-      if (maxR < NEWTON_TOL) break;
+      if (maxR < NEWTON_TOL) {
+        stage2Converged = true;
+        break;
+      }
 
       luSolve(W, r);
       for (let i = 0; i < n; i++) k2[i] = (k2[i] ?? 0) + (r[i] ?? 0);
     }
 
+    if (!stage2Converged) {
+      return { y_new: [], err: [], converged: false };
+    }
+
     // ── Assemble solution ──
     // y_new = y + h · ((1-γ)·k₁ + γ·k₂)
     const y_new = new Array<number>(n);
+    const err = new Array<number>(n);
     for (let i = 0; i < n; i++) {
-      y_new[i] = (y[i] ?? 0) + h * (omg * (k1[i] ?? 0) + gamma * (k2[i] ?? 0));
+      const k1_i = k1[i] ?? 0;
+      const k2_i = k2[i] ?? 0;
+      y_new[i] = (y[i] ?? 0) + h * (omg * k1_i + gamma * k2_i);
+      // Embedded order-1 error estimate: h * gamma * (k2 - k1)
+      err[i] = h * gamma * (k2_i - k1_i);
     }
-    return y_new;
+    return { y_new, err, converged: true };
   }
 
   // ──────────────────────────────────────────────────────────────────
   //  Generic step dispatcher — routes to RK4 or SDIRK2
   // ──────────────────────────────────────────────────────────────────
-  private step(f: (t: number, y: number[]) => number[], t: number, y: number[], h: number, n: number): number[] {
+  private step(
+    f: (t: number, y: number[]) => number[],
+    t: number,
+    y: number[],
+    h: number,
+    n: number,
+  ): { y_new: number[]; err: number[] | null; converged: boolean } {
     if (this.useImplicitSolver) {
       return this.sdirk2Step(f, t, y, h, n);
     }
@@ -2216,7 +2389,7 @@ export class ModelicaSimulator {
       }
 
       const dt = tMid - tLo;
-      const yMid = this.step(f, tLo, yLo, dt, n);
+      const yMid = this.step(f, tLo, yLo, dt, n).y_new;
 
       // Evaluate zero-crossing at midpoint
       const gAll = this.evaluateZeroCrossings(evaluator, tMid, yMid, states);
@@ -2241,7 +2414,7 @@ export class ModelicaSimulator {
       return { t: tLo, y: yLo };
     }
     const dtFinal = tLo - tA;
-    const yFinal = dtFinal > BISECT_TOL ? this.step(f, tA, yA, dtFinal, n) : [...yA];
+    const yFinal = dtFinal > BISECT_TOL ? this.step(f, tA, yA, dtFinal, n).y_new : [...yA];
     return { t: tLo, y: yFinal };
   }
 
@@ -2289,10 +2462,21 @@ export class ModelicaSimulator {
     let eventsThisStep = 0;
     let t_last_event = current_t;
     let stiffnessProbeCount = 0;
+    let loopCounter = 0;
+
+    let stepH = h; // Active step size
+
+    const ADAPT_ATOL = this.dae.experiment?.tolerance ?? 1e-6;
+    const ADAPT_RTOL = 1e-4;
 
     while (current_t < t1) {
       if (signal?.aborted) {
         throw new Error("Simulation aborted");
+      }
+
+      loopCounter++;
+      if (loopCounter > 1_000_000) {
+        throw new Error(`Simulation runaway detected: exceeded 1,000,000 evaluation steps around t=${current_t}.`);
       }
 
       // Reset event counter if we've moved forward appreciably
@@ -2300,14 +2484,19 @@ export class ModelicaSimulator {
         eventsThisStep = 0;
       }
 
-      let stepH = h;
-      if (current_t + stepH > t1) stepH = t1 - current_t;
+      let isLastStep = false;
+      if (current_t + stepH >= t1) {
+        stepH = t1 - current_t;
+        isLastStep = true;
+      }
 
       // 1. Evaluate zero-crossings at the start of the step
       const gPre = this.evaluateZeroCrossings(evaluator, current_t, current_y, states);
 
       // 2. Take a tentative integration step
-      let y_tentative = this.step(f, current_t, current_y, stepH, n);
+      let stepResult = this.step(f, current_t, current_y, stepH, n);
+      let y_tentative = stepResult.y_new;
+      let stepErr = stepResult.err;
       const t_tentative = current_t + stepH;
 
       // 2b. Proactive stiffness detection: compare RK4 vs SDIRK2 for the first
@@ -2323,7 +2512,8 @@ export class ModelicaSimulator {
         if (maxDelta > 1e-10) {
           stiffnessProbeCount++;
           // Take an SDIRK2 step from the same state for comparison
-          const y_implicit = this.sdirk2Step(f, current_t, current_y, stepH, n);
+          const sdirkRes = this.sdirk2Step(f, current_t, current_y, stepH, n);
+          const y_implicit = sdirkRes.y_new;
           // Compare: if max relative difference exceeds threshold, system is stiff
           let maxRelDiff = 0;
           for (let i = 0; i < n; i++) {
@@ -2339,6 +2529,7 @@ export class ModelicaSimulator {
             this.useImplicitSolver = true;
             this.cachedW = null;
             y_tentative = y_implicit; // Use the SDIRK2 result
+            stepErr = sdirkRes.err;
           }
         }
       }
@@ -2356,7 +2547,36 @@ export class ModelicaSimulator {
         if (diverged) {
           this.useImplicitSolver = true;
           this.cachedW = null;
-          y_tentative = this.step(f, current_t, current_y, stepH, n);
+          stepResult = this.step(f, current_t, current_y, stepH, n);
+          y_tentative = stepResult.y_new;
+          stepErr = stepResult.err;
+        }
+      }
+
+      // 2d. Adaptive step size control via embedded error estimate
+      if (this.useImplicitSolver) {
+        let errNorm = 0;
+        if (!stepResult.converged) {
+          errNorm = Infinity; // Force step rejection
+        } else if (stepErr) {
+          for (let i = 0; i < n; i++) {
+            const ymax = Math.max(Math.abs(current_y[i] ?? 0), Math.abs(y_tentative[i] ?? 0));
+            const scale = ADAPT_ATOL + ADAPT_RTOL * ymax;
+            errNorm = Math.max(errNorm, Math.abs(stepErr[i] ?? 0) / scale);
+          }
+        }
+
+        if (errNorm > 1.0) {
+          // Reject step
+          stepH = stepH * Math.max(0.1, 0.9 / Math.sqrt(errNorm));
+          if (stepH < 1e-15) {
+            throw new Error(`Step size vanished below precision at t=${current_t}.`);
+          }
+          continue; // Try again!
+        } else if (!isLastStep) {
+          // Accept step and grow stepH for the NEXT step, up to nominal h
+          const growthFn = Math.min(5.0, 0.9 / Math.sqrt(Math.max(errNorm, 1e-10)));
+          stepH = Math.min(h, stepH * growthFn);
         }
       }
 

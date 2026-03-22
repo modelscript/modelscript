@@ -1189,6 +1189,12 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       if (!expression) {
         expression = node.modification?.expression ?? null;
       }
+      if (name?.includes("R1.R")) {
+        console.log("R1.R PRE-FOLD:", expression);
+        console.log("modification:", node.modification);
+        console.log("modificationExpression:", node.modification?.modificationExpression);
+        console.log("evaluatedExpression:", node.modification?.evaluatedExpression);
+      }
       // Look up field value from parent record object expression
       // Parent object values take priority over type defaults
       if (this.#parentObjectExpression && node.name) {
@@ -1771,17 +1777,15 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
    * Performs a topological-sort-like evaluation by repeatedly folding constant and parameter expressions
    * until no more simplifications can be made. This resolves forward references between constants.
    */
-  /**
-   * Generate flow balance equations for unconnected flow variables.
-   * Per the Modelica spec, every flow variable that does not appear in any
-   * `connect` equation must have `f = 0.0` added automatically.
-   */
   generateFlowBalanceEquations(dae: ModelicaDAE) {
-    // In Modelica, every top-level flow variable gets a boundary flow balance equation
-    // f = 0.0, regardless of internal connections. This is separate from the connect
-    // sum-to-zero equation which handles internal flow relationships.
+    // In Modelica, only UNCONNECTED flow variables get a boundary flow balance equation
+    // f = 0.0. If they are connected, they participate in the sum-to-zero equation.
     for (const flowVar of this.#allFlowVars) {
-      dae.equations.push(new ModelicaSimpleEquation(new ModelicaNameExpression(flowVar), new ModelicaRealLiteral(0.0)));
+      if (!this.#connectedFlowVars.has(flowVar)) {
+        dae.equations.push(
+          new ModelicaSimpleEquation(new ModelicaNameExpression(flowVar), new ModelicaRealLiteral(0.0)),
+        );
+      }
     }
   }
 

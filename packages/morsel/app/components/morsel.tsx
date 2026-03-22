@@ -255,7 +255,7 @@ export default function MorselEditor(props: MorselEditorProps) {
       const abortController = new AbortController();
       simulateAbortControllerRef.current = abortController;
 
-      const timer = setTimeout(() => {
+      const timer = setTimeout(async () => {
         if (!instance.instantiated) {
           instance.instantiate();
         }
@@ -282,7 +282,7 @@ export default function MorselEditor(props: MorselEditorProps) {
           const stopTime = exp.stopTime ?? 10;
           const step = exp.interval ?? (stopTime - startTime) / 1000;
 
-          const result = simulator.simulate(startTime, stopTime, step, {
+          const result = await simulator.simulate(startTime, stopTime, step, {
             signal: abortController.signal,
             parameterOverrides: parameterOverridesRef.current,
           });
@@ -320,14 +320,14 @@ export default function MorselEditor(props: MorselEditorProps) {
     if (parameterOverrides.size === 0) return;
 
     const abortController = new AbortController();
-    const timer = setTimeout(() => {
+    const timer = setTimeout(async () => {
       try {
         simulator.prepare();
         const exp = simulator.dae.experiment;
         const startTime = exp.startTime ?? 0;
         const stopTime = exp.stopTime ?? 10;
         const step = exp.interval ?? (stopTime - startTime) / 1000;
-        const result = simulator.simulate(startTime, stopTime, step, {
+        const result = await simulator.simulate(startTime, stopTime, step, {
           signal: abortController.signal,
           parameterOverrides,
         });
@@ -1497,6 +1497,8 @@ export default function MorselEditor(props: MorselEditorProps) {
       const dae = new ModelicaDAE(instance.name || "Model");
       const flattener = new ModelicaFlattener();
       instance.accept(flattener, ["", dae]);
+      flattener.generateFlowBalanceEquations(dae);
+      flattener.foldDAEConstants(dae);
 
       const writer = new StringWriter();
       const printer = new ModelicaDAEPrinter(writer);
@@ -1543,6 +1545,8 @@ export default function MorselEditor(props: MorselEditorProps) {
         const dae = new ModelicaDAE(instance.name || "Model");
         const flattener = new ModelicaFlattener();
         instance.accept(flattener, ["", dae]);
+        flattener.generateFlowBalanceEquations(dae);
+        flattener.foldDAEConstants(dae);
 
         const simulator = new ModelicaSimulator(dae);
         simulator.prepare();
@@ -1561,7 +1565,7 @@ export default function MorselEditor(props: MorselEditorProps) {
         const startTime2 = exp2.startTime ?? 0;
         const stopTime2 = exp2.stopTime ?? 10;
         const step2 = exp2.interval ?? (stopTime2 - startTime2) / 100;
-        const result = simulator.simulate(startTime2, stopTime2, step2, {
+        const result = await simulator.simulate(startTime2, stopTime2, step2, {
           signal: abortController.signal,
           parameterOverrides,
         });
