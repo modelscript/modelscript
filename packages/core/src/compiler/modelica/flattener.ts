@@ -1189,12 +1189,6 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       if (!expression) {
         expression = node.modification?.expression ?? null;
       }
-      if (name?.includes("R1.R")) {
-        console.log("R1.R PRE-FOLD:", expression);
-        console.log("modification:", node.modification);
-        console.log("modificationExpression:", node.modification?.modificationExpression);
-        console.log("evaluatedExpression:", node.modification?.evaluatedExpression);
-      }
       // Look up field value from parent record object expression
       // Parent object values take priority over type defaults
       if (this.#parentObjectExpression && node.name) {

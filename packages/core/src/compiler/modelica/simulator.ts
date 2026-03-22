@@ -228,7 +228,7 @@ function extractDerName(expr: unknown): string | null {
 // Extract variables used in an expression
 class DependencyVisitor extends ModelicaDAEVisitor<Set<string>> {
   override visitNameExpression(expr: ModelicaNameExpression, deps?: Set<string>): void {
-    if (deps && !expr.name.startsWith("der(")) {
+    if (deps) {
       deps.add(expr.name);
     }
   }
@@ -288,38 +288,6 @@ function buildZeroCrossing(condition: ModelicaExpression): {
   };
 
   return { fn, direction };
-}
-
-/**
- * Check if two variable names represent an internal connector alias — i.e.,
- * one is the component-level variable and the other is the corresponding pin
- * variable of the same component.
- *
- * Examples of internal aliases (should be merged):
- *   `C1.i = C1.p.i`  →  C1.i is the component current, C1.p.i is the pin current
- *   `C1.v = C1.p.v - C1.n.v`  →  NOT an alias (has subtraction, caught elsewhere)
- *   `G.p.v = 0.0`  →  NOT an alias (one side is a literal)
- *
- * Examples of cross-component constraints (must NOT be merged):
- *   `L1.p.v = C1.p.v`  →  different components sharing a node
- *   `C2.n.v = C3.p.v`  →  different components sharing a node
- */
-function isInternalConnectorAlias(a: string, b: string): boolean {
-  // Check if one name is a prefix of the other with a `.p.` or `.n.` segment.
-  // E.g., "C1.i" and "C1.p.i": "C1" is the common prefix, and "C1.p.i" has `.p.`
-  return isSubPin(a, b) || isSubPin(b, a);
-}
-
-/** Check if `long` is a pin sub-variable of `short` (e.g., "C1.p.i" is sub-pin of "C1.i"). */
-function isSubPin(short: string, long: string): boolean {
-  // short = "C1.i", long = "C1.p.i" → prefix "C1", suffix "i"
-  const lastDotShort = short.lastIndexOf(".");
-  if (lastDotShort < 0) return false;
-  const shortPrefix = short.substring(0, lastDotShort); // "C1"
-  const shortSuffix = short.substring(lastDotShort + 1); // "i"
-
-  // long must be shortPrefix + ".p." + shortSuffix  OR  shortPrefix + ".n." + shortSuffix
-  return long === `${shortPrefix}.p.${shortSuffix}` || long === `${shortPrefix}.n.${shortSuffix}`;
 }
 
 /** Check if an expression is a zero literal (0 or 0.0). */
@@ -522,10 +490,9 @@ export class ModelicaSimulator {
     }
 
     // First pass: identify alias equations (A = B) and build union-find.
-    // IMPORTANT: only alias *internal connector identities* — equations where
-    // both sides belong to the same component (e.g., `C1.i = C1.p.i`).
-    // Cross-component node voltage constraints (e.g., `L1.p.v = C1.p.v`)
-    // must remain as algebraic equations to preserve independent state variables.
+    // Connection equations produce voltage equalities (e.g., L1.p.v = C2.p.v)
+    // and flow identities (e.g., C1.i = C1.p.i). All simple A = B equations
+    // are valid aliases — they represent the same physical quantity.
     const nonAliasEquations: ModelicaSimpleEquation[] = [];
     for (const eq of this.dae.equations) {
       if (eq instanceof ModelicaWhenEquation || eq instanceof ModelicaFunctionCallEquation) {
@@ -534,7 +501,8 @@ export class ModelicaSimulator {
       if (eq instanceof ModelicaSimpleEquation) {
         const lhsName = extractVarName(eq.expression1);
         const rhsName = extractVarName(eq.expression2);
-        if (lhsName && rhsName && isInternalConnectorAlias(lhsName, rhsName)) {
+        if (lhsName && rhsName) {
+          // This is an alias equation: A = B
           aliasUnion(lhsName, rhsName);
         } else {
           nonAliasEquations.push(eq);
@@ -1436,74 +1404,58 @@ export class ModelicaSimulator {
       return null;
     };
 
-    for (const missing of derDeps) {
-      // Process ALL derDeps, even those already defined by Phase 2.5.
-      // Phase 2.7's voltage-constraint definition is always more accurate
-      // than Phase 2.5's KCL companion (which may be tautological).
+    // Scan ALL assignments for `Y := A - stateVar` patterns where A and Y resolve
+    // to other state variables, indicating a voltage constraint (KVL).
+    // For each constrained state variable, override its derivative and back-compute
+    // the associated current.
+    for (const a of assignments) {
+      if (a.isDerivative) continue;
+      if (!(a.expr instanceof ModelicaBinaryExpression)) continue;
+      if (
+        a.expr.operator !== ModelicaBinaryOperator.SUBTRACTION &&
+        a.expr.operator !== ModelicaBinaryOperator.ELEMENTWISE_SUBTRACTION
+      )
+        continue;
 
-      // Find the derivative equation for the state variable associated with `missing`.
-      // Pattern: missing = "Cx.i", state var = "Cx.v", derivative = "der(Cx.v) = Cx.i / Cx.C"
-      const dotIdx = missing.lastIndexOf(".");
+      const op1Name = extractVarName(a.expr.operand1);
+      const op2Name = extractVarName(a.expr.operand2);
+      if (!op1Name || !op2Name) continue;
+
+      const op2Canon = canonicalize(op2Name);
+      if (!this.stateVars.has(op2Canon)) continue;
+
+      // Found: Y := A - stateVar. Resolve A and Y to state variables.
+      const resolvedA = resolveToStateVar(canonicalize(op1Name));
+      const resolvedY = resolveToStateVar(a.target);
+      if (!resolvedA || !resolvedY || resolvedA === resolvedY) continue;
+
+      const candidateState = op2Canon;
+
+      // Override: der(candidateState) := der(resolvedA) - der(resolvedY)
+      const derExpr = new ModelicaBinaryExpression(
+        ModelicaBinaryOperator.SUBTRACTION,
+        new ModelicaNameExpression(`der(${resolvedA})`),
+        new ModelicaNameExpression(`der(${resolvedY})`),
+      );
+      phase27Corrections.push({ target: candidateState, expr: derExpr, isDerivative: true });
+
+      // Back-compute the current: Cx.i = Cx.C * der(Cx.v)
+      // Extract prefix from state var name (e.g., "C2" from "C2.v")
+      const dotIdx = candidateState.lastIndexOf(".");
       if (dotIdx < 0) continue;
-      const prefix = missing.substring(0, dotIdx); // e.g., "C2"
-      const candidateState = `${prefix}.v`; // e.g., "C2.v"
-      if (!this.stateVars.has(candidateState)) continue;
+      const prefix = candidateState.substring(0, dotIdx);
+      const currentVar = `${prefix}.i`;
+      const capacitanceParam = `${prefix}.C`;
+      if (!this.parameters.has(capacitanceParam)) continue;
 
-      // Find the assignment that defines candidateState via subtraction: Y := A - candidateState
-      for (const a of assignments) {
-        if (a.isDerivative) continue;
-        if (!(a.expr instanceof ModelicaBinaryExpression)) continue;
-        if (
-          a.expr.operator !== ModelicaBinaryOperator.SUBTRACTION &&
-          a.expr.operator !== ModelicaBinaryOperator.ELEMENTWISE_SUBTRACTION
-        )
-          continue;
-
-        const op1Name = extractVarName(a.expr.operand1);
-        const op2Name = extractVarName(a.expr.operand2);
-
-        // Check for: Y := A - candidateState (op2 is the state var)
-        if (op2Name && canonicalize(op2Name) === candidateState && op1Name) {
-          const resolvedA = resolveToStateVar(canonicalize(op1Name));
-          const resolvedY = resolveToStateVar(a.target);
-
-          if (resolvedA && resolvedY && resolvedA !== resolvedY) {
-            // Constraint: candidateState = resolvedA - resolvedY
-            // Override: der(candidateState) := der(resolvedA) - der(resolvedY)
-            const derExpr = new ModelicaBinaryExpression(
-              ModelicaBinaryOperator.SUBTRACTION,
-              new ModelicaNameExpression(`der(${resolvedA})`),
-              new ModelicaNameExpression(`der(${resolvedY})`),
-            );
-            // Do NOT override the derivative in-place — it creates forward
-            // references (der(C3.v) not yet computed). Instead, add BOTH the
-            // derivative override and the current equation as post-sort corrections.
-            // Pass 1: original der(Cx.v) = Cx.i / Cx.C gives 0 (Cx.i = 0 init)
-            // Post-sort pass 2+: der(Cx.v) = der(A) - der(B) → non-zero
-            //                    Cx.i = Cx.C * der(Cx.v) → non-zero
-            phase27Corrections.push({ target: candidateState, expr: derExpr, isDerivative: true });
-
-            // Collect the current equation as a post-sort correction.
-            // We do NOT replace the Phase 2.5 assignment in `assignments` because
-            // that would create a circular dependency in topological sort
-            // (Cx.i → der(Cx.v) → der(A) → ... → Cx.i).
-            // Instead, append it AFTER the sort so iterative evaluation can converge:
-            // Pass 1: Phase 2.5's tautological value provides initial estimate
-            // Pass 2+: Phase 2.7's constraint-based value overrides it
-            const capacitanceParam = `${prefix}.C`;
-            const currentExpr = new ModelicaBinaryExpression(
-              ModelicaBinaryOperator.MULTIPLICATION,
-              new ModelicaNameExpression(capacitanceParam),
-              new ModelicaNameExpression(`der(${candidateState})`),
-            );
-            phase27Corrections.push({ target: missing, expr: currentExpr, isDerivative: false });
-            this.algebraicVars.add(missing);
-            definedVars.add(missing);
-
-            break;
-          }
-        }
-      }
+      const currentExpr = new ModelicaBinaryExpression(
+        ModelicaBinaryOperator.MULTIPLICATION,
+        new ModelicaNameExpression(capacitanceParam),
+        new ModelicaNameExpression(`der(${candidateState})`),
+      );
+      phase27Corrections.push({ target: currentVar, expr: currentExpr, isDerivative: false });
+      this.algebraicVars.add(currentVar);
+      definedVars.add(currentVar);
     }
 
     // ── Phase 3: Collect reversed equations from redundant constraints ──
@@ -1611,7 +1563,7 @@ export class ModelicaSimulator {
 
       const deps = dependencyMap.get(v) || new Set();
       for (const dep of deps) {
-        if (definedVars.has(dep) && assignMap.has(dep)) {
+        if (assignMap.has(dep)) {
           // Only traverse edges to computed vars
           if (!index.has(dep)) {
             strongconnect(dep);
