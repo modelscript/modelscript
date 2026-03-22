@@ -14,6 +14,7 @@ import { Logout } from "./commands/logout.js";
 import { Parse } from "./commands/parse.js";
 import { Publish } from "./commands/publish.js";
 import { Render } from "./commands/render.js";
+import { Simulate } from "./commands/simulate.js";
 import { Unpublish } from "./commands/unpublish.js";
 
 const packagePath = path.dirname(import.meta.dirname);
@@ -31,6 +32,7 @@ yargs(process.argv.slice(2))
   .command(Parse)
   .command(Publish)
   .command(Render)
+  .command(Simulate)
   .command(Unpublish)
   .strictCommands()
   .demandCommand()
