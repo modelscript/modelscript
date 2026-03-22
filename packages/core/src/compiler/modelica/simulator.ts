@@ -20,6 +20,7 @@ import {
   ModelicaUnaryExpression,
   ModelicaVariable,
   ModelicaWhenEquation,
+  pantelidesIndexReduction,
 } from "./dae.js";
 import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "./syntax.js";
 
@@ -1195,267 +1196,23 @@ export class ModelicaSimulator {
       }
     }
 
+    // ── Phase 2.7: Pantelides index reduction ──
+    // Detect hidden algebraic constraints between state variables in unmatched
+    // equations. For each constrained state, demote it to algebraic, differentiate
+    // the constraint symbolically, and back-compute dependent variables.
     const phase27Corrections: typeof assignments = [];
-    // ── Phase 2.7: Potential-constraint derivative override ──
-    // For each still-undefined derDeps variable, the derivative equation may be
-    // der(X.v) = X.f / X.C, which is useless if X.f = 0 → der(X.v) = 0.
-    // If X.v is potential-constrained (e.g., X.v = A.v - B.v from the topology),
-    // we can compute der(X.v) = der(A.v) - der(B.v) from existing derivatives,
-    // then back-compute X.f = X.C * der(X.v).
-    //
-    // Detection: scan algebraic assignments for `Y := A - X.v` patterns.
-    // Resolve A and Y to state variables through the assignment chain.
-    // If both resolve to state variables, X.v = A - Y → der(X.v) = der(A) - der(Y).
-    const resolveToStateVar = (name: string): string | null => {
-      // Follow the assignment chain: if `name` is defined as `name := stateVar + 0`
-      // or `name := stateVar`, return the state variable. Limited depth.
-      const isVarAssignedZero = (varName: string): boolean => {
-        const a = assignments.find((a2) => !a2.isDerivative && a2.target === varName);
-        return a ? isZeroLiteral(a.expr) : false;
-      };
-      let current = name;
-      for (let depth = 0; depth < 10; depth++) {
-        if (this.stateVars.has(current)) return current;
-        const assign = assignments.find((a) => !a.isDerivative && a.target === current);
-        if (!assign) {
-          // Check reverse: is there a state variable defined as `stateVar := current`?
-          for (const a of assignments) {
-            if (a.isDerivative) continue;
-            const exprName = extractVarName(a.expr);
-            if (exprName && canonicalize(exprName) === current && this.stateVars.has(a.target)) {
-              return a.target;
-            }
-            // Also check stateVar := current - zeroVar or stateVar := current + zeroVar
-            if (a.expr instanceof ModelicaBinaryExpression && this.stateVars.has(a.target)) {
-              const aOp1 = extractVarName(a.expr.operand1);
-              const aOp2 = extractVarName(a.expr.operand2);
-              if (
-                a.expr.operator === ModelicaBinaryOperator.SUBTRACTION ||
-                a.expr.operator === ModelicaBinaryOperator.ELEMENTWISE_SUBTRACTION
-              ) {
-                if (
-                  aOp1 &&
-                  canonicalize(aOp1) === current &&
-                  (isZeroLiteral(a.expr.operand2) || (aOp2 && isVarAssignedZero(canonicalize(aOp2))))
-                ) {
-                  return a.target;
-                }
-              }
-              if (
-                a.expr.operator === ModelicaBinaryOperator.ADDITION ||
-                a.expr.operator === ModelicaBinaryOperator.ELEMENTWISE_ADDITION
-              ) {
-                if (
-                  aOp1 &&
-                  canonicalize(aOp1) === current &&
-                  (isZeroLiteral(a.expr.operand2) || (aOp2 && isVarAssignedZero(canonicalize(aOp2))))
-                ) {
-                  return a.target;
-                }
-                if (
-                  aOp2 &&
-                  canonicalize(aOp2) === current &&
-                  (isZeroLiteral(a.expr.operand1) || (aOp1 && isVarAssignedZero(canonicalize(aOp1))))
-                ) {
-                  return a.target;
-                }
-              }
-            }
-          }
-          return null;
-        }
-        // Check if expr is a bare variable name
-        const varName = extractVarName(assign.expr);
-        if (varName) {
-          current = canonicalize(varName);
-          continue;
-        }
-        // Check if expr is stateVar + 0 or 0 + stateVar
-        // Also handle stateVar + varThatIsZero
-        if (
-          assign.expr instanceof ModelicaBinaryExpression &&
-          (assign.expr.operator === ModelicaBinaryOperator.ADDITION ||
-            assign.expr.operator === ModelicaBinaryOperator.ELEMENTWISE_ADDITION)
-        ) {
-          const op1Name = extractVarName(assign.expr.operand1);
-          const op2Name = extractVarName(assign.expr.operand2);
-          if (
-            op1Name &&
-            (isZeroLiteral(assign.expr.operand2) || (op2Name && isVarAssignedZero(canonicalize(op2Name))))
-          ) {
-            current = canonicalize(op1Name);
-            continue;
-          }
-          if (
-            op2Name &&
-            (isZeroLiteral(assign.expr.operand1) || (op1Name && isVarAssignedZero(canonicalize(op1Name))))
-          ) {
-            current = canonicalize(op2Name);
-            continue;
-          }
-        }
-        // Also check subtraction: stateVar - 0 or stateVar - varThatIsZero
-        if (
-          assign.expr instanceof ModelicaBinaryExpression &&
-          (assign.expr.operator === ModelicaBinaryOperator.SUBTRACTION ||
-            assign.expr.operator === ModelicaBinaryOperator.ELEMENTWISE_SUBTRACTION)
-        ) {
-          const op1Name = extractVarName(assign.expr.operand1);
-          const op2Name = extractVarName(assign.expr.operand2);
-          if (
-            op1Name &&
-            (isZeroLiteral(assign.expr.operand2) || (op2Name && isVarAssignedZero(canonicalize(op2Name))))
-          ) {
-            current = canonicalize(op1Name);
-            continue;
-          }
-        }
-        // Forward chain failed — fall through to reverse check below
-        break;
+    const pantelidesResult = pantelidesIndexReduction(unmatchedEquations, this.stateVars, this.parameters, definedVars);
+    for (const dummy of pantelidesResult.dummyDerivatives) {
+      this.stateVars.delete(dummy);
+      this.algebraicVars.add(dummy);
+      definedVars.add(dummy);
+    }
+    for (const ca of pantelidesResult.constraintAssignments) {
+      phase27Corrections.push(ca);
+      if (!ca.isDerivative) {
+        this.algebraicVars.add(ca.target);
+        definedVars.add(ca.target);
       }
-      // Reverse check: is there a state variable defined as `stateVar := current (± 0)`?
-      // Check in assignments
-      for (const a of assignments) {
-        if (a.isDerivative) continue;
-        const exprName = extractVarName(a.expr);
-        if (exprName && canonicalize(exprName) === current && this.stateVars.has(a.target)) {
-          return a.target;
-        }
-        if (a.expr instanceof ModelicaBinaryExpression && this.stateVars.has(a.target)) {
-          const aOp1 = extractVarName(a.expr.operand1);
-          const aOp2 = extractVarName(a.expr.operand2);
-          if (
-            a.expr.operator === ModelicaBinaryOperator.SUBTRACTION ||
-            a.expr.operator === ModelicaBinaryOperator.ELEMENTWISE_SUBTRACTION
-          ) {
-            if (
-              aOp1 &&
-              canonicalize(aOp1) === current &&
-              (isZeroLiteral(a.expr.operand2) || (aOp2 && isVarAssignedZero(canonicalize(aOp2))))
-            ) {
-              return a.target;
-            }
-          }
-          if (
-            a.expr.operator === ModelicaBinaryOperator.ADDITION ||
-            a.expr.operator === ModelicaBinaryOperator.ELEMENTWISE_ADDITION
-          ) {
-            if (
-              aOp1 &&
-              canonicalize(aOp1) === current &&
-              (isZeroLiteral(a.expr.operand2) || (aOp2 && isVarAssignedZero(canonicalize(aOp2))))
-            ) {
-              return a.target;
-            }
-            if (
-              aOp2 &&
-              canonicalize(aOp2) === current &&
-              (isZeroLiteral(a.expr.operand1) || (aOp1 && isVarAssignedZero(canonicalize(aOp1))))
-            ) {
-              return a.target;
-            }
-          }
-        }
-      }
-      // Also check in unmatched equations: stateVar = current (± zeroVar)
-      const checkNameIsCurrentPlusZero = (name: string | null, expr: ModelicaExpression): boolean => {
-        if (name && canonicalize(name) === current) return true;
-        if (expr instanceof ModelicaBinaryExpression) {
-          const eOp1 = extractVarName(expr.operand1);
-          const eOp2 = extractVarName(expr.operand2);
-          if (
-            expr.operator === ModelicaBinaryOperator.SUBTRACTION ||
-            expr.operator === ModelicaBinaryOperator.ELEMENTWISE_SUBTRACTION
-          ) {
-            return !!(
-              eOp1 &&
-              canonicalize(eOp1) === current &&
-              (isZeroLiteral(expr.operand2) || (eOp2 && isVarAssignedZero(canonicalize(eOp2))))
-            );
-          }
-          if (
-            expr.operator === ModelicaBinaryOperator.ADDITION ||
-            expr.operator === ModelicaBinaryOperator.ELEMENTWISE_ADDITION
-          ) {
-            return !!(
-              (eOp1 &&
-                canonicalize(eOp1) === current &&
-                (isZeroLiteral(expr.operand2) || (eOp2 && isVarAssignedZero(canonicalize(eOp2))))) ||
-              (eOp2 &&
-                canonicalize(eOp2) === current &&
-                (isZeroLiteral(expr.operand1) || (eOp1 && isVarAssignedZero(canonicalize(eOp1)))))
-            );
-          }
-        }
-        return false;
-      };
-      for (const { lhs, rhs } of unmatchedEquations) {
-        const lhsName = extractVarName(lhs);
-        const rhsName = extractVarName(rhs);
-        // Check: stateVar(lhs) = current(rhs) ± 0
-        if (lhsName && this.stateVars.has(canonicalize(lhsName)) && checkNameIsCurrentPlusZero(rhsName, rhs)) {
-          return canonicalize(lhsName);
-        }
-        // Check: stateVar(rhs) = current(lhs) ± 0
-        if (rhsName && this.stateVars.has(canonicalize(rhsName)) && checkNameIsCurrentPlusZero(lhsName, lhs)) {
-          return canonicalize(rhsName);
-        }
-      }
-      return null;
-    };
-
-    // Scan ALL assignments for `Y := A - stateVar` patterns where A and Y resolve
-    // to other state variables, indicating a voltage constraint (KVL).
-    // For each constrained state variable, override its derivative and back-compute
-    // the associated current.
-    for (const a of assignments) {
-      if (a.isDerivative) continue;
-      if (!(a.expr instanceof ModelicaBinaryExpression)) continue;
-      if (
-        a.expr.operator !== ModelicaBinaryOperator.SUBTRACTION &&
-        a.expr.operator !== ModelicaBinaryOperator.ELEMENTWISE_SUBTRACTION
-      )
-        continue;
-
-      const op1Name = extractVarName(a.expr.operand1);
-      const op2Name = extractVarName(a.expr.operand2);
-      if (!op1Name || !op2Name) continue;
-
-      const op2Canon = canonicalize(op2Name);
-      if (!this.stateVars.has(op2Canon)) continue;
-
-      // Found: Y := A - stateVar. Resolve A and Y to state variables.
-      const resolvedA = resolveToStateVar(canonicalize(op1Name));
-      const resolvedY = resolveToStateVar(a.target);
-      if (!resolvedA || !resolvedY || resolvedA === resolvedY) continue;
-
-      const candidateState = op2Canon;
-
-      // Override: der(candidateState) := der(resolvedA) - der(resolvedY)
-      const derExpr = new ModelicaBinaryExpression(
-        ModelicaBinaryOperator.SUBTRACTION,
-        new ModelicaNameExpression(`der(${resolvedA})`),
-        new ModelicaNameExpression(`der(${resolvedY})`),
-      );
-      phase27Corrections.push({ target: candidateState, expr: derExpr, isDerivative: true });
-
-      // Back-compute the current: Cx.i = Cx.C * der(Cx.v)
-      // Extract prefix from state var name (e.g., "C2" from "C2.v")
-      const dotIdx = candidateState.lastIndexOf(".");
-      if (dotIdx < 0) continue;
-      const prefix = candidateState.substring(0, dotIdx);
-      const currentVar = `${prefix}.i`;
-      const capacitanceParam = `${prefix}.C`;
-      if (!this.parameters.has(capacitanceParam)) continue;
-
-      const currentExpr = new ModelicaBinaryExpression(
-        ModelicaBinaryOperator.MULTIPLICATION,
-        new ModelicaNameExpression(capacitanceParam),
-        new ModelicaNameExpression(`der(${candidateState})`),
-      );
-      phase27Corrections.push({ target: currentVar, expr: currentExpr, isDerivative: false });
-      this.algebraicVars.add(currentVar);
-      definedVars.add(currentVar);
     }
 
     // ── Phase 3: Collect reversed equations from redundant constraints ──

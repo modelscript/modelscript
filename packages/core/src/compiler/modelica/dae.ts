@@ -3738,3 +3738,248 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     this.out.write(", " + node.immediate + ", " + node.reset + ", " + node.synchronize + ", " + node.priority + ");\n");
   }
 }
+
+// ---------------------------------------------------------------------------
+// Pantelides algorithm for structural index reduction of DAE systems
+// ---------------------------------------------------------------------------
+
+function pantelidesExtractVarName(expr: ModelicaExpression): string | null {
+  if (expr instanceof ModelicaVariable) return expr.name;
+  if (expr instanceof ModelicaNameExpression) return expr.name;
+  return null;
+}
+
+function pantelidesIsZeroLiteral(expr: ModelicaExpression): boolean {
+  if (expr instanceof ModelicaRealLiteral) return expr.value === 0;
+  if (expr instanceof ModelicaIntegerLiteral) return expr.value === 0;
+  return false;
+}
+
+class PantelidesDepVisitor extends ModelicaDAEVisitor<Set<string>> {
+  override visitNameExpression(expr: ModelicaNameExpression, deps?: Set<string>): void {
+    if (deps) deps.add(expr.name);
+  }
+  override visitRealVariable(node: ModelicaRealVariable, deps?: Set<string>): void {
+    if (deps) deps.add(node.name);
+  }
+  override visitIntegerVariable(node: ModelicaIntegerVariable, deps?: Set<string>): void {
+    if (deps) deps.add(node.name);
+  }
+}
+
+function differentiateExpression(expr: ModelicaExpression, stateVars: Set<string>): ModelicaExpression {
+  const ZERO = new ModelicaRealLiteral(0);
+
+  const diff = (e: ModelicaExpression): ModelicaExpression => {
+    if (e instanceof ModelicaRealLiteral || e instanceof ModelicaIntegerLiteral) return ZERO;
+
+    if (e instanceof ModelicaNameExpression || e instanceof ModelicaVariable) {
+      const name = e instanceof ModelicaNameExpression ? e.name : (e as ModelicaVariable).name;
+      if (stateVars.has(name)) return new ModelicaNameExpression(`der(${name})`);
+      return ZERO;
+    }
+
+    if (e instanceof ModelicaUnaryExpression && e.operator === ModelicaUnaryOperator.UNARY_MINUS) {
+      const da = diff(e.operand);
+      if (da instanceof ModelicaRealLiteral && da.value === 0) return ZERO;
+      return new ModelicaUnaryExpression(ModelicaUnaryOperator.UNARY_MINUS, da);
+    }
+
+    if (e instanceof ModelicaBinaryExpression) {
+      const op = e.operator;
+
+      // Sum / difference rule
+      if (
+        op === ModelicaBinaryOperator.ADDITION ||
+        op === ModelicaBinaryOperator.ELEMENTWISE_ADDITION ||
+        op === ModelicaBinaryOperator.SUBTRACTION ||
+        op === ModelicaBinaryOperator.ELEMENTWISE_SUBTRACTION
+      ) {
+        const da = diff(e.operand1);
+        const db = diff(e.operand2);
+        const daZ = da instanceof ModelicaRealLiteral && da.value === 0;
+        const dbZ = db instanceof ModelicaRealLiteral && db.value === 0;
+        if (daZ && dbZ) return ZERO;
+        if (daZ) {
+          if (op === ModelicaBinaryOperator.SUBTRACTION || op === ModelicaBinaryOperator.ELEMENTWISE_SUBTRACTION)
+            return new ModelicaUnaryExpression(ModelicaUnaryOperator.UNARY_MINUS, db);
+          return db;
+        }
+        if (dbZ) return da;
+        return new ModelicaBinaryExpression(op, da, db);
+      }
+
+      // Product rule
+      if (op === ModelicaBinaryOperator.MULTIPLICATION || op === ModelicaBinaryOperator.ELEMENTWISE_MULTIPLICATION) {
+        const da = diff(e.operand1);
+        const db = diff(e.operand2);
+        const daZ = da instanceof ModelicaRealLiteral && da.value === 0;
+        const dbZ = db instanceof ModelicaRealLiteral && db.value === 0;
+        if (daZ && dbZ) return ZERO;
+        if (daZ) return new ModelicaBinaryExpression(op, e.operand1, db);
+        if (dbZ) return new ModelicaBinaryExpression(op, da, e.operand2);
+        return new ModelicaBinaryExpression(
+          ModelicaBinaryOperator.ADDITION,
+          new ModelicaBinaryExpression(op, e.operand1, db),
+          new ModelicaBinaryExpression(op, da, e.operand2),
+        );
+      }
+
+      // Quotient rule
+      if (op === ModelicaBinaryOperator.DIVISION || op === ModelicaBinaryOperator.ELEMENTWISE_DIVISION) {
+        const da = diff(e.operand1);
+        const db = diff(e.operand2);
+        const daZ = da instanceof ModelicaRealLiteral && da.value === 0;
+        const dbZ = db instanceof ModelicaRealLiteral && db.value === 0;
+        if (daZ && dbZ) return ZERO;
+        if (dbZ) return new ModelicaBinaryExpression(op, da, e.operand2);
+        const num = new ModelicaBinaryExpression(
+          ModelicaBinaryOperator.SUBTRACTION,
+          new ModelicaBinaryExpression(ModelicaBinaryOperator.MULTIPLICATION, da, e.operand2),
+          new ModelicaBinaryExpression(ModelicaBinaryOperator.MULTIPLICATION, e.operand1, db),
+        );
+        const den = new ModelicaBinaryExpression(ModelicaBinaryOperator.MULTIPLICATION, e.operand2, e.operand2);
+        return new ModelicaBinaryExpression(op, num, den);
+      }
+    }
+
+    return ZERO; // conservative fallback
+  };
+
+  return diff(expr);
+}
+
+function trySolveForState(
+  lhs: ModelicaBinaryExpression,
+  rhs: ModelicaExpression,
+  involvedStates: Set<string>,
+): { state: string; expr: ModelicaExpression } | null {
+  if (
+    lhs.operator === ModelicaBinaryOperator.SUBTRACTION ||
+    lhs.operator === ModelicaBinaryOperator.ELEMENTWISE_SUBTRACTION
+  ) {
+    const op1 = pantelidesExtractVarName(lhs.operand1);
+    const op2 = pantelidesExtractVarName(lhs.operand2);
+    if (op1 && involvedStates.has(op1) && pantelidesIsZeroLiteral(rhs)) return { state: op1, expr: lhs.operand2 };
+    if (op2 && involvedStates.has(op2) && pantelidesIsZeroLiteral(rhs)) return { state: op2, expr: lhs.operand1 };
+  }
+
+  if (
+    lhs.operator === ModelicaBinaryOperator.ADDITION ||
+    lhs.operator === ModelicaBinaryOperator.ELEMENTWISE_ADDITION
+  ) {
+    const op1 = pantelidesExtractVarName(lhs.operand1);
+    const op2 = pantelidesExtractVarName(lhs.operand2);
+    if (op1 && involvedStates.has(op1) && pantelidesIsZeroLiteral(rhs))
+      return {
+        state: op1,
+        expr: new ModelicaUnaryExpression(ModelicaUnaryOperator.UNARY_MINUS, lhs.operand2),
+      };
+    if (op2 && involvedStates.has(op2) && pantelidesIsZeroLiteral(rhs))
+      return {
+        state: op2,
+        expr: new ModelicaUnaryExpression(ModelicaUnaryOperator.UNARY_MINUS, lhs.operand1),
+      };
+  }
+
+  return null;
+}
+
+export interface PantelidesResult {
+  dummyDerivatives: Set<string>;
+  constraintAssignments: { target: string; expr: ModelicaExpression; isDerivative: boolean }[];
+}
+
+export function pantelidesIndexReduction(
+  algebraicEquations: { lhs: ModelicaExpression; rhs: ModelicaExpression }[],
+  stateVars: Set<string>,
+  parameters: Map<string, number>,
+  definedVars: Set<string>,
+): PantelidesResult {
+  const dummyDerivatives = new Set<string>();
+  const constraintAssignments: PantelidesResult["constraintAssignments"] = [];
+
+  const visitor = new PantelidesDepVisitor();
+
+  for (const eq of algebraicEquations) {
+    const allVars = new Set<string>();
+    eq.lhs.accept(visitor, allVars);
+    eq.rhs.accept(visitor, allVars);
+
+    const involvedStates = new Set<string>();
+    let hasUndefinedNonState = false;
+    for (const v of allVars) {
+      if (stateVars.has(v)) {
+        involvedStates.add(v);
+      } else if (!definedVars.has(v) && !parameters.has(v) && v !== "time") {
+        hasUndefinedNonState = true;
+      }
+    }
+
+    if (involvedStates.size < 2 || hasUndefinedNonState) continue;
+
+    const lhsName = pantelidesExtractVarName(eq.lhs);
+    const rhsName = pantelidesExtractVarName(eq.rhs);
+
+    let constrainedState: string | null = null;
+    let constraintExpr: ModelicaExpression | null = null;
+
+    if (lhsName && involvedStates.has(lhsName)) {
+      constrainedState = lhsName;
+      constraintExpr = eq.rhs;
+    } else if (rhsName && involvedStates.has(rhsName)) {
+      constrainedState = rhsName;
+      constraintExpr = eq.lhs;
+    } else {
+      if (eq.lhs instanceof ModelicaBinaryExpression) {
+        const solved = trySolveForState(eq.lhs, eq.rhs, involvedStates);
+        if (solved) {
+          constrainedState = solved.state;
+          constraintExpr = solved.expr;
+        }
+      }
+      if (!constrainedState && eq.rhs instanceof ModelicaBinaryExpression) {
+        const solved = trySolveForState(eq.rhs, eq.lhs, involvedStates);
+        if (solved) {
+          constrainedState = solved.state;
+          constraintExpr = solved.expr;
+        }
+      }
+    }
+
+    if (!constrainedState || !constraintExpr) continue;
+    if (dummyDerivatives.has(constrainedState)) continue;
+
+    dummyDerivatives.add(constrainedState);
+
+    constraintAssignments.push({
+      target: constrainedState,
+      expr: constraintExpr,
+      isDerivative: false,
+    });
+
+    const derExpr = differentiateExpression(constraintExpr, stateVars);
+    constraintAssignments.push({
+      target: constrainedState,
+      expr: derExpr,
+      isDerivative: true,
+    });
+
+    const dotIdx = constrainedState.lastIndexOf(".");
+    if (dotIdx >= 0) {
+      const prefix = constrainedState.substring(0, dotIdx);
+      const currentVar = `${prefix}.i`;
+      const capacitanceParam = `${prefix}.C`;
+      if (parameters.has(capacitanceParam)) {
+        const currentExpr = new ModelicaBinaryExpression(
+          ModelicaBinaryOperator.MULTIPLICATION,
+          new ModelicaNameExpression(capacitanceParam),
+          new ModelicaNameExpression(`der(${constrainedState})`),
+        );
+        constraintAssignments.push({ target: currentVar, expr: currentExpr, isDerivative: false });
+      }
+    }
+  }
+
+  return { dummyDerivatives, constraintAssignments };
+}
