@@ -66,6 +66,7 @@ export function VariablesTree({ variables, selectedVariables, onToggleVariable }
             <Checkbox
               checked={isSelected}
               onChange={() => onToggleVariable(node.fullName)}
+              onClick={(e: React.MouseEvent) => e.stopPropagation()}
               aria-label={isSelected ? "Hide variable" : "Show variable"}
             />
           ) : null}
