@@ -11,6 +11,8 @@ import {
   type ModelicaExpression,
   ModelicaFunctionCallEquation,
   ModelicaFunctionCallExpression,
+  ModelicaIfElseExpression,
+  ModelicaIfEquation,
   ModelicaIntegerLiteral,
   ModelicaIntegerVariable,
   ModelicaNameExpression,
@@ -494,13 +496,55 @@ export class ModelicaSimulator {
       }
     }
 
+    // ── Pre-process: flatten if-equations into conditional simple equations ──
+    // An if-equation like:
+    //   if cond then x = e1; elseif cond2 then x = e2; else x = e3; end if;
+    // becomes:
+    //   x = if cond then e1 elseif cond2 then e2 else e3;
+    const flattenedEquations: ModelicaEquation[] = [];
+    for (const eq of this.dae.equations) {
+      if (eq instanceof ModelicaIfEquation) {
+        const ifEqs = eq.equations.filter((e): e is ModelicaSimpleEquation => e instanceof ModelicaSimpleEquation);
+        const elseEqs = eq.elseEquations.filter(
+          (e): e is ModelicaSimpleEquation => e instanceof ModelicaSimpleEquation,
+        );
+        const elseIfBranches = eq.elseIfClauses.map((c) => ({
+          condition: c.condition,
+          equations: c.equations.filter((e): e is ModelicaSimpleEquation => e instanceof ModelicaSimpleEquation),
+        }));
+
+        // Pair equations by position across branches
+        const maxLen = Math.max(ifEqs.length, elseEqs.length, ...elseIfBranches.map((b) => b.equations.length));
+        for (let i = 0; i < maxLen; i++) {
+          const ifEq = ifEqs[i];
+          const elseEq = elseEqs[i];
+          if (!ifEq) continue;
+
+          // Build the LHS: use the if-branch's LHS
+          const lhs = ifEq.expression1;
+          // Build the conditional RHS
+          const thenExpr = ifEq.expression2;
+          const elseIfClauses = elseIfBranches.map((b) => ({
+            condition: b.condition,
+            expression: b.equations[i]?.expression2 ?? new ModelicaRealLiteral(0),
+          }));
+          const elseExpr = elseEq?.expression2 ?? new ModelicaRealLiteral(0);
+
+          const conditionalRhs = new ModelicaIfElseExpression(eq.condition, thenExpr, elseIfClauses, elseExpr);
+          flattenedEquations.push(new ModelicaSimpleEquation(lhs, conditionalRhs));
+        }
+      } else {
+        flattenedEquations.push(eq);
+      }
+    }
+
     // First pass: identify alias equations (A = B) and build union-find.
     // Connection equations produce voltage equalities (e.g., L1.p.v = C2.p.v)
     // and flow identities (e.g., C1.i = C1.p.i). All simple A = B equations
     // are valid aliases — they represent the same physical quantity.
     const nonAliasEquations: ModelicaSimpleEquation[] = [];
     const negatedAliasPairs: [string, string][] = []; // [a, b] meaning a = -b
-    for (const eq of this.dae.equations) {
+    for (const eq of flattenedEquations) {
       if (eq instanceof ModelicaWhenEquation || eq instanceof ModelicaFunctionCallEquation) {
         continue;
       }
@@ -597,7 +641,26 @@ export class ModelicaSimulator {
         if (anyChanged) return new ModelicaFunctionCallExpression(expr.functionName, newArgs);
         return expr;
       }
-      // ModelicaIfElseExpression, literals, etc. — return as-is
+      if (expr instanceof ModelicaIfElseExpression) {
+        const newCond = substituteAliases(expr.condition);
+        const newThen = substituteAliases(expr.thenExpression);
+        const newElseIfs = expr.elseIfClauses.map((c) => ({
+          condition: substituteAliases(c.condition),
+          expression: substituteAliases(c.expression),
+        }));
+        const newElse = substituteAliases(expr.elseExpression);
+        const anyChanged =
+          newCond !== expr.condition ||
+          newThen !== expr.thenExpression ||
+          newElse !== expr.elseExpression ||
+          newElseIfs.some(
+            (c, i) =>
+              c.condition !== expr.elseIfClauses[i]?.condition || c.expression !== expr.elseIfClauses[i]?.expression,
+          );
+        if (anyChanged) return new ModelicaIfElseExpression(newCond, newThen, newElseIfs, newElse);
+        return expr;
+      }
+      // Literals, etc. — return as-is
       return expr;
     };
 
@@ -776,6 +839,25 @@ export class ModelicaSimulator {
           if (changed) {
             return new ModelicaFunctionCallExpression(expr.functionName, newArgs);
           }
+          return expr;
+        }
+        if (expr instanceof ModelicaIfElseExpression) {
+          const newCond = substituteInExpr(expr.condition);
+          const newThen = substituteInExpr(expr.thenExpression);
+          const newElseIfs = expr.elseIfClauses.map((c) => ({
+            condition: substituteInExpr(c.condition),
+            expression: substituteInExpr(c.expression),
+          }));
+          const newElse = substituteInExpr(expr.elseExpression);
+          const anyChanged =
+            newCond !== expr.condition ||
+            newThen !== expr.thenExpression ||
+            newElse !== expr.elseExpression ||
+            newElseIfs.some(
+              (c, i) =>
+                c.condition !== expr.elseIfClauses[i]?.condition || c.expression !== expr.elseIfClauses[i]?.expression,
+            );
+          if (anyChanged) return new ModelicaIfElseExpression(newCond, newThen, newElseIfs, newElse);
           return expr;
         }
         return expr;
