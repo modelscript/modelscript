@@ -15,6 +15,14 @@ import {
 } from "vscode-languageserver";
 
 import { TextDocument } from "vscode-languageserver-textdocument";
+import { buildDiagramData } from "./diagramData";
+import {
+  computeComponentsDelete,
+  computeConnectInsert,
+  computeConnectRemove,
+  computeEdgePointEdits,
+  computePlacementEdits,
+} from "./diagramEdits";
 
 import Parser from "web-tree-sitter";
 
@@ -310,6 +318,9 @@ class EditorScope extends Scope {
 const documentInstances = new Map<string, ModelicaClassInstance[]>();
 const documentContexts = new Map<string, Context>();
 
+/* Workspace-wide class instances — keyed by document URI */
+const workspaceInstances = new Map<string, ModelicaClassInstance[]>();
+
 /* Resolve a modification/annotation path element to its named element */
 
 function resolvePathElement(node: Parser.SyntaxNode, scope: Scope): ModelicaNamedElement | null {
@@ -573,9 +584,33 @@ connection.onInitialize((params): InitializeResult => {
 const documents = new TextDocuments(TextDocument);
 documents.listen(connection);
 
-// Validate documents when they change
+// Validate documents when they change, and re-validate other open docs for cross-file resolution
+let revalidationTimer: ReturnType<typeof setTimeout> | null = null;
+
 documents.onDidChangeContent((change) => {
   validateTextDocument(change.document);
+
+  // Short debounce: batch rapid-fire opens from workspace scanning, then re-validate all
+  if (revalidationTimer) clearTimeout(revalidationTimer);
+  revalidationTimer = setTimeout(() => {
+    console.log(`[cross-file] re-validating all ${documents.all().length} open documents`);
+    for (const doc of documents.all()) {
+      validateTextDocument(doc);
+    }
+  }, 200);
+});
+
+// Clean up when a document is closed
+documents.onDidClose((event) => {
+  workspaceInstances.delete(event.document.uri);
+  documentInstances.delete(event.document.uri);
+  documentContexts.delete(event.document.uri);
+  connection.sendDiagnostics({ uri: event.document.uri, diagnostics: [] });
+
+  // Re-validate remaining open documents
+  for (const doc of documents.all()) {
+    validateTextDocument(doc);
+  }
 });
 
 /* Diagnostic validation — uses tree-sitter + ModelicaLinter when available */
@@ -620,16 +655,64 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
     if (node) {
       linter.lint(node);
 
-      // Instantiate classes and run semantic linting
-      const instances: ModelicaClassInstance[] = [];
-      const editorScope = new EditorScope(context, instances);
-
-      for (const classDef of node.classDefinitions) {
-        const instance = new ModelicaClassInstance(editorScope, classDef);
-        instances.push(instance);
+      // Resolve the within directive to find the correct parent scope (matching morsel)
+      let parentScope: Scope = context;
+      const withinParts = node.withinDirective?.packageName?.parts;
+      if (withinParts && withinParts.length > 0) {
+        const withinNames = withinParts.map((p) => p.text).filter((t): t is string => t !== null && t !== undefined);
+        const resolved = context.resolveName(withinNames);
+        if (resolved) {
+          parentScope = resolved;
+          console.log(`[cross-file] within '${withinNames.join(".")}' resolved from MSL context`);
+        } else {
+          // Try to find the within-package among workspace instances
+          for (const instances of workspaceInstances.values()) {
+            for (const inst of instances) {
+              if (inst.name === withinNames[0]) {
+                let target: ModelicaNamedElement | null = inst;
+                for (let i = 1; i < withinNames.length && target; i++) {
+                  target = target.resolveSimpleName(withinNames[i], false, true);
+                }
+                if (target instanceof ModelicaClassInstance) {
+                  parentScope = target;
+                  console.log(`[cross-file] within '${withinNames.join(".")}' resolved from workspace instances`);
+                }
+                break;
+              }
+            }
+            if (parentScope !== context) break;
+          }
+          if (parentScope === context) {
+            console.log(`[cross-file] within '${withinNames.join(".")}' could not be resolved`);
+          }
+        }
       }
 
-      for (const instance of instances) {
+      // Collect instances from all other open documents for cross-file resolution
+      const allInstances: ModelicaClassInstance[] = [];
+      for (const [uri, instances] of workspaceInstances) {
+        if (uri !== textDocument.uri) {
+          allInstances.push(...instances);
+        }
+      }
+      console.log(
+        `[cross-file] ${textDocument.uri.split("/").pop()}: ${allInstances.length} cross-file instances, ${workspaceInstances.size} total docs`,
+      );
+
+      // Instantiate classes from this document
+      const thisDocInstances: ModelicaClassInstance[] = [];
+      const combinedInstances = [...allInstances, ...thisDocInstances];
+      const editorScope = new EditorScope(parentScope, combinedInstances);
+
+      // Two-pass: first create all instances (so they're visible as siblings)
+      for (const classDef of node.classDefinitions) {
+        const instance = new ModelicaClassInstance(editorScope, classDef);
+        thisDocInstances.push(instance);
+        combinedInstances.push(instance);
+      }
+
+      // Then instantiate and lint them
+      for (const instance of thisDocInstances) {
         try {
           instance.instantiate();
           linter.lint(instance);
@@ -637,9 +720,13 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
           console.error("Lint error for instance:", e);
         }
       }
+      console.log(
+        `[cross-file] ${textDocument.uri.split("/").pop()}: created ${thisDocInstances.length} instances, scope has ${combinedInstances.length} total`,
+      );
 
-      // Cache instances and context for hover resolution
-      documentInstances.set(textDocument.uri, instances);
+      // Cache instances for cross-file resolution and hover
+      workspaceInstances.set(textDocument.uri, thisDocInstances);
+      documentInstances.set(textDocument.uri, thisDocInstances);
       documentContexts.set(textDocument.uri, context);
     }
   } else {
@@ -1039,6 +1126,111 @@ connection.onDocumentFormatting((params) => {
       newText: formatted,
     },
   ];
+});
+
+// Custom request: get diagram data for the webview
+connection.onRequest("modelscript/getDiagramData", (params: { uri: string; className?: string }) => {
+  const instances = documentInstances.get(params.uri);
+  if (!instances || instances.length === 0) {
+    return null;
+  }
+
+  // Find the requested class instance (by name, or first one)
+  let classInstance = instances[0];
+  if (params.className) {
+    const found = instances.find((i) => i.name === params.className);
+    if (found) classInstance = found;
+  }
+
+  try {
+    return buildDiagramData(classInstance);
+  } catch (e) {
+    console.error("[diagram] Error building diagram data:", e);
+    return null;
+  }
+});
+
+// ── Diagram mutation handlers ──
+
+connection.onRequest(
+  "modelscript/updatePlacement",
+  (params: {
+    uri: string;
+    items: {
+      name: string;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      rotation: number;
+      edges?: { source: string; target: string; points: { x: number; y: number }[] }[];
+    }[];
+  }) => {
+    const instances = documentInstances.get(params.uri);
+    const doc = documents.get(params.uri);
+    if (!instances?.[0] || !doc) return [];
+    try {
+      return computePlacementEdits(doc.getText(), instances[0], params.items);
+    } catch (e) {
+      console.error("[diagram] updatePlacement error:", e);
+      return [];
+    }
+  },
+);
+
+connection.onRequest(
+  "modelscript/addConnect",
+  (params: { uri: string; source: string; target: string; points?: { x: number; y: number }[] }) => {
+    const instances = documentInstances.get(params.uri);
+    const doc = documents.get(params.uri);
+    if (!instances?.[0] || !doc) return [];
+    try {
+      return computeConnectInsert(doc.getText(), instances[0], params.source, params.target, params.points);
+    } catch (e) {
+      console.error("[diagram] addConnect error:", e);
+      return [];
+    }
+  },
+);
+
+connection.onRequest("modelscript/removeConnect", (params: { uri: string; source: string; target: string }) => {
+  const instances = documentInstances.get(params.uri);
+  const doc = documents.get(params.uri);
+  if (!instances?.[0] || !doc) return [];
+  try {
+    return computeConnectRemove(doc.getText(), instances[0], params.source, params.target);
+  } catch (e) {
+    console.error("[diagram] removeConnect error:", e);
+    return [];
+  }
+});
+
+connection.onRequest(
+  "modelscript/updateEdgePoints",
+  (params: { uri: string; edges: { source: string; target: string; points: { x: number; y: number }[] }[] }) => {
+    const instances = documentInstances.get(params.uri);
+    const doc = documents.get(params.uri);
+    if (!instances?.[0] || !doc) return [];
+    try {
+      const lines = doc.getText().split("\n");
+      return computeEdgePointEdits(lines, instances[0], params.edges);
+    } catch (e) {
+      console.error("[diagram] updateEdgePoints error:", e);
+      return [];
+    }
+  },
+);
+
+connection.onRequest("modelscript/deleteComponents", (params: { uri: string; names: string[] }) => {
+  const instances = documentInstances.get(params.uri);
+  const doc = documents.get(params.uri);
+  if (!instances?.[0] || !doc) return [];
+  try {
+    return computeComponentsDelete(doc.getText(), instances[0], params.names);
+  } catch (e) {
+    console.error("[diagram] deleteComponents error:", e);
+    return [];
+  }
 });
 
 // Listen on the connection

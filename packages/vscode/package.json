@@ -32,11 +32,24 @@
     "build": "webpack --mode production --devtool hidden-source-map",
     "compile": "webpack",
     "dev": "webpack --watch",
+    "lint": "eslint src --ext ts",
     "package": "npx @vscode/vsce package --no-dependencies",
-    "test-web": "npm run compile && vscode-test-web --browserType=chromium --quality stable --port 3100 --extensionDevelopmentPath=. ./test-data",
+    "test-web": "npm run compile && vscode-test-web --browserType=chromium --quality stable --port 3100 --testRunnerDataDir=$HOME/.vscode-test-web --extensionDevelopmentPath=. ./test-data",
     "watch": "webpack --watch"
   },
   "contributes": {
+    "commands": [
+      {
+        "command": "modelscript.openDiagram",
+        "title": "ModelScript: Open Diagram",
+        "icon": "$(open-preview)"
+      },
+      {
+        "command": "modelscript.openDiagramSource",
+        "title": "ModelScript: Open Source",
+        "icon": "$(go-to-file)"
+      }
+    ],
     "configuration": [
       {
         "id": "modelscript",
@@ -79,10 +92,27 @@
           "dark": "./images/icon.png"
         }
       }
-    ]
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "modelscript.openDiagram",
+          "when": "editorLangId == modelica",
+          "group": "navigation"
+        },
+        {
+          "command": "modelscript.openDiagramSource",
+          "when": "activeWebviewPanelId == modelscript.diagram",
+          "group": "navigation"
+        }
+      ]
+    }
   },
   "activationEvents": [],
   "dependencies": {
+    "@antv/layout": "^0.3.25",
+    "@antv/x6": "^3.1.7",
+    "@antv/x6-plugin-selection": "^2.2.2",
     "@modelscript/lsp": "0.0.0",
     "vscode-languageclient": "^9.0.1"
   },

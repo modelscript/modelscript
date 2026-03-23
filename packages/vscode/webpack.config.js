@@ -146,4 +146,47 @@ const browserServerConfig = {
   devtool: "nosources-source-map",
 };
 
-module.exports = [browserClientConfig, browserServerConfig];
+/** @type WebpackConfig */
+const webviewConfig = {
+  context: __dirname,
+  mode: "none",
+  target: "web",
+  entry: {
+    diagramWebview: "./src/webview/diagram.ts",
+  },
+  output: {
+    filename: "[name].js",
+    path: path.join(__dirname, "dist"),
+    devtoolModuleFilenameTemplate: "../[resource-path]",
+  },
+  resolve: {
+    mainFields: ["browser", "module", "main"],
+    extensions: [".ts", ".js"],
+    alias: {},
+  },
+  module: {
+    rules: [
+      {
+        test: /\.ts$/,
+        exclude: /node_modules/,
+        use: [
+          { loader: "ts-loader", options: { configFile: path.resolve(__dirname, "src", "webview", "tsconfig.json") } },
+        ],
+      },
+      {
+        test: /\.m?js$/,
+        resolve: { fullySpecified: false },
+      },
+    ],
+  },
+  performance: {
+    hints: false,
+  },
+  optimization: {
+    usedExports: false,
+    sideEffects: false,
+  },
+  devtool: "nosources-source-map",
+};
+
+module.exports = [browserClientConfig, browserServerConfig, webviewConfig];

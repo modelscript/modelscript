@@ -24,6 +24,7 @@
     "build": "nx run-many --target=build",
     "clean": "nx run-many --target=clean",
     "dev": "nx run-many --target=dev --projects=@modelscript/api,@modelscript/morsel,@modelscript/web --parallel=3",
+    "dev:vscode": "npm run test-web --workspace=packages/vscode",
     "docker:build": "docker compose build",
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f",

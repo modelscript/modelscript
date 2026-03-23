@@ -8,5 +8,5 @@
     "strict": true
   },
   "include": ["src"],
-  "exclude": [".vscode-test-web"]
+  "exclude": [".vscode-test-web", "src/webview"]
 }
