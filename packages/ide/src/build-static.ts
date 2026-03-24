@@ -81,13 +81,10 @@ function renderStaticWorkbench(): string {
       path: "/modelscript/modelscript",
       query: "ref=main",
     },
-    additionalBuiltinExtensions: [],
-    developmentOptions: {
-      extensions: [
-        { scheme: "##SCHEME##", authority: "##HOST##", path: "/static/devextensions" },
-        { scheme: "##SCHEME##", authority: "##HOST##", path: "/static/extensions/github-fs" },
-      ],
-    },
+    additionalBuiltinExtensions: [
+      { scheme: "##SCHEME##", authority: "##HOST##", path: "/static/devextensions" },
+      { scheme: "##SCHEME##", authority: "##HOST##", path: "/static/extensions/github-fs" },
+    ],
     productConfiguration: {
       enableTelemetry: false,
       nameShort: "ModelScript",
@@ -133,7 +130,7 @@ function renderStaticWorkbench(): string {
   var config = JSON.parse(el.getAttribute('data-settings'));
   var scheme = location.protocol.replace(':', '');
   var host = location.host;
-  config.developmentOptions.extensions = [
+  config.additionalBuiltinExtensions = [
     { scheme: scheme, authority: host, path: '/static/devextensions' },
     { scheme: scheme, authority: host, path: '/static/extensions/github-fs' },
   ];
