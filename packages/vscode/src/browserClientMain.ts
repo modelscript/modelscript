@@ -3,6 +3,7 @@ import { Uri, commands, workspace } from "vscode";
 import { LanguageClientOptions } from "vscode-languageclient";
 import { LanguageClient } from "vscode-languageclient/browser";
 import { DiagramPanel } from "./diagramPanel";
+import { SimulationPanel } from "./simulationPanel";
 
 let client: LanguageClient | undefined;
 
@@ -25,7 +26,7 @@ export async function activate(context: vscode.ExtensionContext) {
   await client.start();
   console.log("ModelScript language server is ready");
 
-  // Register the Open Diagram command
+  // Register commands
   context.subscriptions.push(
     commands.registerCommand("modelscript.openDiagram", () => {
       if (client) {
@@ -37,6 +38,11 @@ export async function activate(context: vscode.ExtensionContext) {
       if (uri) {
         const doc = await workspace.openTextDocument(vscode.Uri.parse(uri));
         await vscode.window.showTextDocument(doc, vscode.ViewColumn.One);
+      }
+    }),
+    commands.registerCommand("modelscript.runSimulation", () => {
+      if (client) {
+        SimulationPanel.createOrShow(context.extensionUri, client);
       }
     }),
   );

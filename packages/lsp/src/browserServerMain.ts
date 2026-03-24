@@ -32,10 +32,13 @@ import {
   Context,
   ModelicaClassInstance,
   ModelicaComponentInstance,
+  ModelicaDAE,
   ModelicaElement,
   ModelicaEnumerationClassInstance,
+  ModelicaFlattener,
   ModelicaLinter,
   ModelicaNamedElement,
+  ModelicaSimulator,
   ModelicaStoredDefinitionSyntaxNode,
   Scope,
   type Dirent,
@@ -1232,6 +1235,67 @@ connection.onRequest("modelscript/deleteComponents", (params: { uri: string; nam
     return [];
   }
 });
+
+// Custom request: simulate a model
+connection.onRequest(
+  "modelscript/simulate",
+  (params: {
+    uri: string;
+    className?: string;
+  }): {
+    t: number[];
+    y: number[][];
+    states: string[];
+    error?: string;
+  } => {
+    const instances = documentInstances.get(params.uri);
+    if (!instances || instances.length === 0) {
+      return { t: [], y: [], states: [], error: "No class instances found for this document." };
+    }
+
+    let classInstance = instances[0];
+    if (params.className) {
+      const found = instances.find((i) => i.name === params.className);
+      if (found) classInstance = found;
+    }
+
+    try {
+      if (!classInstance.instantiated) {
+        classInstance.instantiate();
+      }
+
+      const dae = new ModelicaDAE(classInstance.name || "Model");
+      const flattener = new ModelicaFlattener();
+      classInstance.accept(flattener, ["", dae]);
+      flattener.generateFlowBalanceEquations(dae);
+      flattener.foldDAEConstants(dae);
+
+      const simulator = new ModelicaSimulator(dae);
+      simulator.prepare();
+
+      const exp = simulator.dae.experiment;
+      const startTime = exp.startTime ?? 0;
+      const stopTime = exp.stopTime ?? 10;
+      const step = exp.interval ?? (stopTime - startTime) / 100;
+
+      const result = simulator.simulate(startTime, stopTime, step);
+
+      return {
+        t: result.t,
+        y: result.y,
+        states: result.states,
+      };
+    } catch (e) {
+      console.error("[simulate] Error:", e);
+      return {
+        t: [],
+        y: [],
+        states: [],
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
+  },
+);
 
 // Listen on the connection
 connection.listen();

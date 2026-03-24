@@ -153,6 +153,7 @@ const webviewConfig = {
   target: "web",
   entry: {
     diagramWebview: "./src/webview/diagram.ts",
+    simulationWebview: "./src/webview/simulationWebview.ts",
   },
   output: {
     filename: "[name].js",

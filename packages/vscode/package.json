@@ -48,6 +48,11 @@
         "command": "modelscript.openDiagramSource",
         "title": "ModelScript: Open Source",
         "icon": "$(go-to-file)"
+      },
+      {
+        "command": "modelscript.runSimulation",
+        "title": "ModelScript: Run Simulation",
+        "icon": "$(play)"
       }
     ],
     "configuration": [
@@ -97,6 +102,11 @@
       "editor/title": [
         {
           "command": "modelscript.openDiagram",
+          "when": "editorLangId == modelica",
+          "group": "navigation"
+        },
+        {
+          "command": "modelscript.runSimulation",
           "when": "editorLangId == modelica",
           "group": "navigation"
         },
