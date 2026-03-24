@@ -453,25 +453,116 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
   }
 }
 
-/** Fetch and decompress the bundled MSL zip, populate the shared filesystem and context */
+// ---------------------------------------------------------------------------
+//  IndexedDB helpers for MSL cache
+// ---------------------------------------------------------------------------
+
+const MSL_DB_NAME = "modelscript-msl-cache";
+const MSL_DB_VERSION = 1;
+const MSL_STORE = "files";
+const MSL_VERSION_KEY = "ModelicaStandardLibrary_v4.1.0";
+
+function openMSLCache(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(MSL_DB_NAME, MSL_DB_VERSION);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(MSL_STORE)) {
+        db.createObjectStore(MSL_STORE);
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+function idbGet<T>(db: IDBDatabase, key: string): Promise<T | undefined> {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(MSL_STORE, "readonly");
+    const req = tx.objectStore(MSL_STORE).get(key);
+    req.onsuccess = () => resolve(req.result as T | undefined);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+function idbPut(db: IDBDatabase, key: string, value: unknown): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(MSL_STORE, "readwrite");
+    tx.objectStore(MSL_STORE).put(value, key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+// ---------------------------------------------------------------------------
+
+/** Fetch and decompress the bundled MSL zip, populate the shared filesystem and context.
+ *  Uses IndexedDB to cache the extracted file entries so that on subsequent
+ *  loads the network fetch and decompression are skipped entirely. */
 async function loadMSL(serverDistBase: string): Promise<void> {
   try {
-    const response = await fetch(`${serverDistBase}/ModelicaStandardLibrary_v4.1.0.zip`);
-    if (!response.ok) {
-      console.warn("MSL zip not found — library features will be unavailable");
-      return;
-    }
     connection.sendNotification("modelscript/status", {
       state: "loading",
       message: "Loading Modelica Standard Library...",
     });
-    const buffer = await response.arrayBuffer();
-    const zipData = new Uint8Array(buffer);
-    const files = unzipSync(zipData);
 
+    let fileEntries: Record<string, Uint8Array> | null = null;
+
+    // ---- Try IndexedDB cache first ----
+    try {
+      const db = await openMSLCache();
+      const cached = await idbGet<Record<string, ArrayBuffer>>(db, MSL_VERSION_KEY);
+      if (cached) {
+        console.log("[msl-cache] Cache hit — loading from IndexedDB");
+        connection.sendNotification("modelscript/status", {
+          state: "loading",
+          message: "Loading MSL from cache...",
+        });
+        // Convert ArrayBuffers back to Uint8Arrays
+        fileEntries = {};
+        for (const [name, buf] of Object.entries(cached)) {
+          fileEntries[name] = new Uint8Array(buf);
+        }
+      }
+      db.close();
+    } catch (cacheErr) {
+      console.warn("[msl-cache] IndexedDB read failed, falling back to network:", cacheErr);
+    }
+
+    // ---- Network fetch + decompress if not cached ----
+    if (!fileEntries) {
+      const response = await fetch(`${serverDistBase}/ModelicaStandardLibrary_v4.1.0.zip`);
+      if (!response.ok) {
+        console.warn("MSL zip not found — library features will be unavailable");
+        return;
+      }
+      connection.sendNotification("modelscript/status", {
+        state: "loading",
+        message: "Decompressing MSL...",
+      });
+      const buffer = await response.arrayBuffer();
+      const zipData = new Uint8Array(buffer);
+      fileEntries = unzipSync(zipData);
+
+      // Store in IndexedDB for next time (fire-and-forget)
+      try {
+        const db = await openMSLCache();
+        // Convert Uint8Arrays to plain ArrayBuffers for structured-clone compatibility
+        const serializable: Record<string, ArrayBuffer> = {};
+        for (const [name, data] of Object.entries(fileEntries)) {
+          serializable[name] = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
+        }
+        await idbPut(db, MSL_VERSION_KEY, serializable);
+        db.close();
+        console.log("[msl-cache] Cached extracted MSL in IndexedDB");
+      } catch (cacheErr) {
+        console.warn("[msl-cache] IndexedDB write failed:", cacheErr);
+      }
+    }
+
+    // ---- Populate in-memory filesystem ----
     let fileCount = 0;
-    for (const [name, data] of Object.entries(files)) {
-      // Skip directory entries (empty data with trailing slash)
+    for (const [name, data] of Object.entries(fileEntries)) {
       if (name.endsWith("/")) {
         sharedFs.addDir(`/lib/${name.slice(0, -1)}`);
         continue;
