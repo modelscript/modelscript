@@ -146,9 +146,9 @@ function renderStaticWorkbench(): string {
     { scheme: scheme, authority: host, path: '/static/extensions/github-fs' },
   ];
   if (hash === 'blank') {
-    // Blank project: use in-memory tmp filesystem
+    // Blank project: use in-memory blank filesystem
     document.title = 'New Project — ModelScript IDE';
-    config.folderUri = { scheme: 'tmp', authority: '', path: '/project', query: '' };
+    config.folderUri = { scheme: 'blank', authority: '', path: '/project', query: '' };
   } else {
     var parts = hash.split('@');
     var ownerRepo = parts[0];

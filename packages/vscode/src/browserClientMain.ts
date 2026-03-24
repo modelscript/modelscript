@@ -104,12 +104,12 @@ class MemoryFileSystemProvider implements vscode.FileSystemProvider {
 export async function activate(context: vscode.ExtensionContext) {
   console.log("ModelScript extension activated");
 
-  // Register in-memory filesystem for blank project mode (tmp:// scheme)
+  // Register in-memory filesystem for blank project mode (blank:// scheme)
   const folders = workspace.workspaceFolders;
-  if (folders && folders.length > 0 && folders[0].uri.scheme === "tmp") {
+  if (folders && folders.length > 0 && folders[0].uri.scheme === "blank") {
     const memFs = new MemoryFileSystemProvider();
-    context.subscriptions.push(workspace.registerFileSystemProvider("tmp", memFs, { isCaseSensitive: true }));
-    console.log("[blank-project] Registered tmp:// filesystem provider");
+    context.subscriptions.push(workspace.registerFileSystemProvider("blank", memFs, { isCaseSensitive: true }));
+    console.log("[blank-project] Registered blank:// filesystem provider");
   }
 
   const documentSelector = [{ language: "modelica" }];
@@ -287,22 +287,23 @@ async function initWorkspaceAndTree(
   if (moFiles.length > 0) {
     treeProvider.setDocumentUri(moFiles[0].toString());
   } else {
-    // Blank project: create a default model if the workspace uses the tmp scheme
+    // If we're in a blank workspace, scaffold the initial files
     const folders = workspace.workspaceFolders;
-    if (folders && folders.length > 0 && folders[0].uri.scheme === "tmp") {
-      const defaultModel = `model HelloWorld "A simple Modelica model"
+    if (folders && folders.length > 0 && folders[0].uri.scheme === "blank") {
+      const workspaceUri = folders[0].uri;
+      try {
+        const helloWorldUri = Uri.joinPath(workspaceUri, "HelloWorld.mo");
+        const defaultModel = `model HelloWorld "A simple Modelica model"
   Real x(start = 1);
   parameter Real a = -1;
 equation
   der(x) = a * x;
 end HelloWorld;
 `;
-      const fileUri = vscode.Uri.joinPath(folders[0].uri, "HelloWorld.mo");
-      try {
-        await workspace.fs.writeFile(fileUri, new TextEncoder().encode(defaultModel));
-        const doc = await workspace.openTextDocument(fileUri);
+        await workspace.fs.writeFile(helloWorldUri, new TextEncoder().encode(defaultModel));
+        const doc = await workspace.openTextDocument(helloWorldUri);
         await vscode.window.showTextDocument(doc);
-        treeProvider.setDocumentUri(fileUri.toString());
+        treeProvider.setDocumentUri(helloWorldUri.toString());
       } catch (e) {
         console.warn("[blank-project] Failed to create default model:", e);
       }
