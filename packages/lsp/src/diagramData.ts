@@ -381,7 +381,7 @@ function renderDiagramX6(classInstance: ModelicaClassInstance): X6Markup | null 
   };
 }
 
-function renderIconX6(
+export function renderIconX6(
   classInstance: ModelicaClassInstance,
   componentInstance?: ModelicaComponentInstance,
   ports?: boolean,

@@ -3,6 +3,7 @@ import { Uri, commands, workspace } from "vscode";
 import { LanguageClientOptions } from "vscode-languageclient";
 import { LanguageClient } from "vscode-languageclient/browser";
 import { DiagramPanel } from "./diagramPanel";
+import { LibraryTreeProvider } from "./libraryTreeProvider";
 import { SimulationPanel } from "./simulationPanel";
 
 let client: LanguageClient | undefined;
@@ -26,6 +27,23 @@ export async function activate(context: vscode.ExtensionContext) {
   await client.start();
   console.log("ModelScript language server is ready");
 
+  // Register library tree view
+  const treeProvider = new LibraryTreeProvider(client);
+  const treeView = vscode.window.createTreeView("modelscript.libraryTree", {
+    treeDataProvider: treeProvider,
+    canSelectMany: false,
+  });
+  context.subscriptions.push(treeView);
+
+  // Update tree when active editor changes to a .mo file
+  context.subscriptions.push(
+    vscode.window.onDidChangeActiveTextEditor((editor) => {
+      if (editor?.document.languageId === "modelica") {
+        treeProvider.setDocumentUri(editor.document.uri.toString());
+      }
+    }),
+  );
+
   // Register commands
   context.subscriptions.push(
     commands.registerCommand("modelscript.openDiagram", () => {
@@ -45,11 +63,81 @@ export async function activate(context: vscode.ExtensionContext) {
         SimulationPanel.createOrShow(context.extensionUri, client);
       }
     }),
+    commands.registerCommand("modelscript.addToDiagram", async (firstArg: unknown, secondArg?: string) => {
+      if (!client) return;
+
+      // Support both context menu (LibraryTreeItem) and direct call (className, classKind)
+      let className: string;
+      let classKind: string;
+      if (firstArg && typeof firstArg === "object" && "info" in firstArg) {
+        // Called from tree item context menu
+        const item = firstArg as { info: { compositeName: string; classKind: string } };
+        className = item.info.compositeName;
+        classKind = item.info.classKind;
+      } else {
+        className = firstArg as string;
+        classKind = secondArg ?? "";
+      }
+
+      // Only allow models, blocks, and connectors
+      if (classKind !== "model" && classKind !== "block" && classKind !== "connector") return;
+
+      // Find the active .mo document
+      const docUri = DiagramPanel.currentPanel?.sourceUri ?? vscode.window.activeTextEditor?.document.uri.toString();
+      if (!docUri) {
+        vscode.window.showWarningMessage("Open a Modelica file first.");
+        return;
+      }
+
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const edits: any[] = await client.sendRequest("modelscript/addComponent", {
+          uri: docUri,
+          className,
+          x: 0,
+          y: 0,
+        });
+        if (edits && edits.length > 0) {
+          const workspaceEdit = new vscode.WorkspaceEdit();
+          const uri = vscode.Uri.parse(docUri);
+          for (const edit of edits) {
+            const range = new vscode.Range(
+              edit.range.start.line,
+              edit.range.start.character,
+              edit.range.end.line,
+              edit.range.end.character,
+            );
+            workspaceEdit.replace(uri, range, edit.newText);
+          }
+          await vscode.workspace.applyEdit(workspaceEdit);
+          vscode.window.showInformationMessage(`Added ${className.split(".").pop()} to model.`);
+        }
+      } catch (e) {
+        console.error("[addToDiagram] Error:", e);
+        vscode.window.showErrorMessage(`Failed to add component: ${e}`);
+      }
+    }),
   );
 
   // Pre-open all .mo files in the workspace so the LSP server can track them
   // for cross-file reference resolution
-  scanWorkspaceFiles();
+  const moFiles = await scanWorkspaceFiles();
+  if (moFiles.length > 0) {
+    // Set the first .mo file as the initial document URI for the tree
+    treeProvider.setDocumentUri(moFiles[0].toString());
+
+    // Auto-expand root items after tree data loads
+    setTimeout(async () => {
+      try {
+        const rootItems = await treeProvider.getChildren();
+        for (const item of rootItems) {
+          await treeView.reveal(item, { expand: true, select: false, focus: false });
+        }
+      } catch {
+        // ignore — tree may not be ready yet
+      }
+    }, 2000);
+  }
 }
 
 export async function deactivate(): Promise<void> {
@@ -71,7 +159,7 @@ function createWorkerLanguageClient(context: vscode.ExtensionContext, clientOpti
  * This triggers textDocument/didOpen notifications to the LSP server,
  * enabling cross-file reference resolution.
  */
-async function scanWorkspaceFiles(): Promise<void> {
+async function scanWorkspaceFiles(): Promise<vscode.Uri[]> {
   try {
     const moFiles = await workspace.findFiles("**/*.mo");
     console.log(`[workspace-scan] Found ${moFiles.length} .mo files in workspace`);
@@ -83,7 +171,9 @@ async function scanWorkspaceFiles(): Promise<void> {
         console.warn(`[workspace-scan] Failed to open ${uri.path}:`, e);
       }
     }
+    return moFiles;
   } catch (e) {
     console.error("[workspace-scan] Workspace scan failed:", e);
+    return [];
   }
 }

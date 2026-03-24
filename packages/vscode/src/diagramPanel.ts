@@ -108,6 +108,10 @@ export class DiagramPanel {
               lspMethod = "modelscript/deleteComponents";
               lspParams = { uri, names: message.names };
               break;
+            case "drop":
+              lspMethod = "modelscript/addComponent";
+              lspParams = { uri, className: message.className, x: message.x, y: message.y };
+              break;
           }
 
           if (lspMethod) {

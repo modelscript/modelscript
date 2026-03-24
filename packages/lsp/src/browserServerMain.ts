@@ -15,7 +15,7 @@ import {
 } from "vscode-languageserver";
 
 import { TextDocument } from "vscode-languageserver-textdocument";
-import { buildDiagramData } from "./diagramData";
+import { buildDiagramData, renderIconX6, type X6Markup } from "./diagramData";
 import {
   computeComponentsDelete,
   computeConnectInsert,
@@ -36,6 +36,7 @@ import {
   ModelicaElement,
   ModelicaEnumerationClassInstance,
   ModelicaFlattener,
+  ModelicaLibrary,
   ModelicaLinter,
   ModelicaNamedElement,
   ModelicaSimulator,
@@ -43,6 +44,7 @@ import {
   Scope,
   type Dirent,
   type FileSystem,
+  type IDiagram,
   type Range,
   type Stats,
 } from "@modelscript/core";
@@ -1296,6 +1298,257 @@ connection.onRequest(
     }
   },
 );
+// Custom request: get library tree children (lazy loading)
+interface TreeNodeInfo {
+  id: string;
+  name: string;
+  compositeName: string;
+  classKind: string;
+  hasChildren: boolean;
+  iconSvg?: string;
+}
+
+connection.onRequest("modelscript/getLibraryTree", (params: { uri: string; parentId?: string }): TreeNodeInfo[] => {
+  const context = documentContexts.get(params.uri);
+  if (!context) {
+    // Try any available context
+    const anyCtx = documentContexts.values().next().value;
+    if (!anyCtx) return [];
+    return getTreeChildren(anyCtx, params.parentId);
+  }
+  return getTreeChildren(context, params.parentId);
+});
+
+function classHasChildClasses(cls: ModelicaClassInstance): boolean {
+  for (const child of cls.elements) {
+    if (child instanceof ModelicaClassInstance) return true;
+  }
+  return false;
+}
+
+function x6MarkupToSvg(markup: X6Markup): string {
+  const attrs = markup.attrs
+    ? Object.entries(markup.attrs)
+        .filter(([, v]) => v !== undefined)
+        .map(([k, v]) => `${k}="${String(v).replace(/"/g, "&quot;")}"`)
+        .join(" ")
+    : "";
+  const open = attrs ? `<${markup.tagName} ${attrs}` : `<${markup.tagName}`;
+  const childrenStr = markup.children?.map(x6MarkupToSvg).join("") ?? "";
+  const text = markup.textContent ?? "";
+  if (!childrenStr && !text) return `${open}/>`;
+  return `${open}>${text}${childrenStr}</${markup.tagName}>`;
+}
+
+function hasGraphicElements(node: X6Markup): boolean {
+  const shapeTags = new Set(["rect", "ellipse", "circle", "polygon", "polyline", "path", "line", "image"]);
+  if (shapeTags.has(node.tagName)) return true;
+  return node.children?.some(hasGraphicElements) ?? false;
+}
+
+function getClassIconSvg(cls: ModelicaClassInstance): string | undefined {
+  try {
+    const markup = renderIconX6(cls, undefined, false);
+    if (!markup || !hasGraphicElements(markup)) return undefined;
+
+    // Patch root SVG for standalone icon use: add xmlns, fixed size, viewBox
+    if (markup.attrs) {
+      markup.attrs["xmlns"] = "http://www.w3.org/2000/svg";
+      markup.attrs["width"] = 16;
+      markup.attrs["height"] = 16;
+      delete markup.attrs["style"];
+    }
+    return x6MarkupToSvg(markup);
+  } catch {
+    // ignore icon rendering errors
+  }
+  return undefined;
+}
+
+function resolveClassKind(cls: ModelicaClassInstance): string {
+  // cls.classKind is set from abstractSyntaxNode.classPrefixes.classKind in the constructor,
+  // but for lazily-loaded library entries, classPrefixes may be null, defaulting to "class".
+  // Walk up: check the class definition syntax node's class prefixes directly.
+  const kind = cls.classKind;
+  if (kind && kind !== "class") return kind;
+  // Try to get the actual kind from the syntax node chain
+  const asn = cls.abstractSyntaxNode;
+  if (asn) {
+    const prefixes = asn.classPrefixes;
+    if (prefixes?.classKind && prefixes.classKind !== "class") return prefixes.classKind;
+    // For short class specifiers, check the classSpecifier that wraps them
+    const classSpecifier = asn.classSpecifier;
+    if (classSpecifier && "typeSpecifier" in classSpecifier) {
+      // Short class specifier — resolve the referenced type's kind
+      const resolved = cls.parent?.resolveSimpleName?.(classSpecifier.identifier?.text);
+      if (resolved && "classKind" in resolved) {
+        const resolvedKind = (resolved as ModelicaClassInstance).classKind;
+        if (resolvedKind && resolvedKind !== "class") return resolvedKind;
+      }
+    }
+  }
+  return kind || "class";
+}
+
+function toTreeNode(cls: ModelicaClassInstance): TreeNodeInfo {
+  return {
+    id: cls.compositeName,
+    name: cls.name || "",
+    compositeName: cls.compositeName,
+    classKind: resolveClassKind(cls),
+    hasChildren: classHasChildClasses(cls),
+    iconSvg: getClassIconSvg(cls),
+  };
+}
+
+function getTreeChildren(context: Context, parentId?: string): TreeNodeInfo[] {
+  const nodes: TreeNodeInfo[] = [];
+
+  if (!parentId) {
+    // Root level: return libraries and top-level user classes
+    for (const element of context.elements) {
+      if (element instanceof ModelicaLibrary) {
+        // Get top-level classes from the library
+        for (const child of element.elements) {
+          if (child instanceof ModelicaClassInstance) {
+            nodes.push(toTreeNode(child));
+          }
+        }
+      } else if (element instanceof ModelicaClassInstance) {
+        nodes.push(toTreeNode(element));
+      }
+    }
+  } else {
+    // Find the parent and return its class children
+    try {
+      const parent = context.query(parentId);
+      if (parent instanceof ModelicaClassInstance) {
+        for (const child of parent.elements) {
+          if (child instanceof ModelicaClassInstance) {
+            nodes.push(toTreeNode(child));
+          }
+        }
+      }
+    } catch (e) {
+      console.error("[library-tree] Error getting children:", e);
+    }
+  }
+
+  return nodes;
+}
+
+// Custom request: get class icon SVG
+connection.onRequest("modelscript/getClassIcon", (params: { className: string; uri?: string }): string | null => {
+  try {
+    const context = params.uri ? documentContexts.get(params.uri) : documentContexts.values().next().value;
+    if (!context) return null;
+
+    const classInstance = context.query(params.className);
+    if (!(classInstance instanceof ModelicaClassInstance)) return null;
+
+    return getClassIconSvg(classInstance) ?? null;
+  } catch (e) {
+    console.error("[library-tree] Error rendering icon:", e);
+    return null;
+  }
+});
+
+// Custom request: add a component to a model (drag-drop from library tree)
+connection.onRequest("modelscript/addComponent", (params: { uri: string; className: string; x: number; y: number }) => {
+  const instances = documentInstances.get(params.uri);
+  const doc = documents.get(params.uri);
+  if (!instances?.[0] || !doc) return [];
+
+  const classInstance = instances[0];
+  const context = documentContexts.get(params.uri);
+
+  try {
+    // Get base name from defaultComponentName annotation or class name
+    const shortName = params.className.split(".").pop() || "component";
+    let baseName = shortName.toLowerCase();
+    try {
+      if (context) {
+        const droppedClass = context.query(params.className);
+        if (droppedClass instanceof ModelicaClassInstance) {
+          const defaultName = droppedClass.annotation<string>("defaultComponentName");
+          if (defaultName) {
+            baseName = droppedClass.translate(defaultName);
+          } else {
+            baseName = (droppedClass.localizedName || shortName).toLowerCase();
+          }
+        }
+      }
+    } catch {
+      // proceed with default baseName
+    }
+
+    // Find unique name
+    let name = baseName;
+    let i = 1;
+    const existingNames = new Set(Array.from(classInstance.components).map((c) => c.name));
+    while (existingNames.has(name)) {
+      name = `${baseName}${i}`;
+      i++;
+    }
+
+    // Get scale from diagram annotation
+    const diagram: IDiagram | null = classInstance.annotation("Diagram");
+    const initialScale = diagram?.coordinateSystem?.initialScale ?? 0.1;
+    const extent = diagram?.coordinateSystem?.extent;
+
+    let width = 200;
+    let height = 200;
+    if (extent && extent.length >= 2) {
+      width = Math.abs(extent[1][0] - extent[0][0]);
+      height = Math.abs(extent[1][1] - extent[0][1]);
+    }
+    const w = width * initialScale;
+    const h = height * initialScale;
+
+    const x = Math.round(params.x);
+    const y = -Math.round(params.y);
+    const annotation = `annotation(Placement(transformation(origin={${x},${y}}, extent={{-${w / 2},-${h / 2}},{${w / 2},${h / 2}}})))`;
+    const componentDecl = `  ${params.className} ${name} ${annotation};\n`;
+
+    // Find insertion point: before the "equation" or "algorithm" section, or before "end ClassName;"
+    const text = doc.getText();
+    const lines = text.split("\n");
+
+    // Scan forward to find the first equation/algorithm section or end of model
+    const modelName = classInstance.name;
+    let insertLine = -1;
+    for (let li = 0; li < lines.length; li++) {
+      const trimmed = lines[li].trim();
+      if (trimmed === "equation" || trimmed.startsWith("equation ") || trimmed.startsWith("equation\t")) {
+        insertLine = li;
+        break;
+      }
+      if (trimmed === "algorithm" || trimmed.startsWith("algorithm ") || trimmed.startsWith("algorithm\t")) {
+        insertLine = li;
+        break;
+      }
+      if (trimmed === `end ${modelName};`) {
+        insertLine = li;
+        break;
+      }
+    }
+
+    if (insertLine < 0) return [];
+
+    return [
+      {
+        range: {
+          start: { line: insertLine, character: 0 },
+          end: { line: insertLine, character: 0 },
+        },
+        newText: componentDecl,
+      },
+    ];
+  } catch (e) {
+    console.error("[diagram] addComponent error:", e);
+    return [];
+  }
+});
 
 // Listen on the connection
 connection.listen();

@@ -53,6 +53,11 @@
         "command": "modelscript.runSimulation",
         "title": "ModelScript: Run Simulation",
         "icon": "$(play)"
+      },
+      {
+        "command": "modelscript.addToDiagram",
+        "title": "ModelScript: Add to Diagram",
+        "icon": "$(add)"
       }
     ],
     "configuration": [
@@ -115,10 +120,39 @@
           "when": "activeWebviewPanelId == modelscript.diagram",
           "group": "navigation"
         }
+      ],
+      "view/item/context": [
+        {
+          "command": "modelscript.addToDiagram",
+          "when": "view == modelscript.libraryTree && viewItem =~ /^(model|block|connector)$/",
+          "group": "inline"
+        },
+        {
+          "command": "modelscript.addToDiagram",
+          "when": "view == modelscript.libraryTree && viewItem =~ /^(model|block|connector)$/",
+          "group": "navigation"
+        }
       ]
-    }
+    },
+    "views": {
+      "explorer": [
+        {
+          "id": "modelscript.libraryTree",
+          "name": "Modelica Libraries",
+          "visibility": "visible"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "modelscript.libraryTree",
+        "contents": "Open a Modelica file to browse libraries."
+      }
+    ]
   },
-  "activationEvents": [],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "dependencies": {
     "@antv/layout": "^0.3.25",
     "@antv/x6": "^3.1.7",

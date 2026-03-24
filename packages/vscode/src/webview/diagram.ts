@@ -436,10 +436,11 @@ function renderDiagram(data: any, isDark: boolean) {
 
   // Render to graph
   const cs = data.coordinateSystem;
+  const isFirstRender = g.getCells().length === 0;
   g.fromJSON({ nodes, edges });
 
-  // Fit view to the coordinate system extent
-  if (cs) {
+  // Only fit view on first render — preserve zoom/pan on subsequent updates
+  if (cs && isFirstRender) {
     const expandedRect = {
       x: cs.x - cs.width * 0.125,
       y: cs.y - cs.height * 0.125,
