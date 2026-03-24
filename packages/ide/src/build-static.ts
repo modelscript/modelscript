@@ -49,6 +49,17 @@ if (!existsSync(join(extDestDir, "package.nls.json"))) {
   writeFileSync(join(extDestDir, "package.nls.json"), "{}");
 }
 
+// Ensure tree-sitter-modelica.wasm is explicitly present and copied
+const modelicaWasmSrc = resolve(__dirname, "..", "..", "tree-sitter-modelica", "tree-sitter-modelica.wasm");
+const modelicaWasmDest = join(extDestDir, "server", "dist", "tree-sitter-modelica.wasm");
+if (!existsSync(modelicaWasmSrc)) {
+  console.error("FATAL: tree-sitter-modelica.wasm is missing from packages/tree-sitter-modelica/");
+  process.exit(1);
+}
+mkdirSync(join(extDestDir, "server", "dist"), { recursive: true });
+cpSync(modelicaWasmSrc, modelicaWasmDest);
+console.log(`  Copied tree-sitter-modelica.wasm to ${modelicaWasmDest}`);
+
 // 3. Copy GitHub FS extension
 console.log("  Copying GitHub FS extension...");
 cpSync(GITHUB_FS_EXT_DIR, join(OUT_DIR, "static", "extensions", "github-fs"), {
