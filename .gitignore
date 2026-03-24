@@ -69,3 +69,4 @@ packages/morsel/.react-router/
 # Tree-sitter generated sources
 packages/tree-sitter-modelica/src/
 packages/tree-sitter-modelica/examples/*/
+packages/ide/vscode-web/

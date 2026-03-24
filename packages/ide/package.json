@@ -1,0 +1,29 @@
+{
+  "name": "@modelscript/ide",
+  "version": "0.0.0",
+  "private": true,
+  "description": "ModelScript VS Code Web IDE with GitHub/GitLab repository integration",
+  "type": "module",
+  "scripts": {
+    "build": "npm run download-vscode && npm run build-github-fs && npm run build-server",
+    "build-github-fs": "cd github-fs && npx webpack --mode production --devtool hidden-source-map",
+    "build-server": "npx esbuild src/server.ts --bundle --platform=node --format=esm --outfile=dist/server.js --external:express --external:http-proxy-middleware",
+    "dev": "npm run download-vscode && npx tsx src/server.ts",
+    "download-vscode": "npx tsx src/download-vscode.ts",
+    "lint": "eslint src --ext ts"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "http-proxy-middleware": "^3.0.5"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.13.0",
+    "@stylistic/eslint-plugin": "^2.9.0",
+    "@types/express": "^5.0.3",
+    "esbuild": "^0.25.5",
+    "eslint": "^9.13.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.39.0"
+  }
+}

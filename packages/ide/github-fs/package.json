@@ -1,0 +1,51 @@
+{
+  "name": "modelscript-github-fs",
+  "displayName": "ModelScript GitHub FileSystem",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Provides a file system provider for GitHub repositories in VS Code Web.",
+  "categories": [
+    "Other"
+  ],
+  "license": "AGPL-3.0-or-later",
+  "publisher": "modelscript",
+  "browser": "./dist/extension.js",
+  "scripts": {
+    "build": "npx webpack --mode production --devtool hidden-source-map",
+    "watch": "npx webpack --watch"
+  },
+  "contributes": {
+    "configuration": {
+      "title": "GitHub FileSystem",
+      "properties": {
+        "github-fs.token": {
+          "type": "string",
+          "default": "",
+          "description": "GitHub personal access token for API authentication."
+        }
+      }
+    },
+    "resourceLabelFormatters": [
+      {
+        "scheme": "github",
+        "formatting": {
+          "label": "${path}",
+          "separator": "/",
+          "workspaceSuffix": "GitHub"
+        }
+      }
+    ]
+  },
+  "activationEvents": [
+    "*"
+  ],
+  "devDependencies": {
+    "@types/vscode": "^1.72.0",
+    "ts-loader": "^9.5.4",
+    "webpack": "^5.105.0",
+    "webpack-cli": "^6.0.1"
+  },
+  "engines": {
+    "vscode": "^1.72.0"
+  }
+}
