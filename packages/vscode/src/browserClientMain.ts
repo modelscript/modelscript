@@ -119,56 +119,11 @@ export async function activate(context: vscode.ExtensionContext) {
     }),
   );
 
-  // Pre-open all .mo files in the workspace so the LSP server can track them
-  // for cross-file reference resolution
-  const moFiles = await scanWorkspaceFiles();
-  if (moFiles.length > 0) {
-    // Set the first .mo file as the initial document URI for the tree
-    treeProvider.setDocumentUri(moFiles[0].toString());
-
-    // Auto-expand root items after tree data loads
-    setTimeout(async () => {
-      try {
-        const rootItems = await treeProvider.getChildren();
-        for (const item of rootItems) {
-          await treeView.reveal(item, { expand: true, select: false, focus: false });
-        }
-      } catch {
-        // ignore — tree may not be ready yet
-      }
-    }, 2000);
-  } else {
-    // Blank project: create a default model if the workspace uses the tmp scheme
-    const folders = workspace.workspaceFolders;
-    if (folders && folders.length > 0 && folders[0].uri.scheme === "tmp") {
-      const defaultModel = `model HelloWorld "A simple Modelica model"
-  Real x(start = 1);
-  parameter Real a = -1;
-equation
-  der(x) = a * x;
-end HelloWorld;
-`;
-      const fileUri = vscode.Uri.joinPath(folders[0].uri, "HelloWorld.mo");
-      try {
-        await workspace.fs.writeFile(fileUri, new TextEncoder().encode(defaultModel));
-        const doc = await workspace.openTextDocument(fileUri);
-        await vscode.window.showTextDocument(doc);
-        treeProvider.setDocumentUri(fileUri.toString());
-        setTimeout(async () => {
-          try {
-            const rootItems = await treeProvider.getChildren();
-            for (const item of rootItems) {
-              await treeView.reveal(item, { expand: true, select: false, focus: false });
-            }
-          } catch {
-            // ignore
-          }
-        }, 2000);
-      } catch (e) {
-        console.warn("[blank-project] Failed to create default model:", e);
-      }
-    }
-  }
+  // Pre-open all .mo files in the workspace so the LSP server can track them.
+  // This is fire-and-forget: don't crash the extension if the filesystem isn't ready.
+  initWorkspaceAndTree(treeProvider, treeView).catch((e) => {
+    console.warn("[workspace-init] Non-fatal initialization error:", e);
+  });
 }
 
 export async function deactivate(): Promise<void> {
@@ -186,25 +141,83 @@ function createWorkerLanguageClient(context: vscode.ExtensionContext, clientOpti
 }
 
 /**
- * Scan the workspace for all .mo files and open them as text documents.
- * This triggers textDocument/didOpen notifications to the LSP server,
- * enabling cross-file reference resolution.
+ * Initialize the workspace: scan for .mo files or create a blank project,
+ * then set up the library tree. Retries if the filesystem provider isn't
+ * registered yet (e.g. GitHub FS extension still activating).
  */
-async function scanWorkspaceFiles(): Promise<vscode.Uri[]> {
-  try {
-    const moFiles = await workspace.findFiles("**/*.mo");
-    console.log(`[workspace-scan] Found ${moFiles.length} .mo files in workspace`);
-    for (const uri of moFiles) {
+async function initWorkspaceAndTree(
+  treeProvider: LibraryTreeProvider,
+  treeView: vscode.TreeView<vscode.TreeItem>,
+): Promise<void> {
+  const moFiles = await scanWorkspaceFiles();
+  if (moFiles.length > 0) {
+    treeProvider.setDocumentUri(moFiles[0].toString());
+  } else {
+    // Blank project: create a default model if the workspace uses the tmp scheme
+    const folders = workspace.workspaceFolders;
+    if (folders && folders.length > 0 && folders[0].uri.scheme === "tmp") {
+      const defaultModel = `model HelloWorld "A simple Modelica model"
+  Real x(start = 1);
+  parameter Real a = -1;
+equation
+  der(x) = a * x;
+end HelloWorld;
+`;
+      const fileUri = vscode.Uri.joinPath(folders[0].uri, "HelloWorld.mo");
       try {
-        await workspace.openTextDocument(uri);
-        console.log(`[workspace-scan] Opened ${uri.path.split("/").pop()}`);
+        await workspace.fs.writeFile(fileUri, new TextEncoder().encode(defaultModel));
+        const doc = await workspace.openTextDocument(fileUri);
+        await vscode.window.showTextDocument(doc);
+        treeProvider.setDocumentUri(fileUri.toString());
       } catch (e) {
-        console.warn(`[workspace-scan] Failed to open ${uri.path}:`, e);
+        console.warn("[blank-project] Failed to create default model:", e);
       }
     }
-    return moFiles;
-  } catch (e) {
-    console.error("[workspace-scan] Workspace scan failed:", e);
-    return [];
   }
+
+  // Auto-expand root items after tree data loads
+  setTimeout(async () => {
+    try {
+      const rootItems = await treeProvider.getChildren();
+      for (const item of rootItems) {
+        await treeView.reveal(item, { expand: true, select: false, focus: false });
+      }
+    } catch {
+      // ignore — tree may not be ready yet
+    }
+  }, 3000);
+}
+
+/**
+ * Scan the workspace for all .mo files and open them as text documents.
+ * Retries up to 5 times with a 2-second delay if the filesystem provider
+ * isn't available yet (e.g. GitHub FS extension still activating).
+ */
+async function scanWorkspaceFiles(): Promise<vscode.Uri[]> {
+  const maxRetries = 5;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const moFiles = await workspace.findFiles("**/*.mo");
+      console.log(`[workspace-scan] Found ${moFiles.length} .mo files in workspace`);
+      for (const uri of moFiles) {
+        try {
+          await workspace.openTextDocument(uri);
+          console.log(`[workspace-scan] Opened ${uri.path.split("/").pop()}`);
+        } catch (e) {
+          console.warn(`[workspace-scan] Failed to open ${uri.path}:`, e);
+        }
+      }
+      return moFiles;
+    } catch (e) {
+      const msg = String(e);
+      if (msg.includes("ENOPRO") && attempt < maxRetries - 1) {
+        console.log(`[workspace-scan] Filesystem not ready, retrying in 2s (attempt ${attempt + 1}/${maxRetries})...`);
+        await new Promise((r) => setTimeout(r, 2000));
+      } else {
+        console.error("[workspace-scan] Workspace scan failed:", e);
+        return [];
+      }
+    }
+  }
+  return [];
 }

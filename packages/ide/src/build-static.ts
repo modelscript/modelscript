@@ -30,32 +30,23 @@ cpSync(VSCODE_WEB_DIR, join(OUT_DIR, "vscode-static"), { recursive: true });
 console.log("  Copying ModelScript extension...");
 const extDestDir = join(OUT_DIR, "static", "devextensions");
 mkdirSync(extDestDir, { recursive: true });
-for (const file of [
-  "package.json",
-  "language-configuration.json",
-  "browserClientMain.js",
-  "browserClientMain.js.map",
-  "browserServerMain.js",
-  "browserServerMain.js.map",
-  "diagramWebview.js",
-  "diagramWebview.js.map",
-  "simulationWebview.js",
-  "simulationWebview.js.map",
-  "tree-sitter-modelica.wasm",
-  "tree-sitter.wasm",
-  "ModelicaStandardLibrary_v4.1.0.zip",
-]) {
+// Copy essential root files
+for (const file of ["package.json", "language-configuration.json"]) {
   const src = join(MODELSCRIPT_EXT_DIR, file);
   if (existsSync(src)) {
     cpSync(src, join(extDestDir, file));
   }
 }
-// Copy subdirectories
-for (const dir of ["syntaxes", "images"]) {
+// Copy webpack output directories (client bundle, webview bundles, server bundle + assets)
+for (const dir of ["dist", "server", "syntaxes", "images"]) {
   const src = join(MODELSCRIPT_EXT_DIR, dir);
   if (existsSync(src)) {
     cpSync(src, join(extDestDir, dir), { recursive: true });
   }
+}
+// Create empty package.nls.json if it doesn't exist (VS Code requests it)
+if (!existsSync(join(extDestDir, "package.nls.json"))) {
+  writeFileSync(join(extDestDir, "package.nls.json"), "{}");
 }
 
 // 3. Copy GitHub FS extension
