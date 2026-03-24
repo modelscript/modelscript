@@ -25,11 +25,12 @@ class MemoryFileSystemProvider implements vscode.FileSystemProvider {
 
   stat(uri: vscode.Uri): vscode.FileStat {
     const path = uri.path;
-    if (this.files.has(path)) {
-      return { type: vscode.FileType.File, ctime: 0, mtime: Date.now(), size: this.files.get(path)?.length ?? 0 };
-    }
+    // Check directories FIRST — a path registered as a directory must not be treated as a file
     if (this.directories.has(path) || path === "/" || path === "") {
       return { type: vscode.FileType.Directory, ctime: 0, mtime: 0, size: 0 };
+    }
+    if (this.files.has(path)) {
+      return { type: vscode.FileType.File, ctime: 0, mtime: Date.now(), size: this.files.get(path)?.length ?? 0 };
     }
     throw vscode.FileSystemError.FileNotFound(uri);
   }
@@ -127,6 +128,14 @@ export async function activate(context: vscode.ExtensionContext) {
   await client.start();
   console.log("ModelScript language server is ready");
 
+  // Register library tree view (before status handler so we can refresh on ready)
+  const treeProvider = new LibraryTreeProvider(client);
+  const treeView = vscode.window.createTreeView("modelscript.libraryTree", {
+    treeDataProvider: treeProvider,
+    canSelectMany: false,
+  });
+  context.subscriptions.push(treeView);
+
   // Status bar item to show loading progress
   const statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, -100);
   statusItem.text = "$(sync~spin) ModelScript: Loading...";
@@ -144,8 +153,14 @@ export async function activate(context: vscode.ExtensionContext) {
       case "ready":
         statusItem.text = "$(check) ModelScript";
         statusItem.tooltip = "ModelScript language server is ready";
-        // Hide after a few seconds — it's no longer useful
         setTimeout(() => statusItem.hide(), 5000);
+        // Refresh the library tree now that MSL is loaded
+        {
+          const activeUri = vscode.window.activeTextEditor?.document.uri.toString();
+          if (activeUri) {
+            treeProvider.setDocumentUri(activeUri);
+          }
+        }
         break;
       case "error":
         statusItem.text = `$(warning) ${params.message}`;
@@ -153,14 +168,6 @@ export async function activate(context: vscode.ExtensionContext) {
         break;
     }
   });
-
-  // Register library tree view
-  const treeProvider = new LibraryTreeProvider(client);
-  const treeView = vscode.window.createTreeView("modelscript.libraryTree", {
-    treeDataProvider: treeProvider,
-    canSelectMany: false,
-  });
-  context.subscriptions.push(treeView);
 
   // Update tree when active editor changes to a .mo file
   context.subscriptions.push(
