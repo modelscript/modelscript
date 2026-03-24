@@ -14,7 +14,7 @@ let client: LanguageClient | undefined;
  */
 class MemoryFileSystemProvider implements vscode.FileSystemProvider {
   private files = new Map<string, Uint8Array>();
-  private directories = new Set<string>();
+  private directories = new Set<string>(["/"]); // Root always exists
   private _emitter = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
   readonly onDidChangeFile = this._emitter.event;
 
@@ -37,11 +37,23 @@ class MemoryFileSystemProvider implements vscode.FileSystemProvider {
   readDirectory(uri: vscode.Uri): [string, vscode.FileType][] {
     const prefix = uri.path === "/" ? "/" : uri.path + "/";
     const result: [string, vscode.FileType][] = [];
+    const seen = new Set<string>();
     for (const [path] of this.files) {
       if (path.startsWith(prefix)) {
         const rest = path.slice(prefix.length);
-        if (!rest.includes("/")) {
-          result.push([rest, vscode.FileType.File]);
+        const name = rest.split("/")[0];
+        if (!seen.has(name)) {
+          seen.add(name);
+          result.push([name, rest.includes("/") ? vscode.FileType.Directory : vscode.FileType.File]);
+        }
+      }
+    }
+    for (const dir of this.directories) {
+      if (dir.startsWith(prefix)) {
+        const rest = dir.slice(prefix.length);
+        if (!rest.includes("/") && !seen.has(rest)) {
+          seen.add(rest);
+          result.push([rest, vscode.FileType.Directory]);
         }
       }
     }
@@ -49,7 +61,7 @@ class MemoryFileSystemProvider implements vscode.FileSystemProvider {
   }
 
   createDirectory(uri: vscode.Uri): void {
-    this.directories.add(uri.path);
+    this._mkdirp(uri.path);
   }
 
   readFile(uri: vscode.Uri): Uint8Array {
@@ -59,8 +71,14 @@ class MemoryFileSystemProvider implements vscode.FileSystemProvider {
   }
 
   writeFile(uri: vscode.Uri, content: Uint8Array): void {
+    // Auto-create parent directories
+    const parts = uri.path.split("/");
+    for (let i = 1; i < parts.length - 1; i++) {
+      this._mkdirp(parts.slice(0, i + 1).join("/"));
+    }
+    const isNew = !this.files.has(uri.path);
     this.files.set(uri.path, content);
-    this._emitter.fire([{ type: vscode.FileChangeType.Changed, uri }]);
+    this._emitter.fire([{ type: isNew ? vscode.FileChangeType.Created : vscode.FileChangeType.Changed, uri }]);
   }
 
   delete(uri: vscode.Uri): void {
@@ -75,6 +93,10 @@ class MemoryFileSystemProvider implements vscode.FileSystemProvider {
       this.files.delete(oldUri.path);
       this.files.set(newUri.path, data);
     }
+  }
+
+  private _mkdirp(path: string): void {
+    this.directories.add(path);
   }
 }
 
