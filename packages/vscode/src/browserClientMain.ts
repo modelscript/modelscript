@@ -154,12 +154,10 @@ export async function activate(context: vscode.ExtensionContext) {
         statusItem.text = "$(check) ModelScript";
         statusItem.tooltip = "ModelScript language server is ready";
         setTimeout(() => statusItem.hide(), 5000);
-        // Refresh the library tree now that MSL is loaded
-        {
-          const activeUri = vscode.window.activeTextEditor?.document.uri.toString();
-          if (activeUri) {
-            treeProvider.setDocumentUri(activeUri);
-          }
+        // Auto-refresh UI components now that LSP is fully initialized
+        treeProvider.refresh();
+        if (DiagramPanel.currentPanel) {
+          DiagramPanel.currentPanel.update();
         }
         break;
       case "error":

@@ -439,6 +439,12 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
     // Load the Modelica Standard Library from the bundled zip
     await loadMSL(serverDistBase);
 
+    // Re-validate strictly AFTER MSL and parser are ready!
+    console.log(`[lsp] Initialization complete. Re-validating ${documents.all().length} open documents.`);
+    for (const doc of documents.all()) {
+      validateTextDocument(doc);
+    }
+
     connection.sendNotification("modelscript/status", { state: "ready", message: "ModelScript" });
   } catch (e) {
     console.error("Failed to initialize tree-sitter:", e);
