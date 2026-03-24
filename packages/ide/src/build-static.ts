@@ -217,4 +217,7 @@ writeFileSync(join(OUT_DIR, "CNAME"), "ide.modelscript.org\n");
 // 8. Disable Jekyll processing (ensures all files like .wasm are served as-is)
 writeFileSync(join(OUT_DIR, ".nojekyll"), "");
 
+// 9. Override root .gitignore so binaries are tracked by GitHub Pages deployment
+writeFileSync(join(OUT_DIR, ".gitignore"), "!*.wasm\n!*.zip\n");
+
 console.log(`Static IDE build complete: ${OUT_DIR}`);
