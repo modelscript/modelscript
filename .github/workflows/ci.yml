@@ -60,6 +60,16 @@ jobs:
           personal_token: ${{ secrets.MODELSCRIPT_MORSEL_DEPLOY_PAT }}
           external_repository: modelscript-morsel/modelscript-morsel.github.io
           publish_dir: ./packages/morsel/build/client
+      - name: Build IDE Static
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        run: npm run build-static --workspace=@modelscript/ide
+      - name: Deploy IDE
+        uses: peaceiris/actions-gh-pages@v4
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        with:
+          personal_token: ${{ secrets.MODELSCRIPT_IDE_DEPLOY_PAT }}
+          external_repository: modelscript-ide/modelscript-ide.github.io
+          publish_dir: ./packages/ide/dist/static
       # Uncomment to auto-publish to VS Code Marketplace on main branch pushes:
       # - name: Publish to VS Code Marketplace
       #   if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'

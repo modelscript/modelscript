@@ -8,6 +8,7 @@
     "build": "npm run download-vscode && npm run build-github-fs && npm run build-server",
     "build-github-fs": "cd github-fs && npx webpack --mode production --devtool hidden-source-map",
     "build-server": "npx esbuild src/server.ts --bundle --platform=node --format=esm --outfile=dist/server.js --external:express --external:http-proxy-middleware",
+    "build-static": "npm run download-vscode && npm run build-github-fs && npx tsx src/build-static.ts",
     "dev": "npm run download-vscode && npx tsx src/server.ts",
     "download-vscode": "npx tsx src/download-vscode.ts",
     "lint": "eslint src --ext ts"
