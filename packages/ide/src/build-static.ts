@@ -214,4 +214,7 @@ writeFileSync(join(OUT_DIR, "404.html"), landingHtml);
 // 7. CNAME for custom domain
 writeFileSync(join(OUT_DIR, "CNAME"), "ide.modelscript.org\n");
 
+// 8. Disable Jekyll processing (ensures all files like .wasm are served as-is)
+writeFileSync(join(OUT_DIR, ".nojekyll"), "");
+
 console.log(`Static IDE build complete: ${OUT_DIR}`);
