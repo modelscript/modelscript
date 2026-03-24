@@ -405,8 +405,22 @@ function resolvePathElement(node: Parser.SyntaxNode, scope: Scope): ModelicaName
 
 async function initTreeSitter(extensionUri: string): Promise<void> {
   try {
-    // Construct absolute URLs for WASM files using the extension URI
-    const serverDistBase = `${extensionUri}/server/dist`;
+    // Construct absolute URLs for WASM files using the extension URI.
+    // The extensionUri may be an HTTP URL or a VS Code internal URI scheme.
+    // For static deployments, we need to ensure it resolves to an HTTP URL.
+    let serverDistBase = `${extensionUri}/server/dist`;
+    console.log(`[tree-sitter] extensionUri: ${extensionUri}`);
+    console.log(`[tree-sitter] serverDistBase: ${serverDistBase}`);
+
+    // If the URI isn't HTTP(S), try to construct an HTTP URL from the worker's location
+    if (!serverDistBase.startsWith("http://") && !serverDistBase.startsWith("https://")) {
+      // Fallback: use the worker's origin with the known static path
+      const origin = (globalThis as unknown as { location?: { origin?: string } }).location?.origin;
+      if (origin) {
+        serverDistBase = `${origin}/static/devextensions/server/dist`;
+        console.log(`[tree-sitter] Using fallback serverDistBase: ${serverDistBase}`);
+      }
+    }
 
     await Parser.init({
       locateFile: (file: string) => {
