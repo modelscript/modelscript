@@ -422,6 +422,8 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
       }
     }
 
+    connection.sendNotification("modelscript/status", { state: "loading", message: "Initializing parser..." });
+
     await Parser.init({
       locateFile: (file: string) => {
         return `${serverDistBase}/${file}`;
@@ -436,9 +438,12 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
 
     // Load the Modelica Standard Library from the bundled zip
     await loadMSL(serverDistBase);
+
+    connection.sendNotification("modelscript/status", { state: "ready", message: "ModelScript" });
   } catch (e) {
     console.error("Failed to initialize tree-sitter:", e);
     parserReady = false;
+    connection.sendNotification("modelscript/status", { state: "error", message: "Parser initialization failed" });
   }
 }
 
@@ -450,6 +455,10 @@ async function loadMSL(serverDistBase: string): Promise<void> {
       console.warn("MSL zip not found — library features will be unavailable");
       return;
     }
+    connection.sendNotification("modelscript/status", {
+      state: "loading",
+      message: "Loading Modelica Standard Library...",
+    });
     const buffer = await response.arrayBuffer();
     const zipData = new Uint8Array(buffer);
     const files = unzipSync(zipData);
@@ -465,6 +474,7 @@ async function loadMSL(serverDistBase: string): Promise<void> {
       fileCount++;
     }
     console.log(`MSL loaded: ${fileCount} files`);
+    connection.sendNotification("modelscript/status", { state: "loading", message: "Processing MSL classes..." });
 
     // Create the shared context and register MSL libraries
     sharedContext = new Context(sharedFs);

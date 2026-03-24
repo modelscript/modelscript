@@ -8,8 +8,86 @@ import { SimulationPanel } from "./simulationPanel";
 
 let client: LanguageClient | undefined;
 
+/**
+ * Simple in-memory filesystem provider for the `tmp` scheme.
+ * Used by blank project mode to store files in memory.
+ */
+class MemoryFileSystemProvider implements vscode.FileSystemProvider {
+  private files = new Map<string, Uint8Array>();
+  private directories = new Set<string>();
+  private _emitter = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
+  readonly onDidChangeFile = this._emitter.event;
+
+  watch(): vscode.Disposable {
+    // No-op: we don't need to watch for external changes
+    return new vscode.Disposable(() => undefined);
+  }
+
+  stat(uri: vscode.Uri): vscode.FileStat {
+    const path = uri.path;
+    if (this.files.has(path)) {
+      return { type: vscode.FileType.File, ctime: 0, mtime: Date.now(), size: this.files.get(path)?.length ?? 0 };
+    }
+    if (this.directories.has(path) || path === "/" || path === "") {
+      return { type: vscode.FileType.Directory, ctime: 0, mtime: 0, size: 0 };
+    }
+    throw vscode.FileSystemError.FileNotFound(uri);
+  }
+
+  readDirectory(uri: vscode.Uri): [string, vscode.FileType][] {
+    const prefix = uri.path === "/" ? "/" : uri.path + "/";
+    const result: [string, vscode.FileType][] = [];
+    for (const [path] of this.files) {
+      if (path.startsWith(prefix)) {
+        const rest = path.slice(prefix.length);
+        if (!rest.includes("/")) {
+          result.push([rest, vscode.FileType.File]);
+        }
+      }
+    }
+    return result;
+  }
+
+  createDirectory(uri: vscode.Uri): void {
+    this.directories.add(uri.path);
+  }
+
+  readFile(uri: vscode.Uri): Uint8Array {
+    const data = this.files.get(uri.path);
+    if (data) return data;
+    throw vscode.FileSystemError.FileNotFound(uri);
+  }
+
+  writeFile(uri: vscode.Uri, content: Uint8Array): void {
+    this.files.set(uri.path, content);
+    this._emitter.fire([{ type: vscode.FileChangeType.Changed, uri }]);
+  }
+
+  delete(uri: vscode.Uri): void {
+    this.files.delete(uri.path);
+    this.directories.delete(uri.path);
+    this._emitter.fire([{ type: vscode.FileChangeType.Deleted, uri }]);
+  }
+
+  rename(oldUri: vscode.Uri, newUri: vscode.Uri): void {
+    const data = this.files.get(oldUri.path);
+    if (data) {
+      this.files.delete(oldUri.path);
+      this.files.set(newUri.path, data);
+    }
+  }
+}
+
 export async function activate(context: vscode.ExtensionContext) {
   console.log("ModelScript extension activated");
+
+  // Register in-memory filesystem for blank project mode (tmp:// scheme)
+  const folders = workspace.workspaceFolders;
+  if (folders && folders.length > 0 && folders[0].uri.scheme === "tmp") {
+    const memFs = new MemoryFileSystemProvider();
+    context.subscriptions.push(workspace.registerFileSystemProvider("tmp", memFs, { isCaseSensitive: true }));
+    console.log("[blank-project] Registered tmp:// filesystem provider");
+  }
 
   const documentSelector = [{ language: "modelica" }];
 
@@ -26,6 +104,33 @@ export async function activate(context: vscode.ExtensionContext) {
 
   await client.start();
   console.log("ModelScript language server is ready");
+
+  // Status bar item to show loading progress
+  const statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, -100);
+  statusItem.text = "$(sync~spin) ModelScript: Loading...";
+  statusItem.tooltip = "ModelScript language server is initializing";
+  statusItem.show();
+  context.subscriptions.push(statusItem);
+
+  // Listen for status notifications from the LSP server
+  client.onNotification("modelscript/status", (params: { state: string; message: string }) => {
+    switch (params.state) {
+      case "loading":
+        statusItem.text = `$(sync~spin) ${params.message}`;
+        statusItem.tooltip = "ModelScript is loading...";
+        break;
+      case "ready":
+        statusItem.text = "$(check) ModelScript";
+        statusItem.tooltip = "ModelScript language server is ready";
+        // Hide after a few seconds — it's no longer useful
+        setTimeout(() => statusItem.hide(), 5000);
+        break;
+      case "error":
+        statusItem.text = `$(warning) ${params.message}`;
+        statusItem.tooltip = "ModelScript encountered an error during initialization";
+        break;
+    }
+  });
 
   // Register library tree view
   const treeProvider = new LibraryTreeProvider(client);
