@@ -137,6 +137,37 @@ export async function activate(context: vscode.ExtensionContext) {
         // ignore — tree may not be ready yet
       }
     }, 2000);
+  } else {
+    // Blank project: create a default model if the workspace uses the tmp scheme
+    const folders = workspace.workspaceFolders;
+    if (folders && folders.length > 0 && folders[0].uri.scheme === "tmp") {
+      const defaultModel = `model HelloWorld "A simple Modelica model"
+  Real x(start = 1);
+  parameter Real a = -1;
+equation
+  der(x) = a * x;
+end HelloWorld;
+`;
+      const fileUri = vscode.Uri.joinPath(folders[0].uri, "HelloWorld.mo");
+      try {
+        await workspace.fs.writeFile(fileUri, new TextEncoder().encode(defaultModel));
+        const doc = await workspace.openTextDocument(fileUri);
+        await vscode.window.showTextDocument(doc);
+        treeProvider.setDocumentUri(fileUri.toString());
+        setTimeout(async () => {
+          try {
+            const rootItems = await treeProvider.getChildren();
+            for (const item of rootItems) {
+              await treeView.reveal(item, { expand: true, select: false, focus: false });
+            }
+          } catch {
+            // ignore
+          }
+        }, 2000);
+      } catch (e) {
+        console.warn("[blank-project] Failed to create default model:", e);
+      }
+    }
   }
 }
 

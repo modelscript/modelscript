@@ -134,30 +134,34 @@ function renderStaticWorkbench(): string {
   // Inject a script that dynamically patches the config based on URL parameters
   const patchScript = `<script>
 (function() {
-  // Parse URL hash for repo: #owner/repo or #owner/repo@ref
+  // Parse URL hash for repo: #owner/repo, #owner/repo@ref, or #blank
   var hash = location.hash.slice(1);
   if (!hash) hash = 'modelscript/modelscript';
-  var parts = hash.split('@');
-  var ownerRepo = parts[0];
-  var ref = parts[1] || 'main';
-  var p = ownerRepo.split('/');
-  var owner = p[0] || 'modelscript';
-  var repo = p[1] || 'modelscript';
-  document.title = owner + '/' + repo + ' — ModelScript IDE';
-  // Patch the workbench config in the DOM
   var el = document.getElementById('vscode-workbench-web-configuration');
-  if (el) {
-    var config = JSON.parse(el.getAttribute('data-settings'));
+  if (!el) return;
+  var config = JSON.parse(el.getAttribute('data-settings'));
+  var scheme = location.protocol.replace(':', '');
+  var host = location.host;
+  config.developmentOptions.extensions = [
+    { scheme: scheme, authority: host, path: '/static/devextensions' },
+    { scheme: scheme, authority: host, path: '/static/extensions/github-fs' },
+  ];
+  if (hash === 'blank') {
+    // Blank project: use in-memory tmp filesystem
+    document.title = 'New Project — ModelScript IDE';
+    config.folderUri = { scheme: 'tmp', authority: '', path: '/project', query: '' };
+  } else {
+    var parts = hash.split('@');
+    var ownerRepo = parts[0];
+    var ref = parts[1] || 'main';
+    var p = ownerRepo.split('/');
+    var owner = p[0] || 'modelscript';
+    var repo = p[1] || 'modelscript';
+    document.title = owner + '/' + repo + ' — ModelScript IDE';
     config.folderUri.path = '/' + owner + '/' + repo;
     config.folderUri.query = 'ref=' + ref;
-    var scheme = location.protocol.replace(':', '');
-    var host = location.host;
-    config.developmentOptions.extensions = [
-      { scheme: scheme, authority: host, path: '/static/devextensions' },
-      { scheme: scheme, authority: host, path: '/static/extensions/github-fs' },
-    ];
-    el.setAttribute('data-settings', JSON.stringify(config));
   }
+  el.setAttribute('data-settings', JSON.stringify(config));
 })();
 </script>`;
 
@@ -178,9 +182,13 @@ const landingHtml = `<!DOCTYPE html>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: system-ui, sans-serif; background: #0d1117; color: #c9d1d9; display: flex; align-items: center; justify-content: center; height: 100vh; }
-  .container { text-align: center; max-width: 600px; }
+  .container { text-align: center; max-width: 600px; padding: 0 20px; }
   h1 { font-size: 2.5rem; margin-bottom: 0.5rem; background: linear-gradient(135deg, #58a6ff, #bc8cff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
   p { margin-bottom: 2rem; opacity: 0.7; }
+  .btn-new { display: inline-block; padding: 14px 32px; border-radius: 8px; background: linear-gradient(135deg, #58a6ff, #bc8cff); color: #fff; font-size: 16px; font-weight: 600; text-decoration: none; transition: opacity 0.2s, transform 0.2s; }
+  .btn-new:hover { opacity: 0.9; transform: translateY(-1px); }
+  .divider { display: flex; align-items: center; gap: 16px; margin: 2rem 0; color: #484f58; font-size: 14px; }
+  .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: #30363d; }
   input { width: 100%; padding: 14px 20px; border-radius: 8px; border: 1px solid #30363d; background: #161b22; color: #c9d1d9; font-size: 16px; outline: none; }
   input:focus { border-color: #58a6ff; }
   .examples { margin-top: 1.5rem; text-align: left; }
@@ -190,9 +198,11 @@ const landingHtml = `<!DOCTYPE html>
 </head><body>
 <div class="container">
   <h1>ModelScript IDE</h1>
-  <p>Open any GitHub repository with Modelica support</p>
+  <p>A browser-based Modelica development environment</p>
+  <a class="btn-new" href="/vscode/workbench/#blank">New Modelica Project</a>
+  <div class="divider">or open a GitHub repository</div>
   <form onsubmit="event.preventDefault(); go();">
-    <input id="url" type="text" placeholder="Enter a GitHub repository URL, e.g. owner/repo" autofocus />
+    <input id="url" type="text" placeholder="Enter a GitHub repository, e.g. owner/repo" />
   </form>
   <div class="examples">
     <a href="/vscode/workbench/#modelscript/modelscript">modelscript/modelscript</a>
