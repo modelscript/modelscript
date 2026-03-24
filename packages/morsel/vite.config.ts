@@ -11,6 +11,9 @@ export default defineConfig(({ isSsrBuild }) => {
       "process.env": {},
       "process.browser": true,
     },
+    esbuild: {
+      keepNames: true,
+    },
     plugins: [
       tailwindcss(),
       reactRouter(),
