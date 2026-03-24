@@ -213,4 +213,7 @@ writeFileSync(join(OUT_DIR, "index.html"), landingHtml);
 // 6. SPA fallback
 writeFileSync(join(OUT_DIR, "404.html"), landingHtml);
 
+// 7. CNAME for custom domain
+writeFileSync(join(OUT_DIR, "CNAME"), "ide.modelscript.org\n");
+
 console.log(`Static IDE build complete: ${OUT_DIR}`);
