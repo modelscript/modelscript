@@ -455,6 +455,59 @@ function renderDiagram(data: any, isDark: boolean) {
 
   // Render to graph
   const cs = data.coordinateSystem;
+
+  let xAxis = document.getElementById("x-axis") as unknown as SVGLineElement | null;
+  if (!xAxis) {
+    xAxis = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    xAxis.setAttribute("id", "x-axis");
+    xAxis.setAttribute("stroke", "#999");
+    xAxis.setAttribute("stroke-width", "1");
+    xAxis.setAttribute("vector-effect", "non-scaling-stroke");
+    xAxis.setAttribute("z-index", "2");
+    g.view.viewport.insertBefore(xAxis, g.view.viewport.firstChild);
+  }
+  if (xAxis) {
+    xAxis.setAttribute("x1", "-100000");
+    xAxis.setAttribute("y1", "0");
+    xAxis.setAttribute("x2", "100000");
+    xAxis.setAttribute("y2", "0");
+  }
+
+  let yAxis = document.getElementById("y-axis") as unknown as SVGLineElement | null;
+  if (!yAxis) {
+    yAxis = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    yAxis.setAttribute("id", "y-axis");
+    yAxis.setAttribute("stroke", "#999");
+    yAxis.setAttribute("stroke-width", "1");
+    yAxis.setAttribute("vector-effect", "non-scaling-stroke");
+    yAxis.setAttribute("z-index", "2");
+    g.view.viewport.insertBefore(yAxis, g.view.viewport.firstChild);
+  }
+  if (yAxis) {
+    yAxis.setAttribute("x1", "0");
+    yAxis.setAttribute("y1", "-100000");
+    yAxis.setAttribute("x2", "0");
+    yAxis.setAttribute("y2", "100000");
+  }
+
+  let coordinateSystem = document.getElementById("coordinateSystem") as unknown as SVGRectElement | null;
+  if (!coordinateSystem) {
+    coordinateSystem = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    coordinateSystem.setAttribute("id", "coordinateSystem");
+    coordinateSystem.setAttribute("fill", "none");
+    coordinateSystem.setAttribute("stroke", "#999");
+    coordinateSystem.setAttribute("stroke-width", "1");
+    coordinateSystem.setAttribute("vector-effect", "non-scaling-stroke");
+    coordinateSystem.setAttribute("z-index", "1");
+    g.view.viewport.insertBefore(coordinateSystem, g.view.viewport.firstChild);
+  }
+  if (cs && coordinateSystem) {
+    coordinateSystem.setAttribute("x", String(cs.x));
+    coordinateSystem.setAttribute("y", String(cs.y));
+    coordinateSystem.setAttribute("width", String(cs.width));
+    coordinateSystem.setAttribute("height", String(cs.height));
+  }
+
   const isFirstRender = g.getCells().length === 0;
   g.fromJSON({ nodes, edges });
 
