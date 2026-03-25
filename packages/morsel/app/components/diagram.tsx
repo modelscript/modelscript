@@ -24,9 +24,10 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "re
 import { invertColorHelmlab, invertMarkupColors, invertSvgColors, renderDiagramX6, renderIconX6 } from "../util/x6";
 
 export interface DiagramEditorHandle {
+  showLoading: () => void;
+  hideLoading: () => void;
   fitContent: () => void;
   layout: () => void;
-  showLoading: () => void;
 }
 
 interface DiagramEditorProps {
@@ -58,6 +59,8 @@ interface DiagramEditorProps {
   onEdgeDelete?: (source: string, target: string) => void;
   onComponentDelete?: (name: string) => void;
   onComponentsDelete?: (names: string[]) => void;
+  onUndo?: () => void;
+  onRedo?: () => void;
   selectedName?: string | null;
   theme: Theme;
 }
@@ -479,12 +482,15 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
   const onEdgeDeleteRef = useRef(props.onEdgeDelete);
   const onComponentDeleteRef = useRef(props.onComponentDelete);
   const onComponentsDeleteRef = useRef(props.onComponentsDelete);
+  const onUndoRef = useRef(props.onUndo);
+  const onRedoRef = useRef(props.onRedo);
   const moveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const justResizedRef = useRef(false);
   const changedNodesRef = useRef<Set<string>>(new Set());
 
   useImperativeHandle(ref, () => ({
     showLoading: () => setLoading(true),
+    hideLoading: () => setLoading(false),
     fitContent: () => {
       if (graph) {
         graph.zoomToFit({ padding: 20 });
@@ -560,6 +566,8 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     onEdgeDeleteRef.current = props.onEdgeDelete;
     onComponentDeleteRef.current = props.onComponentDelete;
     onComponentsDeleteRef.current = props.onComponentsDelete;
+    onUndoRef.current = props.onUndo;
+    onRedoRef.current = props.onRedo;
   }, [
     props.onSelect,
     props.onConnect,
@@ -569,6 +577,8 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     props.onEdgeDelete,
     props.onComponentDelete,
     props.onComponentsDelete,
+    props.onUndo,
+    props.onRedo,
   ]);
 
   // Keyboard arrow movement for selected nodes
@@ -578,6 +588,24 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     const handleKeyDown = (e: KeyboardEvent) => {
       const g = graphRef.current;
       if (!g) return;
+
+      const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
+      const mod = isMac ? e.metaKey : e.ctrlKey;
+
+      if (mod && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        if (e.shiftKey) {
+          onRedoRef.current?.();
+        } else {
+          onUndoRef.current?.();
+        }
+        return;
+      } else if (mod && e.key.toLowerCase() === "y") {
+        e.preventDefault();
+        onRedoRef.current?.();
+        return;
+      }
+
       const arrowKeys: Record<string, [number, number]> = {
         ArrowUp: [0, -1],
         ArrowDown: [0, 1],

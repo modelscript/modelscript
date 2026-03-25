@@ -112,6 +112,32 @@ export class DiagramPanel {
               lspMethod = "modelscript/addComponent";
               lspParams = { uri, className: message.className, x: message.x, y: message.y };
               break;
+            case "undo": {
+              const editor = vscode.window.visibleTextEditors.find((e) => e.document.uri.toString() === uri);
+              if (editor) {
+                await vscode.window.showTextDocument(editor.document, {
+                  viewColumn: editor.viewColumn,
+                  preserveFocus: false,
+                });
+                await vscode.commands.executeCommand("undo");
+                this.panel.reveal(vscode.ViewColumn.Beside, false);
+                this.debouncedUpdate(uri);
+              }
+              break;
+            }
+            case "redo": {
+              const editor = vscode.window.visibleTextEditors.find((e) => e.document.uri.toString() === uri);
+              if (editor) {
+                await vscode.window.showTextDocument(editor.document, {
+                  viewColumn: editor.viewColumn,
+                  preserveFocus: false,
+                });
+                await vscode.commands.executeCommand("redo");
+                this.panel.reveal(vscode.ViewColumn.Beside, false);
+                this.debouncedUpdate(uri);
+              }
+              break;
+            }
           }
 
           if (lspMethod) {
@@ -226,11 +252,27 @@ export class DiagramPanel {
       font-size: 14px;
       opacity: 0.6;
     }
+    #spinner {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 36px;
+      height: 36px;
+      margin: -18px 0 0 -18px;
+      border: 3px solid var(--vscode-editorGutter-background, rgba(128,128,128,0.2));
+      border-top-color: var(--vscode-foreground, #ccc);
+      border-radius: 50%;
+      animation: diagram-spin 0.7s linear infinite;
+      display: none;
+      z-index: 1000;
+    }
+    @keyframes diagram-spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
   <div id="container"></div>
   <div id="placeholder">Open a Modelica file with diagram annotations</div>
+  <div id="spinner"></div>
   <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
 </html>`;

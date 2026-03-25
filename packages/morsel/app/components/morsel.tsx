@@ -1308,7 +1308,9 @@ export default function MorselEditor(props: MorselEditorProps) {
       }
 
       isDiagramUpdate.current = true;
+      editor.pushUndoStop();
       editor.executeEdits("delete-connect", [{ range, text: "" }]);
+      editor.pushUndoStop();
     }
   };
 
@@ -1471,7 +1473,9 @@ export default function MorselEditor(props: MorselEditorProps) {
     }
     if (edits.length > 0) {
       isDiagramUpdate.current = true;
+      editor.pushUndoStop();
       editor.executeEdits("delete-component", edits);
+      editor.pushUndoStop();
       // Force immediate re-parse to update classInstance and component list
       codeEditorRef.current?.sync();
     }
@@ -2113,12 +2117,14 @@ export default function MorselEditor(props: MorselEditorProps) {
                                   range.startLineNumber = insertLine;
                                   range.endLineNumber = insertLine + 1;
                                 }
+                                editor.pushUndoStop();
                                 editor.executeEdits("dnd", [
                                   {
                                     range: range,
                                     text: componentDecl,
                                   },
                                 ]);
+                                editor.pushUndoStop();
                               } else {
                                 // Find the last "end" within this model's range
                                 const modelText = lines.slice(modelStartLine, modelEndLine + 1).join("\n");
@@ -2133,6 +2139,7 @@ export default function MorselEditor(props: MorselEditorProps) {
 
                                   if (beforeEnd !== "") {
                                     // Single-line model: insert at the "end" keyword column with newlines
+                                    editor.pushUndoStop();
                                     editor.executeEdits("dnd", [
                                       {
                                         range: {
@@ -2144,6 +2151,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                                         text: "\n" + componentDecl,
                                       },
                                     ]);
+                                    editor.pushUndoStop();
                                   } else {
                                     let range = {
                                       startLineNumber: endLineNumber,
@@ -2158,12 +2166,14 @@ export default function MorselEditor(props: MorselEditorProps) {
                                         range.endLineNumber = endLineNumber;
                                       }
                                     }
+                                    editor.pushUndoStop();
                                     editor.executeEdits("dnd", [
                                       {
                                         range: range,
                                         text: componentDecl,
                                       },
                                     ]);
+                                    editor.pushUndoStop();
                                   }
                                 }
                               }
@@ -2215,6 +2225,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                                 }
                               }
                               if (insertLine !== -1) {
+                                editor.pushUndoStop();
                                 editor.executeEdits("connect", [
                                   {
                                     range: {
@@ -2226,6 +2237,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                                     text: connectEq,
                                   },
                                 ]);
+                                editor.pushUndoStop();
                                 return;
                               }
                             }
@@ -2254,6 +2266,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                               }
 
                               const insertText = equationMatches.length === 0 ? `equation\n${connectEq}` : connectEq;
+                              editor.pushUndoStop();
                               editor.executeEdits("connect", [
                                 {
                                   range: {
@@ -2265,6 +2278,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                                   text: insertText,
                                 },
                               ]);
+                              editor.pushUndoStop();
                               return;
                             }
                             // Fallback: find last "end" within model range
@@ -2277,6 +2291,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                               const linesBeforeEnd = modelText.substring(0, lastEndIndex).split("\n").length - 1;
                               const endLineNumber = modelStartLine + linesBeforeEnd;
                               const insertText = equationMatches.length === 0 ? `equation\n${connectEq}` : connectEq;
+                              editor.pushUndoStop();
                               editor.executeEdits("connect", [
                                 {
                                   range: {
@@ -2288,6 +2303,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                                   text: insertText,
                                 },
                               ]);
+                              editor.pushUndoStop();
                             }
                           }}
                           onMove={(items) => {
@@ -2334,7 +2350,9 @@ export default function MorselEditor(props: MorselEditorProps) {
                                 return true;
                               });
                               if (filtered.length > 0) {
+                                editor.pushUndoStop();
                                 editor.executeEdits("move", filtered);
+                                editor.pushUndoStop();
                               }
                             }
                           }}
@@ -2367,7 +2385,9 @@ export default function MorselEditor(props: MorselEditorProps) {
                                 return true;
                               });
                               if (filtered.length > 0) {
+                                editor.pushUndoStop();
                                 editor.executeEdits("resize", filtered);
+                                editor.pushUndoStop();
                               }
                             }
                           }}
@@ -2376,12 +2396,32 @@ export default function MorselEditor(props: MorselEditorProps) {
                             isDiagramUpdate.current = true;
                             const edgeEdits = getConnectEdits(edges);
                             if (edgeEdits.size > 0) {
+                              editor.pushUndoStop();
                               editor.executeEdits("edge-move", Array.from(edgeEdits.values()));
+                              editor.pushUndoStop();
                             }
                           }}
                           onEdgeDelete={handleEdgeDelete}
                           onComponentDelete={handleComponentDelete}
                           onComponentsDelete={handleComponentsDelete}
+                          onUndo={() => {
+                            isDiagramUpdate.current = true;
+                            editorRef.current?.focus();
+                            const prev = editorRef.current?.getValue();
+                            editorRef.current?.trigger("diagram", "undo", null);
+                            if (prev !== editorRef.current?.getValue()) {
+                              diagramEditorRef.current?.showLoading();
+                            }
+                          }}
+                          onRedo={() => {
+                            isDiagramUpdate.current = true;
+                            editorRef.current?.focus();
+                            const prev = editorRef.current?.getValue();
+                            editorRef.current?.trigger("diagram", "redo", null);
+                            if (prev !== editorRef.current?.getValue()) {
+                              diagramEditorRef.current?.showLoading();
+                            }
+                          }}
                         />
                       </Suspense>
                     </div>
@@ -2441,14 +2481,18 @@ export default function MorselEditor(props: MorselEditorProps) {
                             const edit = getNameEdit(selectedComponent.name!, newName);
                             if (edit) {
                               expectedComponentNameRef.current = newName;
+                              editor.pushUndoStop();
                               editor.executeEdits("name-change", [edit]);
+                              editor.pushUndoStop();
                             }
                           }}
                           onDescriptionChange={(newDescription) => {
                             if (!selectedComponent || !editor) return;
                             const edit = getDescriptionEdit(selectedComponent.name!, newDescription);
                             if (edit) {
+                              editor.pushUndoStop();
                               editor.executeEdits("description-change", [edit]);
+                              editor.pushUndoStop();
                             }
                           }}
                           onParameterChange={(name, value) => {
@@ -2471,7 +2515,9 @@ export default function MorselEditor(props: MorselEditorProps) {
                             }
                             const edit = getParameterEdit(selectedComponent.name!, name, effectiveValue);
                             if (edit) {
+                              editor.pushUndoStop();
                               editor.executeEdits("parameter-change", [edit]);
+                              editor.pushUndoStop();
                               // Trigger immediate reparse so AST is fresh for next edit
                               codeEditorRef.current?.sync();
                             }
@@ -2599,6 +2645,9 @@ export default function MorselEditor(props: MorselEditorProps) {
                   setEditor={setEditor}
                   content={content}
                   theme={colorMode === "dark" ? "vs-dark" : "light"}
+                  onParseComplete={() => {
+                    diagramEditorRef.current?.hideLoading();
+                  }}
                   externalErrors={
                     simulationStatus?.status === "failed" && simulationStatus.error ? [simulationStatus.error] : []
                   }

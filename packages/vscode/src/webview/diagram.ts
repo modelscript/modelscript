@@ -352,6 +352,25 @@ function initGraph(isDark: boolean): Graph {
         vscode.postMessage({ type: "deleteComponents", names: componentNames });
       }
       g.removeCells(cells);
+    } else {
+      const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
+      const mod = isMac ? e.metaKey : e.ctrlKey;
+
+      if (mod && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        const spinner = document.getElementById("spinner");
+        if (spinner) spinner.style.display = "block";
+        if (e.shiftKey) {
+          vscode.postMessage({ type: "redo" });
+        } else {
+          vscode.postMessage({ type: "undo" });
+        }
+      } else if (mod && e.key.toLowerCase() === "y") {
+        e.preventDefault();
+        const spinner = document.getElementById("spinner");
+        if (spinner) spinner.style.display = "block";
+        vscode.postMessage({ type: "redo" });
+      }
     }
   });
 
@@ -455,10 +474,15 @@ function renderDiagram(data: any, isDark: boolean) {
 window.addEventListener("message", (event: MessageEvent) => {
   const message = event.data;
   switch (message.type) {
-    case "diagramData":
+    case "diagramData": {
+      const spinner = document.getElementById("spinner");
+      if (spinner) spinner.style.display = "none";
       renderDiagram(message.data, message.isDark ?? true);
       break;
+    }
     case "empty": {
+      const spinner = document.getElementById("spinner");
+      if (spinner) spinner.style.display = "none";
       const placeholder = document.getElementById("placeholder");
       if (placeholder) {
         placeholder.style.display = "flex";
@@ -470,6 +494,8 @@ window.addEventListener("message", (event: MessageEvent) => {
       break;
     }
     case "error": {
+      const spinner = document.getElementById("spinner");
+      if (spinner) spinner.style.display = "none";
       const placeholder2 = document.getElementById("placeholder");
       if (placeholder2) {
         placeholder2.style.display = "flex";

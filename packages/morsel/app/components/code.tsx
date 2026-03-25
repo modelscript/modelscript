@@ -159,6 +159,7 @@ interface CodeEditorProps {
   setClassInstances: (classInstances: ModelicaClassInstance[]) => void;
   setEditor: (editor: editor.ICodeEditor) => void;
   onProgress?: (progress: number, message: string) => void;
+  onParseComplete?: () => void;
   theme: Theme;
   embed: boolean;
   readOnly?: boolean;
@@ -792,6 +793,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
   const processContent = (value: string | undefined): ModelicaClassInstance[] => {
     if (!value || !contextRef.current) return [];
     if (value === lastProcessedValueRef.current && lastProcessedInstancesRef.current.length > 0) {
+      props.onParseComplete?.();
       return lastProcessedInstancesRef.current;
     }
 
@@ -875,6 +877,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
     monacoRef.current.editor.setModelMarkers(model, "owner", allMarkers);
     lastProcessedValueRef.current = value;
     lastProcessedInstancesRef.current = instances;
+    props.onParseComplete?.();
     return instances;
   };
 
