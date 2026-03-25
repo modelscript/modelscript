@@ -1815,8 +1815,8 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
       const args = node.functionCallArguments?.arguments;
       if (args && args.length > 0) {
         const msgExpr = args[0]?.expression?.accept(this, scope);
-        if (msgExpr instanceof ModelicaStringLiteral) {
-          if (this.#printCallback) this.#printCallback(msgExpr.value);
+        if (msgExpr && this.#printCallback) {
+          this.#printCallback(ModelicaInterpreter.expressionToString(msgExpr));
         }
       }
       return null;
@@ -1824,6 +1824,28 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
 
     this.callFunction(node.functionReference, node.functionCallArguments, scope);
     return null;
+  }
+
+  /** Convert any ModelicaExpression to a human-readable string for print(). */
+  static expressionToString(expr: ModelicaExpression): string {
+    if (expr instanceof ModelicaStringLiteral) return expr.value;
+    if (expr instanceof ModelicaIntegerLiteral) return String(expr.value);
+    if (expr instanceof ModelicaRealLiteral) return String(expr.value);
+    if (expr instanceof ModelicaBooleanLiteral) return expr.value ? "true" : "false";
+    if (expr instanceof ModelicaEnumerationLiteral) return expr.stringValue;
+    if (expr instanceof ModelicaArray) {
+      const inner = expr.elements.map((e) => ModelicaInterpreter.expressionToString(e)).join(", ");
+      return `{${inner}}`;
+    }
+    if (expr instanceof ModelicaObject) {
+      const entries = Array.from(expr.elements.entries())
+        .map(([k, v]) => `${k} = ${ModelicaInterpreter.expressionToString(v)}`)
+        .join(", ");
+      const typeName = expr.classInstance?.name ?? "record";
+      return `${typeName}(${entries})`;
+    }
+    // Fallback: use toJSON representation
+    return String(expr.toJSON);
   }
 
   /**
@@ -2049,10 +2071,21 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
    * @returns `null` in all cases.
    */
   visitStoredDefinition(node: ModelicaStoredDefinitionSyntaxNode, scope: Scope): null {
-    let scriptScope = scope;
-    if (!(scriptScope instanceof ModelicaScriptScope)) {
+    let scriptScope: ModelicaScriptScope;
+    if (scope instanceof ModelicaScriptScope) {
+      scriptScope = scope;
+    } else {
       scriptScope = new ModelicaScriptScope(scope);
     }
+
+    // Register class definitions (e.g., record A ... end A;) in the script scope
+    for (const classDef of node.classDefinitions) {
+      const classInstance = ModelicaClassInstance.new(scriptScope, classDef);
+      if (classInstance.name) {
+        scriptScope.classDefinitions.set(classInstance.name, classInstance);
+      }
+    }
+
     for (const stmt of node.statements) {
       stmt.accept(this, scriptScope);
     }

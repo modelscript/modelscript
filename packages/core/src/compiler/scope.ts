@@ -195,9 +195,15 @@ export class ModelicaLoopScope extends Scope {
  */
 export class ModelicaScriptScope extends Scope {
   variables = new Map<string, ModelicaComponentInstance>();
+  classDefinitions = new Map<string, ModelicaClassInstance>();
 
   override get elements(): IterableIterator<ModelicaElement> {
-    return this.variables.values();
+    const vars = this.variables.values();
+    const classes = this.classDefinitions.values();
+    return (function* () {
+      yield* vars;
+      yield* classes;
+    })();
   }
 
   override get hash(): string {
@@ -210,8 +216,9 @@ export class ModelicaScriptScope extends Scope {
     encapsulated = false,
   ): ModelicaNamedElement | null {
     const name = identifier instanceof ModelicaIdentifierSyntaxNode ? identifier.text : identifier;
-    if (name && this.variables.has(name)) {
-      return this.variables.get(name) ?? null;
+    if (name) {
+      if (this.variables.has(name)) return this.variables.get(name) ?? null;
+      if (this.classDefinitions.has(name)) return this.classDefinitions.get(name) ?? null;
     }
     return super.resolveSimpleName(identifier, global, encapsulated);
   }
