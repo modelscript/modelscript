@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import { Uri, commands, workspace } from "vscode";
 import { LanguageClientOptions } from "vscode-languageclient";
 import { LanguageClient } from "vscode-languageclient/browser";
-import { DiagramPanel } from "./diagramPanel";
+import { DiagramEditorProvider } from "./diagramEditorProvider";
 import { LibraryTreeProvider } from "./libraryTreeProvider";
 import { ProjectTreeProvider } from "./projectTreeProvider";
 import { SimulationPanel } from "./simulationPanel";
@@ -170,9 +170,6 @@ export async function activate(context: vscode.ExtensionContext) {
         // Auto-refresh UI components now that LSP is fully initialized
         treeProvider.refresh();
         projectTreeProvider.refresh();
-        if (DiagramPanel.currentPanel) {
-          DiagramPanel.currentPanel.update();
-        }
         break;
       case "error":
         statusItem.text = `$(warning) ${params.message}`;
@@ -193,15 +190,15 @@ export async function activate(context: vscode.ExtensionContext) {
   // Register commands
   context.subscriptions.push(
     commands.registerCommand("modelscript.openDiagram", () => {
-      if (client) {
-        DiagramPanel.createOrShow(context.extensionUri, client);
+      const activeEditor = vscode.window.activeTextEditor;
+      if (activeEditor && activeEditor.document.languageId === "modelica") {
+        vscode.commands.executeCommand("vscode.openWith", activeEditor.document.uri, DiagramEditorProvider.viewType);
       }
     }),
-    commands.registerCommand("modelscript.openDiagramSource", async () => {
-      const uri = DiagramPanel.currentPanel?.sourceUri;
-      if (uri) {
-        const doc = await workspace.openTextDocument(vscode.Uri.parse(uri));
-        await vscode.window.showTextDocument(doc, vscode.ViewColumn.One);
+    commands.registerCommand("modelscript.openDiagramSource", () => {
+      const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
+      if (tab?.input instanceof vscode.TabInputCustom && tab.input.viewType === DiagramEditorProvider.viewType) {
+        vscode.commands.executeCommand("vscode.openWith", tab.input.uri, "default");
       }
     }),
     commands.registerCommand("modelscript.runSimulation", async () => {
@@ -242,7 +239,13 @@ export async function activate(context: vscode.ExtensionContext) {
       if (classKind !== "model" && classKind !== "block" && classKind !== "connector") return;
 
       // Find the active .mo document
-      const docUri = DiagramPanel.currentPanel?.sourceUri ?? vscode.window.activeTextEditor?.document.uri.toString();
+      let docUri = vscode.window.activeTextEditor?.document.uri.toString();
+      if (!docUri) {
+        const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
+        if (tab?.input instanceof vscode.TabInputCustom && tab.input.viewType === DiagramEditorProvider.viewType) {
+          docUri = tab.input.uri.toString();
+        }
+      }
       if (!docUri) {
         vscode.window.showWarningMessage("Open a Modelica file first.");
         return;
@@ -302,6 +305,15 @@ export async function activate(context: vscode.ExtensionContext) {
   moWatcher.onDidCreate(() => projectTreeProvider.refresh());
   moWatcher.onDidDelete(() => projectTreeProvider.refresh());
   context.subscriptions.push(moWatcher);
+
+  // Register the custom editor provider for modelica diagrams
+  context.subscriptions.push(
+    vscode.window.registerCustomEditorProvider(
+      DiagramEditorProvider.viewType,
+      new DiagramEditorProvider(context, client),
+      { webviewOptions: { retainContextWhenHidden: true } },
+    ),
+  );
 
   // Pre-open all .mo files in the workspace so the LSP server can track them.
   // This is fire-and-forget: don't crash the extension if the filesystem isn't ready.

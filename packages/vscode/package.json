@@ -83,6 +83,18 @@
         }
       }
     ],
+    "customEditors": [
+      {
+        "viewType": "modelscript.diagram",
+        "displayName": "Modelica Diagram",
+        "selector": [
+          {
+            "filenamePattern": "*.mo"
+          }
+        ],
+        "priority": "default"
+      }
+    ],
     "grammars": [
       {
         "language": "modelica",
@@ -122,7 +134,7 @@
         },
         {
           "command": "modelscript.openDiagramSource",
-          "when": "activeWebviewPanelId == modelscript.diagram",
+          "when": "activeCustomEditorId == modelscript.diagram",
           "group": "navigation"
         }
       ],
