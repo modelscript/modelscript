@@ -42,6 +42,7 @@ import {
   ModelicaSimpleAssignmentStatementSyntaxNode,
   ModelicaStoredDefinitionSyntaxNode,
   ModelicaStringLiteralSyntaxNode,
+  ModelicaSyntaxNode,
   ModelicaSyntaxVisitor,
   ModelicaUnaryExpressionSyntaxNode,
   ModelicaUnsignedIntegerLiteralSyntaxNode,
@@ -1561,7 +1562,10 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
       if (name && expression) parameters.push(new ModelicaParameterModification(scope, name, expression));
     }
     if (functionInstance.classKind === ModelicaClassKind.RECORD) {
-      return ModelicaExpression.fromClassInstance(functionInstance.clone(new ModelicaModification(scope, parameters)));
+      return ModelicaExpression.fromClassInstance(
+        functionInstance.clone(new ModelicaModification(scope, parameters)),
+        (expr) => (expr as unknown as ModelicaSyntaxNode).accept(this, scope) ?? null,
+      );
     } else if (functionInstance.classKind === ModelicaClassKind.FUNCTION) {
       const modification = new ModelicaModification(scope, parameters);
       // When evaluating algorithms, create a fresh clone to avoid mutating cached instances.
@@ -1717,15 +1721,20 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
         componentTarget.classInstance = componentTarget.classInstance.clone(mod);
       } else {
         // First-time instantiation for dynamically created script variables
-        let typeName = "Real";
-        if (value instanceof ModelicaIntegerLiteral) typeName = "Integer";
-        else if (value instanceof ModelicaStringLiteral) typeName = "String";
-        else if (value instanceof ModelicaBooleanLiteral) typeName = "Boolean";
-        else if (value instanceof ModelicaArray) typeName = "Real"; // array fallback
+        if (value instanceof ModelicaObject && value.classInstance) {
+          // Record value: use the record's class instance directly
+          componentTarget.classInstance = value.classInstance.clone(mod);
+        } else {
+          let typeName = "Real";
+          if (value instanceof ModelicaIntegerLiteral) typeName = "Integer";
+          else if (value instanceof ModelicaStringLiteral) typeName = "String";
+          else if (value instanceof ModelicaBooleanLiteral) typeName = "Boolean";
+          else if (value instanceof ModelicaArray) typeName = "Real"; // array fallback
 
-        const typeDefinition = scope.resolveSimpleName(typeName);
-        if (typeDefinition instanceof ModelicaClassInstance) {
-          componentTarget.classInstance = typeDefinition.clone(mod);
+          const typeDefinition = scope.resolveSimpleName(typeName);
+          if (typeDefinition instanceof ModelicaClassInstance) {
+            componentTarget.classInstance = typeDefinition.clone(mod);
+          }
         }
       }
     }

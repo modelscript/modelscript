@@ -32,16 +32,22 @@ import {
   Context,
   ModelicaClassInstance,
   ModelicaComponentInstance,
+  ModelicaComponentReferenceSyntaxNode,
   ModelicaDAE,
   ModelicaElement,
   ModelicaEnumerationClassInstance,
   ModelicaFlattener,
+  ModelicaFunctionCallSyntaxNode,
   ModelicaInterpreter,
   ModelicaLibrary,
   ModelicaLinter,
   ModelicaNamedElement,
+  ModelicaProcedureCallStatementSyntaxNode,
+  ModelicaScriptScope,
+  ModelicaSimpleAssignmentStatementSyntaxNode,
   ModelicaSimulator,
   ModelicaStoredDefinitionSyntaxNode,
+  ModelicaSyntaxNode,
   Scope,
   type Dirent,
   type FileSystem,
@@ -856,6 +862,11 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
       workspaceInstances.set(textDocument.uri, thisDocInstances);
       documentInstances.set(textDocument.uri, thisDocInstances);
       documentContexts.set(textDocument.uri, context);
+
+      // For .mos script files, lint statements (undeclared variables, invalid record fields)
+      if (textDocument.uri.endsWith(".mos")) {
+        lintScriptStatements(node, thisDocInstances, editorScope, diagnostics);
+      }
     }
   } else {
     // Fallback: basic regex validation when tree-sitter is not available
@@ -878,6 +889,218 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
 
   // Notify the client that project tree data may have changed
   connection.sendNotification("modelscript/projectTreeChanged");
+}
+
+/* Script statement linter — validates .mos file statements */
+
+/** Built-in function/type names that don't need declaration */
+const SCRIPT_BUILTINS = new Set([
+  "print",
+  "abs",
+  "sign",
+  "sqrt",
+  "ceil",
+  "floor",
+  "mod",
+  "rem",
+  "sin",
+  "cos",
+  "tan",
+  "asin",
+  "acos",
+  "atan",
+  "atan2",
+  "exp",
+  "log",
+  "log10",
+  "max",
+  "min",
+  "sum",
+  "product",
+  "size",
+  "ndims",
+  "fill",
+  "zeros",
+  "ones",
+  "identity",
+  "diagonal",
+  "linspace",
+  "cat",
+  "array",
+  "transpose",
+  "symmetric",
+  "der",
+  "initial",
+  "terminal",
+  "pre",
+  "edge",
+  "change",
+  "reinit",
+  "noEvent",
+  "smooth",
+  "sample",
+  "delay",
+  "assert",
+  "terminate",
+  "String",
+  "Integer",
+  "Real",
+  "Boolean",
+  "true",
+  "false",
+  "time",
+]);
+
+/**
+ * Lints script statements for undeclared variable references and
+ * invalid named arguments in record/class constructor calls.
+ */
+function lintScriptStatements(
+  storedDef: ModelicaStoredDefinitionSyntaxNode,
+  classInstances: ModelicaClassInstance[],
+  scope: Scope,
+  diagnostics: Diagnostic[],
+): void {
+  // Track assigned variable names
+  const assignedVars = new Set<string>();
+  // Map of class names to their component names (for record constructor validation)
+  const classComponentNames = new Map<string, Set<string>>();
+  for (const inst of classInstances) {
+    if (inst.name) {
+      const componentNames = new Set<string>();
+      try {
+        if (!inst.instantiated) inst.instantiate();
+        for (const el of inst.elements) {
+          if (el instanceof ModelicaComponentInstance && el.name) {
+            componentNames.add(el.name);
+          }
+        }
+      } catch {
+        // ignore instantiation errors, already linted
+      }
+      classComponentNames.set(inst.name, componentNames);
+    }
+  }
+
+  for (const stmt of storedDef.statements) {
+    if (stmt instanceof ModelicaSimpleAssignmentStatementSyntaxNode) {
+      // Check RHS expressions for undeclared references
+      if (stmt.source) {
+        checkExpressionReferences(stmt.source, assignedVars, classComponentNames, scope, diagnostics);
+      }
+      // Register LHS as assigned (scripts auto-vivify variables)
+      const targetName = stmt.target?.parts?.[0]?.identifier?.text;
+      if (targetName) assignedVars.add(targetName);
+    } else if (stmt instanceof ModelicaProcedureCallStatementSyntaxNode) {
+      // Check function call arguments for undeclared references
+      if (stmt.functionCallArguments) {
+        for (const arg of stmt.functionCallArguments.arguments ?? []) {
+          if (arg.expression) {
+            checkExpressionReferences(arg.expression, assignedVars, classComponentNames, scope, diagnostics);
+          }
+        }
+      }
+      // Don't flag the function name itself as undeclared — it could be a built-in
+    }
+  }
+}
+
+/** Recursively check expression syntax nodes for undeclared references and invalid constructor arguments. */
+function checkExpressionReferences(
+  node: ModelicaSyntaxNode,
+  assignedVars: Set<string>,
+  classComponentNames: Map<string, Set<string>>,
+  scope: Scope,
+  diagnostics: Diagnostic[],
+): void {
+  if (node instanceof ModelicaFunctionCallSyntaxNode) {
+    // Check if this is a record constructor call like A(xx=1)
+    const funcName = node.functionReference?.parts?.[0]?.identifier?.text;
+    if (funcName && classComponentNames.has(funcName)) {
+      const validComponents = classComponentNames.get(funcName);
+      // Validate named arguments
+      for (const namedArg of node.functionCallArguments?.namedArguments ?? []) {
+        const argName = namedArg.identifier?.text;
+        const identNode = namedArg.identifier;
+        if (argName && validComponents && !validComponents.has(argName) && identNode) {
+          diagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            range: {
+              start: { line: identNode.startPosition.row, character: identNode.startPosition.column },
+              end: { line: identNode.endPosition.row, character: identNode.endPosition.column },
+            },
+            message: `'${argName}' is not a component of record '${funcName}'.`,
+            source: "modelscript",
+          });
+        }
+      }
+    } else if (funcName && !SCRIPT_BUILTINS.has(funcName) && !scope.resolveSimpleName(funcName)) {
+      const identNode = node.functionReference?.parts?.[0]?.identifier;
+      if (identNode) {
+        diagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          range: {
+            start: { line: identNode.startPosition.row, character: identNode.startPosition.column },
+            end: { line: identNode.endPosition.row, character: identNode.endPosition.column },
+          },
+          message: `Unknown function or record '${funcName}'.`,
+          source: "modelscript",
+        });
+      }
+    }
+    // Also check positional arguments for references
+    for (const arg of node.functionCallArguments?.arguments ?? []) {
+      if (arg.expression) {
+        checkExpressionReferences(arg.expression, assignedVars, classComponentNames, scope, diagnostics);
+      }
+    }
+    for (const namedArg of node.functionCallArguments?.namedArguments ?? []) {
+      if (namedArg.argument?.expression) {
+        checkExpressionReferences(namedArg.argument.expression, assignedVars, classComponentNames, scope, diagnostics);
+      }
+    }
+    return;
+  }
+
+  if (node instanceof ModelicaComponentReferenceSyntaxNode) {
+    // Check if the root identifier is declared
+    const rootName = node.parts?.[0]?.identifier?.text;
+    const identNode = node.parts?.[0]?.identifier;
+    if (
+      rootName &&
+      !assignedVars.has(rootName) &&
+      !SCRIPT_BUILTINS.has(rootName) &&
+      !classComponentNames.has(rootName) &&
+      !scope.resolveSimpleName(rootName) &&
+      identNode
+    ) {
+      diagnostics.push({
+        severity: DiagnosticSeverity.Warning,
+        range: {
+          start: { line: identNode.startPosition.row, character: identNode.startPosition.column },
+          end: { line: identNode.endPosition.row, character: identNode.endPosition.column },
+        },
+        message: `Variable '${rootName}' is used before being assigned.`,
+        source: "modelscript",
+      });
+    }
+    return;
+  }
+
+  // Recurse into child syntax nodes
+  for (const key of Object.keys(node)) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const val = (node as any)[key];
+    if (val instanceof ModelicaSyntaxNode) {
+      checkExpressionReferences(val, assignedVars, classComponentNames, scope, diagnostics);
+    } else if (Array.isArray(val)) {
+      for (const item of val) {
+        if (item instanceof ModelicaSyntaxNode) {
+          checkExpressionReferences(item, assignedVars, classComponentNames, scope, diagnostics);
+        }
+      }
+    }
+  }
 }
 
 /* Semantic tokens provider — regex-based tokenizer matching morsel's token types */
@@ -1699,8 +1922,10 @@ connection.onRequest("modelscript/runScript", async (params: { uri: string }) =>
     output += msg + "\n";
   });
 
+  const scriptScope = new ModelicaScriptScope(context);
+
   try {
-    interpreter.visitStoredDefinition(storedDef, context);
+    interpreter.visitStoredDefinition(storedDef, scriptScope);
   } catch (e) {
     output += `Runtime Error: ${e instanceof Error ? e.message : String(e)}\n`;
   }

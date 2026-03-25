@@ -772,7 +772,10 @@ export abstract class ModelicaExpression {
 
   abstract get toRDF(): Triple[];
 
-  static fromClassInstance(classInstance: ModelicaClassInstance | null | undefined): ModelicaExpression | null {
+  static fromClassInstance(
+    classInstance: ModelicaClassInstance | null | undefined,
+    evaluator?: (expr: ModelicaExpression) => ModelicaExpression | null,
+  ): ModelicaExpression | null {
     if (!classInstance) {
       return null;
     }
@@ -782,7 +785,7 @@ export abstract class ModelicaExpression {
       let elements: ModelicaExpression[] = [];
       for (const element of classInstance.elements ?? []) {
         if (element instanceof ModelicaClassInstance) {
-          const expression = ModelicaExpression.fromClassInstance(element);
+          const expression = ModelicaExpression.fromClassInstance(element, evaluator);
           if (expression) elements.push(expression);
         }
       }
@@ -817,7 +820,12 @@ export abstract class ModelicaExpression {
       for (const component of classInstance.components) {
         if (!component.name) continue;
         if (!component.instantiated && !component.instantiating) component.instantiate();
-        const value = ModelicaExpression.fromClassInstance(component.classInstance);
+
+        let value = ModelicaExpression.fromClassInstance(component.classInstance, evaluator);
+        if (!value && evaluator && component.modification?.expression) {
+          // Fall back to evaluating the component's default binding expression
+          value = evaluator(component.modification.expression);
+        }
         if (!value) continue;
         elements.set(component.name, value);
       }
