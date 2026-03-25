@@ -81,7 +81,11 @@ export class LibraryTreeItem extends vscode.TreeItem {
   }
 }
 
-export class LibraryTreeProvider implements vscode.TreeDataProvider<LibraryTreeItem> {
+export class LibraryTreeProvider
+  implements vscode.TreeDataProvider<LibraryTreeItem>, vscode.TreeDragAndDropController<LibraryTreeItem>
+{
+  public readonly dragMimeTypes = ["application/json", "text/plain"];
+  public readonly dropMimeTypes = [];
   private _onDidChangeTreeData = new vscode.EventEmitter<LibraryTreeItem | undefined | null>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
@@ -103,6 +107,35 @@ export class LibraryTreeProvider implements vscode.TreeDataProvider<LibraryTreeI
 
   getTreeItem(element: LibraryTreeItem): vscode.TreeItem {
     return element;
+  }
+
+  public onDragStart?: (data: { className: string; classKind: string; iconSvg?: string }) => void;
+
+  public async handleDrag(
+    source: readonly LibraryTreeItem[],
+    dataTransfer: vscode.DataTransfer,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _token: vscode.CancellationToken,
+  ): Promise<void> {
+    const item = source[0];
+    if (!item) return;
+
+    const isAddable =
+      item.info.classKind === "model" || item.info.classKind === "block" || item.info.classKind === "connector";
+    if (!isAddable) return;
+
+    const dragData = {
+      className: item.info.compositeName,
+      classKind: item.info.classKind,
+      iconSvg: item.info.iconSvg,
+    };
+
+    const payload = JSON.stringify(dragData);
+    dataTransfer.set("application/json", new vscode.DataTransferItem(payload));
+    dataTransfer.set("text/plain", new vscode.DataTransferItem(payload));
+
+    // Notify diagram webviews to enter placement mode
+    this.onDragStart?.(dragData);
   }
 
   async getChildren(element?: LibraryTreeItem): Promise<LibraryTreeItem[]> {

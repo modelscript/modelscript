@@ -427,6 +427,101 @@ function initGraph(isDark: boolean): Graph {
     document.getElementById("properties-panel")?.classList.remove("open");
   });
 
+  // ── Placement mode: postMessage-based drag from VS Code TreeView ──
+  // VS Code webviews run in sandboxed iframes that block HTML5 DnD events.
+  // The extension host posts "startPlacement" when a tree drag starts.
+  // We continuously track the mouse position so that when the async message
+  // arrives, we can place the component instantly — no extra movement needed.
+  let placementData: { className: string; classKind: string; iconSvg?: string } | null = null;
+
+  // Place on first mousemove after drag ends
+  window.addEventListener("mousemove", (e) => {
+    // If we're in pending placement mode, place immediately
+    if (placementData) {
+      placeComponent(e.clientX, e.clientY);
+    }
+  });
+
+  function placeComponent(clientX: number, clientY: number) {
+    if (!placementData || !graph) return;
+    const data = placementData;
+    placementData = null;
+
+    const p = g.clientToLocal(clientX, clientY);
+
+    // Show animated placeholder node if icon available
+    if (data.iconSvg) {
+      const size = 24;
+      const isDark =
+        document.documentElement.classList.contains("vscode-dark") ||
+        document.documentElement.classList.contains("vscode-high-contrast");
+      const filterStyle = isDark ? "filter: invert(0.85) hue-rotate(180deg);" : "";
+      const fittedSvg = data.iconSvg.replace(/^<svg/, `<svg width="${size}" height="${size}" style="overflow:visible"`);
+
+      const existing = g.getCellById("__drop_placeholder__");
+      if (existing) g.removeCell(existing);
+
+      g.addNode({
+        id: "__drop_placeholder__",
+        x: p.x - size / 2,
+        y: p.y - size / 2,
+        width: size,
+        height: size,
+        zIndex: 10,
+        markup: {
+          tagName: "foreignObject",
+          attrs: { width: size, height: size, style: "overflow:visible" },
+          children: [
+            {
+              ns: "http://www.w3.org/1999/xhtml",
+              tagName: "div",
+              attrs: {
+                style: `width:${size}px;height:${size}px;overflow:visible;${filterStyle}animation:drop-placeholder-pulse 1.2s ease-in-out infinite, drop-placeholder-appear 0.2s ease-out;`,
+              },
+            },
+          ],
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any,
+      });
+
+      requestAnimationFrame(() => {
+        const placeholderNode = g.getCellById("__drop_placeholder__");
+        if (placeholderNode) {
+          const view = g.findView(placeholderNode);
+          if (view) {
+            const div = view.container.querySelector("div");
+            if (div) div.innerHTML = fittedSvg;
+          }
+        }
+      });
+    }
+
+    postMessageToHost({
+      type: "drop",
+      className: data.className,
+      x: Math.round(p.x),
+      y: Math.round(p.y),
+    });
+  }
+
+  function startPlacement(data: { className: string; classKind: string; iconSvg?: string }) {
+    // Just store the data — the first mousemove after the native drag ends
+    // will trigger placeComponent with the correct cursor position.
+    // We cannot place immediately because during a native VS Code drag,
+    // mousemove events don't reach the webview iframe, so lastMouseX/Y is stale.
+    placementData = data;
+  }
+
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && placementData) {
+      placementData = null;
+    }
+  });
+
+  // Expose startPlacement so the webview message handler can invoke it
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (window as any).__startPlacement = startPlacement;
+
   graph = g;
   return g;
 }
@@ -668,59 +763,15 @@ window.addEventListener("message", (event: MessageEvent) => {
       }
       break;
     }
-    case "showPlaceholder": {
+    case "startPlacement": {
       if (!graph) return;
-      const { iconSvg } = message;
-      if (!iconSvg) break;
-      const size = 20; // Default grid cell bounds for icons without explicit size
-      const existing = graph.getCellById("__drop_placeholder__");
-      if (existing) graph.removeCell(existing);
-
-      const isDark =
-        document.documentElement.classList.contains("vscode-dark") ||
-        document.documentElement.classList.contains("vscode-high-contrast");
-      // Use CSS filter for inversion instead of pulling in huge @modelscript/core package
-      const filterStyle = isDark ? "filter: invert(0.85) hue-rotate(180deg);" : "";
-
-      const fittedSvg = iconSvg.replace(/^<svg/, `<svg width="${size}" height="${size}" style="overflow:visible"`);
-
-      const p = { x: 0, y: 0 }; // Default VS Code drop coordinate
-
-      graph.addNode({
-        id: "__drop_placeholder__",
-        x: p.x - size / 2,
-        y: p.y - size / 2,
-        width: size,
-        height: size,
-        zIndex: 10,
-        markup: {
-          tagName: "foreignObject",
-          attrs: { width: size, height: size, style: "overflow:visible" },
-          children: [
-            {
-              ns: "http://www.w3.org/1999/xhtml",
-              tagName: "div",
-              attrs: {
-                style: `width:${size}px;height:${size}px;overflow:visible;${filterStyle}animation:drop-placeholder-pulse 1.2s ease-in-out infinite, drop-placeholder-appear 0.2s ease-out;`,
-              },
-            },
-          ],
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        } as any,
-      });
-
-      requestAnimationFrame(() => {
-        const placeholderNode = graph?.getCellById("__drop_placeholder__");
-        if (placeholderNode) {
-          const view = graph?.findView(placeholderNode);
-          if (view) {
-            const innerDiv = view.container.querySelector("div");
-            if (innerDiv) {
-              innerDiv.innerHTML = fittedSvg;
-            }
-          }
-        }
-      });
+      const { className, classKind, iconSvg } = message;
+      if (!className) break;
+      // Calls the startPlacement function defined inside initGraph
+      // which creates the ghost cursor and enters placement mode
+      (
+        window as { __startPlacement?: (d: { className: string; classKind: string; iconSvg?: string }) => void }
+      ).__startPlacement?.({ className, classKind, iconSvg });
       break;
     }
     case "empty": {

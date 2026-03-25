@@ -24,14 +24,15 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
           }
         }
       }),
-      vscode.commands.registerCommand("modelscript.showPlaceholder", (className: string, iconSvg: string) => {
-        for (const panel of this.activeWebviews) {
-          if (panel.active) {
-            panel.webview.postMessage({ type: "showPlaceholder", className, iconSvg });
-          }
-        }
-      }),
     );
+  }
+
+  /** Post a message to all active diagram webviews */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  public postToActiveWebviews(message: any): void {
+    for (const panel of this.activeWebviews) {
+      panel.webview.postMessage(message);
+    }
   }
   public async resolveCustomTextEditor(
     document: vscode.TextDocument,
