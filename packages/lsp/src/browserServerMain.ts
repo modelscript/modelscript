@@ -15,12 +15,15 @@ import {
 } from "vscode-languageserver";
 
 import { TextDocument } from "vscode-languageserver-textdocument";
-import { buildDiagramData, renderIconX6, type X6Markup } from "./diagramData";
+import { buildDiagramData, getClassIconSvg } from "./diagramData";
 import {
   computeComponentsDelete,
   computeConnectInsert,
   computeConnectRemove,
+  computeDescriptionEdit,
   computeEdgePointEdits,
+  computeNameEdit,
+  computeParameterEdit,
   computePlacementEdits,
 } from "./diagramEdits";
 
@@ -1587,6 +1590,46 @@ connection.onRequest("modelscript/deleteComponents", (params: { uri: string; nam
   }
 });
 
+connection.onRequest("modelscript/updateComponentName", (params: { uri: string; oldName: string; newName: string }) => {
+  const instances = documentInstances.get(params.uri);
+  if (!instances?.[0]) return [];
+  try {
+    return computeNameEdit(instances[0], params.oldName, params.newName);
+  } catch (e) {
+    console.error("[diagram] updateComponentName error:", e);
+    return [];
+  }
+});
+
+connection.onRequest(
+  "modelscript/updateComponentDescription",
+  (params: { uri: string; name: string; description: string }) => {
+    const instances = documentInstances.get(params.uri);
+    const doc = documents.get(params.uri);
+    if (!instances?.[0] || !doc) return [];
+    try {
+      return computeDescriptionEdit(doc.getText(), instances[0], params.name, params.description);
+    } catch (e) {
+      console.error("[diagram] updateComponentDescription error:", e);
+      return [];
+    }
+  },
+);
+
+connection.onRequest(
+  "modelscript/updateComponentParameter",
+  (params: { uri: string; name: string; parameter: string; value: string }) => {
+    const instances = documentInstances.get(params.uri);
+    if (!instances?.[0]) return [];
+    try {
+      return computeParameterEdit(instances[0], params.name, params.parameter, params.value);
+    } catch (e) {
+      console.error("[diagram] updateComponentParameter error:", e);
+      return [];
+    }
+  },
+);
+
 // Custom request: simulate a model
 connection.onRequest(
   "modelscript/simulate",
@@ -1673,45 +1716,6 @@ function classHasChildClasses(cls: ModelicaClassInstance): boolean {
     if (child instanceof ModelicaClassInstance) return true;
   }
   return false;
-}
-
-function x6MarkupToSvg(markup: X6Markup): string {
-  const attrs = markup.attrs
-    ? Object.entries(markup.attrs)
-        .filter(([, v]) => v !== undefined)
-        .map(([k, v]) => `${k}="${String(v).replace(/"/g, "&quot;")}"`)
-        .join(" ")
-    : "";
-  const open = attrs ? `<${markup.tagName} ${attrs}` : `<${markup.tagName}`;
-  const childrenStr = markup.children?.map(x6MarkupToSvg).join("") ?? "";
-  const text = markup.textContent ?? "";
-  if (!childrenStr && !text) return `${open}/>`;
-  return `${open}>${text}${childrenStr}</${markup.tagName}>`;
-}
-
-function hasGraphicElements(node: X6Markup): boolean {
-  const shapeTags = new Set(["rect", "ellipse", "circle", "polygon", "polyline", "path", "line", "image"]);
-  if (shapeTags.has(node.tagName)) return true;
-  return node.children?.some(hasGraphicElements) ?? false;
-}
-
-function getClassIconSvg(cls: ModelicaClassInstance): string | undefined {
-  try {
-    const markup = renderIconX6(cls, undefined, false);
-    if (!markup || !hasGraphicElements(markup)) return undefined;
-
-    // Patch root SVG for standalone icon use: add xmlns, fixed size, viewBox
-    if (markup.attrs) {
-      markup.attrs["xmlns"] = "http://www.w3.org/2000/svg";
-      markup.attrs["width"] = 16;
-      markup.attrs["height"] = 16;
-      delete markup.attrs["style"];
-    }
-    return x6MarkupToSvg(markup);
-  } catch {
-    // ignore icon rendering errors
-  }
-  return undefined;
 }
 
 function resolveClassKind(cls: ModelicaClassInstance): string {

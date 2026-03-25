@@ -112,6 +112,18 @@ export class DiagramPanel {
               lspMethod = "modelscript/addComponent";
               lspParams = { uri, className: message.className, x: message.x, y: message.y };
               break;
+            case "updateName":
+              lspMethod = "modelscript/updateComponentName";
+              lspParams = { uri, oldName: message.oldName, newName: message.newName };
+              break;
+            case "updateDescription":
+              lspMethod = "modelscript/updateComponentDescription";
+              lspParams = { uri, name: message.name, description: message.description };
+              break;
+            case "updateParameter":
+              lspMethod = "modelscript/updateComponentParameter";
+              lspParams = { uri, name: message.name, parameter: message.parameter, value: message.value };
+              break;
             case "undo": {
               const editor = vscode.window.visibleTextEditors.find((e) => e.document.uri.toString() === uri);
               if (editor) {
@@ -267,12 +279,90 @@ export class DiagramPanel {
       z-index: 1000;
     }
     @keyframes diagram-spin { to { transform: rotate(360deg); } }
+
+    #properties-panel {
+      position: absolute;
+      top: 0;
+      right: -320px;
+      width: 320px;
+      height: 100vh;
+      background: var(--vscode-sideBar-background, #252526);
+      border-left: 1px solid var(--vscode-sideBarSectionHeader-border, #454545);
+      color: var(--vscode-foreground, #ccc);
+      transition: right 0.2s ease-in-out;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      z-index: 500;
+      font-family: var(--vscode-font-family, sans-serif);
+      font-size: 13px;
+    }
+    #properties-panel.open {
+      right: 0;
+    }
+    #properties-header {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, #454545);
+      font-weight: 600;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      text-transform: uppercase;
+      font-size: 11px;
+      color: var(--vscode-sideBarTitle-foreground, #ccc);
+    }
+    #properties-close {
+      cursor: pointer;
+      opacity: 0.7;
+    }
+    #properties-close:hover {
+      opacity: 1;
+    }
+    #properties-content {
+      padding: 16px;
+      overflow-y: auto;
+      flex: 1;
+    }
+    .prop-group {
+      margin-bottom: 16px;
+    }
+    .prop-label {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--vscode-descriptionForeground, #888);
+    }
+    .prop-input {
+      width: 100%;
+      box-sizing: border-box;
+      background: var(--vscode-input-background, #3c3c3c);
+      color: var(--vscode-input-foreground, #ccc);
+      border: 1px solid var(--vscode-input-border, transparent);
+      padding: 6px 8px;
+      font-family: var(--vscode-editor-font-family, monospace);
+    }
+    .prop-input:focus {
+      outline: 1px solid var(--vscode-focusBorder, #007fd4);
+      outline-offset: -1px;
+      border-color: transparent;
+    }
+    .prop-input.error {
+      outline: 1px solid var(--vscode-inputValidation-errorBorder, #be1100);
+      background: var(--vscode-inputValidation-errorBackground, #5a1d1d);
+      color: var(--vscode-inputValidation-errorForeground, #ccc);
+    }
   </style>
 </head>
 <body>
   <div id="container"></div>
   <div id="placeholder">Open a Modelica file with diagram annotations</div>
   <div id="spinner"></div>
+  <div id="properties-panel">
+    <div id="properties-header">
+      <span id="properties-title">Properties</span>
+      <span id="properties-close">✕</span>
+    </div>
+    <div id="properties-content"></div>
+  </div>
   <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
 </html>`;

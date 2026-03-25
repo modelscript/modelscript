@@ -5,6 +5,13 @@
 
 import { Cell, Graph, Selection, Transform } from "@antv/x6";
 
+// Add global binding for close button
+window.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("properties-close")?.addEventListener("click", () => {
+    document.getElementById("properties-panel")?.classList.remove("open");
+  });
+});
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const vscode = (window as any).acquireVsCodeApi?.() ?? {
   postMessage() {
@@ -374,6 +381,46 @@ function initGraph(isDark: boolean): Graph {
     }
   });
 
+  g.on("node:click", ({ node }) => {
+    if (!graph) return;
+    const data = node.getData();
+    showProperties({ id: node.id, properties: data?.properties });
+
+    // Smoothly pan to center the node horizontally in the visible portion
+    const bbox = node.getBBox();
+    const scale = g.scale().sx;
+    const cx = bbox.x + bbox.width / 2;
+    const cy = bbox.y + bbox.height / 2;
+
+    // Panel width is roughly 300px, so we offset by 300
+    const paddingRight = 300;
+    const containerRect = g.container.getBoundingClientRect();
+    const visibleWidth = containerRect.width - paddingRight;
+
+    // Calculate target translation
+    const targetTx = visibleWidth / 2 - cx * scale;
+    const targetTy = containerRect.height / 2 - cy * scale;
+
+    const { tx: ctx, ty: cty } = g.translate();
+    const duration = 250;
+    const startTime = performance.now();
+
+    const animate = (time: number) => {
+      const elapsed = time - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const ease = 1 - Math.pow(1 - progress, 3); // cubic ease-out
+      g.translate(ctx + (targetTx - ctx) * ease, cty + (targetTy - cty) * ease);
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+      }
+    };
+    requestAnimationFrame(animate);
+  });
+
+  g.on("blank:click", () => {
+    document.getElementById("properties-panel")?.classList.remove("open");
+  });
+
   graph = g;
   return g;
 }
@@ -400,6 +447,7 @@ function renderDiagram(data: any, isDark: boolean) {
       opacity: node.opacity,
       markup: node.markup,
       ports: node.ports,
+      data: { properties: node.properties }, // Pass properties to X6 node
     });
   }
 
@@ -558,3 +606,176 @@ window.addEventListener("message", (event: MessageEvent) => {
     }
   }
 });
+
+// ── Property Panel Rendering ──
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function showProperties(nodeData: any) {
+  const panel = document.getElementById("properties-panel");
+  const content = document.getElementById("properties-content");
+  const title = document.getElementById("properties-title");
+  if (!panel || !content || !title) return;
+
+  const props = nodeData.properties;
+  title.textContent = props?.className ? props.className.split(".").pop()?.toUpperCase() : "PROPERTIES";
+
+  let html = `
+    <details open style="margin-bottom: 8px; border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, #454545); padding-bottom: 16px;">
+      <summary style="cursor: pointer; font-weight: 600; text-transform: uppercase; font-size: 11px; color: var(--vscode-sideBarTitle-foreground); margin-bottom: 8px; list-style: none;">
+        INFORMATION
+      </summary>
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <div style="display: flex; flex-direction: row; gap: 24px; align-items: stretch;">
+          <div style="flex-shrink: 0; display: flex; align-items: center; justify-content: center; width: 80px;">
+            ${props?.iconSvg || ""}
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 8px; flex: 1; justify-content: center;">
+            <div style="padding: 4px 0;">
+              <div class="f6 color-fg-muted" style="line-height: 1.2; font-size: 11px; color: var(--vscode-descriptionForeground, #888);">Type</div>
+              <div style="word-break: break-all; line-height: 1.2; padding: 4px 0;">
+                ${props?.className || ""}
+              </div>
+            </div>
+            <div>
+              <div class="f6 color-fg-muted" style="line-height: 1.2; font-size: 11px; color: var(--vscode-descriptionForeground, #888); margin-bottom: 4px;">Name</div>
+              <input type="text" class="prop-input" id="prop-input-name" value="${nodeData.id}" style="width: 100%; border-radius: 4px;" />
+            </div>
+          </div>
+        </div>
+  `;
+
+  if (props) {
+    const escapedDesc = (props.description || "").replace(/"/g, "&quot;");
+    if (props.description) {
+      html += `
+        <div style="display: flex; flex-direction: column; margin-top: 16px;">
+          <label class="prop-label" style="opacity: 0.6; margin-bottom: 6px; width: 100%;">Description</label>
+          <textarea class="prop-input" id="prop-input-description" style="width: 100%; border-radius: 4px; resize: vertical; padding: 6px; box-sizing: border-box;" rows="4">${escapedDesc}</textarea>
+        </div>
+      `;
+    } else {
+      html += `
+        <div id="prop-desc-container" style="display: flex; justify-content: center; padding: 16px 0;">
+          <button id="prop-btn-add-desc" style="width: 100%; border-radius: 8px; padding: 8px 24px; background: transparent; color: var(--vscode-descriptionForeground, #888); border: 1px solid var(--vscode-dropdown-border, #d0d7de); cursor: pointer;">Add description</button>
+        </div>
+      `;
+    }
+  }
+
+  html += `
+      </div>
+    </details>
+  `;
+
+  if (props) {
+    if (props.parameters && props.parameters.length > 0) {
+      html += `<div style="margin-top:24px; margin-bottom:12px; font-weight:600; text-transform:uppercase; font-size:11px; color:var(--vscode-sideBarTitle-foreground)">Parameters</div>`;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const p of props.parameters as any[]) {
+        const escapedValue = (p.value || "").replace(/"/g, "&quot;");
+        const escapedDescParam = (p.description || "").replace(/"/g, "&quot;");
+        html += `
+          <div class="prop-group">
+            <label class="prop-label" title="${escapedDescParam}">${p.name} ${p.unit ? `[${p.unit}]` : ""}</label>
+            <input type="text" class="prop-input prop-input-param" data-param="${p.name}" value="${escapedValue}" />
+          </div>
+        `;
+      }
+    }
+
+    // Add inline style for images inside docs
+    html += `<style>.prop-doc-container img { max-width: 100%; height: auto; }</style>`;
+
+    if (props.docInfo) {
+      html += `
+        <details open style="margin-top: 16px; border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, #454545); padding-bottom: 8px;">
+          <summary style="cursor: pointer; font-weight: 600; text-transform: uppercase; font-size: 11px; color: var(--vscode-sideBarTitle-foreground);">Information</summary>
+          <div class="prop-doc-container" style="color: var(--vscode-descriptionForeground); margin-top: 8px; line-height: 1.4; user-select: text;">
+            ${props.docInfo}
+          </div>
+        </details>
+      `;
+    }
+
+    if (props.docRevisions) {
+      html += `
+        <details style="margin-top: 16px; border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, #454545); padding-bottom: 8px;">
+          <summary style="cursor: pointer; font-weight: 600; text-transform: uppercase; font-size: 11px; color: var(--vscode-sideBarTitle-foreground);">Revisions</summary>
+          <div class="prop-doc-container" style="color: var(--vscode-descriptionForeground); margin-top: 8px; line-height: 1.4; user-select: text;">
+            ${props.docRevisions}
+          </div>
+        </details>
+      `;
+    }
+  }
+
+  content.innerHTML = html;
+  panel.classList.add("open");
+
+  // Bind events
+  const nameInput = document.getElementById("prop-input-name") as HTMLInputElement;
+  if (nameInput) {
+    nameInput.addEventListener("change", (e) => {
+      const newName = (e.target as HTMLInputElement).value;
+      if (newName && newName !== nodeData.id) {
+        vscode.postMessage({ type: "updateName", oldName: nodeData.id, newName });
+        nodeData.id = newName;
+        title.textContent = newName;
+      }
+    });
+  }
+
+  const descInput = document.getElementById("prop-input-description") as HTMLInputElement;
+  const bindDescInput = (input: HTMLInputElement) => {
+    input.addEventListener("change", (e) => {
+      const newDesc = (e.target as HTMLInputElement).value;
+      if (props && newDesc !== props.description) {
+        vscode.postMessage({ type: "updateDescription", name: nodeData.id, description: newDesc });
+        props.description = newDesc;
+      }
+    });
+  };
+
+  if (descInput) {
+    bindDescInput(descInput);
+  }
+
+  const addDescBtn = document.getElementById("prop-btn-add-desc");
+  if (addDescBtn) {
+    addDescBtn.addEventListener("click", () => {
+      const container = document.getElementById("prop-desc-container");
+      if (container) {
+        container.innerHTML = `
+          <div style="display: flex; flex-direction: column; width: 100%;">
+            <label class="prop-label" style="opacity: 0.6; margin-bottom: 6px; width: 100%;">Description</label>
+            <textarea class="prop-input" id="prop-input-description" style="width: 100%; border-radius: 4px; resize: vertical; padding: 6px; box-sizing: border-box;" rows="4"></textarea>
+          </div>
+        `;
+        const newDescInput = document.getElementById("prop-input-description") as HTMLInputElement;
+        if (newDescInput) {
+          bindDescInput(newDescInput);
+          newDescInput.focus();
+        }
+      }
+    });
+  }
+
+  const paramInputs = document.querySelectorAll(".prop-input-param");
+  paramInputs.forEach((input) => {
+    input.addEventListener("change", (e) => {
+      const target = e.target as HTMLInputElement;
+      const paramName = target.getAttribute("data-param");
+      const newValue = target.value;
+      if (paramName) {
+        // Send LSP edit
+        vscode.postMessage({ type: "updateParameter", name: nodeData.id, parameter: paramName, value: newValue });
+        // Optimistically update prop model
+        if (props?.parameters) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const p = props.parameters.find((param: any) => param.name === paramName);
+          if (p) p.value = newValue;
+        }
+      }
+    });
+  });
+}

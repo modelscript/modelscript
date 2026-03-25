@@ -17,6 +17,7 @@ import {
   LinePattern,
   ModelicaBooleanLiteral,
   ModelicaClassKind,
+  ModelicaComponentInstance,
   ModelicaElement,
   ModelicaEnumerationLiteral,
   ModelicaExpression,
@@ -24,6 +25,7 @@ import {
   ModelicaRealClassInstance,
   ModelicaRealLiteral,
   ModelicaStringLiteral,
+  ModelicaVariability,
   Smooth,
   TextAlignment,
   TextStyle,
@@ -40,7 +42,6 @@ import {
   type IRectangle,
   type IText,
   type ModelicaClassInstance,
-  type ModelicaComponentInstance,
 } from "@modelscript/core";
 
 // ── X6 Markup type (matching morsel's x6.ts) ──
@@ -56,6 +57,21 @@ export interface X6Markup {
 
 // ── Diagram data JSON structure ──
 
+export interface ComponentPropertyData {
+  className: string;
+  description: string;
+  parameters: {
+    name: string;
+    value: string;
+    description?: string;
+    isBoolean?: boolean;
+    unit?: string;
+  }[];
+  docInfo?: string;
+  docRevisions?: string;
+  iconSvg?: string;
+}
+
 export interface DiagramNode {
   id: string;
   x: number;
@@ -70,6 +86,7 @@ export interface DiagramNode {
     items: DiagramPort[];
     groups: Record<string, { position: string; zIndex: number }>;
   };
+  properties?: ComponentPropertyData;
 }
 
 export interface DiagramPort {
@@ -227,6 +244,71 @@ export function buildDiagramData(classInstance: ModelicaClassInstance): DiagramD
     const relTranslateX = absWidth / 2 + componentTransform.translateX - componentTransform.originX;
     const relTranslateY = absHeight / 2 + componentTransform.translateY - componentTransform.originY;
 
+    const parameters: ComponentPropertyData["parameters"] = [];
+    for (const element of componentClassInstance.elements) {
+      if (element instanceof ModelicaComponentInstance && element.variability === ModelicaVariability.PARAMETER) {
+        const compArgExpr = component.modification?.getModificationArgument(element.name ?? "")?.expression;
+        const elemExpr = element.modification?.expression;
+        const value = compArgExpr?.toJSON?.toString() ?? elemExpr?.toJSON?.toString() ?? "-";
+
+        const unitExpr = element.classInstance?.modification?.getModificationArgument("unit")?.expression;
+        const rawUnit = unitExpr?.toJSON?.toString()?.replace(/^"|"$/g, "") || undefined;
+        const unit = rawUnit ? formatUnit(rawUnit) : undefined;
+        const isBoolean = element.classInstance?.name === "Boolean";
+
+        parameters.push({
+          name: element.name ?? "",
+          value,
+          description: element.localizedDescription ?? undefined,
+          isBoolean,
+          unit,
+        });
+      }
+    }
+
+    const docAnnotation = componentClassInstance.annotation<{ info?: string; revisions?: string }>("Documentation");
+    const context = classInstance.context;
+
+    const processHtml = (html: string | undefined): string | undefined => {
+      if (!html) return html;
+      if (!context) return html;
+
+      return html.replace(/<img\s+[^>]*src=(["'])modelica:\/\/([^"']+)\1[^>]*>/gi, (match, quote, uriPath) => {
+        const uri = `modelica://${uriPath}`;
+        const resolvedPath = context.resolveURI(uri);
+        if (resolvedPath) {
+          try {
+            const binary = context.fs.readBinary(resolvedPath);
+            const chunks: string[] = [];
+            const chunkSize = 8192;
+            for (let i = 0; i < binary.length; i += chunkSize) {
+              chunks.push(String.fromCharCode(...binary.subarray(i, i + chunkSize)));
+            }
+            const base64 = btoa(chunks.join(""));
+            const ext = context.fs.extname(resolvedPath).toLowerCase().substring(1);
+            const mimeType = ext === "svg" ? "image/svg+xml" : `image/${ext}`;
+            return match.replace(`modelica://${uriPath}`, `data:${mimeType};base64,${base64}`);
+          } catch (e) {
+            console.warn(`Failed to read image ${uri}:`, e);
+          }
+        }
+        return match.replace(/src=(["'])modelica:\/\/[^"']+\1/, 'style="display:none"');
+      });
+    };
+
+    const docInfo = processHtml(docAnnotation?.info);
+    const docRevisions = processHtml(docAnnotation?.revisions);
+    const iconSvg = getClassIconSvg(componentClassInstance, 80, true);
+
+    const properties: ComponentPropertyData = {
+      className: componentClassInstance.name ?? "",
+      description: component.description ?? "",
+      parameters,
+      docInfo,
+      docRevisions,
+      iconSvg,
+    };
+
     nodes.push({
       id: component.name,
       x: relTranslateX * Math.cos(a) - relTranslateY * Math.sin(a) - absWidth / 2 + componentTransform.originX,
@@ -248,6 +330,7 @@ export function buildDiagramData(classInstance: ModelicaClassInstance): DiagramD
         items: ports,
         groups: { absolute: { position: "absolute", zIndex: 100 } },
       },
+      properties,
     });
   }
 
@@ -712,8 +795,6 @@ function applyCoordinateSystemX6(markup: X6Markup, coordinateSystem?: ICoordinat
   markup.attrs["preserveAspectRatio"] = "none";
   markup.attrs["overflow"] = "visible";
   if (!isRoot) {
-    markup.attrs["x"] = x;
-    markup.attrs["y"] = y;
     markup.attrs["width"] = width;
     markup.attrs["height"] = height;
   }
@@ -1018,4 +1099,43 @@ function buildMarker(arrow: string | null | undefined, strokeColor: string, stro
     default:
       return null;
   }
+}
+
+export function x6MarkupToSvg(markup: X6Markup): string {
+  const attrs = markup.attrs
+    ? Object.entries(markup.attrs)
+        .filter(([, v]) => v !== undefined)
+        .map(([k, v]) => `${k}="${String(v).replace(/"/g, "&quot;")}"`)
+        .join(" ")
+    : "";
+  const open = attrs ? `<${markup.tagName} ${attrs}` : `<${markup.tagName}`;
+  const childrenStr = markup.children?.map(x6MarkupToSvg).join("") ?? "";
+  const text = markup.textContent ?? "";
+  if (!childrenStr && !text) return `${open}/>`;
+  return `${open}>${text}${childrenStr}</${markup.tagName}>`;
+}
+
+export function hasGraphicElements(node: X6Markup): boolean {
+  const shapeTags = new Set(["rect", "ellipse", "circle", "polygon", "polyline", "path", "line", "image"]);
+  if (shapeTags.has(node.tagName)) return true;
+  return node.children?.some(hasGraphicElements) ?? false;
+}
+
+export function getClassIconSvg(cls: ModelicaClassInstance, size = 16, includePorts = false): string | undefined {
+  try {
+    const markup = renderIconX6(cls, undefined, includePorts);
+    if (!markup || !hasGraphicElements(markup)) return undefined;
+
+    // Patch root SVG for standalone icon use: add xmlns, fixed size, viewBox
+    if (markup.attrs) {
+      markup.attrs["xmlns"] = "http://www.w3.org/2000/svg";
+      markup.attrs["width"] = size;
+      markup.attrs["height"] = size;
+      delete markup.attrs["style"];
+    }
+    return x6MarkupToSvg(markup);
+  } catch {
+    // ignore icon rendering errors
+  }
+  return undefined;
 }

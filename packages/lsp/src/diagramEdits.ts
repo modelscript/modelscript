@@ -465,3 +465,214 @@ function deduplicateAndSort(edits: TextEdit[]): TextEdit[] {
     return true;
   });
 }
+
+// ── Component Property edits (Name, Description, Parameters) ──
+
+export function computeNameEdit(classInstance: ModelicaClassInstance, oldName: string, newName: string): TextEdit[] {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const component = Array.from(classInstance.components).find((c: any) => c.name === oldName);
+  if (!component) return [];
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const abstractNode = (component as any).abstractSyntaxNode;
+  const identNode = abstractNode?.declaration?.identifier;
+  if (identNode?.sourceRange) {
+    return [
+      TextEdit.replace(
+        Range.create(
+          identNode.startPosition.row,
+          identNode.startPosition.column,
+          identNode.endPosition.row,
+          identNode.endPosition.column,
+        ),
+        newName,
+      ),
+    ];
+  }
+  return [];
+}
+
+export function computeDescriptionEdit(
+  docText: string,
+  classInstance: ModelicaClassInstance,
+  componentName: string,
+  newDescription: string,
+): TextEdit[] {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const component = Array.from(classInstance.components).find((c: any) => c.name === componentName);
+  if (!component) return [];
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const abstractNode = (component as any).abstractSyntaxNode;
+  const descriptionNode = abstractNode?.description;
+  const escapedDescription = newDescription.replace(/"/g, '""');
+
+  if (descriptionNode?.sourceRange) {
+    if (newDescription === "") {
+      const lines = docText.split("\n");
+      const descStartLine = descriptionNode.startPosition.row;
+      const descStartCol = descriptionNode.startPosition.column;
+      const descEndLine = descriptionNode.endPosition.row;
+      const descEndCol = descriptionNode.endPosition.column;
+      let removeStartCol = descStartCol;
+      const lineContent = lines[descStartLine];
+      let col = descStartCol - 1;
+      while (col >= 0 && (lineContent[col] === " " || lineContent[col] === "\t")) {
+        col--;
+      }
+      removeStartCol = col + 1;
+      return [TextEdit.replace(Range.create(descStartLine, removeStartCol, descEndLine, descEndCol), "")];
+    }
+    return [
+      TextEdit.replace(
+        Range.create(
+          descriptionNode.startPosition.row,
+          descriptionNode.startPosition.column,
+          descriptionNode.endPosition.row,
+          descriptionNode.endPosition.column,
+        ),
+        `"${escapedDescription}"`, // no leading space when replacing
+      ),
+    ];
+  } else {
+    if (newDescription === "") return [];
+    const identNode = abstractNode?.declaration?.identifier;
+    const modificationNode = abstractNode?.declaration?.modification;
+    const subscriptsNode = abstractNode?.declaration?.arraySubscripts;
+
+    let pos = null;
+    if (modificationNode?.sourceRange) {
+      pos = modificationNode.endPosition;
+    } else if (subscriptsNode?.sourceRange) {
+      pos = subscriptsNode.endPosition;
+    } else if (identNode?.sourceRange) {
+      pos = identNode.endPosition;
+    }
+
+    if (pos) {
+      return [TextEdit.insert({ line: pos.row, character: pos.column }, ` "${escapedDescription}"`)];
+    }
+  }
+  return [];
+}
+
+export function computeParameterEdit(
+  classInstance: ModelicaClassInstance,
+  componentName: string,
+  parameterName: string,
+  newValue: string,
+): TextEdit[] {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const component = Array.from(classInstance.components).find((c: any) => c.name === componentName);
+  if (!component) return [];
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const abstractNode = (component as any).abstractSyntaxNode;
+  if (!abstractNode) return [];
+
+  const declNode = abstractNode.declaration;
+  const modification = declNode?.modification;
+
+  const shouldRemove = newValue === "";
+
+  if (modification?.classModification) {
+    const classMod = modification.classModification;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const argIndex = classMod.modificationArguments.findIndex((arg: any) => {
+      if (!arg.name) return false;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const nameText = arg.name.parts.map((p: any) => p.text).join(".");
+      return nameText === parameterName;
+    });
+
+    if (argIndex !== -1) {
+      const existingArg = classMod.modificationArguments[argIndex];
+      if (shouldRemove) {
+        let startLine = existingArg.startPosition.row;
+        let startCol = existingArg.startPosition.column;
+        let endLine = existingArg.endPosition.row;
+        let endCol = existingArg.endPosition.column;
+
+        const nextArg = classMod.modificationArguments[argIndex + 1];
+        if (nextArg) {
+          endLine = nextArg.startPosition.row;
+          endCol = nextArg.startPosition.column;
+        } else if (argIndex > 0) {
+          const prevArg = classMod.modificationArguments[argIndex - 1];
+          startLine = prevArg.endPosition.row;
+          startCol = prevArg.endPosition.column;
+        } else {
+          // Only argument — remove the entire class modification
+          return [
+            TextEdit.replace(
+              Range.create(
+                classMod.startPosition.row,
+                classMod.startPosition.column,
+                classMod.endPosition.row,
+                classMod.endPosition.column,
+              ),
+              "",
+            ),
+          ];
+        }
+
+        return [TextEdit.replace(Range.create(startLine, startCol, endLine, endCol), "")];
+      }
+
+      // Update existing argument value
+      const existingMod = existingArg.modification;
+      if (existingMod) {
+        return [
+          TextEdit.replace(
+            Range.create(
+              existingMod.startPosition.row,
+              existingMod.startPosition.column,
+              existingMod.endPosition.row,
+              existingMod.endPosition.column,
+            ),
+            `=${newValue}`,
+          ),
+        ];
+      } else {
+        return [
+          TextEdit.replace(
+            Range.create(
+              existingArg.startPosition.row,
+              existingArg.startPosition.column,
+              existingArg.endPosition.row,
+              existingArg.endPosition.column,
+            ),
+            `${parameterName}=${newValue}`,
+          ),
+        ];
+      }
+    } else {
+      // Add new argument to existing modification
+      if (shouldRemove) return [];
+      const hasArgs = classMod.modificationArguments.length > 0;
+      const endPos = classMod.endPosition;
+      return [
+        TextEdit.insert(
+          { line: endPos.row, character: endPos.column - 1 },
+          `${hasArgs ? ", " : ""}${parameterName}=${newValue}`,
+        ),
+      ];
+    }
+  } else {
+    // No existing modification — insert after identifier
+    if (shouldRemove) return [];
+    const identNode = declNode?.identifier;
+    const subscriptsNode = declNode?.arraySubscripts;
+    let pos = null;
+    if (subscriptsNode?.sourceRange) {
+      pos = subscriptsNode.endPosition;
+    } else if (identNode?.sourceRange) {
+      pos = identNode.endPosition;
+    }
+
+    if (pos) {
+      return [TextEdit.insert({ line: pos.row, character: pos.column }, `(${parameterName}=${newValue})`)];
+    }
+  }
+  return [];
+}

@@ -856,9 +856,46 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
         // Property panel updates
         const currentSelected = selected || g?.getSelectedCells();
         if (currentSelected && currentSelected.length === 1 && currentSelected[0].isNode()) {
+          const nodeId = currentSelected[0].id;
           if (onSelectRef.current) {
-            onSelectRef.current(currentSelected[0].id);
+            onSelectRef.current(nodeId);
           }
+
+          // Smoothly pan to center the node within the active viewport
+          setTimeout(() => {
+            if (!g || g.disposed) return;
+            const node = g.getCellById(nodeId);
+            if (!node || !node.isNode()) return;
+
+            const bbox = node.getBBox();
+            const scale = g.scale().sx;
+            const cx = bbox.x + bbox.width / 2;
+            const cy = bbox.y + bbox.height / 2;
+
+            const containerRect = g.container.getBoundingClientRect();
+            // In Morsel, the diagram container is a flex item that inherently shrinks when the property panel expands,
+            // so containerRect.width directly represents the safe "unobscured" workspace space.
+            const visibleWidth = containerRect.width;
+
+            const targetTx = visibleWidth / 2 - cx * scale;
+            const targetTy = containerRect.height / 2 - cy * scale;
+
+            const { tx: ctx, ty: cty } = g.translate();
+            const duration = 250;
+            const startTime = performance.now();
+
+            const animate = (time: number) => {
+              if (!g || g.disposed) return;
+              const elapsed = time - startTime;
+              const progress = Math.min(elapsed / duration, 1);
+              const ease = 1 - Math.pow(1 - progress, 3); // cubic ease-out
+              g.translate(ctx + (targetTx - ctx) * ease, cty + (targetTy - cty) * ease);
+              if (progress < 1) {
+                requestAnimationFrame(animate);
+              }
+            };
+            requestAnimationFrame(animate);
+          }, 50); // Allow React layout re-render & ResizeObserver ticks to shrink the canvas
         } else {
           if (onSelectRef.current) {
             onSelectRef.current(null);
