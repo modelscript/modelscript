@@ -663,6 +663,7 @@ export abstract class ModelicaSyntaxNode implements IModelicaSyntaxNode {
 
 export interface IModelicaStoredDefinitionSyntaxNode extends IModelicaSyntaxNode {
   classDefinitions: IModelicaClassDefinitionSyntaxNode[];
+  statements: IModelicaStatementSyntaxNode[];
   withinDirective: IModelicaWithinDirectiveSyntaxNode | null;
 }
 
@@ -671,6 +672,7 @@ export class ModelicaStoredDefinitionSyntaxNode
   implements IModelicaStoredDefinitionSyntaxNode
 {
   classDefinitions: ModelicaClassDefinitionSyntaxNode[];
+  statements: ModelicaStatementSyntaxNode[];
   withinDirective: ModelicaWithinDirectiveSyntaxNode | null;
 
   constructor(
@@ -688,6 +690,11 @@ export class ModelicaStoredDefinitionSyntaxNode
       this,
       concreteSyntaxNode?.childrenForFieldName("classDefinition"),
       abstractSyntaxNode?.classDefinitions,
+    );
+    this.statements = ModelicaStatementSyntaxNode.newArray(
+      this,
+      concreteSyntaxNode?.childrenForFieldName("statement"),
+      abstractSyntaxNode?.statements,
     );
   }
 

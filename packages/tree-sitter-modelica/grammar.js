@@ -39,7 +39,7 @@ module.exports = grammar({
       seq(
         optional($.BOM),
         optional(field("withinDirective", $.WithinDirective)),
-        repeat(field("classDefinition", $.ClassDefinition)),
+        repeat(choice(field("classDefinition", $.ClassDefinition), field("statement", $._Statement))),
       ),
 
     WithinDirective: ($) => seq("within", optional(field("packageName", $.Name)), ";"),

@@ -322,6 +322,18 @@ export const ModelicaErrorCode = {
     severity: "error",
     message: () => "Nested when statements are not allowed.",
   },
+  WITHIN_IN_SCRIPT: {
+    code: 4015,
+    rule: "within-in-script",
+    severity: "error",
+    message: () => "The within directive is not allowed in script mode.",
+  },
+  STATEMENT_IN_STANDARD_MODE: {
+    code: 4016,
+    rule: "statement-in-standard-mode",
+    severity: "error",
+    message: () => "Top-level statements are not allowed in standard Modelica mode.",
+  },
   TUPLE_EXPRESSION_CONTEXT: {
     code: 4014,
     rule: "tuple-expression-context",

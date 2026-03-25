@@ -151,12 +151,18 @@ export class ModelicaLinter {
     resource: string | null | undefined,
   ): void {
     ModelicaLinter.#rules.forEach(({ rule }) => {
-      if (methodName in rule && typeof rule[methodName as keyof typeof rule] === "function")
-        (rule as Record<string, (...args: unknown[]) => void>)[methodName]?.(
-          node,
-          (type: string, code: number, message: string, range: Range | null | undefined) =>
-            diagnosticsCallback(type, code, message, resource, range),
-        );
+      if (methodName in rule && typeof rule[methodName as keyof typeof rule] === "function") {
+        const callback: DiagnosticsCallbackWithoutResource = (
+          type: string,
+          code: number,
+          message: string,
+          range: Range | null | undefined,
+        ) => diagnosticsCallback(type, code, message, resource, range);
+        // Expose resource to rules that might need it (e.g., checking file extensions)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (callback as any).resource = resource;
+        (rule as Record<string, (...args: unknown[]) => void>)[methodName]?.(node, callback);
+      }
     });
   }
 
@@ -2898,6 +2904,34 @@ ModelicaLinter.register(ModelicaErrorCode.BINARY_OP_TYPE_MISMATCH, {
           op2IsArray ? arrayType : scalarType,
         ),
         node,
+      );
+    }
+  },
+});
+ModelicaLinter.register([ModelicaErrorCode.WITHIN_IN_SCRIPT, ModelicaErrorCode.STATEMENT_IN_STANDARD_MODE], {
+  visitStoredDefinition(
+    node: ModelicaStoredDefinitionSyntaxNode,
+    diagnosticsCallback: DiagnosticsCallbackWithoutResource,
+  ): void {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const resource = (diagnosticsCallback as any).resource as string | null | undefined;
+    const isScriptMode = resource ? resource.endsWith(".mos") : false;
+
+    if (isScriptMode && node.withinDirective) {
+      diagnosticsCallback(
+        ModelicaErrorCode.WITHIN_IN_SCRIPT.severity,
+        ModelicaErrorCode.WITHIN_IN_SCRIPT.code,
+        ModelicaErrorCode.WITHIN_IN_SCRIPT.message(),
+        node.withinDirective,
+      );
+    }
+
+    if (!isScriptMode && node.statements && node.statements.length > 0) {
+      diagnosticsCallback(
+        ModelicaErrorCode.STATEMENT_IN_STANDARD_MODE.severity,
+        ModelicaErrorCode.STATEMENT_IN_STANDARD_MODE.code,
+        ModelicaErrorCode.STATEMENT_IN_STANDARD_MODE.message(),
+        node.statements[0],
       );
     }
   },

@@ -25,7 +25,7 @@ import { NodeFileSystem } from "../../../packages/cli/src/util/filesystem.js";
 import { Context } from "../src/compiler/context.js";
 import { ModelicaLinter } from "../src/compiler/modelica/linter.js";
 import { ModelicaClassInstance } from "../src/compiler/modelica/model.js";
-import { ModelicaClassKind } from "../src/compiler/modelica/syntax.js";
+import { ModelicaClassKind, ModelicaStoredDefinitionSyntaxNode } from "../src/compiler/modelica/syntax.js";
 import { generateHtmlReport } from "./ctrf-to-html.js";
 
 // ── Tree-sitter setup ────────────────────────────────────────────────────────
@@ -265,6 +265,9 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode = fal
         classesToLint.add(cls);
       }
     }
+    const tree = context.parse(testCase.file.endsWith(".mos") ? ".mos" : ".mo", testCase.source);
+    const storedDef = ModelicaStoredDefinitionSyntaxNode.new(null, tree.rootNode);
+    if (storedDef) linter.lint(storedDef, testCase.file);
     for (const cls of classesToLint) {
       linter.lint(cls, testCase.file);
       if (cls.abstractSyntaxNode) {
@@ -466,7 +469,7 @@ function generateCtrfReport(results: TestResult[], startTime: number, stopTime: 
 function findMoDirectories(dir: string): string[] {
   const results: string[] = [];
   const entries = fs.readdirSync(dir, { withFileTypes: true });
-  const hasMoFiles = entries.some((e) => !e.isDirectory() && e.name.endsWith(".mo"));
+  const hasMoFiles = entries.some((e) => !e.isDirectory() && (e.name.endsWith(".mo") || e.name.endsWith(".mos")));
 
   if (hasMoFiles) {
     results.push(dir);
@@ -501,7 +504,7 @@ function main(): void {
       }
 
       const stat = fs.statSync(root);
-      if (stat.isFile() && root.endsWith(".mo")) {
+      if (stat.isFile() && (root.endsWith(".mo") || root.endsWith(".mos"))) {
         const dir = path.dirname(root);
         const file = path.basename(root);
         if (!suiteRuns.has(dir)) {
@@ -531,7 +534,7 @@ function main(): void {
   for (const [suiteDir, specificFiles] of suiteRuns.entries()) {
     const suiteName = path.relative(testsuiteRoot, suiteDir);
 
-    let moFiles = fs.readdirSync(suiteDir).filter((f) => f.endsWith(".mo"));
+    let moFiles = fs.readdirSync(suiteDir).filter((f) => f.endsWith(".mo") || f.endsWith(".mos"));
 
     if (specificFiles) {
       moFiles = moFiles.filter((f) => specificFiles.has(f));
