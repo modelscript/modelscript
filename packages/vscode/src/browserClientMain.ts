@@ -4,6 +4,8 @@ import { LanguageClientOptions } from "vscode-languageclient";
 import { LanguageClient } from "vscode-languageclient/browser";
 import { DiagramEditorProvider } from "./diagramEditorProvider";
 import { LibraryTreeProvider } from "./libraryTreeProvider";
+import { ModelicaNotebookController } from "./notebookController";
+import { ModelicaNotebookSerializer } from "./notebookSerializer";
 import { ProjectTreeProvider } from "./projectTreeProvider";
 import { SimulationPanel } from "./simulationPanel";
 
@@ -132,6 +134,14 @@ export async function activate(context: vscode.ExtensionContext) {
   // Output channel for script execution
   const outputChannel = vscode.window.createOutputChannel("ModelScript Output");
   context.subscriptions.push(outputChannel);
+
+  // Register notebook serializer and controller
+  context.subscriptions.push(
+    vscode.workspace.registerNotebookSerializer("modelscript-notebook", new ModelicaNotebookSerializer()),
+  );
+  const notebookController = new ModelicaNotebookController();
+  notebookController.client = client;
+  context.subscriptions.push(notebookController);
 
   // Register library tree view (before status handler so we can refresh on ready)
   const treeProvider = new LibraryTreeProvider(client);

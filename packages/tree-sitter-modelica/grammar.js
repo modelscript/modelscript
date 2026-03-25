@@ -30,6 +30,7 @@ module.exports = grammar({
     [$.ElementSection],
     [$.InitialElementSection],
     [$.AlgorithmSection],
+    [$.Name, $.ComponentReferencePart],
   ],
   word: ($) => $.IDENT,
   rules: {
@@ -39,7 +40,13 @@ module.exports = grammar({
       seq(
         optional($.BOM),
         optional(field("withinDirective", $.WithinDirective)),
-        repeat(choice(field("classDefinition", $.ClassDefinition), field("statement", $._Statement))),
+        repeat(
+          choice(
+            field("classDefinition", $.ClassDefinition),
+            field("componentClause", $.ComponentClause),
+            field("statement", $._Statement),
+          ),
+        ),
       ),
 
     WithinDirective: ($) => seq("within", optional(field("packageName", $.Name)), ";"),
@@ -376,7 +383,7 @@ module.exports = grammar({
     SimpleAssignmentStatement: ($) =>
       seq(
         field("target", $.ComponentReference),
-        ":=",
+        choice(":=", "="),
         field("source", $._Expression),
         optional(field("description", $.Description)),
         optional(field("annotationClause", $.AnnotationClause)),
@@ -395,7 +402,7 @@ module.exports = grammar({
     ComplexAssignmentStatement: ($) =>
       seq(
         field("outputExpressionList", $.OutputExpressionList),
-        ":=",
+        choice(":=", "="),
         field("functionReference", $.ComponentReference),
         field("functionCallArguments", $.FunctionCallArguments),
         optional(field("description", $.Description)),

@@ -2917,7 +2917,7 @@ ModelicaLinter.register([ModelicaErrorCode.WITHIN_IN_SCRIPT, ModelicaErrorCode.S
   ): void {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const resource = (diagnosticsCallback as any).resource as string | null | undefined;
-    const isScriptMode = resource ? resource.endsWith(".mos") : false;
+    const isScriptMode = resource ? resource.endsWith(".mos") || resource.includes(".monb") : false;
 
     if (isScriptMode && node.withinDirective) {
       diagnosticsCallback(

@@ -161,6 +161,27 @@
         }
       ]
     },
+    "notebookRenderer": [
+      {
+        "id": "modelscript-diagram-renderer",
+        "displayName": "Modelica Diagram",
+        "entrypoint": "./dist/notebookRenderer.js",
+        "mimeTypes": [
+          "application/x.modelscript-diagram"
+        ]
+      }
+    ],
+    "notebooks": [
+      {
+        "type": "modelscript-notebook",
+        "displayName": "Modelica Notebook",
+        "selector": [
+          {
+            "filenamePattern": "*.monb"
+          }
+        ]
+      }
+    ],
     "views": {
       "explorer": [
         {

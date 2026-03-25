@@ -15,7 +15,7 @@ import {
 } from "vscode-languageserver";
 
 import { TextDocument } from "vscode-languageserver-textdocument";
-import { buildDiagramData, getClassIconSvg } from "./diagramData";
+import { buildDiagramData, getClassIconSvg, type DiagramData } from "./diagramData";
 import {
   computeComponentsDelete,
   computeConnectInsert,
@@ -871,8 +871,8 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
       documentInstances.set(textDocument.uri, thisDocInstances);
       documentContexts.set(textDocument.uri, context);
 
-      // For .mos script files, lint statements (undeclared variables, invalid record fields)
-      if (textDocument.uri.endsWith(".mos")) {
+      // For .mos script files and .monb notebook cells, lint statements (undeclared variables, invalid record fields)
+      if (textDocument.uri.endsWith(".mos") || textDocument.uri.includes(".monb")) {
         lintScriptStatements(node, thisDocInstances, editorScope, diagnostics);
       }
     }
@@ -989,6 +989,23 @@ function lintScriptStatements(
         // ignore instantiation errors, already linted
       }
       classComponentNames.set(inst.name, componentNames);
+    }
+  }
+
+  // Register variables declared in top-level script component clauses
+  for (const componentClause of storedDef.componentClauses) {
+    for (const decl of componentClause.componentDeclarations) {
+      if (decl.declaration?.modification?.modificationExpression) {
+        checkExpressionReferences(
+          decl.declaration.modification.modificationExpression,
+          assignedVars,
+          classComponentNames,
+          scope,
+          diagnostics,
+        );
+      }
+      const targetName = decl.declaration?.identifier?.text;
+      if (targetName) assignedVars.add(targetName);
     }
   }
 
@@ -1945,6 +1962,77 @@ connection.onRequest("modelscript/runScript", async (params: { uri: string }) =>
   }
 
   return { output };
+});
+
+// ── Notebook API: session-scoped cell execution ──
+const notebookSessions = new Map<string, ModelicaScriptScope>();
+
+connection.onRequest("modelscript/runNotebookCell", async (params: { sessionId: string; code: string }) => {
+  // Find a context to use — prefer the first available document context
+  let ctx: Context | undefined;
+  for (const c of documentContexts.values()) {
+    ctx = c;
+    break;
+  }
+  if (!ctx) return { output: "", error: "No Modelica context available. Open a .mo file first." };
+
+  // Get or create session scope
+  let scope = notebookSessions.get(params.sessionId);
+  if (!scope) {
+    scope = new ModelicaScriptScope(ctx);
+    notebookSessions.set(params.sessionId, scope);
+  }
+
+  // Parse the cell code as a .mos script fragment
+  const tree = ctx.parse(".mos", params.code);
+  const storedDef = ModelicaStoredDefinitionSyntaxNode.new(null, tree.rootNode);
+  if (!storedDef) return { output: "", error: "Could not parse cell content." };
+
+  let output = "";
+  let error: string | undefined;
+  const interpreter = new ModelicaInterpreter(true, (msg) => {
+    output += msg + "\n";
+  });
+
+  const diagrams: { name: string; data: DiagramData }[] = [];
+
+  try {
+    interpreter.visitStoredDefinition(storedDef, scope);
+
+    // Extract diagrams for any classes defined in this cell
+    for (const classDef of storedDef.classDefinitions) {
+      const name = classDef.identifier?.text;
+      if (!name) {
+        console.log(`[notebook-diagram] skipping classDef without identifier`);
+        continue;
+      }
+      const classInstance = scope.classDefinitions.get(name);
+      if (classInstance) {
+        try {
+          console.log(`[notebook-diagram] building diagram for '${name}'`);
+          const data = buildDiagramData(classInstance);
+          console.log(
+            `[notebook-diagram] diagram for '${name}': ${data.nodes.length} nodes, ${data.edges.length} edges`,
+          );
+          // Include diagram even if empty — the renderer will show the coordinate system frame
+          diagrams.push({ name, data });
+        } catch (e) {
+          console.error(`[notebook-diagram] Error building diagram for ${name}:`, e);
+        }
+      } else {
+        console.log(`[notebook-diagram] class '${name}' not found in scope.classDefinitions`);
+      }
+    }
+  } catch (e) {
+    error = e instanceof Error ? e.message : String(e);
+  }
+
+  return { output: output.trimEnd(), error, diagrams };
+});
+
+connection.onRequest("modelscript/resetNotebookSession", async (params: { sessionId: string }) => {
+  notebookSessions.delete(params.sessionId);
+  return { success: true };
 });
 
 // Custom request: add a component to a model (drag-drop from library tree)

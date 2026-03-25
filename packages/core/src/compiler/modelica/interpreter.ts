@@ -2103,6 +2103,48 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
       }
     }
 
+    // Evaluate top-level variable declarations (e.g., Real x = 10;)
+    for (const componentClause of node.componentClauses) {
+      const typeName = componentClause.typeSpecifier?.name?.parts?.[0]?.text ?? "Real";
+      const typeDefinition = scriptScope.resolveSimpleName(typeName);
+
+      for (const decl of componentClause.componentDeclarations) {
+        const name = decl.declaration?.identifier?.text;
+        if (!name) continue;
+
+        const instance = new ModelicaComponentInstance(null, decl);
+        instance.name = name;
+        instance.instantiated = true;
+
+        let initialValue: ModelicaExpression | null = null;
+        if (decl.declaration?.modification?.modificationExpression) {
+          initialValue =
+            decl.declaration.modification.modificationExpression.expression?.accept(this, scriptScope) ?? null;
+        }
+
+        const mod = new ModelicaModification(null, [], null, null, initialValue);
+
+        if (typeDefinition instanceof ModelicaClassInstance) {
+          instance.classInstance = typeDefinition.clone(mod);
+        } else if (initialValue instanceof ModelicaObject && initialValue.classInstance) {
+          instance.classInstance = initialValue.classInstance.clone(mod);
+        } else {
+          // Fallback to basic types if the type definition couldn't be resolved
+          let inferredType = "Real";
+          if (initialValue instanceof ModelicaIntegerLiteral) inferredType = "Integer";
+          else if (initialValue instanceof ModelicaStringLiteral) inferredType = "String";
+          else if (initialValue instanceof ModelicaBooleanLiteral) inferredType = "Boolean";
+
+          const inferredTypeDef = scriptScope.resolveSimpleName(inferredType);
+          if (inferredTypeDef instanceof ModelicaClassInstance) {
+            instance.classInstance = inferredTypeDef.clone(mod);
+          }
+        }
+
+        scriptScope.variables.set(name, instance);
+      }
+    }
+
     for (const stmt of node.statements) {
       stmt.accept(this, scriptScope);
     }

@@ -211,4 +211,53 @@ const webviewConfig = {
   devtool: "nosources-source-map",
 };
 
-module.exports = [browserClientConfig, browserServerConfig, webviewConfig];
+/** @type WebpackConfig */
+const notebookRendererConfig = {
+  context: __dirname,
+  mode: "none",
+  target: "web",
+  entry: {
+    notebookRenderer: "./src/webview/notebookRenderer.ts",
+  },
+  output: {
+    filename: "[name].js",
+    path: path.join(__dirname, "dist"),
+    library: {
+      type: "module",
+    },
+    devtoolModuleFilenameTemplate: "../[resource-path]",
+  },
+  experiments: {
+    outputModule: true,
+  },
+  resolve: {
+    mainFields: ["browser", "module", "main"],
+    extensions: [".ts", ".js"],
+    alias: {},
+  },
+  module: {
+    rules: [
+      {
+        test: /\.ts$/,
+        exclude: /node_modules/,
+        use: [
+          { loader: "ts-loader", options: { configFile: path.resolve(__dirname, "src", "webview", "tsconfig.json") } },
+        ],
+      },
+      {
+        test: /\.m?js$/,
+        resolve: { fullySpecified: false },
+      },
+    ],
+  },
+  performance: {
+    hints: false,
+  },
+  optimization: {
+    usedExports: false,
+    sideEffects: false,
+  },
+  devtool: "nosources-source-map",
+};
+
+module.exports = [browserClientConfig, browserServerConfig, webviewConfig, notebookRendererConfig];

@@ -1,0 +1,76 @@
+{
+  "cells": [
+    {
+      "cell_type": "markdown",
+      "source": [
+        "# ModelScript Notebook Example",
+        "Welcome to ModelScript Notebooks! You can run Modelica code interactively in cells."
+      ]
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "// We can define standard variables and evaluate them",
+        "Real x = 10;",
+        "print(\"The value of x is: \" + String(x));"
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "## Diagram Rendering",
+        "Models defined inside a cell will automatically render their icon or diagram representation. Let's create a simple Resistor model."
+      ]
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "model Resistor \"Ideal linear electrical resistor\"",
+        "  extends Modelica.Electrical.Analog.Interfaces.OnePort;",
+        "  parameter Modelica.Units.SI.Resistance R(start=1) \"Resistance\";",
+        "equation",
+        "  v = R * i;",
+        "  annotation (",
+        "    Icon(coordinateSystem(preserveAspectRatio=true, extent={{-100,-100},{100,100}}), graphics={",
+        "        Rectangle(extent={{-70,30},{70,-30}}, lineColor={0,0,255}, fillColor={255,255,255}, fillPattern=FillPattern.Solid),",
+        "        Line(points={{-100,0},{-70,0}}, color={0,0,255}),",
+        "        Line(points={{70,0},{100,0}}, color={0,0,255}),",
+        "        Text(extent={{-150,55},{150,95}}, textString=\"%name\", lineColor={0,0,255}),",
+        "        Text(extent={{-150,-90},{150,-50}}, textString=\"R=%R\")",
+        "    }),",
+        "    Diagram(coordinateSystem(preserveAspectRatio=true, extent={{-100,-100},{100,100}}), graphics={",
+        "        Rectangle(extent={{-70,30},{70,-30}}, lineColor={0,0,255}, fillColor={255,255,255}, fillPattern=FillPattern.Solid),",
+        "        Line(points={{-100,0},{-70,0}}, color={0,0,255}),",
+        "        Line(points={{70,0},{100,0}}, color={0,0,255}),",
+        "        Text(extent={{-150,55},{150,95}}, textString=\"%name\", lineColor={0,0,255}),",
+        "        Text(extent={{-150,-90},{150,-50}}, textString=\"R=%R\")",
+        "    })",
+        "  );",
+        "end Resistor;"
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "## Simulation",
+        "You can run `simulate()` directly on models defined in cells to see time-series results."
+      ]
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "model SimpleCircuit",
+        "  Modelica.Electrical.Analog.Basic.Ground g;",
+        "  Resistor r1(R=10);",
+        "  Modelica.Electrical.Analog.Sources.SineVoltage v(V=5, freqHz=60);",
+        "equation",
+        "  connect(v.p, r1.p);",
+        "  connect(r1.n, g.p);",
+        "  connect(v.n, g.p);",
+        "end SimpleCircuit;",
+        "",
+        "simulate(SimpleCircuit);"
+      ]
+    }
+  ]
+}
