@@ -20,6 +20,12 @@ const vscode = (window as any).acquireVsCodeApi?.() ?? {
   },
 };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function postMessageToHost(msg: any) {
+  pendingDiagramData = null;
+  vscode.postMessage(msg);
+}
+
 let graph: Graph | null = null;
 
 /** Get connected edge metadata for a node (for move/resize updates) */
@@ -102,16 +108,15 @@ function initGraph(isDark: boolean): Graph {
       validateEdge: () => true,
       createEdge: (): ReturnType<Graph["createEdge"]> => {
         return g.createEdge({
-          zIndex: -1,
+          zIndex: 1000,
           router: { name: "normal" },
           attrs: {
-            "z-index": "-10",
             line: {
               stroke: "#0000ff",
               strokeWidth: 1,
               "vector-effect": "non-scaling-stroke",
               targetMarker: null,
-              "pointer-events": "stroke",
+              "pointer-events": "none",
             },
           },
         });
@@ -219,7 +224,7 @@ function initGraph(isDark: boolean): Graph {
         }
       });
       if (items.length > 0) {
-        vscode.postMessage({ type: "move", items });
+        postMessageToHost({ type: "move", items });
       }
       changedNodes.clear();
       moveTimeout = null;
@@ -233,7 +238,7 @@ function initGraph(isDark: boolean): Graph {
     const s = node.getSize();
     const r = node.getAngle();
     const edges = getConnectedEdges(g, node);
-    vscode.postMessage({
+    postMessageToHost({
       type: "move",
       items: [{ name: node.id, x: p.x, y: p.y, width: s.width, height: s.height, rotation: r, edges }],
     });
@@ -255,7 +260,7 @@ function initGraph(isDark: boolean): Graph {
     const s = node.getSize();
     const r = node.getAngle();
     const edges = getConnectedEdges(g, node);
-    vscode.postMessage({
+    postMessageToHost({
       type: "resize",
       name: node.id,
       x: p.x,
@@ -283,7 +288,7 @@ function initGraph(isDark: boolean): Graph {
         x: Math.round(p.x),
         y: Math.round(-p.y),
       }));
-      vscode.postMessage({
+      postMessageToHost({
         type: "connect",
         source: `${source.cell}.${source.port}`,
         target: `${target.cell}.${target.port}`,
@@ -309,7 +314,7 @@ function initGraph(isDark: boolean): Graph {
           x: Math.round(p.x),
           y: Math.round(-p.y),
         }));
-        vscode.postMessage({
+        postMessageToHost({
           type: "edgeMove",
           edges: [
             {
@@ -353,11 +358,11 @@ function initGraph(isDark: boolean): Graph {
 
       if (edgesToDelete.length > 0) {
         for (const edge of edgesToDelete) {
-          vscode.postMessage({ type: "deleteEdge", ...edge });
+          postMessageToHost({ type: "deleteEdge", ...edge });
         }
       }
       if (componentNames.length > 0) {
-        vscode.postMessage({ type: "deleteComponents", names: componentNames });
+        postMessageToHost({ type: "deleteComponents", names: componentNames });
       }
       g.removeCells(cells);
     } else {
@@ -369,15 +374,15 @@ function initGraph(isDark: boolean): Graph {
         const spinner = document.getElementById("spinner");
         if (spinner) spinner.style.display = "block";
         if (e.shiftKey) {
-          vscode.postMessage({ type: "redo" });
+          postMessageToHost({ type: "redo" });
         } else {
-          vscode.postMessage({ type: "undo" });
+          postMessageToHost({ type: "undo" });
         }
       } else if (mod && e.key.toLowerCase() === "y") {
         e.preventDefault();
         const spinner = document.getElementById("spinner");
         if (spinner) spinner.style.display = "block";
-        vscode.postMessage({ type: "redo" });
+        postMessageToHost({ type: "redo" });
       }
     }
   });
@@ -620,14 +625,102 @@ function renderDiagram(data: any, isDark: boolean) {
   }
 }
 
+// Handle deferred diagram updates to avoid interrupting active interactions
+let isMouseDown = false;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let pendingDiagramData: any = null;
+
+document.addEventListener(
+  "mousedown",
+  () => {
+    isMouseDown = true;
+  },
+  true,
+);
+
+document.addEventListener(
+  "mouseup",
+  () => {
+    isMouseDown = false;
+    setTimeout(() => {
+      if (!isMouseDown && pendingDiagramData) {
+        const spinner = document.getElementById("spinner");
+        if (spinner) spinner.style.display = "none";
+        renderDiagram(pendingDiagramData.data, pendingDiagramData.isDark);
+        pendingDiagramData = null;
+      }
+    }, 0);
+  },
+  true,
+);
+
 // Listen for messages from the extension host
 window.addEventListener("message", (event: MessageEvent) => {
   const message = event.data;
   switch (message.type) {
     case "diagramData": {
-      const spinner = document.getElementById("spinner");
-      if (spinner) spinner.style.display = "none";
-      renderDiagram(message.data, message.isDark ?? true);
+      if (isMouseDown) {
+        pendingDiagramData = { data: message.data, isDark: message.isDark ?? true };
+      } else {
+        const spinner = document.getElementById("spinner");
+        if (spinner) spinner.style.display = "none";
+        renderDiagram(message.data, message.isDark ?? true);
+      }
+      break;
+    }
+    case "showPlaceholder": {
+      if (!graph) return;
+      const { iconSvg } = message;
+      if (!iconSvg) break;
+      const size = 20; // Default grid cell bounds for icons without explicit size
+      const existing = graph.getCellById("__drop_placeholder__");
+      if (existing) graph.removeCell(existing);
+
+      const isDark =
+        document.documentElement.classList.contains("vscode-dark") ||
+        document.documentElement.classList.contains("vscode-high-contrast");
+      // Use CSS filter for inversion instead of pulling in huge @modelscript/core package
+      const filterStyle = isDark ? "filter: invert(0.85) hue-rotate(180deg);" : "";
+
+      const fittedSvg = iconSvg.replace(/^<svg/, `<svg width="${size}" height="${size}" style="overflow:visible"`);
+
+      const p = { x: 0, y: 0 }; // Default VS Code drop coordinate
+
+      graph.addNode({
+        id: "__drop_placeholder__",
+        x: p.x - size / 2,
+        y: p.y - size / 2,
+        width: size,
+        height: size,
+        zIndex: 10,
+        markup: {
+          tagName: "foreignObject",
+          attrs: { width: size, height: size, style: "overflow:visible" },
+          children: [
+            {
+              ns: "http://www.w3.org/1999/xhtml",
+              tagName: "div",
+              attrs: {
+                style: `width:${size}px;height:${size}px;overflow:visible;${filterStyle}animation:drop-placeholder-pulse 1.2s ease-in-out infinite, drop-placeholder-appear 0.2s ease-out;`,
+              },
+            },
+          ],
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any,
+      });
+
+      requestAnimationFrame(() => {
+        const placeholderNode = graph?.getCellById("__drop_placeholder__");
+        if (placeholderNode) {
+          const view = graph?.findView(placeholderNode);
+          if (view) {
+            const innerDiv = view.container.querySelector("div");
+            if (innerDiv) {
+              innerDiv.innerHTML = fittedSvg;
+            }
+          }
+        }
+      });
       break;
     }
     case "empty": {

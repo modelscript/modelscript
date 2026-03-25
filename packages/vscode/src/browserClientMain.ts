@@ -229,66 +229,79 @@ export async function activate(context: vscode.ExtensionContext) {
         SimulationPanel.createOrShow(context.extensionUri, client);
       }
     }),
-    commands.registerCommand("modelscript.addToDiagram", async (firstArg: unknown, secondArg?: string) => {
-      if (!client) return;
+    commands.registerCommand(
+      "modelscript.addToDiagram",
+      async (firstArg: unknown, secondArg?: string, thirdArg?: string) => {
+        if (!client) return;
 
-      // Support both context menu (LibraryTreeItem) and direct call (className, classKind)
-      let className: string;
-      let classKind: string;
-      if (firstArg && typeof firstArg === "object" && "info" in firstArg) {
-        // Called from tree item context menu
-        const item = firstArg as { info: { compositeName: string; classKind: string } };
-        className = item.info.compositeName;
-        classKind = item.info.classKind;
-      } else {
-        className = firstArg as string;
-        classKind = secondArg ?? "";
-      }
-
-      // Only allow models, blocks, and connectors
-      if (classKind !== "model" && classKind !== "block" && classKind !== "connector") return;
-
-      // Find the active .mo document
-      let docUri = vscode.window.activeTextEditor?.document.uri.toString();
-      if (!docUri) {
-        const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
-        if (tab?.input instanceof vscode.TabInputCustom && tab.input.viewType === DiagramEditorProvider.viewType) {
-          docUri = tab.input.uri.toString();
+        // Support both context menu (LibraryTreeItem) and direct call (className, classKind, iconSvg)
+        let className: string;
+        let classKind: string;
+        let iconSvg: string | undefined;
+        if (firstArg && typeof firstArg === "object" && "info" in firstArg) {
+          // Called from tree item context menu
+          const item = firstArg as { info: { compositeName: string; classKind: string; iconSvg?: string } };
+          className = item.info.compositeName;
+          classKind = item.info.classKind;
+          iconSvg = item.info.iconSvg;
+        } else {
+          className = firstArg as string;
+          classKind = secondArg ?? "";
+          iconSvg = thirdArg;
         }
-      }
-      if (!docUri) {
-        vscode.window.showWarningMessage("Open a Modelica file first.");
-        return;
-      }
 
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const edits: any[] = await client.sendRequest("modelscript/addComponent", {
-          uri: docUri,
-          className,
-          x: 0,
-          y: 0,
-        });
-        if (edits && edits.length > 0) {
-          const workspaceEdit = new vscode.WorkspaceEdit();
-          const uri = vscode.Uri.parse(docUri);
-          for (const edit of edits) {
-            const range = new vscode.Range(
-              edit.range.start.line,
-              edit.range.start.character,
-              edit.range.end.line,
-              edit.range.end.character,
-            );
-            workspaceEdit.replace(uri, range, edit.newText);
+        // Only allow models, blocks, and connectors
+        if (classKind !== "model" && classKind !== "block" && classKind !== "connector") return;
+
+        // Find the active .mo document
+        let docUri = vscode.window.activeTextEditor?.document.uri.toString();
+        if (!docUri) {
+          const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
+          if (tab?.input instanceof vscode.TabInputCustom && tab.input.viewType === DiagramEditorProvider.viewType) {
+            docUri = tab.input.uri.toString();
           }
-          await vscode.workspace.applyEdit(workspaceEdit);
-          vscode.window.showInformationMessage(`Added ${className.split(".").pop()} to model.`);
         }
-      } catch (e) {
-        console.error("[addToDiagram] Error:", e);
-        vscode.window.showErrorMessage(`Failed to add component: ${e}`);
-      }
-    }),
+        if (!docUri) {
+          vscode.window.showWarningMessage("Open a Modelica file first.");
+          return;
+        }
+
+        try {
+          if (iconSvg) {
+            vscode.commands.executeCommand("modelscript.showPlaceholder", className, iconSvg);
+          }
+
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const edits: any[] = await client.sendRequest("modelscript/addComponent", {
+            uri: docUri,
+            className,
+            x: 0,
+            y: 0,
+          });
+          if (edits && edits.length > 0) {
+            const workspaceEdit = new vscode.WorkspaceEdit();
+            const uri = vscode.Uri.parse(docUri);
+            for (const edit of edits) {
+              const range = new vscode.Range(
+                edit.range.start.line,
+                edit.range.start.character,
+                edit.range.end.line,
+                edit.range.end.character,
+              );
+              workspaceEdit.replace(uri, range, edit.newText);
+            }
+            await vscode.workspace.applyEdit(workspaceEdit);
+            vscode.window.showInformationMessage(`Added ${className.split(".").pop()} to model.`);
+            setTimeout(() => {
+              vscode.commands.executeCommand("modelscript.autoLayout");
+            }, 600);
+          }
+        } catch (e) {
+          console.error("[addToDiagram] Error:", e);
+          vscode.window.showErrorMessage(`Failed to add component: ${e}`);
+        }
+      },
+    ),
     commands.registerCommand("modelscript.openProjectFile", async (uri: string, line?: number) => {
       try {
         const docUri = vscode.Uri.parse(uri);

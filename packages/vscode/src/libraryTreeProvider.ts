@@ -75,7 +75,7 @@ export class LibraryTreeItem extends vscode.TreeItem {
       this.command = {
         command: "modelscript.addToDiagram",
         title: "Add to Diagram",
-        arguments: [info.compositeName, info.classKind],
+        arguments: [info.compositeName, info.classKind, info.iconSvg],
       };
     }
   }

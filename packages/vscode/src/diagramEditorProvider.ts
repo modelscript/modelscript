@@ -24,9 +24,15 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
           }
         }
       }),
+      vscode.commands.registerCommand("modelscript.showPlaceholder", (className: string, iconSvg: string) => {
+        for (const panel of this.activeWebviews) {
+          if (panel.active) {
+            panel.webview.postMessage({ type: "showPlaceholder", className, iconSvg });
+          }
+        }
+      }),
     );
   }
-
   public async resolveCustomTextEditor(
     document: vscode.TextDocument,
     webviewPanel: vscode.WebviewPanel,
@@ -47,12 +53,17 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
 
     let isDiagramUpdate = false;
     let updateTimeout: ReturnType<typeof setTimeout> | null = null;
+    let diagramRequestNonce = 0;
     const uriString = document.uri.toString();
 
     const debouncedUpdate = () => {
       if (updateTimeout) clearTimeout(updateTimeout);
       updateTimeout = setTimeout(() => {
-        this.requestDiagramData(webviewPanel, uriString);
+        diagramRequestNonce++;
+        const currentNonce = diagramRequestNonce;
+        this.requestDiagramData(webviewPanel, uriString, {
+          isCanceled: () => diagramRequestNonce !== currentNonce,
+        });
       }, 500);
     };
 
@@ -142,6 +153,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
           }
 
           if (lspMethod) {
+            diagramRequestNonce++; // Cancel incoming stale diagramData
             isDiagramUpdate = true;
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const edits: any[] = await this.client.sendRequest(lspMethod, lspParams);
@@ -178,9 +190,14 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     debouncedUpdate();
   }
 
-  private async requestDiagramData(webviewPanel: vscode.WebviewPanel, uri: string) {
+  private async requestDiagramData(
+    webviewPanel: vscode.WebviewPanel,
+    uri: string,
+    cancelToken?: { isCanceled: () => boolean },
+  ) {
     try {
       const data = await this.client.sendRequest("modelscript/getDiagramData", { uri });
+      if (cancelToken?.isCanceled()) return;
       if (data) {
         const isDark =
           vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
@@ -190,6 +207,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
         webviewPanel.webview.postMessage({ type: "empty" });
       }
     } catch (e) {
+      if (cancelToken?.isCanceled()) return;
       console.error("[diagram] Failed to get diagram data:", e);
       webviewPanel.webview.postMessage({ type: "error", message: String(e) });
     }
@@ -204,7 +222,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; img-src data: ${webview.cspSource}; font-src ${webview.cspSource};">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; img-src data: ${webview.cspSource}; font-src ${webview.cspSource}; connect-src ${webview.cspSource};">
   <title>Modelica Diagram</title>
   <style>
     body {
@@ -244,6 +262,17 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
       z-index: 1000;
     }
     @keyframes diagram-spin { to { transform: rotate(360deg); } }
+
+    @keyframes drop-placeholder-pulse {
+      0%, 100% { opacity: 0.6; transform: scale(1); }
+      50% { opacity: 0.9; transform: scale(1.04); }
+    }
+    @keyframes drop-placeholder-appear {
+      0% { opacity: 0; transform: scale(0.3); }
+      50% { opacity: 1; transform: scale(1.15); }
+      70% { transform: scale(0.92); }
+      100% { opacity: 1; transform: scale(1); }
+    }
 
     #properties-panel {
       position: absolute;
