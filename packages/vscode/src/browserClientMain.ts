@@ -129,6 +129,10 @@ export async function activate(context: vscode.ExtensionContext) {
   await client.start();
   console.log("ModelScript language server is ready");
 
+  // Output channel for script execution
+  const outputChannel = vscode.window.createOutputChannel("ModelScript Output");
+  context.subscriptions.push(outputChannel);
+
   // Register library tree view (before status handler so we can refresh on ready)
   const treeProvider = new LibraryTreeProvider(client);
   const treeView = vscode.window.createTreeView("modelscript.libraryTree", {
@@ -200,8 +204,21 @@ export async function activate(context: vscode.ExtensionContext) {
         await vscode.window.showTextDocument(doc, vscode.ViewColumn.One);
       }
     }),
-    commands.registerCommand("modelscript.runSimulation", () => {
-      if (client) {
+    commands.registerCommand("modelscript.runSimulation", async () => {
+      if (!client) return;
+      const editor = vscode.window.activeTextEditor;
+      if (editor?.document.fileName.endsWith(".mos")) {
+        outputChannel.clear();
+        outputChannel.show(true);
+        try {
+          const result = await client.sendRequest<{ output: string }>("modelscript/runScript", {
+            uri: editor.document.uri.toString(),
+          });
+          outputChannel.appendLine(result.output || "(no output)");
+        } catch (e) {
+          outputChannel.appendLine(`Error: ${e}`);
+        }
+      } else {
         SimulationPanel.createOrShow(context.extensionUri, client);
       }
     }),

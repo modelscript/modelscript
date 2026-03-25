@@ -1,0 +1,8 @@
+// Example Modelica Script to test execution in VS Code
+
+a := 10;
+b := 20;
+c := a + b;
+
+print("Running Modelica Script...");
+print("The script successfully evaluated the statements!");

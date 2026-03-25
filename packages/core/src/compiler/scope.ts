@@ -160,11 +160,11 @@ export abstract class Scope {
  * then delegates to the parent scope.
  */
 export class ModelicaLoopScope extends Scope {
-  #bindings: Map<string, ModelicaClassInstance>;
+  bindings: Map<string, ModelicaClassInstance>;
 
   constructor(parent: Scope, bindings: Map<string, ModelicaClassInstance>) {
     super(parent);
-    this.#bindings = bindings;
+    this.bindings = bindings;
   }
 
   override get elements(): IterableIterator<ModelicaElement> {
@@ -183,9 +183,36 @@ export class ModelicaLoopScope extends Scope {
   ): ModelicaNamedElement | null {
     const simpleName = identifier instanceof ModelicaIdentifierSyntaxNode ? identifier?.text : identifier;
     if (simpleName && !global) {
-      const binding = this.#bindings.get(simpleName);
+      const binding = this.bindings.get(simpleName);
       if (binding) return binding;
     }
-    return this.parent?.resolveSimpleName(identifier, global, encapsulated) ?? null;
+    return super.resolveSimpleName(identifier, global, encapsulated);
+  }
+}
+
+/**
+ * A scope used by the interpreter to store dynamically created variables during script execution.
+ */
+export class ModelicaScriptScope extends Scope {
+  variables = new Map<string, ModelicaComponentInstance>();
+
+  override get elements(): IterableIterator<ModelicaElement> {
+    return this.variables.values();
+  }
+
+  override get hash(): string {
+    return "";
+  }
+
+  override resolveSimpleName(
+    identifier: ModelicaIdentifierSyntaxNode | string | null | undefined,
+    global = false,
+    encapsulated = false,
+  ): ModelicaNamedElement | null {
+    const name = identifier instanceof ModelicaIdentifierSyntaxNode ? identifier.text : identifier;
+    if (name && this.variables.has(name)) {
+      return this.variables.get(name) ?? null;
+    }
+    return super.resolveSimpleName(identifier, global, encapsulated);
   }
 }

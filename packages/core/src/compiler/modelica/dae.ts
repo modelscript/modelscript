@@ -991,6 +991,8 @@ export class ModelicaBinaryExpression extends ModelicaSimpleExpression {
       } else if (operand2 instanceof ModelicaRealLiteral) {
         return null;
       } else if (operand2 instanceof ModelicaStringLiteral) {
+        if (operator === ModelicaBinaryOperator.ADDITION)
+          return new ModelicaStringLiteral((operand1.value ? "true" : "false") + operand2.value);
         return null;
       } else {
         return new ModelicaBinaryExpression(operator, operand1, operand2);
@@ -1055,6 +1057,8 @@ export class ModelicaBinaryExpression extends ModelicaSimpleExpression {
             return null;
         }
       } else if (operand2 instanceof ModelicaStringLiteral) {
+        if (operator === ModelicaBinaryOperator.ADDITION)
+          return new ModelicaStringLiteral(String(operand1.value) + operand2.value);
         return null;
       } else {
         return new ModelicaBinaryExpression(operator, operand1, operand2);
@@ -1119,16 +1123,24 @@ export class ModelicaBinaryExpression extends ModelicaSimpleExpression {
             return null;
         }
       } else if (operand2 instanceof ModelicaStringLiteral) {
+        if (operator === ModelicaBinaryOperator.ADDITION)
+          return new ModelicaStringLiteral(String(operand1.value) + operand2.value);
         return null;
       } else {
         return new ModelicaBinaryExpression(operator, operand1, operand2);
       }
     } else if (operand1 instanceof ModelicaStringLiteral) {
       if (operand2 instanceof ModelicaBooleanLiteral) {
+        if (operator === ModelicaBinaryOperator.ADDITION)
+          return new ModelicaStringLiteral(operand1.value + (operand2.value ? "true" : "false"));
         return null;
       } else if (operand2 instanceof ModelicaIntegerLiteral) {
+        if (operator === ModelicaBinaryOperator.ADDITION)
+          return new ModelicaStringLiteral(operand1.value + String(operand2.value));
         return null;
       } else if (operand2 instanceof ModelicaRealLiteral) {
+        if (operator === ModelicaBinaryOperator.ADDITION)
+          return new ModelicaStringLiteral(operand1.value + String(operand2.value));
         return null;
       } else if (operand2 instanceof ModelicaStringLiteral) {
         switch (operator) {

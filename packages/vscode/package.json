@@ -98,7 +98,8 @@
           "modelica"
         ],
         "extensions": [
-          ".mo"
+          ".mo",
+          ".mos"
         ],
         "configuration": "./language-configuration.json",
         "icon": {

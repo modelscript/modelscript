@@ -36,6 +36,7 @@ import {
   ModelicaElement,
   ModelicaEnumerationClassInstance,
   ModelicaFlattener,
+  ModelicaInterpreter,
   ModelicaLibrary,
   ModelicaLinter,
   ModelicaNamedElement,
@@ -433,6 +434,7 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
     parser = new Parser();
     parser.setLanguage(Modelica);
     Context.registerParser(".mo", parser);
+    Context.registerParser(".mos", parser);
     parserReady = true;
     console.log("Tree-sitter Modelica parser initialized");
 
@@ -774,12 +776,12 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
     const tree = context.parse(".mo", text);
 
     // Lint the raw parse tree (catches ERROR and MISSING nodes)
-    linter.lint(tree);
+    linter.lint(tree, textDocument.uri);
 
     // Build syntax nodes and lint them
     const node = ModelicaStoredDefinitionSyntaxNode.new(null, tree.rootNode);
     if (node) {
-      linter.lint(node);
+      linter.lint(node, textDocument.uri);
 
       // Resolve the within directive to find the correct parent scope (matching morsel)
       let parentScope: Scope = context;
@@ -841,7 +843,7 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
       for (const instance of thisDocInstances) {
         try {
           instance.instantiate();
-          linter.lint(instance);
+          linter.lint(instance, textDocument.uri);
         } catch (e) {
           console.error("Lint error for instance:", e);
         }
@@ -1680,6 +1682,30 @@ connection.onRequest("modelscript/getClassIcon", (params: { className: string; u
     console.error("[library-tree] Error rendering icon:", e);
     return null;
   }
+});
+
+// Custom request: run a .mos script file
+connection.onRequest("modelscript/runScript", async (params: { uri: string }) => {
+  const context = documentContexts.get(params.uri);
+  const doc = documents.get(params.uri);
+  if (!context || !doc) return { output: "Error: Could not find document context." };
+
+  const tree = context.parse(".mos", doc.getText());
+  const storedDef = ModelicaStoredDefinitionSyntaxNode.new(null, tree.rootNode);
+  if (!storedDef) return { output: "Error: Could not parse script structure." };
+
+  let output = "";
+  const interpreter = new ModelicaInterpreter(true, (msg) => {
+    output += msg + "\n";
+  });
+
+  try {
+    interpreter.visitStoredDefinition(storedDef, context);
+  } catch (e) {
+    output += `Runtime Error: ${e instanceof Error ? e.message : String(e)}\n`;
+  }
+
+  return { output };
 });
 
 // Custom request: add a component to a model (drag-drop from library tree)

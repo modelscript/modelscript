@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { type Scope, ModelicaLoopScope } from "../scope.js";
+import { ModelicaLoopScope, ModelicaScriptScope, type Scope } from "../scope.js";
 import {
   ModelicaArray,
   ModelicaBinaryExpression,
@@ -40,6 +40,7 @@ import {
   ModelicaProcedureCallStatementSyntaxNode,
   ModelicaRangeExpressionSyntaxNode,
   ModelicaSimpleAssignmentStatementSyntaxNode,
+  ModelicaStoredDefinitionSyntaxNode,
   ModelicaStringLiteralSyntaxNode,
   ModelicaSyntaxVisitor,
   ModelicaUnaryExpressionSyntaxNode,
@@ -266,15 +267,19 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
   #evaluateAlgorithms: boolean;
   /** Current `end` value for array subscript evaluation. */
   #endValue: number | null = null;
+  /** Optional callback to receive output from the builtin print() function. */
+  #printCallback: ((msg: string) => void) | undefined;
 
   /**
    * Initializes a new ModelicaInterpreter.
    *
    * @param evaluateAlgorithms - If true, the interpreter will actively execute function algorithm sections to compute values. Defaults to false.
+   * @param printCallback - Optional callback invoked when the Modelica `print()` built-in is called.
    */
-  constructor(evaluateAlgorithms = false) {
+  constructor(evaluateAlgorithms = false, printCallback: ((msg: string) => void) | undefined = undefined) {
     super();
     this.#evaluateAlgorithms = evaluateAlgorithms;
+    this.#printCallback = printCallback;
   }
 
   /** Set the current `end` value for array subscript evaluation. */
@@ -772,6 +777,8 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
         return this.#evaluateArrayFunc(node, scope);
       case "cat":
         return this.#evaluateCat(node, scope);
+      case "print":
+        return this.#evaluatePrint(node, scope);
       default:
         return undefined;
     }
@@ -1617,16 +1624,37 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     const targetName = node.target?.parts?.[0]?.identifier?.text;
     if (!targetName) return null;
 
-    const target = scope.resolveSimpleName(targetName);
-    if (!(target instanceof ModelicaComponentInstance)) return null;
+    const resolved = scope.resolveSimpleName(targetName);
+    let componentTarget: ModelicaComponentInstance;
+    if (resolved instanceof ModelicaComponentInstance) {
+      componentTarget = resolved;
+    } else if (this.#evaluateAlgorithms) {
+      // Scripts or evaluated algorithms: allow dynamic variable creation
+      componentTarget = new ModelicaComponentInstance(null, null, null);
+      componentTarget.name = targetName;
+      componentTarget.instantiated = true;
+
+      // Find the ScriptScope to bind dynamic variables to
+      let scriptScope: Scope | null = scope;
+      while (scriptScope && !(scriptScope instanceof ModelicaScriptScope)) {
+        scriptScope = scriptScope.parent;
+      }
+      if (scriptScope instanceof ModelicaScriptScope) {
+        scriptScope.variables.set(targetName, componentTarget);
+      } else {
+        return null; // No script scope available
+      }
+    } else {
+      return null; // Strict mode: undeclared variables are an error
+    }
 
     const subscripts = lastPart?.arraySubscripts?.subscripts;
     if (subscripts && subscripts.length > 0) {
-      if (!target.instantiated && !target.instantiating) target.instantiate();
+      if (!componentTarget.instantiated && !componentTarget.instantiating) componentTarget.instantiate();
       // Get the existing array, clone it (to avoid mutating the literal definition), and update the element
-      let currentExpr = ModelicaExpression.fromClassInstance(target.classInstance);
-      if (!currentExpr && target.classInstance instanceof ModelicaArrayClassInstance) {
-        currentExpr = buildFilledArray(target.classInstance.shape, new ModelicaIntegerLiteral(0));
+      let currentExpr = ModelicaExpression.fromClassInstance(componentTarget.classInstance);
+      if (!currentExpr && componentTarget.classInstance instanceof ModelicaArrayClassInstance) {
+        currentExpr = buildFilledArray(componentTarget.classInstance.shape, new ModelicaIntegerLiteral(0));
       }
       if (currentExpr instanceof ModelicaArray) {
         // Deep clone array elements to allow mutation
@@ -1681,11 +1709,25 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
         }
 
         const mod = new ModelicaModification(null, [], null, null, newArray);
-        target.classInstance = target.classInstance?.clone(mod) ?? null;
+        componentTarget.classInstance = componentTarget.classInstance?.clone(mod) ?? null;
       }
     } else {
       const mod = new ModelicaModification(null, [], null, null, value);
-      target.classInstance = target.classInstance?.clone(mod) ?? null;
+      if (componentTarget.classInstance) {
+        componentTarget.classInstance = componentTarget.classInstance.clone(mod);
+      } else {
+        // First-time instantiation for dynamically created script variables
+        let typeName = "Real";
+        if (value instanceof ModelicaIntegerLiteral) typeName = "Integer";
+        else if (value instanceof ModelicaStringLiteral) typeName = "String";
+        else if (value instanceof ModelicaBooleanLiteral) typeName = "Boolean";
+        else if (value instanceof ModelicaArray) typeName = "Real"; // array fallback
+
+        const typeDefinition = scope.resolveSimpleName(typeName);
+        if (typeDefinition instanceof ModelicaClassInstance) {
+          componentTarget.classInstance = typeDefinition.clone(mod);
+        }
+      }
     }
 
     return null;
@@ -1767,6 +1809,19 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
    * @returns `null` in all cases.
    */
   visitProcedureCallStatement(node: ModelicaProcedureCallStatementSyntaxNode, scope: Scope): null {
+    const funcName =
+      node.functionReference?.parts?.length === 1 ? (node.functionReference.parts[0]?.identifier?.text ?? null) : null;
+    if (funcName === "print") {
+      const args = node.functionCallArguments?.arguments;
+      if (args && args.length > 0) {
+        const msgExpr = args[0]?.expression?.accept(this, scope);
+        if (msgExpr instanceof ModelicaStringLiteral) {
+          if (this.#printCallback) this.#printCallback(msgExpr.value);
+        }
+      }
+      return null;
+    }
+
     this.callFunction(node.functionReference, node.functionCallArguments, scope);
     return null;
   }
@@ -1986,6 +2041,25 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
   }
 
   /**
+   * Visits a stored definition (the root of a Modelica file), which evaluates any top-level statements.
+   * This allows the interpreter to execute Modelica scripts (.mos).
+   *
+   * @param node - The sequence of top-level Modelica statements and class definitions.
+   * @param scope - The root scope to evaluate against.
+   * @returns `null` in all cases.
+   */
+  visitStoredDefinition(node: ModelicaStoredDefinitionSyntaxNode, scope: Scope): null {
+    let scriptScope = scope;
+    if (!(scriptScope instanceof ModelicaScriptScope)) {
+      scriptScope = new ModelicaScriptScope(scope);
+    }
+    for (const stmt of node.statements) {
+      stmt.accept(this, scriptScope);
+    }
+    return null;
+  }
+
+  /**
    * Visits a string literal.
    *
    * @param node - The string literal syntax node.
@@ -2005,6 +2079,15 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
   visitUnaryExpression(node: ModelicaUnaryExpressionSyntaxNode, scope: Scope): ModelicaExpression | null {
     const operand = node.operand?.accept(this, scope);
     if (node.operator && operand) return ModelicaUnaryExpression.new(node.operator, operand);
+    return null;
+  }
+
+  #evaluatePrint(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
+    const args = this.evaluateArgs(node, scope);
+    const msgExpr = args[0];
+    if (msgExpr instanceof ModelicaStringLiteral) {
+      if (this.#printCallback) this.#printCallback(msgExpr.value);
+    }
     return null;
   }
 
