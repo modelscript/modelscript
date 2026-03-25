@@ -798,6 +798,8 @@ function applyCoordinateSystemX6(markup: X6Markup, coordinateSystem?: ICoordinat
   markup.attrs["preserveAspectRatio"] = "none";
   markup.attrs["overflow"] = "visible";
   if (!isRoot) {
+    markup.attrs["x"] = x;
+    markup.attrs["y"] = y;
     markup.attrs["width"] = width;
     markup.attrs["height"] = height;
   }
@@ -1135,6 +1137,27 @@ export function getClassIconSvg(cls: ModelicaClassInstance, size = 16, includePo
       markup.attrs["width"] = size;
       markup.attrs["height"] = size;
       delete markup.attrs["style"];
+
+      if (typeof markup.attrs["viewBox"] === "string") {
+        const vbMatch = markup.attrs["viewBox"].match(/^([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)$/);
+        if (vbMatch) {
+          const vx = parseFloat(vbMatch[1]);
+          const vy = parseFloat(vbMatch[2]);
+          const vw = parseFloat(vbMatch[3]);
+          const vh = parseFloat(vbMatch[4]);
+
+          if (vx !== 0 || vy !== 0) {
+            markup.attrs["viewBox"] = `0 0 ${vw} ${vh}`;
+            markup.children = [
+              {
+                tagName: "g",
+                attrs: { transform: `translate(${-vx}, ${-vy})` },
+                children: markup.children,
+              },
+            ];
+          }
+        }
+      }
     }
     return x6MarkupToSvg(markup);
   } catch {

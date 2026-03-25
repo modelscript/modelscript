@@ -1771,6 +1771,13 @@ function resolveClassKind(cls: ModelicaClassInstance): string {
 }
 
 function toTreeNode(cls: ModelicaClassInstance): TreeNodeInfo {
+  if (!cls.instantiated && !cls.instantiating) {
+    try {
+      cls.instantiate();
+    } catch {
+      // ignore instantiation errors for invalid files in the tree
+    }
+  }
   return {
     id: cls.compositeName,
     name: cls.name || "",
