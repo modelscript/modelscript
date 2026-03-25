@@ -89,7 +89,7 @@ const STIFFNESS_PROBE_THRESHOLD = 10;
 // ── Dense LU decomposition with partial pivoting ──
 
 /** LU factorization result for a dense n×n matrix with row equilibration. */
-interface LUFactorization {
+export interface LUFactorization {
   /** LU-combined matrix (lower triangle is L with unit diagonal, upper is U). */
   lu: Float64Array[];
   /** Pivot permutation indices. */
@@ -102,7 +102,7 @@ interface LUFactorization {
 
 /** Factor a dense n×n matrix (given as array of Float64Array rows) into PA = LU
  *  with row equilibration for numerical stability. */
-function luFactor(A: Float64Array[], n: number): LUFactorization {
+export function luFactor(A: Float64Array[], n: number): LUFactorization {
   // Copy matrix
   const lu = A.map((row) => new Float64Array(row));
   const piv = new Int32Array(n);
@@ -175,7 +175,7 @@ function luFactor(A: Float64Array[], n: number): LUFactorization {
 
 /** Solve LU·x = b (in-place, overwrites b with x).
  *  Accounts for row equilibration applied during factorization. */
-function luSolve(fact: LUFactorization, b: Float64Array): void {
+export function luSolve(fact: LUFactorization, b: Float64Array): void {
   const { lu, piv, rowScale, n } = fact;
   // Apply permutation, then row scaling to RHS
   // After pivoting, rowScale[i] = original scale for the row now at position i
@@ -1754,6 +1754,85 @@ export class ModelicaSimulator {
       infos.push(info);
     }
     return infos;
+  }
+
+  /**
+   * Evaluate the ODE right-hand side f(x, u, t) at a single point.
+   * Used by the optimal control direct collocation to evaluate dynamics constraints.
+   *
+   * @param time         Current time value
+   * @param stateValues  Map from state variable name → current value
+   * @param controlValues Map from control variable name → current value
+   * @returns Map from state variable name → derivative value (dx/dt)
+   */
+  public evaluateRHS(
+    time: number,
+    stateValues: Map<string, number>,
+    controlValues?: Map<string, number>,
+  ): Map<string, number> {
+    const evaluator = new ExpressionEvaluator();
+
+    // Load parameters
+    for (const [name, value] of this.parameters) {
+      evaluator.env.set(name, value);
+    }
+
+    // Load state values
+    for (const [name, value] of stateValues) {
+      evaluator.env.set(name, value);
+    }
+
+    // Load control values (overriding any parameters with matching names)
+    if (controlValues) {
+      for (const [name, value] of controlValues) {
+        evaluator.env.set(name, value);
+      }
+    }
+
+    evaluator.env.set("time", time);
+
+    // Pre-populate all DAE variables with 0 to avoid null cascades
+    for (const v of this.dae.variables) {
+      if (!evaluator.env.has(v.name)) {
+        evaluator.env.set(v.name, 0);
+      }
+    }
+
+    // Evaluate algebraic equations (execution blocks) to compute intermediate values
+    for (const block of this.executionBlocks) {
+      if (block.type === "single") {
+        const val = evaluator.evaluate(block.eq.expr);
+        if (val !== null) {
+          if (block.eq.isDerivative) {
+            evaluator.env.set(`der(${block.eq.target})`, val);
+          } else {
+            evaluator.env.set(block.eq.target, val);
+          }
+        }
+      } else {
+        // System block: iterate Newton-like until convergence
+        for (let iter = 0; iter < 5; iter++) {
+          for (const eq of block.eqs) {
+            const val = evaluator.evaluate(eq.expr);
+            if (val !== null) {
+              if (eq.isDerivative) {
+                evaluator.env.set(`der(${eq.target})`, val);
+              } else {
+                evaluator.env.set(eq.target, val);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Extract derivatives
+    const derivatives = new Map<string, number>();
+    for (const state of this.stateVars) {
+      const derVal = evaluator.env.get(`der(${state})`);
+      derivatives.set(state, derVal ?? 0);
+    }
+    return derivatives;
   }
 
   public simulate(

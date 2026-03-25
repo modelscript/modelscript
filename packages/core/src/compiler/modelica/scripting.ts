@@ -22,5 +22,13 @@ class Scripting
     SimulationOptions simulationOptions "Resolved simulation parameters";
   end SimulationResult;
 
+  record OptimizationResult
+    Boolean success "Whether the optimizer converged";
+    Real cost "Optimal cost value";
+    Integer iterations "Number of SQP iterations";
+    Real timeValues[:] "Time grid points";
+    String messages "Optimizer messages or error output";
+  end OptimizationResult;
+
 end Scripting;
 `;

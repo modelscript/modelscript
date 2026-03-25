@@ -45,6 +45,7 @@ import {
   ModelicaLibrary,
   ModelicaLinter,
   ModelicaNamedElement,
+  ModelicaOptimizer,
   ModelicaProcedureCallStatementSyntaxNode,
   ModelicaScriptScope,
   ModelicaSimpleAssignmentStatementSyntaxNode,
@@ -52,6 +53,7 @@ import {
   ModelicaStoredDefinitionSyntaxNode,
   ModelicaSyntaxNode,
   Scope,
+  registerOptimizeDeps,
   registerSimulateDeps,
   type Dirent,
   type FileSystem,
@@ -63,6 +65,7 @@ import {
 // Register flattener/simulator constructors for the scripting simulate() function.
 // This breaks the circular dependency: interpreter → evaluate-simulate → flattener.
 registerSimulateDeps({ Flattener: ModelicaFlattener, Simulator: ModelicaSimulator });
+registerOptimizeDeps({ Flattener: ModelicaFlattener, Optimizer: ModelicaOptimizer });
 
 console.log("ModelScript language server starting...");
 

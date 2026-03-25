@@ -13,6 +13,7 @@ import {
   ModelicaStringLiteral,
   ModelicaUnaryExpression,
 } from "./dae.js";
+import { evaluateOptimize } from "./evaluate-optimize.js";
 import { evaluateSimulate } from "./evaluate-simulate.js";
 import {
   ModelicaArrayClassInstance,
@@ -1546,6 +1547,9 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     if (rawFuncName === "simulate") {
       return this.#evaluateSimulate(node, scope);
     }
+    if (rawFuncName === "optimize") {
+      return this.#evaluateOptimize(node, scope);
+    }
 
     // Handle built-in math/conversion/special functions
     if (rawFuncName && BUILTIN_MATH_FUNCTIONS.has(rawFuncName)) {
@@ -2216,6 +2220,15 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
    */
   #evaluateSimulate(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
     return evaluateSimulate(node, scope, (expr: ModelicaSyntaxNode, s: Scope) => expr.accept(this, s));
+  }
+
+  /**
+   * Evaluate the scripting-level `optimize(ClassName, ...)` built-in function.
+   *
+   * Delegates to evaluate-optimize.ts to avoid circular dependency.
+   */
+  #evaluateOptimize(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
+    return evaluateOptimize(node, scope, (expr: ModelicaSyntaxNode, s: Scope) => expr.accept(this, s));
   }
 }
 

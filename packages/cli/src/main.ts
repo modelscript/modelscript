@@ -11,6 +11,7 @@ import { Instantiate } from "./commands/instantiate.js";
 import { Lint } from "./commands/lint.js";
 import { Login } from "./commands/login.js";
 import { Logout } from "./commands/logout.js";
+import { Optimize } from "./commands/optimize.js";
 import { Parse } from "./commands/parse.js";
 import { Publish } from "./commands/publish.js";
 import { Render } from "./commands/render.js";
@@ -29,6 +30,7 @@ yargs(process.argv.slice(2))
   .command(Lint)
   .command(Login)
   .command(Logout)
+  .command(Optimize)
   .command(Parse)
   .command(Publish)
   .command(Render)

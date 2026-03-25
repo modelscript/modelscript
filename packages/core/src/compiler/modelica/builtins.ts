@@ -568,6 +568,23 @@ export const BUILTIN_FUNCTIONS: ReadonlyMap<string, BuiltinFunctionDef> = new Ma
       outputType: "SimulationResult",
     },
   ],
+  [
+    "optimize",
+    {
+      inputs: [
+        { name: "className", type: "TypeName" },
+        { name: "objective", type: "String" },
+        { name: "controls", type: "String" },
+        { name: "controlBounds", type: "String" },
+        { name: "startTime", type: "Real", defaultValue: 0 },
+        { name: "stopTime", type: "Real", defaultValue: 10 },
+        { name: "numIntervals", type: "Integer", defaultValue: 50 },
+        { name: "tolerance", type: "Real", defaultValue: 1e-6 },
+        { name: "maxIterations", type: "Integer", defaultValue: 200 },
+      ],
+      outputType: "OptimizationResult",
+    },
+  ],
 ]);
 
 /**
