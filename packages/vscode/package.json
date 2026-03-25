@@ -34,7 +34,7 @@
     "dev": "webpack --watch",
     "lint": "eslint src --ext ts",
     "package": "npx @vscode/vsce package --no-dependencies",
-    "test-web": "npm run compile && vscode-test-web --browserType=chromium --quality stable --port 3100 --testRunnerDataDir=$HOME/.vscode-test-web --extensionDevelopmentPath=. ./test-data",
+    "test-web": "npm run compile && vscode-test-web --browserType=chromium --quality stable --commit cfbea10c5ffb233ea9177d34726e6056e89913dc --port 3100 --testRunnerDataDir=$HOME/.vscode-test-web --extensionDevelopmentPath=. ./test-data",
     "watch": "webpack --watch"
   },
   "contributes": {

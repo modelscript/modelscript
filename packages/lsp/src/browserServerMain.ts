@@ -52,12 +52,17 @@ import {
   ModelicaStoredDefinitionSyntaxNode,
   ModelicaSyntaxNode,
   Scope,
+  registerSimulateDeps,
   type Dirent,
   type FileSystem,
   type IDiagram,
   type Range,
   type Stats,
 } from "@modelscript/core";
+
+// Register flattener/simulator constructors for the scripting simulate() function.
+// This breaks the circular dependency: interpreter → evaluate-simulate → flattener.
+registerSimulateDeps({ Flattener: ModelicaFlattener, Simulator: ModelicaSimulator });
 
 console.log("ModelScript language server starting...");
 
@@ -952,6 +957,8 @@ const SCRIPT_BUILTINS = new Set([
   "true",
   "false",
   "time",
+  // Scripting API
+  "simulate",
 ]);
 
 /**
@@ -1323,9 +1330,12 @@ connection.onHover((params) => {
   const scope: Scope | undefined = instances?.[0] ?? context;
   if (!scope) return null;
 
-  // Ensure annotation class is initialized
+  // Ensure annotation and scripting classes are initialized
   if (!ModelicaElement.annotationClassInstance && context) {
     ModelicaElement.initializeAnnotationClass(context);
+  }
+  if (!ModelicaElement.scriptingClassInstance && context) {
+    ModelicaElement.initializeScriptingClass(context);
   }
 
   try {

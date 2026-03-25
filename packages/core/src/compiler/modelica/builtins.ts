@@ -11,14 +11,14 @@
 /** Parameter info for a single function input parameter. */
 export interface BuiltinParam {
   readonly name: string;
-  readonly type: "Real" | "Integer" | "Boolean" | "String";
+  readonly type: "Real" | "Integer" | "Boolean" | "String" | "TypeName";
   readonly defaultValue?: number | boolean;
 }
 
 /** A single signature (set of inputs + output type). */
 export interface BuiltinSignature {
   readonly inputs: readonly BuiltinParam[];
-  readonly outputType: "Real" | "Integer" | "Boolean" | "String" | null;
+  readonly outputType: string | null;
 }
 
 /**
@@ -29,7 +29,7 @@ export interface BuiltinSignature {
  */
 export interface BuiltinFunctionDef {
   readonly inputs: readonly BuiltinParam[];
-  readonly outputType: "Real" | "Integer" | "Boolean" | "String" | null;
+  readonly outputType: string | null;
   readonly overloads?: readonly BuiltinSignature[];
   /** Whether this function can be used as a reduction operator (e.g., `max(i for i in range)`). */
   readonly reduction?: true;
@@ -552,6 +552,22 @@ export const BUILTIN_FUNCTIONS: ReadonlyMap<string, BuiltinFunctionDef> = new Ma
   ["Integer", { inputs: [{ name: "x", type: "Integer" }], outputType: "Integer" }],
   ["Boolean", { inputs: [{ name: "x", type: "Boolean" }], outputType: "Boolean" }],
   ["end", { inputs: [], outputType: "Integer" }],
+
+  // Scripting API functions (not Modelica spec, but OMC-compatible)
+  [
+    "simulate",
+    {
+      inputs: [
+        { name: "className", type: "TypeName" },
+        { name: "startTime", type: "Real", defaultValue: 0 },
+        { name: "stopTime", type: "Real", defaultValue: 10 },
+        { name: "numberOfIntervals", type: "Integer", defaultValue: 500 },
+        { name: "tolerance", type: "Real", defaultValue: 1e-6 },
+        { name: "outputInterval", type: "Real", defaultValue: -1 },
+      ],
+      outputType: "SimulationResult",
+    },
+  ],
 ]);
 
 /**

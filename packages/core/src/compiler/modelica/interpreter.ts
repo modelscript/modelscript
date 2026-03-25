@@ -13,6 +13,7 @@ import {
   ModelicaStringLiteral,
   ModelicaUnaryExpression,
 } from "./dae.js";
+import { evaluateSimulate } from "./evaluate-simulate.js";
 import {
   ModelicaArrayClassInstance,
   ModelicaClassInstance,
@@ -118,6 +119,8 @@ const BUILTIN_MATH_FUNCTIONS = new Set([
   // Derivative / special-purpose (§3.7.4)
   "der",
   "noEvent",
+  // Scripting API
+  "simulate",
   "smooth",
   "homotopy",
   "semiLinear",
@@ -1539,6 +1542,11 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
       if (result !== undefined) return result;
     }
 
+    // Handle scripting API functions
+    if (rawFuncName === "simulate") {
+      return this.#evaluateSimulate(node, scope);
+    }
+
     // Handle built-in math/conversion/special functions
     if (rawFuncName && BUILTIN_MATH_FUNCTIONS.has(rawFuncName)) {
       const result = this.evaluateBuiltinMathFunction(rawFuncName, node, scope);
@@ -2127,8 +2135,13 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
   #evaluatePrint(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
     const args = this.evaluateArgs(node, scope);
     const msgExpr = args[0];
-    if (msgExpr instanceof ModelicaStringLiteral) {
-      if (this.#printCallback) this.#printCallback(msgExpr.value);
+    if (this.#printCallback && msgExpr) {
+      if (msgExpr instanceof ModelicaStringLiteral) {
+        this.#printCallback(msgExpr.value);
+      } else {
+        // Serialize any other expression type (ModelicaObject, ModelicaArray, etc.) as JSON
+        this.#printCallback(JSON.stringify(msgExpr.toJSON, null, 2));
+      }
     }
     return null;
   }
@@ -2151,6 +2164,16 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
    */
   visitUnsignedRealLiteral(node: ModelicaUnsignedRealLiteralSyntaxNode): ModelicaRealLiteral {
     return new ModelicaRealLiteral(node.value);
+  }
+
+  /**
+   * Evaluate the scripting-level `simulate(ClassName, ...)` built-in function.
+   *
+   * Delegates to evaluate-simulate.ts to avoid circular dependency
+   * (interpreter → flattener → model → interpreter).
+   */
+  #evaluateSimulate(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
+    return evaluateSimulate(node, scope, (expr: ModelicaSyntaxNode, s: Scope) => expr.accept(this, s));
   }
 }
 

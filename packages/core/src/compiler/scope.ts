@@ -220,6 +220,9 @@ export class ModelicaScriptScope extends Scope {
       if (this.variables.has(name)) return this.variables.get(name) ?? null;
       if (this.classDefinitions.has(name)) return this.classDefinitions.get(name) ?? null;
     }
+    // Check scripting built-in types (SimulationResult, SimulationOptions, etc.)
+    const scriptingResult = ModelicaElement.scriptingClassInstance?.resolveSimpleName(identifier, false, true) ?? null;
+    if (scriptingResult) return scriptingResult;
     return super.resolveSimpleName(identifier, global, encapsulated);
   }
 }

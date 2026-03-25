@@ -19,6 +19,7 @@ import {
 } from "./dae.js";
 import { ModelicaErrorCode, makeDiagnostic, type ModelicaDiagnostic } from "./errors.js";
 import { ModelicaInterpreter } from "./interpreter.js";
+import { SCRIPTING } from "./scripting.js";
 import {
   ModelicaAlgorithmSectionSyntaxNode,
   ModelicaAnnotationClauseSyntaxNode,
@@ -229,6 +230,12 @@ export abstract class ModelicaElement extends ModelicaNode {
     return ModelicaElement.#annotationClassInstance;
   }
 
+  static #scriptingClassInstance: ModelicaClassInstance | null = null;
+
+  static get scriptingClassInstance(): ModelicaClassInstance | null {
+    return ModelicaElement.#scriptingClassInstance;
+  }
+
   abstract get hash(): string;
 
   static initializeAnnotationClass(context: Context): void {
@@ -238,6 +245,16 @@ export abstract class ModelicaElement extends ModelicaNode {
     if (node) {
       ModelicaElement.#annotationClassInstance = ModelicaClassInstance.new(null, node);
       ModelicaElement.#annotationClassInstance.instantiate();
+    }
+  }
+
+  static initializeScriptingClass(context: Context): void {
+    if (ModelicaElement.#scriptingClassInstance) return;
+    const tree = context.getParser(".mo").parse(SCRIPTING);
+    const node = ModelicaStoredDefinitionSyntaxNode.new(null, tree?.rootNode)?.classDefinitions?.[0] ?? null;
+    if (node) {
+      ModelicaElement.#scriptingClassInstance = ModelicaClassInstance.new(null, node);
+      ModelicaElement.#scriptingClassInstance.instantiate();
     }
   }
 

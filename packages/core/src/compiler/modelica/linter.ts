@@ -679,6 +679,8 @@ const BUILTIN_MODELICA_NAMES = new Set([
   "Modelica",
   // Enumerations
   "enumeration",
+  // Scripting API
+  "simulate",
 ]);
 
 class ModelicaExpressionNameResolutionVisitor extends ModelicaSyntaxVisitor<void, DiagnosticsCallbackWithoutResource> {
