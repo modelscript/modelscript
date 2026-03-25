@@ -83,6 +83,8 @@ function sqpSolve(
   z0: Float64Array,
   tol: number,
   maxIter: number,
+  evalGradient?: (z: Float64Array, g: Float64Array) => void,
+  evalJacobian?: (z: Float64Array, J: Float64Array[]) => void,
 ): { z: Float64Array; cost: number; iterations: number; costHistory: number[]; converged: boolean } {
   const z = new Float64Array(z0);
   const costHistory: number[] = [];
@@ -94,7 +96,6 @@ function sqpSolve(
     H[i]![i] = 1.0;
   }
 
-  // Gradient via finite differences
   const grad = new Float64Array(n);
   const gradPrev = new Float64Array(n);
   const c = new Float64Array(nEq);
@@ -106,13 +107,19 @@ function sqpSolve(
   const lambda = new Float64Array(nEq);
 
   function computeGrad(zz: Float64Array, g: Float64Array): void {
-    const f0 = evalObjective(zz);
-    for (let i = 0; i < n; i++) {
-      const orig = zz[i]!;
-      const h = Math.max(FD_EPS, Math.abs(orig) * FD_EPS);
-      zz[i] = orig + h;
-      g[i] = (evalObjective(zz) - f0) / h;
-      zz[i] = orig;
+    if (evalGradient) {
+      // Use AD-based exact gradient
+      evalGradient(zz, g);
+    } else {
+      // Fallback: finite differences
+      const f0 = evalObjective(zz);
+      for (let i = 0; i < n; i++) {
+        const orig = zz[i]!;
+        const h = Math.max(FD_EPS, Math.abs(orig) * FD_EPS);
+        zz[i] = orig + h;
+        g[i] = (evalObjective(zz) - f0) / h;
+        zz[i] = orig;
+      }
     }
   }
 
@@ -136,20 +143,26 @@ function sqpSolve(
     evalConstraints(z, c);
     computeGrad(z, grad);
 
-    // Compute constraint Jacobian via finite differences (sparse would be better, but dense is simpler)
+    // Compute constraint Jacobian
     const J = new Array<Float64Array>(nEq);
     for (let i = 0; i < nEq; i++) J[i] = new Float64Array(n);
 
-    const c0 = new Float64Array(c);
-    const cPerturbed = new Float64Array(nEq);
-    for (let j = 0; j < n; j++) {
-      const orig = z[j]!;
-      const h = Math.max(FD_EPS, Math.abs(orig) * FD_EPS);
-      z[j] = orig + h;
-      evalConstraints(z, cPerturbed);
-      z[j] = orig;
-      for (let i = 0; i < nEq; i++) {
-        J[i]![j] = (cPerturbed[i]! - c0[i]!) / h;
+    if (evalJacobian) {
+      // Use AD-based exact Jacobian
+      evalJacobian(z, J);
+    } else {
+      // Fallback: finite differences
+      const c0 = new Float64Array(c);
+      const cPerturbed = new Float64Array(nEq);
+      for (let j = 0; j < n; j++) {
+        const orig = z[j]!;
+        const h = Math.max(FD_EPS, Math.abs(orig) * FD_EPS);
+        z[j] = orig + h;
+        evalConstraints(z, cPerturbed);
+        z[j] = orig;
+        for (let i = 0; i < nEq; i++) {
+          J[i]![j] = (cPerturbed[i]! - c0[i]!) / h;
+        }
       }
     }
 
@@ -454,9 +467,89 @@ export class ModelicaOptimizer {
         }
       }
     };
+    // AD-based objective gradient: ∂(∫ ∑u²dt)/∂z
+    // For quadratic cost ∑ u², ∂L/∂u_j = 2·u_j, ∂L/∂x_i = 0
+    const evalGradient = (z: Float64Array, g: Float64Array): void => {
+      g.fill(0);
+      for (let k = 0; k < nPoints; k++) {
+        const w = k === 0 || k === N ? 0.5 : 1.0;
+        for (let j = 0; j < nControls; j++) {
+          const uVal = z[k * varsPerPoint + nStates + j]!;
+          g[k * varsPerPoint + nStates + j] = w * dt * 2 * uVal;
+        }
+      }
+    };
 
-    // Solve the NLP
-    const result = sqpSolve(nVars, nEqConstraints, evalObjective, evalConstraints, lb, ub, z0, tol, maxIter);
+    // AD-based constraint Jacobian using forward-mode AD through the model dynamics
+    const evalJacobian = (z: Float64Array, J: Float64Array[]): void => {
+      // All seed variable names: state names + control names
+      const allSeeds = [...stateNames, ...controls];
+
+      for (let k = 0; k < N; k++) {
+        const xk = getStateMap(z, k);
+        const uk = getControlMap(z, k);
+        const xk1 = getStateMap(z, k + 1);
+        const uk1 = getControlMap(z, k + 1);
+
+        // Jacobians of f at grid points k and k+1
+        const { J: Jk } = this.simulator.evaluateRHSWithJacobian(tGrid[k]!, xk, uk, allSeeds);
+        const { J: Jk1 } = this.simulator.evaluateRHSWithJacobian(tGrid[k + 1]!, xk1, uk1, allSeeds);
+
+        // Constraint: c_{k,i} = x_{k+1,i} - x_{k,i} - (dt/2)(f_{k,i} + f_{k+1,i}) = 0
+        // ∂c_{k,i}/∂z_j:
+        //   If z_j is x_{k,m}:    -δ_{im} - (dt/2)(∂f_k_i/∂x_m)
+        //   If z_j is u_{k,m}:             - (dt/2)(∂f_k_i/∂u_m)
+        //   If z_j is x_{k+1,m}:  +δ_{im} - (dt/2)(∂f_{k+1}_i/∂x_m)
+        //   If z_j is u_{k+1,m}:           - (dt/2)(∂f_{k+1}_i/∂u_m)
+        for (let i = 0; i < nStates; i++) {
+          const stateName = stateNames[i]!;
+          const row = k * nStates + i;
+          const JkRow = Jk.get(stateName);
+          const Jk1Row = Jk1.get(stateName);
+
+          // Derivatives w.r.t. variables at grid point k
+          for (let m = 0; m < nStates; m++) {
+            const col = k * varsPerPoint + m;
+            const dfk = JkRow?.get(stateNames[m]!) ?? 0;
+            // -δ_{im} from -x_k term, -(dt/2)·∂f_k/∂x_m from dynamics
+            J[row]![col] = -(m === i ? 1 : 0) - (dt / 2) * dfk;
+          }
+          for (let m = 0; m < nControls; m++) {
+            const col = k * varsPerPoint + nStates + m;
+            const dfk = JkRow?.get(controls[m]!) ?? 0;
+            J[row]![col] = -(dt / 2) * dfk;
+          }
+
+          // Derivatives w.r.t. variables at grid point k+1
+          for (let m = 0; m < nStates; m++) {
+            const col = (k + 1) * varsPerPoint + m;
+            const dfk1 = Jk1Row?.get(stateNames[m]!) ?? 0;
+            // +δ_{im} from +x_{k+1} term, -(dt/2)·∂f_{k+1}/∂x_m from dynamics
+            J[row]![col] = (m === i ? 1 : 0) - (dt / 2) * dfk1;
+          }
+          for (let m = 0; m < nControls; m++) {
+            const col = (k + 1) * varsPerPoint + nStates + m;
+            const dfk1 = Jk1Row?.get(controls[m]!) ?? 0;
+            J[row]![col] = -(dt / 2) * dfk1;
+          }
+        }
+      }
+    };
+
+    // Solve the NLP with AD-based gradient and Jacobian
+    const result = sqpSolve(
+      nVars,
+      nEqConstraints,
+      evalObjective,
+      evalConstraints,
+      lb,
+      ub,
+      z0,
+      tol,
+      maxIter,
+      evalGradient,
+      evalJacobian,
+    );
 
     // Extract results
     const stateTrajectories = new Map<string, number[]>();

@@ -24,6 +24,8 @@ import {
   ModelicaWhenEquation,
   pantelidesIndexReduction,
 } from "./dae.js";
+import { DualExpressionEvaluator } from "./dual-evaluator.js";
+import { Dual } from "./dual.js";
 import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "./syntax.js";
 
 /** Describes a single action inside a when-clause body. */
@@ -1833,6 +1835,98 @@ export class ModelicaSimulator {
       derivatives.set(state, derVal ?? 0);
     }
     return derivatives;
+  }
+
+  /**
+   * Evaluate f(x,u,t) AND its Jacobian ∂f/∂[x,u] at a single point using forward-mode AD.
+   *
+   * For each seed variable z_i, sets its dual part to 1 (all others 0),
+   * then evaluates the execution blocks with DualExpressionEvaluator.
+   * This gives exact derivatives via the chain rule.
+   *
+   * @param time          Current time value
+   * @param stateValues   Map from state variable name → current value
+   * @param controlValues Map from control variable name → current value
+   * @param seedVars      Which variables to differentiate with respect to
+   * @returns { f: state→derivative value, J: state→{ seedVar→∂f/∂seedVar } }
+   */
+  public evaluateRHSWithJacobian(
+    time: number,
+    stateValues: Map<string, number>,
+    controlValues?: Map<string, number>,
+    seedVars?: string[],
+  ): { f: Map<string, number>; J: Map<string, Map<string, number>> } {
+    // All variables that participate as seed candidates
+    const allSeedVars = seedVars ?? [
+      ...Array.from(stateValues.keys()),
+      ...(controlValues ? Array.from(controlValues.keys()) : []),
+    ];
+
+    // Build base numeric values map
+    const baseValues = new Map<string, number>();
+    for (const [name, value] of this.parameters) baseValues.set(name, value);
+    for (const [name, value] of stateValues) baseValues.set(name, value);
+    if (controlValues) {
+      for (const [name, value] of controlValues) baseValues.set(name, value);
+    }
+    baseValues.set("time", time);
+    for (const v of this.dae.variables) {
+      if (!baseValues.has(v.name)) baseValues.set(v.name, 0);
+    }
+
+    // First pass: compute f values (reuse evaluateRHS for the function values)
+    const f = this.evaluateRHS(time, stateValues, controlValues);
+
+    // Compute Jacobian columns via forward-mode AD
+    const J = new Map<string, Map<string, number>>();
+    for (const state of this.stateVars) {
+      J.set(state, new Map());
+    }
+
+    for (const seedVar of allSeedVars) {
+      // Build dual environment: seed variable gets dot=1, all others dot=0
+      const dualEval = new DualExpressionEvaluator();
+      for (const [name, value] of baseValues) {
+        dualEval.env.set(name, name === seedVar ? new Dual(value, 1) : Dual.constant(value));
+      }
+
+      // Walk execution blocks with dual evaluator
+      for (const block of this.executionBlocks) {
+        if (block.type === "single") {
+          const val = dualEval.evaluate(block.eq.expr);
+          if (val !== null) {
+            if (block.eq.isDerivative) {
+              dualEval.env.set(`der(${block.eq.target})`, val);
+            } else {
+              dualEval.env.set(block.eq.target, val);
+            }
+          }
+        } else {
+          // System block: iterate
+          for (let iter = 0; iter < 5; iter++) {
+            for (const eq of block.eqs) {
+              const val = dualEval.evaluate(eq.expr);
+              if (val !== null) {
+                if (eq.isDerivative) {
+                  dualEval.env.set(`der(${eq.target})`, val);
+                } else {
+                  dualEval.env.set(eq.target, val);
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // Extract derivative parts: ∂f_state/∂seedVar
+      for (const state of this.stateVars) {
+        const derDual = dualEval.env.get(`der(${state})`);
+        const partialDeriv = derDual?.dot ?? 0;
+        J.get(state)!.set(seedVar, partialDeriv); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      }
+    }
+
+    return { f, J };
   }
 
   public simulate(
