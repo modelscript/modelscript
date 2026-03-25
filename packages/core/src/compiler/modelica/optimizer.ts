@@ -19,6 +19,7 @@ import type { ModelicaDAE } from "./dae.js";
 import { ModelicaIntegerLiteral, ModelicaRealLiteral } from "./dae.js";
 import { luFactor, luSolve, ModelicaSimulator } from "./simulator.js";
 import { ModelicaVariability } from "./syntax.js";
+import { Tape, type TapeNode } from "./tape.js";
 
 // ── Public interfaces ──
 
@@ -467,17 +468,30 @@ export class ModelicaOptimizer {
         }
       }
     };
-    // AD-based objective gradient: ∂(∫ ∑u²dt)/∂z
-    // For quadratic cost ∑ u², ∂L/∂u_j = 2·u_j, ∂L/∂x_i = 0
+    // Reverse-mode AD objective gradient: single forward+backward pass for all ∂f/∂z_i
     const evalGradient = (z: Float64Array, g: Float64Array): void => {
-      g.fill(0);
+      const tape = new Tape();
+      // Create tracked tape nodes for all decision variables
+      const zNodes: TapeNode[] = [];
+      for (let i = 0; i < nVars; i++) zNodes.push(tape.variable(z[i]!));
+
+      // Evaluate objective on tape: trapezoidal ∫ L(u) dt
+      let costNode = tape.constant(0);
       for (let k = 0; k < nPoints; k++) {
-        const w = k === 0 || k === N ? 0.5 : 1.0;
+        const w = tape.constant(k === 0 || k === N ? 0.5 : 1.0);
+        const dtNode = tape.constant(dt);
+        // Compute L = ∑ u_i² at grid point k
+        let L = tape.constant(0);
         for (let j = 0; j < nControls; j++) {
-          const uVal = z[k * varsPerPoint + nStates + j]!;
-          g[k * varsPerPoint + nStates + j] = w * dt * 2 * uVal;
+          const uNode = zNodes[k * varsPerPoint + nStates + j]!;
+          L = tape.add(L, tape.mul(uNode, uNode));
         }
+        costNode = tape.add(costNode, tape.mul(w, tape.mul(dtNode, L)));
       }
+
+      // Single backward pass → all gradients simultaneously
+      tape.backward(costNode);
+      for (let i = 0; i < nVars; i++) g[i] = zNodes[i]!.adjoint;
     };
 
     // AD-based constraint Jacobian using forward-mode AD through the model dynamics

@@ -26,7 +26,9 @@ import {
 } from "./dae.js";
 import { DualExpressionEvaluator } from "./dual-evaluator.js";
 import { Dual } from "./dual.js";
+import { ReverseExpressionEvaluator } from "./reverse-evaluator.js";
 import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "./syntax.js";
+import { Tape, type TapeNode } from "./tape.js";
 
 /** Describes a single action inside a when-clause body. */
 interface WhenAction {
@@ -1927,6 +1929,96 @@ export class ModelicaSimulator {
     }
 
     return { f, J };
+  }
+
+  /**
+   * Evaluate f(x,u,t) using a computation tape for reverse-mode AD.
+   *
+   * Records the full forward evaluation on a Tape. After calling this,
+   * use `tape.backward(derivativeNode)` to get all ∂(der(state))/∂inputs
+   * in a single backward pass.
+   *
+   * @returns tape, leaf TapeNodes (for reading adjoints), derivative TapeNodes
+   */
+  public evaluateRHSReverse(
+    time: number,
+    stateValues: Map<string, number>,
+    controlValues?: Map<string, number>,
+  ): {
+    tape: Tape;
+    leaves: Map<string, TapeNode>;
+    derivatives: Map<string, TapeNode>;
+  } {
+    const tape = new Tape();
+    const revEval = new ReverseExpressionEvaluator(tape);
+    const leaves = new Map<string, TapeNode>();
+
+    // Create tracked leaf nodes for parameters
+    for (const [name, value] of this.parameters) {
+      const node = tape.constant(value);
+      revEval.env.set(name, node);
+    }
+
+    // Create tracked leaf nodes for states
+    for (const [name, value] of stateValues) {
+      const node = tape.variable(value);
+      revEval.env.set(name, node);
+      leaves.set(name, node);
+    }
+
+    // Create tracked leaf nodes for controls
+    if (controlValues) {
+      for (const [name, value] of controlValues) {
+        const node = tape.variable(value);
+        revEval.env.set(name, node);
+        leaves.set(name, node);
+      }
+    }
+
+    revEval.env.set("time", tape.constant(time));
+
+    // Pre-populate all DAE variables with 0
+    for (const v of this.dae.variables) {
+      if (!revEval.env.has(v.name)) {
+        revEval.env.set(v.name, tape.constant(0));
+      }
+    }
+
+    // Evaluate execution blocks on the tape
+    for (const block of this.executionBlocks) {
+      if (block.type === "single") {
+        const val = revEval.evaluate(block.eq.expr);
+        if (val !== null) {
+          if (block.eq.isDerivative) {
+            revEval.env.set(`der(${block.eq.target})`, val);
+          } else {
+            revEval.env.set(block.eq.target, val);
+          }
+        }
+      } else {
+        for (let iter = 0; iter < 5; iter++) {
+          for (const eq of block.eqs) {
+            const val = revEval.evaluate(eq.expr);
+            if (val !== null) {
+              if (eq.isDerivative) {
+                revEval.env.set(`der(${eq.target})`, val);
+              } else {
+                revEval.env.set(eq.target, val);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Extract derivative TapeNodes
+    const derivatives = new Map<string, TapeNode>();
+    for (const state of this.stateVars) {
+      const derNode = revEval.env.get(`der(${state})`);
+      if (derNode) derivatives.set(state, derNode);
+    }
+
+    return { tape, leaves, derivatives };
   }
 
   public simulate(
