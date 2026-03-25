@@ -873,6 +873,9 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
   }
 
   connection.sendDiagnostics({ uri: textDocument.uri, diagnostics });
+
+  // Notify the client that project tree data may have changed
+  connection.sendNotification("modelscript/projectTreeChanged");
 }
 
 /* Semantic tokens provider — regex-based tokenizer matching morsel's token types */
@@ -1556,6 +1559,111 @@ function getTreeChildren(context: Context, parentId?: string): TreeNodeInfo[] {
   }
 
   return nodes;
+}
+
+// Custom request: get project tree (workspace files and their classes)
+interface ProjectTreeNodeInfo {
+  id: string;
+  name: string;
+  uri?: string;
+  compositeName?: string;
+  classKind?: string;
+  hasChildren: boolean;
+  isFile: boolean;
+  iconSvg?: string;
+  /** 0-based line number of the class definition */
+  line?: number;
+}
+
+connection.onRequest("modelscript/getProjectTree", (params: { parentId?: string }): ProjectTreeNodeInfo[] => {
+  const nodes: ProjectTreeNodeInfo[] = [];
+
+  if (!params.parentId) {
+    // Root level: return one node per open .mo document
+    for (const [uri, instances] of workspaceInstances) {
+      const fileName = uri.split("/").pop() ?? uri;
+      nodes.push({
+        id: uri,
+        name: fileName,
+        uri,
+        hasChildren: instances.length > 0,
+        isFile: true,
+      });
+    }
+    // Sort files alphabetically
+    nodes.sort((a, b) => a.name.localeCompare(b.name));
+  } else {
+    // Check if parentId is a document URI (file node) or a class composite name
+    const fileInstances = workspaceInstances.get(params.parentId);
+    if (fileInstances) {
+      // File level: return top-level classes from this document
+      for (const inst of fileInstances) {
+        const kind = resolveClassKind(inst);
+        const line = inst.abstractSyntaxNode?.startPosition.row;
+        nodes.push({
+          id: `${params.parentId}::${inst.compositeName}`,
+          name: inst.name || "",
+          uri: params.parentId,
+          compositeName: inst.compositeName,
+          classKind: kind,
+          hasChildren: classHasChildClasses(inst),
+          isFile: false,
+          iconSvg: getClassIconSvg(inst),
+          line,
+        });
+      }
+    } else {
+      // Class level: find the parent class and return its child classes
+      const sepIdx = params.parentId.indexOf("::");
+      if (sepIdx >= 0) {
+        const docUri = params.parentId.substring(0, sepIdx);
+        const compositeName = params.parentId.substring(sepIdx + 2);
+        const instances = workspaceInstances.get(docUri);
+        if (instances) {
+          // Find the parent class by composite name
+          const parent = findClassByCompositeName(instances, compositeName);
+          if (parent) {
+            for (const child of parent.elements) {
+              if (child instanceof ModelicaClassInstance) {
+                const kind = resolveClassKind(child);
+                const line = child.abstractSyntaxNode?.startPosition.row;
+                nodes.push({
+                  id: `${docUri}::${child.compositeName}`,
+                  name: child.name || "",
+                  uri: docUri,
+                  compositeName: child.compositeName,
+                  classKind: kind,
+                  hasChildren: classHasChildClasses(child),
+                  isFile: false,
+                  iconSvg: getClassIconSvg(child),
+                  line,
+                });
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return nodes;
+});
+
+function findClassByCompositeName(
+  instances: ModelicaClassInstance[],
+  compositeName: string,
+): ModelicaClassInstance | null {
+  for (const inst of instances) {
+    if (inst.compositeName === compositeName) return inst;
+    // Search children recursively
+    for (const child of inst.elements) {
+      if (child instanceof ModelicaClassInstance) {
+        const found = findClassByCompositeName([child], compositeName);
+        if (found) return found;
+      }
+    }
+  }
+  return null;
 }
 
 // Custom request: get class icon SVG

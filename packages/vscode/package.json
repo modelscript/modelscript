@@ -58,6 +58,10 @@
         "command": "modelscript.addToDiagram",
         "title": "ModelScript: Add to Diagram",
         "icon": "$(add)"
+      },
+      {
+        "command": "modelscript.openProjectFile",
+        "title": "ModelScript: Open File"
       }
     ],
     "configuration": [
@@ -137,6 +141,11 @@
     "views": {
       "explorer": [
         {
+          "id": "modelscript.projectTree",
+          "name": "Modelica Project",
+          "visibility": "visible"
+        },
+        {
           "id": "modelscript.libraryTree",
           "name": "Modelica Libraries",
           "visibility": "visible"
@@ -144,6 +153,10 @@
       ]
     },
     "viewsWelcome": [
+      {
+        "view": "modelscript.projectTree",
+        "contents": "No Modelica files found in the workspace."
+      },
       {
         "view": "modelscript.libraryTree",
         "contents": "Open a Modelica file to browse libraries."

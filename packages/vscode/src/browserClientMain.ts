@@ -4,6 +4,7 @@ import { LanguageClientOptions } from "vscode-languageclient";
 import { LanguageClient } from "vscode-languageclient/browser";
 import { DiagramPanel } from "./diagramPanel";
 import { LibraryTreeProvider } from "./libraryTreeProvider";
+import { ProjectTreeProvider } from "./projectTreeProvider";
 import { SimulationPanel } from "./simulationPanel";
 
 let client: LanguageClient | undefined;
@@ -136,6 +137,14 @@ export async function activate(context: vscode.ExtensionContext) {
   });
   context.subscriptions.push(treeView);
 
+  // Register project tree view
+  const projectTreeProvider = new ProjectTreeProvider(client);
+  const projectTreeView = vscode.window.createTreeView("modelscript.projectTree", {
+    treeDataProvider: projectTreeProvider,
+    canSelectMany: false,
+  });
+  context.subscriptions.push(projectTreeView);
+
   // Status bar item to show loading progress
   const statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, -100);
   statusItem.text = "$(sync~spin) ModelScript: Loading...";
@@ -156,6 +165,7 @@ export async function activate(context: vscode.ExtensionContext) {
         setTimeout(() => statusItem.hide(), 5000);
         // Auto-refresh UI components now that LSP is fully initialized
         treeProvider.refresh();
+        projectTreeProvider.refresh();
         if (DiagramPanel.currentPanel) {
           DiagramPanel.currentPanel.update();
         }
@@ -249,7 +259,32 @@ export async function activate(context: vscode.ExtensionContext) {
         vscode.window.showErrorMessage(`Failed to add component: ${e}`);
       }
     }),
+    commands.registerCommand("modelscript.openProjectFile", async (uri: string, line?: number) => {
+      try {
+        const docUri = vscode.Uri.parse(uri);
+        const doc = await workspace.openTextDocument(docUri);
+        const editor = await vscode.window.showTextDocument(doc, vscode.ViewColumn.One);
+        if (line !== undefined) {
+          const position = new vscode.Position(line, 0);
+          editor.selection = new vscode.Selection(position, position);
+          editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter);
+        }
+      } catch (e) {
+        console.error("[project-tree] Error opening file:", e);
+      }
+    }),
   );
+
+  // Listen for project tree updates from the LSP server
+  client.onNotification("modelscript/projectTreeChanged", () => {
+    projectTreeProvider.refresh();
+  });
+
+  // Watch for .mo file changes to refresh the project tree
+  const moWatcher = vscode.workspace.createFileSystemWatcher("**/*.mo");
+  moWatcher.onDidCreate(() => projectTreeProvider.refresh());
+  moWatcher.onDidDelete(() => projectTreeProvider.refresh());
+  context.subscriptions.push(moWatcher);
 
   // Pre-open all .mo files in the workspace so the LSP server can track them.
   // This is fire-and-forget: don't crash the extension if the filesystem isn't ready.
