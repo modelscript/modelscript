@@ -87,6 +87,7 @@ export interface DiagramNode {
     groups: Record<string, { position: string; zIndex: number }>;
   };
   properties?: ComponentPropertyData;
+  autoLayout?: boolean;
 }
 
 export interface DiagramPort {
@@ -144,6 +145,7 @@ export function buildDiagramData(classInstance: ModelicaClassInstance): DiagramD
     if (!componentClassInstance) continue;
 
     let componentTransform = computeIconPlacement(component);
+    const autoLayout = !componentTransform;
     if (!componentTransform) {
       const icon = componentClassInstance.annotation("Icon") as IIcon | null;
       const naturalWidth = computeWidth(icon?.coordinateSystem?.extent) || 200;
@@ -326,6 +328,7 @@ export function buildDiagramData(classInstance: ModelicaClassInstance): DiagramD
         ],
         attrs: { preserveAspectRatio: "none", width: absWidth, height: absHeight, style: "overflow: visible" },
       },
+      autoLayout,
       ports: {
         items: ports,
         groups: { absolute: { position: "absolute", zIndex: 100 } },

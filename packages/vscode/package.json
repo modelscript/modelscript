@@ -62,6 +62,11 @@
       {
         "command": "modelscript.openProjectFile",
         "title": "ModelScript: Open File"
+      },
+      {
+        "command": "modelscript.autoLayout",
+        "title": "ModelScript: Auto Layout",
+        "icon": "$(wand)"
       }
     ],
     "configuration": [
@@ -134,6 +139,11 @@
         },
         {
           "command": "modelscript.openDiagramSource",
+          "when": "activeCustomEditorId == modelscript.diagram",
+          "group": "navigation"
+        },
+        {
+          "command": "modelscript.autoLayout",
           "when": "activeCustomEditorId == modelscript.diagram",
           "group": "navigation"
         }

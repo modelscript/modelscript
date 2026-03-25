@@ -10,10 +10,22 @@ import { LanguageClient } from "vscode-languageclient/browser";
 export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
   public static readonly viewType = "modelscript.diagram";
 
+  private readonly activeWebviews = new Set<vscode.WebviewPanel>();
+
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly client: LanguageClient,
-  ) {}
+  ) {
+    context.subscriptions.push(
+      vscode.commands.registerCommand("modelscript.autoLayout", () => {
+        for (const panel of this.activeWebviews) {
+          if (panel.active) {
+            panel.webview.postMessage({ type: "autoLayout" });
+          }
+        }
+      }),
+    );
+  }
 
   public async resolveCustomTextEditor(
     document: vscode.TextDocument,
@@ -25,6 +37,11 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
       enableScripts: true,
       localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, "dist")],
     };
+
+    this.activeWebviews.add(webviewPanel);
+    webviewPanel.onDidDispose(() => {
+      this.activeWebviews.delete(webviewPanel);
+    });
 
     webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview);
 

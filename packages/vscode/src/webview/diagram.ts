@@ -3,6 +3,7 @@
 // Webview-side script: receives diagram data via postMessage and
 // renders it using AntV X6.
 
+import { DagreLayout } from "@antv/layout";
 import { Cell, Graph, Selection, Transform } from "@antv/x6";
 
 // Add global binding for close button
@@ -447,7 +448,8 @@ function renderDiagram(data: any, isDark: boolean) {
       opacity: node.opacity,
       markup: node.markup,
       ports: node.ports,
-      data: { properties: node.properties }, // Pass properties to X6 node
+      data: { properties: node.properties },
+      autoLayout: node.autoLayout,
     });
   }
 
@@ -557,6 +559,53 @@ function renderDiagram(data: any, isDark: boolean) {
   }
 
   const isFirstRender = g.getCells().length === 0;
+
+  const nodesToLayout: string[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  nodes.forEach((node: any) => {
+    if (node.autoLayout) {
+      nodesToLayout.push(node.id ?? "");
+    }
+  });
+
+  if (nodesToLayout.length > 0) {
+    const dagreLayout = new DagreLayout({
+      type: "dagre",
+      rankdir: "LR",
+      align: "UL",
+      ranksep: 0.5,
+      nodesep: 0.5,
+      begin: [-10, -10],
+      controlPoints: true,
+    });
+
+    const model = {
+      nodes: nodes.filter((n) => nodesToLayout.includes(n.id ?? "")),
+      edges: edges
+        .filter((e) => {
+          const s = typeof e.source === "string" ? e.source : (e.source.cell as string);
+          const t = typeof e.target === "string" ? e.target : (e.target.cell as string);
+          return nodesToLayout.includes(s) && nodesToLayout.includes(t);
+        })
+        .map((e) => ({
+          source: typeof e.source === "string" ? e.source : (e.source.cell as string),
+          target: typeof e.target === "string" ? e.target : (e.target.cell as string),
+        })),
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const newModel = dagreLayout.layout(model as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    newModel.nodes?.forEach((n: any) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const node = nodes.find((no: any) => no.id === n.id);
+      if (node) {
+        node.x = n.x;
+        node.y = n.y;
+      }
+    });
+  }
+
   g.fromJSON({ nodes, edges });
 
   // Only fit view on first render — preserve zoom/pan on subsequent updates
@@ -594,6 +643,58 @@ window.addEventListener("message", (event: MessageEvent) => {
       }
       break;
     }
+
+    case "autoLayout": {
+      if (!graph) return;
+      const nodes = graph.getNodes();
+      const edges = graph.getEdges();
+
+      const dagreLayout = new DagreLayout({
+        type: "dagre",
+        rankdir: "LR",
+        align: "UL",
+        ranksep: 0.5,
+        nodesep: 0.5,
+        begin: [-10, -10],
+        controlPoints: true,
+      });
+
+      const model = {
+        nodes: nodes.map((n) => ({
+          id: n.id,
+          width: n.getSize().width,
+          height: n.getSize().height,
+        })),
+        edges: edges.map((e) => ({
+          source: e.getSourceCellId(),
+          target: e.getTargetCellId(),
+        })),
+      };
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const newModel = dagreLayout.layout(model as any);
+      const g = graph;
+
+      g.batchUpdate("layout", () => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        newModel.nodes?.forEach((n: any) => {
+          const node = g.getCellById(n.id);
+          if (node && node.isNode()) {
+            node.setPosition(n.x, n.y);
+          }
+        });
+      });
+
+      // Let X6 handle bounds rescaling securely over position callbacks
+      setTimeout(() => {
+        if (graph) {
+          graph.zoomToFit({ padding: 20 });
+          graph.centerContent();
+        }
+      }, 100);
+      break;
+    }
+
     case "error": {
       const spinner = document.getElementById("spinner");
       if (spinner) spinner.style.display = "none";

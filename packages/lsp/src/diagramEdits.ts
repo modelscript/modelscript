@@ -141,6 +141,10 @@ function getPlacementEdit(lines: string[], classInstance: ModelicaClassInstance,
       const insert = ` annotation(${newPlacement})`;
       const newText = text.slice(0, semiIndex) + insert + text.slice(semiIndex);
       return TextEdit.replace(range, newText);
+    } else {
+      const insert = ` annotation(${newPlacement})`;
+      const newText = text + insert;
+      return TextEdit.replace(range, newText);
     }
   }
   return null;
