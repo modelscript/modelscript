@@ -7,19 +7,28 @@
 .editorconfig
 *.db*
 
-# Build artifacts (rebuilt inside container)
+# Build artifacts (rebuilt inside container in standalone mode)
 node_modules
-dist
-build
 coverage
 ctrf
 
 # Large files not needed in builds
 packages/core/testsuite
-packages/ide/vscode-web
 
 # Package-specific
 packages/morsel/.react-router
-packages/morsel/build
 packages/api/data
-packages/web/dist
+
+# Exclude all dist/build directories by default...
+dist
+build
+
+# ...but re-include the ones needed by PREBUILT=true mode
+!packages/core/dist
+!packages/api/dist
+!packages/web/dist
+!packages/morsel/build
+!packages/ide/dist
+!packages/ide/vscode-web
+!packages/ide/github-fs/dist
+!packages/vscode/dist
