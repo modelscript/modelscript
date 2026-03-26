@@ -1,5 +1,6 @@
 services:
   api:
+    image: ghcr.io/modelscript/api:latest
     build:
       context: .
       target: api
@@ -13,6 +14,7 @@ services:
     restart: unless-stopped
 
   morsel:
+    image: ghcr.io/modelscript/morsel:latest
     build:
       context: .
       target: morsel
@@ -25,6 +27,7 @@ services:
     restart: unless-stopped
 
   web:
+    image: ghcr.io/modelscript/web:latest
     build:
       context: .
       target: web
@@ -35,6 +38,7 @@ services:
     restart: unless-stopped
 
   ide:
+    image: ghcr.io/modelscript/ide:latest
     build:
       context: .
       target: ide
