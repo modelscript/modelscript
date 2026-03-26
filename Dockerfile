@@ -28,7 +28,7 @@ FROM node:22-alpine AS deps
 RUN apk add --no-cache python3 make g++
 WORKDIR /app
 COPY package.json package-lock.json ./
-COPY packages/tree-sitter-modelica/package.json packages/tree-sitter-modelica/grammar.js packages/tree-sitter-modelica/binding.gyp packages/tree-sitter-modelica/
+COPY packages/tree-sitter-modelica/package.json packages/tree-sitter-modelica/grammar.js packages/tree-sitter-modelica/binding.gyp packages/tree-sitter-modelica/tree-sitter-modelica.wasm packages/tree-sitter-modelica/
 COPY packages/tree-sitter-modelica/bindings packages/tree-sitter-modelica/bindings
 COPY packages/core/package.json packages/core/
 COPY packages/api/package.json packages/api/
