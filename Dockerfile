@@ -2,7 +2,13 @@
 # Unified multi-stage Dockerfile for all ModelScript services.
 # Each service is a named target: api, morsel, web, ide.
 # Usage: docker compose build (targets configured in docker-compose.yml)
+#
+# Optimization: Set PREBUILT=true when the build context already contains
+# compiled dist/ directories (e.g. from CI). This skips TypeScript compilation
+# and linting inside Docker, cutting build time significantly.
 # ==============================================================================
+
+ARG PREBUILT=false
 
 # ---- Shared Alpine base with native build tools ----
 FROM node:22-alpine AS deps
@@ -20,20 +26,25 @@ COPY packages/cli/package.json packages/cli/
 COPY packages/lsp/package.json packages/lsp/
 COPY packages/vscode/package.json packages/vscode/
 COPY packages/ide/package.json packages/ide/
-RUN npm ci --ignore-scripts
+RUN --mount=type=cache,target=/root/.npm npm ci --ignore-scripts
 # Build native addon from committed parser source
 RUN cd packages/tree-sitter-modelica && npx node-gyp rebuild
 
 # ==============================================================================
 # API
 # ==============================================================================
-FROM deps AS build-api
+FROM deps AS build-api-false
 COPY packages/core packages/core
 COPY packages/tree-sitter-modelica packages/tree-sitter-modelica
 COPY packages/api packages/api
-# Skip lint in Docker (already enforced in CI); run clean + tsc directly
 RUN npm run clean -w packages/core && npx tsc -p packages/core \
     && npm run clean -w packages/api && npx tsc -p packages/api
+
+FROM deps AS build-api-true
+COPY packages/core/dist packages/core/dist
+COPY packages/api/dist packages/api/dist
+
+FROM build-api-${PREBUILT} AS build-api
 
 FROM node:22-alpine AS api
 WORKDIR /app
@@ -48,7 +59,7 @@ COPY packages/cli/package.json packages/cli/
 COPY packages/lsp/package.json packages/lsp/
 COPY packages/vscode/package.json packages/vscode/
 COPY packages/ide/package.json packages/ide/
-RUN npm ci --omit=dev --ignore-scripts
+RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev --ignore-scripts
 COPY --from=deps /app/packages/tree-sitter-modelica/src packages/tree-sitter-modelica/src
 COPY --from=deps /app/packages/tree-sitter-modelica/build packages/tree-sitter-modelica/build
 COPY --from=deps /app/node_modules/@modelscript/tree-sitter-modelica node_modules/@modelscript/tree-sitter-modelica
@@ -61,22 +72,27 @@ CMD ["node", "packages/api/dist/main.js"]
 # ==============================================================================
 # Morsel
 # ==============================================================================
-FROM deps AS build-morsel
+FROM deps AS build-morsel-false
 COPY scripts scripts
 COPY packages/core packages/core
 COPY packages/tree-sitter-modelica packages/tree-sitter-modelica
 COPY packages/morsel packages/morsel
 RUN node scripts/download-msl.cjs && cp scripts/ModelicaStandardLibrary_v4.1.0.zip packages/morsel/public/
-# Skip lint in Docker (already enforced in CI); run clean + tsc for core
 RUN npm run clean -w packages/core && npx tsc -p packages/core \
     && npm run build -w packages/morsel
+
+FROM deps AS build-morsel-true
+COPY packages/morsel/package.json packages/morsel/
+COPY packages/morsel/build packages/morsel/build
+
+FROM build-morsel-${PREBUILT} AS build-morsel
 
 FROM node:22-alpine AS morsel
 WORKDIR /app
 COPY --from=build-morsel /app/packages/morsel/build packages/morsel/build
 COPY --from=build-morsel /app/packages/morsel/package.json packages/morsel/
 COPY --from=build-morsel /app/package.json /app/package-lock.json ./
-RUN npm install --omit=dev -w packages/morsel --ignore-scripts
+RUN --mount=type=cache,target=/root/.npm npm install --omit=dev -w packages/morsel --ignore-scripts
 EXPOSE 3000
 ENV NODE_ENV=production
 CMD ["npx", "react-router-serve", "./packages/morsel/build/server/index.js"]
@@ -84,12 +100,16 @@ CMD ["npx", "react-router-serve", "./packages/morsel/build/server/index.js"]
 # ==============================================================================
 # Web
 # ==============================================================================
-FROM deps AS build-web
+FROM deps AS build-web-false
 COPY packages/core packages/core
 COPY packages/web packages/web
-# Skip lint in Docker (already enforced in CI); run clean + tsc for core
 RUN npm run clean -w packages/core && npx tsc -p packages/core \
     && npm run build -w packages/web
+
+FROM deps AS build-web-true
+COPY packages/web/dist packages/web/dist
+
+FROM build-web-${PREBUILT} AS build-web
 
 FROM nginx:alpine AS web
 COPY --from=build-web /app/packages/web/dist /usr/share/nginx/html
@@ -99,7 +119,7 @@ EXPOSE 80
 # ==============================================================================
 # IDE
 # ==============================================================================
-FROM deps AS build-ide
+FROM deps AS build-ide-false
 COPY scripts scripts
 COPY packages/core packages/core
 COPY packages/tree-sitter-modelica packages/tree-sitter-modelica
@@ -107,11 +127,21 @@ COPY packages/lsp packages/lsp
 COPY packages/vscode packages/vscode
 COPY packages/ide packages/ide
 COPY packages/morsel packages/morsel
-# Skip lint in Docker (already enforced in CI); run clean + tsc for core
 RUN npm run clean -w packages/core && npx tsc -p packages/core \
     && npm run build -w packages/lsp \
     && npm run build -w packages/vscode \
     && npm run build -w packages/ide
+
+FROM deps AS build-ide-true
+COPY packages/ide/dist packages/ide/dist
+COPY packages/ide/vscode-web packages/ide/vscode-web
+COPY packages/ide/github-fs/dist packages/ide/github-fs/dist
+COPY packages/vscode/dist packages/vscode/dist
+COPY packages/vscode/syntaxes packages/vscode/syntaxes
+COPY packages/vscode/language-configuration.json packages/vscode/
+COPY packages/morsel/public packages/morsel/public
+
+FROM build-ide-${PREBUILT} AS build-ide
 
 FROM node:22-alpine AS ide
 WORKDIR /app
@@ -125,7 +155,7 @@ COPY packages/cli/package.json packages/cli/
 COPY packages/core/package.json packages/core/
 COPY packages/lsp/package.json packages/lsp/
 COPY packages/tree-sitter-modelica/package.json packages/tree-sitter-modelica/grammar.js packages/tree-sitter-modelica/binding.gyp packages/tree-sitter-modelica/
-RUN npm ci --omit=dev --ignore-scripts
+RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev --ignore-scripts
 COPY --from=build-ide /app/packages/ide/dist packages/ide/dist
 COPY --from=build-ide /app/packages/ide/vscode-web packages/ide/vscode-web
 COPY --from=build-ide /app/packages/ide/github-fs/dist packages/ide/github-fs/dist
