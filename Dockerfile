@@ -50,7 +50,9 @@ FROM deps AS build-api
 COPY packages/core packages/core
 COPY packages/tree-sitter-modelica packages/tree-sitter-modelica
 COPY packages/api packages/api
-RUN npm run build -w packages/core && npm run build -w packages/api
+# Skip lint in Docker (already enforced in CI); run clean + tsc directly
+RUN npm run clean -w packages/core && npx tsc -p packages/core \
+    && npm run clean -w packages/api && npx tsc -p packages/api
 
 FROM node:22-alpine AS api
 WORKDIR /app
@@ -84,7 +86,9 @@ COPY packages/core packages/core
 COPY packages/tree-sitter-modelica packages/tree-sitter-modelica
 COPY packages/morsel packages/morsel
 RUN node scripts/download-msl.cjs && cp scripts/ModelicaStandardLibrary_v4.1.0.zip packages/morsel/public/
-RUN npm run build -w packages/core && npm run build -w packages/morsel
+# Skip lint in Docker (already enforced in CI); run clean + tsc for core
+RUN npm run clean -w packages/core && npx tsc -p packages/core \
+    && npm run build -w packages/morsel
 
 FROM node:22-alpine AS morsel
 WORKDIR /app
@@ -118,7 +122,8 @@ COPY packages/lsp packages/lsp
 COPY packages/vscode packages/vscode
 COPY packages/ide packages/ide
 COPY packages/morsel packages/morsel
-RUN npm run build -w packages/core \
+# Skip lint in Docker (already enforced in CI); run clean + tsc for core
+RUN npm run clean -w packages/core && npx tsc -p packages/core \
     && npm run build -w packages/lsp \
     && npm run build -w packages/vscode \
     && npm run build -w packages/ide
