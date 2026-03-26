@@ -119,6 +119,7 @@ EXPOSE 80
 # IDE
 # ==============================================================================
 FROM deps AS build-ide
+COPY scripts scripts
 COPY packages/core packages/core
 COPY packages/tree-sitter-modelica packages/tree-sitter-modelica
 COPY packages/lsp packages/lsp
