@@ -1,10 +1,11 @@
+<div align="center"><b>&#1576;&#1587;&#1605; &#1575;&#1604;&#1604;&#1607; &#1575;&#1604;&#1585;&#1581;&#1605;&#1606; &#1575;&#1604;&#1585;&#1581;&#1610;&#1605;</b></div>
+<div align="center">In the name of Allah, the Compassionate, the Merciful</div>
+
 # Code of Conduct (Islamic Principles)
 
 ## Our Pledge
 
-In the name of God, the Most Gracious, the Most Merciful.
-
-We as members, contributors, and leaders pledge to make participation in our community a harassment-free and respectful experience for everyone, regardless of age, body size, visible or invisible disability, ethnicity, level of experience, education, socio-economic status, nationality, personal appearance, race, caste, or color.
+We as members, contributors, and leaders pledge to make participation in our community a harassment-free and respectful experience for everyone, regardless of age, disability, ethnicity, experience, education, socio-economic status, nationality, race, or color.
 
 Inspired by the Islamic principles of _Adab_ (good manners) and _Akhlaq_ (virtuous character), we pledge to act and interact in ways that contribute to a welcoming, intellectually honest, and healthy community.
 
