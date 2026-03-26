@@ -2640,7 +2640,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       (node.functionReferenceName ?? "");
     let flatArgs: ModelicaExpression[] = [];
     for (const arg of node.functionCallArguments?.arguments ?? []) {
-      let flatArg: ModelicaExpression | null = null;
+      let flatArg: ModelicaExpression | null;
       if (arg.functionPartialApplication) {
         flatArg = this.visitFunctionPartialApplication(arg.functionPartialApplication, ctx);
       } else {
@@ -5645,7 +5645,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       expression2.elements.every((e) => isLiteral(e))
     ) {
       // LHS can be a ModelicaVariable (resolved from DAE) or a ModelicaNameExpression
-      let isScalarLHS = false;
+      let isScalarLHS: boolean;
       let lhsName: string | null = null;
       if (expression1 instanceof ModelicaVariable && !expression1.name.includes("[")) {
         lhsName = expression1.name;

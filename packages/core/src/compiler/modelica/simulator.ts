@@ -1613,25 +1613,25 @@ export class ModelicaSimulator {
         if (p.expr instanceof ModelicaNameExpression) {
           const refName = p.expr.name;
           if (!evaluator.env.has(refName)) {
-            let resolved = false;
             let dotIdx = refName.indexOf(".");
-            while (dotIdx > 0 && !resolved) {
+            while (dotIdx > 0) {
               const suffix = refName.substring(dotIdx + 1);
               const direct = evaluator.env.get(suffix);
               if (direct !== undefined) {
                 evaluator.env.set(refName, direct);
                 changed = true;
-                resolved = true;
                 break;
               }
+              let found = false;
               for (const [pName, pVal] of evaluator.env) {
                 if (pName.endsWith("." + suffix) || pName === suffix) {
                   evaluator.env.set(refName, pVal);
                   changed = true;
-                  resolved = true;
+                  found = true;
                   break;
                 }
               }
+              if (found) break;
               dotIdx = refName.indexOf(".", dotIdx + 1);
             }
           }

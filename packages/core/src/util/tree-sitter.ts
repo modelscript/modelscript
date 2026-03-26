@@ -8,7 +8,7 @@ export interface Edit {
 }
 
 export interface Parser {
-  parse(input: string, oldTree?: Tree, options?: unknown): Tree;
+  parse(input: string, oldTree?: Tree | null, options?: unknown): Tree;
 }
 
 export interface Point {
@@ -82,10 +82,13 @@ export interface Tree {
   readonly rootNode: SyntaxNode;
 
   rootNodeWithOffset(offsetBytes: number, offsetExtent: Point): SyntaxNode;
-  edit(edit: Edit): void;
+  edit(edit: Edit): Tree;
   walk(): TreeCursor;
   getChangedRanges(other: Tree): Range[];
   getIncludedRanges(): Range[];
+  getText(node: SyntaxNode): string;
+  getEditedRange(): Range;
+  printDotGraph(fd?: number): void;
 }
 
 export interface TreeCursor {

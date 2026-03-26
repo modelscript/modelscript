@@ -1,27 +1,4 @@
-type BaseNode = {
-  type: string;
-  named: boolean;
-};
+import type Parser from "tree-sitter";
 
-type ChildNode = {
-  multiple: boolean;
-  required: boolean;
-  types: BaseNode[];
-};
-
-type NodeInfo =
-  | (BaseNode & {
-      subtypes: BaseNode[];
-    })
-  | (BaseNode & {
-      fields: { [name: string]: ChildNode };
-      children: ChildNode[];
-    });
-
-type Language = {
-  language: unknown;
-  nodeTypeInfo: NodeInfo[];
-};
-
-declare const language: Language;
+declare const language: Parser.Language;
 export = language;

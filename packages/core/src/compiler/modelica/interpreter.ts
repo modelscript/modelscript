@@ -434,7 +434,7 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
   visitIfElseExpression(node: ModelicaIfElseExpressionSyntaxNode, scope: Scope): ModelicaExpression | null {
     // Try to evaluate the condition. If it reduces to a boolean literal, fold the if-expression.
     // This handles cases like `if n == 1 then {1} else {1, 2}` during CEval where n has a known value.
-    let condResult: ModelicaExpression | null = null;
+    let condResult: ModelicaExpression | null;
     if (node.condition instanceof ModelicaBooleanLiteralSyntaxNode) {
       condResult = new ModelicaBooleanLiteral(node.condition.value);
     } else {
@@ -450,7 +450,7 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     }
     // Check elseif clauses
     for (const clause of node.elseIfExpressionClauses ?? []) {
-      let elseIfCond: ModelicaExpression | null = null;
+      let elseIfCond: ModelicaExpression | null;
       if (clause.condition instanceof ModelicaBooleanLiteralSyntaxNode) {
         elseIfCond = new ModelicaBooleanLiteral(clause.condition.value);
       } else {

@@ -1240,7 +1240,7 @@ class ArraySubscriptChecker extends ModelicaSyntaxVisitor<null, null> {
   visitComponentReference(node: ModelicaComponentReferenceSyntaxNode, context: null): null {
     if (!node.parts || node.parts.length === 0) return super.visitComponentReference(node, context);
 
-    let currentElement: ModelicaComponentInstance | null = null;
+    let currentElement: ModelicaComponentInstance | null;
     const firstResolved = this.#scope.resolveSimpleName(node.parts[0]?.identifier, node.global);
     if (firstResolved instanceof ModelicaComponentInstance) {
       currentElement = firstResolved;

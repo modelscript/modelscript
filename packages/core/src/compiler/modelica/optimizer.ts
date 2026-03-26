@@ -138,7 +138,7 @@ function sqpSolve(
   costHistory.push(cost);
 
   let converged = false;
-  let iter = 0;
+  let iter: number;
 
   for (iter = 0; iter < maxIter; iter++) {
     evalConstraints(z, c);
