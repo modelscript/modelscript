@@ -1730,7 +1730,7 @@ connection.onDocumentColor((params) => {
       const nameNode = node.childForFieldName("name") || node.childForFieldName("identifier");
       const name = nameNode?.text;
       if (name && COLOR_FIELDS.has(name)) {
-        let exprNode = null;
+        let exprNode;
         if (node.type === "ElementModification") {
           const modNode = node.childForFieldName("modification");
           exprNode = modNode?.childForFieldName("modificationExpression")?.childForFieldName("expression");
