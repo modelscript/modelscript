@@ -8,11 +8,14 @@ import {
   CompletionItemKind,
   Diagnostic,
   DiagnosticSeverity,
+  DocumentHighlightKind,
+  DocumentSymbol,
   InitializeResult,
   SemanticTokens,
   SemanticTokensBuilder,
   SemanticTokensLegend,
   ServerCapabilities,
+  SymbolKind,
   TextDocumentSyncKind,
   TextDocuments,
 } from "vscode-languageserver";
@@ -36,7 +39,9 @@ import { unzipSync } from "fflate";
 
 import {
   Context,
+  ModelicaClassDefinitionSyntaxNode,
   ModelicaClassInstance,
+  ModelicaComponentDeclarationSyntaxNode,
   ModelicaComponentInstance,
   ModelicaComponentReferenceSyntaxNode,
   ModelicaDAE,
@@ -725,6 +730,11 @@ connection.onInitialize((params): InitializeResult => {
     },
     documentFormattingProvider: true,
     colorProvider: true,
+    documentSymbolProvider: true,
+    definitionProvider: true,
+    foldingRangeProvider: true,
+    selectionRangeProvider: true,
+    documentHighlightProvider: true,
   };
   return { capabilities };
 });
@@ -1468,6 +1478,190 @@ connection.onHover((params) => {
   }
 });
 
+/* Go to Definition — reuses hover's resolution logic to locate declarations */
+
+/**
+ * Resolve a Modelica element at a given text position.
+ * Shared by hover and go-to-definition.
+ */
+function resolveElementAtPosition(
+  document: TextDocument,
+  position: { line: number; character: number },
+): { element: ModelicaNamedElement; uri: string } | null {
+  if (!parserReady || !parser) return null;
+
+  const text = document.getText();
+  const lines = text.split("\n");
+  const lineContent = lines[position.line] ?? "";
+
+  // Find the word under cursor
+  let wordStart = position.character;
+  let wordEnd = position.character;
+  while (wordStart > 0 && /[_a-zA-Z0-9]/.test(lineContent[wordStart - 1])) wordStart--;
+  while (wordEnd < lineContent.length && /[_a-zA-Z0-9]/.test(lineContent[wordEnd])) wordEnd++;
+  const word = lineContent.substring(wordStart, wordEnd);
+  if (!word) return null;
+
+  // Expand to full dotted path
+  let start = wordStart;
+  let end = wordEnd;
+  while (start > 0 && (lineContent[start - 1] === "." || /[a-zA-Z0-9_]/.test(lineContent[start - 1]))) start--;
+  while (end < lineContent.length && (lineContent[end] === "." || /[a-zA-Z0-9_]/.test(lineContent[end]))) end++;
+  if (lineContent[end - 1] === ".") end--;
+  const fullPath = lineContent.substring(start, end);
+
+  const instances = documentInstances.get(document.uri);
+  const context = documentContexts.get(document.uri);
+  const scope: Scope | undefined = instances?.[0] ?? context;
+  if (!scope) return null;
+
+  // Ensure annotation and scripting classes are initialized
+  if (!ModelicaElement.annotationClassInstance && context) {
+    ModelicaElement.initializeAnnotationClass(context);
+  }
+
+  try {
+    const tree = parser.parse(text);
+    try {
+      const rootNode = tree.rootNode;
+      const current: Parser.SyntaxNode | null = rootNode.descendantForPosition(
+        { row: position.line, column: Math.max(0, wordStart) },
+        { row: position.line, column: wordEnd },
+      );
+
+      let element: ModelicaNamedElement | null = null;
+
+      // Check if inside a modification/annotation path
+      let currentPathNode: Parser.SyntaxNode | null = current;
+      let isOverValue = false;
+      let isOverName = false;
+
+      while (currentPathNode) {
+        if (
+          currentPathNode.type === "Name" &&
+          (currentPathNode.parent?.type === "ElementModification" ||
+            currentPathNode.parent?.type === "ElementRedeclaration")
+        ) {
+          isOverName = true;
+          break;
+        }
+        if (currentPathNode.type === "IDENT" && currentPathNode.parent?.type === "NamedArgument") {
+          isOverName = true;
+          break;
+        }
+        if (
+          currentPathNode.type === "Modification" ||
+          currentPathNode.type === "FunctionCallArguments" ||
+          currentPathNode.type === "ArgumentList"
+        ) {
+          isOverValue = true;
+        }
+        if (
+          currentPathNode.type === "ElementModification" ||
+          currentPathNode.type === "NamedArgument" ||
+          currentPathNode.type === "FunctionCall"
+        ) {
+          break;
+        }
+        currentPathNode = currentPathNode.parent;
+      }
+
+      if ((isOverName || isOverValue) && currentPathNode) {
+        const resolved = resolvePathElement(currentPathNode, scope);
+        if (isOverName) {
+          element = resolved;
+        } else if (isOverValue && resolved) {
+          const typeScope =
+            resolved instanceof ModelicaComponentInstance
+              ? resolved.classInstance
+              : resolved instanceof ModelicaClassInstance
+                ? resolved
+                : null;
+          if (typeScope) {
+            element = typeScope.resolveName(fullPath.split("."));
+            if (!element && fullPath !== word) {
+              element = typeScope.resolveName(word.split("."));
+            }
+          }
+        }
+      }
+
+      if (!element) {
+        element = scope.resolveName(fullPath.split("."));
+        if (!element && fullPath !== word) {
+          element = scope.resolveName(word.split("."));
+        }
+      }
+
+      if (element instanceof ModelicaNamedElement) {
+        // Find the URI that owns this element
+        let elementUri = document.uri; // Default: same document
+
+        // Check if it's defined in a different open document
+        for (const [uri, instances] of documentInstances) {
+          if (uri === document.uri) continue;
+          for (const inst of instances) {
+            if (inst === element || isDescendantOf(element, inst)) {
+              elementUri = uri;
+              break;
+            }
+          }
+          if (elementUri !== document.uri) break;
+        }
+
+        return { element, uri: elementUri };
+      }
+      return null;
+    } finally {
+      tree.delete();
+    }
+  } catch {
+    return null;
+  }
+}
+
+/** Check if `child` is within the parent hierarchy of `ancestor` */
+function isDescendantOf(child: ModelicaNamedElement, ancestor: ModelicaNamedElement): boolean {
+  let current: Scope | null = child.parent;
+  while (current) {
+    if (current === ancestor) return true;
+    if (!("parent" in current)) return false;
+    current = (current as ModelicaNamedElement).parent;
+  }
+  return false;
+}
+
+connection.onDefinition((params) => {
+  const document = documents.get(params.textDocument.uri);
+  if (!document) return null;
+
+  const resolved = resolveElementAtPosition(document, params.position);
+  if (!resolved) return null;
+
+  const { element, uri } = resolved;
+  const syntaxNode = element.abstractSyntaxNode;
+  if (!syntaxNode?.sourceRange) return null;
+
+  // Use the identifier node for selection if available (class or component name)
+  let targetRange = syntaxNode.sourceRange;
+  if (element instanceof ModelicaClassInstance) {
+    const ident = (element.abstractSyntaxNode as ModelicaClassDefinitionSyntaxNode | null)?.identifier;
+    if (ident?.sourceRange) targetRange = ident.sourceRange;
+  } else if (element instanceof ModelicaComponentInstance) {
+    const decl = element.abstractSyntaxNode;
+    const ident = (decl as ModelicaComponentDeclarationSyntaxNode | null)?.declaration?.identifier;
+    if (ident?.sourceRange) targetRange = ident.sourceRange;
+  }
+
+  return {
+    uri,
+    range: {
+      start: { line: targetRange.startRow, character: targetRange.startCol },
+      end: { line: targetRange.endRow, character: targetRange.endCol },
+    },
+  };
+});
+
 /* Document formatting — uses tree-sitter parse + format() */
 
 connection.onDocumentFormatting((params) => {
@@ -1571,6 +1765,291 @@ connection.onColorPresentation((params) => {
   const b = Math.round(c.blue * 255);
   const label = `{${r}, ${g}, ${b}}`;
   return [ColorPresentation.create(label, { range: params.range, newText: label })];
+});
+
+/* Document symbols — enables Outline panel and breadcrumb navigation */
+
+/** Map a Modelica class prefix keyword to the most appropriate SymbolKind */
+function classKindToSymbolKind(prefixes: Parser.SyntaxNode | null): SymbolKind {
+  if (!prefixes) return SymbolKind.Class;
+  const text = prefixes.text;
+  if (text.includes("package")) return SymbolKind.Package;
+  if (text.includes("function")) return SymbolKind.Function;
+  if (text.includes("type")) return SymbolKind.TypeParameter;
+  if (text.includes("record")) return SymbolKind.Struct;
+  if (text.includes("connector")) return SymbolKind.Interface;
+  if (text.includes("operator")) return SymbolKind.Operator;
+  return SymbolKind.Class;
+}
+
+function nodeRange(node: Parser.SyntaxNode): {
+  start: { line: number; character: number };
+  end: { line: number; character: number };
+} {
+  return {
+    start: { line: node.startPosition.row, character: node.startPosition.column },
+    end: { line: node.endPosition.row, character: node.endPosition.column },
+  };
+}
+
+function collectDocumentSymbols(node: Parser.SyntaxNode): DocumentSymbol[] {
+  const symbols: DocumentSymbol[] = [];
+
+  for (let i = 0; i < node.childCount; i++) {
+    const child = node.child(i);
+    if (!child) continue;
+
+    if (child.type === "ClassDefinition") {
+      const prefixes = child.childForFieldName("classPrefixes");
+      const specifier = child.childForFieldName("classSpecifier");
+      const ident = specifier?.childForFieldName("identifier");
+      const name = ident?.text ?? "unknown";
+      const kind = classKindToSymbolKind(prefixes);
+      const detail = prefixes?.text ?? "";
+
+      const sym: DocumentSymbol = {
+        name,
+        detail,
+        kind,
+        range: nodeRange(child),
+        selectionRange: ident ? nodeRange(ident) : nodeRange(child),
+        children: specifier ? collectDocumentSymbols(specifier) : [],
+      };
+      symbols.push(sym);
+    } else if (child.type === "ComponentClause") {
+      const typeSpec = child.childForFieldName("typeSpecifier");
+      const typeName = typeSpec?.text ?? "";
+      // Each ComponentClause can declare multiple components
+      const decls = child.children.filter((c: Parser.SyntaxNode) => c.type === "ComponentDeclaration");
+      for (const decl of decls) {
+        const declaration = decl.childForFieldName("declaration");
+        const ident = declaration?.childForFieldName("identifier");
+        const name = ident?.text ?? "unknown";
+        symbols.push({
+          name,
+          detail: typeName,
+          kind: SymbolKind.Variable,
+          range: nodeRange(decl),
+          selectionRange: ident ? nodeRange(ident) : nodeRange(decl),
+        });
+      }
+    } else if (child.type === "EquationSection" || child.type === "InitialEquationSection") {
+      const label = child.type === "InitialEquationSection" ? "initial equation" : "equation";
+      const eqSymbols: DocumentSymbol[] = [];
+      // Collect connect equations as children
+      for (let j = 0; j < child.childCount; j++) {
+        const eq = child.child(j);
+        if (!eq) continue;
+        if (eq.type === "SpecialEquation") {
+          const connectNode = eq.children.find((c: Parser.SyntaxNode) => c.type === "ConnectEquation");
+          if (connectNode) {
+            const refs = connectNode.children.filter((c: Parser.SyntaxNode) => c.type === "ComponentReference");
+            const connName = refs.length >= 2 ? `connect(${refs[0].text}, ${refs[1].text})` : "connect(...)";
+            eqSymbols.push({
+              name: connName,
+              kind: SymbolKind.Event,
+              range: nodeRange(eq),
+              selectionRange: nodeRange(connectNode),
+            });
+          }
+        }
+      }
+      symbols.push({
+        name: label,
+        kind: SymbolKind.Namespace,
+        range: nodeRange(child),
+        selectionRange: nodeRange(child),
+        children: eqSymbols.length > 0 ? eqSymbols : undefined,
+      });
+    } else if (child.type === "AlgorithmSection" || child.type === "InitialAlgorithmSection") {
+      const label = child.type === "InitialAlgorithmSection" ? "initial algorithm" : "algorithm";
+      symbols.push({
+        name: label,
+        kind: SymbolKind.Namespace,
+        range: nodeRange(child),
+        selectionRange: nodeRange(child),
+      });
+    } else if (child.type === "ExtendsClause") {
+      const typeSpec = child.childForFieldName("typeSpecifier");
+      const name = typeSpec?.text ?? "extends";
+      symbols.push({
+        name: `extends ${name}`,
+        kind: SymbolKind.Interface,
+        range: nodeRange(child),
+        selectionRange: typeSpec ? nodeRange(typeSpec) : nodeRange(child),
+      });
+    } else if (
+      child.type === "SimpleImportClause" ||
+      child.type === "CompoundImportClause" ||
+      child.type === "UnqualifiedImportClause"
+    ) {
+      const nameNode = child.childForFieldName("name");
+      const name = nameNode?.text ?? "import";
+      symbols.push({
+        name: `import ${name}`,
+        kind: SymbolKind.Module,
+        range: nodeRange(child),
+        selectionRange: nameNode ? nodeRange(nameNode) : nodeRange(child),
+      });
+    } else if (child.type === "ElementSection") {
+      // Recurse into public/protected sections
+      symbols.push(...collectDocumentSymbols(child));
+    }
+  }
+
+  return symbols;
+}
+
+connection.onDocumentSymbol((params) => {
+  if (!parserReady || !parser) return [];
+  const document = documents.get(params.textDocument.uri);
+  if (!document) return [];
+
+  const text = document.getText();
+  const tree = parser.parse(text);
+  try {
+    return collectDocumentSymbols(tree.rootNode);
+  } finally {
+    tree.delete();
+  }
+});
+
+/* Folding Ranges — enables code folding for classes, sections, and control structures */
+
+connection.onFoldingRanges((params) => {
+  if (!parserReady || !parser) return [];
+  const document = documents.get(params.textDocument.uri);
+  if (!document) return [];
+
+  const text = document.getText();
+  const tree = parser.parse(text);
+  const ranges: { startLine: number; endLine: number; kind?: string }[] = [];
+
+  const FOLDABLE_NODES = new Set([
+    "ClassDefinition",
+    "EquationSection",
+    "InitialEquationSection",
+    "AlgorithmSection",
+    "InitialAlgorithmSection",
+    "IfEquation",
+    "ForEquation",
+    "WhenEquation",
+    "IfStatement",
+    "ForStatement",
+    "WhileStatement",
+    "WhenStatement",
+    "AnnotationClause",
+  ]);
+
+  const collectFolds = (node: Parser.SyntaxNode) => {
+    if (FOLDABLE_NODES.has(node.type)) {
+      const startLine = node.startPosition.row;
+      const endLine = node.endPosition.row;
+      if (endLine > startLine) {
+        ranges.push({ startLine, endLine });
+      }
+    }
+    // Block comments
+    if (node.type === "Comment" || node.type === "comment") {
+      const startLine = node.startPosition.row;
+      const endLine = node.endPosition.row;
+      if (endLine > startLine) {
+        ranges.push({ startLine, endLine, kind: "comment" });
+      }
+    }
+    for (let i = 0; i < node.childCount; i++) {
+      const child = node.child(i);
+      if (child) collectFolds(child);
+    }
+  };
+
+  collectFolds(tree.rootNode);
+  tree.delete();
+  return ranges;
+});
+
+/* Selection Ranges — enables smart Expand/Shrink selection */
+
+connection.onSelectionRanges((params) => {
+  if (!parserReady || !parser) return [];
+  const document = documents.get(params.textDocument.uri);
+  if (!document) return [];
+
+  const text = document.getText();
+  const tree = parser.parse(text);
+
+  const results = params.positions.map((pos) => {
+    let node: Parser.SyntaxNode | null = tree.rootNode.descendantForPosition({
+      row: pos.line,
+      column: pos.character,
+    });
+
+    // Build the chain from innermost to outermost
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let current: any = null;
+    const ancestors: Parser.SyntaxNode[] = [];
+    while (node) {
+      ancestors.push(node);
+      node = node.parent;
+    }
+
+    // Build linked list from outermost to innermost
+    for (const ancestor of ancestors) {
+      current = {
+        range: nodeRange(ancestor),
+        parent: current,
+      };
+    }
+
+    return current ?? { range: nodeRange(tree.rootNode) };
+  });
+
+  tree.delete();
+  return results;
+});
+
+/* Document Highlights — highlights all occurrences of the symbol under cursor */
+
+connection.onDocumentHighlight((params) => {
+  if (!parserReady || !parser) return [];
+  const document = documents.get(params.textDocument.uri);
+  if (!document) return [];
+
+  const text = document.getText();
+  const lines = text.split("\n");
+  const lineContent = lines[params.position.line] ?? "";
+
+  // Find the word under cursor
+  let wordStart = params.position.character;
+  let wordEnd = params.position.character;
+  while (wordStart > 0 && /[_a-zA-Z0-9]/.test(lineContent[wordStart - 1])) wordStart--;
+  while (wordEnd < lineContent.length && /[_a-zA-Z0-9]/.test(lineContent[wordEnd])) wordEnd++;
+  const word = lineContent.substring(wordStart, wordEnd);
+  if (!word || /^\d/.test(word)) return []; // Skip empty or numeric tokens
+
+  // Find all occurrences of the word in the document using tree-sitter
+  const tree = parser.parse(text);
+  const highlights: {
+    range: { start: { line: number; character: number }; end: { line: number; character: number } };
+    kind: DocumentHighlightKind;
+  }[] = [];
+
+  const collectHighlights = (node: Parser.SyntaxNode) => {
+    if (node.type === "IDENT" && node.text === word) {
+      highlights.push({
+        range: nodeRange(node),
+        kind: DocumentHighlightKind.Text,
+      });
+    }
+    for (let i = 0; i < node.childCount; i++) {
+      const child = node.child(i);
+      if (child) collectHighlights(child);
+    }
+  };
+
+  collectHighlights(tree.rootNode);
+  tree.delete();
+  return highlights;
 });
 
 // Custom request: get diagram data for the webview
