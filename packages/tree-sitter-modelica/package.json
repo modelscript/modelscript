@@ -32,6 +32,7 @@
   "scripts": {
     "build": "npm run clean && tree-sitter generate --abi=14 && node-gyp rebuild && tree-sitter build --wasm",
     "clean": "rimraf build && rimraf src",
+    "install": "node-gyp rebuild",
     "lint": "eslint grammar.js",
     "prestart": "tree-sitter build --wasm",
     "start": "tree-sitter playground",
