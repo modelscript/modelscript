@@ -130,16 +130,23 @@ npm run format
 
 ### Docker
 
-Run the full stack with Docker Compose:
+Pre-built images are published to the GitHub Container Registry on every push to `main`.
+
+Run the latest images without building:
 
 ```bash
-npm run docker:build   # Build images
-npm run docker:up      # Start containers
-npm run docker:down    # Stop containers
-npm run docker:logs    # Tail logs
+docker compose pull    # Pull latest images from ghcr.io/modelscript/*
+docker compose up -d   # Start containers
+docker compose down    # Stop containers
+docker compose logs -f # Tail logs
 ```
 
-Docker services and their exposed ports:
+To build from source instead:
+
+```bash
+npm run docker:build   # Build images locally
+npm run docker:up      # Start containers
+```
 
 | Service | Port | URL                   |
 | ------- | ---- | --------------------- |
