@@ -17,7 +17,6 @@ ctrf
 # Large files not needed in builds
 packages/core/testsuite
 packages/ide/vscode-web
-packages/tree-sitter-modelica/src
 
 # Package-specific
 packages/morsel/.react-router

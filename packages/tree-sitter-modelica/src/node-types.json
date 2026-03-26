@@ -1,0 +1,5772 @@
+[
+  {
+    "type": "AlgorithmSection",
+    "named": true,
+    "fields": {
+      "annotationClause": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "AnnotationClause",
+            "named": true
+          }
+        ]
+      },
+      "initial": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "initial",
+            "named": false
+          }
+        ]
+      },
+      "statement": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "BreakStatement",
+            "named": true
+          },
+          {
+            "type": "ComplexAssignmentStatement",
+            "named": true
+          },
+          {
+            "type": "ForStatement",
+            "named": true
+          },
+          {
+            "type": "IfStatement",
+            "named": true
+          },
+          {
+            "type": "ProcedureCallStatement",
+            "named": true
+          },
+          {
+            "type": "ReturnStatement",
+            "named": true
+          },
+          {
+            "type": "SimpleAssignmentStatement",
+            "named": true
+          },
+          {
+            "type": "WhenStatement",
+            "named": true
+          },
+          {
+            "type": "WhileStatement",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "AnnotationClause",
+    "named": true,
+    "fields": {
+      "classModification": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ClassModification",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ArrayConcatenation",
+    "named": true,
+    "fields": {
+      "expressionList": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "ExpressionList",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ArrayConstructor",
+    "named": true,
+    "fields": {
+      "comprehensionClause": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ComprehensionClause",
+            "named": true
+          }
+        ]
+      },
+      "expressionList": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ExpressionList",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ArraySubscripts",
+    "named": true,
+    "fields": {
+      "subscript": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "Subscript",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "BOOLEAN",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "BinaryExpression",
+    "named": true,
+    "fields": {
+      "operand1": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ArrayConcatenation",
+            "named": true
+          },
+          {
+            "type": "ArrayConstructor",
+            "named": true
+          },
+          {
+            "type": "BOOLEAN",
+            "named": true
+          },
+          {
+            "type": "BinaryExpression",
+            "named": true
+          },
+          {
+            "type": "ComponentReference",
+            "named": true
+          },
+          {
+            "type": "EndExpression",
+            "named": true
+          },
+          {
+            "type": "FunctionCall",
+            "named": true
+          },
+          {
+            "type": "MemberAccessExpression",
+            "named": true
+          },
+          {
+            "type": "OutputExpressionList",
+            "named": true
+          },
+          {
+            "type": "STRING",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_INTEGER",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_REAL",
+            "named": true
+          },
+          {
+            "type": "UnaryExpression",
+            "named": true
+          }
+        ]
+      },
+      "operand2": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ArrayConcatenation",
+            "named": true
+          },
+          {
+            "type": "ArrayConstructor",
+            "named": true
+          },
+          {
+            "type": "BOOLEAN",
+            "named": true
+          },
+          {
+            "type": "BinaryExpression",
+            "named": true
+          },
+          {
+            "type": "ComponentReference",
+            "named": true
+          },
+          {
+            "type": "EndExpression",
+            "named": true
+          },
+          {
+            "type": "FunctionCall",
+            "named": true
+          },
+          {
+            "type": "MemberAccessExpression",
+            "named": true
+          },
+          {
+            "type": "OutputExpressionList",
+            "named": true
+          },
+          {
+            "type": "STRING",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_INTEGER",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_REAL",
+            "named": true
+          },
+          {
+            "type": "UnaryExpression",
+            "named": true
+          }
+        ]
+      },
+      "operator": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "*",
+            "named": false
+          },
+          {
+            "type": "+",
+            "named": false
+          },
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": ".*",
+            "named": false
+          },
+          {
+            "type": ".+",
+            "named": false
+          },
+          {
+            "type": ".-",
+            "named": false
+          },
+          {
+            "type": "./",
+            "named": false
+          },
+          {
+            "type": ".^",
+            "named": false
+          },
+          {
+            "type": "/",
+            "named": false
+          },
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": "<>",
+            "named": false
+          },
+          {
+            "type": "==",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          },
+          {
+            "type": "^",
+            "named": false
+          },
+          {
+            "type": "and",
+            "named": false
+          },
+          {
+            "type": "or",
+            "named": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "BreakStatement",
+    "named": true,
+    "fields": {
+      "annotationClause": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "AnnotationClause",
+            "named": true
+          }
+        ]
+      },
+      "description": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "Description",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ClassDefinition",
+    "named": true,
+    "fields": {
+      "classPrefixes": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ClassPrefixes",
+            "named": true
+          }
+        ]
+      },
+      "classSpecifier": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "DerClassSpecifier",
+            "named": true
+          },
+          {
+            "type": "LongClassSpecifier",
+            "named": true
+          },
+          {
+            "type": "ShortClassSpecifier",
+            "named": true
+          }
+        ]
+      },
+      "constrainingClause": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ConstrainingClause",
+            "named": true
+          }
+        ]
+      },
+      "encapsulated": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "encapsulated",
+            "named": false
+          }
+        ]
+      },
+      "final": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "final",
+            "named": false
+          }
+        ]
+      },
+      "inner": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "inner",
+            "named": false
+          }
+        ]
+      },
+      "outer": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "outer",
+            "named": false
+          }
+        ]
+      },
+      "redeclare": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "redeclare",
+            "named": false
+          }
+        ]
+      },
+      "replaceable": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "replaceable",
+            "named": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ClassModification",
+    "named": true,
+    "fields": {
+      "modificationArgument": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "ElementModification",
+            "named": true
+          },
+          {
+            "type": "ElementRedeclaration",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ClassOrInheritanceModification",
+    "named": true,
+    "fields": {
+      "modificationArgumentOrInheritanceModification": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "ElementModification",
+            "named": true
+          },
+          {
+            "type": "ElementRedeclaration",
+            "named": true
+          },
+          {
+            "type": "InheritanceModification",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ClassPrefixes",
+    "named": true,
+    "fields": {
+      "block": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "block",
+            "named": false
+          }
+        ]
+      },
+      "class": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "class",
+            "named": false
+          }
+        ]
+      },
+      "connector": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "connector",
+            "named": false
+          }
+        ]
+      },
+      "expandable": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "expandable",
+            "named": false
+          }
+        ]
+      },
+      "function": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "function",
+            "named": false
+          }
+        ]
+      },
+      "model": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "model",
+            "named": false
+          }
+        ]
+      },
+      "operator": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "operator",
+            "named": false
+          }
+        ]
+      },
+      "package": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "package",
+            "named": false
+          }
+        ]
+      },
+      "partial": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "partial",
+            "named": false
+          }
+        ]
+      },
+      "purity": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "impure",
+            "named": false
+          },
+          {
+            "type": "pure",
+            "named": false
+          }
+        ]
+      },
+      "record": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "record",
+            "named": false
+          }
+        ]
+      },
+      "type": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "type",
+            "named": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ComplexAssignmentStatement",
+    "named": true,
+    "fields": {
+      "annotationClause": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "AnnotationClause",
+            "named": true
+          }
+        ]
+      },
+      "description": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "Description",
+            "named": true
+          }
+        ]
+      },
+      "functionCallArguments": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "FunctionCallArguments",
+            "named": true
+          }
+        ]
+      },
+      "functionReference": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ComponentReference",
+            "named": true
+          }
+        ]
+      },
+      "outputExpressionList": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "OutputExpressionList",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ComponentClause",
+    "named": true,
+    "fields": {
+      "arraySubscripts": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ArraySubscripts",
+            "named": true
+          }
+        ]
+      },
+      "causality": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "input",
+            "named": false
+          },
+          {
+            "type": "output",
+            "named": false
+          }
+        ]
+      },
+      "componentDeclaration": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "ComponentDeclaration",
+            "named": true
+          }
+        ]
+      },
+      "constrainingClause": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ConstrainingClause",
+            "named": true
+          }
+        ]
+      },
+      "final": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "final",
+            "named": false
+          }
+        ]
+      },
+      "flow": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "flow",
+            "named": false
+          },
+          {
+            "type": "stream",
+            "named": false
+          }
+        ]
+      },
+      "inner": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "inner",
+            "named": false
+          }
+        ]
+      },
+      "outer": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "outer",
+            "named": false
+          }
+        ]
+      },
+      "redeclare": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "redeclare",
+            "named": false
+          }
+        ]
+      },
+      "replaceable": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "replaceable",
+            "named": false
+          }
+        ]
+      },
+      "typeSpecifier": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "TypeSpecifier",
+            "named": true
+          }
+        ]
+      },
+      "variability": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "constant",
+            "named": false
+          },
+          {
+            "type": "discrete",
+            "named": false
+          },
+          {
+            "type": "parameter",
+            "named": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ComponentClause1",
+    "named": true,
+    "fields": {
+      "causality": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "input",
+            "named": false
+          },
+          {
+            "type": "output",
+            "named": false
+          }
+        ]
+      },
+      "componentDeclaration": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ComponentDeclaration1",
+            "named": true
+          }
+        ]
+      },
+      "constrainingClause": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ConstrainingClause",
+            "named": true
+          }
+        ]
+      },
+      "flow": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "flow",
+            "named": false
+          },
+          {
+            "type": "stream",
+            "named": false
+          }
+        ]
+      },
+      "typeSpecifier": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "TypeSpecifier",
+            "named": true
+          }
+        ]
+      },
+      "variability": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "constant",
+            "named": false
+          },
+          {
+            "type": "discrete",
+            "named": false
+          },
+          {
+            "type": "parameter",
+            "named": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ComponentDeclaration",
+    "named": true,
+    "fields": {
+      "annotationClause": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "AnnotationClause",
+            "named": true
+          }
+        ]
+      },
+      "conditionAttribute": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ConditionAttribute",
+            "named": true
+          }
+        ]
+      },
+      "declaration": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "Declaration",
+            "named": true
+          }
+        ]
+      },
+      "description": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "Description",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ComponentDeclaration1",
+    "named": true,
+    "fields": {
+      "annotationClause": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "AnnotationClause",
+            "named": true
+          }
+        ]
+      },
+      "declaration": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "Declaration",
+            "named": true
+          }
+        ]
+      },
+      "description": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "Description",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ComponentReference",
+    "named": true,
+    "fields": {
+      "global": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": ".",
+            "named": false
+          }
+        ]
+      },
+      "part": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "ComponentReferencePart",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ComponentReferencePart",
+    "named": true,
+    "fields": {
+      "arraySubscripts": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ArraySubscripts",
+            "named": true
+          }
+        ]
+      },
+      "identifier": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "IDENT",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "CompoundImportClause",
+    "named": true,
+    "fields": {
+      "annotationClause": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "AnnotationClause",
+            "named": true
+          }
+        ]
+      },
+      "description": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "Description",
+            "named": true
+          }
+        ]
+      },
+      "importName": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "IDENT",
+            "named": true
+          }
+        ]
+      },
+      "packageName": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "Name",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ComprehensionClause",
+    "named": true,
+    "fields": {
+      "expression": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ArrayConcatenation",
+            "named": true
+          },
+          {
+            "type": "ArrayConstructor",
+            "named": true
+          },
+          {
+            "type": "BOOLEAN",
+            "named": true
+          },
+          {
+            "type": "BinaryExpression",
+            "named": true
+          },
+          {
+            "type": "ComponentReference",
+            "named": true
+          },
+          {
+            "type": "EndExpression",
+            "named": true
+          },
+          {
+            "type": "FunctionCall",
+            "named": true
+          },
+          {
+            "type": "IfElseExpression",
+            "named": true
+          },
+          {
+            "type": "MemberAccessExpression",
+            "named": true
+          },
+          {
+            "type": "OutputExpressionList",
+            "named": true
+          },
+          {
+            "type": "RangeExpression",
+            "named": true
+          },
+          {
+            "type": "STRING",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_INTEGER",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_REAL",
+            "named": true
+          },
+          {
+            "type": "UnaryExpression",
+            "named": true
+          }
+        ]
+      },
+      "forIndex": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "ForIndex",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ConditionAttribute",
+    "named": true,
+    "fields": {
+      "condition": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ArrayConcatenation",
+            "named": true
+          },
+          {
+            "type": "ArrayConstructor",
+            "named": true
+          },
+          {
+            "type": "BOOLEAN",
+            "named": true
+          },
+          {
+            "type": "BinaryExpression",
+            "named": true
+          },
+          {
+            "type": "ComponentReference",
+            "named": true
+          },
+          {
+            "type": "EndExpression",
+            "named": true
+          },
+          {
+            "type": "FunctionCall",
+            "named": true
+          },
+          {
+            "type": "IfElseExpression",
+            "named": true
+          },
+          {
+            "type": "MemberAccessExpression",
+            "named": true
+          },
+          {
+            "type": "OutputExpressionList",
+            "named": true
+          },
+          {
+            "type": "RangeExpression",
+            "named": true
+          },
+          {
+            "type": "STRING",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_INTEGER",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_REAL",
+            "named": true
+          },
+          {
+            "type": "UnaryExpression",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ConnectEquation",
+    "named": true,
+    "fields": {
+      "annotationClause": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "AnnotationClause",
+            "named": true
+          }
+        ]
+      },
+      "componentReference1": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ComponentReference",
+            "named": true
+          }
+        ]
+      },
+      "componentReference2": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ComponentReference",
+            "named": true
+          }
+        ]
+      },
+      "description": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "Description",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ConstrainingClause",
+    "named": true,
+    "fields": {
+      "classModification": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ClassModification",
+            "named": true
+          }
+        ]
+      },
+      "description": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "Description",
+            "named": true
+          }
+        ]
+      },
+      "typeSpecifier": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "TypeSpecifier",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "Declaration",
+    "named": true,
+    "fields": {
+      "arraySubscripts": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ArraySubscripts",
+            "named": true
+          }
+        ]
+      },
+      "identifier": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "IDENT",
+            "named": true
+          }
+        ]
+      },
+      "modification": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "Modification",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "DerClassSpecifier",
+    "named": true,
+    "fields": {
+      "annotationClause": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "AnnotationClause",
+            "named": true
+          }
+        ]
+      },
+      "description": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "Description",
+            "named": true
+          }
+        ]
+      },
+      "identifier": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "IDENT",
+            "named": true
+          }
+        ]
+      },
+      "input": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "IDENT",
+            "named": true
+          }
+        ]
+      },
+      "typeSpecifier": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "TypeSpecifier",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "Description",
+    "named": true,
+    "fields": {
+      "descriptionString": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "STRING",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ElementAnnotation",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "AnnotationClause",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "ElementModification",
+    "named": true,
+    "fields": {
+      "description": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "Description",
+            "named": true
+          }
+        ]
+      },
+      "each": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "each",
+            "named": false
+          }
+        ]
+      },
+      "final": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "final",
+            "named": false
+          }
+        ]
+      },
+      "modification": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "Modification",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "Name",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ElementRedeclaration",
+    "named": true,
+    "fields": {
+      "classDefinition": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ShortClassDefinition",
+            "named": true
+          }
+        ]
+      },
+      "componentClause": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ComponentClause1",
+            "named": true
+          }
+        ]
+      },
+      "each": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "each",
+            "named": false
+          }
+        ]
+      },
+      "final": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "final",
+            "named": false
+          }
+        ]
+      },
+      "redeclare": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "redeclare",
+            "named": false
+          }
+        ]
+      },
+      "replaceable": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "replaceable",
+            "named": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ElementSection",
+    "named": true,
+    "fields": {
+      "element": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "ClassDefinition",
+            "named": true
+          },
+          {
+            "type": "ComponentClause",
+            "named": true
+          },
+          {
+            "type": "CompoundImportClause",
+            "named": true
+          },
+          {
+            "type": "ElementAnnotation",
+            "named": true
+          },
+          {
+            "type": "ExtendsClause",
+            "named": true
+          },
+          {
+            "type": "SimpleImportClause",
+            "named": true
+          },
+          {
+            "type": "UnqualifiedImportClause",
+            "named": true
+          }
+        ]
+      },
+      "visibility": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "protected",
+            "named": false
+          },
+          {
+            "type": "public",
+            "named": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ElseIfEquationClause",
+    "named": true,
+    "fields": {
+      "condition": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ArrayConcatenation",
+            "named": true
+          },
+          {
+            "type": "ArrayConstructor",
+            "named": true
+          },
+          {
+            "type": "BOOLEAN",
+            "named": true
+          },
+          {
+            "type": "BinaryExpression",
+            "named": true
+          },
+          {
+            "type": "ComponentReference",
+            "named": true
+          },
+          {
+            "type": "EndExpression",
+            "named": true
+          },
+          {
+            "type": "FunctionCall",
+            "named": true
+          },
+          {
+            "type": "IfElseExpression",
+            "named": true
+          },
+          {
+            "type": "MemberAccessExpression",
+            "named": true
+          },
+          {
+            "type": "OutputExpressionList",
+            "named": true
+          },
+          {
+            "type": "RangeExpression",
+            "named": true
+          },
+          {
+            "type": "STRING",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_INTEGER",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_REAL",
+            "named": true
+          },
+          {
+            "type": "UnaryExpression",
+            "named": true
+          }
+        ]
+      },
+      "equation": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "ConnectEquation",
+            "named": true
+          },
+          {
+            "type": "ForEquation",
+            "named": true
+          },
+          {
+            "type": "IfEquation",
+            "named": true
+          },
+          {
+            "type": "SimpleEquation",
+            "named": true
+          },
+          {
+            "type": "SpecialEquation",
+            "named": true
+          },
+          {
+            "type": "WhenEquation",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ElseIfExpressionClause",
+    "named": true,
+    "fields": {
+      "condition": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ArrayConcatenation",
+            "named": true
+          },
+          {
+            "type": "ArrayConstructor",
+            "named": true
+          },
+          {
+            "type": "BOOLEAN",
+            "named": true
+          },
+          {
+            "type": "BinaryExpression",
+            "named": true
+          },
+          {
+            "type": "ComponentReference",
+            "named": true
+          },
+          {
+            "type": "EndExpression",
+            "named": true
+          },
+          {
+            "type": "FunctionCall",
+            "named": true
+          },
+          {
+            "type": "IfElseExpression",
+            "named": true
+          },
+          {
+            "type": "MemberAccessExpression",
+            "named": true
+          },
+          {
+            "type": "OutputExpressionList",
+            "named": true
+          },
+          {
+            "type": "RangeExpression",
+            "named": true
+          },
+          {
+            "type": "STRING",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_INTEGER",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_REAL",
+            "named": true
+          },
+          {
+            "type": "UnaryExpression",
+            "named": true
+          }
+        ]
+      },
+      "expression": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ArrayConcatenation",
+            "named": true
+          },
+          {
+            "type": "ArrayConstructor",
+            "named": true
+          },
+          {
+            "type": "BOOLEAN",
+            "named": true
+          },
+          {
+            "type": "BinaryExpression",
+            "named": true
+          },
+          {
+            "type": "ComponentReference",
+            "named": true
+          },
+          {
+            "type": "EndExpression",
+            "named": true
+          },
+          {
+            "type": "FunctionCall",
+            "named": true
+          },
+          {
+            "type": "IfElseExpression",
+            "named": true
+          },
+          {
+            "type": "MemberAccessExpression",
+            "named": true
+          },
+          {
+            "type": "OutputExpressionList",
+            "named": true
+          },
+          {
+            "type": "RangeExpression",
+            "named": true
+          },
+          {
+            "type": "STRING",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_INTEGER",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_REAL",
+            "named": true
+          },
+          {
+            "type": "UnaryExpression",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ElseIfStatementClause",
+    "named": true,
+    "fields": {
+      "condition": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ArrayConcatenation",
+            "named": true
+          },
+          {
+            "type": "ArrayConstructor",
+            "named": true
+          },
+          {
+            "type": "BOOLEAN",
+            "named": true
+          },
+          {
+            "type": "BinaryExpression",
+            "named": true
+          },
+          {
+            "type": "ComponentReference",
+            "named": true
+          },
+          {
+            "type": "EndExpression",
+            "named": true
+          },
+          {
+            "type": "FunctionCall",
+            "named": true
+          },
+          {
+            "type": "IfElseExpression",
+            "named": true
+          },
+          {
+            "type": "MemberAccessExpression",
+            "named": true
+          },
+          {
+            "type": "OutputExpressionList",
+            "named": true
+          },
+          {
+            "type": "RangeExpression",
+            "named": true
+          },
+          {
+            "type": "STRING",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_INTEGER",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_REAL",
+            "named": true
+          },
+          {
+            "type": "UnaryExpression",
+            "named": true
+          }
+        ]
+      },
+      "statement": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "BreakStatement",
+            "named": true
+          },
+          {
+            "type": "ComplexAssignmentStatement",
+            "named": true
+          },
+          {
+            "type": "ForStatement",
+            "named": true
+          },
+          {
+            "type": "IfStatement",
+            "named": true
+          },
+          {
+            "type": "ProcedureCallStatement",
+            "named": true
+          },
+          {
+            "type": "ReturnStatement",
+            "named": true
+          },
+          {
+            "type": "SimpleAssignmentStatement",
+            "named": true
+          },
+          {
+            "type": "WhenStatement",
+            "named": true
+          },
+          {
+            "type": "WhileStatement",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ElseWhenEquationClause",
+    "named": true,
+    "fields": {
+      "condition": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ArrayConcatenation",
+            "named": true
+          },
+          {
+            "type": "ArrayConstructor",
+            "named": true
+          },
+          {
+            "type": "BOOLEAN",
+            "named": true
+          },
+          {
+            "type": "BinaryExpression",
+            "named": true
+          },
+          {
+            "type": "ComponentReference",
+            "named": true
+          },
+          {
+            "type": "EndExpression",
+            "named": true
+          },
+          {
+            "type": "FunctionCall",
+            "named": true
+          },
+          {
+            "type": "IfElseExpression",
+            "named": true
+          },
+          {
+            "type": "MemberAccessExpression",
+            "named": true
+          },
+          {
+            "type": "OutputExpressionList",
+            "named": true
+          },
+          {
+            "type": "RangeExpression",
+            "named": true
+          },
+          {
+            "type": "STRING",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_INTEGER",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_REAL",
+            "named": true
+          },
+          {
+            "type": "UnaryExpression",
+            "named": true
+          }
+        ]
+      },
+      "equation": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "ConnectEquation",
+            "named": true
+          },
+          {
+            "type": "ForEquation",
+            "named": true
+          },
+          {
+            "type": "IfEquation",
+            "named": true
+          },
+          {
+            "type": "SimpleEquation",
+            "named": true
+          },
+          {
+            "type": "SpecialEquation",
+            "named": true
+          },
+          {
+            "type": "WhenEquation",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ElseWhenStatementClause",
+    "named": true,
+    "fields": {
+      "condition": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ArrayConcatenation",
+            "named": true
+          },
+          {
+            "type": "ArrayConstructor",
+            "named": true
+          },
+          {
+            "type": "BOOLEAN",
+            "named": true
+          },
+          {
+            "type": "BinaryExpression",
+            "named": true
+          },
+          {
+            "type": "ComponentReference",
+            "named": true
+          },
+          {
+            "type": "EndExpression",
+            "named": true
+          },
+          {
+            "type": "FunctionCall",
+            "named": true
+          },
+          {
+            "type": "IfElseExpression",
+            "named": true
+          },
+          {
+            "type": "MemberAccessExpression",
+            "named": true
+          },
+          {
+            "type": "OutputExpressionList",
+            "named": true
+          },
+          {
+            "type": "RangeExpression",
+            "named": true
+          },
+          {
+            "type": "STRING",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_INTEGER",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_REAL",
+            "named": true
+          },
+          {
+            "type": "UnaryExpression",
+            "named": true
+          }
+        ]
+      },
+      "statement": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "BreakStatement",
+            "named": true
+          },
+          {
+            "type": "ComplexAssignmentStatement",
+            "named": true
+          },
+          {
+            "type": "ForStatement",
+            "named": true
+          },
+          {
+            "type": "IfStatement",
+            "named": true
+          },
+          {
+            "type": "ProcedureCallStatement",
+            "named": true
+          },
+          {
+            "type": "ReturnStatement",
+            "named": true
+          },
+          {
+            "type": "SimpleAssignmentStatement",
+            "named": true
+          },
+          {
+            "type": "WhenStatement",
+            "named": true
+          },
+          {
+            "type": "WhileStatement",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "EndExpression",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "EnumerationLiteral",
+    "named": true,
+    "fields": {
+      "annotationClause": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "AnnotationClause",
+            "named": true
+          }
+        ]
+      },
+      "description": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "Description",
+            "named": true
+          }
+        ]
+      },
+      "identifier": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "IDENT",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "EquationSection",
+    "named": true,
+    "fields": {
+      "annotationClause": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "AnnotationClause",
+            "named": true
+          }
+        ]
+      },
+      "equation": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "ConnectEquation",
+            "named": true
+          },
+          {
+            "type": "ForEquation",
+            "named": true
+          },
+          {
+            "type": "IfEquation",
+            "named": true
+          },
+          {
+            "type": "SimpleEquation",
+            "named": true
+          },
+          {
+            "type": "SpecialEquation",
+            "named": true
+          },
+          {
+            "type": "WhenEquation",
+            "named": true
+          }
+        ]
+      },
+      "initial": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "initial",
+            "named": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ExpressionList",
+    "named": true,
+    "fields": {
+      "expression": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "ArrayConcatenation",
+            "named": true
+          },
+          {
+            "type": "ArrayConstructor",
+            "named": true
+          },
+          {
+            "type": "BOOLEAN",
+            "named": true
+          },
+          {
+            "type": "BinaryExpression",
+            "named": true
+          },
+          {
+            "type": "ComponentReference",
+            "named": true
+          },
+          {
+            "type": "EndExpression",
+            "named": true
+          },
+          {
+            "type": "FunctionCall",
+            "named": true
+          },
+          {
+            "type": "IfElseExpression",
+            "named": true
+          },
+          {
+            "type": "MemberAccessExpression",
+            "named": true
+          },
+          {
+            "type": "OutputExpressionList",
+            "named": true
+          },
+          {
+            "type": "RangeExpression",
+            "named": true
+          },
+          {
+            "type": "STRING",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_INTEGER",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_REAL",
+            "named": true
+          },
+          {
+            "type": "UnaryExpression",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ExtendsClause",
+    "named": true,
+    "fields": {
+      "annotationClause": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "AnnotationClause",
+            "named": true
+          }
+        ]
+      },
+      "classOrInheritanceModification": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ClassOrInheritanceModification",
+            "named": true
+          }
+        ]
+      },
+      "typeSpecifier": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "TypeSpecifier",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ExternalFunctionCall",
+    "named": true,
+    "fields": {
+      "arguments": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ExpressionList",
+            "named": true
+          }
+        ]
+      },
+      "functionName": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "IDENT",
+            "named": true
+          }
+        ]
+      },
+      "output": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ComponentReference",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ExternalFunctionClause",
+    "named": true,
+    "fields": {
+      "annotationClause": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "AnnotationClause",
+            "named": true
+          }
+        ]
+      },
+      "externalFunctionCall": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ExternalFunctionCall",
+            "named": true
+          }
+        ]
+      },
+      "languageSpecification": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "LanguageSpecification",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ForEquation",
+    "named": true,
+    "fields": {
+      "annotationClause": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "AnnotationClause",
+            "named": true
+          }
+        ]
+      },
+      "description": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "Description",
+            "named": true
+          }
+        ]
+      },
+      "equation": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "ConnectEquation",
+            "named": true
+          },
+          {
+            "type": "ForEquation",
+            "named": true
+          },
+          {
+            "type": "IfEquation",
+            "named": true
+          },
+          {
+            "type": "SimpleEquation",
+            "named": true
+          },
+          {
+            "type": "SpecialEquation",
+            "named": true
+          },
+          {
+            "type": "WhenEquation",
+            "named": true
+          }
+        ]
+      },
+      "forIndex": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "ForIndex",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ForIndex",
+    "named": true,
+    "fields": {
+      "expression": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ArrayConcatenation",
+            "named": true
+          },
+          {
+            "type": "ArrayConstructor",
+            "named": true
+          },
+          {
+            "type": "BOOLEAN",
+            "named": true
+          },
+          {
+            "type": "BinaryExpression",
+            "named": true
+          },
+          {
+            "type": "ComponentReference",
+            "named": true
+          },
+          {
+            "type": "EndExpression",
+            "named": true
+          },
+          {
+            "type": "FunctionCall",
+            "named": true
+          },
+          {
+            "type": "IfElseExpression",
+            "named": true
+          },
+          {
+            "type": "MemberAccessExpression",
+            "named": true
+          },
+          {
+            "type": "OutputExpressionList",
+            "named": true
+          },
+          {
+            "type": "RangeExpression",
+            "named": true
+          },
+          {
+            "type": "STRING",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_INTEGER",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_REAL",
+            "named": true
+          },
+          {
+            "type": "UnaryExpression",
+            "named": true
+          }
+        ]
+      },
+      "identifier": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "IDENT",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ForStatement",
+    "named": true,
+    "fields": {
+      "annotationClause": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "AnnotationClause",
+            "named": true
+          }
+        ]
+      },
+      "description": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "Description",
+            "named": true
+          }
+        ]
+      },
+      "forIndex": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "ForIndex",
+            "named": true
+          }
+        ]
+      },
+      "statement": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "BreakStatement",
+            "named": true
+          },
+          {
+            "type": "ComplexAssignmentStatement",
+            "named": true
+          },
+          {
+            "type": "ForStatement",
+            "named": true
+          },
+          {
+            "type": "IfStatement",
+            "named": true
+          },
+          {
+            "type": "ProcedureCallStatement",
+            "named": true
+          },
+          {
+            "type": "ReturnStatement",
+            "named": true
+          },
+          {
+            "type": "SimpleAssignmentStatement",
+            "named": true
+          },
+          {
+            "type": "WhenStatement",
+            "named": true
+          },
+          {
+            "type": "WhileStatement",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "FunctionArgument",
+    "named": true,
+    "fields": {
+      "expression": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ArrayConcatenation",
+            "named": true
+          },
+          {
+            "type": "ArrayConstructor",
+            "named": true
+          },
+          {
+            "type": "BOOLEAN",
+            "named": true
+          },
+          {
+            "type": "BinaryExpression",
+            "named": true
+          },
+          {
+            "type": "ComponentReference",
+            "named": true
+          },
+          {
+            "type": "EndExpression",
+            "named": true
+          },
+          {
+            "type": "FunctionCall",
+            "named": true
+          },
+          {
+            "type": "IfElseExpression",
+            "named": true
+          },
+          {
+            "type": "MemberAccessExpression",
+            "named": true
+          },
+          {
+            "type": "OutputExpressionList",
+            "named": true
+          },
+          {
+            "type": "RangeExpression",
+            "named": true
+          },
+          {
+            "type": "STRING",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_INTEGER",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_REAL",
+            "named": true
+          },
+          {
+            "type": "UnaryExpression",
+            "named": true
+          }
+        ]
+      },
+      "functionPartialApplication": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "FunctionPartialApplication",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "FunctionCall",
+    "named": true,
+    "fields": {
+      "functionCallArguments": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "FunctionCallArguments",
+            "named": true
+          }
+        ]
+      },
+      "functionReference": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ComponentReference",
+            "named": true
+          },
+          {
+            "type": "der",
+            "named": false
+          },
+          {
+            "type": "initial",
+            "named": false
+          },
+          {
+            "type": "pure",
+            "named": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "FunctionCallArguments",
+    "named": true,
+    "fields": {
+      "argument": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "FunctionArgument",
+            "named": true
+          }
+        ]
+      },
+      "comprehensionClause": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ComprehensionClause",
+            "named": true
+          }
+        ]
+      },
+      "namedArgument": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "NamedArgument",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "FunctionPartialApplication",
+    "named": true,
+    "fields": {
+      "namedArgument": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "NamedArgument",
+            "named": true
+          }
+        ]
+      },
+      "typeSpecifier": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "TypeSpecifier",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "IfElseExpression",
+    "named": true,
+    "fields": {
+      "condition": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ArrayConcatenation",
+            "named": true
+          },
+          {
+            "type": "ArrayConstructor",
+            "named": true
+          },
+          {
+            "type": "BOOLEAN",
+            "named": true
+          },
+          {
+            "type": "BinaryExpression",
+            "named": true
+          },
+          {
+            "type": "ComponentReference",
+            "named": true
+          },
+          {
+            "type": "EndExpression",
+            "named": true
+          },
+          {
+            "type": "FunctionCall",
+            "named": true
+          },
+          {
+            "type": "IfElseExpression",
+            "named": true
+          },
+          {
+            "type": "MemberAccessExpression",
+            "named": true
+          },
+          {
+            "type": "OutputExpressionList",
+            "named": true
+          },
+          {
+            "type": "RangeExpression",
+            "named": true
+          },
+          {
+            "type": "STRING",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_INTEGER",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_REAL",
+            "named": true
+          },
+          {
+            "type": "UnaryExpression",
+            "named": true
+          }
+        ]
+      },
+      "elseExpression": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ArrayConcatenation",
+            "named": true
+          },
+          {
+            "type": "ArrayConstructor",
+            "named": true
+          },
+          {
+            "type": "BOOLEAN",
+            "named": true
+          },
+          {
+            "type": "BinaryExpression",
+            "named": true
+          },
+          {
+            "type": "ComponentReference",
+            "named": true
+          },
+          {
+            "type": "EndExpression",
+            "named": true
+          },
+          {
+            "type": "FunctionCall",
+            "named": true
+          },
+          {
+            "type": "IfElseExpression",
+            "named": true
+          },
+          {
+            "type": "MemberAccessExpression",
+            "named": true
+          },
+          {
+            "type": "OutputExpressionList",
+            "named": true
+          },
+          {
+            "type": "RangeExpression",
+            "named": true
+          },
+          {
+            "type": "STRING",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_INTEGER",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_REAL",
+            "named": true
+          },
+          {
+            "type": "UnaryExpression",
+            "named": true
+          }
+        ]
+      },
+      "elseIfExpressionClause": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "ElseIfExpressionClause",
+            "named": true
+          }
+        ]
+      },
+      "expression": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ArrayConcatenation",
+            "named": true
+          },
+          {
+            "type": "ArrayConstructor",
+            "named": true
+          },
+          {
+            "type": "BOOLEAN",
+            "named": true
+          },
+          {
+            "type": "BinaryExpression",
+            "named": true
+          },
+          {
+            "type": "ComponentReference",
+            "named": true
+          },
+          {
+            "type": "EndExpression",
+            "named": true
+          },
+          {
+            "type": "FunctionCall",
+            "named": true
+          },
+          {
+            "type": "IfElseExpression",
+            "named": true
+          },
+          {
+            "type": "MemberAccessExpression",
+            "named": true
+          },
+          {
+            "type": "OutputExpressionList",
+            "named": true
+          },
+          {
+            "type": "RangeExpression",
+            "named": true
+          },
+          {
+            "type": "STRING",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_INTEGER",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_REAL",
+            "named": true
+          },
+          {
+            "type": "UnaryExpression",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "IfEquation",
+    "named": true,
+    "fields": {
+      "annotationClause": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "AnnotationClause",
+            "named": true
+          }
+        ]
+      },
+      "condition": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ArrayConcatenation",
+            "named": true
+          },
+          {
+            "type": "ArrayConstructor",
+            "named": true
+          },
+          {
+            "type": "BOOLEAN",
+            "named": true
+          },
+          {
+            "type": "BinaryExpression",
+            "named": true
+          },
+          {
+            "type": "ComponentReference",
+            "named": true
+          },
+          {
+            "type": "EndExpression",
+            "named": true
+          },
+          {
+            "type": "FunctionCall",
+            "named": true
+          },
+          {
+            "type": "IfElseExpression",
+            "named": true
+          },
+          {
+            "type": "MemberAccessExpression",
+            "named": true
+          },
+          {
+            "type": "OutputExpressionList",
+            "named": true
+          },
+          {
+            "type": "RangeExpression",
+            "named": true
+          },
+          {
+            "type": "STRING",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_INTEGER",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_REAL",
+            "named": true
+          },
+          {
+            "type": "UnaryExpression",
+            "named": true
+          }
+        ]
+      },
+      "description": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "Description",
+            "named": true
+          }
+        ]
+      },
+      "elseEquation": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "ConnectEquation",
+            "named": true
+          },
+          {
+            "type": "ForEquation",
+            "named": true
+          },
+          {
+            "type": "IfEquation",
+            "named": true
+          },
+          {
+            "type": "SimpleEquation",
+            "named": true
+          },
+          {
+            "type": "SpecialEquation",
+            "named": true
+          },
+          {
+            "type": "WhenEquation",
+            "named": true
+          }
+        ]
+      },
+      "elseIfEquationClause": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "ElseIfEquationClause",
+            "named": true
+          }
+        ]
+      },
+      "equation": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "ConnectEquation",
+            "named": true
+          },
+          {
+            "type": "ForEquation",
+            "named": true
+          },
+          {
+            "type": "IfEquation",
+            "named": true
+          },
+          {
+            "type": "SimpleEquation",
+            "named": true
+          },
+          {
+            "type": "SpecialEquation",
+            "named": true
+          },
+          {
+            "type": "WhenEquation",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "IfStatement",
+    "named": true,
+    "fields": {
+      "annotationClause": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "AnnotationClause",
+            "named": true
+          }
+        ]
+      },
+      "condition": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ArrayConcatenation",
+            "named": true
+          },
+          {
+            "type": "ArrayConstructor",
+            "named": true
+          },
+          {
+            "type": "BOOLEAN",
+            "named": true
+          },
+          {
+            "type": "BinaryExpression",
+            "named": true
+          },
+          {
+            "type": "ComponentReference",
+            "named": true
+          },
+          {
+            "type": "EndExpression",
+            "named": true
+          },
+          {
+            "type": "FunctionCall",
+            "named": true
+          },
+          {
+            "type": "IfElseExpression",
+            "named": true
+          },
+          {
+            "type": "MemberAccessExpression",
+            "named": true
+          },
+          {
+            "type": "OutputExpressionList",
+            "named": true
+          },
+          {
+            "type": "RangeExpression",
+            "named": true
+          },
+          {
+            "type": "STRING",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_INTEGER",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_REAL",
+            "named": true
+          },
+          {
+            "type": "UnaryExpression",
+            "named": true
+          }
+        ]
+      },
+      "description": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "Description",
+            "named": true
+          }
+        ]
+      },
+      "elseIfStatementClause": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "ElseIfStatementClause",
+            "named": true
+          }
+        ]
+      },
+      "elseStatement": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "BreakStatement",
+            "named": true
+          },
+          {
+            "type": "ComplexAssignmentStatement",
+            "named": true
+          },
+          {
+            "type": "ForStatement",
+            "named": true
+          },
+          {
+            "type": "IfStatement",
+            "named": true
+          },
+          {
+            "type": "ProcedureCallStatement",
+            "named": true
+          },
+          {
+            "type": "ReturnStatement",
+            "named": true
+          },
+          {
+            "type": "SimpleAssignmentStatement",
+            "named": true
+          },
+          {
+            "type": "WhenStatement",
+            "named": true
+          },
+          {
+            "type": "WhileStatement",
+            "named": true
+          }
+        ]
+      },
+      "statement": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "BreakStatement",
+            "named": true
+          },
+          {
+            "type": "ComplexAssignmentStatement",
+            "named": true
+          },
+          {
+            "type": "ForStatement",
+            "named": true
+          },
+          {
+            "type": "IfStatement",
+            "named": true
+          },
+          {
+            "type": "ProcedureCallStatement",
+            "named": true
+          },
+          {
+            "type": "ReturnStatement",
+            "named": true
+          },
+          {
+            "type": "SimpleAssignmentStatement",
+            "named": true
+          },
+          {
+            "type": "WhenStatement",
+            "named": true
+          },
+          {
+            "type": "WhileStatement",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "InheritanceModification",
+    "named": true,
+    "fields": {
+      "connectEquation": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ConnectEquation",
+            "named": true
+          }
+        ]
+      },
+      "identifier": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "IDENT",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "InitialElementSection",
+    "named": true,
+    "fields": {
+      "element": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "ClassDefinition",
+            "named": true
+          },
+          {
+            "type": "ComponentClause",
+            "named": true
+          },
+          {
+            "type": "CompoundImportClause",
+            "named": true
+          },
+          {
+            "type": "ElementAnnotation",
+            "named": true
+          },
+          {
+            "type": "ExtendsClause",
+            "named": true
+          },
+          {
+            "type": "SimpleImportClause",
+            "named": true
+          },
+          {
+            "type": "UnqualifiedImportClause",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "LanguageSpecification",
+    "named": true,
+    "fields": {
+      "language": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "STRING",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "LongClassSpecifier",
+    "named": true,
+    "fields": {
+      "annotationClause": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "AnnotationClause",
+            "named": true
+          }
+        ]
+      },
+      "classModification": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ClassModification",
+            "named": true
+          }
+        ]
+      },
+      "description": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "Description",
+            "named": true
+          }
+        ]
+      },
+      "endIdentifier": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "IDENT",
+            "named": true
+          }
+        ]
+      },
+      "extends": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "extends",
+            "named": false
+          }
+        ]
+      },
+      "externalFunctionClause": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ExternalFunctionClause",
+            "named": true
+          }
+        ]
+      },
+      "identifier": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "IDENT",
+            "named": true
+          }
+        ]
+      },
+      "section": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "AlgorithmSection",
+            "named": true
+          },
+          {
+            "type": "ElementSection",
+            "named": true
+          },
+          {
+            "type": "EquationSection",
+            "named": true
+          },
+          {
+            "type": "InitialElementSection",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "MemberAccessExpression",
+    "named": true,
+    "fields": {
+      "arraySubscripts": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ArraySubscripts",
+            "named": true
+          }
+        ]
+      },
+      "identifier": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "IDENT",
+            "named": true
+          }
+        ]
+      },
+      "outputExpressionList": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "OutputExpressionList",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "Modification",
+    "named": true,
+    "fields": {
+      "classModification": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ClassModification",
+            "named": true
+          }
+        ]
+      },
+      "modificationExpression": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ModificationExpression",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ModificationExpression",
+    "named": true,
+    "fields": {
+      "break": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "break",
+            "named": false
+          }
+        ]
+      },
+      "expression": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ArrayConcatenation",
+            "named": true
+          },
+          {
+            "type": "ArrayConstructor",
+            "named": true
+          },
+          {
+            "type": "BOOLEAN",
+            "named": true
+          },
+          {
+            "type": "BinaryExpression",
+            "named": true
+          },
+          {
+            "type": "ComponentReference",
+            "named": true
+          },
+          {
+            "type": "EndExpression",
+            "named": true
+          },
+          {
+            "type": "FunctionCall",
+            "named": true
+          },
+          {
+            "type": "IfElseExpression",
+            "named": true
+          },
+          {
+            "type": "MemberAccessExpression",
+            "named": true
+          },
+          {
+            "type": "OutputExpressionList",
+            "named": true
+          },
+          {
+            "type": "RangeExpression",
+            "named": true
+          },
+          {
+            "type": "STRING",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_INTEGER",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_REAL",
+            "named": true
+          },
+          {
+            "type": "UnaryExpression",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "Name",
+    "named": true,
+    "fields": {
+      "part": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "IDENT",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "NamedArgument",
+    "named": true,
+    "fields": {
+      "argument": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "FunctionArgument",
+            "named": true
+          }
+        ]
+      },
+      "identifier": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "IDENT",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "OutputExpressionList",
+    "named": true,
+    "fields": {
+      "output": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "ArrayConcatenation",
+            "named": true
+          },
+          {
+            "type": "ArrayConstructor",
+            "named": true
+          },
+          {
+            "type": "BOOLEAN",
+            "named": true
+          },
+          {
+            "type": "BinaryExpression",
+            "named": true
+          },
+          {
+            "type": "ComponentReference",
+            "named": true
+          },
+          {
+            "type": "EndExpression",
+            "named": true
+          },
+          {
+            "type": "FunctionCall",
+            "named": true
+          },
+          {
+            "type": "IfElseExpression",
+            "named": true
+          },
+          {
+            "type": "MemberAccessExpression",
+            "named": true
+          },
+          {
+            "type": "OutputExpressionList",
+            "named": true
+          },
+          {
+            "type": "RangeExpression",
+            "named": true
+          },
+          {
+            "type": "STRING",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_INTEGER",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_REAL",
+            "named": true
+          },
+          {
+            "type": "UnaryExpression",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ProcedureCallStatement",
+    "named": true,
+    "fields": {
+      "annotationClause": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "AnnotationClause",
+            "named": true
+          }
+        ]
+      },
+      "description": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "Description",
+            "named": true
+          }
+        ]
+      },
+      "functionCallArguments": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "FunctionCallArguments",
+            "named": true
+          }
+        ]
+      },
+      "functionReference": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ComponentReference",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "RangeExpression",
+    "named": true,
+    "fields": {
+      "startExpression": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ArrayConcatenation",
+            "named": true
+          },
+          {
+            "type": "ArrayConstructor",
+            "named": true
+          },
+          {
+            "type": "BOOLEAN",
+            "named": true
+          },
+          {
+            "type": "BinaryExpression",
+            "named": true
+          },
+          {
+            "type": "ComponentReference",
+            "named": true
+          },
+          {
+            "type": "EndExpression",
+            "named": true
+          },
+          {
+            "type": "FunctionCall",
+            "named": true
+          },
+          {
+            "type": "MemberAccessExpression",
+            "named": true
+          },
+          {
+            "type": "OutputExpressionList",
+            "named": true
+          },
+          {
+            "type": "STRING",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_INTEGER",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_REAL",
+            "named": true
+          },
+          {
+            "type": "UnaryExpression",
+            "named": true
+          }
+        ]
+      },
+      "stepExpression": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ArrayConcatenation",
+            "named": true
+          },
+          {
+            "type": "ArrayConstructor",
+            "named": true
+          },
+          {
+            "type": "BOOLEAN",
+            "named": true
+          },
+          {
+            "type": "BinaryExpression",
+            "named": true
+          },
+          {
+            "type": "ComponentReference",
+            "named": true
+          },
+          {
+            "type": "EndExpression",
+            "named": true
+          },
+          {
+            "type": "FunctionCall",
+            "named": true
+          },
+          {
+            "type": "MemberAccessExpression",
+            "named": true
+          },
+          {
+            "type": "OutputExpressionList",
+            "named": true
+          },
+          {
+            "type": "STRING",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_INTEGER",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_REAL",
+            "named": true
+          },
+          {
+            "type": "UnaryExpression",
+            "named": true
+          }
+        ]
+      },
+      "stopExpression": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ArrayConcatenation",
+            "named": true
+          },
+          {
+            "type": "ArrayConstructor",
+            "named": true
+          },
+          {
+            "type": "BOOLEAN",
+            "named": true
+          },
+          {
+            "type": "BinaryExpression",
+            "named": true
+          },
+          {
+            "type": "ComponentReference",
+            "named": true
+          },
+          {
+            "type": "EndExpression",
+            "named": true
+          },
+          {
+            "type": "FunctionCall",
+            "named": true
+          },
+          {
+            "type": "MemberAccessExpression",
+            "named": true
+          },
+          {
+            "type": "OutputExpressionList",
+            "named": true
+          },
+          {
+            "type": "STRING",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_INTEGER",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_REAL",
+            "named": true
+          },
+          {
+            "type": "UnaryExpression",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ReturnStatement",
+    "named": true,
+    "fields": {
+      "annotationClause": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "AnnotationClause",
+            "named": true
+          }
+        ]
+      },
+      "description": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "Description",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ShortClassDefinition",
+    "named": true,
+    "fields": {
+      "classPrefixes": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ClassPrefixes",
+            "named": true
+          }
+        ]
+      },
+      "classSpecifier": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ShortClassSpecifier",
+            "named": true
+          }
+        ]
+      },
+      "constrainingClause": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ConstrainingClause",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ShortClassSpecifier",
+    "named": true,
+    "fields": {
+      "annotationClause": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "AnnotationClause",
+            "named": true
+          }
+        ]
+      },
+      "arraySubscripts": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ArraySubscripts",
+            "named": true
+          }
+        ]
+      },
+      "causality": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "input",
+            "named": false
+          },
+          {
+            "type": "output",
+            "named": false
+          }
+        ]
+      },
+      "classModification": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ClassModification",
+            "named": true
+          }
+        ]
+      },
+      "description": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "Description",
+            "named": true
+          }
+        ]
+      },
+      "enumeration": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "enumeration",
+            "named": false
+          }
+        ]
+      },
+      "enumerationLiteral": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "EnumerationLiteral",
+            "named": true
+          }
+        ]
+      },
+      "identifier": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "IDENT",
+            "named": true
+          }
+        ]
+      },
+      "typeSpecifier": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "TypeSpecifier",
+            "named": true
+          }
+        ]
+      },
+      "unspecifiedEnumeration": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": ":",
+            "named": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "SimpleAssignmentStatement",
+    "named": true,
+    "fields": {
+      "annotationClause": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "AnnotationClause",
+            "named": true
+          }
+        ]
+      },
+      "description": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "Description",
+            "named": true
+          }
+        ]
+      },
+      "source": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ArrayConcatenation",
+            "named": true
+          },
+          {
+            "type": "ArrayConstructor",
+            "named": true
+          },
+          {
+            "type": "BOOLEAN",
+            "named": true
+          },
+          {
+            "type": "BinaryExpression",
+            "named": true
+          },
+          {
+            "type": "ComponentReference",
+            "named": true
+          },
+          {
+            "type": "EndExpression",
+            "named": true
+          },
+          {
+            "type": "FunctionCall",
+            "named": true
+          },
+          {
+            "type": "IfElseExpression",
+            "named": true
+          },
+          {
+            "type": "MemberAccessExpression",
+            "named": true
+          },
+          {
+            "type": "OutputExpressionList",
+            "named": true
+          },
+          {
+            "type": "RangeExpression",
+            "named": true
+          },
+          {
+            "type": "STRING",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_INTEGER",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_REAL",
+            "named": true
+          },
+          {
+            "type": "UnaryExpression",
+            "named": true
+          }
+        ]
+      },
+      "target": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ComponentReference",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "SimpleEquation",
+    "named": true,
+    "fields": {
+      "annotationClause": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "AnnotationClause",
+            "named": true
+          }
+        ]
+      },
+      "description": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "Description",
+            "named": true
+          }
+        ]
+      },
+      "expression1": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ArrayConcatenation",
+            "named": true
+          },
+          {
+            "type": "ArrayConstructor",
+            "named": true
+          },
+          {
+            "type": "BOOLEAN",
+            "named": true
+          },
+          {
+            "type": "BinaryExpression",
+            "named": true
+          },
+          {
+            "type": "ComponentReference",
+            "named": true
+          },
+          {
+            "type": "EndExpression",
+            "named": true
+          },
+          {
+            "type": "FunctionCall",
+            "named": true
+          },
+          {
+            "type": "MemberAccessExpression",
+            "named": true
+          },
+          {
+            "type": "OutputExpressionList",
+            "named": true
+          },
+          {
+            "type": "STRING",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_INTEGER",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_REAL",
+            "named": true
+          },
+          {
+            "type": "UnaryExpression",
+            "named": true
+          }
+        ]
+      },
+      "expression2": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ArrayConcatenation",
+            "named": true
+          },
+          {
+            "type": "ArrayConstructor",
+            "named": true
+          },
+          {
+            "type": "BOOLEAN",
+            "named": true
+          },
+          {
+            "type": "BinaryExpression",
+            "named": true
+          },
+          {
+            "type": "ComponentReference",
+            "named": true
+          },
+          {
+            "type": "EndExpression",
+            "named": true
+          },
+          {
+            "type": "FunctionCall",
+            "named": true
+          },
+          {
+            "type": "IfElseExpression",
+            "named": true
+          },
+          {
+            "type": "MemberAccessExpression",
+            "named": true
+          },
+          {
+            "type": "OutputExpressionList",
+            "named": true
+          },
+          {
+            "type": "RangeExpression",
+            "named": true
+          },
+          {
+            "type": "STRING",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_INTEGER",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_REAL",
+            "named": true
+          },
+          {
+            "type": "UnaryExpression",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "SimpleImportClause",
+    "named": true,
+    "fields": {
+      "annotationClause": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "AnnotationClause",
+            "named": true
+          }
+        ]
+      },
+      "description": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "Description",
+            "named": true
+          }
+        ]
+      },
+      "packageName": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "Name",
+            "named": true
+          }
+        ]
+      },
+      "shortName": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "IDENT",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "SpecialEquation",
+    "named": true,
+    "fields": {
+      "annotationClause": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "AnnotationClause",
+            "named": true
+          }
+        ]
+      },
+      "description": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "Description",
+            "named": true
+          }
+        ]
+      },
+      "functionCallArguments": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "FunctionCallArguments",
+            "named": true
+          }
+        ]
+      },
+      "functionReference": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ComponentReference",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "StoredDefinition",
+    "named": true,
+    "root": true,
+    "fields": {
+      "classDefinition": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "ClassDefinition",
+            "named": true
+          }
+        ]
+      },
+      "componentClause": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "ComponentClause",
+            "named": true
+          }
+        ]
+      },
+      "statement": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "BreakStatement",
+            "named": true
+          },
+          {
+            "type": "ComplexAssignmentStatement",
+            "named": true
+          },
+          {
+            "type": "ForStatement",
+            "named": true
+          },
+          {
+            "type": "IfStatement",
+            "named": true
+          },
+          {
+            "type": "ProcedureCallStatement",
+            "named": true
+          },
+          {
+            "type": "ReturnStatement",
+            "named": true
+          },
+          {
+            "type": "SimpleAssignmentStatement",
+            "named": true
+          },
+          {
+            "type": "WhenStatement",
+            "named": true
+          },
+          {
+            "type": "WhileStatement",
+            "named": true
+          }
+        ]
+      },
+      "withinDirective": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "WithinDirective",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "BOM",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "Subscript",
+    "named": true,
+    "fields": {
+      "expression": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ArrayConcatenation",
+            "named": true
+          },
+          {
+            "type": "ArrayConstructor",
+            "named": true
+          },
+          {
+            "type": "BOOLEAN",
+            "named": true
+          },
+          {
+            "type": "BinaryExpression",
+            "named": true
+          },
+          {
+            "type": "ComponentReference",
+            "named": true
+          },
+          {
+            "type": "EndExpression",
+            "named": true
+          },
+          {
+            "type": "FunctionCall",
+            "named": true
+          },
+          {
+            "type": "IfElseExpression",
+            "named": true
+          },
+          {
+            "type": "MemberAccessExpression",
+            "named": true
+          },
+          {
+            "type": "OutputExpressionList",
+            "named": true
+          },
+          {
+            "type": "RangeExpression",
+            "named": true
+          },
+          {
+            "type": "STRING",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_INTEGER",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_REAL",
+            "named": true
+          },
+          {
+            "type": "UnaryExpression",
+            "named": true
+          }
+        ]
+      },
+      "flexible": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": ":",
+            "named": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "TypeSpecifier",
+    "named": true,
+    "fields": {
+      "global": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": ".",
+            "named": false
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "Name",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "UnaryExpression",
+    "named": true,
+    "fields": {
+      "operand": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ArrayConcatenation",
+            "named": true
+          },
+          {
+            "type": "ArrayConstructor",
+            "named": true
+          },
+          {
+            "type": "BOOLEAN",
+            "named": true
+          },
+          {
+            "type": "BinaryExpression",
+            "named": true
+          },
+          {
+            "type": "ComponentReference",
+            "named": true
+          },
+          {
+            "type": "EndExpression",
+            "named": true
+          },
+          {
+            "type": "FunctionCall",
+            "named": true
+          },
+          {
+            "type": "MemberAccessExpression",
+            "named": true
+          },
+          {
+            "type": "OutputExpressionList",
+            "named": true
+          },
+          {
+            "type": "STRING",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_INTEGER",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_REAL",
+            "named": true
+          },
+          {
+            "type": "UnaryExpression",
+            "named": true
+          }
+        ]
+      },
+      "operator": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "+",
+            "named": false
+          },
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": ".+",
+            "named": false
+          },
+          {
+            "type": ".-",
+            "named": false
+          },
+          {
+            "type": "not",
+            "named": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "UnqualifiedImportClause",
+    "named": true,
+    "fields": {
+      "annotationClause": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "AnnotationClause",
+            "named": true
+          }
+        ]
+      },
+      "description": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "Description",
+            "named": true
+          }
+        ]
+      },
+      "packageName": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "Name",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "WhenEquation",
+    "named": true,
+    "fields": {
+      "annotationClause": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "AnnotationClause",
+            "named": true
+          }
+        ]
+      },
+      "condition": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ArrayConcatenation",
+            "named": true
+          },
+          {
+            "type": "ArrayConstructor",
+            "named": true
+          },
+          {
+            "type": "BOOLEAN",
+            "named": true
+          },
+          {
+            "type": "BinaryExpression",
+            "named": true
+          },
+          {
+            "type": "ComponentReference",
+            "named": true
+          },
+          {
+            "type": "EndExpression",
+            "named": true
+          },
+          {
+            "type": "FunctionCall",
+            "named": true
+          },
+          {
+            "type": "IfElseExpression",
+            "named": true
+          },
+          {
+            "type": "MemberAccessExpression",
+            "named": true
+          },
+          {
+            "type": "OutputExpressionList",
+            "named": true
+          },
+          {
+            "type": "RangeExpression",
+            "named": true
+          },
+          {
+            "type": "STRING",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_INTEGER",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_REAL",
+            "named": true
+          },
+          {
+            "type": "UnaryExpression",
+            "named": true
+          }
+        ]
+      },
+      "description": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "Description",
+            "named": true
+          }
+        ]
+      },
+      "elseWhenEquationClause": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "ElseWhenEquationClause",
+            "named": true
+          }
+        ]
+      },
+      "equation": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "ConnectEquation",
+            "named": true
+          },
+          {
+            "type": "ForEquation",
+            "named": true
+          },
+          {
+            "type": "IfEquation",
+            "named": true
+          },
+          {
+            "type": "SimpleEquation",
+            "named": true
+          },
+          {
+            "type": "SpecialEquation",
+            "named": true
+          },
+          {
+            "type": "WhenEquation",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "WhenStatement",
+    "named": true,
+    "fields": {
+      "annotationClause": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "AnnotationClause",
+            "named": true
+          }
+        ]
+      },
+      "condition": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ArrayConcatenation",
+            "named": true
+          },
+          {
+            "type": "ArrayConstructor",
+            "named": true
+          },
+          {
+            "type": "BOOLEAN",
+            "named": true
+          },
+          {
+            "type": "BinaryExpression",
+            "named": true
+          },
+          {
+            "type": "ComponentReference",
+            "named": true
+          },
+          {
+            "type": "EndExpression",
+            "named": true
+          },
+          {
+            "type": "FunctionCall",
+            "named": true
+          },
+          {
+            "type": "IfElseExpression",
+            "named": true
+          },
+          {
+            "type": "MemberAccessExpression",
+            "named": true
+          },
+          {
+            "type": "OutputExpressionList",
+            "named": true
+          },
+          {
+            "type": "RangeExpression",
+            "named": true
+          },
+          {
+            "type": "STRING",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_INTEGER",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_REAL",
+            "named": true
+          },
+          {
+            "type": "UnaryExpression",
+            "named": true
+          }
+        ]
+      },
+      "description": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "Description",
+            "named": true
+          }
+        ]
+      },
+      "elseWhenStatementClause": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "ElseWhenStatementClause",
+            "named": true
+          }
+        ]
+      },
+      "statement": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "BreakStatement",
+            "named": true
+          },
+          {
+            "type": "ComplexAssignmentStatement",
+            "named": true
+          },
+          {
+            "type": "ForStatement",
+            "named": true
+          },
+          {
+            "type": "IfStatement",
+            "named": true
+          },
+          {
+            "type": "ProcedureCallStatement",
+            "named": true
+          },
+          {
+            "type": "ReturnStatement",
+            "named": true
+          },
+          {
+            "type": "SimpleAssignmentStatement",
+            "named": true
+          },
+          {
+            "type": "WhenStatement",
+            "named": true
+          },
+          {
+            "type": "WhileStatement",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "WhileStatement",
+    "named": true,
+    "fields": {
+      "annotationClause": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "AnnotationClause",
+            "named": true
+          }
+        ]
+      },
+      "condition": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ArrayConcatenation",
+            "named": true
+          },
+          {
+            "type": "ArrayConstructor",
+            "named": true
+          },
+          {
+            "type": "BOOLEAN",
+            "named": true
+          },
+          {
+            "type": "BinaryExpression",
+            "named": true
+          },
+          {
+            "type": "ComponentReference",
+            "named": true
+          },
+          {
+            "type": "EndExpression",
+            "named": true
+          },
+          {
+            "type": "FunctionCall",
+            "named": true
+          },
+          {
+            "type": "IfElseExpression",
+            "named": true
+          },
+          {
+            "type": "MemberAccessExpression",
+            "named": true
+          },
+          {
+            "type": "OutputExpressionList",
+            "named": true
+          },
+          {
+            "type": "RangeExpression",
+            "named": true
+          },
+          {
+            "type": "STRING",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_INTEGER",
+            "named": true
+          },
+          {
+            "type": "UNSIGNED_REAL",
+            "named": true
+          },
+          {
+            "type": "UnaryExpression",
+            "named": true
+          }
+        ]
+      },
+      "description": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "Description",
+            "named": true
+          }
+        ]
+      },
+      "statement": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "BreakStatement",
+            "named": true
+          },
+          {
+            "type": "ComplexAssignmentStatement",
+            "named": true
+          },
+          {
+            "type": "ForStatement",
+            "named": true
+          },
+          {
+            "type": "IfStatement",
+            "named": true
+          },
+          {
+            "type": "ProcedureCallStatement",
+            "named": true
+          },
+          {
+            "type": "ReturnStatement",
+            "named": true
+          },
+          {
+            "type": "SimpleAssignmentStatement",
+            "named": true
+          },
+          {
+            "type": "WhenStatement",
+            "named": true
+          },
+          {
+            "type": "WhileStatement",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "WithinDirective",
+    "named": true,
+    "fields": {
+      "packageName": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "Name",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "(",
+    "named": false
+  },
+  {
+    "type": ")",
+    "named": false
+  },
+  {
+    "type": "*",
+    "named": false
+  },
+  {
+    "type": "+",
+    "named": false
+  },
+  {
+    "type": ",",
+    "named": false
+  },
+  {
+    "type": "-",
+    "named": false
+  },
+  {
+    "type": ".",
+    "named": false
+  },
+  {
+    "type": ".*",
+    "named": false
+  },
+  {
+    "type": ".+",
+    "named": false
+  },
+  {
+    "type": ".-",
+    "named": false
+  },
+  {
+    "type": "./",
+    "named": false
+  },
+  {
+    "type": ".^",
+    "named": false
+  },
+  {
+    "type": "/",
+    "named": false
+  },
+  {
+    "type": ":",
+    "named": false
+  },
+  {
+    "type": ":=",
+    "named": false
+  },
+  {
+    "type": ";",
+    "named": false
+  },
+  {
+    "type": "<",
+    "named": false
+  },
+  {
+    "type": "<=",
+    "named": false
+  },
+  {
+    "type": "<>",
+    "named": false
+  },
+  {
+    "type": "=",
+    "named": false
+  },
+  {
+    "type": "==",
+    "named": false
+  },
+  {
+    "type": ">",
+    "named": false
+  },
+  {
+    "type": ">=",
+    "named": false
+  },
+  {
+    "type": "BLOCK_COMMENT",
+    "named": true,
+    "extra": true
+  },
+  {
+    "type": "BOM",
+    "named": true
+  },
+  {
+    "type": "IDENT",
+    "named": true
+  },
+  {
+    "type": "LINE_COMMENT",
+    "named": true,
+    "extra": true
+  },
+  {
+    "type": "STRING",
+    "named": true
+  },
+  {
+    "type": "UNSIGNED_INTEGER",
+    "named": true
+  },
+  {
+    "type": "UNSIGNED_REAL",
+    "named": true
+  },
+  {
+    "type": "[",
+    "named": false
+  },
+  {
+    "type": "]",
+    "named": false
+  },
+  {
+    "type": "^",
+    "named": false
+  },
+  {
+    "type": "algorithm",
+    "named": false
+  },
+  {
+    "type": "and",
+    "named": false
+  },
+  {
+    "type": "annotation",
+    "named": false
+  },
+  {
+    "type": "block",
+    "named": false
+  },
+  {
+    "type": "break",
+    "named": false
+  },
+  {
+    "type": "class",
+    "named": false
+  },
+  {
+    "type": "connect",
+    "named": false
+  },
+  {
+    "type": "connector",
+    "named": false
+  },
+  {
+    "type": "constant",
+    "named": false
+  },
+  {
+    "type": "constrainedby",
+    "named": false
+  },
+  {
+    "type": "der",
+    "named": false
+  },
+  {
+    "type": "discrete",
+    "named": false
+  },
+  {
+    "type": "each",
+    "named": false
+  },
+  {
+    "type": "else",
+    "named": false
+  },
+  {
+    "type": "elseif",
+    "named": false
+  },
+  {
+    "type": "elsewhen",
+    "named": false
+  },
+  {
+    "type": "encapsulated",
+    "named": false
+  },
+  {
+    "type": "end",
+    "named": false
+  },
+  {
+    "type": "enumeration",
+    "named": false
+  },
+  {
+    "type": "equation",
+    "named": false
+  },
+  {
+    "type": "expandable",
+    "named": false
+  },
+  {
+    "type": "extends",
+    "named": false
+  },
+  {
+    "type": "external",
+    "named": false
+  },
+  {
+    "type": "false",
+    "named": false
+  },
+  {
+    "type": "final",
+    "named": false
+  },
+  {
+    "type": "flow",
+    "named": false
+  },
+  {
+    "type": "for",
+    "named": false
+  },
+  {
+    "type": "function",
+    "named": false
+  },
+  {
+    "type": "if",
+    "named": false
+  },
+  {
+    "type": "import",
+    "named": false
+  },
+  {
+    "type": "impure",
+    "named": false
+  },
+  {
+    "type": "in",
+    "named": false
+  },
+  {
+    "type": "initial",
+    "named": false
+  },
+  {
+    "type": "inner",
+    "named": false
+  },
+  {
+    "type": "input",
+    "named": false
+  },
+  {
+    "type": "loop",
+    "named": false
+  },
+  {
+    "type": "model",
+    "named": false
+  },
+  {
+    "type": "not",
+    "named": false
+  },
+  {
+    "type": "operator",
+    "named": false
+  },
+  {
+    "type": "or",
+    "named": false
+  },
+  {
+    "type": "outer",
+    "named": false
+  },
+  {
+    "type": "output",
+    "named": false
+  },
+  {
+    "type": "package",
+    "named": false
+  },
+  {
+    "type": "parameter",
+    "named": false
+  },
+  {
+    "type": "partial",
+    "named": false
+  },
+  {
+    "type": "protected",
+    "named": false
+  },
+  {
+    "type": "public",
+    "named": false
+  },
+  {
+    "type": "pure",
+    "named": false
+  },
+  {
+    "type": "record",
+    "named": false
+  },
+  {
+    "type": "redeclare",
+    "named": false
+  },
+  {
+    "type": "replaceable",
+    "named": false
+  },
+  {
+    "type": "return",
+    "named": false
+  },
+  {
+    "type": "stream",
+    "named": false
+  },
+  {
+    "type": "then",
+    "named": false
+  },
+  {
+    "type": "true",
+    "named": false
+  },
+  {
+    "type": "type",
+    "named": false
+  },
+  {
+    "type": "when",
+    "named": false
+  },
+  {
+    "type": "while",
+    "named": false
+  },
+  {
+    "type": "within",
+    "named": false
+  },
+  {
+    "type": "{",
+    "named": false
+  },
+  {
+    "type": "}",
+    "named": false
+  }
+]

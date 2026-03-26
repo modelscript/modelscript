@@ -4,32 +4,14 @@
 # Usage: docker compose build (targets configured in docker-compose.yml)
 # ==============================================================================
 
-# ---- Generate tree-sitter parser source (needs glibc for tree-sitter binary) ----
-FROM node:22-slim AS generate
-WORKDIR /app
-COPY package.json package-lock.json ./
-COPY packages/tree-sitter-modelica/package.json packages/tree-sitter-modelica/grammar.js packages/tree-sitter-modelica/binding.gyp packages/tree-sitter-modelica/
-COPY packages/tree-sitter-modelica/bindings packages/tree-sitter-modelica/bindings
-# Stub all workspace packages so npm ci resolves the lockfile
-COPY packages/core/package.json packages/core/
-COPY packages/api/package.json packages/api/
-COPY packages/morsel/package.json packages/morsel/
-COPY packages/web/package.json packages/web/
-COPY packages/cli/package.json packages/cli/
-COPY packages/lsp/package.json packages/lsp/
-COPY packages/vscode/package.json packages/vscode/
-COPY packages/ide/package.json packages/ide/
-RUN npm ci --ignore-scripts
-RUN cd node_modules/tree-sitter-cli && node install.js
-RUN cd packages/tree-sitter-modelica && npx tree-sitter generate --abi=14
-
 # ---- Shared Alpine base with native build tools ----
 FROM node:22-alpine AS deps
 RUN apk add --no-cache python3 make g++
 WORKDIR /app
 COPY package.json package-lock.json ./
-COPY packages/tree-sitter-modelica/package.json packages/tree-sitter-modelica/grammar.js packages/tree-sitter-modelica/binding.gyp packages/tree-sitter-modelica/tree-sitter-modelica.wasm packages/tree-sitter-modelica/
+COPY packages/tree-sitter-modelica/package.json packages/tree-sitter-modelica/grammar.js packages/tree-sitter-modelica/binding.gyp packages/tree-sitter-modelica/
 COPY packages/tree-sitter-modelica/bindings packages/tree-sitter-modelica/bindings
+COPY packages/tree-sitter-modelica/src packages/tree-sitter-modelica/src
 COPY packages/core/package.json packages/core/
 COPY packages/api/package.json packages/api/
 COPY packages/morsel/package.json packages/morsel/
@@ -39,8 +21,7 @@ COPY packages/lsp/package.json packages/lsp/
 COPY packages/vscode/package.json packages/vscode/
 COPY packages/ide/package.json packages/ide/
 RUN npm ci --ignore-scripts
-# Copy generated parser source from Debian stage and build native addon
-COPY --from=generate /app/packages/tree-sitter-modelica/src packages/tree-sitter-modelica/src
+# Build native addon from committed parser source
 RUN cd packages/tree-sitter-modelica && npx node-gyp rebuild
 
 # ==============================================================================
