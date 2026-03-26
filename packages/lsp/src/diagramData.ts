@@ -808,7 +808,7 @@ function applyCoordinateSystemX6(markup: X6Markup, coordinateSystem?: ICoordinat
 function applyFillX6(shape: X6Markup, filledShape: IFilledShape, defs: X6Markup[]) {
   if (!shape.attrs) shape.attrs = {};
   const pattern = (filledShape.fillPattern ?? "None").toLowerCase();
-  let fillValue = "none";
+  let fillValue;
 
   switch (pattern) {
     case "solid":

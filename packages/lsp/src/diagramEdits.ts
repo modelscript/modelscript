@@ -556,13 +556,12 @@ export function computeDescriptionEdit(
       const descStartCol = descriptionNode.startPosition.column;
       const descEndLine = descriptionNode.endPosition.row;
       const descEndCol = descriptionNode.endPosition.column;
-      let removeStartCol = descStartCol;
       const lineContent = lines[descStartLine];
       let col = descStartCol - 1;
       while (col >= 0 && (lineContent[col] === " " || lineContent[col] === "\t")) {
         col--;
       }
-      removeStartCol = col + 1;
+      const removeStartCol = col + 1;
       return [TextEdit.replace(Range.create(descStartLine, removeStartCol, descEndLine, descEndCol), "")];
     }
     return [
