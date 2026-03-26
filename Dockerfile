@@ -104,8 +104,11 @@ CMD ["npx", "react-router-serve", "./packages/morsel/build/server/index.js"]
 # Web
 # ==============================================================================
 FROM deps AS build-web
+COPY packages/core packages/core
 COPY packages/web packages/web
-RUN npm run build -w packages/web
+# Skip lint in Docker (already enforced in CI); run clean + tsc for core
+RUN npm run clean -w packages/core && npx tsc -p packages/core \
+    && npm run build -w packages/web
 
 FROM nginx:alpine AS web
 COPY --from=build-web /app/packages/web/dist /usr/share/nginx/html
