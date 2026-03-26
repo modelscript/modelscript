@@ -1,6 +1,6 @@
 # ---- Dependencies ----
 FROM node:22-alpine AS deps
-RUN apk add --no-cache python3 make g++
+RUN apk add --no-cache python3 make g++ libc6-compat
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY packages/core/package.json packages/core/
@@ -14,7 +14,11 @@ COPY packages/api/package.json packages/api/
 COPY packages/morsel/package.json packages/morsel/
 COPY packages/web/package.json packages/web/
 COPY packages/cli/package.json packages/cli/
-RUN npm ci
+RUN npm ci --ignore-scripts
+# Manually run tree-sitter-cli install hook (skipped by --ignore-scripts) to fetch the native binary
+RUN cd node_modules/tree-sitter-cli && node install.js
+# Generate tree-sitter parser and build native addon (separate layer for caching)
+RUN cd packages/tree-sitter-modelica && npx tree-sitter generate --abi=14 && npx node-gyp rebuild
 
 # ---- Build ----
 FROM deps AS build
