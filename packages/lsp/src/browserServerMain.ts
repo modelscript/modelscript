@@ -1,6 +1,8 @@
 import { BrowserMessageReader, BrowserMessageWriter, createConnection } from "vscode-languageserver/browser";
 
 import {
+  CodeAction,
+  CodeActionKind,
   Color,
   ColorInformation,
   ColorPresentation,
@@ -11,13 +13,16 @@ import {
   DocumentHighlightKind,
   DocumentSymbol,
   InitializeResult,
+  ParameterInformation,
   SemanticTokens,
   SemanticTokensBuilder,
   SemanticTokensLegend,
   ServerCapabilities,
+  SignatureInformation,
   SymbolKind,
   TextDocumentSyncKind,
   TextDocuments,
+  WorkspaceEdit,
 } from "vscode-languageserver";
 
 import { TextDocument } from "vscode-languageserver-textdocument";
@@ -41,6 +46,7 @@ import {
   Context,
   ModelicaClassDefinitionSyntaxNode,
   ModelicaClassInstance,
+  ModelicaClassKind,
   ModelicaComponentDeclarationSyntaxNode,
   ModelicaComponentInstance,
   ModelicaComponentReferenceSyntaxNode,
@@ -732,9 +738,21 @@ connection.onInitialize((params): InitializeResult => {
     colorProvider: true,
     documentSymbolProvider: true,
     definitionProvider: true,
+    typeDefinitionProvider: true,
+    referencesProvider: true,
     foldingRangeProvider: true,
     selectionRangeProvider: true,
     documentHighlightProvider: true,
+    signatureHelpProvider: {
+      triggerCharacters: ["(", ","],
+    },
+    renameProvider: {
+      prepareProvider: true,
+    },
+    codeActionProvider: {
+      codeActionKinds: [CodeActionKind.QuickFix],
+    },
+    workspaceSymbolProvider: true,
   };
   return { capabilities };
 });
@@ -2050,6 +2068,382 @@ connection.onDocumentHighlight((params) => {
   collectHighlights(tree.rootNode);
   tree.delete();
   return highlights;
+});
+
+/* Signature Help — shows function parameter info on ( and , */
+
+connection.onSignatureHelp((params) => {
+  if (!parserReady || !parser) return null;
+  const document = documents.get(params.textDocument.uri);
+  if (!document) return null;
+
+  const text = document.getText();
+  const tree = parser.parse(text);
+
+  try {
+    const rootNode = tree.rootNode;
+    const node = rootNode.descendantForPosition({
+      row: params.position.line,
+      column: params.position.character,
+    });
+
+    // Walk up to find a FunctionCall ancestor
+    let funcCallNode: Parser.SyntaxNode | null = node;
+    while (funcCallNode && funcCallNode.type !== "FunctionCall") {
+      funcCallNode = funcCallNode.parent;
+    }
+    if (!funcCallNode) return null;
+
+    // Get the function reference
+    const refNode = funcCallNode.children.find((c: Parser.SyntaxNode) => c.type === "ComponentReference");
+    if (!refNode) return null;
+
+    const instances = documentInstances.get(params.textDocument.uri);
+    const context = documentContexts.get(params.textDocument.uri);
+    const scope: Scope | undefined = instances?.[0] ?? context;
+    if (!scope) return null;
+
+    const funcElement = scope.resolveName(refNode.text.split("."));
+    if (!(funcElement instanceof ModelicaClassInstance)) return null;
+    if (funcElement.classKind !== ModelicaClassKind.FUNCTION && funcElement.classKind !== ModelicaClassKind.RECORD)
+      return null;
+
+    // Collect input parameters
+    const paramInfos: ParameterInformation[] = [];
+    for (const param of funcElement.inputParameters) {
+      const typeName = param.declaredType?.compositeName ?? param.classInstance?.compositeName ?? "?";
+      const label = `${typeName} ${param.name}`;
+      paramInfos.push(ParameterInformation.create(label, param.description ?? undefined));
+    }
+
+    // Determine which parameter is active based on comma count before cursor
+    const argsNode = funcCallNode.children.find((c: Parser.SyntaxNode) => c.type === "FunctionCallArguments");
+    let activeParameter = 0;
+    if (argsNode) {
+      const argsText = text.substring(argsNode.startIndex, argsNode.endIndex);
+      const cursorOffset = document.offsetAt(params.position) - argsNode.startIndex;
+      const textBeforeCursor = argsText.substring(0, Math.max(0, cursorOffset));
+      // Count commas at nesting depth 0
+      let depth = 0;
+      for (const ch of textBeforeCursor) {
+        if (ch === "(" || ch === "{" || ch === "[") depth++;
+        else if (ch === ")" || ch === "}" || ch === "]") depth--;
+        else if (ch === "," && depth <= 1) activeParameter++;
+      }
+    }
+
+    const sigLabel = `${refNode.text}(${paramInfos.map((p) => p.label).join(", ")})`;
+
+    return {
+      signatures: [SignatureInformation.create(sigLabel, funcElement.description ?? undefined, ...paramInfos)],
+      activeSignature: 0,
+      activeParameter,
+    };
+  } finally {
+    tree.delete();
+  }
+});
+
+/* Find References — locates all occurrences of a symbol across open documents */
+
+connection.onReferences((params) => {
+  const document = documents.get(params.textDocument.uri);
+  if (!document) return [];
+
+  const resolved = resolveElementAtPosition(document, params.position);
+  if (!resolved) return [];
+
+  const targetElement = resolved.element;
+  const targetName = targetElement.name;
+  if (!targetName) return [];
+
+  const locations: {
+    uri: string;
+    range: { start: { line: number; character: number }; end: { line: number; character: number } };
+  }[] = [];
+
+  // Search all open documents
+  for (const doc of documents.all()) {
+    if (!parserReady || !parser) continue;
+    const text = doc.getText();
+    const tree = parser.parse(text);
+
+    const collectRefs = (node: Parser.SyntaxNode) => {
+      if (node.type === "IDENT" && node.text === targetName) {
+        locations.push({
+          uri: doc.uri,
+          range: nodeRange(node),
+        });
+      }
+      for (let i = 0; i < node.childCount; i++) {
+        const child = node.child(i);
+        if (child) collectRefs(child);
+      }
+    };
+
+    collectRefs(tree.rootNode);
+    tree.delete();
+  }
+
+  return locations;
+});
+
+/* Rename — renames a symbol across the current document */
+
+connection.onPrepareRename((params) => {
+  const document = documents.get(params.textDocument.uri);
+  if (!document) return null;
+
+  const text = document.getText();
+  const lines = text.split("\n");
+  const lineContent = lines[params.position.line] ?? "";
+
+  let wordStart = params.position.character;
+  let wordEnd = params.position.character;
+  while (wordStart > 0 && /[_a-zA-Z0-9]/.test(lineContent[wordStart - 1])) wordStart--;
+  while (wordEnd < lineContent.length && /[_a-zA-Z0-9]/.test(lineContent[wordEnd])) wordEnd++;
+  const word = lineContent.substring(wordStart, wordEnd);
+  if (!word || /^[0-9]/.test(word)) return null;
+
+  // Verify it resolves to something
+  const resolved = resolveElementAtPosition(document, params.position);
+  if (!resolved) return null;
+
+  return {
+    range: {
+      start: { line: params.position.line, character: wordStart },
+      end: { line: params.position.line, character: wordEnd },
+    },
+    placeholder: word,
+  };
+});
+
+connection.onRenameRequest((params) => {
+  const document = documents.get(params.textDocument.uri);
+  if (!document) return null;
+
+  const resolved = resolveElementAtPosition(document, params.position);
+  if (!resolved) return null;
+
+  const targetName = resolved.element.name;
+  if (!targetName) return null;
+
+  const changes: WorkspaceEdit["changes"] = {};
+
+  // Find and replace all occurrences across open documents
+  for (const doc of documents.all()) {
+    if (!parserReady || !parser) continue;
+    const text = doc.getText();
+    const tree = parser.parse(text);
+    const edits: {
+      range: { start: { line: number; character: number }; end: { line: number; character: number } };
+      newText: string;
+    }[] = [];
+
+    const collectRenames = (node: Parser.SyntaxNode) => {
+      if (node.type === "IDENT" && node.text === targetName) {
+        edits.push({
+          range: nodeRange(node),
+          newText: params.newName,
+        });
+      }
+      for (let i = 0; i < node.childCount; i++) {
+        const child = node.child(i);
+        if (child) collectRenames(child);
+      }
+    };
+
+    collectRenames(tree.rootNode);
+    tree.delete();
+
+    if (edits.length > 0) {
+      changes[doc.uri] = edits;
+    }
+  }
+
+  return { changes };
+});
+
+/* Code Actions — quick-fix suggestions based on diagnostics */
+
+connection.onCodeAction((params) => {
+  const actions: CodeAction[] = [];
+  const document = documents.get(params.textDocument.uri);
+  if (!document) return actions;
+
+  for (const diagnostic of params.context.diagnostics) {
+    if (diagnostic.source !== "modelscript") continue;
+
+    // Suggest adding import for unresolved references
+    if (diagnostic.message.includes("not found") || diagnostic.message.includes("unresolved")) {
+      // Extract the name from the diagnostic range
+      const text = document.getText();
+      const startOffset = document.offsetAt(diagnostic.range.start);
+      const endOffset = document.offsetAt(diagnostic.range.end);
+      const unresolvedName = text.substring(startOffset, endOffset);
+
+      if (unresolvedName && /^[a-zA-Z_]/.test(unresolvedName)) {
+        actions.push({
+          title: `Import '${unresolvedName}'`,
+          kind: CodeActionKind.QuickFix,
+          diagnostics: [diagnostic],
+          edit: {
+            changes: {
+              [params.textDocument.uri]: [
+                {
+                  range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
+                  newText: `import ${unresolvedName};\n`,
+                },
+              ],
+            },
+          },
+        });
+      }
+    }
+  }
+
+  return actions;
+});
+
+/* Workspace Symbols — search across all loaded classes in MSL and open documents */
+
+connection.onWorkspaceSymbol((params) => {
+  const query = params.query.toLowerCase();
+  if (query.length < 2) return []; // Avoid returning too many results for short queries
+
+  const symbols: {
+    name: string;
+    kind: SymbolKind;
+    location: {
+      uri: string;
+      range: { start: { line: number; character: number }; end: { line: number; character: number } };
+    };
+  }[] = [];
+  const MAX_RESULTS = 100;
+
+  // Search open document instances
+  for (const [uri, instances] of documentInstances) {
+    for (const inst of instances) {
+      if (symbols.length >= MAX_RESULTS) break;
+      collectWorkspaceSymbols(inst, uri, query, symbols, MAX_RESULTS);
+    }
+    if (symbols.length >= MAX_RESULTS) break;
+  }
+
+  // Search MSL classes from shared context
+  if (sharedContext && symbols.length < MAX_RESULTS) {
+    for (const element of sharedContext.elements) {
+      if (symbols.length >= MAX_RESULTS) break;
+      if (element instanceof ModelicaLibrary) {
+        for (const child of element.elements) {
+          if (symbols.length >= MAX_RESULTS) break;
+          if (child instanceof ModelicaClassInstance) {
+            collectWorkspaceSymbols(child, "", query, symbols, MAX_RESULTS);
+          }
+        }
+      }
+    }
+  }
+
+  return symbols;
+});
+
+function collectWorkspaceSymbols(
+  element: ModelicaNamedElement,
+  uri: string,
+  query: string,
+  symbols: {
+    name: string;
+    kind: SymbolKind;
+    location: {
+      uri: string;
+      range: { start: { line: number; character: number }; end: { line: number; character: number } };
+    };
+  }[],
+  maxResults: number,
+): void {
+  if (symbols.length >= maxResults) return;
+
+  const name = element.compositeName;
+  if (name && name.toLowerCase().includes(query)) {
+    const range = element.abstractSyntaxNode?.sourceRange;
+    symbols.push({
+      name,
+      kind: element instanceof ModelicaClassInstance ? SymbolKind.Class : SymbolKind.Variable,
+      location: {
+        uri: uri || "file:///lib",
+        range: range
+          ? {
+              start: { line: range.startRow, character: range.startCol },
+              end: { line: range.endRow, character: range.endCol },
+            }
+          : { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
+      },
+    });
+  }
+
+  // Recurse into class children (limit depth for performance)
+  if (element instanceof ModelicaClassInstance) {
+    try {
+      for (const child of element.elements) {
+        if (symbols.length >= maxResults) break;
+        if (child instanceof ModelicaNamedElement) {
+          collectWorkspaceSymbols(child, uri, query, symbols, maxResults);
+        }
+      }
+    } catch {
+      // Skip classes that fail to iterate
+    }
+  }
+}
+
+/* Go to Type Definition — jumps to the class definition of a component's type */
+
+connection.onTypeDefinition((params) => {
+  const document = documents.get(params.textDocument.uri);
+  if (!document) return null;
+
+  const resolved = resolveElementAtPosition(document, params.position);
+  if (!resolved) return null;
+
+  const { element, uri } = resolved;
+
+  // For components, jump to their type class
+  let targetClass: ModelicaClassInstance | null = null;
+  if (element instanceof ModelicaComponentInstance) {
+    targetClass = element.declaredType ?? element.classInstance ?? null;
+  } else if (element instanceof ModelicaClassInstance) {
+    // Already a class — nothing to jump to
+    return null;
+  }
+
+  if (!targetClass) return null;
+  const syntaxNode = targetClass.abstractSyntaxNode;
+  if (!syntaxNode?.sourceRange) return null;
+
+  // Use identifier for precise location
+  const ident = (syntaxNode as ModelicaClassDefinitionSyntaxNode | null)?.identifier;
+  const targetRange = ident?.sourceRange ?? syntaxNode.sourceRange;
+
+  // Find the URI for this class
+  let targetUri = uri;
+  for (const [docUri, instances] of documentInstances) {
+    for (const inst of instances) {
+      if (inst === targetClass || isDescendantOf(targetClass, inst)) {
+        targetUri = docUri;
+        break;
+      }
+    }
+    if (targetUri !== uri) break;
+  }
+
+  return {
+    uri: targetUri,
+    range: {
+      start: { line: targetRange.startRow, character: targetRange.startCol },
+      end: { line: targetRange.endRow, character: targetRange.endCol },
+    },
+  };
 });
 
 // Custom request: get diagram data for the webview
