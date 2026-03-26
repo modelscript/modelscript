@@ -1133,128 +1133,109 @@ function checkExpressionReferences(
   }
 }
 
-/* Semantic tokens provider — regex-based tokenizer matching morsel's token types */
+/* Semantic tokens provider — tree-sitter AST traversal matching morsel's code.tsx exactly */
 
 function computeSemanticTokens(textDocument: TextDocument): SemanticTokens {
   const builder = new SemanticTokensBuilder();
   const text = textDocument.getText();
-  const lines = text.split("\n");
 
-  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
-    const line = lines[lineIndex];
-    tokenizeLine(builder, line, lineIndex);
+  // Try to parse with tree-sitter via document context
+  const ctx = documentContexts.get(textDocument.uri);
+  if (!ctx) {
+    return builder.build();
+  }
+
+  let tree;
+  try {
+    tree = ctx.parse(".mo", text);
+  } catch {
+    return builder.build();
+  }
+
+  const rawTokens: {
+    line: number;
+    char: number;
+    length: number;
+    typeIndex: number;
+    modifier: number;
+  }[] = [];
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const traverseTree = (node: any) => {
+    let tokenType: string | null = null;
+    const modifier = 0;
+
+    const isKeyword = keywords.includes(node.type) || typeKeywords.includes(node.type);
+
+    if (isKeyword) {
+      tokenType = "keyword";
+    } else if (node.type === "IDENT") {
+      const parent = node.parent;
+      let p = parent;
+      while (p && p.type === "Name") {
+        p = p.parent;
+      }
+
+      if (
+        parent?.type === "LongClassSpecifier" ||
+        parent?.type === "ShortClassSpecifier" ||
+        parent?.type === "DerClassSpecifier" ||
+        p?.type === "WithinDirective" ||
+        p?.type === "ExtendsClause" ||
+        p?.type === "TypeSpecifier"
+      ) {
+        tokenType = "type";
+      } else if (parent?.type === "Declaration") {
+        tokenType = "variable";
+      } else if (typeKeywords.includes(node.text)) {
+        tokenType = "type";
+      } else {
+        tokenType = "variable";
+      }
+    } else if (node.type === "STRING") {
+      tokenType = "string";
+    } else if (node.type === "UNSIGNED_INTEGER" || node.type === "UNSIGNED_REAL") {
+      tokenType = "number";
+    } else if (node.type === "comment") {
+      tokenType = "comment";
+    } else if (["+", "-", "*", "/", "=", "<", ">", "<=", ">=", "==", "<>"].includes(node.type)) {
+      tokenType = "operator";
+    }
+
+    if (tokenType !== null) {
+      const typeIndex = tokenTypes.indexOf(tokenType);
+      if (typeIndex >= 0) {
+        if (!rawTokens.some((t) => t.line === node.startPosition.row && t.char === node.startPosition.column)) {
+          rawTokens.push({
+            line: node.startPosition.row,
+            char: node.startPosition.column,
+            length: node.endPosition.column - node.startPosition.column,
+            typeIndex,
+            modifier,
+          });
+        }
+      }
+    }
+
+    for (const child of node.children) {
+      traverseTree(child);
+    }
+  };
+
+  traverseTree(tree.rootNode);
+
+  rawTokens.sort((a, b) => {
+    if (a.line === b.line) {
+      return a.char - b.char;
+    }
+    return a.line - b.line;
+  });
+
+  for (const token of rawTokens) {
+    builder.push(token.line, token.char, token.length, token.typeIndex, token.modifier);
   }
 
   return builder.build();
-}
-
-function tokenizeLine(builder: SemanticTokensBuilder, line: string, lineIndex: number): void {
-  let i = 0;
-
-  while (i < line.length) {
-    // Skip whitespace
-    if (/\s/.test(line[i])) {
-      i++;
-      continue;
-    }
-
-    // Line comment
-    if (line[i] === "/" && i + 1 < line.length && line[i + 1] === "/") {
-      builder.push(lineIndex, i, line.length - i, tokenTypes.indexOf("comment"), 0);
-      return;
-    }
-
-    // Block comment start
-    if (line[i] === "/" && i + 1 < line.length && line[i + 1] === "*") {
-      const endIdx = line.indexOf("*/", i + 2);
-      if (endIdx !== -1) {
-        builder.push(lineIndex, i, endIdx + 2 - i, tokenTypes.indexOf("comment"), 0);
-        i = endIdx + 2;
-      } else {
-        builder.push(lineIndex, i, line.length - i, tokenTypes.indexOf("comment"), 0);
-        return;
-      }
-      continue;
-    }
-
-    // String
-    if (line[i] === '"') {
-      const start = i;
-      i++;
-      while (i < line.length && line[i] !== '"') {
-        if (line[i] === "\\") i++;
-        i++;
-      }
-      if (i < line.length) i++;
-      builder.push(lineIndex, start, i - start, tokenTypes.indexOf("string"), 0);
-      continue;
-    }
-
-    // Numbers
-    if (/\d/.test(line[i])) {
-      const start = i;
-      while (i < line.length && /[\d.]/.test(line[i])) i++;
-      if (i < line.length && /[eE]/.test(line[i])) {
-        i++;
-        if (i < line.length && /[+-]/.test(line[i])) i++;
-        while (i < line.length && /\d/.test(line[i])) i++;
-      }
-      builder.push(lineIndex, start, i - start, tokenTypes.indexOf("number"), 0);
-      continue;
-    }
-
-    // Operators
-    if ("+-*/^=<>:".includes(line[i])) {
-      const start = i;
-      if (i + 1 < line.length) {
-        const two = line.substring(i, i + 2);
-        if ([":=", "<=", ">=", "<>", "=="].includes(two)) {
-          builder.push(lineIndex, start, 2, tokenTypes.indexOf("operator"), 0);
-          i += 2;
-          continue;
-        }
-      }
-      builder.push(lineIndex, start, 1, tokenTypes.indexOf("operator"), 0);
-      i++;
-      continue;
-    }
-
-    // Identifiers and keywords
-    if (/[_a-zA-Z]/.test(line[i])) {
-      const start = i;
-      while (i < line.length && /[_a-zA-Z0-9]/.test(line[i])) i++;
-      const word = line.substring(start, i);
-
-      if (keywords.includes(word)) {
-        builder.push(lineIndex, start, word.length, tokenTypes.indexOf("keyword"), 0);
-      } else if (typeKeywords.includes(word)) {
-        builder.push(lineIndex, start, word.length, tokenTypes.indexOf("type"), 0);
-      } else {
-        const rest = line.substring(i).trimStart();
-        if (/^[_a-zA-Z]/.test(rest)) {
-          builder.push(lineIndex, start, word.length, tokenTypes.indexOf("type"), 0);
-        } else {
-          builder.push(lineIndex, start, word.length, tokenTypes.indexOf("variable"), 0);
-        }
-      }
-      continue;
-    }
-
-    // Quoted identifier
-    if (line[i] === "'") {
-      const start = i;
-      i++;
-      while (i < line.length && line[i] !== "'") {
-        if (line[i] === "\\") i++;
-        i++;
-      }
-      if (i < line.length) i++;
-      builder.push(lineIndex, start, i - start, tokenTypes.indexOf("variable"), 0);
-      continue;
-    }
-
-    i++;
-  }
 }
 
 connection.onRequest("textDocument/semanticTokens/full", (params) => {

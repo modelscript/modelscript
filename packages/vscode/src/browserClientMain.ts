@@ -107,6 +107,17 @@ class MemoryFileSystemProvider implements vscode.FileSystemProvider {
 export async function activate(context: vscode.ExtensionContext) {
   console.log("ModelScript extension activated");
 
+  // Clean up any stale Modelica color overrides persisted by a previous version.
+  // VS Code's built-in themes (Dark Modern, Light Modern) already color the LSP's
+  // standard semantic token types correctly, matching Morsel's colors.
+  const config = workspace.getConfiguration();
+  if (config.get("editor.semanticTokenColorCustomizations")) {
+    await config.update("editor.semanticTokenColorCustomizations", undefined, vscode.ConfigurationTarget.Global);
+  }
+  if (config.get("editor.tokenColorCustomizations")) {
+    await config.update("editor.tokenColorCustomizations", undefined, vscode.ConfigurationTarget.Global);
+  }
+
   // Register in-memory filesystem for blank project mode (memfs:// scheme)
   const folders = workspace.workspaceFolders;
   if (folders && folders.length > 0 && folders[0].uri.scheme === "memfs") {
@@ -411,7 +422,7 @@ async function initWorkspaceAndTree(
             "  connect(R.n, Vb.n)",
             "    annotation(Line(points = {{60, -10}, {60, -30}, {-70, -30}, {-70, -10}}, color = {0, 0, 255}));",
             "  connect(C.n, Vb.n)",
-            "    annotation(Line(points = {{20, -10}, {20, -30}, {-70, -30}}, color = {0, 0, 255}));",
+            "    annotation(Line(points = {{20, -10}, {20, -30}, {-70, -30}, {-70, -10}}, color = {0, 0, 255}));",
             "  connect(Vb.n, ground.p)",
             "    annotation(Line(points = {{-70, -10}, {-70, -30}}, color = {0, 0, 255}));",
             "end RLC;",

@@ -2312,16 +2312,48 @@ export default function MorselEditor(props: MorselEditorProps) {
                             const edits: editor.IIdentifiedSingleEditOperation[] = [];
                             const allEdges: any[] = [];
                             items.forEach((item) => {
-                              const edit = getPlacementEdit(
-                                item.name,
-                                item.x,
-                                item.y,
-                                item.width,
-                                item.height,
-                                item.rotation,
-                              );
-                              if (edit) edits.push(edit);
-                              if (item.edges) allEdges.push(...item.edges);
+                              if (item.connectedOnly) {
+                                // Only add placement for connected components that don't already have one
+                                const instance = diagramClassInstance ?? classInstances[0] ?? null;
+                                if (instance) {
+                                  const component = instance.components
+                                    ? Array.from(instance.components).find((c) => c.name === item.name)
+                                    : null;
+                                  if (component) {
+                                    const abstractNode = (component as any).abstractSyntaxNode;
+                                    if (abstractNode?.sourceRange) {
+                                      const text =
+                                        editor.getModel()?.getValueInRange({
+                                          startLineNumber: abstractNode.startPosition.row + 1,
+                                          startColumn: abstractNode.startPosition.column + 1,
+                                          endLineNumber: abstractNode.endPosition.row + 1,
+                                          endColumn: abstractNode.endPosition.column + 1,
+                                        }) || "";
+                                      if (/Placement\s*\(/.test(text)) return; // already has Placement
+                                    }
+                                  }
+                                }
+                                const edit = getPlacementEdit(
+                                  item.name,
+                                  item.x,
+                                  item.y,
+                                  item.width,
+                                  item.height,
+                                  item.rotation,
+                                );
+                                if (edit) edits.push(edit);
+                              } else {
+                                const edit = getPlacementEdit(
+                                  item.name,
+                                  item.x,
+                                  item.y,
+                                  item.width,
+                                  item.height,
+                                  item.rotation,
+                                );
+                                if (edit) edits.push(edit);
+                                if (item.edges) allEdges.push(...item.edges);
+                              }
                             });
 
                             if (allEdges.length > 0) {

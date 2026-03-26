@@ -268,33 +268,6 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
       });
     }
 
-    const semanticTokenRules = [
-      { token: "keyword", foreground: "#c586c0" },
-      { token: "type", foreground: "#4ec9b0" },
-      { token: "class", foreground: "#4ec9b0" },
-      { token: "variable", foreground: "#9cdcfe" },
-      { token: "parameter", foreground: "#9cdcfe" },
-      { token: "function", foreground: "#dcdcaa" },
-      { token: "string", foreground: "#ce9178" },
-      { token: "number", foreground: "#b5cea8" },
-      { token: "operator", foreground: "#d4d4d4" },
-      { token: "comment", foreground: "#6A9955" },
-    ];
-
-    monaco.editor.defineTheme("morsel-semantic-dark", {
-      base: "vs-dark",
-      inherit: true,
-      rules: semanticTokenRules,
-      colors: {},
-    });
-
-    monaco.editor.defineTheme("morsel-semantic-light", {
-      base: "vs",
-      inherit: true,
-      rules: semanticTokenRules,
-      colors: {},
-    });
-
     disposablesRef.current.push(monaco.languages.setMonarchTokensProvider("modelica", modelicaTokensProvider));
     disposablesRef.current.push(
       monaco.languages.registerCompletionItemProvider("modelica", {

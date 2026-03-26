@@ -195,6 +195,16 @@
         ]
       }
     ],
+    "semanticTokenScopes": [
+      {
+        "language": "modelica",
+        "scopes": {
+          "keyword": [
+            "keyword.other.modelica"
+          ]
+        }
+      }
+    ],
     "views": {
       "explorer": [
         {

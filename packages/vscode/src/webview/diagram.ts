@@ -223,6 +223,39 @@ function initGraph(isDark: boolean): Graph {
           items.push({ name: n.id, x: p.x, y: p.y, width: s.width, height: s.height, rotation: r, edges });
         }
       });
+
+      // Also collect positions for connected nodes that weren't moved,
+      // so that missing Placement annotations can be added for them.
+      const movedNames = new Set(changedNodes);
+      const connectedNames = new Set<string>();
+      for (const item of items) {
+        if (item.edges) {
+          for (const edge of item.edges) {
+            const srcComp = edge.source.split(".")[0];
+            const tgtComp = edge.target.split(".")[0];
+            if (!movedNames.has(srcComp)) connectedNames.add(srcComp);
+            if (!movedNames.has(tgtComp)) connectedNames.add(tgtComp);
+          }
+        }
+      }
+      connectedNames.forEach((id) => {
+        const n = g.getCellById(id);
+        if (n && n.isNode()) {
+          const p = n.getPosition();
+          const s = n.getSize();
+          const r = n.getAngle();
+          items.push({
+            name: n.id,
+            x: p.x,
+            y: p.y,
+            width: s.width,
+            height: s.height,
+            rotation: r,
+            connectedOnly: true,
+          });
+        }
+      });
+
       if (items.length > 0) {
         postMessageToHost({ type: "move", items });
       }

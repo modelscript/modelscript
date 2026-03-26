@@ -17,6 +17,7 @@ export interface PlacementItem {
   height: number;
   rotation: number;
   edges?: EdgeItem[];
+  connectedOnly?: boolean;
 }
 
 export interface EdgeItem {
@@ -37,9 +38,15 @@ export function computePlacementEdits(
   const allEdges: EdgeItem[] = [];
 
   for (const item of items) {
-    const edit = getPlacementEdit(lines, classInstance, item);
-    if (edit) edits.push(edit);
-    if (item.edges) allEdges.push(...item.edges);
+    if (item.connectedOnly) {
+      // Only add placement for connected components that don't already have one
+      const edit = getPlacementEditIfMissing(lines, classInstance, item);
+      if (edit) edits.push(edit);
+    } else {
+      const edit = getPlacementEdit(lines, classInstance, item);
+      if (edit) edits.push(edit);
+      if (item.edges) allEdges.push(...item.edges);
+    }
   }
 
   if (allEdges.length > 0) {
@@ -148,6 +155,37 @@ function getPlacementEdit(lines: string[], classInstance: ModelicaClassInstance,
     }
   }
   return null;
+}
+
+/**
+ * Only add a Placement annotation if the component doesn't already have one.
+ * Used for connected components that weren't explicitly moved — we want to
+ * "pin" their current position so autolayout doesn't shift them.
+ */
+function getPlacementEditIfMissing(
+  lines: string[],
+  classInstance: ModelicaClassInstance,
+  item: PlacementItem,
+): TextEdit | null {
+  const component = Array.from(classInstance.components).find((c) => c.name === item.name);
+  if (!component) return null;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const abstractNode = (component as any).abstractSyntaxNode;
+  if (!abstractNode?.sourceRange) return null;
+
+  const startLine = abstractNode.startPosition.row;
+  const startCol = abstractNode.startPosition.column;
+  const endLine = abstractNode.endPosition.row;
+  const endCol = abstractNode.endPosition.column;
+
+  const text = getTextInRange(lines, startLine, startCol, endLine, endCol);
+
+  // If the component already has a Placement annotation, skip — no edit needed
+  if (/Placement\s*\(/.test(text)) return null;
+
+  // Component lacks Placement — add one using the current diagram position
+  return getPlacementEdit(lines, classInstance, item);
 }
 
 // ── Add connect equation ──
