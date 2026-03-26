@@ -71,5 +71,10 @@
   },
   "engines": {
     "node": ">=22"
+  },
+  "nx": {
+    "implicitDependencies": [
+      "!@modelscript/cli"
+    ]
   }
 }
