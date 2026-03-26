@@ -27,5 +27,18 @@
       "end": "^\\s*end\\b"
     }
   },
-  "wordPattern": "(-?\\d*\\.\\d\\w*)|([^\\`\\~\\!\\@\\#\\%\\^\\&\\*\\(\\)\\-\\=\\+\\[\\{\\]\\}\\\\\\|\\;\\:\\'\\\"\\,\\.\\<\\>\\/\\?\\s]+)"
+  "wordPattern": "(-?\\d*\\.\\d\\w*)|([^\\`\\~\\!\\@\\#\\%\\^\\&\\*\\(\\)\\-\\=\\+\\[\\{\\]\\}\\\\\\|\\;\\:\\'\\\"\\,\\.\\<\\>\\/\\?\\s]+)",
+  "indentationRules": {
+    "increaseIndentPattern": "^\\s*(model|class|record|block|connector|type|package|function|if|for|while|when|else|elseif|equation|algorithm|public|protected|initial equation|initial algorithm|enumeration)\\b",
+    "decreaseIndentPattern": "^\\s*(end|else|elseif|equation|algorithm|public|protected|initial equation|initial algorithm)\\b"
+  },
+  "onEnterRules": [
+    {
+      "beforeText": "^\\s*\\/\\/",
+      "action": {
+        "indent": "none",
+        "appendText": "// "
+      }
+    }
+  ]
 }
