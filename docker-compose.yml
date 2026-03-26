@@ -2,7 +2,7 @@ services:
   api:
     build:
       context: .
-      dockerfile: packages/api/Dockerfile
+      target: api
     ports:
       - "3000:3000"
     volumes:
@@ -15,7 +15,7 @@ services:
   morsel:
     build:
       context: .
-      dockerfile: packages/morsel/Dockerfile
+      target: morsel
     ports:
       - "5173:3000"
     depends_on:
@@ -27,7 +27,7 @@ services:
   web:
     build:
       context: .
-      dockerfile: packages/web/Dockerfile
+      target: web
     ports:
       - "5174:80"
     depends_on:
@@ -37,7 +37,7 @@ services:
   ide:
     build:
       context: .
-      dockerfile: packages/ide/Dockerfile
+      target: ide
     ports:
       - "3200:3200"
     depends_on:

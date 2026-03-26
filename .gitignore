@@ -66,7 +66,8 @@ packages/api/data/
 # React Router (morsel)
 packages/morsel/.react-router/
 
-# Tree-sitter generated sources
-packages/tree-sitter-modelica/src/
+# Tree-sitter generated (src + wasm committed per upstream convention, rebuilt via `npm run build`)
+!packages/tree-sitter-modelica/src/
+!packages/tree-sitter-modelica/tree-sitter-modelica.wasm
 packages/tree-sitter-modelica/examples/*/
 packages/ide/vscode-web/
