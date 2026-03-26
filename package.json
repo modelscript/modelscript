@@ -34,6 +34,8 @@
     "lint": "nx run-many --target=lint",
     "prepare": "husky",
     "preview:ide": "npx tsx packages/ide/src/preview-static.ts",
+    "release": "nx release",
+    "release:dry-run": "nx release --dry-run",
     "test": "nx run-many --target=test"
   },
   "lint-staged": {
@@ -42,6 +44,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@nx/js": "^22.6.1",
     "@types/node": "^25.3.2",
     "eslint": "^10.1.0",
     "husky": "^9.1.7",

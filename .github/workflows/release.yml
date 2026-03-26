@@ -1,0 +1,120 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version bump (major, minor, patch, premajor, preminor, prepatch, or explicit version)"
+        required: true
+        default: "patch"
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+          - prepatch
+          - preminor
+          - premajor
+      first_release:
+        description: "Is this the first release? (Passes --first-release to skip previous tag requirement)"
+        type: boolean
+        required: false
+        default: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+    concurrency:
+      group: release
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.DEPLOY_PAT }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+          registry-url: "https://registry.npmjs.org"
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+      - name: Cache MSL
+        uses: actions/cache@v4
+        with:
+          path: scripts/ModelicaStandardLibrary_v4.1.0.zip
+          key: ${{ runner.os }}-msl-v4.1.0
+      - name: Install Dependencies
+        run: npm ci
+      - name: Download MSL
+        run: node scripts/download-msl.cjs
+      - name: Build
+        run: npx lerna run build
+      - name: Test
+        run: npx lerna run test
+      - name: Lint
+        run: npx lerna run lint
+
+      # --- Version, Changelog, Tag ---
+      - name: Version & Changelog
+        run: >
+          npx nx release --skip-publish --yes ${{ github.event.inputs.version }}
+          ${{ github.event.inputs.first_release == 'true' && '--first-release' || '' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # --- Publish npm packages (core, cli, tree-sitter-modelica) ---
+      - name: Publish to npm
+        run: npx nx release publish --yes
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # --- Publish VS Code Extension ---
+      - name: Package VS Code Extension
+        run: npx @vscode/vsce package --no-dependencies
+        working-directory: packages/vscode
+      - name: Upload VSIX Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: modelscript-vsix
+          path: packages/vscode/*.vsix
+      - name: Publish to VS Code Marketplace
+        run: npx @vscode/vsce publish --no-dependencies -p ${{ secrets.VSCE_PAT }}
+        working-directory: packages/vscode
+      - name: Publish to Open VSX
+        run: npx ovsx publish *.vsix -p ${{ secrets.OVSX_PAT }}
+        working-directory: packages/vscode
+
+      # --- Publish Docker images to GHCR ---
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Extract version from package.json
+        id: version
+        run: echo "version=$(node -p 'require("./packages/core/package.json").version')" >> "$GITHUB_OUTPUT"
+      - name: Build and push Docker images
+        uses: docker/bake-action@v6
+        with:
+          source: .
+          files: docker-compose.yml
+          push: true
+          set: |
+            *.cache-from=type=gha
+            *.cache-to=type=gha,mode=max
+            api.tags=ghcr.io/modelscript/api:latest,ghcr.io/modelscript/api:${{ steps.version.outputs.version }}
+            morsel.tags=ghcr.io/modelscript/morsel:latest,ghcr.io/modelscript/morsel:${{ steps.version.outputs.version }}
+            web.tags=ghcr.io/modelscript/web:latest,ghcr.io/modelscript/web:${{ steps.version.outputs.version }}
+            ide.tags=ghcr.io/modelscript/ide:latest,ghcr.io/modelscript/ide:${{ steps.version.outputs.version }}
+
+      # --- Push version commits and tags ---
+      - name: Push changes
+        run: git push --follow-tags

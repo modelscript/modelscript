@@ -1,5 +1,6 @@
 {
   "$schema": "./node_modules/nx/schemas/nx-schema.json",
+  "plugins": ["@nx/js"],
   "targetDefaults": {
     "build": {
       "cache": true,
@@ -23,6 +24,23 @@
     "lint": {
       "cache": true,
       "dependsOn": ["^build"]
+    }
+  },
+  "release": {
+    "projects": ["packages/core", "packages/cli", "packages/tree-sitter-modelica"],
+    "version": {
+      "conventionalCommits": true,
+      "fallbackCurrentVersionResolver": "disk"
+    },
+    "changelog": {
+      "workspaceChangelog": {
+        "createRelease": "github"
+      },
+      "projectChangelogs": true
+    },
+    "git": {
+      "commit": true,
+      "tag": true
     }
   },
   "analytics": false
