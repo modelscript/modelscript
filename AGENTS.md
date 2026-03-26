@@ -188,6 +188,7 @@ When generating git commit messages (including via the "generate git commit" but
 **Rules:**
 
 1. **Never run `git commit`**. Always let the user run the commit command.
+1. **Never commit and/or push changes without explicit authorization.**
 1. **Auto-generate commit messages.** After every successful fix or change, proactively generate a commit message without being asked.
 
 1. **All lowercase** — no capitalization, no title case.
