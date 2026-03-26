@@ -75,3 +75,20 @@ jobs:
       #   if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
       #   run: npx @vscode/vsce publish --no-dependencies -p ${{ secrets.VSCE_PAT }}
       #   working-directory: packages/vscode
+
+  docker:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: docker-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v3
+      - name: Build all images
+        uses: docker/bake-action@v6
+        with:
+          source: .
+          files: docker-compose.yml
+          set: |
+            *.cache-from=type=gha
+            *.cache-to=type=gha,mode=max
