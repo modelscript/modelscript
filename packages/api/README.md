@@ -22,3 +22,25 @@ npm run dev
 ```
 
 The API server starts on http://localhost:3000.
+
+## Endpoints
+
+| Endpoint        | Description                                    |
+| --------------- | ---------------------------------------------- |
+| `/api/packages` | List, search, and manage Modelica libraries    |
+| `/api/publish`  | Publish and unpublish packages                 |
+| `/api/simulate` | Run simulations and return results             |
+| `/api/graphql`  | GraphQL endpoint for querying library metadata |
+| `/api/sparql`   | SPARQL endpoint for RDF-based queries          |
+| `/api/rdf`      | RDF data export for Modelica libraries         |
+| `/api/auth`     | Authentication and token management            |
+
+## Docker
+
+The API is available as a Docker service:
+
+```bash
+docker compose up api
+```
+
+Exposes port **3000**.

@@ -3,7 +3,17 @@
 
 # @modelscript/morsel
 
-Visual Modelica editor and diagram viewer. Built with React, React Router, and Monaco Editor.
+Visual Modelica editor and diagram viewer. Built with React, React Router, Monaco Editor, and AntV X6.
+
+## Features
+
+- **Monaco Code Editor** — syntax and semantic highlighting for Modelica with auto-formatting
+- **Interactive Diagrams** — drag-and-drop component diagrams powered by AntV X6 with automatic layout
+- **Simulation** — run simulations directly in the browser with configurable experiment parameters
+- **Results Plotting** — interactive time-series plots of simulation results
+- **Component Tree** — hierarchical navigation of Modelica class structures
+- **Modelica Standard Library** — bundled MSL 4.1.0 with full resolution and completions
+- **Diagram Editing** — move components with automatic Placement annotation management
 
 ## Scripts
 
@@ -22,10 +32,10 @@ npm run dev
 
 The editor starts on http://localhost:5173.
 
-## Features
+## Docker
 
-- Monaco-based Modelica code editor with syntax and semantic highlighting
-- Interactive diagram rendering via X6
-- Component tree navigation
-- Modelica Standard Library support
-- Model simulation and results visualization
+```bash
+docker compose up morsel
+```
+
+Exposes port **5173**.

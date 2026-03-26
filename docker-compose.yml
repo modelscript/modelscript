@@ -34,5 +34,18 @@ services:
       - api
     restart: unless-stopped
 
+  ide:
+    build:
+      context: .
+      dockerfile: packages/ide/Dockerfile
+    ports:
+      - "3200:3200"
+    depends_on:
+      - api
+    environment:
+      - NODE_ENV=production
+      - PORT=3200
+    restart: unless-stopped
+
 volumes:
   api-data:

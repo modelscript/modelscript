@@ -5,6 +5,14 @@
 
 Web frontend for browsing and exploring Modelica libraries. Built with React and Vite.
 
+## Features
+
+- **Library Browser** — npm-style package pages for published Modelica libraries
+- **Class Tree** — hierarchical navigation of Modelica package structures
+- **Documentation Rendering** — display Modelica model documentation and descriptions
+- **Global Search** — search across all published libraries and classes
+- **SVG Diagrams** — rendered component diagrams for each class
+
 ## Scripts
 
 | Command           | Description                       |
@@ -21,3 +29,11 @@ npm run dev
 ```
 
 The web app starts on http://localhost:5174.
+
+## Docker
+
+```bash
+docker compose up web
+```
+
+Exposes port **5174**.

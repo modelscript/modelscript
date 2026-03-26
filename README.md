@@ -5,31 +5,36 @@
 
 [![CI/CD](https://github.com/modelscript/modelscript/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/modelscript/modelscript/actions/workflows/ci.yml)
 
-ModelScript is a comprehensive Modelica compilation, analysis, and visualization framework. It provides a robust engine for parsing Modelica code, performing semantic analysis, flattening models, and rendering interactive diagrams.
+ModelScript is a comprehensive Modelica compilation, simulation, optimization, and visualization framework. It provides a robust engine for parsing Modelica code, performing semantic analysis, flattening models, simulating dynamic systems, solving optimal control problems, and rendering interactive diagrams — all from the browser or the command line.
 
 ## Monorepo Structure
 
 This project is a monorepo managed with **Lerna**, **Nx**, and **npm workspaces**.
 
-| Package                                                                 | Description                                                                   |
-| ----------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| [`@modelscript/core`](./packages/core/)                                 | Central compiler engine — parsing, semantic analysis, DAE generation, linting |
-| [`@modelscript/cli`](./packages/cli/)                                   | `msc` command-line interface for compilation tasks                            |
-| [`@modelscript/api`](./packages/api/)                                   | REST API server for ModelScript services                                      |
-| [`@modelscript/morsel`](./packages/morsel/)                             | Visual Modelica editor and diagram viewer (React)                             |
-| [`@modelscript/web`](./packages/web/)                                   | Web frontend for browsing Modelica libraries                                  |
-| [`@modelscript/lsp`](./packages/lsp/)                                   | Language Server Protocol implementation for Modelica                          |
-| [`@modelscript/vscode`](./packages/vscode/)                             | VS Code extension with syntax highlighting and language support               |
-| [`@modelscript/tree-sitter-modelica`](./packages/tree-sitter-modelica/) | Tree-sitter grammar for Modelica                                              |
+| Package                                                                 | Description                                                                        |
+| ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| [`@modelscript/core`](./packages/core/)                                 | Compiler engine — parsing, semantic analysis, flattening, simulation, linting      |
+| [`@modelscript/cli`](./packages/cli/)                                   | `msc` command-line interface — flatten, simulate, optimize, lint, render, and more |
+| [`@modelscript/api`](./packages/api/)                                   | REST API server — simulation, publishing, GraphQL, SPARQL, and RDF                 |
+| [`@modelscript/morsel`](./packages/morsel/)                             | Visual Modelica editor — code editing, diagram viewer, simulation, and plotting    |
+| [`@modelscript/web`](./packages/web/)                                   | Web frontend for browsing and exploring Modelica libraries                         |
+| [`@modelscript/ide`](./packages/ide/)                                   | VS Code Web IDE — browser-based Modelica development environment                   |
+| [`@modelscript/lsp`](./packages/lsp/)                                   | Language Server Protocol — completions, hover, diagnostics, formatting, colors     |
+| [`@modelscript/vscode`](./packages/vscode/)                             | VS Code extension — syntax highlighting, LSP client, diagram view                  |
+| [`@modelscript/tree-sitter-modelica`](./packages/tree-sitter-modelica/) | Tree-sitter grammar for Modelica (native + WASM)                                   |
 
 ## Core Features
 
-- **Accurate Parsing**: Leveraging a custom Tree-sitter grammar for efficient and precise parsing.
-- **Semantic Analysis**: Full scope and name resolution for complex Modelica hierarchies.
-- **Flattening**: Transforming hierarchical Modelica models into flat Differential Algebraic Equations (DAE).
-- **Diagram Rendering**: Generating interactive SVG diagrams and X6-based visual representations.
-- **Language Server**: Modelica language support with semantic highlighting, completions, and hover.
-- **i18n Support**: Extracting translatable strings from Modelica models for internationalization.
+- **Accurate Parsing** — custom Tree-sitter grammar for efficient, incremental parsing
+- **Semantic Analysis** — full scope and name resolution for complex Modelica hierarchies
+- **Flattening** — transforms hierarchical models into flat Differential Algebraic Equations (DAE)
+- **Simulation** — ODE/DAE solver with Pantelides index reduction and BLT ordering
+- **Optimization** — optimal control problem solver using direct collocation
+- **Diagram Rendering** — interactive SVG diagrams and X6-based visual layouts with auto-placement
+- **Language Server** — completions, hover, diagnostics, formatting, and color provider
+- **Linting** — 15+ lint rules covering syntax, types, semantics, and equations
+- **Modelica Scripting** — interpreter for evaluating Modelica expressions and algorithms
+- **i18n Support** — extracting translatable strings from Modelica models
 
 ## Getting Started
 
@@ -63,7 +68,7 @@ npm run build
 
 ### Running (Development)
 
-Start the API server, Morsel editor, and Web frontend concurrently:
+Start all services concurrently:
 
 ```bash
 npm run dev
@@ -71,11 +76,37 @@ npm run dev
 
 This launches:
 
-| Service               | URL                   |
-| --------------------- | --------------------- |
-| Morsel (editor)       | http://localhost:5173 |
-| Web (library browser) | http://localhost:5174 |
-| API                   | http://localhost:3000 |
+| Service               | URL                   | Description                                  |
+| --------------------- | --------------------- | -------------------------------------------- |
+| Morsel (editor)       | http://localhost:5173 | Visual editor with diagrams and simulation   |
+| Web (library browser) | http://localhost:5174 | Browse and explore Modelica libraries        |
+| API                   | http://localhost:3000 | REST API for simulation, publishing, queries |
+| IDE (VS Code Web)     | http://localhost:3200 | Browser-based VS Code with Modelica support  |
+
+### CLI Usage
+
+After building, the CLI is available as `msc`:
+
+```bash
+# Flatten a model to DAE
+npx msc flatten Modelica.Electrical.Analog.Examples.CauerLowPassAnalog path/to/MSL
+
+# Simulate a model (outputs CSV by default)
+npx msc simulate BouncingBall model.mo --stop-time 5
+
+# Simulate with JSON output
+npx msc simulate BouncingBall model.mo --format json
+
+# Solve an optimal control problem
+npx msc optimize MyModel model.mo \
+  --objective "u^2" --controls "u" --control-bounds "u:-1:1" --stop-time 10
+
+# Lint Modelica files
+npx msc lint model.mo
+
+# Render a diagram to SVG (outputs to stdout)
+npx msc render MyModel model.mo > diagram.svg
+```
 
 ### Testing
 
@@ -99,12 +130,23 @@ npm run format
 
 ### Docker
 
+Run the full stack with Docker Compose:
+
 ```bash
 npm run docker:build   # Build images
 npm run docker:up      # Start containers
 npm run docker:down    # Stop containers
 npm run docker:logs    # Tail logs
 ```
+
+Docker services and their exposed ports:
+
+| Service | Port | URL                   |
+| ------- | ---- | --------------------- |
+| API     | 3000 | http://localhost:3000 |
+| Morsel  | 5173 | http://localhost:5173 |
+| Web     | 5174 | http://localhost:5174 |
+| IDE     | 3200 | http://localhost:3200 |
 
 ## License
 

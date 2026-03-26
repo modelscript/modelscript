@@ -31,6 +31,18 @@ Real-time error detection with:
 
 Format Modelica files with proper indentation for class definitions, equations, algorithms, and control structures.
 
+### Auto-Indentation
+
+Smart indentation and dedentation rules for Modelica keywords like `equation`, `algorithm`, `end`, `else`, etc. — the editor adjusts indentation as you type.
+
+### Color Provider
+
+Inline color swatches for Modelica annotation color fields (`color`, `lineColor`, `fillColor`, `textColor`). Click to use the VS Code color picker.
+
+### Interactive Diagrams
+
+Open a visual diagram view for any Modelica model with `ModelScript: Open Diagram`. Components can be moved and the code is updated automatically with proper Placement annotations.
+
 ### Modelica Standard Library
 
 The extension bundles MSL 4.1.0, providing full type resolution, completions, and hover information for all standard library types out of the box — no configuration needed.
@@ -55,3 +67,4 @@ The extension bundles MSL 4.1.0, providing full type resolution, completions, an
 - [ModelScript](https://modelscript.org) — project homepage
 - [GitHub](https://github.com/modelscript/modelscript) — source code and issue tracker
 - [Morsel](https://modelscript-morsel.github.io) — online Modelica editor
+- [IDE](https://ide.modelscript.org) — browser-based VS Code IDE

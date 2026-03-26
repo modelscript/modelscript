@@ -3,7 +3,19 @@
 
 # @modelscript/core
 
-Central compiler engine for ModelScript. Provides Modelica parsing, semantic analysis, model instantiation, DAE flattening, SVG diagram rendering, linting, and i18n support.
+Central compiler engine for ModelScript. Provides Modelica parsing, semantic analysis, model instantiation, DAE flattening, simulation, optimization, SVG diagram rendering, linting, and i18n support.
+
+## Features
+
+- **Parsing** — incremental Tree-sitter-based parsing with full Modelica grammar coverage
+- **Semantic Analysis** — scope resolution, type checking, and name lookup across class hierarchies
+- **Flattening** — transforms hierarchical Modelica models into flat DAE (Differential Algebraic Equations)
+- **Simulation** — ODE/DAE numerical solver with Pantelides index reduction, BLT ordering, and alias elimination
+- **Optimization** — direct collocation solver for Modelica optimal control problems
+- **Interpreter** — evaluates Modelica expressions, functions, and algorithms at compile time
+- **Diagram Rendering** — generates interactive SVG diagrams from Modelica annotation data
+- **Linting** — 15+ lint rules covering parser errors, unresolved references, type mismatches, and structural checks
+- **i18n** — extracts translatable strings from Modelica model descriptions and annotations
 
 ## Scripts
 
@@ -21,4 +33,15 @@ Central compiler engine for ModelScript. Provides Modelica parsing, semantic ana
 npm test
 ```
 
-Runs the Modelica test suite via `tsx tests/testsuite-runner.ts` with increased heap size (8 GB).
+Runs the Modelica test suite via `tsx tests/testsuite-runner.ts` with increased heap size (8 GB). Tests can be filtered by subdirectory or individual `.mo` file path.
+
+```bash
+# Run a specific test directory
+npx tsx tests/testsuite-runner.ts OpenModelica/flattening/modelica/types
+
+# Run a single test file
+npx tsx tests/testsuite-runner.ts OpenModelica/flattening/modelica/types/IntegerToEnumeration.mo
+
+# Update expected output to match actual output
+npx tsx tests/testsuite-runner.ts --update path/to/test.mo
+```
