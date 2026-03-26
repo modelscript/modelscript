@@ -788,7 +788,11 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
       // Yield elements in declaration order, inlining extends at their position
       for (const element of self.declaredElements) {
         if (element instanceof ModelicaExtendsClassInstance) {
-          if (!element.instantiated && !element.instantiating) element.instantiate();
+          // Don't lazily instantiate extends clauses here — they are eagerly
+          // instantiated in ModelicaClassInstance.instantiate() (line ~1261).
+          // Triggering instantiation here causes re-entrant resolveSimpleName
+          // calls that hit the scope resolution guard and silently fail,
+          // dropping inherited elements (e.g., ConditionalHeatPort.T_heatPort).
           const baseClass = element.classInstance;
           if (baseClass && !visited.has(baseClass)) {
             visited.add(baseClass);

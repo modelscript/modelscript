@@ -565,7 +565,7 @@ function renderGraphicItemX6(
     children: [shape],
     attrs: {
       visibility: (graphicItem.visible ?? true) ? "visible" : "hidden",
-      transform: `translate(${ox}, ${oy}) rotate(${graphicItem.rotation ?? 0})`,
+      transform: `translate(${ox}, ${oy}) rotate(${-(graphicItem.rotation ?? 0)})`,
     },
   };
 }

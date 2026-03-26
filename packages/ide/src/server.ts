@@ -203,9 +203,6 @@ app.get("/", (_req, res) => {
   p { margin-bottom: 2rem; opacity: 0.7; }
   input { width: 100%; padding: 14px 20px; border-radius: 8px; border: 1px solid #30363d; background: #161b22; color: #c9d1d9; font-size: 16px; outline: none; }
   input:focus { border-color: #58a6ff; }
-  .examples { margin-top: 1.5rem; text-align: left; }
-  .examples a { color: #58a6ff; text-decoration: none; display: block; padding: 8px 0; }
-  .examples a:hover { text-decoration: underline; }
 </style>
 </head><body>
 <div class="container">
@@ -214,10 +211,6 @@ app.get("/", (_req, res) => {
   <form onsubmit="event.preventDefault(); go();">
     <input id="url" type="text" placeholder="Enter a GitHub repository URL, e.g. github.com/owner/repo" autofocus />
   </form>
-  <div class="examples">
-    <a href="/github.com/modelscript/modelscript">modelscript/modelscript</a>
-    <a href="/github.com/OpenModelica/OpenModelica">OpenModelica/OpenModelica</a>
-  </div>
 </div>
 <script>
   function go() {

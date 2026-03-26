@@ -33,6 +33,7 @@
     "format": "prettier . --write",
     "lint": "nx run-many --target=lint",
     "prepare": "husky",
+    "preview:ide": "npx tsx packages/ide/src/preview-static.ts",
     "test": "nx run-many --target=test"
   },
   "lint-staged": {

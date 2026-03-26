@@ -142,8 +142,8 @@ export const Optimize: CommandModule<{}, OptimizeArgs> = {
       startTime,
       stopTime,
       numIntervals,
-      tolerance: args.tolerance,
-      maxIterations: args.maxIterations,
+      ...(args.tolerance !== undefined && { tolerance: args.tolerance }),
+      ...(args.maxIterations !== undefined && { maxIterations: args.maxIterations }),
     });
     const result = optimizer.optimize();
 

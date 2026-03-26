@@ -123,6 +123,19 @@
           "light": "./images/icon.png",
           "dark": "./images/icon.png"
         }
+      },
+      {
+        "id": "modelica-notebook",
+        "aliases": [
+          "Modelica Notebook"
+        ],
+        "extensions": [
+          ".monb"
+        ],
+        "icon": {
+          "light": "./images/icon.png",
+          "dark": "./images/icon.png"
+        }
       }
     ],
     "menus": {
@@ -208,7 +221,8 @@
     ]
   },
   "activationEvents": [
-    "onStartupFinished"
+    "onStartupFinished",
+    "onFileSystem:memfs"
   ],
   "dependencies": {
     "@antv/layout": "^0.3.25",

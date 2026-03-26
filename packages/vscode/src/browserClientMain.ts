@@ -107,12 +107,13 @@ class MemoryFileSystemProvider implements vscode.FileSystemProvider {
 export async function activate(context: vscode.ExtensionContext) {
   console.log("ModelScript extension activated");
 
-  // Register in-memory filesystem for blank project mode (blank:// scheme)
+  // Register in-memory filesystem for blank project mode (memfs:// scheme)
   const folders = workspace.workspaceFolders;
-  if (folders && folders.length > 0 && folders[0].uri.scheme === "blank") {
+  if (folders && folders.length > 0 && folders[0].uri.scheme === "memfs") {
     const memFs = new MemoryFileSystemProvider();
-    context.subscriptions.push(workspace.registerFileSystemProvider("blank", memFs, { isCaseSensitive: true }));
-    console.log("[blank-project] Registered blank:// filesystem provider");
+    memFs.createDirectory(folders[0].uri);
+    context.subscriptions.push(workspace.registerFileSystemProvider("memfs", memFs, { isCaseSensitive: true }));
+    console.log("[blank-project] Registered memfs:// filesystem provider");
   }
 
   const documentSelector = [{ language: "modelica" }];
@@ -363,30 +364,110 @@ async function initWorkspaceAndTree(
   treeProvider: LibraryTreeProvider,
   treeView: vscode.TreeView<vscode.TreeItem>,
 ): Promise<void> {
-  const moFiles = await scanWorkspaceFiles();
-  if (moFiles.length > 0) {
-    treeProvider.setDocumentUri(moFiles[0].toString());
-  } else {
-    // If we're in a blank workspace, scaffold the initial files
-    const folders = workspace.workspaceFolders;
-    if (folders && folders.length > 0 && folders[0].uri.scheme === "blank") {
-      const workspaceUri = folders[0].uri;
-      try {
-        const helloWorldUri = Uri.joinPath(workspaceUri, "HelloWorld.mo");
-        const defaultModel = `model HelloWorld "A simple Modelica model"
-  Real x(start = 1);
-  parameter Real a = -1;
-equation
-  der(x) = a * x;
-end HelloWorld;
-`;
-        await workspace.fs.writeFile(helloWorldUri, new TextEncoder().encode(defaultModel));
-        const doc = await workspace.openTextDocument(helloWorldUri);
-        await vscode.window.showTextDocument(doc);
-        treeProvider.setDocumentUri(helloWorldUri.toString());
-      } catch (e) {
-        console.warn("[blank-project] Failed to create default model:", e);
+  const folders = workspace.workspaceFolders;
+
+  // For memfs workspaces, skip the file scan entirely — VS Code has no search
+  // provider for memfs, so workspace.findFiles() hangs indefinitely.
+  // Go straight to template scaffolding.
+  if (folders && folders.length > 0 && folders[0].uri.scheme === "memfs") {
+    const workspaceUri = folders[0].uri;
+    try {
+      const template = workspaceUri.path.substring(1) || "empty";
+
+      let filename = "";
+      let content = "";
+
+      switch (template) {
+        case "empty":
+        case "blank":
+          filename = "HelloWorld.mo";
+          content = `model HelloWorld "A simple Modelica model"\n  Real x(start = 1);\n  parameter Real a = -1;\nequation\n  der(x) = a * x;\nend HelloWorld;\n`;
+          break;
+        case "bouncing-ball":
+          filename = "BouncingBall.mo";
+          content = `model BouncingBall "A bouncing ball"\n  parameter Real e = 0.8 "Coefficient of restitution";\n  parameter Real g = 9.81 "Gravity";\n  Real h(start = 1) "Height";\n  Real v "Velocity";\nequation\n  der(h) = v;\n  der(v) = -g;\n  when h < 0 then\n    reinit(v, -e * pre(v));\n  end when;\nend BouncingBall;\n`;
+          break;
+        case "rlc":
+          filename = "RLC.mo";
+          content = [
+            'model RLC "RLC circuit with MSL components"',
+            "  Modelica.Electrical.Analog.Sources.SineVoltage Vb(V = 10, f = 50)",
+            "    annotation(Placement(transformation(origin = {-70, 0}, extent = {{-10, -10}, {10, 10}}, rotation = 270)));",
+            "  Modelica.Electrical.Analog.Basic.Inductor L(L = 0.5)",
+            "    annotation(Placement(transformation(origin = {0, 40}, extent = {{-10, -10}, {10, 10}})));",
+            "  Modelica.Electrical.Analog.Basic.Capacitor C(C = 1e-4)",
+            "    annotation(Placement(transformation(origin = {20, 0}, extent = {{-10, -10}, {10, 10}}, rotation = 270)));",
+            "  Modelica.Electrical.Analog.Basic.Resistor R(R = 100)",
+            "    annotation(Placement(transformation(origin = {60, 0}, extent = {{-10, -10}, {10, 10}}, rotation = 270)));",
+            "  Modelica.Electrical.Analog.Basic.Ground ground",
+            "    annotation(Placement(transformation(origin = {-70, -40}, extent = {{-10, -10}, {10, 10}})));",
+            "equation",
+            "  connect(Vb.p, L.p)",
+            "    annotation(Line(points = {{-70, 10}, {-70, 40}, {-10, 40}}, color = {0, 0, 255}));",
+            "  connect(L.n, C.p)",
+            "    annotation(Line(points = {{10, 40}, {20, 40}, {20, 10}}, color = {0, 0, 255}));",
+            "  connect(L.n, R.p)",
+            "    annotation(Line(points = {{10, 40}, {60, 40}, {60, 10}}, color = {0, 0, 255}));",
+            "  connect(R.n, Vb.n)",
+            "    annotation(Line(points = {{60, -10}, {60, -30}, {-70, -30}, {-70, -10}}, color = {0, 0, 255}));",
+            "  connect(C.n, Vb.n)",
+            "    annotation(Line(points = {{20, -10}, {20, -30}, {-70, -30}}, color = {0, 0, 255}));",
+            "  connect(Vb.n, ground.p)",
+            "    annotation(Line(points = {{-70, -10}, {-70, -30}}, color = {0, 0, 255}));",
+            "end RLC;",
+            "",
+          ].join("\n");
+          break;
+        case "script":
+          filename = "simulate.mos";
+          content = `// A simple Modelica script\nloadString("\nmodel HelloWorld\n  Real x(start=1);\nequation\n  der(x) = -x;\nend HelloWorld;\n");\n\nsimulate(HelloWorld, stopTime=5);\n`;
+          break;
+        case "notebook":
+          filename = "demo.monb";
+          content = JSON.stringify(
+            {
+              cells: [
+                {
+                  cell_type: "markdown",
+                  source: [
+                    "# Modelica Notebooks",
+                    "",
+                    "Welcome to ModelScript Notebooks! Create models and simulate them directly.",
+                  ],
+                },
+                {
+                  cell_type: "code",
+                  source: ["model Simple", "  Real x(start = 1);", "equation", "  der(x) = -x;", "end Simple;"],
+                },
+              ],
+            },
+            null,
+            2,
+          );
+          break;
       }
+
+      if (filename && content) {
+        const fileUri = Uri.joinPath(workspaceUri, filename);
+        await workspace.fs.writeFile(fileUri, new TextEncoder().encode(content));
+        if (filename.endsWith(".monb")) {
+          await vscode.commands.executeCommand("vscode.openWith", fileUri, "modelscript-notebook");
+        } else {
+          const doc = await workspace.openTextDocument(fileUri);
+          await vscode.window.showTextDocument(doc);
+          if (filename.endsWith(".mo")) {
+            treeProvider.setDocumentUri(fileUri.toString());
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[blank-project] Failed to create template model:", e);
+    }
+  } else {
+    // For non-memfs workspaces (e.g. GitHub repos), scan for existing .mo files
+    const moFiles = await scanWorkspaceFiles();
+    if (moFiles.length > 0) {
+      treeProvider.setDocumentUri(moFiles[0].toString());
     }
   }
 
