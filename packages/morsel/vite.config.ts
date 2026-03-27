@@ -10,6 +10,7 @@ export default defineConfig(({ isSsrBuild }) => {
     define: {
       "process.env": {},
       "process.browser": true,
+      "process.versions": {},
     },
     esbuild: {
       keepNames: true,
@@ -18,12 +19,12 @@ export default defineConfig(({ isSsrBuild }) => {
       tailwindcss(),
       reactRouter(),
       tsconfigPaths(),
-      isSsrBuild === false &&
+      !isSsrBuild &&
         nodePolyfills({
           include: ["buffer", "fs", "path", "process"],
           protocolImports: false,
         }),
-      isSsrBuild === false &&
+      !isSsrBuild &&
         viteStaticCopy({
           targets: [
             {

@@ -405,7 +405,9 @@ export default function MorselEditor(props: MorselEditorProps) {
       setLoadingProgress(10);
       setLoadingMessage("Initializing parser…");
       await new Promise((r) => setTimeout(r, 0));
-      await Parser.init();
+      await Parser.init({
+        locateFile: (scriptName: string) => `/${scriptName}`,
+      });
       setLoadingProgress(25);
       setLoadingMessage("Loading Modelica grammar…");
       await new Promise((r) => setTimeout(r, 0));
