@@ -2350,6 +2350,13 @@ export class ExpressionEvaluator {
    * returns the function result or `null` if not found.
    */
   functionLookup: ((name: string, args: number[]) => number | null) | null;
+  /** Current simulation time (for `delay()` buffer recording). */
+  currentTime: number;
+  /**
+   * History buffers for `delay()` operator.
+   * Key is the expression hash; value stores sorted (time, value) pairs.
+   */
+  delayBuffers: Map<string, { times: number[]; values: number[] }>;
 
   constructor(env?: Map<string, number>) {
     this.env = env ?? new Map();
@@ -2358,6 +2365,8 @@ export class ExpressionEvaluator {
     this.isInitial = false;
     this.isTerminal = false;
     this.functionLookup = null;
+    this.currentTime = 0;
+    this.delayBuffers = new Map();
   }
 
   /** Convenience wrapper matching the old function signature. */
@@ -2663,6 +2672,61 @@ export class ExpressionEvaluator {
         case "div":
           return b !== 0 ? Math.trunc(a / b) : null;
       }
+    }
+
+    // delay(expr, delayTime[, delayMax]) — returns expr evaluated at t - delayTime
+    if (name === "delay" && arg0 && arg1) {
+      const currentVal = this.evaluate(arg0);
+      const delayTime = this.evaluate(arg1);
+      if (currentVal === null || delayTime === null) return currentVal;
+
+      // Use expression hash as buffer key
+      const key = arg0.hash;
+      let buffer = this.delayBuffers.get(key);
+      if (!buffer) {
+        buffer = { times: [], values: [] };
+        this.delayBuffers.set(key, buffer);
+      }
+
+      // Record current value at current time
+      const t = this.currentTime;
+      const times = buffer.times;
+      const values = buffer.values;
+      if (times.length === 0 || t > (times[times.length - 1] ?? -Infinity)) {
+        times.push(t);
+        values.push(currentVal);
+      }
+
+      // Prune old entries beyond max delay window (keep 2x for safety)
+      const delayMax = args[2] ? (this.evaluate(args[2] as ModelicaExpression) ?? delayTime) : delayTime;
+      const cutoff = t - 2 * Math.abs(delayMax);
+      while (times.length > 2 && (times[0] ?? 0) < cutoff) {
+        times.shift();
+        values.shift();
+      }
+
+      // Look up value at t - delayTime via linear interpolation
+      const tLookup = t - Math.abs(delayTime);
+      if (tLookup <= (times[0] ?? 0)) {
+        // Before buffer start — return earliest recorded value
+        return values[0] ?? currentVal;
+      }
+      // Binary search for interpolation bracket
+      let lo = 0;
+      let hi = times.length - 1;
+      while (lo < hi - 1) {
+        const mid = (lo + hi) >> 1;
+        if ((times[mid] ?? 0) <= tLookup) lo = mid;
+        else hi = mid;
+      }
+      const t0 = times[lo] ?? 0;
+      const t1 = times[hi] ?? t0;
+      const v0 = values[lo] ?? 0;
+      const v1 = values[hi] ?? v0;
+      if (Math.abs(t1 - t0) < 1e-15) return v0;
+      // Linear interpolation
+      const alpha = (tLookup - t0) / (t1 - t0);
+      return v0 + alpha * (v1 - v0);
     }
 
     // ── Array constructor functions ──

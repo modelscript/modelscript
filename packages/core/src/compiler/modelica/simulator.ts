@@ -2250,6 +2250,7 @@ export class ModelicaSimulator {
     // Build the environment from current state
     const populateEnv = (t: number, y: number[]) => {
       evaluator.env.set("time", t);
+      evaluator.currentTime = t;
       for (let i = 0; i < stateList.length; i++) {
         const name = stateList[i];
         if (name) evaluator.env.set(name, y[i] ?? 0.0);
