@@ -76,6 +76,8 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       # --- Publish VS Code Extension ---
+      - name: Sync VS Code Extension Version
+        run: npm pkg set version=$(node -p 'require("./packages/core/package.json").version') --workspace=packages/vscode
       - name: Package VS Code Extension
         run: npx @vscode/vsce package --no-dependencies
         working-directory: packages/vscode
