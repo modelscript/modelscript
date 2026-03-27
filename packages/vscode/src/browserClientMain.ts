@@ -148,7 +148,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
   // Register AI integration components
   registerLLMProvider(context);
-  registerChatParticipant(context, client);
+  registerChatParticipant(context);
   registerMCPTools(context, client);
 
   // Output channel for script execution

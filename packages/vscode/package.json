@@ -330,6 +330,7 @@
     "@antv/layout": "^0.3.25",
     "@antv/x6": "^3.1.7",
     "@antv/x6-plugin-selection": "^2.2.2",
+    "@mlc-ai/web-llm": "*",
     "@modelscript/lsp": "*",
     "vscode-languageclient": "^9.0.1"
   },
