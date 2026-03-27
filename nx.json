@@ -27,7 +27,7 @@
     }
   },
   "release": {
-    "projects": ["packages/core", "packages/cli", "packages/tree-sitter-modelica"],
+    "projects": ["packages/core", "packages/cli", "packages/tree-sitter-modelica", "packages/vscode"],
     "version": {
       "conventionalCommits": true,
       "fallbackCurrentVersionResolver": "disk",
