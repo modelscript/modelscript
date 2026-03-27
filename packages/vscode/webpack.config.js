@@ -137,8 +137,8 @@ const browserServerConfig = {
     new CopyPlugin({
       patterns: [
         {
-          from: path.resolve(__dirname, "..", "..", "node_modules", "web-tree-sitter", "tree-sitter.wasm"),
-          to: path.join(__dirname, "server", "dist", "tree-sitter.wasm"),
+          from: path.resolve(__dirname, "..", "..", "node_modules", "web-tree-sitter", "web-tree-sitter.wasm"),
+          to: path.join(__dirname, "server", "dist", "web-tree-sitter.wasm"),
         },
         {
           from: path.resolve(__dirname, "..", "tree-sitter-modelica", "tree-sitter-modelica.wasm"),
