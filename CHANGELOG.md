@@ -1,3 +1,30 @@
+## 0.0.8 (2026-03-27)
+
+### 🚀 Features
+
+- **mcp:** add modelica mcp server with parse, flatten, lint, simulate, query tools ([15bc120](https://github.com/modelscript/modelscript/commit/15bc120))
+- **vscode:** add browser-local llm integration with webllm, @modelscript chat participant, and mcp tool bridge ([1534935](https://github.com/modelscript/modelscript/commit/1534935))
+
+### 🩹 Fixes
+
+- rebuild tree-sitter with c++20 for node v24 abi compatibility ([a6515ea](https://github.com/modelscript/modelscript/commit/a6515ea))
+- **lsp:** migrate to web-tree-sitter 0.26.7 named exports ([bc4a9ef](https://github.com/modelscript/modelscript/commit/bc4a9ef))
+- **lsp:** remove duplicate simulate handler causing undefined.split() crash ([e0fca28](https://github.com/modelscript/modelscript/commit/e0fca28))
+- **mcp:** build fixes ([11d1da0](https://github.com/modelscript/modelscript/commit/11d1da0))
+- **morsel:** migrate web-tree-sitter 0.26.7 imports, add fs/promises vite alias, add lint target, fix eslint errors, sync with husky pre-commit ([33580f9](https://github.com/modelscript/modelscript/commit/33580f9))
+- **morsel:** wasm loading for web-tree-sitter v0.26, add process.versions shim for web-tree-sitter v0.26 env detection ([ae8bd13](https://github.com/modelscript/modelscript/commit/ae8bd13))
+- **vscode:** update wasm filename for web-tree-sitter v0.26 ([f38a223](https://github.com/modelscript/modelscript/commit/f38a223))
+- **vscode:** add @mlc-ai/web-llm dependency, fix registerChatParticipant call arity ([3b233b3](https://github.com/modelscript/modelscript/commit/3b233b3))
+
+### 🔥 Performance
+
+- **lsp:** implement incremental tree-sitter parsing with per-document tree cache ([2db91ba](https://github.com/modelscript/modelscript/commit/2db91ba))
+- **lsp:** incremental AST rebuild using tree-sitter hasChanges, skip unchanged class instantiation ([90ee8a2](https://github.com/modelscript/modelscript/commit/90ee8a2))
+
+### ❤️ Thank You
+
+- Mohamad Omar Nachawati @nachawati
+
 ## 0.0.7 (2026-03-27)
 
 ### 🚀 Features
