@@ -38,7 +38,7 @@ import {
   computePlacementEdits,
 } from "./diagramEdits";
 
-import Parser from "web-tree-sitter";
+import { Language, Parser, Node as SyntaxNode, Tree as TreeSitterTree } from "web-tree-sitter";
 
 import { unzipSync } from "fflate";
 
@@ -119,7 +119,7 @@ const DEDENT_START_TOKENS = new Set([
   "expandable",
 ]);
 
-function format(tree: Parser.Tree, content: string): string {
+function format(tree: TreeSitterTree, content: string): string {
   const lines = content.split("\n");
   const formattedLines: string[] = [];
 
@@ -144,7 +144,7 @@ function format(tree: Parser.Tree, content: string): string {
 
     // Calculate indentation level
     let indentLevel = 0;
-    let current: Parser.SyntaxNode | null = node.parent;
+    let current: SyntaxNode | null = node.parent;
 
     while (current) {
       if (INDENT_TRIGGER_NODES.has(current.type)) {
@@ -360,15 +360,15 @@ const workspaceInstances = new Map<string, ModelicaClassInstance[]>();
 
 /* Resolve a modification/annotation path element to its named element */
 
-function resolvePathElement(node: Parser.SyntaxNode, scope: Scope): ModelicaNamedElement | null {
-  let pathNode: Parser.SyntaxNode | null = node;
+function resolvePathElement(node: SyntaxNode, scope: Scope): ModelicaNamedElement | null {
+  let pathNode: SyntaxNode | null = node;
   const parameterPath: string[] = [];
   let baseElement: ModelicaNamedElement | null = null;
   let foundBase = false;
 
   while (pathNode) {
     if (pathNode.type === "ElementModification") {
-      const nameNode = pathNode.children.find((c: Parser.SyntaxNode) => c.type === "Name");
+      const nameNode = pathNode.children.find((c: SyntaxNode) => c.type === "Name");
       if (nameNode) {
         parameterPath.unshift(...nameNode.text.split("."));
       }
@@ -381,7 +381,7 @@ function resolvePathElement(node: Parser.SyntaxNode, scope: Scope): ModelicaName
 
     // If we hit a FunctionCall, it's a base (potential record constructor)
     if (pathNode.type === "FunctionCall") {
-      const refNode = pathNode.children.find((c: Parser.SyntaxNode) => c.type === "ComponentReference");
+      const refNode = pathNode.children.find((c: SyntaxNode) => c.type === "ComponentReference");
       if (refNode) {
         const funcRef = refNode.text;
         baseElement = scope.resolveName(funcRef.split("."));
@@ -412,7 +412,7 @@ function resolvePathElement(node: Parser.SyntaxNode, scope: Scope): ModelicaName
       pathNode.type === "ShortClassSpecifier" ||
       pathNode.type === "ExtendsClause"
     ) {
-      const typeSpecNode = pathNode.children.find((c: Parser.SyntaxNode) => c.type === "TypeSpecifier");
+      const typeSpecNode = pathNode.children.find((c: SyntaxNode) => c.type === "TypeSpecifier");
       if (typeSpecNode) {
         baseElement = scope.resolveName(typeSpecNode.text.split("."));
         foundBase = true;
@@ -461,7 +461,7 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
         return `${serverDistBase}/${file}`;
       },
     });
-    const Modelica = await Parser.Language.load(`${serverDistBase}/tree-sitter-modelica.wasm`);
+    const Modelica = await Language.load(`${serverDistBase}/tree-sitter-modelica.wasm`);
     parser = new Parser();
     parser.setLanguage(Modelica);
     Context.registerParser(".mo", parser);
@@ -1379,7 +1379,7 @@ connection.onHover((params) => {
       const searchCol = Math.max(0, wordStart);
       const searchEndCol = wordEnd;
 
-      const current: Parser.SyntaxNode | null = rootNode.descendantForPosition(
+      const current: SyntaxNode | null = rootNode.descendantForPosition(
         { row: searchRow, column: searchCol },
         { row: searchRow, column: searchEndCol },
       );
@@ -1387,7 +1387,7 @@ connection.onHover((params) => {
       let element: ModelicaNamedElement | null = null;
 
       // Unified path resolution for modifications and arguments
-      let currentPathNode: Parser.SyntaxNode | null = current;
+      let currentPathNode: SyntaxNode | null = current;
       let isOverValue = false;
       let isOverName = false;
 
@@ -1542,7 +1542,7 @@ function resolveElementAtPosition(
     const tree = parser.parse(text);
     try {
       const rootNode = tree.rootNode;
-      const current: Parser.SyntaxNode | null = rootNode.descendantForPosition(
+      const current: SyntaxNode | null = rootNode.descendantForPosition(
         { row: position.line, column: Math.max(0, wordStart) },
         { row: position.line, column: wordEnd },
       );
@@ -1550,7 +1550,7 @@ function resolveElementAtPosition(
       let element: ModelicaNamedElement | null = null;
 
       // Check if inside a modification/annotation path
-      let currentPathNode: Parser.SyntaxNode | null = current;
+      let currentPathNode: SyntaxNode | null = current;
       let isOverValue = false;
       let isOverName = false;
 
@@ -1725,7 +1725,7 @@ connection.onDocumentColor((params) => {
   const tree = parser.parse(text);
   const colors: ColorInformation[] = [];
 
-  const traverse = (node: Parser.SyntaxNode) => {
+  const traverse = (node: SyntaxNode) => {
     if (node.type === "ElementModification" || node.type === "NamedArgument") {
       const nameNode = node.childForFieldName("name") || node.childForFieldName("identifier");
       const name = nameNode?.text;
@@ -1788,7 +1788,7 @@ connection.onColorPresentation((params) => {
 /* Document symbols — enables Outline panel and breadcrumb navigation */
 
 /** Map a Modelica class prefix keyword to the most appropriate SymbolKind */
-function classKindToSymbolKind(prefixes: Parser.SyntaxNode | null): SymbolKind {
+function classKindToSymbolKind(prefixes: SyntaxNode | null): SymbolKind {
   if (!prefixes) return SymbolKind.Class;
   const text = prefixes.text;
   if (text.includes("package")) return SymbolKind.Package;
@@ -1800,7 +1800,7 @@ function classKindToSymbolKind(prefixes: Parser.SyntaxNode | null): SymbolKind {
   return SymbolKind.Class;
 }
 
-function nodeRange(node: Parser.SyntaxNode): {
+function nodeRange(node: SyntaxNode): {
   start: { line: number; character: number };
   end: { line: number; character: number };
 } {
@@ -1810,7 +1810,7 @@ function nodeRange(node: Parser.SyntaxNode): {
   };
 }
 
-function collectDocumentSymbols(node: Parser.SyntaxNode): DocumentSymbol[] {
+function collectDocumentSymbols(node: SyntaxNode): DocumentSymbol[] {
   const symbols: DocumentSymbol[] = [];
 
   for (let i = 0; i < node.childCount; i++) {
@@ -1838,7 +1838,7 @@ function collectDocumentSymbols(node: Parser.SyntaxNode): DocumentSymbol[] {
       const typeSpec = child.childForFieldName("typeSpecifier");
       const typeName = typeSpec?.text ?? "";
       // Each ComponentClause can declare multiple components
-      const decls = child.children.filter((c: Parser.SyntaxNode) => c.type === "ComponentDeclaration");
+      const decls = child.children.filter((c: SyntaxNode) => c.type === "ComponentDeclaration");
       for (const decl of decls) {
         const declaration = decl.childForFieldName("declaration");
         const ident = declaration?.childForFieldName("identifier");
@@ -1859,9 +1859,9 @@ function collectDocumentSymbols(node: Parser.SyntaxNode): DocumentSymbol[] {
         const eq = child.child(j);
         if (!eq) continue;
         if (eq.type === "SpecialEquation") {
-          const connectNode = eq.children.find((c: Parser.SyntaxNode) => c.type === "ConnectEquation");
+          const connectNode = eq.children.find((c: SyntaxNode) => c.type === "ConnectEquation");
           if (connectNode) {
-            const refs = connectNode.children.filter((c: Parser.SyntaxNode) => c.type === "ComponentReference");
+            const refs = connectNode.children.filter((c: SyntaxNode) => c.type === "ComponentReference");
             const connName = refs.length >= 2 ? `connect(${refs[0].text}, ${refs[1].text})` : "connect(...)";
             eqSymbols.push({
               name: connName,
@@ -1959,7 +1959,7 @@ connection.onFoldingRanges((params) => {
     "AnnotationClause",
   ]);
 
-  const collectFolds = (node: Parser.SyntaxNode) => {
+  const collectFolds = (node: SyntaxNode) => {
     if (FOLDABLE_NODES.has(node.type)) {
       const startLine = node.startPosition.row;
       const endLine = node.endPosition.row;
@@ -1997,7 +1997,7 @@ connection.onSelectionRanges((params) => {
   const tree = parser.parse(text);
 
   const results = params.positions.map((pos) => {
-    let node: Parser.SyntaxNode | null = tree.rootNode.descendantForPosition({
+    let node: SyntaxNode | null = tree.rootNode.descendantForPosition({
       row: pos.line,
       column: pos.character,
     });
@@ -2005,7 +2005,7 @@ connection.onSelectionRanges((params) => {
     // Build the chain from innermost to outermost
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let current: any = null;
-    const ancestors: Parser.SyntaxNode[] = [];
+    const ancestors: SyntaxNode[] = [];
     while (node) {
       ancestors.push(node);
       node = node.parent;
@@ -2052,7 +2052,7 @@ connection.onDocumentHighlight((params) => {
     kind: DocumentHighlightKind;
   }[] = [];
 
-  const collectHighlights = (node: Parser.SyntaxNode) => {
+  const collectHighlights = (node: SyntaxNode) => {
     if (node.type === "IDENT" && node.text === word) {
       highlights.push({
         range: nodeRange(node),
@@ -2088,14 +2088,14 @@ connection.onSignatureHelp((params) => {
     });
 
     // Walk up to find a FunctionCall ancestor
-    let funcCallNode: Parser.SyntaxNode | null = node;
+    let funcCallNode: SyntaxNode | null = node;
     while (funcCallNode && funcCallNode.type !== "FunctionCall") {
       funcCallNode = funcCallNode.parent;
     }
     if (!funcCallNode) return null;
 
     // Get the function reference
-    const refNode = funcCallNode.children.find((c: Parser.SyntaxNode) => c.type === "ComponentReference");
+    const refNode = funcCallNode.children.find((c: SyntaxNode) => c.type === "ComponentReference");
     if (!refNode) return null;
 
     const instances = documentInstances.get(params.textDocument.uri);
@@ -2117,7 +2117,7 @@ connection.onSignatureHelp((params) => {
     }
 
     // Determine which parameter is active based on comma count before cursor
-    const argsNode = funcCallNode.children.find((c: Parser.SyntaxNode) => c.type === "FunctionCallArguments");
+    const argsNode = funcCallNode.children.find((c: SyntaxNode) => c.type === "FunctionCallArguments");
     let activeParameter = 0;
     if (argsNode) {
       const argsText = text.substring(argsNode.startIndex, argsNode.endIndex);
@@ -2168,7 +2168,7 @@ connection.onReferences((params) => {
     const text = doc.getText();
     const tree = parser.parse(text);
 
-    const collectRefs = (node: Parser.SyntaxNode) => {
+    const collectRefs = (node: SyntaxNode) => {
       if (node.type === "IDENT" && node.text === targetName) {
         locations.push({
           uri: doc.uri,
@@ -2240,7 +2240,7 @@ connection.onRenameRequest((params) => {
       newText: string;
     }[] = [];
 
-    const collectRenames = (node: Parser.SyntaxNode) => {
+    const collectRenames = (node: SyntaxNode) => {
       if (node.type === "IDENT" && node.text === targetName) {
         edits.push({
           range: nodeRange(node),
