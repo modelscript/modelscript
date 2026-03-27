@@ -119,10 +119,14 @@ jobs:
             *.cache-from=type=gha
             *.cache-to=type=gha,mode=max
             *.args.PREBUILT=true
-            api.tags=ghcr.io/modelscript/api:latest,ghcr.io/modelscript/api:${{ steps.version.outputs.version }}
-            morsel.tags=ghcr.io/modelscript/morsel:latest,ghcr.io/modelscript/morsel:${{ steps.version.outputs.version }}
-            web.tags=ghcr.io/modelscript/web:latest,ghcr.io/modelscript/web:${{ steps.version.outputs.version }}
-            ide.tags=ghcr.io/modelscript/ide:latest,ghcr.io/modelscript/ide:${{ steps.version.outputs.version }}
+            api.tags=ghcr.io/modelscript/api:latest
+            api.tags=ghcr.io/modelscript/api:${{ steps.version.outputs.version }}
+            morsel.tags=ghcr.io/modelscript/morsel:latest
+            morsel.tags=ghcr.io/modelscript/morsel:${{ steps.version.outputs.version }}
+            web.tags=ghcr.io/modelscript/web:latest
+            web.tags=ghcr.io/modelscript/web:${{ steps.version.outputs.version }}
+            ide.tags=ghcr.io/modelscript/ide:latest
+            ide.tags=ghcr.io/modelscript/ide:${{ steps.version.outputs.version }}
 
       # --- Push version commits and tags ---
       - name: Push changes
