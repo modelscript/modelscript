@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { type BdfOptions, bdf as bdfSolver } from "./bdf.js";
 import {
   ExpressionEvaluator,
   ModelicaBinaryExpression,
@@ -2121,7 +2122,7 @@ export class ModelicaSimulator {
     options?: {
       signal?: AbortSignal;
       parameterOverrides?: Map<string, number>;
-      solver?: "rk4" | "dopri5";
+      solver?: "rk4" | "dopri5" | "bdf" | "auto";
       atol?: number;
       rtol?: number;
     },
@@ -2414,6 +2415,134 @@ export class ModelicaSimulator {
       );
 
       res = { t: dopriResult.times, y: dopriResult.states };
+    } else if (solverChoice === "bdf") {
+      // BDF solver for stiff systems
+      const numSteps = Math.max(1, Math.ceil((stopTime - startTime) / step));
+      const outputTimes: number[] = [];
+      for (let i = 0; i <= numSteps; i++) {
+        outputTimes.push(startTime + i * step);
+      }
+      if ((outputTimes[outputTimes.length - 1] ?? 0) < stopTime - 1e-14) {
+        outputTimes.push(stopTime);
+      }
+
+      const eventFns: ((t: number, y: number[]) => number)[] = [];
+      for (const clause of this.whenClauses) {
+        eventFns.push((tE: number, yE: number[]) => {
+          populateEnv(tE, yE);
+          const val = evaluator.evaluate(clause.condition);
+          return val ?? 0;
+        });
+      }
+
+      const bdfOpts: BdfOptions = {
+        atol: options?.atol ?? 1e-6,
+        rtol: options?.rtol ?? 1e-6,
+        maxStep: step,
+        initialStep: step / 10,
+      };
+
+      const bdfResult = bdfSolver(
+        f,
+        startTime,
+        initialValues,
+        stopTime,
+        outputTimes,
+        bdfOpts,
+        eventFns.length > 0 ? eventFns : undefined,
+        eventFns.length > 0
+          ? (tE: number, yE: number[], eventIdx: number) => {
+              const clause = this.whenClauses[eventIdx];
+              if (clause) {
+                this.fireWhenActions(clause, evaluator, yE, stateIndexMap);
+              }
+              return yE;
+            }
+          : undefined,
+      );
+
+      res = { t: bdfResult.times, y: bdfResult.states };
+    } else if (solverChoice === "auto") {
+      // Auto solver: start with DOPRI5, fall back to BDF if too many rejections
+      const numSteps = Math.max(1, Math.ceil((stopTime - startTime) / step));
+      const outputTimes: number[] = [];
+      for (let i = 0; i <= numSteps; i++) {
+        outputTimes.push(startTime + i * step);
+      }
+      if ((outputTimes[outputTimes.length - 1] ?? 0) < stopTime - 1e-14) {
+        outputTimes.push(stopTime);
+      }
+
+      const eventFns: ((t: number, y: number[]) => number)[] = [];
+      for (const clause of this.whenClauses) {
+        eventFns.push((tE: number, yE: number[]) => {
+          populateEnv(tE, yE);
+          const val = evaluator.evaluate(clause.condition);
+          return val ?? 0;
+        });
+      }
+
+      // Try DOPRI5 first
+      const dopriOpts: Dopri5Options = {
+        atol: options?.atol ?? 1e-6,
+        rtol: options?.rtol ?? 1e-6,
+        maxStep: step,
+        initialStep: step / 10,
+      };
+
+      const dopriResult = dopri5Solver(
+        f,
+        startTime,
+        initialValues,
+        stopTime,
+        outputTimes,
+        dopriOpts,
+        eventFns.length > 0 ? eventFns : undefined,
+        eventFns.length > 0
+          ? (tE: number, yE: number[], eventIdx: number) => {
+              const clause = this.whenClauses[eventIdx];
+              if (clause) {
+                this.fireWhenActions(clause, evaluator, yE, stateIndexMap);
+              }
+              return yE;
+            }
+          : undefined,
+      );
+
+      // Stiffness heuristic: if rejection ratio is too high, re-run with BDF
+      const rejectionRatio = dopriResult.acceptedSteps > 0 ? dopriResult.rejectedSteps / dopriResult.acceptedSteps : 0;
+
+      if (rejectionRatio > 0.5) {
+        // Too many rejections — likely stiff. Switch to BDF.
+        const bdfOpts: BdfOptions = {
+          atol: options?.atol ?? 1e-6,
+          rtol: options?.rtol ?? 1e-6,
+          maxStep: step,
+          initialStep: step / 10,
+        };
+
+        const bdfResult = bdfSolver(
+          f,
+          startTime,
+          initialValues,
+          stopTime,
+          outputTimes,
+          bdfOpts,
+          eventFns.length > 0 ? eventFns : undefined,
+          eventFns.length > 0
+            ? (tE: number, yE: number[], eventIdx: number) => {
+                const clause = this.whenClauses[eventIdx];
+                if (clause) {
+                  this.fireWhenActions(clause, evaluator, yE, stateIndexMap);
+                }
+                return yE;
+              }
+            : undefined,
+        );
+        res = { t: bdfResult.times, y: bdfResult.states };
+      } else {
+        res = { t: dopriResult.times, y: dopriResult.states };
+      }
     } else {
       // Fixed-step RK4
       res = this.rk4WithEvents(

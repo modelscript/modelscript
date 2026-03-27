@@ -63,7 +63,7 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
       .option("solver", {
         description: "ODE solver to use",
         type: "string",
-        choices: ["rk4", "dopri5"],
+        choices: ["rk4", "dopri5", "bdf", "auto"],
         default: "dopri5",
       });
     // eslint-disable-next-line @typescript-eslint/no-empty-object-type
@@ -162,7 +162,7 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
 
     // Run simulation
     const result = simulator.simulate(startTime, stopTime, step, {
-      solver: args.solver as "rk4" | "dopri5",
+      solver: args.solver as "rk4" | "dopri5" | "bdf" | "auto",
     });
     const states = result.states;
 
