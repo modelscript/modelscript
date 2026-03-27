@@ -16,6 +16,7 @@ import {
   ModelicaFunctionCallExpression,
   ModelicaIfElseExpression,
   ModelicaIfEquation,
+  ModelicaInitialStateEquation,
   ModelicaIntegerLiteral,
   ModelicaIntegerVariable,
   ModelicaNameExpression,
@@ -24,6 +25,7 @@ import {
   ModelicaRealVariable,
   ModelicaSimpleEquation,
   ModelicaSubscriptedExpression,
+  ModelicaTransitionEquation,
   ModelicaUnaryExpression,
   ModelicaVariable,
   ModelicaWhenEquation,
@@ -123,6 +125,24 @@ export interface LUFactorization {
   rowScale: Float64Array;
   /** Matrix dimension. */
   n: number;
+}
+
+/** Runtime state for a single state machine during simulation. */
+interface StateMachineRuntime {
+  name: string;
+  activeState: string;
+  previousState: string;
+  ticksInState: number;
+  stateEquations: Map<string, { target: string; expr: ModelicaExpression; isDerivative: boolean }[]>;
+  stateVariables: Map<string, { name: string; value: number }[]>;
+  transitions: {
+    fromState: string;
+    toState: string;
+    condition: ModelicaExpression;
+    immediate: boolean;
+    reset: boolean;
+    priority: number;
+  }[];
 }
 
 /** Factor a dense n×n matrix (given as array of Float64Array rows) into PA = LU
@@ -549,6 +569,8 @@ export class ModelicaSimulator {
   private negatedAliasMap = new Map<string, string>();
   /** Assertion equations to check during simulation (assert(cond, msg)). */
   private assertionEquations: { condition: ModelicaExpression; message: ModelicaExpression | null }[] = [];
+  /** Runtime state for each state machine in the DAE. */
+  private stateMachineRuntimes: StateMachineRuntime[] = [];
 
   constructor(dae: ModelicaDAE) {
     this.dae = dae;
@@ -1697,6 +1719,70 @@ export class ModelicaSimulator {
         }
       }
     }
+
+    // Initialize state machine runtimes
+    this.stateMachineRuntimes = [];
+    for (const sm of this.dae.stateMachines) {
+      const rt: StateMachineRuntime = {
+        name: sm.name,
+        activeState: "",
+        previousState: "",
+        ticksInState: 0,
+        stateEquations: new Map(),
+        stateVariables: new Map(),
+        transitions: [],
+      };
+
+      // Process states
+      for (const state of sm.states) {
+        const eqs: { target: string; expr: ModelicaExpression; isDerivative: boolean }[] = [];
+        for (const eq of state.equations) {
+          if (eq instanceof ModelicaSimpleEquation) {
+            const varName = extractVarName(eq.expression1);
+            if (varName) {
+              eqs.push({ target: varName, expr: eq.expression2, isDerivative: false });
+            }
+          }
+        }
+        rt.stateEquations.set(state.name, eqs);
+
+        const vars: { name: string; value: number }[] = [];
+        for (const v of state.variables) {
+          if (v.expression) {
+            vars.push({ name: v.name, value: 0 }); // will be evaluated at runtime
+          }
+        }
+        rt.stateVariables.set(state.name, vars);
+      }
+
+      // Process transitions from equations
+      for (const eq of sm.equations) {
+        if (eq instanceof ModelicaTransitionEquation) {
+          rt.transitions.push({
+            fromState: eq.fromState,
+            toState: eq.toState,
+            condition: eq.condition,
+            immediate: eq.immediate,
+            reset: eq.reset,
+            priority: eq.priority,
+          });
+        } else if (eq instanceof ModelicaInitialStateEquation) {
+          rt.activeState = eq.stateName;
+          rt.previousState = eq.stateName;
+        }
+      }
+
+      // Sort transitions by priority (lower = higher priority)
+      rt.transitions.sort((a, b) => a.priority - b.priority);
+
+      // Default to first state if no initialState equation
+      if (!rt.activeState && sm.states.length > 0 && sm.states[0]) {
+        rt.activeState = sm.states[0].name;
+        rt.previousState = sm.states[0].name;
+      }
+
+      this.stateMachineRuntimes.push(rt);
+    }
   }
 
   // ──────────────────────────────────────────────────────────────────
@@ -2442,6 +2528,11 @@ export class ModelicaSimulator {
         }
       }
 
+      // Execute state machines (transition evaluation + per-state equations)
+      if (this.stateMachineRuntimes.length > 0) {
+        this.executeStateMachines(evaluator);
+      }
+
       // Check assertion equations
       for (const assertion of this.assertionEquations) {
         const condVal = evaluator.evaluate(assertion.condition);
@@ -2699,6 +2790,59 @@ export class ModelicaSimulator {
     });
 
     return { t: res.t, y: allY, states: allStates };
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  //  State machine execution: evaluate transitions and activate
+  //  per-state equations at each time step.
+  // ──────────────────────────────────────────────────────────────────
+  private executeStateMachines(evaluator: ExpressionEvaluator): void {
+    for (const rt of this.stateMachineRuntimes) {
+      // Evaluate transitions from the current active state (priority-ordered)
+      let transitioned = false;
+      for (const tr of rt.transitions) {
+        if (tr.fromState !== rt.activeState) continue;
+
+        const condVal = evaluator.evaluate(tr.condition);
+        if (condVal !== null && condVal !== 0) {
+          // Transition fires
+          rt.previousState = rt.activeState;
+          rt.activeState = tr.toState;
+          rt.ticksInState = 0;
+
+          // Apply reset: initialize variables of the new state
+          if (tr.reset) {
+            const vars = rt.stateVariables.get(tr.toState);
+            if (vars) {
+              for (const v of vars) {
+                evaluator.env.set(v.name, v.value);
+              }
+            }
+          }
+
+          transitioned = true;
+          break; // Only one transition per tick
+        }
+      }
+
+      if (!transitioned) {
+        rt.ticksInState++;
+      }
+
+      // Activate equations for the current state
+      const activeEqs = rt.stateEquations.get(rt.activeState);
+      if (activeEqs) {
+        for (const eq of activeEqs) {
+          const val = evaluator.evaluate(eq.expr);
+          const key = eq.isDerivative ? `der(${eq.target})` : eq.target;
+          evaluator.env.set(key, val !== null && isFinite(val) ? val : 0);
+        }
+      }
+
+      // Expose state machine intrinsics in the evaluator environment
+      evaluator.env.set(`$activeState(${rt.name})`, rt.activeState === rt.previousState ? 1 : 0);
+      evaluator.env.set(`$ticksInState(${rt.name})`, rt.ticksInState);
+    }
   }
 
   // ──────────────────────────────────────────────────────────────────

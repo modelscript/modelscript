@@ -2619,6 +2619,60 @@ export class ExpressionEvaluator {
         if (arg0) return this.evaluate(arg0);
         return null;
       }
+      // ── Synchronous / Clocked operators (Modelica §16) ──
+      case "hold": {
+        // hold(u): return last sampled value (stored in evaluator state)
+        if (!arg0) return null;
+        const varName = this.extractVarName(arg0);
+        if (varName) {
+          // Use the current value — in a clocked partition, this is the last sampled value
+          return this.env.get(`$hold(${varName})`) ?? this.evaluate(arg0);
+        }
+        return this.evaluate(arg0);
+      }
+      case "previous": {
+        // previous(u): return value from previous clock tick
+        if (!arg0) return null;
+        const varName = this.extractVarName(arg0);
+        if (varName) {
+          const prev = this.preValues.get(varName);
+          if (prev !== undefined) return prev;
+        }
+        return this.evaluate(arg0);
+      }
+      case "subSample": {
+        // subSample(u, factor): sample every factor-th tick
+        if (!arg0) return null;
+        return this.evaluate(arg0);
+      }
+      case "superSample": {
+        // superSample(u, factor): upsample by factor
+        if (!arg0) return null;
+        return this.evaluate(arg0);
+      }
+      case "shiftSample": {
+        // shiftSample(u, shiftCounter, resolution): shift clock phase forward
+        if (!arg0) return null;
+        return this.evaluate(arg0);
+      }
+      case "backSample": {
+        // backSample(u, backCounter, resolution): shift clock phase backward
+        if (!arg0) return null;
+        return this.evaluate(arg0);
+      }
+      case "noClock": {
+        // noClock(u): convert clocked to continuous (strip clock annotation)
+        if (!arg0) return null;
+        return this.evaluate(arg0);
+      }
+      case "interval": {
+        // interval(u): return clock interval
+        return this.stepSize > 0 ? this.stepSize : 0.001;
+      }
+      case "firstTick": {
+        // firstTick(u): true at the first clock tick
+        return this.isInitial ? 1 : 0;
+      }
     }
 
     // Math functions (single argument)
