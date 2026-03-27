@@ -9,6 +9,7 @@ import {
   ModelicaEnumerationVariable,
   type ModelicaEquation,
   type ModelicaExpression,
+  ModelicaForEquation,
   ModelicaFunctionCallEquation,
   ModelicaFunctionCallExpression,
   ModelicaIfElseExpression,
@@ -16,9 +17,11 @@ import {
   ModelicaIntegerLiteral,
   ModelicaIntegerVariable,
   ModelicaNameExpression,
+  ModelicaRangeExpression,
   ModelicaRealLiteral,
   ModelicaRealVariable,
   ModelicaSimpleEquation,
+  ModelicaSubscriptedExpression,
   ModelicaUnaryExpression,
   ModelicaVariable,
   ModelicaWhenEquation,
@@ -502,13 +505,19 @@ export class ModelicaSimulator {
       }
     }
 
+    // ── Pre-process: expand for-equations into scalar equations ──
+    // For-equations like `for i in 1:N loop x[i] = f(i); end for;` that survived
+    // the flattener (because their range depends on parameters) can now be
+    // expanded since parameter values are available.
+    const expandedEquations = expandForEquations(this.dae.equations, this.parameters);
+
     // ── Pre-process: flatten if-equations into conditional simple equations ──
     // An if-equation like:
     //   if cond then x = e1; elseif cond2 then x = e2; else x = e3; end if;
     // becomes:
     //   x = if cond then e1 elseif cond2 then e2 else e3;
     const flattenedEquations: ModelicaEquation[] = [];
-    for (const eq of this.dae.equations) {
+    for (const eq of expandedEquations) {
       if (eq instanceof ModelicaIfEquation) {
         const ifEqs = eq.equations.filter((e): e is ModelicaSimpleEquation => e instanceof ModelicaSimpleEquation);
         const elseEqs = eq.elseEquations.filter(
@@ -2976,4 +2985,209 @@ export class ModelicaSimulator {
       }
     }
   }
+}
+
+// ──────────────────────────────────────────────────────────────────
+//  For-equation expansion helpers
+// ──────────────────────────────────────────────────────────────────
+
+/**
+ * Expand `ModelicaForEquation` instances into scalar equations by evaluating
+ * ranges with parameter values. Non-for equations pass through unchanged.
+ * Handles nested for-equations recursively.
+ */
+function expandForEquations(equations: ModelicaEquation[], parameters: Map<string, number>): ModelicaEquation[] {
+  const result: ModelicaEquation[] = [];
+  for (const eq of equations) {
+    if (eq instanceof ModelicaForEquation) {
+      const expanded = expandSingleForEquation(eq, parameters);
+      result.push(...expanded);
+    } else {
+      result.push(eq);
+    }
+  }
+  return result;
+}
+
+/**
+ * Expand a single for-equation by evaluating its range and substituting
+ * the index variable in each body equation.
+ */
+function expandSingleForEquation(forEq: ModelicaForEquation, parameters: Map<string, number>): ModelicaEquation[] {
+  // Evaluate the range expression using parameter values
+  const rangeValues = evaluateForRange(forEq.range, parameters);
+  if (!rangeValues) {
+    // Can't evaluate range — pass through as-is
+    return [forEq];
+  }
+
+  const result: ModelicaEquation[] = [];
+  for (const indexVal of rangeValues) {
+    // Substitute the index variable in each body equation
+    for (const bodyEq of forEq.equations) {
+      if (bodyEq instanceof ModelicaSimpleEquation) {
+        const lhs = substituteIndexInExpr(bodyEq.expression1, forEq.indexName, indexVal);
+        const rhs = substituteIndexInExpr(bodyEq.expression2, forEq.indexName, indexVal);
+        result.push(new ModelicaSimpleEquation(lhs, rhs));
+      } else if (bodyEq instanceof ModelicaForEquation) {
+        // Nested for-equation — substitute the outer index, then recurse
+        const innerRange = substituteIndexInExpr(bodyEq.range, forEq.indexName, indexVal);
+        const innerEqs = bodyEq.equations.map((ie) => {
+          if (ie instanceof ModelicaSimpleEquation) {
+            return new ModelicaSimpleEquation(
+              substituteIndexInExpr(ie.expression1, forEq.indexName, indexVal),
+              substituteIndexInExpr(ie.expression2, forEq.indexName, indexVal),
+            );
+          }
+          return ie;
+        });
+        const innerFor = new ModelicaForEquation(bodyEq.indexName, innerRange, innerEqs);
+        result.push(...expandSingleForEquation(innerFor, parameters));
+      } else {
+        // Other equation types — pass through
+        result.push(bodyEq);
+      }
+    }
+  }
+  return result;
+}
+
+/**
+ * Evaluate a for-equation range expression to an array of numeric values.
+ */
+function evaluateForRange(range: ModelicaExpression, parameters: Map<string, number>): number[] | null {
+  if (range instanceof ModelicaRangeExpression) {
+    const paramEval = new ExpressionEvaluator(new Map(parameters));
+    const startVal = paramEval.evaluate(range.start);
+    const endVal = paramEval.evaluate(range.end);
+    if (startVal === null || endVal === null) return null;
+
+    let stepVal = 1;
+    if (range.step) {
+      const s = paramEval.evaluate(range.step);
+      if (s === null || s === 0) return null;
+      stepVal = s;
+    }
+
+    const values: number[] = [];
+    if (stepVal > 0) {
+      for (let v = startVal; v <= endVal + 1e-10; v += stepVal) {
+        values.push(Math.round(v));
+      }
+    } else {
+      for (let v = startVal; v >= endVal - 1e-10; v += stepVal) {
+        values.push(Math.round(v));
+      }
+    }
+    return values;
+  }
+
+  // Try evaluating as a single value
+  const paramEval = new ExpressionEvaluator(new Map(parameters));
+  const val = paramEval.evaluate(range);
+  if (val !== null) return [Math.round(val)];
+
+  return null;
+}
+
+/**
+ * Recursively substitute an index variable in an expression tree, returning
+ * a new expression with the variable replaced by an integer literal.
+ *
+ * Also resolves subscripted variable references: when a `ModelicaSubscriptedExpression`
+ * like `x[i]` has its subscript resolved to a literal, it produces a `ModelicaNameExpression`
+ * with name `x[1]` which the simulator can match against flattened array variables.
+ */
+function substituteIndexInExpr(expr: ModelicaExpression, indexName: string, indexValue: number): ModelicaExpression {
+  // Name reference matching the loop variable → replace with literal
+  if (expr instanceof ModelicaNameExpression) {
+    if (expr.name === indexName) {
+      return new ModelicaIntegerLiteral(indexValue);
+    }
+    return expr;
+  }
+
+  // Variables are leaf nodes — don't substitute
+  if (expr instanceof ModelicaVariable) {
+    return expr;
+  }
+
+  // Literals are leaf nodes
+  if (expr instanceof ModelicaRealLiteral || expr instanceof ModelicaIntegerLiteral) {
+    return expr;
+  }
+
+  // Binary expression: recurse into both operands
+  if (expr instanceof ModelicaBinaryExpression) {
+    const left = substituteIndexInExpr(expr.operand1, indexName, indexValue);
+    const right = substituteIndexInExpr(expr.operand2, indexName, indexValue);
+    if (left === expr.operand1 && right === expr.operand2) return expr;
+    return new ModelicaBinaryExpression(expr.operator, left, right);
+  }
+
+  // Unary expression: recurse into operand
+  if (expr instanceof ModelicaUnaryExpression) {
+    const operand = substituteIndexInExpr(expr.operand, indexName, indexValue);
+    if (operand === expr.operand) return expr;
+    return new ModelicaUnaryExpression(expr.operator, operand);
+  }
+
+  // Function call: recurse into arguments
+  if (expr instanceof ModelicaFunctionCallExpression) {
+    let changed = false;
+    const newArgs = expr.args.map((arg) => {
+      const sub = substituteIndexInExpr(arg, indexName, indexValue);
+      if (sub !== arg) changed = true;
+      return sub;
+    });
+    if (!changed) return expr;
+    return new ModelicaFunctionCallExpression(expr.functionName, newArgs);
+  }
+
+  // Subscripted expression: e.g. x[i] → x[3]
+  if (expr instanceof ModelicaSubscriptedExpression) {
+    const base = substituteIndexInExpr(expr.base, indexName, indexValue);
+    let changed = base !== expr.base;
+    const newSubscripts = expr.subscripts.map((s) => {
+      const sub = substituteIndexInExpr(s, indexName, indexValue);
+      if (sub !== s) changed = true;
+      return sub;
+    });
+
+    if (!changed) return expr;
+
+    // If all subscripts are now integer literals and base is a name,
+    // resolve to a flat variable name like "x[1,2]"
+    const allLiteral = newSubscripts.every((s) => s instanceof ModelicaIntegerLiteral);
+    if (allLiteral && base instanceof ModelicaNameExpression) {
+      const indices = newSubscripts.map((s) => (s as ModelicaIntegerLiteral).value);
+      return new ModelicaNameExpression(`${base.name}[${indices.join(",")}]`);
+    }
+
+    return new ModelicaSubscriptedExpression(base, newSubscripts);
+  }
+
+  // If-else expression: recurse into all parts
+  if (expr instanceof ModelicaIfElseExpression) {
+    const cond = substituteIndexInExpr(expr.condition, indexName, indexValue);
+    const thenExpr = substituteIndexInExpr(expr.thenExpression, indexName, indexValue);
+    const elseExpr = substituteIndexInExpr(expr.elseExpression, indexName, indexValue);
+    const elseIfClauses = expr.elseIfClauses.map((c) => ({
+      condition: substituteIndexInExpr(c.condition, indexName, indexValue),
+      expression: substituteIndexInExpr(c.expression, indexName, indexValue),
+    }));
+    return new ModelicaIfElseExpression(cond, thenExpr, elseIfClauses, elseExpr);
+  }
+
+  // Range expression: recurse into start, step, end
+  if (expr instanceof ModelicaRangeExpression) {
+    const start = substituteIndexInExpr(expr.start, indexName, indexValue);
+    const end = substituteIndexInExpr(expr.end, indexName, indexValue);
+    const step = expr.step ? substituteIndexInExpr(expr.step, indexName, indexValue) : null;
+    if (start === expr.start && end === expr.end && step === expr.step) return expr;
+    return new ModelicaRangeExpression(start, end, step);
+  }
+
+  // Unknown expression type — return as-is
+  return expr;
 }
