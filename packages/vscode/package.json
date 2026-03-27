@@ -1,5 +1,5 @@
 {
-  "name": "vscode",
+  "name": "modelscript",
   "displayName": "ModelScript",
   "version": "0.0.0",
   "description": "Modelica language support — syntax highlighting, completions, hover, diagnostics, formatting, and bundled MSL",
