@@ -1,3 +1,13 @@
+## 0.0.7 (2026-03-27)
+
+### 🚀 Features
+
+- **cli:** add export-fmu command, wire bdf/dopri5/fmi/units exports ([066378c](https://github.com/modelscript/modelscript/commit/066378c))
+
+### ❤️ Thank You
+
+- Mohamad Omar Nachawati @nachawati
+
 ## 0.0.6 (2026-03-27)
 
 ### 🚀 Features

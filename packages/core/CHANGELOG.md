@@ -1,3 +1,15 @@
+## 0.0.7 (2026-03-27)
+
+### 🚀 Features
+
+- **cli:** add export-fmu command, wire bdf/dopri5/fmi/units exports ([066378c](https://github.com/modelscript/modelscript/commit/066378c))
+- **core:** fmi 2.0 co-simulation fmu generator, si unit checking with 7-tuple representation, overconstrained connection graph operators, homotopy continuation initialization ([7bd311a](https://github.com/modelscript/modelscript/commit/7bd311a))
+- **core:** synchronous clocked operators and state machine execution ([d71eca2](https://github.com/modelscript/modelscript/commit/d71eca2))
+
+### ❤️ Thank You
+
+- Mohamad Omar Nachawati @nachawati
+
 ## 0.0.6 (2026-03-27)
 
 ### 🚀 Features
