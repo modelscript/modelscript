@@ -49,7 +49,7 @@ jobs:
       - name: Configure Git
         run: |
           git config user.name "modelscript-release-bot[bot]"
-          git config user.email "modelscript-release-bot[bot]@users.noreply.github.com"
+          git config user.email "${{ secrets.APP_ID }}+modelscript-release-bot[bot]@users.noreply.github.com"
       - name: Cache MSL
         uses: actions/cache@v4
         with:
