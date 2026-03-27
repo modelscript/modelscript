@@ -57,7 +57,7 @@ import { configure, InMemory } from "@zenfs/core";
 import type { editor } from "monaco-editor";
 import { type DataUrl } from "parse-data-url";
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Parser from "web-tree-sitter";
+import { Language, Parser } from "web-tree-sitter";
 import { mountLibrary, WebFileSystem } from "~/util/filesystem";
 import { getTranslations, uiLanguages } from "~/util/i18n";
 import type { CodeEditorHandle } from "./code";
@@ -409,7 +409,7 @@ export default function MorselEditor(props: MorselEditorProps) {
       setLoadingProgress(25);
       setLoadingMessage("Loading Modelica grammar…");
       await new Promise((r) => setTimeout(r, 0));
-      const Modelica = await Parser.Language.load("/tree-sitter-modelica.wasm");
+      const Modelica = await Language.load("/tree-sitter-modelica.wasm");
       const parser = new Parser();
       parser.setLanguage(Modelica);
       Context.registerParser(".mo", parser);
@@ -3166,6 +3166,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                       } catch (proxyError) {
                         throw new Error(
                           `Failed to fetch library from ${url}: ${proxyError instanceof Error ? proxyError.message : String(proxyError)}`,
+                          { cause: proxyError },
                         );
                       }
                     }

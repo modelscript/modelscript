@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type Parser from "web-tree-sitter";
+import type { Node as SyntaxNode, Tree } from "web-tree-sitter";
 
-const INDENT_SIZE = 2;
 const INDENT_STRING = "  ";
 
 // Nodes that increase indentation for their children/content
@@ -38,7 +37,7 @@ const DEDENT_START_TOKENS = new Set([
   "expandable",
 ]);
 
-export function format(tree: Parser.Tree, content: string): string {
+export function format(tree: Tree, content: string): string {
   const lines = content.split("\n");
   const formattedLines: string[] = [];
 
@@ -63,7 +62,7 @@ export function format(tree: Parser.Tree, content: string): string {
 
     // Calculate indentation level
     let indentLevel = 0;
-    let current: Parser.SyntaxNode | null = node.parent;
+    let current: SyntaxNode | null = node.parent;
 
     while (current) {
       if (INDENT_TRIGGER_NODES.has(current.type)) {

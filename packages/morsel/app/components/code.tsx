@@ -19,7 +19,7 @@ import * as monaco from "monaco-editor";
 import { editor, languages } from "monaco-editor";
 import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import React, { useEffect, useRef } from "react";
-import Parser from "web-tree-sitter";
+import { Language, Parser, Node as SyntaxNode, type Tree } from "web-tree-sitter";
 import { format } from "~/util/formatter";
 
 /**
@@ -176,22 +176,22 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
   const monacoRef = useRef<Monaco>(null);
   const contextRef = useRef<Context | null>(null);
   const classInstanceRef = useRef<ModelicaClassInstance | null>(null);
-  const treeRef = useRef<Parser.Tree | null>(null);
+  const treeRef = useRef<Tree | null>(null);
   const parserRef = useRef<Parser | null>(null);
   const disposablesRef = useRef<monaco.IDisposable[]>([]);
   const lastProcessedValueRef = useRef<string | undefined>(undefined);
   const lastProcessedInstancesRef = useRef<ModelicaClassInstance[]>([]);
   const lastProcessedMarkersRef = useRef<editor.IMarkerData[]>([]);
 
-  const resolvePathElement = (node: Parser.SyntaxNode, scope: Scope): ModelicaNamedElement | null => {
-    let pathNode: Parser.SyntaxNode | null = node;
+  const resolvePathElement = (node: SyntaxNode, scope: Scope): ModelicaNamedElement | null => {
+    let pathNode: SyntaxNode | null = node;
     const parameterPath: string[] = [];
     let baseElement: ModelicaNamedElement | null = null;
     let foundBase = false;
 
     while (pathNode) {
       if (pathNode.type === "ElementModification") {
-        const nameNode = pathNode.children.find((c: Parser.SyntaxNode) => c.type === "Name");
+        const nameNode = pathNode.children.find((c: SyntaxNode) => c.type === "Name");
         if (nameNode) {
           parameterPath.unshift(...nameNode.text.split("."));
         }
@@ -204,7 +204,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
 
       // If we hit a FunctionCall, it's a base (potential record constructor)
       if (pathNode.type === "FunctionCall") {
-        const refNode = pathNode.children.find((c: Parser.SyntaxNode) => c.type === "ComponentReference");
+        const refNode = pathNode.children.find((c: SyntaxNode) => c.type === "ComponentReference");
         if (refNode) {
           const funcRef = refNode.text;
           baseElement = scope.resolveName(funcRef.split("."));
@@ -235,7 +235,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
         pathNode.type === "ShortClassSpecifier" ||
         pathNode.type === "ExtendsClause"
       ) {
-        const typeSpecNode = pathNode.children.find((c: Parser.SyntaxNode) => c.type === "TypeSpecifier");
+        const typeSpecNode = pathNode.children.find((c: SyntaxNode) => c.type === "TypeSpecifier");
         if (typeSpecNode) {
           baseElement = scope.resolveName(typeSpecNode.text.split("."));
           foundBase = true;
@@ -355,7 +355,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
               modifier: number;
             }[] = [];
 
-            const traverseTree = (node: Parser.SyntaxNode) => {
+            const traverseTree = (node: SyntaxNode) => {
               let tokenType: string | null = null;
               const modifier = 0;
 
@@ -367,7 +367,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
                 tokenType = "keyword";
               } else if (node.type === "IDENT") {
                 const parent = node.parent;
-                let p: Parser.SyntaxNode | null = parent;
+                let p: SyntaxNode | null = parent;
                 while (p && p.type === "Name") {
                   p = p.parent;
                 }
@@ -505,13 +505,13 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
             const searchCol = Math.max(0, wordInfo.startColumn - 1);
             const searchEndCol = wordInfo.endColumn - 1;
 
-            const current: Parser.SyntaxNode | null = rootNode.descendantForPosition(
+            const current: SyntaxNode | null = rootNode.descendantForPosition(
               { row: searchRow, column: searchCol },
               { row: searchRow, column: searchEndCol },
             );
 
             // Unified path resolution for modifications and arguments
-            let currentPathNode: Parser.SyntaxNode | null = current;
+            let currentPathNode: SyntaxNode | null = current;
             let isOverValue = false;
             let isOverName = false;
 
@@ -642,7 +642,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
     console.log("Modelica language configuration set");
 
     try {
-      const Modelica = await Parser.Language.load("/tree-sitter-modelica.wasm");
+      const Modelica = await Language.load("/tree-sitter-modelica.wasm");
       const parser = new Parser();
       parser.setLanguage(Modelica);
       parserRef.current = parser;
@@ -679,7 +679,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
             const colors: languages.IColorInformation[] = [];
             const colorFields = new Set(["color", "lineColor", "fillColor", "textColor"]);
 
-            const traverse = (node: Parser.SyntaxNode) => {
+            const traverse = (node: SyntaxNode) => {
               if (node.type === "ElementModification" || node.type === "NamedArgument") {
                 const nameNode = node.childForFieldName("name") || node.childForFieldName("identifier");
                 const name = nameNode?.text;

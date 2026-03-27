@@ -27,7 +27,7 @@ export default defineConfig(({ isSsrBuild }) => {
         viteStaticCopy({
           targets: [
             {
-              src: "../../node_modules/web-tree-sitter/tree-sitter.wasm",
+              src: "../../node_modules/web-tree-sitter/web-tree-sitter.wasm",
               dest: "",
             },
             {
@@ -49,6 +49,14 @@ export default defineConfig(({ isSsrBuild }) => {
                 recharts: ["recharts"],
               },
             },
+      },
+    },
+    resolve: {
+      alias: {
+        // web-tree-sitter 0.26.x imports "fs/promises" dynamically;
+        // vite-plugin-node-polyfills maps "fs" → empty.js but not
+        // "fs/promises", which Vite resolves as empty.js/promises (ENOTDIR).
+        "fs/promises": "node-stdlib-browser/mock/empty",
       },
     },
     server: {

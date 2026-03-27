@@ -19,15 +19,11 @@ export default function AddLibraryModal({ isOpen, onDismiss, onAddLibrary, trans
   const [isAdding, setIsAdding] = useState(false);
   const { colorMode } = useTheme();
 
-  const onDrop = useCallback(
-    (acceptedFiles: File[]) => {
-      if (acceptedFiles.length > 0) {
-        handleAdd(acceptedFiles[0], "file");
-      }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  );
+  const onDrop = useCallback((acceptedFiles: File[]) => {
+    if (acceptedFiles.length > 0) {
+      handleAdd(acceptedFiles[0], "file");
+    }
+  }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,

@@ -1279,7 +1279,6 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
 
 export default DiagramEditor;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function marker(arrow: string | null | undefined, strokeColor: string, strokeWidth: number): any {
   if (!arrow) return null;
   const normalized = arrow.toLowerCase();
