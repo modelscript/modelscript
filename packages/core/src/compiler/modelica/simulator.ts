@@ -3,6 +3,7 @@
 import {
   ExpressionEvaluator,
   ModelicaBinaryExpression,
+  ModelicaBooleanLiteral,
   ModelicaBooleanVariable,
   type ModelicaDAE,
   ModelicaDAEVisitor,
@@ -2094,41 +2095,113 @@ export class ModelicaSimulator {
     // Algebraic vars are re-evaluated from sorted equations at each timestep.
     const stateList = stateVarsArr;
 
-    // Resolve initial values: check initial equations first, then variable start attributes
-    const paramEnv = new Map(this.parameters);
+    // ────────────────────────────────────────────────────────
+    //  Consistent Initialization
+    // ────────────────────────────────────────────────────────
+    // Phase 1: Collect start values from variable attributes
+    const startValues = new Map<string, number>();
+    const fixedVars = new Set<string>();
+    for (const v of this.dae.variables) {
+      // Apply start attribute
+      const startAttr = v.attributes.get("start");
+      if (startAttr) {
+        const initEval = new ExpressionEvaluator(new Map(this.parameters));
+        const val = initEval.evaluate(startAttr);
+        if (val !== null) startValues.set(v.name, val);
+      }
+      // Apply binding expression for non-parameter variables
+      if (v.expression) {
+        const initEval = new ExpressionEvaluator(new Map(this.parameters));
+        const val = initEval.evaluate(v.expression);
+        if (val !== null) startValues.set(v.name, val);
+      }
+      // Track fixed variables (fixed=true means value cannot change from start)
+      const fixedAttr = v.attributes.get("fixed");
+      if (fixedAttr && fixedAttr instanceof ModelicaBooleanLiteral && fixedAttr.value) {
+        fixedVars.add(v.name);
+      }
+    }
+
+    // Phase 2: Build initial evaluator with parameters and start values
+    const initEvaluator = new ExpressionEvaluator(new Map(this.parameters));
+    initEvaluator.isInitial = true;
+    if (this.dae.functions.length > 0) {
+      initEvaluator.functionLookup = buildFunctionLookup(this.dae.functions);
+    }
+    // Pre-populate all variables with start values or 0
+    for (const v of this.dae.variables) {
+      if (!initEvaluator.env.has(v.name)) {
+        initEvaluator.env.set(v.name, startValues.get(v.name) ?? 0);
+      }
+    }
+    for (const av of algebraicVarsArr) {
+      if (!initEvaluator.env.has(av)) {
+        initEvaluator.env.set(av, startValues.get(av) ?? 0);
+      }
+    }
+    // Set all der(x) = 0 initially (steady-state default)
+    for (const state of stateList) {
+      if (state) initEvaluator.env.set(`der(${state})`, 0);
+    }
+    initEvaluator.env.set("time", startTime);
+
+    // Phase 3: Process initial equations
+    // These override start attribute values and can set der(x) values
+    for (const eq of this.dae.initialEquations) {
+      if (eq instanceof ModelicaSimpleEquation) {
+        const lhsName = extractVarName(eq.expression1);
+        const rhsName = extractVarName(eq.expression2);
+        // Check for der(x) = expr (steady-state override)
+        const derName = extractDerName(eq.expression1);
+        if (derName) {
+          const val = initEvaluator.evaluate(eq.expression2);
+          if (val !== null) {
+            initEvaluator.env.set(`der(${derName})`, val);
+          }
+        } else if (lhsName) {
+          const val = initEvaluator.evaluate(eq.expression2);
+          if (val !== null) {
+            initEvaluator.env.set(lhsName, val);
+            startValues.set(lhsName, val);
+          }
+        } else if (rhsName) {
+          // Reversed: expr = x
+          const val = initEvaluator.evaluate(eq.expression1);
+          if (val !== null) {
+            initEvaluator.env.set(rhsName, val);
+            startValues.set(rhsName, val);
+          }
+        }
+      }
+    }
+
+    // Phase 4: Execute initial algorithm sections
+    for (const section of this.dae.initialAlgorithms) {
+      if (section.length > 0) {
+        executeStatements(section, initEvaluator, initEvaluator.functionLookup ?? undefined);
+      }
+    }
+
+    // Phase 5: Run execution blocks once at t=0 to compute consistent algebraic values
+    for (const block of this.executionBlocks) {
+      if (block.type === "single") {
+        const value = initEvaluator.evaluate(block.eq.expr);
+        if (value !== null && isFinite(value)) {
+          const key = block.eq.isDerivative ? `der(${block.eq.target})` : block.eq.target;
+          initEvaluator.env.set(key, value);
+        }
+      } else if (block.type === "algorithm") {
+        executeStatements(block.statements, initEvaluator, initEvaluator.functionLookup ?? undefined);
+      } else {
+        this.solveNewtonBlock(block, initEvaluator, startTime);
+      }
+    }
+
+    // Phase 6: Extract final initial values for state variables
     const initialValues = stateList.map((state) => {
-      // 1. Check initial equations (evaluate RHS with parameter env)
-      for (const eq of this.dae.initialEquations) {
-        if (eq instanceof ModelicaSimpleEquation) {
-          const lhsName = extractVarName(eq.expression1);
-          if (lhsName === state) {
-            const initEval = new ExpressionEvaluator(new Map(paramEnv));
-            const val = initEval.evaluate(eq.expression2);
-            if (val !== null) return val;
-          }
-        }
-      }
-      // 2. Check variable start attributes
-      for (const v of this.dae.variables) {
-        if (v.name === state) {
-          // Try binding expression first (for non-parameter vars with bindings)
-          if (v.expression) {
-            if (v.expression instanceof ModelicaRealLiteral) return v.expression.value;
-            if (v.expression instanceof ModelicaIntegerLiteral) return v.expression.value;
-          }
-          // Try start attribute
-          const startAttr = v.attributes.get("start");
-          if (startAttr) {
-            if (startAttr instanceof ModelicaRealLiteral) return startAttr.value;
-            if (startAttr instanceof ModelicaIntegerLiteral) return startAttr.value;
-            // Try evaluating the start expression
-            const evalResult = new ExpressionEvaluator(new Map(this.parameters)).evaluate(startAttr);
-            if (evalResult !== null) return evalResult;
-          }
-          break;
-        }
-      }
-      return 0.0;
+      if (!state) return 0.0;
+      const val = initEvaluator.env.get(state);
+      return val !== undefined ? val : 0.0;
     });
 
     // Map from state name → index for fast reinit lookups
@@ -2138,7 +2211,7 @@ export class ModelicaSimulator {
       if (name) stateIndexMap.set(name, i);
     }
 
-    // Create the evaluator
+    // Create the simulation evaluator (separate from init evaluator)
     const evaluator = new ExpressionEvaluator();
     evaluator.stepSize = step;
 
@@ -2158,39 +2231,19 @@ export class ModelicaSimulator {
       evaluator.env.set(name, value);
     }
 
-    // Pre-populate all DAE continuous variables with 0 default.
-    // This ensures that variables not computed by any equation (e.g. T_heatPort,
-    // Modelica.Constants.eps, ground pin current) don't cause null cascades.
+    // Carry over initialized variable values from the init evaluator
     for (const v of this.dae.variables) {
       if (!evaluator.env.has(v.name)) {
-        evaluator.env.set(v.name, 0);
+        const initVal = initEvaluator.env.get(v.name);
+        evaluator.env.set(v.name, initVal ?? 0);
       }
     }
 
-    // Also initialize algebraic variables added by the equation sorter
-    // (e.g. C2.i from Phase 2.7) that may not appear in dae.variables.
+    // Also initialize algebraic variables
     for (const av of this.algebraicVars) {
       if (!evaluator.env.has(av)) {
-        evaluator.env.set(av, 0);
-      }
-    }
-
-    // Execute initial algorithm sections
-    for (const section of this.dae.initialAlgorithms) {
-      if (section.length > 0) {
-        executeStatements(section, evaluator, evaluator.functionLookup ?? undefined);
-      }
-    }
-
-    // Update initial values from the evaluator environment (initial algorithms may
-    // have assigned state variables)
-    for (let i = 0; i < stateList.length; i++) {
-      const name = stateList[i];
-      if (name) {
-        const envVal = evaluator.env.get(name);
-        if (envVal !== undefined && typeof envVal === "number") {
-          initialValues[i] = envVal;
-        }
+        const initVal = initEvaluator.env.get(av);
+        evaluator.env.set(av, initVal ?? 0);
       }
     }
 
