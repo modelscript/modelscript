@@ -15,11 +15,6 @@ on:
           - prepatch
           - preminor
           - premajor
-      first_release:
-        description: "Is this the first release? (Passes --first-release to skip previous tag requirement)"
-        type: boolean
-        required: false
-        default: false
 
 jobs:
   release:
@@ -70,9 +65,7 @@ jobs:
 
       # --- Version, Changelog, Tag ---
       - name: Version & Changelog
-        run: >
-          npx nx release --skip-publish ${{ github.event.inputs.version }}
-          ${{ github.event.inputs.first_release == 'true' && '--first-release' || '' }}
+        run: npx nx release --skip-publish ${{ github.event.inputs.version }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
