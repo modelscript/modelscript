@@ -332,9 +332,16 @@ let parserReady = false;
 
 /* Incremental parsing — cache last tree per document for reuse */
 
+interface CachedClassEntry {
+  classDef: ModelicaClassDefinitionSyntaxNode;
+  instance: ModelicaClassInstance;
+  diagnostics: Diagnostic[];
+}
+
 interface CachedTree {
   text: string;
   tree: TreeSitterTree;
+  classCache: Map<string, CachedClassEntry>;
 }
 
 const documentTrees = new Map<string, CachedTree>();
@@ -420,7 +427,7 @@ function updateDocumentTree(uri: string, newText: string): TreeSitterTree {
     tree = parser.parse(newText);
   }
 
-  documentTrees.set(uri, { text: newText, tree });
+  documentTrees.set(uri, { text: newText, tree, classCache: cached?.classCache ?? new Map() });
   return tree;
 }
 
@@ -950,7 +957,7 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
     } else {
       tree = context.parse(".mo", text);
     }
-    documentTrees.set(textDocument.uri, { text, tree });
+    documentTrees.set(textDocument.uri, { text, tree, classCache: oldCached?.classCache ?? new Map() });
 
     // Lint the raw parse tree (catches ERROR and MISSING nodes)
     linter.lint(tree, textDocument.uri);
@@ -1004,29 +1011,79 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
         `[cross-file] ${textDocument.uri.split("/").pop()}: ${allInstances.length} cross-file instances, ${workspaceInstances.size} total docs`,
       );
 
-      // Instantiate classes from this document
+      // Instantiate classes from this document — reuse unchanged classes
       const thisDocInstances: ModelicaClassInstance[] = [];
       const combinedInstances = [...allInstances, ...thisDocInstances];
       const editorScope = new EditorScope(parentScope, combinedInstances);
+      const prevClassCache = oldCached?.classCache ?? new Map<string, CachedClassEntry>();
+      const newClassCache = new Map<string, CachedClassEntry>();
+      const isIncremental = oldCached && oldCached.text !== text;
+
+      // Helper to get class name from a class definition's CST node
+      const getClassDefName = (classDef: ModelicaClassDefinitionSyntaxNode): string | null => {
+        return classDef.identifier?.text ?? null;
+      };
 
       // Two-pass: first create all instances (so they're visible as siblings)
+      let reusedCount = 0;
       for (const classDef of node.classDefinitions) {
-        const instance = new ModelicaClassInstance(editorScope, classDef);
-        thisDocInstances.push(instance);
-        combinedInstances.push(instance);
-      }
+        const className = getClassDefName(classDef);
+        const cstNode = classDef.sourceRange;
+        // Check if this class definition's CST subtree is unchanged
+        const cstClassNode = tree.rootNode
+          .childrenForFieldName("classDefinition")
+          .find((c: SyntaxNode) => cstNode && c.startIndex === cstNode.startIndex);
+        const hasChanges = !isIncremental || !cstClassNode || cstClassNode.hasChanges;
+        const cachedEntry = className ? prevClassCache.get(className) : null;
 
-      // Then instantiate and lint them
-      for (const instance of thisDocInstances) {
-        try {
-          instance.instantiate();
-          linter.lint(instance, textDocument.uri);
-        } catch (e) {
-          console.error("Lint error for instance:", e);
+        if (!hasChanges && cachedEntry && className) {
+          // Reuse cached instance — class subtree is unchanged
+          thisDocInstances.push(cachedEntry.instance);
+          combinedInstances.push(cachedEntry.instance);
+          newClassCache.set(className, cachedEntry);
+          // Re-emit cached diagnostics
+          diagnostics.push(...cachedEntry.diagnostics);
+          reusedCount++;
+        } else {
+          // Changed or new class — build fresh instance
+          const instance = new ModelicaClassInstance(editorScope, classDef);
+          thisDocInstances.push(instance);
+          combinedInstances.push(instance);
+          if (className) {
+            // We'll fill diagnostics after instantiation
+            newClassCache.set(className, { classDef, instance, diagnostics: [] });
+          }
         }
       }
+
+      // Then instantiate and lint only the new/changed instances
+      for (const instance of thisDocInstances) {
+        const className = instance.name;
+        const cacheEntry = className ? newClassCache.get(className) : null;
+        // Skip if this is a reused instance (diagnostics already emitted)
+        if (cacheEntry && cacheEntry.instance === instance && cacheEntry.diagnostics.length === 0) {
+          try {
+            const preDiagCount = diagnostics.length;
+            instance.instantiate();
+            linter.lint(instance, textDocument.uri);
+            // Capture diagnostics produced by this instance
+            if (cacheEntry) {
+              cacheEntry.diagnostics = diagnostics.slice(preDiagCount);
+            }
+          } catch (e) {
+            console.error("Lint error for instance:", e);
+          }
+        }
+      }
+
+      // Update the class cache
+      const cached = documentTrees.get(textDocument.uri);
+      if (cached) {
+        cached.classCache = newClassCache;
+      }
+
       console.log(
-        `[cross-file] ${textDocument.uri.split("/").pop()}: created ${thisDocInstances.length} instances, scope has ${combinedInstances.length} total`,
+        `[incremental] ${textDocument.uri.split("/").pop()}: ${thisDocInstances.length} classes, ${reusedCount} reused, ${thisDocInstances.length - reusedCount} rebuilt`,
       );
 
       // Cache instances for cross-file resolution and hover
