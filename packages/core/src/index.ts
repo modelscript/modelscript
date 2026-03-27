@@ -2,12 +2,15 @@
 
 export * from "./compiler/context.js";
 export * from "./compiler/modelica/annotation.js";
+export * from "./compiler/modelica/bdf.js";
 export * from "./compiler/modelica/dae.js";
+export * from "./compiler/modelica/dopri5.js";
 export * from "./compiler/modelica/dual-evaluator.js";
 export * from "./compiler/modelica/dual.js";
 export * from "./compiler/modelica/evaluate-optimize.js";
 export * from "./compiler/modelica/evaluate-simulate.js";
 export * from "./compiler/modelica/flattener.js";
+export * from "./compiler/modelica/fmi.js";
 export * from "./compiler/modelica/i18n.js";
 export * from "./compiler/modelica/interpreter.js";
 export * from "./compiler/modelica/linter.js";
@@ -20,6 +23,7 @@ export * from "./compiler/modelica/svg.js";
 export * from "./compiler/modelica/syntax.js";
 export * from "./compiler/modelica/tape.js";
 export * from "./compiler/modelica/types.js";
+export * from "./compiler/modelica/units.js";
 export * from "./compiler/scope.js";
 export * from "./util/color-inversion.js";
 export * from "./util/enum.js";

@@ -180,7 +180,7 @@ function parseUnitAtom(s: string): SIUnit | null {
 /**
  * Format an SIUnit back into a human-readable unit string.
  */
-export function formatUnit(u: SIUnit): string {
+export function formatSIUnit(u: SIUnit): string {
   if (isDimensionless(u)) return "1";
 
   const parts: string[] = [];
@@ -226,6 +226,6 @@ export function checkEquationUnits(lhsUnit: SIUnit | null, rhsUnit: SIUnit | nul
     consistent: false,
     lhsUnit,
     rhsUnit,
-    message: `Unit mismatch: LHS has unit [${formatUnit(lhsUnit)}] but RHS has unit [${formatUnit(rhsUnit)}]`,
+    message: `Unit mismatch: LHS has unit [${formatSIUnit(lhsUnit)}] but RHS has unit [${formatSIUnit(rhsUnit)}]`,
   };
 }

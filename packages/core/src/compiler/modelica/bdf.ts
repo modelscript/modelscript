@@ -90,7 +90,7 @@ export interface BdfResult {
 }
 
 /** Right-hand side function type. */
-export type RhsFunction = (t: number, y: number[]) => number[];
+export type BdfRhsFunction = (t: number, y: number[]) => number[];
 
 /**
  * Integrate a stiff ODE system using the variable-order BDF method.
@@ -106,7 +106,7 @@ export type RhsFunction = (t: number, y: number[]) => number[];
  * @returns Solver result with output states and statistics
  */
 export function bdf(
-  f: RhsFunction,
+  f: BdfRhsFunction,
   t0: number,
   y0: number[],
   tEnd: number,
@@ -408,7 +408,7 @@ export function bdf(
  * Estimate initial step size using the Hairer-Wanner approach.
  */
 function estimateInitialStep(
-  f: RhsFunction,
+  f: BdfRhsFunction,
   t0: number,
   y0: number[],
   f0: number[],
@@ -461,7 +461,7 @@ function estimateInitialStep(
  * Compute the Jacobian J = ∂f/∂y via central finite differences.
  */
 function finiteDifferenceJacobian(
-  f: RhsFunction,
+  f: BdfRhsFunction,
   t: number,
   y: number[],
   f0: number[],

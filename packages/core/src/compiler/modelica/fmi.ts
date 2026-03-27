@@ -45,19 +45,19 @@ export interface FmuOptions {
   /** Model identifier (used as the FMU file stem and in code generation). */
   modelIdentifier: string;
   /** Description of the model. */
-  description?: string;
+  description?: string | undefined;
   /** Author name. */
-  author?: string;
+  author?: string | undefined;
   /** Generation tool name. */
-  generationTool?: string;
+  generationTool?: string | undefined;
   /** GUID for this FMU (auto-generated if not provided). */
-  guid?: string;
+  guid?: string | undefined;
   /** Default experiment start time. */
-  startTime?: number;
+  startTime?: number | undefined;
   /** Default experiment stop time. */
-  stopTime?: number;
+  stopTime?: number | undefined;
   /** Default experiment step size. */
-  stepSize?: number;
+  stepSize?: number | undefined;
 }
 
 /** Result of FMU generation. */
