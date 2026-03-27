@@ -183,7 +183,7 @@ cd packages/core && npx tsx tests/testsuite-runner.ts --update OpenModelica/flat
 
 **IMPORTANT:** Never run the `git commit` command yourself. The user will handle committing the code.
 
-When generating git commit messages (including via the "generate git commit" button), always use this format:
+When generating git commit messages (including via the "generate git commit" button), always use **Conventional Commits** format:
 
 **Rules:**
 
@@ -191,17 +191,21 @@ When generating git commit messages (including via the "generate git commit" but
 1. **Never commit and/or push changes without explicit authorization.**
 1. **Auto-generate commit messages.** After every successful fix or change, proactively generate a commit message without being asked.
 
-1. **All lowercase** — no capitalization, no title case.
+1. **Use conventional commit format** — `type: description`.
+1. **Valid types:** `feat`, `fix`, `refactor`, `chore`, `docs`, `build`, `ci`, `perf`, `test`, `style`.
+1. **All lowercase** — no capitalization in description, no title case.
 1. **No trailing period** — the message is a phrase, not a sentence.
-1. **Comma-separated list of changes** — group related changes with commas.
-1. **Start each item with a verb** — use `add`, `fix`, `refactor`, `remove`, `update`, `support`, `detect`, `preserve`, etc.
+1. **Use scope when relevant** — `type(scope): description`, e.g. `fix(core): ...`, `feat(cli): ...`.
+1. **Comma-separated list for multiple changes in description** — group related changes.
 1. **Be terse but descriptive** — describe _what_ changed, not _why_.
 
 **Examples:**
 
 ```
-fix nested array toJSON serialization, refactor annotation clause merging
-add partial function application support, fix array comprehension flattening
-preserve scientific notation in real literals and add function type argument checking
-fix 2D array equations, refactor built-in function dispatch to metadata-driven tables
+fix(core): nested array toJSON serialization, refactor annotation clause merging
+feat(cli): add partial function application support
+fix: 2D array equations, refactor built-in function dispatch to metadata-driven tables
+ci: add gpg commit signing to release workflow for verified commits
+chore: use wildcard dependency ranges for internal workspace packages
+docs: add security policy and vulnerability reporting guidelines
 ```
