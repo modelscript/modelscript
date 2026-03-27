@@ -2410,22 +2410,33 @@ export class ModelicaSimulator {
       }
     }
 
-    // Phase 5: Run execution blocks once at t=0 to compute consistent algebraic values
-    for (const block of this.executionBlocks) {
-      if (block.type === "single") {
-        const value = initEvaluator.evaluate(block.eq.expr);
-        if (value !== null && isFinite(value)) {
-          const key = block.eq.isDerivative ? `der(${block.eq.target})` : block.eq.target;
-          initEvaluator.env.set(key, value);
+    // Phase 5: Homotopy continuation initialization.
+    // Run execution blocks with λ stepping from 0 → 1 so that homotopy(actual, simplified)
+    // gradually transitions from the simplified model to the actual model.
+    // This enables convergence for models with difficult initialization.
+    const HOMOTOPY_STEPS = 5; // λ = 0.0, 0.25, 0.5, 0.75, 1.0
+    for (let step = 0; step <= HOMOTOPY_STEPS; step++) {
+      const lambda = step / HOMOTOPY_STEPS;
+      initEvaluator.env.set("$homotopy.lambda", lambda);
+
+      for (const block of this.executionBlocks) {
+        if (block.type === "single") {
+          const value = initEvaluator.evaluate(block.eq.expr);
+          if (value !== null && isFinite(value)) {
+            const key = block.eq.isDerivative ? `der(${block.eq.target})` : block.eq.target;
+            initEvaluator.env.set(key, value);
+          }
+        } else if (block.type === "algorithm") {
+          executeStatements(block.statements, initEvaluator, initEvaluator.functionLookup ?? undefined);
+        } else if (block.type === "torn") {
+          this.solveTornBlock(block, initEvaluator, startTime);
+        } else {
+          this.solveNewtonBlock(block, initEvaluator, startTime);
         }
-      } else if (block.type === "algorithm") {
-        executeStatements(block.statements, initEvaluator, initEvaluator.functionLookup ?? undefined);
-      } else if (block.type === "torn") {
-        this.solveTornBlock(block, initEvaluator, startTime);
-      } else {
-        this.solveNewtonBlock(block, initEvaluator, startTime);
       }
     }
+    // Ensure lambda is 1.0 for the rest of simulation
+    initEvaluator.env.set("$homotopy.lambda", 1.0);
 
     // Phase 6: Extract final initial values for state variables
     const initialValues = stateList.map((state) => {

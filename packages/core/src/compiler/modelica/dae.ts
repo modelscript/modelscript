@@ -3037,9 +3037,24 @@ export class ExpressionEvaluator {
       return this.evaluate(arg0);
     }
 
-    // homotopy(actual, simplified) — just use actual
+    // homotopy(actual, simplified) — blend with lambda parameter
     if (name === "homotopy" && arg0) {
-      return this.evaluate(arg0);
+      const actual = this.evaluate(arg0);
+      const simplified = arg1 ? this.evaluate(arg1) : actual;
+      if (actual === null) return null;
+      const lambda = this.env.get("$homotopy.lambda") ?? 1.0;
+      return lambda * actual + (1 - lambda) * (simplified ?? actual);
+    }
+
+    // Connections.* — overconstrained connection graph operators (§9.4)
+    if (name === "Connections.branch" || name === "Connections.root" || name === "Connections.potentialRoot") {
+      // Side-effect registration — handled during flattening, no-op at runtime
+      return 0;
+    }
+    if (name === "Connections.rooted" || name === "Connections.isRoot") {
+      // Returns true if the argument is closer to the root in the spanning tree
+      // Default: assume rooted (conservative for single-body models)
+      return 1;
     }
 
     // assert(condition, message[, level]) — evaluate condition, no-op if true
