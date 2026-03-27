@@ -100,6 +100,7 @@ function renderStaticWorkbench(): string {
       enableTelemetry: false,
       nameShort: "ModelScript",
       nameLong: "ModelScript IDE",
+      extensionAllowedProposedApi: ["modelscript.modelscript"],
     },
   };
 

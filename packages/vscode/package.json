@@ -356,5 +356,13 @@
   "galleryBanner": {
     "color": "#0d1b2a",
     "theme": "dark"
-  }
+  },
+  "enabledApiProposals": [
+    "chatParticipantAdditions",
+    "chatParticipantPrivate",
+    "chatProvider",
+    "defaultChatParticipant",
+    "languageModelSystem",
+    "contribLanguageModelToolSets"
+  ]
 }

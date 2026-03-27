@@ -66,6 +66,7 @@ function renderWorkbench(protocol: string, host: string, folderConfig: Record<st
       nameLong: "ModelScript IDE",
       webEndpointUrlTemplate: `${protocol}://{{uuid}}.${host}/vscode-static`,
       webviewContentExternalBaseUrlTemplate: `${protocol}://{{uuid}}.${host}/vscode-static/out/vs/workbench/contrib/webview/browser/pre/`,
+      extensionAllowedProposedApi: ["modelscript.modelscript"],
     },
   };
 
