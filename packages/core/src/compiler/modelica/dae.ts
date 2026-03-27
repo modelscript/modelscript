@@ -2478,6 +2478,52 @@ export class ExpressionEvaluator {
       }
       return this.evaluate(expression.elseExpression);
     }
+    // Subscripted expressions: x[i] → look up "x[computed_index]" in env
+    if (expression instanceof ModelicaSubscriptedExpression) {
+      const base = expression.base;
+      // Evaluate all subscript indices
+      const indices: number[] = [];
+      for (const sub of expression.subscripts) {
+        const idx = this.evaluate(sub);
+        if (idx === null) return null;
+        indices.push(Math.round(idx));
+      }
+      // If base is a name, resolve to flat variable name like "name[1,2]"
+      if (base instanceof ModelicaNameExpression || base instanceof ModelicaVariable) {
+        const baseName = base instanceof ModelicaVariable ? base.name : base.name;
+        const flatName = `${baseName}[${indices.join(",")}]`;
+        const value = this.env.get(flatName);
+        if (value !== undefined) return value;
+        // Try without the property prefix for short names
+        return null;
+      }
+      // If base is a function call (e.g., func(x)[1] for tuple indexing),
+      // evaluate the function and handle tuple subscript
+      if (base instanceof ModelicaFunctionCallExpression) {
+        // For now, evaluate the function normally — tuple indexing is
+        // handled at the flattener level
+        return this.evaluateFunctionCall(base);
+      }
+      // If base is an array literal, index into it
+      if (base instanceof ModelicaArray && indices.length === 1) {
+        const idx = indices[0];
+        if (idx !== undefined && idx >= 1 && idx <= base.elements.length) {
+          const element = base.elements[idx - 1];
+          if (element) return this.evaluate(element);
+        }
+        return null;
+      }
+      return null;
+    }
+    // Array expressions: unwrap single-element arrays to scalar
+    if (expression instanceof ModelicaArray) {
+      if (expression.elements.length === 1) {
+        const el = expression.elements[0];
+        if (el) return this.evaluate(el);
+      }
+      // Multi-element arrays can't be represented as a single number
+      return null;
+    }
     return null;
   }
 
@@ -2619,6 +2665,98 @@ export class ExpressionEvaluator {
       }
     }
 
+    // ── Array constructor functions ──
+    // These return constant values or reduce arrays to scalars.
+    // In a scalarized environment, array constructors are typically resolved
+    // by the flattener, but they may appear in algorithm sections or
+    // function bodies where runtime evaluation is needed.
+
+    // zeros(n1, n2, ...) — every element is 0
+    if (name === "zeros") {
+      return 0;
+    }
+    // ones(n1, n2, ...) — every element is 1
+    if (name === "ones") {
+      return 1;
+    }
+    // fill(s, n1, n2, ...) — every element is s
+    if (name === "fill" && arg0) {
+      return this.evaluate(arg0);
+    }
+    // linspace(x1, x2, n) — linear interpolation; when subscripted we get here
+    // via subscripted-expression eval, but standalone returns the first value
+    if (name === "linspace" && arg0) {
+      return this.evaluate(arg0);
+    }
+    // identity(n) — identity matrix; standalone scalar context returns 1 (diagonal)
+    if (name === "identity") {
+      return 1;
+    }
+
+    // ── Array reduction functions ──
+    // These scan the evaluator environment for matching array entries.
+
+    // sum(array_expr) / product(array_expr)
+    if ((name === "sum" || name === "product") && arg0) {
+      const elements = this.collectArrayElements(arg0);
+      if (elements !== null && elements.length > 0) {
+        if (name === "sum") {
+          let total = 0;
+          for (const v of elements) total += v;
+          return total;
+        } else {
+          let total = 1;
+          for (const v of elements) total *= v;
+          return total;
+        }
+      }
+      // If elements couldn't be collected, try evaluating as scalar
+      return this.evaluate(arg0);
+    }
+
+    // min(array) / max(array) — single-argument form for arrays
+    if ((name === "min" || name === "max") && args.length === 1 && arg0) {
+      const elements = this.collectArrayElements(arg0);
+      if (elements !== null && elements.length > 0) {
+        return name === "min" ? Math.min(...elements) : Math.max(...elements);
+      }
+      // Fall through to scalar min/max handling below
+    }
+
+    // ── Array utility functions ──
+
+    // size(A) or size(A, dim) — return array size
+    if (name === "size" && arg0) {
+      const varName = this.extractVarName(arg0);
+      if (varName) {
+        const sizes = this.getArrayDimensions(varName);
+        if (arg1) {
+          const dim = this.evaluate(arg1);
+          if (dim !== null && dim >= 1 && dim <= sizes.length) {
+            return sizes[Math.round(dim) - 1] ?? 0;
+          }
+        }
+        // size(A) returns the first dimension if no dim specified
+        return sizes[0] ?? 0;
+      }
+      return null;
+    }
+
+    // ndims(A) — number of dimensions
+    if (name === "ndims" && arg0) {
+      const varName = this.extractVarName(arg0);
+      if (varName) {
+        const sizes = this.getArrayDimensions(varName);
+        return sizes.length > 0 ? sizes.length : 0;
+      }
+      return 0;
+    }
+
+    // scalar(A) — extract the single element from a 1-element array
+    if (name === "scalar" && arg0) {
+      return this.evaluate(arg0);
+    }
+
     // homotopy(actual, simplified) — just use actual
     if (name === "homotopy" && arg0) {
       return this.evaluate(arg0);
@@ -2662,6 +2800,78 @@ export class ExpressionEvaluator {
     if (expr instanceof ModelicaVariable) return expr.name;
     if (expr instanceof ModelicaNameExpression) return expr.name;
     return null;
+  }
+
+  /**
+   * Collect numeric values from an array expression.
+   * Handles ModelicaArray literals and scalarized array variables (name[1], name[2], ...).
+   */
+  private collectArrayElements(expr: ModelicaExpression): number[] | null {
+    // Direct array literal
+    if (expr instanceof ModelicaArray) {
+      const values: number[] = [];
+      for (const el of expr.elements) {
+        if (el instanceof ModelicaArray) {
+          // Nested array — flatten recursively
+          const inner = this.collectArrayElements(el);
+          if (inner === null) return null;
+          values.push(...inner);
+        } else {
+          const val = this.evaluate(el);
+          if (val === null) return null;
+          values.push(val);
+        }
+      }
+      return values;
+    }
+    // Scalarized array variable: look up name[1], name[2], ... in env
+    const varName = this.extractVarName(expr);
+    if (varName) {
+      const prefix = varName + "[";
+      const entries: { index: number; value: number }[] = [];
+      for (const [key, value] of this.env) {
+        if (key.startsWith(prefix) && key.endsWith("]")) {
+          const idxStr = key.substring(prefix.length, key.length - 1);
+          const idx = parseInt(idxStr, 10);
+          if (!isNaN(idx)) {
+            entries.push({ index: idx, value });
+          }
+        }
+      }
+      if (entries.length > 0) {
+        entries.sort((a, b) => a.index - b.index);
+        return entries.map((e) => e.value);
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Get the dimensions of an array from environment entries.
+   * Infers shape from entries like name[1], name[2,3], etc.
+   */
+  private getArrayDimensions(varName: string): number[] {
+    const prefix = varName + "[";
+    let maxIndices: number[] = [];
+    for (const key of this.env.keys()) {
+      if (key.startsWith(prefix) && key.endsWith("]")) {
+        const idxStr = key.substring(prefix.length, key.length - 1);
+        const parts = idxStr.split(",").map((s) => parseInt(s.trim(), 10));
+        if (parts.every((p) => !isNaN(p))) {
+          if (maxIndices.length === 0) {
+            maxIndices = parts.map(() => 0);
+          }
+          for (let i = 0; i < parts.length && i < maxIndices.length; i++) {
+            const p = parts[i];
+            const m = maxIndices[i];
+            if (p !== undefined && m !== undefined && p > m) {
+              maxIndices[i] = p;
+            }
+          }
+        }
+      }
+    }
+    return maxIndices;
   }
 }
 
