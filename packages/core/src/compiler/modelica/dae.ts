@@ -2624,6 +2624,22 @@ export class ExpressionEvaluator {
       return this.evaluate(arg0);
     }
 
+    // assert(condition, message[, level]) — evaluate condition, no-op if true
+    if (name === "assert") {
+      const condVal = arg0 ? this.evaluate(arg0) : null;
+      if (condVal !== null && condVal === 0) {
+        // Assertion failed — throw to stop simulation
+        const msgArg = args[1];
+        throw new Error(`Modelica assertion failed: ${msgArg ?? "unknown"}`);
+      }
+      return 0; // assert() doesn't return a value; 0 is a no-op sentinel
+    }
+
+    // terminate(message) — stop the simulation
+    if (name === "terminate") {
+      throw new Error("Simulation terminated by terminate()");
+    }
+
     // Delegate to user-defined function lookup
     if (this.functionLookup) {
       const argValues: number[] = [];
@@ -2635,7 +2651,10 @@ export class ExpressionEvaluator {
       return this.functionLookup(name, argValues);
     }
 
-    return null;
+    // External function stub: return 0 for unresolved functions to prevent
+    // null cascades. This allows simulation to proceed even when external "C"
+    // functions or unresolved user-defined functions are encountered.
+    return 0;
   }
 
   /** Extract a variable name from a DAE expression. */

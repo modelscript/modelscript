@@ -462,6 +462,8 @@ export class ModelicaSimulator {
   private aliasMap = new Map<string, string>();
   /** Negated alias map: variable → canonical name where variable = -canonical (e.g., C1.n.i = -C1.i). */
   private negatedAliasMap = new Map<string, string>();
+  /** Assertion equations to check during simulation (assert(cond, msg)). */
+  private assertionEquations: { condition: ModelicaExpression; message: ModelicaExpression | null }[] = [];
 
   constructor(dae: ModelicaDAE) {
     this.dae = dae;
@@ -560,7 +562,18 @@ export class ModelicaSimulator {
     const nonAliasEquations: ModelicaSimpleEquation[] = [];
     const negatedAliasPairs: [string, string][] = []; // [a, b] meaning a = -b
     for (const eq of flattenedEquations) {
-      if (eq instanceof ModelicaWhenEquation || eq instanceof ModelicaFunctionCallEquation) {
+      if (eq instanceof ModelicaWhenEquation) {
+        continue;
+      }
+      if (eq instanceof ModelicaFunctionCallEquation) {
+        // Collect assert() / terminate() equations for runtime evaluation
+        const call = eq.call;
+        if (call.functionName === "assert" && call.args.length >= 2) {
+          this.assertionEquations.push({
+            condition: call.args[0] as ModelicaExpression,
+            message: (call.args[1] as ModelicaExpression) ?? null,
+          });
+        }
         continue;
       }
       if (eq instanceof ModelicaSimpleEquation) {
@@ -2162,6 +2175,25 @@ export class ModelicaSimulator {
       }
     }
 
+    // Execute initial algorithm sections
+    for (const section of this.dae.initialAlgorithms) {
+      if (section.length > 0) {
+        executeStatements(section, evaluator, evaluator.functionLookup ?? undefined);
+      }
+    }
+
+    // Update initial values from the evaluator environment (initial algorithms may
+    // have assigned state variables)
+    for (let i = 0; i < stateList.length; i++) {
+      const name = stateList[i];
+      if (name) {
+        const envVal = evaluator.env.get(name);
+        if (envVal !== undefined && typeof envVal === "number") {
+          initialValues[i] = envVal;
+        }
+      }
+    }
+
     // Build the environment from current state
     const populateEnv = (t: number, y: number[]) => {
       evaluator.env.set("time", t);
@@ -2207,6 +2239,16 @@ export class ModelicaSimulator {
         } else {
           // Newton-Raphson solver for non-linear/linear algebraic system
           this.solveNewtonBlock(block, evaluator, t);
+        }
+      }
+
+      // Check assertion equations
+      for (const assertion of this.assertionEquations) {
+        const condVal = evaluator.evaluate(assertion.condition);
+        if (condVal !== null && condVal === 0) {
+          const msgVal = assertion.message ? evaluator.evaluate(assertion.message) : null;
+          const msg = msgVal !== null ? `Assertion failed at t=${t}: value=${msgVal}` : `Assertion failed at t=${t}`;
+          throw new Error(msg);
         }
       }
 
