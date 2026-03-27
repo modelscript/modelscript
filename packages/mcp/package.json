@@ -1,0 +1,41 @@
+{
+  "name": "@modelscript/mcp",
+  "version": "0.0.1",
+  "description": "Modelica MCP server for LLM integration",
+  "license": "AGPL-3.0-or-later",
+  "author": "Mohamad Omar Nachawati <mnachawa@gmail.com>",
+  "type": "module",
+  "bin": {
+    "modelscript-mcp": "./dist/main.js"
+  },
+  "files": [
+    "package.json",
+    "README.md",
+    "dist/**/*.js",
+    "dist/**/*.js.map",
+    "dist/**/*.d.ts"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rimraf dist",
+    "lint": "eslint src --ext ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "@modelscript/core": "*",
+    "@modelscript/tree-sitter-modelica": "*",
+    "tree-sitter": "^0.25.0",
+    "zod": "^3.25.67"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^25.3.2",
+    "eslint": "^9.39.1",
+    "rimraf": "^6.1.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.3"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
