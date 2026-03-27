@@ -1,3 +1,12 @@
+/**
+ * Unified tree-sitter type definitions.
+ *
+ * This module defines the intersection of types shared between the native
+ * `tree-sitter@0.25.0` and `web-tree-sitter@0.26.7` packages so that the
+ * core compiler can work with both backends without runtime dependencies
+ * on either.
+ */
+
 export interface Edit {
   startIndex: number;
   oldEndIndex: number;
@@ -9,6 +18,8 @@ export interface Edit {
 
 export interface Parser {
   parse(input: string, oldTree?: Tree | null, options?: unknown): Tree;
+  reset(): void;
+  getIncludedRanges(): Range[];
 }
 
 export interface Point {
@@ -64,10 +75,29 @@ export interface SyntaxNode {
   childForFieldName(fieldName: string): SyntaxNode | null;
   childForFieldId(fieldId: number): SyntaxNode | null;
   fieldNameForChild(childIndex: number): string | null;
+  fieldNameForNamedChild(namedChildIndex: number): string | null;
   childrenForFieldName(fieldName: string): SyntaxNode[];
   childrenForFieldId(fieldId: number): SyntaxNode[];
   firstChildForIndex(index: number): SyntaxNode | null;
   firstNamedChildForIndex(index: number): SyntaxNode | null;
+
+  /**
+   * Get the immediate child that contains the given descendant node.
+   * Note that this can return the descendant itself if it is an immediate child.
+   */
+  childWithDescendant(descendant: SyntaxNode): SyntaxNode | null;
+
+  /**
+   * Find the closest ancestor of the current node that matches the given type(s).
+   * Available in native tree-sitter ≥0.25.0.
+   */
+  closest?(types: string | string[]): SyntaxNode | null;
+
+  /**
+   * Check if this node is equal to another node.
+   * Available in web-tree-sitter ≥0.26.0.
+   */
+  equals?(other: SyntaxNode): boolean;
 
   descendantForIndex(startIndex: number, endIndex?: number): SyntaxNode;
   namedDescendantForIndex(startIndex: number, endIndex?: number): SyntaxNode;
@@ -118,4 +148,30 @@ export interface TreeCursor {
   gotoNextSibling(): boolean;
   gotoPreviousSibling(): boolean;
   gotoDescendant(goalDescendantIndex: number): void;
+}
+
+export interface QueryCapture {
+  name: string;
+  node: SyntaxNode;
+}
+
+export interface QueryMatch {
+  pattern: number;
+  captures: QueryCapture[];
+}
+
+export interface QueryOptions {
+  startPosition?: Point;
+  endPosition?: Point;
+  startIndex?: number;
+  endIndex?: number;
+  matchLimit?: number;
+  maxStartDepth?: number;
+}
+
+export interface LookaheadIterator {
+  readonly currentTypeId: number;
+  readonly currentType: string;
+  reset(language: unknown, stateId: number): boolean;
+  resetState(stateId: number): boolean;
 }
