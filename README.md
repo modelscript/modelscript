@@ -4,6 +4,15 @@
 # ModelScript
 
 [![CI/CD](https://github.com/modelscript/modelscript/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/modelscript/modelscript/actions/workflows/ci.yml)
+[![npm @modelscript/core](https://img.shields.io/npm/v/@modelscript/core?label=core)](https://www.npmjs.com/package/@modelscript/core)
+[![npm @modelscript/cli](https://img.shields.io/npm/v/@modelscript/cli?label=cli)](https://www.npmjs.com/package/@modelscript/cli)
+[![npm @modelscript/tree-sitter-modelica](https://img.shields.io/npm/v/@modelscript/tree-sitter-modelica?label=tree-sitter-modelica)](https://www.npmjs.com/package/@modelscript/tree-sitter-modelica)
+[![Docker API](https://img.shields.io/badge/ghcr.io-api-blue?logo=docker)](https://ghcr.io/modelscript/api)
+[![Docker Morsel](https://img.shields.io/badge/ghcr.io-morsel-blue?logo=docker)](https://ghcr.io/modelscript/morsel)
+[![Docker Web](https://img.shields.io/badge/ghcr.io-web-blue?logo=docker)](https://ghcr.io/modelscript/web)
+[![Docker IDE](https://img.shields.io/badge/ghcr.io-ide-blue?logo=docker)](https://ghcr.io/modelscript/ide)
+[![VS Marketplace](https://img.shields.io/visual-studio-marketplace/v/modelscript.modelscript?label=VS%20Marketplace&logo=visualstudiocode)](https://marketplace.visualstudio.com/items?itemName=modelscript.modelscript)
+[![Open VSX](https://img.shields.io/open-vsx/v/modelscript/modelscript?label=Open%20VSX&logo=eclipseide)](https://open-vsx.org/extension/modelscript/modelscript)
 
 ModelScript is a comprehensive Modelica compilation, simulation, optimization, and visualization framework. It provides a robust engine for parsing Modelica code, performing semantic analysis, flattening models, simulating dynamic systems, solving optimal control problems, and rendering interactive diagrams — all from the browser or the command line.
 
