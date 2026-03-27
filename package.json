@@ -39,8 +39,8 @@
     "test": "nx run-many --target=test"
   },
   "lint-staged": {
-    "*.ts": "eslint --ext ts",
-    "*.{ts,tsx,js,json,md,yml,css}": "prettier --write"
+    "*.{ts,tsx}": "eslint --ext ts,tsx",
+    "*.{ts,tsx,js,json,md,yml,css}": "prettier --write --ignore-unknown"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

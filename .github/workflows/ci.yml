@@ -53,7 +53,9 @@ jobs:
           path: packages/vscode/*.vsix
       - name: SPA fallback for GitHub Pages
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-        run: cp packages/morsel/build/client/index.html packages/morsel/build/client/404.html
+        run: |
+          cp packages/morsel/build/client/index.html packages/morsel/build/client/404.html
+          cp packages/site/build/client/index.html packages/site/build/client/404.html
       - name: Deploy Morsel
         uses: peaceiris/actions-gh-pages@v4
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
@@ -61,6 +63,13 @@ jobs:
           personal_token: ${{ secrets.MODELSCRIPT_MORSEL_DEPLOY_PAT }}
           external_repository: modelscript-morsel/modelscript-morsel.github.io
           publish_dir: ./packages/morsel/build/client
+      - name: Deploy Site
+        uses: peaceiris/actions-gh-pages@v4
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        with:
+          personal_token: ${{ secrets.MODELSCRIPT_SITE_DEPLOY_PAT }}
+          external_repository: modelscript/modelscript.github.io
+          publish_dir: ./packages/site/build/client
       - name: Build IDE Static
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         run: npm run build-static --workspace=@modelscript/ide

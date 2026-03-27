@@ -1,0 +1,33 @@
+{
+  "name": "@modelscript/site",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "react-router build",
+    "dev": "react-router dev",
+    "lint": "eslint app --ext ts,tsx",
+    "start": "react-router-serve ./build/server/index.js",
+    "typecheck": "react-router typegen && tsc"
+  },
+  "dependencies": {
+    "@primer/css": "^22.0.2",
+    "@primer/octicons-react": "^19.21.0",
+    "@primer/primitives": "^11.3.1",
+    "@primer/react": "^38.3.0",
+    "@react-router/node": "^7.13.1",
+    "@react-router/serve": "^7.13.1",
+    "isbot": "^5.1.31",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "react-router": "^7.13.1"
+  },
+  "devDependencies": {
+    "@react-router/dev": "^7.13.1",
+    "@types/node": "^25",
+    "@types/react": "^19.1.13",
+    "@types/react-dom": "^19.1.9",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.7",
+    "vite-tsconfig-paths": "^6.1.1"
+  }
+}
