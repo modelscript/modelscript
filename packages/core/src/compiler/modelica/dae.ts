@@ -2343,6 +2343,13 @@ export class ExpressionEvaluator {
   isInitial: boolean;
   /** Whether we are at the very last time step. */
   isTerminal: boolean;
+  /**
+   * Optional callback for user-defined function dispatch.
+   * Called when a function name doesn't match any built-in.
+   * Receives the function name and evaluated argument values;
+   * returns the function result or `null` if not found.
+   */
+  functionLookup: ((name: string, args: number[]) => number | null) | null;
 
   constructor(env?: Map<string, number>) {
     this.env = env ?? new Map();
@@ -2350,6 +2357,7 @@ export class ExpressionEvaluator {
     this.stepSize = 0.01;
     this.isInitial = false;
     this.isTerminal = false;
+    this.functionLookup = null;
   }
 
   /** Convenience wrapper matching the old function signature. */
@@ -2614,6 +2622,17 @@ export class ExpressionEvaluator {
     // homotopy(actual, simplified) — just use actual
     if (name === "homotopy" && arg0) {
       return this.evaluate(arg0);
+    }
+
+    // Delegate to user-defined function lookup
+    if (this.functionLookup) {
+      const argValues: number[] = [];
+      for (const arg of args) {
+        const val = this.evaluate(arg as ModelicaExpression);
+        if (val === null) return null;
+        argValues.push(val);
+      }
+      return this.functionLookup(name, argValues);
     }
 
     return null;

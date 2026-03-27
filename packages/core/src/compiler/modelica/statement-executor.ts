@@ -16,6 +16,7 @@ import {
   ModelicaBooleanLiteral,
   ModelicaBreakStatement,
   ModelicaComplexAssignmentStatement,
+  type ModelicaDAE,
   ModelicaForStatement,
   ModelicaFunctionCallExpression,
   ModelicaIfStatement,
@@ -437,4 +438,144 @@ function evaluateRange(range: ModelicaExpression, evaluator: ExpressionEvaluator
   if (val !== null) return [val];
 
   return null;
+}
+
+// ──────────────────────────────────────────────────────────────────
+//  User-defined function execution
+// ──────────────────────────────────────────────────────────────────
+
+/** Maximum call stack depth for recursive function calls. */
+const MAX_CALL_DEPTH = 256;
+
+/** Tracks the current call depth to detect infinite recursion. */
+let currentCallDepth = 0;
+
+/**
+ * Execute a user-defined Modelica function DAE.
+ *
+ * Creates a fresh evaluator scope, binds positional arguments to input
+ * variables, initializes protected/output variables from defaults,
+ * executes algorithm sections, and returns the first output variable value.
+ *
+ * @param funcDae     The function's flattened DAE (from `dae.functions[]`).
+ * @param argValues   Positional argument values (one per input variable).
+ * @param parentLookup  The function lookup callback for nested calls.
+ * @returns The value of the first output variable, or `null` on failure.
+ */
+export function executeFunction(
+  funcDae: ModelicaDAE,
+  argValues: number[],
+  parentLookup?: (name: string, args: number[]) => number | null,
+): number | null {
+  if (++currentCallDepth > MAX_CALL_DEPTH) {
+    currentCallDepth--;
+    throw new Error(`Maximum call depth (${MAX_CALL_DEPTH}) exceeded in function '${funcDae.name}'.`);
+  }
+
+  try {
+    // Partition variables by role
+    const inputVars = funcDae.variables.filter((v) => v.causality === "input");
+    const outputVars = funcDae.variables.filter((v) => v.causality === "output");
+    const otherVars = funcDae.variables.filter((v) => v.causality !== "input" && v.causality !== "output");
+
+    // Create a fresh evaluator scope for the function body
+    const funcEnv = new Map<string, number>();
+    const funcEvaluator = new ExpressionEvaluator(funcEnv);
+    funcEvaluator.functionLookup = parentLookup ?? null;
+
+    // Bind positional arguments to input variables
+    for (let i = 0; i < inputVars.length; i++) {
+      const inputVar = inputVars[i];
+      if (!inputVar) continue;
+
+      if (i < argValues.length) {
+        // Positional argument provided
+        funcEnv.set(inputVar.name, argValues[i] ?? 0);
+      } else if (inputVar.expression) {
+        // Use default value from the function signature
+        const defaultVal = funcEvaluator.evaluate(inputVar.expression);
+        funcEnv.set(inputVar.name, defaultVal ?? 0);
+      }
+      // If neither argument nor default, variable remains unset (will be null on access)
+    }
+
+    // Initialize output variables from their default expressions (if any)
+    for (const outVar of outputVars) {
+      if (outVar.expression) {
+        const val = funcEvaluator.evaluate(outVar.expression);
+        if (val !== null) funcEnv.set(outVar.name, val);
+      }
+    }
+
+    // Initialize protected/local variables from their default expressions
+    for (const localVar of otherVars) {
+      if (localVar.expression) {
+        const val = funcEvaluator.evaluate(localVar.expression);
+        if (val !== null) funcEnv.set(localVar.name, val);
+      }
+    }
+
+    // Execute the function's algorithm sections
+    for (const section of funcDae.algorithms) {
+      try {
+        executeStatements(section, funcEvaluator, parentLookup);
+      } catch (e) {
+        if (e === ReturnSignal) break; // return; terminates execution
+        throw e;
+      }
+    }
+
+    // Extract the first output variable's value
+    if (outputVars.length > 0) {
+      const firstOutput = outputVars[0];
+      if (firstOutput) {
+        return funcEnv.get(firstOutput.name) ?? null;
+      }
+    }
+
+    return null;
+  } finally {
+    currentCallDepth--;
+  }
+}
+
+/**
+ * Build a `functionLookup` callback from an array of function DAEs.
+ *
+ * This is the main integration point: wire this into
+ * `ExpressionEvaluator.functionLookup` so that expression evaluation
+ * can transparently call user-defined functions.
+ *
+ * @param functions  The function DAEs (from `dae.functions[]`).
+ * @returns A callback suitable for `ExpressionEvaluator.functionLookup`.
+ *
+ * @example
+ * ```ts
+ * const evaluator = new ExpressionEvaluator(env);
+ * evaluator.functionLookup = buildFunctionLookup(dae.functions);
+ * ```
+ */
+export function buildFunctionLookup(functions: ModelicaDAE[]): (name: string, args: number[]) => number | null {
+  // Build a name → DAE index for O(1) lookup
+  const funcMap = new Map<string, ModelicaDAE>();
+  for (const fn of functions) {
+    funcMap.set(fn.name, fn);
+    // Also register by short name (last segment after the last dot)
+    const dotIdx = fn.name.lastIndexOf(".");
+    if (dotIdx >= 0) {
+      const shortName = fn.name.substring(dotIdx + 1);
+      // Only register short name if it doesn't conflict with an existing entry
+      if (!funcMap.has(shortName)) {
+        funcMap.set(shortName, fn);
+      }
+    }
+  }
+
+  const lookup = (name: string, args: number[]): number | null => {
+    const funcDae = funcMap.get(name);
+    if (!funcDae) return null;
+    return executeFunction(funcDae, args, lookup);
+  };
+
+  return lookup;
 }
