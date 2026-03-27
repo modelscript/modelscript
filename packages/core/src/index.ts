@@ -15,6 +15,7 @@ export * from "./compiler/modelica/model.js";
 export * from "./compiler/modelica/optimizer.js";
 export * from "./compiler/modelica/reverse-evaluator.js";
 export * from "./compiler/modelica/simulator.js";
+export * from "./compiler/modelica/statement-executor.js";
 export * from "./compiler/modelica/svg.js";
 export * from "./compiler/modelica/syntax.js";
 export * from "./compiler/modelica/tape.js";

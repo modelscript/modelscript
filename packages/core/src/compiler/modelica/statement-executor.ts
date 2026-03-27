@@ -1,0 +1,440 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+/**
+ * Statement executor for Modelica algorithm sections.
+ *
+ * Takes an `ExpressionEvaluator` and executes a sequence of statements,
+ * modifying the evaluator's environment. This enables:
+ * - Algorithm sections in models (imperative blocks alongside equations)
+ * - Function body execution (user-defined Modelica functions)
+ * - Complex initialization logic
+ */
+
+import {
+  ExpressionEvaluator,
+  ModelicaAssignmentStatement,
+  ModelicaBooleanLiteral,
+  ModelicaBreakStatement,
+  ModelicaComplexAssignmentStatement,
+  ModelicaForStatement,
+  ModelicaFunctionCallExpression,
+  ModelicaIfStatement,
+  ModelicaIntegerLiteral,
+  ModelicaNameExpression,
+  ModelicaProcedureCallStatement,
+  ModelicaRangeExpression,
+  ModelicaRealLiteral,
+  ModelicaReturnStatement,
+  type ModelicaStatement,
+  ModelicaVariable,
+  ModelicaWhenStatement,
+  ModelicaWhileStatement,
+} from "./dae.js";
+
+/**
+ * Sentinel thrown when a `return` statement is executed inside a
+ * function body.  The caller (`executeFunction`) catches this to
+ * terminate function execution and extract output values.
+ */
+export const ReturnSignal = Object.freeze({ __brand: "ReturnSignal" as const });
+export type ReturnSignal = typeof ReturnSignal;
+
+/**
+ * Sentinel thrown when a `break` statement is executed inside a
+ * loop body.  The nearest for/while loop catches this.
+ */
+export const BreakSignal = Object.freeze({ __brand: "BreakSignal" as const });
+export type BreakSignal = typeof BreakSignal;
+
+/** Maximum iterations allowed for a while-loop to prevent infinite loops. */
+const MAX_WHILE_ITERATIONS = 100_000;
+
+/** Maximum loop iterations for for-loops (guards against huge ranges). */
+const MAX_FOR_ITERATIONS = 1_000_000;
+
+/**
+ * Execute a list of Modelica algorithm-section statements against an
+ * expression evaluator environment.
+ *
+ * @param statements  The statements to execute.
+ * @param evaluator   The expression evaluator whose `env` map will be
+ *                    read and written by assignments.
+ * @param functionLookup  Optional callback to resolve user-defined function
+ *                        calls.  Receives the function name and evaluated
+ *                        argument values; returns the function result or
+ *                        `null` if the function is not found.
+ *
+ * @throws {ReturnSignal}  if a `return` statement is reached.
+ * @throws {BreakSignal}   if a `break` statement is reached (only valid
+ *                         inside a loop — the enclosing loop catches it).
+ */
+export function executeStatements(
+  statements: ModelicaStatement[],
+  evaluator: ExpressionEvaluator,
+  functionLookup?: (name: string, args: number[]) => number | null,
+): void {
+  for (const stmt of statements) {
+    executeStatement(stmt, evaluator, functionLookup);
+  }
+}
+
+/**
+ * Execute a single Modelica statement.
+ */
+function executeStatement(
+  stmt: ModelicaStatement,
+  evaluator: ExpressionEvaluator,
+  functionLookup?: (name: string, args: number[]) => number | null,
+): void {
+  // ── Assignment: target := source ──
+  if (stmt instanceof ModelicaAssignmentStatement) {
+    const value = evaluator.evaluate(stmt.source);
+    if (value !== null) {
+      const targetName = extractTargetName(stmt.target);
+      if (targetName) {
+        evaluator.env.set(targetName, value);
+      }
+    }
+    return;
+  }
+
+  // ── For-loop: for i in range loop ... end for ──
+  if (stmt instanceof ModelicaForStatement) {
+    executeForStatement(stmt, evaluator, functionLookup);
+    return;
+  }
+
+  // ── While-loop: while cond loop ... end while ──
+  if (stmt instanceof ModelicaWhileStatement) {
+    executeWhileStatement(stmt, evaluator, functionLookup);
+    return;
+  }
+
+  // ── If-statement: if cond then ... elseif ... else ... end if ──
+  if (stmt instanceof ModelicaIfStatement) {
+    executeIfStatement(stmt, evaluator, functionLookup);
+    return;
+  }
+
+  // ── Return: terminates function execution ──
+  if (stmt instanceof ModelicaReturnStatement) {
+    throw ReturnSignal;
+  }
+
+  // ── Break: terminates enclosing loop ──
+  if (stmt instanceof ModelicaBreakStatement) {
+    throw BreakSignal;
+  }
+
+  // ── Procedure call: functionName(args) ──
+  if (stmt instanceof ModelicaProcedureCallStatement) {
+    executeProcedureCall(stmt, evaluator, functionLookup);
+    return;
+  }
+
+  // ── Complex assignment: (x, y, _) := f(args) ──
+  if (stmt instanceof ModelicaComplexAssignmentStatement) {
+    executeComplexAssignment(stmt, evaluator, functionLookup);
+    return;
+  }
+
+  // ── When-statement (in algorithm sections) ──
+  if (stmt instanceof ModelicaWhenStatement) {
+    executeWhenStatement(stmt, evaluator, functionLookup);
+    return;
+  }
+
+  // Unknown statement type — silently skip
+}
+
+// ──────────────────────────────────────────────────────────────────
+//  For-loop execution
+// ──────────────────────────────────────────────────────────────────
+
+function executeForStatement(
+  stmt: ModelicaForStatement,
+  evaluator: ExpressionEvaluator,
+  functionLookup?: (name: string, args: number[]) => number | null,
+): void {
+  const rangeValues = evaluateRange(stmt.range, evaluator);
+  if (!rangeValues) return;
+
+  const previousValue = evaluator.env.get(stmt.indexName);
+  let iterCount = 0;
+
+  try {
+    for (const indexVal of rangeValues) {
+      if (++iterCount > MAX_FOR_ITERATIONS) {
+        throw new Error(`For-loop exceeded ${MAX_FOR_ITERATIONS} iterations (index '${stmt.indexName}').`);
+      }
+      evaluator.env.set(stmt.indexName, indexVal);
+      try {
+        executeStatements(stmt.statements, evaluator, functionLookup);
+      } catch (e) {
+        if (e === BreakSignal) break;
+        throw e; // ReturnSignal propagates up
+      }
+    }
+  } finally {
+    // Restore previous value of the loop variable (or delete if it didn't exist)
+    if (previousValue !== undefined) {
+      evaluator.env.set(stmt.indexName, previousValue);
+    } else {
+      evaluator.env.delete(stmt.indexName);
+    }
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────
+//  While-loop execution
+// ──────────────────────────────────────────────────────────────────
+
+function executeWhileStatement(
+  stmt: ModelicaWhileStatement,
+  evaluator: ExpressionEvaluator,
+  functionLookup?: (name: string, args: number[]) => number | null,
+): void {
+  let iterCount = 0;
+
+  while (true) {
+    if (++iterCount > MAX_WHILE_ITERATIONS) {
+      throw new Error(`While-loop exceeded ${MAX_WHILE_ITERATIONS} iterations.`);
+    }
+
+    const condVal = evaluator.evaluate(stmt.condition);
+    if (condVal === null || condVal === 0) break;
+
+    try {
+      executeStatements(stmt.statements, evaluator, functionLookup);
+    } catch (e) {
+      if (e === BreakSignal) break;
+      throw e;
+    }
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────
+//  If-statement execution
+// ──────────────────────────────────────────────────────────────────
+
+function executeIfStatement(
+  stmt: ModelicaIfStatement,
+  evaluator: ExpressionEvaluator,
+  functionLookup?: (name: string, args: number[]) => number | null,
+): void {
+  const condVal = evaluator.evaluate(stmt.condition);
+  if (condVal !== null && condVal !== 0) {
+    executeStatements(stmt.statements, evaluator, functionLookup);
+    return;
+  }
+
+  for (const clause of stmt.elseIfClauses) {
+    const elseIfCond = evaluator.evaluate(clause.condition);
+    if (elseIfCond !== null && elseIfCond !== 0) {
+      executeStatements(clause.statements, evaluator, functionLookup);
+      return;
+    }
+  }
+
+  if (stmt.elseStatements.length > 0) {
+    executeStatements(stmt.elseStatements, evaluator, functionLookup);
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────
+//  Procedure call execution
+// ──────────────────────────────────────────────────────────────────
+
+function executeProcedureCall(
+  stmt: ModelicaProcedureCallStatement,
+  evaluator: ExpressionEvaluator,
+  functionLookup?: (name: string, args: number[]) => number | null,
+): void {
+  const call = stmt.call;
+
+  // Handle built-in procedure-like calls
+  if (call.functionName === "assert") {
+    // assert(condition, message) — evaluate condition; if false, throw
+    const firstArg = call.args[0];
+    if (firstArg) {
+      const condVal = evaluator.evaluate(firstArg);
+      if (condVal !== null && condVal === 0) {
+        // TODO: extract message from args[1] when string support is added
+        throw new Error("Modelica assertion failed");
+      }
+    }
+    return;
+  }
+
+  if (call.functionName === "terminate") {
+    throw new Error("Modelica terminate() called");
+  }
+
+  if (call.functionName === "print") {
+    // Silently consume print() calls
+    return;
+  }
+
+  // Delegate to the function lookup for user-defined procedures
+  if (functionLookup) {
+    const argValues: number[] = [];
+    for (const arg of call.args) {
+      const val = evaluator.evaluate(arg);
+      if (val === null) return; // Can't evaluate args — skip
+      argValues.push(val);
+    }
+    functionLookup(call.functionName, argValues);
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────
+//  Complex assignment execution: (x, y, _) := f(args)
+// ──────────────────────────────────────────────────────────────────
+
+function executeComplexAssignment(
+  stmt: ModelicaComplexAssignmentStatement,
+  evaluator: ExpressionEvaluator,
+  functionLookup?: (name: string, args: number[]) => number | null,
+): void {
+  // For now, only handle the case where the source is a single expression
+  // that can be evaluated to a scalar.  Full multi-output function support
+  // requires Step 1.2 (user-defined function calls).
+  if (stmt.targets.length === 1) {
+    const target = stmt.targets[0];
+    if (target) {
+      const value = evaluator.evaluate(stmt.source);
+      if (value !== null) {
+        const name = extractTargetName(target);
+        if (name) evaluator.env.set(name, value);
+      }
+    }
+    return;
+  }
+
+  // Multi-output: delegate to functionLookup if available
+  if (functionLookup && stmt.source instanceof ModelicaFunctionCallExpression) {
+    const argValues: number[] = [];
+    for (const arg of stmt.source.args) {
+      const val = evaluator.evaluate(arg);
+      if (val === null) return;
+      argValues.push(val);
+    }
+
+    // Call the function — for now the functionLookup returns a single value.
+    // Full multi-output support will be added in Step 1.2.
+    const result = functionLookup(stmt.source.functionName, argValues);
+    if (result !== null && stmt.targets.length > 0) {
+      const firstTarget = stmt.targets[0];
+      if (firstTarget) {
+        const name = extractTargetName(firstTarget);
+        if (name) evaluator.env.set(name, result);
+      }
+    }
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────
+//  When-statement execution (in algorithm sections)
+// ──────────────────────────────────────────────────────────────────
+
+function executeWhenStatement(
+  stmt: ModelicaWhenStatement,
+  evaluator: ExpressionEvaluator,
+  functionLookup?: (name: string, args: number[]) => number | null,
+): void {
+  // In algorithm sections, a when-statement fires on the rising edge
+  // of its condition.  For steady-state / initialization contexts,
+  // we evaluate the condition and execute the body if it's true.
+  const condVal = evaluator.evaluate(stmt.condition);
+  if (condVal !== null && condVal !== 0) {
+    executeStatements(stmt.statements, evaluator, functionLookup);
+    return;
+  }
+
+  // Check elseWhen clauses
+  for (const clause of stmt.elseWhenClauses) {
+    const elseCondVal = evaluator.evaluate(clause.condition);
+    if (elseCondVal !== null && elseCondVal !== 0) {
+      executeStatements(clause.statements, evaluator, functionLookup);
+      return;
+    }
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────
+//  Utility: extract a variable name from an assignment target
+// ──────────────────────────────────────────────────────────────────
+
+import type { ModelicaExpression } from "./dae.js";
+
+/**
+ * Extract the variable name from an assignment target expression.
+ *
+ * Handles:
+ * - `ModelicaVariable` → `v.name`
+ * - `ModelicaNameExpression` → `expr.name`
+ * - Subscripted expressions like `x[i]` → `x[<evaluated-i>]` (for scalar env lookup)
+ */
+function extractTargetName(expr: ModelicaExpression): string | null {
+  if (expr instanceof ModelicaVariable) return expr.name;
+  if (expr instanceof ModelicaNameExpression) return expr.name;
+  // For subscripted targets, we'd need to build `name[idx]` strings.
+  // For now, fall back to anything with a `.name` property.
+  if ("name" in expr && typeof (expr as { name: unknown }).name === "string") {
+    return (expr as { name: string }).name;
+  }
+  return null;
+}
+
+// ──────────────────────────────────────────────────────────────────
+//  Utility: evaluate a range expression to an array of index values
+// ──────────────────────────────────────────────────────────────────
+
+/**
+ * Evaluate a range expression (e.g., `1:N`, `1:2:10`) to an array of values.
+ *
+ * Supports:
+ * - `ModelicaRangeExpression` with start, optional step, end
+ * - Literal integers/reals as a single-element range
+ * - `ModelicaNameExpression` looked up from the evaluator
+ */
+function evaluateRange(range: ModelicaExpression, evaluator: ExpressionEvaluator): number[] | null {
+  if (range instanceof ModelicaRangeExpression) {
+    const startVal = evaluator.evaluate(range.start);
+    const endVal = evaluator.evaluate(range.end);
+    if (startVal === null || endVal === null) return null;
+
+    let stepVal = 1;
+    if (range.step) {
+      const s = evaluator.evaluate(range.step);
+      if (s === null || s === 0) return null;
+      stepVal = s;
+    }
+
+    const values: number[] = [];
+    if (stepVal > 0) {
+      for (let v = startVal; v <= endVal + 1e-10; v += stepVal) {
+        values.push(Math.round(v * 1e10) / 1e10); // Avoid floating-point drift
+      }
+    } else {
+      for (let v = startVal; v >= endVal - 1e-10; v += stepVal) {
+        values.push(Math.round(v * 1e10) / 1e10);
+      }
+    }
+    return values;
+  }
+
+  // Single-value "range" (e.g., used in `for i in {1, 3, 5}`)
+  if (range instanceof ModelicaRealLiteral || range instanceof ModelicaIntegerLiteral) {
+    return [range.value];
+  }
+  if (range instanceof ModelicaBooleanLiteral) {
+    return [range.value ? 1 : 0];
+  }
+
+  // Try evaluating as a general expression (might be a parameter reference)
+  const val = evaluator.evaluate(range);
+  if (val !== null) return [val];
+
+  return null;
+}
