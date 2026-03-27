@@ -1,7 +1,7 @@
 {
   "name": "modelscript",
   "displayName": "ModelScript",
-  "version": "0.0.0",
+  "version": "0.0.3",
   "description": "Modelica language support — syntax highlighting, completions, hover, diagnostics, formatting, and bundled MSL",
   "categories": [
     "Programming Languages",
