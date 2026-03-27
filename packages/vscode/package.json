@@ -38,15 +38,6 @@
     "watch": "webpack --watch"
   },
   "contributes": {
-    "chatParticipants": [
-      {
-        "id": "modelscript.chat",
-        "fullName": "ModelScript AI",
-        "name": "modelscript",
-        "description": "Modelica language assistant — ask about models, MSL components, simulation, and diagnostics",
-        "isSticky": true
-      }
-    ],
     "commands": [
       {
         "command": "modelscript.openDiagram",
@@ -76,6 +67,11 @@
         "command": "modelscript.autoLayout",
         "title": "ModelScript: Auto Layout",
         "icon": "$(wand)"
+      },
+      {
+        "command": "modelscript.openChat",
+        "title": "ModelScript: Open AI Chat",
+        "icon": "$(comment-discussion)"
       }
     ],
     "configuration": [
@@ -114,6 +110,13 @@
         "language": "modelica",
         "scopeName": "source.modelica",
         "path": "./syntaxes/modelica.tmLanguage.json"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "modelscript.openChat",
+        "key": "ctrl+alt+i",
+        "mac": "cmd+alt+i"
       }
     ],
     "languageModelTools": [
@@ -356,13 +359,5 @@
   "galleryBanner": {
     "color": "#0d1b2a",
     "theme": "dark"
-  },
-  "enabledApiProposals": [
-    "chatParticipantAdditions",
-    "chatParticipantPrivate",
-    "chatProvider",
-    "defaultChatParticipant",
-    "languageModelSystem",
-    "contribLanguageModelToolSets"
-  ]
+  }
 }

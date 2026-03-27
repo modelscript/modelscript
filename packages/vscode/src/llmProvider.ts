@@ -7,7 +7,7 @@ let webllm: any = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let engine: any = null;
 
-const MODEL_ID = "Qwen/Qwen3.5-0.8B-q4f16_1-MLC";
+const MODEL_ID = "Qwen3-0.6B-q4f16_1-MLC";
 
 /**
  * Load the WebLLM engine lazily on first use.

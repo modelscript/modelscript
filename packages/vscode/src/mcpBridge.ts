@@ -9,6 +9,13 @@ import type { LanguageClient } from "vscode-languageclient/browser";
  * (and any other LLM consumer) to call Modelica compiler tools.
  */
 export function registerMCPTools(context: vscode.ExtensionContext, client: LanguageClient): void {
+  // Runtime guard — lm.registerTool is a proposed API, only available with Copilot
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if (typeof (vscode.lm as any)?.registerTool !== "function") {
+    console.log("[mcp-bridge] vscode.lm.registerTool not available — skipping");
+    return;
+  }
+
   // modelscript_flatten
   context.subscriptions.push(
     vscode.lm.registerTool("modelscript_flatten", {

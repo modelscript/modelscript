@@ -2,3 +2,4 @@ dist
 build
 .react-router
 packages/ide/vscode-web/
+packages/ide/models/

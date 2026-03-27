@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import { Uri, commands, workspace } from "vscode";
 import { LanguageClientOptions } from "vscode-languageclient";
 import { LanguageClient } from "vscode-languageclient/browser";
-import { registerChatParticipant } from "./chatParticipant";
+import { ChatPanel } from "./chatPanel";
 import { DiagramEditorProvider } from "./diagramEditorProvider";
 import { LibraryTreeProvider } from "./libraryTreeProvider";
 import { registerLLMProvider } from "./llmProvider";
@@ -146,10 +146,25 @@ export async function activate(context: vscode.ExtensionContext) {
   await client.start();
   console.log("ModelScript language server is ready");
 
-  // Register AI integration components
-  registerLLMProvider(context);
-  registerChatParticipant(context);
-  registerMCPTools(context, client);
+  // Register AI integration components (proposed APIs — may not be available in web builds)
+  try {
+    registerLLMProvider(context);
+  } catch {
+    /* proposed API not available */
+  }
+  // Note: registerChatParticipant requires a chatParticipants manifest entry — use the custom ChatPanel instead
+  try {
+    registerMCPTools(context, client);
+  } catch {
+    /* proposed API not available */
+  }
+
+  // Custom chat panel (works without VS Code Chat API / Copilot)
+  context.subscriptions.push(
+    vscode.commands.registerCommand("modelscript.openChat", () => {
+      if (client) ChatPanel.createOrShow(context.extensionUri, client);
+    }),
+  );
 
   // Output channel for script execution
   const outputChannel = vscode.window.createOutputChannel("ModelScript Output");

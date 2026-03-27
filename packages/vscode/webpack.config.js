@@ -175,6 +175,8 @@ const webviewConfig = {
   entry: {
     diagramWebview: "./src/webview/diagram.ts",
     simulationWebview: "./src/webview/simulationWebview.ts",
+    chatWebview: "./src/webview/chatWebview.ts",
+    chatWorker: "./src/webview/chatWorker.ts",
   },
   output: {
     filename: "[name].js",

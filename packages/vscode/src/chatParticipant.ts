@@ -23,6 +23,13 @@ When referencing Modelica code, use proper syntax. When the user asks about a sp
  * Register the @modelscript chat participant.
  */
 export function registerChatParticipant(context: vscode.ExtensionContext): void {
+  // Runtime guard — chat API is only available with Copilot on desktop
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if (typeof (vscode.chat as any)?.createChatParticipant !== "function") {
+    console.log("[chat-participant] vscode.chat.createChatParticipant not available — skipping");
+    return;
+  }
+
   const participant = vscode.chat.createChatParticipant(
     "modelscript.chat",
     async (request, chatContext, stream, token) => {

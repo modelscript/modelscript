@@ -155,10 +155,10 @@ app.use((req, res, next) => {
   if (coi === "1") {
     res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
   } else if (coi === "2") {
-    res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
+    res.setHeader("Cross-Origin-Embedder-Policy", "credentialless");
   } else if (coi === "3" || coi === "") {
     res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
-    res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
+    res.setHeader("Cross-Origin-Embedder-Policy", "credentialless");
   }
   next();
 });
@@ -173,6 +173,19 @@ app.use("/static/devextensions", express.static(MODELSCRIPT_EXT_DIR, { dotfiles:
 
 // GitHub FS extension
 app.use("/static/extensions/github-fs", express.static(GITHUB_FS_EXT_DIR, { dotfiles: "allow" }));
+
+// WebLLM model files (self-hosted to avoid COEP issues with external CDNs)
+// WebLLM constructs URLs as ${model}/resolve/main/${file} (HuggingFace pattern).
+// Strip /resolve/main/ so local files resolve correctly.
+const MODELS_DIR = resolve(__dirname, "..", "models");
+app.use(
+  "/api/models",
+  (req, _res, next) => {
+    req.url = req.url.replace(/\/resolve\/main\//g, "/");
+    next();
+  },
+  express.static(MODELS_DIR),
+);
 
 // Favicon
 const morselFavicon = resolve(__dirname, "..", "..", "morsel", "public", "favicon.ico");
