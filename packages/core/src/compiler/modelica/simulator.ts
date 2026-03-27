@@ -28,6 +28,7 @@ import {
   ModelicaWhenEquation,
   pantelidesIndexReduction,
 } from "./dae.js";
+import { type Dopri5Options, dopri5 as dopri5Solver } from "./dopri5.js";
 import { DualExpressionEvaluator } from "./dual-evaluator.js";
 import { Dual } from "./dual.js";
 import { ReverseExpressionEvaluator } from "./reverse-evaluator.js";
@@ -2071,7 +2072,13 @@ export class ModelicaSimulator {
     startTime: number,
     stopTime: number,
     step: number,
-    options?: { signal?: AbortSignal; parameterOverrides?: Map<string, number> },
+    options?: {
+      signal?: AbortSignal;
+      parameterOverrides?: Map<string, number>;
+      solver?: "rk4" | "dopri5";
+      atol?: number;
+      rtol?: number;
+    },
   ): { t: number[]; y: number[][]; states: string[] } {
     this.prepare();
 
@@ -2309,17 +2316,72 @@ export class ModelicaSimulator {
       return stateList.map((state) => evaluator.env.get(`der(${state})`) ?? 0.0);
     };
 
-    const res = this.rk4WithEvents(
-      f,
-      startTime,
-      stopTime,
-      initialValues,
-      step,
-      stateList,
-      stateIndexMap,
-      evaluator,
-      options?.signal,
-    );
+    // ── Solver dispatch ──
+    const solverChoice = options?.solver ?? "dopri5";
+    let res: { t: number[]; y: number[][] };
+
+    if (solverChoice === "dopri5") {
+      // Build output times array
+      const numSteps = Math.max(1, Math.ceil((stopTime - startTime) / step));
+      const outputTimes: number[] = [];
+      for (let i = 0; i <= numSteps; i++) {
+        outputTimes.push(startTime + i * step);
+      }
+      if ((outputTimes[outputTimes.length - 1] ?? 0) < stopTime - 1e-14) {
+        outputTimes.push(stopTime);
+      }
+
+      // Build event functions from when-clause zero crossings
+      const eventFns: ((t: number, y: number[]) => number)[] = [];
+      for (const clause of this.whenClauses) {
+        eventFns.push((tE: number, yE: number[]) => {
+          populateEnv(tE, yE);
+          const val = evaluator.evaluate(clause.condition);
+          return val ?? 0;
+        });
+      }
+
+      const dopriOpts: Dopri5Options = {
+        atol: options?.atol ?? 1e-6,
+        rtol: options?.rtol ?? 1e-6,
+        maxStep: step,
+        initialStep: step / 10,
+      };
+
+      const dopriResult = dopri5Solver(
+        f,
+        startTime,
+        initialValues,
+        stopTime,
+        outputTimes,
+        dopriOpts,
+        eventFns.length > 0 ? eventFns : undefined,
+        eventFns.length > 0
+          ? (tE: number, yE: number[], eventIdx: number) => {
+              const clause = this.whenClauses[eventIdx];
+              if (clause) {
+                this.fireWhenActions(clause, evaluator, yE, stateIndexMap);
+              }
+              return yE;
+            }
+          : undefined,
+      );
+
+      res = { t: dopriResult.times, y: dopriResult.states };
+    } else {
+      // Fixed-step RK4
+      res = this.rk4WithEvents(
+        f,
+        startTime,
+        stopTime,
+        initialValues,
+        step,
+        stateList,
+        stateIndexMap,
+        evaluator,
+        options?.signal,
+      );
+    }
 
     // Build complete result with ODE states + algebraic vars + derivatives.
     // For each timestep, re-evaluate algebraic equations to get current values.

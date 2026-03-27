@@ -2846,6 +2846,103 @@ export class ExpressionEvaluator {
       return val !== null ? Math.floor(val) : null;
     }
 
+    // ── Special purpose operators ──
+
+    // semiLinear(x, k₊, k₋) → x >= 0 ? x*k₊ : x*k₋
+    if (name === "semiLinear" && arg0 && arg1) {
+      const x = this.evaluate(arg0);
+      const kPos = this.evaluate(arg1);
+      const arg2 = args[2] as ModelicaExpression | undefined;
+      const kNeg = arg2 ? this.evaluate(arg2) : null;
+      if (x === null || kPos === null || kNeg === null) return null;
+      return x >= 0 ? x * kPos : x * kNeg;
+    }
+
+    // cardinality(c) — count env entries matching connector prefix
+    if (name === "cardinality" && arg0) {
+      const varName = this.extractVarName(arg0);
+      if (varName) {
+        let count = 0;
+        const prefix = varName + ".";
+        for (const key of this.env.keys()) {
+          if (key.startsWith(prefix)) count++;
+        }
+        return count > 0 ? count : 0;
+      }
+      return 0;
+    }
+
+    // print(s) — console output, return 0
+    if (name === "print") {
+      return 0;
+    }
+
+    // ── Vector/matrix operations ──
+
+    // cross(x, y) → 3-element cross product
+    // Returns component at current subscript context; standalone returns x[2]*y[3]-x[3]*y[2]
+    if (name === "cross" && arg0 && arg1) {
+      const xElems = this.collectArrayElements(arg0);
+      const yElems = this.collectArrayElements(arg1);
+      if (xElems && yElems && xElems.length === 3 && yElems.length === 3) {
+        // Return first component in scalar context
+        const x1 = xElems[0] ?? 0,
+          x2 = xElems[1] ?? 0,
+          x3 = xElems[2] ?? 0;
+        const y1 = yElems[0] ?? 0,
+          y2 = yElems[1] ?? 0,
+          y3 = yElems[2] ?? 0;
+        // In scalar context, this is ambiguous — return magnitude
+        return Math.sqrt((x2 * y3 - x3 * y2) ** 2 + (x3 * y1 - x1 * y3) ** 2 + (x1 * y2 - x2 * y1) ** 2);
+      }
+      return null;
+    }
+
+    // skew(x) — 3×3 skew-symmetric matrix; in scalar context return 0 (trace is 0)
+    if (name === "skew") {
+      return 0;
+    }
+
+    // diagonal(v) — create diagonal matrix; in scalar context returns first element
+    if (name === "diagonal" && arg0) {
+      const elems = this.collectArrayElements(arg0);
+      if (elems && elems.length > 0) return elems[0] ?? 0;
+      return this.evaluate(arg0);
+    }
+
+    // outerProduct(x, y) — x * transpose(y); in scalar context return x[1]*y[1]
+    if (name === "outerProduct" && arg0 && arg1) {
+      const x0 = this.evaluate(arg0);
+      const y0 = this.evaluate(arg1);
+      if (x0 !== null && y0 !== null) return x0 * y0;
+      return null;
+    }
+
+    // vector(A) — reshape to 1D; in scalar evaluator, pass through
+    if (name === "vector" && arg0) {
+      return this.evaluate(arg0);
+    }
+
+    // matrix(A) — reshape to 2D; in scalar evaluator, pass through
+    if (name === "matrix" && arg0) {
+      return this.evaluate(arg0);
+    }
+
+    // symmetric(A) — (A + transpose(A))/2; in scalar evaluator, pass through
+    if (name === "symmetric" && arg0) {
+      return this.evaluate(arg0);
+    }
+
+    // cat(k, A, B, ...) — concatenate along dimension k; evaluate first array arg
+    if (name === "cat" && arg1) {
+      return this.evaluate(arg1);
+    }
+
+    // promote(A, n) — add trailing dimensions; pass through in scalar context
+    if (name === "promote" && arg0) {
+      return this.evaluate(arg0);
+    }
+
     // homotopy(actual, simplified) — just use actual
     if (name === "homotopy" && arg0) {
       return this.evaluate(arg0);

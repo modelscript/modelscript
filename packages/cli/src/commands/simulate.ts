@@ -17,6 +17,7 @@ interface SimulateArgs {
   tolerance?: number;
   interval?: number;
   format: string;
+  solver: string;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
@@ -58,6 +59,12 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
         type: "string",
         choices: ["csv", "json"],
         default: "csv",
+      })
+      .option("solver", {
+        description: "ODE solver to use",
+        type: "string",
+        choices: ["rk4", "dopri5"],
+        default: "dopri5",
       });
     // eslint-disable-next-line @typescript-eslint/no-empty-object-type
   }) as CommandModule<{}, SimulateArgs>["builder"],
@@ -154,7 +161,9 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
     const step = args.interval ?? exp.interval ?? (stopTime - startTime) / 1000;
 
     // Run simulation
-    const result = simulator.simulate(startTime, stopTime, step);
+    const result = simulator.simulate(startTime, stopTime, step, {
+      solver: args.solver as "rk4" | "dopri5",
+    });
     const states = result.states;
 
     // Output results

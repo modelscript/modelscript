@@ -5567,7 +5567,15 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
           }
         }
       }
-      // TODO: Handle nested connector types recursively
+      // Handle nested connector types recursively
+      else {
+        const nestedPrefix = prefix + "." + element.name;
+        const nestedLeaves = this.#collectConnectorLeaves(element, nestedPrefix);
+        for (const [nestedName, info] of nestedLeaves) {
+          const localName = nestedName ? element.name + "." + nestedName : element.name;
+          result.set(localName, info);
+        }
+      }
     }
 
     return result;
