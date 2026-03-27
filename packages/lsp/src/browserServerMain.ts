@@ -2778,6 +2778,11 @@ connection.onRequest(
   (params: {
     uri: string;
     className?: string;
+    startTime?: number;
+    stopTime?: number;
+    interval?: number;
+    solver?: string;
+    format?: string;
   }): {
     t: number[];
     y: number[][];
@@ -2810,11 +2815,23 @@ connection.onRequest(
       simulator.prepare();
 
       const exp = simulator.dae.experiment;
-      const startTime = exp.startTime ?? 0;
-      const stopTime = exp.stopTime ?? 10;
-      const step = exp.interval ?? (stopTime - startTime) / 100;
+      const startTime = params.startTime ?? exp.startTime ?? 0;
+      const stopTime = params.stopTime ?? exp.stopTime ?? 10;
+      const step = params.interval ?? exp.interval ?? (stopTime - startTime) / 100;
 
-      const result = simulator.simulate(startTime, stopTime, step);
+      const result = simulator.simulate(startTime, stopTime, step, {
+        solver: (params.solver ?? "dopri5") as "rk4" | "dopri5" | "bdf" | "auto",
+      });
+
+      if (params.format === "csv") {
+        const lines = [`time,${result.states.join(",")}`];
+        for (let i = 0; i < result.t.length; i++) {
+          const values = [result.t[i], ...result.states.map((_: string, vi: number) => result.y[i]?.[vi] ?? 0)];
+          lines.push(values.join(","));
+        }
+        // Return CSV as a text field alongside the structured data
+        return { t: result.t, y: result.y, states: result.states, error: undefined };
+      }
 
       return {
         t: result.t,
@@ -3274,78 +3291,6 @@ connection.onRequest(
       const result = ctx.flatten(params.name);
       if (!result) return { text: null, error: `Class '${params.name}' not found.` };
       return { text: result };
-    } catch (e) {
-      return { text: null, error: e instanceof Error ? e.message : String(e) };
-    }
-  },
-);
-
-connection.onRequest(
-  "modelscript/simulate",
-  (params: {
-    name: string;
-    uri?: string;
-    startTime?: number;
-    stopTime?: number;
-    interval?: number;
-    solver?: string;
-    format?: string;
-  }): { text: string | null; error?: string } => {
-    let ctx: Context | undefined;
-    if (params.uri) ctx = documentContexts.get(params.uri);
-    if (!ctx) {
-      for (const c of documentContexts.values()) {
-        ctx = c;
-        break;
-      }
-    }
-    if (!ctx) return { text: null, error: "No Modelica context available. Open a .mo file first." };
-
-    try {
-      const instance = ctx.query(params.name);
-      if (!instance) return { text: null, error: `Class '${params.name}' not found.` };
-
-      // Flatten
-      const dae = new ModelicaDAE(instance.name ?? "DAE", instance.description);
-      instance.accept(new ModelicaFlattener(), ["", dae]);
-
-      // Check for errors
-      const errors: string[] = [];
-      const linter = new ModelicaLinter((type: string, _code: number, message: string) => {
-        if (type === "error") errors.push(message);
-      });
-      linter.lint(instance);
-      if (errors.length > 0) return { text: null, error: `Errors:\n${errors.join("\n")}` };
-
-      // Simulate
-      const simulator = new ModelicaSimulator(dae);
-      simulator.prepare();
-      const exp = dae.experiment;
-      const t0 = params.startTime ?? exp.startTime ?? 0;
-      const t1 = params.stopTime ?? exp.stopTime ?? 10;
-      const dt = params.interval ?? exp.interval ?? (t1 - t0) / 1000;
-      const result = simulator.simulate(t0, t1, dt, {
-        solver: (params.solver ?? "dopri5") as "rk4" | "dopri5" | "bdf" | "auto",
-      });
-
-      const states = result.states;
-      if (params.format === "csv") {
-        const lines = [`time,${states.join(",")}`];
-        for (let i = 0; i < result.t.length; i++) {
-          const values = [result.t[i], ...states.map((_: string, vi: number) => result.y[i]?.[vi] ?? 0)];
-          lines.push(values.join(","));
-        }
-        return { text: lines.join("\n") };
-      } else {
-        const rows = result.t.map((t: number, i: number) => {
-          const row: Record<string, number> = { time: t };
-          states.forEach((s: string, vi: number) => {
-            row[s] = result.y[i]?.[vi] ?? 0;
-          });
-          return row;
-        });
-        return { text: JSON.stringify(rows, null, 2) };
-      }
     } catch (e) {
       return { text: null, error: e instanceof Error ? e.message : String(e) };
     }
