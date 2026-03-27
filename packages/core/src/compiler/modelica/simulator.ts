@@ -58,6 +58,19 @@ type ZeroCrossingDirection = "negative" | "positive" | "either";
 export type ExecutionBlock =
   | { type: "single"; eq: { target: string; expr: ModelicaExpression; isDerivative: boolean } }
   | { type: "system"; vars: string[]; eqs: { target: string; expr: ModelicaExpression; isDerivative: boolean }[] }
+  | {
+      type: "torn";
+      /** All variables in the original system. */
+      vars: string[];
+      /** All equations in the original system. */
+      eqs: { target: string; expr: ModelicaExpression; isDerivative: boolean }[];
+      /** Tearing variables — Newton iterates only on these. */
+      tearingVars: string[];
+      /** Inner equations, solvable sequentially once tearing vars are known. */
+      innerEqs: { target: string; expr: ModelicaExpression; isDerivative: boolean }[];
+      /** Residual equations, used to compute Newton residual for tearing vars. */
+      residualEqs: { target: string; expr: ModelicaExpression; isDerivative: boolean }[];
+    }
   | { type: "algorithm"; statements: import("./dae.js").ModelicaStatement[] };
 
 /** A when-clause ready for evaluation during simulation. */
@@ -430,6 +443,75 @@ function tryExtractSolvableVar(
   }
 
   return null;
+}
+
+/**
+ * Attempt to tear a system of algebraic equations.
+ *
+ * Tearing selects a subset of "tearing variables" (those appearing in the
+ * most equations). The remaining equations become "inner" equations that can
+ * be solved sequentially once the tearing variables are known. Newton iteration
+ * only runs on the tearing variables, reducing the Jacobian from N×N to T×T.
+ *
+ * @returns A torn execution block, or null if the system is too small or untearable.
+ */
+function tearSystem(
+  vars: string[],
+  eqs: { target: string; expr: ModelicaExpression; isDerivative: boolean }[],
+  dependencyMap: Map<string, Set<string>>,
+): Extract<ExecutionBlock, { type: "torn" }> | null {
+  // Only tear if the system has >= 3 equations (tearing overhead not worthwhile for small systems)
+  if (vars.length < 3) return null;
+
+  const varSet = new Set(vars);
+
+  // Count how many equations each variable appears in
+  const varAppearanceCount = new Map<string, number>();
+  for (const v of vars) varAppearanceCount.set(v, 0);
+
+  for (const eq of eqs) {
+    const key = eq.isDerivative ? `der(${eq.target})` : eq.target;
+    const deps = dependencyMap.get(key);
+    if (!deps) continue;
+    for (const dep of deps) {
+      if (varSet.has(dep)) {
+        varAppearanceCount.set(dep, (varAppearanceCount.get(dep) ?? 0) + 1);
+      }
+    }
+  }
+
+  // Sort variables by appearance count descending — highest-count vars become tearing vars
+  const sortedVars = [...vars].sort((a, b) => (varAppearanceCount.get(b) ?? 0) - (varAppearanceCount.get(a) ?? 0));
+
+  // Heuristic: tear approximately sqrt(N) variables, minimum 1, maximum N/2
+  const numTear = Math.max(1, Math.min(Math.ceil(Math.sqrt(vars.length)), Math.floor(vars.length / 2)));
+  const tearingVars = sortedVars.slice(0, numTear);
+  const tearingVarSet = new Set(tearingVars);
+
+  // Partition equations: residual equations target tearing vars, inner equations target the rest
+  const innerEqs: typeof eqs = [];
+  const residualEqs: typeof eqs = [];
+
+  for (const eq of eqs) {
+    const target = eq.isDerivative ? `der(${eq.target})` : eq.target;
+    if (tearingVarSet.has(target)) {
+      residualEqs.push(eq);
+    } else {
+      innerEqs.push(eq);
+    }
+  }
+
+  // Verify we have the right number of residual equations
+  if (residualEqs.length !== tearingVars.length) return null;
+
+  return {
+    type: "torn",
+    vars,
+    eqs,
+    tearingVars,
+    innerEqs,
+    residualEqs,
+  };
 }
 
 /** Rich metadata about a single parameter variable for the UI. */
@@ -1567,11 +1649,17 @@ export class ModelicaSimulator {
         if (sccEqs.length === 1 && eq0 && !sccSelfLoops(eq0)) {
           blocks.push({ type: "single", eq: eq0 });
         } else if (sccEqs.length > 0) {
-          blocks.push({
-            type: "system",
-            vars: scc,
-            eqs: sccEqs,
-          });
+          // Try to tear large algebraic loops for efficiency
+          const tornBlock = tearSystem(scc, sccEqs, dependencyMap);
+          if (tornBlock) {
+            blocks.push(tornBlock);
+          } else {
+            blocks.push({
+              type: "system",
+              vars: scc,
+              eqs: sccEqs,
+            });
+          }
         }
       }
     };
@@ -2246,6 +2334,8 @@ export class ModelicaSimulator {
         }
       } else if (block.type === "algorithm") {
         executeStatements(block.statements, initEvaluator, initEvaluator.functionLookup ?? undefined);
+      } else if (block.type === "torn") {
+        this.solveTornBlock(block, initEvaluator, startTime);
       } else {
         this.solveNewtonBlock(block, initEvaluator, startTime);
       }
@@ -2344,6 +2434,8 @@ export class ModelicaSimulator {
         } else if (block.type === "algorithm") {
           // Execute algorithm section statements
           executeStatements(block.statements, evaluator, evaluator.functionLookup ?? undefined);
+        } else if (block.type === "torn") {
+          this.solveTornBlock(block, evaluator, t);
         } else {
           // Newton-Raphson solver for non-linear/linear algebraic system
           this.solveNewtonBlock(block, evaluator, t);
@@ -2708,6 +2800,126 @@ export class ModelicaSimulator {
       evaluator.env.set(key, x[i] ?? 0);
       if (!eq.isDerivative) {
         this.algWarmStart.set(key, x[i] ?? 0);
+      }
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  //  Torn Newton-Raphson solver: only iterates on tearing variables,
+  //  solving inner equations sequentially at each iteration.
+  // ──────────────────────────────────────────────────────────────────
+  private solveTornBlock(
+    block: Extract<ExecutionBlock, { type: "torn" }>,
+    evaluator: ExpressionEvaluator,
+    t: number,
+  ): void {
+    const m = block.tearingVars.length;
+    const x = new Float64Array(m);
+    const R = new Float64Array(m);
+    const negR = new Float64Array(m);
+
+    for (let i = 0; i < m; i++) {
+      x[i] = evaluator.env.get(block.tearingVars[i] ?? "") ?? 0;
+    }
+
+    const J: Float64Array[] = new Array(m);
+    for (let i = 0; i < m; i++) J[i] = new Float64Array(m);
+
+    const MAX_ITER = 20;
+    const TOL = 1e-10;
+    const SQRT_EPS = 1.4901161193847656e-8;
+    let converged = false;
+
+    for (let iter = 0; iter < MAX_ITER; iter++) {
+      for (let i = 0; i < m; i++) evaluator.env.set(block.tearingVars[i] ?? "", x[i] ?? 0);
+
+      // Solve inner equations sequentially
+      for (const eq of block.innerEqs) {
+        const val = evaluator.evaluate(eq.expr);
+        const key = eq.isDerivative ? `der(${eq.target})` : eq.target;
+        evaluator.env.set(key, val !== null && isFinite(val) ? val : 0);
+      }
+
+      // Evaluate residuals for tearing variables
+      let maxR = 0;
+      for (let i = 0; i < m; i++) {
+        const eq = block.residualEqs[i];
+        if (!eq) continue;
+        const exprVal = evaluator.evaluate(eq.expr);
+        const val = exprVal !== null && isFinite(exprVal) ? exprVal : 0;
+        R[i] = (x[i] ?? 0) - val;
+        maxR = Math.max(maxR, Math.abs(R[i] ?? 0));
+      }
+
+      if (maxR < TOL) {
+        converged = true;
+        break;
+      }
+
+      // Compute m×m Jacobian via finite differences (much smaller than N×N)
+      for (let i = 0; i < m; i++) (J[i] as Float64Array).fill(0);
+
+      for (let j = 0; j < m; j++) {
+        const varJ = block.tearingVars[j] ?? "";
+        const xj = x[j] ?? 0;
+        const eps = SQRT_EPS * Math.max(Math.abs(xj), 1.0);
+        evaluator.env.set(varJ, xj + eps);
+
+        for (const eq of block.innerEqs) {
+          const val = evaluator.evaluate(eq.expr);
+          const key = eq.isDerivative ? `der(${eq.target})` : eq.target;
+          evaluator.env.set(key, val !== null && isFinite(val) ? val : 0);
+        }
+
+        for (let i = 0; i < m; i++) {
+          const eq = block.residualEqs[i];
+          if (!eq) continue;
+          const exprVal = evaluator.evaluate(eq.expr);
+          const val = exprVal !== null && isFinite(exprVal) ? exprVal : 0;
+          const R_perturbed = (i === j ? xj + eps : (x[i] ?? 0)) - val;
+          const Ji = J[i];
+          if (Ji) Ji[j] = (R_perturbed - (R[i] ?? 0)) / eps;
+        }
+        evaluator.env.set(varJ, xj);
+
+        for (const eq of block.innerEqs) {
+          const val = evaluator.evaluate(eq.expr);
+          const key = eq.isDerivative ? `der(${eq.target})` : eq.target;
+          evaluator.env.set(key, val !== null && isFinite(val) ? val : 0);
+        }
+      }
+
+      try {
+        const fact = luFactor(J, m);
+        for (let i = 0; i < m; i++) negR[i] = -(R[i] ?? 0);
+        luSolve(fact, negR);
+        for (let i = 0; i < m; i++) {
+          const nx = (x[i] ?? 0) + (negR[i] ?? 0);
+          x[i] = nx;
+          evaluator.env.set(block.tearingVars[i] ?? "", nx);
+        }
+      } catch {
+        throw new Error(`Torn system singular Jacobian at t=${t}. Tearing vars: ${block.tearingVars.join(", ")}`);
+      }
+    }
+
+    if (!converged) {
+      throw new Error(`Torn system Newton failed to converge at t=${t}. Tearing vars: ${block.tearingVars.join(", ")}`);
+    }
+
+    // Final: solve inner equations and write back warm-start values
+    for (let i = 0; i < m; i++) evaluator.env.set(block.tearingVars[i] ?? "", x[i] ?? 0);
+    for (const eq of block.innerEqs) {
+      const val = evaluator.evaluate(eq.expr);
+      const key = eq.isDerivative ? `der(${eq.target})` : eq.target;
+      evaluator.env.set(key, val !== null && isFinite(val) ? val : 0);
+    }
+    for (let i = 0; i < m; i++) {
+      this.algWarmStart.set(block.tearingVars[i] ?? "", x[i] ?? 0);
+    }
+    for (const eq of block.innerEqs) {
+      if (!eq.isDerivative) {
+        this.algWarmStart.set(eq.target, evaluator.env.get(eq.target) ?? 0);
       }
     }
   }
