@@ -50,8 +50,8 @@ jobs:
           git_tag_gpgsign: true
       - name: Configure Git
         run: |
-          git config user.name "modelscript-release-bot[bot]"
-          git config user.email "modelscript-release-bot[bot]@users.noreply.github.com"
+          git config user.name "Mohamad Omar Nachawati"
+          git config user.email "mnachawa@gmail.com"
       - name: Cache MSL
         uses: actions/cache@v4
         with:
