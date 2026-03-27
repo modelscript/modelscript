@@ -3254,5 +3254,196 @@ connection.onRequest("modelscript/addComponent", (params: { uri: string; classNa
   }
 });
 
+// ── MCP Bridge: custom requests for AI chat integration ──
+
+connection.onRequest(
+  "modelscript/flatten",
+  (params: { name: string; uri?: string }): { text: string | null; error?: string } => {
+    // Find a context — prefer one from a specific document, or fallback to first available
+    let ctx: Context | undefined;
+    if (params.uri) ctx = documentContexts.get(params.uri);
+    if (!ctx) {
+      for (const c of documentContexts.values()) {
+        ctx = c;
+        break;
+      }
+    }
+    if (!ctx) return { text: null, error: "No Modelica context available. Open a .mo file first." };
+
+    try {
+      const result = ctx.flatten(params.name);
+      if (!result) return { text: null, error: `Class '${params.name}' not found.` };
+      return { text: result };
+    } catch (e) {
+      return { text: null, error: e instanceof Error ? e.message : String(e) };
+    }
+  },
+);
+
+connection.onRequest(
+  "modelscript/simulate",
+  (params: {
+    name: string;
+    uri?: string;
+    startTime?: number;
+    stopTime?: number;
+    interval?: number;
+    solver?: string;
+    format?: string;
+  }): { text: string | null; error?: string } => {
+    let ctx: Context | undefined;
+    if (params.uri) ctx = documentContexts.get(params.uri);
+    if (!ctx) {
+      for (const c of documentContexts.values()) {
+        ctx = c;
+        break;
+      }
+    }
+    if (!ctx) return { text: null, error: "No Modelica context available. Open a .mo file first." };
+
+    try {
+      const instance = ctx.query(params.name);
+      if (!instance) return { text: null, error: `Class '${params.name}' not found.` };
+
+      // Flatten
+      const dae = new ModelicaDAE(instance.name ?? "DAE", instance.description);
+      instance.accept(new ModelicaFlattener(), ["", dae]);
+
+      // Check for errors
+      const errors: string[] = [];
+      const linter = new ModelicaLinter((type: string, _code: number, message: string) => {
+        if (type === "error") errors.push(message);
+      });
+      linter.lint(instance);
+      if (errors.length > 0) return { text: null, error: `Errors:\n${errors.join("\n")}` };
+
+      // Simulate
+      const simulator = new ModelicaSimulator(dae);
+      simulator.prepare();
+      const exp = dae.experiment;
+      const t0 = params.startTime ?? exp.startTime ?? 0;
+      const t1 = params.stopTime ?? exp.stopTime ?? 10;
+      const dt = params.interval ?? exp.interval ?? (t1 - t0) / 1000;
+      const result = simulator.simulate(t0, t1, dt, {
+        solver: (params.solver ?? "dopri5") as "rk4" | "dopri5" | "bdf" | "auto",
+      });
+
+      const states = result.states;
+      if (params.format === "csv") {
+        const lines = [`time,${states.join(",")}`];
+        for (let i = 0; i < result.t.length; i++) {
+          const values = [result.t[i], ...states.map((_: string, vi: number) => result.y[i]?.[vi] ?? 0)];
+          lines.push(values.join(","));
+        }
+        return { text: lines.join("\n") };
+      } else {
+        const rows = result.t.map((t: number, i: number) => {
+          const row: Record<string, number> = { time: t };
+          states.forEach((s: string, vi: number) => {
+            row[s] = result.y[i]?.[vi] ?? 0;
+          });
+          return row;
+        });
+        return { text: JSON.stringify(rows, null, 2) };
+      }
+    } catch (e) {
+      return { text: null, error: e instanceof Error ? e.message : String(e) };
+    }
+  },
+);
+
+connection.onRequest(
+  "modelscript/query",
+  (params: {
+    name: string;
+    uri?: string;
+  }): {
+    name: string;
+    kind: string;
+    description: string;
+    components: { name: string; type: string; description: string }[];
+    childClasses: { name: string; kind: string }[];
+    error?: string;
+  } | null => {
+    let ctx: Context | undefined;
+    if (params.uri) ctx = documentContexts.get(params.uri);
+    if (!ctx) {
+      for (const c of documentContexts.values()) {
+        ctx = c;
+        break;
+      }
+    }
+    if (!ctx) return null;
+
+    try {
+      const element = ctx.query(params.name);
+      if (!element || !(element instanceof ModelicaClassInstance)) return null;
+
+      const components: { name: string; type: string; description: string }[] = [];
+      const childClasses: { name: string; kind: string }[] = [];
+      for (const child of element.elements) {
+        if (child instanceof ModelicaComponentInstance) {
+          components.push({
+            name: child.name ?? "",
+            type: child.classInstance?.name ?? "",
+            description: child.description ?? "",
+          });
+        } else if (child instanceof ModelicaClassInstance) {
+          childClasses.push({
+            name: child.name ?? "",
+            kind: child.classKind ?? "class",
+          });
+        }
+      }
+
+      return {
+        name: params.name,
+        kind: element.classKind ?? "class",
+        description: element.description ?? "",
+        components,
+        childClasses,
+      };
+    } catch (e) {
+      console.error("[mcp-bridge] query error:", e);
+      return null;
+    }
+  },
+);
+
+connection.onRequest(
+  "modelscript/parse",
+  (params: { code: string }): { classes: { name: string; kind: string }[]; syntaxErrors: string[] } => {
+    let ctx: Context | undefined;
+    for (const c of documentContexts.values()) {
+      ctx = c;
+      break;
+    }
+    if (!ctx) return { classes: [], syntaxErrors: ["No Modelica context available."] };
+
+    try {
+      const tree = ctx.parse(".mo", params.code);
+      const errors: string[] = [];
+      const linter = new ModelicaLinter((_type: string, _code: number, message: string) => {
+        errors.push(message);
+      });
+      linter.lint(tree);
+
+      const storedDef = ModelicaStoredDefinitionSyntaxNode.new(null, tree.rootNode);
+      const classes: { name: string; kind: string }[] = [];
+      if (storedDef) {
+        for (const classDef of storedDef.classDefinitions) {
+          classes.push({
+            name: classDef.identifier?.text ?? "<anonymous>",
+            kind: String(classDef.classPrefixes?.classKind ?? "class"),
+          });
+        }
+      }
+      return { classes, syntaxErrors: errors };
+    } catch (e) {
+      return { classes: [], syntaxErrors: [e instanceof Error ? e.message : String(e)] };
+    }
+  },
+);
+
 // Listen on the connection
 connection.listen();

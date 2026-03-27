@@ -2,8 +2,11 @@ import * as vscode from "vscode";
 import { Uri, commands, workspace } from "vscode";
 import { LanguageClientOptions } from "vscode-languageclient";
 import { LanguageClient } from "vscode-languageclient/browser";
+import { registerChatParticipant } from "./chatParticipant";
 import { DiagramEditorProvider } from "./diagramEditorProvider";
 import { LibraryTreeProvider } from "./libraryTreeProvider";
+import { registerLLMProvider } from "./llmProvider";
+import { registerMCPTools } from "./mcpBridge";
 import { ModelicaNotebookController } from "./notebookController";
 import { ModelicaNotebookSerializer } from "./notebookSerializer";
 import { ProjectTreeProvider } from "./projectTreeProvider";
@@ -142,6 +145,11 @@ export async function activate(context: vscode.ExtensionContext) {
 
   await client.start();
   console.log("ModelScript language server is ready");
+
+  // Register AI integration components
+  registerLLMProvider(context);
+  registerChatParticipant(context, client);
+  registerMCPTools(context, client);
 
   // Output channel for script execution
   const outputChannel = vscode.window.createOutputChannel("ModelScript Output");

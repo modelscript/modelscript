@@ -38,6 +38,15 @@
     "watch": "webpack --watch"
   },
   "contributes": {
+    "chatParticipants": [
+      {
+        "id": "modelscript.chat",
+        "fullName": "ModelScript AI",
+        "name": "modelscript",
+        "description": "Modelica language assistant — ask about models, MSL components, simulation, and diagnostics",
+        "isSticky": true
+      }
+    ],
     "commands": [
       {
         "command": "modelscript.openDiagram",
@@ -105,6 +114,89 @@
         "language": "modelica",
         "scopeName": "source.modelica",
         "path": "./syntaxes/modelica.tmLanguage.json"
+      }
+    ],
+    "languageModelTools": [
+      {
+        "name": "modelscript_flatten",
+        "displayName": "Flatten Modelica Model",
+        "modelDescription": "Flatten a Modelica class to its DAE (Differential Algebraic Equation) form. Resolves inheritance and modifications. Input: { name: string }. Returns the flattened equation system as text.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Fully qualified Modelica class name"
+            }
+          },
+          "required": [
+            "name"
+          ]
+        }
+      },
+      {
+        "name": "modelscript_simulate",
+        "displayName": "Simulate Modelica Model",
+        "modelDescription": "Simulate a Modelica model and return time-series results. Input: { name: string, startTime?: number, stopTime?: number, solver?: string, format?: 'csv'|'json' }.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Fully qualified class name"
+            },
+            "stopTime": {
+              "type": "number",
+              "description": "Simulation stop time"
+            },
+            "solver": {
+              "type": "string",
+              "enum": [
+                "rk4",
+                "dopri5",
+                "bdf",
+                "auto"
+              ]
+            }
+          },
+          "required": [
+            "name"
+          ]
+        }
+      },
+      {
+        "name": "modelscript_query",
+        "displayName": "Query Modelica Class",
+        "modelDescription": "Introspect a Modelica class — returns its kind, description, components with types, and child classes. Input: { name: string }.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Fully qualified class name"
+            }
+          },
+          "required": [
+            "name"
+          ]
+        }
+      },
+      {
+        "name": "modelscript_parse",
+        "displayName": "Parse Modelica Code",
+        "modelDescription": "Parse inline Modelica source code and check for syntax errors. Input: { code: string }. Returns parsed classes and any syntax errors.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string",
+              "description": "Modelica source code"
+            }
+          },
+          "required": [
+            "code"
+          ]
+        }
       }
     ],
     "languages": [
