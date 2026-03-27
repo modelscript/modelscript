@@ -3075,10 +3075,12 @@ export class ModelicaSimulator {
 
       const idx = stateIndexMap.get(action.target);
       if (idx !== undefined) {
+        // State variable: update the integration vector and evaluator env
         current_y[idx] = value;
-        // Also update the environment so subsequent actions see the new value
-        evaluator.env.set(action.target, value);
       }
+      // Always update the evaluator environment — this handles both state
+      // variables and algebraic/non-state variables (reinit for algebraic vars)
+      evaluator.env.set(action.target, value);
     }
   }
 }

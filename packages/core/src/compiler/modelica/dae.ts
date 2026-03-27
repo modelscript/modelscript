@@ -2395,6 +2395,20 @@ export class ExpressionEvaluator {
       const value = this.env.get(expression.name);
       return value !== undefined ? value : null;
     }
+    if (expression instanceof ModelicaStringVariable) {
+      // Strings can't be represented as numbers; return env value if set, else 0
+      const value = this.env.get(expression.name);
+      return value !== undefined ? value : 0;
+    }
+    if (expression instanceof ModelicaEnumerationVariable) {
+      // Enumerations are ordinal values (1-based)
+      const value = this.env.get(expression.name);
+      return value !== undefined ? value : 0;
+    }
+    if (expression instanceof ModelicaStringLiteral) {
+      // String literals can't be represented as numbers; return 0 to prevent null cascades
+      return 0;
+    }
     if (expression instanceof ModelicaNameExpression) {
       const value = this.env.get(expression.name);
       return value !== undefined ? value : null;
@@ -2819,6 +2833,17 @@ export class ExpressionEvaluator {
     // scalar(A) — extract the single element from a 1-element array
     if (name === "scalar" && arg0) {
       return this.evaluate(arg0);
+    }
+
+    // String(val) — type conversion; returns the numeric value unchanged
+    if (name === "String" && arg0) {
+      return this.evaluate(arg0);
+    }
+
+    // integer(x) — convert to integer
+    if (name === "integer" && arg0) {
+      const val = this.evaluate(arg0);
+      return val !== null ? Math.floor(val) : null;
     }
 
     // homotopy(actual, simplified) — just use actual
