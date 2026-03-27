@@ -330,6 +330,117 @@ let sharedContext: Context | null = null;
 let parser: any = null;
 let parserReady = false;
 
+/* Incremental parsing — cache last tree per document for reuse */
+
+interface CachedTree {
+  text: string;
+  tree: TreeSitterTree;
+}
+
+const documentTrees = new Map<string, CachedTree>();
+
+/**
+ * Compute the position (row, column) at a given byte index in a string.
+ */
+function indexToPoint(text: string, index: number): { row: number; column: number } {
+  let row = 0;
+  let lastNewline = -1;
+  for (let i = 0; i < index; i++) {
+    if (text[i] === "\n") {
+      row++;
+      lastNewline = i;
+    }
+  }
+  return { row, column: index - lastNewline - 1 };
+}
+
+/**
+ * Compute a tree-sitter Edit by finding the common prefix and suffix between
+ * old and new text. This is O(n) but practically near-instant since we stop
+ * at the first/last differing character.
+ */
+function computeTreeEdit(
+  oldText: string,
+  newText: string,
+): {
+  startIndex: number;
+  oldEndIndex: number;
+  newEndIndex: number;
+  startPosition: { row: number; column: number };
+  oldEndPosition: { row: number; column: number };
+  newEndPosition: { row: number; column: number };
+} {
+  // Find common prefix
+  const minLen = Math.min(oldText.length, newText.length);
+  let prefixLen = 0;
+  while (prefixLen < minLen && oldText[prefixLen] === newText[prefixLen]) {
+    prefixLen++;
+  }
+
+  // Find common suffix (not overlapping with prefix)
+  let oldSuffix = oldText.length;
+  let newSuffix = newText.length;
+  while (oldSuffix > prefixLen && newSuffix > prefixLen && oldText[oldSuffix - 1] === newText[newSuffix - 1]) {
+    oldSuffix--;
+    newSuffix--;
+  }
+
+  return {
+    startIndex: prefixLen,
+    oldEndIndex: oldSuffix,
+    newEndIndex: newSuffix,
+    startPosition: indexToPoint(oldText, prefixLen),
+    oldEndPosition: indexToPoint(oldText, oldSuffix),
+    newEndPosition: indexToPoint(newText, newSuffix),
+  };
+}
+
+/**
+ * Parse a document incrementally, reusing the cached tree if available.
+ * The result is cached for subsequent requests.
+ */
+function updateDocumentTree(uri: string, newText: string): TreeSitterTree {
+  if (!parserReady || !parser) {
+    throw new Error("Parser not ready");
+  }
+
+  const cached = documentTrees.get(uri);
+  let tree: TreeSitterTree;
+
+  if (cached && cached.text !== newText) {
+    // Incremental reparse: edit the old tree and pass it to parse()
+    const edit = computeTreeEdit(cached.text, newText);
+    cached.tree.edit(edit as never);
+    tree = parser.parse(newText, cached.tree);
+  } else if (cached) {
+    // Text unchanged — reuse existing tree
+    return cached.tree;
+  } else {
+    // First parse — no old tree available
+    tree = parser.parse(newText);
+  }
+
+  documentTrees.set(uri, { text: newText, tree });
+  return tree;
+}
+
+/**
+ * Get the cached tree for a document, parsing fresh if needed.
+ */
+function getDocumentTree(uri: string): TreeSitterTree | null {
+  if (!parserReady || !parser) return null;
+
+  const cached = documentTrees.get(uri);
+  if (cached) return cached.tree;
+
+  // No cached tree — parse from current document text
+  const document = documents.get(uri);
+  if (!document) return null;
+
+  const text = document.getText();
+  return updateDocumentTree(uri, text);
+}
+
 /* Scope wrapper for editor-level class instances (matching morsel's EditorScope) */
 
 class EditorScope extends Scope {
@@ -782,6 +893,11 @@ documents.onDidClose((event) => {
   workspaceInstances.delete(event.document.uri);
   documentInstances.delete(event.document.uri);
   documentContexts.delete(event.document.uri);
+  const oldTree = documentTrees.get(event.document.uri);
+  if (oldTree) {
+    oldTree.tree.delete();
+    documentTrees.delete(event.document.uri);
+  }
   connection.sendDiagnostics({ uri: event.document.uri, diagnostics: [] });
 
   // Re-validate remaining open documents
@@ -821,8 +937,20 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
       },
     );
 
-    // Parse with tree-sitter
-    const tree = context.parse(".mo", text);
+    // Parse with tree-sitter (incremental when possible)
+    const oldCached = documentTrees.get(textDocument.uri);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let tree: any;
+    if (oldCached && oldCached.text !== text) {
+      const edit = computeTreeEdit(oldCached.text, text);
+      oldCached.tree.edit(edit as never);
+      tree = context.parse(".mo", text, oldCached.tree as never);
+    } else if (oldCached) {
+      tree = oldCached.tree;
+    } else {
+      tree = context.parse(".mo", text);
+    }
+    documentTrees.set(textDocument.uri, { text, tree });
 
     // Lint the raw parse tree (catches ERROR and MISSING nodes)
     linter.lint(tree, textDocument.uri);
@@ -1372,7 +1500,8 @@ connection.onHover((params) => {
   }
 
   try {
-    const tree = parser.parse(text);
+    const tree = getDocumentTree(params.textDocument.uri);
+    if (!tree) return null;
     try {
       const rootNode = tree.rootNode;
       const searchRow = position.line;
@@ -1488,7 +1617,7 @@ connection.onHover((params) => {
 
       return null;
     } finally {
-      tree.delete();
+      // Tree is managed by cache
     }
   } catch (e) {
     console.error("Hover resolution failed:", e);
@@ -1539,7 +1668,8 @@ function resolveElementAtPosition(
   }
 
   try {
-    const tree = parser.parse(text);
+    const tree = getDocumentTree(document.uri);
+    if (!tree) return null;
     try {
       const rootNode = tree.rootNode;
       const current: SyntaxNode | null = rootNode.descendantForPosition(
@@ -1631,7 +1761,7 @@ function resolveElementAtPosition(
       }
       return null;
     } finally {
-      tree.delete();
+      // Tree is managed by cache
     }
   } catch {
     return null;
@@ -1693,9 +1823,9 @@ connection.onDocumentFormatting((params) => {
   }
 
   const text = document.getText();
-  const tree = parser.parse(text);
+  const tree = getDocumentTree(params.textDocument.uri);
+  if (!tree) return [];
   const formatted = format(tree, text);
-  tree.delete();
 
   // Return a single edit replacing the entire document
   const lastLine = document.lineCount - 1;
@@ -1721,8 +1851,8 @@ connection.onDocumentColor((params) => {
   const document = documents.get(params.textDocument.uri);
   if (!document) return [];
 
-  const text = document.getText();
-  const tree = parser.parse(text);
+  const tree = getDocumentTree(params.textDocument.uri);
+  if (!tree) return [];
   const colors: ColorInformation[] = [];
 
   const traverse = (node: SyntaxNode) => {
@@ -1772,7 +1902,6 @@ connection.onDocumentColor((params) => {
   };
 
   traverse(tree.rootNode);
-  tree.delete();
   return colors;
 });
 
@@ -1923,12 +2052,12 @@ connection.onDocumentSymbol((params) => {
   const document = documents.get(params.textDocument.uri);
   if (!document) return [];
 
-  const text = document.getText();
-  const tree = parser.parse(text);
+  const tree = getDocumentTree(params.textDocument.uri);
+  if (!tree) return [];
   try {
     return collectDocumentSymbols(tree.rootNode);
   } finally {
-    tree.delete();
+    // Tree is managed by cache — no delete needed
   }
 });
 
@@ -1939,8 +2068,8 @@ connection.onFoldingRanges((params) => {
   const document = documents.get(params.textDocument.uri);
   if (!document) return [];
 
-  const text = document.getText();
-  const tree = parser.parse(text);
+  const tree = getDocumentTree(document.uri);
+  if (!tree) return [];
   const ranges: { startLine: number; endLine: number; kind?: string }[] = [];
 
   const FOLDABLE_NODES = new Set([
@@ -1982,7 +2111,6 @@ connection.onFoldingRanges((params) => {
   };
 
   collectFolds(tree.rootNode);
-  tree.delete();
   return ranges;
 });
 
@@ -1993,8 +2121,8 @@ connection.onSelectionRanges((params) => {
   const document = documents.get(params.textDocument.uri);
   if (!document) return [];
 
-  const text = document.getText();
-  const tree = parser.parse(text);
+  const tree = getDocumentTree(document.uri);
+  if (!tree) return [];
 
   const results = params.positions.map((pos) => {
     let node: SyntaxNode | null = tree.rootNode.descendantForPosition({
@@ -2022,7 +2150,6 @@ connection.onSelectionRanges((params) => {
     return current ?? { range: nodeRange(tree.rootNode) };
   });
 
-  tree.delete();
   return results;
 });
 
@@ -2046,7 +2173,8 @@ connection.onDocumentHighlight((params) => {
   if (!word || /^\d/.test(word)) return []; // Skip empty or numeric tokens
 
   // Find all occurrences of the word in the document using tree-sitter
-  const tree = parser.parse(text);
+  const tree = getDocumentTree(document.uri);
+  if (!tree) return [];
   const highlights: {
     range: { start: { line: number; character: number }; end: { line: number; character: number } };
     kind: DocumentHighlightKind;
@@ -2066,7 +2194,6 @@ connection.onDocumentHighlight((params) => {
   };
 
   collectHighlights(tree.rootNode);
-  tree.delete();
   return highlights;
 });
 
@@ -2078,7 +2205,8 @@ connection.onSignatureHelp((params) => {
   if (!document) return null;
 
   const text = document.getText();
-  const tree = parser.parse(text);
+  const tree = getDocumentTree(document.uri);
+  if (!tree) return null;
 
   try {
     const rootNode = tree.rootNode;
@@ -2140,7 +2268,7 @@ connection.onSignatureHelp((params) => {
       activeParameter,
     };
   } finally {
-    tree.delete();
+    // Tree is managed by cache
   }
 });
 
@@ -2164,9 +2292,8 @@ connection.onReferences((params) => {
 
   // Search all open documents
   for (const doc of documents.all()) {
-    if (!parserReady || !parser) continue;
-    const text = doc.getText();
-    const tree = parser.parse(text);
+    const tree = getDocumentTree(doc.uri);
+    if (!tree) continue;
 
     const collectRefs = (node: SyntaxNode) => {
       if (node.type === "IDENT" && node.text === targetName) {
@@ -2182,7 +2309,6 @@ connection.onReferences((params) => {
     };
 
     collectRefs(tree.rootNode);
-    tree.delete();
   }
 
   return locations;
@@ -2232,9 +2358,8 @@ connection.onRenameRequest((params) => {
 
   // Find and replace all occurrences across open documents
   for (const doc of documents.all()) {
-    if (!parserReady || !parser) continue;
-    const text = doc.getText();
-    const tree = parser.parse(text);
+    const tree = getDocumentTree(doc.uri);
+    if (!tree) continue;
     const edits: {
       range: { start: { line: number; character: number }; end: { line: number; character: number } };
       newText: string;
@@ -2254,7 +2379,6 @@ connection.onRenameRequest((params) => {
     };
 
     collectRenames(tree.rootNode);
-    tree.delete();
 
     if (edits.length > 0) {
       changes[doc.uri] = edits;
