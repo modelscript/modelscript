@@ -63,7 +63,7 @@ jobs:
       # --- Version, Changelog, Tag ---
       - name: Version & Changelog
         run: >
-          npx nx release --skip-publish --yes ${{ github.event.inputs.version }}
+          npx nx release --skip-publish ${{ github.event.inputs.version }}
           ${{ github.event.inputs.first_release == 'true' && '--first-release' || '' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

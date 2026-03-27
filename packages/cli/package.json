@@ -36,8 +36,8 @@
     "watch": "tsc --watch"
   },
   "dependencies": {
-    "@modelscript/core": "^0.0.0",
-    "@modelscript/tree-sitter-modelica": "^0.0.0",
+    "@modelscript/core": "0.0.x",
+    "@modelscript/tree-sitter-modelica": "0.0.x",
     "@npmcli/package-json": "^7.0.0",
     "adm-zip": "^0.5.16",
     "svgdom": "^0.1.22",
