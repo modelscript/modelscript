@@ -2848,6 +2848,46 @@ export class ExpressionEvaluator {
 
     // ── Special purpose operators ──
 
+    // inStream(c.s) — look up the generated $inStream(c.s) variable
+    if (name === "inStream" && arg0) {
+      const varName = this.extractVarName(arg0);
+      if (varName) {
+        const inStreamKey = `$inStream(${varName})`;
+        const val = this.env.get(inStreamKey);
+        if (val !== undefined) return val;
+      }
+      // Fallback: evaluate the argument directly (no stream connection)
+      return this.evaluate(arg0);
+    }
+
+    // actualStream(c.s) — if flow > 0 return inStream(c.s), else return c.s
+    if (name === "actualStream" && arg0) {
+      const varName = this.extractVarName(arg0);
+      if (varName) {
+        // Find the associated flow variable (same connector, flow-prefixed component)
+        // Convention: stream var is "port.h_outflow", flow var is "port.m_flow"
+        const dotIdx = varName.lastIndexOf(".");
+        const connectorPrefix = dotIdx >= 0 ? varName.substring(0, dotIdx) : "";
+        // Search for a flow variable in this connector
+        let flowVal = 0;
+        for (const [key, val] of this.env) {
+          if (key.startsWith(connectorPrefix + ".") && key !== varName) {
+            // Heuristic: use first variable that looks like a flow
+            if (key.includes("flow") || key.includes("m_flow")) {
+              flowVal = val;
+              break;
+            }
+          }
+        }
+        if (flowVal > 0) {
+          const inStreamKey = `$inStream(${varName})`;
+          return this.env.get(inStreamKey) ?? this.evaluate(arg0);
+        }
+        return this.evaluate(arg0);
+      }
+      return this.evaluate(arg0);
+    }
+
     // semiLinear(x, k₊, k₋) → x >= 0 ? x*k₊ : x*k₋
     if (name === "semiLinear" && arg0 && arg1) {
       const x = this.evaluate(arg0);

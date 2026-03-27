@@ -1945,8 +1945,41 @@ export class ModelicaSimulator {
             }
           }
         } else if (block.type === "algorithm") {
-          // Algorithm sections are not yet supported in forward-mode AD
-          continue;
+          // Finite-difference AD for algorithm sections:
+          // Execute with a plain evaluator, perturb seed, re-run, compute derivatives
+          const eps = 1e-7;
+          // Extract real parts from dual env
+          const baseEnv = new Map<string, number>();
+          for (const [k, v] of dualEval.env) {
+            baseEnv.set(k, v instanceof Dual ? v.val : (v as number));
+          }
+          // Base run
+          const baseTmpEval = new ExpressionEvaluator(baseEnv);
+          executeStatements(block.statements, baseTmpEval, undefined);
+          // Snapshot base outputs (vars that changed)
+          const baseOutputs = new Map<string, number>();
+          for (const [k, v] of baseTmpEval.env) {
+            if (v !== baseEnv.get(k)) {
+              baseOutputs.set(k, v);
+            }
+          }
+          // Perturbed run: bump the seed variable by eps
+          const pertEnv = new Map(baseEnv);
+          pertEnv.set(seedVar, (pertEnv.get(seedVar) ?? 0) + eps);
+          const pertTmpEval = new ExpressionEvaluator(pertEnv);
+          executeStatements(block.statements, pertTmpEval, undefined);
+          // Compute finite-difference derivatives and set dual values
+          for (const [k, baseVal] of baseOutputs) {
+            const pertVal = pertTmpEval.env.get(k) ?? baseVal;
+            const deriv = (pertVal - baseVal) / eps;
+            dualEval.env.set(k, new Dual(baseVal, deriv));
+          }
+          // Also update env with base values for vars that didn't change derivative
+          for (const [k, v] of baseTmpEval.env) {
+            if (!baseOutputs.has(k) && baseEnv.get(k) !== v) {
+              dualEval.env.set(k, new Dual(v, 0));
+            }
+          }
         } else {
           // System block: iterate
           for (let iter = 0; iter < 5; iter++) {
@@ -2040,8 +2073,21 @@ export class ModelicaSimulator {
           }
         }
       } else if (block.type === "algorithm") {
-        // Algorithm sections are not yet supported in reverse-mode AD
-        continue;
+        // Finite-difference for algorithm sections in reverse-mode:
+        // Execute with a plain evaluator. The tape won't differentiate through
+        // the algorithm, but the base values will be correct for the remaining tape.
+        const baseEnv = new Map<string, number>();
+        for (const [k, v] of revEval.env) {
+          baseEnv.set(k, typeof v === "number" ? v : 0);
+        }
+        const baseTmpEval = new ExpressionEvaluator(baseEnv);
+        executeStatements(block.statements, baseTmpEval, undefined);
+        // Update reverse evaluator env with computed values (as tape constants)
+        for (const [k, v] of baseTmpEval.env) {
+          if (baseEnv.get(k) !== v) {
+            revEval.env.set(k, revEval.tape.constant(v));
+          }
+        }
       } else {
         for (let iter = 0; iter < 5; iter++) {
           for (const eq of block.eqs) {

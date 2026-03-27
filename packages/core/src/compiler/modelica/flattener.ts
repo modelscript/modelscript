@@ -689,6 +689,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           connectedFlowVars: this.#connectedFlowVars,
           activeClassStack: this.activeClassStack,
           flowConnectPairs: this.#flowConnectPairs,
+          streamConnections: this.#streamConnectPairs,
         });
       }
       args[1].equations = savedEquations;
@@ -781,6 +782,32 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
 
       // Clear pairs so they're not processed again in nested flattening
       this.#flowConnectPairs = [];
+    }
+
+    // ── Generate inStream equations from stream connections ──
+    // For a 2-port connection connect(a, b) with stream variable s:
+    //   inStream(a.s) = b.s  and  inStream(b.s) = a.s
+    // For N-port connections (N > 2), the mixing equation is:
+    //   inStream(a.s) = (Σ_{j≠a} max(-f_j, 0) * s_j) / (Σ_{j≠a} max(-f_j, 0))
+    // We implement the simplified 2-port case here (most common in practice).
+    if (this.#streamConnectPairs.length > 0) {
+      const dae = args[1];
+      for (const pair of this.#streamConnectPairs) {
+        // inStream(side1) = side2
+        const inStreamName1 = `$inStream(${pair.side1})`;
+        dae.variables.push(new ModelicaRealVariable(inStreamName1, null, new Map(), null));
+        dae.equations.push(
+          new ModelicaSimpleEquation(new ModelicaNameExpression(inStreamName1), new ModelicaNameExpression(pair.side2)),
+        );
+
+        // inStream(side2) = side1
+        const inStreamName2 = `$inStream(${pair.side2})`;
+        dae.variables.push(new ModelicaRealVariable(inStreamName2, null, new Map(), null));
+        dae.equations.push(
+          new ModelicaSimpleEquation(new ModelicaNameExpression(inStreamName2), new ModelicaNameExpression(pair.side1)),
+        );
+      }
+      this.#streamConnectPairs = [];
     }
 
     // Restore previous structural params
@@ -970,6 +997,8 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
   #connectedFlowVars = new Set<string>();
   // Deferred flow connection pairs for connection-set-based flow balance generation
   #flowConnectPairs: { name1: string; name2: string }[] = [];
+  // Deferred stream connection pairs for inStream() equation generation
+  #streamConnectPairs: { side1: string; side2: string }[] = [];
   // Track parameter names that are structurally significant (used in conditional component declarations)
   #structuralFinalParams = new Set<string>();
   // Carry outer brokenConnects through nested extends chains
@@ -1739,6 +1768,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
             connectedFlowVars: this.#connectedFlowVars,
             activeClassStack: this.activeClassStack,
             flowConnectPairs: this.#flowConnectPairs,
+            streamConnections: this.#streamConnectPairs,
             ...(brokenNames.size > 0 ? { brokenNames } : {}),
             ...(brokenConnects.size > 0 ? { brokenConnects } : {}),
           });
