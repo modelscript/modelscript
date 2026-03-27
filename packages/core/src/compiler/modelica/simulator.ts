@@ -27,6 +27,7 @@ import {
 import { DualExpressionEvaluator } from "./dual-evaluator.js";
 import { Dual } from "./dual.js";
 import { ReverseExpressionEvaluator } from "./reverse-evaluator.js";
+import { buildFunctionLookup, executeStatements } from "./statement-executor.js";
 import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "./syntax.js";
 import { Tape, type TapeNode } from "./tape.js";
 
@@ -47,10 +48,11 @@ interface WhenAction {
  */
 type ZeroCrossingDirection = "negative" | "positive" | "either";
 
-/** An execution block for algebraic evaluation. Can be a single assignment or a non-linear system loop. */
+/** An execution block for algebraic evaluation. Can be a single assignment, a non-linear system loop, or an algorithm section. */
 export type ExecutionBlock =
   | { type: "single"; eq: { target: string; expr: ModelicaExpression; isDerivative: boolean } }
-  | { type: "system"; vars: string[]; eqs: { target: string; expr: ModelicaExpression; isDerivative: boolean }[] };
+  | { type: "system"; vars: string[]; eqs: { target: string; expr: ModelicaExpression; isDerivative: boolean }[] }
+  | { type: "algorithm"; statements: import("./dae.js").ModelicaStatement[] };
 
 /** A when-clause ready for evaluation during simulation. */
 interface WhenClause {
@@ -1563,6 +1565,13 @@ export class ModelicaSimulator {
 
     this.executionBlocks = blocks;
 
+    // Append algorithm sections as execution blocks
+    for (const section of this.dae.algorithms) {
+      if (section.length > 0) {
+        this.executionBlocks.push({ type: "algorithm", statements: section });
+      }
+    }
+
     // Extract when-clauses
     this.whenClauses = [];
     for (const eq of this.dae.equations) {
@@ -1776,6 +1785,11 @@ export class ModelicaSimulator {
   ): Map<string, number> {
     const evaluator = new ExpressionEvaluator();
 
+    // Wire user-defined function lookup
+    if (this.dae.functions.length > 0) {
+      evaluator.functionLookup = buildFunctionLookup(this.dae.functions);
+    }
+
     // Load parameters
     for (const [name, value] of this.parameters) {
       evaluator.env.set(name, value);
@@ -1813,6 +1827,9 @@ export class ModelicaSimulator {
             evaluator.env.set(block.eq.target, val);
           }
         }
+      } else if (block.type === "algorithm") {
+        // Execute algorithm section statements
+        executeStatements(block.statements, evaluator, evaluator.functionLookup ?? undefined);
       } else {
         // System block: iterate Newton-like until convergence
         for (let iter = 0; iter < 5; iter++) {
@@ -1903,6 +1920,9 @@ export class ModelicaSimulator {
               dualEval.env.set(block.eq.target, val);
             }
           }
+        } else if (block.type === "algorithm") {
+          // Algorithm sections are not yet supported in forward-mode AD
+          continue;
         } else {
           // System block: iterate
           for (let iter = 0; iter < 5; iter++) {
@@ -1995,6 +2015,9 @@ export class ModelicaSimulator {
             revEval.env.set(block.eq.target, val);
           }
         }
+      } else if (block.type === "algorithm") {
+        // Algorithm sections are not yet supported in reverse-mode AD
+        continue;
       } else {
         for (let iter = 0; iter < 5; iter++) {
           for (const eq of block.eqs) {
@@ -2097,6 +2120,11 @@ export class ModelicaSimulator {
     const evaluator = new ExpressionEvaluator();
     evaluator.stepSize = step;
 
+    // Wire user-defined function lookup
+    if (this.dae.functions.length > 0) {
+      evaluator.functionLookup = buildFunctionLookup(this.dae.functions);
+    }
+
     // Initialize pre-values with initial values
     for (let i = 0; i < stateList.length; i++) {
       const name = stateList[i];
@@ -2164,6 +2192,9 @@ export class ModelicaSimulator {
               this.algWarmStart.set(key, value);
             }
           }
+        } else if (block.type === "algorithm") {
+          // Execute algorithm section statements
+          executeStatements(block.statements, evaluator, evaluator.functionLookup ?? undefined);
         } else {
           // Newton-Raphson solver for non-linear/linear algebraic system
           this.solveNewtonBlock(block, evaluator, t);
