@@ -2849,6 +2849,171 @@ connection.onRequest(
     }
   },
 );
+
+// ── Step-by-step co-simulation API ──
+
+/** Stored simulator instances for step-by-step co-simulation. */
+const cosimSimulators = new Map<
+  string,
+  {
+    simulator: {
+      simulate(start: number, stop: number, step: number): { t: number[]; y: number[][]; states: string[] };
+    };
+    dae: ModelicaDAE;
+    currentValues: Map<string, number>;
+    stepSize: number;
+  }
+>();
+
+/** Initialize a model for step-by-step simulation. Returns variable metadata. */
+connection.onRequest(
+  "modelscript/simulateInit",
+  (params: {
+    uri: string;
+    participantId: string;
+    className?: string;
+    startTime?: number;
+    stopTime?: number;
+    stepSize?: number;
+  }): {
+    ok: boolean;
+    variables?: { name: string; causality: string }[];
+    error?: string;
+  } => {
+    const instances = documentInstances.get(params.uri);
+    if (!instances || instances.length === 0) {
+      return { ok: false, error: "No class instances found for this document." };
+    }
+
+    let classInstance = instances[0];
+    if (params.className) {
+      const found = instances.find((i) => i.name === params.className);
+      if (found) classInstance = found;
+    }
+
+    try {
+      if (!classInstance.instantiated) {
+        classInstance.instantiate();
+      }
+
+      const dae = new ModelicaDAE(classInstance.name || "Model");
+      const flattener = new ModelicaFlattener();
+      classInstance.accept(flattener, ["", dae]);
+      flattener.generateFlowBalanceEquations(dae);
+      flattener.foldDAEConstants(dae);
+
+      const simulator = new ModelicaSimulator(dae);
+      simulator.prepare();
+
+      // Initialize current values from start attributes
+      const currentValues = new Map<string, number>();
+      for (const v of dae.variables) {
+        const startAttr = v.attributes.get("start");
+        if (startAttr && "value" in startAttr) {
+          const val = (startAttr as { value: number }).value;
+          if (typeof val === "number") {
+            currentValues.set(v.name, val);
+          }
+        }
+      }
+
+      // Store the simulator instance
+      cosimSimulators.set(params.participantId, {
+        simulator: simulator as unknown as {
+          simulate(start: number, stop: number, step: number): { t: number[]; y: number[][]; states: string[] };
+        },
+        dae,
+        currentValues,
+        stepSize: params.stepSize ?? 0.01,
+      });
+
+      // Build variable list with causality info
+      const variables = dae.variables.map((v) => ({
+        name: v.name,
+        causality: v.causality ?? "local",
+      }));
+
+      return { ok: true, variables };
+    } catch (e) {
+      console.error("[simulateInit] Error:", e);
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
+  },
+);
+
+/** Advance a simulator by one step, with optional input overrides. Returns output values. */
+connection.onRequest(
+  "modelscript/simulateStep",
+  (params: {
+    participantId: string;
+    currentTime: number;
+    stepSize: number;
+    inputs?: Record<string, number>;
+  }): {
+    ok: boolean;
+    outputs?: Record<string, number>;
+    allValues?: Record<string, number>;
+    error?: string;
+  } => {
+    const entry = cosimSimulators.get(params.participantId);
+    if (!entry) {
+      return { ok: false, error: `Participant '${params.participantId}' not initialized.` };
+    }
+
+    try {
+      // Apply input overrides (set them in current values before stepping)
+      if (params.inputs) {
+        for (const [name, value] of Object.entries(params.inputs)) {
+          entry.currentValues.set(name, value);
+        }
+      }
+
+      // Step the simulation by one communication interval
+      const result = entry.simulator.simulate(
+        params.currentTime,
+        params.currentTime + params.stepSize,
+        params.stepSize,
+      );
+
+      // Extract values from the last time point
+      const lastIdx = result.t.length - 1;
+      if (lastIdx >= 0) {
+        for (let i = 0; i < result.states.length; i++) {
+          const name = result.states[i];
+          const value = result.y[lastIdx]?.[i];
+          if (name && value !== undefined) {
+            entry.currentValues.set(name, value);
+          }
+        }
+      }
+
+      // Collect outputs (variables with causality "output")
+      const outputs: Record<string, number> = {};
+      const allValues: Record<string, number> = {};
+      for (const v of entry.dae.variables) {
+        const val = entry.currentValues.get(v.name);
+        if (val !== undefined) {
+          allValues[v.name] = val;
+          if (v.causality === "output") {
+            outputs[v.name] = val;
+          }
+        }
+      }
+
+      return { ok: true, outputs, allValues };
+    } catch (e) {
+      console.error("[simulateStep] Error:", e);
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
+  },
+);
+
+/** Dispose a simulator instance. */
+connection.onRequest("modelscript/simulateTerminate", (params: { participantId: string }): { ok: boolean } => {
+  cosimSimulators.delete(params.participantId);
+  return { ok: true };
+});
+
 // Custom request: get library tree children (lazy loading)
 interface TreeNodeInfo {
   id: string;

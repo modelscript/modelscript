@@ -13,6 +13,7 @@ import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
 import { BrowserBroker } from "./browserBroker";
 import { BrowserHistorian } from "./browserHistorian";
+import { LspSimulatorParticipant } from "./lspSimulatorParticipant";
 import { SimulationPanel } from "./simulationPanel";
 
 interface SessionInfo {
@@ -28,11 +29,18 @@ interface ParticipantInfo {
   variables: number;
 }
 
+/** A variable coupling: one output feeds one input. */
+interface LocalCoupling {
+  from: { participantId: string; variableName: string };
+  to: { participantId: string; variableName: string };
+}
+
 /** In-memory session state for local mode. */
 interface LocalSession {
   id: string;
   state: "created" | "running" | "completed" | "error";
   participants: LocalParticipant[];
+  couplings: LocalCoupling[];
   startTime: number;
   stopTime: number;
   stepSize: number;
@@ -43,14 +51,11 @@ interface LocalSession {
 interface LocalParticipant {
   id: string;
   modelName: string;
+  uri: string;
   type: string;
   variables: number;
-  /** Pre-computed simulation results from LSP. */
-  simulationData?: {
-    t: number[];
-    y: number[][];
-    states: string[];
-  };
+  /** LSP-backed simulator participant for step-by-step co-simulation. */
+  lspParticipant: LspSimulatorParticipant;
 }
 
 export class CosimViewProvider implements vscode.WebviewViewProvider {
@@ -354,6 +359,19 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
         break;
       }
 
+      case "addCoupling": {
+        if (this.localMode) {
+          this.localAddCoupling(
+            msg.sessionId as string,
+            msg.fromParticipantId as string,
+            msg.fromVariable as string,
+            msg.toParticipantId as string,
+            msg.toVariable as string,
+          );
+        }
+        break;
+      }
+
       case "fetchFmus": {
         try {
           const resp = await fetch(`${apiUrl}/api/v1/fmus`);
@@ -399,8 +417,8 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
 
   // ── Publish Model ──
 
-  /** Publish the active Modelica model as a local participant using LSP simulation. */
-  private async localPublishModel(sessionId: string): Promise<void> {
+  /** Publish the active Modelica model as a local participant (lazy — initialized on session start). */
+  private localPublishModel(sessionId: string): void {
     const session = this.localSessions.get(sessionId);
     if (!session) {
       this.postMessage({ type: "error", message: "Session not found." });
@@ -415,56 +433,24 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
 
     const uri = editor.document.uri.toString();
     const fileName = editor.document.uri.path.split("/").pop()?.replace(".mo", "") ?? "Model";
+    const participantId = `local-p-${Date.now().toString(36)}`;
 
-    try {
-      // Use the LSP to simulate the model
-      const result = await this.client.sendRequest<{
-        t: number[];
-        y: number[][];
-        states: string[];
-        error?: string;
-      }>("modelscript/simulate", {
-        uri,
-        startTime: session.startTime,
-        stopTime: session.stopTime,
-        interval: session.stepSize,
-      });
+    const lspParticipant = new LspSimulatorParticipant(this.client, participantId, fileName, uri);
 
-      if (result.error) {
-        this.postMessage({ type: "error", message: `Simulation failed: ${result.error}` });
-        return;
-      }
+    const participant: LocalParticipant = {
+      id: participantId,
+      modelName: fileName,
+      uri,
+      type: "modelica",
+      variables: 0, // Will be populated after initialization
+      lspParticipant,
+    };
 
-      if (result.t.length === 0) {
-        this.postMessage({ type: "error", message: "Simulation produced no data." });
-        return;
-      }
+    session.participants.push(participant);
 
-      // Register as local participant with pre-computed data
-      const participantId = `local-p-${Date.now().toString(36)}`;
-      const participant: LocalParticipant = {
-        id: participantId,
-        modelName: fileName,
-        type: "modelica",
-        variables: result.states.length,
-        simulationData: {
-          t: result.t,
-          y: result.y,
-          states: result.states,
-        },
-      };
-
-      session.participants.push(participant);
-
-      vscode.window.showInformationMessage(
-        `Published "${fileName}" as participant (${result.states.length} variables, ${result.t.length} steps).`,
-      );
-
-      this.localFetchSessions();
-      this.localFetchParticipants(sessionId);
-    } catch (e) {
-      this.postMessage({ type: "error", message: `Failed to simulate model: ${e}` });
-    }
+    vscode.window.showInformationMessage(`Enrolled "${fileName}" as participant "${participantId}".`);
+    this.localFetchSessions();
+    this.localFetchParticipants(sessionId);
   }
 
   private async publishCurrentModel(sessionId: string): Promise<void> {
@@ -554,6 +540,7 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
       id,
       state: "created",
       participants: [],
+      couplings: [],
       startTime: (msg.startTime as number) ?? 0,
       stopTime: (msg.stopTime as number) ?? 10,
       stepSize: (msg.stepSize as number) ?? 0.01,
@@ -573,120 +560,155 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
     this.postMessage({ type: "sessionList", sessions });
   }
 
-  private localStartSession(sessionId: string): void {
+  /** Start co-simulation by running a Gauss-Seidel orchestrator loop. */
+  private async localStartSession(sessionId: string): Promise<void> {
     const session = this.localSessions.get(sessionId);
     if (!session) return;
+
+    if (session.participants.length === 0) {
+      this.postMessage({ type: "error", message: "No participants enrolled. Publish a model first." });
+      return;
+    }
 
     session.state = "running";
     this.localFetchSessions();
 
-    // Collect all participant data sources
-    const participantsWithData = session.participants.filter((p) => p.simulationData);
+    const { startTime, stopTime, stepSize, realtimeFactor } = session;
+    const participants = session.participants;
 
-    if (participantsWithData.length > 0) {
-      // Stream pre-computed simulation results from real participants
-      this.streamParticipantData(sessionId, session, participantsWithData);
-    } else {
-      // No real participants — generate demo sine-wave data
-      this.streamDemoData(sessionId, session);
-    }
-  }
+    try {
+      // ── Phase 1: Initialize all participants via LSP ──
+      await Promise.all(participants.map((p) => p.lspParticipant.initialize(startTime, stopTime, stepSize)));
 
-  /** Stream pre-computed simulation data from enrolled participants. */
-  private streamParticipantData(sessionId: string, session: LocalSession, participants: LocalParticipant[]): void {
-    let stepIndex = 0;
-
-    // Find the shortest time series to use as pacing reference
-    const minLength = Math.min(...participants.map((p) => p.simulationData?.t.length ?? 0));
-    if (minLength === 0) {
-      session.state = "completed";
-      this.localFetchSessions();
-      return;
-    }
-
-    // Compute interval from the first participant's time series
-    const refData = participants[0].simulationData;
-    const dt = refData && refData.t.length > 1 ? refData.t[1] - refData.t[0] : session.stepSize;
-    const intervalMs = Math.max(16, (dt * 1000) / (session.realtimeFactor || 1));
-
-    const timer = setInterval(() => {
-      if (stepIndex >= minLength) {
-        clearInterval(timer);
-        this.localSimTimers.delete(sessionId);
-        session.state = "completed";
-        this.localFetchSessions();
-        return;
+      // Update variable counts after init
+      for (const p of participants) {
+        p.variables = p.lspParticipant.getVariables().length;
       }
+      this.localFetchParticipants(sessionId);
 
-      for (const participant of participants) {
-        const simData = participant.simulationData;
-        if (!simData) continue;
+      // ── Phase 2: Step loop (Gauss-Seidel) ──
+      const wallClockStart = performance.now();
+      const simTimeStart = startTime;
+      let t = startTime;
+      let aborted = false;
 
-        const time = simData.t[stepIndex];
+      // Store abort handle so localStopSession can break the loop
+      const abortRef = { aborted: false };
+      this.localSimTimers.set(sessionId, { [Symbol.toPrimitive]: () => 0, abortRef } as unknown as ReturnType<
+        typeof setInterval
+      >);
 
-        for (let vi = 0; vi < simData.states.length; vi++) {
-          const variable = simData.states[vi];
-          const value = simData.y[stepIndex]?.[vi] ?? 0;
-          const topic = `cosim/sessions/${sessionId}/participants/${participant.id}/data`;
-          const payload = JSON.stringify({ time, variable, value });
+      while (t < stopTime - 1e-15 && !abortRef.aborted) {
+        const effectiveH = Math.min(stepSize, stopTime - t);
 
-          this.localBroker?.publish(topic, payload);
-          this.localHistorian?.record(sessionId, participant.id, variable, value, time);
-          SimulationPanel.postLiveDataPoint(variable, time, value);
+        // ── Apply couplings (output → input) ──
+        const allOutputs = new Map<string, Map<string, number>>();
+        for (const p of participants) {
+          const outputs = await p.lspParticipant.getOutputs();
+          allOutputs.set(p.id, outputs);
+        }
+
+        // Route coupled values
+        for (const coupling of session.couplings) {
+          const sourceOutputs = allOutputs.get(coupling.from.participantId);
+          if (!sourceOutputs) continue;
+          const value = sourceOutputs.get(coupling.from.variableName);
+          if (value === undefined) continue;
+
+          const targetParticipant = participants.find((p) => p.id === coupling.to.participantId);
+          if (targetParticipant) {
+            await targetParticipant.lspParticipant.setInputs(new Map([[coupling.to.variableName, value]]));
+          }
+        }
+
+        // ── Step all participants ──
+        for (const p of participants) {
+          await p.lspParticipant.doStep(t, effectiveH);
+        }
+
+        const time = t + effectiveH;
+
+        // ── Publish results ──
+        for (const p of participants) {
+          const allValues = p.lspParticipant.allValues;
+          for (const [variable, value] of Object.entries(allValues)) {
+            const topic = `cosim/sessions/${sessionId}/participants/${p.id}/data`;
+            const payload = JSON.stringify({ time, variable, value });
+            this.localBroker?.publish(topic, payload);
+            this.localHistorian?.record(sessionId, p.id, variable, value, time);
+            SimulationPanel.postLiveDataPoint(`${p.modelName}.${variable}`, time, value);
+          }
+        }
+
+        t += effectiveH;
+
+        // Real-time pacing
+        if (realtimeFactor > 0) {
+          const simElapsed = t - simTimeStart;
+          const wallTargetMs = (simElapsed / realtimeFactor) * 1000;
+          const wallElapsedMs = performance.now() - wallClockStart;
+          const waitMs = wallTargetMs - wallElapsedMs;
+          if (waitMs > 1) {
+            await new Promise<void>((resolve) => setTimeout(resolve, waitMs));
+          }
         }
       }
 
-      stepIndex++;
-    }, intervalMs);
+      aborted = abortRef.aborted;
 
-    this.localSimTimers.set(sessionId, timer);
+      // ── Phase 3: Terminate ──
+      await Promise.allSettled(participants.map((p) => p.lspParticipant.terminate()));
+      this.localSimTimers.delete(sessionId);
+
+      session.state = aborted ? "completed" : "completed";
+      this.localFetchSessions();
+    } catch (e) {
+      session.state = "error";
+      this.localFetchSessions();
+      this.postMessage({ type: "error", message: `Co-simulation failed: ${e}` });
+
+      // Best-effort terminate
+      await Promise.allSettled(participants.map((p) => p.lspParticipant.terminate())).catch(() => undefined);
+    }
   }
 
-  /** Stream demo sine-wave data when no real participants are enrolled. */
-  private streamDemoData(sessionId: string, session: LocalSession): void {
-    let simTime = session.startTime;
-    const intervalMs = Math.max(50, session.stepSize * 1000 * (session.realtimeFactor || 1));
+  /** Add a variable coupling between two participants. */
+  private localAddCoupling(
+    sessionId: string,
+    fromParticipantId: string,
+    fromVariable: string,
+    toParticipantId: string,
+    toVariable: string,
+  ): void {
+    const session = this.localSessions.get(sessionId);
+    if (!session) return;
 
-    const timer = setInterval(() => {
-      if (simTime > session.stopTime) {
-        clearInterval(timer);
-        this.localSimTimers.delete(sessionId);
-        session.state = "completed";
-        this.localFetchSessions();
-        return;
-      }
+    session.couplings.push({
+      from: { participantId: fromParticipantId, variableName: fromVariable },
+      to: { participantId: toParticipantId, variableName: toVariable },
+    });
 
-      // Generate a demo signal (no real participants)
-      const topic = `cosim/sessions/${sessionId}/demo/data`;
-      const value = Math.sin(simTime * 2 * Math.PI);
-      const payload = JSON.stringify({ time: simTime, variable: "demo", value });
-
-      this.localBroker?.publish(topic, payload);
-      this.localHistorian?.record(sessionId, "demo", "demo", value, simTime);
-
-      this.postMessage({
-        type: "liveDataRelay",
-        sessionId,
-        participantId: "demo",
-        variable: "demo",
-        value,
-        time: simTime,
-      });
-      SimulationPanel.postLiveDataPoint("demo", simTime, value);
-
-      simTime += session.stepSize;
-    }, intervalMs);
-
-    this.localSimTimers.set(sessionId, timer);
+    this.postMessage({
+      type: "couplingAdded",
+      sessionId,
+      couplings: session.couplings,
+    });
   }
 
   private localStopSession(sessionId: string): void {
     const session = this.localSessions.get(sessionId);
     if (!session) return;
 
-    const timer = this.localSimTimers.get(sessionId);
-    if (timer) {
-      clearInterval(timer);
+    // Signal the orchestrator loop to stop
+    const timerEntry = this.localSimTimers.get(sessionId);
+    if (timerEntry) {
+      // For async orchestrator: set abort flag
+      const abortRef = (timerEntry as unknown as { abortRef?: { aborted: boolean } }).abortRef;
+      if (abortRef) {
+        abortRef.aborted = true;
+      } else {
+        clearInterval(timerEntry);
+      }
       this.localSimTimers.delete(sessionId);
     }
 
