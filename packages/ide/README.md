@@ -19,7 +19,7 @@ Browser-based VS Code IDE for Modelica development. Hosts VS Code Web with the M
 | ---------------------- | ------------------------------------------- |
 | `npm run build`        | Download VS Code, build extensions + server |
 | `npm run build-static` | Build a fully static deployment             |
-| `npm run dev`          | Start development server (port 3200)        |
+| `npm run dev`          | Start development server (port 3003)        |
 | `npm run lint`         | Run ESLint on `src/`                        |
 
 ## Running
@@ -28,7 +28,7 @@ Browser-based VS Code IDE for Modelica development. Hosts VS Code Web with the M
 npm run dev
 ```
 
-The IDE starts on http://localhost:3200. From the landing page you can:
+The IDE starts on http://localhost:3003. From the landing page you can:
 
 - Enter a GitHub repository URL to open it in the editor
 - Click a project template to start a new in-memory project
@@ -39,7 +39,7 @@ The IDE starts on http://localhost:3200. From the landing page you can:
 docker compose up ide
 ```
 
-Exposes port **3200**.
+Exposes port **3003**.
 
 ## Architecture
 

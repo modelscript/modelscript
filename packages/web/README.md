@@ -18,7 +18,7 @@ Web frontend for browsing and exploring Modelica libraries. Built with React and
 | Command           | Description                       |
 | ----------------- | --------------------------------- |
 | `npm run build`   | Type-check and build with Vite    |
-| `npm run dev`     | Start Vite dev server (port 5174) |
+| `npm run dev`     | Start Vite dev server (port 3001) |
 | `npm run lint`    | Run ESLint                        |
 | `npm run preview` | Preview production build          |
 
@@ -28,7 +28,7 @@ Web frontend for browsing and exploring Modelica libraries. Built with React and
 npm run dev
 ```
 
-The web app starts on http://localhost:5174.
+The web app starts on http://localhost:3001.
 
 ## Docker
 
@@ -36,4 +36,4 @@ The web app starts on http://localhost:5174.
 docker compose up web
 ```
 
-Exposes port **5174**.
+Exposes port **3001**.

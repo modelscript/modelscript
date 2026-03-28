@@ -174,7 +174,7 @@ COPY --from=build-ide /app/packages/vscode/language-configuration.json packages/
 COPY --from=build-ide /app/packages/morsel/public packages/morsel/public
 COPY --from=build-ide /app/node_modules/@vscode node_modules/@vscode
 COPY --from=download-model /app/packages/ide/models packages/ide/models
-EXPOSE 3200
+EXPOSE 3003
 ENV NODE_ENV=production
-ENV PORT=3200
+ENV PORT=3003
 CMD ["node", "packages/ide/dist/server.js"]

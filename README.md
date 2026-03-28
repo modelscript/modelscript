@@ -88,10 +88,10 @@ This launches:
 
 | Service               | URL                   | Description                                  |
 | --------------------- | --------------------- | -------------------------------------------- |
-| Morsel (editor)       | http://localhost:5173 | Visual editor with diagrams and simulation   |
-| Web (library browser) | http://localhost:5174 | Browse and explore Modelica libraries        |
+| Morsel (editor)       | http://localhost:3002 | Visual editor with diagrams and simulation   |
+| Web (library browser) | http://localhost:3001 | Browse and explore Modelica libraries        |
 | API                   | http://localhost:3000 | REST API for simulation, publishing, queries |
-| IDE (VS Code Web)     | http://localhost:3200 | Browser-based VS Code with Modelica support  |
+| IDE (VS Code Web)     | http://localhost:3003 | Browser-based VS Code with Modelica support  |
 
 #### AI Chat (Optional)
 
@@ -171,9 +171,9 @@ npm run docker:up      # Start containers
 | Service | Port | URL                   |
 | ------- | ---- | --------------------- |
 | API     | 3000 | http://localhost:3000 |
-| Morsel  | 5173 | http://localhost:5173 |
-| Web     | 5174 | http://localhost:5174 |
-| IDE     | 3200 | http://localhost:3200 |
+| Morsel  | 3002 | http://localhost:3002 |
+| Web     | 3001 | http://localhost:3001 |
+| IDE     | 3003 | http://localhost:3003 |
 
 ## License
 

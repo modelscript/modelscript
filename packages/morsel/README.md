@@ -20,7 +20,7 @@ Visual Modelica editor and diagram viewer. Built with React, React Router, Monac
 | Command             | Description                          |
 | ------------------- | ------------------------------------ |
 | `npm run build`     | Build with React Router              |
-| `npm run dev`       | Start development server (port 5173) |
+| `npm run dev`       | Start development server (port 3002) |
 | `npm run start`     | Serve production build               |
 | `npm run typecheck` | Type generation and TypeScript check |
 
@@ -30,7 +30,7 @@ Visual Modelica editor and diagram viewer. Built with React, React Router, Monac
 npm run dev
 ```
 
-The editor starts on http://localhost:5173.
+The editor starts on http://localhost:3002.
 
 ## Docker
 
@@ -38,4 +38,4 @@ The editor starts on http://localhost:5173.
 docker compose up morsel
 ```
 
-Exposes port **5173**.
+Exposes port **3002**.

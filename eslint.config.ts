@@ -8,6 +8,16 @@ export default defineConfig([
   tseslint.configs.strict,
   tseslint.configs.stylistic,
   {
+    languageOptions: {
+      parserOptions: {
+        projectService: {
+          allowDefaultProject: ["eslint.config.ts"],
+        },
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+  },
+  {
     files: ["packages/morsel/**/*.{ts,tsx}"],
     rules: {
       "@typescript-eslint/no-explicit-any": "off",

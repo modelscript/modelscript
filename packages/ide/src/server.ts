@@ -9,7 +9,7 @@ import { createProxyMiddleware } from "http-proxy-middleware";
 import { join, resolve } from "path";
 
 const __dirname = import.meta.dirname;
-const PORT = parseInt(process.env.PORT || "3200", 10);
+const PORT = parseInt(process.env.PORT || "3003", 10);
 const HOST = process.env.HOST || "localhost";
 
 // Paths

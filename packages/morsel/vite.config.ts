@@ -61,7 +61,7 @@ export default defineConfig(({ isSsrBuild }) => {
       },
     },
     server: {
-      port: 5173,
+      port: 3002,
       strictPort: true,
       proxy: {
         "/api/v1": {

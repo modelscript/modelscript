@@ -5,9 +5,9 @@
   "scripts": {
     "prebuild": "node ../../scripts/download-msl.cjs && cp -n ../../scripts/ModelicaStandardLibrary_v4.1.0.zip public/ModelicaStandardLibrary_v4.1.0.zip 2>/dev/null; true",
     "build": "react-router build",
-    "dev": "react-router dev",
+    "dev": "react-router dev --port 3002",
     "lint": "eslint app/",
-    "start": "react-router-serve ./build/server/index.js",
+    "start": "PORT=3002 react-router-serve ./build/server/index.js",
     "typecheck": "react-router typegen && tsc"
   },
   "dependencies": {
