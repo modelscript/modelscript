@@ -3,54 +3,252 @@
 /**
  * FMU-native co-simulation participant.
  *
- * Spawns a thin C harness subprocess that dlopen()s the FMU's shared library
- * and communicates via stdin/stdout JSON-RPC.
+ * Spawns a thin harness subprocess that loads the FMU shared library
+ * and communicates via a simple JSON-RPC protocol over stdin/stdout.
  *
- * This is a placeholder for Phase 4 implementation.
+ * Architecture:
+ *   Orchestrator ↔ FmuNativeParticipant ↔ [stdin/stdout] ↔ fmu-harness binary ↔ FMU .so/.dll
+ *
+ * The harness binary must be pre-built and available on PATH or at
+ * a configured location. It implements a simple protocol:
+ *
+ *   → {"method":"initialize", "params":{"startTime":0,"stopTime":10,"stepSize":0.01}}
+ *   ← {"result":"ok"}
+ *   → {"method":"setInputs", "params":{"values":{"x":1.0}}}
+ *   ← {"result":"ok"}
+ *   → {"method":"doStep", "params":{"currentTime":0,"stepSize":0.01}}
+ *   ← {"result":"ok"}
+ *   → {"method":"getOutputs"}
+ *   ← {"result":{"y":2.0}}
+ *   → {"method":"terminate"}
+ *   ← {"result":"ok"}
  */
 
-import type { ParticipantMetadata } from "../mqtt/protocol.js";
+import type { ChildProcess } from "child_process";
+import { spawn } from "child_process";
+import { unlinkSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
+import { createInterface, type Interface } from "readline";
+import type { FmiModelDescription, FmiScalarVariable } from "../fmu/model-description.js";
+import type { FmuStorage } from "../fmu/storage.js";
+import type { ParticipantMetadata, ParticipantVariable } from "../mqtt/protocol.js";
 import type { CoSimParticipant } from "../participant.js";
 
+/** JSON-RPC request to the harness. */
+interface HarnessRequest {
+  method: string;
+  params?: Record<string, unknown>;
+  id: number;
+}
+
+/** JSON-RPC response from the harness. */
+interface HarnessResponse {
+  result?: unknown;
+  error?: { code: number; message: string };
+  id: number;
+}
+
 /**
- * Placeholder for FMU-native participant.
- * Will be fully implemented in Phase 4.
+ * Options for creating an FMU-native participant.
+ */
+export interface FmuNativeParticipantOptions {
+  /** Unique participant ID. */
+  id: string;
+  /** FMU ID in the FmuStorage. */
+  fmuId: string;
+  /** FmuStorage instance. */
+  storage: FmuStorage;
+  /** Path to the FMU harness binary. Default: "fmu-harness" on PATH. */
+  harnessPath?: string | undefined;
+  /** Optional SVG icon override. */
+  iconSvg?: string | undefined;
+}
+
+/**
+ * Co-simulation participant backed by a native FMU shared library.
+ *
+ * Uses a subprocess harness to dlopen() the FMU and communicate
+ * via JSON-RPC over stdin/stdout. Supports concurrent step execution
+ * and graceful shutdown with timeout.
  */
 export class FmuNativeParticipant implements CoSimParticipant {
   readonly id: string;
   readonly modelName: string;
   readonly metadata: ParticipantMetadata;
 
-  constructor(id: string, modelName: string) {
-    this.id = id;
-    this.modelName = modelName;
+  private readonly fmuArchivePath: string;
+  private readonly harnessPath: string;
+  private readonly modelDesc: FmiModelDescription;
+
+  private process: ChildProcess | null = null;
+  private readline: Interface | null = null;
+  private requestId = 0;
+  private pendingRequests = new Map<number, { resolve: (value: unknown) => void; reject: (err: Error) => void }>();
+
+  constructor(options: FmuNativeParticipantOptions) {
+    this.id = options.id;
+    this.harnessPath = options.harnessPath ?? "fmu-harness";
+
+    // Load metadata from storage
+    const stored = options.storage.get(options.fmuId);
+    if (!stored) {
+      throw new Error(`FMU '${options.fmuId}' not found in storage`);
+    }
+
+    const archive = options.storage.getArchive(options.fmuId);
+    if (!archive) {
+      throw new Error(`FMU archive for '${options.fmuId}' not found`);
+    }
+
+    this.modelDesc = stored.modelDescription;
+    this.modelName = this.modelDesc.modelName;
+
+    // Write archive to temp file for harness
+    this.fmuArchivePath = join(tmpdir(), `fmu-${options.fmuId}-${Date.now()}.fmu`);
+    writeFileSync(this.fmuArchivePath, archive);
+
+    // Build participant metadata
+    const variables: ParticipantVariable[] = this.modelDesc.variables
+      .filter((v) => v.causality !== "local")
+      .map((v: FmiScalarVariable) => ({
+        name: v.name,
+        causality:
+          v.causality === "calculatedParameter"
+            ? ("parameter" as const)
+            : (v.causality as ParticipantVariable["causality"]),
+        type: (v.type === "Enumeration" ? "Integer" : v.type) as ParticipantVariable["type"],
+        unit: v.unit,
+        start: typeof v.start === "number" ? v.start : undefined,
+        description: v.description,
+      }));
+
     this.metadata = {
-      participantId: id,
-      modelName,
+      participantId: this.id,
+      modelName: this.modelName,
       type: "fmu-native",
       classKind: "model",
-      variables: [],
+      description: this.modelDesc.description,
+      variables,
+      iconSvg: options.iconSvg,
       timestamp: new Date().toISOString(),
     };
   }
 
-  async initialize(): Promise<void> {
-    throw new Error("FMU-native participant not yet implemented (Phase 4)");
+  async initialize(startTime: number, stopTime: number, stepSize: number): Promise<void> {
+    // Spawn the harness subprocess
+    this.process = spawn(this.harnessPath, [this.fmuArchivePath], {
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+
+    // Set up readline for JSON-RPC responses
+    if (this.process.stdout) {
+      this.readline = createInterface({ input: this.process.stdout });
+      this.readline.on("line", (line: string) => {
+        try {
+          const response = JSON.parse(line) as HarnessResponse;
+          const pending = this.pendingRequests.get(response.id);
+          if (pending) {
+            this.pendingRequests.delete(response.id);
+            if (response.error) {
+              pending.reject(new Error(`Harness error: ${response.error.message}`));
+            } else {
+              pending.resolve(response.result);
+            }
+          }
+        } catch {
+          // Malformed response
+        }
+      });
+    }
+
+    this.process.on("exit", (code) => {
+      // Reject all pending requests on process exit
+      for (const [id, pending] of this.pendingRequests) {
+        pending.reject(new Error(`Harness process exited with code ${code}`));
+        this.pendingRequests.delete(id);
+      }
+    });
+
+    // Send initialize command
+    await this.rpc("initialize", { startTime, stopTime, stepSize });
   }
 
-  async doStep(): Promise<void> {
-    throw new Error("FMU-native participant not yet implemented (Phase 4)");
+  async doStep(currentTime: number, stepSize: number): Promise<void> {
+    await this.rpc("doStep", { currentTime, stepSize });
   }
 
   async getOutputs(): Promise<Map<string, number>> {
-    return new Map();
+    const result = (await this.rpc("getOutputs")) as Record<string, number>;
+    return new Map(Object.entries(result));
   }
 
-  async setInputs(): Promise<void> {
-    // no-op placeholder
+  async setInputs(values: Map<string, number>): Promise<void> {
+    await this.rpc("setInputs", { values: Object.fromEntries(values) });
   }
 
   async terminate(): Promise<void> {
-    // no-op placeholder
+    try {
+      await this.rpc("terminate");
+    } catch {
+      // Process may have already exited
+    }
+
+    // Clean up
+    if (this.readline) {
+      this.readline.close();
+      this.readline = null;
+    }
+
+    if (this.process) {
+      this.process.kill("SIGTERM");
+      // Force kill after 5s
+      const timeout = setTimeout(() => {
+        this.process?.kill("SIGKILL");
+      }, 5000);
+      this.process.on("exit", () => clearTimeout(timeout));
+      this.process = null;
+    }
+
+    // Clean up temp archive file
+    try {
+      unlinkSync(this.fmuArchivePath);
+    } catch {
+      // Best-effort cleanup
+    }
+  }
+
+  // ── JSON-RPC ──
+
+  private rpc(method: string, params?: Record<string, unknown>): Promise<unknown> {
+    return new Promise<unknown>((resolve, reject) => {
+      if (!this.process?.stdin?.writable) {
+        reject(new Error("Harness process not running"));
+        return;
+      }
+
+      const id = ++this.requestId;
+      const request: HarnessRequest = { method, id };
+      if (params) request.params = params;
+
+      // Timeout after 30s
+      const timer = setTimeout(() => {
+        this.pendingRequests.delete(id);
+        reject(new Error(`RPC timeout for '${method}'`));
+      }, 30_000);
+
+      this.pendingRequests.set(id, {
+        resolve: (value) => {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        reject: (err) => {
+          clearTimeout(timer);
+          reject(err);
+        },
+      });
+
+      this.process.stdin.write(JSON.stringify(request) + "\n");
+    });
   }
 }
