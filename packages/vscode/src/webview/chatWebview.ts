@@ -37,24 +37,13 @@ let isGenerating = false;
 const conversation: ChatMessage[] = [];
 const pendingToolCalls = new Map<string, (result: unknown) => void>();
 
+// Workspace context (updated automatically by extension host)
+let activeFileName: string | null = null;
+let activeFileContent: string | null = null;
+
 const MODEL_ID = "Qwen3-0.6B-q4f16_1-MLC";
 
-const SYSTEM_PROMPT = `You are ModelScript AI, an expert Modelica language assistant integrated into the ModelScript IDE.
-
-You help users with:
-- Writing and debugging Modelica models, packages, functions, and connectors
-- Understanding the Modelica Standard Library (MSL) components
-- Setting up simulations and interpreting results
-- Explaining compiler diagnostics and suggesting fixes
-
-You have access to the following tools:
-- modelscript_flatten: Flatten a Modelica class. Use: TOOL_CALL: {"tool":"modelscript_flatten","name":"ClassName"}
-- modelscript_simulate: Simulate a model. Use: TOOL_CALL: {"tool":"modelscript_simulate","name":"ClassName"}
-- modelscript_query: Inspect a class. Use: TOOL_CALL: {"tool":"modelscript_query","name":"ClassName"}
-- modelscript_parse: Parse Modelica code. Use: TOOL_CALL: {"tool":"modelscript_parse","code":"model M end M;"}
-
-When referencing Modelica code, use proper syntax. Be concise and helpful.
-Do not use <think> tags or internal reasoning blocks. Respond directly.`;
+const SYSTEM_PROMPT = `You are ModelScript AI, a Modelica language assistant. Answer questions about Modelica code concisely. When the user provides code context, base your answer on that specific code. Do not use <think> tags.`;
 
 // ── WebLLM Engine (runs in main thread, GPU inference in internal workers) ──
 
@@ -129,7 +118,11 @@ function addMessage(role: "user" | "assistant" | "tool", content: string): HTMLE
 }
 
 function stripThinkTags(text: string): string {
-  return text.replace(/<think>[\s\S]*?<\/think>\s*/g, "").trim();
+  // Strip complete <think>...</think> blocks
+  let cleaned = text.replace(/<think>[\s\S]*?<\/think>\s*/g, "");
+  // Strip incomplete <think> blocks (no closing tag, model was cut off)
+  cleaned = cleaned.replace(/<think>[\s\S]*/g, "");
+  return cleaned.trim();
 }
 
 function formatContent(text: string): string {
@@ -140,7 +133,40 @@ function formatContent(text: string): string {
     '<code style="background:var(--vscode-textCodeBlock-background,#1a1a1a);padding:1px 4px;border-radius:3px;">$1</code>',
   );
   html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  // Display math: $$...$$
+  html = html.replace(/\$\$([\s\S]*?)\$\$/g, (_m, expr) => `<div class="math-block">${renderLatex(expr)}</div>`);
+  // Inline math: $...$
+  html = html.replace(/\$([^$\n]+)\$/g, (_m, expr) => `<span class="math-inline">${renderLatex(expr)}</span>`);
   return html;
+}
+
+function renderLatex(expr: string): string {
+  let text = expr.trim();
+  // \frac{a}{b} → a/b
+  text = text.replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, "($1)/($2)");
+  // \text{...} → ...
+  text = text.replace(/\\text\{([^}]+)\}/g, "$1");
+  // \cdot → ·
+  text = text.replace(/\\cdot/g, "·");
+  // \times → ×
+  text = text.replace(/\\times/g, "×");
+  // \leq, \geq, \neq
+  text = text.replace(/\\leq/g, "≤").replace(/\\geq/g, "≥").replace(/\\neq/g, "≠");
+  // \sum, \prod, \int
+  text = text
+    .replace(/\\sum/g, "∑")
+    .replace(/\\prod/g, "∏")
+    .replace(/\\int/g, "∫");
+  // \infty → ∞
+  text = text.replace(/\\infty/g, "∞");
+  // \sqrt{x} → √(x)
+  text = text.replace(/\\sqrt\{([^}]+)\}/g, "√($1)");
+  // \partial → ∂
+  text = text.replace(/\\partial/g, "∂");
+  // d(...)/dt style: keep as-is
+  // Remove remaining backslashes from unknown commands
+  text = text.replace(/\\([a-zA-Z]+)/g, "$1");
+  return text;
 }
 
 function addTypingIndicator(): HTMLElement {
@@ -172,12 +198,8 @@ window.addEventListener("message", (event) => {
       }
       break;
     case "activeFileContext":
-      if (msg.content) {
-        conversation.push({
-          role: "system",
-          content: `The user currently has the file "${msg.fileName}" open:\n\`\`\`modelica\n${msg.content}\n\`\`\``,
-        });
-      }
+      activeFileName = msg.fileName ?? null;
+      activeFileContent = msg.content ?? null;
       break;
   }
 });
@@ -193,9 +215,22 @@ async function sendMessage(): Promise<void> {
   inputEl.style.height = "36px";
   sendBtn.disabled = true;
 
+  // Show what the user typed, but send augmented version with context to the model
   addMessage("user", text);
-  conversation.push({ role: "user", content: text });
 
+  // Build the augmented user message with workspace context prepended
+  let augmentedText = "";
+  if (activeFileName && activeFileContent) {
+    const lines = activeFileContent.split("\n");
+    const truncated = lines.length > 25 ? lines.slice(0, 25).join("\n") + "\n// ..." : activeFileContent;
+    augmentedText += `Here is the code from "${activeFileName}" currently open in the editor:\n${truncated}\n\n`;
+  }
+  augmentedText += text;
+
+  conversation.push({ role: "user", content: augmentedText });
+  console.log("[chat] context:", { activeFile: activeFileName, hasContent: !!activeFileContent });
+
+  // Build messages: short system prompt + conversation with augmented user messages
   const messages: ChatMessage[] = [{ role: "system", content: SYSTEM_PROMPT }, ...conversation];
 
   const typingEl = addTypingIndicator();
@@ -206,18 +241,66 @@ async function sendMessage(): Promise<void> {
     const completion = await engine.chat.completions.create({
       messages,
       temperature: 0.7,
-      max_tokens: 4096,
+      max_tokens: 2048,
       stream: false,
     });
 
-    typingEl.remove();
-    const resultText = completion.choices?.[0]?.message?.content ?? "";
+    let rawText = completion.choices?.[0]?.message?.content ?? "";
+    let finishReason = completion.choices?.[0]?.finish_reason ?? "stop";
+    let visibleText = stripThinkTags(rawText);
 
-    addMessage("assistant", resultText);
-    conversation.push({ role: "assistant", content: resultText });
+    // If the model only produced <think> content, retry once with a direct instruction
+    if (!visibleText) {
+      statusEl.textContent = "Retrying...";
+      const retryMessages = [
+        { role: "system" as const, content: "Answer directly and concisely. No reasoning tags." },
+        ...conversation,
+      ];
+      const retry = await engine.chat.completions.create({
+        messages: retryMessages,
+        temperature: 0.5,
+        max_tokens: 2048,
+        stream: false,
+      });
+      rawText = retry.choices?.[0]?.message?.content ?? "";
+      finishReason = retry.choices?.[0]?.finish_reason ?? "stop";
+      visibleText = stripThinkTags(rawText);
+    }
+
+    // If truncated (finish_reason="length"), try one continuation with stripped content
+    if (finishReason === "length" && visibleText) {
+      statusEl.textContent = "Continuing...";
+      const contMessages = [
+        ...messages,
+        { role: "assistant" as const, content: visibleText },
+        { role: "user" as const, content: "Continue." },
+      ];
+      const cont = await engine.chat.completions.create({
+        messages: contMessages,
+        temperature: 0.7,
+        max_tokens: 2048,
+        stream: false,
+      });
+      const contChunk = stripThinkTags(cont.choices?.[0]?.message?.content ?? "");
+      if (contChunk) {
+        visibleText += " " + contChunk;
+        rawText += cont.choices?.[0]?.message?.content ?? "";
+      }
+    }
+
+    typingEl.remove();
+    statusEl.textContent = "Qwen3-0.6B ready";
+
+    if (visibleText) {
+      addMessage("assistant", visibleText);
+    } else {
+      addMessage("assistant", "I couldn't generate a response. Try a shorter or more specific question.");
+    }
+
+    conversation.push({ role: "assistant", content: visibleText || rawText });
 
     // Check for tool calls in the response
-    const toolCallMatch = resultText.match(/TOOL_CALL:\s*(\{[\s\S]*?\})/);
+    const toolCallMatch = visibleText.match(/TOOL_CALL:\s*(\{[\s\S]*?\})/);
     if (toolCallMatch) {
       try {
         const toolReq = JSON.parse(toolCallMatch[1]);
@@ -279,3 +362,6 @@ inputEl.addEventListener("input", () => {
 inputEl.disabled = false;
 sendBtn.disabled = false;
 inputEl.focus();
+
+// Request workspace context now that the script is loaded
+vscode.postMessage({ type: "getActiveFileContext" });

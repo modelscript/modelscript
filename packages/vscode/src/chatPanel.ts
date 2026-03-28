@@ -49,10 +49,23 @@ export class ChatPanel {
           case "getActiveFileContext":
             this.sendActiveFileContext();
             break;
+          case "listClasses":
+            await this.handleListClasses(msg);
+            break;
         }
       },
       null,
       this.disposables,
+    );
+
+    // Auto-send active file context when panel opens
+    this.sendActiveFileContext();
+
+    // Re-send active file context when user switches editors
+    this.disposables.push(
+      vscode.window.onDidChangeActiveTextEditor(() => {
+        this.sendActiveFileContext();
+      }),
     );
 
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
@@ -87,8 +100,28 @@ export class ChatPanel {
     }
   }
 
+  private async handleListClasses(msg: { id: string }) {
+    try {
+      const result = (await this.client.sendRequest("modelscript/listClasses")) as {
+        classes: { name: string; kind: string; uri: string }[];
+      };
+      this.panel.webview.postMessage({ type: "classListResult", id: msg.id, result });
+    } catch (e) {
+      this.panel.webview.postMessage({
+        type: "classListResult",
+        id: msg.id,
+        result: { classes: [], error: e instanceof Error ? e.message : String(e) },
+      });
+    }
+  }
+
   private sendActiveFileContext() {
-    const editor = vscode.window.activeTextEditor;
+    // activeTextEditor is undefined when the webview panel has focus,
+    // so fall back to visibleTextEditors to find any open Modelica file.
+    let editor = vscode.window.activeTextEditor;
+    if (!editor || editor.document.languageId !== "modelica") {
+      editor = vscode.window.visibleTextEditors.find((e) => e.document.languageId === "modelica");
+    }
     if (editor && editor.document.languageId === "modelica") {
       this.panel.webview.postMessage({
         type: "activeFileContext",
@@ -249,6 +282,25 @@ export class ChatPanel {
     @keyframes blink {
       0%, 80%, 100% { opacity: 0.4; }
       40% { opacity: 1; }
+    }
+
+    /* Math rendering */
+    .math-inline {
+      font-family: 'Cambria Math', 'Latin Modern Math', 'STIX Two Math', serif;
+      font-style: italic;
+      padding: 0 2px;
+      color: var(--vscode-editor-foreground, #d4d4d4);
+    }
+    .math-block {
+      font-family: 'Cambria Math', 'Latin Modern Math', 'STIX Two Math', serif;
+      font-style: italic;
+      display: block;
+      text-align: center;
+      padding: 6px 8px;
+      margin: 4px 0;
+      background: var(--vscode-textCodeBlock-background, #1a1a1a);
+      border-radius: 4px;
+      color: var(--vscode-editor-foreground, #d4d4d4);
     }
 
     /* Input area */

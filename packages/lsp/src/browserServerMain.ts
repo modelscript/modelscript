@@ -3390,5 +3390,32 @@ connection.onRequest(
   },
 );
 
+// List all top-level classes across all loaded documents (for AI chat context)
+connection.onRequest("modelscript/listClasses", (): { classes: { name: string; kind: string; uri: string }[] } => {
+  const classes: { name: string; kind: string; uri: string }[] = [];
+  const seen = new Set<string>();
+
+  for (const [uri, ctx] of documentContexts.entries()) {
+    try {
+      for (const element of ctx.elements) {
+        if (element instanceof ModelicaClassInstance && element.name) {
+          if (!seen.has(element.name)) {
+            seen.add(element.name);
+            classes.push({
+              name: element.name,
+              kind: element.classKind ?? "class",
+              uri,
+            });
+          }
+        }
+      }
+    } catch {
+      // Skip problematic contexts
+    }
+  }
+
+  return { classes };
+});
+
 // Listen on the connection
 connection.listen();
