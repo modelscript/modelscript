@@ -3,14 +3,18 @@
 /**
  * FMU (Functional Mock-up Interface) entity support.
  *
- * When an FMI 2.0 `modelDescription.xml` file is found in the workspace,
- * it is represented as a `ModelicaFmuEntity` — a specialization of
+ * When an FMI 2.0 `.fmu` archive is found in the workspace, it is
+ * represented as a `ModelicaFmuEntity` — a specialization of
  * `ModelicaClassInstance` that exposes FMU scalar variables as synthetic
  * Modelica component instances.  This lets other Modelica models reference
  * FMU participants seamlessly via normal name resolution and `connect`
  * equations.
+ *
+ * The entity reads `modelDescription.xml` directly from the `.fmu` ZIP
+ * archive, so no separate XML file is needed.
  */
 
+import { inflateRaw } from "pako";
 import type { Scope } from "../scope.js";
 import type { IModelicaModelVisitor } from "./model.js";
 import {
@@ -85,10 +89,67 @@ function parseFmuModelDescription(xml: string): {
   return { modelName, description, variables };
 }
 
+// ── Lightweight ZIP reader (browser-safe, uses pako) ──
+
+/**
+ * Extract a file from a ZIP archive by name.
+ * Supports STORED (method 0) and DEFLATED (method 8) entries.
+ */
+function extractFromZip(zipData: Uint8Array, targetName: string): Uint8Array | null {
+  // Find End of Central Directory
+  let eocdOffset = -1;
+  for (let i = zipData.length - 22; i >= 0; i--) {
+    if (zipData[i] === 0x50 && zipData[i + 1] === 0x4b && zipData[i + 2] === 0x05 && zipData[i + 3] === 0x06) {
+      eocdOffset = i;
+      break;
+    }
+  }
+  if (eocdOffset === -1) return null;
+
+  const view = new DataView(zipData.buffer, zipData.byteOffset, zipData.byteLength);
+  const cdOffset = view.getUint32(eocdOffset + 16, true);
+  const cdSize = view.getUint32(eocdOffset + 12, true);
+  const cdEnd = cdOffset + cdSize;
+
+  // Scan central directory
+  let pos = cdOffset;
+  while (pos < cdEnd) {
+    if (view.getUint32(pos, true) !== 0x02014b50) break;
+    const compressionMethod = view.getUint16(pos + 10, true);
+    const compressedSize = view.getUint32(pos + 20, true);
+    const fileNameLength = view.getUint16(pos + 28, true);
+    const extraLength = view.getUint16(pos + 30, true);
+    const commentLength = view.getUint16(pos + 32, true);
+    const localHeaderOffset = view.getUint32(pos + 42, true);
+    const fileName = new TextDecoder().decode(zipData.subarray(pos + 46, pos + 46 + fileNameLength));
+
+    if (fileName === targetName) {
+      // Read from local file header
+      if (view.getUint32(localHeaderOffset, true) !== 0x04034b50) return null;
+      const localFileNameLen = view.getUint16(localHeaderOffset + 26, true);
+      const localExtraLen = view.getUint16(localHeaderOffset + 28, true);
+      const dataStart = localHeaderOffset + 30 + localFileNameLen + localExtraLen;
+
+      if (compressionMethod === 0) {
+        return zipData.subarray(dataStart, dataStart + compressedSize);
+      } else if (compressionMethod === 8) {
+        try {
+          return inflateRaw(zipData.subarray(dataStart, dataStart + compressedSize));
+        } catch {
+          return null;
+        }
+      }
+      return null;
+    }
+    pos += 46 + fileNameLength + extraLength + commentLength;
+  }
+  return null;
+}
+
 // ── ModelicaFmuEntity ──
 
 /**
- * A Modelica class instance backed by an FMI 2.0 model description XML file.
+ * A Modelica class instance backed by an FMI 2.0 `.fmu` archive.
  *
  * Acts as a `block` with input/output connectors derived from the FMU's
  * scalar variables.  The instantiation algorithm creates synthetic
@@ -96,14 +157,14 @@ function parseFmuModelDescription(xml: string): {
  * Modelica models can reference them via normal name resolution.
  */
 export class ModelicaFmuEntity extends ModelicaClassInstance {
-  /** Absolute path to the model description XML file. */
+  /** Absolute path to the FMU archive. */
   path: string;
   /** Parsed FMU scalar variables. */
   fmuVariables: FmuScalarVariable[] = [];
   /** Synthetic component instances created during instantiation. */
   #syntheticComponents: ModelicaComponentInstance[] = [];
   #loaded = false;
-  /** Raw XML content (for browser/memfs environments where path may not be readable). */
+  /** Raw XML content (extracted from the FMU archive or pre-supplied). */
   #xmlContent: string | null = null;
 
   constructor(parent: Scope, path: string, xmlContent?: string) {
@@ -113,7 +174,19 @@ export class ModelicaFmuEntity extends ModelicaClassInstance {
     this.#xmlContent = xmlContent ?? null;
   }
 
-  /** Load from pre-supplied XML content (for browser memfs environments). */
+  /** Create from raw FMU archive bytes (extracts modelDescription.xml from ZIP). */
+  static fromFmu(parent: Scope, name: string, fmuBytes: Uint8Array): ModelicaFmuEntity {
+    const xmlData = extractFromZip(fmuBytes, "modelDescription.xml");
+    if (!xmlData) {
+      throw new Error(`Invalid FMU archive: modelDescription.xml not found in '${name}.fmu'`);
+    }
+    const xmlContent = new TextDecoder().decode(xmlData);
+    const entity = new ModelicaFmuEntity(parent, `__fmu__:${name}`, xmlContent);
+    entity.name = name;
+    return entity;
+  }
+
+  /** Create from pre-parsed XML content (legacy/testing). */
   static fromXml(parent: Scope, name: string, xmlContent: string): ModelicaFmuEntity {
     const entity = new ModelicaFmuEntity(parent, `__fmu__:${name}`, xmlContent);
     entity.name = name;

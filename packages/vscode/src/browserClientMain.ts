@@ -1,4 +1,3 @@
-import { unzipSync } from "fflate";
 import * as vscode from "vscode";
 import { Uri, commands, workspace } from "vscode";
 import { LanguageClientOptions } from "vscode-languageclient";
@@ -134,7 +133,7 @@ export async function activate(context: vscode.ExtensionContext) {
     console.log("[blank-project] Registered memfs:// filesystem provider");
   }
 
-  const documentSelector = [{ language: "modelica" }, { language: "xml" }];
+  const documentSelector = [{ language: "modelica" }, { pattern: "**/*.fmu" }];
 
   // Options to control the language client
   const clientOptions: LanguageClientOptions = {
@@ -607,7 +606,6 @@ async function initWorkspaceAndTree(
             "| `Controller.mo` | Modelica | PI controller with setpoint tracking |",
             "| `Plant.xml` | FMU 2.0 (XML) | First-order plant model description (passthrough mode) |",
             "| `SineWave.fmu` | FMU 2.0 (WASM) | Sine wave generator compiled to WebAssembly |",
-            "| `SineWave.xml` | FMU 2.0 (XML) | Model description for SineWave (LSP resolution) |",
             "",
             "## Running the Co-Simulation",
             "",
@@ -641,18 +639,6 @@ async function initWorkspaceAndTree(
           // Decode the embedded SineWave WASM FMU from base64
           const sineWaveFmuBytes = Uint8Array.from(atob(SINE_WAVE_FMU_BASE64), (c) => c.charCodeAt(0));
 
-          // Extract modelDescription.xml from the FMU ZIP for LSP resolution
-          const sineWaveXmlContent = (() => {
-            try {
-              const files = unzipSync(sineWaveFmuBytes);
-              const xmlData = files["modelDescription.xml"];
-              if (xmlData) return new TextDecoder().decode(xmlData);
-            } catch {
-              // Fallback: extraction failed
-            }
-            return null;
-          })();
-
           // Write all files
           const controllerUri = Uri.joinPath(workspaceUri, "Controller.mo");
           const plantUri = Uri.joinPath(workspaceUri, "Plant.xml");
@@ -675,17 +661,10 @@ async function initWorkspaceAndTree(
           await workspace.fs.writeFile(controllerUri, encoder.encode(controllerMo));
           await workspace.fs.writeFile(plantUri, encoder.encode(plantXml));
           await workspace.fs.writeFile(sineWaveFmuUri, sineWaveFmuBytes);
-          if (sineWaveXmlContent) {
-            const sineWaveXmlUri = Uri.joinPath(workspaceUri, "SineWave.xml");
-            await workspace.fs.writeFile(sineWaveXmlUri, encoder.encode(sineWaveXmlContent));
-            await workspace.openTextDocument(sineWaveXmlUri);
-          }
+          // Open the SineWave.fmu so the LSP creates a ModelicaFmuEntity
+          await workspace.openTextDocument(sineWaveFmuUri);
           await workspace.fs.writeFile(cosimSetupUri, encoder.encode(cosimSetupMo));
           await workspace.fs.writeFile(readmeUri, encoder.encode(readmeMd));
-
-          // Open the Plant.xml first so the LSP creates a ModelicaFmuEntity
-          // This must happen before .mo files so cross-file resolution finds 'Plant'
-          await workspace.openTextDocument(plantUri);
 
           // Open the co-sim setup model as the primary file
           filename = "CosimSetup.mo";
@@ -754,14 +733,14 @@ async function scanWorkspaceFiles(): Promise<vscode.Uri[]> {
           console.warn(`[workspace-scan] Failed to open ${uri.path}:`, e);
         }
       }
-      // Also scan for FMU model description XML files
-      const xmlFiles = await workspace.findFiles("**/*.xml");
-      for (const uri of xmlFiles) {
+      // Also scan for FMU archive files
+      const fmuFiles = await workspace.findFiles("**/*.fmu");
+      for (const uri of fmuFiles) {
         try {
           await workspace.openTextDocument(uri);
-          console.log(`[workspace-scan] Opened XML ${uri.path.split("/").pop()}`);
+          console.log(`[workspace-scan] Opened FMU ${uri.path.split("/").pop()}`);
         } catch (e) {
-          console.warn(`[workspace-scan] Failed to open XML ${uri.path}:`, e);
+          console.warn(`[workspace-scan] Failed to open FMU ${uri.path}:`, e);
         }
       }
       return moFiles;

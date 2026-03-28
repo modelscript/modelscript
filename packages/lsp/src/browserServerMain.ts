@@ -920,16 +920,21 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
   const diagnostics: Diagnostic[] = [];
   const text = textDocument.getText();
 
-  // Handle FMU model description XML files
-  if (textDocument.uri.endsWith(".xml") && text.includes("fmiModelDescription")) {
+  // Handle FMU archive files
+  if (textDocument.uri.endsWith(".fmu")) {
     try {
       const context = sharedContext ?? new Context(sharedFs);
       const baseName =
         textDocument.uri
           .split("/")
           .pop()
-          ?.replace(/\.xml$/, "") ?? "FMU";
-      const fmuEntity = ModelicaFmuEntity.fromXml(context, baseName, text);
+          ?.replace(/\.fmu$/, "") ?? "FMU";
+      // The document text is the raw bytes encoded as a string — convert to Uint8Array
+      const fmuBytes = new Uint8Array(text.length);
+      for (let i = 0; i < text.length; i++) {
+        fmuBytes[i] = text.charCodeAt(i);
+      }
+      const fmuEntity = ModelicaFmuEntity.fromFmu(context, baseName, fmuBytes);
       fmuEntity.load();
       fmuEntity.instantiate();
       workspaceInstances.set(textDocument.uri, [fmuEntity]);
