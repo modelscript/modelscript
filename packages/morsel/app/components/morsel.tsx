@@ -62,6 +62,7 @@ import { mountLibrary, WebFileSystem } from "~/util/filesystem";
 import { getTranslations, uiLanguages } from "~/util/i18n";
 import type { CodeEditorHandle } from "./code";
 import ComponentList from "./component-list";
+import { CosimPanel } from "./cosim-panel";
 import type { DiagramEditorHandle } from "./diagram";
 import { MqttTreeWidget } from "./mqtt-tree";
 import OpenFileDropzone from "./open-file-dropzone";
@@ -152,6 +153,7 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [simulationStatus, setSimulationStatus] = useState<any>(null);
   const [simulationJobId, setSimulationJobId] = useState<string | null>(null);
   const [simulationMode, setSimulationMode] = useState<"server" | "local">("local");
+  const [cosimDataSource, setCosimDataSource] = useState<"local" | "mqtt-live" | "historian-replay">("local");
   const [localSimulationData, setLocalSimulationData] = useState<Record<string, number | string>[] | null>(null);
   const simulationIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const simulateAbortControllerRef = useRef<AbortController | null>(null);
@@ -2575,6 +2577,11 @@ export default function MorselEditor(props: MorselEditorProps) {
                       backgroundColor: "var(--color-canvas-default)",
                     }}
                   >
+                    <CosimPanel
+                      dataSource={cosimDataSource}
+                      onDataSourceChange={setCosimDataSource}
+                      colorMode={colorMode === "dark" ? "dark" : "light"}
+                    />
                     {(simulationJobId && simulationStatus?.status === "completed") ||
                     localSimulationData ||
                     simulationStatus?.status === "failed" ? (
