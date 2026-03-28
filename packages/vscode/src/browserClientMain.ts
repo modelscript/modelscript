@@ -387,23 +387,27 @@ export async function activate(context: vscode.ExtensionContext) {
     commands.registerCommand("modelscript.cosimDisconnect", () => {
       vscode.window.showInformationMessage("MQTT connection managed via the Co-Simulation panel.");
     }),
-    commands.registerCommand("modelscript.cosimStartInfra", () => {
-      const terminal = vscode.window.createTerminal({
-        name: "ModelScript Infrastructure",
-        iconPath: new vscode.ThemeIcon("server-process"),
-      });
-      terminal.show();
-      terminal.sendText("docker compose up -d mqtt timescaledb api");
-      vscode.window.showInformationMessage("Starting local infrastructure…");
+    commands.registerCommand("modelscript.cosimStartInfra", async () => {
+      const cmd = "docker compose up -d mqtt timescaledb api";
+      try {
+        await vscode.env.clipboard.writeText(cmd);
+        vscode.window.showInformationMessage(`Copied to clipboard: ${cmd}`);
+      } catch {
+        vscode.window.showInformationMessage(`Run in your terminal: ${cmd}`);
+      }
     }),
     commands.registerCommand("modelscript.cosimCreateSession", () => {
-      vscode.commands.executeCommand("modelscript.cosimPanel.focus");
+      vscode.commands.executeCommand("workbench.view.extension.modelscript-cosim");
     }),
     commands.registerCommand("modelscript.cosimPublishModel", () => {
       vscode.window.showInformationMessage("Use the Co-Simulation panel to publish a model to a session.");
     }),
     commands.registerCommand("modelscript.cosimOpenLivePlot", (sessionId?: string, participantId?: string) => {
-      SimulationPanel.createOrShowLive(context.extensionUri, sessionId, participantId);
+      if (cosimProvider.isLocalMode) {
+        SimulationPanel.createOrShowLiveLocal(context.extensionUri, sessionId);
+      } else {
+        SimulationPanel.createOrShowLive(context.extensionUri, sessionId, participantId);
+      }
     }),
     commands.registerCommand("modelscript.cosimRefresh", () => {
       cosimProvider.refresh();

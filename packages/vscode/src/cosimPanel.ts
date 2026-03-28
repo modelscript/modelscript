@@ -11,6 +11,9 @@
 
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
+import { BrowserBroker } from "./browserBroker";
+import { BrowserHistorian } from "./browserHistorian";
+import { SimulationPanel } from "./simulationPanel";
 
 interface SessionInfo {
   id: string;
@@ -25,6 +28,25 @@ interface ParticipantInfo {
   variables: number;
 }
 
+/** In-memory session state for local mode. */
+interface LocalSession {
+  id: string;
+  state: "created" | "running" | "completed" | "error";
+  participants: LocalParticipant[];
+  startTime: number;
+  stopTime: number;
+  stepSize: number;
+  realtimeFactor: number;
+}
+
+/** In-memory participant state for local mode. */
+interface LocalParticipant {
+  id: string;
+  modelName: string;
+  type: string;
+  variables: number;
+}
+
 export class CosimViewProvider implements vscode.WebviewViewProvider {
   static readonly viewType = "modelscript.cosimPanel";
 
@@ -32,10 +54,32 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
   private disposables: vscode.Disposable[] = [];
   private healthPollTimer?: ReturnType<typeof setInterval>;
 
+  // ── Local mode state ──
+  private localMode = false;
+  private localBroker: BrowserBroker | null = null;
+  private localHistorian: BrowserHistorian | null = null;
+  private localSessions = new Map<string, LocalSession>();
+  private localSimTimers = new Map<string, ReturnType<typeof setInterval>>();
+
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly client: LanguageClient,
   ) {}
+
+  /** Whether browser-local mode is active. */
+  get isLocalMode(): boolean {
+    return this.localMode;
+  }
+
+  /** The browser broker instance (when local mode is active). */
+  get broker(): BrowserBroker | null {
+    return this.localBroker;
+  }
+
+  /** The browser historian instance (when local mode is active). */
+  get historian(): BrowserHistorian | null {
+    return this.localHistorian;
+  }
 
   resolveWebviewView(
     webviewView: vscode.WebviewView,
@@ -91,6 +135,18 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
   }
 
   private async checkHealth(): Promise<void> {
+    // If local mode is active, report local status
+    if (this.localMode) {
+      this.postMessage({
+        type: "healthUpdate",
+        api: false,
+        mqtt: "local",
+        historian: "local",
+        localMode: true,
+      });
+      return;
+    }
+
     const apiUrl = this.getApiUrl();
     try {
       const response = await fetch(`${apiUrl}/health`);
@@ -105,12 +161,13 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
           api: true,
           mqtt: data.mqtt === "connected",
           historian: data.historian === "connected",
+          localMode: false,
         });
       } else {
-        this.postMessage({ type: "healthUpdate", api: false, mqtt: false, historian: false });
+        this.postMessage({ type: "healthUpdate", api: false, mqtt: false, historian: false, localMode: false });
       }
     } catch {
-      this.postMessage({ type: "healthUpdate", api: false, mqtt: false, historian: false });
+      this.postMessage({ type: "healthUpdate", api: false, mqtt: false, historian: false, localMode: false });
     }
   }
 
@@ -122,6 +179,14 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
     switch (msg.type) {
       case "refresh":
         this.refresh();
+        break;
+
+      case "enableLocal":
+        this.enableLocalMode();
+        break;
+
+      case "disableLocal":
+        this.disableLocalMode();
         break;
 
       case "startInfra":
@@ -150,6 +215,10 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
       }
 
       case "createSession": {
+        if (this.localMode) {
+          this.localCreateSession(msg);
+          break;
+        }
         try {
           const body = {
             startTime: (msg.startTime as number) ?? 0,
@@ -177,10 +246,18 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
       }
 
       case "fetchSessions":
-        await this.fetchSessions();
+        if (this.localMode) {
+          this.localFetchSessions();
+        } else {
+          await this.fetchSessions();
+        }
         break;
 
       case "startSession": {
+        if (this.localMode) {
+          this.localStartSession(msg.sessionId as string);
+          break;
+        }
         try {
           const resp = await fetch(`${apiUrl}/api/v1/cosim/sessions/${msg.sessionId}/start`, { method: "POST" });
           if (resp.ok) {
@@ -196,6 +273,10 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
       }
 
       case "stopSession": {
+        if (this.localMode) {
+          this.localStopSession(msg.sessionId as string);
+          break;
+        }
         try {
           const resp = await fetch(`${apiUrl}/api/v1/cosim/sessions/${msg.sessionId}/stop`, { method: "POST" });
           if (resp.ok) {
@@ -211,6 +292,10 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
       }
 
       case "deleteSession": {
+        if (this.localMode) {
+          this.localDeleteSession(msg.sessionId as string);
+          break;
+        }
         try {
           await fetch(`${apiUrl}/api/v1/cosim/sessions/${msg.sessionId}`, { method: "DELETE" });
           void this.fetchSessions();
@@ -247,7 +332,11 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
       }
 
       case "fetchParticipants":
-        await this.fetchSessionParticipants(msg.sessionId as string);
+        if (this.localMode) {
+          this.localFetchParticipants(msg.sessionId as string);
+        } else {
+          await this.fetchSessionParticipants(msg.sessionId as string);
+        }
         break;
 
       case "openLivePlot": {
@@ -331,15 +420,18 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
   // ── Local Infrastructure ──
 
   private async startLocalInfra(): Promise<void> {
-    const terminal = vscode.window.createTerminal({
-      name: "ModelScript Infrastructure",
-      iconPath: new vscode.ThemeIcon("server-process"),
-    });
-    terminal.show();
-    terminal.sendText("docker compose up -d mqtt timescaledb api");
-    vscode.window.showInformationMessage(
-      "Starting local infrastructure (MQTT + TimescaleDB + API)... Check the terminal for progress.",
-    );
+    const cmd = "docker compose up -d mqtt timescaledb api";
+
+    // In VS Code Web, createTerminal is not available — copy command to clipboard instead
+    try {
+      await vscode.env.clipboard.writeText(cmd);
+      await vscode.window.showInformationMessage(
+        `Run the following in your terminal to start infrastructure (copied to clipboard):\n\n${cmd}`,
+        "OK",
+      );
+    } catch {
+      await vscode.window.showInformationMessage(`Run this command in your terminal:\n\n${cmd}`, "OK");
+    }
 
     // Start checking health more frequently until services are up
     const fastPoll = setInterval(async () => {
@@ -347,6 +439,166 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
     }, 3_000);
 
     setTimeout(() => clearInterval(fastPoll), 60_000);
+  }
+
+  // ── Local Mode ──
+
+  private enableLocalMode(): void {
+    this.localMode = true;
+    this.localBroker = new BrowserBroker();
+    this.localHistorian = new BrowserHistorian();
+    void this.checkHealth();
+    this.localFetchSessions();
+    vscode.window.showInformationMessage("Browser-local mode enabled. MQTT and historian are running in-memory.");
+  }
+
+  private disableLocalMode(): void {
+    // Stop all running local simulations
+    for (const [id, timer] of this.localSimTimers) {
+      clearInterval(timer);
+      this.localSimTimers.delete(id);
+    }
+
+    this.localMode = false;
+    this.localBroker?.dispose();
+    this.localBroker = null;
+    this.localHistorian?.dispose();
+    this.localHistorian = null;
+    this.localSessions.clear();
+    void this.checkHealth();
+    this.postMessage({ type: "sessionList", sessions: [] });
+    vscode.window.showInformationMessage("Browser-local mode disabled.");
+  }
+
+  private localCreateSession(msg: Record<string, unknown>): void {
+    const id = `local-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+    const session: LocalSession = {
+      id,
+      state: "created",
+      participants: [],
+      startTime: (msg.startTime as number) ?? 0,
+      stopTime: (msg.stopTime as number) ?? 10,
+      stepSize: (msg.stepSize as number) ?? 0.01,
+      realtimeFactor: (msg.realtimeFactor as number) ?? 1,
+    };
+    this.localSessions.set(id, session);
+    this.postMessage({ type: "sessionCreated", session: { id, state: session.state } });
+    this.localFetchSessions();
+  }
+
+  private localFetchSessions(): void {
+    const sessions = [...this.localSessions.values()].map((s) => ({
+      id: s.id,
+      state: s.state,
+      participants: s.participants.length,
+    }));
+    this.postMessage({ type: "sessionList", sessions });
+  }
+
+  private localStartSession(sessionId: string): void {
+    const session = this.localSessions.get(sessionId);
+    if (!session) return;
+
+    session.state = "running";
+    this.localFetchSessions();
+
+    // Start a simulated data generator — publishes sine-wave values through the local broker
+    let simTime = session.startTime;
+    const intervalMs = Math.max(50, session.stepSize * 1000 * (session.realtimeFactor || 1));
+
+    const timer = setInterval(() => {
+      if (simTime > session.stopTime) {
+        clearInterval(timer);
+        this.localSimTimers.delete(sessionId);
+        session.state = "completed";
+        this.localFetchSessions();
+        return;
+      }
+
+      // Generate data for each participant
+      for (const participant of session.participants) {
+        const topic = `cosim/sessions/${sessionId}/participants/${participant.id}/data`;
+        const value = Math.sin(simTime * 2 * Math.PI) + Math.random() * 0.1;
+        const payload = JSON.stringify({ time: simTime, variable: "x", value });
+
+        this.localBroker?.publish(topic, payload);
+        this.localHistorian?.record(sessionId, participant.id, "x", value, simTime);
+
+        // Also relay to any open live-plot webviews
+        this.postMessage({
+          type: "liveDataRelay",
+          sessionId,
+          participantId: participant.id,
+          variable: "x",
+          value,
+          time: simTime,
+        });
+        SimulationPanel.postLiveDataPoint("x", simTime, value);
+      }
+
+      // If no participants, generate a demo signal
+      if (session.participants.length === 0) {
+        const topic = `cosim/sessions/${sessionId}/demo/data`;
+        const value = Math.sin(simTime * 2 * Math.PI);
+        const payload = JSON.stringify({ time: simTime, variable: "demo", value });
+
+        this.localBroker?.publish(topic, payload);
+        this.localHistorian?.record(sessionId, "demo", "demo", value, simTime);
+
+        this.postMessage({
+          type: "liveDataRelay",
+          sessionId,
+          participantId: "demo",
+          variable: "demo",
+          value,
+          time: simTime,
+        });
+        SimulationPanel.postLiveDataPoint("demo", simTime, value);
+      }
+
+      simTime += session.stepSize;
+    }, intervalMs);
+
+    this.localSimTimers.set(sessionId, timer);
+  }
+
+  private localStopSession(sessionId: string): void {
+    const session = this.localSessions.get(sessionId);
+    if (!session) return;
+
+    const timer = this.localSimTimers.get(sessionId);
+    if (timer) {
+      clearInterval(timer);
+      this.localSimTimers.delete(sessionId);
+    }
+
+    session.state = "completed";
+    this.localFetchSessions();
+  }
+
+  private localDeleteSession(sessionId: string): void {
+    const timer = this.localSimTimers.get(sessionId);
+    if (timer) {
+      clearInterval(timer);
+      this.localSimTimers.delete(sessionId);
+    }
+
+    this.localSessions.delete(sessionId);
+    this.localHistorian?.clear(sessionId);
+    this.localFetchSessions();
+  }
+
+  private localFetchParticipants(sessionId: string): void {
+    const session = this.localSessions.get(sessionId);
+    if (!session) {
+      this.postMessage({ type: "participantList", sessionId, participants: [] });
+      return;
+    }
+    this.postMessage({
+      type: "participantList",
+      sessionId,
+      participants: session.participants,
+    });
   }
 
   // ── Config Helpers ──
@@ -430,6 +682,7 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
     }
     .status-dot.online { background: var(--vscode-testing-iconPassed, #2da44e); }
     .status-dot.offline { background: var(--vscode-testing-iconFailed, #cf222e); }
+    .status-dot.local { background: #f0883e; }
     .status-dot.unknown { background: var(--vscode-disabledForeground, #666); }
     .status-label { flex: 1; }
     .status-value {
@@ -574,6 +827,9 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
         <div class="status-dot unknown" id="historian-dot"></div>
         <span class="status-label">Historian DB</span>
         <span class="status-value" id="historian-status">checking…</span>
+      </div>
+      <div class="btn-row">
+        <button id="btn-use-local" class="secondary">Use Browser-Local</button>
       </div>
       <div class="btn-row">
         <button id="btn-start-infra" class="secondary">Start Local</button>

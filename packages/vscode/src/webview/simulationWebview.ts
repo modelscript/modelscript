@@ -115,6 +115,33 @@ window.addEventListener("message", (event) => {
       msg.sessionId as string | undefined,
       msg.participantId as string | undefined,
     );
+  } else if (msg.type === "liveLocalMode") {
+    // Live mode via extension host postMessage (browser-local broker)
+    isLiveMode = true;
+    isDark = msg.isDark;
+    currentData = null;
+    hiddenVars.clear();
+    placeholderEl.style.display = "none";
+    containerEl.style.display = "flex";
+    toolbarEl.classList.add("visible");
+    setLiveStatus("connected", "Local mode");
+    // Initialize empty live buffer (no WebSocket needed)
+    liveBuffer = {
+      times: [],
+      values: new Map(),
+      head: 0,
+      count: 0,
+      variableNames: [],
+    };
+    startLiveLoop();
+  } else if (msg.type === "liveDataPoint") {
+    // Data point from extension host (browser-local broker relay)
+    if (isLiveMode && liveBuffer && !livePaused) {
+      const variable = msg.variable as string;
+      const time = msg.time as number;
+      const value = msg.value as number;
+      addLivePoint(variable, time, value);
+    }
   }
 });
 

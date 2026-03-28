@@ -62,6 +62,19 @@ btnStartInfra.addEventListener("click", () => {
   vscode.postMessage({ type: "startInfra" });
 });
 
+const btnUseLocal = document.getElementById("btn-use-local");
+let isLocalMode = false;
+
+if (btnUseLocal) {
+  btnUseLocal.addEventListener("click", () => {
+    if (isLocalMode) {
+      vscode.postMessage({ type: "disableLocal" });
+    } else {
+      vscode.postMessage({ type: "enableLocal" });
+    }
+  });
+}
+
 btnConnectRemote.addEventListener("click", () => {
   configSection.style.display = configSection.style.display === "none" ? "" : "none";
   vscode.postMessage({ type: "getConfig" });
@@ -108,8 +121,9 @@ btnCancelSession.addEventListener("click", () => {
 interface HealthMsg {
   type: "healthUpdate";
   api: boolean;
-  mqtt: boolean;
-  historian: boolean;
+  mqtt: boolean | string;
+  historian: boolean | string;
+  localMode?: boolean;
 }
 
 interface SessionInfo {
@@ -163,11 +177,28 @@ function updateHealth(h: HealthMsg): void {
   setStatus(apiDot, apiStatus, h.api);
   setStatus(mqttDot, mqttStatus, h.mqtt);
   setStatus(historianDot, historianStatus, h.historian);
+
+  // Update local mode button
+  isLocalMode = h.localMode === true;
+  if (btnUseLocal) {
+    if (isLocalMode) {
+      btnUseLocal.textContent = "Disable Local Mode";
+      btnUseLocal.classList.remove("secondary");
+    } else {
+      btnUseLocal.textContent = "Use Browser-Local";
+      btnUseLocal.classList.add("secondary");
+    }
+  }
 }
 
-function setStatus(dot: HTMLElement, label: HTMLElement, online: boolean): void {
-  dot.className = `status-dot ${online ? "online" : "offline"}`;
-  label.textContent = online ? "online" : "offline";
+function setStatus(dot: HTMLElement, label: HTMLElement, online: boolean | string): void {
+  if (online === "local") {
+    dot.className = "status-dot local";
+    label.textContent = "local";
+  } else {
+    dot.className = `status-dot ${online ? "online" : "offline"}`;
+    label.textContent = online ? "online" : "offline";
+  }
 }
 
 // ── Session rendering ──

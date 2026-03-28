@@ -107,6 +107,42 @@ export class SimulationPanel {
     SimulationPanel.currentPanel.postLiveConfig(mqttWsUrl, sessionId, participantId);
   }
 
+  /** Open a live-plot panel in browser-local mode (no WebSocket, data via postMessage). */
+  static createOrShowLiveLocal(extensionUri: vscode.Uri, sessionId?: string): SimulationPanel {
+    if (SimulationPanel.currentPanel?.liveMode) {
+      SimulationPanel.currentPanel.panel.reveal(vscode.ViewColumn.Beside);
+      SimulationPanel.currentPanel.postLiveLocalConfig(sessionId);
+      return SimulationPanel.currentPanel;
+    }
+
+    const panel = vscode.window.createWebviewPanel(
+      SimulationPanel.viewType,
+      "Live Simulation (Local)",
+      vscode.ViewColumn.Beside,
+      {
+        enableScripts: true,
+        retainContextWhenHidden: true,
+        localResourceRoots: [vscode.Uri.joinPath(extensionUri, "dist")],
+      },
+    );
+
+    SimulationPanel.currentPanel = new SimulationPanel(panel, extensionUri, true);
+    SimulationPanel.currentPanel.postLiveLocalConfig(sessionId);
+    return SimulationPanel.currentPanel;
+  }
+
+  /** Push a single data point to a live local webview. */
+  static postLiveDataPoint(variable: string, time: number, value: number): void {
+    if (SimulationPanel.currentPanel?.liveMode) {
+      SimulationPanel.currentPanel.panel.webview.postMessage({
+        type: "liveDataPoint",
+        variable,
+        time,
+        value,
+      });
+    }
+  }
+
   private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, liveMode: boolean) {
     this.panel = panel;
     this.extensionUri = extensionUri;
@@ -131,6 +167,17 @@ export class SimulationPanel {
       mqttWsUrl,
       sessionId,
       participantId,
+      isDark,
+    });
+  }
+
+  private postLiveLocalConfig(sessionId?: string) {
+    const isDark =
+      vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
+      vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast;
+    this.panel.webview.postMessage({
+      type: "liveLocalMode",
+      sessionId,
       isDark,
     });
   }

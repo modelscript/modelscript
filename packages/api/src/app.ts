@@ -43,6 +43,18 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
 
   app.use(express.json());
 
+  // CORS — allow all origins (VS Code webviews, Morsel, etc.)
+  app.use((_req, res, next) => {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    if (_req.method === "OPTIONS") {
+      res.sendStatus(204);
+      return;
+    }
+    next();
+  });
+
   // Auth routes
   app.use("/api/v1/auth", authRouter(database));
 

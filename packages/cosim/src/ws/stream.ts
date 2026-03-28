@@ -13,7 +13,7 @@
  */
 
 import type { IncomingMessage, Server } from "http";
-import type { WebSocket as WsWebSocket } from "ws";
+import { WebSocketServer, type WebSocket as WsWebSocket } from "ws";
 import type { CosimMqttClient } from "../mqtt/client.js";
 
 /** Client subscription state. */
@@ -184,9 +184,6 @@ export function attachCosimWebSocket(
   mqttClient: CosimMqttClient | null,
   path = "/api/v1/cosim/stream",
 ): void {
-  // Dynamic import to avoid bundling ws in browser contexts
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { WebSocketServer } = require("ws") as typeof import("ws");
   const wss = new WebSocketServer({ noServer: true });
   const handler = createCosimWebSocketHandler(mqttClient);
 
