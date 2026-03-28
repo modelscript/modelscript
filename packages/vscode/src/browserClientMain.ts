@@ -5,6 +5,7 @@ import { LanguageClient } from "vscode-languageclient/browser";
 import { ChatViewProvider } from "./chatPanel";
 import { CosimViewProvider } from "./cosimPanel";
 import { DiagramEditorProvider } from "./diagramEditorProvider";
+import { FMU_VIEW_SCHEME, FmuDocumentProvider } from "./fmuDocumentProvider";
 import { LibraryTreeProvider } from "./libraryTreeProvider";
 import { registerLLMProvider } from "./llmProvider";
 import { registerMCPTools } from "./mcpBridge";
@@ -132,6 +133,27 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(workspace.registerFileSystemProvider("memfs", memFs, { isCaseSensitive: true }));
     console.log("[blank-project] Registered memfs:// filesystem provider");
   }
+
+  // Register virtual document provider for FMU files
+  const fmuProvider = new FmuDocumentProvider();
+  context.subscriptions.push(workspace.registerTextDocumentContentProvider(FMU_VIEW_SCHEME, fmuProvider));
+
+  // Intercept .fmu file opens and show the virtual Modelica block view instead
+  context.subscriptions.push(
+    workspace.onDidOpenTextDocument((doc) => {
+      if (doc.uri.path.endsWith(".fmu") && doc.uri.scheme !== FMU_VIEW_SCHEME) {
+        const name =
+          doc.uri.path
+            .split("/")
+            .pop()
+            ?.replace(/\.fmu$/, "") ?? "FMU";
+        const virtualUri = Uri.parse(`${FMU_VIEW_SCHEME}:/${name}`);
+        vscode.window.showTextDocument(virtualUri, { preview: false }).then(undefined, (err) => {
+          console.warn("[fmu-view] Failed to open virtual FMU document:", err);
+        });
+      }
+    }),
+  );
 
   const documentSelector = [{ language: "modelica" }];
 
@@ -633,6 +655,9 @@ async function initWorkspaceAndTree(
           await workspace.fs.writeFile(sineWaveFmuUri, sineWaveFmuBytes);
           await workspace.fs.writeFile(cosimSetupUri, encoder.encode(cosimSetupMo));
           await workspace.fs.writeFile(readmeUri, encoder.encode(readmeMd));
+
+          // Register the SineWave FMU with the virtual document provider
+          fmuProvider.registerFmu("SineWave", sineWaveFmuBytes);
 
           // Register the SineWave FMU with the LSP after client is ready
           // (deferred to allow LSP to finish initializing)
