@@ -1,3 +1,28 @@
+## 0.0.9 (2026-03-28)
+
+### 🚀 Features
+
+- **core:** full fmu 2.0 archive export with model exchange, co-simulation c codegen, and zip packaging ([8bf83b8](https://github.com/modelscript/modelscript/commit/8bf83b8))
+- **ide:** enable proposed chat and language model APIs for vs code web ([7bc7719](https://github.com/modelscript/modelscript/commit/7bc7719))
+- **ide:** add webllm model download script, dockerfile stage, ci caching, and readme docs ([2248988](https://github.com/modelscript/modelscript/commit/2248988))
+- **vscode:** browser-local llm chat with self-hosted model files ([e5ae5e8](https://github.com/modelscript/modelscript/commit/e5ae5e8))
+- **vscode:** inject workspace context into chat, add latex math rendering, listClasses lsp endpoint ([20ab6ad](https://github.com/modelscript/modelscript/commit/20ab6ad))
+- **vscode:** move chat to activitybar sidebar, add empty state layout, use favicon icon ([d6fe9df](https://github.com/modelscript/modelscript/commit/d6fe9df))
+
+### 🩹 Fixes
+
+- **ci:** create api directory before copying model files to static output ([565d3bb](https://github.com/modelscript/modelscript/commit/565d3bb))
+- **ci:** restructure model deployment to match webllm resolve/main url convention ([94319ea](https://github.com/modelscript/modelscript/commit/94319ea))
+- **ci:** add tensor-cache.json to webllm model download, bump cache key ([d8f1ecb](https://github.com/modelscript/modelscript/commit/d8f1ecb))
+- **core:** extract start values from dae attributes, pass experiment annotations to fmu xml ([2dba007](https://github.com/modelscript/modelscript/commit/2dba007))
+- **ide:** use open-vsx registry for extension gallery in both server and static builds ([cca6e2e](https://github.com/modelscript/modelscript/commit/cca6e2e))
+- **ide:** use uuid subdomains on localhost only, same-origin on production ([c407187](https://github.com/modelscript/modelscript/commit/c407187))
+- **ide:** commit wasm to git, fix docker model download paths and gitignore negation ([4942397](https://github.com/modelscript/modelscript/commit/4942397))
+
+### ❤️ Thank You
+
+- Mohamad Omar Nachawati @nachawati
+
 ## 0.0.8 (2026-03-27)
 
 ### 🚀 Features
