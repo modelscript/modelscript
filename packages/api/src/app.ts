@@ -6,6 +6,7 @@ import { LibraryDatabase } from "./database.js";
 import { JobQueue } from "./jobs.js";
 import { authRouter } from "./routes/auth.js";
 import { cosimRouter, mqttParticipantsRouter } from "./routes/cosim.js";
+import { fmuRouter } from "./routes/fmu.js";
 import { graphqlRouter } from "./routes/graphql.js";
 import { historianRouter } from "./routes/historian.js";
 import { packagesRouter } from "./routes/packages.js";
@@ -38,6 +39,7 @@ export function createApp(storage?: LibraryStorage): express.Express {
   app.use("/api/v1/cosim", cosimRouter(null));
   app.use("/api/v1/mqtt/participants", mqttParticipantsRouter(null));
   app.use("/api/v1/historian", historianRouter());
+  app.use("/api/v1/fmus", fmuRouter());
 
   // Health check
   app.get("/health", (_req, res) => {

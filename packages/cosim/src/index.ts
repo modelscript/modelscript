@@ -26,3 +26,10 @@ export * from "./participants/js-simulator.js";
 // ── Historian ──
 export * from "./historian/recorder.js";
 export * from "./historian/replayer.js";
+
+// ── FMU ──
+export * from "./fmu/model-description.js";
+export * from "./fmu/storage.js";
+
+// ── WebSocket ──
+export * from "./ws/stream.js";
