@@ -3,6 +3,7 @@ import { Uri, commands, workspace } from "vscode";
 import { LanguageClientOptions } from "vscode-languageclient";
 import { LanguageClient } from "vscode-languageclient/browser";
 import { ChatViewProvider } from "./chatPanel";
+import { CosimViewProvider } from "./cosimPanel";
 import { DiagramEditorProvider } from "./diagramEditorProvider";
 import { LibraryTreeProvider } from "./libraryTreeProvider";
 import { registerLLMProvider } from "./llmProvider";
@@ -214,6 +215,14 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(mqttTreeView);
   mqttTreeProvider.startPolling();
 
+  // Register co-simulation panel (sidebar webview)
+  const cosimProvider = new CosimViewProvider(context.extensionUri, client);
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(CosimViewProvider.viewType, cosimProvider, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
+  );
+
   // Register project tree view
   const projectTreeProvider = new ProjectTreeProvider(client);
   const projectTreeView = vscode.window.createTreeView("modelscript.projectTree", {
@@ -368,6 +377,37 @@ export async function activate(context: vscode.ExtensionContext) {
       } catch (e) {
         console.error("[project-tree] Error opening file:", e);
       }
+    }),
+    // ── Co-Simulation commands ──
+    commands.registerCommand("modelscript.cosimConnect", () => {
+      cosimProvider.refresh();
+      mqttTreeProvider.refresh();
+      vscode.window.showInformationMessage("Refreshing co-simulation connections…");
+    }),
+    commands.registerCommand("modelscript.cosimDisconnect", () => {
+      vscode.window.showInformationMessage("MQTT connection managed via the Co-Simulation panel.");
+    }),
+    commands.registerCommand("modelscript.cosimStartInfra", () => {
+      const terminal = vscode.window.createTerminal({
+        name: "ModelScript Infrastructure",
+        iconPath: new vscode.ThemeIcon("server-process"),
+      });
+      terminal.show();
+      terminal.sendText("docker compose up -d mqtt timescaledb api");
+      vscode.window.showInformationMessage("Starting local infrastructure…");
+    }),
+    commands.registerCommand("modelscript.cosimCreateSession", () => {
+      vscode.commands.executeCommand("modelscript.cosimPanel.focus");
+    }),
+    commands.registerCommand("modelscript.cosimPublishModel", () => {
+      vscode.window.showInformationMessage("Use the Co-Simulation panel to publish a model to a session.");
+    }),
+    commands.registerCommand("modelscript.cosimOpenLivePlot", (sessionId?: string, participantId?: string) => {
+      SimulationPanel.createOrShowLive(context.extensionUri, sessionId, participantId);
+    }),
+    commands.registerCommand("modelscript.cosimRefresh", () => {
+      cosimProvider.refresh();
+      mqttTreeProvider.refresh();
     }),
   );
 

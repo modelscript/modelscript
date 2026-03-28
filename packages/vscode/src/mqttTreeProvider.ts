@@ -114,11 +114,20 @@ export class MqttTreeProvider
 
   private participants: ParticipantInfo[] = [];
   private pollTimer: ReturnType<typeof setInterval> | null = null;
+  private apiUrl: string | null = null;
 
   constructor(
     private readonly client: LanguageClient,
     private readonly pollIntervalMs = 5000,
-  ) {}
+  ) {
+    // Read API URL from settings
+    this.apiUrl = vscode.workspace.getConfiguration("modelscript.cosim").get<string>("apiUrl") ?? null;
+  }
+
+  /** Update the API URL for direct REST fetching. */
+  setApiUrl(url: string | null): void {
+    this.apiUrl = url;
+  }
 
   /** Start polling for participants. */
   startPolling(): void {
@@ -140,8 +149,23 @@ export class MqttTreeProvider
   }
 
   private async fetchParticipants(): Promise<void> {
+    // Try API-based fetching first (if configured)
+    if (this.apiUrl) {
+      try {
+        const resp = await fetch(`${this.apiUrl}/api/v1/mqtt/participants`);
+        if (resp.ok) {
+          const data = (await resp.json()) as { participants: ParticipantInfo[] };
+          this.participants = data.participants;
+          this._onDidChangeTreeData.fire(undefined);
+          return;
+        }
+      } catch {
+        // Fall through to LSP
+      }
+    }
+
+    // Fall back to LSP server
     try {
-      // Request participant data from LSP server (which proxies or caches MQTT data)
       const data: { participants: ParticipantInfo[] } = await this.client.sendRequest(
         "modelscript/getMqttParticipants",
       );
