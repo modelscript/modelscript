@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import { Uri, commands, workspace } from "vscode";
 import { LanguageClientOptions } from "vscode-languageclient";
 import { LanguageClient } from "vscode-languageclient/browser";
-import { ChatPanel } from "./chatPanel";
+import { ChatViewProvider } from "./chatPanel";
 import { DiagramEditorProvider } from "./diagramEditorProvider";
 import { LibraryTreeProvider } from "./libraryTreeProvider";
 import { registerLLMProvider } from "./llmProvider";
@@ -159,10 +159,20 @@ export async function activate(context: vscode.ExtensionContext) {
     /* proposed API not available */
   }
 
+  // Register chat view provider (secondary sidebar)
+  if (client) {
+    const chatProvider = new ChatViewProvider(context.extensionUri, client);
+    context.subscriptions.push(
+      vscode.window.registerWebviewViewProvider(ChatViewProvider.viewType, chatProvider, {
+        webviewOptions: { retainContextWhenHidden: true },
+      }),
+    );
+  }
+
   // Custom chat panel (works without VS Code Chat API / Copilot)
   context.subscriptions.push(
     vscode.commands.registerCommand("modelscript.openChat", () => {
-      if (client) ChatPanel.createOrShow(context.extensionUri, client);
+      vscode.commands.executeCommand("modelscript.chat.focus");
     }),
   );
 

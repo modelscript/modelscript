@@ -312,6 +312,23 @@
           "name": "Modelica Libraries",
           "visibility": "visible"
         }
+      ],
+      "modelscript-ai": [
+        {
+          "type": "webview",
+          "id": "modelscript.chat",
+          "name": "Chat",
+          "visibility": "visible"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "modelscript-ai",
+          "title": "ModelScript AI",
+          "icon": "$(comment-discussion)"
+        }
       ]
     },
     "viewsWelcome": [

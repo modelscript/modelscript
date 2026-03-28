@@ -1,46 +1,38 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
-// Manages the AI Chat webview panel lifecycle.
-// The webview runs WebLLM (Qwen3.5) directly via WebGPU.
+// Provides the AI Chat as a WebviewViewProvider (secondary sidebar).
+// The webview runs WebLLM (Qwen3) directly via WebGPU.
 // The extension host bridges tool calls to the LSP server.
 
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
 
-export class ChatPanel {
-  static currentPanel: ChatPanel | undefined;
+export class ChatViewProvider implements vscode.WebviewViewProvider {
   static readonly viewType = "modelscript.chat";
 
-  private readonly panel: vscode.WebviewPanel;
-  private readonly extensionUri: vscode.Uri;
-  private readonly client: LanguageClient;
+  private view?: vscode.WebviewView;
   private disposables: vscode.Disposable[] = [];
 
-  static createOrShow(extensionUri: vscode.Uri, client: LanguageClient) {
-    if (ChatPanel.currentPanel) {
-      ChatPanel.currentPanel.panel.reveal(vscode.ViewColumn.Beside);
-      return;
-    }
+  constructor(
+    private readonly extensionUri: vscode.Uri,
+    private readonly client: LanguageClient,
+  ) {}
 
-    const panel = vscode.window.createWebviewPanel(ChatPanel.viewType, "ModelScript Chat", vscode.ViewColumn.Beside, {
+  resolveWebviewView(webviewView: vscode.WebviewView): void {
+    this.view = webviewView;
+
+    webviewView.webview.options = {
       enableScripts: true,
-      retainContextWhenHidden: true,
-      localResourceRoots: [vscode.Uri.joinPath(extensionUri, "dist")],
-    });
+      localResourceRoots: [
+        vscode.Uri.joinPath(this.extensionUri, "dist"),
+        vscode.Uri.joinPath(this.extensionUri, "images"),
+      ],
+    };
 
-    ChatPanel.currentPanel = new ChatPanel(panel, extensionUri, client);
-  }
-
-  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, client: LanguageClient) {
-    this.panel = panel;
-    this.extensionUri = extensionUri;
-    this.client = client;
-
-    this.panel.iconPath = vscode.Uri.joinPath(extensionUri, "images", "icon.png");
-    this.panel.webview.html = this.getHtmlForWebview();
+    webviewView.webview.html = this.getHtmlForWebview(webviewView.webview);
 
     // Handle messages from webview (tool calls bridged to LSP)
-    this.panel.webview.onDidReceiveMessage(
+    webviewView.webview.onDidReceiveMessage(
       async (msg) => {
         switch (msg.type) {
           case "toolCall":
@@ -58,7 +50,7 @@ export class ChatPanel {
       this.disposables,
     );
 
-    // Auto-send active file context when panel opens
+    // Auto-send active file context when view opens
     this.sendActiveFileContext();
 
     // Re-send active file context when user switches editors
@@ -68,10 +60,16 @@ export class ChatPanel {
       }),
     );
 
-    this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
+    webviewView.onDidDispose(() => {
+      while (this.disposables.length) {
+        const x = this.disposables.pop();
+        if (x) x.dispose();
+      }
+    });
   }
 
   private async handleToolCall(msg: { id: string; tool: string; input: Record<string, unknown> }) {
+    if (!this.view) return;
     try {
       let result: unknown;
       switch (msg.tool) {
@@ -90,9 +88,9 @@ export class ChatPanel {
         default:
           result = { error: `Unknown tool: ${msg.tool}` };
       }
-      this.panel.webview.postMessage({ type: "toolResult", id: msg.id, result });
+      this.view.webview.postMessage({ type: "toolResult", id: msg.id, result });
     } catch (e) {
-      this.panel.webview.postMessage({
+      this.view.webview.postMessage({
         type: "toolResult",
         id: msg.id,
         result: { error: e instanceof Error ? e.message : String(e) },
@@ -101,13 +99,14 @@ export class ChatPanel {
   }
 
   private async handleListClasses(msg: { id: string }) {
+    if (!this.view) return;
     try {
       const result = (await this.client.sendRequest("modelscript/listClasses")) as {
         classes: { name: string; kind: string; uri: string }[];
       };
-      this.panel.webview.postMessage({ type: "classListResult", id: msg.id, result });
+      this.view.webview.postMessage({ type: "classListResult", id: msg.id, result });
     } catch (e) {
-      this.panel.webview.postMessage({
+      this.view.webview.postMessage({
         type: "classListResult",
         id: msg.id,
         result: { classes: [], error: e instanceof Error ? e.message : String(e) },
@@ -116,21 +115,20 @@ export class ChatPanel {
   }
 
   private sendActiveFileContext() {
-    // activeTextEditor is undefined when the webview panel has focus,
-    // so fall back to visibleTextEditors to find any open Modelica file.
+    if (!this.view) return;
     let editor = vscode.window.activeTextEditor;
     if (!editor || editor.document.languageId !== "modelica") {
       editor = vscode.window.visibleTextEditors.find((e) => e.document.languageId === "modelica");
     }
     if (editor && editor.document.languageId === "modelica") {
-      this.panel.webview.postMessage({
+      this.view.webview.postMessage({
         type: "activeFileContext",
         fileName: editor.document.fileName.split("/").pop(),
         content: editor.document.getText(),
         uri: editor.document.uri.toString(),
       });
     } else {
-      this.panel.webview.postMessage({
+      this.view.webview.postMessage({
         type: "activeFileContext",
         fileName: null,
         content: null,
@@ -139,22 +137,20 @@ export class ChatPanel {
     }
   }
 
-  private getHtmlForWebview(): string {
-    const webview = this.panel.webview;
+  private getHtmlForWebview(webview: vscode.Webview): string {
     const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "dist", "chatWebview.js"));
     const nonce = getNonce();
 
-    // Model files are served by the IDE Express server at /api/models/.
-    // We need the server origin (not the webview's virtual origin) for fetch.
-    // The scriptUri gives us the server origin.
+    const iconUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "images", "icon.png"));
+
     const serverOrigin = new URL(scriptUri.toString()).origin;
     const modelBaseUrl = `${serverOrigin}/api/models`;
 
-    // CSP: WebLLM runs in the webview main thread, needs WASM + fetch to model server
     const csp = [
       "default-src 'none'",
       `style-src 'unsafe-inline'`,
       `script-src 'nonce-${nonce}' 'wasm-unsafe-eval'`,
+      `img-src ${webview.cspSource}`,
       `connect-src http: https:`,
     ].join(";");
 
@@ -330,7 +326,7 @@ export class ChatPanel {
       border-color: var(--vscode-focusBorder, #0078d4);
     }
     #send-btn {
-      align-self: flex-end;
+      align-self: center;
       background: var(--vscode-button-background, #0078d4);
       color: var(--vscode-button-foreground, #fff);
       border: none;
@@ -347,11 +343,29 @@ export class ChatPanel {
       opacity: 0.5;
       cursor: not-allowed;
     }
+
+    /* Empty state: center input vertically, stack send button below */
+    body.empty #messages { display: none; }
+    body.empty {
+      justify-content: center;
+    }
+    body.empty #input-area {
+      flex-direction: column;
+      border-top: none;
+      padding: 16px 24px;
+    }
+    body.empty #input {
+      min-height: 60px;
+    }
+    body.empty #send-btn {
+      align-self: stretch;
+      padding: 10px;
+    }
   </style>
 </head>
-<body>
+<body class="empty">
   <div id="header">
-    <span>🤖 ModelScript AI</span>
+    <span><img src="${iconUri}" width="16" height="16" style="vertical-align: middle; margin-right: 4px;">ModelScript AI</span>
     <span class="status" id="model-status">Ready</span>
   </div>
   <div id="progress-container">
@@ -369,15 +383,6 @@ export class ChatPanel {
   <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
 </html>`;
-  }
-
-  dispose() {
-    ChatPanel.currentPanel = undefined;
-    this.panel.dispose();
-    while (this.disposables.length) {
-      const x = this.disposables.pop();
-      if (x) x.dispose();
-    }
   }
 }
 

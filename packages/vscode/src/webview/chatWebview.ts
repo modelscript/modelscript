@@ -105,6 +105,9 @@ async function ensureEngine(): Promise<void> {
 // ── Message UI ──
 
 function addMessage(role: "user" | "assistant" | "tool", content: string): HTMLElement {
+  // Switch from centered empty state to normal chat layout
+  document.body.classList.remove("empty");
+
   const div = document.createElement("div");
   div.className = `msg ${role}`;
   if (role === "assistant" || role === "tool") {
