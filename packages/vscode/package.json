@@ -149,7 +149,7 @@
             "filenamePattern": "*.mo"
           }
         ],
-        "priority": "default"
+        "priority": "option"
       },
       {
         "viewType": "modelscript.fmuViewer",
