@@ -123,9 +123,10 @@ EXPOSE 80
 # Download WebLLM model weights (cached layer)
 FROM node:22-alpine AS download-model
 RUN apk add --no-cache curl bash
-WORKDIR /models
-COPY packages/ide/scripts/download-model.sh /tmp/download-model.sh
-RUN bash /tmp/download-model.sh /models
+WORKDIR /app/packages/ide
+COPY packages/ide/models/Qwen3-0.6B-q4f16_1-ctx4k_cs1k-webgpu.wasm models/
+COPY packages/ide/scripts/download-model.sh scripts/download-model.sh
+RUN bash scripts/download-model.sh
 
 FROM deps AS build-ide-false
 COPY scripts scripts
@@ -172,7 +173,7 @@ COPY --from=build-ide /app/packages/vscode/syntaxes packages/vscode/syntaxes
 COPY --from=build-ide /app/packages/vscode/language-configuration.json packages/vscode/
 COPY --from=build-ide /app/packages/morsel/public packages/morsel/public
 COPY --from=build-ide /app/node_modules/@vscode node_modules/@vscode
-COPY --from=download-model /models packages/ide/models
+COPY --from=download-model /app/packages/ide/models packages/ide/models
 EXPOSE 3200
 ENV NODE_ENV=production
 ENV PORT=3200

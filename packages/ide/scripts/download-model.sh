@@ -12,10 +12,9 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TARGET="${1:-$REPO_ROOT/models}"
 
 MODEL_DIR="$TARGET/Qwen3-0.6B-q4f16_1-MLC"
-WASM_FILE="$TARGET/Qwen3-0.6B-q4f16_1-ctx4k_cs1k-webgpu.wasm"
 
 HF_BASE="https://huggingface.co/mlc-ai/Qwen3-0.6B-q4f16_1-MLC/resolve/main"
-WASM_URL="https://huggingface.co/mlc-ai/binary-mlc-llm-libs/resolve/main/Qwen3-0.6B-q4f16_1-ctx4k_cs1k-webgpu.wasm"
+WASM_NAME="Qwen3-0.6B-q4f16_1-ctx4k_cs1k-webgpu.wasm"
 
 # Files to download from the HuggingFace model repo
 MODEL_FILES=(
@@ -50,12 +49,20 @@ for file in "${MODEL_FILES[@]}"; do
   fi
 done
 
-# Download WASM
-if [ -f "$WASM_FILE" ]; then
-  echo "  [cached] $(basename "$WASM_FILE")"
+# The WASM file is committed to git (not available from a public URL).
+# In CI / Docker, it comes from the git checkout or COPY step.
+if [ ! -f "$TARGET/$WASM_NAME" ]; then
+  # Try to find it in the repo checkout (for CI/Docker contexts)
+  REPO_WASM="$REPO_ROOT/models/$WASM_NAME"
+  if [ -f "$REPO_WASM" ]; then
+    echo "  [copy] $WASM_NAME (from repo)"
+    cp "$REPO_WASM" "$TARGET/$WASM_NAME"
+  else
+    echo "  [ERROR] $WASM_NAME not found. Ensure the repo checkout includes it."
+    exit 1
+  fi
 else
-  echo "  [downloading] $(basename "$WASM_FILE")"
-  curl -fSL --retry 3 "$WASM_URL" -o "$WASM_FILE"
+  echo "  [cached] $WASM_NAME"
 fi
 
 echo "==> Model download complete"
