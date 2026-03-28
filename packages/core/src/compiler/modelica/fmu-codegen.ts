@@ -318,11 +318,25 @@ function generateModelC(id: string, dae: ModelicaDAE, result: FmuResult): string
 
   // ── getDerivatives function ──
   lines.push(`void ${id}_getDerivatives(${id}_Instance* inst) {`);
-  lines.push("  double time = inst->time;");
 
-  // Create local aliases for readability
+  // Collect all variable names referenced in derivative equations
+  const referencedNames = new Set<string>();
+  for (const eq of dae.equations) {
+    if (!("expression1" in eq && "expression2" in eq)) continue;
+    const simpleEq = eq as { expression1: ModelicaExpression; expression2: ModelicaExpression };
+    collectReferencedNames(simpleEq.expression1, referencedNames);
+    collectReferencedNames(simpleEq.expression2, referencedNames);
+  }
+
+  // Emit time alias only if referenced
+  if (referencedNames.has("time")) {
+    lines.push("  double time = inst->time;");
+  }
+
+  // Create local aliases only for referenced variables
   for (const sv of result.scalarVariables) {
     if (sv.causality === "independent") continue;
+    if (!referencedNames.has(sv.name)) continue;
     const cName = varToC(sv.name);
     lines.push(`  double ${cName} = inst->vars[${sv.valueReference}];`);
   }
@@ -691,4 +705,40 @@ function extractDerName(expr: unknown): string | null {
     }
   }
   return null;
+}
+
+/** Recursively collect all variable names referenced in an expression. */
+function collectReferencedNames(expr: unknown, names: Set<string>): void {
+  if (!expr || typeof expr !== "object") return;
+  if ("name" in expr) {
+    const nameVal = (expr as { name: unknown }).name;
+    if (typeof nameVal === "string") {
+      if (nameVal.startsWith("der(") && nameVal.endsWith(")")) {
+        names.add(nameVal.substring(4, nameVal.length - 1));
+      } else {
+        names.add(nameVal);
+      }
+    }
+  }
+  if ("operand" in expr) collectReferencedNames((expr as { operand: unknown }).operand, names);
+  if ("operand1" in expr) collectReferencedNames((expr as { operand1: unknown }).operand1, names);
+  if ("operand2" in expr) collectReferencedNames((expr as { operand2: unknown }).operand2, names);
+  if ("condition" in expr) collectReferencedNames((expr as { condition: unknown }).condition, names);
+  if ("thenExpression" in expr) collectReferencedNames((expr as { thenExpression: unknown }).thenExpression, names);
+  if ("elseExpression" in expr) collectReferencedNames((expr as { elseExpression: unknown }).elseExpression, names);
+  if ("args" in expr) {
+    const args = (expr as { args: unknown[] }).args;
+    if (Array.isArray(args)) {
+      for (const arg of args) collectReferencedNames(arg, names);
+    }
+  }
+  if ("elseIfClauses" in expr) {
+    const clauses = (expr as { elseIfClauses: { condition: unknown; expression: unknown }[] }).elseIfClauses;
+    if (Array.isArray(clauses)) {
+      for (const clause of clauses) {
+        collectReferencedNames(clause.condition, names);
+        collectReferencedNames(clause.expression, names);
+      }
+    }
+  }
 }
