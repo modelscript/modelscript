@@ -52,6 +52,32 @@ function escapeJSON(value: unknown): string {
 function renderWorkbench(protocol: string, host: string, folderConfig: Record<string, unknown> | null): string {
   const baseUrl = `${protocol}://${host}/vscode-static`;
 
+  // Use UUID subdomains on localhost (Chrome resolves *.localhost automatically).
+  // On production, use same-origin since wildcard DNS is not configured.
+  const isLocalhost = host.startsWith("localhost") || host.startsWith("127.0.0.1");
+  const webEndpoint = isLocalhost
+    ? `${protocol}://{{uuid}}.${host}/vscode-static`
+    : `${protocol}://${host}/vscode-static`;
+
+  const productConfiguration: Record<string, unknown> = {
+    enableTelemetry: false,
+    nameShort: "ModelScript",
+    nameLong: "ModelScript IDE",
+    webEndpointUrlTemplate: webEndpoint,
+    extensionAllowedProposedApi: ["modelscript.modelscript"],
+    // Use Open VSX registry to avoid CORS errors with Microsoft's CDN
+    extensionGallery: {
+      serviceUrl: "https://open-vsx.org/vscode/gallery",
+      itemUrl: "https://open-vsx.org/vscode/item",
+      resourceUrlTemplate: "https://open-vsx.org/vscode/unpkg/{publisher}/{name}/{version}/{path}",
+      controlUrl: "",
+    },
+  };
+
+  if (isLocalhost) {
+    productConfiguration.webviewContentExternalBaseUrlTemplate = `${protocol}://{{uuid}}.${host}/vscode-static/out/vs/workbench/contrib/webview/browser/pre/`;
+  }
+
   const config: Record<string, unknown> = {
     additionalBuiltinExtensions: [],
     developmentOptions: {
@@ -60,21 +86,7 @@ function renderWorkbench(protocol: string, host: string, folderConfig: Record<st
         { scheme: protocol, authority: host, path: "/static/extensions/github-fs" },
       ],
     },
-    productConfiguration: {
-      enableTelemetry: false,
-      nameShort: "ModelScript",
-      nameLong: "ModelScript IDE",
-      webEndpointUrlTemplate: `${protocol}://{{uuid}}.${host}/vscode-static`,
-      webviewContentExternalBaseUrlTemplate: `${protocol}://{{uuid}}.${host}/vscode-static/out/vs/workbench/contrib/webview/browser/pre/`,
-      extensionAllowedProposedApi: ["modelscript.modelscript"],
-      // Use Open VSX registry to avoid CORS errors with Microsoft's CDN
-      extensionGallery: {
-        serviceUrl: "https://open-vsx.org/vscode/gallery",
-        itemUrl: "https://open-vsx.org/vscode/item",
-        resourceUrlTemplate: "https://open-vsx.org/vscode/unpkg/{publisher}/{name}/{version}/{path}",
-        controlUrl: "",
-      },
-    },
+    productConfiguration,
   };
 
   if (folderConfig) {

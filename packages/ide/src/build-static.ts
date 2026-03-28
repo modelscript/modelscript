@@ -169,13 +169,10 @@ function renderStaticWorkbench(): string {
     config.folderUri.query = 'ref=' + ref;
   }
   
-  // Use localhost subdomains for the extension host and webview iframes.
-  // Chrome resolves *.localhost to 127.0.0.1, so our Express server handles them.
-  // This avoids PNA blocks (public CDN origin -> private localhost fetch).
-  var endpoint = location.protocol + '//{{uuid}}.' + location.host + '/vscode-static';
+  // Same-origin extension host (no wildcard DNS required)
+  var endpoint = location.protocol + '//' + location.host + '/vscode-static';
   config.productConfiguration = config.productConfiguration || {};
   config.productConfiguration.webEndpointUrlTemplate = endpoint;
-  config.productConfiguration.webviewContentExternalBaseUrlTemplate = endpoint + '/out/vs/workbench/contrib/webview/browser/pre/';
   
   el.setAttribute('data-settings', JSON.stringify(config));
 })();
