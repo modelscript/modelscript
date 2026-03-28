@@ -67,6 +67,13 @@ function renderWorkbench(protocol: string, host: string, folderConfig: Record<st
       webEndpointUrlTemplate: `${protocol}://{{uuid}}.${host}/vscode-static`,
       webviewContentExternalBaseUrlTemplate: `${protocol}://{{uuid}}.${host}/vscode-static/out/vs/workbench/contrib/webview/browser/pre/`,
       extensionAllowedProposedApi: ["modelscript.modelscript"],
+      // Use Open VSX registry to avoid CORS errors with Microsoft's CDN
+      extensionGallery: {
+        serviceUrl: "https://open-vsx.org/vscode/gallery",
+        itemUrl: "https://open-vsx.org/vscode/item",
+        resourceUrlTemplate: "https://open-vsx.org/vscode/unpkg/{publisher}/{name}/{version}/{path}",
+        controlUrl: "",
+      },
     },
   };
 
