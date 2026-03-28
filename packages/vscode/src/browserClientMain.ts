@@ -5,7 +5,7 @@ import { LanguageClient } from "vscode-languageclient/browser";
 import { ChatViewProvider } from "./chatPanel";
 import { CosimViewProvider } from "./cosimPanel";
 import { DiagramEditorProvider } from "./diagramEditorProvider";
-import { FMU_VIEW_SCHEME, FmuDocumentProvider } from "./fmuDocumentProvider";
+import { FMU_VIEW_SCHEME, FmuContentProvider, FmuEditorProvider } from "./fmuDocumentProvider";
 import { LibraryTreeProvider } from "./libraryTreeProvider";
 import { registerLLMProvider } from "./llmProvider";
 import { registerMCPTools } from "./mcpBridge";
@@ -17,6 +17,7 @@ import { SimulationPanel } from "./simulationPanel";
 import { SINE_WAVE_FMU_BASE64 } from "./sineWaveFmu";
 
 let client: LanguageClient | undefined;
+let fmuContentProvider: FmuContentProvider | undefined;
 
 /**
  * Simple in-memory filesystem provider for the `tmp` scheme.
@@ -134,24 +135,14 @@ export async function activate(context: vscode.ExtensionContext) {
     console.log("[blank-project] Registered memfs:// filesystem provider");
   }
 
-  // Register virtual document provider for FMU files
-  const fmuProvider = new FmuDocumentProvider();
-  context.subscriptions.push(workspace.registerTextDocumentContentProvider(FMU_VIEW_SCHEME, fmuProvider));
-
-  // Intercept .fmu file opens and show the virtual Modelica block view instead
+  // Register virtual document provider and custom editor for FMU files
+  fmuContentProvider = new FmuContentProvider();
+  context.subscriptions.push(workspace.registerTextDocumentContentProvider(FMU_VIEW_SCHEME, fmuContentProvider));
+  const fmuEditor = new FmuEditorProvider(fmuContentProvider);
   context.subscriptions.push(
-    workspace.onDidOpenTextDocument((doc) => {
-      if (doc.uri.path.endsWith(".fmu") && doc.uri.scheme !== FMU_VIEW_SCHEME) {
-        const name =
-          doc.uri.path
-            .split("/")
-            .pop()
-            ?.replace(/\.fmu$/, "") ?? "FMU";
-        const virtualUri = Uri.parse(`${FMU_VIEW_SCHEME}:/${name}`);
-        vscode.window.showTextDocument(virtualUri, { preview: false }).then(undefined, (err) => {
-          console.warn("[fmu-view] Failed to open virtual FMU document:", err);
-        });
-      }
+    vscode.window.registerCustomEditorProvider(FmuEditorProvider.viewType, fmuEditor, {
+      supportsMultipleEditorsPerDocument: false,
+      webviewOptions: { retainContextWhenHidden: false },
     }),
   );
 
@@ -657,7 +648,7 @@ async function initWorkspaceAndTree(
           await workspace.fs.writeFile(readmeUri, encoder.encode(readmeMd));
 
           // Register the SineWave FMU with the virtual document provider
-          fmuProvider.registerFmu("SineWave", sineWaveFmuBytes);
+          fmuContentProvider?.registerFmu("SineWave", sineWaveFmuBytes);
 
           // Register the SineWave FMU with the LSP after client is ready
           // (deferred to allow LSP to finish initializing)

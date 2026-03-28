@@ -150,6 +150,16 @@
           }
         ],
         "priority": "default"
+      },
+      {
+        "viewType": "modelscript.fmuViewer",
+        "displayName": "FMU Viewer",
+        "selector": [
+          {
+            "filenamePattern": "*.fmu"
+          }
+        ],
+        "priority": "default"
       }
     ],
     "grammars": [
