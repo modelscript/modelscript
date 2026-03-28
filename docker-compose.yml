@@ -1,4 +1,26 @@
 services:
+  mqtt:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./config/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - mqtt-data:/mosquitto/data
+    restart: unless-stopped
+
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=modelscript_historian
+      - POSTGRES_USER=modelscript
+      - POSTGRES_PASSWORD=${TIMESCALE_PASSWORD:-modelscript}
+    volumes:
+      - timescale-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
   api:
     image: ghcr.io/modelscript/api:latest
     build:
@@ -8,9 +30,14 @@ services:
       - "3000:3000"
     volumes:
       - api-data:/app/packages/api/data
+    depends_on:
+      - mqtt
+      - timescaledb
     environment:
       - NODE_ENV=production
       - PORT=3000
+      - MQTT_BROKER_URL=mqtt://mqtt:1883
+      - TIMESCALE_URL=postgresql://modelscript:${TIMESCALE_PASSWORD:-modelscript}@timescaledb:5432/modelscript_historian
     restart: unless-stopped
 
   morsel:
@@ -54,3 +81,5 @@ services:
 
 volumes:
   api-data:
+  mqtt-data:
+  timescale-data:

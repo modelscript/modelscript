@@ -11,7 +11,7 @@ export default defineConfig([
     languageOptions: {
       parserOptions: {
         projectService: {
-          allowDefaultProject: ["eslint.config.ts"],
+          allowDefaultProject: ["eslint.config.ts", "packages/tree-sitter-modelica/grammar.js"],
         },
         tsconfigRootDir: import.meta.dirname,
       },
