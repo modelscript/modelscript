@@ -1,3 +1,4 @@
+import { unzipSync } from "fflate";
 import * as vscode from "vscode";
 import { Uri, commands, workspace } from "vscode";
 import { LanguageClientOptions } from "vscode-languageclient";
@@ -13,6 +14,7 @@ import { ModelicaNotebookController } from "./notebookController";
 import { ModelicaNotebookSerializer } from "./notebookSerializer";
 import { ProjectTreeProvider } from "./projectTreeProvider";
 import { SimulationPanel } from "./simulationPanel";
+import { SINE_WAVE_FMU_BASE64 } from "./sineWaveFmu";
 
 let client: LanguageClient | undefined;
 
@@ -596,14 +598,16 @@ async function initWorkspaceAndTree(
           const readmeMd = [
             "# Co-Simulation Example",
             "",
-            "This workspace demonstrates co-simulation between a **Modelica model** and an **FMU 2.0 participant**.",
+            "This workspace demonstrates co-simulation between a **Modelica model** and **FMU 2.0 participants**.",
             "",
             "## Files",
             "",
             "| File | Type | Description |",
             "|------|------|-------------|",
             "| `Controller.mo` | Modelica | PI controller with setpoint tracking |",
-            "| `Plant.xml` | FMU 2.0 | First-order plant model description |",
+            "| `Plant.xml` | FMU 2.0 (XML) | First-order plant model description (passthrough mode) |",
+            "| `SineWave.fmu` | FMU 2.0 (WASM) | Sine wave generator compiled to WebAssembly |",
+            "| `SineWave.xml` | FMU 2.0 (XML) | Model description for SineWave (LSP resolution) |",
             "",
             "## Running the Co-Simulation",
             "",
@@ -611,18 +615,48 @@ async function initWorkspaceAndTree(
             '2. Click **"Browser-Local"** to enable local mode',
             "3. Create a new session (start=0, stop=10, step=0.01)",
             "4. Open `Controller.mo` and click **Publish Model**",
-            "5. Click **Publish FMU** and select `Plant.xml`",
+            "5. Click **Publish FMU** and select `Plant.xml` or `SineWave.fmu`",
             "6. Add couplings:",
             "   - Controller.y → Plant.u (control signal)",
             "   - Plant.y → Controller.u (measurement feedback)",
             "7. Click **Start** to run the coupled simulation",
             "8. Open **Live Plot** to see real-time results",
             "",
+            "## SineWave WASM FMU",
+            "",
+            "The `SineWave.fmu` is a real WebAssembly FMU containing compiled C code.",
+            "It demonstrates native WASM execution in the browser via the FMI 2.0 API.",
+            "",
+            "Model: `y(t) = amplitude * sin(2π * frequency * t + phase)`",
+            "",
+            "| Variable | Causality | Default |",
+            "|----------|-----------|---------|",
+            "| amplitude | parameter | 1.0 |",
+            "| frequency | parameter | 1.0 Hz |",
+            "| phase | input | 0.0 rad |",
+            "| y | output | — |",
+            "",
           ].join("\n");
+
+          // Decode the embedded SineWave WASM FMU from base64
+          const sineWaveFmuBytes = Uint8Array.from(atob(SINE_WAVE_FMU_BASE64), (c) => c.charCodeAt(0));
+
+          // Extract modelDescription.xml from the FMU ZIP for LSP resolution
+          const sineWaveXmlContent = (() => {
+            try {
+              const files = unzipSync(sineWaveFmuBytes);
+              const xmlData = files["modelDescription.xml"];
+              if (xmlData) return new TextDecoder().decode(xmlData);
+            } catch {
+              // Fallback: extraction failed
+            }
+            return null;
+          })();
 
           // Write all files
           const controllerUri = Uri.joinPath(workspaceUri, "Controller.mo");
           const plantUri = Uri.joinPath(workspaceUri, "Plant.xml");
+          const sineWaveFmuUri = Uri.joinPath(workspaceUri, "SineWave.fmu");
           const readmeUri = Uri.joinPath(workspaceUri, "README.md");
 
           const cosimSetupMo = [
@@ -640,6 +674,12 @@ async function initWorkspaceAndTree(
 
           await workspace.fs.writeFile(controllerUri, encoder.encode(controllerMo));
           await workspace.fs.writeFile(plantUri, encoder.encode(plantXml));
+          await workspace.fs.writeFile(sineWaveFmuUri, sineWaveFmuBytes);
+          if (sineWaveXmlContent) {
+            const sineWaveXmlUri = Uri.joinPath(workspaceUri, "SineWave.xml");
+            await workspace.fs.writeFile(sineWaveXmlUri, encoder.encode(sineWaveXmlContent));
+            await workspace.openTextDocument(sineWaveXmlUri);
+          }
           await workspace.fs.writeFile(cosimSetupUri, encoder.encode(cosimSetupMo));
           await workspace.fs.writeFile(readmeUri, encoder.encode(readmeMd));
 
