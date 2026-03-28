@@ -7,6 +7,7 @@ import { DiagramEditorProvider } from "./diagramEditorProvider";
 import { LibraryTreeProvider } from "./libraryTreeProvider";
 import { registerLLMProvider } from "./llmProvider";
 import { registerMCPTools } from "./mcpBridge";
+import { MqttTreeProvider } from "./mqttTreeProvider";
 import { ModelicaNotebookController } from "./notebookController";
 import { ModelicaNotebookSerializer } from "./notebookSerializer";
 import { ProjectTreeProvider } from "./projectTreeProvider";
@@ -202,6 +203,16 @@ export async function activate(context: vscode.ExtensionContext) {
     canSelectMany: false,
   });
   context.subscriptions.push(treeView);
+
+  // Register MQTT participant tree view
+  const mqttTreeProvider = new MqttTreeProvider(client);
+  const mqttTreeView = vscode.window.createTreeView("modelscript.mqttTree", {
+    treeDataProvider: mqttTreeProvider,
+    dragAndDropController: mqttTreeProvider,
+    canSelectMany: false,
+  });
+  context.subscriptions.push(mqttTreeView);
+  mqttTreeProvider.startPolling();
 
   // Register project tree view
   const projectTreeProvider = new ProjectTreeProvider(client);

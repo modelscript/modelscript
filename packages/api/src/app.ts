@@ -5,6 +5,7 @@ import express from "express";
 import { LibraryDatabase } from "./database.js";
 import { JobQueue } from "./jobs.js";
 import { authRouter } from "./routes/auth.js";
+import { cosimRouter, mqttParticipantsRouter } from "./routes/cosim.js";
 import { graphqlRouter } from "./routes/graphql.js";
 import { packagesRouter } from "./routes/packages.js";
 import { publishRouter } from "./routes/publish.js";
@@ -31,6 +32,10 @@ export function createApp(storage?: LibraryStorage): express.Express {
   app.use("/api/v1/libraries", graphqlRouter(database));
   app.use("/api/v1/libraries", sparqlRouter(database));
   app.use("/api/v1", simulateRouter(libraryStorage, jobQueue));
+
+  // Co-simulation routes (MQTT client injected as null until runtime wiring)
+  app.use("/api/v1/cosim", cosimRouter(null));
+  app.use("/api/v1/mqtt/participants", mqttParticipantsRouter(null));
 
   // Health check
   app.get("/health", (_req, res) => {
