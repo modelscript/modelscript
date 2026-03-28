@@ -1,8 +1,8 @@
 {
   "name": "modelscript",
-  "displayName": "ModelScript",
+  "displayName": "ModelScript — Modelica for VS Code",
   "version": "0.0.3",
-  "description": "Modelica language support — syntax highlighting, completions, hover, diagnostics, formatting, and bundled MSL",
+  "description": "Complete Modelica development environment — diagram editing, simulation, scripting, notebooks, and bundled MSL. No external tools required.",
   "categories": [
     "Programming Languages",
     "Linters",
