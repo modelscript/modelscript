@@ -230,6 +230,7 @@ function renderSessions(sessions: SessionInfo[]): void {
           ${s.state === "created" ? `<button data-action="start" data-id="${id}">▶ Start</button>` : ""}
           ${s.state === "running" ? `<button data-action="stop" data-id="${id}">⏹ Stop</button>` : ""}
           ${s.state === "created" ? `<button data-action="publish" data-id="${id}" class="secondary">📡 Publish Model</button>` : ""}
+          ${s.state === "created" ? `<button data-action="publishFmu" data-id="${id}" class="secondary">📦 Publish FMU</button>` : ""}
           ${s.state === "running" ? `<button data-action="livePlot" data-id="${id}" class="secondary">📈 Live Plot</button>` : ""}
           <button data-action="delete" data-id="${id}" class="secondary">✕</button>
         </div>
@@ -257,6 +258,9 @@ function renderSessions(sessions: SessionInfo[]): void {
           break;
         case "publish":
           vscode.postMessage({ type: "publishModel", sessionId: id });
+          break;
+        case "publishFmu":
+          vscode.postMessage({ type: "publishFmu", sessionId: id });
           break;
         case "livePlot":
           vscode.postMessage({ type: "openLivePlot", sessionId: id });

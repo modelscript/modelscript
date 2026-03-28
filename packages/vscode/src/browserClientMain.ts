@@ -544,6 +544,100 @@ async function initWorkspaceAndTree(
             2,
           );
           break;
+        case "cosim": {
+          // Co-simulation example: Controller (Modelica) + Plant (FMU)
+          const encoder = new TextEncoder();
+
+          const controllerMo = [
+            'model Controller "Simple PI controller"',
+            '  Modelica.Blocks.Interfaces.RealInput u "Measurement input";',
+            '  Modelica.Blocks.Interfaces.RealOutput y "Control output";',
+            '  parameter Real Kp = 2.0 "Proportional gain";',
+            '  parameter Real Ki = 0.5 "Integral gain";',
+            '  parameter Real setpoint = 1.0 "Reference setpoint";',
+            '  Real error "Tracking error";',
+            '  Real integral(start = 0) "Integral of error";',
+            "equation",
+            "  error = setpoint - u;",
+            "  der(integral) = error;",
+            "  y = Kp * error + Ki * integral;",
+            "end Controller;",
+            "",
+          ].join("\n");
+
+          const plantXml = [
+            '<?xml version="1.0" encoding="UTF-8"?>',
+            "<fmiModelDescription",
+            '  fmiVersion="2.0"',
+            '  modelName="Plant"',
+            '  guid="{plant-example-001}"',
+            '  description="First-order plant: dx/dt = -a*x + b*u, y = x"',
+            '  generationTool="ModelScript">',
+            '  <CoSimulation modelIdentifier="Plant" />',
+            '  <DefaultExperiment startTime="0" stopTime="10" stepSize="0.01" />',
+            "  <ModelVariables>",
+            '    <ScalarVariable name="u" valueReference="0" causality="input" variability="continuous" description="Control input">',
+            '      <Real start="0.0" />',
+            "    </ScalarVariable>",
+            '    <ScalarVariable name="y" valueReference="1" causality="output" variability="continuous" description="Plant output">',
+            '      <Real start="0.5" />',
+            "    </ScalarVariable>",
+            '    <ScalarVariable name="x" valueReference="2" causality="local" variability="continuous" description="State">',
+            '      <Real start="0.5" />',
+            "    </ScalarVariable>",
+            "  </ModelVariables>",
+            "  <ModelStructure>",
+            '    <Outputs><Unknown index="2" /></Outputs>',
+            "  </ModelStructure>",
+            "</fmiModelDescription>",
+            "",
+          ].join("\n");
+
+          const readmeMd = [
+            "# Co-Simulation Example",
+            "",
+            "This workspace demonstrates co-simulation between a **Modelica model** and an **FMU 2.0 participant**.",
+            "",
+            "## Files",
+            "",
+            "| File | Type | Description |",
+            "|------|------|-------------|",
+            "| `Controller.mo` | Modelica | PI controller with setpoint tracking |",
+            "| `Plant.xml` | FMU 2.0 | First-order plant model description |",
+            "",
+            "## Running the Co-Simulation",
+            "",
+            "1. Open the **Co-Simulation** panel in the sidebar",
+            '2. Click **"Browser-Local"** to enable local mode',
+            "3. Create a new session (start=0, stop=10, step=0.01)",
+            "4. Open `Controller.mo` and click **Publish Model**",
+            "5. Click **Publish FMU** and select `Plant.xml`",
+            "6. Add couplings:",
+            "   - Controller.y → Plant.u (control signal)",
+            "   - Plant.y → Controller.u (measurement feedback)",
+            "7. Click **Start** to run the coupled simulation",
+            "8. Open **Live Plot** to see real-time results",
+            "",
+          ].join("\n");
+
+          // Write all three files
+          const controllerUri = Uri.joinPath(workspaceUri, "Controller.mo");
+          const plantUri = Uri.joinPath(workspaceUri, "Plant.xml");
+          const readmeUri = Uri.joinPath(workspaceUri, "README.md");
+
+          await workspace.fs.writeFile(controllerUri, encoder.encode(controllerMo));
+          await workspace.fs.writeFile(plantUri, encoder.encode(plantXml));
+          await workspace.fs.writeFile(readmeUri, encoder.encode(readmeMd));
+
+          // Open the controller in the editor
+          filename = "Controller.mo";
+          content = controllerMo;
+
+          // Also open the README
+          const readmeDoc = await workspace.openTextDocument(readmeUri);
+          await vscode.window.showTextDocument(readmeDoc, { preview: false });
+          break;
+        }
       }
 
       if (filename && content) {

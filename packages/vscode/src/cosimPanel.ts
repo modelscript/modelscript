@@ -13,8 +13,22 @@ import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
 import { BrowserBroker } from "./browserBroker";
 import { BrowserHistorian } from "./browserHistorian";
+import { FmuBrowserParticipant } from "./fmuBrowserParticipant";
 import { LspSimulatorParticipant } from "./lspSimulatorParticipant";
 import { SimulationPanel } from "./simulationPanel";
+
+/** Common interface for both Modelica (LSP) and FMU (browser) participants. */
+interface BrowserParticipant {
+  readonly id: string;
+  readonly modelName: string;
+  readonly allValues: Record<string, number>;
+  getVariables(): { name: string; causality: string }[];
+  initialize(startTime: number, stopTime: number, stepSize: number): Promise<void>;
+  doStep(currentTime: number, stepSize: number): Promise<void>;
+  getOutputs(): Promise<Map<string, number>>;
+  setInputs(values: Map<string, number>): Promise<void>;
+  terminate(): Promise<void>;
+}
 
 interface SessionInfo {
   id: string;
@@ -52,10 +66,10 @@ interface LocalParticipant {
   id: string;
   modelName: string;
   uri: string;
-  type: string;
+  type: "modelica" | "fmu";
   variables: number;
-  /** LSP-backed simulator participant for step-by-step co-simulation. */
-  lspParticipant: LspSimulatorParticipant;
+  /** Backing participant (LSP-based Modelica or browser-based FMU). */
+  participant: BrowserParticipant;
 }
 
 export class CosimViewProvider implements vscode.WebviewViewProvider {
@@ -318,10 +332,17 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
 
       case "publishModel": {
         if (this.localMode) {
-          await this.localPublishModel(msg.sessionId as string);
+          this.localPublishModel(msg.sessionId as string);
           break;
         }
         await this.publishCurrentModel(msg.sessionId as string);
+        break;
+      }
+
+      case "publishFmu": {
+        if (this.localMode) {
+          await this.localPublishFmu(msg.sessionId as string);
+        }
         break;
       }
 
@@ -437,20 +458,67 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
 
     const lspParticipant = new LspSimulatorParticipant(this.client, participantId, fileName, uri);
 
-    const participant: LocalParticipant = {
+    const localParticipant: LocalParticipant = {
       id: participantId,
       modelName: fileName,
       uri,
       type: "modelica",
       variables: 0, // Will be populated after initialization
-      lspParticipant,
+      participant: lspParticipant,
     };
 
-    session.participants.push(participant);
+    session.participants.push(localParticipant);
 
     vscode.window.showInformationMessage(`Enrolled "${fileName}" as participant "${participantId}".`);
     this.localFetchSessions();
     this.localFetchParticipants(sessionId);
+  }
+
+  /** Publish an FMU model description XML file as a local FMU participant. */
+  private async localPublishFmu(sessionId: string): Promise<void> {
+    const session = this.localSessions.get(sessionId);
+    if (!session) {
+      this.postMessage({ type: "error", message: "Session not found." });
+      return;
+    }
+
+    // Find .fmu.xml or .xml files in the workspace
+    const uris = await vscode.window.showOpenDialog({
+      canSelectMany: false,
+      filters: { "FMU Model Description": ["xml"] },
+      title: "Select FMU modelDescription.xml",
+    });
+
+    if (!uris || uris.length === 0) return;
+
+    try {
+      const fileUri = uris[0];
+      const data = await vscode.workspace.fs.readFile(fileUri);
+      const xmlContent = new TextDecoder().decode(data);
+      const fileName = fileUri.path.split("/").pop()?.replace(".xml", "").replace(".fmu", "") ?? "FMU";
+      const participantId = `local-fmu-${Date.now().toString(36)}`;
+
+      const fmuParticipant = new FmuBrowserParticipant(participantId, xmlContent);
+
+      const localParticipant: LocalParticipant = {
+        id: participantId,
+        modelName: fmuParticipant.modelName || fileName,
+        uri: fileUri.toString(),
+        type: "fmu",
+        variables: 0,
+        participant: fmuParticipant,
+      };
+
+      session.participants.push(localParticipant);
+
+      vscode.window.showInformationMessage(
+        `Enrolled FMU "${fmuParticipant.modelName}" as participant "${participantId}".`,
+      );
+      this.localFetchSessions();
+      this.localFetchParticipants(sessionId);
+    } catch (e) {
+      this.postMessage({ type: "error", message: `Failed to load FMU: ${e}` });
+    }
   }
 
   private async publishCurrentModel(sessionId: string): Promise<void> {
@@ -578,11 +646,11 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
 
     try {
       // ── Phase 1: Initialize all participants via LSP ──
-      await Promise.all(participants.map((p) => p.lspParticipant.initialize(startTime, stopTime, stepSize)));
+      await Promise.all(participants.map((p) => p.participant.initialize(startTime, stopTime, stepSize)));
 
       // Update variable counts after init
       for (const p of participants) {
-        p.variables = p.lspParticipant.getVariables().length;
+        p.variables = p.participant.getVariables().length;
       }
       this.localFetchParticipants(sessionId);
 
@@ -604,7 +672,7 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
         // ── Apply couplings (output → input) ──
         const allOutputs = new Map<string, Map<string, number>>();
         for (const p of participants) {
-          const outputs = await p.lspParticipant.getOutputs();
+          const outputs = await p.participant.getOutputs();
           allOutputs.set(p.id, outputs);
         }
 
@@ -617,20 +685,20 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
 
           const targetParticipant = participants.find((p) => p.id === coupling.to.participantId);
           if (targetParticipant) {
-            await targetParticipant.lspParticipant.setInputs(new Map([[coupling.to.variableName, value]]));
+            await targetParticipant.participant.setInputs(new Map([[coupling.to.variableName, value]]));
           }
         }
 
         // ── Step all participants ──
         for (const p of participants) {
-          await p.lspParticipant.doStep(t, effectiveH);
+          await p.participant.doStep(t, effectiveH);
         }
 
         const time = t + effectiveH;
 
         // ── Publish results ──
         for (const p of participants) {
-          const allValues = p.lspParticipant.allValues;
+          const allValues = p.participant.allValues;
           for (const [variable, value] of Object.entries(allValues)) {
             const topic = `cosim/sessions/${sessionId}/participants/${p.id}/data`;
             const payload = JSON.stringify({ time, variable, value });
@@ -657,7 +725,7 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
       aborted = abortRef.aborted;
 
       // ── Phase 3: Terminate ──
-      await Promise.allSettled(participants.map((p) => p.lspParticipant.terminate()));
+      await Promise.allSettled(participants.map((p) => p.participant.terminate()));
       this.localSimTimers.delete(sessionId);
 
       session.state = aborted ? "completed" : "completed";
@@ -668,7 +736,7 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
       this.postMessage({ type: "error", message: `Co-simulation failed: ${e}` });
 
       // Best-effort terminate
-      await Promise.allSettled(participants.map((p) => p.lspParticipant.terminate())).catch(() => undefined);
+      await Promise.allSettled(participants.map((p) => p.participant.terminate())).catch(() => undefined);
     }
   }
 
