@@ -66,10 +66,16 @@ src/
 ├── orchestrator.ts        # Gauss-Seidel master algorithm
 ├── participants/
 │   ├── js-simulator.ts    # JS-native participant (wraps ModelicaSimulator)
-│   ├── fmu-js.ts          # FMU-JS participant (placeholder, Phase 4)
-│   └── fmu-native.ts      # FMU-native participant (placeholder, Phase 4)
+│   ├── fmu-js.ts          # FMU-JS participant (loads FMU metadata from storage)
+│   └── fmu-native.ts      # FMU-native participant (subprocess via JSON-RPC)
+├── fmu/
+│   ├── model-description.ts  # FMI 2.0 modelDescription.xml regex parser
+│   └── storage.ts            # FMU archive storage + ZIP extraction
 ├── historian/
-│   └── recorder.ts        # MQTT → TimescaleDB recorder + query service
+│   ├── recorder.ts        # MQTT → TimescaleDB batch recorder
+│   └── replayer.ts        # TimescaleDB → MQTT session replay
+├── ws/
+│   └── stream.ts          # WebSocket streaming with throttling
 └── index.ts               # Public API exports
 ```
 
@@ -78,9 +84,9 @@ src/
 | Type           | Runtime    | Status         | Description                                   |
 | -------------- | ---------- | -------------- | --------------------------------------------- |
 | `js-simulator` | In-process | ✅ Implemented | Wraps `@modelscript/core` ModelicaSimulator   |
-| `fmu-js`       | In-process | 🔲 Phase 4     | Loads FMU `model.json` + JS simulator         |
-| `fmu-native`   | Subprocess | 🔲 Phase 4     | dlopen() FMU shared library via C harness     |
-| `external`     | MQTT       | 🔲 Phase 5     | External device/simulator publishing via MQTT |
+| `fmu-js`       | In-process | ✅ Implemented | Loads FMU metadata from storage, I/O coupling |
+| `fmu-native`   | Subprocess | ✅ Implemented | JSON-RPC harness for native FMU .so/.dll      |
+| `external`     | MQTT       | ✅ Implemented | External device/simulator publishing via MQTT |
 
 ## Usage
 
@@ -209,13 +215,9 @@ npm run lint --workspace=@modelscript/cosim
 npm run watch --workspace=@modelscript/cosim
 ```
 
-## Roadmap
+## Status
 
-- **Phase 2**: TimescaleDB schema migrations, historian replay mode
-- **Phase 3**: MQTT participant tree widget in Morsel and VS Code IDE
-- **Phase 4**: FMU upload API, FMU-JS and FMU-native participant runners
-- **Phase 5**: Real-time MQTT data sources in Morsel simulation loop
-- **Phase 6**: Error recovery, session cleanup, production hardening
+All phases complete. The co-simulation engine is fully implemented.
 
 ## License
 
