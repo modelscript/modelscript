@@ -7,6 +7,11 @@ services:
     volumes:
       - ./config/mosquitto.conf:/mosquitto/config/mosquitto.conf
       - mqtt-data:/mosquitto/data
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -t '$$SYS/#' -C 1 -W 3 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
     restart: unless-stopped
 
   timescaledb:
@@ -19,6 +24,12 @@ services:
       - POSTGRES_PASSWORD=${TIMESCALE_PASSWORD:-modelscript}
     volumes:
       - timescale-data:/var/lib/postgresql/data
+      - ./config/init-timescaledb.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U modelscript -d modelscript_historian"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
 
   api:
@@ -31,8 +42,10 @@ services:
     volumes:
       - api-data:/app/packages/api/data
     depends_on:
-      - mqtt
-      - timescaledb
+      mqtt:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
     environment:
       - NODE_ENV=production
       - PORT=3000
