@@ -31,6 +31,7 @@
     "lodash": "^4.17.21",
     "media-typer": "^1.1.0",
     "monaco-editor": "^0.55.1",
+    "mqtt": "^5.10.0",
     "pako": "^0.2.9",
     "papaparse": "^5.5.3",
     "parse-data-url": "^6.0.0",

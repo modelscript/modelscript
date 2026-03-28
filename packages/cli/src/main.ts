@@ -5,6 +5,7 @@
 import PackageJson from "@npmcli/package-json";
 import path from "node:path";
 import yargs from "yargs/yargs";
+import { Cosim } from "./commands/cosim.js";
 import { ExportFmu } from "./commands/export-fmu.js";
 import { Flatten } from "./commands/flatten.js";
 import { I18n } from "./commands/i18n.js";
@@ -26,6 +27,7 @@ yargs(process.argv.slice(2))
   .scriptName("msc")
   .usage(`CLI for ModelScript ${pkg.content.version}`)
   .command(Flatten)
+  .command(Cosim)
   .command(ExportFmu)
   .command(I18n)
   .command(Instantiate)
