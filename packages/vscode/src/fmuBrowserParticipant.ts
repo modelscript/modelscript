@@ -3,16 +3,18 @@
 /**
  * Browser-safe FMU 2.0 co-simulation participant.
  *
- * Supports two modes:
+ * Supports three execution modes (tried in order):
  *
- * 1. **XML-only mode**: Parses a modelDescription.xml string to extract
- *    variable metadata and runs a passthrough simulation where inputs
- *    propagate to outputs.
+ * 1. **WASM mode**: If the FMU archive contains `binaries/wasm32/*.wasm`,
+ *    loads the WebAssembly module and calls FMI 2.0 C API functions
+ *    directly through WASM exports.
  *
- * 2. **FMU archive mode**: Loads a .fmu ZIP archive containing both
- *    modelDescription.xml and resources/model.json (serialized DAE).
- *    Uses the embedded DAE to drive real simulation with a simple
- *    Euler integrator evaluating der(x) = f(x, t) equations.
+ * 2. **DAE mode**: If the archive contains `resources/model.json`
+ *    (serialized DAE from ModelScript), uses Euler integration to
+ *    evaluate der(x) = f(x, t) equations.
+ *
+ * 3. **Passthrough mode**: XML-only fallback where input values
+ *    propagate to outputs unchanged.
  */
 
 import { unzipSync } from "fflate";
@@ -335,6 +337,221 @@ function extractFileFromFmu(fmuBytes: Uint8Array, targetPath: string): string | 
   }
 }
 
+/** Find a .wasm file in the FMU archive under binaries/. */
+function findWasmInFmu(fmuBytes: Uint8Array): Uint8Array | null {
+  try {
+    const unzipped = unzipSync(fmuBytes);
+    // Search common WASM binary paths in priority order
+    const wasmPaths = Object.keys(unzipped).filter(
+      (p) => p.endsWith(".wasm") && (p.startsWith("binaries/") || p.includes("/wasm")),
+    );
+    if (wasmPaths.length === 0) {
+      // Also check for .wasm at root level
+      const rootWasm = Object.keys(unzipped).find((p) => p.endsWith(".wasm"));
+      if (rootWasm) return unzipped[rootWasm] ?? null;
+      return null;
+    }
+    const firstPath = wasmPaths[0];
+    return (firstPath ? unzipped[firstPath] : null) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// ── WASM FMI 2.0 Binding ────────────────────────────────────────
+
+/** FMI 2.0 status codes. */
+const FMI2_OK = 0;
+// const FMI2_WARNING = 1;
+// const FMI2_DISCARD = 2;
+// const FMI2_ERROR = 3;
+// const FMI2_FATAL = 4;
+
+/** FMI 2.0 type enum. */
+const FMI2_CO_SIMULATION = 1;
+
+/**
+ * Thin wrapper around a WASM FMI 2.0 module.
+ * Handles memory management for passing strings and arrays
+ * between JS and WASM linear memory.
+ */
+class WasmFmi2Instance {
+  private instance: WebAssembly.Instance;
+  private memory: WebAssembly.Memory;
+  private component = 0; // fmi2Component pointer
+  private allocations: number[] = []; // track allocations for cleanup
+
+  constructor(instance: WebAssembly.Instance) {
+    this.instance = instance;
+    this.memory = instance.exports["memory"] as WebAssembly.Memory;
+  }
+
+  private get exports(): Record<string, CallableFunction> {
+    return this.instance.exports as Record<string, CallableFunction>;
+  }
+
+  /** Allocate bytes in WASM linear memory. */
+  private malloc(size: number): number {
+    const alloc = this.exports["malloc"] ?? this.exports["fmi2_malloc"];
+    if (!alloc) {
+      // Fallback: grow memory and use a bump allocator at the end
+      const pages = this.memory.buffer.byteLength;
+      // Simple bump allocation from the end of current memory
+      const ptr = pages; // Use current size as allocation point
+      const needed = Math.ceil((ptr + size) / 65536);
+      const current = this.memory.buffer.byteLength / 65536;
+      if (needed > current) {
+        this.memory.grow(needed - current);
+      }
+      this.allocations.push(ptr);
+      return ptr;
+    }
+    const ptr = alloc(size) as number;
+    this.allocations.push(ptr);
+    return ptr;
+  }
+
+  /** Free allocated memory. */
+  private free(ptr: number): void {
+    const freeFn = this.exports["free"] ?? this.exports["fmi2_free"];
+    if (freeFn) {
+      freeFn(ptr);
+    }
+  }
+
+  /** Write a string to WASM memory and return its pointer. */
+  private writeString(str: string): number {
+    const encoded = new TextEncoder().encode(str + "\0");
+    const ptr = this.malloc(encoded.length);
+    new Uint8Array(this.memory.buffer, ptr, encoded.length).set(encoded);
+    return ptr;
+  }
+
+  /** Write an array of uint32 (value references) to WASM memory. */
+  private writeUint32Array(values: number[]): number {
+    const ptr = this.malloc(values.length * 4);
+    const view = new Uint32Array(this.memory.buffer, ptr, values.length);
+    for (let i = 0; i < values.length; i++) {
+      const v = values[i];
+      if (v !== undefined) view[i] = v;
+    }
+    return ptr;
+  }
+
+  /** Write an array of float64 (Real values) to WASM memory. */
+  private writeFloat64Array(values: number[]): number {
+    // Ensure 8-byte alignment
+    const ptr = this.malloc(values.length * 8 + 8);
+    const aligned = (ptr + 7) & ~7;
+    const view = new Float64Array(this.memory.buffer, aligned, values.length);
+    for (let i = 0; i < values.length; i++) {
+      const v = values[i];
+      if (v !== undefined) view[i] = v;
+    }
+    return aligned;
+  }
+
+  /** Read float64 values from WASM memory. */
+  private readFloat64Array(ptr: number, count: number): number[] {
+    const view = new Float64Array(this.memory.buffer, ptr, count);
+    return Array.from(view);
+  }
+
+  /** Call fmi2Instantiate. */
+  instantiate(instanceName: string, guid: string): boolean {
+    const fn = this.exports["fmi2Instantiate"];
+    if (!fn) return false;
+    const namePtr = this.writeString(instanceName);
+    const guidPtr = this.writeString(guid);
+    const resourcePtr = this.writeString("");
+    // fmi2Instantiate(instanceName, fmi2CoSimulation, guid, resourceLocation, callbacks, visible, loggingOn)
+    // callbacks = NULL (0), visible = 0, loggingOn = 0
+    this.component = fn(namePtr, FMI2_CO_SIMULATION, guidPtr, resourcePtr, 0, 0, 0) as number;
+    return this.component !== 0;
+  }
+
+  /** Call fmi2SetupExperiment. */
+  setupExperiment(startTime: number, stopTime: number, stepSize: number): boolean {
+    const fn = this.exports["fmi2SetupExperiment"];
+    if (!fn || !this.component) return false;
+    // fmi2SetupExperiment(c, toleranceDefined, tolerance, startTime, stopTimeDefined, stopTime)
+    const status = fn(this.component, 0, stepSize, startTime, 1, stopTime) as number;
+    return status === FMI2_OK;
+  }
+
+  /** Call fmi2EnterInitializationMode. */
+  enterInitializationMode(): boolean {
+    const fn = this.exports["fmi2EnterInitializationMode"];
+    if (!fn || !this.component) return false;
+    return (fn(this.component) as number) === FMI2_OK;
+  }
+
+  /** Call fmi2ExitInitializationMode. */
+  exitInitializationMode(): boolean {
+    const fn = this.exports["fmi2ExitInitializationMode"];
+    if (!fn || !this.component) return false;
+    return (fn(this.component) as number) === FMI2_OK;
+  }
+
+  /** Call fmi2DoStep. */
+  doStep(currentTime: number, stepSize: number): boolean {
+    const fn = this.exports["fmi2DoStep"];
+    if (!fn || !this.component) return false;
+    // fmi2DoStep(c, currentCommunicationPoint, communicationStepSize, noSetFMUStatePriorToCurrentPoint)
+    const status = fn(this.component, currentTime, stepSize, 1) as number;
+    return status === FMI2_OK;
+  }
+
+  /** Call fmi2GetReal. */
+  getReal(valueReferences: number[]): number[] | null {
+    const fn = this.exports["fmi2GetReal"];
+    if (!fn || !this.component) return null;
+    const vrPtr = this.writeUint32Array(valueReferences);
+    const valPtr = this.writeFloat64Array(new Array(valueReferences.length).fill(0));
+    const status = fn(this.component, vrPtr, valueReferences.length, valPtr) as number;
+    if (status !== FMI2_OK) return null;
+    return this.readFloat64Array(valPtr, valueReferences.length);
+  }
+
+  /** Call fmi2SetReal. */
+  setReal(valueReferences: number[], values: number[]): boolean {
+    const fn = this.exports["fmi2SetReal"];
+    if (!fn || !this.component) return false;
+    const vrPtr = this.writeUint32Array(valueReferences);
+    const valPtr = this.writeFloat64Array(values);
+    const status = fn(this.component, vrPtr, valueReferences.length, valPtr) as number;
+    return status === FMI2_OK;
+  }
+
+  /** Call fmi2Terminate. */
+  terminate(): void {
+    const fn = this.exports["fmi2Terminate"];
+    if (fn && this.component) {
+      fn(this.component);
+    }
+    const freeFn = this.exports["fmi2FreeInstance"];
+    if (freeFn && this.component) {
+      freeFn(this.component);
+    }
+    // Clean up tracked allocations
+    for (const ptr of this.allocations) {
+      this.free(ptr);
+    }
+    this.allocations = [];
+    this.component = 0;
+  }
+
+  /** Check if the WASM module exports FMI 2.0 functions. */
+  static hasRequiredExports(instance: WebAssembly.Instance): boolean {
+    const exports = instance.exports;
+    return (
+      typeof exports["fmi2Instantiate"] === "function" &&
+      typeof exports["fmi2DoStep"] === "function" &&
+      typeof exports["fmi2GetReal"] === "function"
+    );
+  }
+}
+
 // ── FMU Browser Participant ──
 
 /** Variable info exposed after initialization. */
@@ -368,6 +585,10 @@ export class FmuBrowserParticipant {
   private daeJson: Record<string, unknown> | null = null;
   private stateNames: string[] = [];
   private hasSimulator = false;
+
+  // WASM simulation state
+  private wasmInstance: WasmFmi2Instance | null = null;
+  private hasWasm = false;
 
   constructor(id: string, xmlContentOrFmuBytes: string | Uint8Array) {
     this.id = id;
@@ -403,7 +624,6 @@ export class FmuBrowserParticipant {
     return this.hasSimulator;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async initialize(_startTime: number, _stopTime: number, _stepSize: number): Promise<void> {
     this.modelDesc = parseModelDescription(this.xmlContent);
 
@@ -433,25 +653,86 @@ export class FmuBrowserParticipant {
       }
     }
 
-    // Try to load model.json from FMU archive for real simulation
+    // Try execution modes in priority order: WASM → model.json → passthrough
     if (this.fmuBytes) {
-      const modelJsonStr = extractFileFromFmu(this.fmuBytes, "resources/model.json");
-      if (modelJsonStr) {
+      // 1. Try WASM execution
+      const wasmBytes = findWasmInFmu(this.fmuBytes);
+      if (wasmBytes) {
         try {
-          this.daeJson = JSON.parse(modelJsonStr) as Record<string, unknown>;
-          // Find state variables (continuous Real variables without variability qualifier)
-          const variables = (this.daeJson["variables"] as JSONExpr[]) ?? [];
-          this.stateNames = variables
-            .filter((v) => {
-              const vty = v["variability"] as string | undefined;
-              const vtype = v["@type"] as string;
-              return vtype === "RealVariable" && !vty && !(v["name"] as string).startsWith("der(");
-            })
-            .map((v) => v["name"] as string);
-          this.hasSimulator = true;
-          console.log(`[fmu] Loaded model.json with ${this.stateNames.length} state variables for '${this.modelName}'`);
+          const wasmModule = await WebAssembly.compile(wasmBytes as BufferSource);
+          // Provide minimal imports for the WASM module
+          const importObject: WebAssembly.Imports = {
+            env: {
+              memory: new WebAssembly.Memory({ initial: 256, maximum: 2048 }),
+            },
+            wasi_snapshot_preview1: {
+              // Minimal WASI stubs for WASM modules compiled with WASI support
+              // eslint-disable-next-line @typescript-eslint/no-empty-function
+              proc_exit: () => {},
+              fd_write: () => 0,
+              fd_read: () => 0,
+              fd_seek: () => 0,
+              fd_close: () => 0,
+              environ_get: () => 0,
+              environ_sizes_get: () => 0,
+              clock_time_get: () => 0,
+            },
+          };
+          const wasmInst = await WebAssembly.instantiate(wasmModule, importObject);
+          if (WasmFmi2Instance.hasRequiredExports(wasmInst)) {
+            this.wasmInstance = new WasmFmi2Instance(wasmInst);
+            const guid = this.modelDesc.guid;
+            if (this.wasmInstance.instantiate(this.modelName, guid)) {
+              this.wasmInstance.setupExperiment(_startTime, _stopTime, _stepSize);
+              this.wasmInstance.enterInitializationMode();
+
+              // Set initial input values
+              const inputVrs: number[] = [];
+              const inputVals: number[] = [];
+              for (const v of this.modelDesc.variables) {
+                if (v.causality === "input" && v.start !== undefined && typeof v.start === "number") {
+                  inputVrs.push(v.valueReference);
+                  inputVals.push(v.start);
+                }
+              }
+              if (inputVrs.length > 0) {
+                this.wasmInstance.setReal(inputVrs, inputVals);
+              }
+
+              this.wasmInstance.exitInitializationMode();
+              this.hasWasm = true;
+              console.log(`[fmu] WASM FMU loaded for '${this.modelName}'`);
+            } else {
+              console.warn("[fmu] fmi2Instantiate failed for WASM module");
+              this.wasmInstance = null;
+            }
+          }
         } catch (e) {
-          console.warn("[fmu] Failed to parse model.json:", e);
+          console.warn("[fmu] Failed to load WASM FMU:", e);
+        }
+      }
+
+      // 2. Try model.json DAE execution
+      if (!this.hasWasm) {
+        const modelJsonStr = extractFileFromFmu(this.fmuBytes, "resources/model.json");
+        if (modelJsonStr) {
+          try {
+            this.daeJson = JSON.parse(modelJsonStr) as Record<string, unknown>;
+            const variables = (this.daeJson["variables"] as JSONExpr[]) ?? [];
+            this.stateNames = variables
+              .filter((v) => {
+                const vty = v["variability"] as string | undefined;
+                const vtype = v["@type"] as string;
+                return vtype === "RealVariable" && !vty && !(v["name"] as string).startsWith("der(");
+              })
+              .map((v) => v["name"] as string);
+            this.hasSimulator = true;
+            console.log(
+              `[fmu] Loaded model.json with ${this.stateNames.length} state variables for '${this.modelName}'`,
+            );
+          } catch (e) {
+            console.warn("[fmu] Failed to parse model.json:", e);
+          }
         }
       }
     }
@@ -465,7 +746,41 @@ export class FmuBrowserParticipant {
       this.currentValues.set(name, value);
     }
 
-    if (this.hasSimulator && this.daeJson) {
+    if (this.hasWasm && this.wasmInstance) {
+      // ── WASM execution mode ──
+      // Set inputs via fmi2SetReal
+      if (this.modelDesc) {
+        const inputVrs: number[] = [];
+        const inputVals: number[] = [];
+        for (const v of this.modelDesc.variables) {
+          if (v.causality === "input") {
+            const val = this.currentValues.get(v.name);
+            if (val !== undefined) {
+              inputVrs.push(v.valueReference);
+              inputVals.push(val);
+            }
+          }
+        }
+        if (inputVrs.length > 0) {
+          this.wasmInstance.setReal(inputVrs, inputVals);
+        }
+      }
+
+      // Advance the WASM FMU
+      this.wasmInstance.doStep(currentTime, stepSize);
+
+      // Read all outputs and parameters via fmi2GetReal
+      if (this.modelDesc) {
+        for (const v of this.modelDesc.variables) {
+          if (v.causality === "output" || v.causality === "local") {
+            const values = this.wasmInstance.getReal([v.valueReference]);
+            if (values && values.length > 0) {
+              this.currentValues.set(v.name, values[0] ?? 0);
+            }
+          }
+        }
+      }
+    } else if (this.hasSimulator && this.daeJson) {
       // ── Real simulation mode: Euler integration ──
       const stateValues = new Map<string, number>();
       for (const name of this.stateNames) {
@@ -562,5 +877,10 @@ export class FmuBrowserParticipant {
     this.daeJson = null;
     this.stateNames = [];
     this.hasSimulator = false;
+    if (this.wasmInstance) {
+      this.wasmInstance.terminate();
+      this.wasmInstance = null;
+    }
+    this.hasWasm = false;
   }
 }
