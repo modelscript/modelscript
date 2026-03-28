@@ -625,17 +625,31 @@ async function initWorkspaceAndTree(
           const plantUri = Uri.joinPath(workspaceUri, "Plant.xml");
           const readmeUri = Uri.joinPath(workspaceUri, "README.md");
 
+          const cosimSetupMo = [
+            'model CosimSetup "Co-simulation wiring diagram"',
+            "  Controller controller;",
+            '  FMUBlock plant(fileName = "Plant.xml");',
+            "equation",
+            "  connect(controller.y, plant.u);",
+            "  connect(plant.y, controller.u);",
+            "end CosimSetup;",
+            "",
+          ].join("\n");
+
+          const cosimSetupUri = Uri.joinPath(workspaceUri, "CosimSetup.mo");
+
           await workspace.fs.writeFile(controllerUri, encoder.encode(controllerMo));
           await workspace.fs.writeFile(plantUri, encoder.encode(plantXml));
+          await workspace.fs.writeFile(cosimSetupUri, encoder.encode(cosimSetupMo));
           await workspace.fs.writeFile(readmeUri, encoder.encode(readmeMd));
 
-          // Open the controller in the editor
-          filename = "Controller.mo";
-          content = controllerMo;
+          // Open the co-sim setup model as the primary file
+          filename = "CosimSetup.mo";
+          content = cosimSetupMo;
 
-          // Also open the README
-          const readmeDoc = await workspace.openTextDocument(readmeUri);
-          await vscode.window.showTextDocument(readmeDoc, { preview: false });
+          // Also open the controller
+          const controllerDoc = await workspace.openTextDocument(controllerUri);
+          await vscode.window.showTextDocument(controllerDoc, { preview: false });
           break;
         }
       }

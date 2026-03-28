@@ -346,6 +346,13 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
         break;
       }
 
+      case "publishCosimModel": {
+        if (this.localMode) {
+          await this.localPublishCosimModel(msg.sessionId as string);
+        }
+        break;
+      }
+
       case "addFmuParticipant": {
         try {
           const resp = await fetch(`${apiUrl}/api/v1/cosim/sessions/${msg.sessionId}/participants/fmu`, {
@@ -518,6 +525,149 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
       this.localFetchParticipants(sessionId);
     } catch (e) {
       this.postMessage({ type: "error", message: `Failed to load FMU: ${e}` });
+    }
+  }
+
+  /** Publish a co-simulation wrapper model: extract participants and couplings from connect equations. */
+  private async localPublishCosimModel(sessionId: string): Promise<void> {
+    const session = this.localSessions.get(sessionId);
+    if (!session) {
+      this.postMessage({ type: "error", message: "Session not found." });
+      return;
+    }
+
+    const editor = vscode.window.activeTextEditor;
+    if (!editor || editor.document.languageId !== "modelica") {
+      vscode.window.showWarningMessage("Open a Modelica co-simulation wrapper model (.mo) to publish.");
+      return;
+    }
+
+    const text = editor.document.getText();
+    const uri = editor.document.uri.toString();
+
+    try {
+      // Call the LSP to extract the co-simulation graph
+      const result = (await this.client.sendRequest("modelscript/extractCosimGraph", { uri, text })) as {
+        ok: boolean;
+        participants?: { id: string; type: "modelica" | "fmu"; className: string; fileName?: string }[];
+        couplings?: {
+          from: { participantId: string; variable: string };
+          to: { participantId: string; variable: string };
+        }[];
+        error?: string;
+      };
+
+      if (!result.ok || !result.participants) {
+        this.postMessage({
+          type: "error",
+          message: `Failed to extract co-sim graph: ${result.error ?? "unknown error"}`,
+        });
+        return;
+      }
+
+      if (result.participants.length === 0) {
+        vscode.window.showWarningMessage("No components found in the wrapper model.");
+        return;
+      }
+
+      // Clear existing participants and couplings
+      session.participants = [];
+      session.couplings = [];
+
+      // Resolve the workspace folder for relative file paths
+      const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri;
+
+      // Create participants
+      for (const p of result.participants) {
+        const participantId = `cosim-${p.id}-${Date.now().toString(36)}`;
+
+        if (p.type === "modelica") {
+          // Find the document URI for this Modelica class
+          // Convention: class name matches filename (e.g., Controller → Controller.mo)
+          const moFileName = `${p.className}.mo`;
+          let moUri = uri; // Default to the wrapper model's URI
+
+          if (workspaceFolder) {
+            const candidateUri = vscode.Uri.joinPath(workspaceFolder, moFileName);
+            try {
+              await vscode.workspace.fs.stat(candidateUri);
+              moUri = candidateUri.toString();
+            } catch {
+              // File not found — fall back to wrapper URI
+            }
+          }
+
+          const lspParticipant = new LspSimulatorParticipant(this.client, participantId, p.className, moUri);
+          session.participants.push({
+            id: participantId,
+            modelName: p.className,
+            uri: moUri,
+            type: "modelica",
+            variables: 0,
+            participant: lspParticipant,
+          });
+        } else if (p.type === "fmu" && p.fileName) {
+          // Resolve the XML file relative to the workspace
+          let xmlContent: string | undefined;
+
+          if (workspaceFolder) {
+            const xmlUri = vscode.Uri.joinPath(workspaceFolder, p.fileName);
+            try {
+              const data = await vscode.workspace.fs.readFile(xmlUri);
+              xmlContent = new TextDecoder().decode(data);
+            } catch {
+              this.postMessage({ type: "error", message: `FMU file not found: ${p.fileName}` });
+              continue;
+            }
+          }
+
+          if (!xmlContent) continue;
+
+          const fmuParticipant = new FmuBrowserParticipant(participantId, xmlContent);
+          session.participants.push({
+            id: participantId,
+            modelName: fmuParticipant.modelName || p.className,
+            uri: p.fileName,
+            type: "fmu",
+            variables: 0,
+            participant: fmuParticipant,
+          });
+        }
+      }
+
+      // Map original component IDs to generated participant IDs
+      const idMap = new Map<string, string>();
+      for (const p of result.participants) {
+        const found = session.participants.find((sp) => sp.modelName === p.className);
+        if (found) {
+          idMap.set(p.id, found.id);
+        }
+      }
+
+      // Set couplings (translating from original component IDs to participant IDs)
+      if (result.couplings) {
+        for (const c of result.couplings) {
+          const fromId = idMap.get(c.from.participantId);
+          const toId = idMap.get(c.to.participantId);
+          if (fromId && toId) {
+            session.couplings.push({
+              from: { participantId: fromId, variableName: c.from.variable },
+              to: { participantId: toId, variableName: c.to.variable },
+            });
+          }
+        }
+      }
+
+      const nParticipants = session.participants.length;
+      const nCouplings = session.couplings.length;
+      vscode.window.showInformationMessage(
+        `Co-sim graph: ${nParticipants} participant(s), ${nCouplings} coupling(s) extracted.`,
+      );
+
+      this.localFetchSessions();
+      this.localFetchParticipants(sessionId);
+    } catch (e) {
+      this.postMessage({ type: "error", message: `Failed to publish co-sim model: ${e}` });
     }
   }
 
