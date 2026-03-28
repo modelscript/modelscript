@@ -132,7 +132,7 @@ export async function activate(context: vscode.ExtensionContext) {
     console.log("[blank-project] Registered memfs:// filesystem provider");
   }
 
-  const documentSelector = [{ language: "modelica" }];
+  const documentSelector = [{ language: "modelica" }, { language: "xml" }];
 
   // Options to control the language client
   const clientOptions: LanguageClientOptions = {
@@ -643,6 +643,10 @@ async function initWorkspaceAndTree(
           await workspace.fs.writeFile(cosimSetupUri, encoder.encode(cosimSetupMo));
           await workspace.fs.writeFile(readmeUri, encoder.encode(readmeMd));
 
+          // Open the Plant.xml first so the LSP creates a ModelicaFmuEntity
+          // This must happen before .mo files so cross-file resolution finds 'Plant'
+          await workspace.openTextDocument(plantUri);
+
           // Open the co-sim setup model as the primary file
           filename = "CosimSetup.mo";
           content = cosimSetupMo;
@@ -708,6 +712,16 @@ async function scanWorkspaceFiles(): Promise<vscode.Uri[]> {
           console.log(`[workspace-scan] Opened ${uri.path.split("/").pop()}`);
         } catch (e) {
           console.warn(`[workspace-scan] Failed to open ${uri.path}:`, e);
+        }
+      }
+      // Also scan for FMU model description XML files
+      const xmlFiles = await workspace.findFiles("**/*.xml");
+      for (const uri of xmlFiles) {
+        try {
+          await workspace.openTextDocument(uri);
+          console.log(`[workspace-scan] Opened XML ${uri.path.split("/").pop()}`);
+        } catch (e) {
+          console.warn(`[workspace-scan] Failed to open XML ${uri.path}:`, e);
         }
       }
       return moFiles;

@@ -54,6 +54,7 @@ import {
   ModelicaElement,
   ModelicaEnumerationClassInstance,
   ModelicaFlattener,
+  ModelicaFmuEntity,
   ModelicaFunctionCallSyntaxNode,
   ModelicaInterpreter,
   ModelicaLibrary,
@@ -918,6 +919,33 @@ documents.onDidClose((event) => {
 async function validateTextDocument(textDocument: TextDocument): Promise<void> {
   const diagnostics: Diagnostic[] = [];
   const text = textDocument.getText();
+
+  // Handle FMU model description XML files
+  if (textDocument.uri.endsWith(".xml") && text.includes("fmiModelDescription")) {
+    try {
+      const context = sharedContext ?? new Context(sharedFs);
+      const baseName =
+        textDocument.uri
+          .split("/")
+          .pop()
+          ?.replace(/\.xml$/, "") ?? "FMU";
+      const fmuEntity = ModelicaFmuEntity.fromXml(context, baseName, text);
+      fmuEntity.load();
+      fmuEntity.instantiate();
+      workspaceInstances.set(textDocument.uri, [fmuEntity]);
+      console.log(`[fmu] Registered FMU entity '${baseName}' from ${textDocument.uri}`);
+      // Re-validate all .mo documents to pick up the new FMU class
+      for (const doc of documents.all()) {
+        if (doc.uri !== textDocument.uri && doc.uri.endsWith(".mo")) {
+          validateTextDocument(doc);
+        }
+      }
+    } catch (e) {
+      console.error("[fmu] Failed to create FMU entity:", e);
+    }
+    connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: [] });
+    return;
+  }
 
   if (parserReady && parser) {
     // Full tree-sitter + ModelicaLinter pipeline (matching morsel's processContent)
