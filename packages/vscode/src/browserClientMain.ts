@@ -133,7 +133,7 @@ export async function activate(context: vscode.ExtensionContext) {
     console.log("[blank-project] Registered memfs:// filesystem provider");
   }
 
-  const documentSelector = [{ language: "modelica" }, { pattern: "**/*.fmu" }];
+  const documentSelector = [{ language: "modelica" }];
 
   // Options to control the language client
   const clientOptions: LanguageClientOptions = {
@@ -546,7 +546,7 @@ async function initWorkspaceAndTree(
           );
           break;
         case "cosim": {
-          // Co-simulation example: Controller (Modelica) + Plant (FMU)
+          // Co-simulation example: Controller (Modelica) + SineWave (WASM FMU)
           const encoder = new TextEncoder();
 
           const controllerMo = [
@@ -566,46 +566,18 @@ async function initWorkspaceAndTree(
             "",
           ].join("\n");
 
-          const plantXml = [
-            '<?xml version="1.0" encoding="UTF-8"?>',
-            "<fmiModelDescription",
-            '  fmiVersion="2.0"',
-            '  modelName="Plant"',
-            '  guid="{plant-example-001}"',
-            '  description="First-order plant: dx/dt = -a*x + b*u, y = x"',
-            '  generationTool="ModelScript">',
-            '  <CoSimulation modelIdentifier="Plant" />',
-            '  <DefaultExperiment startTime="0" stopTime="10" stepSize="0.01" />',
-            "  <ModelVariables>",
-            '    <ScalarVariable name="u" valueReference="0" causality="input" variability="continuous" description="Control input">',
-            '      <Real start="0.0" />',
-            "    </ScalarVariable>",
-            '    <ScalarVariable name="y" valueReference="1" causality="output" variability="continuous" description="Plant output">',
-            '      <Real start="0.5" />',
-            "    </ScalarVariable>",
-            '    <ScalarVariable name="x" valueReference="2" causality="local" variability="continuous" description="State">',
-            '      <Real start="0.5" />',
-            "    </ScalarVariable>",
-            "  </ModelVariables>",
-            "  <ModelStructure>",
-            '    <Outputs><Unknown index="2" /></Outputs>',
-            "  </ModelStructure>",
-            "</fmiModelDescription>",
-            "",
-          ].join("\n");
-
           const readmeMd = [
             "# Co-Simulation Example",
             "",
-            "This workspace demonstrates co-simulation between a **Modelica model** and **FMU 2.0 participants**.",
+            "This workspace demonstrates co-simulation between a **Modelica model** and a **WASM FMU**.",
             "",
             "## Files",
             "",
             "| File | Type | Description |",
             "|------|------|-------------|",
             "| `Controller.mo` | Modelica | PI controller with setpoint tracking |",
-            "| `Plant.xml` | FMU 2.0 (XML) | First-order plant model description (passthrough mode) |",
             "| `SineWave.fmu` | FMU 2.0 (WASM) | Sine wave generator compiled to WebAssembly |",
+            "| `CosimSetup.mo` | Modelica | Wiring diagram connecting Controller ↔ SineWave |",
             "",
             "## Running the Co-Simulation",
             "",
@@ -613,10 +585,10 @@ async function initWorkspaceAndTree(
             '2. Click **"Browser-Local"** to enable local mode',
             "3. Create a new session (start=0, stop=10, step=0.01)",
             "4. Open `Controller.mo` and click **Publish Model**",
-            "5. Click **Publish FMU** and select `Plant.xml` or `SineWave.fmu`",
+            "5. Click **Publish FMU** and select `SineWave.fmu`",
             "6. Add couplings:",
-            "   - Controller.y → Plant.u (control signal)",
-            "   - Plant.y → Controller.u (measurement feedback)",
+            "   - Controller.y → SineWave.phase (control signal)",
+            "   - SineWave.y → Controller.u (measurement feedback)",
             "7. Click **Start** to run the coupled simulation",
             "8. Open **Live Plot** to see real-time results",
             "",
@@ -641,17 +613,16 @@ async function initWorkspaceAndTree(
 
           // Write all files
           const controllerUri = Uri.joinPath(workspaceUri, "Controller.mo");
-          const plantUri = Uri.joinPath(workspaceUri, "Plant.xml");
           const sineWaveFmuUri = Uri.joinPath(workspaceUri, "SineWave.fmu");
           const readmeUri = Uri.joinPath(workspaceUri, "README.md");
 
           const cosimSetupMo = [
             'model CosimSetup "Co-simulation wiring diagram"',
             "  Controller controller;",
-            "  Plant plant;",
+            "  SineWave sineWave;",
             "equation",
-            "  connect(controller.y, plant.u);",
-            "  connect(plant.y, controller.u);",
+            "  connect(controller.y, sineWave.phase);",
+            "  connect(sineWave.y, controller.u);",
             "end CosimSetup;",
             "",
           ].join("\n");
@@ -659,12 +630,25 @@ async function initWorkspaceAndTree(
           const cosimSetupUri = Uri.joinPath(workspaceUri, "CosimSetup.mo");
 
           await workspace.fs.writeFile(controllerUri, encoder.encode(controllerMo));
-          await workspace.fs.writeFile(plantUri, encoder.encode(plantXml));
           await workspace.fs.writeFile(sineWaveFmuUri, sineWaveFmuBytes);
-          // Open the SineWave.fmu so the LSP creates a ModelicaFmuEntity
-          await workspace.openTextDocument(sineWaveFmuUri);
           await workspace.fs.writeFile(cosimSetupUri, encoder.encode(cosimSetupMo));
           await workspace.fs.writeFile(readmeUri, encoder.encode(readmeMd));
+
+          // Register the SineWave FMU with the LSP after client is ready
+          // (deferred to allow LSP to finish initializing)
+          setTimeout(async () => {
+            if (client) {
+              try {
+                await client.sendRequest("modelscript/registerFmu", {
+                  name: "SineWave",
+                  data: SINE_WAVE_FMU_BASE64,
+                });
+                console.log("[cosim-template] Registered SineWave FMU with LSP");
+              } catch (e) {
+                console.warn("[cosim-template] Failed to register FMU:", e);
+              }
+            }
+          }, 2000);
 
           // Open the co-sim setup model as the primary file
           filename = "CosimSetup.mo";
@@ -733,14 +717,24 @@ async function scanWorkspaceFiles(): Promise<vscode.Uri[]> {
           console.warn(`[workspace-scan] Failed to open ${uri.path}:`, e);
         }
       }
-      // Also scan for FMU archive files
+      // Also scan for FMU archive files and register them with the LSP
       const fmuFiles = await workspace.findFiles("**/*.fmu");
       for (const uri of fmuFiles) {
         try {
-          await workspace.openTextDocument(uri);
-          console.log(`[workspace-scan] Opened FMU ${uri.path.split("/").pop()}`);
+          const fmuBytes = await workspace.fs.readFile(uri);
+          const name =
+            uri.path
+              .split("/")
+              .pop()
+              ?.replace(/\.fmu$/, "") ?? "FMU";
+          // Convert to base64
+          const b64 = btoa(Array.from(fmuBytes, (b) => String.fromCharCode(b)).join(""));
+          if (client) {
+            await client.sendRequest("modelscript/registerFmu", { name, data: b64 });
+            console.log(`[workspace-scan] Registered FMU ${name}`);
+          }
         } catch (e) {
-          console.warn(`[workspace-scan] Failed to open FMU ${uri.path}:`, e);
+          console.warn(`[workspace-scan] Failed to register FMU ${uri.path}:`, e);
         }
       }
       return moFiles;

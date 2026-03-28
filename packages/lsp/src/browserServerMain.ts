@@ -920,38 +920,6 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
   const diagnostics: Diagnostic[] = [];
   const text = textDocument.getText();
 
-  // Handle FMU archive files
-  if (textDocument.uri.endsWith(".fmu")) {
-    try {
-      const context = sharedContext ?? new Context(sharedFs);
-      const baseName =
-        textDocument.uri
-          .split("/")
-          .pop()
-          ?.replace(/\.fmu$/, "") ?? "FMU";
-      // The document text is the raw bytes encoded as a string — convert to Uint8Array
-      const fmuBytes = new Uint8Array(text.length);
-      for (let i = 0; i < text.length; i++) {
-        fmuBytes[i] = text.charCodeAt(i);
-      }
-      const fmuEntity = ModelicaFmuEntity.fromFmu(context, baseName, fmuBytes);
-      fmuEntity.load();
-      fmuEntity.instantiate();
-      workspaceInstances.set(textDocument.uri, [fmuEntity]);
-      console.log(`[fmu] Registered FMU entity '${baseName}' from ${textDocument.uri}`);
-      // Re-validate all .mo documents to pick up the new FMU class
-      for (const doc of documents.all()) {
-        if (doc.uri !== textDocument.uri && doc.uri.endsWith(".mo")) {
-          validateTextDocument(doc);
-        }
-      }
-    } catch (e) {
-      console.error("[fmu] Failed to create FMU entity:", e);
-    }
-    connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: [] });
-    return;
-  }
-
   if (parserReady && parser) {
     // Full tree-sitter + ModelicaLinter pipeline (matching morsel's processContent)
     // Use the shared context (with MSL loaded) when available, otherwise a bare context
@@ -3768,6 +3736,39 @@ connection.onRequest("modelscript/listClasses", (): { classes: { name: string; k
 
   return { classes };
 });
+
+// ── FMU registration (binary data via custom request) ──────────────────
+connection.onRequest(
+  "modelscript/registerFmu",
+  (params: { name: string; data: string }): { ok: boolean; error?: string } => {
+    try {
+      const context = sharedContext ?? new Context(sharedFs);
+      // Decode base64 to Uint8Array
+      const binaryStr = atob(params.data);
+      const fmuBytes = new Uint8Array(binaryStr.length);
+      for (let i = 0; i < binaryStr.length; i++) {
+        fmuBytes[i] = binaryStr.charCodeAt(i);
+      }
+      const fmuEntity = ModelicaFmuEntity.fromFmu(context, params.name, fmuBytes);
+      fmuEntity.load();
+      fmuEntity.instantiate();
+      const uri = `__fmu__:${params.name}`;
+      workspaceInstances.set(uri, [fmuEntity]);
+      console.log(`[fmu] Registered FMU entity '${params.name}' via custom request`);
+      // Re-validate all .mo documents to pick up the new FMU class
+      for (const doc of documents.all()) {
+        if (doc.uri.endsWith(".mo")) {
+          validateTextDocument(doc);
+        }
+      }
+      return { ok: true };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error(`[fmu] Failed to register FMU '${params.name}':`, msg);
+      return { ok: false, error: msg };
+    }
+  },
+);
 
 // Listen on the connection
 connection.listen();
