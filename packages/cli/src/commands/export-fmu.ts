@@ -3,15 +3,22 @@
 import type { FmuArchiveOptions } from "@modelscript/core";
 import {
   Context,
+  FMI2_FUNCTIONS_H,
+  FMI2_FUNCTION_TYPES_H,
+  FMI2_TYPES_PLATFORM_H,
   ModelicaDAE,
   ModelicaFlattener,
   ModelicaLinter,
   ModelicaSimulator,
   buildFmuArchive,
+  createZip,
   generateFmu,
+  generateFmuCSources,
 } from "@modelscript/core";
 import Modelica from "@modelscript/tree-sitter-modelica";
+import { execSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import Parser, { type Range } from "tree-sitter";
 import type { CommandModule } from "yargs";
@@ -88,6 +95,11 @@ export const ExportFmu: CommandModule<{}, ExportFmuArgs> = {
         description: "include C source files in the FMU archive",
         type: "boolean",
         default: true,
+      })
+      .option("compile", {
+        description: "compile C sources into a shared library using the system C compiler",
+        type: "boolean",
+        default: false,
       });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   }) as any,
@@ -214,9 +226,96 @@ export const ExportFmu: CommandModule<{}, ExportFmuArgs> = {
       const result = buildFmuArchive(dae, archiveOptions, simulator);
       const outputPath = args.output ?? `${modelIdentifier}.fmu`;
 
-      fs.writeFileSync(outputPath, result.archive);
+      // ── Optional compilation ──
+      if (args.compile) {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "msc-fmu-"));
+        try {
+          // Generate C sources to temp dir
+          const sources = generateFmuCSources(dae, result.fmuResult, archiveOptions);
+          const srcDir = path.join(tmpDir, "sources");
+          fs.mkdirSync(srcDir, { recursive: true });
+          fs.writeFileSync(path.join(srcDir, `${modelIdentifier}_model.h`), sources.modelH);
+          fs.writeFileSync(path.join(srcDir, `${modelIdentifier}_model.c`), sources.modelC);
+          fs.writeFileSync(path.join(srcDir, "fmi2Functions.c"), sources.fmi2FunctionsC);
 
-      const types = [];
+          // Write FMI headers from archive
+          const encoder = new TextEncoder();
+          for (const [name, content] of Object.entries(FMI_HEADERS)) {
+            fs.writeFileSync(path.join(srcDir, name), encoder.encode(content));
+          }
+
+          // Detect platform
+          const arch = os.arch() === "x64" ? "64" : "32";
+          const plat =
+            process.platform === "win32"
+              ? `win${arch}`
+              : process.platform === "darwin"
+                ? `darwin${arch}`
+                : `linux${arch}`;
+          const ext = process.platform === "win32" ? ".dll" : process.platform === "darwin" ? ".dylib" : ".so";
+
+          // Compile
+          const cc = process.env.CC ?? "gcc";
+          const binDir = path.join(tmpDir, "binaries", plat);
+          fs.mkdirSync(binDir, { recursive: true });
+          const sharedLib = path.join(binDir, `${modelIdentifier}${ext}`);
+
+          const ccCmd = [
+            cc,
+            "-shared",
+            "-fPIC",
+            "-O2",
+            "-Wall",
+            "-Wextra",
+            `-I${srcDir}`,
+            path.join(srcDir, `${modelIdentifier}_model.c`),
+            path.join(srcDir, "fmi2Functions.c"),
+            "-o",
+            sharedLib,
+            "-lm",
+          ].join(" ");
+
+          console.log(`Compiling with: ${cc}`);
+          try {
+            execSync(ccCmd, { stdio: "pipe" });
+            console.log(`  Compiled: binaries/${plat}/${modelIdentifier}${ext}`);
+          } catch (compileErr) {
+            const msg =
+              compileErr instanceof Error && "stderr" in compileErr
+                ? (compileErr as { stderr: Buffer }).stderr.toString()
+                : String(compileErr);
+            console.error(`Compilation failed:\n${msg}`);
+            fs.writeFileSync(outputPath, result.archive);
+            return;
+          }
+
+          // Rebuild archive with the compiled binary
+          const finalEntries = new Map<string, Uint8Array>();
+          // Copy all original entries by reconstructing from the result
+          finalEntries.set("modelDescription.xml", encoder.encode(result.fmuResult.modelDescriptionXml));
+          if (archiveOptions.includeSources !== false) {
+            finalEntries.set(`sources/${modelIdentifier}_model.h`, encoder.encode(sources.modelH));
+            finalEntries.set(`sources/${modelIdentifier}_model.c`, encoder.encode(sources.modelC));
+            finalEntries.set("sources/fmi2Functions.c", encoder.encode(sources.fmi2FunctionsC));
+            finalEntries.set("sources/CMakeLists.txt", encoder.encode(sources.cmakeLists));
+            for (const [name, content] of Object.entries(FMI_HEADERS)) {
+              finalEntries.set(`sources/${name}`, encoder.encode(content));
+            }
+          }
+          if (archiveOptions.includeModelJson !== false) {
+            finalEntries.set("resources/model.json", encoder.encode(JSON.stringify(dae.toJSON, null, 2)));
+          }
+          finalEntries.set(`binaries/${plat}/${modelIdentifier}${ext}`, fs.readFileSync(sharedLib));
+
+          fs.writeFileSync(outputPath, createZip(finalEntries));
+        } finally {
+          fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
+      } else {
+        fs.writeFileSync(outputPath, result.archive);
+      }
+
+      const types: string[] = [];
       if (fmuType.modelExchange) types.push("Model Exchange");
       if (fmuType.coSimulation) types.push("Co-Simulation");
 
@@ -225,10 +324,22 @@ export const ExportFmu: CommandModule<{}, ExportFmuArgs> = {
       console.log(`  GUID: ${result.fmuResult.guid}`);
       console.log(`  Variables: ${result.fmuResult.scalarVariables.length}`);
       console.log(`  States: ${result.fmuResult.modelStructure.derivatives.length}`);
-      console.log(`  Files: ${result.files.length}`);
-      for (const f of result.files) {
+      const fileList = args.compile
+        ? result.files.concat([
+            `binaries/.../${modelIdentifier}${process.platform === "win32" ? ".dll" : process.platform === "darwin" ? ".dylib" : ".so"}`,
+          ])
+        : result.files;
+      console.log(`  Files: ${fileList.length}`);
+      for (const f of fileList) {
         console.log(`    ${f}`);
       }
     }
   },
+};
+
+/** FMI 2.0 header file map for compilation. */
+const FMI_HEADERS: Record<string, string> = {
+  "fmi2Functions.h": FMI2_FUNCTIONS_H,
+  "fmi2TypesPlatform.h": FMI2_TYPES_PLATFORM_H,
+  "fmi2FunctionTypes.h": FMI2_FUNCTION_TYPES_H,
 };

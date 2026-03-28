@@ -75,6 +75,9 @@ export function buildFmuArchive(
     files.set("sources/fmi2Functions.h", encoder.encode(FMI2_FUNCTIONS_H));
     files.set("sources/fmi2TypesPlatform.h", encoder.encode(FMI2_TYPES_PLATFORM_H));
     files.set("sources/fmi2FunctionTypes.h", encoder.encode(FMI2_FUNCTION_TYPES_H));
+
+    // CMake build system
+    files.set("sources/CMakeLists.txt", encoder.encode(sources.cmakeLists));
   }
 
   // ── model.json (serialized DAE for JS runtime) ──
@@ -95,7 +98,7 @@ export function buildFmuArchive(
 
 // ── ZIP file builder (pure TypeScript, no external deps beyond pako) ──
 
-function createZip(files: Map<string, Uint8Array>): Uint8Array {
+export function createZip(files: Map<string, Uint8Array>): Uint8Array {
   const centralDirectory: Uint8Array[] = [];
   const localFiles: Uint8Array[] = [];
   let offset = 0;
@@ -201,7 +204,7 @@ function crc32(data: Uint8Array): number {
 
 // ── FMI 2.0 standard header files (minimal, self-contained) ──
 
-const FMI2_TYPES_PLATFORM_H = `/* FMI 2.0 Type Platform — auto-included by ModelScript */
+export const FMI2_TYPES_PLATFORM_H = `/* FMI 2.0 Type Platform — auto-included by ModelScript */
 #ifndef fmi2TypesPlatform_h
 #define fmi2TypesPlatform_h
 
@@ -253,7 +256,7 @@ typedef struct {
 #endif
 `;
 
-const FMI2_FUNCTION_TYPES_H = `/* FMI 2.0 Function Types — auto-included by ModelScript */
+export const FMI2_FUNCTION_TYPES_H = `/* FMI 2.0 Function Types — auto-included by ModelScript */
 #ifndef fmi2FunctionTypes_h
 #define fmi2FunctionTypes_h
 
@@ -276,7 +279,7 @@ typedef struct {
 #endif
 `;
 
-const FMI2_FUNCTIONS_H = `/* FMI 2.0 Functions — auto-included by ModelScript */
+export const FMI2_FUNCTIONS_H = `/* FMI 2.0 Functions — auto-included by ModelScript */
 #ifndef fmi2Functions_h
 #define fmi2Functions_h
 
