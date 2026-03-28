@@ -10,6 +10,7 @@
     "build-server": "npx esbuild src/server.ts --bundle --platform=node --format=esm --outfile=dist/server.js --external:express --external:http-proxy-middleware",
     "build-static": "npm run download-vscode && npm run build-github-fs && npx tsx src/build-static.ts",
     "dev": "npm run download-vscode && npx tsx src/server.ts",
+    "download-model": "bash scripts/download-model.sh",
     "download-vscode": "npx tsx src/download-vscode.ts",
     "lint": "eslint src --ext ts"
   },

@@ -92,6 +92,16 @@ This launches:
 | API                   | http://localhost:3000 | REST API for simulation, publishing, queries |
 | IDE (VS Code Web)     | http://localhost:3200 | Browser-based VS Code with Modelica support  |
 
+#### AI Chat (Optional)
+
+The IDE includes a browser-local AI assistant powered by WebLLM (Qwen3-0.6B). To enable it, download the model weights (~350 MB, one-time):
+
+```bash
+npm run download-model --workspace=@modelscript/ide
+```
+
+Once downloaded, restart `npm run dev` and open the **ModelScript AI** panel in the IDE sidebar.
+
 ### CLI Usage
 
 After building, the CLI is available as `msc`:
