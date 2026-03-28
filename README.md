@@ -3,6 +3,7 @@
 
 # ModelScript
 
+[![GitHub Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4-red?logo=github)](https://github.com/sponsors/nachawati)
 [![CI/CD](https://github.com/modelscript/modelscript/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/modelscript/modelscript/actions/workflows/ci.yml)
 [![npm @modelscript/core](https://img.shields.io/npm/v/@modelscript/core?label=core)](https://www.npmjs.com/package/@modelscript/core)
 [![npm @modelscript/cli](https://img.shields.io/npm/v/@modelscript/cli?label=cli)](https://www.npmjs.com/package/@modelscript/cli)

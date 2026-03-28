@@ -376,5 +376,8 @@
   "galleryBanner": {
     "color": "#0d1b2a",
     "theme": "dark"
+  },
+  "sponsor": {
+    "url": "https://github.com/sponsors/nachawati"
   }
 }
