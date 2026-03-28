@@ -5,7 +5,7 @@
 
 Modelica language support with interactive diagram editing, simulation, and scripting — powered by [ModelScript](https://modelscript.org).
 
-![ModelScript IDE showing an RLC circuit with diagram view, code editor, and Modelica library browser](images/ide-screenshot.png)
+![ModelScript IDE showing an RLC circuit with diagram view, code editor, and Modelica library browser](https://github.com/modelscript/modelscript/raw/HEAD/packages/vscode/images/ide-screenshot.png)
 
 ## Batteries Included
 
