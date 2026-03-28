@@ -57,7 +57,7 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   // Co-simulation routes (with MQTT client injection)
   app.use("/api/v1/cosim", cosimRouter(mqttClient));
   app.use("/api/v1/mqtt/participants", mqttParticipantsRouter(mqttClient));
-  app.use("/api/v1/historian", historianRouter(dbPool));
+  app.use("/api/v1/historian", historianRouter(dbPool, mqttClient));
   app.use("/api/v1/fmus", fmuRouter());
 
   // Health check

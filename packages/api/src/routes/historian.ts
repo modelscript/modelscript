@@ -1,13 +1,5 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
-
-/**
- * Historian REST routes.
- *
- * Provides endpoints for querying historical co-simulation data stored
- * in TimescaleDB, including time-series telemetry, session metadata,
- * and replay control.
- */
-
+import type { CosimMqttClient } from "@modelscript/cosim";
+import { HistorianReplayer } from "@modelscript/cosim";
 import express from "express";
 import type { Pool } from "pg";
 
@@ -23,11 +15,15 @@ interface HistorianQueryParams {
   interval?: string;
 }
 
+/** Active replayer tracking. */
+const activeReplayers = new Map<string, HistorianReplayer>();
+
 /**
  * Create the historian router.
  * @param pool  PostgreSQL/TimescaleDB connection pool (null = stubs)
+ * @param mqttClient  MQTT client for replay publishing (null = stub responses)
  */
-export function historianRouter(pool: Pool | null): express.Router {
+export function historianRouter(pool: Pool | null, mqttClient?: CosimMqttClient | null): express.Router {
   const router = express.Router();
 
   // GET /api/v1/historian/sessions — List recorded sessions
@@ -174,8 +170,9 @@ export function historianRouter(pool: Pool | null): express.Router {
         variable_name: string;
         value: number;
       }[]) {
-        if (!values[row.participant_id]) values[row.participant_id] = {};
-        values[row.participant_id][row.variable_name] = row.value;
+        const pid = row.participant_id;
+        values[pid] = values[pid] ?? {};
+        values[pid][row.variable_name] = row.value;
       }
 
       res.json({ sessionId: query.sessionId, values });
@@ -256,23 +253,66 @@ export function historianRouter(pool: Pool | null): express.Router {
       return res.status(400).json({ error: "Missing required field: sessionId" });
     }
 
+    if (!pool || !mqttClient) {
+      return res.status(503).json({ error: "Historian replay requires TimescaleDB and MQTT" });
+    }
+
     const replayId = `replay-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    res.json({ ok: true, replayId, sessionId, from: from ?? null, to: to ?? null, speedFactor, state: "playing" });
+    const replayer = new HistorianReplayer(pool, mqttClient);
+    activeReplayers.set(replayId, replayer);
+
+    // Start replay asynchronously
+    const replayFrom = from ? new Date(from) : new Date(0);
+    const replayTo = to ? new Date(to) : new Date();
+
+    void replayer
+      .replay({
+        sessionId,
+        from: replayFrom,
+        to: replayTo,
+        speedFactor,
+      })
+      .then(() => {
+        // Auto-cleanup on completion
+        if (replayer.state === "completed" || replayer.state === "error") {
+          activeReplayers.delete(replayId);
+        }
+      });
+
+    res.json({ ok: true, replayId, sessionId, speedFactor, state: replayer.state });
   });
 
-  // POST /api/v1/historian/replay/pause — Pause replay
-  router.post("/replay/pause", (_req, res) => {
-    res.json({ ok: true, state: "paused" });
+  // POST /api/v1/historian/replay/:id/pause — Pause replay
+  router.post("/replay/:id/pause", (req, res) => {
+    const replayer = activeReplayers.get(req.params["id"] ?? "");
+    if (!replayer) return res.status(404).json({ error: "Replay not found" });
+    replayer.pause();
+    res.json({ ok: true, state: replayer.state });
   });
 
-  // POST /api/v1/historian/replay/resume — Resume replay
-  router.post("/replay/resume", (_req, res) => {
-    res.json({ ok: true, state: "playing" });
+  // POST /api/v1/historian/replay/:id/resume — Resume replay
+  router.post("/replay/:id/resume", (req, res) => {
+    const replayer = activeReplayers.get(req.params["id"] ?? "");
+    if (!replayer) return res.status(404).json({ error: "Replay not found" });
+    replayer.resume();
+    res.json({ ok: true, state: replayer.state });
   });
 
-  // POST /api/v1/historian/replay/stop — Stop replay
-  router.post("/replay/stop", (_req, res) => {
+  // POST /api/v1/historian/replay/:id/stop — Stop replay
+  router.post("/replay/:id/stop", (req, res) => {
+    const replayId = req.params["id"] ?? "";
+    const replayer = activeReplayers.get(replayId);
+    if (!replayer) return res.status(404).json({ error: "Replay not found" });
+    replayer.stop();
+    activeReplayers.delete(replayId);
     res.json({ ok: true, state: "idle" });
+  });
+
+  // GET /api/v1/historian/replay/:id — Get replay status
+  router.get("/replay/:id", (req, res) => {
+    const replayer = activeReplayers.get(req.params["id"] ?? "");
+    if (!replayer) return res.status(404).json({ error: "Replay not found" });
+    res.json({ state: replayer.state, error: replayer.error });
   });
 
   // DELETE /api/v1/historian/sessions/:id — Delete recorded session data
