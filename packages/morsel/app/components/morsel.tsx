@@ -63,6 +63,7 @@ import { getTranslations, uiLanguages } from "~/util/i18n";
 import type { CodeEditorHandle } from "./code";
 import ComponentList from "./component-list";
 import type { DiagramEditorHandle } from "./diagram";
+import { MqttTreeWidget } from "./mqtt-tree";
 import OpenFileDropzone from "./open-file-dropzone";
 import PropertiesWidget from "./properties";
 import { SimulationParameters } from "./simulation-parameters";
@@ -1775,6 +1776,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                         selectedClassName={selectedTreeClassName}
                       />
                     </div>
+                    <MqttTreeWidget width="100%" />
                   </>
                 )}
                 <div className="text-bold px-3 py-2 border-top border-bottom bg-canvas-subtle">

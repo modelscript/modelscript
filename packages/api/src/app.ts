@@ -7,6 +7,7 @@ import { JobQueue } from "./jobs.js";
 import { authRouter } from "./routes/auth.js";
 import { cosimRouter, mqttParticipantsRouter } from "./routes/cosim.js";
 import { graphqlRouter } from "./routes/graphql.js";
+import { historianRouter } from "./routes/historian.js";
 import { packagesRouter } from "./routes/packages.js";
 import { publishRouter } from "./routes/publish.js";
 import { rdfRouter } from "./routes/rdf.js";
@@ -36,6 +37,7 @@ export function createApp(storage?: LibraryStorage): express.Express {
   // Co-simulation routes (MQTT client injected as null until runtime wiring)
   app.use("/api/v1/cosim", cosimRouter(null));
   app.use("/api/v1/mqtt/participants", mqttParticipantsRouter(null));
+  app.use("/api/v1/historian", historianRouter());
 
   // Health check
   app.get("/health", (_req, res) => {

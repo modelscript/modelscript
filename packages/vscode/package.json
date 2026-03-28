@@ -266,6 +266,16 @@
           "command": "modelscript.addToDiagram",
           "when": "view == modelscript.libraryTree && viewItem =~ /^(model|block|connector)$/",
           "group": "navigation"
+        },
+        {
+          "command": "modelscript.addToDiagram",
+          "when": "view == modelscript.mqttTree && viewItem == mqttParticipant",
+          "group": "inline"
+        },
+        {
+          "command": "modelscript.addToDiagram",
+          "when": "view == modelscript.mqttTree && viewItem == mqttParticipant",
+          "group": "navigation"
         }
       ]
     },
@@ -311,6 +321,11 @@
           "id": "modelscript.libraryTree",
           "name": "Modelica Libraries",
           "visibility": "visible"
+        },
+        {
+          "id": "modelscript.mqttTree",
+          "name": "MQTT Participants",
+          "visibility": "collapsed"
         }
       ],
       "modelscript-ai": [
@@ -339,6 +354,10 @@
       {
         "view": "modelscript.libraryTree",
         "contents": "Open a Modelica file to browse libraries."
+      },
+      {
+        "view": "modelscript.mqttTree",
+        "contents": "No MQTT participants online. Start a co-simulation session to see live participants."
       }
     ]
   },
