@@ -3,15 +3,19 @@
 /**
  * Co-simulation REST routes.
  *
- * Provides endpoints for session management, MQTT participant discovery,
- * and historian queries.
+ * Provides endpoints for session management, participant enrollment,
+ * MQTT participant discovery, variable couplings, and orchestrator control.
  */
 
 import type { CosimMqttClient } from "@modelscript/cosim";
-import { Orchestrator, SessionManager } from "@modelscript/cosim";
+import { FmuJsParticipant, FmuStorage, Orchestrator, SessionManager } from "@modelscript/cosim";
 import express from "express";
 
 const sessionManager = new SessionManager();
+const fmuStorage = new FmuStorage();
+
+/** Track running orchestrators by session ID for pause/stop. */
+const orchestrators = new Map<string, Orchestrator>();
 
 /**
  * Create the co-simulation router.
@@ -46,6 +50,73 @@ export function cosimRouter(mqttClient: CosimMqttClient | null): express.Router 
     res.json(session.toJSON());
   });
 
+  // ── Participant Enrollment ──
+
+  // POST /api/v1/cosim/sessions/:id/participants/fmu — Add an FMU participant
+  router.post("/sessions/:id/participants/fmu", (req, res) => {
+    const session = sessionManager.getSession(req.params["id"] ?? "");
+    if (!session) {
+      return res.status(404).json({ error: "Session not found" });
+    }
+
+    const { fmuId, participantId } = req.body as { fmuId?: string; participantId?: string };
+    if (!fmuId) {
+      return res.status(400).json({ error: "Missing required field: fmuId" });
+    }
+
+    const pid = participantId ?? `fmu-${fmuId}-${Math.random().toString(36).slice(2, 6)}`;
+
+    try {
+      const participant = new FmuJsParticipant({
+        id: pid,
+        fmuId,
+        storage: fmuStorage,
+      });
+      session.addParticipant(participant);
+      res.status(201).json({
+        ok: true,
+        participantId: pid,
+        modelName: participant.modelName,
+        variables: participant.metadata.variables.length,
+      });
+    } catch (err: unknown) {
+      res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // GET /api/v1/cosim/sessions/:id/participants — List session participants
+  router.get("/sessions/:id/participants", (req, res) => {
+    const session = sessionManager.getSession(req.params["id"] ?? "");
+    if (!session) {
+      return res.status(404).json({ error: "Session not found" });
+    }
+
+    const participants = Array.from(session.participants.values()).map((p) => ({
+      id: p.id,
+      modelName: p.modelName,
+      type: p.metadata.type,
+      variables: p.metadata.variables.length,
+    }));
+    res.json({ participants });
+  });
+
+  // DELETE /api/v1/cosim/sessions/:id/participants/:pid — Remove a participant
+  router.delete("/sessions/:id/participants/:pid", (req, res) => {
+    const session = sessionManager.getSession(req.params["id"] ?? "");
+    if (!session) {
+      return res.status(404).json({ error: "Session not found" });
+    }
+
+    try {
+      session.removeParticipant(req.params["pid"] ?? "");
+      res.json({ ok: true });
+    } catch (err: unknown) {
+      res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // ── Couplings ──
+
   // POST /api/v1/cosim/sessions/:id/couplings — Define variable couplings
   router.post("/sessions/:id/couplings", (req, res) => {
     const session = sessionManager.getSession(req.params["id"] ?? "");
@@ -73,6 +144,8 @@ export function cosimRouter(mqttClient: CosimMqttClient | null): express.Router 
     }
   });
 
+  // ── Orchestrator Control ──
+
   // POST /api/v1/cosim/sessions/:id/start — Start co-simulation
   router.post("/sessions/:id/start", (req, res) => {
     const session = sessionManager.getSession(req.params["id"] ?? "");
@@ -87,11 +160,15 @@ export function cosimRouter(mqttClient: CosimMqttClient | null): express.Router 
     const orchestrator = new Orchestrator(session, mqttClient, {
       onComplete: () => {
         console.log(`[cosim] Session ${session.sessionId} completed`);
+        orchestrators.delete(session.sessionId);
       },
       onError: (err: Error) => {
         console.error(`[cosim] Session ${session.sessionId} error:`, err.message);
+        orchestrators.delete(session.sessionId);
       },
     });
+
+    orchestrators.set(session.sessionId, orchestrator);
 
     // Run asynchronously — don't await
     void orchestrator.run();
@@ -101,25 +178,43 @@ export function cosimRouter(mqttClient: CosimMqttClient | null): express.Router 
 
   // POST /api/v1/cosim/sessions/:id/pause — Pause simulation
   router.post("/sessions/:id/pause", (req, res) => {
-    const session = sessionManager.getSession(req.params["id"] ?? "");
-    if (!session) {
-      return res.status(404).json({ error: "Session not found" });
+    const sessionId = req.params["id"] ?? "";
+    const orchestrator = orchestrators.get(sessionId);
+    if (!orchestrator) {
+      return res.status(404).json({ error: "No running orchestrator for this session" });
     }
-    res.json({ ok: true, state: session.state });
+    orchestrator.pause();
+    res.json({ ok: true, state: "paused" });
+  });
+
+  // POST /api/v1/cosim/sessions/:id/resume — Resume simulation
+  router.post("/sessions/:id/resume", (req, res) => {
+    const sessionId = req.params["id"] ?? "";
+    const orchestrator = orchestrators.get(sessionId);
+    if (!orchestrator) {
+      return res.status(404).json({ error: "No running orchestrator for this session" });
+    }
+    orchestrator.resume();
+    res.json({ ok: true, state: "running" });
   });
 
   // POST /api/v1/cosim/sessions/:id/stop — Stop and terminate
   router.post("/sessions/:id/stop", (req, res) => {
-    const session = sessionManager.getSession(req.params["id"] ?? "");
-    if (!session) {
-      return res.status(404).json({ error: "Session not found" });
+    const sessionId = req.params["id"] ?? "";
+    const orchestrator = orchestrators.get(sessionId);
+    if (!orchestrator) {
+      return res.status(404).json({ error: "No running orchestrator for this session" });
     }
-    res.json({ ok: true, state: session.state });
+    orchestrator.abort();
+    orchestrators.delete(sessionId);
+    res.json({ ok: true, state: "stopping" });
   });
 
   // DELETE /api/v1/cosim/sessions/:id — Remove completed/failed session
   router.delete("/sessions/:id", (req, res) => {
-    sessionManager.removeSession(req.params["id"] ?? "");
+    const sessionId = req.params["id"] ?? "";
+    orchestrators.delete(sessionId);
+    sessionManager.removeSession(sessionId);
     res.json({ ok: true });
   });
 
@@ -185,7 +280,6 @@ export function mqttParticipantsRouter(mqttClient: CosimMqttClient | null): expr
       return res.status(404).json({ error: "Participant not found" });
     }
 
-    // Return in the same format as the library tree nodes
     const treeNode = {
       id: `mqtt://${meta.participantId}`,
       name: meta.modelName,
