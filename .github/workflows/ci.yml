@@ -84,7 +84,12 @@ jobs:
         run: npm run build-static --workspace=@modelscript/ide
       - name: Copy model to IDE static output
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-        run: mkdir -p packages/ide/dist/static/api && cp -r packages/ide/models packages/ide/dist/static/api/models
+        run: |
+          mkdir -p packages/ide/dist/static/api/models/Qwen3-0.6B-q4f16_1-MLC/resolve/main
+          cp packages/ide/models/Qwen3-0.6B-q4f16_1-ctx4k_cs1k-webgpu.wasm packages/ide/dist/static/api/models/
+          cp packages/ide/models/Qwen3-0.6B-q4f16_1-MLC/*.json packages/ide/dist/static/api/models/Qwen3-0.6B-q4f16_1-MLC/resolve/main/
+          cp packages/ide/models/Qwen3-0.6B-q4f16_1-MLC/*.bin packages/ide/dist/static/api/models/Qwen3-0.6B-q4f16_1-MLC/resolve/main/
+          cp packages/ide/models/Qwen3-0.6B-q4f16_1-MLC/*.txt packages/ide/dist/static/api/models/Qwen3-0.6B-q4f16_1-MLC/resolve/main/ 2>/dev/null || true
       - name: Deploy IDE
         uses: peaceiris/actions-gh-pages@v4
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
