@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { FmuOptions } from "@modelscript/core";
+import type { FmuArchiveOptions } from "@modelscript/core";
 import {
   Context,
   ModelicaDAE,
   ModelicaFlattener,
   ModelicaLinter,
   ModelicaSimulator,
+  buildFmuArchive,
   generateFmu,
 } from "@modelscript/core";
 import Modelica from "@modelscript/tree-sitter-modelica";
@@ -27,12 +28,16 @@ interface ExportFmuArgs {
   stopTime?: number;
   "step-size"?: number;
   stepSize?: number;
+  "xml-only"?: boolean;
+  xmlOnly?: boolean;
+  type?: string;
+  source?: boolean;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export const ExportFmu: CommandModule<{}, ExportFmuArgs> = {
   command: "export-fmu <name> <paths..>",
-  describe: "Export a Modelica model as an FMI 2.0 Co-Simulation FMU model description",
+  describe: "Export a Modelica model as an FMI 2.0 FMU (Model Exchange & Co-Simulation)",
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   builder: ((yargs: any) => {
     return yargs
@@ -49,7 +54,7 @@ export const ExportFmu: CommandModule<{}, ExportFmuArgs> = {
       })
       .option("output", {
         alias: "o",
-        description: "output file path (default: <name>.fmu.xml)",
+        description: "output file path (default: <name>.fmu or <name>.fmu.xml)",
         type: "string",
       })
       .option("description", {
@@ -67,6 +72,22 @@ export const ExportFmu: CommandModule<{}, ExportFmuArgs> = {
       .option("step-size", {
         description: "default experiment step size",
         type: "number",
+      })
+      .option("xml-only", {
+        description: "output only the modelDescription.xml (no archive)",
+        type: "boolean",
+        default: false,
+      })
+      .option("type", {
+        description: "FMU type: 'me' (Model Exchange), 'cs' (Co-Simulation), 'both' (default)",
+        type: "string",
+        default: "both",
+        choices: ["me", "cs", "both"],
+      })
+      .option("source", {
+        description: "include C source files in the FMU archive",
+        type: "boolean",
+        default: true,
       });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   }) as any,
@@ -138,26 +159,70 @@ export const ExportFmu: CommandModule<{}, ExportFmuArgs> = {
     const simulator = new ModelicaSimulator(dae);
     simulator.prepare();
 
-    // Generate FMU model description
-    const fmuOptions: FmuOptions = {
-      modelIdentifier: args.name.replace(/\./g, "_"),
-      description: args.description,
-      generationTool: "ModelScript CLI",
-      startTime: args.startTime ?? args["start-time"],
-      stopTime: args.stopTime ?? args["stop-time"],
-      stepSize: args.stepSize ?? args["step-size"],
+    // FMU type flags
+    const fmuType = {
+      modelExchange: args.type === "me" || args.type === "both",
+      coSimulation: args.type === "cs" || args.type === "both",
     };
 
-    const result = generateFmu(dae, fmuOptions, simulator.stateVars);
+    const modelIdentifier = args.name.replace(/\./g, "_");
 
-    // Write output
-    const outputPath = args.output ?? `${args.name.replace(/\./g, "_")}.fmu.xml`;
-    fs.writeFileSync(outputPath, result.modelDescriptionXml, "utf-8");
+    if (args.xmlOnly || args["xml-only"]) {
+      // ── XML-only mode (original behavior) ──
+      const result = generateFmu(
+        dae,
+        {
+          modelIdentifier,
+          description: args.description,
+          generationTool: "ModelScript CLI",
+          startTime: args.startTime ?? args["start-time"],
+          stopTime: args.stopTime ?? args["stop-time"],
+          stepSize: args.stepSize ?? args["step-size"],
+          fmuType,
+        },
+        simulator.stateVars,
+      );
 
-    console.log(`FMU model description written to: ${outputPath}`);
-    console.log(`  Variables: ${result.scalarVariables.length}`);
-    console.log(`  Outputs: ${result.modelStructure.outputs.length}`);
-    console.log(`  Derivatives: ${result.modelStructure.derivatives.length}`);
-    console.log(`  Initial unknowns: ${result.modelStructure.initialUnknowns.length}`);
+      const outputPath = args.output ?? `${modelIdentifier}.fmu.xml`;
+      fs.writeFileSync(outputPath, result.modelDescriptionXml, "utf-8");
+
+      console.log(`FMU model description written to: ${outputPath}`);
+      console.log(`  Variables: ${result.scalarVariables.length}`);
+      console.log(`  Outputs: ${result.modelStructure.outputs.length}`);
+      console.log(`  Derivatives: ${result.modelStructure.derivatives.length}`);
+      console.log(`  Initial unknowns: ${result.modelStructure.initialUnknowns.length}`);
+    } else {
+      // ── Full FMU archive mode ──
+      const archiveOptions: FmuArchiveOptions = {
+        modelIdentifier,
+        description: args.description,
+        generationTool: "ModelScript CLI",
+        startTime: args.startTime ?? args["start-time"],
+        stopTime: args.stopTime ?? args["stop-time"],
+        stepSize: args.stepSize ?? args["step-size"],
+        fmuType,
+        includeSources: args.source !== false,
+        includeModelJson: true,
+      };
+
+      const result = buildFmuArchive(dae, archiveOptions, simulator);
+      const outputPath = args.output ?? `${modelIdentifier}.fmu`;
+
+      fs.writeFileSync(outputPath, result.archive);
+
+      const types = [];
+      if (fmuType.modelExchange) types.push("Model Exchange");
+      if (fmuType.coSimulation) types.push("Co-Simulation");
+
+      console.log(`FMU archive written to: ${outputPath}`);
+      console.log(`  Type: ${types.join(" + ")}`);
+      console.log(`  GUID: ${result.fmuResult.guid}`);
+      console.log(`  Variables: ${result.fmuResult.scalarVariables.length}`);
+      console.log(`  States: ${result.fmuResult.modelStructure.derivatives.length}`);
+      console.log(`  Files: ${result.files.length}`);
+      for (const f of result.files) {
+        console.log(`    ${f}`);
+      }
+    }
   },
 };

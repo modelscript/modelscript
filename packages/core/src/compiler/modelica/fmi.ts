@@ -1,15 +1,24 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * FMI 2.0 Co-Simulation FMU generator.
+ * FMI 2.0 Model Exchange & Co-Simulation FMU generator.
  *
- * Generates the modelDescription.xml and packages a .fmu archive
- * from a flattened/simulated ModelicaDAE.
+ * Generates the modelDescription.xml, optional C source files, and
+ * packages a .fmu ZIP archive from a flattened ModelicaDAE.
+ *
+ * Works in both browser and Node.js environments.
  *
  * FMI 2.0 specification: https://fmi-standard.org/
  */
 
 import type { ModelicaDAE, ModelicaVariable } from "./dae.js";
+import {
+  ModelicaBooleanVariable,
+  ModelicaEnumerationVariable,
+  ModelicaIntegerVariable,
+  ModelicaRealVariable,
+  ModelicaStringVariable,
+} from "./dae.js";
 import { ModelicaVariability } from "./syntax.js";
 
 // ── Public interface ──
@@ -38,6 +47,16 @@ export interface FmiScalarVariable {
   start?: number;
   /** SI unit string (optional). */
   unit?: string;
+  /** For state variables: index of the corresponding derivative variable. */
+  derivative?: number;
+}
+
+/** FMU type support flags. */
+export interface FmuTypeFlags {
+  /** Include ModelExchange element. */
+  modelExchange?: boolean;
+  /** Include CoSimulation element. */
+  coSimulation?: boolean;
 }
 
 /** FMU generation options. */
@@ -58,6 +77,8 @@ export interface FmuOptions {
   stopTime?: number | undefined;
   /** Default experiment step size. */
   stepSize?: number | undefined;
+  /** FMU type flags (default: both ME and CS). */
+  fmuType?: FmuTypeFlags | undefined;
 }
 
 /** Result of FMU generation. */
@@ -72,10 +93,16 @@ export interface FmuResult {
     derivatives: number[];
     initialUnknowns: number[];
   };
+  /** GUID assigned to this FMU. */
+  guid: string;
+  /** Number of event indicators. */
+  numberOfEventIndicators: number;
 }
 
 /**
- * Generate FMU 2.0 Co-Simulation model description from a DAE.
+ * Generate FMU 2.0 model description from a DAE.
+ *
+ * Supports both Model Exchange and Co-Simulation (configurable via options).
  *
  * @param dae       The flattened DAE
  * @param options   FMU generation options
@@ -101,9 +128,18 @@ export function generateFmu(dae: ModelicaDAE, options: FmuOptions, stateVars?: S
   const derivativeRefs: number[] = [];
   const initialUnknownRefs: number[] = [];
 
+  // Map from state variable name → its valueReference (for derivative linkage)
+  const stateVarRefs = new Map<string, number>();
+  const states = stateVars ?? new Set<string>();
+
   for (const v of dae.variables) {
     const sv = mapVariable(v, valueRef++);
     scalarVariables.push(sv);
+
+    // Track state variable references for derivative linkage
+    if (states.has(v.name)) {
+      stateVarRefs.set(v.name, sv.valueReference);
+    }
 
     // Track outputs (connector output variables)
     if (sv.causality === "output") {
@@ -117,9 +153,9 @@ export function generateFmu(dae: ModelicaDAE, options: FmuOptions, stateVars?: S
 
   // ── Derivative variables ──
   // For each state variable x, add der(x) as a derivative output
-  const states = stateVars ?? new Set<string>();
   for (const v of dae.variables) {
     if (states.has(v.name)) {
+      const stateRef = stateVarRefs.get(v.name);
       const derSv: FmiScalarVariable = {
         valueReference: valueRef++,
         name: `der(${v.name})`,
@@ -128,18 +164,21 @@ export function generateFmu(dae: ModelicaDAE, options: FmuOptions, stateVars?: S
         type: "Real",
         start: 0,
       };
+      if (stateRef !== undefined) derSv.derivative = stateRef;
       scalarVariables.push(derSv);
       derivativeRefs.push(derSv.valueReference);
     }
   }
 
   // ── Generate modelDescription.xml ──
+  const fmuType = options.fmuType ?? { modelExchange: true, coSimulation: true };
   const xml = generateModelDescriptionXml(scalarVariables, {
     ...options,
     guid,
     outputRefs,
     derivativeRefs,
     initialUnknownRefs,
+    fmuType,
   });
 
   return {
@@ -150,6 +189,8 @@ export function generateFmu(dae: ModelicaDAE, options: FmuOptions, stateVars?: S
       derivatives: derivativeRefs,
       initialUnknowns: initialUnknownRefs,
     },
+    guid,
+    numberOfEventIndicators: 0,
   };
 }
 
@@ -162,27 +203,46 @@ function mapVariable(v: ModelicaVariable, valueRef: number): FmiScalarVariable {
     name: v.name,
     causality: mapCausality(v),
     variability: mapVariability(v),
-    type: "Real", // Default; refined below
-    start: 0,
+    type: mapType(v),
   };
+  if (v.description) sv.description = v.description;
 
-  // Determine type from class name
-  if (v.constructor.name.includes("Integer")) {
-    sv.type = "Integer";
-  } else if (v.constructor.name.includes("Boolean")) {
-    sv.type = "Boolean";
-  } else if (v.constructor.name.includes("String")) {
-    sv.type = "String";
+  // Extract start value from the binding expression (if it's a literal)
+  if (v.expression) {
+    const startVal = extractNumericLiteral(v.expression);
+    if (startVal !== null) sv.start = startVal;
+  }
+  // Default start for continuous variables
+  if (sv.start === undefined && sv.variability === "continuous") {
+    sv.start = 0;
+  }
+
+  // Extract unit from attributes
+  const unitAttr = v.attributes.get("unit");
+  if (unitAttr) {
+    const unitVal = extractStringLiteral(unitAttr);
+    if (unitVal) sv.unit = unitVal;
   }
 
   return sv;
 }
 
-/** Map Modelica variability to FMI causality. */
+/** Determine the FMI type from a Modelica variable. */
+function mapType(v: ModelicaVariable): "Real" | "Integer" | "Boolean" | "String" {
+  if (v instanceof ModelicaRealVariable) return "Real";
+  if (v instanceof ModelicaIntegerVariable) return "Integer";
+  if (v instanceof ModelicaBooleanVariable) return "Boolean";
+  if (v instanceof ModelicaStringVariable) return "String";
+  if (v instanceof ModelicaEnumerationVariable) return "Integer";
+  return "Real";
+}
+
+/** Map Modelica causality to FMI causality. */
 function mapCausality(v: ModelicaVariable): FmiCausality {
   if (v.variability === ModelicaVariability.PARAMETER) return "parameter";
   if (v.variability === ModelicaVariability.CONSTANT) return "parameter";
-  // TODO: detect input/output from connector direction
+  if (v.causality === "input") return "input";
+  if (v.causality === "output") return "output";
   return "local";
 }
 
@@ -198,6 +258,24 @@ function mapVariability(v: ModelicaVariable): FmiVariability {
     default:
       return "continuous";
   }
+}
+
+/** Extract a numeric literal value from a DAE expression. */
+function extractNumericLiteral(expr: unknown): number | null {
+  if (!expr || typeof expr !== "object") return null;
+  if ("value" in expr && typeof (expr as { value: unknown }).value === "number") {
+    return (expr as { value: number }).value;
+  }
+  return null;
+}
+
+/** Extract a string literal value from a DAE expression. */
+function extractStringLiteral(expr: unknown): string | null {
+  if (!expr || typeof expr !== "object") return null;
+  if ("value" in expr && typeof (expr as { value: unknown }).value === "string") {
+    return (expr as { value: string }).value;
+  }
+  return null;
 }
 
 /** Generate a random GUID for the FMU. */
@@ -224,6 +302,7 @@ function generateModelDescriptionXml(
     outputRefs: number[];
     derivativeRefs: number[];
     initialUnknownRefs: number[];
+    fmuType: FmuTypeFlags;
   },
 ): string {
   const lines: string[] = [];
@@ -240,9 +319,17 @@ function generateModelDescriptionXml(
   lines.push('  variableNamingConvention="structured"');
   lines.push('  numberOfEventIndicators="0">');
 
+  // ModelExchange element
+  if (opts.fmuType.modelExchange) {
+    lines.push("");
+    lines.push(`  <ModelExchange modelIdentifier="${escapeXml(opts.modelIdentifier)}" />`);
+  }
+
   // CoSimulation element
-  lines.push("");
-  lines.push(`  <CoSimulation modelIdentifier="${escapeXml(opts.modelIdentifier)}" />`);
+  if (opts.fmuType.coSimulation) {
+    lines.push("");
+    lines.push(`  <CoSimulation modelIdentifier="${escapeXml(opts.modelIdentifier)}" />`);
+  }
 
   // Default experiment
   lines.push("");
@@ -256,12 +343,14 @@ function generateModelDescriptionXml(
   lines.push("  <ModelVariables>");
   for (const sv of variables) {
     lines.push(`    <!-- ${escapeXml(sv.name)} -->`);
+    const descAttr = sv.description ? ` description="${escapeXml(sv.description)}"` : "";
     lines.push(
-      `    <ScalarVariable name="${escapeXml(sv.name)}" valueReference="${sv.valueReference}" causality="${sv.causality}" variability="${sv.variability}">`,
+      `    <ScalarVariable name="${escapeXml(sv.name)}" valueReference="${sv.valueReference}" causality="${sv.causality}" variability="${sv.variability}"${descAttr}>`,
     );
     const startAttr = sv.start !== undefined ? ` start="${sv.start}"` : "";
     const unitAttr = sv.unit ? ` unit="${escapeXml(sv.unit)}"` : "";
-    lines.push(`      <${sv.type}${startAttr}${unitAttr} />`);
+    const derivAttr = sv.derivative !== undefined ? ` derivative="${sv.derivative}"` : "";
+    lines.push(`      <${sv.type}${startAttr}${unitAttr}${derivAttr} />`);
     lines.push("    </ScalarVariable>");
   }
   lines.push("  </ModelVariables>");
