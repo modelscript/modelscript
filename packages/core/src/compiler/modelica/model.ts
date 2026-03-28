@@ -1763,7 +1763,27 @@ export class ModelicaEntity extends ModelicaClassInstance {
           const pkgPath = context.fs.join(this.path, dirent.name, "package.mo");
           if (!context.fs.stat(pkgPath)?.isFile()) continue;
         } else if (dirent.isFile()) {
-          if (dirent.name === "package.mo" || context.fs.extname(dirent.name) !== ".mo") continue;
+          const ext = context.fs.extname(dirent.name);
+          if (dirent.name === "package.mo") continue;
+          // Check for FMI model description XML files
+          if (ext === ".xml") {
+            const xmlPath = context.fs.join(this.path, dirent.name);
+            try {
+              const xmlContent = context.fs.read(xmlPath);
+              if (xmlContent.includes("fmiModelDescription")) {
+                // Lazy import to avoid circular dependency (fmu.ts imports from model.ts)
+                // eslint-disable-next-line @typescript-eslint/no-require-imports
+                const { ModelicaFmuEntity } = require("./fmu.js") as typeof import("./fmu.js");
+                const fmuEntity = new ModelicaFmuEntity(this, xmlPath);
+                fmuEntity.name = dirent.name.replace(/\.xml$/, "");
+                this.subEntities.push(fmuEntity as unknown as ModelicaEntity);
+              }
+            } catch {
+              // Skip unreadable XML files
+            }
+            continue;
+          }
+          if (ext !== ".mo") continue;
         }
         const subEntity = new ModelicaEntity(this, context.fs.join(this.path, dirent.name));
         // Set name from filesystem path without parsing — enables lazy loading

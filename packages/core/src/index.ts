@@ -13,6 +13,7 @@ export * from "./compiler/modelica/flattener.js";
 export * from "./compiler/modelica/fmi.js";
 export * from "./compiler/modelica/fmu-archive.js";
 export * from "./compiler/modelica/fmu-codegen.js";
+export * from "./compiler/modelica/fmu.js";
 export * from "./compiler/modelica/i18n.js";
 export * from "./compiler/modelica/interpreter.js";
 export * from "./compiler/modelica/linter.js";

@@ -581,7 +581,52 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
       for (const p of result.participants) {
         const participantId = `cosim-${p.id}-${Date.now().toString(36)}`;
 
-        if (p.type === "modelica") {
+        // Auto-detect participant type: check if there's a matching .xml file in the workspace
+        let isFmu = p.type === "fmu";
+        let fmuFileName = p.fileName;
+
+        if (!isFmu && workspaceFolder) {
+          // Check if {className}.xml exists and is an FMI model description
+          const xmlCandidateUri = vscode.Uri.joinPath(workspaceFolder, `${p.className}.xml`);
+          try {
+            const data = await vscode.workspace.fs.readFile(xmlCandidateUri);
+            const xmlContent = new TextDecoder().decode(data);
+            if (xmlContent.includes("fmiModelDescription")) {
+              isFmu = true;
+              fmuFileName = `${p.className}.xml`;
+            }
+          } catch {
+            // No matching XML file — treat as Modelica
+          }
+        }
+
+        if (isFmu && fmuFileName) {
+          // Resolve the XML file relative to the workspace
+          let xmlContent: string | undefined;
+
+          if (workspaceFolder) {
+            const xmlUri = vscode.Uri.joinPath(workspaceFolder, fmuFileName);
+            try {
+              const data = await vscode.workspace.fs.readFile(xmlUri);
+              xmlContent = new TextDecoder().decode(data);
+            } catch {
+              this.postMessage({ type: "error", message: `FMU file not found: ${fmuFileName}` });
+              continue;
+            }
+          }
+
+          if (!xmlContent) continue;
+
+          const fmuParticipant = new FmuBrowserParticipant(participantId, xmlContent);
+          session.participants.push({
+            id: participantId,
+            modelName: fmuParticipant.modelName || p.className,
+            uri: fmuFileName,
+            type: "fmu",
+            variables: 0,
+            participant: fmuParticipant,
+          });
+        } else {
           // Find the document URI for this Modelica class
           // Convention: class name matches filename (e.g., Controller → Controller.mo)
           const moFileName = `${p.className}.mo`;
@@ -605,32 +650,6 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
             type: "modelica",
             variables: 0,
             participant: lspParticipant,
-          });
-        } else if (p.type === "fmu" && p.fileName) {
-          // Resolve the XML file relative to the workspace
-          let xmlContent: string | undefined;
-
-          if (workspaceFolder) {
-            const xmlUri = vscode.Uri.joinPath(workspaceFolder, p.fileName);
-            try {
-              const data = await vscode.workspace.fs.readFile(xmlUri);
-              xmlContent = new TextDecoder().decode(data);
-            } catch {
-              this.postMessage({ type: "error", message: `FMU file not found: ${p.fileName}` });
-              continue;
-            }
-          }
-
-          if (!xmlContent) continue;
-
-          const fmuParticipant = new FmuBrowserParticipant(participantId, xmlContent);
-          session.participants.push({
-            id: participantId,
-            modelName: fmuParticipant.modelName || p.className,
-            uri: p.fileName,
-            type: "fmu",
-            variables: 0,
-            participant: fmuParticipant,
           });
         }
       }

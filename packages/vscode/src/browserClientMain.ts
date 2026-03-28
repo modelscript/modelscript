@@ -620,7 +620,7 @@ async function initWorkspaceAndTree(
             "",
           ].join("\n");
 
-          // Write all three files
+          // Write all files
           const controllerUri = Uri.joinPath(workspaceUri, "Controller.mo");
           const plantUri = Uri.joinPath(workspaceUri, "Plant.xml");
           const readmeUri = Uri.joinPath(workspaceUri, "README.md");
@@ -628,7 +628,7 @@ async function initWorkspaceAndTree(
           const cosimSetupMo = [
             'model CosimSetup "Co-simulation wiring diagram"',
             "  Controller controller;",
-            '  FMUBlock plant(fileName = "Plant.xml");',
+            "  Plant plant;",
             "equation",
             "  connect(controller.y, plant.u);",
             "  connect(plant.y, controller.u);",
