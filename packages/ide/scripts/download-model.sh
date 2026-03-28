@@ -20,6 +20,7 @@ WASM_NAME="Qwen3-0.6B-q4f16_1-ctx4k_cs1k-webgpu.wasm"
 MODEL_FILES=(
   mlc-chat-config.json
   ndarray-cache.json
+  tensor-cache.json
   tokenizer.json
   tokenizer_config.json
   vocab.json
