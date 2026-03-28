@@ -192,6 +192,56 @@ const historianSessions = {
   },
 };
 
+/** Check system status. */
+const status = {
+  command: "status",
+  describe: "Check co-simulation system health",
+  handler: async (args: CosimArgs) => {
+    console.log("Co-Simulation System Status");
+    console.log("═".repeat(40));
+
+    // API health
+    try {
+      const health = (await fetchJson(`${args["api-url"]}/health`)) as {
+        status: string;
+        mqtt?: string;
+        historian?: string;
+      };
+      console.log(`  API:        ✅ ${health.status}`);
+      console.log(`  MQTT:       ${health.mqtt === "connected" ? "✅" : "❌"} ${health.mqtt ?? "unknown"}`);
+      console.log(`  Historian:  ${health.historian === "connected" ? "✅" : "❌"} ${health.historian ?? "unknown"}`);
+    } catch {
+      console.log(`  API:        ❌ unreachable (${args["api-url"]})`);
+      return;
+    }
+
+    // Counts
+    try {
+      const sessions = (await fetchJson(`${args["api-url"]}/api/v1/cosim/sessions`)) as {
+        sessions: unknown[];
+      };
+      const participants = (await fetchJson(`${args["api-url"]}/api/v1/mqtt/participants`)) as {
+        participants: unknown[];
+        connected: boolean;
+      };
+      const fmus = (await fetchJson(`${args["api-url"]}/api/v1/fmus`)) as {
+        fmus: unknown[];
+      };
+      const history = (await fetchJson(`${args["api-url"]}/api/v1/historian/sessions`)) as {
+        sessions: unknown[];
+      };
+
+      console.log("");
+      console.log(`  Sessions:       ${sessions.sessions.length}`);
+      console.log(`  Participants:   ${participants.participants.length}`);
+      console.log(`  FMUs:           ${fmus.fmus.length}`);
+      console.log(`  Recorded:       ${history.sessions.length}`);
+    } catch {
+      // Individual endpoint failures are non-critical
+    }
+  },
+};
+
 // ── Main command ──
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
@@ -206,13 +256,14 @@ export const Cosim: CommandModule<{}, CosimArgs> = {
         type: "string",
         default: "http://localhost:3000",
       })
+      .command(status)
       .command(listSessions)
       .command(listParticipants)
       .command(listFmus)
       .command(uploadFmu)
       .command(replay)
       .command(historianSessions)
-      .demandCommand(1, "Specify a cosim subcommand (sessions, participants, fmus, upload, replay, history)");
+      .demandCommand(1, "Specify a cosim subcommand (status, sessions, participants, fmus, upload, replay, history)");
     // eslint-disable-next-line @typescript-eslint/no-empty-object-type
   }) as CommandModule<{}, CosimArgs>["builder"],
   handler: () => {
