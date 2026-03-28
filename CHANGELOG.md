@@ -1,3 +1,19 @@
+## 0.0.10 (2026-03-28)
+
+### 🚀 Features
+
+- **cli:** add --compile flag and cmake build system to fmu export ([3858cb7](https://github.com/modelscript/modelscript/commit/3858cb7))
+
+### 🩹 Fixes
+
+- **build:** add grammar.js to eslint allowDefaultProject to fix tree-sitter-modelica lint ([1506045](https://github.com/modelscript/modelscript/commit/1506045))
+- **core:** extract start values from dae attributes, emit only referenced variable aliases in c codegen ([1ec8b6b](https://github.com/modelscript/modelscript/commit/1ec8b6b))
+- **vscode:** fix readme screenshot url for marketplace ([a27c6a6](https://github.com/modelscript/modelscript/commit/a27c6a6))
+
+### ❤️ Thank You
+
+- Mohamad Omar Nachawati @nachawati
+
 ## 0.0.9 (2026-03-28)
 
 ### 🚀 Features
