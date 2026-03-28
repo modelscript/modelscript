@@ -298,13 +298,18 @@ function generateModelC(id: string, dae: ModelicaDAE, result: FmuResult): string
       }
     }
   }
-  // Set start values for continuous variables
+  // Set start values for continuous variables (from start attribute or binding)
   for (const v of dae.variables) {
     if (v.variability === null || v.variability === undefined) {
       const ref = vrMap.get(v.name);
-      if (ref !== undefined && v.expression) {
-        const cExpr = exprToC(v.expression);
-        lines.push(`  inst->vars[${ref}] = ${cExpr};  /* ${v.name} */`);
+      if (ref !== undefined) {
+        // Prefer the 'start' attribute over the binding expression
+        const startAttr = v.attributes.get("start");
+        const initExpr = startAttr ?? v.expression;
+        if (initExpr) {
+          const cExpr = exprToC(initExpr);
+          lines.push(`  inst->vars[${ref}] = ${cExpr};  /* ${v.name} */`);
+        }
       }
     }
   }

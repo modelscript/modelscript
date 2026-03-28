@@ -207,8 +207,13 @@ function mapVariable(v: ModelicaVariable, valueRef: number): FmiScalarVariable {
   };
   if (v.description) sv.description = v.description;
 
-  // Extract start value from the binding expression (if it's a literal)
-  if (v.expression) {
+  // Extract start value: first check the 'start' attribute, then the binding expression
+  const startAttr = v.attributes.get("start");
+  if (startAttr) {
+    const startVal = extractNumericLiteral(startAttr);
+    if (startVal !== null) sv.start = startVal;
+  }
+  if (sv.start === undefined && v.expression) {
     const startVal = extractNumericLiteral(v.expression);
     if (startVal !== null) sv.start = startVal;
   }

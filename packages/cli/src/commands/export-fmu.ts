@@ -159,6 +159,12 @@ export const ExportFmu: CommandModule<{}, ExportFmuArgs> = {
     const simulator = new ModelicaSimulator(dae);
     simulator.prepare();
 
+    // Extract experiment annotation from the DAE as fallback for CLI flags
+    const exp = dae.experiment;
+    const startTime = args.startTime ?? args["start-time"] ?? exp.startTime;
+    const stopTime = args.stopTime ?? args["stop-time"] ?? exp.stopTime;
+    const stepSize = args.stepSize ?? args["step-size"] ?? exp.interval;
+
     // FMU type flags
     const fmuType = {
       modelExchange: args.type === "me" || args.type === "both",
@@ -175,9 +181,9 @@ export const ExportFmu: CommandModule<{}, ExportFmuArgs> = {
           modelIdentifier,
           description: args.description,
           generationTool: "ModelScript CLI",
-          startTime: args.startTime ?? args["start-time"],
-          stopTime: args.stopTime ?? args["stop-time"],
-          stepSize: args.stepSize ?? args["step-size"],
+          startTime,
+          stopTime,
+          stepSize,
           fmuType,
         },
         simulator.stateVars,
@@ -197,9 +203,9 @@ export const ExportFmu: CommandModule<{}, ExportFmuArgs> = {
         modelIdentifier,
         description: args.description,
         generationTool: "ModelScript CLI",
-        startTime: args.startTime ?? args["start-time"],
-        stopTime: args.stopTime ?? args["stop-time"],
-        stepSize: args.stepSize ?? args["step-size"],
+        startTime,
+        stopTime,
+        stepSize,
         fmuType,
         includeSources: args.source !== false,
         includeModelJson: true,
