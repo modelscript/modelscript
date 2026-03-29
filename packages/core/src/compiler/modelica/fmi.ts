@@ -16,7 +16,9 @@ import {
   ModelicaBooleanVariable,
   ModelicaEnumerationVariable,
   ModelicaIntegerVariable,
+  ModelicaNameExpression,
   ModelicaRealVariable,
+  ModelicaSimpleEquation,
   ModelicaStringVariable,
   ModelicaWhenEquation,
 } from "./dae.js";
@@ -50,6 +52,8 @@ export interface FmiScalarVariable {
   unit?: string;
   /** For state variables: index of the corresponding derivative variable. */
   derivative?: number;
+  /** Alias type: "noAlias" (default), "alias", or "negatedAlias". */
+  alias?: "noAlias" | "alias" | "negatedAlias";
 }
 
 /** FMU type support flags. */
@@ -152,6 +156,11 @@ export function generateFmu(dae: ModelicaDAE, options: FmuOptions, stateVars?: S
     }
   }
 
+  // ── Detect alias variables ──
+  // Scan equations for trivial `a = b` pairs (both sides are name references).
+  // When found, the second variable shares the first's valueReference.
+  const aliasMap = detectAliases(dae, scalarVariables);
+
   // ── Derivative variables ──
   // For each state variable x, add der(x) as a derivative output
   for (const v of dae.variables) {
@@ -182,6 +191,7 @@ export function generateFmu(dae: ModelicaDAE, options: FmuOptions, stateVars?: S
     initialUnknownRefs,
     fmuType,
     nEventIndicators,
+    aliasMap,
   });
 
   return {
@@ -212,6 +222,43 @@ function countEventIndicators(dae: ModelicaDAE): number {
     }
   }
   return count;
+}
+
+/**
+ * Detect alias variable groups from trivial `a = b` equations.
+ * Returns a map: alias variable name → primary variable name.
+ */
+function detectAliases(dae: ModelicaDAE, scalarVariables: FmiScalarVariable[]): Map<string, string> {
+  const aliasMap = new Map<string, string>();
+  const svByName = new Map<string, FmiScalarVariable>();
+  for (const sv of scalarVariables) svByName.set(sv.name, sv);
+
+  for (const eq of dae.equations) {
+    if (!(eq instanceof ModelicaSimpleEquation)) continue;
+    const lhs = eq.expression1;
+    const rhs = eq.expression2;
+    // Both sides must be simple name references (no subscripts, no operators)
+    if (!(lhs instanceof ModelicaNameExpression) || !(rhs instanceof ModelicaNameExpression)) continue;
+
+    const lhsName = lhs.name;
+    const rhsName = rhs.name;
+    const lhsSv = svByName.get(lhsName);
+    const rhsSv = svByName.get(rhsName);
+    if (!lhsSv || !rhsSv) continue;
+    // Skip if either is a derivative or state variable
+    if (lhsSv.derivative !== undefined || rhsSv.derivative !== undefined) continue;
+    // Skip if causalities differ in incompatible ways
+    if (lhsSv.type !== rhsSv.type) continue;
+
+    // Make rhs an alias of lhs (lhs is the primary)
+    if (!aliasMap.has(rhsName) && !aliasMap.has(lhsName)) {
+      rhsSv.valueReference = lhsSv.valueReference;
+      rhsSv.alias = "alias";
+      aliasMap.set(rhsName, lhsName);
+    }
+  }
+
+  return aliasMap;
 }
 
 /** Map a Modelica variable to an FMI scalar variable. */
@@ -327,6 +374,7 @@ function generateModelDescriptionXml(
     initialUnknownRefs: number[];
     fmuType: FmuTypeFlags;
     nEventIndicators: number;
+    aliasMap: Map<string, string>;
   },
 ): string {
   const lines: string[] = [];
@@ -372,8 +420,9 @@ function generateModelDescriptionXml(
   for (const sv of variables) {
     lines.push(`    <!-- ${escapeXml(sv.name)} -->`);
     const descAttr = sv.description ? ` description="${escapeXml(sv.description)}"` : "";
+    const aliasAttr = sv.alias && sv.alias !== "noAlias" ? ` alias="${sv.alias}"` : "";
     lines.push(
-      `    <ScalarVariable name="${escapeXml(sv.name)}" valueReference="${sv.valueReference}" causality="${sv.causality}" variability="${sv.variability}"${descAttr}>`,
+      `    <ScalarVariable name="${escapeXml(sv.name)}" valueReference="${sv.valueReference}" causality="${sv.causality}" variability="${sv.variability}"${descAttr}${aliasAttr}>`,
     );
     const startAttr = sv.start !== undefined ? ` start="${sv.start}"` : "";
     const unitAttr = sv.unit ? ` unit="${escapeXml(sv.unit)}"` : "";

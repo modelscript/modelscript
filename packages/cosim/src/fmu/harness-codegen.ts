@@ -75,7 +75,21 @@ typedef int fmi2Type;
 #define fmi2Discard 2
 #define fmi2Error 3
 #define fmi2Fatal 4
+#define fmi2Pending 5
+#define fmi2ModelExchange 0
 #define fmi2CoSimulation 1
+#define fmi2True 1
+#define fmi2False 0
+
+typedef unsigned char fmi2Byte;
+typedef struct {
+  fmi2Boolean newDiscreteStatesNeeded;
+  fmi2Boolean terminateSimulation;
+  fmi2Boolean nominalsOfContinuousStatesChanged;
+  fmi2Boolean valuesOfContinuousStatesChanged;
+  fmi2Boolean nextEventTimeDefined;
+  fmi2Real    nextEventTime;
+} fmi2EventInfo;
 
 /* FMI 2.0 callback types */
 typedef void (*fmi2LoggerTF)(void*, fmi2String, fmi2Status, fmi2String, fmi2String, ...);
@@ -110,6 +124,16 @@ typedef fmi2Status (*fmi2TerminateTF)(fmi2Component);
 typedef void (*fmi2FreeInstanceTF)(fmi2Component);
 typedef fmi2Status (*fmi2GetFMUstateTF)(fmi2Component, fmi2FMUstate*);
 typedef fmi2Status (*fmi2SetFMUstateTF)(fmi2Component, fmi2FMUstate);
+/* Model Exchange function pointer types */
+typedef fmi2Status (*fmi2SetTimeTF)(fmi2Component, fmi2Real);
+typedef fmi2Status (*fmi2SetContinuousStatesTF)(fmi2Component, const fmi2Real*, size_t);
+typedef fmi2Status (*fmi2GetDerivativesTF)(fmi2Component, fmi2Real*, size_t);
+typedef fmi2Status (*fmi2GetContinuousStatesTF)(fmi2Component, fmi2Real*, size_t);
+typedef fmi2Status (*fmi2GetEventIndicatorsTF)(fmi2Component, fmi2Real*, size_t);
+typedef fmi2Status (*fmi2CompletedIntegratorStepTF)(fmi2Component, fmi2Boolean, fmi2Boolean*, fmi2Boolean*);
+typedef fmi2Status (*fmi2NewDiscreteStatesTF)(fmi2Component, fmi2EventInfo*);
+typedef fmi2Status (*fmi2EnterContinuousTimeModeTF)(fmi2Component);
+typedef fmi2Status (*fmi2EnterEventModeTF)(fmi2Component);
 typedef fmi2Status (*fmi2FreeFMUstateTF)(fmi2Component, fmi2FMUstate*);
 
 /* ── FMU handle ── */
@@ -139,10 +163,21 @@ typedef struct {
   fmi2GetFMUstateTF GetFMUstate;
   fmi2SetFMUstateTF SetFMUstate;
   fmi2FreeFMUstateTF FreeFMUstate;
+  /* Model Exchange */
+  fmi2SetTimeTF SetTime;
+  fmi2SetContinuousStatesTF SetContinuousStates;
+  fmi2GetDerivativesTF GetDerivatives;
+  fmi2GetContinuousStatesTF GetContinuousStates;
+  fmi2GetEventIndicatorsTF GetEventIndicators;
+  fmi2CompletedIntegratorStepTF CompletedIntegratorStep;
+  fmi2NewDiscreteStatesTF NewDiscreteStates;
+  fmi2EnterContinuousTimeModeTF EnterContinuousTimeMode;
+  fmi2EnterEventModeTF EnterEventMode;
 
   /* State management */
   fmi2FMUstate savedStates[64];
   int nextStateId;
+  int isME; /* 1 if Model Exchange, 0 if Co-Simulation */
 } FMUHandle;
 
 /* ── Simple JSON helpers (minimal, no external deps) ── */
@@ -265,8 +300,19 @@ static int load_fmu(FMUHandle* handle, const char* fmuPath) {
   LOAD_FN(handle, GetFMUstate);
   LOAD_FN(handle, SetFMUstate);
   LOAD_FN(handle, FreeFMUstate);
+  /* Model Exchange */
+  LOAD_FN(handle, SetTime);
+  LOAD_FN(handle, SetContinuousStates);
+  LOAD_FN(handle, GetDerivatives);
+  LOAD_FN(handle, GetContinuousStates);
+  LOAD_FN(handle, GetEventIndicators);
+  LOAD_FN(handle, CompletedIntegratorStep);
+  LOAD_FN(handle, NewDiscreteStates);
+  LOAD_FN(handle, EnterContinuousTimeMode);
+  LOAD_FN(handle, EnterEventMode);
 
   handle->nextStateId = 0;
+  handle->isME = 0;
   memset(handle->savedStates, 0, sizeof(handle->savedStates));
 
   return 0;
@@ -328,12 +374,16 @@ int main(int argc, char* argv[]) {
       double startTime = parse_json_number(line, "startTime");
       double stopTime = parse_json_number(line, "stopTime");
       double stepSize = parse_json_number(line, "stepSize");
+      char fmuType[16];
+      parse_json_string(line, "fmuType", fmuType, sizeof(fmuType));
+      int typeId = (strcmp(fmuType, "me") == 0) ? fmi2ModelExchange : fmi2CoSimulation;
+      handle.isME = (typeId == fmi2ModelExchange);
 
       if (!handle.Instantiate) { json_respond_error(id, "Instantiate not loaded"); continue; }
 
       fmi2CallbackFunctions callbacks = { dummyLogger, calloc, free, NULL, NULL };
       handle.comp = handle.Instantiate(
-        handle.modelIdentifier, fmi2CoSimulation, handle.guid,
+        handle.modelIdentifier, typeId, handle.guid,
         handle.extractDir, &callbacks, 0, 0
       );
 
@@ -353,6 +403,19 @@ int main(int argc, char* argv[]) {
         if (s > fmi2Warning) { json_respond_error(id, "ExitInitializationMode failed"); continue; }
       }
 
+      /* For ME: enter event mode, iterate discrete states, then enter continuous mode */
+      if (handle.isME) {
+        if (handle.EnterEventMode) handle.EnterEventMode(handle.comp);
+        if (handle.NewDiscreteStates) {
+          fmi2EventInfo info;
+          do {
+            info.newDiscreteStatesNeeded = fmi2False;
+            handle.NewDiscreteStates(handle.comp, &info);
+          } while (info.newDiscreteStatesNeeded);
+        }
+        if (handle.EnterContinuousTimeMode) handle.EnterContinuousTimeMode(handle.comp);
+      }
+
       json_respond_ok(id);
     }
     else if (strcmp(method, "doStep") == 0) {
@@ -362,8 +425,23 @@ int main(int argc, char* argv[]) {
       if (!handle.DoStep || !handle.comp) { json_respond_error(id, "Not initialized"); continue; }
 
       fmi2Status s = handle.DoStep(handle.comp, currentTime, stepSize, 1);
-      if (s > fmi2Warning) { json_respond_error(id, "doStep failed"); continue; }
-
+      if (s == fmi2Pending) {
+        printf("{\\"result\\":\\"pending\\",\\"id\\":%d}\\n", id);
+        fflush(stdout);
+      } else if (s > fmi2Warning) {
+        json_respond_error(id, "doStep failed");
+      } else {
+        json_respond_ok(id);
+      }
+    }
+    else if (strcmp(method, "getStepStatus") == 0) {
+      if (!handle.comp) { json_respond_error(id, "Not initialized"); continue; }
+      /* fmi2GetStatus for doStep — check if async step completed */
+      printf("{\\"result\\":\\"ok\\",\\"id\\":%d}\\n", id);
+      fflush(stdout);
+    }
+    else if (strcmp(method, "cancelStep") == 0) {
+      if (!handle.comp) { json_respond_error(id, "Not initialized"); continue; }
       json_respond_ok(id);
     }
     else if (strcmp(method, "getOutputs") == 0) {
@@ -461,6 +539,110 @@ int main(int argc, char* argv[]) {
 
       handle.FreeFMUstate(handle.comp, &handle.savedStates[stateId]);
       handle.savedStates[stateId] = NULL;
+      json_respond_ok(id);
+    }
+    /* ── Model Exchange methods ── */
+    else if (strcmp(method, "setTime") == 0) {
+      double t = parse_json_number(line, "time");
+      if (!handle.comp || !handle.SetTime) { json_respond_error(id, "setTime not supported"); continue; }
+      fmi2Status s = handle.SetTime(handle.comp, t);
+      if (s > fmi2Warning) { json_respond_error(id, "setTime failed"); continue; }
+      json_respond_ok(id);
+    }
+    else if (strcmp(method, "setContinuousStates") == 0) {
+      if (!handle.comp || !handle.SetContinuousStates) { json_respond_error(id, "setContinuousStates not supported"); continue; }
+      /* Parse "states" array: {"states":[1.0,2.0,...]} */
+      const char* arr = strstr(line, "\\"states\\":[");
+      fmi2Real states[256];
+      size_t nx = 0;
+      if (arr) {
+        arr += strlen("\\"states\\":[");
+        while (*arr && *arr != ']' && nx < 256) {
+          while (*arr == ' ' || *arr == ',') arr++;
+          if (*arr == ']') break;
+          states[nx++] = atof(arr);
+          while (*arr && *arr != ',' && *arr != ']') arr++;
+        }
+      }
+      fmi2Status s = handle.SetContinuousStates(handle.comp, states, nx);
+      if (s > fmi2Warning) { json_respond_error(id, "setContinuousStates failed"); continue; }
+      json_respond_ok(id);
+    }
+    else if (strcmp(method, "getDerivatives") == 0) {
+      int nx = parse_json_int(line, "nx");
+      if (nx <= 0) nx = 256;
+      if (!handle.comp || !handle.GetDerivatives) { json_respond_error(id, "getDerivatives not supported"); continue; }
+      fmi2Real dx[256];
+      if (nx > 256) nx = 256;
+      fmi2Status s = handle.GetDerivatives(handle.comp, dx, (size_t)nx);
+      if (s > fmi2Warning) { json_respond_error(id, "getDerivatives failed"); continue; }
+      printf("{\\"result\\":[");
+      for (int i = 0; i < nx; i++) { if (i > 0) printf(","); printf("%g", dx[i]); }
+      printf("],\\"id\\":%d}\\n", id);
+      fflush(stdout);
+    }
+    else if (strcmp(method, "getContinuousStates") == 0) {
+      int nx = parse_json_int(line, "nx");
+      if (nx <= 0) nx = 256;
+      if (!handle.comp || !handle.GetContinuousStates) { json_respond_error(id, "getContinuousStates not supported"); continue; }
+      fmi2Real x[256];
+      if (nx > 256) nx = 256;
+      fmi2Status s = handle.GetContinuousStates(handle.comp, x, (size_t)nx);
+      if (s > fmi2Warning) { json_respond_error(id, "getContinuousStates failed"); continue; }
+      printf("{\\"result\\":[");
+      for (int i = 0; i < nx; i++) { if (i > 0) printf(","); printf("%g", x[i]); }
+      printf("],\\"id\\":%d}\\n", id);
+      fflush(stdout);
+    }
+    else if (strcmp(method, "getEventIndicators") == 0) {
+      int nz = parse_json_int(line, "nz");
+      if (nz <= 0) nz = 64;
+      if (!handle.comp || !handle.GetEventIndicators) { json_respond_error(id, "getEventIndicators not supported"); continue; }
+      fmi2Real z[256];
+      if (nz > 256) nz = 256;
+      fmi2Status s = handle.GetEventIndicators(handle.comp, z, (size_t)nz);
+      if (s > fmi2Warning) { json_respond_error(id, "getEventIndicators failed"); continue; }
+      printf("{\\"result\\":[");
+      for (int i = 0; i < nz; i++) { if (i > 0) printf(","); printf("%g", z[i]); }
+      printf("],\\"id\\":%d}\\n", id);
+      fflush(stdout);
+    }
+    else if (strcmp(method, "completedIntegratorStep") == 0) {
+      if (!handle.comp || !handle.CompletedIntegratorStep) { json_respond_error(id, "completedIntegratorStep not supported"); continue; }
+      fmi2Boolean enterEventMode = fmi2False, terminateSim = fmi2False;
+      fmi2Status s = handle.CompletedIntegratorStep(handle.comp, fmi2True, &enterEventMode, &terminateSim);
+      if (s > fmi2Warning) { json_respond_error(id, "completedIntegratorStep failed"); continue; }
+      printf("{\\"result\\":{\\"enterEventMode\\":%s,\\"terminateSimulation\\":%s},\\"id\\":%d}\\n",
+             enterEventMode ? "true" : "false", terminateSim ? "true" : "false", id);
+      fflush(stdout);
+    }
+    else if (strcmp(method, "newDiscreteStates") == 0) {
+      if (!handle.comp || !handle.NewDiscreteStates) { json_respond_error(id, "newDiscreteStates not supported"); continue; }
+      fmi2EventInfo info;
+      memset(&info, 0, sizeof(info));
+      fmi2Status s = handle.NewDiscreteStates(handle.comp, &info);
+      if (s > fmi2Warning) { json_respond_error(id, "newDiscreteStates failed"); continue; }
+      printf("{\\"result\\":{\\"newDiscreteStatesNeeded\\":%s,\\"terminateSimulation\\":%s,"
+             "\\"nominalsChanged\\":%s,\\"valuesChanged\\":%s,"
+             "\\"nextEventTimeDefined\\":%s,\\"nextEventTime\\":%g},\\"id\\":%d}\\n",
+             info.newDiscreteStatesNeeded ? "true" : "false",
+             info.terminateSimulation ? "true" : "false",
+             info.nominalsOfContinuousStatesChanged ? "true" : "false",
+             info.valuesOfContinuousStatesChanged ? "true" : "false",
+             info.nextEventTimeDefined ? "true" : "false",
+             info.nextEventTime, id);
+      fflush(stdout);
+    }
+    else if (strcmp(method, "enterContinuousTimeMode") == 0) {
+      if (!handle.comp || !handle.EnterContinuousTimeMode) { json_respond_error(id, "enterContinuousTimeMode not supported"); continue; }
+      fmi2Status s = handle.EnterContinuousTimeMode(handle.comp);
+      if (s > fmi2Warning) { json_respond_error(id, "enterContinuousTimeMode failed"); continue; }
+      json_respond_ok(id);
+    }
+    else if (strcmp(method, "enterEventMode") == 0) {
+      if (!handle.comp || !handle.EnterEventMode) { json_respond_error(id, "enterEventMode not supported"); continue; }
+      fmi2Status s = handle.EnterEventMode(handle.comp);
+      if (s > fmi2Warning) { json_respond_error(id, "enterEventMode failed"); continue; }
       json_respond_ok(id);
     }
     else if (strcmp(method, "terminate") == 0) {

@@ -176,7 +176,22 @@ export class FmuNativeParticipant implements CoSimParticipant {
   }
 
   async doStep(currentTime: number, stepSize: number): Promise<void> {
-    await this.rpc("doStep", { currentTime, stepSize });
+    const result = await this.rpc("doStep", { currentTime, stepSize });
+    // Handle async FMUs that return fmi2Pending
+    if (result === "pending") {
+      // Poll until step completes
+      let resolved = false;
+      while (!resolved) {
+        await new Promise((r) => setTimeout(r, 50));
+        const status = await this.rpc("getStepStatus");
+        if (status === "ok") resolved = true;
+      }
+    }
+  }
+
+  /** Cancel an in-progress async step (for FMUs that return fmi2Pending). */
+  async cancelStep(): Promise<void> {
+    await this.rpc("cancelStep");
   }
 
   async getOutputs(): Promise<Map<string, CosimValue>> {

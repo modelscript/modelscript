@@ -110,6 +110,15 @@ export class Orchestrator {
 
         const effectiveH = Math.min(h, experiment.stopTime - t);
 
+        // ── Apply queued tunable parameter changes ──
+        const paramChanges = this.session.drainParameterChanges();
+        for (const [pid, values] of paramChanges) {
+          const p = participants.find((pp) => pp.id === pid);
+          if (p?.setParameters) {
+            await p.setParameters(values);
+          }
+        }
+
         // ── Dispatch to master algorithm ──
         if (this.session.masterAlgorithm === "jacobi") {
           await this.stepJacobi(participants, coupling, t, effectiveH);

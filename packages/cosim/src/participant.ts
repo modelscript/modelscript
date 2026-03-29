@@ -82,4 +82,21 @@ export interface CoSimParticipant {
    * @param state The opaque state handle to free.
    */
   freeState?(state: unknown): Promise<void>;
+
+  // ── Optional: Tunable parameters ──
+
+  /**
+   * Modify tunable parameters between communication steps.
+   * FMI 2.0 allows setting variables with variability="tunable" between steps.
+   * @param values Map of parameter name → new value.
+   */
+  setParameters?(values: Map<string, CosimValue>): Promise<void>;
+
+  // ── Optional: Async step control ──
+
+  /**
+   * Cancel an in-progress asynchronous step.
+   * For FMUs whose fmi2DoStep returns fmi2Pending.
+   */
+  cancelStep?(): Promise<void>;
 }

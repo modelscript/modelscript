@@ -7,6 +7,7 @@
  * coupling configuration, and state transitions.
  */
 
+import type { CosimValue } from "./coupling.js";
 import { CouplingGraph, type VariableCoupling } from "./coupling.js";
 import type { CoSimParticipant } from "./participant.js";
 
@@ -37,6 +38,8 @@ export class CoSimSession {
   private _state: SessionState = "created";
   private readonly _participants = new Map<string, CoSimParticipant>();
   private _error: string | null = null as string | null;
+  /** Queued tunable parameter changes: participantId → (paramName → value). */
+  private readonly _pendingParams = new Map<string, Map<string, CosimValue>>();
 
   constructor(
     sessionId: string,
@@ -85,6 +88,32 @@ export class CoSimSession {
       throw new Error(`Cannot remove participants in state '${this._state}'`);
     }
     this._participants.delete(participantId);
+  }
+
+  /**
+   * Queue a tunable parameter change for a participant.
+   * Changes are applied by the orchestrator before the next step.
+   */
+  queueParameterChange(participantId: string, name: string, value: CosimValue): void {
+    if (!this._participants.has(participantId)) {
+      throw new Error(`Participant '${participantId}' not found`);
+    }
+    let params = this._pendingParams.get(participantId);
+    if (!params) {
+      params = new Map();
+      this._pendingParams.set(participantId, params);
+    }
+    params.set(name, value);
+  }
+
+  /**
+   * Drain all pending parameter changes (called by the orchestrator before each step).
+   * Returns the map and clears it.
+   */
+  drainParameterChanges(): Map<string, Map<string, CosimValue>> {
+    const changes = new Map(this._pendingParams);
+    this._pendingParams.clear();
+    return changes;
   }
 
   /** Add a variable coupling. */
