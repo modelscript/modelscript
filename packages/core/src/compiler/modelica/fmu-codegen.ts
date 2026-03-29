@@ -467,6 +467,11 @@ function generateFmi2FunctionsC(
   lines.push("#include <stdlib.h>");
   lines.push("#include <string.h>");
   lines.push("#include <stdio.h>");
+  lines.push("#ifdef _WIN32");
+  lines.push("  #include <windows.h>");
+  lines.push("#else");
+  lines.push("  #include <pthread.h>");
+  lines.push("#endif");
   lines.push("");
   lines.push("typedef struct {");
   lines.push(`  ${id}_Instance model;`);
@@ -476,6 +481,19 @@ function generateFmi2FunctionsC(
   lines.push("  double startTime;");
   lines.push("  double stopTime;");
   lines.push("  double stepSize;");
+  lines.push("  /* Async co-simulation fields */");
+  lines.push("  int asyncMode;          /* 0 = synchronous, 1 = asynchronous */");
+  lines.push("  volatile int asyncDone; /* 0 = running, 1 = done */");
+  lines.push("  volatile int cancelRequested;");
+  lines.push("  fmi2Status asyncResult;");
+  lines.push("  double asyncCurrentT;");
+  lines.push("  double asyncTEnd;");
+  lines.push("#ifdef _WIN32");
+  lines.push("  HANDLE stepThread;");
+  lines.push("#else");
+  lines.push("  pthread_t stepThread;");
+  lines.push("  int stepThreadActive;");
+  lines.push("#endif");
   lines.push("} FMUInstance;");
   lines.push("");
 
@@ -635,36 +653,26 @@ function generateFmi2FunctionsC(
   lines.push("}");
   lines.push("");
 
-  // ── Co-Simulation: fmi2DoStep ──
-  lines.push("/* --- Co-Simulation --- */");
-  lines.push("fmi2Status fmi2DoStep(fmi2Component c, fmi2Real currentCommunicationPoint,");
-  lines.push("    fmi2Real communicationStepSize, fmi2Boolean noSetFMUStatePriorToCurrentPoint) {");
-  lines.push("  (void)noSetFMUStatePriorToCurrentPoint;");
-  lines.push("  FMUInstance* inst = (FMUInstance*)c;");
-  lines.push("  double t = currentCommunicationPoint;");
-  lines.push("  double tEnd = t + communicationStepSize;");
+  // ── Static worker function for async co-simulation ──
+  lines.push("/* --- Async Co-Simulation worker --- */");
+  lines.push("static void doStep_sync(FMUInstance* inst) {");
+  lines.push("  double t = inst->asyncCurrentT;");
+  lines.push("  double tEnd = inst->asyncTEnd;");
   lines.push("  double h = inst->stepSize;");
   lines.push("  if (h <= 0) h = 0.001;");
   lines.push("");
-  lines.push("  /* Fixed-step RK4 integration */");
-  lines.push("  while (t < tEnd - 1e-15) {");
+  lines.push("  while (t < tEnd - 1e-15 && !inst->cancelRequested) {");
   lines.push("    if (t + h > tEnd) h = tEnd - t;");
   lines.push("    double states[N_STATES + 1];");
   lines.push("    double k1[N_STATES + 1], k2[N_STATES + 1], k3[N_STATES + 1], k4[N_STATES + 1];");
   lines.push("");
-
   // Save states
   for (let i = 0; i < stateRefs2.length; i++) {
     lines.push(`    states[${i}] = inst->model.vars[${stateRefs2[i]}];`);
   }
-  lines.push("");
-
   // k1
-  lines.push("    inst->model.time = t;");
-  lines.push(`    ${id}_getDerivatives(&inst->model);`);
+  lines.push(`    inst->model.time = t; ${id}_getDerivatives(&inst->model);`);
   lines.push("    for (int i = 0; i < N_STATES; i++) k1[i] = inst->model.derivatives[i];");
-  lines.push("");
-
   // k2
   lines.push("    inst->model.time = t + 0.5 * h;");
   for (let i = 0; i < stateRefs2.length; i++) {
@@ -672,16 +680,12 @@ function generateFmi2FunctionsC(
   }
   lines.push(`    ${id}_getDerivatives(&inst->model);`);
   lines.push("    for (int i = 0; i < N_STATES; i++) k2[i] = inst->model.derivatives[i];");
-  lines.push("");
-
   // k3
   for (let i = 0; i < stateRefs2.length; i++) {
     lines.push(`    inst->model.vars[${stateRefs2[i]}] = states[${i}] + 0.5 * h * k2[${i}];`);
   }
   lines.push(`    ${id}_getDerivatives(&inst->model);`);
   lines.push("    for (int i = 0; i < N_STATES; i++) k3[i] = inst->model.derivatives[i];");
-  lines.push("");
-
   // k4
   lines.push("    inst->model.time = t + h;");
   for (let i = 0; i < stateRefs2.length; i++) {
@@ -689,8 +693,6 @@ function generateFmi2FunctionsC(
   }
   lines.push(`    ${id}_getDerivatives(&inst->model);`);
   lines.push("    for (int i = 0; i < N_STATES; i++) k4[i] = inst->model.derivatives[i];");
-  lines.push("");
-
   // Update
   for (let i = 0; i < stateRefs2.length; i++) {
     lines.push(
@@ -698,18 +700,44 @@ function generateFmi2FunctionsC(
     );
   }
   lines.push("    t += h;");
-  lines.push("");
-
-  // After each step, check for events and process them
-  lines.push("    /* Event detection after integration step */");
-  lines.push("    if (N_EVENT_INDICATORS > 0) {");
-  lines.push("      fmi2EventInfo info;");
-  lines.push("      fmi2NewDiscreteStates((fmi2Component)inst, &info);");
-  lines.push("    }");
-
   lines.push("  }");
   lines.push("  inst->model.time = tEnd;");
-  lines.push("  return fmi2OK;");
+  lines.push("  inst->asyncResult = inst->cancelRequested ? fmi2Error : fmi2OK;");
+  lines.push("  inst->asyncDone = 1;");
+  lines.push("}");
+  lines.push("");
+  lines.push("#ifndef _WIN32");
+  lines.push("static void* doStep_thread(void* arg) { doStep_sync((FMUInstance*)arg); return NULL; }");
+  lines.push("#else");
+  lines.push("static DWORD WINAPI doStep_thread(LPVOID arg) { doStep_sync((FMUInstance*)arg); return 0; }");
+  lines.push("#endif");
+  lines.push("");
+
+  // ── Co-Simulation: fmi2DoStep ──
+  lines.push("/* --- Co-Simulation --- */");
+  lines.push("fmi2Status fmi2DoStep(fmi2Component c, fmi2Real currentCommunicationPoint,");
+  lines.push("    fmi2Real communicationStepSize, fmi2Boolean noSetFMUStatePriorToCurrentPoint) {");
+  lines.push("  (void)noSetFMUStatePriorToCurrentPoint;");
+  lines.push("  FMUInstance* inst = (FMUInstance*)c;");
+  lines.push("  inst->asyncCurrentT = currentCommunicationPoint;");
+  lines.push("  inst->asyncTEnd = currentCommunicationPoint + communicationStepSize;");
+  lines.push("  inst->asyncDone = 0;");
+  lines.push("  inst->cancelRequested = 0;");
+  lines.push("  if (inst->asyncMode) {");
+  lines.push("#ifdef _WIN32");
+  lines.push("    inst->stepThread = CreateThread(NULL, 0, doStep_thread, inst, 0, NULL);");
+  lines.push("    return inst->stepThread ? fmi2Pending : fmi2Error;");
+  lines.push("#else");
+  lines.push("    if (pthread_create(&inst->stepThread, NULL, doStep_thread, inst) == 0) {");
+  lines.push("      inst->stepThreadActive = 1;");
+  lines.push("      return fmi2Pending;");
+  lines.push("    }");
+  lines.push("    return fmi2Error;");
+  lines.push("#endif");
+  lines.push("  }");
+  lines.push("  /* Synchronous fallback */");
+  lines.push("  doStep_sync(inst);");
+  lines.push("  return inst->asyncResult;");
   lines.push("}");
   lines.push("");
 
@@ -887,10 +915,34 @@ function generateFmi2FunctionsC(
   lines.push("}");
   lines.push("fmi2Status fmi2EnterContinuousTimeMode(fmi2Component c) { (void)c; return fmi2OK; }");
   lines.push("fmi2Status fmi2EnterEventMode(fmi2Component c) { (void)c; return fmi2OK; }");
-  lines.push("fmi2Status fmi2CancelStep(fmi2Component c) { (void)c; return fmi2OK; }");
-  lines.push(
-    "fmi2Status fmi2GetStatus(fmi2Component c, const fmi2StatusKind s, fmi2Status* value) { (void)c; (void)s; *value = fmi2OK; return fmi2OK; }",
-  );
+  lines.push("fmi2Status fmi2CancelStep(fmi2Component c) {");
+  lines.push("  FMUInstance* inst = (FMUInstance*)c;");
+  lines.push("  if (!inst->asyncMode || inst->asyncDone) return fmi2OK;");
+  lines.push("  inst->cancelRequested = 1;");
+  lines.push("#ifdef _WIN32");
+  lines.push("  WaitForSingleObject(inst->stepThread, INFINITE);");
+  lines.push("  CloseHandle(inst->stepThread);");
+  lines.push("#else");
+  lines.push("  if (inst->stepThreadActive) { pthread_join(inst->stepThread, NULL); inst->stepThreadActive = 0; }");
+  lines.push("#endif");
+  lines.push("  return fmi2OK;");
+  lines.push("}");
+  lines.push("fmi2Status fmi2GetStatus(fmi2Component c, const fmi2StatusKind s, fmi2Status* value) {");
+  lines.push("  FMUInstance* inst = (FMUInstance*)c;");
+  lines.push("  if (s == fmi2DoStepStatus) {");
+  lines.push("    if (inst->asyncDone) {");
+  lines.push("#ifndef _WIN32");
+  lines.push("      if (inst->stepThreadActive) { pthread_join(inst->stepThread, NULL); inst->stepThreadActive = 0; }");
+  lines.push("#endif");
+  lines.push("      *value = inst->asyncResult;");
+  lines.push("    } else {");
+  lines.push("      *value = fmi2Pending;");
+  lines.push("    }");
+  lines.push("  } else {");
+  lines.push("    *value = fmi2OK;");
+  lines.push("  }");
+  lines.push("  return fmi2OK;");
+  lines.push("}");
   lines.push(
     "fmi2Status fmi2GetRealStatus(fmi2Component c, const fmi2StatusKind s, fmi2Real* value) { (void)c; (void)s; *value = 0.0; return fmi2OK; }",
   );

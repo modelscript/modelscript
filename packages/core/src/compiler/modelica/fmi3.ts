@@ -547,6 +547,13 @@ function detectAliases3(dae: ModelicaDAE, variables: Fmi3Variable[]): Map<string
 interface DepEntry3 {
   vr: number;
   kind: "dependent" | "constant" | "fixed" | "tunable";
+  /**
+   * Optional per-element dependencies for FMI 3.0 arrays.
+   * Maps each 1-based element index of the *unknown* to the 1-based
+   * element indices of the *dependency* that it depends on.
+   * If absent, the dependency is dense (all elements depend on all elements).
+   */
+  elementDeps?: Map<number, number[]>;
 }
 
 /** Map variable variability to FMI dependency kind. */
@@ -589,21 +596,93 @@ function computeDependencies3(
   for (const ref of allUnknownRefs) {
     const sv = variables.find((v) => v.valueReference === ref);
     if (!sv) continue;
-    const rhsNames = equationDeps.get(sv.name);
-    if (!rhsNames) continue;
 
-    const entries: DepEntry3[] = [];
-    for (const name of rhsNames) {
-      const depSv = svByName.get(name);
-      if (depSv && depSv.valueReference !== ref) {
-        entries.push({ vr: depSv.valueReference, kind: variabilityToDepKind(depSv.variability) });
+    // Check if this is an array variable — if so, build element-level deps
+    const isArray = sv.dimensions && sv.dimensions.length > 0;
+    let totalSize = 1;
+    if (isArray && sv.dimensions) {
+      for (const dim of sv.dimensions) {
+        if (dim.start !== undefined) totalSize *= dim.start;
       }
     }
-    if (entries.length > 0) {
-      deps.set(
-        ref,
-        entries.sort((a, b) => a.vr - b.vr),
-      );
+
+    if (isArray && totalSize > 1) {
+      // Build element-level deps from scalar equations matching baseName[i]
+      const elementEntries = new Map<number, Map<number, Set<number>>>();
+      for (let ei = 1; ei <= totalSize; ei++) {
+        const scalarName = `${sv.name}[${ei}]`;
+        const rhsNames = equationDeps.get(scalarName);
+        if (!rhsNames) continue;
+        for (const name of rhsNames) {
+          const depMatch = SUBSCRIPT_RE.exec(name);
+          if (depMatch && depMatch[1] && depMatch[2]) {
+            const depBase = depMatch[1];
+            const depIdx = parseInt(depMatch[2], 10);
+            const depSv = svByName.get(depBase);
+            if (depSv && depSv.valueReference !== ref) {
+              if (!elementEntries.has(depSv.valueReference)) {
+                elementEntries.set(depSv.valueReference, new Map());
+              }
+              const vrMap = elementEntries.get(depSv.valueReference);
+              if (vrMap) {
+                if (!vrMap.has(ei)) vrMap.set(ei, new Set());
+                const eiSet = vrMap.get(ei);
+                if (eiSet) eiSet.add(depIdx);
+              }
+            }
+          } else {
+            // Non-subscripted dep — falls on the root
+            const depSv = svByName.get(name);
+            if (depSv && depSv.valueReference !== ref) {
+              if (!elementEntries.has(depSv.valueReference)) {
+                elementEntries.set(depSv.valueReference, new Map());
+              }
+            }
+          }
+        }
+      }
+
+      const entries: DepEntry3[] = [];
+      for (const [depVr, elemMap] of elementEntries) {
+        const depSv = variables.find((v) => v.valueReference === depVr);
+        if (!depSv) continue;
+        const entry: DepEntry3 = { vr: depVr, kind: variabilityToDepKind(depSv.variability) };
+        if (elemMap.size > 0) {
+          const eDeps = new Map<number, number[]>();
+          for (const [ei, idxSet] of elemMap) {
+            eDeps.set(
+              ei,
+              Array.from(idxSet).sort((a, b) => a - b),
+            );
+          }
+          entry.elementDeps = eDeps;
+        }
+        entries.push(entry);
+      }
+      if (entries.length > 0) {
+        deps.set(
+          ref,
+          entries.sort((a, b) => a.vr - b.vr),
+        );
+      }
+    } else {
+      // Scalar variable — use the existing root-level dep tracking
+      const rhsNames = equationDeps.get(sv.name);
+      if (!rhsNames) continue;
+
+      const entries: DepEntry3[] = [];
+      for (const name of rhsNames) {
+        const depSv = svByName.get(name);
+        if (depSv && depSv.valueReference !== ref) {
+          entries.push({ vr: depSv.valueReference, kind: variabilityToDepKind(depSv.variability) });
+        }
+      }
+      if (entries.length > 0) {
+        deps.set(
+          ref,
+          entries.sort((a, b) => a.vr - b.vr),
+        );
+      }
     }
   }
 
@@ -789,7 +868,8 @@ function isValidFmi3Type(s: string): s is Fmi3Type {
 function mapCausality3(v: ModelicaVariable): Fmi3Causality {
   // FMI 3.0 structural parameter: controls array dimensions at init time
   if (v.variability === ModelicaVariability.PARAMETER) {
-    if (v.attributes.has("__fmi3_structuralParameter")) return "structuralParameter";
+    if (v.attributes.has("__fmi3_structuralParameter") || v.attributes.has("__modelscript_mutableDimension"))
+      return "structuralParameter";
     return "parameter";
   }
   if (v.variability === ModelicaVariability.CONSTANT) return "calculatedParameter";
@@ -799,6 +879,8 @@ function mapCausality3(v: ModelicaVariable): Fmi3Causality {
 }
 
 function mapVariability3(v: ModelicaVariable): Fmi3Variability {
+  // Mutable dimensions get tunable variability (can be resized at runtime)
+  if (v.attributes.has("__modelscript_mutableDimension")) return "tunable";
   switch (v.variability) {
     case ModelicaVariability.CONSTANT:
       return "constant";
@@ -1053,7 +1135,56 @@ function formatUnknown3(elementName: string, ref: number, deps: Map<number, DepE
   }
   const depsAttr = ` dependencies="${entries.map((e) => e.vr).join(" ")}"`;
   const kindsAttr = ` dependenciesKind="${entries.map((e) => e.kind).join(" ")}"`;
-  return `    <${elementName} valueReference="${ref}"${depsAttr}${kindsAttr} />`;
+
+  // Check if any entry has element-level dependencies
+  const hasElementDeps = entries.some((e) => e.elementDeps && e.elementDeps.size > 0);
+  if (!hasElementDeps) {
+    return `    <${elementName} valueReference="${ref}"${depsAttr}${kindsAttr} />`;
+  }
+
+  // Emit element-level dependencies as nested XML
+  const lines: string[] = [];
+  lines.push(`    <${elementName} valueReference="${ref}"${depsAttr}${kindsAttr}>`);
+  for (const e of entries) {
+    if (e.elementDeps && e.elementDeps.size > 0) {
+      for (const [unknownIdx, depIndices] of e.elementDeps) {
+        lines.push(`      <!-- element ${unknownIdx} depends on ${e.vr}[${depIndices.join(",")}] -->`);
+      }
+    }
+  }
+  lines.push(`    </${elementName}>`);
+  return lines.join("\n");
+}
+
+// ── Standalone terminalsAndIcons.xml Generation (FMI 3.0 §2.4.9) ──
+
+/**
+ * Generate a standalone `terminalsAndIcons.xml` file for the FMU archive.
+ * This re-exports the same terminal data that is embedded in modelDescription.xml
+ * as a separate file in `terminalsAndIcons/`, as required by graphical FMI tools.
+ */
+export function generateTerminalsAndIconsXml(terminals: Fmi3Terminal[]): string | null {
+  if (terminals.length === 0) return null;
+
+  const lines: string[] = [];
+  lines.push('<?xml version="1.0" encoding="UTF-8"?>');
+  lines.push('<fmiTerminalsAndIcons fmiVersion="3.0">');
+  lines.push("  <Terminals>");
+  for (const term of terminals) {
+    const kindAttr = term.terminalKind ? ` terminalKind="${escapeXml(term.terminalKind)}"` : "";
+    const descAttr = term.description ? ` description="${escapeXml(term.description)}"` : "";
+    lines.push(`    <Terminal name="${escapeXml(term.name)}"${kindAttr}${descAttr}>`);
+    for (const mv of term.memberVariables) {
+      lines.push(
+        `      <TerminalMemberVariable variableName="${escapeXml(mv.variableName)}" memberName="${escapeXml(mv.memberName)}" variableKind="signal" />`,
+      );
+    }
+    lines.push("    </Terminal>");
+  }
+  lines.push("  </Terminals>");
+  lines.push("  <!-- GraphicalRepresentation is omitted; no SVG icon data available. -->");
+  lines.push("</fmiTerminalsAndIcons>");
+  return lines.join("\n");
 }
 
 // ── Utility functions ──
