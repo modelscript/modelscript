@@ -114,6 +114,8 @@ export interface FmuResult {
   guid: string;
   /** Number of event indicators. */
   numberOfEventIndicators: number;
+  /** External C source files to include in CMake build (from `external "C"` annotations). */
+  externalSources?: string[];
 }
 
 /**
