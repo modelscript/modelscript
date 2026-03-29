@@ -679,10 +679,65 @@ function mapVariable3(v: ModelicaVariable, valueRef: number): Fmi3Variable {
   return fv;
 }
 
-/** Map Modelica type to FMI 3.0 precise type. */
+/** Map Modelica type to FMI 3.0 precise type.
+ *
+ * Priority:
+ *   1. Explicit `__fmi3_type` vendor annotation (e.g., "Float32", "Int8")
+ *   2. Integer range inference from `min`/`max` attributes
+ *   3. Default mapping (Real→Float64, Integer→Int32, etc.)
+ */
 function mapType3(v: ModelicaVariable): Fmi3Type {
-  if (v instanceof ModelicaRealVariable) return "Float64";
-  if (v instanceof ModelicaIntegerVariable) return "Int32";
+  // 1. Check for explicit vendor annotation override
+  const fmi3TypeAttr = v.attributes.get("__fmi3_type");
+  if (fmi3TypeAttr) {
+    const val = extractStringLiteral(fmi3TypeAttr);
+    if (val && isValidFmi3Type(val)) return val;
+  }
+
+  // 2. Check for __fmi3_binary annotation
+  if (v.attributes.has("__fmi3_binary")) return "Binary";
+
+  // 3. Type-specific mapping
+  if (v instanceof ModelicaRealVariable) {
+    // Check for single-precision annotation via min/max range or explicit Float32
+    const minAttr = v.attributes.get("min");
+    const maxAttr = v.attributes.get("max");
+    if (minAttr && maxAttr) {
+      const minVal = extractNumericLiteral(minAttr);
+      const maxVal = extractNumericLiteral(maxAttr);
+      // If range fits in Float32 (approx ±3.4e38) and explicitly annotated small
+      if (minVal !== null && maxVal !== null && Math.abs(maxVal) <= 3.4e38 && Math.abs(minVal) <= 3.4e38) {
+        // Only demote if explicitly requested via quantization hint
+        const quantAttr = v.attributes.get("__fmi3_float32");
+        if (quantAttr) return "Float32";
+      }
+    }
+    return "Float64";
+  }
+  if (v instanceof ModelicaIntegerVariable) {
+    // Infer narrow integer types from min/max range annotations
+    const minAttr = v.attributes.get("min");
+    const maxAttr = v.attributes.get("max");
+    if (minAttr && maxAttr) {
+      const minVal = extractNumericLiteral(minAttr);
+      const maxVal = extractNumericLiteral(maxAttr);
+      if (minVal !== null && maxVal !== null) {
+        // Unsigned types
+        if (minVal >= 0) {
+          if (maxVal <= 255) return "UInt8";
+          if (maxVal <= 65535) return "UInt16";
+          if (maxVal <= 4294967295) return "UInt32";
+          return "UInt64";
+        }
+        // Signed types
+        if (minVal >= -128 && maxVal <= 127) return "Int8";
+        if (minVal >= -32768 && maxVal <= 32767) return "Int16";
+        if (minVal >= -2147483648 && maxVal <= 2147483647) return "Int32";
+        return "Int64";
+      }
+    }
+    return "Int32";
+  }
   if (v instanceof ModelicaBooleanVariable) return "Boolean";
   if (v instanceof ModelicaStringVariable) return "String";
   if (v instanceof ModelicaEnumerationVariable) return "Enumeration";
@@ -690,8 +745,33 @@ function mapType3(v: ModelicaVariable): Fmi3Type {
   return "Float64";
 }
 
+/** Check if a string is a valid FMI 3.0 type name. */
+function isValidFmi3Type(s: string): s is Fmi3Type {
+  return [
+    "Float64",
+    "Float32",
+    "Int64",
+    "Int32",
+    "Int16",
+    "Int8",
+    "UInt64",
+    "UInt32",
+    "UInt16",
+    "UInt8",
+    "Boolean",
+    "String",
+    "Binary",
+    "Enumeration",
+    "Clock",
+  ].includes(s);
+}
+
 function mapCausality3(v: ModelicaVariable): Fmi3Causality {
-  if (v.variability === ModelicaVariability.PARAMETER) return "parameter";
+  // FMI 3.0 structural parameter: controls array dimensions at init time
+  if (v.variability === ModelicaVariability.PARAMETER) {
+    if (v.attributes.has("__fmi3_structuralParameter")) return "structuralParameter";
+    return "parameter";
+  }
   if (v.variability === ModelicaVariability.CONSTANT) return "calculatedParameter";
   if (v.causality === "input") return "input";
   if (v.causality === "output") return "output";

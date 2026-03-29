@@ -373,6 +373,25 @@ function generateFmi3FunctionsC(
   L.push("  fmi3Float64 stepSize;");
   L.push("} FMU3Instance;");
   L.push("");
+  L.push("/* Variable size lookup table for array batching (FMI 3.0 §2.2.7) */");
+  L.push("static const size_t varSizes[N_VARS + 1] = {");
+  const sizeEntries: number[] = new Array(nVars).fill(1);
+  for (const sv of result.variables) {
+    if (sv.dimensions && sv.dimensions.length > 0) {
+      let totalSize = 1;
+      for (const dim of sv.dimensions) {
+        if (dim.start !== undefined) totalSize *= dim.start;
+      }
+      if (sv.valueReference < nVars) sizeEntries[sv.valueReference] = totalSize;
+    }
+  }
+  for (let i = 0; i < sizeEntries.length; i += 20) {
+    const batch = sizeEntries.slice(i, Math.min(i + 20, sizeEntries.length));
+    const isLast = i + 20 >= sizeEntries.length;
+    L.push(`  ${batch.join(",")}${isLast ? "" : ","}`);
+  }
+  L.push("};");
+  L.push("");
 
   // fmi3InstantiateCoSimulation
   L.push("fmi3Instance fmi3InstantiateCoSimulation(");
@@ -431,53 +450,133 @@ function generateFmi3FunctionsC(
   L.push("fmi3Status fmi3Reset(fmi3Instance instance) { (void)instance; return fmi3OK; }");
   L.push("");
 
-  // Get/Set Float64
+  // Get/Set Float64 (array-aware batching)
   L.push(
     "fmi3Status fmi3GetFloat64(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, fmi3Float64 value[], size_t nValues) {",
   );
-  L.push("  FMU3Instance* inst = (FMU3Instance*)instance; (void)nValues;");
-  L.push("  for (size_t i = 0; i < nvr; i++) { if (vr[i] < N_VARS) value[i] = inst->model.vars[vr[i]]; }");
+  L.push("  FMU3Instance* inst = (FMU3Instance*)instance;");
+  L.push("  size_t vi = 0;");
+  L.push("  for (size_t i = 0; i < nvr && vi < nValues; i++) {");
+  L.push("    if (vr[i] < N_VARS) {");
+  L.push("      size_t sz = varSizes[vr[i]];");
+  L.push("      for (size_t j = 0; j < sz && vi < nValues; j++) value[vi++] = inst->model.vars[vr[i] + j];");
+  L.push("    }");
+  L.push("  }");
   L.push("  return fmi3OK;");
   L.push("}");
   L.push(
     "fmi3Status fmi3SetFloat64(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, const fmi3Float64 value[], size_t nValues) {",
   );
-  L.push("  FMU3Instance* inst = (FMU3Instance*)instance; (void)nValues;");
-  L.push("  for (size_t i = 0; i < nvr; i++) { if (vr[i] < N_VARS) inst->model.vars[vr[i]] = value[i]; }");
+  L.push("  FMU3Instance* inst = (FMU3Instance*)instance;");
+  L.push("  size_t vi = 0;");
+  L.push("  for (size_t i = 0; i < nvr && vi < nValues; i++) {");
+  L.push("    if (vr[i] < N_VARS) {");
+  L.push("      size_t sz = varSizes[vr[i]];");
+  L.push("      for (size_t j = 0; j < sz && vi < nValues; j++) inst->model.vars[vr[i] + j] = value[vi++];");
+  L.push("    }");
+  L.push("  }");
   L.push("  return fmi3OK;");
   L.push("}");
   L.push("");
 
-  // Get/Set Int32
+  // Get/Set Int32 (array-aware batching)
   L.push(
     "fmi3Status fmi3GetInt32(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, fmi3Int32 value[], size_t nValues) {",
   );
-  L.push("  FMU3Instance* inst = (FMU3Instance*)instance; (void)nValues;");
-  L.push("  for (size_t i = 0; i < nvr; i++) { if (vr[i] < N_VARS) value[i] = (fmi3Int32)inst->model.vars[vr[i]]; }");
+  L.push("  FMU3Instance* inst = (FMU3Instance*)instance;");
+  L.push("  size_t vi = 0;");
+  L.push("  for (size_t i = 0; i < nvr && vi < nValues; i++) {");
+  L.push("    if (vr[i] < N_VARS) {");
+  L.push("      size_t sz = varSizes[vr[i]];");
+  L.push("      for (size_t j = 0; j < sz && vi < nValues; j++) value[vi++] = (fmi3Int32)inst->model.vars[vr[i] + j];");
+  L.push("    }");
+  L.push("  }");
   L.push("  return fmi3OK;");
   L.push("}");
   L.push(
     "fmi3Status fmi3SetInt32(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, const fmi3Int32 value[], size_t nValues) {",
   );
-  L.push("  FMU3Instance* inst = (FMU3Instance*)instance; (void)nValues;");
-  L.push("  for (size_t i = 0; i < nvr; i++) { if (vr[i] < N_VARS) inst->model.vars[vr[i]] = (double)value[i]; }");
+  L.push("  FMU3Instance* inst = (FMU3Instance*)instance;");
+  L.push("  size_t vi = 0;");
+  L.push("  for (size_t i = 0; i < nvr && vi < nValues; i++) {");
+  L.push("    if (vr[i] < N_VARS) {");
+  L.push("      size_t sz = varSizes[vr[i]];");
+  L.push("      for (size_t j = 0; j < sz && vi < nValues; j++) inst->model.vars[vr[i] + j] = (double)value[vi++];");
+  L.push("    }");
+  L.push("  }");
   L.push("  return fmi3OK;");
   L.push("}");
   L.push("");
 
-  // Get/Set Boolean
+  // Get/Set Boolean (array-aware batching)
   L.push(
     "fmi3Status fmi3GetBoolean(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, fmi3Boolean value[], size_t nValues) {",
   );
-  L.push("  FMU3Instance* inst = (FMU3Instance*)instance; (void)nValues;");
-  L.push("  for (size_t i = 0; i < nvr; i++) { if (vr[i] < N_VARS) value[i] = inst->model.vars[vr[i]] != 0.0; }");
+  L.push("  FMU3Instance* inst = (FMU3Instance*)instance;");
+  L.push("  size_t vi = 0;");
+  L.push("  for (size_t i = 0; i < nvr && vi < nValues; i++) {");
+  L.push("    if (vr[i] < N_VARS) {");
+  L.push("      size_t sz = varSizes[vr[i]];");
+  L.push("      for (size_t j = 0; j < sz && vi < nValues; j++) value[vi++] = inst->model.vars[vr[i] + j] != 0.0;");
+  L.push("    }");
+  L.push("  }");
   L.push("  return fmi3OK;");
   L.push("}");
   L.push(
     "fmi3Status fmi3SetBoolean(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, const fmi3Boolean value[], size_t nValues) {",
   );
+  L.push("  FMU3Instance* inst = (FMU3Instance*)instance;");
+  L.push("  size_t vi = 0;");
+  L.push("  for (size_t i = 0; i < nvr && vi < nValues; i++) {");
+  L.push("    if (vr[i] < N_VARS) {");
+  L.push("      size_t sz = varSizes[vr[i]];");
+  L.push(
+    "      for (size_t j = 0; j < sz && vi < nValues; j++) inst->model.vars[vr[i] + j] = value[vi++] ? 1.0 : 0.0;",
+  );
+  L.push("    }");
+  L.push("  }");
+  L.push("  return fmi3OK;");
+  L.push("}");
+  L.push("");
+
+  // Get/Set String
+  L.push(
+    "fmi3Status fmi3GetString(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, fmi3String value[], size_t nValues) {",
+  );
   L.push("  FMU3Instance* inst = (FMU3Instance*)instance; (void)nValues;");
-  L.push("  for (size_t i = 0; i < nvr; i++) { if (vr[i] < N_VARS) inst->model.vars[vr[i]] = value[i] ? 1.0 : 0.0; }");
+  L.push(
+    '  for (size_t i = 0; i < nvr; i++) { if (vr[i] < N_STRING_VARS) value[i] = inst->model.stringVars[vr[i]] ? inst->model.stringVars[vr[i]] : ""; }',
+  );
+  L.push("  return fmi3OK;");
+  L.push("}");
+  L.push(
+    "fmi3Status fmi3SetString(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, const fmi3String value[], size_t nValues) {",
+  );
+  L.push("  FMU3Instance* inst = (FMU3Instance*)instance; (void)nValues;");
+  L.push("  for (size_t i = 0; i < nvr; i++) {");
+  L.push("    if (vr[i] < N_STRING_VARS) {");
+  L.push("      if (inst->model.stringVars[vr[i]]) free(inst->model.stringVars[vr[i]]);");
+  L.push("      inst->model.stringVars[vr[i]] = value[i] ? strdup(value[i]) : NULL;");
+  L.push("    }");
+  L.push("  }");
+  L.push("  return fmi3OK;");
+  L.push("}");
+  L.push("");
+
+  // Get/Set Binary (FMI 3.0 opaque payload)
+  L.push(
+    "fmi3Status fmi3GetBinary(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, size_t sizes[], fmi3Binary value[], size_t nValues) {",
+  );
+  L.push("  (void)instance; (void)vr; (void)nvr; (void)sizes; (void)value; (void)nValues;");
+  L.push("  /* Binary variables are not produced by Modelica — stub returns empty */");
+  L.push("  for (size_t i = 0; i < nvr; i++) { sizes[i] = 0; value[i] = NULL; }");
+  L.push("  return fmi3OK;");
+  L.push("}");
+  L.push(
+    "fmi3Status fmi3SetBinary(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, const size_t sizes[], const fmi3Binary value[], size_t nValues) {",
+  );
+  L.push("  (void)instance; (void)vr; (void)nvr; (void)sizes; (void)value; (void)nValues;");
+  L.push("  /* Binary variables are not produced by Modelica — stub ignores */");
   L.push("  return fmi3OK;");
   L.push("}");
   L.push("");
@@ -627,6 +726,65 @@ function generateFmi3FunctionsC(
   L.push(
     "fmi3Status fmi3SetDebugLogging(fmi3Instance instance, fmi3Boolean loggingOn, size_t nCategories, const fmi3String categories[]) { ((FMU3Instance*)instance)->loggingOn = loggingOn; (void)nCategories; (void)categories; return fmi3OK; }",
   );
+  L.push("");
+
+  // fmi3GetDirectionalDerivative — forward-mode Jacobian-vector product via finite differences
+  L.push("/* Directional derivative: dz = (∂z/∂v) · dv  (forward-mode via finite differences) */");
+  L.push(
+    "fmi3Status fmi3GetDirectionalDerivative(fmi3Instance instance, const fmi3ValueReference unknowns[], size_t nUnknowns, const fmi3ValueReference knowns[], size_t nKnowns, const fmi3Float64 seed[], size_t nSeed, fmi3Float64 sensitivity[], size_t nSensitivity) {",
+  );
+  L.push("  FMU3Instance* inst = (FMU3Instance*)instance;");
+  L.push("  (void)nSeed; (void)nSensitivity;");
+  L.push("  const double h = 1e-8;");
+  L.push("  /* Save original known values */");
+  L.push("  double* saved = (double*)malloc(nKnowns * sizeof(double));");
+  L.push("  if (!saved) return fmi3Error;");
+  L.push("  for (size_t i = 0; i < nKnowns; i++) saved[i] = inst->model.vars[knowns[i]];");
+  L.push("  /* Evaluate f(v) */");
+  L.push("  double* f0 = (double*)malloc(nUnknowns * sizeof(double));");
+  L.push("  if (!f0) { free(saved); return fmi3Error; }");
+  L.push(`  ${id}_getDerivatives(&inst->model);`);
+  L.push("  for (size_t i = 0; i < nUnknowns; i++) f0[i] = inst->model.vars[unknowns[i]];");
+  L.push("  /* Perturb: v += h * seed */");
+  L.push("  for (size_t i = 0; i < nKnowns; i++) inst->model.vars[knowns[i]] = saved[i] + h * seed[i];");
+  L.push(`  ${id}_getDerivatives(&inst->model);`);
+  L.push("  /* sensitivity = (f(v + h*seed) - f(v)) / h */");
+  L.push("  for (size_t i = 0; i < nUnknowns; i++) sensitivity[i] = (inst->model.vars[unknowns[i]] - f0[i]) / h;");
+  L.push("  /* Restore */");
+  L.push("  for (size_t i = 0; i < nKnowns; i++) inst->model.vars[knowns[i]] = saved[i];");
+  L.push(`  ${id}_getDerivatives(&inst->model);`);
+  L.push("  free(saved); free(f0);");
+  L.push("  return fmi3OK;");
+  L.push("}");
+  L.push("");
+
+  // fmi3GetAdjointDerivative — reverse-mode via column-wise finite differences
+  L.push("/* Adjoint derivative: dv = (∂z/∂v)ᵀ · δz  (reverse-mode via column-wise FD) */");
+  L.push(
+    "fmi3Status fmi3GetAdjointDerivative(fmi3Instance instance, const fmi3ValueReference unknowns[], size_t nUnknowns, const fmi3ValueReference knowns[], size_t nKnowns, const fmi3Float64 seed[], size_t nSeed, fmi3Float64 sensitivity[], size_t nSensitivity) {",
+  );
+  L.push("  FMU3Instance* inst = (FMU3Instance*)instance;");
+  L.push("  (void)nSeed; (void)nSensitivity;");
+  L.push("  const double h = 1e-8;");
+  L.push("  /* Evaluate f(v) */");
+  L.push(`  ${id}_getDerivatives(&inst->model);`);
+  L.push("  double* f0 = (double*)malloc(nUnknowns * sizeof(double));");
+  L.push("  if (!f0) return fmi3Error;");
+  L.push("  for (size_t i = 0; i < nUnknowns; i++) f0[i] = inst->model.vars[unknowns[i]];");
+  L.push("  /* Column-wise FD: for each known, perturb and compute Jacobian column, then dot with seed */");
+  L.push("  for (size_t j = 0; j < nKnowns; j++) {");
+  L.push("    double orig = inst->model.vars[knowns[j]];");
+  L.push("    inst->model.vars[knowns[j]] = orig + h;");
+  L.push(`    ${id}_getDerivatives(&inst->model);`);
+  L.push("    double dot = 0.0;");
+  L.push("    for (size_t i = 0; i < nUnknowns; i++) dot += ((inst->model.vars[unknowns[i]] - f0[i]) / h) * seed[i];");
+  L.push("    sensitivity[j] = dot;");
+  L.push("    inst->model.vars[knowns[j]] = orig;");
+  L.push("  }");
+  L.push(`  ${id}_getDerivatives(&inst->model);`);
+  L.push("  free(f0);");
+  L.push("  return fmi3OK;");
+  L.push("}");
 
   // FMU state management
   L.push(
