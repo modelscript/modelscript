@@ -1,0 +1,690 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+/**
+ * FMI 3.0 C source code generator.
+ *
+ * Generates standalone C source files implementing the FMI 3.0 API
+ * for Model Exchange, Co-Simulation, and Scheduled Execution.
+ */
+
+import type { ModelicaDAE, ModelicaExpression } from "./dae.js";
+import {
+  ModelicaBinaryExpression,
+  ModelicaBooleanLiteral,
+  ModelicaFunctionCallExpression,
+  ModelicaIfElseExpression,
+  ModelicaIntegerLiteral,
+  ModelicaNameExpression,
+  ModelicaRealLiteral,
+  ModelicaStringLiteral,
+  ModelicaUnaryExpression,
+  ModelicaWhenEquation,
+} from "./dae.js";
+import type { Fmi3Options, Fmi3Result } from "./fmi3.js";
+import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "./syntax.js";
+
+/** Generated FMI 3.0 C source files. */
+export interface Fmi3CSourceFiles {
+  modelH: string;
+  modelC: string;
+  fmi3FunctionsC: string;
+  cmakeLists: string;
+}
+
+/**
+ * Generate FMI 3.0 C source files from a DAE and FMI 3.0 result.
+ */
+export function generateFmi3CSources(dae: ModelicaDAE, result: Fmi3Result, options: Fmi3Options): Fmi3CSourceFiles {
+  const id = options.modelIdentifier;
+  const vars = result.variables;
+  const nStates = result.modelStructure.derivatives.length;
+  const nVars = vars.length;
+  const nStringVars = vars.filter((v) => v.type === "String").length;
+
+  return {
+    modelH: generateModelH3(id, nVars, nStates, nStringVars, result),
+    modelC: generateModelC3(id, dae, result),
+    fmi3FunctionsC: generateFmi3FunctionsC(id, nVars, nStates, nStringVars, dae, result),
+    cmakeLists: generateCMakeLists3(id),
+  };
+}
+
+// ── Expression → C transpiler (reused from FMI 2.0 with minor changes) ──
+
+function exprToC(expr: ModelicaExpression): string {
+  if (expr instanceof ModelicaRealLiteral) return formatCDouble(expr.value);
+  if (expr instanceof ModelicaIntegerLiteral) return `${expr.value}`;
+  if (expr instanceof ModelicaBooleanLiteral) return expr.value ? "1" : "0";
+  if (expr instanceof ModelicaStringLiteral) return `"${escapeCString(expr.value)}"`;
+  if (expr instanceof ModelicaNameExpression) return varToC(expr.name);
+  if (expr instanceof ModelicaUnaryExpression) {
+    const op = expr.operator === ModelicaUnaryOperator.UNARY_MINUS ? "-" : "!";
+    return `(${op}${exprToC(expr.operand)})`;
+  }
+  if (expr instanceof ModelicaBinaryExpression) {
+    const lhs = exprToC(expr.operand1);
+    const rhs = exprToC(expr.operand2);
+    const op = binaryOpToC(expr.operator);
+    if (op === "pow") return `pow(${lhs}, ${rhs})`;
+    return `(${lhs} ${op} ${rhs})`;
+  }
+  if (expr instanceof ModelicaFunctionCallExpression) {
+    const args = expr.args.map((a: ModelicaExpression) => exprToC(a)).join(", ");
+    return `${mapFunctionName(expr.functionName)}(${args})`;
+  }
+  if (expr instanceof ModelicaIfElseExpression) {
+    const cond = exprToC(expr.condition);
+    const then = exprToC(expr.thenExpression);
+    const els = exprToC(expr.elseExpression);
+    if (expr.elseIfClauses.length > 0) {
+      let r = `(${cond} ? ${then} : `;
+      for (const clause of expr.elseIfClauses) r += `${exprToC(clause.condition)} ? ${exprToC(clause.expression)} : `;
+      return r + `${els})`;
+    }
+    return `(${cond} ? ${then} : ${els})`;
+  }
+  if (expr && typeof expr === "object" && "name" in expr) return varToC((expr as { name: string }).name);
+  return "0.0 /* unknown */";
+}
+
+function varToC(name: string): string {
+  if (name === "time") return "time";
+  const m = name.match(/^der\((.+)\)$/);
+  if (m) return `der_${sanitize(m[1] ?? "")}`;
+  return `v_${sanitize(name)}`;
+}
+
+function sanitize(name: string): string {
+  return name
+    .replace(/\./g, "_")
+    .replace(/\[/g, "_")
+    .replace(/]/g, "")
+    .replace(/[^a-zA-Z0-9_]/g, "_");
+}
+
+function binaryOpToC(op: ModelicaBinaryOperator): string {
+  const map = new Map<ModelicaBinaryOperator, string>([
+    [ModelicaBinaryOperator.ADDITION, "+"],
+    [ModelicaBinaryOperator.ELEMENTWISE_ADDITION, "+"],
+    [ModelicaBinaryOperator.SUBTRACTION, "-"],
+    [ModelicaBinaryOperator.ELEMENTWISE_SUBTRACTION, "-"],
+    [ModelicaBinaryOperator.MULTIPLICATION, "*"],
+    [ModelicaBinaryOperator.ELEMENTWISE_MULTIPLICATION, "*"],
+    [ModelicaBinaryOperator.DIVISION, "/"],
+    [ModelicaBinaryOperator.ELEMENTWISE_DIVISION, "/"],
+    [ModelicaBinaryOperator.EXPONENTIATION, "pow"],
+    [ModelicaBinaryOperator.ELEMENTWISE_EXPONENTIATION, "pow"],
+    [ModelicaBinaryOperator.LESS_THAN, "<"],
+    [ModelicaBinaryOperator.LESS_THAN_OR_EQUAL, "<="],
+    [ModelicaBinaryOperator.GREATER_THAN, ">"],
+    [ModelicaBinaryOperator.GREATER_THAN_OR_EQUAL, ">="],
+    [ModelicaBinaryOperator.EQUALITY, "=="],
+    [ModelicaBinaryOperator.INEQUALITY, "!="],
+    [ModelicaBinaryOperator.LOGICAL_AND, "&&"],
+    [ModelicaBinaryOperator.LOGICAL_OR, "||"],
+  ]);
+  return map.get(op) ?? "+";
+}
+
+function mapFunctionName(name: string): string {
+  const m: Record<string, string> = {
+    sin: "sin",
+    cos: "cos",
+    tan: "tan",
+    asin: "asin",
+    acos: "acos",
+    atan: "atan",
+    atan2: "atan2",
+    sinh: "sinh",
+    cosh: "cosh",
+    tanh: "tanh",
+    exp: "exp",
+    log: "log",
+    log10: "log10",
+    sqrt: "sqrt",
+    abs: "fabs",
+    sign: "copysign",
+    floor: "floor",
+    ceil: "ceil",
+    min: "fmin",
+    max: "fmax",
+    mod: "fmod",
+  };
+  return m[name] ?? sanitize(name);
+}
+
+function formatCDouble(v: number): string {
+  if (!isFinite(v)) {
+    if (v === Infinity) return "INFINITY";
+    if (v === -Infinity) return "(-INFINITY)";
+    return "NAN";
+  }
+  const s = v.toString();
+  return !s.includes(".") && !s.includes("e") && !s.includes("E") ? s + ".0" : s;
+}
+
+function escapeCString(s: string): string {
+  return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n");
+}
+
+function conditionToZC(cond: ModelicaExpression): string {
+  if (cond instanceof ModelicaBinaryExpression) {
+    const op = cond.operator;
+    if (
+      op === ModelicaBinaryOperator.LESS_THAN ||
+      op === ModelicaBinaryOperator.LESS_THAN_OR_EQUAL ||
+      op === ModelicaBinaryOperator.GREATER_THAN ||
+      op === ModelicaBinaryOperator.GREATER_THAN_OR_EQUAL
+    )
+      return `(${exprToC(cond.operand1)}) - (${exprToC(cond.operand2)})`;
+  }
+  return `(${exprToC(cond)} ? 1.0 : -1.0)`;
+}
+
+function extractDerName(expr: unknown): string | null {
+  if (expr && typeof expr === "object" && "functionName" in expr && "args" in expr) {
+    const fe = expr as { functionName: string; args: unknown[] };
+    if (fe.functionName === "der" && fe.args.length === 1) {
+      const a = fe.args[0];
+      if (a && typeof a === "object" && "name" in a) {
+        const n = (a as { name: unknown }).name;
+        if (typeof n === "string") return n;
+      }
+    }
+  }
+  if (expr && typeof expr === "object" && "name" in expr) {
+    const n = (expr as { name: unknown }).name;
+    if (typeof n === "string" && n.startsWith("der(") && n.endsWith(")")) return n.substring(4, n.length - 1);
+  }
+  return null;
+}
+
+function collectRefs(expr: unknown, names: Set<string>): void {
+  if (!expr || typeof expr !== "object") return;
+  if ("name" in expr) {
+    const n = (expr as { name: unknown }).name;
+    if (typeof n === "string") {
+      if (n.startsWith("der(") && n.endsWith(")")) names.add(n.substring(4, n.length - 1));
+      else names.add(n);
+    }
+  }
+  if ("operand" in expr) collectRefs((expr as { operand: unknown }).operand, names);
+  if ("operand1" in expr) collectRefs((expr as { operand1: unknown }).operand1, names);
+  if ("operand2" in expr) collectRefs((expr as { operand2: unknown }).operand2, names);
+  if ("condition" in expr) collectRefs((expr as { condition: unknown }).condition, names);
+  if ("thenExpression" in expr) collectRefs((expr as { thenExpression: unknown }).thenExpression, names);
+  if ("elseExpression" in expr) collectRefs((expr as { elseExpression: unknown }).elseExpression, names);
+  if ("args" in expr) {
+    const a = (expr as { args: unknown[] }).args;
+    if (Array.isArray(a)) for (const x of a) collectRefs(x, names);
+  }
+}
+
+// ── File generators ──
+
+function generateModelH3(id: string, nVars: number, nStates: number, nStringVars: number, result: Fmi3Result): string {
+  const L: string[] = [];
+  L.push("/* Auto-generated by ModelScript — FMI 3.0 */");
+  L.push(`#ifndef ${id.toUpperCase()}_MODEL_H`);
+  L.push(`#define ${id.toUpperCase()}_MODEL_H`);
+  L.push("#include <math.h>");
+  L.push("#include <string.h>");
+  L.push("");
+  L.push(`#define MODEL_IDENTIFIER "${id}"`);
+  L.push(`#define MODEL_GUID "${result.guid}"`);
+  L.push(`#define N_VARS ${nVars}`);
+  L.push(`#define N_STATES ${nStates}`);
+  L.push(`#define N_STRING_VARS ${nStringVars}`);
+  L.push(`#define N_EVENT_INDICATORS ${result.numberOfEventIndicators}`);
+  L.push("");
+  for (const sv of result.variables) L.push(`#define VR_${sanitize(sv.name).toUpperCase()} ${sv.valueReference}`);
+  L.push("");
+  L.push("typedef struct {");
+  L.push("  double vars[N_VARS + 1];");
+  L.push("  double states[N_STATES + 1];");
+  L.push("  double derivatives[N_STATES + 1];");
+  L.push("  char* stringVars[N_STRING_VARS + 1];");
+  L.push("  double eventPrev[N_EVENT_INDICATORS + 1];");
+  L.push("  double time;");
+  L.push("  int isDirtyValues;");
+  L.push(`} ${id}_Instance;`);
+  L.push("");
+  L.push(`void ${id}_initialize(${id}_Instance* inst);`);
+  L.push(`void ${id}_getDerivatives(${id}_Instance* inst);`);
+  L.push(`void ${id}_getEventIndicators(${id}_Instance* inst, double* indicators);`);
+  L.push("");
+  L.push("#endif");
+  return L.join("\n");
+}
+
+function generateModelC3(id: string, dae: ModelicaDAE, result: Fmi3Result): string {
+  const L: string[] = [];
+  L.push("/* Auto-generated by ModelScript — FMI 3.0 */");
+  L.push(`#include "${id}_model.h"`);
+  L.push("#include <stdio.h>");
+  L.push("");
+  const vrMap = new Map<string, number>();
+  for (const sv of result.variables) vrMap.set(sv.name, sv.valueReference);
+
+  // Initialize
+  L.push(`void ${id}_initialize(${id}_Instance* inst) {`);
+  L.push("  memset(inst, 0, sizeof(*inst));");
+  for (const v of dae.variables) {
+    if (v.variability === ModelicaVariability.PARAMETER || v.variability === ModelicaVariability.CONSTANT) {
+      const ref = vrMap.get(v.name);
+      if (ref !== undefined && v.expression)
+        L.push(`  inst->vars[${ref}] = ${exprToC(v.expression)};  /* ${v.name} */`);
+    }
+  }
+  for (const v of dae.variables) {
+    if (v.variability === null || v.variability === undefined) {
+      const ref = vrMap.get(v.name);
+      if (ref !== undefined) {
+        const e = v.attributes.get("start") ?? v.expression;
+        if (e) L.push(`  inst->vars[${ref}] = ${exprToC(e)};  /* ${v.name} */`);
+      }
+    }
+  }
+  L.push("}");
+  L.push("");
+
+  // Derivatives
+  L.push(`void ${id}_getDerivatives(${id}_Instance* inst) {`);
+  const refs = new Set<string>();
+  for (const eq of dae.equations) {
+    if ("expression1" in eq && "expression2" in eq) {
+      const se = eq as { expression1: ModelicaExpression; expression2: ModelicaExpression };
+      collectRefs(se.expression1, refs);
+      collectRefs(se.expression2, refs);
+    }
+  }
+  if (refs.has("time")) L.push("  double time = inst->time;");
+  for (const sv of result.variables) {
+    if (sv.causality === "independent" || !refs.has(sv.name)) continue;
+    L.push(`  double ${varToC(sv.name)} = inst->vars[${sv.valueReference}];`);
+  }
+  L.push("");
+  let derIdx = 0;
+  for (const eq of dae.equations) {
+    if (!("expression1" in eq && "expression2" in eq)) continue;
+    const se = eq as { expression1: ModelicaExpression; expression2: ModelicaExpression };
+    const ld = extractDerName(se.expression1);
+    const rd = extractDerName(se.expression2);
+    if (ld) {
+      L.push(`  inst->derivatives[${derIdx}] = ${exprToC(se.expression2)};  /* der(${ld}) */`);
+      derIdx++;
+    } else if (rd) {
+      L.push(`  inst->derivatives[${derIdx}] = ${exprToC(se.expression1)};  /* der(${rd}) */`);
+      derIdx++;
+    }
+  }
+  L.push("}");
+  L.push("");
+
+  // Event indicators
+  const whenEqs = dae.equations.filter((eq): eq is ModelicaWhenEquation => eq instanceof ModelicaWhenEquation);
+  L.push(`void ${id}_getEventIndicators(${id}_Instance* inst, double* indicators) {`);
+  if (whenEqs.length === 0) {
+    L.push("  (void)inst; (void)indicators;");
+  } else {
+    let idx = 0;
+    for (const weq of whenEqs) {
+      L.push(`  indicators[${idx}] = ${conditionToZC(weq.condition)};`);
+      idx++;
+      for (const c of weq.elseWhenClauses) {
+        L.push(`  indicators[${idx}] = ${conditionToZC(c.condition)};`);
+        idx++;
+      }
+    }
+  }
+  L.push("}");
+  return L.join("\n");
+}
+
+function generateFmi3FunctionsC(
+  id: string,
+  nVars: number,
+  nStates: number,
+  nStringVars: number,
+  dae: ModelicaDAE,
+  result: Fmi3Result,
+): string {
+  const L: string[] = [];
+
+  // Header
+  L.push("/* Auto-generated by ModelScript — FMI 3.0 API */");
+  L.push(`#include "${id}_model.h"`);
+  L.push('#include "fmi3Functions.h"');
+  L.push("#include <stdlib.h>");
+  L.push("#include <string.h>");
+  L.push("#include <stdio.h>");
+  L.push("");
+
+  // Instance struct
+  L.push("typedef struct {");
+  L.push(`  ${id}_Instance model;`);
+  L.push("  fmi3String instanceName;");
+  L.push("  fmi3LogMessageCallback logMessage;");
+  L.push("  fmi3IntermediateUpdateCallback intermediateUpdate;");
+  L.push("  fmi3InstanceEnvironment instanceEnvironment;");
+  L.push("  fmi3Boolean loggingOn;");
+  L.push("  fmi3Float64 startTime;");
+  L.push("  fmi3Float64 stopTime;");
+  L.push("  fmi3Float64 stepSize;");
+  L.push("} FMU3Instance;");
+  L.push("");
+
+  // fmi3InstantiateCoSimulation
+  L.push("fmi3Instance fmi3InstantiateCoSimulation(");
+  L.push("    fmi3String instanceName, fmi3String instantiationToken, fmi3String resourcePath,");
+  L.push("    fmi3Boolean visible, fmi3Boolean loggingOn,");
+  L.push("    fmi3Boolean eventModeUsed, fmi3Boolean earlyReturnAllowed,");
+  L.push("    const fmi3ValueReference requiredIntermediateVariables[], size_t nRequiredIntermediateVariables,");
+  L.push("    fmi3InstanceEnvironment instanceEnvironment, fmi3LogMessageCallback logMessage,");
+  L.push("    fmi3IntermediateUpdateCallback intermediateUpdate) {");
+  L.push("  (void)instantiationToken; (void)resourcePath; (void)visible;");
+  L.push("  (void)eventModeUsed; (void)earlyReturnAllowed;");
+  L.push("  (void)requiredIntermediateVariables; (void)nRequiredIntermediateVariables;");
+  L.push("  FMU3Instance* inst = (FMU3Instance*)calloc(1, sizeof(FMU3Instance));");
+  L.push("  if (!inst) return NULL;");
+  L.push("  inst->instanceName = instanceName;");
+  L.push("  inst->logMessage = logMessage;");
+  L.push("  inst->intermediateUpdate = intermediateUpdate;");
+  L.push("  inst->instanceEnvironment = instanceEnvironment;");
+  L.push("  inst->loggingOn = loggingOn;");
+  L.push("  inst->stepSize = 0.001;");
+  L.push(`  ${id}_initialize(&inst->model);`);
+  L.push("  return (fmi3Instance)inst;");
+  L.push("}");
+  L.push("");
+
+  // fmi3InstantiateModelExchange
+  L.push("fmi3Instance fmi3InstantiateModelExchange(");
+  L.push("    fmi3String instanceName, fmi3String instantiationToken, fmi3String resourcePath,");
+  L.push("    fmi3Boolean visible, fmi3Boolean loggingOn,");
+  L.push("    fmi3InstanceEnvironment instanceEnvironment, fmi3LogMessageCallback logMessage) {");
+  L.push("  (void)instantiationToken; (void)resourcePath; (void)visible;");
+  L.push("  FMU3Instance* inst = (FMU3Instance*)calloc(1, sizeof(FMU3Instance));");
+  L.push("  if (!inst) return NULL;");
+  L.push("  inst->instanceName = instanceName;");
+  L.push("  inst->logMessage = logMessage;");
+  L.push("  inst->instanceEnvironment = instanceEnvironment;");
+  L.push("  inst->loggingOn = loggingOn;");
+  L.push(`  ${id}_initialize(&inst->model);`);
+  L.push("  return (fmi3Instance)inst;");
+  L.push("}");
+  L.push("");
+
+  // Lifecycle
+  L.push(
+    "fmi3Status fmi3EnterInitializationMode(fmi3Instance instance, fmi3Boolean toleranceDefined, fmi3Float64 tolerance, fmi3Float64 startTime, fmi3Boolean stopTimeDefined, fmi3Float64 stopTime) {",
+  );
+  L.push("  (void)toleranceDefined; (void)tolerance;");
+  L.push("  FMU3Instance* inst = (FMU3Instance*)instance;");
+  L.push("  inst->startTime = startTime; inst->model.time = startTime;");
+  L.push("  if (stopTimeDefined) inst->stopTime = stopTime;");
+  L.push("  return fmi3OK;");
+  L.push("}");
+  L.push("fmi3Status fmi3ExitInitializationMode(fmi3Instance instance) { (void)instance; return fmi3OK; }");
+  L.push("fmi3Status fmi3Terminate(fmi3Instance instance) { (void)instance; return fmi3OK; }");
+  L.push("void fmi3FreeInstance(fmi3Instance instance) { if (instance) free(instance); }");
+  L.push("fmi3Status fmi3Reset(fmi3Instance instance) { (void)instance; return fmi3OK; }");
+  L.push("");
+
+  // Get/Set Float64
+  L.push(
+    "fmi3Status fmi3GetFloat64(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, fmi3Float64 value[], size_t nValues) {",
+  );
+  L.push("  FMU3Instance* inst = (FMU3Instance*)instance; (void)nValues;");
+  L.push("  for (size_t i = 0; i < nvr; i++) { if (vr[i] < N_VARS) value[i] = inst->model.vars[vr[i]]; }");
+  L.push("  return fmi3OK;");
+  L.push("}");
+  L.push(
+    "fmi3Status fmi3SetFloat64(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, const fmi3Float64 value[], size_t nValues) {",
+  );
+  L.push("  FMU3Instance* inst = (FMU3Instance*)instance; (void)nValues;");
+  L.push("  for (size_t i = 0; i < nvr; i++) { if (vr[i] < N_VARS) inst->model.vars[vr[i]] = value[i]; }");
+  L.push("  return fmi3OK;");
+  L.push("}");
+  L.push("");
+
+  // Get/Set Int32
+  L.push(
+    "fmi3Status fmi3GetInt32(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, fmi3Int32 value[], size_t nValues) {",
+  );
+  L.push("  FMU3Instance* inst = (FMU3Instance*)instance; (void)nValues;");
+  L.push("  for (size_t i = 0; i < nvr; i++) { if (vr[i] < N_VARS) value[i] = (fmi3Int32)inst->model.vars[vr[i]]; }");
+  L.push("  return fmi3OK;");
+  L.push("}");
+  L.push(
+    "fmi3Status fmi3SetInt32(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, const fmi3Int32 value[], size_t nValues) {",
+  );
+  L.push("  FMU3Instance* inst = (FMU3Instance*)instance; (void)nValues;");
+  L.push("  for (size_t i = 0; i < nvr; i++) { if (vr[i] < N_VARS) inst->model.vars[vr[i]] = (double)value[i]; }");
+  L.push("  return fmi3OK;");
+  L.push("}");
+  L.push("");
+
+  // Get/Set Boolean
+  L.push(
+    "fmi3Status fmi3GetBoolean(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, fmi3Boolean value[], size_t nValues) {",
+  );
+  L.push("  FMU3Instance* inst = (FMU3Instance*)instance; (void)nValues;");
+  L.push("  for (size_t i = 0; i < nvr; i++) { if (vr[i] < N_VARS) value[i] = inst->model.vars[vr[i]] != 0.0; }");
+  L.push("  return fmi3OK;");
+  L.push("}");
+  L.push(
+    "fmi3Status fmi3SetBoolean(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, const fmi3Boolean value[], size_t nValues) {",
+  );
+  L.push("  FMU3Instance* inst = (FMU3Instance*)instance; (void)nValues;");
+  L.push("  for (size_t i = 0; i < nvr; i++) { if (vr[i] < N_VARS) inst->model.vars[vr[i]] = value[i] ? 1.0 : 0.0; }");
+  L.push("  return fmi3OK;");
+  L.push("}");
+  L.push("");
+
+  // ME: SetTime, SetContinuousStates, GetDerivatives, GetContinuousStates, GetEventIndicators
+  L.push("/* --- Model Exchange --- */");
+  L.push(
+    "fmi3Status fmi3SetTime(fmi3Instance instance, fmi3Float64 time) { ((FMU3Instance*)instance)->model.time = time; return fmi3OK; }",
+  );
+
+  const derVars = result.variables.filter((sv) => sv.name.startsWith("der("));
+  const stateRefs: number[] = [];
+  for (const dv of derVars) {
+    if (dv.derivative !== undefined) stateRefs.push(dv.derivative);
+  }
+
+  L.push(
+    "fmi3Status fmi3SetContinuousStates(fmi3Instance instance, const fmi3Float64 continuousStates[], size_t nContinuousStates) {",
+  );
+  L.push("  FMU3Instance* inst = (FMU3Instance*)instance;");
+  for (let i = 0; i < stateRefs.length; i++)
+    L.push(`  if (${i} < (int)nContinuousStates) inst->model.vars[${stateRefs[i]}] = continuousStates[${i}];`);
+  L.push("  return fmi3OK;");
+  L.push("}");
+  L.push(
+    "fmi3Status fmi3GetContinuousStateDerivatives(fmi3Instance instance, fmi3Float64 derivatives[], size_t nContinuousStates) {",
+  );
+  L.push("  FMU3Instance* inst = (FMU3Instance*)instance;");
+  L.push(`  ${id}_getDerivatives(&inst->model);`);
+  L.push(
+    "  for (size_t i = 0; i < nContinuousStates && i < N_STATES; i++) derivatives[i] = inst->model.derivatives[i];",
+  );
+  L.push("  return fmi3OK;");
+  L.push("}");
+  L.push(
+    "fmi3Status fmi3GetContinuousStates(fmi3Instance instance, fmi3Float64 continuousStates[], size_t nContinuousStates) {",
+  );
+  L.push("  FMU3Instance* inst = (FMU3Instance*)instance;");
+  for (let i = 0; i < stateRefs.length; i++)
+    L.push(`  if (${i} < (int)nContinuousStates) continuousStates[${i}] = inst->model.vars[${stateRefs[i]}];`);
+  L.push("  return fmi3OK;");
+  L.push("}");
+  L.push(
+    "fmi3Status fmi3GetEventIndicators(fmi3Instance instance, fmi3Float64 eventIndicators[], size_t nEventIndicators) {",
+  );
+  L.push(
+    `  ${id}_getEventIndicators(&((FMU3Instance*)instance)->model, eventIndicators); (void)nEventIndicators; return fmi3OK;`,
+  );
+  L.push("}");
+  L.push("");
+
+  // CS: fmi3DoStep with intermediate update callback support
+  L.push("/* --- Co-Simulation --- */");
+  L.push(
+    "fmi3Status fmi3DoStep(fmi3Instance instance, fmi3Float64 currentCommunicationPoint, fmi3Float64 communicationStepSize, fmi3Boolean noSetFMUStatePriorToCurrentPoint,",
+  );
+  L.push(
+    "    fmi3Boolean* eventHandlingNeeded, fmi3Boolean* terminateSimulation, fmi3Boolean* earlyReturn, fmi3Float64* lastSuccessfulTime) {",
+  );
+  L.push("  (void)noSetFMUStatePriorToCurrentPoint;");
+  L.push("  FMU3Instance* inst = (FMU3Instance*)instance;");
+  L.push("  *eventHandlingNeeded = fmi3False; *terminateSimulation = fmi3False; *earlyReturn = fmi3False;");
+  L.push("  double t = currentCommunicationPoint, tEnd = t + communicationStepSize, h = inst->stepSize;");
+  L.push("  if (h <= 0) h = 0.001;");
+  L.push("  while (t < tEnd - 1e-15) {");
+  L.push("    if (t + h > tEnd) h = tEnd - t;");
+  L.push("    double k1[N_STATES+1], k2[N_STATES+1], k3[N_STATES+1], k4[N_STATES+1], sv[N_STATES+1];");
+  for (let i = 0; i < stateRefs.length; i++) L.push(`    sv[${i}] = inst->model.vars[${stateRefs[i]}];`);
+  // RK4 k1
+  L.push(`    inst->model.time = t; ${id}_getDerivatives(&inst->model);`);
+  L.push("    for (int i=0; i<N_STATES; i++) k1[i] = inst->model.derivatives[i];");
+  // RK4 k2
+  L.push("    inst->model.time = t + 0.5*h;");
+  for (let i = 0; i < stateRefs.length; i++)
+    L.push(`    inst->model.vars[${stateRefs[i]}] = sv[${i}] + 0.5*h*k1[${i}];`);
+  L.push(`    ${id}_getDerivatives(&inst->model);`);
+  L.push("    for (int i=0; i<N_STATES; i++) k2[i] = inst->model.derivatives[i];");
+  // RK4 k3
+  for (let i = 0; i < stateRefs.length; i++)
+    L.push(`    inst->model.vars[${stateRefs[i]}] = sv[${i}] + 0.5*h*k2[${i}];`);
+  L.push(`    ${id}_getDerivatives(&inst->model);`);
+  L.push("    for (int i=0; i<N_STATES; i++) k3[i] = inst->model.derivatives[i];");
+  // RK4 k4
+  L.push("    inst->model.time = t + h;");
+  for (let i = 0; i < stateRefs.length; i++) L.push(`    inst->model.vars[${stateRefs[i]}] = sv[${i}] + h*k3[${i}];`);
+  L.push(`    ${id}_getDerivatives(&inst->model);`);
+  L.push("    for (int i=0; i<N_STATES; i++) k4[i] = inst->model.derivatives[i];");
+  // RK4 update
+  for (let i = 0; i < stateRefs.length; i++)
+    L.push(
+      `    inst->model.vars[${stateRefs[i]}] = sv[${i}] + (h/6.0)*(k1[${i}] + 2.0*k2[${i}] + 2.0*k3[${i}] + k4[${i}]);`,
+    );
+  L.push("    t += h;");
+  // Intermediate update callback
+  L.push("    /* FMI 3.0: Intermediate update callback */");
+  L.push("    if (inst->intermediateUpdate) {");
+  L.push("      fmi3Boolean canReturnEarly = fmi3False;");
+  L.push(
+    "      inst->intermediateUpdate(inst->instanceEnvironment, t, fmi3False, fmi3True, fmi3False, fmi3True, NULL, 0, &canReturnEarly);",
+  );
+  L.push("      if (canReturnEarly) { *earlyReturn = fmi3True; *lastSuccessfulTime = t; return fmi3OK; }");
+  L.push("    }");
+  L.push("  }");
+  L.push("  inst->model.time = tEnd; *lastSuccessfulTime = tEnd;");
+  L.push("  return fmi3OK;");
+  L.push("}");
+  L.push("");
+
+  // Remaining stubs
+  L.push("/* --- Stubs --- */");
+  L.push("fmi3Status fmi3EnterEventMode(fmi3Instance instance) { (void)instance; return fmi3OK; }");
+  L.push("fmi3Status fmi3EnterContinuousTimeMode(fmi3Instance instance) { (void)instance; return fmi3OK; }");
+  L.push("fmi3Status fmi3EnterStepMode(fmi3Instance instance) { (void)instance; return fmi3OK; }");
+  L.push(
+    "fmi3Status fmi3CompletedIntegratorStep(fmi3Instance instance, fmi3Boolean noSetFMUStatePriorToCurrentPoint, fmi3Boolean* enterEventMode, fmi3Boolean* terminateSimulation) { (void)instance; (void)noSetFMUStatePriorToCurrentPoint; *enterEventMode = fmi3False; *terminateSimulation = fmi3False; return fmi3OK; }",
+  );
+  L.push(
+    "fmi3Status fmi3UpdateDiscreteStates(fmi3Instance instance, fmi3Boolean* discreteStatesNeedUpdate, fmi3Boolean* terminateSimulation, fmi3Boolean* nominalsOfContinuousStatesChanged, fmi3Boolean* valuesOfContinuousStatesChanged, fmi3Boolean* nextEventTimeDefined, fmi3Float64* nextEventTime) { (void)instance; *discreteStatesNeedUpdate = fmi3False; *terminateSimulation = fmi3False; *nominalsOfContinuousStatesChanged = fmi3False; *valuesOfContinuousStatesChanged = fmi3False; *nextEventTimeDefined = fmi3False; *nextEventTime = 0; return fmi3OK; }",
+  );
+  L.push(
+    "fmi3Status fmi3GetNominalsOfContinuousStates(fmi3Instance instance, fmi3Float64 nominals[], size_t nContinuousStates) { for (size_t i=0; i<nContinuousStates; i++) nominals[i]=1.0; (void)instance; return fmi3OK; }",
+  );
+  L.push(
+    "fmi3Status fmi3GetNumberOfVariableDependencies(fmi3Instance instance, fmi3ValueReference vr, size_t* nDeps) { (void)instance; (void)vr; *nDeps=0; return fmi3OK; }",
+  );
+  L.push(
+    "fmi3Status fmi3SetDebugLogging(fmi3Instance instance, fmi3Boolean loggingOn, size_t nCategories, const fmi3String categories[]) { ((FMU3Instance*)instance)->loggingOn = loggingOn; (void)nCategories; (void)categories; return fmi3OK; }",
+  );
+
+  // FMU state management
+  L.push(
+    "fmi3Status fmi3GetFMUState(fmi3Instance instance, fmi3FMUState* state) { FMU3Instance* copy = (FMU3Instance*)malloc(sizeof(FMU3Instance)); if (!copy) return fmi3Error; memcpy(copy, instance, sizeof(FMU3Instance)); *state = (fmi3FMUState)copy; return fmi3OK; }",
+  );
+  L.push(
+    "fmi3Status fmi3SetFMUState(fmi3Instance instance, fmi3FMUState state) { if (!state) return fmi3Error; memcpy(instance, state, sizeof(FMU3Instance)); return fmi3OK; }",
+  );
+  L.push(
+    "fmi3Status fmi3FreeFMUState(fmi3Instance instance, fmi3FMUState* state) { (void)instance; if (state && *state) { free(*state); *state = NULL; } return fmi3OK; }",
+  );
+  L.push(
+    "fmi3Status fmi3SerializedFMUStateSize(fmi3Instance instance, fmi3FMUState state, size_t* size) { (void)instance; (void)state; *size = sizeof(FMU3Instance); return fmi3OK; }",
+  );
+  L.push(
+    "fmi3Status fmi3SerializeFMUState(fmi3Instance instance, fmi3FMUState state, fmi3Byte buf[], size_t size) { (void)instance; if (size < sizeof(FMU3Instance)) return fmi3Error; memcpy(buf, state, sizeof(FMU3Instance)); return fmi3OK; }",
+  );
+  L.push(
+    "fmi3Status fmi3DeserializeFMUState(fmi3Instance instance, const fmi3Byte buf[], size_t size, fmi3FMUState* state) { (void)instance; if (size < sizeof(FMU3Instance)) return fmi3Error; FMU3Instance* copy = (FMU3Instance*)malloc(sizeof(FMU3Instance)); if (!copy) return fmi3Error; memcpy(copy, buf, sizeof(FMU3Instance)); *state = (fmi3FMUState)copy; return fmi3OK; }",
+  );
+  L.push("");
+
+  // Clock stubs (Phase 3 foundation)
+  L.push("/* --- Clock (Phase 3 foundation) --- */");
+  L.push(
+    "fmi3Status fmi3GetClock(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, fmi3Clock value[]) { (void)instance; for (size_t i=0; i<nvr; i++) { (void)vr; value[i] = fmi3ClockInactive; } return fmi3OK; }",
+  );
+  L.push(
+    "fmi3Status fmi3SetClock(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, const fmi3Clock value[]) { (void)instance; (void)vr; (void)nvr; (void)value; return fmi3OK; }",
+  );
+  L.push(
+    "fmi3Status fmi3GetIntervalDecimal(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, fmi3Float64 intervals[], fmi3IntervalQualifier qualifiers[]) { (void)instance; for (size_t i=0; i<nvr; i++) { (void)vr; intervals[i]=0; qualifiers[i]=fmi3IntervalNotYetKnown; } return fmi3OK; }",
+  );
+  L.push("");
+
+  // Binary stubs (Phase 1 foundation)
+  L.push("/* --- Binary --- */");
+  L.push(
+    "fmi3Status fmi3GetBinary(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, size_t valueSizes[], fmi3Binary value[], size_t nValues) { (void)instance; (void)vr; (void)nvr; (void)nValues; for (size_t i=0; i<nvr; i++) { valueSizes[i]=0; value[i]=NULL; } return fmi3OK; }",
+  );
+  L.push(
+    "fmi3Status fmi3SetBinary(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, const size_t valueSizes[], const fmi3Binary value[], size_t nValues) { (void)instance; (void)vr; (void)nvr; (void)valueSizes; (void)value; (void)nValues; return fmi3OK; }",
+  );
+  L.push("");
+
+  return L.join("\n");
+}
+
+function generateCMakeLists3(id: string): string {
+  return `# Auto-generated by ModelScript — CMake build for FMI 3.0 FMU
+cmake_minimum_required(VERSION 3.10)
+project(${id} C)
+set(CMAKE_C_STANDARD 99)
+
+if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+  set(FMI_ARCH "x86_64")
+else()
+  set(FMI_ARCH "x86")
+endif()
+
+if(WIN32)
+  set(FMI_PLATFORM "\${FMI_ARCH}-windows")
+elseif(APPLE)
+  set(FMI_PLATFORM "\${FMI_ARCH}-darwin")
+else()
+  set(FMI_PLATFORM "\${FMI_ARCH}-linux")
+endif()
+
+add_library(${id} SHARED ${id}_model.c fmi3Functions.c)
+target_include_directories(${id} PRIVATE \${CMAKE_CURRENT_SOURCE_DIR})
+set_target_properties(${id} PROPERTIES PREFIX "" C_VISIBILITY_PRESET hidden POSITION_INDEPENDENT_CODE ON)
+
+if(MSVC)
+  target_compile_definitions(${id} PRIVATE FMI3_FUNCTION_PREFIX=)
+else()
+  target_compile_options(${id} PRIVATE -Wall -Wextra -O2)
+endif()
+
+install(TARGETS ${id} LIBRARY DESTINATION binaries/\${FMI_PLATFORM} RUNTIME DESTINATION binaries/\${FMI_PLATFORM})
+message(STATUS "FMI 3.0 platform: \${FMI_PLATFORM}")
+`;
+}
