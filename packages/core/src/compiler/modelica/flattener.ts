@@ -7666,5 +7666,6 @@ export function findAlgebraicLoops(dae: ModelicaDAE): void {
   // (In a full BLT solver, we'd replace dae.equations completely. For now, we just log them or store them).
   if (algebraicLoops.length > 0) {
     console.log(`[DAE] Found ${algebraicLoops.length} algebraic loop(s) in ${dae.name}`);
+    dae.algebraicLoops = algebraicLoops;
   }
 }

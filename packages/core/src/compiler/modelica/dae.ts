@@ -23,6 +23,8 @@ export class ModelicaDAE {
   initialEquations: ModelicaEquation[] = [];
   /** Algorithm sections from `initial algorithm` sections. */
   initialAlgorithms: ModelicaStatement[][] = [];
+  /** Algebraic loops (SCCs) detected during flattening. */
+  algebraicLoops: { variables: string[]; equations: ModelicaEquation[] }[] = [];
   variables: ModelicaVariable[] = [];
   stateMachines: ModelicaStateMachine[] = [];
   /** Clock partitions identified by the synchronous clock inference pass. */

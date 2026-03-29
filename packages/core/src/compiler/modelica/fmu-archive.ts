@@ -72,6 +72,7 @@ export function buildFmuArchive(
     files.set(`sources/${id}_model.h`, encoder.encode(sources.modelH));
     files.set(`sources/${id}_model.c`, encoder.encode(sources.modelC));
     files.set("sources/fmi2Functions.c", encoder.encode(sources.fmi2FunctionsC));
+    files.set("sources/fmi3Functions.c", encoder.encode(sources.fmi3FunctionsC));
 
     // Include FMI 2.0 headers (minimal subset for compilation)
     files.set("sources/fmi2Functions.h", encoder.encode(FMI2_FUNCTIONS_H));
@@ -102,6 +103,8 @@ export function buildFmuArchive(
     `  <BuildConfiguration modelIdentifier="${id}">`,
     '    <SourceFileSet language="C">',
     `      <SourceFile name="${id}_model.c" />`,
+    `      <SourceFile name="fmi2Functions.c" />`,
+    `      <SourceFile name="fmi3Functions.c" />`,
     "    </SourceFileSet>",
     "  </BuildConfiguration>",
     "</fmiBuildDescription>",

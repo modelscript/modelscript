@@ -16,6 +16,7 @@ import {
   ModelicaArray,
   ModelicaBinaryExpression,
   ModelicaBooleanVariable,
+  ModelicaClockVariable,
   ModelicaEnumerationVariable,
   ModelicaFunctionCallExpression,
   ModelicaIfElseExpression,
@@ -49,8 +50,8 @@ export interface FmiScalarVariable {
   variability: FmiVariability;
   /** Description string (optional). */
   description?: string;
-  /** Data type: Real, Integer, Boolean, String. */
-  type: "Real" | "Integer" | "Boolean" | "String";
+  /** Data type: Real, Integer, Boolean, String, Clock. */
+  type: "Real" | "Integer" | "Boolean" | "String" | "Clock";
   /** Start value (initial condition or default). */
   start?: number;
   /** SI unit string (optional). */
@@ -427,12 +428,13 @@ function mapVariable(v: ModelicaVariable, valueRef: number): FmiScalarVariable {
 }
 
 /** Determine the FMI type from a Modelica variable. */
-function mapType(v: ModelicaVariable): "Real" | "Integer" | "Boolean" | "String" {
+function mapType(v: ModelicaVariable): "Real" | "Integer" | "Boolean" | "String" | "Clock" {
   if (v instanceof ModelicaRealVariable) return "Real";
   if (v instanceof ModelicaIntegerVariable) return "Integer";
   if (v instanceof ModelicaBooleanVariable) return "Boolean";
   if (v instanceof ModelicaStringVariable) return "String";
   if (v instanceof ModelicaEnumerationVariable) return "Integer";
+  if (v instanceof ModelicaClockVariable) return "Clock";
   return "Real";
 }
 
@@ -680,4 +682,197 @@ function formatUnknown(
   const depsAttr = ` dependencies="${depItems.map((d) => d.idx).join(" ")}"`;
   const kindsAttr = ` dependenciesKind="${depItems.map((d) => d.kind).join(" ")}"`;
   return `      <Unknown index="${index}"${depsAttr}${kindsAttr} />`;
+}
+interface Fmi3ArrayVariable {
+  baseName: string;
+  startRef: number;
+  dimensions: number[];
+  sv: FmiScalarVariable;
+  elements: FmiScalarVariable[];
+}
+
+function groupFmi3Variables(scalarVariables: FmiScalarVariable[]): (FmiScalarVariable | Fmi3ArrayVariable)[] {
+  const result: (FmiScalarVariable | Fmi3ArrayVariable)[] = [];
+  const arrayMap = new Map<string, Fmi3ArrayVariable>();
+
+  for (const sv of scalarVariables) {
+    const match = sv.name.match(/^(.+)\[([\d, ]+)\]$/);
+    if (match) {
+      const baseName = match[1] as string;
+      const indices = (match[2] as string).split(",").map((s) => parseInt(s.trim(), 10));
+
+      let arr = arrayMap.get(baseName);
+      if (!arr) {
+        arr = {
+          baseName,
+          startRef: sv.valueReference,
+          dimensions: indices.map(() => 0),
+          sv: { ...sv, name: baseName },
+          elements: [],
+        };
+        arrayMap.set(baseName, arr);
+        result.push(arr);
+      }
+
+      const currentArr = arr as Fmi3ArrayVariable;
+      for (let i = 0; i < indices.length; i++) {
+        const ind = indices[i] as number;
+        const currentDim = currentArr.dimensions[i] as number;
+        if (ind !== undefined && currentDim !== undefined) {
+          if (ind > currentDim) {
+            currentArr.dimensions[i] = ind;
+          }
+        }
+      }
+      currentArr.elements.push(sv);
+    } else {
+      result.push(sv);
+    }
+  }
+  return result;
+}
+
+export function generateFmi3ModelDescriptionXml(
+  variables: FmiScalarVariable[],
+  opts: FmuOptions & {
+    guid: string;
+    outputRefs: number[];
+    derivativeRefs: number[];
+    initialUnknownRefs: number[];
+    fmuType: FmuTypeFlags;
+    nEventIndicators: number;
+    deps: Map<number, DepEntry2[]>;
+    aliasMap: Map<string, string>;
+    enumTypes: Map<string, { name: string; description: string | null }[]>;
+  },
+): string {
+  const lines: string[] = [];
+
+  lines.push('<?xml version="1.0" encoding="UTF-8"?>');
+  lines.push("<fmiModelDescription");
+  lines.push('  fmiVersion="3.0"');
+  lines.push(`  modelName="${escapeXml(opts.modelIdentifier)}"`);
+  lines.push(`  instantiationToken="${escapeXml(opts.guid)}"`);
+  if (opts.description) lines.push(`  description="${escapeXml(opts.description)}"`);
+  if (opts.author) lines.push(`  author="${escapeXml(opts.author)}"`);
+  lines.push(`  generationTool="${escapeXml(opts.generationTool ?? "ModelScript")}"`);
+  lines.push(`  generationDateAndTime="${new Date().toISOString()}"`);
+  lines.push('  variableNamingConvention="structured">');
+
+  if (opts.fmuType.modelExchange) {
+    lines.push("");
+    lines.push(
+      `  <ModelExchange modelIdentifier="${escapeXml(opts.modelIdentifier)}" providesDirectionalDerivative="true" />`,
+    );
+  }
+
+  if (opts.fmuType.coSimulation) {
+    lines.push("");
+    lines.push(
+      `  <CoSimulation modelIdentifier="${escapeXml(opts.modelIdentifier)}" canHandleVariableCommunicationStepSize="true" providesDirectionalDerivative="true" />`,
+    );
+  }
+
+  lines.push("");
+  lines.push("  <DefaultExperiment");
+  lines.push(`    startTime="${opts.startTime ?? 0}"`);
+  lines.push(`    stopTime="${opts.stopTime ?? 1}"`);
+  lines.push(`    stepSize="${opts.stepSize ?? 0.001}" />`);
+
+  lines.push("");
+  lines.push("  <ModelVariables>");
+  const groupedVars = groupFmi3Variables(variables);
+  for (const item of groupedVars) {
+    let sv: FmiScalarVariable;
+    let dimensions: number[] | null = null;
+    if ("elements" in item) {
+      sv = item.sv;
+      dimensions = item.dimensions;
+    } else {
+      sv = item;
+    }
+
+    lines.push(`    <!-- ${escapeXml(sv.name)} -->`);
+    const descAttr = sv.description ? ` description="${escapeXml(sv.description)}"` : "";
+    const causalityAttr = sv.causality === "independent" ? ' causality="independent"' : ` causality="${sv.causality}"`;
+    const variabilityAttr = ` variability="${sv.variability}"`;
+    const initialAttr = sv.initial ? ` initial="${sv.initial}"` : "";
+
+    let fmi3Type = sv.type as string;
+    if (fmi3Type === "Real") fmi3Type = "Float64";
+    else if (fmi3Type === "Integer") fmi3Type = "Int32";
+    else if (fmi3Type === "Clock") {
+      lines.push(
+        `    <Clock name="${escapeXml(sv.name)}" valueReference="${sv.valueReference}"${causalityAttr}${descAttr}`,
+      );
+      if (sv.start !== undefined || sv.derivative !== undefined || sv.declaredType || dimensions) {
+        lines.push(`>`);
+        if (dimensions) {
+          for (const d of dimensions) lines.push(`      <Dimension start="${d}" />`);
+        }
+        lines.push(`    </Clock>`);
+      } else {
+        lines[lines.length - 1] += " />";
+      }
+      continue;
+    }
+
+    lines.push(
+      `    <${fmi3Type} name="${escapeXml(sv.name)}" valueReference="${sv.valueReference}"${causalityAttr}${variabilityAttr}${initialAttr}${descAttr}`,
+    );
+
+    if (sv.start !== undefined || sv.derivative !== undefined || sv.declaredType || dimensions) {
+      const startAttr = sv.start !== undefined ? ` start="${sv.start}"` : "";
+      const derivAttr = sv.derivative !== undefined ? ` derivative="${sv.derivative}"` : "";
+      const declTypeAttr = sv.declaredType ? ` declaredType="${escapeXml(sv.declaredType)}"` : "";
+
+      if (dimensions) {
+        lines.push(`>`);
+        for (const d of dimensions) lines.push(`      <Dimension start="${d}" />`);
+        lines.push(`    </${fmi3Type}>`);
+      } else {
+        lines.push(`      ${startAttr}${derivAttr}${declTypeAttr} />`);
+      }
+    } else {
+      lines[lines.length - 1] += " />";
+    }
+  }
+  lines.push("  </ModelVariables>");
+
+  lines.push("");
+  lines.push("  <ModelStructure>");
+
+  if (opts.outputRefs.length > 0) {
+    for (const ref of opts.outputRefs) {
+      lines.push(formatFmi3Unknown("Output", ref, opts.deps));
+    }
+  }
+
+  if (opts.derivativeRefs.length > 0) {
+    for (const ref of opts.derivativeRefs) {
+      lines.push(formatFmi3Unknown("ContinuousStateDerivative", ref, opts.deps));
+    }
+  }
+
+  if (opts.initialUnknownRefs.length > 0) {
+    for (const ref of opts.initialUnknownRefs) {
+      lines.push(formatFmi3Unknown("InitialUnknown", ref, opts.deps));
+    }
+  }
+
+  lines.push("  </ModelStructure>");
+  lines.push("");
+  lines.push("</fmiModelDescription>");
+
+  return lines.join("\n");
+}
+
+function formatFmi3Unknown(tagName: string, ref: number, deps: Map<number, DepEntry2[]>): string {
+  const entries = deps.get(ref);
+  if (!entries || entries.length === 0) {
+    return `    <${tagName} valueReference="${ref}" />`;
+  }
+  const depsAttr = ` dependencies="${entries.map((e) => e.vr).join(" ")}"`;
+  const kindsAttr = ` dependenciesKind="${entries.map((e) => e.kind).join(" ")}"`;
+  return `    <${tagName} valueReference="${ref}"${depsAttr}${kindsAttr} />`;
 }
