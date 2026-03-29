@@ -18,6 +18,7 @@ import {
   ModelicaIntegerVariable,
   ModelicaRealVariable,
   ModelicaStringVariable,
+  ModelicaWhenEquation,
 } from "./dae.js";
 import { ModelicaVariability } from "./syntax.js";
 
@@ -172,6 +173,7 @@ export function generateFmu(dae: ModelicaDAE, options: FmuOptions, stateVars?: S
 
   // ── Generate modelDescription.xml ──
   const fmuType = options.fmuType ?? { modelExchange: true, coSimulation: true };
+  const nEventIndicators = countEventIndicators(dae);
   const xml = generateModelDescriptionXml(scalarVariables, {
     ...options,
     guid,
@@ -179,6 +181,7 @@ export function generateFmu(dae: ModelicaDAE, options: FmuOptions, stateVars?: S
     derivativeRefs,
     initialUnknownRefs,
     fmuType,
+    nEventIndicators,
   });
 
   return {
@@ -190,11 +193,26 @@ export function generateFmu(dae: ModelicaDAE, options: FmuOptions, stateVars?: S
       initialUnknowns: initialUnknownRefs,
     },
     guid,
-    numberOfEventIndicators: 0,
+    numberOfEventIndicators: nEventIndicators,
   };
 }
 
 // ── Internal helpers ──
+
+/**
+ * Count event indicators from when-equations in the DAE.
+ * Each when-equation condition (main + elseWhen) becomes one event indicator.
+ */
+function countEventIndicators(dae: ModelicaDAE): number {
+  let count = 0;
+  for (const eq of dae.equations) {
+    if (eq instanceof ModelicaWhenEquation) {
+      count++; // Main condition
+      count += eq.elseWhenClauses.length; // Each elsewhen clause
+    }
+  }
+  return count;
+}
 
 /** Map a Modelica variable to an FMI scalar variable. */
 function mapVariable(v: ModelicaVariable, valueRef: number): FmiScalarVariable {
@@ -308,6 +326,7 @@ function generateModelDescriptionXml(
     derivativeRefs: number[];
     initialUnknownRefs: number[];
     fmuType: FmuTypeFlags;
+    nEventIndicators: number;
   },
 ): string {
   const lines: string[] = [];
@@ -322,7 +341,7 @@ function generateModelDescriptionXml(
   lines.push(`  generationTool="${escapeXml(opts.generationTool ?? "ModelScript")}"`);
   lines.push(`  generationDateAndTime="${new Date().toISOString()}"`);
   lines.push('  variableNamingConvention="structured"');
-  lines.push('  numberOfEventIndicators="0">');
+  lines.push(`  numberOfEventIndicators="${opts.nEventIndicators}">`);
 
   // ModelExchange element
   if (opts.fmuType.modelExchange) {

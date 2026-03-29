@@ -23,8 +23,10 @@ import {
   ModelicaIntegerLiteral,
   ModelicaNameExpression,
   ModelicaRealLiteral,
+  ModelicaSimpleEquation,
   ModelicaStringLiteral,
   ModelicaUnaryExpression,
+  ModelicaWhenEquation,
 } from "./dae.js";
 import type { FmuOptions, FmuResult } from "./fmi.js";
 import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "./syntax.js";
@@ -58,7 +60,7 @@ export function generateFmuCSources(dae: ModelicaDAE, fmuResult: FmuResult, opti
   const modelC = generateModelC(id, dae, fmuResult);
 
   // ── fmi2Functions.c ──
-  const fmi2FunctionsC = generateFmi2FunctionsC(id, nVars, nStates, nStringVars, fmuResult);
+  const fmi2FunctionsC = generateFmi2FunctionsC(id, nVars, nStates, nStringVars, dae, fmuResult);
 
   // ── CMakeLists.txt ──
   const cmakeLists = generateCMakeLists(id);
@@ -236,6 +238,38 @@ function escapeCString(s: string): string {
   return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n");
 }
 
+/**
+ * Convert a when-equation condition to a C zero-crossing expression.
+ * For relational operators (x < threshold), returns `(LHS) - (RHS)`.
+ * For boolean conditions, returns the expression directly (non-zero = active).
+ */
+function conditionToZeroCrossingC(condition: ModelicaExpression): string {
+  if (condition instanceof ModelicaBinaryExpression) {
+    const op = condition.operator;
+    if (
+      op === ModelicaBinaryOperator.LESS_THAN ||
+      op === ModelicaBinaryOperator.LESS_THAN_OR_EQUAL ||
+      op === ModelicaBinaryOperator.GREATER_THAN ||
+      op === ModelicaBinaryOperator.GREATER_THAN_OR_EQUAL
+    ) {
+      return `(${exprToC(condition.operand1)}) - (${exprToC(condition.operand2)})`;
+    }
+  }
+  // Fallback: treat as boolean condition (1.0 if true, -1.0 if false)
+  return `(${exprToC(condition)} ? 1.0 : -1.0)`;
+}
+
+/**
+ * Extract the assignment target variable name from the LHS of a simple equation.
+ */
+function extractAssignmentTarget(expr: ModelicaExpression): string | null {
+  if (expr instanceof ModelicaNameExpression) return expr.name;
+  if (expr && typeof expr === "object" && "name" in expr) {
+    return (expr as { name: string }).name;
+  }
+  return null;
+}
+
 // ── File generators ──
 
 function generateModelH(id: string, nVars: number, nStates: number, nStringVars: number, result: FmuResult): string {
@@ -268,6 +302,7 @@ function generateModelH(id: string, nVars: number, nStates: number, nStringVars:
   lines.push("  double states[N_STATES + 1];");
   lines.push("  double derivatives[N_STATES + 1];");
   lines.push("  char* stringVars[N_STRING_VARS + 1];  /* string variable storage */");
+  lines.push("  double eventPrev[N_EVENT_INDICATORS + 1];  /* previous event indicator values */");
   lines.push("  double time;");
   lines.push("  int isDirtyValues;");
   lines.push(`} ${id}_Instance;`);
@@ -370,10 +405,45 @@ function generateModelC(id: string, dae: ModelicaDAE, result: FmuResult): string
   lines.push("}");
   lines.push("");
 
-  // ── getEventIndicators function (stub) ──
+  // ── getEventIndicators function ──
+  // Each when-equation condition becomes an event indicator
+  const whenEqs = dae.equations.filter((eq): eq is ModelicaWhenEquation => eq instanceof ModelicaWhenEquation);
   lines.push(`void ${id}_getEventIndicators(${id}_Instance* inst, double* indicators) {`);
-  lines.push("  (void)inst; (void)indicators;");
-  lines.push("  /* No event indicators yet */");
+
+  if (whenEqs.length === 0) {
+    lines.push("  (void)inst; (void)indicators;");
+  } else {
+    // Emit local variable aliases for referenced names
+    const eventReferencedNames = new Set<string>();
+    for (const weq of whenEqs) {
+      collectReferencedNames(weq.condition, eventReferencedNames);
+      for (const clause of weq.elseWhenClauses) {
+        collectReferencedNames(clause.condition, eventReferencedNames);
+      }
+    }
+    if (eventReferencedNames.has("time")) {
+      lines.push("  double time = inst->time;");
+    }
+    for (const sv of result.scalarVariables) {
+      if (sv.causality === "independent") continue;
+      if (!eventReferencedNames.has(sv.name)) continue;
+      const cName = varToC(sv.name);
+      lines.push(`  double ${cName} = inst->vars[${sv.valueReference}];`);
+    }
+    lines.push("");
+
+    let indicatorIdx = 0;
+    for (const weq of whenEqs) {
+      const zc = conditionToZeroCrossingC(weq.condition);
+      lines.push(`  indicators[${indicatorIdx}] = ${zc};  /* when condition */`);
+      indicatorIdx++;
+      for (const clause of weq.elseWhenClauses) {
+        const zcElse = conditionToZeroCrossingC(clause.condition);
+        lines.push(`  indicators[${indicatorIdx}] = ${zcElse};  /* elsewhen condition */`);
+        indicatorIdx++;
+      }
+    }
+  }
   lines.push("}");
 
   return lines.join("\n");
@@ -384,8 +454,11 @@ function generateFmi2FunctionsC(
   nVars: number,
   nStates: number,
   nStringVars: number,
+  dae: ModelicaDAE,
   result: FmuResult,
 ): string {
+  // Extract when-equations for event handling
+  const whenEqs = dae.equations.filter((eq): eq is ModelicaWhenEquation => eq instanceof ModelicaWhenEquation);
   const lines: string[] = [];
   lines.push("/* Auto-generated by ModelScript — FMI 2.0 API implementation */");
   lines.push(`#include "${id}_model.h"`);
@@ -624,6 +697,15 @@ function generateFmi2FunctionsC(
     );
   }
   lines.push("    t += h;");
+  lines.push("");
+
+  // After each step, check for events and process them
+  lines.push("    /* Event detection after integration step */");
+  lines.push("    if (N_EVENT_INDICATORS > 0) {");
+  lines.push("      fmi2EventInfo info;");
+  lines.push("      fmi2NewDiscreteStates((fmi2Component)inst, &info);");
+  lines.push("    }");
+
   lines.push("  }");
   lines.push("  inst->model.time = tEnd;");
   lines.push("  return fmi2OK;");
@@ -703,9 +785,105 @@ function generateFmi2FunctionsC(
   lines.push(
     "fmi2Status fmi2GetNominalsOfContinuousStates(fmi2Component c, fmi2Real nominals[], size_t nx) { for (size_t i = 0; i < nx; i++) nominals[i] = 1.0; (void)c; return fmi2OK; }",
   );
-  lines.push(
-    "fmi2Status fmi2NewDiscreteStates(fmi2Component c, fmi2EventInfo* info) { info->newDiscreteStatesNeeded = fmi2False; info->terminateSimulation = fmi2False; info->nominalsOfContinuousStatesChanged = fmi2False; info->valuesOfContinuousStatesChanged = fmi2False; info->nextEventTimeDefined = fmi2False; (void)c; return fmi2OK; }",
-  );
+  // ── fmi2NewDiscreteStates ──
+  // Evaluate when-equation conditions and execute body assignments on rising edge
+  lines.push("fmi2Status fmi2NewDiscreteStates(fmi2Component c, fmi2EventInfo* info) {");
+  lines.push("  FMUInstance* inst = (FMUInstance*)c;");
+  lines.push("  info->newDiscreteStatesNeeded = fmi2False;");
+  lines.push("  info->terminateSimulation = fmi2False;");
+  lines.push("  info->nominalsOfContinuousStatesChanged = fmi2False;");
+  lines.push("  info->valuesOfContinuousStatesChanged = fmi2False;");
+  lines.push("  info->nextEventTimeDefined = fmi2False;");
+
+  if (whenEqs.length > 0) {
+    lines.push("");
+    lines.push("  /* Evaluate current event indicators */");
+    lines.push("  double indicators[N_EVENT_INDICATORS];");
+    lines.push(`  ${id}_getEventIndicators(&inst->model, indicators);`);
+    lines.push("");
+
+    // Emit local variable aliases for when-equation body assignments
+    const bodyReferencedNames = new Set<string>();
+    for (const weq of whenEqs) {
+      for (const bodyEq of weq.equations) {
+        if (bodyEq instanceof ModelicaSimpleEquation) {
+          collectReferencedNames(bodyEq.expression1, bodyReferencedNames);
+          collectReferencedNames(bodyEq.expression2, bodyReferencedNames);
+        }
+      }
+      for (const clause of weq.elseWhenClauses) {
+        for (const bodyEq of clause.equations) {
+          if (bodyEq instanceof ModelicaSimpleEquation) {
+            collectReferencedNames(bodyEq.expression1, bodyReferencedNames);
+            collectReferencedNames(bodyEq.expression2, bodyReferencedNames);
+          }
+        }
+      }
+    }
+    if (bodyReferencedNames.has("time")) {
+      lines.push("  double time = inst->model.time;");
+    }
+    for (const sv of result.scalarVariables) {
+      if (sv.causality === "independent") continue;
+      if (!bodyReferencedNames.has(sv.name)) continue;
+      const cName = varToC(sv.name);
+      lines.push(`  double ${cName} = inst->model.vars[${sv.valueReference}];`);
+    }
+    lines.push("");
+
+    let eventIdx = 0;
+    for (const weq of whenEqs) {
+      // Detect rising edge: indicator crossed from negative/zero to positive (or vice versa)
+      lines.push(`  /* when-equation ${eventIdx} */`);
+      lines.push(`  if ((indicators[${eventIdx}] > 0.0 && inst->model.eventPrev[${eventIdx}] <= 0.0) ||`);
+      lines.push(`      (indicators[${eventIdx}] <= 0.0 && inst->model.eventPrev[${eventIdx}] > 0.0)) {`);
+
+      // Execute the when-equation body assignments
+      for (const bodyEq of weq.equations) {
+        if (bodyEq instanceof ModelicaSimpleEquation) {
+          const lhsName = extractAssignmentTarget(bodyEq.expression1);
+          if (lhsName) {
+            // Find the VR for this variable
+            const sv = result.scalarVariables.find((v) => v.name === lhsName);
+            if (sv) {
+              lines.push(
+                `    inst->model.vars[${sv.valueReference}] = ${exprToC(bodyEq.expression2)};  /* ${lhsName} */`,
+              );
+            }
+          }
+        }
+      }
+      lines.push("  }");
+      lines.push(`  inst->model.eventPrev[${eventIdx}] = indicators[${eventIdx}];`);
+      eventIdx++;
+
+      // elseWhen clauses
+      for (const clause of weq.elseWhenClauses) {
+        lines.push(`  /* elsewhen-clause ${eventIdx} */`);
+        lines.push(`  if ((indicators[${eventIdx}] > 0.0 && inst->model.eventPrev[${eventIdx}] <= 0.0) ||`);
+        lines.push(`      (indicators[${eventIdx}] <= 0.0 && inst->model.eventPrev[${eventIdx}] > 0.0)) {`);
+        for (const bodyEq of clause.equations) {
+          if (bodyEq instanceof ModelicaSimpleEquation) {
+            const lhsName = extractAssignmentTarget(bodyEq.expression1);
+            if (lhsName) {
+              const sv = result.scalarVariables.find((v) => v.name === lhsName);
+              if (sv) {
+                lines.push(
+                  `    inst->model.vars[${sv.valueReference}] = ${exprToC(bodyEq.expression2)};  /* ${lhsName} */`,
+                );
+              }
+            }
+          }
+        }
+        lines.push("  }");
+        lines.push(`  inst->model.eventPrev[${eventIdx}] = indicators[${eventIdx}];`);
+        eventIdx++;
+      }
+    }
+  }
+
+  lines.push("  return fmi2OK;");
+  lines.push("}");
   lines.push("fmi2Status fmi2EnterContinuousTimeMode(fmi2Component c) { (void)c; return fmi2OK; }");
   lines.push("fmi2Status fmi2EnterEventMode(fmi2Component c) { (void)c; return fmi2OK; }");
   lines.push("fmi2Status fmi2CancelStep(fmi2Component c) { (void)c; return fmi2OK; }");
