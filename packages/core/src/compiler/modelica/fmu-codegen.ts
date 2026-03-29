@@ -29,6 +29,7 @@ import {
   ModelicaWhenEquation,
 } from "./dae.js";
 import type { FmuOptions, FmuResult } from "./fmi.js";
+import { differentiateExpr, simplifyExpr } from "./symbolic-diff.js";
 import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "./syntax.js";
 
 /** Generated C source files. */
@@ -963,9 +964,91 @@ function generateFmi2FunctionsC(
   lines.push("  *state = (fmi2FMUstate)copy;");
   lines.push("  return fmi2OK;");
   lines.push("}");
+  // ── fmi2GetDirectionalDerivative ──
+  // Compute Δż = J · Δz where J is the Jacobian ∂f/∂x
+  // J[i][j] = ∂(derivative[i])/∂(state[j]) — precomputed symbolically
   lines.push(
-    "fmi2Status fmi2GetDirectionalDerivative(fmi2Component c, const fmi2ValueReference unknown[], size_t nUnknown, const fmi2ValueReference known[], size_t nKnown, const fmi2Real dvKnown[], fmi2Real dvUnknown[]) { (void)c; (void)unknown; (void)nUnknown; (void)known; (void)nKnown; (void)dvKnown; (void)dvUnknown; return fmi2Error; }",
+    "fmi2Status fmi2GetDirectionalDerivative(fmi2Component c, const fmi2ValueReference unknown[], size_t nUnknown, const fmi2ValueReference known[], size_t nKnown, const fmi2Real dvKnown[], fmi2Real dvUnknown[]) {",
   );
+  lines.push("  FMUInstance* inst = (FMUInstance*)c;");
+
+  // Extract derivative equations: der(x) = f(x, y, t)
+  const derEquations: { stateName: string; rhs: ModelicaExpression }[] = [];
+  for (const eq of dae.equations) {
+    if (!("expression1" in eq && "expression2" in eq)) continue;
+    const simpleEq = eq as { expression1: ModelicaExpression; expression2: ModelicaExpression };
+    const lhsDer = extractDerName(simpleEq.expression1);
+    const rhsDer = extractDerName(simpleEq.expression2);
+    if (lhsDer) {
+      derEquations.push({ stateName: lhsDer, rhs: simpleEq.expression2 });
+    } else if (rhsDer) {
+      derEquations.push({ stateName: rhsDer, rhs: simpleEq.expression1 });
+    }
+  }
+
+  // Build VR→derivative index and VR→state variable name mappings
+  const derVRs = result.modelStructure.derivatives; // VRs of derivative variables
+  const jacStateVRs: number[] = []; // VRs of state variables
+  const stateNames: string[] = []; // Names of state variables
+  for (const derEq of derEquations) {
+    const sv = result.scalarVariables.find((v) => v.name === derEq.stateName);
+    if (sv) {
+      jacStateVRs.push(sv.valueReference);
+      stateNames.push(derEq.stateName);
+    }
+  }
+
+  if (derEquations.length > 0 && jacStateVRs.length > 0) {
+    // Emit local variable aliases
+    lines.push(`  double time = inst->model.time;`);
+    for (const sv of result.scalarVariables) {
+      if (sv.causality === "independent") continue;
+      const cName = varToC(sv.name);
+      lines.push(`  double ${cName} = inst->model.vars[${sv.valueReference}];`);
+    }
+    lines.push("");
+    lines.push("  /* Zero output */");
+    lines.push("  for (size_t i = 0; i < nUnknown; i++) dvUnknown[i] = 0.0;");
+    lines.push("");
+    lines.push("  /* Accumulate Jacobian-vector product: dvUnknown[i] += J[i][j] * dvKnown[j] */");
+    lines.push("  for (size_t j = 0; j < nKnown; j++) {");
+    lines.push("    for (size_t i = 0; i < nUnknown; i++) {");
+
+    // For each (derivative, state) pair, emit the symbolic Jacobian entry
+    // Use switch on unknown VR, then switch on known VR
+    lines.push("      switch (unknown[i]) {");
+    for (let di = 0; di < derEquations.length; di++) {
+      const derVR = derVRs[di];
+      const derEq = derEquations[di];
+      if (derVR === undefined || !derEq) continue;
+      lines.push(`      case ${derVR}: /* der(${derEq.stateName}) */`);
+      lines.push("        switch (known[j]) {");
+      for (let si = 0; si < stateNames.length; si++) {
+        const jacVR = jacStateVRs[si];
+        const stateName = stateNames[si];
+        if (jacVR === undefined || !stateName) continue;
+        // Symbolically differentiate rhs w.r.t. state variable
+        const jacobianEntry = simplifyExpr(differentiateExpr(derEq.rhs, stateName));
+        const jacobianC = exprToC(jacobianEntry);
+        lines.push(
+          `        case ${jacVR}: dvUnknown[i] += (${jacobianC}) * dvKnown[j]; break; /* d/d(${stateName}) */`,
+        );
+      }
+      lines.push("        default: break;");
+      lines.push("        }");
+      lines.push("        break;");
+    }
+    lines.push("      default: break;");
+    lines.push("      }");
+    lines.push("    }");
+    lines.push("  }");
+  } else {
+    lines.push("  (void)inst; (void)unknown; (void)nUnknown; (void)known; (void)nKnown; (void)dvKnown;");
+    lines.push("  for (size_t i = 0; i < nUnknown; i++) dvUnknown[i] = 0.0;");
+  }
+
+  lines.push("  return fmi2OK;");
+  lines.push("}");
   lines.push("");
 
   return lines.join("\n");
