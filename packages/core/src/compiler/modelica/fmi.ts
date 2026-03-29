@@ -327,13 +327,17 @@ function generateModelDescriptionXml(
   // ModelExchange element
   if (opts.fmuType.modelExchange) {
     lines.push("");
-    lines.push(`  <ModelExchange modelIdentifier="${escapeXml(opts.modelIdentifier)}" />`);
+    lines.push(
+      `  <ModelExchange modelIdentifier="${escapeXml(opts.modelIdentifier)}" canGetAndSetFMUstate="true" canSerializeFMUstate="true" />`,
+    );
   }
 
   // CoSimulation element
   if (opts.fmuType.coSimulation) {
     lines.push("");
-    lines.push(`  <CoSimulation modelIdentifier="${escapeXml(opts.modelIdentifier)}" />`);
+    lines.push(
+      `  <CoSimulation modelIdentifier="${escapeXml(opts.modelIdentifier)}" canGetAndSetFMUstate="true" canSerializeFMUstate="true" />`,
+    );
   }
 
   // Default experiment

@@ -58,4 +58,27 @@ export interface CoSimParticipant {
    * Terminate the participant and release resources.
    */
   terminate(): Promise<void>;
+
+  // ── Optional: FMU state save/restore (for advanced master algorithms) ──
+
+  /** Whether this participant supports state save/restore. */
+  readonly canGetAndSetState?: boolean;
+
+  /**
+   * Save a snapshot of the current FMU state.
+   * @returns An opaque state handle.
+   */
+  getState?(): Promise<unknown>;
+
+  /**
+   * Restore a previously saved FMU state.
+   * @param state The opaque state handle from getState().
+   */
+  setState?(state: unknown): Promise<void>;
+
+  /**
+   * Free a previously saved FMU state.
+   * @param state The opaque state handle to free.
+   */
+  freeState?(state: unknown): Promise<void>;
 }

@@ -664,24 +664,62 @@ function generateFmi2FunctionsC(id: string, nVars: number, nStates: number, resu
   lines.push(
     "fmi2Status fmi2SetDebugLogging(fmi2Component c, fmi2Boolean loggingOn, size_t nCategories, const fmi2String categories[]) { (void)c; (void)loggingOn; (void)nCategories; (void)categories; return fmi2OK; }",
   );
+  // ── FMU State Save/Restore ──
+  lines.push("/* --- FMU State Management --- */");
+  lines.push("fmi2Status fmi2GetFMUstate(fmi2Component c, fmi2FMUstate* state) {");
+  lines.push("  FMUInstance* inst = (FMUInstance*)c;");
+  lines.push("  FMUInstance* copy = (FMUInstance*)malloc(sizeof(FMUInstance));");
+  lines.push("  if (!copy) return fmi2Error;");
+  lines.push("  memcpy(copy, inst, sizeof(FMUInstance));");
+  lines.push("  *state = (fmi2FMUstate)copy;");
+  lines.push("  return fmi2OK;");
+  lines.push("}");
+  lines.push("");
+  lines.push("fmi2Status fmi2SetFMUstate(fmi2Component c, fmi2FMUstate state) {");
+  lines.push("  if (!state) return fmi2Error;");
+  lines.push("  FMUInstance* inst = (FMUInstance*)c;");
+  lines.push("  /* Preserve the callback pointers — they belong to the master, not the snapshot */");
+  lines.push("  fmi2CallbackFunctions savedCb = inst->callbacks;");
+  lines.push("  fmi2String savedName = inst->instanceName;");
+  lines.push("  memcpy(inst, (FMUInstance*)state, sizeof(FMUInstance));");
+  lines.push("  inst->callbacks = savedCb;");
+  lines.push("  inst->instanceName = savedName;");
+  lines.push("  return fmi2OK;");
+  lines.push("}");
+  lines.push("");
+  lines.push("fmi2Status fmi2FreeFMUstate(fmi2Component c, fmi2FMUstate* state) {");
+  lines.push("  (void)c;");
+  lines.push("  if (!state || !*state) return fmi2Error;");
+  lines.push("  free(*state);");
+  lines.push("  *state = NULL;");
+  lines.push("  return fmi2OK;");
+  lines.push("}");
+  lines.push("");
+  lines.push("fmi2Status fmi2SerializedFMUstateSize(fmi2Component c, fmi2FMUstate state, size_t* size) {");
+  lines.push("  (void)c; (void)state;");
+  lines.push("  if (!size) return fmi2Error;");
+  lines.push("  *size = sizeof(FMUInstance);");
+  lines.push("  return fmi2OK;");
+  lines.push("}");
+  lines.push("");
+  lines.push("fmi2Status fmi2SerializeFMUstate(fmi2Component c, fmi2FMUstate state, fmi2Byte buf[], size_t size) {");
+  lines.push("  (void)c;");
+  lines.push("  if (!state || !buf || size < sizeof(FMUInstance)) return fmi2Error;");
+  lines.push("  memcpy(buf, (FMUInstance*)state, sizeof(FMUInstance));");
+  lines.push("  return fmi2OK;");
+  lines.push("}");
+  lines.push("");
   lines.push(
-    "fmi2Status fmi2GetFMUstate(fmi2Component c, fmi2FMUstate* state) { (void)c; (void)state; return fmi2Error; }",
+    "fmi2Status fmi2DeSerializeFMUstate(fmi2Component c, const fmi2Byte buf[], size_t size, fmi2FMUstate* state) {",
   );
-  lines.push(
-    "fmi2Status fmi2SetFMUstate(fmi2Component c, fmi2FMUstate state) { (void)c; (void)state; return fmi2Error; }",
-  );
-  lines.push(
-    "fmi2Status fmi2FreeFMUstate(fmi2Component c, fmi2FMUstate* state) { (void)c; (void)state; return fmi2Error; }",
-  );
-  lines.push(
-    "fmi2Status fmi2SerializedFMUstateSize(fmi2Component c, fmi2FMUstate state, size_t* size) { (void)c; (void)state; (void)size; return fmi2Error; }",
-  );
-  lines.push(
-    "fmi2Status fmi2SerializeFMUstate(fmi2Component c, fmi2FMUstate state, fmi2Byte buf[], size_t size) { (void)c; (void)state; (void)buf; (void)size; return fmi2Error; }",
-  );
-  lines.push(
-    "fmi2Status fmi2DeSerializeFMUstate(fmi2Component c, const fmi2Byte buf[], size_t size, fmi2FMUstate* state) { (void)c; (void)buf; (void)size; (void)state; return fmi2Error; }",
-  );
+  lines.push("  (void)c;");
+  lines.push("  if (!buf || !state || size < sizeof(FMUInstance)) return fmi2Error;");
+  lines.push("  FMUInstance* copy = (FMUInstance*)malloc(sizeof(FMUInstance));");
+  lines.push("  if (!copy) return fmi2Error;");
+  lines.push("  memcpy(copy, buf, sizeof(FMUInstance));");
+  lines.push("  *state = (fmi2FMUstate)copy;");
+  lines.push("  return fmi2OK;");
+  lines.push("}");
   lines.push(
     "fmi2Status fmi2GetDirectionalDerivative(fmi2Component c, const fmi2ValueReference unknown[], size_t nUnknown, const fmi2ValueReference known[], size_t nKnown, const fmi2Real dvKnown[], fmi2Real dvUnknown[]) { (void)c; (void)unknown; (void)nUnknown; (void)known; (void)nKnown; (void)dvKnown; (void)dvUnknown; return fmi2Error; }",
   );
