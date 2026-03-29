@@ -401,20 +401,27 @@ function generateFmi3FunctionsC(
   L.push("");
 
   // Mutable dimension support (FMI 3.0 §2.2.8)
+  // ONLY emitted when the model has __modelscript_mutableDimension annotations.
+  // Static models get zero overhead — no extra code, no branches, no lookups.
   const mutableDimVRs: number[] = [];
   for (const sv of result.variables) {
     if (sv.causality === "structuralParameter" && sv.variability === "tunable") {
       mutableDimVRs.push(sv.valueReference);
     }
   }
-  if (mutableDimVRs.length > 0) {
-    L.push("/* Mutable dimension structural parameters (FMI 3.0 dynamic arrays) */");
+  const hasMutableDims = mutableDimVRs.length > 0;
+  if (hasMutableDims) {
+    L.push("/* ── Mutable dimension support (FMI 3.0 dynamic arrays) ── */");
+    L.push("#define HAS_MUTABLE_DIMS 1");
     L.push(`static const fmi3ValueReference mutableDimVRs[] = { ${mutableDimVRs.join(", ")} };`);
     L.push(`#define N_MUTABLE_DIMS ${mutableDimVRs.length}`);
     L.push("static int isMutableDimVR(fmi3ValueReference vr) {");
     L.push("  for (int i = 0; i < N_MUTABLE_DIMS; i++) if (mutableDimVRs[i] == vr) return 1;");
     L.push("  return 0;");
     L.push("}");
+    L.push("");
+  } else {
+    L.push("/* No mutable dimensions — static array layout, zero dynamic overhead */");
     L.push("");
   }
 
