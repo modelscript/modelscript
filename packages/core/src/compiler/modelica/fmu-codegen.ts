@@ -61,7 +61,7 @@ export function generateFmuCSources(dae: ModelicaDAE, fmuResult: FmuResult, opti
   const fmi2FunctionsC = generateFmi2FunctionsC(id, nVars, nStates, nStringVars, dae, fmuResult);
 
   // ── fmi3Functions.c ──
-  const fmi3FunctionsC = generateFmi3FunctionsC(id);
+  const fmi3FunctionsC = generateFmi3FunctionsC(id, dae);
 
   // ── CMakeLists.txt ──
   const cmakeLists = generateCMakeLists(id);
@@ -258,6 +258,33 @@ function conditionToZeroCrossingC(condition: ModelicaExpression): string {
   }
   // Fallback: treat as boolean condition (1.0 if true, -1.0 if false)
   return `(${exprToC(condition)} ? 1.0 : -1.0)`;
+}
+
+/**
+ * Extract time-event threshold from a when-condition.
+ * Detects patterns like `time >= T` or `time > T` where T is a constant or expression.
+ * Returns the C expression for the threshold, or null if the condition is not a time-event.
+ */
+function extractTimeEventThresholdC(condition: ModelicaExpression): string | null {
+  if (!(condition instanceof ModelicaBinaryExpression)) return null;
+  const op = condition.operator;
+  // Pattern: time >= T  or  time > T
+  if (
+    (op === ModelicaBinaryOperator.GREATER_THAN_OR_EQUAL || op === ModelicaBinaryOperator.GREATER_THAN) &&
+    condition.operand1 instanceof ModelicaNameExpression &&
+    condition.operand1.name === "time"
+  ) {
+    return exprToC(condition.operand2);
+  }
+  // Pattern: T <= time  or  T < time
+  if (
+    (op === ModelicaBinaryOperator.LESS_THAN_OR_EQUAL || op === ModelicaBinaryOperator.LESS_THAN) &&
+    condition.operand2 instanceof ModelicaNameExpression &&
+    condition.operand2.name === "time"
+  ) {
+    return exprToC(condition.operand1);
+  }
+  return null;
 }
 
 /**
@@ -642,6 +669,9 @@ function generateFmi2FunctionsC(
   lines.push("  fmi2Status asyncResult;");
   lines.push("  double asyncCurrentT;");
   lines.push("  double asyncTEnd;");
+  lines.push("  /* Time-event scheduling fields */");
+  lines.push("  int nextEventTimeDefined;");
+  lines.push("  double nextEventTime;");
   lines.push("#ifdef _WIN32");
   lines.push("  HANDLE stepThread;");
   lines.push("#else");
@@ -920,10 +950,16 @@ function generateFmi2FunctionsC(
     lines.push("  double z0[N_EVENT_INDICATORS + 1];");
     lines.push("  double z1[N_EVENT_INDICATORS + 1];");
   }
+  lines.push("  int eventCount = 0;");
 
   lines.push("  while (t < tEnd - 1e-15 && !inst->cancelRequested) {");
   lines.push("    double step_h = h;");
   lines.push("    if (t + step_h > tEnd) step_h = tEnd - t;");
+  lines.push("");
+  // Check for scheduled time events and clamp step size
+  lines.push("    if (inst->nextEventTimeDefined && inst->nextEventTime > t && inst->nextEventTime < t + step_h) {");
+  lines.push("      step_h = inst->nextEventTime - t;");
+  lines.push("    }");
   lines.push("");
 
   for (let i = 0; i < stateRefs2.length; i++) {
@@ -947,9 +983,9 @@ function generateFmi2FunctionsC(
     lines.push("      if ((z0[i] > 0 && z1[i] <= 0) || (z0[i] <= 0 && z1[i] > 0)) { crossing = 1; break; }");
     lines.push("    }");
     lines.push("    if (crossing) {");
-    lines.push("      /* Bisection root finding */");
+    lines.push("      /* Bisection root finding (40 iterations ≈ 1e-12 precision) */");
     lines.push("      double h_left = 0, h_right = step_h;");
-    lines.push("      for (int iter = 0; iter < 10; iter++) {");
+    lines.push("      for (int iter = 0; iter < 40; iter++) {");
     lines.push("        double h_mid = 0.5 * (h_left + h_right);");
     lines.push(`        take_rk4_step(&inst->model, t, h_mid, states0, states1);`);
     for (let i = 0; i < stateRefs2.length; i++) {
@@ -970,8 +1006,19 @@ function generateFmi2FunctionsC(
     }
     lines.push("      inst->model.time = t + step_h;");
     lines.push("");
+    lines.push("      /* Chattering guard: prevent Zeno-type infinite event loops */");
+    lines.push("      eventCount++;");
+    lines.push("      if (eventCount > 100) {");
+    lines.push("        inst->asyncResult = fmi2Error;");
+    lines.push("        inst->asyncDone = 1;");
+    lines.push("        return;  /* Abort: too many events in one communication step */");
+    lines.push("      }");
+    lines.push("");
     lines.push("      fmi2EventInfo eventInfo;");
     lines.push("      fmi2NewDiscreteStates((fmi2Component)inst, &eventInfo);");
+    lines.push("      /* Track scheduled time events from discrete state update */");
+    lines.push("      inst->nextEventTimeDefined = eventInfo.nextEventTimeDefined;");
+    lines.push("      if (eventInfo.nextEventTimeDefined) inst->nextEventTime = eventInfo.nextEventTime;");
     lines.push("    }");
   }
 
@@ -1197,6 +1244,33 @@ function generateFmi2FunctionsC(
         whenIdx++;
       }
     }
+  }
+
+  // Time-event scheduling: scan when-conditions for "time >= T" patterns
+  // and set nextEventTimeDefined/nextEventTime to the nearest future event time
+  const timeThresholds: string[] = [];
+  for (const weq of whenEqs) {
+    const t = extractTimeEventThresholdC(weq.condition);
+    if (t) timeThresholds.push(t);
+    for (const clause of weq.elseWhenClauses) {
+      const t2 = extractTimeEventThresholdC(clause.condition);
+      if (t2) timeThresholds.push(t2);
+    }
+  }
+  if (timeThresholds.length > 0) {
+    lines.push("");
+    lines.push("  /* Scan for upcoming time events */");
+    lines.push("  {");
+    lines.push("    double t_current = inst->model.time;");
+    lines.push("    double t_next = 1e300;");
+    for (const threshold of timeThresholds) {
+      lines.push(`    { double t_ev = ${threshold}; if (t_ev > t_current && t_ev < t_next) t_next = t_ev; }`);
+    }
+    lines.push("    if (t_next < 1e300) {");
+    lines.push("      info->nextEventTimeDefined = fmi2True;");
+    lines.push("      info->nextEventTime = t_next;");
+    lines.push("    }");
+    lines.push("  }");
   }
 
   lines.push("  return fmi2OK;");
@@ -1561,7 +1635,7 @@ function collectReferencedNames(expr: unknown, names: Set<string>): void {
     }
   }
 }
-export function generateFmi3FunctionsC(id: string): string {
+export function generateFmi3FunctionsC(id: string, dae: ModelicaDAE): string {
   const lines: string[] = [];
   lines.push("/* Auto-generated by ModelScript — FMI 3.0 API */");
   lines.push(`#include "${id}_model.h"`);
@@ -1828,10 +1902,36 @@ export function generateFmi3FunctionsC(id: string): string {
   lines.push(
     "  for (int i=0; i<n; i++) inst->model.states[i] = y0[i] + (h/6.0) * (k1[i] + 2*k2[i] + 2*k3[i] + k4[i]);",
   );
-  lines.push("  if (eventHandlingNeeded) *eventHandlingNeeded = 0;");
+
+  // FMI 3.0 zero-crossing detection in fmi3DoStep
+  if (dae.eventIndicators.length > 0) {
+    lines.push("");
+    lines.push("  /* Zero-crossing detection */");
+    lines.push("  double z0_3[N_EVENT_INDICATORS+1], z1_3[N_EVENT_INDICATORS+1];");
+    lines.push(`  /* Evaluate indicators at start (y0, t) */`);
+    lines.push(`  for (int i=0; i<n; i++) inst->model.states[i] = y0[i];`);
+    lines.push(`  inst->model.time = t;`);
+    lines.push(`  ${id}_getEventIndicators(&inst->model, z0_3);`);
+    lines.push(`  /* Restore end state */`);
+    lines.push(
+      `  for (int i=0; i<n; i++) inst->model.states[i] = y0[i] + (h/6.0) * (k1[i] + 2*k2[i] + 2*k3[i] + k4[i]);`,
+    );
+    lines.push(`  inst->model.time = t + h;`);
+    lines.push(`  ${id}_getEventIndicators(&inst->model, z1_3);`);
+    lines.push("  int crossing3 = 0;");
+    lines.push("  for (int i=0; i<N_EVENT_INDICATORS; i++) {");
+    lines.push("    if ((z0_3[i] > 0 && z1_3[i] <= 0) || (z0_3[i] <= 0 && z1_3[i] > 0)) { crossing3 = 1; break; }");
+    lines.push("  }");
+    lines.push("  if (eventHandlingNeeded) *eventHandlingNeeded = crossing3;");
+    lines.push("  if (crossing3 && earlyReturn) *earlyReturn = 1;");
+    lines.push("  if (crossing3 && lastSuccessfulTime) *lastSuccessfulTime = t + h;");
+  } else {
+    lines.push("  if (eventHandlingNeeded) *eventHandlingNeeded = 0;");
+    lines.push("  if (earlyReturn) *earlyReturn = 0;");
+    lines.push("  if (lastSuccessfulTime) *lastSuccessfulTime = t + h;");
+  }
+
   lines.push("  if (terminateSimulation) *terminateSimulation = 0;");
-  lines.push("  if (earlyReturn) *earlyReturn = 0;");
-  lines.push("  if (lastSuccessfulTime) *lastSuccessfulTime = t + h;");
   lines.push("  return fmi3OK;");
   lines.push("}");
   lines.push("");
