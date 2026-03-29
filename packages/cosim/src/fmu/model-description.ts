@@ -208,3 +208,65 @@ function extractAttrFromStr(attrs: string, attr: string): string | undefined {
   const match = attrs.match(new RegExp(`${attr}\\s*=\\s*"([^"]*)"`, "s"));
   return match ? (match[1] ?? undefined) : undefined;
 }
+
+// ── FMI 3.0 Terminals and Icons ──────────────────────────────────
+
+/** Member variable of an FMI 3.0 Terminal. */
+export interface FmiTerminalMemberVariable {
+  variableName: string;
+  memberName: string;
+  variableKind: string;
+}
+
+/** FMI 3.0 Graphical Terminal node. */
+export interface FmiTerminal {
+  name: string;
+  terminalKind?: string;
+  description?: string;
+  memberVariables: FmiTerminalMemberVariable[];
+}
+
+/**
+ * Parse a terminalsAndIcons.xml string into structured Terminal nodes.
+ *
+ * @param xml The raw XML content of terminalsAndIcons.xml
+ * @returns Array of parsed FMI 3.0 Terminals
+ */
+export function parseTerminalsAndIcons(xml: string): FmiTerminal[] {
+  const terminals: FmiTerminal[] = [];
+  const termRegex = /<Terminal\s+([^>]*)>([\s\S]*?)<\/Terminal>/g;
+  let termMatch: RegExpExecArray | null;
+
+  while ((termMatch = termRegex.exec(xml)) !== null) {
+    const attrs = termMatch[1] ?? "";
+    const body = termMatch[2] ?? "";
+
+    const name = extractAttrFromStr(attrs, "name") ?? "Unknown";
+    const terminalKind = extractAttrFromStr(attrs, "terminalKind");
+    const description = extractAttrFromStr(attrs, "description");
+
+    const memberVariables: FmiTerminalMemberVariable[] = [];
+    const mvRegex = /<TerminalMemberVariable\s+([^>]*)\/?>/g;
+    let mvMatch: RegExpExecArray | null;
+
+    while ((mvMatch = mvRegex.exec(body)) !== null) {
+      const mvAttrs = mvMatch[1] ?? "";
+      const variableName = extractAttrFromStr(mvAttrs, "variableName") ?? "";
+      const memberName = extractAttrFromStr(mvAttrs, "memberName") ?? "";
+      const variableKind = extractAttrFromStr(mvAttrs, "variableKind") ?? "signal";
+
+      memberVariables.push({ variableName, memberName, variableKind });
+    }
+
+    const terminal: FmiTerminal = {
+      name,
+      memberVariables,
+    };
+    if (terminalKind !== undefined) terminal.terminalKind = terminalKind;
+    if (description !== undefined) terminal.description = description;
+
+    terminals.push(terminal);
+  }
+
+  return terminals;
+}

@@ -149,6 +149,8 @@ interface FlattenerContext {
   streamConnections?: { side1: string; side2: string }[];
   /** Deferred flow variable connection pairs for connection-set-based flow balance generation. */
   flowConnectPairs?: { name1: string; name2: string }[];
+  /** Monomorphization bindings for higher order functions */
+  functionBindings?: Map<string, ModelicaPartialFunctionExpression | string>;
 }
 
 /** Extract an integer shape array from a list of expressions (all must be ModelicaIntegerLiteral). */
@@ -2926,6 +2928,22 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     let functionName =
       node.functionReference?.parts?.map((p) => p.identifier?.text ?? "").join(".") ||
       (node.functionReferenceName ?? "");
+
+    // Monomorphization: Resolve bound function parameters dynamically
+    let boundArgsMap: Map<string, ModelicaExpression> | null = null;
+    if (ctx.functionBindings?.has(functionName)) {
+      const boundItem = ctx.functionBindings.get(functionName);
+      if (typeof boundItem === "string") {
+        functionName = boundItem;
+      } else if (boundItem instanceof ModelicaPartialFunctionExpression) {
+        functionName = boundItem.functionName;
+        boundArgsMap = new Map();
+        for (const namedArg of boundItem.namedArgs) {
+          boundArgsMap.set(namedArg.name, namedArg.value);
+        }
+      }
+    }
+
     let flatArgs: ModelicaExpression[] = [];
     for (const arg of node.functionCallArguments?.arguments ?? []) {
       let flatArg: ModelicaExpression | null;
@@ -2935,6 +2953,39 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         flatArg = arg.expression?.accept(this, ctx) ?? null;
       }
       if (flatArg) flatArgs.push(flatArg);
+    }
+
+    // Merge bound arguments into the flattened arguments array
+    if (boundArgsMap && boundArgsMap.size > 0) {
+      // Resolve the target function to correctly align named bound arguments with positions
+      const resolved = ctx.classInstance.resolveName(functionName.split("."));
+      if (
+        resolved instanceof ModelicaClassInstance &&
+        (resolved.classKind === ModelicaClassKind.FUNCTION ||
+          resolved.classKind === ModelicaClassKind.OPERATOR_FUNCTION)
+      ) {
+        if (!resolved.instantiated) resolved.instantiate();
+        const inputs = Array.from(resolved.components).filter((c) => c.causality?.toString() === "input");
+
+        const mergedArgs: ModelicaExpression[] = [];
+        let positionalIndex = 0;
+        for (const input of inputs) {
+          const inputName = input.name ?? "";
+          const boundValue = boundArgsMap.get(inputName);
+          if (boundValue) {
+            mergedArgs.push(boundValue);
+          } else if (positionalIndex < flatArgs.length) {
+            mergedArgs.push(flatArgs[positionalIndex] as ModelicaExpression);
+            positionalIndex++;
+          }
+        }
+        // Append any remaining arguments
+        while (positionalIndex < flatArgs.length) {
+          mergedArgs.push(flatArgs[positionalIndex] as ModelicaExpression);
+          positionalIndex++;
+        }
+        flatArgs = mergedArgs;
+      }
     }
 
     // Handle record constructor calls: Complex(re=2.0, im=3.0) or Rec(r = 1.0)
@@ -3862,8 +3913,73 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         }
       }
     }
+    // Specialized Higher-Order Function Execution (Monomorphization)
+    let finalFunctionName = isExternalBuiltinAlias ? functionName : originalName;
+    let finalArgs = flatArgs;
 
-    const result = new ModelicaFunctionCallExpression(isExternalBuiltinAlias ? functionName : originalName, flatArgs);
+    if (!builtinDef) {
+      const fDef =
+        ctx.dae.functions.find((f) => f.name === functionName) ||
+        ctx.rootDae?.functions.find((f) => f.name === functionName);
+      if (fDef) {
+        const inputVars = fDef.variables.filter((v) => v.causality === "input");
+        let hasHigherOrderArg = false;
+        const newBindings = new Map<string, ModelicaPartialFunctionExpression | string>();
+        const filteredArgs: ModelicaExpression[] = [];
+
+        for (let i = 0; i < flatArgs.length && i < inputVars.length; i++) {
+          const inVar = inputVars[i];
+          const argVal = flatArgs[i];
+          if (inVar?.functionType) {
+            hasHigherOrderArg = true;
+            if (argVal instanceof ModelicaPartialFunctionExpression) {
+              newBindings.set(inVar.name, argVal);
+            } else if (argVal instanceof ModelicaNameExpression) {
+              newBindings.set(inVar.name, argVal.name);
+            }
+          } else if (argVal) {
+            filteredArgs.push(argVal);
+          }
+        }
+
+        // Push any remaining defaults that were expanded
+        for (let i = inputVars.length; i < flatArgs.length; i++) {
+          const argVal = flatArgs[i];
+          if (argVal) filteredArgs.push(argVal);
+        }
+
+        if (hasHigherOrderArg) {
+          // Generate deterministic specialized name based on bound function names
+          const hashPairs = Array.from(newBindings.entries()).map(([k, v]) => {
+            const vName = v instanceof ModelicaPartialFunctionExpression ? v.functionName : v;
+            return `${k}_${vName.replace(/\\./g, "_")}`;
+          });
+          const specializedName = `${functionName}$${hashPairs.join("$")}`;
+
+          // Resolve the base function class instance to use as an override
+          let baseResolved: ModelicaClassInstance | undefined = resolvedOverride;
+          if (!baseResolved && ctx.classInstance) {
+            const parts = originalName.split(".");
+            const r = ctx.classInstance.resolveName(parts);
+            if (r instanceof ModelicaClassInstance) baseResolved = r;
+          }
+
+          if (baseResolved) {
+            const baseBindings = ctx.functionBindings ? Array.from(ctx.functionBindings.entries()) : [];
+            const specializedCtx: FlattenerContext = {
+              ...ctx,
+              functionBindings: new Map([...baseBindings, ...Array.from(newBindings.entries())]),
+            };
+            this.#collectFunctionDefinition(specializedName, specializedCtx, baseResolved, componentPrefix);
+
+            finalFunctionName = specializedName;
+            finalArgs = filteredArgs;
+          }
+        }
+      }
+    }
+
+    const result = new ModelicaFunctionCallExpression(finalFunctionName, finalArgs);
 
     // Only inline user-defined function calls when ALL arguments are compile-time constants.
     // Parameters are NOT constants — they can change between simulations.
@@ -4468,6 +4584,11 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
           variable.customTypeName = typeInstance.name ?? null;
         }
       }
+
+      if (ctx.functionBindings?.has(compName)) {
+        // Skip emitting this variable as an argument! It is statically bound.
+        continue;
+      }
       fnDae.variables.push(variable);
     }
 
@@ -4526,6 +4647,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
           stmtCollector: [],
           rootDae: targetDae,
           ...(componentPrefix ? { componentFunctionPrefix: componentPrefix } : {}),
+          ...(ctx.functionBindings ? { functionBindings: ctx.functionBindings } : {}),
         });
       }
     }
@@ -4539,6 +4661,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
           stmtCollector: collector,
           rootDae: targetDae,
           ...(componentPrefix ? { componentFunctionPrefix: componentPrefix } : {}),
+          ...(ctx.functionBindings ? { functionBindings: ctx.functionBindings } : {}),
         });
       }
       if (collector.length > 0) {

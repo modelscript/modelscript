@@ -20,6 +20,7 @@ import { deflateRaw } from "pako";
 import type { ModelicaDAE } from "./dae.js";
 import type { FmuOptions, FmuResult } from "./fmi.js";
 import { generateFmu } from "./fmi.js";
+import { generateFmi3 } from "./fmi3.js";
 import { generateFmuCSources } from "./fmu-codegen.js";
 import type { ModelicaSimulator } from "./simulator.js";
 
@@ -58,6 +59,7 @@ export function buildFmuArchive(
 ): FmuArchiveResult {
   const stateVars = simulator?.stateVars ?? new Set<string>();
   const fmuResult = generateFmu(dae, options, stateVars);
+  const fmi3Result = generateFmi3(dae, options, stateVars);
   const id = options.modelIdentifier;
 
   const files = new Map<string, Uint8Array>();
@@ -65,6 +67,11 @@ export function buildFmuArchive(
 
   // ── modelDescription.xml ──
   files.set("modelDescription.xml", encoder.encode(fmuResult.modelDescriptionXml));
+
+  // ── terminalsAndIcons.xml (FMI 3.0) ──
+  if (fmi3Result.terminalsAndIconsXml) {
+    files.set("terminalsAndIcons/terminalsAndIcons.xml", encoder.encode(fmi3Result.terminalsAndIconsXml));
+  }
 
   // ── C source files ──
   if (options.includeSources !== false) {

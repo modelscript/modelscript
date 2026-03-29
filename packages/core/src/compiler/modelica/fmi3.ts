@@ -152,21 +152,21 @@ export interface Fmi3Options {
   /** Model identifier. */
   modelIdentifier: string;
   /** Description of the model. */
-  description?: string;
+  description?: string | undefined;
   /** Author name. */
-  author?: string;
+  author?: string | undefined;
   /** Generation tool name. */
-  generationTool?: string;
+  generationTool?: string | undefined;
   /** GUID (auto-generated if not provided). */
-  guid?: string;
+  guid?: string | undefined;
   /** Default experiment start time. */
-  startTime?: number;
+  startTime?: number | undefined;
   /** Default experiment stop time. */
-  stopTime?: number;
+  stopTime?: number | undefined;
   /** Default experiment step size. */
-  stepSize?: number;
+  stepSize?: number | undefined;
   /** FMU type flags. */
-  fmuType?: Fmi3TypeFlags;
+  fmuType?: Fmi3TypeFlags | undefined;
 }
 
 /** Result of FMI 3.0 FMU generation. */
@@ -189,6 +189,8 @@ export interface Fmi3Result {
   numberOfEventIndicators: number;
   /** Terminals (from Modelica connectors). */
   terminals: Fmi3Terminal[];
+  /** Terminals and Icons XML payload. */
+  terminalsAndIconsXml?: string | null;
 }
 
 // ── Main generator ──
@@ -281,6 +283,7 @@ export function generateFmi3(dae: ModelicaDAE, options: Fmi3Options, stateVars?:
   // ── Generate modelDescription.xml ──
   const fmuType = options.fmuType ?? { modelExchange: true, coSimulation: true };
   const nEventIndicators = countEventIndicators3(dae);
+  const terminals = detectTerminals3(groupedVariables);
   const xml = generateModelDescriptionXml3(groupedVariables, {
     ...options,
     guid,
@@ -293,7 +296,7 @@ export function generateFmi3(dae: ModelicaDAE, options: Fmi3Options, stateVars?:
     aliasMap,
     deps,
     enumTypes,
-    terminals: detectTerminals3(groupedVariables),
+    terminals,
   });
 
   return {
@@ -308,7 +311,8 @@ export function generateFmi3(dae: ModelicaDAE, options: Fmi3Options, stateVars?:
     },
     guid,
     numberOfEventIndicators: nEventIndicators,
-    terminals: detectTerminals3(groupedVariables),
+    terminals,
+    terminalsAndIconsXml: generateTerminalsAndIconsXml(terminals),
   };
 }
 

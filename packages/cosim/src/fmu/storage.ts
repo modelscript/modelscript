@@ -13,8 +13,8 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { inflateRawSync } from "zlib";
-import type { FmiModelDescription } from "./model-description.js";
-import { parseModelDescription } from "./model-description.js";
+import type { FmiModelDescription, FmiTerminal } from "./model-description.js";
+import { parseModelDescription, parseTerminalsAndIcons } from "./model-description.js";
 
 /** Metadata about a stored FMU. */
 export interface StoredFmu {
@@ -24,6 +24,8 @@ export interface StoredFmu {
   filename: string;
   /** Parsed model description. */
   modelDescription: FmiModelDescription;
+  /** Parsed FMI 3.0 terminals and icons (if present). */
+  terminalsAndIcons?: FmiTerminal[] | undefined;
   /** File size in bytes. */
   sizeBytes: number;
   /** Upload timestamp. */
@@ -80,11 +82,20 @@ export class FmuStorage {
     // Parse the model description
     const modelDescription = parseModelDescription(xmlContent);
 
+    // Try to extract FMI 3.0 terminalsAndIcons.xml
+    let terminalsAndIcons: FmiTerminal[] | undefined;
+    const terminalsXml = extractFileFromZip(data, "terminalsAndIcons/terminalsAndIcons.xml");
+    if (terminalsXml) {
+      writeFileSync(join(dir, "terminalsAndIcons.xml"), terminalsXml);
+      terminalsAndIcons = parseTerminalsAndIcons(terminalsXml);
+    }
+
     // Store metadata
     const stored: StoredFmu = {
       id,
       filename,
       modelDescription,
+      terminalsAndIcons,
       sizeBytes: data.length,
       uploadedAt: new Date().toISOString(),
     };
@@ -137,6 +148,13 @@ export class FmuStorage {
   /** Get the modelDescription.xml content. */
   getModelDescription(id: string): string | null {
     const xmlPath = join(this.storageDir, id, "modelDescription.xml");
+    if (!existsSync(xmlPath)) return null;
+    return readFileSync(xmlPath, "utf-8");
+  }
+
+  /** Get the terminalsAndIcons.xml content (if it exists). */
+  getTerminalsAndIcons(id: string): string | null {
+    const xmlPath = join(this.storageDir, id, "terminalsAndIcons.xml");
     if (!existsSync(xmlPath)) return null;
     return readFileSync(xmlPath, "utf-8");
   }
