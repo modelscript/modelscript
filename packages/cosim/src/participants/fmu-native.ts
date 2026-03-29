@@ -30,6 +30,7 @@ import { unlinkSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { createInterface, type Interface } from "readline";
+import type { CosimValue } from "../coupling.js";
 import type { FmiModelDescription, FmiScalarVariable } from "../fmu/model-description.js";
 import type { FmuStorage } from "../fmu/storage.js";
 import type { ParticipantMetadata, ParticipantVariable } from "../mqtt/protocol.js";
@@ -178,12 +179,12 @@ export class FmuNativeParticipant implements CoSimParticipant {
     await this.rpc("doStep", { currentTime, stepSize });
   }
 
-  async getOutputs(): Promise<Map<string, number>> {
-    const result = (await this.rpc("getOutputs")) as Record<string, number>;
+  async getOutputs(): Promise<Map<string, CosimValue>> {
+    const result = (await this.rpc("getOutputs")) as Record<string, number | string | boolean>;
     return new Map(Object.entries(result));
   }
 
-  async setInputs(values: Map<string, number>): Promise<void> {
+  async setInputs(values: Map<string, CosimValue>): Promise<void> {
     await this.rpc("setInputs", { values: Object.fromEntries(values) });
   }
 
@@ -250,5 +251,22 @@ export class FmuNativeParticipant implements CoSimParticipant {
 
       this.process.stdin.write(JSON.stringify(request) + "\n");
     });
+  }
+
+  // ── State management ──
+
+  readonly canGetAndSetState = true;
+
+  async getState(): Promise<unknown> {
+    const result = (await this.rpc("getState")) as { stateId: number };
+    return result.stateId;
+  }
+
+  async setState(state: unknown): Promise<void> {
+    await this.rpc("setState", { stateId: state as number });
+  }
+
+  async freeState(state: unknown): Promise<void> {
+    await this.rpc("freeState", { stateId: state as number });
   }
 }
