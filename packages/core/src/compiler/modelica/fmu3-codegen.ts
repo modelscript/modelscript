@@ -594,9 +594,30 @@ function generateFmi3FunctionsC(
   L.push(
     "fmi3Status fmi3CompletedIntegratorStep(fmi3Instance instance, fmi3Boolean noSetFMUStatePriorToCurrentPoint, fmi3Boolean* enterEventMode, fmi3Boolean* terminateSimulation) { (void)instance; (void)noSetFMUStatePriorToCurrentPoint; *enterEventMode = fmi3False; *terminateSimulation = fmi3False; return fmi3OK; }",
   );
+  // fmi3UpdateDiscreteStates — clock-driven event detection via zero-crossing
   L.push(
-    "fmi3Status fmi3UpdateDiscreteStates(fmi3Instance instance, fmi3Boolean* discreteStatesNeedUpdate, fmi3Boolean* terminateSimulation, fmi3Boolean* nominalsOfContinuousStatesChanged, fmi3Boolean* valuesOfContinuousStatesChanged, fmi3Boolean* nextEventTimeDefined, fmi3Float64* nextEventTime) { (void)instance; *discreteStatesNeedUpdate = fmi3False; *terminateSimulation = fmi3False; *nominalsOfContinuousStatesChanged = fmi3False; *valuesOfContinuousStatesChanged = fmi3False; *nextEventTimeDefined = fmi3False; *nextEventTime = 0; return fmi3OK; }",
+    "fmi3Status fmi3UpdateDiscreteStates(fmi3Instance instance, fmi3Boolean* discreteStatesNeedUpdate, fmi3Boolean* terminateSimulation, fmi3Boolean* nominalsOfContinuousStatesChanged, fmi3Boolean* valuesOfContinuousStatesChanged, fmi3Boolean* nextEventTimeDefined, fmi3Float64* nextEventTime) {",
   );
+  L.push("  FMU3Instance* inst = (FMU3Instance*)instance;");
+  L.push("  *terminateSimulation = fmi3False;");
+  L.push("  *nominalsOfContinuousStatesChanged = fmi3False;");
+  L.push("  *valuesOfContinuousStatesChanged = fmi3False;");
+  L.push("  *nextEventTimeDefined = fmi3False;");
+  L.push("  *nextEventTime = 0;");
+  L.push("  /* Check event indicators for zero crossings */");
+  L.push("  double indicators[N_EVENT_INDICATORS + 1];");
+  L.push(`  ${id}_getEventIndicators(&inst->model, indicators);`);
+  L.push("  fmi3Boolean needUpdate = fmi3False;");
+  L.push("  for (int i = 0; i < N_EVENT_INDICATORS; i++) {");
+  L.push("    if ((inst->model.eventPrev[i] <= 0 && indicators[i] > 0) ||");
+  L.push("        (inst->model.eventPrev[i] > 0 && indicators[i] <= 0)) {");
+  L.push("      needUpdate = fmi3True;");
+  L.push("    }");
+  L.push("    inst->model.eventPrev[i] = indicators[i];");
+  L.push("  }");
+  L.push("  *discreteStatesNeedUpdate = needUpdate;");
+  L.push("  return fmi3OK;");
+  L.push("}");
   L.push(
     "fmi3Status fmi3GetNominalsOfContinuousStates(fmi3Instance instance, fmi3Float64 nominals[], size_t nContinuousStates) { for (size_t i=0; i<nContinuousStates; i++) nominals[i]=1.0; (void)instance; return fmi3OK; }",
   );

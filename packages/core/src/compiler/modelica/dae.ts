@@ -1986,6 +1986,8 @@ export abstract class ModelicaVariable extends ModelicaPrimaryExpression {
   flowPrefix: string | null;
   /** Override type name for record-typed function parameters (e.g., "Complex" instead of "Real"). */
   customTypeName: string | null;
+  /** Array dimensions for FMI 3.0 native array support (e.g., [3] for a 1D vector, [2,3] for a 2D matrix). */
+  arrayDimensions: number[] | null;
 
   constructor(
     name: string,
@@ -2010,6 +2012,7 @@ export abstract class ModelicaVariable extends ModelicaPrimaryExpression {
     this.functionType = functionType ?? null;
     this.flowPrefix = null;
     this.customTypeName = null;
+    this.arrayDimensions = null;
   }
 
   override get hash(): string {

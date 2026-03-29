@@ -20,6 +20,7 @@ import {
   ModelicaArray,
   ModelicaBinaryExpression,
   ModelicaBooleanVariable,
+  ModelicaClockVariable,
   ModelicaEnumerationVariable,
   ModelicaFunctionCallExpression,
   ModelicaIfElseExpression,
@@ -125,6 +126,28 @@ export interface Fmi3TypeFlags {
   scheduledExecution?: boolean;
 }
 
+/** An FMI 3.0 Terminal member variable reference. */
+export interface Fmi3TerminalMemberVariable {
+  /** Variable name (possibly dot-qualified, e.g. "connector.v"). */
+  variableName: string;
+  /** Value reference of the corresponding FMI variable. */
+  valueReference: number;
+  /** The member name within the terminal (e.g., "v" without prefix). */
+  memberName: string;
+}
+
+/** An FMI 3.0 Terminal (maps to a Modelica connector instance). */
+export interface Fmi3Terminal {
+  /** Terminal name (connector instance name). */
+  name: string;
+  /** Terminal type (connector type name, e.g. "Modelica.Electrical.Analog.Interfaces.Pin"). */
+  terminalKind?: string;
+  /** Description string. */
+  description?: string;
+  /** Member variables. */
+  memberVariables: Fmi3TerminalMemberVariable[];
+}
+
 /** FMU 3.0 generation options. */
 export interface Fmi3Options {
   /** Model identifier. */
@@ -165,6 +188,8 @@ export interface Fmi3Result {
   guid: string;
   /** Number of event indicators. */
   numberOfEventIndicators: number;
+  /** Terminals (from Modelica connectors). */
+  terminals: Fmi3Terminal[];
 }
 
 // ── Main generator ──
@@ -222,6 +247,9 @@ export function generateFmi3(dae: ModelicaDAE, options: Fmi3Options, stateVars?:
     if (fv.variability === "continuous" && fv.causality === "local") {
       initialUnknownRefs.push(fv.valueReference);
     }
+    if (v instanceof ModelicaClockVariable) {
+      clockRefs.push(fv.valueReference);
+    }
   }
 
   // ── Alias detection ──
@@ -245,13 +273,16 @@ export function generateFmi3(dae: ModelicaDAE, options: Fmi3Options, stateVars?:
     }
   }
 
+  // ── Group array variables for FMI 3.0 native arrays ──
+  const groupedVariables = groupArrayVariables3(variables);
+
   // ── Compute dependencies ──
-  const deps = computeDependencies3(dae, variables, outputRefs, derivativeRefs, initialUnknownRefs);
+  const deps = computeDependencies3(dae, groupedVariables, outputRefs, derivativeRefs, initialUnknownRefs);
 
   // ── Generate modelDescription.xml ──
   const fmuType = options.fmuType ?? { modelExchange: true, coSimulation: true };
   const nEventIndicators = countEventIndicators3(dae);
-  const xml = generateModelDescriptionXml3(variables, {
+  const xml = generateModelDescriptionXml3(groupedVariables, {
     ...options,
     guid,
     outputRefs,
@@ -263,11 +294,12 @@ export function generateFmi3(dae: ModelicaDAE, options: Fmi3Options, stateVars?:
     aliasMap,
     deps,
     enumTypes,
+    terminals: detectTerminals3(groupedVariables),
   });
 
   return {
     modelDescriptionXml: xml,
-    variables,
+    variables: groupedVariables,
     modelStructure: {
       outputs: outputRefs,
       derivatives: derivativeRefs,
@@ -277,7 +309,196 @@ export function generateFmi3(dae: ModelicaDAE, options: Fmi3Options, stateVars?:
     },
     guid,
     numberOfEventIndicators: nEventIndicators,
+    terminals: detectTerminals3(groupedVariables),
   };
+}
+
+// ── Array Grouping (FMI 3.0 Native Arrays) ──
+
+/** Regex to match subscripted variable names like `x[1]`, `a.b[2,3]` etc. */
+const SUBSCRIPT_RE = /^(.+)\[([0-9,]+)\]$/;
+
+/**
+ * Group flattened subscripted scalar variables into FMI 3.0 array variables.
+ *
+ * For example, `x[1]`, `x[2]`, `x[3]` with type Float64 become a single
+ * `x` variable with `dimensions: [{start: 3}]` and `start: [v1, v2, v3]`.
+ *
+ * Multi-dimensional arrays like `A[1,1]`, `A[1,2]`, `A[2,1]`, `A[2,2]`
+ * become `A` with `dimensions: [{start: 2}, {start: 2}]`.
+ *
+ * Variables that don't have subscript notation are left unchanged.
+ */
+function groupArrayVariables3(variables: Fmi3Variable[]): Fmi3Variable[] {
+  // Phase 1: Identify array families by base name
+  const families = new Map<
+    string,
+    {
+      indices: number[][]; // e.g., [[1], [2], [3]] for 1D or [[1,1],[1,2],[2,1],[2,2]] for 2D
+      vars: Fmi3Variable[];
+    }
+  >();
+  const nonArrayVars: Fmi3Variable[] = [];
+
+  for (const sv of variables) {
+    const match = SUBSCRIPT_RE.exec(sv.name);
+    if (!match) {
+      nonArrayVars.push(sv);
+      continue;
+    }
+    const baseName = match[1] ?? "";
+    const subscripts = (match[2] ?? "").split(",").map(Number);
+
+    let family = families.get(baseName);
+    if (!family) {
+      family = { indices: [], vars: [] };
+      families.set(baseName, family);
+    }
+    family.indices.push(subscripts);
+    family.vars.push(sv);
+  }
+
+  // Phase 2: Convert families into array variables
+  const result: Fmi3Variable[] = [...nonArrayVars];
+
+  for (const [baseName, family] of families) {
+    if (family.vars.length <= 1) {
+      // Only 1 element — keep as scalar (not worth grouping)
+      result.push(...family.vars);
+      continue;
+    }
+
+    // Ensure all have the same number of subscript dimensions
+    const ndims = family.indices[0]?.length ?? 1;
+    const allSameNdims = family.indices.every((idx) => idx.length === ndims);
+    if (!allSameNdims) {
+      // Mixed dimensions — can't group; keep as scalars
+      result.push(...family.vars);
+      continue;
+    }
+
+    // Ensure all have the same type, causality, variability
+    const refVar = family.vars[0];
+    if (!refVar) {
+      result.push(...family.vars);
+      continue;
+    }
+    const allSameType = family.vars.every(
+      (v) => v.type === refVar.type && v.causality === refVar.causality && v.variability === refVar.variability,
+    );
+    if (!allSameType) {
+      result.push(...family.vars);
+      continue;
+    }
+
+    // Compute dimension sizes: max index along each dimension
+    const dimSizes: number[] = new Array(ndims).fill(0);
+    for (const idx of family.indices) {
+      for (let d = 0; d < ndims; d++) {
+        const curMax = dimSizes[d] ?? 0;
+        const curVal = idx[d] ?? 0;
+        dimSizes[d] = Math.max(curMax, curVal);
+      }
+    }
+
+    // Verify we have the complete set of elements
+    const expectedCount = dimSizes.reduce((a, b) => a * b, 1);
+    if (family.vars.length !== expectedCount) {
+      // Incomplete array — keep as scalars
+      result.push(...family.vars);
+      continue;
+    }
+
+    // Sort by subscript indices (row-major order) for contiguous start values
+    const sorted = [...family.vars].sort((a, b) => {
+      const aMatch = SUBSCRIPT_RE.exec(a.name);
+      const bMatch = SUBSCRIPT_RE.exec(b.name);
+      const aIdx = aMatch ? (aMatch[2] ?? "").split(",").map(Number) : [];
+      const bIdx = bMatch ? (bMatch[2] ?? "").split(",").map(Number) : [];
+      for (let d = 0; d < ndims; d++) {
+        const diff = (aIdx[d] ?? 0) - (bIdx[d] ?? 0);
+        if (diff !== 0) return diff;
+      }
+      return 0;
+    });
+
+    // Build the array variable
+    const startValues: number[] = [];
+    for (const sv of sorted) {
+      if (sv.start !== undefined && typeof sv.start === "number") {
+        startValues.push(sv.start);
+      }
+    }
+
+    const arrayVar: Fmi3Variable = {
+      valueReference: refVar.valueReference, // Use the first element's VR
+      name: baseName,
+      causality: refVar.causality,
+      variability: refVar.variability,
+      type: refVar.type,
+      dimensions: dimSizes.map((size) => ({ start: size })),
+    };
+    if (refVar.description) arrayVar.description = refVar.description;
+    if (refVar.unit) arrayVar.unit = refVar.unit;
+    if (refVar.displayUnit) arrayVar.displayUnit = refVar.displayUnit;
+    if (refVar.initial) arrayVar.initial = refVar.initial;
+    if (refVar.declaredType) arrayVar.declaredType = refVar.declaredType;
+    if (startValues.length === expectedCount) {
+      arrayVar.start = startValues;
+    }
+
+    result.push(arrayVar);
+  }
+
+  return result;
+}
+
+// ── Terminal Detection (FMI 3.0 Terminals from Modelica Connectors) ──
+
+/**
+ * Detect terminals from dot-qualified variable names.
+ *
+ * In the flattened DAE, connector variables appear as `connector.v`, `connector.i`, etc.
+ * This function groups variables that share a common dot-prefix and have at least 2 members
+ * into an Fmi3Terminal, which maps to the `<Terminals>` section of the modelDescription.xml.
+ */
+function detectTerminals3(variables: Fmi3Variable[]): Fmi3Terminal[] {
+  const groups = new Map<string, Fmi3TerminalMemberVariable[]>();
+
+  for (const sv of variables) {
+    // Skip time, derivative, and array-subscripted variables
+    if (sv.causality === "independent") continue;
+    if (sv.name.startsWith("der(")) continue;
+
+    const dotIdx = sv.name.lastIndexOf(".");
+    if (dotIdx <= 0) continue; // Must have at least one dot
+
+    const prefix = sv.name.substring(0, dotIdx);
+    const member = sv.name.substring(dotIdx + 1);
+
+    // Skip nested connectors (multiple dots) — only group top-level connectors
+    // but allow one level of nesting for hierarchical models
+    let memberList = groups.get(prefix);
+    if (!memberList) {
+      memberList = [];
+      groups.set(prefix, memberList);
+    }
+    memberList.push({
+      variableName: sv.name,
+      valueReference: sv.valueReference,
+      memberName: member,
+    });
+  }
+
+  // Only create terminals for groups with 2+ members (likely connectors)
+  const terminals: Fmi3Terminal[] = [];
+  for (const [name, members] of groups) {
+    if (members.length >= 2) {
+      terminals.push({ name, memberVariables: members });
+    }
+  }
+
+  return terminals;
 }
 
 // ── Internal helpers ──
@@ -434,6 +655,27 @@ function mapVariable3(v: ModelicaVariable, valueRef: number): Fmi3Variable {
   const initialVal = mapInitial3(fv.causality, fv.variability);
   if (initialVal) fv.initial = initialVal;
 
+  // Clock-specific attributes
+  if (v instanceof ModelicaClockVariable) {
+    fv.variability = "discrete";
+    // Determine interval variability from attributes if present
+    const intervalAttr = v.attributes.get("intervalVariability");
+    if (intervalAttr) {
+      const val = extractStringLiteral(intervalAttr);
+      if (
+        val === "constant" ||
+        val === "fixed" ||
+        val === "tunable" ||
+        val === "changing" ||
+        val === "countdown" ||
+        val === "triggered"
+      ) {
+        fv.intervalVariability = val;
+      }
+    }
+    if (!fv.intervalVariability) fv.intervalVariability = "triggered";
+  }
+
   return fv;
 }
 
@@ -444,6 +686,7 @@ function mapType3(v: ModelicaVariable): Fmi3Type {
   if (v instanceof ModelicaBooleanVariable) return "Boolean";
   if (v instanceof ModelicaStringVariable) return "String";
   if (v instanceof ModelicaEnumerationVariable) return "Enumeration";
+  if (v instanceof ModelicaClockVariable) return "Clock";
   return "Float64";
 }
 
@@ -496,6 +739,7 @@ function generateModelDescriptionXml3(
     deps: Map<number, number[]>;
     aliasMap: Map<string, string>;
     enumTypes: Map<string, { name: string; description: string | null }[]>;
+    terminals: Fmi3Terminal[];
   },
 ): string {
   const lines: string[] = [];
@@ -598,13 +842,14 @@ function generateModelDescriptionXml3(
     const declTypeAttr = sv.declaredType ? ` declaredType="${escapeXml(sv.declaredType)}"` : "";
     const startAttr =
       sv.start !== undefined ? ` start="${Array.isArray(sv.start) ? sv.start.join(" ") : sv.start}"` : "";
+    const intervalAttr = sv.intervalVariability ? ` intervalVariability="${sv.intervalVariability}"` : "";
 
     // FMI 3.0 uses the type name as the element tag (Float64, Int32, etc.)
     const hasInnerContent = sv.dimensions && sv.dimensions.length > 0;
 
     if (hasInnerContent) {
       lines.push(
-        `    <${sv.type} name="${escapeXml(sv.name)}" valueReference="${sv.valueReference}" causality="${sv.causality}" variability="${sv.variability}"${descAttr}${initialAttr}${startAttr}${unitAttr}${duAttr}${derivAttr}${declTypeAttr}>`,
+        `    <${sv.type} name="${escapeXml(sv.name)}" valueReference="${sv.valueReference}" causality="${sv.causality}" variability="${sv.variability}"${descAttr}${initialAttr}${startAttr}${unitAttr}${duAttr}${derivAttr}${declTypeAttr}${intervalAttr}>`,
       );
       if (sv.dimensions) {
         for (const dim of sv.dimensions) {
@@ -618,7 +863,7 @@ function generateModelDescriptionXml3(
       lines.push(`    </${sv.type}>`);
     } else {
       lines.push(
-        `    <${sv.type} name="${escapeXml(sv.name)}" valueReference="${sv.valueReference}" causality="${sv.causality}" variability="${sv.variability}"${descAttr}${initialAttr}${startAttr}${unitAttr}${duAttr}${derivAttr}${declTypeAttr} />`,
+        `    <${sv.type} name="${escapeXml(sv.name)}" valueReference="${sv.valueReference}" causality="${sv.causality}" variability="${sv.variability}"${descAttr}${initialAttr}${startAttr}${unitAttr}${duAttr}${derivAttr}${declTypeAttr}${intervalAttr} />`,
       );
     }
   }
@@ -659,7 +904,33 @@ function generateModelDescriptionXml3(
     }
   }
 
+  // Clocks (FMI 3.0)
+  if (opts.clockRefs.length > 0) {
+    for (const ref of opts.clockRefs) {
+      lines.push(`    <Clock valueReference="${ref}" />`);
+    }
+  }
+
   lines.push("  </ModelStructure>");
+
+  // Terminals (FMI 3.0)
+  if (opts.terminals.length > 0) {
+    lines.push("");
+    lines.push("  <Terminals>");
+    for (const term of opts.terminals) {
+      const kindAttr = term.terminalKind ? ` terminalKind="${escapeXml(term.terminalKind)}"` : "";
+      const descAttr = term.description ? ` description="${escapeXml(term.description)}"` : "";
+      lines.push(`    <Terminal name="${escapeXml(term.name)}"${kindAttr}${descAttr}>`);
+      for (const mv of term.memberVariables) {
+        lines.push(
+          `      <TerminalMemberVariable variableName="${escapeXml(mv.variableName)}" memberName="${escapeXml(mv.memberName)}" variableKind="signal" />`,
+        );
+      }
+      lines.push("    </Terminal>");
+    }
+    lines.push("  </Terminals>");
+  }
+
   lines.push("");
   lines.push("</fmiModelDescription>");
 
