@@ -855,6 +855,14 @@ function generateModelDescriptionXml3(
   if (opts.fmuType.scheduledExecution) {
     lines.push("");
     lines.push(
+      `  <ScheduledExecution modelIdentifier="${escapeXml(opts.modelIdentifier)}" needsExecutionTool="false" canBeInstantiatedOnlyOncePerProcess="false" canGetAndSetFMUState="true" canSerializeFMUState="true" providesDirectionalDerivatives="true" />`,
+    );
+  }
+
+  // ScheduledExecution element
+  if (opts.fmuType.scheduledExecution) {
+    lines.push("");
+    lines.push(
       `  <ScheduledExecution modelIdentifier="${escapeXml(opts.modelIdentifier)}" canGetAndSetFMUState="true" canSerializeFMUState="true" />`,
     );
   }

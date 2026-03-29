@@ -450,63 +450,41 @@ function generateFmi3FunctionsC(
   L.push("fmi3Status fmi3Reset(fmi3Instance instance) { (void)instance; return fmi3OK; }");
   L.push("");
 
-  // Get/Set Float64 (array-aware batching)
-  L.push(
-    "fmi3Status fmi3GetFloat64(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, fmi3Float64 value[], size_t nValues) {",
-  );
-  L.push("  FMU3Instance* inst = (FMU3Instance*)instance;");
-  L.push("  size_t vi = 0;");
-  L.push("  for (size_t i = 0; i < nvr && vi < nValues; i++) {");
-  L.push("    if (vr[i] < N_VARS) {");
-  L.push("      size_t sz = varSizes[vr[i]];");
-  L.push("      for (size_t j = 0; j < sz && vi < nValues; j++) value[vi++] = inst->model.vars[vr[i] + j];");
-  L.push("    }");
-  L.push("  }");
-  L.push("  return fmi3OK;");
-  L.push("}");
-  L.push(
-    "fmi3Status fmi3SetFloat64(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, const fmi3Float64 value[], size_t nValues) {",
-  );
-  L.push("  FMU3Instance* inst = (FMU3Instance*)instance;");
-  L.push("  size_t vi = 0;");
-  L.push("  for (size_t i = 0; i < nvr && vi < nValues; i++) {");
-  L.push("    if (vr[i] < N_VARS) {");
-  L.push("      size_t sz = varSizes[vr[i]];");
-  L.push("      for (size_t j = 0; j < sz && vi < nValues; j++) inst->model.vars[vr[i] + j] = value[vi++];");
-  L.push("    }");
-  L.push("  }");
-  L.push("  return fmi3OK;");
-  L.push("}");
-  L.push("");
-
-  // Get/Set Int32 (array-aware batching)
-  L.push(
-    "fmi3Status fmi3GetInt32(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, fmi3Int32 value[], size_t nValues) {",
-  );
-  L.push("  FMU3Instance* inst = (FMU3Instance*)instance;");
-  L.push("  size_t vi = 0;");
-  L.push("  for (size_t i = 0; i < nvr && vi < nValues; i++) {");
-  L.push("    if (vr[i] < N_VARS) {");
-  L.push("      size_t sz = varSizes[vr[i]];");
-  L.push("      for (size_t j = 0; j < sz && vi < nValues; j++) value[vi++] = (fmi3Int32)inst->model.vars[vr[i] + j];");
-  L.push("    }");
-  L.push("  }");
-  L.push("  return fmi3OK;");
-  L.push("}");
-  L.push(
-    "fmi3Status fmi3SetInt32(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, const fmi3Int32 value[], size_t nValues) {",
-  );
-  L.push("  FMU3Instance* inst = (FMU3Instance*)instance;");
-  L.push("  size_t vi = 0;");
-  L.push("  for (size_t i = 0; i < nvr && vi < nValues; i++) {");
-  L.push("    if (vr[i] < N_VARS) {");
-  L.push("      size_t sz = varSizes[vr[i]];");
-  L.push("      for (size_t j = 0; j < sz && vi < nValues; j++) inst->model.vars[vr[i] + j] = (double)value[vi++];");
-  L.push("    }");
-  L.push("  }");
-  L.push("  return fmi3OK;");
-  L.push("}");
-  L.push("");
+  const numericTypes = ["Float32", "Float64", "Int8", "UInt8", "Int16", "UInt16", "Int32", "UInt32", "Int64", "UInt64"];
+  for (const t of numericTypes) {
+    L.push(`  // Get/Set ${t} (array-aware batching)`);
+    L.push(
+      `  fmi3Status fmi3Get${t}(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, fmi3${t} value[], size_t nValues) {`,
+    );
+    L.push("    FMU3Instance* inst = (FMU3Instance*)instance;");
+    L.push("    size_t vi = 0;");
+    L.push("    for (size_t i = 0; i < nvr && vi < nValues; i++) {");
+    L.push("      if (vr[i] < N_VARS) {");
+    L.push("        size_t sz = varSizes[vr[i]];");
+    L.push(
+      `        for (size_t j = 0; j < sz && vi < nValues; j++) value[vi++] = (fmi3${t})inst->model.vars[vr[i] + j];`,
+    );
+    L.push("      }");
+    L.push("    }");
+    L.push("    return fmi3OK;");
+    L.push("  }");
+    L.push(
+      `  fmi3Status fmi3Set${t}(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, const fmi3${t} value[], size_t nValues) {`,
+    );
+    L.push("    FMU3Instance* inst = (FMU3Instance*)instance;");
+    L.push("    size_t vi = 0;");
+    L.push("    for (size_t i = 0; i < nvr && vi < nValues; i++) {");
+    L.push("      if (vr[i] < N_VARS) {");
+    L.push("        size_t sz = varSizes[vr[i]];");
+    L.push(
+      "        for (size_t j = 0; j < sz && vi < nValues; j++) inst->model.vars[vr[i] + j] = (double)value[vi++];",
+    );
+    L.push("      }");
+    L.push("    }");
+    L.push("    return fmi3OK;");
+    L.push("  }");
+    L.push("");
+  }
 
   // Get/Set Boolean (array-aware batching)
   L.push(
@@ -578,6 +556,59 @@ function generateFmi3FunctionsC(
   L.push("  (void)instance; (void)vr; (void)nvr; (void)sizes; (void)value; (void)nValues;");
   L.push("  /* Binary variables are not produced by Modelica — stub ignores */");
   L.push("  return fmi3OK;");
+  L.push("}");
+  L.push("");
+
+  // Clocks and Intervals
+  L.push(
+    "fmi3Status fmi3GetClock(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, fmi3Clock value[], size_t nValues) {",
+  );
+  L.push("  FMU3Instance* inst = (FMU3Instance*)instance;");
+  L.push("  size_t vi = 0;");
+  L.push("  for (size_t i = 0; i < nvr && vi < nValues; i++) {");
+  L.push("    if (vr[i] < N_VARS) {");
+  L.push("      size_t sz = varSizes[vr[i]];");
+  L.push("      for (size_t j = 0; j < sz && vi < nValues; j++) value[vi++] = inst->model.vars[vr[i] + j] != 0.0;");
+  L.push("    }");
+  L.push("  }");
+  L.push("  return fmi3OK;");
+  L.push("}");
+  L.push(
+    "fmi3Status fmi3SetClock(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, const fmi3Clock value[], size_t nValues) {",
+  );
+  L.push("  FMU3Instance* inst = (FMU3Instance*)instance;");
+  L.push("  size_t vi = 0;");
+  L.push("  for (size_t i = 0; i < nvr && vi < nValues; i++) {");
+  L.push("    if (vr[i] < N_VARS) {");
+  L.push("      size_t sz = varSizes[vr[i]];");
+  L.push(
+    "      for (size_t j = 0; j < sz && vi < nValues; j++) inst->model.vars[vr[i] + j] = value[vi++] ? 1.0 : 0.0;",
+  );
+  L.push("    }");
+  L.push("  }");
+  L.push("  return fmi3OK;");
+  L.push("}");
+  L.push(
+    "fmi3Status fmi3GetIntervalDecimal(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, fmi3Float64 interval[], fmi3IntervalQualifier qualifier[]) {",
+  );
+  L.push("  (void)instance; (void)vr; (void)nvr; (void)interval; (void)qualifier; return fmi3Error;");
+  L.push("}");
+  L.push(
+    "fmi3Status fmi3GetIntervalFraction(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, fmi3UInt64 intervalCounter[], fmi3UInt64 resolution[], fmi3IntervalQualifier qualifier[]) {",
+  );
+  L.push(
+    "  (void)instance; (void)vr; (void)nvr; (void)intervalCounter; (void)resolution; (void)qualifier; return fmi3Error;",
+  );
+  L.push("}");
+  L.push(
+    "fmi3Status fmi3SetIntervalDecimal(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, const fmi3Float64 interval[]) {",
+  );
+  L.push("  (void)instance; (void)vr; (void)nvr; (void)interval; return fmi3Error;");
+  L.push("}");
+  L.push(
+    "fmi3Status fmi3SetIntervalFraction(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, const fmi3UInt64 intervalCounter[], const fmi3UInt64 resolution[]) {",
+  );
+  L.push("  (void)instance; (void)vr; (void)nvr; (void)intervalCounter; (void)resolution; return fmi3Error;");
   L.push("}");
   L.push("");
 
@@ -796,6 +827,16 @@ function generateFmi3FunctionsC(
   L.push(
     "fmi3Status fmi3FreeFMUState(fmi3Instance instance, fmi3FMUState* state) { (void)instance; if (state && *state) { free(*state); *state = NULL; } return fmi3OK; }",
   );
+  L.push("");
+
+  // Scheduled Execution
+  L.push("/* --- Scheduled Execution --- */");
+  L.push(
+    "fmi3Status fmi3ActivateModelPartition(fmi3Instance instance, fmi3ValueReference clockReference, fmi3Float64 activationTime) {",
+  );
+  L.push("  (void)instance; (void)clockReference; (void)activationTime; return fmi3Error;");
+  L.push("}");
+  L.push("");
   L.push(
     "fmi3Status fmi3SerializedFMUStateSize(fmi3Instance instance, fmi3FMUState state, size_t* size) { (void)instance; (void)state; *size = sizeof(FMU3Instance); return fmi3OK; }",
   );
