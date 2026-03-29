@@ -135,6 +135,10 @@ typedef fmi2Status (*fmi2NewDiscreteStatesTF)(fmi2Component, fmi2EventInfo*);
 typedef fmi2Status (*fmi2EnterContinuousTimeModeTF)(fmi2Component);
 typedef fmi2Status (*fmi2EnterEventModeTF)(fmi2Component);
 typedef fmi2Status (*fmi2FreeFMUstateTF)(fmi2Component, fmi2FMUstate*);
+typedef fmi2Status (*fmi2GetDirectionalDerivativeTF)(fmi2Component, const fmi2ValueReference*, size_t,
+                                                     const fmi2ValueReference*, size_t, const fmi2Real*, fmi2Real*);
+typedef fmi2Status (*fmi2CancelStepTF)(fmi2Component);
+typedef fmi2Status (*fmi2GetRealStatusTF)(fmi2Component, int, fmi2Real*);
 
 /* ── FMU handle ── */
 typedef struct {
@@ -173,6 +177,10 @@ typedef struct {
   fmi2NewDiscreteStatesTF NewDiscreteStates;
   fmi2EnterContinuousTimeModeTF EnterContinuousTimeMode;
   fmi2EnterEventModeTF EnterEventMode;
+  /* Advanced CS methods */
+  fmi2GetDirectionalDerivativeTF GetDirectionalDerivative;
+  fmi2CancelStepTF CancelStep;
+  fmi2GetRealStatusTF GetRealStatus;
 
   /* State management */
   fmi2FMUstate savedStates[64];
@@ -310,6 +318,10 @@ static int load_fmu(FMUHandle* handle, const char* fmuPath) {
   LOAD_FN(handle, NewDiscreteStates);
   LOAD_FN(handle, EnterContinuousTimeMode);
   LOAD_FN(handle, EnterEventMode);
+  /* Advanced CS */
+  LOAD_FN(handle, GetDirectionalDerivative);
+  LOAD_FN(handle, CancelStep);
+  LOAD_FN(handle, GetRealStatus);
 
   handle->nextStateId = 0;
   handle->isME = 0;
@@ -436,13 +448,82 @@ int main(int argc, char* argv[]) {
     }
     else if (strcmp(method, "getStepStatus") == 0) {
       if (!handle.comp) { json_respond_error(id, "Not initialized"); continue; }
-      /* fmi2GetStatus for doStep — check if async step completed */
-      printf("{\\"result\\":\\"ok\\",\\"id\\":%d}\\n", id);
+      if (handle.GetRealStatus) {
+        /* Query fmi2LastSuccessfulTime to check if the async step has progressed */
+        fmi2Real lastTime = 0.0;
+        fmi2Status s = handle.GetRealStatus(handle.comp, /* fmi2LastSuccessfulTime */ 2, &lastTime);
+        if (s == fmi2Pending) {
+          printf("{\\"result\\":\\"pending\\",\\"id\\":%d}\\n", id);
+        } else {
+          printf("{\\"result\\":\\"ok\\",\\"id\\":%d}\\n", id);
+        }
+      } else {
+        printf("{\\"result\\":\\"ok\\",\\"id\\":%d}\\n", id);
+      }
       fflush(stdout);
     }
     else if (strcmp(method, "cancelStep") == 0) {
       if (!handle.comp) { json_respond_error(id, "Not initialized"); continue; }
+      if (handle.CancelStep) {
+        fmi2Status s = handle.CancelStep(handle.comp);
+        if (s > fmi2Warning) { json_respond_error(id, "cancelStep failed"); continue; }
+      }
       json_respond_ok(id);
+    }
+    else if (strcmp(method, "getDirectionalDerivative") == 0) {
+      if (!handle.comp || !handle.GetDirectionalDerivative) {
+        json_respond_error(id, "getDirectionalDerivative not supported");
+        continue;
+      }
+      /* Parse unknownRefs, knownRefs, dvKnown arrays from JSON */
+      fmi2ValueReference unknownRefs[256], knownRefs[256];
+      fmi2Real dvKnown[256], dvUnknown[256];
+      size_t nUnknown = 0, nKnown = 0;
+
+      const char* uArr = strstr(line, "\\"unknownRefs\\":[");
+      if (uArr) {
+        uArr += strlen("\\"unknownRefs\\":[");
+        while (*uArr && *uArr != ']' && nUnknown < 256) {
+          while (*uArr == ' ' || *uArr == ',') uArr++;
+          if (*uArr == ']') break;
+          unknownRefs[nUnknown++] = (fmi2ValueReference)atoi(uArr);
+          while (*uArr && *uArr != ',' && *uArr != ']') uArr++;
+        }
+      }
+
+      const char* kArr = strstr(line, "\\"knownRefs\\":[");
+      if (kArr) {
+        kArr += strlen("\\"knownRefs\\":[");
+        while (*kArr && *kArr != ']' && nKnown < 256) {
+          while (*kArr == ' ' || *kArr == ',') kArr++;
+          if (*kArr == ']') break;
+          knownRefs[nKnown] = (fmi2ValueReference)atoi(kArr);
+          while (*kArr && *kArr != ',' && *kArr != ']') kArr++;
+          nKnown++;
+        }
+      }
+
+      const char* dArr = strstr(line, "\\"dvKnown\\":[");
+      size_t nDv = 0;
+      if (dArr) {
+        dArr += strlen("\\"dvKnown\\":[");
+        while (*dArr && *dArr != ']' && nDv < 256) {
+          while (*dArr == ' ' || *dArr == ',') dArr++;
+          if (*dArr == ']') break;
+          dvKnown[nDv++] = atof(dArr);
+          while (*dArr && *dArr != ',' && *dArr != ']') dArr++;
+        }
+      }
+
+      memset(dvUnknown, 0, sizeof(fmi2Real) * nUnknown);
+      fmi2Status s = handle.GetDirectionalDerivative(
+        handle.comp, unknownRefs, nUnknown, knownRefs, nKnown, dvKnown, dvUnknown);
+      if (s > fmi2Warning) { json_respond_error(id, "getDirectionalDerivative failed"); continue; }
+
+      printf("{\\"result\\":[");
+      for (size_t i = 0; i < nUnknown; i++) { if (i > 0) printf(","); printf("%g", dvUnknown[i]); }
+      printf("],\\"id\\":%d}\\n", id);
+      fflush(stdout);
     }
     else if (strcmp(method, "getOutputs") == 0) {
       /* Read all FMU variables and return as JSON object */

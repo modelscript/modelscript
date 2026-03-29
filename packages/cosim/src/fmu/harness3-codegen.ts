@@ -118,6 +118,16 @@ typedef fmi3Status (*fmi3FreeFMUStateTF)(fmi3Instance, fmi3FMUState*);
 typedef fmi3Status (*fmi3UpdateDiscreteStatesTF)(fmi3Instance,
   fmi3Boolean*, fmi3Boolean*, fmi3Boolean*, fmi3Boolean*, fmi3Boolean*, fmi3Float64*);
 
+/* Directional derivatives */
+typedef fmi3Status (*fmi3GetDirectionalDerivativeTF)(fmi3Instance,
+  const fmi3ValueReference*, size_t, const fmi3ValueReference*, size_t,
+  const fmi3Float64*, size_t, fmi3Float64*, size_t);
+
+/* Event mode transitions */
+typedef fmi3Status (*fmi3EnterEventModeTF)(fmi3Instance);
+typedef fmi3Status (*fmi3EnterContinuousTimeModeTF)(fmi3Instance);
+typedef fmi3Status (*fmi3CompletedIntegratorStepTF)(fmi3Instance, fmi3Boolean, fmi3Boolean*, fmi3Boolean*);
+
 /* ── FMU handle ── */
 typedef struct {
   void* lib;
@@ -150,6 +160,10 @@ typedef struct {
   fmi3SetFMUStateTF SetFMUState;
   fmi3FreeFMUStateTF FreeFMUState;
   fmi3UpdateDiscreteStatesTF UpdateDiscreteStates;
+  fmi3GetDirectionalDerivativeTF GetDirectionalDerivative;
+  fmi3EnterEventModeTF EnterEventMode;
+  fmi3EnterContinuousTimeModeTF EnterContinuousTimeMode;
+  fmi3CompletedIntegratorStepTF CompletedIntegratorStep;
 
   /* State management */
   fmi3FMUState savedStates[64];
@@ -266,6 +280,10 @@ static int loadFmu(FMU3Handle* h) {
   h->SetFMUState = (fmi3SetFMUStateTF)DLSYM(h->lib, "fmi3SetFMUState");
   h->FreeFMUState = (fmi3FreeFMUStateTF)DLSYM(h->lib, "fmi3FreeFMUState");
   h->UpdateDiscreteStates = (fmi3UpdateDiscreteStatesTF)DLSYM(h->lib, "fmi3UpdateDiscreteStates");
+  h->GetDirectionalDerivative = (fmi3GetDirectionalDerivativeTF)DLSYM(h->lib, "fmi3GetDirectionalDerivative");
+  h->EnterEventMode = (fmi3EnterEventModeTF)DLSYM(h->lib, "fmi3EnterEventMode");
+  h->EnterContinuousTimeMode = (fmi3EnterContinuousTimeModeTF)DLSYM(h->lib, "fmi3EnterContinuousTimeMode");
+  h->CompletedIntegratorStep = (fmi3CompletedIntegratorStepTF)DLSYM(h->lib, "fmi3CompletedIntegratorStep");
 
   return 0;
 }
@@ -415,6 +433,57 @@ int main(int argc, char* argv[]) {
       if (h.lib) DLCLOSE(h.lib);
       json_respond_ok(id);
       break;
+
+    } else if (strcmp(method, "getDirectionalDerivative") == 0) {
+      if (!h.inst || !h.GetDirectionalDerivative) {
+        json_respond_error(id, "getDirectionalDerivative not available");
+        continue;
+      }
+      /* Parse unknownRefs, knownRefs, dvKnown arrays */
+      fmi3ValueReference unknowns[256], knowns[256];
+      fmi3Float64 dvK[256], dvU[256];
+      size_t nU = 0, nK = 0, nDv = 0;
+
+      char* ua = strstr(line, "\\\\"unknownRefs\\\\":[");
+      if (ua) { ua += 15; while (*ua && *ua != ']' && nU < 256) { while (*ua == ' ' || *ua == ',') ua++; if (*ua == ']') break; unknowns[nU++] = (fmi3ValueReference)atoi(ua); while (*ua && *ua != ',' && *ua != ']') ua++; } }
+
+      char* ka = strstr(line, "\\\\"knownRefs\\\\":[");
+      if (ka) { ka += 13; while (*ka && *ka != ']' && nK < 256) { while (*ka == ' ' || *ka == ',') ka++; if (*ka == ']') break; knowns[nK] = (fmi3ValueReference)atoi(ka); while (*ka && *ka != ',' && *ka != ']') ka++; nK++; } }
+
+      char* da = strstr(line, "\\\\"dvKnown\\\\":[");
+      if (da) { da += 11; while (*da && *da != ']' && nDv < 256) { while (*da == ' ' || *da == ',') da++; if (*da == ']') break; dvK[nDv++] = atof(da); while (*da && *da != ',' && *da != ']') da++; } }
+
+      memset(dvU, 0, sizeof(fmi3Float64) * nU);
+      fmi3Status s = h.GetDirectionalDerivative(h.inst, unknowns, nU, knowns, nK, dvK, nDv, dvU, nU);
+      if (s > fmi3Warning) { json_respond_error(id, "getDirectionalDerivative failed"); continue; }
+
+      printf("{\\\\"result\\\\":[");
+      for (size_t i = 0; i < nU; i++) { if (i > 0) printf(","); printf("%g", dvU[i]); }
+      printf("],\\\\"id\\\\":%d}\\\\n", id);
+      fflush(stdout);
+
+    } else if (strcmp(method, "enterEventMode") == 0) {
+      if (h.inst && h.EnterEventMode) {
+        fmi3Status s = h.EnterEventMode(h.inst);
+        if (s > fmi3Warning) { json_respond_error(id, "enterEventMode failed"); continue; }
+      }
+      json_respond_ok(id);
+
+    } else if (strcmp(method, "enterContinuousTimeMode") == 0) {
+      if (h.inst && h.EnterContinuousTimeMode) {
+        fmi3Status s = h.EnterContinuousTimeMode(h.inst);
+        if (s > fmi3Warning) { json_respond_error(id, "enterContinuousTimeMode failed"); continue; }
+      }
+      json_respond_ok(id);
+
+    } else if (strcmp(method, "completedIntegratorStep") == 0) {
+      if (!h.inst || !h.CompletedIntegratorStep) { json_respond_error(id, "completedIntegratorStep not available"); continue; }
+      fmi3Boolean enterEvt = fmi3False, termSim = fmi3False;
+      fmi3Status s = h.CompletedIntegratorStep(h.inst, fmi3True, &enterEvt, &termSim);
+      if (s > fmi3Warning) { json_respond_error(id, "completedIntegratorStep failed"); continue; }
+      printf("{\\\\"result\\\\":{\\\\"enterEventMode\\\\":%s,\\\\"terminateSimulation\\\\":%s},\\\\"id\\\\":%d}\\\\n",
+        enterEvt ? "true" : "false", termSim ? "true" : "false", id);
+      fflush(stdout);
 
     } else {
       json_respond_error(id, "unknown method");
