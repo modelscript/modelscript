@@ -135,6 +135,14 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
       this.disposables = [];
     });
 
+    // Detect co-simulation wrapper files in the active editor
+    this.disposables.push(
+      vscode.window.onDidChangeActiveTextEditor((editor) => {
+        this.detectCosimWrapper(editor);
+      }),
+    );
+    this.detectCosimWrapper(vscode.window.activeTextEditor);
+
     // Start health polling
     this.startHealthPoll();
   }
@@ -964,6 +972,15 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
 
         t += effectiveH;
 
+        // ── Emit progress to webview ──
+        this.postMessage({
+          type: "simulationProgress",
+          sessionId,
+          currentTime: t,
+          startTime,
+          stopTime,
+        });
+
         // Real-time pacing
         if (realtimeFactor > 0) {
           const simElapsed = t - simTimeStart;
@@ -1054,6 +1071,7 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
     const session = this.localSessions.get(sessionId);
     if (!session) {
       this.postMessage({ type: "participantList", sessionId, participants: [] });
+      this.postMessage({ type: "couplingList", sessionId, couplings: [] });
       return;
     }
     this.postMessage({
@@ -1061,6 +1079,22 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
       sessionId,
       participants: session.participants,
     });
+    this.postMessage({
+      type: "couplingList",
+      sessionId,
+      couplings: session.couplings,
+    });
+  }
+
+  /** Detect if the active editor contains a co-simulation wrapper model. */
+  private detectCosimWrapper(editor: vscode.TextEditor | undefined): void {
+    if (!editor || editor.document.languageId !== "modelica") {
+      this.postMessage({ type: "cosimWrapperDetected", detected: false });
+      return;
+    }
+    const text = editor.document.getText();
+    const hasConnect = /\bconnect\s*\(/.test(text);
+    this.postMessage({ type: "cosimWrapperDetected", detected: hasConnect });
   }
 
   // ── Config Helpers ──
@@ -1129,28 +1163,33 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
     .section-body.hidden {
       display: none;
     }
-    .status-row {
+
+    /* ── Mode bar ── */
+    .mode-bar {
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 3px 0;
+      padding: 6px 0;
+    }
+    .mode-bar select {
+      flex: 1;
+      padding: 4px 6px;
       font-size: 12px;
+      font-family: inherit;
+      background: var(--vscode-input-background);
+      color: var(--vscode-input-foreground);
+      border: 1px solid var(--vscode-input-border, transparent);
+      border-radius: 2px;
     }
-    .status-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      flex-shrink: 0;
-    }
-    .status-dot.online { background: var(--vscode-testing-iconPassed, #2da44e); }
-    .status-dot.offline { background: var(--vscode-testing-iconFailed, #cf222e); }
-    .status-dot.local { background: #f0883e; }
-    .status-dot.unknown { background: var(--vscode-disabledForeground, #666); }
-    .status-label { flex: 1; }
-    .status-value {
-      color: var(--vscode-descriptionForeground);
+    .mode-status {
       font-size: 11px;
+      white-space: nowrap;
     }
+    .mode-status.ready { color: var(--vscode-testing-iconPassed, #2da44e); }
+    .mode-status.offline { color: var(--vscode-testing-iconFailed, #cf222e); }
+    .mode-status.local { color: #f0883e; }
+
+    /* ── Buttons ── */
     button {
       display: inline-flex;
       align-items: center;
@@ -1207,6 +1246,8 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
       color: var(--vscode-descriptionForeground);
       margin-bottom: 2px;
     }
+
+    /* ── Session cards ── */
     .session-card {
       background: var(--vscode-editor-background);
       border: 1px solid var(--vscode-panel-border);
@@ -1230,6 +1271,7 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
       display: flex;
       gap: 4px;
       margin-top: 6px;
+      flex-wrap: wrap;
     }
     .session-actions button {
       font-size: 11px;
@@ -1265,43 +1307,120 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
     .connection-form {
       margin-top: 6px;
     }
+
+    /* ── Add-participant picker ── */
+    .add-picker {
+      border: 1px solid var(--vscode-panel-border);
+      border-radius: 4px;
+      background: var(--vscode-editor-background);
+      padding: 6px;
+      margin-top: 6px;
+    }
+    .add-picker-option {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 6px 8px;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .add-picker-option:hover {
+      background: var(--vscode-list-hoverBackground);
+    }
+    .add-picker-option .icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+    .add-picker-option .label { font-weight: 500; }
+    .add-picker-option .desc {
+      font-size: 11px;
+      color: var(--vscode-descriptionForeground);
+      margin-top: 1px;
+    }
+    .add-picker-option .recommended {
+      font-size: 9px;
+      background: var(--vscode-badge-background);
+      color: var(--vscode-badge-foreground);
+      padding: 1px 5px;
+      border-radius: 8px;
+      margin-left: 4px;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+    .add-picker-divider {
+      border-top: 1px solid var(--vscode-panel-border);
+      margin: 4px 0;
+    }
+
+    /* ── Coupling arrows ── */
+    .coupling-list {
+      margin-top: 6px;
+      font-size: 11px;
+    }
+    .coupling-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 0;
+      font-family: var(--vscode-editor-font-family, monospace);
+      color: var(--vscode-descriptionForeground);
+    }
+    .coupling-arrow {
+      color: var(--vscode-charts-green, #2da44e);
+      font-weight: bold;
+    }
+
+    /* ── Progress bar ── */
+    .progress-container {
+      margin-top: 6px;
+    }
+    .progress-track {
+      height: 4px;
+      background: var(--vscode-progressBar-background, #0969da);
+      opacity: 0.2;
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background: var(--vscode-progressBar-background, #0969da);
+      opacity: 1;
+      border-radius: 2px;
+      transition: width 0.3s ease;
+    }
+    .progress-text {
+      font-size: 10px;
+      color: var(--vscode-descriptionForeground);
+      margin-top: 2px;
+      display: block;
+    }
+
+    /* ── Wrapper detection banner ── */
+    .wrapper-banner {
+      background: var(--vscode-editorInfo-background, #0969da15);
+      border: 1px solid var(--vscode-editorInfo-border, #0969da40);
+      border-radius: 4px;
+      padding: 8px 10px;
+      margin-bottom: 8px;
+      font-size: 12px;
+      display: none;
+    }
+    .wrapper-banner.visible { display: block; }
+    .wrapper-banner button { margin-top: 6px; }
   </style>
 </head>
 <body>
-  <!-- Infrastructure Status -->
-  <div class="section" id="status-section">
-    <div class="section-header" data-section="status">
-      <span class="chevron">▾</span>
-      Infrastructure Status
-    </div>
-    <div class="section-body" id="status-body">
-      <div class="status-row">
-        <div class="status-dot unknown" id="api-dot"></div>
-        <span class="status-label">API Server</span>
-        <span class="status-value" id="api-status">checking…</span>
-      </div>
-      <div class="status-row">
-        <div class="status-dot unknown" id="mqtt-dot"></div>
-        <span class="status-label">MQTT Broker</span>
-        <span class="status-value" id="mqtt-status">checking…</span>
-      </div>
-      <div class="status-row">
-        <div class="status-dot unknown" id="historian-dot"></div>
-        <span class="status-label">Historian DB</span>
-        <span class="status-value" id="historian-status">checking…</span>
-      </div>
-      <div class="btn-row">
-        <button id="btn-use-local" class="secondary">Use Browser-Local</button>
-      </div>
-      <div class="btn-row">
-        <button id="btn-start-infra" class="secondary">Start Local</button>
-        <button id="btn-connect-remote" class="secondary">Configure…</button>
-        <button id="btn-refresh" class="secondary" title="Refresh">⟳</button>
-      </div>
+  <!-- Mode Selector -->
+  <div class="section" id="mode-section">
+    <div class="mode-bar">
+      <select id="mode-select">
+        <option value="local">🖥 Local (Browser)</option>
+        <option value="remote">☁ Remote Server</option>
+      </select>
+      <span class="mode-status ready" id="mode-status">● Ready</span>
+      <button id="btn-refresh" class="secondary" title="Refresh" style="padding:2px 6px">⟳</button>
     </div>
   </div>
 
-  <!-- Connection Configuration (hidden by default) -->
+  <!-- Remote Configuration (hidden by default) -->
   <div class="section" id="config-section" style="display:none">
     <div class="section-header" data-section="config">
       <span class="chevron">▾</span>
@@ -1325,6 +1444,12 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
     </div>
   </div>
 
+  <!-- Wrapper Detection Banner -->
+  <div class="wrapper-banner" id="wrapper-banner">
+    🔗 The open file looks like a co-simulation wrapper.
+    <button id="btn-import-wrapper">Import Participants &amp; Couplings</button>
+  </div>
+
   <!-- Sessions -->
   <div class="section" id="sessions-section">
     <div class="section-header" data-section="sessions">
@@ -1334,7 +1459,8 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
     <div class="section-body" id="sessions-body">
       <div id="sessions-list"></div>
       <div class="btn-row">
-        <button id="btn-create-session" class="btn-block">+ New Session</button>
+        <button id="btn-quick-start" style="flex:1">⚡ Quick Start</button>
+        <button id="btn-create-session" class="secondary" style="flex:1">Custom…</button>
       </div>
     </div>
   </div>

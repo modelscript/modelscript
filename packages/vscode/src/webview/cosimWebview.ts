@@ -15,15 +15,8 @@ const vscode = acquireVsCodeApi();
 // ── DOM refs ──
 
 /* eslint-disable @typescript-eslint/no-non-null-assertion */
-const apiDot = document.getElementById("api-dot")!;
-const mqttDot = document.getElementById("mqtt-dot")!;
-const historianDot = document.getElementById("historian-dot")!;
-const apiStatus = document.getElementById("api-status")!;
-const mqttStatus = document.getElementById("mqtt-status")!;
-const historianStatus = document.getElementById("historian-status")!;
-
-const btnStartInfra = document.getElementById("btn-start-infra")!;
-const btnConnectRemote = document.getElementById("btn-connect-remote")!;
+const modeSelect = document.getElementById("mode-select") as HTMLSelectElement;
+const modeStatus = document.getElementById("mode-status")!;
 const btnRefresh = document.getElementById("btn-refresh")!;
 
 const configSection = document.getElementById("config-section")!;
@@ -32,7 +25,11 @@ const inputMqttUrl = document.getElementById("input-mqtt-url") as HTMLInputEleme
 const btnSaveConfig = document.getElementById("btn-save-config")!;
 const btnCancelConfig = document.getElementById("btn-cancel-config")!;
 
+const wrapperBanner = document.getElementById("wrapper-banner")!;
+const btnImportWrapper = document.getElementById("btn-import-wrapper")!;
+
 const sessionsList = document.getElementById("sessions-list")!;
+const btnQuickStart = document.getElementById("btn-quick-start")!;
 const btnCreateSession = document.getElementById("btn-create-session")!;
 const newSessionSection = document.getElementById("new-session-section")!;
 const inputStartTime = document.getElementById("input-start-time") as HTMLInputElement;
@@ -45,6 +42,10 @@ const btnCancelSession = document.getElementById("btn-cancel-session")!;
 const errorContainer = document.getElementById("error-container")!;
 /* eslint-enable @typescript-eslint/no-non-null-assertion */
 
+// ── State ──
+
+let isLocalMode = true; // Default to local mode
+
 // ── Section collapse ──
 
 document.querySelectorAll(".section-header").forEach((header) => {
@@ -56,33 +57,25 @@ document.querySelectorAll(".section-header").forEach((header) => {
   });
 });
 
-// ── Button handlers ──
+// ── Mode selector ──
 
-btnStartInfra.addEventListener("click", () => {
-  vscode.postMessage({ type: "startInfra" });
-});
-
-const btnUseLocal = document.getElementById("btn-use-local");
-let isLocalMode = false;
-
-if (btnUseLocal) {
-  btnUseLocal.addEventListener("click", () => {
-    if (isLocalMode) {
-      vscode.postMessage({ type: "disableLocal" });
-    } else {
-      vscode.postMessage({ type: "enableLocal" });
-    }
-  });
-}
-
-btnConnectRemote.addEventListener("click", () => {
-  configSection.style.display = configSection.style.display === "none" ? "" : "none";
-  vscode.postMessage({ type: "getConfig" });
+modeSelect.addEventListener("change", () => {
+  const mode = modeSelect.value;
+  if (mode === "local") {
+    vscode.postMessage({ type: "enableLocal" });
+    configSection.style.display = "none";
+  } else {
+    vscode.postMessage({ type: "disableLocal" });
+    configSection.style.display = "";
+    vscode.postMessage({ type: "getConfig" });
+  }
 });
 
 btnRefresh.addEventListener("click", () => {
   vscode.postMessage({ type: "refresh" });
 });
+
+// ── Config ──
 
 btnSaveConfig.addEventListener("click", () => {
   vscode.postMessage({
@@ -95,6 +88,41 @@ btnSaveConfig.addEventListener("click", () => {
 
 btnCancelConfig.addEventListener("click", () => {
   configSection.style.display = "none";
+});
+
+// ── Wrapper banner ──
+
+btnImportWrapper.addEventListener("click", () => {
+  // Find the first "created" session, or create one
+  const firstSession = sessionsList.querySelector(".session-card[data-session-id]");
+  if (firstSession) {
+    const sessionId = firstSession.getAttribute("data-session-id");
+    if (sessionId) {
+      vscode.postMessage({ type: "publishCosimModel", sessionId });
+    }
+  } else {
+    // Quick-create a session and then import
+    vscode.postMessage({
+      type: "createSession",
+      startTime: 0,
+      stopTime: 10,
+      stepSize: 0.01,
+      realtimeFactor: 1,
+      autoImportWrapper: true,
+    });
+  }
+});
+
+// ── Sessions ──
+
+btnQuickStart.addEventListener("click", () => {
+  vscode.postMessage({
+    type: "createSession",
+    startTime: 0,
+    stopTime: 10,
+    stepSize: 0.01,
+    realtimeFactor: 1,
+  });
 });
 
 btnCreateSession.addEventListener("click", () => {
@@ -140,6 +168,11 @@ interface ParticipantInfo {
   variables: number;
 }
 
+interface CouplingInfo {
+  from: { participantId: string; variableName: string };
+  to: { participantId: string; variableName: string };
+}
+
 window.addEventListener("message", (event) => {
   const msg = event.data;
 
@@ -161,8 +194,25 @@ window.addEventListener("message", (event) => {
       renderParticipants(msg.sessionId as string, (msg.participants ?? []) as ParticipantInfo[]);
       break;
 
+    case "couplingList":
+      renderCouplings(msg.sessionId as string, (msg.couplings ?? []) as CouplingInfo[]);
+      break;
+
     case "sessionCreated":
-      // Session was created, list will refresh
+      // Session list will auto-refresh
+      break;
+
+    case "simulationProgress":
+      renderProgress(
+        msg.sessionId as string,
+        msg.currentTime as number,
+        msg.startTime as number,
+        msg.stopTime as number,
+      );
+      break;
+
+    case "cosimWrapperDetected":
+      wrapperBanner.classList.toggle("visible", msg.detected as boolean);
       break;
 
     case "error":
@@ -174,30 +224,20 @@ window.addEventListener("message", (event) => {
 // ── Health rendering ──
 
 function updateHealth(h: HealthMsg): void {
-  setStatus(apiDot, apiStatus, h.api);
-  setStatus(mqttDot, mqttStatus, h.mqtt);
-  setStatus(historianDot, historianStatus, h.historian);
-
-  // Update local mode button
   isLocalMode = h.localMode === true;
-  if (btnUseLocal) {
-    if (isLocalMode) {
-      btnUseLocal.textContent = "Disable Local Mode";
-      btnUseLocal.classList.remove("secondary");
-    } else {
-      btnUseLocal.textContent = "Use Browser-Local";
-      btnUseLocal.classList.add("secondary");
-    }
-  }
-}
 
-function setStatus(dot: HTMLElement, label: HTMLElement, online: boolean | string): void {
-  if (online === "local") {
-    dot.className = "status-dot local";
-    label.textContent = "local";
+  // Sync the mode dropdown
+  modeSelect.value = isLocalMode ? "local" : "remote";
+
+  if (isLocalMode) {
+    modeStatus.textContent = "● Local";
+    modeStatus.className = "mode-status local";
+  } else if (h.api) {
+    modeStatus.textContent = "● Connected";
+    modeStatus.className = "mode-status ready";
   } else {
-    dot.className = `status-dot ${online ? "online" : "offline"}`;
-    label.textContent = online ? "online" : "offline";
+    modeStatus.textContent = "● Offline";
+    modeStatus.className = "mode-status offline";
   }
 }
 
@@ -205,7 +245,8 @@ function setStatus(dot: HTMLElement, label: HTMLElement, online: boolean | strin
 
 function renderSessions(sessions: SessionInfo[]): void {
   if (sessions.length === 0) {
-    sessionsList.innerHTML = '<div class="empty-state">No active sessions</div>';
+    sessionsList.innerHTML =
+      '<div class="empty-state">No active sessions<br><span style="font-size:11px;opacity:0.7">Click ⚡ Quick Start to begin</span></div>';
     return;
   }
 
@@ -225,25 +266,26 @@ function renderSessions(sessions: SessionInfo[]): void {
         <div class="session-header">
           <span class="badge ${stateClass}">${s.state}</span>
           <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${id}">${id.slice(0, 12)}…</span>
-        </div>
-        <div class="session-actions">
-          ${s.state === "created" ? `<button data-action="start" data-id="${id}">▶ Start</button>` : ""}
-          ${s.state === "running" ? `<button data-action="stop" data-id="${id}">⏹ Stop</button>` : ""}
-          ${s.state === "created" ? `<button data-action="publish" data-id="${id}" class="secondary">📡 Publish Model</button>` : ""}
-          ${s.state === "created" ? `<button data-action="publishFmu" data-id="${id}" class="secondary">📦 Publish FMU</button>` : ""}
-          ${s.state === "created" ? `<button data-action="publishCosim" data-id="${id}" class="secondary">🔗 Publish Co-Sim</button>` : ""}
-          ${s.state === "created" ? `<button data-action="createWrapper" data-id="${id}" class="secondary">🔧 Create Wrapper</button>` : ""}
-          ${s.state === "running" ? `<button data-action="livePlot" data-id="${id}" class="secondary">📈 Live Plot</button>` : ""}
-          <button data-action="delete" data-id="${id}" class="secondary">✕</button>
+          <button data-action="delete" data-id="${id}" class="secondary" style="padding:1px 4px;font-size:10px" title="Delete session">✕</button>
         </div>
         <div class="participant-area" id="participants-${id}"></div>
+        <div class="coupling-area" id="couplings-${id}"></div>
+        ${s.state === "running" ? `<div class="progress-container" id="progress-${id}"><div class="progress-track"><div class="progress-fill" style="width:0%"></div></div><span class="progress-text">Starting…</span></div>` : ""}
+        <div class="session-actions">
+          ${s.state === "created" ? `<button data-action="addParticipant" data-id="${id}" class="secondary">+ Add Participant</button>` : ""}
+          ${s.state === "created" ? `<button data-action="start" data-id="${id}">▶ Start</button>` : ""}
+          ${s.state === "running" ? `<button data-action="stop" data-id="${id}">⏹ Stop</button>` : ""}
+          ${s.state === "running" ? `<button data-action="livePlot" data-id="${id}" class="secondary">📈 Live Plot</button>` : ""}
+        </div>
+        <div class="add-picker-container" id="picker-${id}" style="display:none"></div>
       </div>`;
     })
     .join("");
 
   // Bind session action buttons
   sessionsList.querySelectorAll("button[data-action]").forEach((btn) => {
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
       const action = btn.getAttribute("data-action");
       const id = btn.getAttribute("data-id");
       if (!action || !id) return;
@@ -258,17 +300,8 @@ function renderSessions(sessions: SessionInfo[]): void {
         case "delete":
           vscode.postMessage({ type: "deleteSession", sessionId: id });
           break;
-        case "publish":
-          vscode.postMessage({ type: "publishModel", sessionId: id });
-          break;
-        case "publishFmu":
-          vscode.postMessage({ type: "publishFmu", sessionId: id });
-          break;
-        case "publishCosim":
-          vscode.postMessage({ type: "publishCosimModel", sessionId: id });
-          break;
-        case "createWrapper":
-          vscode.postMessage({ type: "createCosimWrapper", sessionId: id });
+        case "addParticipant":
+          toggleAddPicker(id);
           break;
         case "livePlot":
           vscode.postMessage({ type: "openLivePlot", sessionId: id });
@@ -284,6 +317,80 @@ function renderSessions(sessions: SessionInfo[]): void {
   }
 }
 
+// ── Add Participant Picker ──
+
+function toggleAddPicker(sessionId: string): void {
+  const container = document.getElementById(`picker-${sessionId}`);
+  if (!container) return;
+
+  if (container.style.display !== "none") {
+    container.style.display = "none";
+    return;
+  }
+
+  container.style.display = "";
+  container.innerHTML = `
+    <div class="add-picker">
+      <div class="add-picker-option" data-picker-action="cosim" data-session="${sessionId}">
+        <span class="icon">🔗</span>
+        <div>
+          <span class="label">From Modelica Wrapper</span>
+          <span class="recommended">Recommended</span>
+          <div class="desc">Import participants &amp; couplings from the open .mo file with connect() equations</div>
+        </div>
+      </div>
+      <div class="add-picker-option" data-picker-action="model" data-session="${sessionId}">
+        <span class="icon">📄</span>
+        <div>
+          <span class="label">From Open .mo File</span>
+          <div class="desc">Add the active Modelica model as a single participant</div>
+        </div>
+      </div>
+      <div class="add-picker-option" data-picker-action="fmu" data-session="${sessionId}">
+        <span class="icon">📦</span>
+        <div>
+          <span class="label">From FMU File</span>
+          <div class="desc">Browse for a .fmu or modelDescription.xml file</div>
+        </div>
+      </div>
+      <div class="add-picker-divider"></div>
+      <div class="add-picker-option" data-picker-action="wrapper" data-session="${sessionId}">
+        <span class="icon">🔧</span>
+        <div>
+          <span class="label">Generate Wrapper</span>
+          <div class="desc">Create a Modelica wrapper from current participants</div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Bind picker options
+  container.querySelectorAll(".add-picker-option").forEach((option) => {
+    option.addEventListener("click", () => {
+      const pickerAction = option.getAttribute("data-picker-action");
+      const session = option.getAttribute("data-session");
+      if (!pickerAction || !session) return;
+
+      switch (pickerAction) {
+        case "cosim":
+          vscode.postMessage({ type: "publishCosimModel", sessionId: session });
+          break;
+        case "model":
+          vscode.postMessage({ type: "publishModel", sessionId: session });
+          break;
+        case "fmu":
+          vscode.postMessage({ type: "publishFmu", sessionId: session });
+          break;
+        case "wrapper":
+          vscode.postMessage({ type: "createCosimWrapper", sessionId: session });
+          break;
+      }
+
+      container.style.display = "none";
+    });
+  });
+}
+
 // ── Participant rendering ──
 
 function renderParticipants(sessionId: string, participants: ParticipantInfo[]): void {
@@ -291,7 +398,8 @@ function renderParticipants(sessionId: string, participants: ParticipantInfo[]):
   if (!container) return;
 
   if (participants.length === 0) {
-    container.innerHTML = '<div class="session-meta" style="margin-top:4px">No participants enrolled</div>';
+    container.innerHTML =
+      '<div class="session-meta" style="margin-top:4px;text-align:center;opacity:0.7">No participants yet</div>';
     return;
   }
 
@@ -299,10 +407,60 @@ function renderParticipants(sessionId: string, participants: ParticipantInfo[]):
     .map(
       (p) => `
     <div class="session-meta" style="margin-top:2px">
-      • ${p.modelName} <span style="opacity:0.6">(${p.type}, ${p.variables} vars)</span>
+      ${p.type === "fmu" ? "📦" : "📄"} <strong>${p.modelName}</strong> <span style="opacity:0.6">(${p.type}${p.variables ? `, ${p.variables} vars` : ""})</span>
     </div>`,
     )
     .join("");
+}
+
+// ── Coupling rendering ──
+
+function renderCouplings(sessionId: string, couplings: CouplingInfo[]): void {
+  const container = document.getElementById(`couplings-${sessionId}`);
+  if (!container) return;
+
+  if (couplings.length === 0) {
+    container.innerHTML = "";
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="coupling-list">
+      <div class="session-meta" style="margin-top:4px;font-weight:500;opacity:1">Couplings</div>
+      ${couplings
+        .map(
+          (c) => `
+        <div class="coupling-item">
+          <span>${abbreviateId(c.from.participantId)}.${c.from.variableName}</span>
+          <span class="coupling-arrow">──→</span>
+          <span>${abbreviateId(c.to.participantId)}.${c.to.variableName}</span>
+        </div>`,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+/** Shorten a participant ID for display. */
+function abbreviateId(id: string): string {
+  // Prefer the model name portion (e.g., "cosim-Controller-xxx" → "Controller")
+  const parts = id.split("-");
+  if (parts.length >= 3) return parts[1] ?? id.slice(0, 8);
+  return id.slice(0, 8);
+}
+
+// ── Progress rendering ──
+
+function renderProgress(sessionId: string, currentTime: number, startTime: number, stopTime: number): void {
+  const container = document.getElementById(`progress-${sessionId}`);
+  if (!container) return;
+
+  const pct = Math.min(100, Math.max(0, ((currentTime - startTime) / (stopTime - startTime)) * 100));
+  const fill = container.querySelector(".progress-fill") as HTMLElement;
+  const text = container.querySelector(".progress-text") as HTMLElement;
+
+  if (fill) fill.style.width = `${pct.toFixed(1)}%`;
+  if (text) text.textContent = `t=${currentTime.toFixed(2)}s / ${stopTime}s (${pct.toFixed(0)}%)`;
 }
 
 // ── Error display ──
@@ -316,6 +474,7 @@ function showError(message: string): void {
   setTimeout(() => div.remove(), 8000);
 }
 
-// ── Initial fetch ──
+// ── Initial setup: auto-enable local mode ──
 
+vscode.postMessage({ type: "enableLocal" });
 vscode.postMessage({ type: "refresh" });
