@@ -13,6 +13,9 @@ import type { CoSimParticipant } from "./participant.js";
 /** Session state machine. */
 export type SessionState = "created" | "initializing" | "running" | "paused" | "completed" | "failed";
 
+/** Master algorithm for the co-simulation step loop. */
+export type MasterAlgorithm = "gauss-seidel" | "jacobi" | "richardson";
+
 /** Experiment parameters for a session. */
 export interface SessionExperiment {
   startTime: number;
@@ -26,16 +29,28 @@ export class CoSimSession {
   readonly experiment: SessionExperiment;
   readonly coupling: CouplingGraph;
   readonly realtimeFactor: number;
+  /** Master algorithm for the step loop. */
+  readonly masterAlgorithm: MasterAlgorithm;
+  /** Richardson extrapolation error tolerance (used when masterAlgorithm is 'richardson'). */
+  readonly richardsonTolerance: number;
 
   private _state: SessionState = "created";
   private readonly _participants = new Map<string, CoSimParticipant>();
   private _error: string | null = null as string | null;
 
-  constructor(sessionId: string, experiment: SessionExperiment, realtimeFactor = 0) {
+  constructor(
+    sessionId: string,
+    experiment: SessionExperiment,
+    realtimeFactor = 0,
+    masterAlgorithm: MasterAlgorithm = "gauss-seidel",
+    richardsonTolerance = 1e-4,
+  ) {
     this.sessionId = sessionId;
     this.experiment = experiment;
     this.coupling = new CouplingGraph();
     this.realtimeFactor = realtimeFactor;
+    this.masterAlgorithm = masterAlgorithm;
+    this.richardsonTolerance = richardsonTolerance;
   }
 
   /** Current session state. */
