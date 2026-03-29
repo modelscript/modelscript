@@ -144,8 +144,15 @@ export class CouplingGraph {
       const sourceOutputs = allOutputs.get(coupling.from.participantId);
       if (!sourceOutputs) continue;
 
-      const value = sourceOutputs.get(coupling.from.variableName);
+      let value = sourceOutputs.get(coupling.from.variableName);
       if (value === undefined) continue;
+
+      // Auto-convert units if both sides have unit metadata and they differ
+      const fromUnit = coupling.from.unit;
+      const toUnit = coupling.to.unit;
+      if (fromUnit && toUnit && fromUnit !== toUnit && typeof value === "number") {
+        value = convertUnit(value, fromUnit, toUnit);
+      }
 
       let targetInputs = inputs.get(coupling.to.participantId);
       if (!targetInputs) {
@@ -233,4 +240,145 @@ function areUnitsConvertible(unit1: string, unit2: string): boolean {
   // Both units unknown — we can't determine compatibility, assume convertible
   // to avoid false positives on custom/derived units
   return true;
+}
+
+// ── Unit conversion ──
+
+/**
+ * Conversion factors from each unit to the SI base unit of its dimension.
+ * To convert from unit A to unit B: value * (toSI[A] / toSI[B]).
+ */
+const UNIT_TO_SI: Record<string, number> = {
+  // Angle: base = rad
+  rad: 1,
+  deg: Math.PI / 180,
+  rev: 2 * Math.PI,
+  grad: Math.PI / 200,
+  // Temperature: base = K (only offset-free scaling; degC/degF need affine)
+  K: 1,
+  // Length: base = m
+  m: 1,
+  km: 1000,
+  cm: 0.01,
+  mm: 0.001,
+  um: 1e-6,
+  nm: 1e-9,
+  in: 0.0254,
+  ft: 0.3048,
+  yd: 0.9144,
+  mi: 1609.344,
+  // Time: base = s
+  s: 1,
+  ms: 0.001,
+  us: 1e-6,
+  min: 60,
+  h: 3600,
+  d: 86400,
+  // Mass: base = kg
+  kg: 1,
+  g: 0.001,
+  mg: 1e-6,
+  lb: 0.453592,
+  oz: 0.0283495,
+  t: 1000,
+  // Force: base = N
+  N: 1,
+  kN: 1000,
+  MN: 1e6,
+  lbf: 4.44822,
+  dyn: 1e-5,
+  // Pressure: base = Pa
+  Pa: 1,
+  kPa: 1000,
+  MPa: 1e6,
+  bar: 1e5,
+  atm: 101325,
+  psi: 6894.76,
+  mmHg: 133.322,
+  torr: 133.322,
+  // Energy: base = J
+  J: 1,
+  kJ: 1000,
+  MJ: 1e6,
+  cal: 4.184,
+  kcal: 4184,
+  Wh: 3600,
+  kWh: 3.6e6,
+  eV: 1.602e-19,
+  Btu: 1055.06,
+  // Power: base = W
+  W: 1,
+  kW: 1000,
+  MW: 1e6,
+  hp: 745.7,
+  // Velocity: base = m/s
+  "m/s": 1,
+  "km/h": 1 / 3.6,
+  mph: 0.44704,
+  kn: 0.514444,
+  "ft/s": 0.3048,
+  // Voltage: base = V
+  V: 1,
+  mV: 0.001,
+  kV: 1000,
+  // Current: base = A
+  A: 1,
+  mA: 0.001,
+  uA: 1e-6,
+  kA: 1000,
+  // Resistance: base = Ohm
+  Ohm: 1,
+  kOhm: 1000,
+  MOhm: 1e6,
+  // Capacitance: base = F
+  F: 1,
+  mF: 0.001,
+  uF: 1e-6,
+  nF: 1e-9,
+  pF: 1e-12,
+  // Inductance: base = H
+  H: 1,
+  mH: 0.001,
+  uH: 1e-6,
+  // Frequency: base = Hz
+  Hz: 1,
+  kHz: 1000,
+  MHz: 1e6,
+  GHz: 1e9,
+  "1/s": 1,
+  // Angular velocity: base = rad/s
+  "rad/s": 1,
+  rpm: (2 * Math.PI) / 60,
+  "deg/s": Math.PI / 180,
+  // Volume: base = m3
+  m3: 1,
+  L: 0.001,
+  mL: 1e-6,
+  cm3: 1e-6,
+  gal: 0.00378541,
+  ft3: 0.0283168,
+  // Flow rate: base = m3/s
+  "m3/s": 1,
+  "L/s": 0.001,
+  "L/min": 0.001 / 60,
+  "gal/min": 0.00378541 / 60,
+  // Amount of substance: base = mol
+  mol: 1,
+  mmol: 0.001,
+  kmol: 1000,
+};
+
+/**
+ * Convert a numeric value between two compatible units.
+ * Returns the original value if conversion is not possible.
+ */
+export function convertUnit(value: number, fromUnit: string, toUnit: string): number {
+  if (fromUnit === toUnit) return value;
+  const fromFactor = UNIT_TO_SI[fromUnit.trim()];
+  const toFactor = UNIT_TO_SI[toUnit.trim()];
+  if (fromFactor !== undefined && toFactor !== undefined) {
+    return value * (fromFactor / toFactor);
+  }
+  // Unknown units — pass through unchanged
+  return value;
 }

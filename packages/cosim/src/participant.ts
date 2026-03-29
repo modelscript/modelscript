@@ -92,11 +92,24 @@ export interface CoSimParticipant {
    */
   setParameters?(values: Map<string, CosimValue>): Promise<void>;
 
-  // ── Optional: Async step control ──
-
   /**
    * Cancel an in-progress asynchronous step.
    * For FMUs whose fmi2DoStep returns fmi2Pending.
    */
   cancelStep?(): Promise<void>;
+
+  // ── Optional: Directional derivatives (for implicit master algorithms) ──
+
+  /** Whether this participant can provide directional derivatives. */
+  readonly providesDirectionalDerivatives?: boolean;
+
+  /**
+   * Compute directional derivatives: dv_unknown = (∂unknown/∂known) · dv_known.
+   *
+   * @param unknownRefs  Value references of the unknown variables (e.g., outputs).
+   * @param knownRefs    Value references of the known variables (e.g., inputs).
+   * @param dvKnown      Seed vector (perturbation of known variables).
+   * @returns The resulting directional derivative vector (one entry per unknown).
+   */
+  getDirectionalDerivative?(unknownRefs: number[], knownRefs: number[], dvKnown: number[]): Promise<number[]>;
 }

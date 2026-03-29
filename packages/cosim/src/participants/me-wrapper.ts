@@ -350,12 +350,21 @@ export class ModelExchangeParticipant implements CoSimParticipant {
     // Enter event mode
     await this.rpc("enterEventMode");
 
-    // Iterate discrete state updates until stable
+    // Iterate discrete state updates until stable.
+    // FMI 3.0 uses "updateDiscreteStates" instead of "newDiscreteStates".
+    // We try FMI 3.0 first, and fall back to FMI 2.0 on error.
     let iterating = true;
     while (iterating) {
-      const info = (await this.rpc("newDiscreteStates")) as EventInfo;
-      iterating = info.newDiscreteStatesNeeded;
-      if (info.terminateSimulation) break;
+      try {
+        const info = (await this.rpc("updateDiscreteStates")) as EventInfo;
+        iterating = info.newDiscreteStatesNeeded;
+        if (info.terminateSimulation) break;
+      } catch {
+        // Fall back to FMI 2.0 API
+        const info = (await this.rpc("newDiscreteStates")) as EventInfo;
+        iterating = info.newDiscreteStatesNeeded;
+        if (info.terminateSimulation) break;
+      }
     }
 
     // Re-enter continuous time mode

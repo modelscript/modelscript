@@ -15,7 +15,7 @@ import type { CoSimParticipant } from "./participant.js";
 export type SessionState = "created" | "initializing" | "running" | "paused" | "completed" | "failed";
 
 /** Master algorithm for the co-simulation step loop. */
-export type MasterAlgorithm = "gauss-seidel" | "jacobi" | "richardson";
+export type MasterAlgorithm = "gauss-seidel" | "jacobi" | "richardson" | "newton";
 
 /** Experiment parameters for a session. */
 export interface SessionExperiment {

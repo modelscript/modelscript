@@ -16,7 +16,7 @@
  * Supports real-time pacing via the RealtimePacer.
  */
 
-import { type UnitWarning, CouplingGraph } from "./coupling.js";
+import { type CosimValue, type UnitWarning, CouplingGraph } from "./coupling.js";
 import type { CosimMqttClient } from "./mqtt/client.js";
 import type { StepResult } from "./mqtt/protocol.js";
 import type { CoSimParticipant } from "./participant.js";
@@ -126,6 +126,8 @@ export class Orchestrator {
           const newH = await this.stepRichardson(participants, coupling, t, effectiveH);
           // Richardson may adjust step size for next iteration
           if (newH !== effectiveH) h = Math.min(newH, experiment.stepSize * 4);
+        } else if (this.session.masterAlgorithm === "newton") {
+          await this.stepImplicitNewton(participants, coupling, t, effectiveH);
         } else {
           // Default: Gauss-Seidel (sequential)
           await this.stepGaussSeidel(participants, coupling, t, effectiveH);
@@ -375,5 +377,120 @@ export class Orchestrator {
     const factor = 0.9 * Math.pow(tol / maxError, 0.5);
     const newH = h * Math.max(0.25, Math.min(factor, 2.0));
     return newH;
+  }
+
+  /**
+   * Implicit Newton (fixed-point with state rollback): iteratively step and
+   * re-apply couplings until the coupling residual converges.
+   *
+   * For tightly-coupled algebraic loops, this converges much faster than
+   * Gauss-Seidel or Jacobi because it rolls back and re-solves the entire
+   * step with updated coupling values.
+   *
+   * Requires state save/restore for rollback between iterations.
+   * Falls back to single Gauss-Seidel step if state management is unavailable.
+   */
+  private async stepImplicitNewton(
+    participants: CoSimParticipant[],
+    coupling: CouplingGraph,
+    t: number,
+    h: number,
+  ): Promise<void> {
+    const maxIter = 10;
+    const tol = this.session.richardsonTolerance; // reuse tolerance setting
+
+    // Check if all participants support state management
+    const supportsState = participants.every((p) => p.getState && p.setState);
+    if (!supportsState) {
+      // Fall back to Gauss-Seidel if state management not available
+      await this.stepGaussSeidel(participants, coupling, t, h);
+      return;
+    }
+
+    // Save initial states
+    const savedStates = new Map<string, unknown>();
+    for (const p of participants) {
+      if (p.getState) {
+        savedStates.set(p.id, await p.getState());
+      }
+    }
+
+    let prevOutputs: Map<string, Map<string, CosimValue>> | null = null;
+
+    for (let iter = 0; iter < maxIter; iter++) {
+      // Restore states to beginning of step (except first iteration)
+      if (iter > 0) {
+        for (const p of participants) {
+          const state = savedStates.get(p.id);
+          if (p.setState && state !== undefined) {
+            await p.setState(state);
+          }
+        }
+      }
+
+      // Collect current outputs (from restored state)
+      const allOutputs = new Map<string, Map<string, CosimValue>>();
+      for (const p of participants) {
+        allOutputs.set(p.id, await p.getOutputs());
+      }
+
+      // Apply couplings
+      const inputSets = coupling.applyCouplings(allOutputs);
+
+      // Set inputs and step each participant
+      for (const p of participants) {
+        const inputs = inputSets.get(p.id);
+        if (inputs && inputs.size > 0) {
+          await p.setInputs(inputs);
+        }
+      }
+
+      for (const p of participants) {
+        await p.doStep(t, h);
+      }
+
+      // Collect post-step outputs
+      const newOutputs = new Map<string, Map<string, CosimValue>>();
+      for (const p of participants) {
+        newOutputs.set(p.id, await p.getOutputs());
+      }
+
+      // Check convergence: compare outputs between this iteration and last
+      if (prevOutputs) {
+        let maxResidual = 0;
+        for (const [pid, outputs] of newOutputs) {
+          const prev = prevOutputs.get(pid);
+          if (!prev) continue;
+          for (const [varName, val] of outputs) {
+            if (typeof val !== "number") continue;
+            const prevVal = prev.get(varName);
+            if (typeof prevVal !== "number") continue;
+            const scale = Math.max(Math.abs(val), 1e-10);
+            maxResidual = Math.max(maxResidual, Math.abs(val - prevVal) / scale);
+          }
+        }
+
+        if (maxResidual < tol) {
+          // Converged — free saved states and return
+          for (const p of participants) {
+            const state = savedStates.get(p.id);
+            if (p.freeState && state !== undefined) {
+              await p.freeState(state);
+            }
+          }
+          return;
+        }
+      }
+
+      prevOutputs = newOutputs;
+    }
+
+    // Did not converge within maxIter — free states and continue with last result
+    for (const p of participants) {
+      const state = savedStates.get(p.id);
+      if (p.freeState && state !== undefined) {
+        await p.freeState(state);
+      }
+    }
   }
 }

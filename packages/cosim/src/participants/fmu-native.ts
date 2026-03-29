@@ -271,6 +271,7 @@ export class FmuNativeParticipant implements CoSimParticipant {
   // ── State management ──
 
   readonly canGetAndSetState = true;
+  readonly providesDirectionalDerivatives = true;
 
   async getState(): Promise<unknown> {
     const result = (await this.rpc("getState")) as { stateId: number };
@@ -283,5 +284,16 @@ export class FmuNativeParticipant implements CoSimParticipant {
 
   async freeState(state: unknown): Promise<void> {
     await this.rpc("freeState", { stateId: state as number });
+  }
+
+  // ── Directional derivatives ──
+
+  async getDirectionalDerivative(unknownRefs: number[], knownRefs: number[], dvKnown: number[]): Promise<number[]> {
+    const result = await this.rpc("getDirectionalDerivative", {
+      unknownRefs,
+      knownRefs,
+      dvKnown,
+    });
+    return result as number[];
   }
 }
