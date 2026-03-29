@@ -68,6 +68,7 @@ import {
   ModelicaStoredDefinitionSyntaxNode,
   ModelicaSyntaxNode,
   Scope,
+  generateMultiModelWrapper,
   registerOptimizeDeps,
   registerSimulateDeps,
   type Dirent,
@@ -3168,6 +3169,29 @@ connection.onRequest("modelscript/extractCosimGraph", (params: { uri: string; te
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
 });
+
+/**
+ * Custom request: create a Modelica wrapper model for multi-FMU co-simulation.
+ *
+ * Takes a model name and list of FMU descriptors, returns the generated
+ * Modelica source text that can be written to a .mo file.
+ */
+connection.onRequest(
+  "modelscript/createCosimWrapper",
+  (params: {
+    modelName: string;
+    fmus: { className: string; instanceName: string; fileName: string }[];
+    connections?: { source: string; target: string }[];
+  }): { ok: boolean; source?: string; error?: string } => {
+    try {
+      const source = generateMultiModelWrapper(params.modelName, params.fmus, params.connections ?? []);
+      return { ok: true, source };
+    } catch (e) {
+      console.error("[createCosimWrapper] Error:", e);
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
+  },
+);
 
 // Custom request: get library tree children (lazy loading)
 interface TreeNodeInfo {

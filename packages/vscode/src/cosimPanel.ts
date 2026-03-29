@@ -400,6 +400,13 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
         break;
       }
 
+      case "createCosimWrapper": {
+        if (this.localMode) {
+          await this.localCreateCosimWrapper(msg.sessionId as string);
+        }
+        break;
+      }
+
       case "fetchFmus": {
         try {
           const resp = await fetch(`${apiUrl}/api/v1/fmus`);
@@ -693,6 +700,78 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
       this.localFetchParticipants(sessionId);
     } catch (e) {
       this.postMessage({ type: "error", message: `Failed to publish co-sim model: ${e}` });
+    }
+  }
+
+  /** Create a Modelica wrapper model from the session's FMU participants and open it in the editor. */
+  private async localCreateCosimWrapper(sessionId: string): Promise<void> {
+    const session = this.localSessions.get(sessionId);
+    if (!session) {
+      this.postMessage({ type: "error", message: "Session not found." });
+      return;
+    }
+
+    if (session.participants.length === 0) {
+      vscode.window.showWarningMessage("No participants in session. Add FMUs first.");
+      return;
+    }
+
+    try {
+      // Build FMU descriptors from session participants
+      const fmus = session.participants.map((p) => ({
+        className: p.modelName,
+        instanceName: p.modelName.charAt(0).toLowerCase() + p.modelName.slice(1),
+        fileName: p.type === "fmu" ? (p.uri.split("/").pop() ?? `${p.modelName}.fmu`) : `${p.modelName}.mo`,
+      }));
+
+      // Build connections from session couplings
+      const connections = session.couplings.map((c) => {
+        const fromP = session.participants.find((p) => p.id === c.from.participantId);
+        const toP = session.participants.find((p) => p.id === c.to.participantId);
+        const fromName = fromP
+          ? fromP.modelName.charAt(0).toLowerCase() + fromP.modelName.slice(1)
+          : c.from.participantId;
+        const toName = toP ? toP.modelName.charAt(0).toLowerCase() + toP.modelName.slice(1) : c.to.participantId;
+        return {
+          source: `${fromName}.${c.from.variableName}`,
+          target: `${toName}.${c.to.variableName}`,
+        };
+      });
+
+      // Call LSP to generate the wrapper model source
+      const result = (await this.client.sendRequest("modelscript/createCosimWrapper", {
+        modelName: "CosimWrapper",
+        fmus,
+        connections,
+      })) as { ok: boolean; source?: string; error?: string };
+
+      if (!result.ok || !result.source) {
+        this.postMessage({
+          type: "error",
+          message: `Failed to generate wrapper: ${result.error ?? "unknown error"}`,
+        });
+        return;
+      }
+
+      // Write the wrapper file to the workspace
+      const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri;
+      if (!workspaceFolder) {
+        vscode.window.showWarningMessage("No workspace folder open.");
+        return;
+      }
+
+      const wrapperUri = vscode.Uri.joinPath(workspaceFolder, "CosimWrapper.mo");
+      await vscode.workspace.fs.writeFile(wrapperUri, new TextEncoder().encode(result.source));
+
+      // Open the file in the editor
+      const doc = await vscode.workspace.openTextDocument(wrapperUri);
+      await vscode.window.showTextDocument(doc);
+
+      vscode.window.showInformationMessage(
+        `Created wrapper model "CosimWrapper.mo" with ${fmus.length} FMU(s). Open the Diagram view to wire ports.`,
+      );
+    } catch (e) {
+      this.postMessage({ type: "error", message: `Failed to create wrapper: ${e}` });
     }
   }
 

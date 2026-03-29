@@ -232,6 +232,7 @@ function renderSessions(sessions: SessionInfo[]): void {
           ${s.state === "created" ? `<button data-action="publish" data-id="${id}" class="secondary">📡 Publish Model</button>` : ""}
           ${s.state === "created" ? `<button data-action="publishFmu" data-id="${id}" class="secondary">📦 Publish FMU</button>` : ""}
           ${s.state === "created" ? `<button data-action="publishCosim" data-id="${id}" class="secondary">🔗 Publish Co-Sim</button>` : ""}
+          ${s.state === "created" ? `<button data-action="createWrapper" data-id="${id}" class="secondary">🔧 Create Wrapper</button>` : ""}
           ${s.state === "running" ? `<button data-action="livePlot" data-id="${id}" class="secondary">📈 Live Plot</button>` : ""}
           <button data-action="delete" data-id="${id}" class="secondary">✕</button>
         </div>
@@ -265,6 +266,9 @@ function renderSessions(sessions: SessionInfo[]): void {
           break;
         case "publishCosim":
           vscode.postMessage({ type: "publishCosimModel", sessionId: id });
+          break;
+        case "createWrapper":
+          vscode.postMessage({ type: "createCosimWrapper", sessionId: id });
           break;
         case "livePlot":
           vscode.postMessage({ type: "openLivePlot", sessionId: id });

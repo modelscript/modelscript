@@ -110,3 +110,48 @@ for (const el of elements) {
 }
 
 console.log("\n✅ All FMU diagram synthesis tests passed.");
+
+// ── Test 3: Wrapper template generation ──
+
+import { generateMultiModelWrapper } from "./wrapper-template.js";
+
+console.log("\n=== Test 3: Wrapper template ===");
+
+const wrapperSource = generateMultiModelWrapper(
+  "CosimWrapper",
+  [
+    { className: "SineWave", instanceName: "sineWave", fileName: "SineWave.fmu" },
+    { className: "Controller", instanceName: "controller", fileName: "Controller.fmu" },
+  ],
+  [{ source: "sineWave.y", target: "controller.u" }],
+);
+
+console.log(wrapperSource);
+
+// Verify wrapper contains expected elements
+const checks = [
+  ["model CosimWrapper", "model declaration"],
+  ['SineWave sineWave(fileName="SineWave.fmu")', "sineWave component"],
+  ['Controller controller(fileName="Controller.fmu")', "controller component"],
+  ["connect(sineWave.y, controller.u)", "connect equation"],
+  ["end CosimWrapper;", "end statement"],
+  ["annotation(Placement", "placement annotation"],
+  ["Diagram(", "diagram annotation"],
+];
+
+let allPassed = true;
+for (const [pattern, label] of checks) {
+  if (!pattern || !wrapperSource.includes(pattern)) {
+    console.error(`  ✗ Missing: ${label} ("${pattern}")`);
+    allPassed = false;
+  } else {
+    console.log(`  ✓ ${label}`);
+  }
+}
+
+if (allPassed) {
+  console.log("\n✅ All wrapper template tests passed.");
+} else {
+  console.error("\n✗ Some wrapper template tests failed.");
+  process.exit(1);
+}

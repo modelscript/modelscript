@@ -27,6 +27,7 @@ export * from "./compiler/modelica/syntax.js";
 export * from "./compiler/modelica/tape.js";
 export * from "./compiler/modelica/types.js";
 export * from "./compiler/modelica/units.js";
+export * from "./compiler/modelica/wrapper-template.js";
 export * from "./compiler/scope.js";
 export * from "./util/color-inversion.js";
 export * from "./util/enum.js";
