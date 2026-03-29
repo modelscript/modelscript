@@ -146,6 +146,81 @@ function extractFromZip(zipData: Uint8Array, targetName: string): Uint8Array | n
   return null;
 }
 
+// ── Synthetic connector factory ──
+
+/**
+ * Create a lightweight `ModelicaClassInstance` with `classKind = CONNECTOR`
+ * and a triangular `Icon` annotation.  Used for FMU input/output ports so
+ * that diagram renderers (which filter for `CONNECTOR`) display them.
+ *
+ * Input connectors: solid‐filled blue triangle (matches MSL `RealInput`).
+ * Output connectors: unfilled blue triangle (matches MSL `RealOutput`).
+ */
+function createSyntheticConnector(parent: ModelicaClassInstance, isInput: boolean): ModelicaClassInstance {
+  const connector = new ModelicaClassInstance(parent);
+  connector.classKind = ModelicaClassKind.CONNECTOR;
+  connector.name = isInput ? "RealInput" : "RealOutput";
+  connector.instantiated = true;
+  connector.declaredElements = [];
+
+  // Triangle polygon points (Modelica coordinate system, -100..100)
+  // Input:  filled blue triangle pointing right
+  // Output: unfilled blue triangle pointing right
+  const trianglePoints: [number, number][] = isInput
+    ? [
+        [-100, 100],
+        [100, 0],
+        [-100, -100],
+        [-100, 100],
+      ]
+    : [
+        [-100, 100],
+        [100, 0],
+        [-100, -100],
+        [-100, 100],
+      ];
+
+  const iconData = {
+    "@type": "Icon" as const,
+    coordinateSystem: {
+      extent: [
+        [-100, -100],
+        [100, 100],
+      ] as [[number, number], [number, number]],
+      preserveAspectRatio: true,
+      initialScale: 0.2,
+      "@type": "CoordinateSystem" as const,
+    },
+    graphics: [
+      {
+        visible: true,
+        origin: [0, 0] as [number, number],
+        rotation: 0,
+        lineColor: [0, 0, 255] as [number, number, number],
+        fillColor: isInput
+          ? ([0, 0, 255] as [number, number, number]) // filled for input
+          : ([255, 255, 255] as [number, number, number]), // unfilled for output
+        pattern: "Solid",
+        fillPattern: isInput ? "Solid" : "Solid",
+        lineThickness: 0.25,
+        points: trianglePoints,
+        smooth: "None",
+        "@type": "Polygon" as const,
+      },
+    ],
+  };
+
+  // Override annotation() to return the synthetic Icon
+  connector.annotation = function <T>(name: string, annotations?: ModelicaNamedElement[] | null): T | null {
+    if (name === "Icon" && (!annotations || annotations === this.annotations)) {
+      return iconData as unknown as T;
+    }
+    return ModelicaClassInstance.prototype.annotation.call(this, name, annotations) as T | null;
+  };
+
+  return connector;
+}
+
 // ── ModelicaFmuEntity ──
 
 /**
@@ -235,6 +310,107 @@ export class ModelicaFmuEntity extends ModelicaClassInstance {
     return super.resolveSimpleName(identifier, global, encapsulated);
   }
 
+  /** Build the graphics array for Icon/Diagram annotations (rectangle + name + port labels). */
+  #buildFmuGraphics(): unknown[] {
+    const graphics: unknown[] = [
+      {
+        visible: true,
+        origin: [0, 0],
+        rotation: 0,
+        lineColor: [0, 0, 255],
+        fillColor: [255, 255, 255],
+        pattern: "Solid",
+        lineThickness: 0.25,
+        borderPattern: "None",
+        extent: [
+          [-100, -100],
+          [100, 100],
+        ],
+        radius: 0,
+        "@type": "Rectangle",
+      },
+      {
+        visible: true,
+        origin: [0, 0],
+        rotation: 0,
+        extent: [
+          [-100, 20],
+          [100, -20],
+        ],
+        textString: "%name",
+        fontSize: 0,
+        textStyle: [],
+        textColor: [0, 0, 0],
+        horizontalAlignment: "Center",
+        "@type": "Text",
+      },
+    ];
+
+    // Add port name labels inside the block
+    const inputs = this.fmuVariables.filter((v) => v.causality === "input");
+    const outputs = this.fmuVariables.filter((v) => v.causality === "output");
+
+    for (let i = 0; i < inputs.length; i++) {
+      const y = 100 - ((i + 1) * 200) / (inputs.length + 1);
+      graphics.push({
+        visible: true,
+        origin: [0, 0],
+        rotation: 0,
+        extent: [
+          [-98, y - 8],
+          [-30, y + 8],
+        ],
+        textString: inputs[i]?.name ?? "",
+        fontSize: 0,
+        textStyle: [],
+        textColor: [0, 0, 0],
+        horizontalAlignment: "Left",
+        "@type": "Text",
+      });
+    }
+
+    for (let i = 0; i < outputs.length; i++) {
+      const y = 100 - ((i + 1) * 200) / (outputs.length + 1);
+      graphics.push({
+        visible: true,
+        origin: [0, 0],
+        rotation: 0,
+        extent: [
+          [30, y - 8],
+          [98, y + 8],
+        ],
+        textString: outputs[i]?.name ?? "",
+        fontSize: 0,
+        textStyle: [],
+        textColor: [0, 0, 0],
+        horizontalAlignment: "Right",
+        "@type": "Text",
+      });
+    }
+
+    return graphics;
+  }
+
+  override annotation<T>(name: string, annotations?: ModelicaNamedElement[] | null): T | null {
+    if ((name === "Icon" || name === "Diagram") && (!annotations || annotations === this.annotations)) {
+      if (!this.#loaded) this.load();
+      return {
+        "@type": name,
+        coordinateSystem: {
+          extent: [
+            [-100, -100],
+            [100, 100],
+          ],
+          preserveAspectRatio: true,
+          initialScale: 0.1,
+          "@type": "CoordinateSystem",
+        },
+        graphics: this.#buildFmuGraphics(),
+      } as unknown as T;
+    }
+    return super.annotation(name, annotations);
+  }
+
   override instantiate(): void {
     if (this.instantiated) return;
     if (this.instantiating) return;
@@ -244,25 +420,82 @@ export class ModelicaFmuEntity extends ModelicaClassInstance {
       this.declaredElements = [];
       this.#syntheticComponents = [];
 
-      // Resolve the predefined Real type for component class instances
+      // Resolve the predefined Real type for non-port component class instances
       const realType = this.root?.resolveSimpleName("Real") as ModelicaClassInstance | null;
 
-      for (const v of this.fmuVariables) {
+      // Segregate by causality to calculate port spacing
+      const inputs = this.fmuVariables.filter((v) => v.causality === "input");
+      const outputs = this.fmuVariables.filter((v) => v.causality === "output");
+      const others = this.fmuVariables.filter((v) => v.causality !== "input" && v.causality !== "output");
+
+      let inputCount = 0;
+      let outputCount = 0;
+
+      for (const v of [...inputs, ...outputs, ...others]) {
         // Create a synthetic component instance with null AST node
         const comp = new ModelicaComponentInstance(this, null);
         comp.name = v.name;
         comp.description = v.description || null;
 
         // Set causality from FMU variable
-        if (v.causality === "input") {
+        const isInput = v.causality === "input";
+        const isOutput = v.causality === "output";
+        if (isInput) {
           comp.causality = ModelicaCausality.INPUT;
-        } else if (v.causality === "output") {
+        } else if (isOutput) {
           comp.causality = ModelicaCausality.OUTPUT;
         }
 
-        // Set the class instance to Real (all FMU 2.0 continuous variables are Real)
-        if (realType) {
-          comp.classInstance = realType.clone();
+        if (isInput || isOutput) {
+          // Create a synthetic CONNECTOR class instance so diagram renderers
+          // recognise this component as a port (they filter for classKind === CONNECTOR).
+          comp.classInstance = createSyntheticConnector(this, isInput);
+
+          let y = 0;
+          if (isInput) {
+            y = 100 - ((inputCount + 1) * 200) / (inputs.length + 1);
+            inputCount++;
+          } else {
+            y = 100 - ((outputCount + 1) * 200) / (outputs.length + 1);
+            outputCount++;
+          }
+
+          const extent: [[number, number], [number, number]] = isInput
+            ? [
+                [-120, y - 10],
+                [-100, y + 10],
+              ]
+            : [
+                [100, y - 10],
+                [120, y + 10],
+              ];
+
+          comp.annotation = function <T>(name: string, annotations?: ModelicaNamedElement[] | null): T | null {
+            if (name === "Placement" && (!annotations || annotations === this.annotations)) {
+              return {
+                "@type": "Placement",
+                visible: true,
+                transformation: {
+                  extent: extent,
+                  rotation: 0,
+                  origin: [0, 0],
+                  "@type": "Transformation",
+                },
+                iconTransformation: {
+                  extent: extent,
+                  rotation: 0,
+                  origin: [0, 0],
+                  "@type": "Transformation",
+                },
+              } as unknown as T;
+            }
+            return ModelicaComponentInstance.prototype.annotation.call(this, name, annotations) as T | null;
+          };
+        } else {
+          // Non-port variables: use Real type
+          if (realType) {
+            comp.classInstance = realType.clone();
+          }
         }
 
         comp.instantiated = true;
