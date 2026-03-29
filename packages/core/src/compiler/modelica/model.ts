@@ -604,13 +604,6 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     return this.classKind === ModelicaClassKind.EXPANDABLE_CONNECTOR;
   }
 
-  /**
-   * True if this is a synthetic connector created by the FMU entity factory.
-   * Synthetic FMU connectors represent raw FMI 2.0 Real signals and should be
-   * treated as plug-compatible with any scalar Real-based connector.
-   */
-  isSyntheticFmuConnector = false;
-
   get algorithmSections(): IterableIterator<ModelicaAlgorithmSectionSyntaxNode> {
     const extendsClassInstances = this.extendsClassInstances;
     const abstractSyntaxNode = this.abstractSyntaxNode;
@@ -1414,10 +1407,6 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     const visited = new Set<string>();
     // Expandable connectors are plug-compatible with any connector
     if (this.isExpandable || other.isExpandable) return true;
-
-    // Synthetic FMU connectors (raw FMI 2.0 Real signals) are plug-compatible
-    // with any scalar Real-based connector
-    if (this.isSyntheticFmuConnector || other.isSyntheticFmuConnector) return true;
 
     // Must be type-compatible first
     if (!this.isTypeCompatibleWith(other, visited)) return false;

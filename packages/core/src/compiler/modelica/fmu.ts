@@ -156,13 +156,28 @@ function extractFromZip(zipData: Uint8Array, targetName: string): Uint8Array | n
  * Input connectors: solid‐filled blue triangle (matches MSL `RealInput`).
  * Output connectors: unfilled blue triangle (matches MSL `RealOutput`).
  */
-function createSyntheticConnector(parent: ModelicaClassInstance, isInput: boolean): ModelicaClassInstance {
+function createSyntheticConnector(
+  parent: ModelicaClassInstance,
+  isInput: boolean,
+  realType: ModelicaClassInstance | null,
+): ModelicaClassInstance {
+  // If we have the predefined Real type, clone it and set classKind to CONNECTOR.
+  // This makes the synthetic connector structurally identical to MSL's
+  // `connector RealInput = input Real`, ensuring proper plug-compatibility.
+  if (realType) {
+    const connector = realType.clone();
+    connector.classKind = ModelicaClassKind.CONNECTOR;
+    // Keep the original Real name — isTypeCompatibleWith matches predefined types by name.
+    // classKind=CONNECTOR is what makes diagram renderers recognize this as a port.
+    connector.declaredElements = [];
+    return connector;
+  }
+  // Fallback when Real is not available (no MSL loaded)
   const connector = new ModelicaClassInstance(parent);
   connector.classKind = ModelicaClassKind.CONNECTOR;
   connector.name = isInput ? "RealInput" : "RealOutput";
   connector.instantiated = true;
   connector.declaredElements = [];
-  connector.isSyntheticFmuConnector = true;
 
   // Triangle polygon points (Modelica coordinate system, -100..100)
   // Input:  filled blue triangle pointing right
@@ -450,7 +465,7 @@ export class ModelicaFmuEntity extends ModelicaClassInstance {
         if (isInput || isOutput) {
           // Create a synthetic CONNECTOR class instance so diagram renderers
           // recognise this component as a port (they filter for classKind === CONNECTOR).
-          comp.classInstance = createSyntheticConnector(this, isInput);
+          comp.classInstance = createSyntheticConnector(this, isInput, realType);
 
           let y = 0;
           if (isInput) {
