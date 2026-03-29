@@ -98,7 +98,7 @@ export class Orchestrator {
         const effectiveH = Math.min(h, experiment.stopTime - t);
 
         // ── Step 2a: Collect all current outputs ──
-        const allOutputs = new Map<string, Map<string, number>>();
+        const allOutputs = new Map<string, Map<string, number | string | boolean>>();
         for (const p of participants) {
           const outputs = await p.getOutputs();
           allOutputs.set(p.id, outputs);
@@ -121,10 +121,10 @@ export class Orchestrator {
         }
 
         // ── Step 2e: Collect outputs and publish results ──
-        const stepOutputs: Record<string, Record<string, number>> = {};
+        const stepOutputs: Record<string, Record<string, number | string | boolean>> = {};
         for (const p of participants) {
           const outputs = await p.getOutputs();
-          const map: Record<string, number> = {};
+          const map: Record<string, number | string | boolean> = {};
           outputs.forEach((value, key) => {
             map[key] = value;
           });

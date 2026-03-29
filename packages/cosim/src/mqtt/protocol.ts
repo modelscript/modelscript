@@ -78,7 +78,7 @@ export interface SetInputsCommand {
   /** Participant ID. */
   participantId: string;
   /** Variable name → value map. */
-  values: Record<string, number>;
+  values: Record<string, number | string | boolean>;
 }
 
 /** Terminate command. */
@@ -118,7 +118,7 @@ export interface StatusMessage {
   /** Error message (when state is 'error'). */
   error?: string | undefined;
   /** Output variable values (after step). */
-  outputs?: Record<string, number> | undefined;
+  outputs?: Record<string, number | string | boolean> | undefined;
 }
 
 // ── Result messages ──
@@ -128,7 +128,7 @@ export interface StepResult {
   /** Simulation time. */
   time: number;
   /** Participant ID → variable values map. */
-  participants: Record<string, Record<string, number>>;
+  participants: Record<string, Record<string, number | string | boolean>>;
 }
 
 // ── Batched variable data ──
@@ -138,7 +138,7 @@ export interface VariableBatch {
   /** Simulation time. */
   time: number;
   /** Variable name → value map. */
-  values: Record<string, number>;
+  values: Record<string, number | string | boolean>;
 }
 
 // ── Serialization helpers ──

@@ -5,7 +5,11 @@
  *
  * Defines which output variables from one participant feed into
  * which input variables of another participant.
+/**
+ * Value type for co-simulation variable exchange.
+ * Supports all FMI 2.0 scalar types: Real, Integer, Boolean, String.
  */
+export type CosimValue = number | string | boolean;
 
 /** A single variable coupling: one output feeds one input. */
 export interface VariableCoupling {
@@ -66,8 +70,8 @@ export class CouplingGraph {
    * Apply coupling values: given a map of all participant outputs,
    * produce a map of participant ID → input values to inject.
    */
-  applyCouplings(allOutputs: Map<string, Map<string, number>>): Map<string, Map<string, number>> {
-    const inputs = new Map<string, Map<string, number>>();
+  applyCouplings(allOutputs: Map<string, Map<string, CosimValue>>): Map<string, Map<string, CosimValue>> {
+    const inputs = new Map<string, Map<string, CosimValue>>();
 
     for (const coupling of this.couplings) {
       const sourceOutputs = allOutputs.get(coupling.from.participantId);
@@ -78,7 +82,7 @@ export class CouplingGraph {
 
       let targetInputs = inputs.get(coupling.to.participantId);
       if (!targetInputs) {
-        targetInputs = new Map<string, number>();
+        targetInputs = new Map<string, CosimValue>();
         inputs.set(coupling.to.participantId, targetInputs);
       }
       targetInputs.set(coupling.to.variableName, value);

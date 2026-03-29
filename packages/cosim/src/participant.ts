@@ -7,6 +7,7 @@
  * must implement to participate in a co-simulation session.
  */
 
+import type { CosimValue } from "./coupling.js";
 import type { ParticipantMetadata } from "./mqtt/protocol.js";
 
 /**
@@ -46,13 +47,13 @@ export interface CoSimParticipant {
    * Get current output variable values.
    * Called after doStep() to read results.
    */
-  getOutputs(): Promise<Map<string, number>>;
+  getOutputs(): Promise<Map<string, CosimValue>>;
 
   /**
    * Set input variable values before the next step.
    * Called before doStep() to provide coupled values.
    */
-  setInputs(values: Map<string, number>): Promise<void>;
+  setInputs(values: Map<string, CosimValue>): Promise<void>;
 
   /**
    * Terminate the participant and release resources.
