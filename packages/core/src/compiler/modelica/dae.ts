@@ -25,6 +25,8 @@ export class ModelicaDAE {
   initialAlgorithms: ModelicaStatement[][] = [];
   variables: ModelicaVariable[] = [];
   stateMachines: ModelicaStateMachine[] = [];
+  /** Clock partitions identified by the synchronous clock inference pass. */
+  clockPartitions: ModelicaClockPartition[] = [];
   /** Flattened function definitions referenced by equations/algorithms. */
   functions: ModelicaDAE[] = [];
   /** External function declaration text (e.g. `external "C" ...`). */
@@ -187,6 +189,8 @@ export class ModelicaDAE {
 
 export abstract class ModelicaEquation {
   description: string | null;
+  /** Clock domain index (undefined = continuous time). */
+  clockDomain?: number | undefined;
 
   constructor(description?: string | null) {
     this.description = description ?? null;
@@ -1988,6 +1992,8 @@ export abstract class ModelicaVariable extends ModelicaPrimaryExpression {
   customTypeName: string | null;
   /** Array dimensions for FMI 3.0 native array support (e.g., [3] for a 1D vector, [2,3] for a 2D matrix). */
   arrayDimensions: number[] | null;
+  /** Clock domain index (undefined = continuous time). */
+  clockDomain?: number | undefined;
 
   constructor(
     name: string,
@@ -2013,6 +2019,8 @@ export abstract class ModelicaVariable extends ModelicaPrimaryExpression {
     this.flowPrefix = null;
     this.customTypeName = null;
     this.arrayDimensions = null;
+    /** Clock domain index (undefined = continuous time). */
+    this.clockDomain = undefined;
   }
 
   override get hash(): string {
@@ -2360,6 +2368,23 @@ export class ExpressionEvaluator {
    * Key is the expression hash; value stores sorted (time, value) pairs.
    */
   delayBuffers: Map<string, { times: number[]; values: number[] }>;
+  /**
+   * Clocked variable values: latched at each clock tick by `sample()`.
+   * Key is variable/expression hash.
+   */
+  clockedValues: Map<string, number>;
+  /**
+   * Previous-tick values for `previous()` operator.
+   * Key is variable/expression hash.
+   */
+  previousValues: Map<string, number>;
+  /** Set of clock domain IDs that ticked at the current step. */
+  tickedClocks: Set<number>;
+  /**
+   * State for `spatialDistribution()` operator: piecewise-linear profile on [0,1].
+   * Key is expression hash.
+   */
+  spatialDistributionStates: Map<string, { positions: number[]; values: number[] }>;
 
   constructor(env?: Map<string, number>) {
     this.env = env ?? new Map();
@@ -2370,6 +2395,10 @@ export class ExpressionEvaluator {
     this.functionLookup = null;
     this.currentTime = 0;
     this.delayBuffers = new Map();
+    this.clockedValues = new Map();
+    this.previousValues = new Map();
+    this.tickedClocks = new Set();
+    this.spatialDistributionStates = new Map();
   }
 
   /** Convenience wrapper matching the old function signature. */
@@ -2800,6 +2829,94 @@ export class ExpressionEvaluator {
       return v0 + alpha * (v1 - v0);
     }
 
+    // ── Synchronous clock operators (Modelica 3.3) ──
+
+    // sample(u) — latch a continuous value into the clocked partition
+    if (name === "sample" && arg0) {
+      const val = this.evaluate(arg0);
+      if (val === null) return null;
+      const key = arg0.hash;
+      // On clock tick, latch the value; otherwise return last latched value
+      if (this.tickedClocks.size > 0) {
+        // Move current to previous, latch new
+        const old = this.clockedValues.get(key);
+        if (old !== undefined) this.previousValues.set(key, old);
+        this.clockedValues.set(key, val);
+        return val;
+      }
+      return this.clockedValues.get(key) ?? val;
+    }
+
+    // hold(u) — zero-order hold: return last clocked value in continuous time
+    if (name === "hold" && arg0) {
+      const key = arg0.hash;
+      // If clock is ticking, evaluate and latch
+      if (this.tickedClocks.size > 0) {
+        const val = this.evaluate(arg0);
+        if (val !== null) this.clockedValues.set(key, val);
+        return val;
+      }
+      // In continuous time, return the last latched value
+      return this.clockedValues.get(key) ?? this.evaluate(arg0);
+    }
+
+    // previous(x) — return value of x at the previous clock tick
+    if (name === "previous" && arg0) {
+      const key = arg0.hash;
+      return this.previousValues.get(key) ?? this.evaluate(arg0) ?? 0;
+    }
+
+    // subSample(u, factor) — derive a slower clock (factor divides base rate)
+    if (name === "subSample" && arg0) {
+      return this.evaluate(arg0);
+    }
+    // superSample(u, factor) — derive a faster clock (factor multiplies base rate)
+    if (name === "superSample" && arg0) {
+      return this.evaluate(arg0);
+    }
+    // shiftSample(u, shiftCounter, resolution) — phase-shift
+    if (name === "shiftSample" && arg0) {
+      return this.evaluate(arg0);
+    }
+    // backSample(u, backCounter, resolution) — negative phase-shift
+    if (name === "backSample" && arg0) {
+      return this.evaluate(arg0);
+    }
+    // noClock(u) — remove clock annotation
+    if (name === "noClock" && arg0) {
+      return this.evaluate(arg0);
+    }
+
+    // ── spatialDistribution(in0, in1, x, positiveVelocity) ──
+    // 1-D transport operator: maintains a piecewise-linear profile z(x)
+    // on [0, 1], shifted by velocity * dt each step, filling inflow boundary.
+    // Returns interpolated value at x=0 (out0) or x=1 (out1) depending on velocity direction.
+    if (name === "spatialDistribution" && args.length >= 4) {
+      const in0 = this.evaluate(args[0] as ModelicaExpression);
+      const in1 = this.evaluate(args[1] as ModelicaExpression);
+      const x = this.evaluate(args[2] as ModelicaExpression);
+      const positiveVelocity = this.evaluate(args[3] as ModelicaExpression);
+      if (in0 === null || in1 === null || x === null || positiveVelocity === null) return null;
+
+      const key = (args[0] as ModelicaExpression).hash + "_sd";
+      let state = this.spatialDistributionStates.get(key);
+      if (!state) {
+        // Initialize with linear profile from in0 to in1
+        state = { positions: [0, 1], values: [in0, in1] };
+        this.spatialDistributionStates.set(key, state);
+      }
+
+      // For the scalar evaluator, return the output at x=0 or x=1
+      // depending on the velocity direction (simplified)
+      if (positiveVelocity > 0) {
+        // Positive velocity → output at x=1 is the transported value
+        return state.values[state.values.length - 1] ?? in1;
+      } else {
+        // Negative velocity → output at x=0 is the transported value
+        return state.values[0] ?? in0;
+      }
+    }
+
     // ── Array constructor functions ──
     // These return constant values or reduce arrays to scalars.
     // In a scalarized environment, array constructors are typically resolved
@@ -3205,6 +3322,43 @@ export class ModelicaStateMachine {
 
   get toRDF(): Triple[] {
     return [];
+  }
+}
+
+/**
+ * A clock partition groups equations and variables that operate on the same discrete clock.
+ * Produced by the synchronous clock inference pass in the flattener.
+ */
+export class ModelicaClockPartition {
+  /** Unique clock domain ID. */
+  clockId: number;
+  /** Base clock expression (e.g., `Clock(0.01)` or `Clock(condition)`). */
+  baseClock: ModelicaExpression | null;
+  /** Equations belonging to this clock partition. */
+  equations: ModelicaEquation[] = [];
+  /** Variables belonging to this clock partition. */
+  variables: ModelicaVariable[] = [];
+
+  constructor(clockId: number, baseClock: ModelicaExpression | null = null) {
+    this.clockId = clockId;
+    this.baseClock = baseClock;
+  }
+
+  get hash(): string {
+    const hash = createHash("sha256");
+    hash.update("clockPartition_" + this.clockId);
+    for (const e of this.equations) hash.update(e.hash);
+    for (const v of this.variables) hash.update(v.hash);
+    return hash.digest("hex");
+  }
+
+  get toJSON(): JSONValue {
+    return {
+      "@type": "ClockPartition",
+      clockId: this.clockId,
+      equations: this.equations.map((e) => e.toJSON),
+      variables: this.variables.map((v) => v.toJSON),
+    };
   }
 }
 

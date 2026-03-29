@@ -11,6 +11,7 @@ import {
   ModelicaBooleanLiteral,
   ModelicaBooleanVariable,
   ModelicaBreakStatement,
+  ModelicaClockPartition,
   ModelicaClockVariable,
   ModelicaColonExpression,
   ModelicaComplexAssignmentStatement,
@@ -815,6 +816,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
 
     if (this.activeClassStack.length === 0) {
       this.#assembleStateMachines(args[1]);
+      this.#partitionClocks(args[1]);
 
       // Extract experiment annotation (StartTime, StopTime, Tolerance, Interval)
       for (const ann of node.annotations) {
@@ -2371,6 +2373,110 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         }
       }
     }
+  }
+
+  /**
+   * Post-processes the flattened DAE to partition equations into clock domains.
+   * Scans for `sample()` function calls in equations, assigns each a clock domain ID,
+   * and groups related equations and variables into `ModelicaClockPartition` instances.
+   *
+   * Equations that do not reference any `sample()` / `hold()` / `previous()` remain
+   * in the continuous-time domain (clockDomain = undefined).
+   */
+  #partitionClocks(dae: ModelicaDAE): void {
+    let nextClockId = 0;
+    // Map from sample() expression hash to clock domain ID
+    const sampleClockMap = new Map<string, number>();
+
+    // Pass 1: Scan all equations for sample() calls and assign clock IDs
+    const clockOps = new Set(["sample", "hold", "previous", "subSample", "superSample", "shiftSample", "backSample"]);
+
+    const findClockOps = (expr: ModelicaExpression): string | null => {
+      if (expr instanceof ModelicaFunctionCallExpression && clockOps.has(expr.functionName)) {
+        return expr.hash;
+      }
+      if (expr instanceof ModelicaFunctionCallExpression) {
+        for (const arg of expr.args) {
+          const found = findClockOps(arg);
+          if (found) return found;
+        }
+      }
+      if ("expression1" in expr && expr.expression1) {
+        const found = findClockOps(expr.expression1 as ModelicaExpression);
+        if (found) return found;
+      }
+      if ("expression2" in expr && expr.expression2) {
+        const found = findClockOps(expr.expression2 as ModelicaExpression);
+        if (found) return found;
+      }
+      if ("expression" in expr && expr.expression && expr.expression !== expr) {
+        const found = findClockOps(expr.expression as ModelicaExpression);
+        if (found) return found;
+      }
+      return null;
+    };
+
+    for (const eq of dae.equations) {
+      if (eq instanceof ModelicaSimpleEquation) {
+        const h1 = findClockOps(eq.expression1);
+        const h2 = findClockOps(eq.expression2);
+        const hash = h1 ?? h2;
+        if (hash) {
+          let clockId = sampleClockMap.get(hash);
+          if (clockId === undefined) {
+            clockId = nextClockId++;
+            sampleClockMap.set(hash, clockId);
+          }
+          eq.clockDomain = clockId;
+        }
+      }
+    }
+
+    // Pass 2: Build clock partitions from tagged equations
+    if (nextClockId === 0) return; // No clocked equations found
+
+    const partitionMap = new Map<number, ModelicaClockPartition>();
+    for (let i = 0; i < nextClockId; i++) {
+      partitionMap.set(i, new ModelicaClockPartition(i));
+    }
+
+    // Assign equations to partitions
+    for (const eq of dae.equations) {
+      if (eq.clockDomain !== undefined) {
+        partitionMap.get(eq.clockDomain)?.equations.push(eq);
+      }
+    }
+
+    // Tag variables referenced in clocked equations
+    const clockedVarNames = new Set<string>();
+    for (const eq of dae.equations) {
+      if (eq.clockDomain === undefined) continue;
+      if (eq instanceof ModelicaSimpleEquation) {
+        if (eq.expression1 instanceof ModelicaNameExpression) clockedVarNames.add(eq.expression1.name);
+        if (eq.expression2 instanceof ModelicaNameExpression) clockedVarNames.add(eq.expression2.name);
+      }
+    }
+
+    for (const v of dae.variables) {
+      if (clockedVarNames.has(v.name)) {
+        // Find which clock domain this variable belongs to
+        for (const eq of dae.equations) {
+          if (eq.clockDomain === undefined) continue;
+          if (eq instanceof ModelicaSimpleEquation) {
+            if (
+              (eq.expression1 instanceof ModelicaNameExpression && eq.expression1.name === v.name) ||
+              (eq.expression2 instanceof ModelicaNameExpression && eq.expression2.name === v.name)
+            ) {
+              v.clockDomain = eq.clockDomain;
+              partitionMap.get(eq.clockDomain)?.variables.push(v);
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    dae.clockPartitions = [...partitionMap.values()].filter((p) => p.equations.length > 0);
   }
 }
 
