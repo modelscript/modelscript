@@ -31,7 +31,6 @@ import {
   ModelicaStringVariable,
   ModelicaSubscriptedExpression,
   ModelicaUnaryExpression,
-  ModelicaWhenEquation,
 } from "./dae.js";
 import { ModelicaVariability } from "./syntax.js";
 
@@ -504,14 +503,7 @@ function detectTerminals3(variables: Fmi3Variable[]): Fmi3Terminal[] {
 // ── Internal helpers ──
 
 function countEventIndicators3(dae: ModelicaDAE): number {
-  let count = 0;
-  for (const eq of dae.equations) {
-    if (eq instanceof ModelicaWhenEquation) {
-      count++;
-      count += eq.elseWhenClauses.length;
-    }
-  }
-  return count;
+  return dae.eventIndicators.length;
 }
 
 function detectAliases3(dae: ModelicaDAE, variables: Fmi3Variable[]): Map<string, string> {

@@ -40,6 +40,10 @@ export class ModelicaDAE {
   diagnostics: ModelicaDiagnostic[] = [];
   /** Experiment annotation data (StartTime, StopTime, Tolerance, etc.). */
   experiment: { startTime?: number; stopTime?: number; tolerance?: number; interval?: number } = {};
+  /** Event indicators (zero-crossing functions) for state events. */
+  eventIndicators: ModelicaExpression[] = [];
+  /** Discrete state updates extracted from `when` clauses. */
+  whenClauses: ModelicaWhenEquation[] = [];
 
   constructor(name: string, description?: string | null) {
     this.name = name;

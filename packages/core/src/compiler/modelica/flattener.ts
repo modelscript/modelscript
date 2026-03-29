@@ -817,6 +817,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     if (this.activeClassStack.length === 0) {
       this.#assembleStateMachines(args[1]);
       this.#partitionClocks(args[1]);
+      this.#extractEventIndicators(args[1]);
 
       // Extract experiment annotation (StartTime, StopTime, Tolerance, Interval)
       for (const ann of node.annotations) {
@@ -2440,6 +2441,81 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       partitionMap.set(i, new ModelicaClockPartition(i));
     }
 
+    // Pass 2.5: Base-Clock Inference (GCD/LCM)
+    // Extract Clock(num, den) arguments from sample() calls and compute the global base clock
+    const clockExprs = new Map<number, ModelicaFunctionCallExpression>();
+    for (const eq of dae.equations) {
+      if (eq.clockDomain !== undefined && eq instanceof ModelicaSimpleEquation) {
+        if (!clockExprs.has(eq.clockDomain)) {
+          const findSample = (expr: ModelicaExpression): ModelicaFunctionCallExpression | null => {
+            if (expr instanceof ModelicaFunctionCallExpression && clockOps.has(expr.functionName)) return expr;
+            if (expr instanceof ModelicaFunctionCallExpression) {
+              for (const arg of expr.args) {
+                const found = findSample(arg);
+                if (found) return found;
+              }
+            }
+            if ("expression1" in expr && expr.expression1) {
+              const f = findSample(expr.expression1 as ModelicaExpression);
+              if (f) return f;
+            }
+            if ("expression2" in expr && expr.expression2) {
+              const f = findSample(expr.expression2 as ModelicaExpression);
+              if (f) return f;
+            }
+            if ("expression" in expr && expr.expression && expr.expression !== expr) {
+              const f = findSample(expr.expression as ModelicaExpression);
+              if (f) return f;
+            }
+            return null;
+          };
+          const call = findSample(eq.expression1) ?? findSample(eq.expression2);
+          if (call) clockExprs.set(eq.clockDomain, call);
+        }
+      }
+    }
+
+    // Helper math functions for base-clock inference
+    const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
+    const lcm = (a: number, b: number): number => (a * b) / gcd(a, b);
+
+    // Compute base clock: GCD(nums) / LCM(dens)
+    let baseNum = 0;
+    let baseDen = 1;
+    let hasFractionalClocks = false;
+
+    for (const call of clockExprs.values()) {
+      // Look for Clock(num, den) in the arguments of sample/hold
+      const clockArg = call.args.find((a) => a instanceof ModelicaFunctionCallExpression && a.functionName === "Clock");
+      if (clockArg instanceof ModelicaFunctionCallExpression && clockArg.args.length === 2) {
+        const numExpr = clockArg.args[0];
+        const denExpr = clockArg.args[1];
+        if (numExpr instanceof ModelicaIntegerLiteral && denExpr instanceof ModelicaIntegerLiteral) {
+          const num = numExpr.value;
+          const den = denExpr.value;
+          if (hasFractionalClocks) {
+            baseNum = gcd(baseNum, num);
+            baseDen = lcm(baseDen, den);
+          } else {
+            baseNum = num;
+            baseDen = den;
+            hasFractionalClocks = true;
+          }
+        }
+      }
+    }
+
+    const globalBaseClock = hasFractionalClocks
+      ? new ModelicaFunctionCallExpression("Clock", [
+          new ModelicaIntegerLiteral(baseNum),
+          new ModelicaIntegerLiteral(baseDen),
+        ])
+      : null;
+
+    for (const partition of partitionMap.values()) {
+      partition.baseClock = globalBaseClock;
+    }
+
     // Assign equations to partitions
     for (const eq of dae.equations) {
       if (eq.clockDomain !== undefined) {
@@ -2477,6 +2553,80 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     }
 
     dae.clockPartitions = [...partitionMap.values()].filter((p) => p.equations.length > 0);
+  }
+
+  /**
+   * Scans the fully assembled DAE for relational operators and `when` clauses.
+   * Extracts zero-crossing expressions into DAE `eventIndicators` and discrete
+   * updates into `whenClauses`.
+   */
+  #extractEventIndicators(dae: ModelicaDAE): void {
+    const indicators = new Set<string>();
+
+    const extractExpr = (expr: ModelicaExpression) => {
+      if (expr instanceof ModelicaBinaryExpression) {
+        if (
+          expr.operator === ModelicaBinaryOperator.LESS_THAN ||
+          expr.operator === ModelicaBinaryOperator.LESS_THAN_OR_EQUAL ||
+          expr.operator === ModelicaBinaryOperator.GREATER_THAN ||
+          expr.operator === ModelicaBinaryOperator.GREATER_THAN_OR_EQUAL ||
+          expr.operator === ModelicaBinaryOperator.EQUALITY ||
+          expr.operator === ModelicaBinaryOperator.INEQUALITY
+        ) {
+          // Add `expr.operand1 - expr.operand2` as an event indicator
+          const diff = new ModelicaBinaryExpression(ModelicaBinaryOperator.SUBTRACTION, expr.operand1, expr.operand2);
+          const hash = diff.hash;
+          if (!indicators.has(hash)) {
+            indicators.add(hash);
+            dae.eventIndicators.push(diff);
+          }
+        }
+        extractExpr(expr.operand1);
+        extractExpr(expr.operand2);
+      } else if (expr instanceof ModelicaUnaryExpression) {
+        extractExpr(expr.operand);
+      } else if (expr instanceof ModelicaFunctionCallExpression) {
+        for (const arg of expr.args) extractExpr(arg);
+      } else if (expr instanceof ModelicaIfElseExpression) {
+        extractExpr(expr.condition);
+        extractExpr(expr.thenExpression);
+        for (const clause of expr.elseIfClauses) {
+          extractExpr(clause.condition);
+          extractExpr(clause.expression);
+        }
+        extractExpr(expr.elseExpression);
+      } else if (expr instanceof ModelicaArray) {
+        for (const el of expr.elements) extractExpr(el);
+      }
+    };
+
+    const extractEq = (eq: ModelicaEquation) => {
+      if (eq instanceof ModelicaSimpleEquation) {
+        extractExpr(eq.expression1);
+        extractExpr(eq.expression2);
+      } else if (eq instanceof ModelicaIfEquation) {
+        extractExpr(eq.condition);
+        for (const e of eq.equations) extractEq(e);
+        for (const elseIf of eq.elseIfClauses) {
+          extractExpr(elseIf.condition);
+          for (const e of elseIf.equations) extractEq(e);
+        }
+        for (const e of eq.elseEquations) extractEq(e);
+      } else if (eq instanceof ModelicaWhenEquation) {
+        dae.whenClauses.push(eq);
+        extractExpr(eq.condition);
+        for (const e of eq.equations) extractEq(e);
+        for (const elseWhen of eq.elseWhenClauses) {
+          extractExpr(elseWhen.condition);
+          for (const e of elseWhen.equations) extractEq(e);
+        }
+      } else if (eq instanceof ModelicaForEquation) {
+        for (const e of eq.equations) extractEq(e);
+      }
+    };
+
+    for (const eq of dae.equations) extractEq(eq);
+    for (const eq of dae.initialEquations) extractEq(eq);
   }
 }
 

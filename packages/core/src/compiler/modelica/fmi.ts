@@ -26,7 +26,6 @@ import {
   ModelicaStringVariable,
   ModelicaSubscriptedExpression,
   ModelicaUnaryExpression,
-  ModelicaWhenEquation,
 } from "./dae.js";
 import { ModelicaVariability } from "./syntax.js";
 
@@ -244,14 +243,7 @@ export function generateFmu(dae: ModelicaDAE, options: FmuOptions, stateVars?: S
  * Each when-equation condition (main + elseWhen) becomes one event indicator.
  */
 function countEventIndicators(dae: ModelicaDAE): number {
-  let count = 0;
-  for (const eq of dae.equations) {
-    if (eq instanceof ModelicaWhenEquation) {
-      count++; // Main condition
-      count += eq.elseWhenClauses.length; // Each elsewhen clause
-    }
-  }
-  return count;
+  return dae.eventIndicators.length;
 }
 
 /**
