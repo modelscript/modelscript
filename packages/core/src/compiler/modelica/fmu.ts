@@ -32,7 +32,8 @@ interface FmuScalarVariable {
   causality: "input" | "output" | "local" | "parameter" | "calculatedParameter" | "independent";
   variability: "continuous" | "discrete" | "fixed" | "tunable" | "constant";
   description: string;
-  start?: number;
+  type: "Real" | "Integer" | "Boolean" | "String" | "Enumeration";
+  start?: number | boolean | string;
 }
 
 // ── XML parsing ──
@@ -73,7 +74,14 @@ function parseFmuModelDescription(xml: string): {
       "continuous") as FmuScalarVariable["variability"];
     const varDesc = headerAttrs.match(/\bdescription\s*=\s*"([^"]*)"/)?.[1] ?? "";
 
-    // Extract start value from nested <Real>, <Integer>, etc.
+    // Extract type based on inner tags
+    let type: FmuScalarVariable["type"] = "Real";
+    if (attrs.includes("<Integer")) type = "Integer";
+    else if (attrs.includes("<Boolean")) type = "Boolean";
+    else if (attrs.includes("<String")) type = "String";
+    else if (attrs.includes("<Enumeration")) type = "Enumeration";
+
+    // Extract start value from nested tags
     const startMatch = attrs.match(/\bstart\s*=\s*"([^"]*)"/);
     const start = startMatch ? parseFloat(startMatch[1] ?? "") : undefined;
 
@@ -82,6 +90,7 @@ function parseFmuModelDescription(xml: string): {
       causality,
       variability,
       description: varDesc,
+      type,
       ...(Number.isFinite(start) ? { start: start as number } : {}),
     });
   }
@@ -159,23 +168,24 @@ function extractFromZip(zipData: Uint8Array, targetName: string): Uint8Array | n
 function createSyntheticConnector(
   parent: ModelicaClassInstance,
   isInput: boolean,
-  realType: ModelicaClassInstance | null,
+  baseType: ModelicaClassInstance | null,
+  typeName = "Real",
 ): ModelicaClassInstance {
   // If we have the predefined Real type, clone it and set classKind to CONNECTOR.
   // This makes the synthetic connector structurally identical to MSL's
   // `connector RealInput = input Real`, ensuring proper plug-compatibility.
-  if (realType) {
-    const connector = realType.clone();
+  if (baseType) {
+    const connector = baseType.clone();
     connector.classKind = ModelicaClassKind.CONNECTOR;
     // Keep the original Real name — isTypeCompatibleWith matches predefined types by name.
     // classKind=CONNECTOR is what makes diagram renderers recognize this as a port.
     connector.declaredElements = [];
     return connector;
   }
-  // Fallback when Real is not available (no MSL loaded)
+  // Fallback when base type is not available (no MSL loaded)
   const connector = new ModelicaClassInstance(parent);
   connector.classKind = ModelicaClassKind.CONNECTOR;
-  connector.name = isInput ? "RealInput" : "RealOutput";
+  connector.name = isInput ? `${typeName}Input` : `${typeName}Output`;
   connector.instantiated = true;
   connector.declaredElements = [];
 
@@ -436,8 +446,13 @@ export class ModelicaFmuEntity extends ModelicaClassInstance {
       this.declaredElements = [];
       this.#syntheticComponents = [];
 
-      // Resolve the predefined Real type for non-port component class instances
-      const realType = this.root?.resolveSimpleName("Real") as ModelicaClassInstance | null;
+      // Resolve the predefined types for non-port and port component class instances
+      const types = {
+        Real: this.root?.resolveSimpleName("Real") as ModelicaClassInstance | null,
+        Integer: this.root?.resolveSimpleName("Integer") as ModelicaClassInstance | null,
+        Boolean: this.root?.resolveSimpleName("Boolean") as ModelicaClassInstance | null,
+        String: this.root?.resolveSimpleName("String") as ModelicaClassInstance | null,
+      };
 
       // Segregate by causality to calculate port spacing
       const inputs = this.fmuVariables.filter((v) => v.causality === "input");
@@ -462,10 +477,14 @@ export class ModelicaFmuEntity extends ModelicaClassInstance {
           comp.causality = ModelicaCausality.OUTPUT;
         }
 
+        // Find the right base type for this FMU variable
+        const typeName = v.type === "Enumeration" ? "Integer" : v.type;
+        const baseType = types[typeName as keyof typeof types];
+
         if (isInput || isOutput) {
           // Create a synthetic CONNECTOR class instance so diagram renderers
           // recognise this component as a port (they filter for classKind === CONNECTOR).
-          comp.classInstance = createSyntheticConnector(this, isInput, realType);
+          comp.classInstance = createSyntheticConnector(this, isInput, baseType, typeName);
 
           let y = 0;
           if (isInput) {
@@ -508,9 +527,9 @@ export class ModelicaFmuEntity extends ModelicaClassInstance {
             return ModelicaComponentInstance.prototype.annotation.call(this, name, annotations) as T | null;
           };
         } else {
-          // Non-port variables: use Real type
-          if (realType) {
-            comp.classInstance = realType.clone();
+          // Non-port variables: use base type
+          if (baseType) {
+            comp.classInstance = baseType.clone();
           }
         }
 
