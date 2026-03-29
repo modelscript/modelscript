@@ -16,6 +16,7 @@
  * Supports real-time pacing via the RealtimePacer.
  */
 
+import type { UnitWarning } from "./coupling.js";
 import type { CosimMqttClient } from "./mqtt/client.js";
 import type { StepResult } from "./mqtt/protocol.js";
 import type { CoSimParticipant } from "./participant.js";
@@ -32,6 +33,8 @@ export interface OrchestratorCallbacks {
   onError?: (error: Error) => void;
   /** Called on state change. */
   onStateChange?: (state: string) => void;
+  /** Called when unit compatibility issues are detected. */
+  onUnitWarning?: (warnings: UnitWarning[]) => void;
 }
 
 /**
@@ -70,6 +73,16 @@ export class Orchestrator {
       await Promise.all(
         participants.map((p) => p.initialize(experiment.startTime, experiment.stopTime, experiment.stepSize)),
       );
+
+      // ── Unit validation ──
+      const unitWarnings = coupling.validateUnits();
+      if (unitWarnings.length > 0) {
+        this.callbacks.onUnitWarning?.(unitWarnings);
+        const errors = unitWarnings.filter((w) => w.severity === "error");
+        if (errors.length > 0) {
+          throw new Error(`Unit incompatibilities detected:\n${errors.map((e) => `  ${e.message}`).join("\n")}`);
+        }
+      }
 
       // ── Phase 2: Step loop ──
       this.session.transition("running");

@@ -5,6 +5,8 @@
  *
  * Defines which output variables from one participant feed into
  * which input variables of another participant.
+ */
+
 /**
  * Value type for co-simulation variable exchange.
  * Supports all FMI 2.0 scalar types: Real, Integer, Boolean, String.
@@ -16,11 +18,31 @@ export interface VariableCoupling {
   from: {
     participantId: string;
     variableName: string;
+    /** SI unit string from the source variable (optional). */
+    unit?: string | undefined;
   };
   to: {
     participantId: string;
     variableName: string;
+    /** SI unit string from the target variable (optional). */
+    unit?: string | undefined;
   };
+}
+
+/** Result from unit compatibility validation. */
+export interface UnitWarning {
+  /** Severity: 'error' for incompatible, 'warning' for differing but potentially compatible. */
+  severity: "error" | "warning";
+  /** Source participant and variable. */
+  from: string;
+  /** Target participant and variable. */
+  to: string;
+  /** Source unit. */
+  fromUnit: string;
+  /** Target unit. */
+  toUnit: string;
+  /** Human-readable message. */
+  message: string;
 }
 
 /**
@@ -67,6 +89,51 @@ export class CouplingGraph {
   }
 
   /**
+   * Validate unit compatibility across all couplings.
+   * Returns a list of warnings/errors for mismatched units.
+   */
+  validateUnits(): UnitWarning[] {
+    const warnings: UnitWarning[] = [];
+
+    for (const coupling of this.couplings) {
+      const fromUnit = coupling.from.unit;
+      const toUnit = coupling.to.unit;
+
+      // Skip if either side has no unit metadata
+      if (!fromUnit || !toUnit) continue;
+
+      // Exact match — no issue
+      if (fromUnit === toUnit) continue;
+
+      const fromLabel = `${coupling.from.participantId}.${coupling.from.variableName}`;
+      const toLabel = `${coupling.to.participantId}.${coupling.to.variableName}`;
+
+      // Check if units are in the same dimension family (potentially convertible)
+      if (areUnitsConvertible(fromUnit, toUnit)) {
+        warnings.push({
+          severity: "warning",
+          from: fromLabel,
+          to: toLabel,
+          fromUnit,
+          toUnit,
+          message: `Unit mismatch: '${fromUnit}' → '${toUnit}' (auto-conversion may be needed)`,
+        });
+      } else {
+        warnings.push({
+          severity: "error",
+          from: fromLabel,
+          to: toLabel,
+          fromUnit,
+          toUnit,
+          message: `Incompatible units: '${fromUnit}' cannot be connected to '${toUnit}'`,
+        });
+      }
+    }
+
+    return warnings;
+  }
+
+  /**
    * Apply coupling values: given a map of all participant outputs,
    * produce a map of participant ID → input values to inject.
    */
@@ -95,4 +162,75 @@ export class CouplingGraph {
   clear(): void {
     this.couplings.length = 0;
   }
+}
+
+// ── Unit compatibility checking ──
+
+/**
+ * Groups of units that share the same physical dimension and can be converted.
+ * Each sub-array contains unit strings that are dimensionally compatible.
+ */
+const UNIT_DIMENSION_FAMILIES: readonly string[][] = [
+  // Length
+  ["m", "km", "cm", "mm", "um", "nm", "in", "ft", "yd", "mi"],
+  // Time
+  ["s", "ms", "us", "min", "h", "d"],
+  // Mass
+  ["kg", "g", "mg", "lb", "oz", "t"],
+  // Temperature
+  ["K", "degC", "degF", "degR"],
+  // Angle
+  ["rad", "deg", "rev", "grad"],
+  // Force
+  ["N", "kN", "MN", "lbf", "dyn"],
+  // Pressure
+  ["Pa", "kPa", "MPa", "bar", "atm", "psi", "mmHg", "torr"],
+  // Energy
+  ["J", "kJ", "MJ", "cal", "kcal", "Wh", "kWh", "eV", "Btu"],
+  // Power
+  ["W", "kW", "MW", "hp"],
+  // Velocity
+  ["m/s", "km/h", "mph", "kn", "ft/s"],
+  // Voltage
+  ["V", "mV", "kV"],
+  // Current
+  ["A", "mA", "uA", "kA"],
+  // Resistance
+  ["Ohm", "kOhm", "MOhm"],
+  // Capacitance
+  ["F", "uF", "nF", "pF", "mF"],
+  // Inductance
+  ["H", "mH", "uH"],
+  // Frequency
+  ["Hz", "kHz", "MHz", "GHz", "1/s"],
+  // Torque
+  ["N.m", "N*m"],
+  // Angular velocity
+  ["rad/s", "rpm", "deg/s"],
+  // Volume
+  ["m3", "L", "mL", "cm3", "gal", "ft3"],
+  // Flow rate
+  ["m3/s", "L/s", "L/min", "gal/min"],
+  // Amount of substance
+  ["mol", "mmol", "kmol"],
+];
+
+/**
+ * Check if two unit strings are potentially convertible (same dimension family).
+ */
+function areUnitsConvertible(unit1: string, unit2: string): boolean {
+  const norm1 = unit1.trim();
+  const norm2 = unit2.trim();
+
+  for (const family of UNIT_DIMENSION_FAMILIES) {
+    const has1 = family.includes(norm1);
+    const has2 = family.includes(norm2);
+    if (has1 && has2) return true;
+    // If only one is in a family, they're incompatible
+    if (has1 || has2) return false;
+  }
+
+  // Both units unknown — we can't determine compatibility, assume convertible
+  // to avoid false positives on custom/derived units
+  return true;
 }
