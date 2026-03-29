@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { findSCCs } from "../../util/graph.js";
 import { StringWriter } from "../../util/io.js";
 
 import { BUILTIN_FUNCTIONS, BUILTIN_VARIABLES } from "./builtins.js";
-import type { ModelicaElseIfClause, ModelicaElseWhenClause } from "./dae.js";
 import {
   ModelicaArray,
   ModelicaAssignmentStatement,
@@ -18,6 +18,7 @@ import {
   ModelicaComprehensionExpression,
   ModelicaDAE,
   ModelicaDAEPrinter,
+  ModelicaDAEVisitor,
   ModelicaEnumerationLiteral,
   ModelicaEnumerationVariable,
   ModelicaEquation,
@@ -53,6 +54,8 @@ import {
   ModelicaWhenEquation,
   ModelicaWhenStatement,
   ModelicaWhileStatement,
+  type ModelicaElseIfClause,
+  type ModelicaElseWhenClause,
   type ModelicaFunctionTypeSignature,
   type ModelicaObject,
 } from "./dae.js";
@@ -6721,7 +6724,7 @@ const POLYMORPHIC_SYNC_OPS = new Set([
 ]);
 
 function isRealTyped(expr: ModelicaExpression, dae?: ModelicaDAE): boolean {
-  if (expr instanceof ModelicaRealVariable) return true;
+  if (expr instanceof ModelicaRealVariable && !expr.customTypeName) return true;
   if (expr instanceof ModelicaRealLiteral) return true;
   if (expr instanceof ModelicaArray) return expr.elements.some((e) => isRealTyped(e, dae));
   if (expr instanceof ModelicaBinaryExpression)
@@ -6729,15 +6732,15 @@ function isRealTyped(expr: ModelicaExpression, dae?: ModelicaDAE): boolean {
   if (expr instanceof ModelicaUnaryExpression) return isRealTyped(expr.operand, dae);
   if (expr instanceof ModelicaNameExpression && dae) {
     const exactMatch = dae.variables.find((variable) => variable.name === expr.name);
-    if (exactMatch instanceof ModelicaRealVariable) return true;
+    if (exactMatch instanceof ModelicaRealVariable && !exactMatch.customTypeName) return true;
 
     const prefix = expr.name + "[";
     const arrayElement = dae.variables.find((variable) => variable.name.startsWith(prefix));
-    if (arrayElement instanceof ModelicaRealVariable) return true;
+    if (arrayElement instanceof ModelicaRealVariable && !arrayElement.customTypeName) return true;
 
     // Check for encoded array function parameters (\0[dims]\0name)
     const encodedMatch = dae.variables.find((v) => v.name.startsWith("\0") && v.name.endsWith("\0" + expr.name));
-    if (encodedMatch instanceof ModelicaRealVariable) return true;
+    if (encodedMatch instanceof ModelicaRealVariable && !encodedMatch.customTypeName) return true;
   }
   if (expr instanceof ModelicaNameExpression && expr.name === "time") return true;
   if (expr instanceof ModelicaSubscriptedExpression) return isRealTyped(expr.base, dae);
@@ -7504,4 +7507,164 @@ function tryFoldBuiltinFunction(functionName: string, args: ModelicaExpression[]
   }
 
   return null;
+}
+
+/**
+ * Visitor that collects all variable names referenced in an expression.
+ */
+class VariableNameCollector extends ModelicaDAEVisitor<Set<string>> {
+  override visitNameExpression(node: ModelicaNameExpression, argument?: Set<string>): void {
+    if (argument) argument.add(node.name);
+  }
+  override visitRealVariable(node: ModelicaRealVariable, argument?: Set<string>): void {
+    if (argument) argument.add(node.name);
+  }
+  override visitIntegerVariable(node: ModelicaIntegerVariable, argument?: Set<string>): void {
+    if (argument) argument.add(node.name);
+  }
+  override visitBooleanVariable(node: ModelicaBooleanVariable, argument?: Set<string>): void {
+    if (argument) argument.add(node.name);
+  }
+}
+
+/**
+ * Sorts DAE equations and identifies strongly connected components (algebraic loops)
+ * using Tarjan's SCC algorithm.
+ */
+export function findAlgebraicLoops(dae: ModelicaDAE): void {
+  // Collect all continuous/discrete unknown variables
+  const unknowns = new Set<string>();
+  for (const v of dae.variables) {
+    if (v instanceof ModelicaRealVariable && v.variability === null) {
+      // It's a continuous variable (state or algebraic)
+      unknowns.add(v.name);
+    }
+    if (v instanceof ModelicaRealVariable && v.name.startsWith("der(")) {
+      unknowns.add(v.name);
+    }
+  }
+
+  // Build dependency graph of equations.
+  // We assume causal formulation for now: `lhs = rhs` where `lhs` is the single computed variable.
+  // For implicit equations `f(x, y) = 0`, we treat all unknown variables inside as mutually dependent.
+  const eqDeps = new Map<ModelicaEquation | string, Set<string>>();
+  const varToEq = new Map<string, ModelicaEquation | string>();
+  const collector = new VariableNameCollector();
+
+  // Temporary ID generator for implicit equations
+  let implicitCounter = 0;
+
+  for (const eq of dae.equations) {
+    let isExplicit = false;
+    if (eq instanceof ModelicaSimpleEquation && eq.expression1 instanceof ModelicaNameExpression) {
+      const computedVar = eq.expression1.name;
+      if (unknowns.has(computedVar)) {
+        isExplicit = true;
+        varToEq.set(computedVar, eq);
+        const deps = new Set<string>();
+        eq.expression2.accept(collector, deps);
+
+        const filteredDeps = new Set<string>();
+        for (const d of deps) {
+          if (unknowns.has(d)) filteredDeps.add(d);
+        }
+        eqDeps.set(eq, filteredDeps);
+      }
+    }
+
+    if (!isExplicit) {
+      const deps = new Set<string>();
+      eq.accept(collector, deps);
+
+      const referencedUnknowns: string[] = [];
+      for (const d of deps) {
+        if (unknowns.has(d)) referencedUnknowns.push(d);
+      }
+
+      if (referencedUnknowns.length > 0) {
+        const implicitId = `implicit_${implicitCounter++}`;
+        eqDeps.set(implicitId, new Set(referencedUnknowns));
+
+        for (const v of referencedUnknowns) {
+          if (!varToEq.has(v)) {
+            varToEq.set(v, implicitId);
+          }
+          const vEq = varToEq.get(v);
+          if (vEq) {
+            if (!eqDeps.has(vEq)) eqDeps.set(vEq, new Set());
+            const eqSet = eqDeps.get(vEq);
+            if (eqSet) {
+              for (const other of referencedUnknowns) {
+                if (other !== v) eqSet.add(other);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Helper for Tarjan's SCC
+  const getDeps = (v: string): string[] => {
+    const eqOrId = varToEq.get(v);
+    if (!eqOrId) return [];
+    return Array.from(eqDeps.get(eqOrId) || []);
+  };
+
+  const sccs = findSCCs(unknowns, getDeps);
+
+  // Reorder equations based on SCC topological order (if needed)
+  // And tag algebraic loops (SCCs with > 1 variable or self-loops)
+  const sortedEquations: ModelicaEquation[] = [];
+  const algebraicLoops: { variables: string[]; equations: ModelicaEquation[] }[] = [];
+
+  for (const scc of sccs) {
+    if (scc.length > 1) {
+      // Found an algebraic loop
+      const loopEqs: ModelicaEquation[] = [];
+      for (const v of scc) {
+        const eqOrId = varToEq.get(v);
+        // If it's a structural ModelicaEquation, add it.
+        if (eqOrId && typeof eqOrId !== "string") loopEqs.push(eqOrId);
+      }
+
+      // Also, find any purely implicit equations that exclusively belong to this SCC
+      for (const eq of dae.equations) {
+        if (!loopEqs.includes(eq)) {
+          const deps = new Set<string>();
+          eq.accept(collector, deps);
+          const hasSccVar = Array.from(deps).some((d) => scc.includes(d));
+          if (hasSccVar) {
+            loopEqs.push(eq);
+          }
+        }
+      }
+
+      algebraicLoops.push({ variables: scc, equations: loopEqs });
+      sortedEquations.push(...loopEqs);
+    } else if (scc.length === 1) {
+      // Single variable. Check if it's a self-loop.
+      const v = scc[0];
+      if (v !== undefined) {
+        const eqOrId = varToEq.get(v);
+        if (eqOrId) {
+          if (eqDeps.get(eqOrId)?.has(v)) {
+            const eqToPush = typeof eqOrId === "string" ? null : eqOrId;
+            if (eqToPush) {
+              algebraicLoops.push({ variables: scc, equations: [eqToPush] });
+              sortedEquations.push(eqToPush);
+            }
+          } else if (typeof eqOrId !== "string") {
+            sortedEquations.push(eqOrId);
+          }
+        }
+      }
+    }
+  }
+
+  // dae.equations = [ ...unassigned equations, ...sortedEquations ]
+  // (In a full BLT solver, we'd replace dae.equations completely. For now, we just log them or store them).
+  if (algebraicLoops.length > 0) {
+    console.log(`[DAE] Found ${algebraicLoops.length} algebraic loop(s) in ${dae.name}`);
+  }
 }

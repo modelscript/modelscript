@@ -4,7 +4,7 @@ import type { FileSystem } from "../util/filesystem.js";
 import { StringWriter } from "../util/io.js";
 import type { Parser, Tree } from "../util/tree-sitter.js";
 import { ModelicaDAE, ModelicaDAEPrinter } from "./modelica/dae.js";
-import { ModelicaFlattener } from "./modelica/flattener.js";
+import { ModelicaFlattener, findAlgebraicLoops } from "./modelica/flattener.js";
 import {
   ModelicaClassInstance,
   ModelicaComponentInstance,
@@ -118,6 +118,7 @@ export class Context extends Scope {
     instance.accept(flattener, ["", dae]);
     flattener.generateFlowBalanceEquations(dae);
     flattener.foldDAEConstants(dae);
+    findAlgebraicLoops(dae);
     // Check for validation errors (e.g. invalid modification targets)
     if (instance instanceof ModelicaClassInstance && this.#hasErrors(instance)) return null;
     // Check for flattener-level diagnostics (e.g. invalid for-loop iterators, assignment to input/constant)
