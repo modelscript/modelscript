@@ -162,6 +162,7 @@ function createSyntheticConnector(parent: ModelicaClassInstance, isInput: boolea
   connector.name = isInput ? "RealInput" : "RealOutput";
   connector.instantiated = true;
   connector.declaredElements = [];
+  connector.isSyntheticFmuConnector = true;
 
   // Triangle polygon points (Modelica coordinate system, -100..100)
   // Input:  filled blue triangle pointing right

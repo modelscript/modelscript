@@ -594,8 +594,13 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
 
     // Re-validate strictly AFTER MSL and parser are ready!
     console.log(`[lsp] Initialization complete. Re-validating ${documents.all().length} open documents.`);
-    for (const doc of documents.all()) {
-      validateTextDocument(doc);
+
+    // We must run validation twice to ensure cross-file dependencies (like CosimSetup -> Controller)
+    // are resolved with the updated instances, regardless of the arbitrary documents.all() order.
+    for (let pass = 1; pass <= 2; pass++) {
+      for (const doc of documents.all()) {
+        await validateTextDocument(doc);
+      }
     }
 
     connection.sendNotification("modelscript/status", { state: "ready", message: "ModelScript" });
