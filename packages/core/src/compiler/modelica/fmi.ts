@@ -529,7 +529,7 @@ function generateModelDescriptionXml(
   if (opts.fmuType.modelExchange) {
     lines.push("");
     lines.push(
-      `  <ModelExchange modelIdentifier="${escapeXml(opts.modelIdentifier)}" canGetAndSetFMUstate="true" canSerializeFMUstate="true" providesDirectionalDerivative="true" />`,
+      `  <ModelExchange modelIdentifier="${escapeXml(opts.modelIdentifier)}" completedIntegratorStepNotNeeded="true" canGetAndSetFMUstate="true" canSerializeFMUstate="true" providesDirectionalDerivative="true" />`,
     );
   }
 
@@ -537,7 +537,7 @@ function generateModelDescriptionXml(
   if (opts.fmuType.coSimulation) {
     lines.push("");
     lines.push(
-      `  <CoSimulation modelIdentifier="${escapeXml(opts.modelIdentifier)}" canGetAndSetFMUstate="true" canSerializeFMUstate="true" providesDirectionalDerivative="true" canInterpolateInputs="true" />`,
+      `  <CoSimulation modelIdentifier="${escapeXml(opts.modelIdentifier)}" canHandleVariableCommunicationStepSize="true" canInterpolateInputs="true" maxOutputDerivativeOrder="0" canGetAndSetFMUstate="true" canSerializeFMUstate="true" providesDirectionalDerivative="true" />`,
     );
   }
 
