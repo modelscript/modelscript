@@ -237,10 +237,14 @@ export async function activate(context: vscode.ExtensionContext) {
     }),
   );
 
-  // Register project tree view
+  // Register project tree view (with drag support for FMU nodes)
   const projectTreeProvider = new ProjectTreeProvider(client);
+  projectTreeProvider.onDragStart = (data) => {
+    diagramProvider.postToActiveWebviews({ type: "startPlacement", ...data });
+  };
   const projectTreeView = vscode.window.createTreeView("modelscript.projectTree", {
     treeDataProvider: projectTreeProvider,
+    dragAndDropController: projectTreeProvider,
     canSelectMany: false,
   });
   context.subscriptions.push(projectTreeView);
@@ -439,6 +443,12 @@ export async function activate(context: vscode.ExtensionContext) {
   moWatcher.onDidCreate(() => projectTreeProvider.refresh());
   moWatcher.onDidDelete(() => projectTreeProvider.refresh());
   context.subscriptions.push(moWatcher);
+
+  // Watch for .xml file changes (FMU model descriptions) to refresh the project tree
+  const xmlWatcher = vscode.workspace.createFileSystemWatcher("**/*.xml");
+  xmlWatcher.onDidCreate(() => projectTreeProvider.refresh());
+  xmlWatcher.onDidDelete(() => projectTreeProvider.refresh());
+  context.subscriptions.push(xmlWatcher);
 
   // Register the custom editor provider for modelica diagrams
   context.subscriptions.push(
