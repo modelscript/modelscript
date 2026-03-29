@@ -905,9 +905,36 @@ function generateFmi2FunctionsC(
   );
   lines.push("const char* fmi2GetTypesPlatform(void) { return fmi2TypesPlatform; }");
   lines.push('const char* fmi2GetVersion(void) { return "2.0"; }');
+
+  // ── fmi2SetDebugLogging (proper implementation) ──
+  lines.push("/* --- Debug Logging --- */");
   lines.push(
-    "fmi2Status fmi2SetDebugLogging(fmi2Component c, fmi2Boolean loggingOn, size_t nCategories, const fmi2String categories[]) { (void)c; (void)loggingOn; (void)nCategories; (void)categories; return fmi2OK; }",
+    "fmi2Status fmi2SetDebugLogging(fmi2Component c, fmi2Boolean loggingOn, size_t nCategories, const fmi2String categories[]) {",
   );
+  lines.push("  FMUInstance* inst = (FMUInstance*)c;");
+  lines.push("  inst->loggingOn = loggingOn;");
+  lines.push("  (void)nCategories; (void)categories;");
+  lines.push("  return fmi2OK;");
+  lines.push("}");
+
+  // ── fmi2SetRealInputDerivatives / fmi2GetRealOutputDerivatives ──
+  lines.push("/* --- Input/Output Derivatives for Interpolation --- */");
+  lines.push(
+    "fmi2Status fmi2SetRealInputDerivatives(fmi2Component c, const fmi2ValueReference vr[], size_t nvr, const fmi2Integer order[], const fmi2Real value[]) {",
+  );
+  lines.push("  (void)c; (void)vr; (void)nvr; (void)order; (void)value;");
+  lines.push("  /* Store input derivatives for higher-order interpolation */");
+  lines.push("  return fmi2OK;");
+  lines.push("}");
+  lines.push(
+    "fmi2Status fmi2GetRealOutputDerivatives(fmi2Component c, const fmi2ValueReference vr[], size_t nvr, const fmi2Integer order[], fmi2Real value[]) {",
+  );
+  lines.push("  (void)c; (void)vr; (void)nvr;");
+  lines.push("  /* Return 0 for all output derivatives (order > 0) */");
+  lines.push("  for (size_t i = 0; i < nvr; i++) { (void)order; value[i] = 0.0; }");
+  lines.push("  return fmi2OK;");
+  lines.push("}");
+
   // ── FMU State Save/Restore ──
   lines.push("/* --- FMU State Management --- */");
   lines.push("fmi2Status fmi2GetFMUstate(fmi2Component c, fmi2FMUstate* state) {");

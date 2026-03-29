@@ -29,6 +29,8 @@ export interface FmuArchiveOptions extends FmuOptions {
   includeSources?: boolean;
   /** Include serialized model.json (default: true). */
   includeModelJson?: boolean;
+  /** Additional resource files to bundle in `resources/` (filename → contents). */
+  resourceFiles?: Map<string, Uint8Array>;
 }
 
 /** Result of FMU archive generation. */
@@ -84,6 +86,13 @@ export function buildFmuArchive(
   if (options.includeModelJson !== false) {
     const modelJson = JSON.stringify(dae.toJSON, null, 2);
     files.set("resources/model.json", encoder.encode(modelJson));
+  }
+
+  // ── Additional resource files ──
+  if (options.resourceFiles) {
+    for (const [name, data] of options.resourceFiles) {
+      files.set(`resources/${name}`, data);
+    }
   }
 
   // ── Build ZIP archive ──
@@ -334,6 +343,8 @@ fmi2Status fmi2GetRealStatus(fmi2Component, const fmi2StatusKind, fmi2Real*);
 fmi2Status fmi2GetIntegerStatus(fmi2Component, const fmi2StatusKind, fmi2Integer*);
 fmi2Status fmi2GetBooleanStatus(fmi2Component, const fmi2StatusKind, fmi2Boolean*);
 fmi2Status fmi2GetStringStatus(fmi2Component, const fmi2StatusKind, fmi2String*);
+fmi2Status fmi2SetRealInputDerivatives(fmi2Component, const fmi2ValueReference[], size_t, const fmi2Integer[], const fmi2Real[]);
+fmi2Status fmi2GetRealOutputDerivatives(fmi2Component, const fmi2ValueReference[], size_t, const fmi2Integer[], fmi2Real[]);
 
 #endif
 `;

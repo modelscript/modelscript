@@ -11,15 +11,21 @@
  * FMI 2.0 specification: https://fmi-standard.org/
  */
 
-import type { ModelicaDAE, ModelicaVariable } from "./dae.js";
+import type { ModelicaDAE, ModelicaExpression, ModelicaVariable } from "./dae.js";
 import {
+  ModelicaArray,
+  ModelicaBinaryExpression,
   ModelicaBooleanVariable,
   ModelicaEnumerationVariable,
+  ModelicaFunctionCallExpression,
+  ModelicaIfElseExpression,
   ModelicaIntegerVariable,
   ModelicaNameExpression,
   ModelicaRealVariable,
   ModelicaSimpleEquation,
   ModelicaStringVariable,
+  ModelicaSubscriptedExpression,
+  ModelicaUnaryExpression,
   ModelicaWhenEquation,
 } from "./dae.js";
 import { ModelicaVariability } from "./syntax.js";
@@ -50,10 +56,16 @@ export interface FmiScalarVariable {
   start?: number;
   /** SI unit string (optional). */
   unit?: string;
+  /** Display unit (optional). */
+  displayUnit?: string;
   /** For state variables: index of the corresponding derivative variable. */
   derivative?: number;
   /** Alias type: "noAlias" (default), "alias", or "negatedAlias". */
   alias?: "noAlias" | "alias" | "negatedAlias";
+  /** FMI 2.0 initial attribute. */
+  initial?: "exact" | "approx" | "calculated";
+  /** Declared type name (for TypeDefinitions linkage). */
+  declaredType?: string;
 }
 
 /** FMU type support flags. */
@@ -136,11 +148,24 @@ export function generateFmu(dae: ModelicaDAE, options: FmuOptions, stateVars?: S
   // Map from state variable name → its valueReference (for derivative linkage)
   const stateVarRefs = new Map<string, number>();
   const states = stateVars ?? new Set<string>();
+  /** Enumeration type definitions: typeName → literals. */
+  const enumTypes = new Map<string, { name: string; description: string | null }[]>();
 
   for (const v of dae.variables) {
     const sv = mapVariable(v, valueRef++);
     scalarVariables.push(sv);
 
+    // Track enumeration type names for TypeDefinitions
+    if (v instanceof ModelicaEnumerationVariable && v.enumerationLiterals.length > 0) {
+      const typeName = v.enumerationLiterals[0]?.typeName;
+      if (typeName && !enumTypes.has(typeName)) {
+        enumTypes.set(
+          typeName,
+          v.enumerationLiterals.map((lit) => ({ name: lit.stringValue, description: lit.description })),
+        );
+      }
+      if (typeName) sv.declaredType = typeName;
+    }
     // Track state variable references for derivative linkage
     if (states.has(v.name)) {
       stateVarRefs.set(v.name, sv.valueReference);
@@ -180,6 +205,9 @@ export function generateFmu(dae: ModelicaDAE, options: FmuOptions, stateVars?: S
     }
   }
 
+  // ── Compute dependencies ──
+  const deps = computeDependencies(dae, scalarVariables, outputRefs, derivativeRefs, initialUnknownRefs);
+
   // ── Generate modelDescription.xml ──
   const fmuType = options.fmuType ?? { modelExchange: true, coSimulation: true };
   const nEventIndicators = countEventIndicators(dae);
@@ -192,6 +220,8 @@ export function generateFmu(dae: ModelicaDAE, options: FmuOptions, stateVars?: S
     fmuType,
     nEventIndicators,
     aliasMap,
+    deps,
+    enumTypes,
   });
 
   return {
@@ -261,6 +291,83 @@ function detectAliases(dae: ModelicaDAE, scalarVariables: FmiScalarVariable[]): 
   return aliasMap;
 }
 
+/**
+ * Compute variable dependency graph for ModelStructure.
+ * For each output/derivative/initial-unknown, find which inputs/states it depends on.
+ */
+function computeDependencies(
+  dae: ModelicaDAE,
+  scalarVariables: FmiScalarVariable[],
+  outputRefs: number[],
+  derivativeRefs: number[],
+  initialUnknownRefs: number[],
+): Map<number, number[]> {
+  const deps = new Map<number, number[]>();
+  const svByName = new Map<string, FmiScalarVariable>();
+  for (const sv of scalarVariables) svByName.set(sv.name, sv);
+
+  // Build a map from LHS variable name → equation RHS names
+  const equationDeps = new Map<string, Set<string>>();
+  for (const eq of dae.equations) {
+    if (!(eq instanceof ModelicaSimpleEquation)) continue;
+    const lhs = eq.expression1;
+    if (lhs instanceof ModelicaNameExpression) {
+      const names = new Set<string>();
+      collectExpressionNames(eq.expression2, names);
+      equationDeps.set(lhs.name, names);
+    }
+  }
+
+  const allUnknownRefs = [...outputRefs, ...derivativeRefs, ...initialUnknownRefs];
+  for (const ref of allUnknownRefs) {
+    const sv = scalarVariables.find((v) => v.valueReference === ref);
+    if (!sv) continue;
+
+    const rhsNames = equationDeps.get(sv.name);
+    if (!rhsNames) continue;
+
+    // Map referenced names to their value references
+    const depRefs: number[] = [];
+    for (const name of rhsNames) {
+      const depSv = svByName.get(name);
+      if (depSv && depSv.valueReference !== ref) {
+        depRefs.push(depSv.valueReference);
+      }
+    }
+    if (depRefs.length > 0) {
+      deps.set(
+        ref,
+        depRefs.sort((a, b) => a - b),
+      );
+    }
+  }
+
+  return deps;
+}
+
+/** Recursively collect all variable name references from an expression. */
+function collectExpressionNames(expr: ModelicaExpression, names: Set<string>): void {
+  if (expr instanceof ModelicaNameExpression) {
+    names.add(expr.name);
+  } else if (expr instanceof ModelicaBinaryExpression) {
+    collectExpressionNames(expr.operand1, names);
+    collectExpressionNames(expr.operand2, names);
+  } else if (expr instanceof ModelicaUnaryExpression) {
+    collectExpressionNames(expr.operand, names);
+  } else if (expr instanceof ModelicaSubscriptedExpression) {
+    collectExpressionNames(expr.base, names);
+    for (const sub of expr.subscripts) collectExpressionNames(sub, names);
+  } else if (expr instanceof ModelicaArray) {
+    for (const el of expr.elements) collectExpressionNames(el, names);
+  } else if (expr instanceof ModelicaIfElseExpression) {
+    collectExpressionNames(expr.condition, names);
+    collectExpressionNames(expr.thenExpression, names);
+    collectExpressionNames(expr.elseExpression, names);
+  } else if (expr instanceof ModelicaFunctionCallExpression) {
+    for (const arg of expr.args) collectExpressionNames(arg, names);
+  }
+}
+
 /** Map a Modelica variable to an FMI scalar variable. */
 function mapVariable(v: ModelicaVariable, valueRef: number): FmiScalarVariable {
   const sv: FmiScalarVariable = {
@@ -293,6 +400,16 @@ function mapVariable(v: ModelicaVariable, valueRef: number): FmiScalarVariable {
     const unitVal = extractStringLiteral(unitAttr);
     if (unitVal) sv.unit = unitVal;
   }
+  // Extract displayUnit
+  const displayUnitAttr = v.attributes.get("displayUnit");
+  if (displayUnitAttr) {
+    const duVal = extractStringLiteral(displayUnitAttr);
+    if (duVal) sv.displayUnit = duVal;
+  }
+
+  // Determine initial attribute per FMI 2.0 spec
+  const initialVal = mapInitial(sv.causality, sv.variability);
+  if (initialVal) sv.initial = initialVal;
 
   return sv;
 }
@@ -328,6 +445,21 @@ function mapVariability(v: ModelicaVariable): FmiVariability {
     default:
       return "continuous";
   }
+}
+
+/** Determine the FMI 2.0 `initial` attribute from causality + variability. */
+function mapInitial(
+  causality: FmiCausality,
+  variability: FmiVariability,
+): "exact" | "approx" | "calculated" | undefined {
+  if (causality === "parameter") return "exact";
+  if (causality === "input") return undefined; // inputs have no initial
+  if (causality === "independent") return undefined;
+  if (causality === "output") return "calculated";
+  // causality === "local"
+  if (variability === "constant") return "exact";
+  if (variability === "fixed" || variability === "tunable") return "calculated";
+  return "calculated";
 }
 
 /** Extract a numeric literal value from a DAE expression. */
@@ -374,7 +506,9 @@ function generateModelDescriptionXml(
     initialUnknownRefs: number[];
     fmuType: FmuTypeFlags;
     nEventIndicators: number;
+    deps: Map<number, number[]>;
     aliasMap: Map<string, string>;
+    enumTypes: Map<string, { name: string; description: string | null }[]>;
   },
 ): string {
   const lines: string[] = [];
@@ -403,9 +537,20 @@ function generateModelDescriptionXml(
   if (opts.fmuType.coSimulation) {
     lines.push("");
     lines.push(
-      `  <CoSimulation modelIdentifier="${escapeXml(opts.modelIdentifier)}" canGetAndSetFMUstate="true" canSerializeFMUstate="true" providesDirectionalDerivative="true" />`,
+      `  <CoSimulation modelIdentifier="${escapeXml(opts.modelIdentifier)}" canGetAndSetFMUstate="true" canSerializeFMUstate="true" providesDirectionalDerivative="true" canInterpolateInputs="true" />`,
     );
   }
+
+  // LogCategories
+  lines.push("");
+  lines.push("  <LogCategories>");
+  lines.push('    <Category name="logAll" />');
+  lines.push('    <Category name="logError" />');
+  lines.push('    <Category name="logEvents" />');
+  lines.push('    <Category name="logStatusWarning" />');
+  lines.push('    <Category name="logStatusDiscard" />');
+  lines.push('    <Category name="logStatusPending" />');
+  lines.push("  </LogCategories>");
 
   // Default experiment
   lines.push("");
@@ -414,6 +559,38 @@ function generateModelDescriptionXml(
   lines.push(`    stopTime="${opts.stopTime ?? 1}"`);
   lines.push(`    stepSize="${opts.stepSize ?? 0.001}" />`);
 
+  // UnitDefinitions
+  const units = new Set<string>();
+  for (const sv of variables) {
+    if (sv.unit) units.add(sv.unit);
+    if (sv.displayUnit) units.add(sv.displayUnit);
+  }
+  if (units.size > 0) {
+    lines.push("");
+    lines.push("  <UnitDefinitions>");
+    for (const u of units) {
+      lines.push(`    <Unit name="${escapeXml(u)}" />`);
+    }
+    lines.push("  </UnitDefinitions>");
+  }
+
+  // TypeDefinitions (enumerations)
+  if (opts.enumTypes.size > 0) {
+    lines.push("");
+    lines.push("  <TypeDefinitions>");
+    for (const [typeName, literals] of opts.enumTypes) {
+      lines.push(`    <SimpleType name="${escapeXml(typeName)}">`);
+      lines.push("      <Enumeration>");
+      for (const lit of literals) {
+        const descAttr = lit.description ? ` description="${escapeXml(lit.description)}"` : "";
+        lines.push(`        <Item name="${escapeXml(lit.name)}"${descAttr} />`);
+      }
+      lines.push("      </Enumeration>");
+      lines.push("    </SimpleType>");
+    }
+    lines.push("  </TypeDefinitions>");
+  }
+
   // Model variables
   lines.push("");
   lines.push("  <ModelVariables>");
@@ -421,13 +598,16 @@ function generateModelDescriptionXml(
     lines.push(`    <!-- ${escapeXml(sv.name)} -->`);
     const descAttr = sv.description ? ` description="${escapeXml(sv.description)}"` : "";
     const aliasAttr = sv.alias && sv.alias !== "noAlias" ? ` alias="${sv.alias}"` : "";
+    const initialAttr = sv.initial ? ` initial="${sv.initial}"` : "";
     lines.push(
-      `    <ScalarVariable name="${escapeXml(sv.name)}" valueReference="${sv.valueReference}" causality="${sv.causality}" variability="${sv.variability}"${descAttr}${aliasAttr}>`,
+      `    <ScalarVariable name="${escapeXml(sv.name)}" valueReference="${sv.valueReference}" causality="${sv.causality}" variability="${sv.variability}"${descAttr}${aliasAttr}${initialAttr}>`,
     );
     const startAttr = sv.start !== undefined ? ` start="${sv.start}"` : "";
     const unitAttr = sv.unit ? ` unit="${escapeXml(sv.unit)}"` : "";
+    const duAttr = sv.displayUnit ? ` displayUnit="${escapeXml(sv.displayUnit)}"` : "";
     const derivAttr = sv.derivative !== undefined ? ` derivative="${sv.derivative}"` : "";
-    lines.push(`      <${sv.type}${startAttr}${unitAttr}${derivAttr} />`);
+    const declTypeAttr = sv.declaredType ? ` declaredType="${escapeXml(sv.declaredType)}"` : "";
+    lines.push(`      <${sv.type}${startAttr}${unitAttr}${duAttr}${derivAttr}${declTypeAttr} />`);
     lines.push("    </ScalarVariable>");
   }
   lines.push("  </ModelVariables>");
@@ -440,7 +620,7 @@ function generateModelDescriptionXml(
     lines.push("    <Outputs>");
     for (const ref of opts.outputRefs) {
       const idx = variables.findIndex((v) => v.valueReference === ref);
-      if (idx >= 0) lines.push(`      <Unknown index="${idx + 1}" />`);
+      if (idx >= 0) lines.push(formatUnknown(idx + 1, ref, opts.deps, variables));
     }
     lines.push("    </Outputs>");
   }
@@ -449,7 +629,7 @@ function generateModelDescriptionXml(
     lines.push("    <Derivatives>");
     for (const ref of opts.derivativeRefs) {
       const idx = variables.findIndex((v) => v.valueReference === ref);
-      if (idx >= 0) lines.push(`      <Unknown index="${idx + 1}" />`);
+      if (idx >= 0) lines.push(formatUnknown(idx + 1, ref, opts.deps, variables));
     }
     lines.push("    </Derivatives>");
   }
@@ -458,7 +638,7 @@ function generateModelDescriptionXml(
     lines.push("    <InitialUnknowns>");
     for (const ref of opts.initialUnknownRefs) {
       const idx = variables.findIndex((v) => v.valueReference === ref);
-      if (idx >= 0) lines.push(`      <Unknown index="${idx + 1}" />`);
+      if (idx >= 0) lines.push(formatUnknown(idx + 1, ref, opts.deps, variables));
     }
     lines.push("    </InitialUnknowns>");
   }
@@ -468,4 +648,22 @@ function generateModelDescriptionXml(
   lines.push("</fmiModelDescription>");
 
   return lines.join("\n");
+}
+
+/** Format an <Unknown> element with optional dependency attributes. */
+function formatUnknown(
+  index: number,
+  ref: number,
+  deps: Map<number, number[]>,
+  variables: FmiScalarVariable[],
+): string {
+  const depRefs = deps.get(ref);
+  if (!depRefs || depRefs.length === 0) {
+    return `      <Unknown index="${index}" />`;
+  }
+  // Convert VRs to 1-based indices
+  const depIndices = depRefs.map((vr) => variables.findIndex((v) => v.valueReference === vr) + 1).filter((i) => i > 0);
+  const depsAttr = ` dependencies="${depIndices.join(" ")}"`;
+  const kindsAttr = ` dependenciesKind="${depIndices.map(() => "dependent").join(" ")}"`;
+  return `      <Unknown index="${index}"${depsAttr}${kindsAttr} />`;
 }
