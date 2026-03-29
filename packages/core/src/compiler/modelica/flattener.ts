@@ -2841,6 +2841,33 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       }
     }
 
+    // Operator record dispatch for String(x): when the argument is an operator record,
+    // rewrite String(x) as RecordType.'String'(x) using the operator function.
+    if (functionName === "String" && flatArgs.length >= 1) {
+      const arg0 = flatArgs[0];
+      if (arg0) {
+        const stringOp = this.#resolveOperatorRecordFunction(arg0, "'String'", ctx);
+        if (stringOp) {
+          const { qualifiedName, resolvedClass } = stringOp;
+          this.#collectFunctionDefinition(qualifiedName, ctx, resolvedClass);
+          return new ModelicaFunctionCallExpression(qualifiedName, flatArgs);
+        }
+      }
+    }
+
+    // Operator record dispatch for '0' (zero literal): when zeros() is called with
+    // an operator record type argument, rewrite to RecordType.'0'() zero constructor.
+    if (functionName === "zeros" && flatArgs.length >= 1) {
+      const arg0 = flatArgs[0];
+      if (arg0) {
+        const zeroOp = this.#resolveOperatorRecordFunction(arg0, "'0'", ctx);
+        if (zeroOp) {
+          const { qualifiedName, resolvedClass } = zeroOp;
+          this.#collectFunctionDefinition(qualifiedName, ctx, resolvedClass);
+          return new ModelicaFunctionCallExpression(qualifiedName, []);
+        }
+      }
+    }
     // Pre-expansion size() resolution: resolve size(var, dim) directly from
     // class instance BEFORE arg expansion may lose inner dimension info.
     // E.g., size(b, 2) where b is Real[2, 0] — expansion loses the 0 dimension.
@@ -6288,6 +6315,13 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       ) {
         const negatedFirst = new ModelicaUnaryExpression(ModelicaUnaryOperator.UNARY_MINUS, operand.operand1);
         return new ModelicaBinaryExpression(operand.operator, negatedFirst, operand.operand2);
+      }
+      // Operator record dispatch: unary minus → RecordType.'-'.negate(x)
+      const operatorInfo = this.#resolveOperatorRecordFunction(operand, "'-'", ctx);
+      if (operatorInfo) {
+        const { qualifiedName, resolvedClass } = operatorInfo;
+        this.#collectFunctionDefinition(qualifiedName, ctx, resolvedClass);
+        return new ModelicaFunctionCallExpression(qualifiedName, [operand]);
       }
     }
     if (operator === ModelicaUnaryOperator.UNARY_PLUS) {

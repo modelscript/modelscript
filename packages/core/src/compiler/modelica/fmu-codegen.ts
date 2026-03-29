@@ -536,6 +536,12 @@ function generateFmi2FunctionsC(
       `  int activeState_${si}; /* 0-indexed into states of SM ${si}: ${dae.stateMachines[si]?.name ?? ""} */`,
     );
   }
+  // ExternalObject handle fields
+  for (let ei = 0; ei < dae.externalObjects.length; ei++) {
+    const eo = dae.externalObjects[ei];
+    if (!eo) continue;
+    lines.push(`  void* extObj_${ei}; /* ${eo.typeName}: ${eo.variableName} */`);
+  }
   lines.push("} FMUInstance;");
   lines.push("");
 
@@ -554,6 +560,17 @@ function generateFmi2FunctionsC(
   lines.push("  return (fmi2Component)inst;");
   lines.push("}");
   lines.push("");
+
+  // Emit ExternalObject constructor calls right after fmi2Instantiate
+  if (dae.externalObjects.length > 0) {
+    lines.push("/* --- ExternalObject constructor stubs --- */");
+    for (let ei = 0; ei < dae.externalObjects.length; ei++) {
+      const eo = dae.externalObjects[ei];
+      if (!eo) continue;
+      lines.push(`/* TODO: inst->extObj_${ei} = ${sanitizeIdentifier(eo.constructorName)}(...); */`);
+    }
+    lines.push("");
+  }
 
   // ── fmi2SetupExperiment ──
   lines.push("fmi2Status fmi2SetupExperiment(fmi2Component c, fmi2Boolean toleranceDefined,");
@@ -831,6 +848,15 @@ function generateFmi2FunctionsC(
   lines.push("  for (int i = 0; i < N_STRING_VARS; i++) {");
   lines.push("    if (inst->model.stringVars[i]) free(inst->model.stringVars[i]);");
   lines.push("  }");
+  // ExternalObject destructor stubs
+  if (dae.externalObjects.length > 0) {
+    lines.push("  /* ExternalObject destructors */");
+    for (let ei = 0; ei < dae.externalObjects.length; ei++) {
+      const eo = dae.externalObjects[ei];
+      if (!eo) continue;
+      lines.push(`  /* TODO: ${sanitizeIdentifier(eo.destructorName)}(inst->extObj_${ei}); */`);
+    }
+  }
   lines.push("  free(inst);");
   lines.push("}");
   lines.push("");

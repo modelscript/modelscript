@@ -31,6 +31,11 @@ export class ModelicaDAE {
   functions: ModelicaDAE[] = [];
   /** External function declaration text (e.g. `external "C" ...`). */
   externalDecl: string | null = null;
+  /**
+   * Descriptors for variables whose type extends `ExternalObject`.
+   * Track constructor/destructor names for lifecycle management.
+   */
+  externalObjects: ModelicaExternalObjectDescriptor[] = [];
   /** Diagnostics emitted during flattening (e.g. type errors, invalid iterators). */
   diagnostics: ModelicaDiagnostic[] = [];
   /** Experiment annotation data (StartTime, StopTime, Tolerance, etc.). */
@@ -3358,6 +3363,45 @@ export class ModelicaClockPartition {
       clockId: this.clockId,
       equations: this.equations.map((e) => e.toJSON),
       variables: this.variables.map((v) => v.toJSON),
+    };
+  }
+}
+
+/**
+ * Describes a variable whose type extends `ExternalObject`.
+ * Tracks the constructor and destructor function names for lifecycle management
+ * during FMU initialization and termination.
+ */
+export class ModelicaExternalObjectDescriptor {
+  /** The variable name in the flattened DAE. */
+  variableName: string;
+  /** The fully-qualified type name (e.g., `MyLib.MyExternalObj`). */
+  typeName: string;
+  /** Constructor function name (e.g., `MyExternalObj.constructor`). */
+  constructorName: string;
+  /** Destructor function name (e.g., `MyExternalObj.destructor`). */
+  destructorName: string;
+
+  constructor(variableName: string, typeName: string, constructorName?: string, destructorName?: string) {
+    this.variableName = variableName;
+    this.typeName = typeName;
+    this.constructorName = constructorName ?? `${typeName}.constructor`;
+    this.destructorName = destructorName ?? `${typeName}.destructor`;
+  }
+
+  get hash(): string {
+    const hash = createHash("sha256");
+    hash.update("externalObject_" + this.variableName + "_" + this.typeName);
+    return hash.digest("hex");
+  }
+
+  get toJSON(): JSONValue {
+    return {
+      "@type": "ExternalObjectDescriptor",
+      variableName: this.variableName,
+      typeName: this.typeName,
+      constructorName: this.constructorName,
+      destructorName: this.destructorName,
     };
   }
 }
