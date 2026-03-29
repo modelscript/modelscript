@@ -223,7 +223,9 @@ export function generateFmi3(dae: ModelicaDAE, options: Fmi3Options, stateVars?:
   const enumTypes = new Map<string, { name: string; description: string | null }[]>();
 
   for (const v of dae.variables) {
-    const fv = mapVariable3(v, valueRef++);
+    const totalSize = v.arrayDimensions ? v.arrayDimensions.reduce((a, b) => a * b, 1) : 1;
+    const fv = mapVariable3(v, valueRef);
+    valueRef += totalSize;
     variables.push(fv);
 
     // Track enumeration type names for TypeDefinitions
@@ -260,14 +262,19 @@ export function generateFmi3(dae: ModelicaDAE, options: Fmi3Options, stateVars?:
   for (const v of dae.variables) {
     if (states.has(v.name)) {
       const stateRef = stateVarRefs.get(v.name);
+      const totalSize = v.arrayDimensions ? v.arrayDimensions.reduce((a, b) => a * b, 1) : 1;
       const derFv: Fmi3Variable = {
-        valueReference: valueRef++,
+        valueReference: valueRef,
         name: `der(${v.name})`,
         causality: "local",
         variability: "continuous",
         type: "Float64",
         start: 0,
       };
+      if (v.arrayDimensions && v.arrayDimensions.length > 0) {
+        derFv.dimensions = v.arrayDimensions.map((d) => ({ start: d }));
+      }
+      valueRef += totalSize;
       if (stateRef !== undefined) derFv.derivative = stateRef;
       variables.push(derFv);
       derivativeRefs.push(derFv.valueReference);
@@ -718,6 +725,9 @@ function mapVariable3(v: ModelicaVariable, valueRef: number): Fmi3Variable {
     variability: mapVariability3(v),
     type: mapType3(v),
   };
+  if (v.arrayDimensions && v.arrayDimensions.length > 0) {
+    fv.dimensions = v.arrayDimensions.map((d) => ({ start: d }));
+  }
   if (v.description) fv.description = v.description;
 
   // Extract start value

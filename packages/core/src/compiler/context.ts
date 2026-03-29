@@ -16,6 +16,11 @@ import { ModelicaPoParser, ModelicaTranslation } from "./modelica/po.js";
 import { ModelicaStoredDefinitionSyntaxNode } from "./modelica/syntax.js";
 import { Scope } from "./scope.js";
 
+export interface ModelicaCompilerOptions {
+  arrayMode?: "scalarize" | "preserve";
+  fmiVersion?: "2.0" | "3.0";
+}
+
 /**
  * The compiler context managing file system resources, translations, plugins, and loaded Modelica code.
  */
@@ -95,15 +100,15 @@ export class Context extends Scope {
    * @param name - The fully qualified name of the Modelica class to flatten.
    * @returns The flattened DAE (Differential Algebraic Equation) output as a string, or null if the class is not found or has errors.
    */
-  flatten(name: string): string | null {
-    const dae = this.flattenDAE(name);
+  flatten(name: string, options?: ModelicaCompilerOptions): string | null {
+    const dae = this.flattenDAE(name, options);
     if (!dae) return null;
     const out = new StringWriter();
     dae.accept(new ModelicaDAEPrinter(out));
     return out.toString();
   }
 
-  flattenDAE(name: string): ModelicaDAE | null {
+  flattenDAE(name: string, options?: ModelicaCompilerOptions): ModelicaDAE | null {
     const instance = this.query(name);
     if (!instance) return null;
     const dae = new ModelicaDAE(name ?? instance.name ?? "DAE", instance.description);
@@ -114,7 +119,7 @@ export class Context extends Scope {
     ) {
       dae.classKind = instance.classKind;
     }
-    const flattener = new ModelicaFlattener();
+    const flattener = new ModelicaFlattener(options);
     instance.accept(flattener, ["", dae]);
     flattener.generateFlowBalanceEquations(dae);
     flattener.foldDAEConstants(dae);

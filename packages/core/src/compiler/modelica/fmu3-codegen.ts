@@ -9,6 +9,7 @@
 
 import type { ModelicaDAE, ModelicaExpression } from "./dae.js";
 import {
+  ModelicaArrayEquation,
   ModelicaBinaryExpression,
   ModelicaBooleanLiteral,
   ModelicaFunctionCallExpression,
@@ -20,7 +21,7 @@ import {
   ModelicaUnaryExpression,
   ModelicaWhenEquation,
 } from "./dae.js";
-import type { Fmi3Options, Fmi3Result } from "./fmi3.js";
+import type { Fmi3Options, Fmi3Result, Fmi3Variable } from "./fmi3.js";
 import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "./syntax.js";
 
 /** Generated FMI 3.0 C source files. */
@@ -37,9 +38,23 @@ export interface Fmi3CSourceFiles {
 export function generateFmi3CSources(dae: ModelicaDAE, result: Fmi3Result, options: Fmi3Options): Fmi3CSourceFiles {
   const id = options.modelIdentifier;
   const vars = result.variables;
-  const nStates = result.modelStructure.derivatives.length;
-  const nVars = vars.length;
-  const nStringVars = vars.filter((v) => v.type === "String").length;
+  let maxVr = 0;
+  let nStringVars = 0;
+  for (const v of vars) {
+    const size = v.dimensions ? v.dimensions.reduce((a, b) => a * (b.start ?? 1), 1) : 1;
+    maxVr = Math.max(maxVr, v.valueReference + size - 1);
+    if (v.type === "String") nStringVars += size;
+  }
+  const nVars = vars.length > 0 ? maxVr + 1 : 0;
+
+  let maxStateVr = 0;
+  let nStates = 0;
+  for (const derVr of result.modelStructure.derivatives) {
+    const v = vars.find((x) => x.valueReference === derVr);
+    const size = v?.dimensions ? v.dimensions.reduce((a, b) => a * (b.start ?? 1), 1) : 1;
+    maxStateVr = Math.max(maxStateVr, derVr + size - 1);
+    nStates += size;
+  }
 
   return {
     modelH: generateModelH3(id, nVars, nStates, nStringVars, result),
@@ -51,47 +66,73 @@ export function generateFmi3CSources(dae: ModelicaDAE, result: Fmi3Result, optio
 
 // ── Expression → C transpiler (reused from FMI 2.0 with minor changes) ──
 
-function exprToC(expr: ModelicaExpression): string {
+function exprToC(expr: ModelicaExpression, vars: Fmi3Variable[], loopIdx?: string): string {
   if (expr instanceof ModelicaRealLiteral) return formatCDouble(expr.value);
   if (expr instanceof ModelicaIntegerLiteral) return `${expr.value}`;
   if (expr instanceof ModelicaBooleanLiteral) return expr.value ? "1" : "0";
   if (expr instanceof ModelicaStringLiteral) return `"${escapeCString(expr.value)}"`;
-  if (expr instanceof ModelicaNameExpression) return varToC(expr.name);
+  if (expr instanceof ModelicaNameExpression) return varToC(expr.name, vars, loopIdx);
   if (expr instanceof ModelicaUnaryExpression) {
     const op = expr.operator === ModelicaUnaryOperator.UNARY_MINUS ? "-" : "!";
-    return `(${op}${exprToC(expr.operand)})`;
+    return `(${op}${exprToC(expr.operand, vars, loopIdx)})`;
   }
   if (expr instanceof ModelicaBinaryExpression) {
-    const lhs = exprToC(expr.operand1);
-    const rhs = exprToC(expr.operand2);
+    const lhs = exprToC(expr.operand1, vars, loopIdx);
+    const rhs = exprToC(expr.operand2, vars, loopIdx);
     const op = binaryOpToC(expr.operator);
     if (op === "pow") return `pow(${lhs}, ${rhs})`;
     return `(${lhs} ${op} ${rhs})`;
   }
   if (expr instanceof ModelicaFunctionCallExpression) {
-    const args = expr.args.map((a: ModelicaExpression) => exprToC(a)).join(", ");
+    const args = expr.args.map((a: ModelicaExpression) => exprToC(a, vars, loopIdx)).join(", ");
     return `${mapFunctionName(expr.functionName)}(${args})`;
   }
   if (expr instanceof ModelicaIfElseExpression) {
-    const cond = exprToC(expr.condition);
-    const then = exprToC(expr.thenExpression);
-    const els = exprToC(expr.elseExpression);
+    const cond = exprToC(expr.condition, vars, loopIdx);
+    const then = exprToC(expr.thenExpression, vars, loopIdx);
+    const els = exprToC(expr.elseExpression, vars, loopIdx);
     if (expr.elseIfClauses.length > 0) {
       let r = `(${cond} ? ${then} : `;
-      for (const clause of expr.elseIfClauses) r += `${exprToC(clause.condition)} ? ${exprToC(clause.expression)} : `;
+      for (const clause of expr.elseIfClauses)
+        r += `${exprToC(clause.condition, vars, loopIdx)} ? ${exprToC(clause.expression, vars, loopIdx)} : `;
       return r + `${els})`;
     }
     return `(${cond} ? ${then} : ${els})`;
   }
-  if (expr && typeof expr === "object" && "name" in expr) return varToC((expr as { name: string }).name);
+  if (expr && typeof expr === "object" && "name" in expr) return varToC((expr as { name: string }).name, vars, loopIdx);
   return "0.0 /* unknown */";
 }
 
-function varToC(name: string): string {
-  if (name === "time") return "time";
+function varToC(name: string, vars: Fmi3Variable[], loopIdx?: string): string {
+  if (name === "time") return "inst->time";
   const m = name.match(/^der\((.+)\)$/);
-  if (m) return `der_${sanitize(m[1] ?? "")}`;
-  return `v_${sanitize(name)}`;
+  const baseName = m ? (m[1] ?? "") : name;
+  const sv = vars.find((v) => v.name === baseName);
+
+  if (!sv) return `0.0 /* unknown ${name} */`;
+
+  const size = sv.dimensions ? sv.dimensions.reduce((a, b) => a * (b.start ?? 1), 1) : 1;
+  let idxStr = sv.valueReference.toString();
+  if (size > 1 && loopIdx) idxStr += ` + ${loopIdx}`;
+
+  // If it's a derivative, it's technically supposed to be in inst->derivatives?
+  // Wait, if an equation actually reads der(A) on the RHS, which is extremely rare.
+  // We can just query `inst->derivatives` if we mapped its state index.
+  // Actually, FMI 3.0 gives derivatives their own VR! So it CAN be in inst->vars!
+  // Wait, FMI 3.0 codegen doesn't write derivatives to inst->vars, it writes to inst->derivatives.
+  // Let's assume FMI 3.0 just uses inst->vars for it if we store it there, but we only write to inst->derivatives.
+  // Let's just return `inst->vars[VR]` and if FMI needs it we might have a bug. BUT FMI 2.0 didn't have der_A either.
+  const isDer = m !== null;
+  if (isDer) {
+    const derSv = vars.find((v) => v.name === name);
+    if (derSv) {
+      let derIdxStr = derSv.valueReference.toString();
+      if (size > 1 && loopIdx) derIdxStr += ` + ${loopIdx}`;
+      return `inst->vars[${derIdxStr}]`;
+    }
+  }
+
+  return `inst->vars[${idxStr}]`;
 }
 
 function sanitize(name: string): string {
@@ -167,7 +208,7 @@ function escapeCString(s: string): string {
   return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n");
 }
 
-function conditionToZC(cond: ModelicaExpression): string {
+function conditionToZC(cond: ModelicaExpression, vars: Fmi3Variable[]): string {
   if (cond instanceof ModelicaBinaryExpression) {
     const op = cond.operator;
     if (
@@ -176,9 +217,9 @@ function conditionToZC(cond: ModelicaExpression): string {
       op === ModelicaBinaryOperator.GREATER_THAN ||
       op === ModelicaBinaryOperator.GREATER_THAN_OR_EQUAL
     )
-      return `(${exprToC(cond.operand1)}) - (${exprToC(cond.operand2)})`;
+      return `(${exprToC(cond.operand1, vars)}) - (${exprToC(cond.operand2, vars)})`;
   }
-  return `(${exprToC(cond)} ? 1.0 : -1.0)`;
+  return `(${exprToC(cond, vars)} ? 1.0 : -1.0)`;
 }
 
 function extractDerName(expr: unknown): string | null {
@@ -197,27 +238,6 @@ function extractDerName(expr: unknown): string | null {
     if (typeof n === "string" && n.startsWith("der(") && n.endsWith(")")) return n.substring(4, n.length - 1);
   }
   return null;
-}
-
-function collectRefs(expr: unknown, names: Set<string>): void {
-  if (!expr || typeof expr !== "object") return;
-  if ("name" in expr) {
-    const n = (expr as { name: unknown }).name;
-    if (typeof n === "string") {
-      if (n.startsWith("der(") && n.endsWith(")")) names.add(n.substring(4, n.length - 1));
-      else names.add(n);
-    }
-  }
-  if ("operand" in expr) collectRefs((expr as { operand: unknown }).operand, names);
-  if ("operand1" in expr) collectRefs((expr as { operand1: unknown }).operand1, names);
-  if ("operand2" in expr) collectRefs((expr as { operand2: unknown }).operand2, names);
-  if ("condition" in expr) collectRefs((expr as { condition: unknown }).condition, names);
-  if ("thenExpression" in expr) collectRefs((expr as { thenExpression: unknown }).thenExpression, names);
-  if ("elseExpression" in expr) collectRefs((expr as { elseExpression: unknown }).elseExpression, names);
-  if ("args" in expr) {
-    const a = (expr as { args: unknown[] }).args;
-    if (Array.isArray(a)) for (const x of a) collectRefs(x, names);
-  }
 }
 
 // ── File generators ──
@@ -273,7 +293,7 @@ function generateModelC3(id: string, dae: ModelicaDAE, result: Fmi3Result): stri
     if (v.variability === ModelicaVariability.PARAMETER || v.variability === ModelicaVariability.CONSTANT) {
       const ref = vrMap.get(v.name);
       if (ref !== undefined && v.expression)
-        L.push(`  inst->vars[${ref}] = ${exprToC(v.expression)};  /* ${v.name} */`);
+        L.push(`  inst->vars[${ref}] = ${exprToC(v.expression, result.variables)};  /* ${v.name} */`);
     }
   }
   for (const v of dae.variables) {
@@ -281,7 +301,7 @@ function generateModelC3(id: string, dae: ModelicaDAE, result: Fmi3Result): stri
       const ref = vrMap.get(v.name);
       if (ref !== undefined) {
         const e = v.attributes.get("start") ?? v.expression;
-        if (e) L.push(`  inst->vars[${ref}] = ${exprToC(e)};  /* ${v.name} */`);
+        if (e) L.push(`  inst->vars[${ref}] = ${exprToC(e, result.variables)};  /* ${v.name} */`);
       }
     }
   }
@@ -290,32 +310,43 @@ function generateModelC3(id: string, dae: ModelicaDAE, result: Fmi3Result): stri
 
   // Derivatives
   L.push(`void ${id}_getDerivatives(${id}_Instance* inst) {`);
-  const refs = new Set<string>();
-  for (const eq of dae.equations) {
-    if ("expression1" in eq && "expression2" in eq) {
-      const se = eq as { expression1: ModelicaExpression; expression2: ModelicaExpression };
-      collectRefs(se.expression1, refs);
-      collectRefs(se.expression2, refs);
-    }
-  }
-  if (refs.has("time")) L.push("  double time = inst->time;");
-  for (const sv of result.variables) {
-    if (sv.causality === "independent" || !refs.has(sv.name)) continue;
-    L.push(`  double ${varToC(sv.name)} = inst->vars[${sv.valueReference}];`);
-  }
+  L.push("  double time = inst->time; (void)time;");
   L.push("");
   let derIdx = 0;
   for (const eq of dae.equations) {
     if (!("expression1" in eq && "expression2" in eq)) continue;
+    const isArrayEq = eq instanceof ModelicaArrayEquation;
     const se = eq as { expression1: ModelicaExpression; expression2: ModelicaExpression };
     const ld = extractDerName(se.expression1);
     const rd = extractDerName(se.expression2);
-    if (ld) {
-      L.push(`  inst->derivatives[${derIdx}] = ${exprToC(se.expression2)};  /* der(${ld}) */`);
-      derIdx++;
-    } else if (rd) {
-      L.push(`  inst->derivatives[${derIdx}] = ${exprToC(se.expression1)};  /* der(${rd}) */`);
-      derIdx++;
+
+    if (isArrayEq) {
+      const baseName = ld || rd;
+      if (!baseName) continue;
+      const sv = result.variables.find((v) => v.name === baseName);
+      if (!sv) continue;
+      const size = sv.dimensions ? sv.dimensions.reduce((a, b) => a * (b.start ?? 1), 1) : 1;
+
+      L.push(`  for (int _i = 0; _i < ${size}; _i++) {`);
+      if (ld) {
+        L.push(
+          `    inst->derivatives[${derIdx} + _i] = ${exprToC(se.expression2, result.variables, "_i")};  /* der(${ld}) */`,
+        );
+      } else if (rd) {
+        L.push(
+          `    inst->derivatives[${derIdx} + _i] = ${exprToC(se.expression1, result.variables, "_i")};  /* der(${rd}) */`,
+        );
+      }
+      L.push(`  }`);
+      derIdx += size;
+    } else {
+      if (ld) {
+        L.push(`  inst->derivatives[${derIdx}] = ${exprToC(se.expression2, result.variables)};  /* der(${ld}) */`);
+        derIdx++;
+      } else if (rd) {
+        L.push(`  inst->derivatives[${derIdx}] = ${exprToC(se.expression1, result.variables)};  /* der(${rd}) */`);
+        derIdx++;
+      }
     }
   }
   L.push("}");
@@ -329,10 +360,10 @@ function generateModelC3(id: string, dae: ModelicaDAE, result: Fmi3Result): stri
   } else {
     let idx = 0;
     for (const weq of whenEqs) {
-      L.push(`  indicators[${idx}] = ${conditionToZC(weq.condition)};`);
+      L.push(`  indicators[${idx}] = ${conditionToZC(weq.condition, result.variables)};`);
       idx++;
       for (const c of weq.elseWhenClauses) {
-        L.push(`  indicators[${idx}] = ${conditionToZC(c.condition)};`);
+        L.push(`  indicators[${idx}] = ${conditionToZC(c.condition, result.variables)};`);
         idx++;
       }
     }

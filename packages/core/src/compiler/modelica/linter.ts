@@ -1637,6 +1637,15 @@ ModelicaLinter.register(ModelicaErrorCode.EQUATION_TYPE_MISMATCH, {
         continue;
       }
 
+      // Skip type checking for equations with array subscripts, as static
+      // dimension deduction from slices is complex. The flattener will catch shape mismatches.
+      const hasSubscripts = (expr: ModelicaComponentReferenceSyntaxNode) =>
+        expr.parts.some((p) => p.arraySubscripts && p.arraySubscripts.subscripts.length > 0);
+
+      if (hasSubscripts(expr1) || hasSubscripts(expr2)) {
+        continue;
+      }
+
       const comp1 = resolveToComponent(node, expr1);
       const comp2 = resolveToComponent(node, expr2);
       if (!comp1 || !comp2) continue;

@@ -6,6 +6,7 @@ import { performBltTransformation } from "./blt.js";
 import { BUILTIN_FUNCTIONS, BUILTIN_VARIABLES } from "./builtins.js";
 import {
   ModelicaArray,
+  ModelicaArrayEquation,
   ModelicaAssignmentStatement,
   ModelicaBinaryExpression,
   ModelicaBooleanLiteral,
@@ -150,7 +151,10 @@ interface FlattenerContext {
   /** Deferred flow variable connection pairs for connection-set-based flow balance generation. */
   flowConnectPairs?: { name1: string; name2: string }[];
   /** Monomorphization bindings for higher order functions */
+  /** Monomorphization bindings for higher order functions */
   functionBindings?: Map<string, ModelicaPartialFunctionExpression | string>;
+
+  options?: ModelicaCompilerOptions;
 }
 
 /** Extract an integer shape array from a list of expressions (all must be ModelicaIntegerLiteral). */
@@ -501,11 +505,19 @@ const BUILTIN_ARRAY_HANDLERS: ReadonlyMap<string, BuiltinArrayHandler> = new Map
   ],
 ]);
 
+import type { ModelicaCompilerOptions } from "../context.js";
+
 /**
  * Visitor that traverses the semantic Modelica object model and flattens it into a DAE structure.
  * This class handles the instantiation and flattening of arrays, records, blocks, models, and variables.
  */
 export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE]> {
+  options: ModelicaCompilerOptions;
+
+  constructor(options?: ModelicaCompilerOptions) {
+    super();
+    this.options = options ?? {};
+  }
   /**
    * Visits an array class instance during topological traversal and delegates to visitClassInstance.
    *
@@ -685,7 +697,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       const savedEquations = args[1].equations;
       args[1].equations = target;
       for (const eq of section.equations) {
-        eq.accept(new ModelicaSyntaxFlattener(), {
+        eq.accept(new ModelicaSyntaxFlattener(this.options), {
           prefix: args[0],
           classInstance: node,
           dae: args[1],
@@ -704,7 +716,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       if (section instanceof ModelicaAlgorithmSectionSyntaxNode) {
         const collector: ModelicaStatement[] = [];
         for (const statement of section.statements) {
-          statement.accept(new ModelicaSyntaxFlattener(), {
+          statement.accept(new ModelicaSyntaxFlattener(this.options), {
             prefix: args[0],
             classInstance: node,
             dae: args[1],
@@ -1151,7 +1163,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         if (parentVal) expression = parentVal;
       }
       if (!expression && node.modification?.modificationExpression?.expression) {
-        const syntaxFlattener = new ModelicaSyntaxFlattener();
+        const syntaxFlattener = new ModelicaSyntaxFlattener(this.options);
         expression =
           node.modification.modificationExpression.expression.accept(syntaxFlattener, {
             prefix: args[0],
@@ -1166,7 +1178,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       // referenced in the raw binding expression (e.g., constant Integer s = mySize({1,2,3}))
       const rawConstExpr = node.modification?.modificationExpression?.expression;
       if (rawConstExpr) {
-        const syntaxFlattener = new ModelicaSyntaxFlattener();
+        const syntaxFlattener = new ModelicaSyntaxFlattener(this.options);
         syntaxFlattener.collectFunctionRefsFromAST(rawConstExpr, {
           prefix: args[0],
           classInstance: node.parent ?? ({} as ModelicaClassInstance),
@@ -1183,7 +1195,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       // First try the syntax flattener on the raw AST modification expression
       expression = null;
       if (node.modification?.modificationExpression?.expression) {
-        const syntaxFlattener = new ModelicaSyntaxFlattener();
+        const syntaxFlattener = new ModelicaSyntaxFlattener(this.options);
         expression =
           node.modification.modificationExpression.expression.accept(syntaxFlattener, {
             prefix: args[0],
@@ -1211,7 +1223,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       // from the DAE where record constructor values are properly applied.
       expression = null;
       if (node.modification?.modificationExpression?.expression) {
-        const syntaxFlattener = new ModelicaSyntaxFlattener();
+        const syntaxFlattener = new ModelicaSyntaxFlattener(this.options);
         expression =
           node.modification.modificationExpression.expression.accept(syntaxFlattener, {
             prefix: args[0],
@@ -1468,7 +1480,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     if ((!arrayBindingExpression || hasMalformedBinding || !isCompileTimeEvaluableEarly) && rawASTExpr) {
       const savedBinding = arrayBindingExpression;
       if (hasMalformedBinding) arrayBindingExpression = null;
-      const syntaxFlattener = new ModelicaSyntaxFlattener();
+      const syntaxFlattener = new ModelicaSyntaxFlattener(this.options);
       const syntaxResult =
         rawASTExpr.accept(syntaxFlattener, {
           prefix: args[0],
@@ -1499,7 +1511,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     // interpreter already evaluated the binding (e.g., fun(5) → {1,1,1,1,1}).
     // Without this, the function definition wouldn't appear in the DAE output.
     if (arrayBindingExpression && node.modification?.modificationExpression?.expression) {
-      const syntaxFlattener = new ModelicaSyntaxFlattener();
+      const syntaxFlattener = new ModelicaSyntaxFlattener(this.options);
       syntaxFlattener.collectFunctionRefsFromAST(node.modification.modificationExpression.expression, {
         prefix: args[0],
         classInstance: node.parent ?? ({} as ModelicaClassInstance),
@@ -1540,6 +1552,79 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         if (!declaredElements[i])
           declaredElements[i] = arrayClassInstance.elementClassInstance as ModelicaClassInstance;
       }
+    }
+
+    if (this.options.arrayMode === "preserve") {
+      const elementClass = arrayClassInstance.elementClassInstance;
+      const attributes = new Map<string, ModelicaExpression>();
+      if (elementClass instanceof ModelicaRealClassInstance) {
+        for (const key of ["start", "min", "max", "nominal"]) {
+          if (elementClass.modification?.modificationArguments) {
+            for (const m of elementClass.modification.modificationArguments) {
+              if (m.name === key && m.expression) {
+                const casted = castToReal(m.expression);
+                if (casted) attributes.set(key, casted);
+              }
+            }
+          }
+        }
+      }
+      const varExpression = arrayBindingExpression;
+      let variable;
+      if (elementClass instanceof ModelicaBooleanClassInstance) {
+        variable = new ModelicaBooleanVariable(
+          name,
+          varExpression,
+          attributes,
+          node.variability,
+          node.modification?.description ?? node.description,
+          causality,
+          isFinal,
+          isProtected,
+        );
+      } else if (elementClass instanceof ModelicaIntegerClassInstance) {
+        variable = new ModelicaIntegerVariable(
+          name,
+          varExpression,
+          attributes,
+          node.variability,
+          node.modification?.description ?? node.description,
+          causality,
+          isFinal,
+          isProtected,
+        );
+      } else if (elementClass instanceof ModelicaRealClassInstance) {
+        variable = new ModelicaRealVariable(
+          name,
+          varExpression,
+          attributes,
+          node.variability,
+          node.modification?.description ?? node.description,
+          causality,
+          isFinal,
+          isProtected,
+        );
+      } else if (elementClass instanceof ModelicaStringClassInstance) {
+        variable = new ModelicaStringVariable(
+          name,
+          varExpression,
+          attributes,
+          node.variability,
+          node.modification?.description ?? node.description,
+          causality,
+          isFinal,
+          isProtected,
+        );
+      }
+
+      if (variable) {
+        variable.arrayDimensions = shape;
+        if (!this.#emittedVarNames.has(variable.name)) {
+          this.#emittedVarNames.add(variable.name);
+          args[1].variables.push(variable);
+        }
+      }
+      return;
     }
 
     const index = new Array(shape.length).fill(1);
@@ -1766,7 +1851,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         const savedEquations = args[1].equations;
         args[1].equations = target;
         for (const eq of section.equations) {
-          eq.accept(new ModelicaSyntaxFlattener(), {
+          eq.accept(new ModelicaSyntaxFlattener(this.options), {
             prefix: args[0],
             classInstance: node.classInstance,
             dae: args[1],
@@ -1784,7 +1869,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       } else if (section instanceof ModelicaAlgorithmSectionSyntaxNode) {
         const collector: ModelicaStatement[] = [];
         for (const statement of section.statements) {
-          statement.accept(new ModelicaSyntaxFlattener(), {
+          statement.accept(new ModelicaSyntaxFlattener(this.options), {
             prefix: args[0],
             classInstance: node.classInstance,
             dae: args[1],
@@ -2140,25 +2225,67 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           }
         }
 
-        // Expand range subscripts on constant arrays: x[2:3] → {x[2], x[3]}
-        if (
-          base instanceof ModelicaNameExpression &&
-          subscripts.length === 1 &&
-          subscripts[0] instanceof ModelicaRangeExpression
-        ) {
-          const range = subscripts[0] as ModelicaRangeExpression;
-          const foldedStart = this.#foldExpression(range.start, dae, visited, inlineParameters);
-          const foldedEnd = this.#foldExpression(range.end, dae, visited, inlineParameters);
-          if (foldedStart instanceof ModelicaIntegerLiteral && foldedEnd instanceof ModelicaIntegerLiteral) {
-            const start = foldedStart.value;
-            const end = foldedEnd.value;
-            const step = range.step
-              ? ((this.#foldExpression(range.step, dae, visited, inlineParameters) as ModelicaIntegerLiteral)?.value ??
-                1)
-              : 1;
-            const elements: ModelicaExpression[] = [];
-            for (let i = start; step > 0 ? i <= end : i >= end; i += step) {
-              const flatName = base.name + "[" + i + "]";
+        // Expand multi-dimensional slice subscripts: x[1:2, :] → {{x[1,1], x[1,2]}, {x[2,1], x[2,2]}}
+        const isSlice = subscripts.some(
+          (s) =>
+            s instanceof ModelicaRangeExpression || s instanceof ModelicaColonExpression || s instanceof ModelicaArray,
+        );
+        if (base instanceof ModelicaNameExpression && isSlice) {
+          // Resolve colons to 1:size(base, d)
+          const resolvedSubscripts = subscripts.map((s, d) => {
+            if (s instanceof ModelicaColonExpression) {
+              const sizeExpr = new ModelicaFunctionCallExpression("size", [base, new ModelicaIntegerLiteral(d + 1)]);
+              const sizeVal = this.#foldExpression(sizeExpr, dae, visited, inlineParameters);
+              return new ModelicaRangeExpression(new ModelicaIntegerLiteral(1), sizeVal);
+            }
+            return s;
+          });
+
+          // Evaluate range/scalar subscripts to arrays of integers
+          const axes: number[][] = [];
+          for (const s of resolvedSubscripts) {
+            if (s instanceof ModelicaRangeExpression) {
+              const startVal = this.#foldExpression(s.start, dae, visited, inlineParameters);
+              const endVal = this.#foldExpression(s.end, dae, visited, inlineParameters);
+              if (startVal instanceof ModelicaIntegerLiteral && endVal instanceof ModelicaIntegerLiteral) {
+                const step = s.step
+                  ? ((this.#foldExpression(s.step, dae, visited, inlineParameters) as ModelicaIntegerLiteral)?.value ??
+                    1)
+                  : 1;
+                const arr = [];
+                for (let i = startVal.value; step > 0 ? i <= endVal.value : i >= endVal.value; i += step) {
+                  arr.push(i);
+                }
+                axes.push(arr);
+              } else {
+                return new ModelicaSubscriptedExpression(base, subscripts); // fallback if variable size
+              }
+            } else if (s instanceof ModelicaArray) {
+              const arr = [];
+              for (const el of s.flatElements) {
+                if (!el) return new ModelicaSubscriptedExpression(base, subscripts);
+                const foldedEl = this.#foldExpression(el, dae, visited, inlineParameters);
+                if (foldedEl instanceof ModelicaIntegerLiteral) {
+                  arr.push(foldedEl.value);
+                } else {
+                  return new ModelicaSubscriptedExpression(base, subscripts); // fallback for symbolic subscripts
+                }
+              }
+              axes.push(arr);
+            } else {
+              const foldedS = this.#foldExpression(s, dae, visited, inlineParameters);
+              if (foldedS instanceof ModelicaIntegerLiteral) {
+                axes.push([foldedS.value]);
+              } else {
+                return new ModelicaSubscriptedExpression(base, subscripts); // fallback for symbolic subscripts
+              }
+            }
+          }
+
+          // Build nested array from axes
+          const buildNestedArray = (axisIndex: number, currentIndices: number[]): ModelicaExpression => {
+            if (axisIndex >= axes.length) {
+              const flatName = base.name + "[" + currentIndices.join(",") + "]";
               const variable = dae.variables.find((v) => v.name === flatName);
               if (
                 variable &&
@@ -2166,16 +2293,37 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
                   (inlineParameters && variable.variability === ModelicaVariability.PARAMETER)) &&
                 variable.expression
               ) {
-                const folded = this.#foldExpression(variable.expression, dae, visited, inlineParameters);
-                elements.push(folded);
-              } else {
-                elements.push(new ModelicaSubscriptedExpression(base, [new ModelicaIntegerLiteral(i)]));
+                return this.#foldExpression(variable.expression, dae, visited, inlineParameters);
               }
+              return new ModelicaSubscriptedExpression(
+                base,
+                currentIndices.map((i) => new ModelicaIntegerLiteral(i)),
+              );
             }
-            if (elements.length > 0) {
-              return new ModelicaArray([elements.length], elements);
+            const axis = axes[axisIndex];
+            if (!axis) return base; // fallback
+            const elements = [];
+            for (const val of axis) {
+              currentIndices.push(val);
+              elements.push(buildNestedArray(axisIndex + 1, currentIndices));
+              currentIndices.pop();
             }
-          }
+            // Modelica rule: scalar subscripts drop the dimension
+            const originalSubscript = subscripts[axisIndex];
+            if (
+              !(
+                originalSubscript instanceof ModelicaRangeExpression ||
+                originalSubscript instanceof ModelicaColonExpression ||
+                originalSubscript instanceof ModelicaArray
+              )
+            ) {
+              return elements[0] ?? base;
+            }
+            return new ModelicaArray([elements.length], elements);
+          };
+
+          const expr = buildNestedArray(0, []);
+          if (expr instanceof ModelicaArray || isSlice) return expr;
         }
 
         // Expand subscripted comprehension: array(expr for i in range)[k] → expr[i:=k]
@@ -2639,6 +2787,9 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
  * (equations, expressions, algorithms) during the DAE translation process.
  */
 class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, FlattenerContext> {
+  constructor(public options?: ModelicaCompilerOptions) {
+    super();
+  }
   /** Tracks functions currently being collected, to prevent re-entrant recursion. */
   static #collectingFunctions = new Set<string>();
 
@@ -4432,7 +4583,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
             if (sub.expression) {
               // Flatten the subscript expression through the canonicalizing
               // flattener so that e.g. `size(matr,2)-1` becomes `-1 + size(matr,2)`
-              const syntaxFlattener = new ModelicaSyntaxFlattener();
+              const syntaxFlattener = new ModelicaSyntaxFlattener(this.options);
               const flatExpr = sub.expression.accept(syntaxFlattener, {
                 prefix: "",
                 classInstance: resolved,
@@ -4465,7 +4616,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       // over the evaluatedExpression to preserve forms like max(3, i1) and 5.0.
       let expression: ModelicaExpression | null = null;
       if (element.modification?.modificationExpression?.expression) {
-        const syntaxFlattener = new ModelicaSyntaxFlattener();
+        const syntaxFlattener = new ModelicaSyntaxFlattener(this.options);
         expression =
           element.modification.modificationExpression.expression.accept(syntaxFlattener, {
             prefix: "",
@@ -4640,7 +4791,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
 
     for (const equationSection of resolved.equationSections) {
       for (const eq of equationSection.equations) {
-        eq.accept(new ModelicaSyntaxFlattener(), {
+        eq.accept(new ModelicaSyntaxFlattener(this.options), {
           prefix: "",
           classInstance: resolved,
           dae: fnDae,
@@ -4654,7 +4805,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     for (const algorithmSection of resolved.algorithmSections) {
       const collector: ModelicaStatement[] = [];
       for (const statement of algorithmSection.statements) {
-        statement.accept(new ModelicaSyntaxFlattener(), {
+        statement.accept(new ModelicaSyntaxFlattener(this.options), {
           prefix: "",
           classInstance: resolved,
           dae: fnDae,
@@ -6484,6 +6635,40 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         expression2 = coerceToReal(expression2, ctx.dae) ?? expression2;
       if (isRealTyped(expression2, ctx.dae) && !isArrayName(expression1))
         expression1 = coerceToReal(expression1, ctx.dae) ?? expression1;
+
+      if (this.options?.arrayMode === "preserve") {
+        const isArrayTarget = (expr: ModelicaExpression): boolean => {
+          if (expr instanceof ModelicaNameExpression) {
+            return ctx.dae.variables.some((v) => v.name === expr.name && v.arrayDimensions != null);
+          }
+          if (expr instanceof ModelicaVariable) {
+            return expr.arrayDimensions != null;
+          }
+          if (expr instanceof ModelicaSubscriptedExpression) {
+            return true;
+          }
+          if (expr instanceof ModelicaArray) {
+            return true;
+          }
+          if (expr instanceof ModelicaFunctionCallExpression && expr.functionName === "der" && expr.args.length === 1) {
+            const arg = expr.args[0];
+            return arg ? isArrayTarget(arg) : false;
+          }
+          return false;
+        };
+
+        if (isArrayTarget(expression1)) {
+          ctx.dae.equations.push(
+            new ModelicaArrayEquation(
+              expression1,
+              expression2,
+              node.description?.strings?.map((d) => d.text ?? "")?.join(" "),
+            ),
+          );
+          return null;
+        }
+      }
+
       ctx.dae.equations.push(
         new ModelicaSimpleEquation(
           expression1,

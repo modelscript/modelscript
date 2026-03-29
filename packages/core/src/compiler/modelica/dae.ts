@@ -259,6 +259,49 @@ export class ModelicaSimpleEquation extends ModelicaEquation {
   }
 }
 
+export class ModelicaArrayEquation extends ModelicaEquation {
+  expression1: ModelicaExpression;
+  expression2: ModelicaExpression;
+
+  constructor(expression1: ModelicaExpression, expression2: ModelicaExpression, description?: string | null) {
+    super(description);
+    this.expression1 = expression1;
+    this.expression2 = expression2;
+  }
+
+  override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
+    return visitor.visitArrayEquation(this, argument);
+  }
+
+  override get hash(): string {
+    const hash = createHash("sha256");
+    hash.update(this.expression1.hash);
+    hash.update("=array=");
+    hash.update(this.expression2.hash);
+    return hash.digest("hex");
+  }
+
+  override get toJSON(): JSONValue {
+    return {
+      "@type": "ArrayEquation",
+      expression1: this.expression1.toJSON,
+      expression2: this.expression2.toJSON,
+      description: this.description,
+    };
+  }
+
+  override get toRDF(): Triple[] {
+    const id = `_:eq_${this.hash.substring(0, 8)}`;
+    return [
+      { s: id, p: "rdf:type", o: "modelica:ArrayEquation" },
+      { s: id, p: "modelica:expression1", o: `_:expr_${this.expression1.hash.substring(0, 8)}` },
+      { s: id, p: "modelica:expression2", o: `_:expr_${this.expression2.hash.substring(0, 8)}` },
+      ...this.expression1.toRDF,
+      ...this.expression2.toRDF,
+    ];
+  }
+}
+
 /** Represents a standalone function call as an equation (e.g., `assert(...)`, `Func(2)`). */
 export class ModelicaFunctionCallEquation extends ModelicaEquation {
   call: ModelicaFunctionCallExpression;
@@ -3604,6 +3647,8 @@ export interface IModelicaDAEVisitor<R, A> {
 
   visitSimpleEquation(node: ModelicaSimpleEquation, argument?: A): R;
 
+  visitArrayEquation(node: ModelicaArrayEquation, argument?: A): R;
+
   visitSubscriptedExpression(node: ModelicaSubscriptedExpression, argument?: A): R;
 
   visitTupleExpression(node: ModelicaTupleExpression, argument?: A): R;
@@ -3794,6 +3839,11 @@ export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void,
     node.expression2.accept(this, argument);
   }
 
+  visitArrayEquation(node: ModelicaArrayEquation, argument?: A): void {
+    node.expression1.accept(this, argument);
+    node.expression2.accept(this, argument);
+  }
+
   visitStringLiteral(node: ModelicaStringLiteral, argument?: A): void {
     /* no-op */
   }
@@ -3887,6 +3937,14 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     node.target.accept(this);
     this.out.write(" := ");
     node.source.accept(this);
+    this.out.write(";\n");
+  }
+
+  visitArrayEquation(node: ModelicaArrayEquation): void {
+    this.out.write(this.indent());
+    node.expression1.accept(this);
+    this.out.write(" = ");
+    node.expression2.accept(this);
     this.out.write(";\n");
   }
 
