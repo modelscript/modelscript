@@ -371,7 +371,14 @@ function generateFmi3FunctionsC(
   L.push("  fmi3Float64 startTime;");
   L.push("  fmi3Float64 stopTime;");
   L.push("  fmi3Float64 stepSize;");
+  L.push("  fmi3Boolean eventModeUsed;");
+  L.push("  fmi3Boolean earlyReturnAllowed;");
+  L.push("  int state; /* 0=INIT, 1=STEP, 2=EVENT, 3=TERMINATED */");
   L.push("} FMU3Instance;");
+  L.push("#define FMU3_STATE_INIT  0");
+  L.push("#define FMU3_STATE_STEP  1");
+  L.push("#define FMU3_STATE_EVENT 2");
+  L.push("#define FMU3_STATE_TERM  3");
   L.push("");
   L.push("/* Variable size lookup table for array batching (FMI 3.0 §2.2.7) */");
   L.push("static const size_t varSizes[N_VARS + 1] = {");
@@ -402,7 +409,6 @@ function generateFmi3FunctionsC(
   L.push("    fmi3InstanceEnvironment instanceEnvironment, fmi3LogMessageCallback logMessage,");
   L.push("    fmi3IntermediateUpdateCallback intermediateUpdate) {");
   L.push("  (void)instantiationToken; (void)resourcePath; (void)visible;");
-  L.push("  (void)eventModeUsed; (void)earlyReturnAllowed;");
   L.push("  (void)requiredIntermediateVariables; (void)nRequiredIntermediateVariables;");
   L.push("  FMU3Instance* inst = (FMU3Instance*)calloc(1, sizeof(FMU3Instance));");
   L.push("  if (!inst) return NULL;");
@@ -412,6 +418,9 @@ function generateFmi3FunctionsC(
   L.push("  inst->instanceEnvironment = instanceEnvironment;");
   L.push("  inst->loggingOn = loggingOn;");
   L.push("  inst->stepSize = 0.001;");
+  L.push("  inst->eventModeUsed = eventModeUsed;");
+  L.push("  inst->earlyReturnAllowed = earlyReturnAllowed;");
+  L.push("  inst->state = FMU3_STATE_INIT;");
   L.push(`  ${id}_initialize(&inst->model);`);
   L.push("  return (fmi3Instance)inst;");
   L.push("}");
@@ -444,10 +453,16 @@ function generateFmi3FunctionsC(
   L.push("  if (stopTimeDefined) inst->stopTime = stopTime;");
   L.push("  return fmi3OK;");
   L.push("}");
-  L.push("fmi3Status fmi3ExitInitializationMode(fmi3Instance instance) { (void)instance; return fmi3OK; }");
-  L.push("fmi3Status fmi3Terminate(fmi3Instance instance) { (void)instance; return fmi3OK; }");
+  L.push(
+    "fmi3Status fmi3ExitInitializationMode(fmi3Instance instance) { ((FMU3Instance*)instance)->state = FMU3_STATE_STEP; return fmi3OK; }",
+  );
+  L.push(
+    "fmi3Status fmi3Terminate(fmi3Instance instance) { ((FMU3Instance*)instance)->state = FMU3_STATE_TERM; return fmi3OK; }",
+  );
   L.push("void fmi3FreeInstance(fmi3Instance instance) { if (instance) free(instance); }");
-  L.push("fmi3Status fmi3Reset(fmi3Instance instance) { (void)instance; return fmi3OK; }");
+  L.push(
+    "fmi3Status fmi3Reset(fmi3Instance instance) { ((FMU3Instance*)instance)->state = FMU3_STATE_INIT; return fmi3OK; }",
+  );
   L.push("");
 
   const numericTypes = ["Float32", "Float64", "Int8", "UInt8", "Int16", "UInt16", "Int32", "UInt32", "Int64", "UInt64"];
@@ -710,6 +725,20 @@ function generateFmi3FunctionsC(
   );
   L.push("      if (canReturnEarly) { *earlyReturn = fmi3True; *lastSuccessfulTime = t; return fmi3OK; }");
   L.push("    }");
+  L.push("    /* FMI 3.0: CS Event Mode — check event indicators for zero crossings */");
+  L.push("    if (inst->eventModeUsed) {");
+  L.push("      double ei[N_EVENT_INDICATORS + 1];");
+  L.push(`      ${id}_getEventIndicators(&inst->model, ei);`);
+  L.push("      for (int k = 0; k < N_EVENT_INDICATORS; k++) {");
+  L.push("        if ((inst->model.eventPrev[k] <= 0 && ei[k] > 0) || (inst->model.eventPrev[k] >= 0 && ei[k] < 0)) {");
+  L.push("          *eventHandlingNeeded = fmi3True;");
+  L.push("          if (inst->earlyReturnAllowed) { *earlyReturn = fmi3True; *lastSuccessfulTime = t; }");
+  L.push("          break;");
+  L.push("        }");
+  L.push("      }");
+  L.push("      for (int k = 0; k < N_EVENT_INDICATORS; k++) inst->model.eventPrev[k] = ei[k];");
+  L.push("      if (*earlyReturn) return fmi3OK;");
+  L.push("    }");
   L.push("  }");
   L.push("  inst->model.time = tEnd; *lastSuccessfulTime = tEnd;");
   L.push("  return fmi3OK;");
@@ -718,9 +747,13 @@ function generateFmi3FunctionsC(
 
   // Remaining stubs
   L.push("/* --- Stubs --- */");
-  L.push("fmi3Status fmi3EnterEventMode(fmi3Instance instance) { (void)instance; return fmi3OK; }");
+  L.push(
+    "fmi3Status fmi3EnterEventMode(fmi3Instance instance) { ((FMU3Instance*)instance)->state = FMU3_STATE_EVENT; return fmi3OK; }",
+  );
   L.push("fmi3Status fmi3EnterContinuousTimeMode(fmi3Instance instance) { (void)instance; return fmi3OK; }");
-  L.push("fmi3Status fmi3EnterStepMode(fmi3Instance instance) { (void)instance; return fmi3OK; }");
+  L.push(
+    "fmi3Status fmi3EnterStepMode(fmi3Instance instance) { ((FMU3Instance*)instance)->state = FMU3_STATE_STEP; return fmi3OK; }",
+  );
   L.push(
     "fmi3Status fmi3CompletedIntegratorStep(fmi3Instance instance, fmi3Boolean noSetFMUStatePriorToCurrentPoint, fmi3Boolean* enterEventMode, fmi3Boolean* terminateSimulation) { (void)instance; (void)noSetFMUStatePriorToCurrentPoint; *enterEventMode = fmi3False; *terminateSimulation = fmi3False; return fmi3OK; }",
   );

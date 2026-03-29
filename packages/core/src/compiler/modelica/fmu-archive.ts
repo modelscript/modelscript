@@ -95,6 +95,19 @@ export function buildFmuArchive(
     }
   }
 
+  // ── buildDescription.xml (FMI 3.0 §2.5) ──
+  const buildDescLines = [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<fmiBuildDescription fmiVersion="3.0">',
+    `  <BuildConfiguration modelIdentifier="${id}">`,
+    '    <SourceFileSet language="C">',
+    `      <SourceFile name="${id}_model.c" />`,
+    "    </SourceFileSet>",
+    "  </BuildConfiguration>",
+    "</fmiBuildDescription>",
+  ];
+  files.set("extra/buildDescription.xml", encoder.encode(buildDescLines.join("\n")));
+
   // ── Build ZIP archive ──
   const archive = createZip(files);
 

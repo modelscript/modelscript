@@ -295,14 +295,34 @@ function detectAliases(dae: ModelicaDAE, scalarVariables: FmiScalarVariable[]): 
  * Compute variable dependency graph for ModelStructure.
  * For each output/derivative/initial-unknown, find which inputs/states it depends on.
  */
+/** A single entry in the enriched FMI 2.0 dependency graph. */
+interface DepEntry2 {
+  vr: number;
+  kind: "dependent" | "constant" | "fixed" | "tunable";
+}
+
+/** Map FMI 2.0 variability to dependency kind. */
+function variabilityToDepKind2(v: FmiVariability): DepEntry2["kind"] {
+  switch (v) {
+    case "constant":
+      return "constant";
+    case "fixed":
+      return "fixed";
+    case "tunable":
+      return "tunable";
+    default:
+      return "dependent";
+  }
+}
+
 function computeDependencies(
   dae: ModelicaDAE,
   scalarVariables: FmiScalarVariable[],
   outputRefs: number[],
   derivativeRefs: number[],
   initialUnknownRefs: number[],
-): Map<number, number[]> {
-  const deps = new Map<number, number[]>();
+): Map<number, DepEntry2[]> {
+  const deps = new Map<number, DepEntry2[]>();
   const svByName = new Map<string, FmiScalarVariable>();
   for (const sv of scalarVariables) svByName.set(sv.name, sv);
 
@@ -326,18 +346,18 @@ function computeDependencies(
     const rhsNames = equationDeps.get(sv.name);
     if (!rhsNames) continue;
 
-    // Map referenced names to their value references
-    const depRefs: number[] = [];
+    // Map referenced names to their value references with enriched kinds
+    const entries: DepEntry2[] = [];
     for (const name of rhsNames) {
       const depSv = svByName.get(name);
       if (depSv && depSv.valueReference !== ref) {
-        depRefs.push(depSv.valueReference);
+        entries.push({ vr: depSv.valueReference, kind: variabilityToDepKind2(depSv.variability) });
       }
     }
-    if (depRefs.length > 0) {
+    if (entries.length > 0) {
       deps.set(
         ref,
-        depRefs.sort((a, b) => a - b),
+        entries.sort((a, b) => a.vr - b.vr),
       );
     }
   }
@@ -506,7 +526,7 @@ function generateModelDescriptionXml(
     initialUnknownRefs: number[];
     fmuType: FmuTypeFlags;
     nEventIndicators: number;
-    deps: Map<number, number[]>;
+    deps: Map<number, DepEntry2[]>;
     aliasMap: Map<string, string>;
     enumTypes: Map<string, { name: string; description: string | null }[]>;
   },
@@ -654,16 +674,18 @@ function generateModelDescriptionXml(
 function formatUnknown(
   index: number,
   ref: number,
-  deps: Map<number, number[]>,
+  deps: Map<number, DepEntry2[]>,
   variables: FmiScalarVariable[],
 ): string {
-  const depRefs = deps.get(ref);
-  if (!depRefs || depRefs.length === 0) {
+  const entries = deps.get(ref);
+  if (!entries || entries.length === 0) {
     return `      <Unknown index="${index}" />`;
   }
   // Convert VRs to 1-based indices
-  const depIndices = depRefs.map((vr) => variables.findIndex((v) => v.valueReference === vr) + 1).filter((i) => i > 0);
-  const depsAttr = ` dependencies="${depIndices.join(" ")}"`;
-  const kindsAttr = ` dependenciesKind="${depIndices.map(() => "dependent").join(" ")}"`;
+  const depItems = entries
+    .map((e) => ({ idx: variables.findIndex((v) => v.valueReference === e.vr) + 1, kind: e.kind }))
+    .filter((d) => d.idx > 0);
+  const depsAttr = ` dependencies="${depItems.map((d) => d.idx).join(" ")}"`;
+  const kindsAttr = ` dependenciesKind="${depItems.map((d) => d.kind).join(" ")}"`;
   return `      <Unknown index="${index}"${depsAttr}${kindsAttr} />`;
 }

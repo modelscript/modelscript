@@ -543,14 +543,34 @@ function detectAliases3(dae: ModelicaDAE, variables: Fmi3Variable[]): Map<string
   return aliasMap;
 }
 
+/** A single entry in the enriched dependency graph. */
+interface DepEntry3 {
+  vr: number;
+  kind: "dependent" | "constant" | "fixed" | "tunable";
+}
+
+/** Map variable variability to FMI dependency kind. */
+function variabilityToDepKind(v: Fmi3Variability): DepEntry3["kind"] {
+  switch (v) {
+    case "constant":
+      return "constant";
+    case "fixed":
+      return "fixed";
+    case "tunable":
+      return "tunable";
+    default:
+      return "dependent";
+  }
+}
+
 function computeDependencies3(
   dae: ModelicaDAE,
   variables: Fmi3Variable[],
   outputRefs: number[],
   derivativeRefs: number[],
   initialUnknownRefs: number[],
-): Map<number, number[]> {
-  const deps = new Map<number, number[]>();
+): Map<number, DepEntry3[]> {
+  const deps = new Map<number, DepEntry3[]>();
   const svByName = new Map<string, Fmi3Variable>();
   for (const sv of variables) svByName.set(sv.name, sv);
 
@@ -572,17 +592,17 @@ function computeDependencies3(
     const rhsNames = equationDeps.get(sv.name);
     if (!rhsNames) continue;
 
-    const depRefs: number[] = [];
+    const entries: DepEntry3[] = [];
     for (const name of rhsNames) {
       const depSv = svByName.get(name);
       if (depSv && depSv.valueReference !== ref) {
-        depRefs.push(depSv.valueReference);
+        entries.push({ vr: depSv.valueReference, kind: variabilityToDepKind(depSv.variability) });
       }
     }
-    if (depRefs.length > 0) {
+    if (entries.length > 0) {
       deps.set(
         ref,
-        depRefs.sort((a, b) => a - b),
+        entries.sort((a, b) => a.vr - b.vr),
       );
     }
   }
@@ -816,7 +836,7 @@ function generateModelDescriptionXml3(
     clockRefs: number[];
     fmuType: Fmi3TypeFlags;
     nEventIndicators: number;
-    deps: Map<number, number[]>;
+    deps: Map<number, DepEntry3[]>;
     aliasMap: Map<string, string>;
     enumTypes: Map<string, { name: string; description: string | null }[]>;
     terminals: Fmi3Terminal[];
@@ -1026,13 +1046,13 @@ function generateModelDescriptionXml3(
 }
 
 /** Format an Unknown/Output/ContinuousStateDerivative element. */
-function formatUnknown3(elementName: string, ref: number, deps: Map<number, number[]>): string {
-  const depRefs = deps.get(ref);
-  if (!depRefs || depRefs.length === 0) {
+function formatUnknown3(elementName: string, ref: number, deps: Map<number, DepEntry3[]>): string {
+  const entries = deps.get(ref);
+  if (!entries || entries.length === 0) {
     return `    <${elementName} valueReference="${ref}" />`;
   }
-  const depsAttr = ` dependencies="${depRefs.join(" ")}"`;
-  const kindsAttr = ` dependenciesKind="${depRefs.map(() => "dependent").join(" ")}"`;
+  const depsAttr = ` dependencies="${entries.map((e) => e.vr).join(" ")}"`;
+  const kindsAttr = ` dependenciesKind="${entries.map((e) => e.kind).join(" ")}"`;
   return `    <${elementName} valueReference="${ref}"${depsAttr}${kindsAttr} />`;
 }
 
