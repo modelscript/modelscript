@@ -12,7 +12,7 @@ import {
 } from "./dae.js";
 import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "./syntax.js";
 
-type TapeOp =
+export type TapeOp =
   | { type: "const"; val: number }
   | { type: "var"; name: string }
   | { type: "add"; a: number; b: number }
