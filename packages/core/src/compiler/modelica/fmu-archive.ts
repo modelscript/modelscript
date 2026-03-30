@@ -371,3 +371,47 @@ fmi2Status fmi2GetRealOutputDerivatives(fmi2Component, const fmi2ValueReference[
 
 #endif
 `;
+
+/**
+ * Compiles the generated C sources into a shared library (.dll, .so, .dylib) via CMake.
+ * NOTE: This requires Node.js (fs, path, os, child_process), CMake, and a C compiler available on the system.
+ */
+export async function compileFmuBinary(
+  id: string,
+  sources: { modelC: string; modelH: string; fmi2FunctionsC: string; fmi3FunctionsC: string; cmakeLists: string },
+): Promise<Uint8Array> {
+  const [fs, path, os, { execSync }] = await Promise.all([
+    import("fs"),
+    import("path"),
+    import("os"),
+    import("child_process"),
+  ]);
+
+  const tmpPrefix = path.join(os.tmpdir(), `modelscript-fmu-${id}-`);
+  const tmpDir = fs.mkdtempSync(tmpPrefix);
+
+  try {
+    fs.writeFileSync(path.join(tmpDir, `${id}_model.c`), sources.modelC);
+    fs.writeFileSync(path.join(tmpDir, `${id}_model.h`), sources.modelH);
+    fs.writeFileSync(path.join(tmpDir, "fmi2Functions.c"), sources.fmi2FunctionsC);
+    fs.writeFileSync(path.join(tmpDir, "fmi3Functions.c"), sources.fmi3FunctionsC);
+    fs.writeFileSync(path.join(tmpDir, "fmi2Functions.h"), FMI2_FUNCTIONS_H);
+    fs.writeFileSync(path.join(tmpDir, "fmi2TypesPlatform.h"), FMI2_TYPES_PLATFORM_H);
+    fs.writeFileSync(path.join(tmpDir, "fmi2FunctionTypes.h"), FMI2_FUNCTION_TYPES_H);
+    fs.writeFileSync(path.join(tmpDir, "CMakeLists.txt"), sources.cmakeLists);
+
+    execSync(`cmake -B build -S . -DCMAKE_BUILD_TYPE=Release`, { cwd: tmpDir, stdio: "pipe" });
+    execSync(`cmake --build build --config Release`, { cwd: tmpDir, stdio: "pipe" });
+
+    const buildDir = path.join(tmpDir, "build");
+    const files = fs.readdirSync(buildDir);
+    const libFile = files.find(
+      (f) => f.startsWith(id) && (f.endsWith(".dll") || f.endsWith(".so") || f.endsWith(".dylib")),
+    );
+    if (!libFile) throw new Error("Shared library not found after CMake compilation.");
+
+    return new Uint8Array(fs.readFileSync(path.join(buildDir, libFile)));
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+}

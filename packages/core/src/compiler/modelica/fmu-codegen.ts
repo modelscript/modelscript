@@ -18,6 +18,7 @@ import type { ModelicaDAE, ModelicaExpression } from "./dae.js";
 import {
   ModelicaBinaryExpression,
   ModelicaBooleanLiteral,
+  ModelicaFunctionCallEquation,
   ModelicaFunctionCallExpression,
   ModelicaIfElseExpression,
   ModelicaInitialStateEquation,
@@ -64,8 +65,13 @@ export function generateFmuCSources(dae: ModelicaDAE, fmuResult: FmuResult, opti
   // ── fmi3Functions.c ──
   const fmi3FunctionsC = generateFmi3FunctionsC(id, dae);
 
+  const externalLibs = new Set<string>();
+  for (const fn of dae.functions) {
+    for (const lib of fn.externalLibraries) externalLibs.add(lib);
+  }
+
   // ── CMakeLists.txt ──
-  const cmakeLists = generateCMakeLists(id);
+  const cmakeLists = generateCMakeLists(id, Array.from(externalLibs));
 
   return { modelH, modelC, fmi2FunctionsC, fmi3FunctionsC, cmakeLists };
 }
@@ -123,11 +129,15 @@ function exprToC(expr: ModelicaExpression): string {
       // Message is a string literal — extract it or use a default
       const msgExpr = expr.args[1];
       const msg = msgExpr instanceof ModelicaStringLiteral ? msgExpr.value.replace(/"/g, '\\"') : "Assertion failed";
-      return `((${cond}) ? 0.0 : (inst->callbacks.logger(inst, inst->instanceName, fmi2Error, "assert", "${msg}"), 0.0))`;
+      return `((${cond}) ? 0.0 : (inst->logger ? inst->logger(inst->fmuInstance, "assert", "${msg}") : (void)0, inst->terminate ? inst->terminate(inst->fmuInstance) : (void)0, 0.0))`;
     }
     // terminate(message) — signal simulation termination
     if (expr.functionName === "terminate") {
-      return "(inst->terminateRequested = 1, 0.0)";
+      const msg =
+        expr.args[0] instanceof ModelicaStringLiteral
+          ? expr.args[0].value.replace(/"/g, '\\"')
+          : "Simulation terminated";
+      return `(inst->logger ? inst->logger(inst->fmuInstance, "terminate", "${msg}") : (void)0, inst->terminate ? inst->terminate(inst->fmuInstance) : (void)0, 0.0)`;
     }
     // spatialDistribution(in0, in1, x, positiveVelocity) — 1D advection
     if (expr.functionName === "spatialDistribution" && expr.args.length >= 4) {
@@ -420,6 +430,9 @@ function generateModelH(
     );
   }
 
+  lines.push(`  void* fmuInstance;  /* parent FMU struct pointer */`);
+  lines.push(`  void (*logger)(void* fmuInstance, const char* category, const char* message);`);
+  lines.push(`  void (*terminate)(void* fmuInstance);`);
   lines.push(`} ${id}_Instance;`);
   lines.push("");
   lines.push(`void ${id}_initialize(${id}_Instance* inst);`);
@@ -433,7 +446,14 @@ function generateModelH(
 function generateAlgebraicLoopSolvers(id: string, dae: ModelicaDAE, result: FmuResult): string {
   const lines: string[] = [];
   lines.push("/* Numerical solver for Algebraic Loops */");
-  lines.push("static void solve_linear_sys(int n, double* A, double* b, double* x) {");
+  lines.push(`#define LOG_ERROR(inst, msg) \\`);
+  lines.push(`  do { \\`);
+  lines.push(`    if ((inst)->logger) (inst)->logger((inst)->fmuInstance, "error", msg); \\`);
+  lines.push(`    if ((inst)->terminate) (inst)->terminate((inst)->fmuInstance); \\`);
+  lines.push(`  } while(0)`);
+  lines.push("");
+  lines.push("static void solve_linear_sys(void* inst_ptr, int n, double* A, double* b, double* x) {");
+  lines.push(`  ${id}_Instance* inst = (${id}_Instance*)inst_ptr;`);
   lines.push("  for (int i = 0; i < n; i++) {");
   lines.push("    int pivot = i;");
   lines.push("    for (int j = i + 1; j < n; j++) {");
@@ -443,8 +463,12 @@ function generateAlgebraicLoopSolvers(id: string, dae: ModelicaDAE, result: FmuR
   lines.push("      double tmp = A[i*n + j]; A[i*n + j] = A[pivot*n + j]; A[pivot*n + j] = tmp;");
   lines.push("    }");
   lines.push("    double tmp = b[i]; b[i] = b[pivot]; b[pivot] = tmp;");
+  lines.push("    if (fabs(A[i*n + i]) < 1e-14) {");
+  lines.push(`      LOG_ERROR(inst, "Singular algebraic loop matrix encountered");`);
+  lines.push("      return;");
+  lines.push("    }");
   lines.push("    for (int j = i + 1; j < n; j++) {");
-  lines.push("      double factor = A[i*n + i] == 0.0 ? 0.0 : A[j*n + i] / A[i*n + i];");
+  lines.push("      double factor = A[j*n + i] / A[i*n + i];");
   lines.push("      for (int k = i; k < n; k++) A[j*n + k] -= factor * A[i*n + k];");
   lines.push("      b[j] -= factor * b[i];");
   lines.push("    }");
@@ -452,7 +476,7 @@ function generateAlgebraicLoopSolvers(id: string, dae: ModelicaDAE, result: FmuR
   lines.push("  for (int i = n - 1; i >= 0; i--) {");
   lines.push("    double sum = 0.0;");
   lines.push("    for (int j = i + 1; j < n; j++) sum += A[i*n + j] * x[j];");
-  lines.push("    x[i] = A[i*n + i] == 0.0 ? 0.0 : (b[i] - sum) / A[i*n + i];");
+  lines.push("    x[i] = (b[i] - sum) / A[i*n + i];");
   lines.push("  }");
   lines.push("}");
   lines.push("");
@@ -539,7 +563,7 @@ function generateAlgebraicLoopSolvers(id: string, dae: ModelicaDAE, result: FmuR
     lines.push(`      }`);
 
     lines.push(`      for (int i = 0; i < ${N}; i++) F[i] = -F[i];`);
-    lines.push(`      solve_linear_sys(${N}, J, F, dx);`);
+    lines.push(`      solve_linear_sys(inst, ${N}, J, F, dx);`);
     lines.push(`      for (int j = 0; j < ${N}; j++) {`);
     lines.push(`         int vr = -1;`);
     for (let j = 0; j < N; j++) {
@@ -563,6 +587,19 @@ function generateModelC(id: string, dae: ModelicaDAE, result: FmuResult): string
   lines.push("/* Auto-generated by ModelScript — do not edit */");
   lines.push(`#include "${id}_model.h"`);
   lines.push("#include <stdio.h>");
+
+  const externalIncludes = new Set<string>();
+  for (const fn of dae.functions) {
+    for (const inc of fn.externalIncludes) externalIncludes.add(inc);
+  }
+  for (const inc of externalIncludes) {
+    if (inc.trim().startsWith("#")) {
+      lines.push(inc);
+    } else {
+      // Sometimes just a header file name is given
+      lines.push(inc.includes(";") || inc.includes("int ") || inc.includes("void ") ? inc : `#include "${inc}"`);
+    }
+  }
   lines.push("");
 
   // Count delay() calls to determine if delay helpers are needed
@@ -876,6 +913,21 @@ function generateFmi2FunctionsC(
   lines.push("} FMUInstance;");
   lines.push("");
 
+  // ── Logger & Terminate Impl ──
+  lines.push("static void fmi2_logger_impl(void* fmuInstance, const char* category, const char* message) {");
+  lines.push("  FMUInstance* inst = (FMUInstance*)fmuInstance;");
+  lines.push("  if (inst->callbacks.logger) {");
+  lines.push(
+    "    inst->callbacks.logger(inst->callbacks.componentEnvironment, inst->instanceName, fmi2Error, category, message);",
+  );
+  lines.push("  }");
+  lines.push("}");
+  lines.push("static void fmi2_terminate_impl(void* fmuInstance) {");
+  lines.push("  FMUInstance* inst = (FMUInstance*)fmuInstance;");
+  lines.push("  inst->terminateRequested = 1;");
+  lines.push("}");
+  lines.push("");
+
   // ── fmi2Instantiate ──
   lines.push("fmi2Component fmi2Instantiate(fmi2String instanceName, fmi2Type fmuType,");
   lines.push("    fmi2String fmuGUID, fmi2String fmuResourceLocation,");
@@ -887,6 +939,9 @@ function generateFmi2FunctionsC(
   lines.push("  inst->callbacks = *functions;");
   lines.push("  inst->loggingOn = loggingOn;");
   lines.push(`  inst->stepSize = ${result.modelStructure.derivatives.length > 0 ? "0.001" : "0.001"};`);
+  lines.push("  inst->model.fmuInstance = inst;");
+  lines.push("  inst->model.logger = fmi2_logger_impl;");
+  lines.push("  inst->model.terminate = fmi2_terminate_impl;");
   lines.push(`  ${id}_initialize(&inst->model);`);
   lines.push("  return (fmi2Component)inst;");
   lines.push("}");
@@ -1394,6 +1449,16 @@ function generateFmi2FunctionsC(
   lines.push("/* --- Stubs --- */");
   lines.push("fmi2Status fmi2Reset(fmi2Component c) {");
   lines.push("  FMUInstance* inst = (FMUInstance*)c;");
+  for (let ei = 0; ei < dae.externalObjects.length; ei++) {
+    const eo = dae.externalObjects[ei];
+    if (!eo) continue;
+    const ctorName = sanitizeIdentifier(eo.constructorName);
+    const dtorName = sanitizeIdentifier(eo.destructorName);
+    lines.push(`  if (inst->model.extObj_${ei}) {`);
+    lines.push(`    ${dtorName}(inst->model.extObj_${ei});`);
+    lines.push(`  }`);
+    lines.push(`  inst->model.extObj_${ei} = ${ctorName}();`);
+  }
   lines.push(`  ${id}_initialize(&inst->model);`);
   lines.push("  return fmi2OK;");
   lines.push("}");
@@ -1522,6 +1587,20 @@ function generateFmi2FunctionsC(
               );
             }
           }
+        } else if (bodyEq instanceof ModelicaFunctionCallEquation) {
+          if (bodyEq.call.functionName === "reinit" && bodyEq.call.args.length === 2) {
+            const stateRef = bodyEq.call.args[0];
+            const newValue = bodyEq.call.args[1];
+            if (stateRef instanceof ModelicaNameExpression && newValue) {
+              const sv = result.scalarVariables.find((v) => v.name === stateRef.name);
+              if (sv) {
+                lines.push(
+                  `    inst->model.vars[${sv.valueReference}] = ${exprToC(newValue)};  /* reinit(${stateRef.name}) */`,
+                );
+                lines.push(`    info->valuesOfContinuousStatesChanged = fmi2True;`);
+              }
+            }
+          }
         }
       }
       lines.push("  }");
@@ -1542,6 +1621,20 @@ function generateFmi2FunctionsC(
                 lines.push(
                   `    inst->model.vars[${sv.valueReference}] = ${exprToC(bodyEq.expression2)};  /* ${lhsName} */`,
                 );
+              }
+            }
+          } else if (bodyEq instanceof ModelicaFunctionCallEquation) {
+            if (bodyEq.call.functionName === "reinit" && bodyEq.call.args.length === 2) {
+              const stateRef = bodyEq.call.args[0];
+              const newValue = bodyEq.call.args[1];
+              if (stateRef instanceof ModelicaNameExpression && newValue) {
+                const sv = result.scalarVariables.find((v) => v.name === stateRef.name);
+                if (sv) {
+                  lines.push(
+                    `    inst->model.vars[${sv.valueReference}] = ${exprToC(newValue)};  /* reinit(${stateRef.name}) */`,
+                  );
+                  lines.push(`    info->valuesOfContinuousStatesChanged = fmi2True;`);
+                }
               }
             }
           }
@@ -1833,8 +1926,7 @@ function generateFmi2FunctionsC(
 
 // ── CMakeLists.txt generator ──
 
-function generateCMakeLists(id: string, externalSources: string[] = []): string {
-  const extSourceLines = externalSources.map((s) => `  ${s}`).join("\n");
+function generateCMakeLists(id: string, externalLibraries: string[] = []): string {
   return `# Auto-generated by ModelScript — CMake build for FMU shared library
 cmake_minimum_required(VERSION 3.10)
 project(${id} C)
@@ -1860,10 +1952,12 @@ endif()
 add_library(${id} SHARED
   ${id}_model.c
   fmi2Functions.c
-  fmi3Functions.c${extSourceLines ? "\n" + extSourceLines : ""}
+  fmi3Functions.c
 )
 
 target_include_directories(${id} PRIVATE \${CMAKE_CURRENT_SOURCE_DIR})
+
+${externalLibraries.length > 0 ? `target_link_libraries(${id} PRIVATE ${externalLibraries.join(" ").replace(/\\/g, "/")})` : ""}
 
 # Export FMI symbols, hide everything else
 set_target_properties(${id} PROPERTIES

@@ -4886,6 +4886,38 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         }
         declText += ";";
         fnDae.externalDecl = declText;
+
+        if (ext.annotationClause?.classModification?.modificationArguments) {
+          for (const arg of ext.annotationClause.classModification.modificationArguments) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const modArg = arg as any;
+            if (modArg.name?.text && modArg.modification?.expression) {
+              const nameText = modArg.name.text;
+              if (nameText === "Include" || nameText === "Library") {
+                const exprCsn = modArg.modification.expression.concreteSyntaxNode;
+                if (exprCsn) {
+                  // Recursively extract all STRING tokens from the AST subtree
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const extractStrings = (node: any): string[] => {
+                    const result: string[] = [];
+                    if (node.type === "STRING" && node.text) {
+                      const text = node.text.substring(1, node.text.length - 1);
+                      result.push(text.replace(/""/g, '"').replace(/\\"/g, '"'));
+                    }
+                    for (let i = 0; i < node.childCount; i++) {
+                      const child = node.child(i);
+                      if (child) result.push(...extractStrings(child));
+                    }
+                    return result;
+                  };
+                  const values = extractStrings(exprCsn);
+                  if (nameText === "Include") fnDae.externalIncludes.push(...values);
+                  else fnDae.externalLibraries.push(...values);
+                }
+              }
+            }
+          }
+        }
       }
     }
     // fnDae was pushed early to prevent recursion during body flattening.

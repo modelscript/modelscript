@@ -24,6 +24,15 @@ import {
 import type { Fmi3Options, Fmi3Result, Fmi3Variable } from "./fmi3.js";
 import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "./syntax.js";
 
+/** Sanitize a Modelica name into a valid C identifier. */
+function sanitizeIdentifier(name: string): string {
+  return name
+    .replace(/\./g, "_")
+    .replace(/\[/g, "_")
+    .replace(/\]/g, "")
+    .replace(/[^a-zA-Z0-9_]/g, "_");
+}
+
 /** Generated FMI 3.0 C source files. */
 export interface Fmi3CSourceFiles {
   modelH: string;
@@ -405,6 +414,13 @@ function generateFmi3FunctionsC(
   L.push("  fmi3Boolean eventModeUsed;");
   L.push("  fmi3Boolean earlyReturnAllowed;");
   L.push("  int state; /* 0=INIT, 1=STEP, 2=EVENT, 3=TERMINATED */");
+  // ExternalObject handle fields
+  for (let ei = 0; ei < dae.externalObjects.length; ei++) {
+    const eo = dae.externalObjects[ei];
+    if (!eo) continue;
+    L.push(`  void* extObj_${ei}; /* ${eo.typeName}: ${eo.variableName} */`);
+  }
+  L.push("  int terminateRequested;");
   L.push("} FMU3Instance;");
   L.push("#define FMU3_STATE_INIT  0");
   L.push("#define FMU3_STATE_STEP  1");
@@ -456,6 +472,18 @@ function generateFmi3FunctionsC(
     L.push("");
   }
 
+  L.push("static void fmi3_logger_impl(void* fmuInstance, const char* category, const char* message) {");
+  L.push("  FMU3Instance* inst = (FMU3Instance*)fmuInstance;");
+  L.push("  if (inst->logMessage) {");
+  L.push("    inst->logMessage(inst->instanceEnvironment, fmi3Error, category, message);");
+  L.push("  }");
+  L.push("}");
+  L.push("static void fmi3_terminate_impl(void* fmuInstance) {");
+  L.push("  FMU3Instance* inst = (FMU3Instance*)fmuInstance;");
+  L.push("  inst->terminateRequested = 1;");
+  L.push("}");
+  L.push("");
+
   // fmi3InstantiateCoSimulation
   L.push("fmi3Instance fmi3InstantiateCoSimulation(");
   L.push("    fmi3String instanceName, fmi3String instantiationToken, fmi3String resourcePath,");
@@ -477,7 +505,23 @@ function generateFmi3FunctionsC(
   L.push("  inst->eventModeUsed = eventModeUsed;");
   L.push("  inst->earlyReturnAllowed = earlyReturnAllowed;");
   L.push("  inst->state = FMU3_STATE_INIT;");
+  L.push("  inst->model.fmuInstance = inst;");
+  L.push("  inst->model.logger = fmi3_logger_impl;");
+  L.push("  inst->model.terminate = fmi3_terminate_impl;");
   L.push(`  ${id}_initialize(&inst->model);`);
+
+  // Emit ExternalObject constructor calls right after instantiation
+  if (dae.externalObjects.length > 0) {
+    L.push("  /* --- ExternalObject constructors --- */");
+    for (let ei = 0; ei < dae.externalObjects.length; ei++) {
+      const eo = dae.externalObjects[ei];
+      if (!eo) continue;
+      const ctorName = sanitizeIdentifier(eo.constructorName);
+      L.push(`  inst->extObj_${ei} = (void*)${ctorName}();  /* ${eo.typeName} */`);
+    }
+    L.push("");
+  }
+
   L.push("  return (fmi3Instance)inst;");
   L.push("}");
   L.push("");
@@ -494,7 +538,23 @@ function generateFmi3FunctionsC(
   L.push("  inst->logMessage = logMessage;");
   L.push("  inst->instanceEnvironment = instanceEnvironment;");
   L.push("  inst->loggingOn = loggingOn;");
+  L.push("  inst->model.fmuInstance = inst;");
+  L.push("  inst->model.logger = fmi3_logger_impl;");
+  L.push("  inst->model.terminate = fmi3_terminate_impl;");
   L.push(`  ${id}_initialize(&inst->model);`);
+
+  // Emit ExternalObject constructor calls right after instantiation
+  if (dae.externalObjects.length > 0) {
+    L.push("  /* --- ExternalObject constructors --- */");
+    for (let ei = 0; ei < dae.externalObjects.length; ei++) {
+      const eo = dae.externalObjects[ei];
+      if (!eo) continue;
+      const ctorName = sanitizeIdentifier(eo.constructorName);
+      L.push(`  inst->extObj_${ei} = (void*)${ctorName}();  /* ${eo.typeName} */`);
+    }
+    L.push("");
+  }
+
   L.push("  return (fmi3Instance)inst;");
   L.push("}");
   L.push("");
@@ -515,10 +575,37 @@ function generateFmi3FunctionsC(
   L.push(
     "fmi3Status fmi3Terminate(fmi3Instance instance) { ((FMU3Instance*)instance)->state = FMU3_STATE_TERM; return fmi3OK; }",
   );
-  L.push("void fmi3FreeInstance(fmi3Instance instance) { if (instance) free(instance); }");
-  L.push(
-    "fmi3Status fmi3Reset(fmi3Instance instance) { ((FMU3Instance*)instance)->state = FMU3_STATE_INIT; return fmi3OK; }",
-  );
+  L.push("void fmi3FreeInstance(fmi3Instance instance) {");
+  L.push("  if (!instance) return;");
+  L.push("  FMU3Instance* inst = (FMU3Instance*)instance;");
+  // ExternalObject destructors
+  if (dae.externalObjects.length > 0) {
+    L.push("  /* ExternalObject destructors */");
+    for (let ei = 0; ei < dae.externalObjects.length; ei++) {
+      const eo = dae.externalObjects[ei];
+      if (!eo) continue;
+      const dtorName = sanitizeIdentifier(eo.destructorName);
+      L.push(`  ${dtorName}(inst->extObj_${ei});`);
+    }
+  }
+  L.push("  free(inst);");
+  L.push("}");
+  L.push("fmi3Status fmi3Reset(fmi3Instance instance) {");
+  L.push("  FMU3Instance* inst = (FMU3Instance*)instance;");
+  L.push("  inst->state = FMU3_STATE_INIT;");
+  for (let ei = 0; ei < dae.externalObjects.length; ei++) {
+    const eo = dae.externalObjects[ei];
+    if (!eo) continue;
+    const ctorName = sanitizeIdentifier(eo.constructorName);
+    const dtorName = sanitizeIdentifier(eo.destructorName);
+    L.push(`  if (inst->extObj_${ei}) {`);
+    L.push(`    ${dtorName}(inst->extObj_${ei});`);
+    L.push(`  }`);
+    L.push(`  inst->extObj_${ei} = ${ctorName}();`);
+  }
+  L.push(`  ${id}_initialize(&inst->model);`);
+  L.push("  return fmi3OK;");
+  L.push("}");
   L.push("");
 
   const numericTypes = ["Float32", "Float64", "Int8", "UInt8", "Int16", "UInt16", "Int32", "UInt32", "Int64", "UInt64"];

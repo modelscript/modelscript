@@ -33,6 +33,10 @@ export class ModelicaDAE {
   functions: ModelicaDAE[] = [];
   /** External function declaration text (e.g. `external "C" ...`). */
   externalDecl: string | null = null;
+  /** Extracted annotation(Library="...") references. */
+  externalLibraries: string[] = [];
+  /** Extracted annotation(Include="...") references. */
+  externalIncludes: string[] = [];
   /**
    * Descriptors for variables whose type extends `ExternalObject`.
    * Track constructor/destructor names for lifecycle management.

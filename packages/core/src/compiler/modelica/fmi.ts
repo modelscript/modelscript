@@ -597,9 +597,11 @@ function generateModelDescriptionXml(
     for (const [typeName, literals] of opts.enumTypes) {
       lines.push(`    <SimpleType name="${escapeXml(typeName)}">`);
       lines.push("      <Enumeration>");
-      for (const lit of literals) {
+      for (let i = 0; i < literals.length; i++) {
+        const lit = literals[i];
+        if (!lit) continue;
         const descAttr = lit.description ? ` description="${escapeXml(lit.description)}"` : "";
-        lines.push(`        <Item name="${escapeXml(lit.name)}"${descAttr} />`);
+        lines.push(`        <Item name="${escapeXml(lit.name)}" value="${i + 1}"${descAttr} />`);
       }
       lines.push("      </Enumeration>");
       lines.push("    </SimpleType>");
@@ -780,6 +782,22 @@ export function generateFmi3ModelDescriptionXml(
   lines.push(`    startTime="${opts.startTime ?? 0}"`);
   lines.push(`    stopTime="${opts.stopTime ?? 1}"`);
   lines.push(`    stepSize="${opts.stepSize ?? 0.001}" />`);
+
+  if (opts.enumTypes.size > 0) {
+    lines.push("");
+    lines.push("  <TypeDefinitions>");
+    for (const [typeName, literals] of opts.enumTypes) {
+      lines.push(`    <EnumerationType name="${escapeXml(typeName)}">`);
+      for (let i = 0; i < literals.length; i++) {
+        const lit = literals[i];
+        if (!lit) continue;
+        const descAttr = lit.description ? ` description="${escapeXml(lit.description)}"` : "";
+        lines.push(`      <Item name="${escapeXml(lit.name)}" value="${i + 1}"${descAttr} />`);
+      }
+      lines.push("    </EnumerationType>");
+    }
+    lines.push("  </TypeDefinitions>");
+  }
 
   lines.push("");
   lines.push("  <ModelVariables>");
