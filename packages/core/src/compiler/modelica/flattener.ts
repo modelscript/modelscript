@@ -4838,6 +4838,15 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
 
     // Register the function definition early to prevent infinite recursion when
     // the function body references itself (directly or via name resolution).
+    if (
+      resolved.parent &&
+      "jsSource" in resolved.parent &&
+      typeof (resolved.parent as { jsSource?: unknown }).jsSource === "string"
+    ) {
+      fnDae.jsSource = (resolved.parent as { jsSource: string }).jsSource;
+      const jsP = (resolved.parent as { jsPath?: string }).jsPath;
+      if (typeof jsP === "string") fnDae.jsPath = jsP;
+    }
     targetDae.functions.push(fnDae);
 
     // Flatten algorithm and equation sections (these still use the standard path)

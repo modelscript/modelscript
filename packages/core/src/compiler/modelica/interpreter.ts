@@ -1596,8 +1596,55 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
         clonedFunction = functionInstance.clone(modification);
       }
 
-      // Execute algorithm statements to compute output values
-      if (this.#evaluateAlgorithms && this.#functionCallDepth < ModelicaInterpreter.MAX_FUNCTION_CALL_DEPTH) {
+      // Execute algorithm statements or JS source to compute output values
+      let jsExecuted: ModelicaExpression | null = null;
+
+      if (
+        this.#evaluateAlgorithms &&
+        clonedFunction.parent &&
+        "jsSource" in clonedFunction.parent &&
+        typeof (clonedFunction.parent as { jsSource?: unknown }).jsSource === "string"
+      ) {
+        const jsSource = (clonedFunction.parent as { jsSource: string }).jsSource;
+        const transpiled = jsSource
+          .replace(/import\s+.*?from\s+['"].*?['"];?/g, "")
+          .replace(/export\s+function/g, "function")
+          .replace(/export\s+const/g, "const")
+          .replace(/export\s+\{([^}]+)\};?/g, "")
+          .replace(/export\s+default\s+([a-zA-Z_$][\w$]*);?/g, "");
+
+        const args: unknown[] = [];
+        for (const inputParameter of clonedFunction.inputParameters) {
+          const expr = ModelicaExpression.fromClassInstance(inputParameter.classInstance);
+          if (expr instanceof ModelicaRealLiteral || expr instanceof ModelicaIntegerLiteral) {
+            args.push(expr.value);
+          } else if (expr instanceof ModelicaBooleanLiteral) {
+            args.push(expr.value);
+          } else if (expr instanceof ModelicaStringLiteral) {
+            args.push(expr.value);
+          } else {
+            args.push(0);
+          }
+        }
+
+        try {
+          const executor = new Function(`
+            ${transpiled}
+            return ${clonedFunction.name}(...arguments);
+          `);
+          const result = executor(...args);
+
+          if (typeof result === "number") {
+            jsExecuted = new ModelicaRealLiteral(result);
+          } else if (typeof result === "boolean") {
+            jsExecuted = new ModelicaBooleanLiteral(result);
+          } else if (typeof result === "string") {
+            jsExecuted = new ModelicaStringLiteral(result);
+          }
+        } catch (e) {
+          console.error(`[JS Interop] Error executing function ${clonedFunction.name}:`, e);
+        }
+      } else if (this.#evaluateAlgorithms && this.#functionCallDepth < ModelicaInterpreter.MAX_FUNCTION_CALL_DEPTH) {
         this.#functionCallDepth++;
         try {
           for (const statement of clonedFunction.algorithms) {
@@ -1608,6 +1655,10 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
         } finally {
           this.#functionCallDepth--;
         }
+      }
+
+      if (jsExecuted) {
+        return jsExecuted;
       }
 
       const outputExpressions: ModelicaExpression[] = [];

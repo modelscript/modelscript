@@ -35,6 +35,9 @@ export class ModelicaDAE {
   functions: ModelicaDAE[] = [];
   /** External function declaration text (e.g. `external "C" ...`). */
   externalDecl: string | null = null;
+  /** JavaScript source code if this function was parsed from JS/TS */
+  jsSource?: string;
+  jsPath?: string;
   /** Extracted annotation(Library="...") references. */
   externalLibraries: string[] = [];
   /** Extracted annotation(Include="...") references. */

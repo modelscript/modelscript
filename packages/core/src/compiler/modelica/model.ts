@@ -1798,6 +1798,22 @@ export class ModelicaEntity extends ModelicaClassInstance {
             }
             continue;
           }
+          // Check for JS/TS files
+          if (ext === ".js" || ext === ".ts") {
+            const jsPath = context.fs.join(this.path, dirent.name);
+            try {
+              /* eslint-disable @typescript-eslint/no-require-imports */
+              const { ModelicaJavascriptEntity } =
+                require("./javascript-entity.js") as typeof import("./javascript-entity.js");
+              /* eslint-enable @typescript-eslint/no-require-imports */
+              const jsEntity = new ModelicaJavascriptEntity(this, jsPath);
+              jsEntity.name = dirent.name.replace(/\.[tj]s$/, "");
+              this.subEntities.push(jsEntity as unknown as ModelicaEntity);
+            } catch {
+              // Skip
+            }
+            continue;
+          }
           if (ext !== ".mo") continue;
         }
         const subEntity = new ModelicaEntity(this, context.fs.join(this.path, dirent.name));
