@@ -19,14 +19,17 @@
 import type { ModelicaExpression } from "./dae.js";
 import {
   ModelicaBinaryExpression,
+  ModelicaDAE,
   ModelicaFunctionCallExpression,
   ModelicaIntegerLiteral,
   ModelicaNameExpression,
   ModelicaRealLiteral,
+  ModelicaRealVariable,
+  ModelicaSimpleEquation,
   ModelicaUnaryExpression,
 } from "./dae.js";
 import { add, differentiateExpr, div, isOne, isZero, mul, simplifyExpr, sub, ZERO } from "./symbolic-diff.js";
-import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "./syntax.js";
+import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "./syntax.js";
 
 // ─────────────────────────────────────────────────────────────────────
 // Public API
@@ -81,7 +84,7 @@ function countOccurrences(expr: ModelicaExpression, varName: string): number {
 /**
  * Substitute all occurrences of `varName` with `replacement` in an expression.
  */
-function substituteVariable(
+export function substituteVariable(
   expr: ModelicaExpression,
   varName: string,
   replacement: ModelicaExpression,
@@ -410,4 +413,122 @@ function isNegOne(expr: ModelicaExpression): boolean {
   if (expr instanceof ModelicaRealLiteral) return expr.value === -1;
   if (expr instanceof ModelicaIntegerLiteral) return expr.value === -1;
   return false;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Alias Elimination
+// ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Substitute all occurrences of `varName` in all expressions of an equation.
+ */
+function substituteInEquation(
+  eq: ModelicaSimpleEquation,
+  varName: string,
+  replacement: ModelicaExpression,
+): ModelicaSimpleEquation {
+  const e1 = substituteVariable(eq.expression1, varName, replacement);
+  const e2 = substituteVariable(eq.expression2, varName, replacement);
+  if (e1 === eq.expression1 && e2 === eq.expression2) return eq;
+  return new ModelicaSimpleEquation(e1, e2, eq.description);
+}
+
+/**
+ * Detect if a `ModelicaSimpleEquation` is a trivial alias: `a = b`
+ * where both sides are bare variable references (ModelicaNameExpression).
+ *
+ * @returns The pair [aliasVar, targetVar], or null.
+ */
+function detectTrivialAlias(
+  eq: ModelicaSimpleEquation,
+  unknowns: Set<string>,
+): { aliasVar: string; targetExpr: ModelicaExpression } | null {
+  const lhs = eq.expression1;
+  const rhs = eq.expression2;
+
+  // Pattern: name = expr  where name is an unknown
+  if (lhs instanceof ModelicaNameExpression && unknowns.has(lhs.name)) {
+    // a = b (trivial) or a = expr where expr doesn't contain a
+    if (!containsVariable(rhs, lhs.name)) {
+      return { aliasVar: lhs.name, targetExpr: rhs };
+    }
+  }
+  // Pattern: expr = name  where name is an unknown
+  if (rhs instanceof ModelicaNameExpression && unknowns.has(rhs.name)) {
+    if (!containsVariable(lhs, rhs.name)) {
+      return { aliasVar: rhs.name, targetExpr: lhs };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Perform alias elimination on a DAE.
+ *
+ * Scans equations for trivial aliases (`a = b` or `a = expr`) where `a` is
+ * a continuous unknown and `expr` does not reference `a`. Replaces all
+ * occurrences of the alias variable with its target expression in all other
+ * equations, then removes the alias equation and variable.
+ *
+ * This reduces the system size and eliminates redundant unknowns before
+ * BLT analysis.
+ */
+export function eliminateAliases(dae: ModelicaDAE): void {
+  // Build the set of continuous unknowns (same logic as BLT)
+  const unknowns = new Set<string>();
+  for (const v of dae.variables) {
+    if (v instanceof ModelicaRealVariable && v.variability === null) {
+      unknowns.add(v.name);
+    }
+  }
+
+  // Iterate until no more aliases are found (substitution may reveal new aliases)
+  let changed = true;
+  while (changed) {
+    changed = false;
+
+    for (let i = 0; i < dae.equations.length; i++) {
+      const eq = dae.equations[i];
+      if (!(eq instanceof ModelicaSimpleEquation)) continue;
+
+      const alias = detectTrivialAlias(eq, unknowns);
+      if (!alias) continue;
+
+      const { aliasVar, targetExpr } = alias;
+
+      // Don't eliminate parameters, constants, or derivatives
+      const varDef = dae.variables.find((v) => v.name === aliasVar);
+      if (!varDef) continue;
+      if (varDef.variability === ModelicaVariability.PARAMETER || varDef.variability === ModelicaVariability.CONSTANT) {
+        continue;
+      }
+      if (aliasVar.startsWith("der(")) continue;
+
+      // Don't eliminate variables that appear in the target expression
+      // (would create cycles)
+      if (containsVariable(targetExpr, aliasVar)) continue;
+
+      // Substitute aliasVar → targetExpr in all OTHER equations
+      for (let j = 0; j < dae.equations.length; j++) {
+        if (j === i) continue;
+        const otherEq = dae.equations[j];
+        if (!(otherEq instanceof ModelicaSimpleEquation)) continue;
+        dae.equations[j] = substituteInEquation(otherEq, aliasVar, targetExpr);
+      }
+
+      // Remove the alias equation
+      dae.equations.splice(i, 1);
+
+      // Remove the alias variable
+      const varIdx = dae.variables.findIndex((v) => v.name === aliasVar);
+      if (varIdx >= 0) dae.variables.splice(varIdx, 1);
+
+      // Remove from unknowns set
+      unknowns.delete(aliasVar);
+
+      changed = true;
+      break; // restart scan from the beginning
+    }
+  }
 }
