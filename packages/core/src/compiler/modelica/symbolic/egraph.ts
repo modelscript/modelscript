@@ -963,6 +963,479 @@ const subToAddRules: RewriteRule[] = [
 ];
 
 /**
+ * Associativity rules: (a+b)+c ↔ a+(b+c), (a*b)*c ↔ a*(b*c)
+ */
+const associativityRules: RewriteRule[] = [
+  {
+    name: "add-assoc-left",
+    apply(egraph, classId, node) {
+      // (a + b) + c → a + (b + c)
+      if (node.op !== "add") return [];
+      const ch = binChildren(node);
+      if (!ch) return [];
+      const inner = egraph.findOp(ch[0], "add");
+      if (!inner) return [];
+      const innerCh = binChildren(inner);
+      if (!innerCh) return [];
+      const bc = egraph.addNode({ op: "add", children: [innerCh[1], ch[1]] });
+      const result = egraph.addNode({ op: "add", children: [innerCh[0], bc] });
+      return [{ id: classId, newId: result }];
+    },
+  },
+  {
+    name: "add-assoc-right",
+    apply(egraph, classId, node) {
+      // a + (b + c) → (a + b) + c
+      if (node.op !== "add") return [];
+      const ch = binChildren(node);
+      if (!ch) return [];
+      const inner = egraph.findOp(ch[1], "add");
+      if (!inner) return [];
+      const innerCh = binChildren(inner);
+      if (!innerCh) return [];
+      const ab = egraph.addNode({ op: "add", children: [ch[0], innerCh[0]] });
+      const result = egraph.addNode({ op: "add", children: [ab, innerCh[1]] });
+      return [{ id: classId, newId: result }];
+    },
+  },
+  {
+    name: "mul-assoc-left",
+    apply(egraph, classId, node) {
+      // (a * b) * c → a * (b * c)
+      if (node.op !== "mul") return [];
+      const ch = binChildren(node);
+      if (!ch) return [];
+      const inner = egraph.findOp(ch[0], "mul");
+      if (!inner) return [];
+      const innerCh = binChildren(inner);
+      if (!innerCh) return [];
+      const bc = egraph.addNode({ op: "mul", children: [innerCh[1], ch[1]] });
+      const result = egraph.addNode({ op: "mul", children: [innerCh[0], bc] });
+      return [{ id: classId, newId: result }];
+    },
+  },
+  {
+    name: "mul-assoc-right",
+    apply(egraph, classId, node) {
+      // a * (b * c) → (a * b) * c
+      if (node.op !== "mul") return [];
+      const ch = binChildren(node);
+      if (!ch) return [];
+      const inner = egraph.findOp(ch[1], "mul");
+      if (!inner) return [];
+      const innerCh = binChildren(inner);
+      if (!innerCh) return [];
+      const ab = egraph.addNode({ op: "mul", children: [ch[0], innerCh[0]] });
+      const result = egraph.addNode({ op: "mul", children: [ab, innerCh[1]] });
+      return [{ id: classId, newId: result }];
+    },
+  },
+];
+
+/**
+ * Distributivity rules: a*(b+c) ↔ a*b + a*c
+ */
+const distributivityRules: RewriteRule[] = [
+  {
+    name: "distribute-mul-over-add",
+    apply(egraph, classId, node) {
+      // a * (b + c) → a*b + a*c
+      if (node.op !== "mul") return [];
+      const ch = binChildren(node);
+      if (!ch) return [];
+      // Check right child for add
+      const addNode = egraph.findOp(ch[1], "add");
+      if (addNode) {
+        const addCh = binChildren(addNode);
+        if (addCh) {
+          const ab = egraph.addNode({ op: "mul", children: [ch[0], addCh[0]] });
+          const ac = egraph.addNode({ op: "mul", children: [ch[0], addCh[1]] });
+          const result = egraph.addNode({ op: "add", children: [ab, ac] });
+          return [{ id: classId, newId: result }];
+        }
+      }
+      return [];
+    },
+  },
+  {
+    name: "distribute-mul-over-add-left",
+    apply(egraph, classId, node) {
+      // (b + c) * a → b*a + c*a
+      if (node.op !== "mul") return [];
+      const ch = binChildren(node);
+      if (!ch) return [];
+      const addNode = egraph.findOp(ch[0], "add");
+      if (addNode) {
+        const addCh = binChildren(addNode);
+        if (addCh) {
+          const ba = egraph.addNode({ op: "mul", children: [addCh[0], ch[1]] });
+          const ca = egraph.addNode({ op: "mul", children: [addCh[1], ch[1]] });
+          const result = egraph.addNode({ op: "add", children: [ba, ca] });
+          return [{ id: classId, newId: result }];
+        }
+      }
+      return [];
+    },
+  },
+  {
+    name: "factor-add-common-left",
+    apply(egraph, classId, node) {
+      // a*b + a*c → a*(b+c)
+      if (node.op !== "add") return [];
+      const ch = binChildren(node);
+      if (!ch) return [];
+      const leftMul = egraph.findOp(ch[0], "mul");
+      const rightMul = egraph.findOp(ch[1], "mul");
+      if (!leftMul || !rightMul) return [];
+      const lch = binChildren(leftMul);
+      const rch = binChildren(rightMul);
+      if (!lch || !rch) return [];
+      // Check if left factors match: a*b + a*c
+      if (egraph.find(lch[0]) === egraph.find(rch[0])) {
+        const sum = egraph.addNode({ op: "add", children: [lch[1], rch[1]] });
+        const result = egraph.addNode({ op: "mul", children: [lch[0], sum] });
+        return [{ id: classId, newId: result }];
+      }
+      return [];
+    },
+  },
+];
+
+/**
+ * Power rules: x^a * x^b → x^(a+b), (x^a)^b → x^(a*b)
+ */
+const powerRules: RewriteRule[] = [
+  {
+    name: "pow-mul-same-base",
+    apply(egraph, classId, node) {
+      // x^a * x^b → x^(a+b)
+      if (node.op !== "mul") return [];
+      const ch = binChildren(node);
+      if (!ch) return [];
+      const leftPow = egraph.findOp(ch[0], "pow");
+      const rightPow = egraph.findOp(ch[1], "pow");
+      if (!leftPow || !rightPow) return [];
+      const lch = binChildren(leftPow);
+      const rch = binChildren(rightPow);
+      if (!lch || !rch) return [];
+      // Same base?
+      if (egraph.find(lch[0]) === egraph.find(rch[0])) {
+        const sumExp = egraph.addNode({ op: "add", children: [lch[1], rch[1]] });
+        const result = egraph.addNode({ op: "pow", children: [lch[0], sumExp] });
+        return [{ id: classId, newId: result }];
+      }
+      return [];
+    },
+  },
+  {
+    name: "pow-pow",
+    apply(egraph, classId, node) {
+      // (x^a)^b → x^(a*b)
+      if (node.op !== "pow") return [];
+      const ch = binChildren(node);
+      if (!ch) return [];
+      const innerPow = egraph.findOp(ch[0], "pow");
+      if (!innerPow) return [];
+      const innerCh = binChildren(innerPow);
+      if (!innerCh) return [];
+      const prodExp = egraph.addNode({ op: "mul", children: [innerCh[1], ch[1]] });
+      const result = egraph.addNode({ op: "pow", children: [innerCh[0], prodExp] });
+      return [{ id: classId, newId: result }];
+    },
+  },
+  {
+    name: "mul-as-pow2",
+    apply(egraph, classId, node) {
+      // x * x → x^2
+      if (node.op !== "mul") return [];
+      const ch = binChildren(node);
+      if (!ch) return [];
+      if (egraph.find(ch[0]) === egraph.find(ch[1])) {
+        const two = egraph.addNode({ op: "lit:2", children: [] });
+        const result = egraph.addNode({ op: "pow", children: [ch[0], two] });
+        return [{ id: classId, newId: result }];
+      }
+      return [];
+    },
+  },
+];
+
+/**
+ * Negation distribution: -(a+b) → -a + -b, -(a*b) → (-a)*b
+ */
+const negationDistributionRules: RewriteRule[] = [
+  {
+    name: "neg-add",
+    apply(egraph, classId, node) {
+      // -(a + b) → (-a) + (-b)
+      if (node.op !== "neg") return [];
+      const c = unaryChild(node);
+      if (c === null) return [];
+      const addNode = egraph.findOp(c, "add");
+      if (!addNode) return [];
+      const ch = binChildren(addNode);
+      if (!ch) return [];
+      const negA = egraph.addNode({ op: "neg", children: [ch[0]] });
+      const negB = egraph.addNode({ op: "neg", children: [ch[1]] });
+      const result = egraph.addNode({ op: "add", children: [negA, negB] });
+      return [{ id: classId, newId: result }];
+    },
+  },
+  {
+    name: "neg-mul",
+    apply(egraph, classId, node) {
+      // -(a * b) → (-a) * b
+      if (node.op !== "neg") return [];
+      const c = unaryChild(node);
+      if (c === null) return [];
+      const mulNode = egraph.findOp(c, "mul");
+      if (!mulNode) return [];
+      const ch = binChildren(mulNode);
+      if (!ch) return [];
+      const negA = egraph.addNode({ op: "neg", children: [ch[0]] });
+      const result = egraph.addNode({ op: "mul", children: [negA, ch[1]] });
+      return [{ id: classId, newId: result }];
+    },
+  },
+  {
+    name: "neg-sub",
+    apply(egraph, classId, node) {
+      // -(a - b) → b - a
+      if (node.op !== "neg") return [];
+      const c = unaryChild(node);
+      if (c === null) return [];
+      const subNode = egraph.findOp(c, "sub");
+      if (!subNode) return [];
+      const ch = binChildren(subNode);
+      if (!ch) return [];
+      const result = egraph.addNode({ op: "sub", children: [ch[1], ch[0]] });
+      return [{ id: classId, newId: result }];
+    },
+  },
+];
+
+/**
+ * Division simplification rules.
+ */
+const divisionRules: RewriteRule[] = [
+  {
+    name: "div-zero-numerator",
+    apply(egraph, classId, node) {
+      // 0 / x → 0
+      if (node.op !== "div") return [];
+      const ch = binChildren(node);
+      if (!ch) return [];
+      if (egraph.getLiteral(ch[0]) === 0) {
+        const zeroId = egraph.addNode({ op: "lit:0", children: [] });
+        return [{ id: classId, newId: zeroId }];
+      }
+      return [];
+    },
+  },
+  {
+    name: "div-to-mul-inv",
+    apply(egraph, classId, node) {
+      // a / b → a * b^(-1)
+      if (node.op !== "div") return [];
+      const ch = binChildren(node);
+      if (!ch) return [];
+      const negOne = egraph.addNode({ op: "lit:-1", children: [] });
+      const inv = egraph.addNode({ op: "pow", children: [ch[1], negOne] });
+      const result = egraph.addNode({ op: "mul", children: [ch[0], inv] });
+      return [{ id: classId, newId: result }];
+    },
+  },
+  {
+    name: "div-div-to-mul",
+    apply(egraph, classId, node) {
+      // (a / b) / c → a / (b * c)
+      if (node.op !== "div") return [];
+      const ch = binChildren(node);
+      if (!ch) return [];
+      const innerDiv = egraph.findOp(ch[0], "div");
+      if (!innerDiv) return [];
+      const innerCh = binChildren(innerDiv);
+      if (!innerCh) return [];
+      const bc = egraph.addNode({ op: "mul", children: [innerCh[1], ch[1]] });
+      const result = egraph.addNode({ op: "div", children: [innerCh[0], bc] });
+      return [{ id: classId, newId: result }];
+    },
+  },
+];
+
+/**
+ * Pythagorean identity: sin²(x) + cos²(x) → 1
+ * Detects the pattern structurally through e-class membership.
+ */
+const pythagoreanRules: RewriteRule[] = [
+  {
+    name: "sin2-cos2",
+    apply(egraph, classId, node) {
+      // sin(x)^2 + cos(x)^2 → 1
+      if (node.op !== "add") return [];
+      const ch = binChildren(node);
+      if (!ch) return [];
+
+      // Try both orderings: left=sin², right=cos² or left=cos², right=sin²
+      const result = matchSinCosPair(egraph, ch[0], ch[1]) ?? matchSinCosPair(egraph, ch[1], ch[0]);
+      if (result !== null) {
+        const oneId = egraph.addNode({ op: "lit:1", children: [] });
+        return [{ id: classId, newId: oneId }];
+      }
+      return [];
+    },
+  },
+];
+
+/**
+ * Check if leftId is sin(x)^2 and rightId is cos(x)^2 for the same x.
+ */
+function matchSinCosPair(egraph: EGraph, leftId: EClassId, rightId: EClassId): true | null {
+  // left must be pow with exponent 2
+  const leftPow = egraph.findOp(leftId, "pow");
+  if (!leftPow) return null;
+  const leftCh = binChildren(leftPow);
+  if (!leftCh || egraph.getLiteral(leftCh[1]) !== 2) return null;
+
+  // right must be pow with exponent 2
+  const rightPow = egraph.findOp(rightId, "pow");
+  if (!rightPow) return null;
+  const rightCh = binChildren(rightPow);
+  if (!rightCh || egraph.getLiteral(rightCh[1]) !== 2) return null;
+
+  // One base must be sin(x), the other cos(x), with the same x
+  const leftSin = egraph.findOp(leftCh[0], "fn:sin");
+  const rightCos = egraph.findOp(rightCh[0], "fn:cos");
+  if (leftSin && rightCos) {
+    const sinArg = unaryChild(leftSin);
+    const cosArg = unaryChild(rightCos);
+    if (sinArg !== null && cosArg !== null && egraph.find(sinArg) === egraph.find(cosArg)) {
+      return true;
+    }
+  }
+
+  // Also check the reverse: left=cos², right=sin²
+  const leftCos = egraph.findOp(leftCh[0], "fn:cos");
+  const rightSin = egraph.findOp(rightCh[0], "fn:sin");
+  if (leftCos && rightSin) {
+    const cosArg = unaryChild(leftCos);
+    const sinArg = unaryChild(rightSin);
+    if (cosArg !== null && sinArg !== null && egraph.find(cosArg) === egraph.find(sinArg)) {
+      return true;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Double angle formulas.
+ */
+const doubleAngleRules: RewriteRule[] = [
+  {
+    name: "double-angle-sin",
+    apply(egraph, classId, node) {
+      // 2 * sin(x) * cos(x) → sin(2*x)
+      // We look for mul(A, B) where one side is 2*sin(x) or sin(x)*2 and other is cos(x), or similar.
+      // Simplified: look for mul(mul(2, sin(x)), cos(x)) pattern via e-class search.
+      if (node.op !== "mul") return [];
+      const ch = binChildren(node);
+      if (!ch) return [];
+
+      // Check pattern: left is mul with lit:2 and sin, right is cos
+      const result = matchDoubleAngleSin(egraph, ch[0], ch[1]);
+      if (result !== null) {
+        const two = egraph.addNode({ op: "lit:2", children: [] });
+        const twoX = egraph.addNode({ op: "mul", children: [two, result] });
+        const sin2x = egraph.addNode({ op: "fn:sin", children: [twoX] });
+        return [{ id: classId, newId: sin2x }];
+      }
+      return [];
+    },
+  },
+  {
+    name: "cos-double-angle-diff",
+    apply(egraph, classId, node) {
+      // cos²(x) - sin²(x) → cos(2x)
+      if (node.op !== "sub") return [];
+      const ch = binChildren(node);
+      if (!ch) return [];
+
+      // left = cos(x)^2, right = sin(x)^2
+      const leftPow = egraph.findOp(ch[0], "pow");
+      const rightPow = egraph.findOp(ch[1], "pow");
+      if (!leftPow || !rightPow) return [];
+      const lch = binChildren(leftPow);
+      const rch = binChildren(rightPow);
+      if (!lch || !rch) return [];
+      if (egraph.getLiteral(lch[1]) !== 2 || egraph.getLiteral(rch[1]) !== 2) return [];
+
+      const leftCos = egraph.findOp(lch[0], "fn:cos");
+      const rightSin = egraph.findOp(rch[0], "fn:sin");
+      if (!leftCos || !rightSin) return [];
+      const cosArg = unaryChild(leftCos);
+      const sinArg = unaryChild(rightSin);
+      if (cosArg === null || sinArg === null) return [];
+      if (egraph.find(cosArg) !== egraph.find(sinArg)) return [];
+
+      const two = egraph.addNode({ op: "lit:2", children: [] });
+      const twoX = egraph.addNode({ op: "mul", children: [two, cosArg] });
+      const cos2x = egraph.addNode({ op: "fn:cos", children: [twoX] });
+      return [{ id: classId, newId: cos2x }];
+    },
+  },
+];
+
+/**
+ * Match pattern: one e-class is 2*sin(x) (or sin(x)*2) and the other is cos(x),
+ * returning the argument x if matched.
+ */
+function matchDoubleAngleSin(egraph: EGraph, aId: EClassId, bId: EClassId): EClassId | null {
+  // Check if aId contains mul(2, sin(x)) and bId contains cos(x)
+  const mulNode = egraph.findOp(aId, "mul");
+  if (mulNode) {
+    const mch = binChildren(mulNode);
+    if (mch) {
+      // Check for 2 * sin(x)
+      const lit = egraph.getLiteral(mch[0]);
+      if (lit === 2) {
+        const sinNode = egraph.findOp(mch[1], "fn:sin");
+        if (sinNode) {
+          const sinArg = unaryChild(sinNode);
+          if (sinArg !== null) {
+            const cosNode = egraph.findOp(bId, "fn:cos");
+            if (cosNode) {
+              const cosArg = unaryChild(cosNode);
+              if (cosArg !== null && egraph.find(sinArg) === egraph.find(cosArg)) {
+                return sinArg;
+              }
+            }
+          }
+        }
+      }
+      // Check for sin(x) * 2
+      const litR = egraph.getLiteral(mch[1]);
+      if (litR === 2) {
+        const sinNode = egraph.findOp(mch[0], "fn:sin");
+        if (sinNode) {
+          const sinArg = unaryChild(sinNode);
+          if (sinArg !== null) {
+            const cosNode = egraph.findOp(bId, "fn:cos");
+            if (cosNode) {
+              const cosArg = unaryChild(cosNode);
+              if (cosArg !== null && egraph.find(sinArg) === egraph.find(cosArg)) {
+                return sinArg;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/**
  * All built-in rules combined.
  */
 export const DEFAULT_RULES: RewriteRule[] = [
@@ -970,8 +1443,15 @@ export const DEFAULT_RULES: RewriteRule[] = [
   ...cancellationRules,
   ...constantFoldingRules,
   ...commutativityRules,
+  ...associativityRules,
+  ...distributivityRules,
+  ...powerRules,
+  ...negationDistributionRules,
+  ...divisionRules,
   ...expLogRules,
   ...trigRules,
+  ...pythagoreanRules,
+  ...doubleAngleRules,
   ...subToAddRules,
 ];
 
