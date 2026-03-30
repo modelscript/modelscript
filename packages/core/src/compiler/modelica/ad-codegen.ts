@@ -1,4 +1,5 @@
 import {
+  ModelicaArray,
   ModelicaArrayEquation,
   ModelicaBinaryExpression,
   ModelicaBooleanLiteral,
@@ -8,6 +9,7 @@ import {
   ModelicaIntegerLiteral,
   ModelicaNameExpression,
   ModelicaRealLiteral,
+  ModelicaSubscriptedExpression,
   ModelicaUnaryExpression,
 } from "./dae.js";
 import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "./syntax.js";
@@ -126,8 +128,63 @@ export class StaticTapeBuilder {
       }
     }
 
+    // Array expressions: walk each flat element, return last index
+    if (expr instanceof ModelicaArray) {
+      let lastIdx = this.pushOp({ type: "const", val: 0 });
+      for (const elem of expr.flatElements) {
+        lastIdx = this.walk(elem);
+      }
+      return lastIdx;
+    }
+
+    // Subscripted expression: x[i]
+    if (expr instanceof ModelicaSubscriptedExpression) {
+      // If subscript is a literal integer, resolve statically
+      if (expr.subscripts.length === 1) {
+        const sub = expr.subscripts[0];
+        if (sub instanceof ModelicaIntegerLiteral) {
+          const base = expr.base;
+          if (base instanceof ModelicaArray) {
+            const elem = base.getFlatElement(sub.value - 1); // Modelica is 1-indexed
+            if (elem) return this.walk(elem);
+          }
+          // Named variable with subscript: x[3] → "x[3]"
+          const baseName =
+            expr.base instanceof ModelicaNameExpression
+              ? expr.base.name
+              : expr.base && typeof expr.base === "object" && "name" in expr.base
+                ? (expr.base as { name: string }).name
+                : null;
+          if (baseName) return this.pushOp({ type: "var", name: `${baseName}[${sub.value}]` });
+        }
+      }
+      // Fallback: treat base as a variable if it has a name
+      const baseName =
+        expr.base instanceof ModelicaNameExpression
+          ? expr.base.name
+          : expr.base && typeof expr.base === "object" && "name" in expr.base
+            ? (expr.base as { name: string }).name
+            : null;
+      if (baseName) return this.pushOp({ type: "var", name: baseName });
+    }
+
     // Unrecognized or non-differentiable features default to constant 0 tape node.
     return this.pushOp({ type: "const", val: 0 });
+  }
+
+  /**
+   * Walk an array expression element-wise, returning one tape index per flat element.
+   * For non-array expressions, returns a single-element array.
+   */
+  public walkArray(expr: ModelicaExpression): number[] {
+    if (expr instanceof ModelicaArray) {
+      const indices: number[] = [];
+      for (const elem of expr.flatElements) {
+        indices.push(this.walk(elem));
+      }
+      return indices;
+    }
+    return [this.walk(expr)];
   }
 
   /**
@@ -479,11 +536,24 @@ export function generateModelEvaluateJacobian(id: string, dae: ModelicaDAE, vars
   // Gather target equations (der(x) = f(x,u))
   const derEqs: { state: string; rhs: ModelicaExpression }[] = [];
   for (const eq of dae.equations) {
-    if (eq instanceof ModelicaArrayEquation) continue; // Skip unsupported for NLP right now
     if (!("expression1" in eq && "expression2" in eq)) continue;
     const se = eq as { expression1: ModelicaExpression; expression2: ModelicaExpression };
     const ld = extractDer(se.expression1);
     const rd = extractDer(se.expression2);
+
+    if (eq instanceof ModelicaArrayEquation) {
+      const baseName = ld || rd;
+      if (!baseName) continue;
+      const rhs = ld ? se.expression2 : se.expression1;
+      const v = dae.variables.find((dv) => dv.name === baseName);
+      const dims = v?.arrayDimensions ?? [];
+      const size = dims.length > 0 ? dims.reduce((a: number, b: number) => a * b, 1) : 1;
+      for (let i = 0; i < size; i++) {
+        derEqs.push({ state: `${baseName}[${i + 1}]`, rhs });
+      }
+      continue;
+    }
+
     if (ld) derEqs.push({ state: ld, rhs: se.expression2 });
     else if (rd) derEqs.push({ state: rd, rhs: se.expression1 });
   }

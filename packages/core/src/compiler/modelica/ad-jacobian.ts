@@ -167,11 +167,25 @@ export function buildAdJacobian(dae: ModelicaDAE): ((t: number, y: number[]) => 
   // Gather derivative equations: der(x) = f(x, u)
   const derEqs: { state: string; rhs: ModelicaExpression }[] = [];
   for (const eq of dae.equations) {
-    if (eq instanceof ModelicaArrayEquation) continue;
     if (!("expression1" in eq && "expression2" in eq)) continue;
     const se = eq as { expression1: ModelicaExpression; expression2: ModelicaExpression };
     const ld = extractDer(se.expression1);
     const rd = extractDer(se.expression2);
+
+    if (eq instanceof ModelicaArrayEquation) {
+      // Unroll array equation element-wise
+      const baseName = ld || rd;
+      if (!baseName) continue;
+      const rhs = ld ? se.expression2 : se.expression1;
+      const v = dae.variables.find((dv) => dv.name === baseName);
+      const dims = v?.arrayDimensions ?? [];
+      const size = dims.length > 0 ? dims.reduce((a: number, b: number) => a * b, 1) : 1;
+      for (let i = 0; i < size; i++) {
+        derEqs.push({ state: `${baseName}[${i + 1}]`, rhs });
+      }
+      continue;
+    }
+
     if (ld) derEqs.push({ state: ld, rhs: se.expression2 });
     else if (rd) derEqs.push({ state: rd, rhs: se.expression1 });
   }
