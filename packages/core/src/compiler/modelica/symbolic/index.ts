@@ -63,3 +63,6 @@ export { integrateExpr, limit, nthDerivative, taylorSeries } from "./integrate.j
 
 // Gröbner basis
 export { Polynomial, Term, TermOrder, computeGroebnerBasis, sPolynomial } from "./groebner.js";
+
+// Modelica CAS bindings
+export { CAS_FUNCTIONS, MODELSCRIPT_CAS_PACKAGE, evaluateCASFunction, isCASFunction } from "./cas-bindings.js";
