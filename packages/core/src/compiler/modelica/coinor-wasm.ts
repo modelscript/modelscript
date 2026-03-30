@@ -211,6 +211,226 @@ export class CoinorWasmSolver {
     };
   }
 
+  /**
+   * Solve a mixed-integer nonlinear program using Bonmin.
+   */
+  bonmin(
+    nVars: number,
+    nConstraints: number,
+    x0: number[],
+    varLB: number[],
+    varUB: number[],
+    conLB: number[],
+    conUB: number[],
+    evalObjective: (x: number[]) => number,
+    evalGradient: (x: number[]) => number[],
+    evalConstraints: (x: number[]) => number[],
+    evalJacobian: (x: number[]) => number[],
+    nnzJacobian: number,
+    isInteger?: boolean[],
+    options?: IpoptWasmOptions,
+  ): IpoptWasmResult {
+    return this.solveMinlp(
+      "coinor_bonmin_wasm",
+      nVars,
+      nConstraints,
+      x0,
+      varLB,
+      varUB,
+      conLB,
+      conUB,
+      evalObjective,
+      evalGradient,
+      evalConstraints,
+      evalJacobian,
+      nnzJacobian,
+      isInteger,
+      options,
+    );
+  }
+
+  /**
+   * Solve an exact global mixed-integer nonlinear program using Couenne.
+   */
+  couenne(
+    nVars: number,
+    nConstraints: number,
+    x0: number[],
+    varLB: number[],
+    varUB: number[],
+    conLB: number[],
+    conUB: number[],
+    evalObjective: (x: number[]) => number,
+    evalGradient: (x: number[]) => number[],
+    evalConstraints: (x: number[]) => number[],
+    evalJacobian: (x: number[]) => number[],
+    nnzJacobian: number,
+    isInteger?: boolean[],
+    options?: IpoptWasmOptions,
+  ): IpoptWasmResult {
+    return this.solveMinlp(
+      "coinor_couenne_wasm",
+      nVars,
+      nConstraints,
+      x0,
+      varLB,
+      varUB,
+      conLB,
+      conUB,
+      evalObjective,
+      evalGradient,
+      evalConstraints,
+      evalJacobian,
+      nnzJacobian,
+      isInteger,
+      options,
+    );
+  }
+
+  private solveMinlp(
+    fnName: string,
+    nVars: number,
+    nConstraints: number,
+    x0: number[],
+    varLB: number[],
+    varUB: number[],
+    conLB: number[],
+    conUB: number[],
+    evalObjective: (x: number[]) => number,
+    evalGradient: (x: number[]) => number[],
+    evalConstraints: (x: number[]) => number[],
+    evalJacobian: (x: number[]) => number[],
+    nnzJacobian: number,
+    isInteger?: boolean[],
+    options?: IpoptWasmOptions,
+  ): IpoptWasmResult {
+    const M = this.module;
+    const tol = options?.tolerance ?? 1e-8;
+    const maxIter = options?.maxIterations ?? 3000;
+    const printLevel = options?.printLevel ?? 0;
+
+    const xPtr = M._malloc(nVars * 8);
+    const varLBPtr = M._malloc(nVars * 8);
+    const varUBPtr = M._malloc(nVars * 8);
+    const conLBPtr = M._malloc(nConstraints * 8);
+    const conUBPtr = M._malloc(nConstraints * 8);
+    const resultPtr = M._malloc(nVars * 8);
+    const objPtr = M._malloc(8);
+    const statusPtr = M._malloc(8);
+    let intPtr = 0;
+
+    this.writeF64(xPtr, x0);
+    this.writeF64(varLBPtr, varLB);
+    this.writeF64(varUBPtr, varUB);
+    this.writeF64(conLBPtr, conLB);
+    this.writeF64(conUBPtr, conUB);
+
+    if (isInteger) {
+      intPtr = M._malloc(nVars * 4);
+      this.writeI32(
+        intPtr,
+        isInteger.map((b) => (b ? 1 : 0)),
+      );
+    }
+
+    const evalFPtr = M.addFunction((_n: number, xW: number, _nx: number, objOut: number) => {
+      M.HEAPF64[objOut >> 3] = evalObjective(this.readF64(xW, nVars));
+      return 1;
+    }, "iiiiii");
+    this.registeredFunctions.push(evalFPtr);
+
+    const evalGradFPtr = M.addFunction((_n: number, xW: number, _nx: number, gradOut: number) => {
+      this.writeF64(gradOut, evalGradient(this.readF64(xW, nVars)));
+      return 1;
+    }, "iiiiii");
+    this.registeredFunctions.push(evalGradFPtr);
+
+    const evalGPtr = M.addFunction((_n: number, xW: number, _nx: number, _m: number, gOut: number) => {
+      this.writeF64(gOut, evalConstraints(this.readF64(xW, nVars)));
+      return 1;
+    }, "iiiiiii");
+    this.registeredFunctions.push(evalGPtr);
+
+    const evalJacGPtr = M.addFunction(
+      (_n: number, xW: number, _nx: number, _m: number, _ne: number, _iR: number, _jC: number, vPtr: number) => {
+        if (vPtr === 0) return 1;
+        this.writeF64(vPtr, evalJacobian(this.readF64(xW, nVars)));
+        return 1;
+      },
+      "iiiiiiiiiii",
+    );
+    this.registeredFunctions.push(evalJacGPtr);
+
+    M.ccall(
+      fnName,
+      "number",
+      [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+      ],
+      [
+        nVars,
+        nConstraints,
+        xPtr,
+        varLBPtr,
+        varUBPtr,
+        conLBPtr,
+        conUBPtr,
+        evalFPtr,
+        evalGradFPtr,
+        evalGPtr,
+        evalJacGPtr,
+        nnzJacobian,
+        intPtr,
+        tol,
+        maxIter,
+        printLevel,
+        resultPtr,
+        objPtr,
+        statusPtr,
+      ],
+    );
+
+    const solution = this.readF64(resultPtr, nVars);
+    const objectiveValue = M.HEAPF64[objPtr >> 3] ?? 0;
+    const status = M.HEAPF64[statusPtr >> 3] ?? -1;
+
+    M._free(xPtr);
+    M._free(varLBPtr);
+    M._free(varUBPtr);
+    M._free(conLBPtr);
+    M._free(conUBPtr);
+    M._free(resultPtr);
+    M._free(objPtr);
+    M._free(statusPtr);
+    if (intPtr) M._free(intPtr);
+
+    return {
+      solution,
+      objectiveValue,
+      multipliers: [],
+      status,
+      message: status === 0 ? "Optimal solution found" : `Solver terminated with status ${status}`,
+    };
+  }
+
   clp(problem: LpProblem, options?: LpWasmOptions): LpWasmResult {
     return this.solveLp("coinor_clp_wasm", problem, options);
   }

@@ -76,7 +76,11 @@ export type OptimizerMethod =
   /** SQP with exact AD gradients and Jacobians. */
   | "sqp-ad"
   /** COIN-OR IPOPT via WASM (interior-point, production-grade NLP). */
-  | "ipopt";
+  | "ipopt"
+  /** COIN-OR Bonmin via WASM (heuristic MINLP). */
+  | "bonmin"
+  /** COIN-OR Couenne via WASM (exact global MINLP). */
+  | "couenne";
 
 // ── LP/MILP ──
 
@@ -186,6 +190,8 @@ export function requiresWasm(opts: SolverOptions): boolean {
     opts.linear === "lapack" ||
     opts.linear === "klu-sparse" ||
     opts.optimizer === "ipopt" ||
+    opts.optimizer === "bonmin" ||
+    opts.optimizer === "couenne" ||
     opts.lpSolver === "clp" ||
     opts.lpSolver === "cbc"
   );

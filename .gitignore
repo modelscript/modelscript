@@ -4,6 +4,7 @@ node_modules/
 # Build outputs
 dist/
 build/
+.build/
 prebuilds/
 coverage/
 ctrf/
@@ -71,3 +72,8 @@ packages/morsel/.react-router/
 !packages/tree-sitter-modelica/tree-sitter-modelica.wasm
 packages/tree-sitter-modelica/examples/*/
 packages/ide/vscode-web/
+
+# COIN-OR build artifacts
+Couenne/
+ThirdParty/
+f2ctmp/

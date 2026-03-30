@@ -53,36 +53,60 @@ if [ ! -d "$COIN_INSTALL/include/coin-or" ]; then
   export CXX=em++
   export AR=emar
   export RANLIB=emranlib
+  export F77="fort77"
+  export FC="fort77"
+  export FFLAGS="-O2 -fPIC"
+  export FCFLAGS="-O2 -fPIC"
+  export LDFLAGS="-L$EMSDK/upstream/emscripten/cache/sysroot/lib/wasm32-emscripten"
 
-  # Build CLP (includes CoinUtils)
-  "$COINBREW" fetch Clp
-  "$COINBREW" build Clp \
-    --prefix="$COIN_INSTALL" \
-    --no-prompt \
-    --static \
-    --disable-shared \
-    --enable-static \
-    --tests=none
+  # 1. Shallow clone repositories explicitly to avoid slow complete fetches
+  # and network drops from coinbrew, while remaining in batch mode.
+  echo "Shallow cloning COIN-OR packages (latest master)..."
+  fetch_shallow() {
+    local proj=$1
+    if [ ! -d "$BUILD_DIR/$proj" ]; then
+      echo "--> Cloning $proj..."
+      git clone --depth 1 "https://github.com/coin-or/$proj.git" "$BUILD_DIR/$proj"
+    else
+      echo "--> $proj already cloned."
+    fi
+  }
 
-  # Build CBC (includes CGL)
-  "$COINBREW" fetch Cbc
-  "$COINBREW" build Cbc \
-    --prefix="$COIN_INSTALL" \
-    --no-prompt \
-    --static \
-    --disable-shared \
-    --enable-static \
-    --tests=none
+  fetch_shallow Clp
+  fetch_shallow Cbc
+  fetch_shallow Ipopt
+  fetch_shallow Bonmin
+  fetch_shallow Couenne
 
-  # Build IPOPT with MUMPS
-  "$COINBREW" fetch Ipopt
-  "$COINBREW" build Ipopt \
-    --prefix="$COIN_INSTALL" \
-    --no-prompt \
-    --static \
-    --disable-shared \
-    --enable-static \
-    --tests=none
+  # 2. Build solvers sequentially.
+  # We do NOT use --reconfigure here, because it cascades and forces
+  # coinbrew to redundantly rebuild all shared dependencies!
+  # Pass the -L path to ALL builds uniformly so that Mumps (a transitive
+  # dependency via Ipopt) can find libf2c.a in the Emscripten sysroot.
+  COIN_LDFLAGS="-static -L$EMSDK/upstream/emscripten/cache/sysroot/lib/wasm32-emscripten"
+
+  for pkg in Clp Cbc Ipopt Bonmin Couenne; do
+    echo "--- Building $pkg ---"
+
+    # Ipopt and MINLP solvers need built-in LAPACK (no system LAPACK for WASM)
+    EXTRA_FLAGS=""
+    if [ "$pkg" = "Ipopt" ] || [ "$pkg" = "Bonmin" ] || [ "$pkg" = "Couenne" ]; then
+      EXTRA_FLAGS="--with-lapack=BUILD"
+    fi
+
+    "$COINBREW" build "$pkg" \
+      --prefix="$COIN_INSTALL" \
+      --disable-shared \
+      --host=wasm32-unknown-emscripten \
+      --enable-static \
+      --tests=none \
+      --reconfigure \
+      LDFLAGS="$COIN_LDFLAGS" \
+      LT_LDFLAGS="-all-static" \
+      --no-prompt \
+      --verbosity=2 \
+      $EXTRA_FLAGS
+  done
 
   cd "$PACKAGE_DIR"
 fi
@@ -91,10 +115,10 @@ fi
 echo "Compiling COIN-OR WASM module..."
 mkdir -p "$WASM_DIR"
 
-cat > "$BUILD_DIR/coinor_wasm_entry.c" << 'ENTRY_EOF'
+cat > "$BUILD_DIR/coinor_wasm_entry.cpp" << 'ENTRY_EOF'
 /*
  * COIN-OR WASM entry points.
- * Provides simplified C functions callable from JavaScript via Emscripten ccall().
+ * Provides simplified C/C++ functions callable from JavaScript via Emscripten ccall().
  */
 #include <stdlib.h>
 #include <string.h>
@@ -102,8 +126,13 @@ cat > "$BUILD_DIR/coinor_wasm_entry.c" << 'ENTRY_EOF'
 #define HAVE_IPOPT
 #define HAVE_CLP
 #define HAVE_CBC
+#define HAVE_BONMIN
+#define HAVE_COUENNE
 
 #include "coinor-interface.c"
+#include "coinor-minlp-interface.cpp"
+
+extern "C" {
 
 /* IPOPT callback types from addFunction() */
 typedef int (*wasm_eval_f)(int n, double* x, int new_x, double* obj, void* ud);
@@ -238,23 +267,28 @@ int coinor_cbc_wasm(
     coinor_result_free(&result);
     return result.status;
 }
+} // extern "C"
 ENTRY_EOF
 
-emcc -O2 \
+em++ -O2 \
+  -std=c++14 \
   -I"$COIN_INSTALL/include/coin-or" \
   -I"$SRC_DIR" \
-  "$BUILD_DIR/coinor_wasm_entry.c" \
+  "$BUILD_DIR/coinor_wasm_entry.cpp" \
   -L"$COIN_INSTALL/lib" \
+  -lcouenne \
+  -lbonmin \
   -lipopt \
   -lClp \
   -lCbc \
-  -lCoinUtils \
-  -lOsiClp \
   -lCgl \
+  -lOsi \
+  -lOsiClp \
+  -lCoinUtils \
   -lm \
   -s MODULARIZE=1 \
   -s EXPORT_ES6=1 \
-  -s EXPORTED_FUNCTIONS='["_coinor_ipopt_wasm","_coinor_clp_wasm","_coinor_cbc_wasm","_malloc","_free"]' \
+  -s EXPORTED_FUNCTIONS='["_coinor_ipopt_wasm","_coinor_clp_wasm","_coinor_cbc_wasm","_coinor_bonmin_wasm","_coinor_couenne_wasm","_malloc","_free"]' \
   -s EXPORTED_RUNTIME_METHODS='["addFunction","removeFunction","ccall","cwrap"]' \
   -s ALLOW_TABLE_GROWTH=1 \
   -s ALLOW_MEMORY_GROWTH=1 \
