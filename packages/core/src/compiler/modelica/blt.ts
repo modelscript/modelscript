@@ -267,6 +267,8 @@ export function performBltTransformation(dae: ModelicaDAE): {
                 const idx = sccEqs.indexOf(matchingEq);
                 if (idx >= 0) sccEqs[idx] = isolated;
                 equations[eqIdx] = isolated;
+                // Propagate back to the original DAE so output uses the isolated form
+                dae.equations[eqIdx] = isolated;
               } else {
                 // implicit single variable loop — cannot isolate
                 algebraicLoops.push({ variables: scc, equations: sccEqs });
