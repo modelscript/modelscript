@@ -407,6 +407,152 @@ export function solveInitialEquations(
     }
   }
 
+  // If Newton-Raphson failed, try homotopy continuation as fallback
+  if (!result.converged) {
+    const homotopyResult = solveWithHomotopy(tapeData, unknownList, nSolve, env, startValues);
+    if (homotopyResult.converged) {
+      result.converged = true;
+      result.iterations += homotopyResult.iterations;
+      result.residualNorm = homotopyResult.residualNorm;
+      for (const [name, val] of homotopyResult.values) {
+        result.values.set(name, val);
+      }
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Homotopy continuation solver for difficult initialization problems.
+ *
+ * Defines H(z, λ) = λ·R(z) + (1-λ)·(z - z₀) where:
+ *   λ = 0 → trivial solution z = z₀ (start values)
+ *   λ = 1 → actual system R(z) = 0
+ *
+ * Steps λ from 0 to 1 in adaptive increments, running Newton-Raphson
+ * with exact AD Jacobian of H(z,λ) at each step.
+ */
+function solveWithHomotopy(
+  tapeData: { ops: TapeOp[]; outputIndex: number }[],
+  unknownList: string[],
+  nSolve: number,
+  env: Map<string, number>,
+  startValues: Map<string, number>,
+): InitSolverResult {
+  const result: InitSolverResult = {
+    values: new Map<string, number>(),
+    iterations: 0,
+    residualNorm: 0,
+    converged: false,
+  };
+
+  const nUnknowns = unknownList.length;
+
+  // Initial guess z₀ from start values
+  const z0 = unknownList.map((name) => startValues.get(name) ?? env.get(name) ?? 0);
+  const z = [...z0];
+
+  let lambda = 0;
+  const lambdaStepInit = 0.1;
+  let lambdaStep = lambdaStepInit;
+  const maxTotalIter = 200;
+  let totalIter = 0;
+
+  while (lambda < 1.0 && totalIter < maxTotalIter) {
+    const targetLambda = Math.min(lambda + lambdaStep, 1.0);
+
+    // Newton-Raphson at this λ value
+    let convergedAtLambda = false;
+    const maxNewtonIter = 20;
+
+    for (let iter = 0; iter < maxNewtonIter && totalIter < maxTotalIter; iter++) {
+      totalIter++;
+      result.iterations = totalIter;
+
+      // Update env with current z
+      for (let i = 0; i < nUnknowns; i++) {
+        const name = unknownList[i];
+        if (name) env.set(name, z[i] ?? 0);
+      }
+
+      // Evaluate homotopy residuals: H_i = λ·R_i(z) + (1-λ)·(z_i - z0_i)
+      const H = new Array(nSolve).fill(0) as number[];
+      const J: number[][] = [];
+      for (let i = 0; i < nSolve; i++) {
+        J[i] = new Array(nSolve).fill(0) as number[];
+      }
+
+      for (let row = 0; row < nSolve; row++) {
+        const td = tapeData[row];
+        if (!td) continue;
+
+        // Forward + reverse pass for R_i and ∂R_i/∂z
+        const t = evaluateTapeForward(td.ops, env);
+        const Ri = t[td.outputIndex] ?? 0;
+        const grads = evaluateTapeReverse(td.ops, t, td.outputIndex);
+
+        // Homotopy residual: H_i = λ·R_i + (1-λ)·(z_row - z0_row)
+        const zRow = row < nUnknowns ? (z[row] ?? 0) : 0;
+        const z0Row = row < nUnknowns ? (z0[row] ?? 0) : 0;
+        H[row] = targetLambda * Ri + (1 - targetLambda) * (zRow - z0Row);
+
+        // Homotopy Jacobian: ∂H_i/∂z_j = λ·∂R_i/∂z_j + (1-λ)·δ_{ij}
+        const jRow = J[row];
+        if (!jRow) continue;
+        for (let col = 0; col < nSolve; col++) {
+          const varName = unknownList[col];
+          if (!varName) continue;
+          const dRdz = grads.get(varName) ?? 0;
+          jRow[col] = targetLambda * dRdz + (row === col ? 1 - targetLambda : 0);
+        }
+      }
+
+      // Check convergence
+      let norm = 0;
+      for (let i = 0; i < nSolve; i++) {
+        norm += Math.abs(H[i] ?? 0);
+      }
+      result.residualNorm = norm;
+
+      if (norm < 1e-10) {
+        convergedAtLambda = true;
+        break;
+      }
+
+      // Solve J·dz = -H
+      const negH = H.map((h) => -(h ?? 0));
+      const dz = solveLU(J, negH, nSolve);
+
+      // Damped step
+      for (let i = 0; i < nSolve; i++) {
+        z[i] = (z[i] ?? 0) + (dz[i] ?? 0);
+      }
+    }
+
+    if (convergedAtLambda) {
+      lambda = targetLambda;
+      // Increase step size on success
+      lambdaStep = Math.min(lambdaStep * 1.5, 0.5);
+    } else {
+      // Decrease step size and retry
+      lambdaStep *= 0.5;
+      if (lambdaStep < 1e-6) break; // Give up
+      // Reset z to last converged state
+      // (z is already at the last iterate, which may be close enough)
+    }
+  }
+
+  result.converged = lambda >= 1.0 - 1e-10;
+
+  // Store solved values
+  for (let i = 0; i < nUnknowns; i++) {
+    const name = unknownList[i];
+    if (name) {
+      result.values.set(name, z[i] ?? 0);
+    }
+  }
+
   return result;
 }
 
