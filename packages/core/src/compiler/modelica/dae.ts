@@ -18,6 +18,8 @@ export class ModelicaDAE {
   description: string | null;
   classKind = "class";
   equations: ModelicaEquation[] = [];
+  /** Equations sorted by BLT transformation for simulation. */
+  sortedEquations: ModelicaEquation[] = [];
   algorithms: ModelicaStatement[][] = [];
   /** Equations from `initial equation` sections. */
   initialEquations: ModelicaEquation[] = [];

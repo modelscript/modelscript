@@ -7907,7 +7907,7 @@ function tryFoldBuiltinFunction(functionName: string, args: ModelicaExpression[]
  */
 export function findAlgebraicLoops(dae: ModelicaDAE): void {
   const { sortedEquations, algebraicLoops } = performBltTransformation(dae);
-  dae.equations = sortedEquations;
+  dae.sortedEquations = sortedEquations;
 
   if (algebraicLoops.length > 0) {
     console.log(`[DAE] Found ${algebraicLoops.length} algebraic loop(s) in ${dae.name}`);

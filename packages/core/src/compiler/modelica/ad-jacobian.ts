@@ -239,7 +239,7 @@ export function evaluateTapeReverse(ops: TapeOp[], t: Float64Array, outputIndex:
 export function buildAdJacobian(dae: ModelicaDAE): ((t: number, y: number[]) => number[][]) | null {
   // Gather derivative equations: der(x) = f(x, u)
   const derEqs: { state: string; rhs: ModelicaExpression }[] = [];
-  for (const eq of dae.equations) {
+  for (const eq of dae.sortedEquations.length > 0 ? dae.sortedEquations : dae.equations) {
     if (!("expression1" in eq && "expression2" in eq)) continue;
     const se = eq as { expression1: ModelicaExpression; expression2: ModelicaExpression };
     const ld = extractDer(se.expression1);
