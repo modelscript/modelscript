@@ -1783,6 +1783,21 @@ export class ModelicaEntity extends ModelicaClassInstance {
             }
             continue;
           }
+          // Check for SSP archives
+          if (ext === ".ssp") {
+            const sspPath = context.fs.join(this.path, dirent.name);
+            try {
+              // Lazy import to avoid circular dependency
+              // eslint-disable-next-line @typescript-eslint/no-require-imports
+              const { ModelicaSspEntity } = require("./ssp-archive.js") as typeof import("./ssp-archive.js");
+              const sspEntity = new ModelicaSspEntity(this, sspPath);
+              sspEntity.name = dirent.name.replace(/\.ssp$/, "");
+              this.subEntities.push(sspEntity as unknown as ModelicaEntity);
+            } catch {
+              // Skip unreadable SSP files
+            }
+            continue;
+          }
           if (ext !== ".mo") continue;
         }
         const subEntity = new ModelicaEntity(this, context.fs.join(this.path, dirent.name));
