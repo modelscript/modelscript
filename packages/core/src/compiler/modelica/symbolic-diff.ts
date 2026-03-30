@@ -476,5 +476,8 @@ export function simplifyExpr(expr: ModelicaExpression): ModelicaExpression {
   return expr;
 }
 
-// Re-export for convenience
+// Re-export constants and builder utilities for use by symbolic.ts
+export { add, call, div, HALF, isOne, isZero, mul, NEG_ONE, ONE, pow, sub, TWO, ZERO };
+
+// Legacy re-exports
 export { HALF as DIFF_HALF, NEG_ONE as DIFF_NEG_ONE, ONE as DIFF_ONE, TWO as DIFF_TWO, ZERO as DIFF_ZERO };

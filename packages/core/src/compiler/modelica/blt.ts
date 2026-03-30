@@ -9,6 +9,7 @@ import {
   ModelicaRealVariable,
   ModelicaSimpleEquation,
 } from "./dae.js";
+import { isolateSymbolically } from "./symbolic.js";
 
 /**
  * Visitor that collects all variable names referenced in an expression/equation.
@@ -63,6 +64,21 @@ function isExplicitlySolvableFor(eq: ModelicaEquation, v: string): boolean {
     return !lhsNames.has(v);
   }
   return false;
+}
+
+/**
+ * Attempt to symbolically isolate `v` from a `ModelicaSimpleEquation`.
+ * Returns a new explicit equation `v = expr` if successful, or null.
+ */
+function trySymbolicIsolation(eq: ModelicaEquation, v: string): ModelicaSimpleEquation | null {
+  if (!(eq instanceof ModelicaSimpleEquation)) return null;
+  if (!eq.expression1 || !eq.expression2) return null;
+
+  const result = isolateSymbolically(eq.expression1, eq.expression2, v);
+  if (!result) return null;
+
+  const nameExpr = new ModelicaNameExpression(v);
+  return new ModelicaSimpleEquation(nameExpr, result);
 }
 
 /**
@@ -241,11 +257,20 @@ export function performBltTransformation(dae: ModelicaDAE): {
           const deps = eqDeps.get(eqIdx);
           if (deps?.has(v)) {
             // It's a single variable assigned to this equation. But is it a true loop?
-            // If it's a structural explicit assignment (v = ...), it's not an algebraic loop unless it's v = v + 1.
+            // If it's a structural explicit assignment (v = ...), it's not an algebraic loop.
             const matchingEq = equations[eqIdx];
             if (matchingEq && !isExplicitlySolvableFor(matchingEq, v)) {
-              // implicit single variable loop
-              algebraicLoops.push({ variables: scc, equations: sccEqs });
+              // Try symbolic isolation before giving up
+              const isolated = trySymbolicIsolation(matchingEq, v);
+              if (isolated) {
+                // Replace the implicit equation with the explicit one
+                const idx = sccEqs.indexOf(matchingEq);
+                if (idx >= 0) sccEqs[idx] = isolated;
+                equations[eqIdx] = isolated;
+              } else {
+                // implicit single variable loop — cannot isolate
+                algebraicLoops.push({ variables: scc, equations: sccEqs });
+              }
             }
           }
         }
