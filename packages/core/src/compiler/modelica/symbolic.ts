@@ -28,7 +28,7 @@ import {
   ModelicaSimpleEquation,
   ModelicaUnaryExpression,
 } from "./dae.js";
-import { add, differentiateExpr, div, isOne, isZero, mul, simplifyExpr, sub, ZERO } from "./symbolic-diff.js";
+import { add, differentiateExpr, div, isOne, isZero, mul, ONE, simplifyExpr, sub, ZERO } from "./symbolic-diff.js";
 import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "./syntax.js";
 
 // ─────────────────────────────────────────────────────────────────────
@@ -147,6 +147,362 @@ export function extractLinearCoefficients(
 }
 
 /**
+ * Extract quadratic coefficients A, B, C such that `expr = A v^2 + B v + C`
+ * where A, B, C are independent of v.
+ *
+ * @returns {A, B, C} if expr is exactly quadratic in v, or null otherwise.
+ */
+export function extractQuadraticCoefficients(
+  expr: ModelicaExpression,
+  varName: string,
+): { A: ModelicaExpression; B: ModelicaExpression; C: ModelicaExpression } | null {
+  if (!containsVariable(expr, varName)) return null;
+
+  // C = expr|_{v=0}
+  const C = simplifyExpr(substituteVariable(expr, varName, ZERO));
+
+  // D1 = ∂expr/∂v = 2Av + B
+  const D1 = simplifyExpr(differentiateExpr(expr, varName));
+
+  // B = D1|_{v=0}
+  const B = simplifyExpr(substituteVariable(D1, varName, ZERO));
+
+  // D2 = ∂²expr/∂v² = 2A
+  const D2 = simplifyExpr(differentiateExpr(D1, varName));
+
+  // If second derivative still depends on v, it is higher-order or transcendental
+  if (containsVariable(D2, varName)) {
+    return null;
+  }
+
+  const TWO = new ModelicaRealLiteral(2.0);
+  const A = simplifyExpr(div(D2, TWO));
+
+  // If A=0, it is actually linear, not quadratic.
+  if (isZero(A)) {
+    return null;
+  }
+
+  // D3 = ∂³expr/∂v³ must be completely zero. If it was transcendental
+  // but D2 somehow didn't contain v, check D3 just in case, though mathematically
+  // if D2 is a constant w.r.t v, D3 is 0.
+  const D3 = simplifyExpr(differentiateExpr(D2, varName));
+  if (!isZero(D3)) return null;
+
+  return { A, B, C };
+}
+
+/**
+ * Extract trigonometric coefficients A, B, C such that `expr = A sin(v) + B cos(v) + C`
+ * where A, B, C are independent of v.
+ *
+ * Uses a structural recursive walk to decompose the expression, guaranteeing robustness
+ * without relying on a full algebraic simplification engine.
+ */
+export function extractTrigonometricCoefficients(
+  expr: ModelicaExpression,
+  varName: string,
+): { A: ModelicaExpression; B: ModelicaExpression; C: ModelicaExpression } | null {
+  if (!containsVariable(expr, varName)) return null;
+
+  function decompose(
+    node: ModelicaExpression,
+  ): { A: ModelicaExpression; B: ModelicaExpression; C: ModelicaExpression } | null {
+    if (!containsVariable(node, varName)) {
+      return { A: ZERO, B: ZERO, C: node };
+    }
+
+    if (node instanceof ModelicaFunctionCallExpression) {
+      let fnName = "";
+      if (typeof node.functionName === "string") {
+        fnName = node.functionName;
+      } else if (
+        node.functionName &&
+        typeof node.functionName === "object" &&
+        "name" in node.functionName &&
+        typeof (node.functionName as Record<string, unknown>).name === "string"
+      ) {
+        fnName = (node.functionName as Record<string, unknown>).name as string;
+      }
+
+      if (fnName === "sin") {
+        const arg = node.args[0];
+        if (arg && arg instanceof ModelicaNameExpression && arg.name === varName) {
+          return { A: ONE, B: ZERO, C: ZERO };
+        }
+      }
+      if (fnName === "cos") {
+        const arg = node.args[0];
+        if (arg && arg instanceof ModelicaNameExpression && arg.name === varName) {
+          return { A: ZERO, B: ONE, C: ZERO };
+        }
+      }
+      return null;
+    }
+
+    if (node instanceof ModelicaUnaryExpression) {
+      if (node.operator === ModelicaUnaryOperator.UNARY_MINUS) {
+        const inner = decompose(node.operand);
+        if (!inner) return null;
+        return {
+          A: simplifyExpr(negate(inner.A)),
+          B: simplifyExpr(negate(inner.B)),
+          C: simplifyExpr(negate(inner.C)),
+        };
+      }
+      return null;
+    }
+
+    if (node instanceof ModelicaBinaryExpression) {
+      const leftHasV = containsVariable(node.operand1, varName);
+      const rightHasV = containsVariable(node.operand2, varName);
+
+      if (
+        node.operator === ModelicaBinaryOperator.ADDITION ||
+        node.operator === ModelicaBinaryOperator.ELEMENTWISE_ADDITION
+      ) {
+        const l = decompose(node.operand1);
+        const r = decompose(node.operand2);
+        if (!l || !r) return null;
+        return {
+          A: simplifyExpr(add(l.A, r.A)),
+          B: simplifyExpr(add(l.B, r.B)),
+          C: simplifyExpr(add(l.C, r.C)),
+        };
+      }
+
+      if (
+        node.operator === ModelicaBinaryOperator.SUBTRACTION ||
+        node.operator === ModelicaBinaryOperator.ELEMENTWISE_SUBTRACTION
+      ) {
+        const l = decompose(node.operand1);
+        const r = decompose(node.operand2);
+        if (!l || !r) return null;
+        return {
+          A: simplifyExpr(sub(l.A, r.A)),
+          B: simplifyExpr(sub(l.B, r.B)),
+          C: simplifyExpr(sub(l.C, r.C)),
+        };
+      }
+
+      if (
+        node.operator === ModelicaBinaryOperator.MULTIPLICATION ||
+        node.operator === ModelicaBinaryOperator.ELEMENTWISE_MULTIPLICATION
+      ) {
+        if (!leftHasV) {
+          const r = decompose(node.operand2);
+          if (!r) return null;
+          return {
+            A: simplifyExpr(mul(node.operand1, r.A)),
+            B: simplifyExpr(mul(node.operand1, r.B)),
+            C: simplifyExpr(mul(node.operand1, r.C)),
+          };
+        }
+        if (!rightHasV) {
+          const l = decompose(node.operand1);
+          if (!l) return null;
+          return {
+            A: simplifyExpr(mul(node.operand2, l.A)),
+            B: simplifyExpr(mul(node.operand2, l.B)),
+            C: simplifyExpr(mul(node.operand2, l.C)),
+          };
+        }
+        return null;
+      }
+
+      if (
+        node.operator === ModelicaBinaryOperator.DIVISION ||
+        node.operator === ModelicaBinaryOperator.ELEMENTWISE_DIVISION
+      ) {
+        if (!rightHasV) {
+          const l = decompose(node.operand1);
+          if (!l) return null;
+          return {
+            A: simplifyExpr(div(l.A, node.operand2)),
+            B: simplifyExpr(div(l.B, node.operand2)),
+            C: simplifyExpr(div(l.C, node.operand2)),
+          };
+        }
+        return null;
+      }
+    }
+
+    return null;
+  }
+
+  const result = decompose(expr);
+  if (!result) return null;
+
+  if (isZero(result.A) && isZero(result.B)) {
+    return null;
+  }
+
+  return result;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// AST Decomposition Helpers
+// ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Flattens an expression tree of additions and subtractions into a list of additive terms.
+ * e.g. `A + B - C` -> `[A, B, -C]`
+ */
+function getAddends(expr: ModelicaExpression): ModelicaExpression[] {
+  if (expr instanceof ModelicaBinaryExpression) {
+    if (
+      expr.operator === ModelicaBinaryOperator.ADDITION ||
+      expr.operator === ModelicaBinaryOperator.ELEMENTWISE_ADDITION
+    ) {
+      return [...getAddends(expr.operand1), ...getAddends(expr.operand2)];
+    }
+    if (
+      expr.operator === ModelicaBinaryOperator.SUBTRACTION ||
+      expr.operator === ModelicaBinaryOperator.ELEMENTWISE_SUBTRACTION
+    ) {
+      const rightAddends = getAddends(expr.operand2).map((a) => simplifyExpr(negate(a)));
+      return [...getAddends(expr.operand1), ...rightAddends];
+    }
+  }
+  return [expr];
+}
+
+/**
+ * Flattens an expression tree of multiplications and division into a list of multiplicative factors.
+ * Divisions are currently kept intact or turned into `1/X`.
+ * e.g. `A * B` -> `[A, B]`
+ */
+function getFactors(expr: ModelicaExpression): ModelicaExpression[] {
+  if (expr instanceof ModelicaBinaryExpression) {
+    if (
+      expr.operator === ModelicaBinaryOperator.MULTIPLICATION ||
+      expr.operator === ModelicaBinaryOperator.ELEMENTWISE_MULTIPLICATION
+    ) {
+      return [...getFactors(expr.operand1), ...getFactors(expr.operand2)];
+    }
+    if (
+      expr.operator === ModelicaBinaryOperator.DIVISION ||
+      expr.operator === ModelicaBinaryOperator.ELEMENTWISE_DIVISION
+    ) {
+      // 1/X is not flattened into factors deeply yet to avoid losing the division semantic
+      return [
+        ...getFactors(expr.operand1),
+        new ModelicaBinaryExpression(ModelicaBinaryOperator.DIVISION, ONE, expr.operand2),
+      ];
+    }
+  }
+  return [expr];
+}
+
+/**
+ * Extract Lambert W coefficients A, B, C such that `expr = A * v * exp(B * v) + C`
+ * where A, B, C are independent of v.
+ */
+export function extractLambertWCoefficients(
+  expr: ModelicaExpression,
+  varName: string,
+): { A: ModelicaExpression; B: ModelicaExpression; C: ModelicaExpression } | null {
+  if (!containsVariable(expr, varName)) return null;
+
+  const terms = getAddends(expr);
+  const vTerms = terms.filter((t) => containsVariable(t, varName));
+  if (vTerms.length !== 1) return null; // We only support a single additive term containing v
+
+  const lambertTerm = vTerms[0];
+  if (!lambertTerm) return null;
+  const cTerms = terms.filter((t) => !containsVariable(t, varName));
+  const C = simplifyExpr(cTerms.length > 0 ? cTerms.reduce((a, b) => add(a, b)) : ZERO);
+
+  const factors = getFactors(lambertTerm);
+  const vFactors = factors.filter((f) => containsVariable(f, varName));
+
+  if (vFactors.length !== 2) return null; // We need exactly `v` and `exp(B * v)`
+
+  let linearFactor: ModelicaExpression | null = null;
+  let expFactor: ModelicaExpression | null = null;
+
+  for (const f of vFactors) {
+    if (f instanceof ModelicaFunctionCallExpression) {
+      let fnName = "";
+      if (typeof f.functionName === "string") {
+        fnName = f.functionName;
+      } else if (
+        f.functionName &&
+        typeof f.functionName === "object" &&
+        "name" in f.functionName &&
+        typeof (f.functionName as Record<string, unknown>).name === "string"
+      ) {
+        fnName = (f.functionName as Record<string, unknown>).name as string;
+      }
+      if (fnName === "exp") {
+        expFactor = f;
+        continue;
+      }
+    }
+    linearFactor = f;
+  }
+
+  if (!linearFactor || !expFactor) return null;
+
+  if (!(linearFactor instanceof ModelicaNameExpression && linearFactor.name === varName)) {
+    return null; // For now, only exact `v`, not `P*v+R`
+  }
+
+  const expArgs = (expFactor as ModelicaFunctionCallExpression).args;
+  const expArg = expArgs[0];
+  if (!expArg) return null;
+  const B_coeffs = extractLinearCoefficients(expArg, varName);
+  if (!B_coeffs || !isZero(B_coeffs.B)) return null;
+
+  const B = B_coeffs.A;
+
+  const aFactors = factors.filter((f) => !containsVariable(f, varName));
+  const A = simplifyExpr(aFactors.length > 0 ? aFactors.reduce((a, b) => mul(a, b)) : ONE);
+
+  return { A, B, C };
+}
+
+/**
+ * Heuristically extract a single linear additive term of `v` from an expression
+ * to form a contractive fixed-point mapping `v = g(v)`.
+ *
+ * E.g., for `v + exp(v) - 5 = 0`, it isolates the `v` term:
+ * `v = 5 - exp(v)`.
+ */
+export function extractLinearOccurrence(
+  expr: ModelicaExpression,
+  varName: string,
+): { A: ModelicaExpression; rest: ModelicaExpression } | null {
+  if (!containsVariable(expr, varName)) return null;
+
+  const addends = getAddends(expr);
+  let linearTermIndex = -1;
+  let linearCoeff: ModelicaExpression | null = null;
+
+  for (let i = 0; i < addends.length; i++) {
+    const term = addends[i];
+    if (term && containsVariable(term, varName)) {
+      const D = simplifyExpr(differentiateExpr(term, varName));
+      if (!containsVariable(D, varName) && !isZero(D)) {
+        linearTermIndex = i;
+        linearCoeff = D;
+        break; // found the first linear occurrence
+      }
+    }
+  }
+
+  if (linearTermIndex === -1 || !linearCoeff) return null;
+
+  // sum all other addends
+  const otherAddends = addends.filter((_, idx) => idx !== linearTermIndex);
+  if (otherAddends.length === 0) return null; // shouldn't happen if equation is non-linear
+
+  const rest = simplifyExpr(otherAddends.reduce((a, b) => add(a, b)));
+
+  return { A: linearCoeff, rest };
+}
+
+/**
  * Attempt to symbolically isolate a variable from an equation `lhs = rhs`.
  *
  * @returns An expression for `v = f(...)`, or null if isolation fails.
@@ -177,6 +533,70 @@ export function isolateSymbolically(
     return simplifyExpr(div(negate(B), A));
   }
 
+  // Strategy 1.5: Quadratic isolation
+  const quadratic = extractQuadraticCoefficients(residual, varName);
+  if (quadratic) {
+    const { A, B, C } = quadratic;
+    // We want to solve A v^2 + B v + C = 0
+    // v = (-B + sqrt(B^2 - 4AC)) / 2A
+    const FOUR = new ModelicaRealLiteral(4.0);
+    const TWO = new ModelicaRealLiteral(2.0);
+
+    const fourAC = mul(FOUR, mul(A, C));
+    const bSquared = mul(B, B);
+    const discriminant = simplifyExpr(sub(bSquared, fourAC));
+
+    const sqrtCall = new ModelicaFunctionCallExpression("sqrt", [discriminant]);
+
+    const negB_plus_sqrt = simplifyExpr(add(negate(B), sqrtCall));
+    const twoA = simplifyExpr(mul(TWO, A));
+
+    return simplifyExpr(div(negB_plus_sqrt, twoA));
+  }
+
+  // Strategy 1.6: Trigonometric isolation
+  // A*sin(v) + B*cos(v) + C = 0
+  // v = asin(-C / sqrt(A^2 + B^2)) - atan2(B, A)
+  const harmonic = extractTrigonometricCoefficients(residual, varName);
+  if (harmonic) {
+    const { A, B, C } = harmonic;
+
+    // R = sqrt(A^2 + B^2)
+    const aSq = mul(A, A);
+    const bSq = mul(B, B);
+    const R_sq = simplifyExpr(add(aSq, bSq));
+    const R = new ModelicaFunctionCallExpression("sqrt", [R_sq]);
+
+    // alpha = atan2(B, A)
+    const alpha = new ModelicaFunctionCallExpression("atan2", [B, A]);
+
+    // asin(-C / R)
+    const minusC_over_R = simplifyExpr(div(negate(C), R));
+    const asinTerm = new ModelicaFunctionCallExpression("asin", [minusC_over_R]);
+
+    // v = asin(-C / R) - atan2(B, A)
+    return simplifyExpr(sub(asinTerm, alpha));
+  }
+
+  // Strategy 1.7: Lambert W isolation
+  // A * v * exp(B * v) + C = 0
+  // v = W(-C * B / A) / B
+  // Note: Lambert W is standard in ModelScript under Math.lambertW0.
+  // We'll emit `Modelica.Math.lambertW0(-C * B / A) / B`
+  const lambert = extractLambertWCoefficients(residual, varName);
+  if (lambert) {
+    const { A, B, C } = lambert;
+
+    // -C * B / A
+    const argW = simplifyExpr(div(mul(negate(C), B), A));
+
+    // W(arg)
+    const wCall = new ModelicaFunctionCallExpression("Modelica.Math.lambertW0", [argW]);
+
+    // v = W(arg) / B
+    return simplifyExpr(div(wCall, B));
+  }
+
   // Strategy 2: Single-occurrence inversion
   // If v appears exactly once in `lhs - rhs`, we can recursively
   // invert the expression tree to isolate v.
@@ -198,6 +618,22 @@ export function isolateSymbolically(
   if (rhsCount === 1 && lhsCount === 0) {
     const result = invertSingleOccurrence(rhs, varName, lhs);
     if (result) return simplifyExpr(result);
+  }
+
+  // Strategy 3: Fixed-Point Heuristic Rearrangement
+  // Isolate a linear addend from a non-linear composite expression.
+  // i.e., A*v + rest(v) = 0  =>  v = -rest(v) / A
+  const linearOccurrence = extractLinearOccurrence(residual, varName);
+  if (linearOccurrence) {
+    const { A, rest } = linearOccurrence;
+    // v = -rest / A
+    if (isOne(A)) {
+      return simplifyExpr(negate(rest));
+    }
+    if (isNegOne(A)) {
+      return simplifyExpr(rest);
+    }
+    return simplifyExpr(div(negate(rest), A));
   }
 
   // Fallback: cannot isolate
