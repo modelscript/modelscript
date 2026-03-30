@@ -415,6 +415,14 @@
                 "type": "STRING",
                 "value": "operator"
               }
+            },
+            {
+              "type": "FIELD",
+              "name": "optimization",
+              "content": {
+                "type": "STRING",
+                "value": "optimization"
+              }
             }
           ]
         }

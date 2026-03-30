@@ -974,6 +974,8 @@ export class ModelicaClassPrefixesSyntaxNode extends ModelicaSyntaxNode implemen
         : ModelicaClassKind.FUNCTION;
     } else if (concreteSyntaxNode.childForFieldName("operator")) {
       this.classKind = ModelicaClassKind.OPERATOR;
+    } else if (concreteSyntaxNode.childForFieldName("optimization")) {
+      this.classKind = ModelicaClassKind.OPTIMIZATION;
     } else {
       this.classKind = ModelicaClassKind.CLASS;
     }
@@ -5823,6 +5825,7 @@ export enum ModelicaClassKind {
   FUNCTION = "function",
   MODEL = "model",
   OPERATOR = "operator",
+  OPTIMIZATION = "optimization",
   OPERATOR_FUNCTION = "operator function",
   OPERATOR_RECORD = "operator record",
   PACKAGE = "package",

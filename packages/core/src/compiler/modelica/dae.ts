@@ -50,6 +50,8 @@ export class ModelicaDAE {
   eventIndicators: ModelicaExpression[] = [];
   /** Discrete state updates extracted from `when` clauses. */
   whenClauses: ModelicaWhenEquation[] = [];
+  /** Optimization objective expression (Cost function). */
+  objective: ModelicaExpression | null = null;
 
   constructor(name: string, description?: string | null) {
     this.name = name;
@@ -89,6 +91,7 @@ export class ModelicaDAE {
       variables: this.variables.map((v) => v.toJSON),
       equations: this.equations.map((e) => e.toJSON),
       algorithms: this.algorithms.map((section) => section.map((s) => s.toJSON)),
+      objective: this.objective ? this.objective.toJSON : null,
     };
   }
 

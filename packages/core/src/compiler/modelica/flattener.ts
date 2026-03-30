@@ -67,6 +67,7 @@ import {
   ModelicaClassInstance,
   ModelicaClockClassInstance,
   ModelicaComponentInstance,
+  ModelicaElementModification,
   ModelicaEntity,
   ModelicaEnumerationClassInstance,
   ModelicaExtendsClassInstance,
@@ -91,6 +92,7 @@ import {
   ModelicaComplexAssignmentStatementSyntaxNode,
   ModelicaComponentReferenceSyntaxNode,
   ModelicaConnectEquationSyntaxNode,
+  ModelicaElementModificationSyntaxNode,
   ModelicaEquationSectionSyntaxNode,
   ModelicaExpressionSyntaxNode,
   ModelicaFlow,
@@ -641,6 +643,57 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
    * @param args - A tuple of `[prefixString, activeDAE]` to pass context down.
    */
   visitClassInstance(node: ModelicaClassInstance, args: [string, ModelicaDAE]): void {
+    // Check for Optimization modifiers (objective)
+    if (node.classKind === ModelicaClassKind.OPTIMIZATION) {
+      // For top-level optimization classes, the modifier (objective = cost, startTime = 0, ...)
+      // lives on the LongClassSpecifier's classModification, not on node.modification.
+      const classSpec = node.abstractSyntaxNode?.classSpecifier;
+      const classMod = classSpec instanceof ModelicaLongClassSpecifierSyntaxNode ? classSpec.classModification : null;
+      if (classMod) {
+        for (const modArg of classMod.modificationArguments) {
+          if (
+            modArg instanceof ModelicaElementModificationSyntaxNode &&
+            modArg.identifier?.text === "objective" &&
+            modArg.modification?.modificationExpression?.expression
+          ) {
+            args[1].objective = modArg.modification.modificationExpression.expression.accept(
+              new ModelicaSyntaxFlattener(this.options),
+              {
+                prefix: args[0],
+                classInstance: node,
+                dae: args[1],
+                stmtCollector: [],
+                activeClassStack: this.activeClassStack,
+                structuralFinalParams: new Set<string>(),
+              },
+            ) as ModelicaExpression;
+          }
+        }
+      }
+      // Also try the instance-level modification (e.g. when the model is used as a component type)
+      if (!args[1].objective && node.modification) {
+        for (const modArg of node.modification.modificationArguments) {
+          if (
+            modArg instanceof ModelicaElementModification &&
+            modArg.name === "objective" &&
+            modArg.modificationExpression?.expression
+          ) {
+            args[1].objective = modArg.modificationExpression.expression.accept(
+              new ModelicaSyntaxFlattener(this.options),
+              {
+                prefix: args[0],
+                classInstance: node,
+                dae: args[1],
+                stmtCollector: [],
+                activeClassStack: this.activeClassStack,
+                structuralFinalParams: new Set<string>(),
+              },
+            ) as ModelicaExpression;
+          }
+        }
+      }
+    }
+
     // Pre-pass: augment expandable connectors with virtual components from connect equations
     this.#augmentExpandableConnectors(node);
 
