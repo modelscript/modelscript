@@ -31,7 +31,7 @@ function extractDer(expr: ModelicaExpression): string | null {
 /**
  * Evaluate a tape forward pass at runtime, returning the value array.
  */
-function evaluateTapeForward(ops: TapeOp[], varValues: Map<string, number>): Float64Array {
+export function evaluateTapeForward(ops: TapeOp[], varValues: Map<string, number>): Float64Array {
   const t = new Float64Array(ops.length);
   for (let i = 0; i < ops.length; i++) {
     const op = ops[i]!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
@@ -86,7 +86,7 @@ function evaluateTapeForward(ops: TapeOp[], varValues: Map<string, number>): Flo
 /**
  * Evaluate the reverse-mode AD sweep on a tape, returning gradients for all variables.
  */
-function evaluateTapeReverse(ops: TapeOp[], t: Float64Array, outputIndex: number): Map<string, number> {
+export function evaluateTapeReverse(ops: TapeOp[], t: Float64Array, outputIndex: number): Map<string, number> {
   const dt = new Float64Array(ops.length);
   dt[outputIndex] = 1.0;
 

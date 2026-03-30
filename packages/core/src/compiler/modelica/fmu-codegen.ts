@@ -606,6 +606,153 @@ function generateAlgebraicLoopSolvers(id: string, dae: ModelicaDAE, result: FmuR
   return lines.join("\n");
 }
 
+/**
+ * Generate _initializeSolve() — Newton-Raphson solver for initial equations
+ * using exact AD Jacobians from StaticTapeBuilder.
+ */
+function generateInitializeSolve(id: string, dae: ModelicaDAE, result: FmuResult): string[] {
+  const lines: string[] = [];
+
+  if (dae.initialEquations.length === 0) {
+    lines.push(`void ${id}_initializeSolve(${id}_Instance* inst) { (void)inst; }`);
+    return lines;
+  }
+
+  // Collect initial equations that are simple equations (LHS = RHS)
+  const initEqs: { lhs: ModelicaExpression; rhs: ModelicaExpression }[] = [];
+  for (const eq of dae.initialEquations) {
+    if ("expression1" in eq && "expression2" in eq) {
+      const se = eq as { expression1: ModelicaExpression; expression2: ModelicaExpression };
+      initEqs.push({ lhs: se.expression1, rhs: se.expression2 });
+    }
+  }
+
+  if (initEqs.length === 0) {
+    lines.push(`void ${id}_initializeSolve(${id}_Instance* inst) { (void)inst; }`);
+    return lines;
+  }
+
+  const N = initEqs.length;
+
+  // Identify unknowns: variables referenced in initial equations that are not parameters
+  const paramNames = new Set<string>();
+  for (const v of dae.variables) {
+    if (v.variability === ModelicaVariability.PARAMETER || v.variability === ModelicaVariability.CONSTANT) {
+      paramNames.add(v.name);
+    }
+  }
+
+  const referencedNames = new Set<string>();
+  for (const eq of initEqs) {
+    collectReferencedNames(eq.lhs, referencedNames);
+    collectReferencedNames(eq.rhs, referencedNames);
+  }
+
+  const unknowns: string[] = [];
+  for (const name of referencedNames) {
+    if (!paramNames.has(name) && name !== "time") {
+      const sv = result.scalarVariables.find((v) => v.name === name);
+      if (sv) unknowns.push(name);
+    }
+  }
+
+  const nUnknowns = Math.min(unknowns.length, N);
+  if (nUnknowns === 0) {
+    lines.push(`void ${id}_initializeSolve(${id}_Instance* inst) { (void)inst; }`);
+    return lines;
+  }
+
+  // Build AD tapes for each residual: R_i = LHS_i - RHS_i
+  const tapes: StaticTapeBuilder[] = [];
+  const residualOutputIndices: number[] = [];
+  for (const eq of initEqs) {
+    const tape = new StaticTapeBuilder();
+    const lhsIdx = tape.walk(eq.lhs);
+    const rhsIdx = tape.walk(eq.rhs);
+    residualOutputIndices.push(tape.pushOp({ type: "sub", a: lhsIdx, b: rhsIdx }));
+    tapes.push(tape);
+  }
+
+  // Variable name -> inst->vars[VR] resolver
+  const varResolver = (name: string): string => {
+    if (name === "time") return "inst->time";
+    const sv = result.scalarVariables.find((v) => v.name === name);
+    return sv ? `inst->vars[${sv.valueReference}]` : `0.0 /* ${name} */`;
+  };
+
+  lines.push(`/* Initial Equation Solver with Exact AD Jacobian */`);
+  lines.push(`void ${id}_initializeSolve(${id}_Instance* inst) {`);
+  lines.push(`  double R[${N}], J[${N * nUnknowns}], dx[${nUnknowns}];`);
+  lines.push(`  int iter;`);
+  lines.push(`  for (iter = 0; iter < 50; iter++) {`);
+
+  // Forward pass: compute residuals R[i]
+  for (let i = 0; i < N; i++) {
+    const tape = tapes[i];
+    if (!tape) continue;
+    const outIdx = residualOutputIndices[i];
+    if (outIdx === undefined) continue;
+
+    lines.push(`    { /* Residual ${i} */`);
+    const fwdCode = tape.emitForwardC(varResolver);
+    lines.push(...fwdCode.map((c) => "    " + c));
+    lines.push(`      R[${i}] = t[${outIdx}];`);
+    lines.push(`    }`);
+  }
+
+  // Convergence check
+  lines.push(`    double err = 0.0;`);
+  lines.push(`    for (int i = 0; i < ${N}; i++) err += fabs(R[i]);`);
+  lines.push(`    if (err < 1e-10) break;`);
+
+  // Reverse pass: compute Jacobian J[row * nUnknowns + col]
+  lines.push(`    /* Exact Jacobian via Reverse-Mode AD */`);
+  for (let row = 0; row < N; row++) {
+    const tape = tapes[row];
+    if (!tape) continue;
+    const outIdx = residualOutputIndices[row];
+    if (outIdx === undefined) continue;
+
+    lines.push(`    { /* J row ${row} */`);
+    const fwdCode = tape.emitForwardC(varResolver);
+    lines.push(...fwdCode.map((c) => "    " + c));
+    const { code: revCode, gradients } = tape.emitReverseC(outIdx);
+    lines.push(...revCode.map((c) => "    " + c));
+
+    for (let col = 0; col < nUnknowns; col++) {
+      const varName = unknowns[col];
+      if (!varName) continue;
+      const gradIdx = gradients.get(varName);
+      if (gradIdx !== undefined) {
+        lines.push(`      J[${row * nUnknowns + col}] = dt[${gradIdx}];`);
+      } else {
+        lines.push(`      J[${row * nUnknowns + col}] = 0.0;`);
+      }
+    }
+    lines.push(`    }`);
+  }
+
+  // Newton update: solve J * dx = -R
+  lines.push(`    for (int i = 0; i < ${N}; i++) R[i] = -R[i];`);
+  lines.push(`    solve_linear_sys(inst, ${nUnknowns}, J, R, dx);`);
+
+  // Apply dx to unknowns
+  for (let j = 0; j < nUnknowns; j++) {
+    const varName = unknowns[j];
+    if (!varName) continue;
+    const sv = result.scalarVariables.find((v) => v.name === varName);
+    if (sv) {
+      lines.push(`    inst->vars[${sv.valueReference}] += dx[${j}]; /* ${varName} */`);
+    }
+  }
+
+  lines.push(`  }`);
+  lines.push(`}`);
+  lines.push(``);
+
+  return lines;
+}
+
 function generateModelC(id: string, dae: ModelicaDAE, result: FmuResult): string {
   // Reset buffer counters for this codegen invocation
   delayBufferCounter = 0;
@@ -762,8 +909,15 @@ function generateModelC(id: string, dae: ModelicaDAE, result: FmuResult): string
       }
     }
   }
+  // Call the initial equation solver (generated below) after start values
+  if (dae.initialEquations.length > 0) {
+    lines.push(`  ${id}_initializeSolve(inst);`);
+  }
   lines.push("}");
   lines.push("");
+
+  // ── Initial equation solver via Newton-Raphson with exact AD Jacobian ──
+  lines.push(...generateInitializeSolve(id, dae, result));
 
   // ── getDerivatives function ──
   lines.push(`void ${id}_getDerivatives(${id}_Instance* inst) {`);

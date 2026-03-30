@@ -34,6 +34,7 @@ import {
 import { type Dopri5Options, dopri5 as dopri5Solver } from "./dopri5.js";
 import { DualExpressionEvaluator } from "./dual-evaluator.js";
 import { Dual } from "./dual.js";
+import { solveInitialEquations } from "./init-solver.js";
 import { ReverseExpressionEvaluator } from "./reverse-evaluator.js";
 import { buildFunctionLookup, executeStatements } from "./statement-executor.js";
 import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "./syntax.js";
@@ -2373,33 +2374,13 @@ export class ModelicaSimulator {
     }
     initEvaluator.env.set("time", startTime);
 
-    // Phase 3: Process initial equations
-    // These override start attribute values and can set der(x) values
-    for (const eq of this.dae.initialEquations) {
-      if (eq instanceof ModelicaSimpleEquation) {
-        const lhsName = extractVarName(eq.expression1);
-        const rhsName = extractVarName(eq.expression2);
-        // Check for der(x) = expr (steady-state override)
-        const derName = extractDerName(eq.expression1);
-        if (derName) {
-          const val = initEvaluator.evaluate(eq.expression2);
-          if (val !== null) {
-            initEvaluator.env.set(`der(${derName})`, val);
-          }
-        } else if (lhsName) {
-          const val = initEvaluator.evaluate(eq.expression2);
-          if (val !== null) {
-            initEvaluator.env.set(lhsName, val);
-            startValues.set(lhsName, val);
-          }
-        } else if (rhsName) {
-          // Reversed: expr = x
-          const val = initEvaluator.evaluate(eq.expression1);
-          if (val !== null) {
-            initEvaluator.env.set(rhsName, val);
-            startValues.set(rhsName, val);
-          }
-        }
+    // Phase 3: Solve initial equations using Newton-Raphson with exact AD Jacobians
+    // Handles both explicit (x = expr) and implicit (f(x,y) = g(x,y)) initial equations.
+    {
+      const initResult = solveInitialEquations(this.dae, startValues, this.parameters, startTime);
+      for (const [name, val] of initResult.values) {
+        initEvaluator.env.set(name, val);
+        startValues.set(name, val);
       }
     }
 
