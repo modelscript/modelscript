@@ -6,6 +6,8 @@ import { useCallback } from "react";
 import { useDropzone } from "react-dropzone";
 import type { Translations } from "~/util/i18n";
 
+import { fmuBytesToModelica, sspBytesToModelica } from "../util/archive-parser";
+
 interface OpenFileDropzoneProps {
   onFileContent: (content: string) => void;
   colorMode: string;
@@ -17,14 +19,36 @@ export default function OpenFileDropzone({ onFileContent, colorMode, translation
     (acceptedFiles: File[]) => {
       if (acceptedFiles.length > 0) {
         const file = acceptedFiles[0];
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const content = e.target?.result as string;
-          if (content) {
-            onFileContent(content);
-          }
-        };
-        reader.readAsText(file);
+        const isArchive = file.name.endsWith(".ssp") || file.name.endsWith(".fmu");
+
+        if (isArchive) {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            const buffer = e.target?.result as ArrayBuffer;
+            if (buffer) {
+              const bytes = new Uint8Array(buffer);
+              const nameRaw = file.name.split(".")[0];
+              // Ensure name is a valid Modelica identifier
+              const name = nameRaw.replace(/[^a-zA-Z0-9_]/g, "_");
+
+              if (file.name.endsWith(".ssp")) {
+                onFileContent(sspBytesToModelica(name, bytes));
+              } else {
+                onFileContent(fmuBytesToModelica(name, bytes));
+              }
+            }
+          };
+          reader.readAsArrayBuffer(file);
+        } else {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            const content = e.target?.result as string;
+            if (content) {
+              onFileContent(content);
+            }
+          };
+          reader.readAsText(file);
+        }
       }
     },
     [onFileContent],
@@ -35,6 +59,7 @@ export default function OpenFileDropzone({ onFileContent, colorMode, translation
     accept: {
       "text/x-modelica": [".mo"],
       "text/plain": [".mo", ".txt"],
+      "application/zip": [".ssp", ".fmu"],
     },
     maxFiles: 1,
   });
