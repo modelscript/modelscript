@@ -21,6 +21,8 @@ import {
   ModelicaFunctionCallExpression,
   ModelicaNameExpression,
 } from "./dae.js";
+import { type SolverOptions } from "./solver-options.js";
+import { getCachedSundialsWasm } from "./sundials-wasm.js";
 import { ModelicaVariability } from "./syntax.js";
 
 /** Result of initial equation solving. */
@@ -246,6 +248,7 @@ export function solveInitialEquations(
   startValues: Map<string, number>,
   parameters: Map<string, number>,
   startTime: number,
+  solverOptions?: SolverOptions,
 ): InitSolverResult {
   const result: InitSolverResult = {
     values: new Map(startValues),
@@ -368,12 +371,54 @@ export function solveInitialEquations(
   }
 
   // Newton-Raphson iteration
-  const maxIter = 50;
-  const tol = 1e-10;
+  const maxIter = solverOptions?.maxNonlinearIterations ?? 50;
+  const tol = solverOptions?.atol ?? 1e-10;
   const nSolve = Math.min(nResiduals, nUnknowns); // Square system for Newton
 
   // Initialize z from current env
   const z = unknownList.map((name) => env.get(name) ?? 0);
+
+  const useKinsol = solverOptions?.nonlinear === "kinsol" || solverOptions?.nonlinear === "hybrid";
+
+  if (useKinsol) {
+    const solver = getCachedSundialsWasm();
+    if (!solver) {
+      throw new Error(
+        "KINSOL solver requested but SUNDIALS WASM module is not loaded. Use simulateAsync() or loadSundialsWasm() first.",
+      );
+    }
+
+    const F = (zArr: number[]): number[] => {
+      for (let i = 0; i < nUnknowns; i++) {
+        const name = unknownList[i];
+        if (name) env.set(name, zArr[i] ?? 0);
+      }
+      const res = new Array(nSolve);
+      for (let row = 0; row < nSolve; row++) {
+        const td = tapeData[row];
+        if (!td) continue;
+        const tArr = evaluateTapeForward(td.ops, env);
+        res[row] = tArr[td.outputIndex] ?? 0;
+      }
+      return res;
+    };
+
+    const kResult = solver.kinsol(F, z, { atol: tol, rtol: tol });
+    if (kResult.converged || solverOptions?.nonlinear === "kinsol") {
+      result.converged = kResult.converged;
+      if (kResult.converged) {
+        for (let i = 0; i < nUnknowns; i++) {
+          const name = unknownList[i];
+          if (name) result.values.set(name, kResult.solution[i] ?? 0);
+        }
+      }
+      if (!kResult.converged && solverOptions?.nonlinear === "hybrid") {
+        // Fall through to Newton-Raphson if hybrid and KINSOL failed
+      } else {
+        return result;
+      }
+    }
+  }
 
   for (let iter = 0; iter < maxIter; iter++) {
     result.iterations = iter + 1;

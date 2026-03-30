@@ -18,6 +18,7 @@
 import type { ModelicaDAE } from "./dae.js";
 import { ModelicaIntegerLiteral, ModelicaRealLiteral } from "./dae.js";
 import { luFactor, luSolve, ModelicaSimulator } from "./simulator.js";
+import type { SolverOptions } from "./solver-options.js";
 import { ModelicaVariability } from "./syntax.js";
 import { Tape, type TapeNode } from "./tape.js";
 
@@ -40,6 +41,10 @@ export interface OptimizationProblem {
   tolerance?: number;
   /** Maximum SQP iterations (default 200) */
   maxIterations?: number;
+  /** Override parameters for the simulation */
+  parameterOverrides?: Map<string, number>;
+  /** Solver options for optimization and simulation */
+  solverOptions?: SolverOptions;
 }
 
 export interface OptimizationResult {
@@ -565,15 +570,38 @@ export class ModelicaOptimizer {
       evalJacobian,
     );
 
+    // Run one final simulation with the optimal controls to get the fine-grained state trajectories
+    const optControls = new Map<string, number[]>();
+    for (let j = 0; j < nControls; j++) {
+      const name = controls[j]!;
+      const uOpt = new Array<number>(nPoints);
+      for (let k = 0; k < nPoints; k++) {
+        uOpt[k] = result.z[k * varsPerPoint + nStates + j]!;
+      }
+      optControls.set(name, uOpt);
+    }
+
     // Extract results
     const stateTrajectories = new Map<string, number[]>();
     const controlTrajectories = new Map<string, number[]>();
+
+    const finalSimOpts = {
+      parameterOverrides: new Map<string, number>(this.problem.parameterOverrides ?? []),
+      ...(this.problem.solverOptions ? { solverOptions: this.problem.solverOptions } : {}),
+    };
+    for (let k = 0; k < N; k++) {
+      for (const name of controls) {
+        finalSimOpts.parameterOverrides.set(name, optControls.get(name)![k]!);
+      }
+    }
+
+    const simResult = this.simulator.simulate(startTime, stopTime, dt, finalSimOpts);
 
     for (let i = 0; i < nStates; i++) {
       const name = stateNames[i]!;
       const vals: number[] = [];
       for (let k = 0; k < nPoints; k++) {
-        vals.push(result.z[k * varsPerPoint + i]!);
+        vals.push(simResult.y[k]![i]!);
       }
       stateTrajectories.set(name, vals);
     }

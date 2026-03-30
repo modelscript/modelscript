@@ -28,6 +28,7 @@ import {
   ModelicaSubscriptedExpression,
   ModelicaUnaryExpression,
 } from "./dae.js";
+import type { SolverOptions } from "./solver-options.js";
 import { ModelicaVariability } from "./syntax.js";
 
 // ── Public interface ──
@@ -96,6 +97,8 @@ export interface FmuOptions {
   stepSize?: number | undefined;
   /** FMU type flags (default: both ME and CS). */
   fmuType?: FmuTypeFlags | undefined;
+  /** Solver configuration. */
+  solverOptions?: SolverOptions;
 }
 
 /** Result of FMU generation. */

@@ -36,7 +36,9 @@ import { DualExpressionEvaluator } from "./dual-evaluator.js";
 import { Dual } from "./dual.js";
 import { solveInitialEquations } from "./init-solver.js";
 import { ReverseExpressionEvaluator } from "./reverse-evaluator.js";
+import { type SolverOptions, resolveSolverOptions } from "./solver-options.js";
 import { buildFunctionLookup, executeStatements } from "./statement-executor.js";
+import { getCachedSundialsWasm } from "./sundials-wasm.js";
 import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "./syntax.js";
 import { Tape, type TapeNode } from "./tape.js";
 
@@ -2300,8 +2302,16 @@ export class ModelicaSimulator {
       solver?: "rk4" | "dopri5" | "bdf" | "auto" | "cvode";
       atol?: number;
       rtol?: number;
+      solverOptions?: SolverOptions;
     },
   ): { t: number[]; y: number[][]; states: string[] } {
+    // Resolve unified solver options (merge legacy fields with SolverOptions)
+    const solverOpts = resolveSolverOptions({
+      ...options?.solverOptions,
+      ...(options?.solver ? { integrator: options.solver } : {}),
+      ...(options?.atol !== undefined ? { atol: options.atol } : {}),
+      ...(options?.rtol !== undefined ? { rtol: options.rtol } : {}),
+    });
     this.prepare();
 
     // Reset solver state for this simulation run
@@ -2410,9 +2420,9 @@ export class ModelicaSimulator {
         } else if (block.type === "algorithm") {
           executeStatements(block.statements, initEvaluator, initEvaluator.functionLookup ?? undefined);
         } else if (block.type === "torn") {
-          this.solveTornBlock(block, initEvaluator, startTime);
+          this.solveTornBlock(block, initEvaluator, startTime, solverOpts);
         } else {
-          this.solveNewtonBlock(block, initEvaluator, startTime);
+          this.solveNewtonBlock(block, initEvaluator, startTime, solverOpts);
         }
       }
     }
@@ -2513,10 +2523,10 @@ export class ModelicaSimulator {
           // Execute algorithm section statements
           executeStatements(block.statements, evaluator, evaluator.functionLookup ?? undefined);
         } else if (block.type === "torn") {
-          this.solveTornBlock(block, evaluator, t);
+          this.solveTornBlock(block, evaluator, t, solverOpts);
         } else {
           // Newton-Raphson solver for non-linear/linear algebraic system
-          this.solveNewtonBlock(block, evaluator, t);
+          this.solveNewtonBlock(block, evaluator, t, solverOpts);
         }
       }
 
@@ -2539,7 +2549,7 @@ export class ModelicaSimulator {
     };
 
     // ── Solver dispatch ──
-    const solverChoice = options?.solver ?? "dopri5";
+    const solverChoice = solverOpts.integrator;
     let res: { t: number[]; y: number[][] };
 
     if (solverChoice === "dopri5") {
@@ -2564,8 +2574,8 @@ export class ModelicaSimulator {
       }
 
       const dopriOpts: Dopri5Options = {
-        atol: options?.atol ?? 1e-6,
-        rtol: options?.rtol ?? 1e-6,
+        atol: solverOpts.atol,
+        rtol: solverOpts.rtol,
         maxStep: step,
         initialStep: step / 10,
       };
@@ -2611,8 +2621,8 @@ export class ModelicaSimulator {
       }
 
       const bdfOpts: BdfOptions = {
-        atol: options?.atol ?? 1e-6,
-        rtol: options?.rtol ?? 1e-6,
+        atol: solverOpts.atol,
+        rtol: solverOpts.rtol,
         maxStep: step,
         initialStep: step / 10,
       };
@@ -2659,8 +2669,8 @@ export class ModelicaSimulator {
 
       // Try DOPRI5 first
       const dopriOpts: Dopri5Options = {
-        atol: options?.atol ?? 1e-6,
-        rtol: options?.rtol ?? 1e-6,
+        atol: solverOpts.atol,
+        rtol: solverOpts.rtol,
         maxStep: step,
         initialStep: step / 10,
       };
@@ -2690,8 +2700,8 @@ export class ModelicaSimulator {
       if (rejectionRatio > 0.5) {
         // Too many rejections — likely stiff. Switch to BDF.
         const bdfOpts: BdfOptions = {
-          atol: options?.atol ?? 1e-6,
-          rtol: options?.rtol ?? 1e-6,
+          atol: solverOpts.atol,
+          rtol: solverOpts.rtol,
           maxStep: step,
           initialStep: step / 10,
         };
@@ -2802,9 +2812,17 @@ export class ModelicaSimulator {
       solver?: "rk4" | "dopri5" | "bdf" | "auto" | "cvode";
       atol?: number;
       rtol?: number;
+      solverOptions?: SolverOptions;
     },
   ): Promise<{ t: number[]; y: number[][]; states: string[] }> {
-    const solver = options?.solver ?? "cvode";
+    // Resolve unified solver options
+    const solverOpts = resolveSolverOptions({
+      ...options?.solverOptions,
+      ...(options?.solver ? { integrator: options.solver } : {}),
+      ...(options?.atol !== undefined ? { atol: options.atol } : {}),
+      ...(options?.rtol !== undefined ? { rtol: options.rtol } : {}),
+    });
+    const solver = solverOpts.integrator;
 
     // Non-WASM solvers: delegate to synchronous simulate()
     if (solver !== "cvode") {
@@ -2892,9 +2910,9 @@ export class ModelicaSimulator {
         } else if (block.type === "algorithm") {
           executeStatements(block.statements, initEvaluator, initEvaluator.functionLookup ?? undefined);
         } else if (block.type === "torn") {
-          this.solveTornBlock(block, initEvaluator, startTime);
+          this.solveTornBlock(block, initEvaluator, startTime, solverOpts);
         } else {
-          this.solveNewtonBlock(block, initEvaluator, startTime);
+          this.solveNewtonBlock(block, initEvaluator, startTime, solverOpts);
         }
       }
     }
@@ -2960,9 +2978,9 @@ export class ModelicaSimulator {
         } else if (block.type === "algorithm") {
           executeStatements(block.statements, evaluator, evaluator.functionLookup ?? undefined);
         } else if (block.type === "torn") {
-          this.solveTornBlock(block, evaluator, t);
+          this.solveTornBlock(block, evaluator, t, solverOpts);
         } else {
-          this.solveNewtonBlock(block, evaluator, t);
+          this.solveNewtonBlock(block, evaluator, t, solverOpts);
         }
       }
       if (this.stateMachineRuntimes.length > 0) this.executeStateMachines(evaluator);
@@ -3113,6 +3131,7 @@ export class ModelicaSimulator {
     block: Extract<ExecutionBlock, { type: "system" }>,
     evaluator: ExpressionEvaluator,
     t: number,
+    solverOpts?: Readonly<Required<import("./solver-options.js").SolverOptions>>,
   ): void {
     const m = block.vars.length;
     const x = new Float64Array(m);
@@ -3128,9 +3147,47 @@ export class ModelicaSimulator {
     const J: Float64Array[] = new Array(m);
     for (let i = 0; i < m; i++) J[i] = new Float64Array(m);
 
-    const MAX_ITER = 20;
-    const TOL = 1e-10;
+    const MAX_ITER = solverOpts?.maxNonlinearIterations ?? 20;
+    const TOL = solverOpts?.atol ?? 1e-10;
     const SQRT_EPS = 1.4901161193847656e-8;
+    const useAD = solverOpts?.jacobian === "ad-forward" || solverOpts?.jacobian === "ad-reverse";
+    const useKinsol = solverOpts?.nonlinear === "kinsol" || solverOpts?.nonlinear === "hybrid";
+
+    if (useKinsol) {
+      const solver = getCachedSundialsWasm();
+      if (!solver) {
+        throw new Error(
+          "KINSOL solver requested but SUNDIALS WASM module is not loaded. Use simulateAsync() or loadSundialsWasm() first.",
+        );
+      }
+
+      const F = (z: number[]): number[] => {
+        for (let i = 0; i < m; i++) evaluator.env.set(block.vars[i] ?? "", z[i] ?? 0);
+        const res = new Array(m);
+        for (let i = 0; i < m; i++) {
+          const eq = block.eqs[i];
+          if (!eq) continue;
+          const exprVal = evaluator.evaluate(eq.expr);
+          const val = exprVal !== null && isFinite(exprVal) ? exprVal : 0;
+          res[i] = (z[i] ?? 0) - val;
+        }
+        return res;
+      };
+
+      const result = solver.kinsol(F, Array.from(x), { atol: TOL, rtol: TOL });
+      if (result.converged || solverOpts?.nonlinear === "kinsol") {
+        if (!result.converged) {
+          throw new Error(`Kinsol solver failed to converge at t=${t}. Vars: ${block.vars.join(", ")}`);
+        }
+        for (let i = 0; i < m; i++) {
+          x[i] = result.solution[i] ?? 0;
+          evaluator.env.set(block.vars[i] ?? "", x[i] ?? 0);
+        }
+        return;
+      }
+      // If hybrid and kinsol failed, fall through to Newton-Raphson
+    }
+
     let converged = false;
 
     for (let iter = 0; iter < MAX_ITER; iter++) {
@@ -3153,25 +3210,69 @@ export class ModelicaSimulator {
         break;
       }
 
-      // Compute Jacobian J = I - d(expr)/dx via finite differences
+      // Compute Jacobian J = I - d(expr)/dx
       for (let i = 0; i < m; i++) (J[i] as Float64Array).fill(0);
 
-      for (let j = 0; j < m; j++) {
-        const varJ = block.vars[j] ?? "";
-        const xj = x[j] ?? 0;
-        const eps = SQRT_EPS * Math.max(Math.abs(xj), 1.0);
-        evaluator.env.set(varJ, xj + eps);
+      if (useAD) {
+        // ── Forward-mode AD Jacobian via DualExpressionEvaluator ──
+        // Seed each variable j with dual part = 1, evaluate all residuals,
+        // extract ∂R_i/∂x_j from the dual part.
+        const dualEval = new DualExpressionEvaluator();
 
-        for (let i = 0; i < m; i++) {
-          const eq = block.eqs[i];
-          if (!eq) continue;
-          const exprVal = evaluator.evaluate(eq.expr);
-          const val = exprVal !== null && isFinite(exprVal) ? exprVal : 0;
-          const R_perturbed = (i === j ? xj + eps : (x[i] ?? 0)) - val;
-          const Ji = J[i];
-          if (Ji) Ji[j] = (R_perturbed - (R[i] ?? 0)) / eps;
+        // Copy current environment as Dual constants
+        for (const [name, val] of evaluator.env) {
+          dualEval.env.set(name, Dual.constant(val));
         }
-        evaluator.env.set(varJ, xj); // restore
+
+        for (let j = 0; j < m; j++) {
+          const varJ = block.vars[j] ?? "";
+          // Seed variable j: (x_j, 1)
+          dualEval.env.set(varJ, new Dual(x[j] ?? 0, 1.0));
+
+          for (let i = 0; i < m; i++) {
+            const eq = block.eqs[i];
+            if (!eq) continue;
+            const dualResult = dualEval.evaluate(eq.expr);
+            if (dualResult) {
+              // J[i][j] = δ_{ij} - d(expr_i)/dx_j
+              const Ji = J[i];
+              if (Ji) Ji[j] = (i === j ? 1 : 0) - dualResult.dot;
+            } else {
+              // AD failed — fall back to FD for this column
+              const xj = x[j] ?? 0;
+              const eps = SQRT_EPS * Math.max(Math.abs(xj), 1.0);
+              evaluator.env.set(varJ, xj + eps);
+              const exprVal = evaluator.evaluate(eq.expr);
+              const val = exprVal !== null && isFinite(exprVal) ? exprVal : 0;
+              const R_perturbed = (i === j ? xj + eps : (x[i] ?? 0)) - val;
+              const Ji = J[i];
+              if (Ji) Ji[j] = (R_perturbed - (R[i] ?? 0)) / eps;
+              evaluator.env.set(varJ, xj);
+            }
+          }
+
+          // Reset seed
+          dualEval.env.set(varJ, Dual.constant(x[j] ?? 0));
+        }
+      } else {
+        // ── Finite-difference Jacobian (default) ──
+        for (let j = 0; j < m; j++) {
+          const varJ = block.vars[j] ?? "";
+          const xj = x[j] ?? 0;
+          const eps = SQRT_EPS * Math.max(Math.abs(xj), 1.0);
+          evaluator.env.set(varJ, xj + eps);
+
+          for (let i = 0; i < m; i++) {
+            const eq = block.eqs[i];
+            if (!eq) continue;
+            const exprVal = evaluator.evaluate(eq.expr);
+            const val = exprVal !== null && isFinite(exprVal) ? exprVal : 0;
+            const R_perturbed = (i === j ? xj + eps : (x[i] ?? 0)) - val;
+            const Ji = J[i];
+            if (Ji) Ji[j] = (R_perturbed - (R[i] ?? 0)) / eps;
+          }
+          evaluator.env.set(varJ, xj); // restore
+        }
       }
 
       // Solve J · Δx = -R via LU factorization
@@ -3215,6 +3316,7 @@ export class ModelicaSimulator {
     block: Extract<ExecutionBlock, { type: "torn" }>,
     evaluator: ExpressionEvaluator,
     t: number,
+    solverOpts?: Readonly<Required<import("./solver-options.js").SolverOptions>>,
   ): void {
     const m = block.tearingVars.length;
     const x = new Float64Array(m);
@@ -3228,9 +3330,64 @@ export class ModelicaSimulator {
     const J: Float64Array[] = new Array(m);
     for (let i = 0; i < m; i++) J[i] = new Float64Array(m);
 
-    const MAX_ITER = 20;
-    const TOL = 1e-10;
+    const MAX_ITER = solverOpts?.maxNonlinearIterations ?? 20;
+    const TOL = solverOpts?.atol ?? 1e-10;
     const SQRT_EPS = 1.4901161193847656e-8;
+    const useKinsol = solverOpts?.nonlinear === "kinsol" || solverOpts?.nonlinear === "hybrid";
+
+    if (useKinsol) {
+      const solver = getCachedSundialsWasm();
+      if (!solver) {
+        throw new Error(
+          "KINSOL solver requested but SUNDIALS WASM module is not loaded. Use simulateAsync() or loadSundialsWasm() first.",
+        );
+      }
+
+      const F = (z: number[]): number[] => {
+        for (let i = 0; i < m; i++) evaluator.env.set(block.tearingVars[i] ?? "", z[i] ?? 0);
+        for (const eq of block.innerEqs) {
+          const val = evaluator.evaluate(eq.expr);
+          const key = eq.isDerivative ? `der(${eq.target})` : eq.target;
+          evaluator.env.set(key, val !== null && isFinite(val) ? val : 0);
+        }
+        const res = new Array(m);
+        for (let i = 0; i < m; i++) {
+          const eq = block.residualEqs[i];
+          if (!eq) continue;
+          const exprVal = evaluator.evaluate(eq.expr);
+          const val = exprVal !== null && isFinite(exprVal) ? exprVal : 0;
+          res[i] = (z[i] ?? 0) - val;
+        }
+        return res;
+      };
+
+      const result = solver.kinsol(F, Array.from(x), { atol: TOL, rtol: TOL });
+      if (result.converged || solverOpts?.nonlinear === "kinsol") {
+        if (!result.converged) {
+          throw new Error(`Kinsol solver failed to converge at t=${t}. Tearing vars: ${block.tearingVars.join(", ")}`);
+        }
+        for (let i = 0; i < m; i++) x[i] = result.solution[i] ?? 0;
+
+        // Final: solve inner equations and write back warm-start values
+        for (let i = 0; i < m; i++) evaluator.env.set(block.tearingVars[i] ?? "", x[i] ?? 0);
+        for (const eq of block.innerEqs) {
+          const val = evaluator.evaluate(eq.expr);
+          const key = eq.isDerivative ? `der(${eq.target})` : eq.target;
+          evaluator.env.set(key, val !== null && isFinite(val) ? val : 0);
+        }
+        for (let i = 0; i < m; i++) {
+          this.algWarmStart.set(block.tearingVars[i] ?? "", x[i] ?? 0);
+        }
+        for (const eq of block.innerEqs) {
+          if (!eq.isDerivative) {
+            this.algWarmStart.set(eq.target, evaluator.env.get(eq.target) ?? 0);
+          }
+        }
+        return;
+      }
+      // If hybrid and kinsol failed, fall through to Newton-Raphson
+    }
+
     let converged = false;
 
     for (let iter = 0; iter < MAX_ITER; iter++) {

@@ -282,6 +282,11 @@ export class SundialsWasmSolver {
 
 let cachedSolver: SundialsWasmSolver | null = null;
 
+/** Get the currently cached SUNDIALS WASM solver, if loaded. */
+export function getCachedSundialsWasm(): SundialsWasmSolver | null {
+  return cachedSolver;
+}
+
 /**
  * Load the SUNDIALS WASM module and return a solver instance.
  * Cached after first load.
@@ -313,7 +318,7 @@ export async function loadSundialsWasm(wasmUrl?: string): Promise<SundialsWasmSo
   }
 
   // Browser
-  const url = wasmUrl ?? new URL("../../wasm/sundials.wasm", import.meta.url).href;
+  const url = wasmUrl ?? new URL(/* webpackIgnore: true */ "../../wasm/sundials.wasm", import.meta.url).href;
   const jsUrl = url.replace(/\.wasm$/, ".js");
   const factory = await import(/* webpackIgnore: true */ jsUrl);
   const module = await new Promise<SundialsEmscriptenModule>((resolve) => {

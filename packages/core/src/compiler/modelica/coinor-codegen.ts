@@ -17,6 +17,7 @@
 
 import { StaticTapeBuilder } from "./ad-codegen.js";
 import type { ModelicaExpression } from "./dae.js";
+import type { SolverOptions } from "./solver-options.js";
 
 // ── Public interface ──
 
@@ -34,6 +35,8 @@ export interface CoinorCodegenOptions {
   printLevel?: number;
   /** Use exact Hessian for IPOPT (default: true). */
   useExactHessian?: boolean;
+  /** Generic solver options (overrides specific options). */
+  solverOptions?: SolverOptions;
 }
 
 /** Generated COIN-OR C files. */
@@ -96,9 +99,13 @@ export interface LpProblemDef {
  * Generate a CLP/CBC optimization driver from a LP/MILP problem definition.
  */
 export function generateLpMainC(problem: LpProblemDef, options: CoinorCodegenOptions): CoinorCodegenResult {
-  const solver = options.solver === "cbc" ? "cbc" : "clp";
-  const tolerance = options.tolerance ?? 1e-8;
-  const maxIter = options.maxIterations ?? 3000;
+  const overrides = options.solverOptions;
+  const resolvedSolver =
+    overrides?.lpSolver === "clp" || overrides?.lpSolver === "cbc" ? overrides.lpSolver : options.solver;
+  // If user asked for ipopt but we are in LP codegen, fallback to clp
+  const solver = resolvedSolver === "cbc" ? "cbc" : "clp";
+  const tolerance = overrides?.atol ?? options.tolerance ?? 1e-8;
+  const maxIter = overrides?.maxNonlinearIterations ?? options.maxIterations ?? 3000;
   const printLevel = options.printLevel ?? 0;
 
   const lines: string[] = [];
@@ -204,8 +211,9 @@ export function generateLpMainC(problem: LpProblemDef, options: CoinorCodegenOpt
  * Uses StaticTapeBuilder to emit AD-based objective/gradient/Hessian C code.
  */
 export function generateNlpMainC(problem: NlpProblemDef, options: CoinorCodegenOptions): CoinorCodegenResult {
-  const tolerance = options.tolerance ?? 1e-8;
-  const maxIter = options.maxIterations ?? 3000;
+  const overrides = options.solverOptions;
+  const tolerance = overrides?.atol ?? options.tolerance ?? 1e-8;
+  const maxIter = overrides?.maxNonlinearIterations ?? options.maxIterations ?? 3000;
   const printLevel = options.printLevel ?? 0;
 
   const nVars = problem.variables.length;

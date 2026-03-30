@@ -385,7 +385,7 @@ export async function loadCoinorWasm(wasmUrl?: string): Promise<CoinorWasmSolver
     return cachedSolver;
   }
 
-  const url = wasmUrl ?? new URL("../../wasm/coinor.wasm", import.meta.url).href;
+  const url = wasmUrl ?? new URL(/* webpackIgnore: true */ "../../wasm/coinor.wasm", import.meta.url).href;
   const jsUrl = url.replace(/\.wasm$/, ".js");
   const factory = await import(/* webpackIgnore: true */ jsUrl);
   const module = await new Promise<CoinorEmscriptenModule>((resolve) => {

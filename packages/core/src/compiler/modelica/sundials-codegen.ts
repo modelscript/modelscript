@@ -16,6 +16,7 @@
 
 import type { ModelicaDAE } from "./dae.js";
 import type { FmuResult } from "./fmi.js";
+import type { SolverOptions } from "./solver-options.js";
 
 // ── Public interface ──
 
@@ -41,6 +42,8 @@ export interface SundialsCodegenOptions {
   solver?: "cvode" | "ida";
   /** Use exact AD Jacobian (default: true). */
   useExactJacobian?: boolean;
+  /** Generic solver options (overrides specific options). */
+  solverOptions?: SolverOptions;
 }
 
 /** Generated SUNDIALS C files. */
@@ -67,8 +70,14 @@ export function generateSundialsMainC(
   const rtol = options.rtol ?? 1e-6;
   const maxSteps = options.maxSteps ?? 50000;
   const maxStep = options.maxStep ?? 0;
-  const solver = options.solver ?? detectSolverChoice(dae);
-  const useJac = options.useExactJacobian !== false;
+  const resolvedSolver =
+    options.solverOptions?.integrator === "cvode" || options.solverOptions?.integrator === "ida"
+      ? options.solverOptions.integrator
+      : options.solver;
+  const solver = resolvedSolver ?? detectSolverChoice(dae);
+
+  const resolvedJac = options.solverOptions?.jacobian;
+  const useJac = resolvedJac !== undefined ? resolvedJac !== "finite-difference" : options.useExactJacobian !== false;
 
   const nStates = fmuResult.modelStructure.derivatives.length;
   const nEventIndicators = fmuResult.numberOfEventIndicators;

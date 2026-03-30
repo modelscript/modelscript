@@ -23,6 +23,7 @@ import {
   ModelicaStringLiteral,
 } from "./dae.js";
 import { ModelicaClassInstance } from "./model.js";
+import type { SolverOptions } from "./solver-options.js";
 import {
   ModelicaComponentReferenceSyntaxNode,
   type ModelicaFunctionCallSyntaxNode,
@@ -110,6 +111,16 @@ export function evaluateSimulate(
     return null;
   };
 
+  const getNamedArgStr = (name: string): string | null => {
+    for (const na of namedArgs) {
+      if (na.identifier?.text === name && na.argument?.expression) {
+        const val = evaluateExpression(na.argument.expression, scope);
+        if (val instanceof ModelicaStringLiteral) return val.value;
+      }
+    }
+    return null;
+  };
+
   const exp = dae.experiment;
   const startTime = getNamedArg("startTime") ?? getPositionalArg(1) ?? exp.startTime ?? 0;
   const stopTime = getNamedArg("stopTime") ?? getPositionalArg(2) ?? exp.stopTime ?? 10;
@@ -121,13 +132,32 @@ export function evaluateSimulate(
       ? outputIntervalArg
       : (exp.interval ?? (stopTime - startTime) / numberOfIntervals);
 
+  // Parse solver options
+  const solverOptions: SolverOptions = {};
+  const _int = getNamedArgStr("integrator") as SolverOptions["integrator"];
+  if (_int !== undefined) solverOptions.integrator = _int;
+  const _nonlin = getNamedArgStr("nonlinear") as SolverOptions["nonlinear"];
+  if (_nonlin !== undefined) solverOptions.nonlinear = _nonlin;
+  const _lin = getNamedArgStr("linear") as SolverOptions["linear"];
+  if (_lin !== undefined) solverOptions.linear = _lin;
+  const _jac = getNamedArgStr("jacobian") as SolverOptions["jacobian"];
+  if (_jac !== undefined) solverOptions.jacobian = _jac;
+  const _opt = getNamedArgStr("optimizer") as SolverOptions["optimizer"];
+  if (_opt !== undefined) solverOptions.optimizer = _opt;
+  const _lp = getNamedArgStr("lpSolver") as SolverOptions["lpSolver"];
+  if (_lp !== undefined) solverOptions.lpSolver = _lp;
+
   // ── Step 4: Run the simulation ──
   let result: { t: number[]; y: number[][]; states: string[] };
   let messages = "";
   try {
     const simulator = new deps.Simulator(dae);
     simulator.prepare();
-    result = simulator.simulate(startTime, stopTime, step);
+    result = simulator.simulate(startTime, stopTime, step, {
+      atol: tolerance,
+      rtol: tolerance,
+      solverOptions,
+    });
   } catch (e) {
     messages = e instanceof Error ? e.message : String(e);
     return buildResultRecord(startTime, stopTime, numberOfIntervals, tolerance, messages);

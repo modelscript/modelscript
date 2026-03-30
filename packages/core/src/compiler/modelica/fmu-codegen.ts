@@ -60,7 +60,8 @@ export function generateFmuCSources(dae: ModelicaDAE, fmuResult: FmuResult, opti
   const modelH = generateModelH(id, nVars, nStates, nStringVars, dae, fmuResult);
 
   // ── model.c ──
-  const modelC = generateModelC(id, dae, fmuResult) + "\n\n" + generateAlgebraicLoopSolvers(id, dae, fmuResult);
+  const modelC =
+    generateModelC(id, dae, fmuResult) + "\n\n" + generateAlgebraicLoopSolvers(id, dae, fmuResult, options);
 
   // ── fmi2Functions.c ──
   const fmi2FunctionsC = generateFmi2FunctionsC(id, nVars, nStates, nStringVars, dae, fmuResult);
@@ -446,9 +447,15 @@ function generateModelH(
   return lines.join("\n");
 }
 
-function generateAlgebraicLoopSolvers(id: string, dae: ModelicaDAE, result: FmuResult): string {
+function generateAlgebraicLoopSolvers(id: string, dae: ModelicaDAE, result: FmuResult, options: FmuOptions): string {
+  const method = options.solverOptions?.jacobian ?? "ad-forward";
+
   const lines: string[] = [];
-  lines.push("/* Algebraic Loop Solver with Exact Analytical Jacobian (AD) */");
+  if (method === "finite-difference") {
+    lines.push("/* Algebraic Loop Solver with Finite-Difference Jacobian */");
+  } else {
+    lines.push("/* Algebraic Loop Solver with Exact Analytical Jacobian (AD) */");
+  }
   lines.push(`#define LOG_ERROR(inst, msg) \\`);
   lines.push(`  do { \\`);
   lines.push(`    if ((inst)->logger) (inst)->logger((inst)->fmuInstance, "error", msg); \\`);
