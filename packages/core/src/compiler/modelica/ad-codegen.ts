@@ -534,7 +534,14 @@ export class StaticTapeBuilder {
     // Reverse topological traversal
     for (let i = this.ops.length - 1; i >= 0; i--) {
       const op = this.ops[i]!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
-      if (op.type === "const" || op.type === "var") continue;
+      if (
+        op.type === "const" ||
+        op.type === "var" ||
+        op.type === "vec_var" ||
+        op.type === "vec_const" ||
+        op.type === "nop"
+      )
+        continue;
 
       // Optimization: if dt is 0, skip branching
       lines.push(`  if (dt[${i}] != 0.0) {`);
@@ -580,6 +587,29 @@ export class StaticTapeBuilder {
         case "sqrt":
           lines.push(`    dt[${op.a}] += dt[${i}] / (2.0 * t[${i}]);`);
           break;
+        // ── Vector ops ──
+        case "vec_add":
+          lines.push(`    for (int _k = 0; _k < ${op.size}; _k++) {`);
+          lines.push(`      dt[${op.a}+_k] += dt[${i}+_k]; dt[${op.b}+_k] += dt[${i}+_k];`);
+          lines.push(`    }`);
+          break;
+        case "vec_sub":
+          lines.push(`    for (int _k = 0; _k < ${op.size}; _k++) {`);
+          lines.push(`      dt[${op.a}+_k] += dt[${i}+_k]; dt[${op.b}+_k] -= dt[${i}+_k];`);
+          lines.push(`    }`);
+          break;
+        case "vec_mul":
+          lines.push(`    for (int _k = 0; _k < ${op.size}; _k++) {`);
+          lines.push(`      dt[${op.a}+_k] += dt[${i}+_k] * t[${op.b}+_k];`);
+          lines.push(`      dt[${op.b}+_k] += dt[${i}+_k] * t[${op.a}+_k];`);
+          lines.push(`    }`);
+          break;
+        case "vec_neg":
+          lines.push(`    for (int _k = 0; _k < ${op.size}; _k++) dt[${op.a}+_k] -= dt[${i}+_k];`);
+          break;
+        case "vec_subscript":
+          lines.push(`    dt[${op.a + op.offset}] += dt[${i}];`);
+          break;
       }
       lines.push(`  }`);
     }
@@ -592,6 +622,10 @@ export class StaticTapeBuilder {
         // Variables can be read multiple times (e.g. x in x + x).
         // Since `cache` deduplicates, there is only one `var: x` operator!
         gradients.set(op.name, i);
+      } else if (op.type === "vec_var") {
+        for (let k = 0; k < op.size; k++) {
+          gradients.set(`${op.baseName}[${k + 1}]`, i + k);
+        }
       }
     }
 

@@ -416,6 +416,45 @@ export function emitIntervalForwardC(
       case "sqrt":
         lines.push(`t_lo[${i}] = sqrt(fmax(0.0,t_lo[${op.a}])); t_hi[${i}] = sqrt(fmax(0.0,t_hi[${op.a}]));`);
         break;
+      // ── Vector ops ──
+      case "vec_var":
+        for (let k = 0; k < op.size; k++) {
+          const vr = varResolver(`${op.baseName}[${k + 1}]`);
+          lines.push(`t_lo[${i + k}] = ${vr.lo}; t_hi[${i + k}] = ${vr.hi};`);
+        }
+        break;
+      case "vec_const":
+        for (let k = 0; k < op.size; k++) {
+          lines.push(`t_lo[${i + k}] = ${formatNum(op.vals[k] ?? 0)}; t_hi[${i + k}] = ${formatNum(op.vals[k] ?? 0)};`);
+        }
+        break;
+      case "vec_add":
+        lines.push(
+          `for (int _k = 0; _k < ${op.size}; _k++) { t_lo[${i}+_k] = t_lo[${op.a}+_k] + t_lo[${op.b}+_k]; t_hi[${i}+_k] = t_hi[${op.a}+_k] + t_hi[${op.b}+_k]; }`,
+        );
+        break;
+      case "vec_sub":
+        lines.push(
+          `for (int _k = 0; _k < ${op.size}; _k++) { t_lo[${i}+_k] = t_lo[${op.a}+_k] - t_hi[${op.b}+_k]; t_hi[${i}+_k] = t_hi[${op.a}+_k] - t_lo[${op.b}+_k]; }`,
+        );
+        break;
+      case "vec_mul":
+        lines.push(`for (int _k = 0; _k < ${op.size}; _k++) {`);
+        lines.push(`  double p1=t_lo[${op.a}+_k]*t_lo[${op.b}+_k], p2=t_lo[${op.a}+_k]*t_hi[${op.b}+_k],`);
+        lines.push(`         p3=t_hi[${op.a}+_k]*t_lo[${op.b}+_k], p4=t_hi[${op.a}+_k]*t_hi[${op.b}+_k];`);
+        lines.push(`  t_lo[${i}+_k] = fmin(fmin(p1,p2),fmin(p3,p4)); t_hi[${i}+_k] = fmax(fmax(p1,p2),fmax(p3,p4));`);
+        lines.push(`}`);
+        break;
+      case "vec_neg":
+        lines.push(
+          `for (int _k = 0; _k < ${op.size}; _k++) { t_lo[${i}+_k] = -t_hi[${op.a}+_k]; t_hi[${i}+_k] = -t_lo[${op.a}+_k]; }`,
+        );
+        break;
+      case "vec_subscript":
+        lines.push(`t_lo[${i}] = t_lo[${op.a + op.offset}]; t_hi[${i}] = t_hi[${op.a + op.offset}];`);
+        break;
+      case "nop":
+        break;
     }
   }
   return lines;
