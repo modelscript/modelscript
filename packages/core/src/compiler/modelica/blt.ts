@@ -10,6 +10,7 @@ import {
   ModelicaSimpleEquation,
 } from "./dae.js";
 import { isolateSymbolically } from "./symbolic.js";
+import { egraphSimplify } from "./symbolic/egraph.js";
 
 /**
  * Visitor that collects all variable names referenced in an expression/equation.
@@ -68,13 +69,22 @@ function isExplicitlySolvableFor(eq: ModelicaEquation, v: string): boolean {
 
 /**
  * Attempt to symbolically isolate `v` from a `ModelicaSimpleEquation`.
+ *
+ * Before isolation, applies E-Graph Equality Saturation to simplify both sides
+ * of the equation (constant folding, identity elimination, exp/log/trig identities).
+ * This canonicalization improves the chance of successful symbolic isolation.
+ *
  * Returns a new explicit equation `v = expr` if successful, or null.
  */
 function trySymbolicIsolation(eq: ModelicaEquation, v: string): ModelicaSimpleEquation | null {
   if (!(eq instanceof ModelicaSimpleEquation)) return null;
   if (!eq.expression1 || !eq.expression2) return null;
 
-  const result = isolateSymbolically(eq.expression1, eq.expression2, v);
+  // E-Graph pre-simplification: canonicalize expressions before isolation
+  const lhs = egraphSimplify(eq.expression1);
+  const rhs = egraphSimplify(eq.expression2);
+
+  const result = isolateSymbolically(lhs, rhs, v);
   if (!result) return null;
 
   const nameExpr = new ModelicaNameExpression(v);
