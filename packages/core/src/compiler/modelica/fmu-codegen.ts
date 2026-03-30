@@ -17,6 +17,8 @@
 import { StaticTapeBuilder } from "./ad-codegen.js";
 import type { ModelicaDAE, ModelicaExpression } from "./dae.js";
 import {
+  ModelicaArray,
+  ModelicaArrayEquation,
   ModelicaBinaryExpression,
   ModelicaBooleanLiteral,
   ModelicaFunctionCallEquation,
@@ -618,12 +620,24 @@ function generateInitializeSolve(id: string, dae: ModelicaDAE, result: FmuResult
     return lines;
   }
 
-  // Collect initial equations that are simple equations (LHS = RHS)
+  // Collect initial equations — unroll array equations into per-element scalar equations
   const initEqs: { lhs: ModelicaExpression; rhs: ModelicaExpression }[] = [];
   for (const eq of dae.initialEquations) {
     if ("expression1" in eq && "expression2" in eq) {
       const se = eq as { expression1: ModelicaExpression; expression2: ModelicaExpression };
-      initEqs.push({ lhs: se.expression1, rhs: se.expression2 });
+      if (eq instanceof ModelicaArrayEquation) {
+        // Unroll array equation into per-element scalar equations
+        const lhsElems = se.expression1 instanceof ModelicaArray ? [...se.expression1.flatElements] : [se.expression1];
+        const rhsElems = se.expression2 instanceof ModelicaArray ? [...se.expression2.flatElements] : [se.expression2];
+        const n = Math.max(lhsElems.length, rhsElems.length);
+        for (let i = 0; i < n; i++) {
+          const lhs = lhsElems[i] ?? lhsElems[0];
+          const rhs = rhsElems[i] ?? rhsElems[0];
+          if (lhs && rhs) initEqs.push({ lhs, rhs });
+        }
+      } else {
+        initEqs.push({ lhs: se.expression1, rhs: se.expression2 });
+      }
     }
   }
 
@@ -2193,6 +2207,13 @@ function extractDerName(expr: unknown): string | null {
 /** Recursively collect all variable names referenced in an expression. */
 function collectReferencedNames(expr: unknown, names: Set<string>): void {
   if (!expr || typeof expr !== "object") return;
+  // Handle ModelicaArray — recurse into each element
+  if (expr instanceof ModelicaArray) {
+    for (const elem of expr.flatElements) {
+      collectReferencedNames(elem, names);
+    }
+    return;
+  }
   if ("name" in expr) {
     const nameVal = (expr as { name: unknown }).name;
     if (typeof nameVal === "string") {

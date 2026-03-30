@@ -348,6 +348,45 @@ export function evaluateTapeMcCormick(
       case "sqrt":
         t[i] = mcSqrt(t[op.a]!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
         break;
+      // ── Vector ops ──
+      case "vec_var":
+        for (let k = 0; k < op.size; k++) {
+          const name = `${op.baseName}[${k + 1}]`;
+          const bound = bounds.get(name) ?? Interval.point(0);
+          const val = point.get(name) ?? bound.mid;
+          t[i + k] = mcVar(val, bound.lo, bound.hi);
+        }
+        break;
+      case "vec_const":
+        for (let k = 0; k < op.size; k++) {
+          t[i + k] = mcConst(op.vals[k] ?? 0);
+        }
+        break;
+      case "vec_add":
+        for (let k = 0; k < op.size; k++) {
+          t[i + k] = mcAdd(t[op.a + k]!, t[op.b + k]!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+        }
+        break;
+      case "vec_sub":
+        for (let k = 0; k < op.size; k++) {
+          t[i + k] = mcSub(t[op.a + k]!, t[op.b + k]!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+        }
+        break;
+      case "vec_mul":
+        for (let k = 0; k < op.size; k++) {
+          t[i + k] = mcMul(t[op.a + k]!, t[op.b + k]!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+        }
+        break;
+      case "vec_neg":
+        for (let k = 0; k < op.size; k++) {
+          t[i + k] = mcNeg(t[op.a + k]!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+        }
+        break;
+      case "vec_subscript":
+        t[i] = t[op.a + op.offset] ?? mcConst(0);
+        break;
+      case "nop":
+        break;
     }
   }
   return t;

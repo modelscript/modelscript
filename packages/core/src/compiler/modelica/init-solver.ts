@@ -12,6 +12,8 @@
 import { StaticTapeBuilder, type TapeOp } from "./ad-codegen.js";
 import { evaluateTapeForward, evaluateTapeReverse } from "./ad-jacobian.js";
 import {
+  ModelicaArray,
+  ModelicaArrayEquation,
   ModelicaBooleanLiteral,
   type ModelicaDAE,
   type ModelicaEquation,
@@ -56,6 +58,13 @@ function collectVarNames(expr: ModelicaExpression, names: Set<string>): void {
   if (!expr || typeof expr !== "object") return;
   if (expr instanceof ModelicaNameExpression) {
     names.add(expr.name);
+    return;
+  }
+  // Recurse into array elements
+  if (expr instanceof ModelicaArray) {
+    for (const elem of expr.flatElements) {
+      collectVarNames(elem, names);
+    }
     return;
   }
   if ("name" in expr) names.add((expr as { name: string }).name);
@@ -283,8 +292,36 @@ export function solveInitialEquations(
   // Classify equations
   const classified: ClassifiedEq[] = [];
   for (const eq of dae.initialEquations) {
+    if (eq instanceof ModelicaArrayEquation) {
+      // Unroll array initial equation into per-element implicit equations
+      const se = eq as { expression1: ModelicaExpression; expression2: ModelicaExpression };
+      const lhsElems = se.expression1 instanceof ModelicaArray ? [...se.expression1.flatElements] : [se.expression1];
+      const rhsElems = se.expression2 instanceof ModelicaArray ? [...se.expression2.flatElements] : [se.expression2];
+      const n = Math.max(lhsElems.length, rhsElems.length);
+      for (let i = 0; i < n; i++) {
+        const lhs = lhsElems[i] ?? lhsElems[0];
+        const rhs = rhsElems[i] ?? rhsElems[0];
+        if (lhs && rhs) {
+          // Create a synthetic simple equation for each element
+          const elemEq = { expression1: lhs, expression2: rhs } as unknown as ModelicaEquation;
+          const c = classifyInitialEquation(elemEq, unknowns);
+          if (c) classified.push(c);
+        }
+      }
+      continue;
+    }
     const c = classifyInitialEquation(eq, unknowns);
     if (c) classified.push(c);
+  }
+
+  // Expand array variable unknowns: for vars with arrayDimensions, add subscripted names
+  for (const v of dae.variables) {
+    if (v.arrayDimensions && v.arrayDimensions.length > 0 && unknowns.has(v.name)) {
+      const size = v.arrayDimensions.reduce((a: number, b: number) => a * b, 1);
+      for (let i = 0; i < size; i++) {
+        unknowns.add(`${v.name}[${i + 1}]`);
+      }
+    }
   }
 
   // Phase 1: Solve explicit equations first (direct assignment)

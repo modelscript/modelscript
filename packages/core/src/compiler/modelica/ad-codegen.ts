@@ -28,7 +28,19 @@ export type TapeOp =
   | { type: "tan"; a: number }
   | { type: "exp"; a: number }
   | { type: "log"; a: number }
-  | { type: "sqrt"; a: number };
+  | { type: "sqrt"; a: number }
+  // ── Vector ops: SIMD-style operations on contiguous blocks ──
+  // These occupy `size` consecutive tape slots starting at the op's index.
+  | { type: "vec_var"; baseName: string; size: number }
+  | { type: "vec_const"; vals: number[]; size: number }
+  | { type: "vec_add"; a: number; b: number; size: number }
+  | { type: "vec_sub"; a: number; b: number; size: number }
+  | { type: "vec_mul"; a: number; b: number; size: number }
+  | { type: "vec_neg"; a: number; size: number }
+  // Extracts scalar t[a + offset] from a vector block starting at tape index `a`
+  | { type: "vec_subscript"; a: number; offset: number }
+  // No-op placeholder for vector padding slots (evaluators skip these)
+  | { type: "nop" };
 
 function formatCDouble(v: number): string {
   if (!isFinite(v)) return v === Infinity ? "INFINITY" : v === -Infinity ? "(-INFINITY)" : "NAN";
@@ -188,6 +200,69 @@ export class StaticTapeBuilder {
   }
 
   /**
+   * Push a vector op that reserves `size` consecutive tape slots.
+   * The op itself occupies slot `idx`, and `size-1` placeholder slots follow.
+   * Returns the starting index of the vector block.
+   */
+  public pushVecOp(op: TapeOp & { size: number }): number {
+    const idx = this.ops.length;
+    this.ops.push(op);
+    // Reserve remaining size-1 slots with nop placeholders
+    for (let i = 1; i < op.size; i++) {
+      this.ops.push({ type: "nop" }); // Placeholder; evaluators skip these
+    }
+    return idx;
+  }
+
+  /**
+   * Walk an array expression as a single vectorized block.
+   * If `expr` is a `ModelicaArray` of named variables, emits `vec_var` etc.
+   * Returns the starting tape index and the block size.
+   *
+   * For array binary ops like `{a,b} + {c,d}`, emits `vec_add`.
+   * Falls back to element-wise scalar tapes for complex expressions.
+   */
+  public walkArrayVectorized(expr: ModelicaExpression): { startIdx: number; size: number } {
+    if (!(expr instanceof ModelicaArray)) {
+      // Scalar: single tape slot
+      const idx = this.walk(expr);
+      return { startIdx: idx, size: 1 };
+    }
+
+    const flatElems = [...expr.flatElements];
+    const size = flatElems.length;
+    if (size === 0) return { startIdx: this.pushOp({ type: "const", val: 0 }), size: 1 };
+
+    // Check if all elements are simple named variables with a common base
+    const allNamed = flatElems.every((e) => e instanceof ModelicaNameExpression);
+    if (allNamed && size > 1) {
+      // Extract common base name (e.g., "x[1]", "x[2]" → base = "x")
+      const firstName = (flatElems[0] as ModelicaNameExpression).name;
+      const bracketPos = firstName.indexOf("[");
+      const baseName = bracketPos >= 0 ? firstName.substring(0, bracketPos) : firstName;
+      const startIdx = this.pushVecOp({ type: "vec_var", baseName, size });
+      return { startIdx, size };
+    }
+
+    // Check if all elements are constants
+    const allConst = flatElems.every((e) => e instanceof ModelicaRealLiteral || e instanceof ModelicaIntegerLiteral);
+    if (allConst && size > 1) {
+      const vals = flatElems.map((e) =>
+        e instanceof ModelicaRealLiteral ? e.value : e instanceof ModelicaIntegerLiteral ? e.value : 0,
+      );
+      const startIdx = this.pushVecOp({ type: "vec_const", vals, size });
+      return { startIdx, size };
+    }
+
+    // Fallback: walk each element as scalar, pack into contiguous block
+    const startIdx = this.ops.length;
+    for (const elem of flatElems) {
+      this.walk(elem);
+    }
+    return { startIdx, size };
+  }
+
+  /**
    * Emit the C-code evaluating the expressions step-by-step.
    * `varResolver` maps the Modelica variable name into a valid C-code getter string
    * (e.g., `inst->vars[VR_X]`).
@@ -264,6 +339,32 @@ export class StaticTapeBuilder {
         case "sqrt":
           rhs = `sqrt(t[${op.a}])`;
           break;
+        // ── Vector ops: emit for-loops ──
+        case "vec_var":
+          lines.push(`  for (int _k = 0; _k < ${op.size}; _k++) t[${i}+_k] = ${varResolver(`${op.baseName}[_k+1]`)};`);
+          continue; // Skip default t[i] = rhs line
+        case "vec_const":
+          for (let k = 0; k < op.size; k++) {
+            lines.push(`  t[${i + k}] = ${formatCDouble(op.vals[k] ?? 0)};`);
+          }
+          continue;
+        case "vec_add":
+          lines.push(`  for (int _k = 0; _k < ${op.size}; _k++) t[${i}+_k] = t[${op.a}+_k] + t[${op.b}+_k];`);
+          continue;
+        case "vec_sub":
+          lines.push(`  for (int _k = 0; _k < ${op.size}; _k++) t[${i}+_k] = t[${op.a}+_k] - t[${op.b}+_k];`);
+          continue;
+        case "vec_mul":
+          lines.push(`  for (int _k = 0; _k < ${op.size}; _k++) t[${i}+_k] = t[${op.a}+_k] * t[${op.b}+_k];`);
+          continue;
+        case "vec_neg":
+          lines.push(`  for (int _k = 0; _k < ${op.size}; _k++) t[${i}+_k] = -t[${op.a}+_k];`);
+          continue;
+        case "vec_subscript":
+          rhs = `t[${op.a + op.offset}]`;
+          break;
+        case "nop":
+          continue; // Skip padding slots
       }
       lines.push(`  t[${i}] = ${rhs};`);
     }

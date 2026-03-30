@@ -78,6 +78,42 @@ export function evaluateTapeForward(ops: TapeOp[], varValues: Map<string, number
       case "sqrt":
         t[i] = Math.sqrt(t[op.a] ?? 0);
         break;
+      // ── Vector ops ──
+      case "vec_var":
+        for (let k = 0; k < op.size; k++) {
+          t[i + k] = varValues.get(`${op.baseName}[${k + 1}]`) ?? 0;
+        }
+        break;
+      case "vec_const":
+        for (let k = 0; k < op.size; k++) {
+          t[i + k] = op.vals[k] ?? 0;
+        }
+        break;
+      case "vec_add":
+        for (let k = 0; k < op.size; k++) {
+          t[i + k] = (t[op.a + k] ?? 0) + (t[op.b + k] ?? 0);
+        }
+        break;
+      case "vec_sub":
+        for (let k = 0; k < op.size; k++) {
+          t[i + k] = (t[op.a + k] ?? 0) - (t[op.b + k] ?? 0);
+        }
+        break;
+      case "vec_mul":
+        for (let k = 0; k < op.size; k++) {
+          t[i + k] = (t[op.a + k] ?? 0) * (t[op.b + k] ?? 0);
+        }
+        break;
+      case "vec_neg":
+        for (let k = 0; k < op.size; k++) {
+          t[i + k] = -(t[op.a + k] ?? 0);
+        }
+        break;
+      case "vec_subscript":
+        t[i] = t[op.a + op.offset] ?? 0;
+        break;
+      case "nop":
+        break;
     }
   }
   return t;
@@ -140,6 +176,38 @@ export function evaluateTapeReverse(ops: TapeOp[], t: Float64Array, outputIndex:
       case "sqrt":
         dt[op.a] = (dt[op.a] ?? 0) + dti / (2 * (t[i] ?? 1));
         break;
+      // ── Vector ops reverse ──
+      case "vec_add":
+        for (let k = 0; k < op.size; k++) {
+          const dk = dt[i + k] ?? 0;
+          dt[op.a + k] = (dt[op.a + k] ?? 0) + dk;
+          dt[op.b + k] = (dt[op.b + k] ?? 0) + dk;
+        }
+        break;
+      case "vec_sub":
+        for (let k = 0; k < op.size; k++) {
+          const dk = dt[i + k] ?? 0;
+          dt[op.a + k] = (dt[op.a + k] ?? 0) + dk;
+          dt[op.b + k] = (dt[op.b + k] ?? 0) - dk;
+        }
+        break;
+      case "vec_mul":
+        for (let k = 0; k < op.size; k++) {
+          const dk = dt[i + k] ?? 0;
+          dt[op.a + k] = (dt[op.a + k] ?? 0) + dk * (t[op.b + k] ?? 0);
+          dt[op.b + k] = (dt[op.b + k] ?? 0) + dk * (t[op.a + k] ?? 0);
+        }
+        break;
+      case "vec_neg":
+        for (let k = 0; k < op.size; k++) {
+          dt[op.a + k] = (dt[op.a + k] ?? 0) - (dt[i + k] ?? 0);
+        }
+        break;
+      case "vec_subscript":
+        dt[op.a + op.offset] = (dt[op.a + op.offset] ?? 0) + dti;
+        break;
+      case "nop":
+        break;
     }
   }
 
@@ -149,6 +217,11 @@ export function evaluateTapeReverse(ops: TapeOp[], t: Float64Array, outputIndex:
     const op = ops[i]!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
     if (op.type === "var") {
       gradients.set(op.name, (gradients.get(op.name) ?? 0) + (dt[i] ?? 0));
+    } else if (op.type === "vec_var") {
+      for (let k = 0; k < op.size; k++) {
+        const name = `${op.baseName}[${k + 1}]`;
+        gradients.set(name, (gradients.get(name) ?? 0) + (dt[i + k] ?? 0));
+      }
     }
   }
   return gradients;

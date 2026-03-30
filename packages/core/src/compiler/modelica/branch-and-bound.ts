@@ -395,3 +395,28 @@ export function buildSbbFromDAE(
     constraintTapes,
   };
 }
+
+/**
+ * Expand array variable bounds in a DomainBox.
+ * Given a box with `x → [lo, hi]` and a variable `x` with arrayDimensions = [3],
+ * produces `x[1] → [lo,hi]`, `x[2] → [lo,hi]`, `x[3] → [lo,hi]`.
+ *
+ * @param box       Initial domain box (may contain array-valued variable names)
+ * @param dae       DAE for variable metadata (arrayDimensions)
+ * @returns Expanded domain box with per-element entries
+ */
+export function expandArrayBounds(box: DomainBox, dae: ModelicaDAE): DomainBox {
+  const expanded: DomainBox = new Map();
+  for (const [name, interval] of box) {
+    const v = dae.variables.find((dv) => dv.name === name);
+    if (v?.arrayDimensions && v.arrayDimensions.length > 0) {
+      const size = v.arrayDimensions.reduce((a: number, b: number) => a * b, 1);
+      for (let i = 0; i < size; i++) {
+        expanded.set(`${name}[${i + 1}]`, new Interval(interval.lo, interval.hi));
+      }
+    } else {
+      expanded.set(name, interval);
+    }
+  }
+  return expanded;
+}

@@ -264,6 +264,42 @@ export function evaluateTapeInterval(ops: TapeOp[], bounds: Map<string, Interval
       case "sqrt":
         t[i] = iaSqrt(t[op.a]!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
         break;
+      // ── Vector ops ──
+      case "vec_var":
+        for (let k = 0; k < op.size; k++) {
+          t[i + k] = bounds.get(`${op.baseName}[${k + 1}]`) ?? Interval.point(0);
+        }
+        break;
+      case "vec_const":
+        for (let k = 0; k < op.size; k++) {
+          t[i + k] = Interval.point(op.vals[k] ?? 0);
+        }
+        break;
+      case "vec_add":
+        for (let k = 0; k < op.size; k++) {
+          t[i + k] = iaAdd(t[op.a + k]!, t[op.b + k]!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+        }
+        break;
+      case "vec_sub":
+        for (let k = 0; k < op.size; k++) {
+          t[i + k] = iaSub(t[op.a + k]!, t[op.b + k]!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+        }
+        break;
+      case "vec_mul":
+        for (let k = 0; k < op.size; k++) {
+          t[i + k] = iaMul(t[op.a + k]!, t[op.b + k]!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+        }
+        break;
+      case "vec_neg":
+        for (let k = 0; k < op.size; k++) {
+          t[i + k] = iaNeg(t[op.a + k]!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+        }
+        break;
+      case "vec_subscript":
+        t[i] = t[op.a + op.offset] ?? Interval.point(0);
+        break;
+      case "nop":
+        break;
     }
   }
   return t;
