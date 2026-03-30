@@ -2297,7 +2297,7 @@ export class ModelicaSimulator {
     options?: {
       signal?: AbortSignal;
       parameterOverrides?: Map<string, number>;
-      solver?: "rk4" | "dopri5" | "bdf" | "auto";
+      solver?: "rk4" | "dopri5" | "bdf" | "auto" | "cvode";
       atol?: number;
       rtol?: number;
     },
@@ -2774,6 +2774,273 @@ export class ModelicaSimulator {
       for (const entry of extraEntries) {
         // Fast path: canonical is in coreStates (use indexed lookup)
         // Fallback: read from evaluator env (for vars computed inside f() but not in coreStates)
+        const val =
+          entry.canonicalIdx >= 0 ? (coreRow[entry.canonicalIdx] ?? 0) : (evaluator.env.get(entry.canonical) ?? 0);
+        coreRow.push(entry.sign * val);
+      }
+      return coreRow;
+    });
+
+    return { t: res.t, y: allY, states: allStates };
+  }
+
+  /**
+   * Async simulation entry point for WASM-compiled solvers.
+   *
+   * Supports all the same solver options as `simulate()`, plus WASM-specific ones:
+   *   - `"cvode"`:  SUNDIALS CVODE (variable-order Adams/BDF with error control)
+   *
+   * WASM solvers are loaded lazily on first use and cached.
+   */
+  public async simulateAsync(
+    startTime: number,
+    stopTime: number,
+    step: number,
+    options?: {
+      signal?: AbortSignal;
+      parameterOverrides?: Map<string, number>;
+      solver?: "rk4" | "dopri5" | "bdf" | "auto" | "cvode";
+      atol?: number;
+      rtol?: number;
+    },
+  ): Promise<{ t: number[]; y: number[][]; states: string[] }> {
+    const solver = options?.solver ?? "cvode";
+
+    // Non-WASM solvers: delegate to synchronous simulate()
+    if (solver !== "cvode") {
+      return this.simulate(startTime, stopTime, step, options);
+    }
+
+    // ── CVODE WASM solver ──
+    this.prepare();
+
+    // Reset solver state
+    this.useImplicitSolver = false;
+    this.cachedW = null;
+    this.cachedWStepSize = 0;
+
+    // Apply parameter overrides
+    if (options?.parameterOverrides) {
+      for (const [name, value] of options.parameterOverrides) {
+        if (this.parameters.has(name)) {
+          this.parameters.set(name, value);
+        }
+      }
+    }
+
+    const stateVarsArr = Array.from(this.stateVars);
+    const algebraicVarsArr = Array.from(this.algebraicVars);
+    const stateList = stateVarsArr;
+
+    // Perform initialization (same as synchronous simulate)
+    const startValues = new Map<string, number>();
+    for (const v of this.dae.variables) {
+      const startAttr = v.attributes.get("start");
+      if (startAttr) {
+        const initEval = new ExpressionEvaluator(new Map(this.parameters));
+        const val = initEval.evaluate(startAttr);
+        if (val !== null) startValues.set(v.name, val);
+      }
+      if (v.expression) {
+        const initEval = new ExpressionEvaluator(new Map(this.parameters));
+        const val = initEval.evaluate(v.expression);
+        if (val !== null) startValues.set(v.name, val);
+      }
+    }
+
+    const initEvaluator = new ExpressionEvaluator(new Map(this.parameters));
+    initEvaluator.isInitial = true;
+    if (this.dae.functions.length > 0) {
+      initEvaluator.functionLookup = buildFunctionLookup(this.dae.functions);
+    }
+    for (const v of this.dae.variables) {
+      if (!initEvaluator.env.has(v.name)) {
+        initEvaluator.env.set(v.name, startValues.get(v.name) ?? 0);
+      }
+    }
+    for (const av of algebraicVarsArr) {
+      if (!initEvaluator.env.has(av)) {
+        initEvaluator.env.set(av, startValues.get(av) ?? 0);
+      }
+    }
+    for (const state of stateList) {
+      if (state) initEvaluator.env.set(`der(${state})`, 0);
+    }
+    initEvaluator.env.set("time", startTime);
+
+    // Solve initial equations
+    {
+      const initResult = solveInitialEquations(this.dae, startValues, this.parameters, startTime);
+      for (const [name, val] of initResult.values) {
+        initEvaluator.env.set(name, val);
+        startValues.set(name, val);
+      }
+    }
+
+    // Homotopy continuation
+    const HOMOTOPY_STEPS = 5;
+    for (let hStep = 0; hStep <= HOMOTOPY_STEPS; hStep++) {
+      const lambda = hStep / HOMOTOPY_STEPS;
+      initEvaluator.env.set("$homotopy.lambda", lambda);
+      for (const block of this.executionBlocks) {
+        if (block.type === "single") {
+          const value = initEvaluator.evaluate(block.eq.expr);
+          if (value !== null && isFinite(value)) {
+            const key = block.eq.isDerivative ? `der(${block.eq.target})` : block.eq.target;
+            initEvaluator.env.set(key, value);
+          }
+        } else if (block.type === "algorithm") {
+          executeStatements(block.statements, initEvaluator, initEvaluator.functionLookup ?? undefined);
+        } else if (block.type === "torn") {
+          this.solveTornBlock(block, initEvaluator, startTime);
+        } else {
+          this.solveNewtonBlock(block, initEvaluator, startTime);
+        }
+      }
+    }
+    initEvaluator.env.set("$homotopy.lambda", 1.0);
+
+    const initialValues = stateList.map((state) => {
+      if (!state) return 0.0;
+      const val = initEvaluator.env.get(state);
+      return val !== undefined ? val : 0.0;
+    });
+
+    // Build evaluator for RHS
+    const evaluator = new ExpressionEvaluator();
+    evaluator.stepSize = step;
+    if (this.dae.functions.length > 0) {
+      evaluator.functionLookup = buildFunctionLookup(this.dae.functions);
+    }
+    for (let i = 0; i < stateList.length; i++) {
+      const name = stateList[i];
+      if (name) evaluator.preValues.set(name, initialValues[i] ?? 0);
+    }
+    for (const [name, value] of this.parameters) {
+      evaluator.env.set(name, value);
+    }
+    for (const v of this.dae.variables) {
+      if (!evaluator.env.has(v.name)) {
+        evaluator.env.set(v.name, initEvaluator.env.get(v.name) ?? 0);
+      }
+    }
+    for (const av of this.algebraicVars) {
+      if (!evaluator.env.has(av)) {
+        evaluator.env.set(av, initEvaluator.env.get(av) ?? 0);
+      }
+    }
+
+    const populateEnv = (t: number, y: number[]) => {
+      evaluator.env.set("time", t);
+      evaluator.currentTime = t;
+      for (let i = 0; i < stateList.length; i++) {
+        const name = stateList[i];
+        if (name) evaluator.env.set(name, y[i] ?? 0.0);
+      }
+    };
+
+    // RHS function for CVODE
+    const f = (t: number, y: number[]): number[] => {
+      if (options?.signal?.aborted) throw new Error("Simulation aborted");
+      populateEnv(t, y);
+      for (const av of this.algebraicVars) {
+        evaluator.env.set(av, this.algWarmStart.get(av) ?? 0);
+      }
+      for (const s of stateList) {
+        if (s) evaluator.env.set(`der(${s})`, 0);
+      }
+      for (const block of this.executionBlocks) {
+        if (block.type === "single") {
+          const value = evaluator.evaluate(block.eq.expr);
+          if (value !== null && isFinite(value)) {
+            const key = block.eq.isDerivative ? `der(${block.eq.target})` : block.eq.target;
+            evaluator.env.set(key, value);
+            if (!block.eq.isDerivative) this.algWarmStart.set(key, value);
+          }
+        } else if (block.type === "algorithm") {
+          executeStatements(block.statements, evaluator, evaluator.functionLookup ?? undefined);
+        } else if (block.type === "torn") {
+          this.solveTornBlock(block, evaluator, t);
+        } else {
+          this.solveNewtonBlock(block, evaluator, t);
+        }
+      }
+      if (this.stateMachineRuntimes.length > 0) this.executeStateMachines(evaluator);
+      return stateList.map((state) => evaluator.env.get(`der(${state})`) ?? 0.0);
+    };
+
+    // Build output times
+    const numSteps = Math.max(1, Math.ceil((stopTime - startTime) / step));
+    const outputTimes: number[] = [];
+    for (let i = 0; i <= numSteps; i++) {
+      outputTimes.push(startTime + i * step);
+    }
+    if ((outputTimes[outputTimes.length - 1] ?? 0) < stopTime - 1e-14) {
+      outputTimes.push(stopTime);
+    }
+
+    // Build event functions
+    const eventFns: ((t: number, y: number[]) => number)[] = [];
+    for (const clause of this.whenClauses) {
+      eventFns.push((tE: number, yE: number[]) => {
+        populateEnv(tE, yE);
+        return evaluator.evaluate(clause.condition) ?? 0;
+      });
+    }
+
+    // ── Load SUNDIALS WASM and run CVODE ──
+    const { loadSundialsWasm } = await import("./sundials-wasm.js");
+    const sundials = await loadSundialsWasm();
+
+    const cvodeResult = sundials.cvode(
+      f,
+      startTime,
+      initialValues,
+      stopTime,
+      outputTimes,
+      {
+        atol: options?.atol ?? 1e-6,
+        rtol: options?.rtol ?? 1e-6,
+        maxStep: step,
+      },
+      eventFns.length > 0 ? eventFns : undefined,
+    );
+
+    const res = { t: cvodeResult.times, y: cvodeResult.states };
+
+    // Build complete result (same post-processing as synchronous simulate)
+    const stateIndexMap = new Map<string, number>();
+    for (let i = 0; i < stateList.length; i++) {
+      const name = stateList[i];
+      if (name) stateIndexMap.set(name, i);
+    }
+
+    const derNames = stateVarsArr.map((s) => `der(${s})`);
+    const coreStates = [...stateList, ...algebraicVarsArr, ...derNames];
+    const coreStateSet = new Set(coreStates);
+    interface AliasEntry {
+      alias: string;
+      canonicalIdx: number;
+      canonical: string;
+      sign: number;
+    }
+    const extraEntries: AliasEntry[] = [];
+    for (const [alias, canonical] of this.aliasMap) {
+      if (coreStateSet.has(alias)) continue;
+      const idx = coreStates.indexOf(canonical);
+      extraEntries.push({ alias, canonicalIdx: idx, canonical, sign: 1 });
+    }
+    for (const [alias, canonical] of this.negatedAliasMap) {
+      if (coreStateSet.has(alias) || extraEntries.some((e) => e.alias === alias)) continue;
+      const idx = coreStates.indexOf(canonical);
+      extraEntries.push({ alias, canonicalIdx: idx, canonical, sign: -1 });
+    }
+    const allStates = [...coreStates, ...extraEntries.map((e) => e.alias)];
+    const allY = res.y.map((row: number[], idx: number) => {
+      const derivs = f(res.t[idx] ?? 0, row);
+      const algValues = algebraicVarsArr.map((name) => evaluator.env.get(name) ?? 0);
+      const coreRow = [...row, ...algValues, ...derivs.slice(0, stateVarsArr.length)];
+      for (const entry of extraEntries) {
         const val =
           entry.canonicalIdx >= 0 ? (coreRow[entry.canonicalIdx] ?? 0) : (evaluator.env.get(entry.canonical) ?? 0);
         coreRow.push(entry.sign * val);
