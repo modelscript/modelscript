@@ -54,6 +54,7 @@ import {
   ModelicaElement,
   ModelicaEnumerationClassInstance,
   ModelicaFlattener,
+  ModelicaFmuEntity,
   ModelicaFunctionCallSyntaxNode,
   ModelicaInterpreter,
   ModelicaLibrary,
@@ -67,6 +68,7 @@ import {
   ModelicaStoredDefinitionSyntaxNode,
   ModelicaSyntaxNode,
   Scope,
+  generateMultiModelWrapper,
   registerOptimizeDeps,
   registerSimulateDeps,
   type Dirent,
@@ -592,8 +594,13 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
 
     // Re-validate strictly AFTER MSL and parser are ready!
     console.log(`[lsp] Initialization complete. Re-validating ${documents.all().length} open documents.`);
-    for (const doc of documents.all()) {
-      validateTextDocument(doc);
+
+    // We must run validation twice to ensure cross-file dependencies (like CosimSetup -> Controller)
+    // are resolved with the updated instances, regardless of the arbitrary documents.all() order.
+    for (let pass = 1; pass <= 2; pass++) {
+      for (const doc of documents.all()) {
+        await validateTextDocument(doc);
+      }
     }
 
     connection.sendNotification("modelscript/status", { state: "ready", message: "ModelScript" });
@@ -2849,6 +2856,348 @@ connection.onRequest(
     }
   },
 );
+
+// ── Step-by-step co-simulation API ──
+
+/** Stored simulator instances for step-by-step co-simulation. */
+const cosimSimulators = new Map<
+  string,
+  {
+    simulator: {
+      simulate(start: number, stop: number, step: number): { t: number[]; y: number[][]; states: string[] };
+    };
+    dae: ModelicaDAE;
+    currentValues: Map<string, number>;
+    stepSize: number;
+  }
+>();
+
+/** Initialize a model for step-by-step simulation. Returns variable metadata. */
+connection.onRequest(
+  "modelscript/simulateInit",
+  (params: {
+    uri: string;
+    participantId: string;
+    className?: string;
+    startTime?: number;
+    stopTime?: number;
+    stepSize?: number;
+  }): {
+    ok: boolean;
+    variables?: { name: string; causality: string }[];
+    error?: string;
+  } => {
+    const instances = documentInstances.get(params.uri);
+    if (!instances || instances.length === 0) {
+      return { ok: false, error: "No class instances found for this document." };
+    }
+
+    let classInstance = instances[0];
+    if (params.className) {
+      const found = instances.find((i) => i.name === params.className);
+      if (found) classInstance = found;
+    }
+
+    try {
+      if (!classInstance.instantiated) {
+        classInstance.instantiate();
+      }
+
+      const dae = new ModelicaDAE(classInstance.name || "Model");
+      const flattener = new ModelicaFlattener();
+      classInstance.accept(flattener, ["", dae]);
+      flattener.generateFlowBalanceEquations(dae);
+      flattener.foldDAEConstants(dae);
+
+      const simulator = new ModelicaSimulator(dae);
+      simulator.prepare();
+
+      // Initialize current values from start attributes
+      const currentValues = new Map<string, number>();
+      for (const v of dae.variables) {
+        const startAttr = v.attributes.get("start");
+        if (startAttr && "value" in startAttr) {
+          const val = (startAttr as { value: number }).value;
+          if (typeof val === "number") {
+            currentValues.set(v.name, val);
+          }
+        }
+      }
+
+      // Store the simulator instance
+      cosimSimulators.set(params.participantId, {
+        simulator: simulator as unknown as {
+          simulate(start: number, stop: number, step: number): { t: number[]; y: number[][]; states: string[] };
+        },
+        dae,
+        currentValues,
+        stepSize: params.stepSize ?? 0.01,
+      });
+
+      // Build variable list with causality info
+      const variables = dae.variables.map((v) => ({
+        name: v.name,
+        causality: v.causality ?? "local",
+      }));
+
+      return { ok: true, variables };
+    } catch (e) {
+      console.error("[simulateInit] Error:", e);
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
+  },
+);
+
+/** Advance a simulator by one step, with optional input overrides. Returns output values. */
+connection.onRequest(
+  "modelscript/simulateStep",
+  (params: {
+    participantId: string;
+    currentTime: number;
+    stepSize: number;
+    inputs?: Record<string, number>;
+  }): {
+    ok: boolean;
+    outputs?: Record<string, number>;
+    allValues?: Record<string, number>;
+    error?: string;
+  } => {
+    const entry = cosimSimulators.get(params.participantId);
+    if (!entry) {
+      return { ok: false, error: `Participant '${params.participantId}' not initialized.` };
+    }
+
+    try {
+      // Apply input overrides (set them in current values before stepping)
+      if (params.inputs) {
+        for (const [name, value] of Object.entries(params.inputs)) {
+          entry.currentValues.set(name, value);
+        }
+      }
+
+      // Step the simulation by one communication interval
+      const result = entry.simulator.simulate(
+        params.currentTime,
+        params.currentTime + params.stepSize,
+        params.stepSize,
+      );
+
+      // Extract values from the last time point
+      const lastIdx = result.t.length - 1;
+      if (lastIdx >= 0) {
+        for (let i = 0; i < result.states.length; i++) {
+          const name = result.states[i];
+          const value = result.y[lastIdx]?.[i];
+          if (name && value !== undefined) {
+            entry.currentValues.set(name, value);
+          }
+        }
+      }
+
+      // Collect outputs (variables with causality "output")
+      const outputs: Record<string, number> = {};
+      const allValues: Record<string, number> = {};
+      for (const v of entry.dae.variables) {
+        const val = entry.currentValues.get(v.name);
+        if (val !== undefined) {
+          allValues[v.name] = val;
+          if (v.causality === "output") {
+            outputs[v.name] = val;
+          }
+        }
+      }
+
+      return { ok: true, outputs, allValues };
+    } catch (e) {
+      console.error("[simulateStep] Error:", e);
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
+  },
+);
+
+/** Dispose a simulator instance. */
+connection.onRequest("modelscript/simulateTerminate", (params: { participantId: string }): { ok: boolean } => {
+  cosimSimulators.delete(params.participantId);
+  return { ok: true };
+});
+
+// ── Co-simulation graph extraction from Modelica wrapper model ──
+
+interface CosimParticipantInfo {
+  id: string;
+  type: "modelica" | "fmu";
+  className: string;
+  /** For FMU participants, the fileName parameter value. */
+  fileName?: string;
+}
+
+interface CosimCouplingInfo {
+  from: { participantId: string; variable: string };
+  to: { participantId: string; variable: string };
+}
+
+interface CosimGraphResult {
+  ok: boolean;
+  participants?: CosimParticipantInfo[];
+  couplings?: CosimCouplingInfo[];
+  error?: string;
+}
+
+/**
+ * Extract co-simulation participants and couplings from a Modelica wrapper model.
+ *
+ * Scans the model text for:
+ * - Component declarations → participants
+ * - connect(a.x, b.y) equations → couplings
+ *
+ * Components with a `fileName` parameter are classified as FMU participants.
+ */
+connection.onRequest("modelscript/extractCosimGraph", (params: { uri: string; text: string }): CosimGraphResult => {
+  try {
+    const text = params.text;
+
+    // ── Extract component declarations ──
+    // Match patterns like:  ClassName instanceName(...);
+    // Exclude keywords, parameter declarations, and Real/Integer/Boolean/String variables
+    const componentRegex = /^\s+([A-Z][A-Za-z0-9_.]*)\s+([a-z_][A-Za-z0-9_]*)\s*(?:\(([^)]*)\))?\s*(?:"[^"]*")?\s*;/gm;
+    const builtinTypes = new Set(["Real", "Integer", "Boolean", "String", "StateSelect"]);
+    const keywords = new Set([
+      "parameter",
+      "constant",
+      "discrete",
+      "input",
+      "output",
+      "flow",
+      "stream",
+      "replaceable",
+      "redeclare",
+      "inner",
+      "outer",
+      "final",
+      "extends",
+      "import",
+      "equation",
+      "algorithm",
+      "initial",
+      "end",
+      "model",
+      "class",
+      "block",
+      "connector",
+      "record",
+      "type",
+      "package",
+      "function",
+      "when",
+      "if",
+      "for",
+      "while",
+      "connect",
+      "protected",
+      "public",
+      "annotation",
+      "external",
+      "partial",
+      "encapsulated",
+      "within",
+    ]);
+
+    const participants: CosimParticipantInfo[] = [];
+    const componentNames = new Set<string>();
+
+    // Pre-filter: remove lines that start with "parameter", "constant", etc.
+    const lines = text.split("\n");
+    const filteredText = lines
+      .filter((line) => {
+        const trimmed = line.trimStart();
+        const firstWord = trimmed.split(/\s+/)[0] ?? "";
+        // Keep lines that don't start with modifier keywords
+        return !["parameter", "constant", "discrete", "input", "output"].includes(firstWord);
+      })
+      .join("\n");
+
+    let match: RegExpExecArray | null;
+    while ((match = componentRegex.exec(filteredText)) !== null) {
+      const className = match[1] ?? "";
+      const instanceName = match[2] ?? "";
+      const modBody = match[3] ?? "";
+
+      // Skip built-in types and keywords
+      if (builtinTypes.has(className) || keywords.has(className.toLowerCase())) continue;
+      // Skip Modelica.Blocks.Interfaces types (connector definitions)
+      if (className.includes("Interface")) continue;
+
+      // Check for fileName parameter → FMU
+      const fileNameMatch = modBody.match(/fileName\s*=\s*"([^"]*)"/);
+      const isFmu = fileNameMatch !== null;
+
+      participants.push({
+        id: instanceName,
+        type: isFmu ? "fmu" : "modelica",
+        className,
+        fileName: fileNameMatch?.[1],
+      });
+      componentNames.add(instanceName);
+    }
+
+    // ── Extract connect equations ──
+    const connectRegex = /connect\s*\(\s*([A-Za-z_][A-Za-z0-9_.]*)\s*,\s*([A-Za-z_][A-Za-z0-9_.]*)\s*\)/g;
+    const couplings: CosimCouplingInfo[] = [];
+
+    while ((match = connectRegex.exec(text)) !== null) {
+      const ref1 = match[1] ?? "";
+      const ref2 = match[2] ?? "";
+
+      // Split into component.variable
+      const dot1 = ref1.indexOf(".");
+      const dot2 = ref2.indexOf(".");
+
+      if (dot1 === -1 || dot2 === -1) continue; // Skip non-dotted references
+
+      const comp1 = ref1.substring(0, dot1);
+      const var1 = ref1.substring(dot1 + 1);
+      const comp2 = ref2.substring(0, dot2);
+      const var2 = ref2.substring(dot2 + 1);
+
+      // Only add if both components are known participants
+      if (!componentNames.has(comp1) || !componentNames.has(comp2)) continue;
+
+      couplings.push({
+        from: { participantId: comp1, variable: var1 },
+        to: { participantId: comp2, variable: var2 },
+      });
+    }
+
+    return { ok: true, participants, couplings };
+  } catch (e) {
+    console.error("[extractCosimGraph] Error:", e);
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+});
+
+/**
+ * Custom request: create a Modelica wrapper model for multi-FMU co-simulation.
+ *
+ * Takes a model name and list of FMU descriptors, returns the generated
+ * Modelica source text that can be written to a .mo file.
+ */
+connection.onRequest(
+  "modelscript/createCosimWrapper",
+  (params: {
+    modelName: string;
+    fmus: { className: string; instanceName: string; fileName: string }[];
+    connections?: { source: string; target: string }[];
+  }): { ok: boolean; source?: string; error?: string } => {
+    try {
+      const source = generateMultiModelWrapper(params.modelName, params.fmus, params.connections ?? []);
+      return { ok: true, source };
+    } catch (e) {
+      console.error("[createCosimWrapper] Error:", e);
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
+  },
+);
+
 // Custom request: get library tree children (lazy loading)
 interface TreeNodeInfo {
   id: string;
@@ -3416,6 +3765,39 @@ connection.onRequest("modelscript/listClasses", (): { classes: { name: string; k
 
   return { classes };
 });
+
+// ── FMU registration (binary data via custom request) ──────────────────
+connection.onRequest(
+  "modelscript/registerFmu",
+  (params: { name: string; data: string }): { ok: boolean; error?: string } => {
+    try {
+      const context = sharedContext ?? new Context(sharedFs);
+      // Decode base64 to Uint8Array
+      const binaryStr = atob(params.data);
+      const fmuBytes = new Uint8Array(binaryStr.length);
+      for (let i = 0; i < binaryStr.length; i++) {
+        fmuBytes[i] = binaryStr.charCodeAt(i);
+      }
+      const fmuEntity = ModelicaFmuEntity.fromFmu(context, params.name, fmuBytes);
+      fmuEntity.load();
+      fmuEntity.instantiate();
+      const uri = `__fmu__:${params.name}`;
+      workspaceInstances.set(uri, [fmuEntity]);
+      console.log(`[fmu] Registered FMU entity '${params.name}' via custom request`);
+      // Re-validate all .mo documents to pick up the new FMU class
+      for (const doc of documents.all()) {
+        if (doc.uri.endsWith(".mo")) {
+          validateTextDocument(doc);
+        }
+      }
+      return { ok: true };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error(`[fmu] Failed to register FMU '${params.name}':`, msg);
+      return { ok: false, error: msg };
+    }
+  },
+);
 
 // Listen on the connection
 connection.listen();

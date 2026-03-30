@@ -23,16 +23,33 @@ export class ModelicaDAE {
   initialEquations: ModelicaEquation[] = [];
   /** Algorithm sections from `initial algorithm` sections. */
   initialAlgorithms: ModelicaStatement[][] = [];
+  /** Algebraic loops (SCCs) detected during flattening. */
+  algebraicLoops: { variables: string[]; equations: ModelicaEquation[] }[] = [];
   variables: ModelicaVariable[] = [];
   stateMachines: ModelicaStateMachine[] = [];
+  /** Clock partitions identified by the synchronous clock inference pass. */
+  clockPartitions: ModelicaClockPartition[] = [];
   /** Flattened function definitions referenced by equations/algorithms. */
   functions: ModelicaDAE[] = [];
   /** External function declaration text (e.g. `external "C" ...`). */
   externalDecl: string | null = null;
+  /** Extracted annotation(Library="...") references. */
+  externalLibraries: string[] = [];
+  /** Extracted annotation(Include="...") references. */
+  externalIncludes: string[] = [];
+  /**
+   * Descriptors for variables whose type extends `ExternalObject`.
+   * Track constructor/destructor names for lifecycle management.
+   */
+  externalObjects: ModelicaExternalObjectDescriptor[] = [];
   /** Diagnostics emitted during flattening (e.g. type errors, invalid iterators). */
   diagnostics: ModelicaDiagnostic[] = [];
   /** Experiment annotation data (StartTime, StopTime, Tolerance, etc.). */
   experiment: { startTime?: number; stopTime?: number; tolerance?: number; interval?: number } = {};
+  /** Event indicators (zero-crossing functions) for state events. */
+  eventIndicators: ModelicaExpression[] = [];
+  /** Discrete state updates extracted from `when` clauses. */
+  whenClauses: ModelicaWhenEquation[] = [];
 
   constructor(name: string, description?: string | null) {
     this.name = name;
@@ -187,6 +204,8 @@ export class ModelicaDAE {
 
 export abstract class ModelicaEquation {
   description: string | null;
+  /** Clock domain index (undefined = continuous time). */
+  clockDomain?: number | undefined;
 
   constructor(description?: string | null) {
     this.description = description ?? null;
@@ -236,6 +255,49 @@ export class ModelicaSimpleEquation extends ModelicaEquation {
     const id = `_:eq_${this.hash.substring(0, 8)}`;
     return [
       { s: id, p: "rdf:type", o: "modelica:SimpleEquation" },
+      { s: id, p: "modelica:expression1", o: `_:expr_${this.expression1.hash.substring(0, 8)}` },
+      { s: id, p: "modelica:expression2", o: `_:expr_${this.expression2.hash.substring(0, 8)}` },
+      ...this.expression1.toRDF,
+      ...this.expression2.toRDF,
+    ];
+  }
+}
+
+export class ModelicaArrayEquation extends ModelicaEquation {
+  expression1: ModelicaExpression;
+  expression2: ModelicaExpression;
+
+  constructor(expression1: ModelicaExpression, expression2: ModelicaExpression, description?: string | null) {
+    super(description);
+    this.expression1 = expression1;
+    this.expression2 = expression2;
+  }
+
+  override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
+    return visitor.visitArrayEquation(this, argument);
+  }
+
+  override get hash(): string {
+    const hash = createHash("sha256");
+    hash.update(this.expression1.hash);
+    hash.update("=array=");
+    hash.update(this.expression2.hash);
+    return hash.digest("hex");
+  }
+
+  override get toJSON(): JSONValue {
+    return {
+      "@type": "ArrayEquation",
+      expression1: this.expression1.toJSON,
+      expression2: this.expression2.toJSON,
+      description: this.description,
+    };
+  }
+
+  override get toRDF(): Triple[] {
+    const id = `_:eq_${this.hash.substring(0, 8)}`;
+    return [
+      { s: id, p: "rdf:type", o: "modelica:ArrayEquation" },
       { s: id, p: "modelica:expression1", o: `_:expr_${this.expression1.hash.substring(0, 8)}` },
       { s: id, p: "modelica:expression2", o: `_:expr_${this.expression2.hash.substring(0, 8)}` },
       ...this.expression1.toRDF,
@@ -1986,6 +2048,10 @@ export abstract class ModelicaVariable extends ModelicaPrimaryExpression {
   flowPrefix: string | null;
   /** Override type name for record-typed function parameters (e.g., "Complex" instead of "Real"). */
   customTypeName: string | null;
+  /** Array dimensions for FMI 3.0 native array support (e.g., [3] for a 1D vector, [2,3] for a 2D matrix). */
+  arrayDimensions: number[] | null;
+  /** Clock domain index (undefined = continuous time). */
+  clockDomain?: number | undefined;
 
   constructor(
     name: string,
@@ -2010,6 +2076,9 @@ export abstract class ModelicaVariable extends ModelicaPrimaryExpression {
     this.functionType = functionType ?? null;
     this.flowPrefix = null;
     this.customTypeName = null;
+    this.arrayDimensions = null;
+    /** Clock domain index (undefined = continuous time). */
+    this.clockDomain = undefined;
   }
 
   override get hash(): string {
@@ -2357,6 +2426,23 @@ export class ExpressionEvaluator {
    * Key is the expression hash; value stores sorted (time, value) pairs.
    */
   delayBuffers: Map<string, { times: number[]; values: number[] }>;
+  /**
+   * Clocked variable values: latched at each clock tick by `sample()`.
+   * Key is variable/expression hash.
+   */
+  clockedValues: Map<string, number>;
+  /**
+   * Previous-tick values for `previous()` operator.
+   * Key is variable/expression hash.
+   */
+  previousValues: Map<string, number>;
+  /** Set of clock domain IDs that ticked at the current step. */
+  tickedClocks: Set<number>;
+  /**
+   * State for `spatialDistribution()` operator: piecewise-linear profile on [0,1].
+   * Key is expression hash.
+   */
+  spatialDistributionStates: Map<string, { positions: number[]; values: number[] }>;
 
   constructor(env?: Map<string, number>) {
     this.env = env ?? new Map();
@@ -2367,6 +2453,10 @@ export class ExpressionEvaluator {
     this.functionLookup = null;
     this.currentTime = 0;
     this.delayBuffers = new Map();
+    this.clockedValues = new Map();
+    this.previousValues = new Map();
+    this.tickedClocks = new Set();
+    this.spatialDistributionStates = new Map();
   }
 
   /** Convenience wrapper matching the old function signature. */
@@ -2797,6 +2887,94 @@ export class ExpressionEvaluator {
       return v0 + alpha * (v1 - v0);
     }
 
+    // ── Synchronous clock operators (Modelica 3.3) ──
+
+    // sample(u) — latch a continuous value into the clocked partition
+    if (name === "sample" && arg0) {
+      const val = this.evaluate(arg0);
+      if (val === null) return null;
+      const key = arg0.hash;
+      // On clock tick, latch the value; otherwise return last latched value
+      if (this.tickedClocks.size > 0) {
+        // Move current to previous, latch new
+        const old = this.clockedValues.get(key);
+        if (old !== undefined) this.previousValues.set(key, old);
+        this.clockedValues.set(key, val);
+        return val;
+      }
+      return this.clockedValues.get(key) ?? val;
+    }
+
+    // hold(u) — zero-order hold: return last clocked value in continuous time
+    if (name === "hold" && arg0) {
+      const key = arg0.hash;
+      // If clock is ticking, evaluate and latch
+      if (this.tickedClocks.size > 0) {
+        const val = this.evaluate(arg0);
+        if (val !== null) this.clockedValues.set(key, val);
+        return val;
+      }
+      // In continuous time, return the last latched value
+      return this.clockedValues.get(key) ?? this.evaluate(arg0);
+    }
+
+    // previous(x) — return value of x at the previous clock tick
+    if (name === "previous" && arg0) {
+      const key = arg0.hash;
+      return this.previousValues.get(key) ?? this.evaluate(arg0) ?? 0;
+    }
+
+    // subSample(u, factor) — derive a slower clock (factor divides base rate)
+    if (name === "subSample" && arg0) {
+      return this.evaluate(arg0);
+    }
+    // superSample(u, factor) — derive a faster clock (factor multiplies base rate)
+    if (name === "superSample" && arg0) {
+      return this.evaluate(arg0);
+    }
+    // shiftSample(u, shiftCounter, resolution) — phase-shift
+    if (name === "shiftSample" && arg0) {
+      return this.evaluate(arg0);
+    }
+    // backSample(u, backCounter, resolution) — negative phase-shift
+    if (name === "backSample" && arg0) {
+      return this.evaluate(arg0);
+    }
+    // noClock(u) — remove clock annotation
+    if (name === "noClock" && arg0) {
+      return this.evaluate(arg0);
+    }
+
+    // ── spatialDistribution(in0, in1, x, positiveVelocity) ──
+    // 1-D transport operator: maintains a piecewise-linear profile z(x)
+    // on [0, 1], shifted by velocity * dt each step, filling inflow boundary.
+    // Returns interpolated value at x=0 (out0) or x=1 (out1) depending on velocity direction.
+    if (name === "spatialDistribution" && args.length >= 4) {
+      const in0 = this.evaluate(args[0] as ModelicaExpression);
+      const in1 = this.evaluate(args[1] as ModelicaExpression);
+      const x = this.evaluate(args[2] as ModelicaExpression);
+      const positiveVelocity = this.evaluate(args[3] as ModelicaExpression);
+      if (in0 === null || in1 === null || x === null || positiveVelocity === null) return null;
+
+      const key = (args[0] as ModelicaExpression).hash + "_sd";
+      let state = this.spatialDistributionStates.get(key);
+      if (!state) {
+        // Initialize with linear profile from in0 to in1
+        state = { positions: [0, 1], values: [in0, in1] };
+        this.spatialDistributionStates.set(key, state);
+      }
+
+      // For the scalar evaluator, return the output at x=0 or x=1
+      // depending on the velocity direction (simplified)
+      if (positiveVelocity > 0) {
+        // Positive velocity → output at x=1 is the transported value
+        return state.values[state.values.length - 1] ?? in1;
+      } else {
+        // Negative velocity → output at x=0 is the transported value
+        return state.values[0] ?? in0;
+      }
+    }
+
     // ── Array constructor functions ──
     // These return constant values or reduce arrays to scalars.
     // In a scalarized environment, array constructors are typically resolved
@@ -3205,6 +3383,82 @@ export class ModelicaStateMachine {
   }
 }
 
+/**
+ * A clock partition groups equations and variables that operate on the same discrete clock.
+ * Produced by the synchronous clock inference pass in the flattener.
+ */
+export class ModelicaClockPartition {
+  /** Unique clock domain ID. */
+  clockId: number;
+  /** Base clock expression (e.g., `Clock(0.01)` or `Clock(condition)`). */
+  baseClock: ModelicaExpression | null;
+  /** Equations belonging to this clock partition. */
+  equations: ModelicaEquation[] = [];
+  /** Variables belonging to this clock partition. */
+  variables: ModelicaVariable[] = [];
+
+  constructor(clockId: number, baseClock: ModelicaExpression | null = null) {
+    this.clockId = clockId;
+    this.baseClock = baseClock;
+  }
+
+  get hash(): string {
+    const hash = createHash("sha256");
+    hash.update("clockPartition_" + this.clockId);
+    for (const e of this.equations) hash.update(e.hash);
+    for (const v of this.variables) hash.update(v.hash);
+    return hash.digest("hex");
+  }
+
+  get toJSON(): JSONValue {
+    return {
+      "@type": "ClockPartition",
+      clockId: this.clockId,
+      equations: this.equations.map((e) => e.toJSON),
+      variables: this.variables.map((v) => v.toJSON),
+    };
+  }
+}
+
+/**
+ * Describes a variable whose type extends `ExternalObject`.
+ * Tracks the constructor and destructor function names for lifecycle management
+ * during FMU initialization and termination.
+ */
+export class ModelicaExternalObjectDescriptor {
+  /** The variable name in the flattened DAE. */
+  variableName: string;
+  /** The fully-qualified type name (e.g., `MyLib.MyExternalObj`). */
+  typeName: string;
+  /** Constructor function name (e.g., `MyExternalObj.constructor`). */
+  constructorName: string;
+  /** Destructor function name (e.g., `MyExternalObj.destructor`). */
+  destructorName: string;
+
+  constructor(variableName: string, typeName: string, constructorName?: string, destructorName?: string) {
+    this.variableName = variableName;
+    this.typeName = typeName;
+    this.constructorName = constructorName ?? `${typeName}.constructor`;
+    this.destructorName = destructorName ?? `${typeName}.destructor`;
+  }
+
+  get hash(): string {
+    const hash = createHash("sha256");
+    hash.update("externalObject_" + this.variableName + "_" + this.typeName);
+    return hash.digest("hex");
+  }
+
+  get toJSON(): JSONValue {
+    return {
+      "@type": "ExternalObjectDescriptor",
+      variableName: this.variableName,
+      typeName: this.typeName,
+      constructorName: this.constructorName,
+      destructorName: this.destructorName,
+    };
+  }
+}
+
 export class ModelicaState {
   name: string;
   variables: ModelicaVariable[] = [];
@@ -3397,6 +3651,8 @@ export interface IModelicaDAEVisitor<R, A> {
 
   visitSimpleEquation(node: ModelicaSimpleEquation, argument?: A): R;
 
+  visitArrayEquation(node: ModelicaArrayEquation, argument?: A): R;
+
   visitSubscriptedExpression(node: ModelicaSubscriptedExpression, argument?: A): R;
 
   visitTupleExpression(node: ModelicaTupleExpression, argument?: A): R;
@@ -3587,6 +3843,11 @@ export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void,
     node.expression2.accept(this, argument);
   }
 
+  visitArrayEquation(node: ModelicaArrayEquation, argument?: A): void {
+    node.expression1.accept(this, argument);
+    node.expression2.accept(this, argument);
+  }
+
   visitStringLiteral(node: ModelicaStringLiteral, argument?: A): void {
     /* no-op */
   }
@@ -3680,6 +3941,14 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     node.target.accept(this);
     this.out.write(" := ");
     node.source.accept(this);
+    this.out.write(";\n");
+  }
+
+  visitArrayEquation(node: ModelicaArrayEquation): void {
+    this.out.write(this.indent());
+    node.expression1.accept(this);
+    this.out.write(" = ");
+    node.expression2.accept(this);
     this.out.write(";\n");
   }
 

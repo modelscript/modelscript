@@ -72,6 +72,41 @@
         "command": "modelscript.openChat",
         "title": "ModelScript: Open AI Chat",
         "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "modelscript.cosimConnect",
+        "title": "ModelScript: Connect to MQTT Broker",
+        "icon": "$(plug)"
+      },
+      {
+        "command": "modelscript.cosimDisconnect",
+        "title": "ModelScript: Disconnect from MQTT Broker",
+        "icon": "$(debug-disconnect)"
+      },
+      {
+        "command": "modelscript.cosimStartInfra",
+        "title": "ModelScript: Start Local Co-Simulation Infrastructure",
+        "icon": "$(server-process)"
+      },
+      {
+        "command": "modelscript.cosimCreateSession",
+        "title": "ModelScript: Create Co-Simulation Session",
+        "icon": "$(add)"
+      },
+      {
+        "command": "modelscript.cosimPublishModel",
+        "title": "ModelScript: Publish Model as Participant",
+        "icon": "$(broadcast)"
+      },
+      {
+        "command": "modelscript.cosimOpenLivePlot",
+        "title": "ModelScript: Open Live Simulation Plot",
+        "icon": "$(graph)"
+      },
+      {
+        "command": "modelscript.cosimRefresh",
+        "title": "ModelScript: Refresh Co-Simulation",
+        "icon": "$(refresh)"
       }
     ],
     "configuration": [
@@ -89,6 +124,18 @@
             ],
             "default": "off",
             "description": "Traces the communication between VS Code and the ModelScript language server."
+          },
+          "modelscript.cosim.apiUrl": {
+            "type": "string",
+            "scope": "window",
+            "default": "http://localhost:3000",
+            "description": "ModelScript API server URL for co-simulation services."
+          },
+          "modelscript.cosim.mqttWsUrl": {
+            "type": "string",
+            "scope": "window",
+            "default": "ws://localhost:9001",
+            "description": "MQTT broker WebSocket URL for live data streaming."
           }
         }
       }
@@ -100,6 +147,16 @@
         "selector": [
           {
             "filenamePattern": "*.mo"
+          }
+        ],
+        "priority": "option"
+      },
+      {
+        "viewType": "modelscript.fmuViewer",
+        "displayName": "FMU Viewer",
+        "selector": [
+          {
+            "filenamePattern": "*.fmu"
           }
         ],
         "priority": "default"
@@ -266,6 +323,16 @@
           "command": "modelscript.addToDiagram",
           "when": "view == modelscript.libraryTree && viewItem =~ /^(model|block|connector)$/",
           "group": "navigation"
+        },
+        {
+          "command": "modelscript.addToDiagram",
+          "when": "view == modelscript.mqttTree && viewItem == mqttParticipant",
+          "group": "inline"
+        },
+        {
+          "command": "modelscript.addToDiagram",
+          "when": "view == modelscript.mqttTree && viewItem == mqttParticipant",
+          "group": "navigation"
         }
       ]
     },
@@ -313,6 +380,19 @@
           "visibility": "visible"
         }
       ],
+      "modelscript-cosim": [
+        {
+          "type": "webview",
+          "id": "modelscript.cosimPanel",
+          "name": "Co-Simulation",
+          "visibility": "visible"
+        },
+        {
+          "id": "modelscript.mqttTree",
+          "name": "MQTT Participants",
+          "visibility": "visible"
+        }
+      ],
       "modelscript-ai": [
         {
           "type": "webview",
@@ -324,6 +404,11 @@
     },
     "viewsContainers": {
       "activitybar": [
+        {
+          "id": "modelscript-cosim",
+          "title": "Co-Simulation",
+          "icon": "$(server-process)"
+        },
         {
           "id": "modelscript-ai",
           "title": "ModelScript AI",
@@ -339,6 +424,10 @@
       {
         "view": "modelscript.libraryTree",
         "contents": "Open a Modelica file to browse libraries."
+      },
+      {
+        "view": "modelscript.mqttTree",
+        "contents": "No MQTT participants online.\n[Connect to MQTT](command:modelscript.cosimConnect)\n[Start Local Infrastructure](command:modelscript.cosimStartInfra)"
       }
     ]
   },

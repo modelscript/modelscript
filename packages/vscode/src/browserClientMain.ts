@@ -3,16 +3,21 @@ import { Uri, commands, workspace } from "vscode";
 import { LanguageClientOptions } from "vscode-languageclient";
 import { LanguageClient } from "vscode-languageclient/browser";
 import { ChatViewProvider } from "./chatPanel";
+import { CosimViewProvider } from "./cosimPanel";
 import { DiagramEditorProvider } from "./diagramEditorProvider";
+import { FMU_VIEW_SCHEME, FmuContentProvider, FmuEditorProvider } from "./fmuDocumentProvider";
 import { LibraryTreeProvider } from "./libraryTreeProvider";
 import { registerLLMProvider } from "./llmProvider";
 import { registerMCPTools } from "./mcpBridge";
+import { MqttTreeProvider } from "./mqttTreeProvider";
 import { ModelicaNotebookController } from "./notebookController";
 import { ModelicaNotebookSerializer } from "./notebookSerializer";
 import { ProjectTreeProvider } from "./projectTreeProvider";
 import { SimulationPanel } from "./simulationPanel";
+import { SINE_WAVE_FMU_BASE64 } from "./sineWaveFmu";
 
 let client: LanguageClient | undefined;
+let fmuContentProvider: FmuContentProvider | undefined;
 
 /**
  * Simple in-memory filesystem provider for the `tmp` scheme.
@@ -130,6 +135,17 @@ export async function activate(context: vscode.ExtensionContext) {
     console.log("[blank-project] Registered memfs:// filesystem provider");
   }
 
+  // Register virtual document provider and custom editor for FMU files
+  fmuContentProvider = new FmuContentProvider();
+  context.subscriptions.push(workspace.registerTextDocumentContentProvider(FMU_VIEW_SCHEME, fmuContentProvider));
+  const fmuEditor = new FmuEditorProvider(fmuContentProvider);
+  context.subscriptions.push(
+    vscode.window.registerCustomEditorProvider(FmuEditorProvider.viewType, fmuEditor, {
+      supportsMultipleEditorsPerDocument: false,
+      webviewOptions: { retainContextWhenHidden: false },
+    }),
+  );
+
   const documentSelector = [{ language: "modelica" }];
 
   // Options to control the language client
@@ -203,10 +219,32 @@ export async function activate(context: vscode.ExtensionContext) {
   });
   context.subscriptions.push(treeView);
 
-  // Register project tree view
+  // Register MQTT participant tree view
+  const mqttTreeProvider = new MqttTreeProvider(client);
+  const mqttTreeView = vscode.window.createTreeView("modelscript.mqttTree", {
+    treeDataProvider: mqttTreeProvider,
+    dragAndDropController: mqttTreeProvider,
+    canSelectMany: false,
+  });
+  context.subscriptions.push(mqttTreeView);
+  mqttTreeProvider.startPolling();
+
+  // Register co-simulation panel (sidebar webview)
+  const cosimProvider = new CosimViewProvider(context.extensionUri, client);
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(CosimViewProvider.viewType, cosimProvider, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
+  );
+
+  // Register project tree view (with drag support for FMU nodes)
   const projectTreeProvider = new ProjectTreeProvider(client);
+  projectTreeProvider.onDragStart = (data) => {
+    diagramProvider.postToActiveWebviews({ type: "startPlacement", ...data });
+  };
   const projectTreeView = vscode.window.createTreeView("modelscript.projectTree", {
     treeDataProvider: projectTreeProvider,
+    dragAndDropController: projectTreeProvider,
     canSelectMany: false,
   });
   context.subscriptions.push(projectTreeView);
@@ -358,6 +396,41 @@ export async function activate(context: vscode.ExtensionContext) {
         console.error("[project-tree] Error opening file:", e);
       }
     }),
+    // ── Co-Simulation commands ──
+    commands.registerCommand("modelscript.cosimConnect", () => {
+      cosimProvider.refresh();
+      mqttTreeProvider.refresh();
+      vscode.window.showInformationMessage("Refreshing co-simulation connections…");
+    }),
+    commands.registerCommand("modelscript.cosimDisconnect", () => {
+      vscode.window.showInformationMessage("MQTT connection managed via the Co-Simulation panel.");
+    }),
+    commands.registerCommand("modelscript.cosimStartInfra", async () => {
+      const cmd = "docker compose up -d mqtt timescaledb api";
+      try {
+        await vscode.env.clipboard.writeText(cmd);
+        vscode.window.showInformationMessage(`Copied to clipboard: ${cmd}`);
+      } catch {
+        vscode.window.showInformationMessage(`Run in your terminal: ${cmd}`);
+      }
+    }),
+    commands.registerCommand("modelscript.cosimCreateSession", () => {
+      vscode.commands.executeCommand("workbench.view.extension.modelscript-cosim");
+    }),
+    commands.registerCommand("modelscript.cosimPublishModel", () => {
+      vscode.window.showInformationMessage("Use the Co-Simulation panel to publish a model to a session.");
+    }),
+    commands.registerCommand("modelscript.cosimOpenLivePlot", (sessionId?: string, participantId?: string) => {
+      if (cosimProvider.isLocalMode) {
+        SimulationPanel.createOrShowLiveLocal(context.extensionUri, sessionId);
+      } else {
+        SimulationPanel.createOrShowLive(context.extensionUri, sessionId, participantId);
+      }
+    }),
+    commands.registerCommand("modelscript.cosimRefresh", () => {
+      cosimProvider.refresh();
+      mqttTreeProvider.refresh();
+    }),
   );
 
   // Listen for project tree updates from the LSP server
@@ -370,6 +443,12 @@ export async function activate(context: vscode.ExtensionContext) {
   moWatcher.onDidCreate(() => projectTreeProvider.refresh());
   moWatcher.onDidDelete(() => projectTreeProvider.refresh());
   context.subscriptions.push(moWatcher);
+
+  // Watch for .xml file changes (FMU model descriptions) to refresh the project tree
+  const xmlWatcher = vscode.workspace.createFileSystemWatcher("**/*.xml");
+  xmlWatcher.onDidCreate(() => projectTreeProvider.refresh());
+  xmlWatcher.onDidDelete(() => projectTreeProvider.refresh());
+  context.subscriptions.push(xmlWatcher);
 
   // Register the custom editor provider for modelica diagrams
   context.subscriptions.push(
@@ -489,6 +568,123 @@ async function initWorkspaceAndTree(
             2,
           );
           break;
+        case "cosim": {
+          // Co-simulation example: Controller (Modelica) + SineWave (WASM FMU)
+          const encoder = new TextEncoder();
+
+          const controllerMo = [
+            'model Controller "Simple PI controller"',
+            '  Modelica.Blocks.Interfaces.RealInput u "Measurement input";',
+            '  Modelica.Blocks.Interfaces.RealOutput y "Control output";',
+            '  parameter Real Kp = 2.0 "Proportional gain";',
+            '  parameter Real Ki = 0.5 "Integral gain";',
+            '  parameter Real setpoint = 1.0 "Reference setpoint";',
+            '  Real error "Tracking error";',
+            '  Real integral(start = 0) "Integral of error";',
+            "equation",
+            "  error = setpoint - u;",
+            "  der(integral) = error;",
+            "  y = Kp * error + Ki * integral;",
+            "end Controller;",
+            "",
+          ].join("\n");
+
+          const readmeMd = [
+            "# Co-Simulation Example",
+            "",
+            "This workspace demonstrates co-simulation between a **Modelica model** and a **WASM FMU**.",
+            "",
+            "## Files",
+            "",
+            "| File | Type | Description |",
+            "|------|------|-------------|",
+            "| `Controller.mo` | Modelica | PI controller with setpoint tracking |",
+            "| `SineWave.fmu` | FMU 2.0 (WASM) | Sine wave generator compiled to WebAssembly |",
+            "| `CosimSetup.mo` | Modelica | Wiring diagram connecting Controller ↔ SineWave |",
+            "",
+            "## Running the Co-Simulation",
+            "",
+            "1. Open the **Co-Simulation** panel in the sidebar",
+            '2. Click **"Browser-Local"** to enable local mode',
+            "3. Create a new session (start=0, stop=10, step=0.01)",
+            "4. Open `Controller.mo` and click **Publish Model**",
+            "5. Click **Publish FMU** and select `SineWave.fmu`",
+            "6. Add couplings:",
+            "   - Controller.y → SineWave.phase (control signal)",
+            "   - SineWave.y → Controller.u (measurement feedback)",
+            "7. Click **Start** to run the coupled simulation",
+            "8. Open **Live Plot** to see real-time results",
+            "",
+            "## SineWave WASM FMU",
+            "",
+            "The `SineWave.fmu` is a real WebAssembly FMU containing compiled C code.",
+            "It demonstrates native WASM execution in the browser via the FMI 2.0 API.",
+            "",
+            "Model: `y(t) = amplitude * sin(2π * frequency * t + phase)`",
+            "",
+            "| Variable | Causality | Default |",
+            "|----------|-----------|---------|",
+            "| amplitude | parameter | 1.0 |",
+            "| frequency | parameter | 1.0 Hz |",
+            "| phase | input | 0.0 rad |",
+            "| y | output | — |",
+            "",
+          ].join("\n");
+
+          // Decode the embedded SineWave WASM FMU from base64
+          const sineWaveFmuBytes = Uint8Array.from(atob(SINE_WAVE_FMU_BASE64), (c) => c.charCodeAt(0));
+
+          // Write all files
+          const controllerUri = Uri.joinPath(workspaceUri, "Controller.mo");
+          const sineWaveFmuUri = Uri.joinPath(workspaceUri, "SineWave.fmu");
+          const readmeUri = Uri.joinPath(workspaceUri, "README.md");
+
+          const cosimSetupMo = [
+            'model CosimSetup "Co-simulation wiring diagram"',
+            "  Controller controller;",
+            "  SineWave sineWave;",
+            "equation",
+            "  connect(controller.y, sineWave.phase);",
+            "  connect(sineWave.y, controller.u);",
+            "end CosimSetup;",
+            "",
+          ].join("\n");
+
+          const cosimSetupUri = Uri.joinPath(workspaceUri, "CosimSetup.mo");
+
+          await workspace.fs.writeFile(controllerUri, encoder.encode(controllerMo));
+          await workspace.fs.writeFile(sineWaveFmuUri, sineWaveFmuBytes);
+          await workspace.fs.writeFile(cosimSetupUri, encoder.encode(cosimSetupMo));
+          await workspace.fs.writeFile(readmeUri, encoder.encode(readmeMd));
+
+          // Register the SineWave FMU with the virtual document provider
+          fmuContentProvider?.registerFmu("SineWave", sineWaveFmuBytes);
+
+          // Register the SineWave FMU with the LSP after client is ready
+          // (deferred to allow LSP to finish initializing)
+          setTimeout(async () => {
+            if (client) {
+              try {
+                await client.sendRequest("modelscript/registerFmu", {
+                  name: "SineWave",
+                  data: SINE_WAVE_FMU_BASE64,
+                });
+                console.log("[cosim-template] Registered SineWave FMU with LSP");
+              } catch (e) {
+                console.warn("[cosim-template] Failed to register FMU:", e);
+              }
+            }
+          }, 2000);
+
+          // Open the co-sim setup model as the primary file
+          filename = "CosimSetup.mo";
+          content = cosimSetupMo;
+
+          // Also open the controller
+          const controllerDoc = await workspace.openTextDocument(controllerUri);
+          await vscode.window.showTextDocument(controllerDoc, { preview: false });
+          break;
+        }
       }
 
       if (filename && content) {
@@ -545,6 +741,26 @@ async function scanWorkspaceFiles(): Promise<vscode.Uri[]> {
           console.log(`[workspace-scan] Opened ${uri.path.split("/").pop()}`);
         } catch (e) {
           console.warn(`[workspace-scan] Failed to open ${uri.path}:`, e);
+        }
+      }
+      // Also scan for FMU archive files and register them with the LSP
+      const fmuFiles = await workspace.findFiles("**/*.fmu");
+      for (const uri of fmuFiles) {
+        try {
+          const fmuBytes = await workspace.fs.readFile(uri);
+          const name =
+            uri.path
+              .split("/")
+              .pop()
+              ?.replace(/\.fmu$/, "") ?? "FMU";
+          // Convert to base64
+          const b64 = btoa(Array.from(fmuBytes, (b) => String.fromCharCode(b)).join(""));
+          if (client) {
+            await client.sendRequest("modelscript/registerFmu", { name, data: b64 });
+            console.log(`[workspace-scan] Registered FMU ${name}`);
+          }
+        } catch (e) {
+          console.warn(`[workspace-scan] Failed to register FMU ${uri.path}:`, e);
         }
       }
       return moFiles;

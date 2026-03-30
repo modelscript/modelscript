@@ -41,6 +41,8 @@ interface TestCaseMetadata {
   keywords: string;
   status: "correct" | "incorrect" | "skipped";
   description: string;
+  arrayMode?: "scalarize" | "preserve";
+  fmiVersion?: "2.0" | "3.0";
 }
 
 interface TestCase {
@@ -140,6 +142,15 @@ function parseTestFile(filePath: string): TestCase | null {
   if (!name) name = path.basename(filePath, ".mo");
   if (!status) return null;
 
+  let arrayMode: "scalarize" | "preserve" | undefined = undefined;
+  let fmiVersion: "2.0" | "3.0" | undefined = undefined;
+  for (const line of lines) {
+    const amMatch = line.match(/^\/\/\s*arrayMode:\s*(preserve|scalarize)/);
+    if (amMatch && amMatch[1]) arrayMode = amMatch[1] as "preserve" | "scalarize";
+    const fmiMatch = line.match(/^\/\/\s*fmiVersion:\s*(2\.0|3\.0)/);
+    if (fmiMatch && fmiMatch[1]) fmiVersion = fmiMatch[1] as "2.0" | "3.0";
+  }
+
   // Find the Result: / endResult block
   const resultStartIdx = lines.findIndex((l) => /^\/\/\s*Result:/.test(l));
   const resultEndIdx = lines.findIndex((l) => /^\/\/\s*endResult/.test(l));
@@ -165,6 +176,8 @@ function parseTestFile(filePath: string): TestCase | null {
       keywords,
       status: status === "incorrect" ? "incorrect" : status === "skipped" ? "skipped" : "correct",
       description: descriptionLines.join(" "),
+      ...(arrayMode ? { arrayMode } : {}),
+      ...(fmiVersion ? { fmiVersion } : {}),
     },
     source,
     expectedResult,
@@ -232,7 +245,10 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode = fal
         lastClassName = lastClass?.name ?? testCase.metadata.name;
       }
     }
-    const flattenedResult = context.flatten(lastClassName);
+    const flattenedResult = context.flatten(lastClassName, {
+      ...(testCase.metadata.arrayMode ? { arrayMode: testCase.metadata.arrayMode } : {}),
+      ...(testCase.metadata.fmiVersion ? { fmiVersion: testCase.metadata.fmiVersion } : {}),
+    });
 
     // Run the linter to collect diagnostics
     interface DiagEntry {

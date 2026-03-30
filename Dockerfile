@@ -26,6 +26,7 @@ COPY packages/cli/package.json packages/cli/
 COPY packages/lsp/package.json packages/lsp/
 COPY packages/vscode/package.json packages/vscode/
 COPY packages/ide/package.json packages/ide/
+COPY packages/cosim/package.json packages/cosim/
 RUN --mount=type=cache,target=/root/.npm npm ci --ignore-scripts
 # Build native addon from committed parser source
 RUN cd packages/tree-sitter-modelica && npx node-gyp rebuild
@@ -36,12 +37,15 @@ RUN cd packages/tree-sitter-modelica && npx node-gyp rebuild
 FROM deps AS build-api-false
 COPY packages/core packages/core
 COPY packages/tree-sitter-modelica packages/tree-sitter-modelica
+COPY packages/cosim packages/cosim
 COPY packages/api packages/api
 RUN npm run clean -w packages/core && npx tsc -p packages/core \
+    && npm run clean -w packages/cosim && npx tsc -p packages/cosim \
     && npm run clean -w packages/api && npx tsc -p packages/api
 
 FROM deps AS build-api-true
 COPY packages/core/dist packages/core/dist
+COPY packages/cosim/dist packages/cosim/dist
 COPY packages/api/dist packages/api/dist
 
 FROM build-api-${PREBUILT} AS build-api
@@ -50,6 +54,7 @@ FROM node:22-alpine AS api
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY packages/core/package.json packages/core/
+COPY packages/cosim/package.json packages/cosim/
 COPY packages/tree-sitter-modelica/package.json packages/tree-sitter-modelica/grammar.js packages/tree-sitter-modelica/binding.gyp packages/tree-sitter-modelica/
 COPY packages/tree-sitter-modelica/bindings packages/tree-sitter-modelica/bindings
 COPY packages/api/package.json packages/api/
@@ -64,6 +69,7 @@ COPY --from=deps /app/packages/tree-sitter-modelica/src packages/tree-sitter-mod
 COPY --from=deps /app/packages/tree-sitter-modelica/build packages/tree-sitter-modelica/build
 COPY --from=deps /app/node_modules/@modelscript/tree-sitter-modelica node_modules/@modelscript/tree-sitter-modelica
 COPY --from=build-api /app/packages/core/dist packages/core/dist
+COPY --from=build-api /app/packages/cosim/dist packages/cosim/dist
 COPY --from=build-api /app/packages/api/dist packages/api/dist
 EXPOSE 3000
 ENV NODE_ENV=production

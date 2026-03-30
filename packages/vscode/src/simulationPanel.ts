@@ -2,6 +2,7 @@
 //
 // Manages the simulation results webview panel lifecycle.
 // Sends simulation requests to the LSP server and displays results as a chart.
+// Supports both batch (one-shot) and live (MQTT streaming) simulation modes.
 
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
@@ -19,6 +20,7 @@ export class SimulationPanel {
 
   private readonly panel: vscode.WebviewPanel;
   private readonly extensionUri: vscode.Uri;
+  private readonly liveMode: boolean;
   private disposables: vscode.Disposable[] = [];
 
   static async createOrShow(extensionUri: vscode.Uri, client: LanguageClient) {
@@ -69,15 +71,82 @@ export class SimulationPanel {
           },
         );
 
-        SimulationPanel.currentPanel = new SimulationPanel(panel, extensionUri);
+        SimulationPanel.currentPanel = new SimulationPanel(panel, extensionUri, false);
         SimulationPanel.currentPanel.postResults(result);
       },
     );
   }
 
-  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
+  /**
+   * Open the simulation webview in live MQTT streaming mode.
+   * Connects to the MQTT broker via WebSocket and plots incoming data in real-time.
+   */
+  static createOrShowLive(extensionUri: vscode.Uri, sessionId?: string, participantId?: string): void {
+    const mqttWsUrl =
+      vscode.workspace.getConfiguration("modelscript.cosim").get<string>("mqttWsUrl") ?? "ws://localhost:9001";
+
+    // Always create a new panel for live mode (don't reuse batch panels)
+    if (SimulationPanel.currentPanel?.liveMode) {
+      SimulationPanel.currentPanel.panel.reveal(vscode.ViewColumn.Beside);
+      SimulationPanel.currentPanel.postLiveConfig(mqttWsUrl, sessionId, participantId);
+      return;
+    }
+
+    const panel = vscode.window.createWebviewPanel(
+      SimulationPanel.viewType,
+      "Live Simulation",
+      vscode.ViewColumn.Beside,
+      {
+        enableScripts: true,
+        retainContextWhenHidden: true,
+        localResourceRoots: [vscode.Uri.joinPath(extensionUri, "dist")],
+      },
+    );
+
+    SimulationPanel.currentPanel = new SimulationPanel(panel, extensionUri, true);
+    SimulationPanel.currentPanel.postLiveConfig(mqttWsUrl, sessionId, participantId);
+  }
+
+  /** Open a live-plot panel in browser-local mode (no WebSocket, data via postMessage). */
+  static createOrShowLiveLocal(extensionUri: vscode.Uri, sessionId?: string): SimulationPanel {
+    if (SimulationPanel.currentPanel?.liveMode) {
+      SimulationPanel.currentPanel.panel.reveal(vscode.ViewColumn.Beside);
+      SimulationPanel.currentPanel.postLiveLocalConfig(sessionId);
+      return SimulationPanel.currentPanel;
+    }
+
+    const panel = vscode.window.createWebviewPanel(
+      SimulationPanel.viewType,
+      "Live Simulation (Local)",
+      vscode.ViewColumn.Beside,
+      {
+        enableScripts: true,
+        retainContextWhenHidden: true,
+        localResourceRoots: [vscode.Uri.joinPath(extensionUri, "dist")],
+      },
+    );
+
+    SimulationPanel.currentPanel = new SimulationPanel(panel, extensionUri, true);
+    SimulationPanel.currentPanel.postLiveLocalConfig(sessionId);
+    return SimulationPanel.currentPanel;
+  }
+
+  /** Push a single data point to a live local webview. */
+  static postLiveDataPoint(variable: string, time: number, value: number): void {
+    if (SimulationPanel.currentPanel?.liveMode) {
+      SimulationPanel.currentPanel.panel.webview.postMessage({
+        type: "liveDataPoint",
+        variable,
+        time,
+        value,
+      });
+    }
+  }
+
+  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, liveMode: boolean) {
     this.panel = panel;
     this.extensionUri = extensionUri;
+    this.liveMode = liveMode;
     this.panel.webview.html = this.getHtmlForWebview();
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
   }
@@ -89,17 +158,44 @@ export class SimulationPanel {
     this.panel.webview.postMessage({ type: "simulationData", data: result, isDark });
   }
 
+  private postLiveConfig(mqttWsUrl: string, sessionId?: string, participantId?: string) {
+    const isDark =
+      vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
+      vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast;
+    this.panel.webview.postMessage({
+      type: "liveMode",
+      mqttWsUrl,
+      sessionId,
+      participantId,
+      isDark,
+    });
+  }
+
+  private postLiveLocalConfig(sessionId?: string) {
+    const isDark =
+      vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
+      vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast;
+    this.panel.webview.postMessage({
+      type: "liveLocalMode",
+      sessionId,
+      isDark,
+    });
+  }
+
   private getHtmlForWebview(): string {
     const webview = this.panel.webview;
     const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "dist", "simulationWebview.js"));
     const nonce = getNonce();
+
+    // Allow WebSocket connections for live MQTT streaming
+    const connectSrc = this.liveMode ? "connect-src ws: wss:;" : "";
 
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; ${connectSrc}">
   <title>Simulation Results</title>
   <style>
     body {
@@ -118,6 +214,37 @@ export class SimulationPanel {
       display: flex;
       flex-direction: column;
     }
+    #toolbar {
+      display: none;
+      padding: 6px 16px;
+      gap: 8px;
+      align-items: center;
+      font-size: 12px;
+      border-bottom: 1px solid var(--vscode-panel-border, #333);
+    }
+    #toolbar.visible { display: flex; }
+    #toolbar button {
+      padding: 2px 8px;
+      border: 1px solid var(--vscode-button-border, transparent);
+      border-radius: 2px;
+      background: var(--vscode-button-secondaryBackground, #333);
+      color: var(--vscode-button-secondaryForeground, #ccc);
+      cursor: pointer;
+      font-size: 12px;
+    }
+    #toolbar button:hover { background: var(--vscode-button-secondaryHoverBackground, #444); }
+    #toolbar .status-indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #666;
+    }
+    #toolbar .status-indicator.connected { background: #2da44e; }
+    #toolbar .status-indicator.connecting { background: #bf8700; animation: pulse 1s infinite; }
+    #toolbar .status-indicator.error { background: #cf222e; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+    #toolbar .status-text { color: var(--vscode-descriptionForeground); }
+    #toolbar .spacer { flex: 1; }
     #legend {
       padding: 8px 16px;
       display: flex;
@@ -171,6 +298,13 @@ export class SimulationPanel {
 </head>
 <body>
   <div id="chart-container">
+    <div id="toolbar">
+      <div class="status-indicator" id="live-status"></div>
+      <span class="status-text" id="live-status-text">Disconnected</span>
+      <span class="spacer"></span>
+      <button id="btn-pause">⏸ Pause</button>
+      <button id="btn-clear">Clear</button>
+    </div>
     <div id="legend"></div>
     <canvas id="canvas"></canvas>
     <div id="tooltip"></div>

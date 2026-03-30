@@ -20,6 +20,7 @@ import { deflateRaw } from "pako";
 import type { ModelicaDAE } from "./dae.js";
 import type { FmuOptions, FmuResult } from "./fmi.js";
 import { generateFmu } from "./fmi.js";
+import { generateFmi3 } from "./fmi3.js";
 import { generateFmuCSources } from "./fmu-codegen.js";
 import type { ModelicaSimulator } from "./simulator.js";
 
@@ -29,6 +30,8 @@ export interface FmuArchiveOptions extends FmuOptions {
   includeSources?: boolean;
   /** Include serialized model.json (default: true). */
   includeModelJson?: boolean;
+  /** Additional resource files to bundle in `resources/` (filename → contents). */
+  resourceFiles?: Map<string, Uint8Array>;
 }
 
 /** Result of FMU archive generation. */
@@ -56,6 +59,7 @@ export function buildFmuArchive(
 ): FmuArchiveResult {
   const stateVars = simulator?.stateVars ?? new Set<string>();
   const fmuResult = generateFmu(dae, options, stateVars);
+  const fmi3Result = generateFmi3(dae, options, stateVars);
   const id = options.modelIdentifier;
 
   const files = new Map<string, Uint8Array>();
@@ -64,12 +68,18 @@ export function buildFmuArchive(
   // ── modelDescription.xml ──
   files.set("modelDescription.xml", encoder.encode(fmuResult.modelDescriptionXml));
 
+  // ── terminalsAndIcons.xml (FMI 3.0) ──
+  if (fmi3Result.terminalsAndIconsXml) {
+    files.set("terminalsAndIcons/terminalsAndIcons.xml", encoder.encode(fmi3Result.terminalsAndIconsXml));
+  }
+
   // ── C source files ──
   if (options.includeSources !== false) {
     const sources = generateFmuCSources(dae, fmuResult, options);
     files.set(`sources/${id}_model.h`, encoder.encode(sources.modelH));
     files.set(`sources/${id}_model.c`, encoder.encode(sources.modelC));
     files.set("sources/fmi2Functions.c", encoder.encode(sources.fmi2FunctionsC));
+    files.set("sources/fmi3Functions.c", encoder.encode(sources.fmi3FunctionsC));
 
     // Include FMI 2.0 headers (minimal subset for compilation)
     files.set("sources/fmi2Functions.h", encoder.encode(FMI2_FUNCTIONS_H));
@@ -85,6 +95,28 @@ export function buildFmuArchive(
     const modelJson = JSON.stringify(dae.toJSON, null, 2);
     files.set("resources/model.json", encoder.encode(modelJson));
   }
+
+  // ── Additional resource files ──
+  if (options.resourceFiles) {
+    for (const [name, data] of options.resourceFiles) {
+      files.set(`resources/${name}`, data);
+    }
+  }
+
+  // ── buildDescription.xml (FMI 3.0 §2.5) ──
+  const buildDescLines = [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<fmiBuildDescription fmiVersion="3.0">',
+    `  <BuildConfiguration modelIdentifier="${id}">`,
+    '    <SourceFileSet language="C">',
+    `      <SourceFile name="${id}_model.c" />`,
+    `      <SourceFile name="fmi2Functions.c" />`,
+    `      <SourceFile name="fmi3Functions.c" />`,
+    "    </SourceFileSet>",
+    "  </BuildConfiguration>",
+    "</fmiBuildDescription>",
+  ];
+  files.set("extra/buildDescription.xml", encoder.encode(buildDescLines.join("\n")));
 
   // ── Build ZIP archive ──
   const archive = createZip(files);
@@ -334,6 +366,52 @@ fmi2Status fmi2GetRealStatus(fmi2Component, const fmi2StatusKind, fmi2Real*);
 fmi2Status fmi2GetIntegerStatus(fmi2Component, const fmi2StatusKind, fmi2Integer*);
 fmi2Status fmi2GetBooleanStatus(fmi2Component, const fmi2StatusKind, fmi2Boolean*);
 fmi2Status fmi2GetStringStatus(fmi2Component, const fmi2StatusKind, fmi2String*);
+fmi2Status fmi2SetRealInputDerivatives(fmi2Component, const fmi2ValueReference[], size_t, const fmi2Integer[], const fmi2Real[]);
+fmi2Status fmi2GetRealOutputDerivatives(fmi2Component, const fmi2ValueReference[], size_t, const fmi2Integer[], fmi2Real[]);
 
 #endif
 `;
+
+/**
+ * Compiles the generated C sources into a shared library (.dll, .so, .dylib) via CMake.
+ * NOTE: This requires Node.js (fs, path, os, child_process), CMake, and a C compiler available on the system.
+ */
+export async function compileFmuBinary(
+  id: string,
+  sources: { modelC: string; modelH: string; fmi2FunctionsC: string; fmi3FunctionsC: string; cmakeLists: string },
+): Promise<Uint8Array> {
+  const [fs, path, os, { execSync }] = await Promise.all([
+    import("fs"),
+    import("path"),
+    import("os"),
+    import("child_process"),
+  ]);
+
+  const tmpPrefix = path.join(os.tmpdir(), `modelscript-fmu-${id}-`);
+  const tmpDir = fs.mkdtempSync(tmpPrefix);
+
+  try {
+    fs.writeFileSync(path.join(tmpDir, `${id}_model.c`), sources.modelC);
+    fs.writeFileSync(path.join(tmpDir, `${id}_model.h`), sources.modelH);
+    fs.writeFileSync(path.join(tmpDir, "fmi2Functions.c"), sources.fmi2FunctionsC);
+    fs.writeFileSync(path.join(tmpDir, "fmi3Functions.c"), sources.fmi3FunctionsC);
+    fs.writeFileSync(path.join(tmpDir, "fmi2Functions.h"), FMI2_FUNCTIONS_H);
+    fs.writeFileSync(path.join(tmpDir, "fmi2TypesPlatform.h"), FMI2_TYPES_PLATFORM_H);
+    fs.writeFileSync(path.join(tmpDir, "fmi2FunctionTypes.h"), FMI2_FUNCTION_TYPES_H);
+    fs.writeFileSync(path.join(tmpDir, "CMakeLists.txt"), sources.cmakeLists);
+
+    execSync(`cmake -B build -S . -DCMAKE_BUILD_TYPE=Release`, { cwd: tmpDir, stdio: "pipe" });
+    execSync(`cmake --build build --config Release`, { cwd: tmpDir, stdio: "pipe" });
+
+    const buildDir = path.join(tmpDir, "build");
+    const files = fs.readdirSync(buildDir);
+    const libFile = files.find(
+      (f) => f.startsWith(id) && (f.endsWith(".dll") || f.endsWith(".so") || f.endsWith(".dylib")),
+    );
+    if (!libFile) throw new Error("Shared library not found after CMake compilation.");
+
+    return new Uint8Array(fs.readFileSync(path.join(buildDir, libFile)));
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+}

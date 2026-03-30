@@ -56,7 +56,7 @@ function svgToIconUri(svg: string): vscode.Uri {
 }
 
 /** Node types in the project tree */
-type ProjectNodeKind = "package" | "file" | "class";
+type ProjectNodeKind = "package" | "file" | "class" | "fmu";
 
 interface ProjectNodeInfo {
   kind: ProjectNodeKind;
@@ -109,6 +109,20 @@ export class ProjectTreeItem extends vscode.TreeItem {
         }
         break;
 
+      case "fmu":
+        this.tooltip = info.name;
+        this.description = "FMU";
+        this.iconPath = new vscode.ThemeIcon("circuit-board");
+        this.contextValue = "fmu";
+        if (info.uri) {
+          this.command = {
+            command: "modelscript.openProjectFile",
+            title: "Open FMU",
+            arguments: [info.uri],
+          };
+        }
+        break;
+
       case "class":
         this.tooltip = info.compositeName;
         this.description = info.classKind;
@@ -143,11 +157,17 @@ interface DirNode {
   packageUri?: vscode.Uri;
   /** Direct child .mo files (excluding package.mo and package.order) */
   files: vscode.Uri[];
+  /** Direct child FMU XML files */
+  fmuFiles: vscode.Uri[];
   /** Direct child directories that contain .mo files */
   subdirs: DirNode[];
 }
 
-export class ProjectTreeProvider implements vscode.TreeDataProvider<ProjectTreeItem> {
+export class ProjectTreeProvider
+  implements vscode.TreeDataProvider<ProjectTreeItem>, vscode.TreeDragAndDropController<ProjectTreeItem>
+{
+  public readonly dragMimeTypes = ["application/json", "text/plain"];
+  public readonly dropMimeTypes: string[] = [];
   private _onDidChangeTreeData = new vscode.EventEmitter<ProjectTreeItem | undefined | null>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
@@ -155,6 +175,45 @@ export class ProjectTreeProvider implements vscode.TreeDataProvider<ProjectTreeI
   private cachedRoots: DirNode[] | null = null;
 
   constructor(private readonly client: LanguageClient) {}
+
+  /** Callback invoked when a drag starts — set by extension host to forward to diagram webviews. */
+  public onDragStart?: (data: { className: string; classKind: string; iconSvg?: string }) => void;
+
+  public async handleDrag(
+    source: readonly ProjectTreeItem[],
+    dataTransfer: vscode.DataTransfer,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _token: vscode.CancellationToken,
+  ): Promise<void> {
+    const item = source[0];
+    if (!item) return;
+
+    // Only FMU nodes and diagram-compatible class nodes are draggable
+    if (item.info.kind === "fmu") {
+      const fmuName = item.info.name;
+      const dragData = {
+        className: fmuName,
+        classKind: "model" as const,
+      };
+      const payload = JSON.stringify(dragData);
+      dataTransfer.set("application/json", new vscode.DataTransferItem(payload));
+      dataTransfer.set("text/plain", new vscode.DataTransferItem(payload));
+      this.onDragStart?.(dragData);
+    } else if (item.info.kind === "class") {
+      const isAddable =
+        item.info.classKind === "model" || item.info.classKind === "block" || item.info.classKind === "connector";
+      if (!isAddable) return;
+      const dragData = {
+        className: item.info.compositeName ?? item.info.name,
+        classKind: item.info.classKind ?? "model",
+        iconSvg: item.info.iconSvg,
+      };
+      const payload = JSON.stringify(dragData);
+      dataTransfer.set("application/json", new vscode.DataTransferItem(payload));
+      dataTransfer.set("text/plain", new vscode.DataTransferItem(payload));
+      this.onDragStart?.(dragData);
+    }
+  }
 
   refresh(): void {
     this.cachedRoots = null;
@@ -173,6 +232,11 @@ export class ProjectTreeProvider implements vscode.TreeDataProvider<ProjectTreeI
     }
 
     const info = element.info;
+
+    if (info.kind === "fmu") {
+      // FMU nodes are leaf nodes — no children
+      return [];
+    }
 
     if (info.kind === "package" && info.dirUri) {
       // Package node: show sub-packages, child .mo files, and classes from package.mo
@@ -205,6 +269,26 @@ export class ProjectTreeProvider implements vscode.TreeDataProvider<ProjectTreeI
       if (dirNode.packageUri) {
         const classItems = await this.getClassChildren(dirNode.packageUri.toString());
         items.push(...classItems);
+      }
+
+      // FMU XML files
+      for (const fmuUri of dirNode.fmuFiles) {
+        const fmuName =
+          fmuUri.path
+            .split("/")
+            .pop()
+            ?.replace(/\.xml$/, "") ?? "";
+        items.push(
+          new ProjectTreeItem(
+            {
+              kind: "fmu",
+              name: fmuName,
+              uri: fmuUri.toString(),
+              hasChildren: false,
+            },
+            vscode.TreeItemCollapsibleState.None,
+          ),
+        );
       }
 
       return items;
@@ -245,6 +329,7 @@ export class ProjectTreeProvider implements vscode.TreeDataProvider<ProjectTreeI
       uri: workspaceRoot,
       isPackage: false,
       files: [],
+      fmuFiles: [],
       subdirs: [],
     };
 
@@ -288,6 +373,22 @@ export class ProjectTreeProvider implements vscode.TreeDataProvider<ProjectTreeI
       this.cachedRoots = [];
     }
 
+    // Scan for FMU XML files
+    const xmlFiles = await vscode.workspace.findFiles("**/*.xml");
+    for (const xmlUri of xmlFiles) {
+      try {
+        const content = await vscode.workspace.fs.readFile(xmlUri);
+        const text = new TextDecoder().decode(content.slice(0, 500)); // peek header
+        if (!text.includes("fmiModelDescription")) continue;
+        const xmlName = xmlUri.path.split("/").pop() ?? "";
+        const xmlDirPath = xmlUri.path.substring(0, xmlUri.path.length - xmlName.length - 1);
+        const dirNode = this.ensureDirNode(dirMap, workspaceRoot, xmlDirPath);
+        dirNode.fmuFiles.push(xmlUri);
+      } catch {
+        // Skip unreadable XML files
+      }
+    }
+
     return this.cachedRoots;
   }
 
@@ -309,6 +410,7 @@ export class ProjectTreeProvider implements vscode.TreeDataProvider<ProjectTreeI
           uri: workspaceRoot.with({ path: currentPath }),
           isPackage: false,
           files: [],
+          fmuFiles: [],
           subdirs: [],
         };
         currentNode.subdirs.push(newNode);
@@ -354,8 +456,8 @@ export class ProjectTreeProvider implements vscode.TreeDataProvider<ProjectTreeI
             vscode.TreeItemCollapsibleState.Collapsed,
           ),
         );
-      } else if (node.files.length > 0 || node.subdirs.length > 0) {
-        // Non-package directory with .mo files — show individual files
+      } else if (node.files.length > 0 || node.subdirs.length > 0 || node.fmuFiles.length > 0) {
+        // Non-package directory with .mo or FMU files — show individual files
         if (node.name === "") {
           // Root workspace: show files and subdirs directly
           for (const sub of node.subdirs) {
@@ -372,6 +474,25 @@ export class ProjectTreeProvider implements vscode.TreeDataProvider<ProjectTreeI
                   hasChildren: true,
                 },
                 vscode.TreeItemCollapsibleState.Collapsed,
+              ),
+            );
+          }
+          // FMU XML files at root
+          for (const fmuUri of node.fmuFiles) {
+            const fmuName =
+              fmuUri.path
+                .split("/")
+                .pop()
+                ?.replace(/\.xml$/, "") ?? "";
+            items.push(
+              new ProjectTreeItem(
+                {
+                  kind: "fmu",
+                  name: fmuName,
+                  uri: fmuUri.toString(),
+                  hasChildren: false,
+                },
+                vscode.TreeItemCollapsibleState.None,
               ),
             );
           }
