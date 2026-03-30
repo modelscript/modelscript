@@ -128,6 +128,112 @@ function child(node: ENode, index: number): EClassId | undefined {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// E-Class Analysis
+// ─────────────────────────────────────────────────────────────────────
+
+/**
+ * An analysis computes and propagates metadata for each e-class.
+ * When two e-classes merge, their analysis data is also merged.
+ */
+export interface EGraphAnalysis<D> {
+  /** Compute analysis data for a single e-node given its children's data. */
+  make(egraph: EGraph, node: ENode): D;
+  /** Merge analysis data when two e-classes are unified. */
+  merge(a: D, b: D): { data: D; didChange: boolean };
+}
+
+/** Sign info for sign analysis. */
+export type Sign = "positive" | "negative" | "zero" | "unknown";
+
+/** Analysis data attached to each e-class. */
+export interface AnalysisData {
+  constant: number | null; // known numeric value, or null if unknown
+  sign: Sign;
+}
+
+/**
+ * Constant propagation analysis.
+ */
+export const ConstantAnalysis: EGraphAnalysis<number | null> = {
+  make(egraph: EGraph, node: ENode): number | null {
+    if (node.op.startsWith("lit:")) return parseFloat(node.op.slice(4));
+    if (node.children.length === 2) {
+      const l = egraph.getAnalysis(node.children[0] as EClassId)?.constant ?? null;
+      const r = egraph.getAnalysis(node.children[1] as EClassId)?.constant ?? null;
+      if (l !== null && r !== null) {
+        switch (node.op) {
+          case "add":
+            return l + r;
+          case "sub":
+            return l - r;
+          case "mul":
+            return l * r;
+          case "div":
+            return r !== 0 ? l / r : null;
+          case "pow":
+            return Math.pow(l, r);
+        }
+      }
+    }
+    if (node.children.length === 1 && node.op === "neg") {
+      const c = egraph.getAnalysis(node.children[0] as EClassId)?.constant ?? null;
+      return c !== null ? -c : null;
+    }
+    return null;
+  },
+  merge(a: number | null, b: number | null): { data: number | null; didChange: boolean } {
+    // Prefer known value
+    if (a !== null) return { data: a, didChange: b === null };
+    if (b !== null) return { data: b, didChange: true };
+    return { data: null, didChange: false };
+  },
+};
+
+/**
+ * Sign propagation analysis.
+ */
+export const SignAnalysis: EGraphAnalysis<Sign> = {
+  make(egraph: EGraph, node: ENode): Sign {
+    if (node.op.startsWith("lit:")) {
+      const v = parseFloat(node.op.slice(4));
+      if (v > 0) return "positive";
+      if (v < 0) return "negative";
+      return "zero";
+    }
+    if (node.children.length === 1 && node.op === "neg") {
+      const childSign = egraph.getAnalysis(node.children[0] as EClassId)?.sign ?? "unknown";
+      if (childSign === "positive") return "negative";
+      if (childSign === "negative") return "positive";
+      if (childSign === "zero") return "zero";
+    }
+    if (node.children.length === 2 && node.op === "mul") {
+      const ls = egraph.getAnalysis(node.children[0] as EClassId)?.sign ?? "unknown";
+      const rs = egraph.getAnalysis(node.children[1] as EClassId)?.sign ?? "unknown";
+      if (ls === "zero" || rs === "zero") return "zero";
+      if (ls === "positive" && rs === "positive") return "positive";
+      if (ls === "negative" && rs === "negative") return "positive";
+      if ((ls === "positive" && rs === "negative") || (ls === "negative" && rs === "positive")) return "negative";
+    }
+    if (node.op === "fn:abs") return "positive";
+    if (node.op === "fn:exp") return "positive";
+    // pow with even exponent → non-negative
+    if (node.op === "pow" && node.children.length === 2) {
+      const exp = egraph.getAnalysis(node.children[1] as EClassId)?.constant ?? null;
+      if (exp !== null && exp % 2 === 0 && exp > 0) return "positive";
+    }
+    return "unknown";
+  },
+  merge(a: Sign, b: Sign): { data: Sign; didChange: boolean } {
+    if (a === b) return { data: a, didChange: false };
+    // Non-unknown beats unknown
+    if (a !== "unknown" && b === "unknown") return { data: a, didChange: true };
+    if (b !== "unknown" && a === "unknown") return { data: b, didChange: true };
+    // Conflicting known signs → unknown (conservative)
+    return { data: "unknown", didChange: a !== "unknown" || b !== "unknown" };
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────
 // E-Graph
 // ─────────────────────────────────────────────────────────────────────
 
@@ -142,7 +248,8 @@ export class EGraph {
   private hashcons = new Map<string, EClassId>();
   /** Pending merges to process during rebuild */
   private pending: [EClassId, EClassId][] = [];
-
+  /** Per-class analysis data */
+  private analysisMap = new Map<EClassId, AnalysisData>();
   /**
    * Create a new e-class containing a single e-node.
    */
@@ -156,6 +263,8 @@ export class EGraph {
     const id = this.uf.makeSet();
     this.classes.set(id, [node]);
     this.hashcons.set(key, id);
+    // Compute analysis data for the new e-class
+    this.analysisMap.set(id, this.computeAnalysis(node));
     return id;
   }
 
@@ -239,6 +348,20 @@ export class EGraph {
     mergedNodes.push(...otherNodes);
     this.classes.set(merged, mergedNodes);
     this.classes.delete(other);
+
+    // Merge analysis data
+    const dataA = this.analysisMap.get(rootA);
+    const dataB = this.analysisMap.get(rootB);
+    if (dataA && dataB) {
+      const constResult = ConstantAnalysis.merge(dataA.constant, dataB.constant);
+      const signResult = SignAnalysis.merge(dataA.sign, dataB.sign);
+      this.analysisMap.set(merged, { constant: constResult.data, sign: signResult.data });
+    } else if (dataA) {
+      this.analysisMap.set(merged, dataA);
+    } else if (dataB) {
+      this.analysisMap.set(merged, dataB);
+    }
+    this.analysisMap.delete(other);
 
     // Schedule rebuild
     this.pending.push([rootA, rootB]);
@@ -497,6 +620,402 @@ export class EGraph {
     }
     return null;
   }
+
+  /**
+   * Get the analysis data for an e-class.
+   */
+  getAnalysis(id: EClassId): AnalysisData | undefined {
+    return this.analysisMap.get(this.uf.find(id));
+  }
+
+  /**
+   * Compute analysis data for a single e-node.
+   */
+  private computeAnalysis(node: ENode): AnalysisData {
+    return {
+      constant: ConstantAnalysis.make(this, node),
+      sign: SignAnalysis.make(this, node),
+    };
+  }
+
+  /**
+   * Iterate over all canonical e-class IDs.
+   */
+  classIds(): IterableIterator<EClassId> {
+    return this.classes.keys();
+  }
+
+  /**
+   * Total number of e-nodes across all e-classes.
+   */
+  nodeCount(): number {
+    let count = 0;
+    for (const nodes of this.classes.values()) count += nodes.length;
+    return count;
+  }
+
+  /**
+   * Number of distinct e-classes.
+   */
+  classCount(): number {
+    return this.classes.size;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Phase 3: Conditional Rewrites
+// ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Create a conditional rewrite rule. The rule only fires if the condition
+ * returns true for the matched substitution.
+ *
+ * @example
+ *   conditionalRewrite("sqrt-x2-pos", "(fn:sqrt (pow ?x 2))", "?x",
+ *     (eg, subst) => eg.getAnalysis(subst.get("x")!)?.sign === "positive");
+ */
+export function conditionalRewrite(
+  name: string,
+  lhsSexpr: string,
+  rhsSexpr: string,
+  condition: (egraph: EGraph, subst: Substitution) => boolean,
+): RewriteRule {
+  const lhs = parsePattern(lhsSexpr);
+  const rhs = parsePattern(rhsSexpr);
+  return {
+    name,
+    apply(egraph, eClassId) {
+      const substitutions = matchPattern(egraph, lhs, eClassId);
+      const merges: { id: EClassId; newId: EClassId }[] = [];
+      for (const subst of substitutions) {
+        if (condition(egraph, subst)) {
+          const newId = instantiatePattern(egraph, rhs, subst);
+          merges.push({ id: eClassId, newId });
+        }
+      }
+      return merges;
+    },
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Phase 4: Runner with Limits & Scheduling
+// ─────────────────────────────────────────────────────────────────────
+
+export type StopReason = "Saturated" | "NodeLimit" | "TimeLimit" | "IterationLimit";
+
+export interface RunReport {
+  stopReason: StopReason;
+  iterations: number;
+  totalNodes: number;
+  totalClasses: number;
+  timeMs: number;
+}
+
+export interface RewriteScheduler {
+  canFireRule(rule: RewriteRule, iteration: number): boolean;
+  onRuleFired(rule: RewriteRule, numMatches: number, numMerged: number): void;
+}
+
+/**
+ * BackoffScheduler: throttles rules that fire frequently without producing merges.
+ */
+export class BackoffScheduler implements RewriteScheduler {
+  private banCount = new Map<string, number>();
+  private matchCount = new Map<string, number>();
+  private readonly backoffFactor: number;
+
+  constructor(backoffFactor = 2) {
+    this.backoffFactor = backoffFactor;
+  }
+
+  canFireRule(rule: RewriteRule): boolean {
+    const ban = this.banCount.get(rule.name) ?? 0;
+    if (ban > 0) {
+      this.banCount.set(rule.name, ban - 1);
+      return false;
+    }
+    return true;
+  }
+
+  onRuleFired(rule: RewriteRule, numMatches: number, numMerged: number): void {
+    const totalMatches = (this.matchCount.get(rule.name) ?? 0) + numMatches;
+    this.matchCount.set(rule.name, totalMatches);
+    // If rule matched but produced no merges, impose a backoff
+    if (numMatches > 0 && numMerged === 0) {
+      this.banCount.set(rule.name, Math.min(totalMatches * this.backoffFactor, 1000));
+    }
+  }
+}
+
+/** Simple scheduler that always allows rules to fire. */
+export class SimpleScheduler implements RewriteScheduler {
+  canFireRule(): boolean {
+    return true;
+  }
+  onRuleFired(): void {
+    /* no-op */
+  }
+}
+
+export interface RunnerConfig {
+  maxIterations: number;
+  maxNodeCount: number;
+  maxTimeMs: number;
+  scheduler: RewriteScheduler;
+}
+
+const DEFAULT_RUNNER_CONFIG: RunnerConfig = {
+  maxIterations: 30,
+  maxNodeCount: 10_000,
+  maxTimeMs: 1000,
+  scheduler: new BackoffScheduler(),
+};
+
+/**
+ * Run equality saturation with configurable limits and scheduling.
+ */
+export function runEqualitySaturation(
+  egraph: EGraph,
+  rules: RewriteRule[],
+  config: Partial<RunnerConfig> = {},
+): RunReport {
+  const cfg = { ...DEFAULT_RUNNER_CONFIG, ...config };
+  const start = Date.now();
+  let iterations = 0;
+  let stopReason: StopReason = "IterationLimit";
+
+  for (let iter = 0; iter < cfg.maxIterations; iter++) {
+    iterations = iter + 1;
+
+    if (Date.now() - start > cfg.maxTimeMs) {
+      stopReason = "TimeLimit";
+      break;
+    }
+
+    let anyMerged = false;
+    const classIds = [...new Set(Array.from(egraph.classIds()).map((id) => egraph.find(id)))];
+
+    if (classIds.length > cfg.maxNodeCount) {
+      stopReason = "NodeLimit";
+      break;
+    }
+
+    for (const classId of classIds) {
+      const nodes = egraph.getNodes(classId);
+      const nodeSnapshot = [...nodes];
+
+      for (const node of nodeSnapshot) {
+        for (const rule of rules) {
+          if (!cfg.scheduler.canFireRule(rule, iter)) continue;
+
+          const merges = rule.apply(egraph, egraph.find(classId), node);
+          let numMerged = 0;
+          for (const { id, newId } of merges) {
+            if (egraph.find(id) !== egraph.find(newId)) {
+              egraph.merge(id, newId);
+              numMerged++;
+              anyMerged = true;
+            }
+          }
+          cfg.scheduler.onRuleFired(rule, merges.length, numMerged);
+        }
+      }
+    }
+
+    egraph.rebuild();
+    if (!anyMerged) {
+      stopReason = "Saturated";
+      break;
+    }
+  }
+
+  return {
+    stopReason,
+    iterations,
+    totalNodes: egraph.nodeCount(),
+    totalClasses: egraph.classCount(),
+    timeMs: Date.now() - start,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Phase 5: Multi-Patterns
+// ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Create a multi-pattern rewrite that matches across multiple e-classes.
+ * The applier receives the joint substitution from matching all patterns.
+ */
+export function multiRewrite(
+  name: string,
+  patterns: string[],
+  applier: (egraph: EGraph, subst: Substitution) => { id: EClassId; newId: EClassId }[],
+): RewriteRule {
+  const parsedPatterns = patterns.map(parsePattern);
+  return {
+    name,
+    apply(egraph, eClassId) {
+      // Only match first pattern against this e-class; if it matches,
+      // search all e-classes for subsequent patterns with compatible substitutions.
+      if (parsedPatterns.length === 0) return [];
+      const firstPat = parsedPatterns[0];
+      if (!firstPat) return [];
+      const firstMatches = matchPattern(egraph, firstPat, eClassId);
+      if (firstMatches.length === 0) return [];
+
+      const allMerges: { id: EClassId; newId: EClassId }[] = [];
+      for (const subst of firstMatches) {
+        const jointSubsts = matchRemainingPatterns(egraph, parsedPatterns.slice(1), subst);
+        for (const joint of jointSubsts) {
+          allMerges.push(...applier(egraph, joint));
+        }
+      }
+      return allMerges;
+    },
+  };
+}
+
+function matchRemainingPatterns(egraph: EGraph, patterns: PatternNode[], subst: Substitution): Substitution[] {
+  if (patterns.length === 0) return [subst];
+  const pat = patterns[0];
+  if (!pat) return [subst];
+  const remaining = patterns.slice(1);
+  const results: Substitution[] = [];
+
+  // Search all e-classes for matches of this pattern
+  for (const classId of egraph.classIds()) {
+    const matches = matchPattern(egraph, pat, egraph.find(classId));
+    for (const m of matches) {
+      // Check consistency with existing substitution
+      let consistent = true;
+      for (const [k, v] of subst) {
+        const mv = m.get(k);
+        if (mv !== undefined && egraph.find(mv) !== egraph.find(v)) {
+          consistent = false;
+          break;
+        }
+      }
+      if (consistent) {
+        const merged = new Map(subst);
+        for (const [k, v] of m) merged.set(k, v);
+        results.push(...matchRemainingPatterns(egraph, remaining, merged));
+      }
+    }
+  }
+  return results;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Phase 6: Proof Explanations
+// ─────────────────────────────────────────────────────────────────────
+
+export interface ExplanationStep {
+  rule: string;
+  from: EClassId;
+  to: EClassId;
+}
+
+/**
+ * Proof-tracking wrapper. When enabled, records which rules caused each merge.
+ * Usage: wrap the EGraph before saturation; query afterwards.
+ */
+export class ProofLog {
+  private steps: ExplanationStep[] = [];
+
+  record(rule: string, from: EClassId, to: EClassId): void {
+    this.steps.push({ rule, from, to });
+  }
+
+  getSteps(): readonly ExplanationStep[] {
+    return this.steps;
+  }
+
+  /**
+   * Wrap rules to automatically record proof steps when they fire.
+   */
+  wrapRules(rules: RewriteRule[]): RewriteRule[] {
+    return rules.map((rule) => ({
+      name: rule.name,
+      apply: (egraph: EGraph, classId: EClassId, node: ENode) => {
+        const merges = rule.apply(egraph, classId, node);
+        for (const { id, newId } of merges) {
+          if (egraph.find(id) !== egraph.find(newId)) {
+            this.record(rule.name, id, newId);
+          }
+        }
+        return merges;
+      },
+    }));
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Phase 7: Pluggable Cost Functions
+// ─────────────────────────────────────────────────────────────────────
+
+/**
+ * A cost function that assigns costs to e-nodes during extraction.
+ * C must be a totally ordered type (compared with <).
+ */
+export interface CostFunction<C> {
+  cost(node: ENode, childCosts: C[]): C;
+}
+
+/** Minimize total AST size (node count). */
+export const AstSize: CostFunction<number> = {
+  cost(_node: ENode, childCosts: number[]): number {
+    return 1 + childCosts.reduce((a, b) => a + b, 0);
+  },
+};
+
+/** Minimize AST depth. */
+export const AstDepth: CostFunction<number> = {
+  cost(_node: ENode, childCosts: number[]): number {
+    return 1 + (childCosts.length > 0 ? Math.max(...childCosts) : 0);
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────
+// Phase 8: GraphViz Export
+// ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Export an EGraph as a GraphViz DOT string for debugging.
+ */
+export function toDot(egraph: EGraph): string {
+  const lines: string[] = ["digraph EGraph {", "  compound=true;", "  clusterrank=local;"];
+
+  for (const classId of egraph.classIds()) {
+    const canonical = egraph.find(classId);
+    if (classId !== canonical) continue;
+    const nodes = egraph.getNodes(canonical);
+    lines.push(`  subgraph cluster_${canonical} {`);
+    lines.push(`    label="e${canonical}";`);
+    lines.push("    style=dotted;");
+
+    for (let i = 0; i < nodes.length; i++) {
+      const node = nodes[i];
+      if (!node) continue;
+      const nodeId = `e${canonical}_n${i}`;
+      lines.push(`    ${nodeId} [label="${node.op}" shape=box];`);
+    }
+    lines.push("  }");
+
+    // Edges to children
+    for (let i = 0; i < nodes.length; i++) {
+      const node = nodes[i];
+      if (!node) continue;
+      const nodeId = `e${canonical}_n${i}`;
+      for (const childId of node.children) {
+        const childCanon = egraph.find(childId);
+        lines.push(`  ${nodeId} -> e${childCanon}_n0 [lhead=cluster_${childCanon}];`);
+      }
+    }
+  }
+
+  lines.push("}");
+  return lines.join("\n");
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -543,6 +1062,184 @@ function tagToBinaryOp(tag: string): ModelicaBinaryOperator | null {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// Pattern Language Engine
+// ─────────────────────────────────────────────────────────────────────
+
+/**
+ * A pattern node: either a concrete operator with children, or a pattern variable.
+ */
+export type PatternNode = { kind: "op"; op: string; children: PatternNode[] } | { kind: "var"; name: string };
+
+/**
+ * Parse an s-expression pattern string into a PatternNode tree.
+ *
+ * Syntax:
+ *   - `?name`        → pattern variable
+ *   - `0`, `1`, etc. → literal (becomes `lit:0`)
+ *   - `(op c1 c2)`   → operator node with children
+ *   - `x`            → bare atom (literal number or operator)
+ */
+export function parsePattern(sexpr: string): PatternNode {
+  const tokens = tokenize(sexpr);
+  let pos = 0;
+
+  function peek(): string | undefined {
+    return tokens[pos];
+  }
+  function consume(): string {
+    const t = tokens[pos];
+    if (t === undefined) throw new Error("Unexpected end of pattern");
+    pos++;
+    return t;
+  }
+
+  function parse(): PatternNode {
+    const t = peek();
+    if (t === "(") {
+      consume(); // (
+      const op = consume();
+      const children: PatternNode[] = [];
+      while (peek() !== ")") {
+        children.push(parse());
+      }
+      consume(); // )
+      return { kind: "op", op, children };
+    } else {
+      const atom = consume();
+      if (atom.startsWith("?")) {
+        return { kind: "var", name: atom.slice(1) };
+      }
+      const num = Number(atom);
+      if (!isNaN(num)) {
+        return { kind: "op", op: `lit:${num}`, children: [] };
+      }
+      return { kind: "op", op: atom, children: [] };
+    }
+  }
+
+  return parse();
+}
+
+function tokenize(s: string): string[] {
+  const tokens: string[] = [];
+  let i = 0;
+  while (i < s.length) {
+    if (s[i] === " " || s[i] === "\t" || s[i] === "\n") {
+      i++;
+    } else if (s[i] === "(" || s[i] === ")") {
+      tokens.push(s[i] ?? "");
+      i++;
+    } else {
+      const start = i;
+      while (i < s.length && s[i] !== " " && s[i] !== "\t" && s[i] !== "\n" && s[i] !== "(" && s[i] !== ")") {
+        i++;
+      }
+      tokens.push(s.slice(start, i));
+    }
+  }
+  return tokens;
+}
+
+/** A substitution maps pattern variable names to e-class IDs. */
+export type Substitution = Map<string, EClassId>;
+
+/**
+ * Match a pattern against an e-class in the e-graph.
+ * Returns all valid substitutions (may be empty if no match).
+ */
+export function matchPattern(egraph: EGraph, pattern: PatternNode, eClassId: EClassId): Substitution[] {
+  const results: Substitution[] = [];
+  matchRec(egraph, pattern, eClassId, new Map(), results);
+  return results;
+}
+
+function matchRec(
+  egraph: EGraph,
+  pattern: PatternNode,
+  eClassId: EClassId,
+  subst: Substitution,
+  results: Substitution[],
+): void {
+  const canonical = egraph.find(eClassId);
+  if (pattern.kind === "var") {
+    const existing = subst.get(pattern.name);
+    if (existing !== undefined) {
+      if (egraph.find(existing) === canonical) results.push(new Map(subst));
+    } else {
+      const newSubst = new Map(subst);
+      newSubst.set(pattern.name, canonical);
+      results.push(newSubst);
+    }
+    return;
+  }
+  const nodes = egraph.getNodes(canonical);
+  for (const node of nodes) {
+    if (node.op !== pattern.op || node.children.length !== pattern.children.length) continue;
+    matchChildren(egraph, pattern.children, node.children, 0, new Map(subst), results);
+  }
+}
+
+function matchChildren(
+  egraph: EGraph,
+  patterns: PatternNode[],
+  children: EClassId[],
+  index: number,
+  subst: Substitution,
+  results: Substitution[],
+): void {
+  if (index >= patterns.length) {
+    results.push(new Map(subst));
+    return;
+  }
+  const pat = patterns[index];
+  const childId = children[index];
+  if (!pat || childId === undefined) return;
+  const childSubsts: Substitution[] = [];
+  matchRec(egraph, pat, childId, subst, childSubsts);
+  for (const s of childSubsts) {
+    matchChildren(egraph, patterns, children, index + 1, s, results);
+  }
+}
+
+/**
+ * Instantiate a pattern with a substitution, adding nodes to the e-graph.
+ */
+export function instantiatePattern(egraph: EGraph, pattern: PatternNode, subst: Substitution): EClassId {
+  if (pattern.kind === "var") {
+    const id = subst.get(pattern.name);
+    if (id === undefined) throw new Error(`Unbound pattern variable: ?${pattern.name}`);
+    return id;
+  }
+  if (pattern.children.length === 0) return egraph.addNode({ op: pattern.op, children: [] });
+  const childIds = pattern.children.map((c) => instantiatePattern(egraph, c, subst));
+  return egraph.addNode({ op: pattern.op, children: childIds });
+}
+
+/**
+ * Create a declarative rewrite rule from s-expression pattern strings.
+ *
+ * @example
+ *   rewrite("mul-zero-l", "(mul 0 ?a)", "0")
+ *   rewrite("add-comm", "(add ?a ?b)", "(add ?b ?a)")
+ */
+export function rewrite(name: string, lhsSexpr: string, rhsSexpr: string): RewriteRule {
+  const lhs = parsePattern(lhsSexpr);
+  const rhs = parsePattern(rhsSexpr);
+  return {
+    name,
+    apply(egraph, eClassId) {
+      const substitutions = matchPattern(egraph, lhs, eClassId);
+      const merges: { id: EClassId; newId: EClassId }[] = [];
+      for (const subst of substitutions) {
+        const newId = instantiatePattern(egraph, rhs, subst);
+        merges.push({ id: eClassId, newId });
+      }
+      return merges;
+    },
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // Built-in Rewrite Rules
 // ─────────────────────────────────────────────────────────────────────
 
@@ -566,184 +1263,80 @@ function unaryChild(node: ENode): EClassId | null {
   return c !== undefined ? c : null;
 }
 
-/**
- * Identity rules: x + 0 → x, x * 1 → x, x * 0 → 0, x ^ 1 → x, x ^ 0 → 1
- */
+// ── Declarative Rules ────────────────────────────────────────────────
+
 const identityRules: RewriteRule[] = [
-  {
-    name: "add-zero-left",
-    apply(egraph, classId, node) {
-      if (node.op !== "add") return [];
-      const ch = binChildren(node);
-      if (!ch) return [];
-      if (egraph.getLiteral(ch[0]) === 0) {
-        return [{ id: classId, newId: egraph.find(ch[1]) }];
-      }
-      return [];
-    },
-  },
-  {
-    name: "add-zero-right",
-    apply(egraph, classId, node) {
-      if (node.op !== "add") return [];
-      const ch = binChildren(node);
-      if (!ch) return [];
-      if (egraph.getLiteral(ch[1]) === 0) {
-        return [{ id: classId, newId: egraph.find(ch[0]) }];
-      }
-      return [];
-    },
-  },
-  {
-    name: "mul-one-left",
-    apply(egraph, classId, node) {
-      if (node.op !== "mul") return [];
-      const ch = binChildren(node);
-      if (!ch) return [];
-      if (egraph.getLiteral(ch[0]) === 1) {
-        return [{ id: classId, newId: egraph.find(ch[1]) }];
-      }
-      return [];
-    },
-  },
-  {
-    name: "mul-one-right",
-    apply(egraph, classId, node) {
-      if (node.op !== "mul") return [];
-      const ch = binChildren(node);
-      if (!ch) return [];
-      if (egraph.getLiteral(ch[1]) === 1) {
-        return [{ id: classId, newId: egraph.find(ch[0]) }];
-      }
-      return [];
-    },
-  },
-  {
-    name: "mul-zero-left",
-    apply(egraph, classId, node) {
-      if (node.op !== "mul") return [];
-      const ch = binChildren(node);
-      if (!ch) return [];
-      if (egraph.getLiteral(ch[0]) === 0) {
-        return [{ id: classId, newId: egraph.find(ch[0]) }];
-      }
-      return [];
-    },
-  },
-  {
-    name: "mul-zero-right",
-    apply(egraph, classId, node) {
-      if (node.op !== "mul") return [];
-      const ch = binChildren(node);
-      if (!ch) return [];
-      if (egraph.getLiteral(ch[1]) === 0) {
-        return [{ id: classId, newId: egraph.find(ch[1]) }];
-      }
-      return [];
-    },
-  },
-  {
-    name: "sub-zero",
-    apply(egraph, classId, node) {
-      if (node.op !== "sub") return [];
-      const ch = binChildren(node);
-      if (!ch) return [];
-      if (egraph.getLiteral(ch[1]) === 0) {
-        return [{ id: classId, newId: egraph.find(ch[0]) }];
-      }
-      return [];
-    },
-  },
-  {
-    name: "div-one",
-    apply(egraph, classId, node) {
-      if (node.op !== "div") return [];
-      const ch = binChildren(node);
-      if (!ch) return [];
-      if (egraph.getLiteral(ch[1]) === 1) {
-        return [{ id: classId, newId: egraph.find(ch[0]) }];
-      }
-      return [];
-    },
-  },
-  {
-    name: "pow-one",
-    apply(egraph, classId, node) {
-      if (node.op !== "pow") return [];
-      const ch = binChildren(node);
-      if (!ch) return [];
-      if (egraph.getLiteral(ch[1]) === 1) {
-        return [{ id: classId, newId: egraph.find(ch[0]) }];
-      }
-      return [];
-    },
-  },
-  {
-    name: "pow-zero",
-    apply(egraph, classId, node) {
-      if (node.op !== "pow") return [];
-      const ch = binChildren(node);
-      if (!ch) return [];
-      if (egraph.getLiteral(ch[1]) === 0) {
-        const oneId = egraph.addNode({ op: "lit:1", children: [] });
-        return [{ id: classId, newId: oneId }];
-      }
-      return [];
-    },
-  },
+  rewrite("add-zero-l", "(add 0 ?a)", "?a"),
+  rewrite("add-zero-r", "(add ?a 0)", "?a"),
+  rewrite("mul-one-l", "(mul 1 ?a)", "?a"),
+  rewrite("mul-one-r", "(mul ?a 1)", "?a"),
+  rewrite("mul-zero-l", "(mul 0 ?a)", "0"),
+  rewrite("mul-zero-r", "(mul ?a 0)", "0"),
+  rewrite("sub-zero", "(sub ?a 0)", "?a"),
+  rewrite("div-one", "(div ?a 1)", "?a"),
+  rewrite("pow-one", "(pow ?a 1)", "?a"),
+  rewrite("pow-zero", "(pow ?a 0)", "1"),
 ];
 
-/**
- * Self-cancellation rules: x - x → 0, x / x → 1, -(-x) → x
- */
 const cancellationRules: RewriteRule[] = [
-  {
-    name: "sub-self",
-    apply(egraph, classId, node) {
-      if (node.op !== "sub") return [];
-      const ch = binChildren(node);
-      if (!ch) return [];
-      if (egraph.find(ch[0]) === egraph.find(ch[1])) {
-        const zeroId = egraph.addNode({ op: "lit:0", children: [] });
-        return [{ id: classId, newId: zeroId }];
-      }
-      return [];
-    },
-  },
-  {
-    name: "div-self",
-    apply(egraph, classId, node) {
-      if (node.op !== "div") return [];
-      const ch = binChildren(node);
-      if (!ch) return [];
-      if (egraph.find(ch[0]) === egraph.find(ch[1])) {
-        const oneId = egraph.addNode({ op: "lit:1", children: [] });
-        return [{ id: classId, newId: oneId }];
-      }
-      return [];
-    },
-  },
-  {
-    name: "double-neg",
-    apply(egraph, classId, node) {
-      if (node.op !== "neg") return [];
-      const c = unaryChild(node);
-      if (c === null) return [];
-      const innerNode = egraph.findOp(c, "neg");
-      if (innerNode) {
-        const innerC = unaryChild(innerNode);
-        if (innerC !== null) {
-          return [{ id: classId, newId: egraph.find(innerC) }];
-        }
-      }
-      return [];
-    },
-  },
+  rewrite("sub-self", "(sub ?a ?a)", "0"),
+  rewrite("div-self", "(div ?a ?a)", "1"),
+  rewrite("double-neg", "(neg (neg ?a))", "?a"),
 ];
 
-/**
- * Constant folding: evaluate pure numeric sub-expressions.
- */
+const commutativityRules: RewriteRule[] = [
+  rewrite("add-comm", "(add ?a ?b)", "(add ?b ?a)"),
+  rewrite("mul-comm", "(mul ?a ?b)", "(mul ?b ?a)"),
+];
+
+const associativityRules: RewriteRule[] = [
+  rewrite("add-assoc-l", "(add (add ?a ?b) ?c)", "(add ?a (add ?b ?c))"),
+  rewrite("add-assoc-r", "(add ?a (add ?b ?c))", "(add (add ?a ?b) ?c)"),
+  rewrite("mul-assoc-l", "(mul (mul ?a ?b) ?c)", "(mul ?a (mul ?b ?c))"),
+  rewrite("mul-assoc-r", "(mul ?a (mul ?b ?c))", "(mul (mul ?a ?b) ?c)"),
+];
+
+const distributivityRules: RewriteRule[] = [
+  rewrite("dist-mul-add-r", "(mul ?a (add ?b ?c))", "(add (mul ?a ?b) (mul ?a ?c))"),
+  rewrite("dist-mul-add-l", "(mul (add ?b ?c) ?a)", "(add (mul ?b ?a) (mul ?c ?a))"),
+  rewrite("factor-common-l", "(add (mul ?a ?b) (mul ?a ?c))", "(mul ?a (add ?b ?c))"),
+];
+
+const powerRules: RewriteRule[] = [
+  rewrite("pow-mul-base", "(mul (pow ?x ?a) (pow ?x ?b))", "(pow ?x (add ?a ?b))"),
+  rewrite("pow-pow", "(pow (pow ?x ?a) ?b)", "(pow ?x (mul ?a ?b))"),
+  rewrite("mul-self", "(mul ?x ?x)", "(pow ?x 2)"),
+];
+
+const negationDistributionRules: RewriteRule[] = [
+  rewrite("neg-add", "(neg (add ?a ?b))", "(add (neg ?a) (neg ?b))"),
+  rewrite("neg-mul", "(neg (mul ?a ?b))", "(mul (neg ?a) ?b)"),
+  rewrite("neg-sub", "(neg (sub ?a ?b))", "(sub ?b ?a)"),
+];
+
+const divisionRules: RewriteRule[] = [
+  rewrite("div-zero-num", "(div 0 ?a)", "0"),
+  rewrite("div-to-mul-inv", "(div ?a ?b)", "(mul ?a (pow ?b -1))"),
+  rewrite("div-div", "(div (div ?a ?b) ?c)", "(div ?a (mul ?b ?c))"),
+];
+
+const expLogRules: RewriteRule[] = [
+  rewrite("exp-log", "(fn:exp (fn:log ?x))", "?x"),
+  rewrite("log-exp", "(fn:log (fn:exp ?x))", "?x"),
+  rewrite("exp-zero", "(fn:exp 0)", "1"),
+  rewrite("log-one", "(fn:log 1)", "0"),
+];
+
+const trigRules: RewriteRule[] = [
+  rewrite("sin-zero", "(fn:sin 0)", "0"),
+  rewrite("cos-zero", "(fn:cos 0)", "1"),
+  rewrite("sqrt-square", "(fn:sqrt (pow ?x 2))", "(fn:abs ?x)"),
+];
+
+const subToAddRules: RewriteRule[] = [rewrite("sub-to-add-neg", "(sub ?a ?b)", "(add ?a (neg ?b))")];
+
+// ── Hand-Coded Rules (require runtime computation or deep e-class lookups) ──
+
 const constantFoldingRules: RewriteRule[] = [
   {
     name: "const-fold-binary",
@@ -756,7 +1349,6 @@ const constantFoldingRules: RewriteRule[] = [
       const left = egraph.getLiteral(ch[0]);
       const right = egraph.getLiteral(ch[1]);
       if (left === null || right === null) return [];
-
       let result: number | null = null;
       switch (node.op) {
         case "add":
@@ -798,485 +1390,13 @@ const constantFoldingRules: RewriteRule[] = [
   },
 ];
 
-/**
- * Commutativity rules: a + b ↔ b + a, a * b ↔ b * a
- */
-const commutativityRules: RewriteRule[] = [
-  {
-    name: "add-comm",
-    apply(egraph, classId, node) {
-      if (node.op !== "add") return [];
-      const ch = binChildren(node);
-      if (!ch) return [];
-      const swapped = egraph.addNode({ op: "add", children: [ch[1], ch[0]] });
-      return [{ id: classId, newId: swapped }];
-    },
-  },
-  {
-    name: "mul-comm",
-    apply(egraph, classId, node) {
-      if (node.op !== "mul") return [];
-      const ch = binChildren(node);
-      if (!ch) return [];
-      const swapped = egraph.addNode({ op: "mul", children: [ch[1], ch[0]] });
-      return [{ id: classId, newId: swapped }];
-    },
-  },
-];
-
-/**
- * Exponential and logarithmic identity rules.
- */
-const expLogRules: RewriteRule[] = [
-  {
-    name: "exp-log",
-    apply(egraph, classId, node) {
-      // exp(log(x)) → x
-      if (node.op !== "fn:exp") return [];
-      const c = unaryChild(node);
-      if (c === null) return [];
-      const inner = egraph.findOp(c, "fn:log");
-      if (inner) {
-        const innerC = unaryChild(inner);
-        if (innerC !== null) {
-          return [{ id: classId, newId: egraph.find(innerC) }];
-        }
-      }
-      return [];
-    },
-  },
-  {
-    name: "log-exp",
-    apply(egraph, classId, node) {
-      // log(exp(x)) → x
-      if (node.op !== "fn:log") return [];
-      const c = unaryChild(node);
-      if (c === null) return [];
-      const inner = egraph.findOp(c, "fn:exp");
-      if (inner) {
-        const innerC = unaryChild(inner);
-        if (innerC !== null) {
-          return [{ id: classId, newId: egraph.find(innerC) }];
-        }
-      }
-      return [];
-    },
-  },
-  {
-    name: "exp-zero",
-    apply(egraph, classId, node) {
-      // exp(0) → 1
-      if (node.op !== "fn:exp") return [];
-      const c = unaryChild(node);
-      if (c === null) return [];
-      if (egraph.getLiteral(c) === 0) {
-        const oneId = egraph.addNode({ op: "lit:1", children: [] });
-        return [{ id: classId, newId: oneId }];
-      }
-      return [];
-    },
-  },
-  {
-    name: "log-one",
-    apply(egraph, classId, node) {
-      // log(1) → 0
-      if (node.op !== "fn:log") return [];
-      const c = unaryChild(node);
-      if (c === null) return [];
-      if (egraph.getLiteral(c) === 1) {
-        const zeroId = egraph.addNode({ op: "lit:0", children: [] });
-        return [{ id: classId, newId: zeroId }];
-      }
-      return [];
-    },
-  },
-];
-
-/**
- * Trigonometric identity rules.
- */
-const trigRules: RewriteRule[] = [
-  {
-    name: "sin-zero",
-    apply(egraph, classId, node) {
-      // sin(0) → 0
-      if (node.op !== "fn:sin") return [];
-      const c = unaryChild(node);
-      if (c === null) return [];
-      if (egraph.getLiteral(c) === 0) {
-        const zeroId = egraph.addNode({ op: "lit:0", children: [] });
-        return [{ id: classId, newId: zeroId }];
-      }
-      return [];
-    },
-  },
-  {
-    name: "cos-zero",
-    apply(egraph, classId, node) {
-      // cos(0) → 1
-      if (node.op !== "fn:cos") return [];
-      const c = unaryChild(node);
-      if (c === null) return [];
-      if (egraph.getLiteral(c) === 0) {
-        const oneId = egraph.addNode({ op: "lit:1", children: [] });
-        return [{ id: classId, newId: oneId }];
-      }
-      return [];
-    },
-  },
-  {
-    name: "sqrt-square",
-    apply(egraph, classId, node) {
-      // sqrt(x^2) → abs(x)
-      if (node.op !== "fn:sqrt") return [];
-      const c = unaryChild(node);
-      if (c === null) return [];
-      const inner = egraph.findOp(c, "pow");
-      if (inner) {
-        const ch = binChildren(inner);
-        if (ch && egraph.getLiteral(ch[1]) === 2) {
-          const absId = egraph.addNode({ op: "fn:abs", children: [ch[0]] });
-          return [{ id: classId, newId: absId }];
-        }
-      }
-      return [];
-    },
-  },
-];
-
-/**
- * Subtraction-to-addition rewrite: a - b ↔ a + (-b)
- */
-const subToAddRules: RewriteRule[] = [
-  {
-    name: "sub-to-add-neg",
-    apply(egraph, classId, node) {
-      // a - b → a + (-b)
-      if (node.op !== "sub") return [];
-      const ch = binChildren(node);
-      if (!ch) return [];
-      const negB = egraph.addNode({ op: "neg", children: [ch[1]] });
-      const addNode = egraph.addNode({ op: "add", children: [ch[0], negB] });
-      return [{ id: classId, newId: addNode }];
-    },
-  },
-];
-
-/**
- * Associativity rules: (a+b)+c ↔ a+(b+c), (a*b)*c ↔ a*(b*c)
- */
-const associativityRules: RewriteRule[] = [
-  {
-    name: "add-assoc-left",
-    apply(egraph, classId, node) {
-      // (a + b) + c → a + (b + c)
-      if (node.op !== "add") return [];
-      const ch = binChildren(node);
-      if (!ch) return [];
-      const inner = egraph.findOp(ch[0], "add");
-      if (!inner) return [];
-      const innerCh = binChildren(inner);
-      if (!innerCh) return [];
-      const bc = egraph.addNode({ op: "add", children: [innerCh[1], ch[1]] });
-      const result = egraph.addNode({ op: "add", children: [innerCh[0], bc] });
-      return [{ id: classId, newId: result }];
-    },
-  },
-  {
-    name: "add-assoc-right",
-    apply(egraph, classId, node) {
-      // a + (b + c) → (a + b) + c
-      if (node.op !== "add") return [];
-      const ch = binChildren(node);
-      if (!ch) return [];
-      const inner = egraph.findOp(ch[1], "add");
-      if (!inner) return [];
-      const innerCh = binChildren(inner);
-      if (!innerCh) return [];
-      const ab = egraph.addNode({ op: "add", children: [ch[0], innerCh[0]] });
-      const result = egraph.addNode({ op: "add", children: [ab, innerCh[1]] });
-      return [{ id: classId, newId: result }];
-    },
-  },
-  {
-    name: "mul-assoc-left",
-    apply(egraph, classId, node) {
-      // (a * b) * c → a * (b * c)
-      if (node.op !== "mul") return [];
-      const ch = binChildren(node);
-      if (!ch) return [];
-      const inner = egraph.findOp(ch[0], "mul");
-      if (!inner) return [];
-      const innerCh = binChildren(inner);
-      if (!innerCh) return [];
-      const bc = egraph.addNode({ op: "mul", children: [innerCh[1], ch[1]] });
-      const result = egraph.addNode({ op: "mul", children: [innerCh[0], bc] });
-      return [{ id: classId, newId: result }];
-    },
-  },
-  {
-    name: "mul-assoc-right",
-    apply(egraph, classId, node) {
-      // a * (b * c) → (a * b) * c
-      if (node.op !== "mul") return [];
-      const ch = binChildren(node);
-      if (!ch) return [];
-      const inner = egraph.findOp(ch[1], "mul");
-      if (!inner) return [];
-      const innerCh = binChildren(inner);
-      if (!innerCh) return [];
-      const ab = egraph.addNode({ op: "mul", children: [ch[0], innerCh[0]] });
-      const result = egraph.addNode({ op: "mul", children: [ab, innerCh[1]] });
-      return [{ id: classId, newId: result }];
-    },
-  },
-];
-
-/**
- * Distributivity rules: a*(b+c) ↔ a*b + a*c
- */
-const distributivityRules: RewriteRule[] = [
-  {
-    name: "distribute-mul-over-add",
-    apply(egraph, classId, node) {
-      // a * (b + c) → a*b + a*c
-      if (node.op !== "mul") return [];
-      const ch = binChildren(node);
-      if (!ch) return [];
-      // Check right child for add
-      const addNode = egraph.findOp(ch[1], "add");
-      if (addNode) {
-        const addCh = binChildren(addNode);
-        if (addCh) {
-          const ab = egraph.addNode({ op: "mul", children: [ch[0], addCh[0]] });
-          const ac = egraph.addNode({ op: "mul", children: [ch[0], addCh[1]] });
-          const result = egraph.addNode({ op: "add", children: [ab, ac] });
-          return [{ id: classId, newId: result }];
-        }
-      }
-      return [];
-    },
-  },
-  {
-    name: "distribute-mul-over-add-left",
-    apply(egraph, classId, node) {
-      // (b + c) * a → b*a + c*a
-      if (node.op !== "mul") return [];
-      const ch = binChildren(node);
-      if (!ch) return [];
-      const addNode = egraph.findOp(ch[0], "add");
-      if (addNode) {
-        const addCh = binChildren(addNode);
-        if (addCh) {
-          const ba = egraph.addNode({ op: "mul", children: [addCh[0], ch[1]] });
-          const ca = egraph.addNode({ op: "mul", children: [addCh[1], ch[1]] });
-          const result = egraph.addNode({ op: "add", children: [ba, ca] });
-          return [{ id: classId, newId: result }];
-        }
-      }
-      return [];
-    },
-  },
-  {
-    name: "factor-add-common-left",
-    apply(egraph, classId, node) {
-      // a*b + a*c → a*(b+c)
-      if (node.op !== "add") return [];
-      const ch = binChildren(node);
-      if (!ch) return [];
-      const leftMul = egraph.findOp(ch[0], "mul");
-      const rightMul = egraph.findOp(ch[1], "mul");
-      if (!leftMul || !rightMul) return [];
-      const lch = binChildren(leftMul);
-      const rch = binChildren(rightMul);
-      if (!lch || !rch) return [];
-      // Check if left factors match: a*b + a*c
-      if (egraph.find(lch[0]) === egraph.find(rch[0])) {
-        const sum = egraph.addNode({ op: "add", children: [lch[1], rch[1]] });
-        const result = egraph.addNode({ op: "mul", children: [lch[0], sum] });
-        return [{ id: classId, newId: result }];
-      }
-      return [];
-    },
-  },
-];
-
-/**
- * Power rules: x^a * x^b → x^(a+b), (x^a)^b → x^(a*b)
- */
-const powerRules: RewriteRule[] = [
-  {
-    name: "pow-mul-same-base",
-    apply(egraph, classId, node) {
-      // x^a * x^b → x^(a+b)
-      if (node.op !== "mul") return [];
-      const ch = binChildren(node);
-      if (!ch) return [];
-      const leftPow = egraph.findOp(ch[0], "pow");
-      const rightPow = egraph.findOp(ch[1], "pow");
-      if (!leftPow || !rightPow) return [];
-      const lch = binChildren(leftPow);
-      const rch = binChildren(rightPow);
-      if (!lch || !rch) return [];
-      // Same base?
-      if (egraph.find(lch[0]) === egraph.find(rch[0])) {
-        const sumExp = egraph.addNode({ op: "add", children: [lch[1], rch[1]] });
-        const result = egraph.addNode({ op: "pow", children: [lch[0], sumExp] });
-        return [{ id: classId, newId: result }];
-      }
-      return [];
-    },
-  },
-  {
-    name: "pow-pow",
-    apply(egraph, classId, node) {
-      // (x^a)^b → x^(a*b)
-      if (node.op !== "pow") return [];
-      const ch = binChildren(node);
-      if (!ch) return [];
-      const innerPow = egraph.findOp(ch[0], "pow");
-      if (!innerPow) return [];
-      const innerCh = binChildren(innerPow);
-      if (!innerCh) return [];
-      const prodExp = egraph.addNode({ op: "mul", children: [innerCh[1], ch[1]] });
-      const result = egraph.addNode({ op: "pow", children: [innerCh[0], prodExp] });
-      return [{ id: classId, newId: result }];
-    },
-  },
-  {
-    name: "mul-as-pow2",
-    apply(egraph, classId, node) {
-      // x * x → x^2
-      if (node.op !== "mul") return [];
-      const ch = binChildren(node);
-      if (!ch) return [];
-      if (egraph.find(ch[0]) === egraph.find(ch[1])) {
-        const two = egraph.addNode({ op: "lit:2", children: [] });
-        const result = egraph.addNode({ op: "pow", children: [ch[0], two] });
-        return [{ id: classId, newId: result }];
-      }
-      return [];
-    },
-  },
-];
-
-/**
- * Negation distribution: -(a+b) → -a + -b, -(a*b) → (-a)*b
- */
-const negationDistributionRules: RewriteRule[] = [
-  {
-    name: "neg-add",
-    apply(egraph, classId, node) {
-      // -(a + b) → (-a) + (-b)
-      if (node.op !== "neg") return [];
-      const c = unaryChild(node);
-      if (c === null) return [];
-      const addNode = egraph.findOp(c, "add");
-      if (!addNode) return [];
-      const ch = binChildren(addNode);
-      if (!ch) return [];
-      const negA = egraph.addNode({ op: "neg", children: [ch[0]] });
-      const negB = egraph.addNode({ op: "neg", children: [ch[1]] });
-      const result = egraph.addNode({ op: "add", children: [negA, negB] });
-      return [{ id: classId, newId: result }];
-    },
-  },
-  {
-    name: "neg-mul",
-    apply(egraph, classId, node) {
-      // -(a * b) → (-a) * b
-      if (node.op !== "neg") return [];
-      const c = unaryChild(node);
-      if (c === null) return [];
-      const mulNode = egraph.findOp(c, "mul");
-      if (!mulNode) return [];
-      const ch = binChildren(mulNode);
-      if (!ch) return [];
-      const negA = egraph.addNode({ op: "neg", children: [ch[0]] });
-      const result = egraph.addNode({ op: "mul", children: [negA, ch[1]] });
-      return [{ id: classId, newId: result }];
-    },
-  },
-  {
-    name: "neg-sub",
-    apply(egraph, classId, node) {
-      // -(a - b) → b - a
-      if (node.op !== "neg") return [];
-      const c = unaryChild(node);
-      if (c === null) return [];
-      const subNode = egraph.findOp(c, "sub");
-      if (!subNode) return [];
-      const ch = binChildren(subNode);
-      if (!ch) return [];
-      const result = egraph.addNode({ op: "sub", children: [ch[1], ch[0]] });
-      return [{ id: classId, newId: result }];
-    },
-  },
-];
-
-/**
- * Division simplification rules.
- */
-const divisionRules: RewriteRule[] = [
-  {
-    name: "div-zero-numerator",
-    apply(egraph, classId, node) {
-      // 0 / x → 0
-      if (node.op !== "div") return [];
-      const ch = binChildren(node);
-      if (!ch) return [];
-      if (egraph.getLiteral(ch[0]) === 0) {
-        const zeroId = egraph.addNode({ op: "lit:0", children: [] });
-        return [{ id: classId, newId: zeroId }];
-      }
-      return [];
-    },
-  },
-  {
-    name: "div-to-mul-inv",
-    apply(egraph, classId, node) {
-      // a / b → a * b^(-1)
-      if (node.op !== "div") return [];
-      const ch = binChildren(node);
-      if (!ch) return [];
-      const negOne = egraph.addNode({ op: "lit:-1", children: [] });
-      const inv = egraph.addNode({ op: "pow", children: [ch[1], negOne] });
-      const result = egraph.addNode({ op: "mul", children: [ch[0], inv] });
-      return [{ id: classId, newId: result }];
-    },
-  },
-  {
-    name: "div-div-to-mul",
-    apply(egraph, classId, node) {
-      // (a / b) / c → a / (b * c)
-      if (node.op !== "div") return [];
-      const ch = binChildren(node);
-      if (!ch) return [];
-      const innerDiv = egraph.findOp(ch[0], "div");
-      if (!innerDiv) return [];
-      const innerCh = binChildren(innerDiv);
-      if (!innerCh) return [];
-      const bc = egraph.addNode({ op: "mul", children: [innerCh[1], ch[1]] });
-      const result = egraph.addNode({ op: "div", children: [innerCh[0], bc] });
-      return [{ id: classId, newId: result }];
-    },
-  },
-];
-
-/**
- * Pythagorean identity: sin²(x) + cos²(x) → 1
- * Detects the pattern structurally through e-class membership.
- */
 const pythagoreanRules: RewriteRule[] = [
   {
     name: "sin2-cos2",
     apply(egraph, classId, node) {
-      // sin(x)^2 + cos(x)^2 → 1
       if (node.op !== "add") return [];
       const ch = binChildren(node);
       if (!ch) return [];
-
-      // Try both orderings: left=sin², right=cos² or left=cos², right=sin²
       const result = matchSinCosPair(egraph, ch[0], ch[1]) ?? matchSinCosPair(egraph, ch[1], ch[0]);
       if (result !== null) {
         const oneId = egraph.addNode({ op: "lit:1", children: [] });
@@ -1287,66 +1407,43 @@ const pythagoreanRules: RewriteRule[] = [
   },
 ];
 
-/**
- * Check if leftId is sin(x)^2 and rightId is cos(x)^2 for the same x.
- */
 function matchSinCosPair(egraph: EGraph, leftId: EClassId, rightId: EClassId): true | null {
-  // left must be pow with exponent 2
   const leftPow = egraph.findOp(leftId, "pow");
   if (!leftPow) return null;
   const leftCh = binChildren(leftPow);
   if (!leftCh || egraph.getLiteral(leftCh[1]) !== 2) return null;
-
-  // right must be pow with exponent 2
   const rightPow = egraph.findOp(rightId, "pow");
   if (!rightPow) return null;
   const rightCh = binChildren(rightPow);
   if (!rightCh || egraph.getLiteral(rightCh[1]) !== 2) return null;
-
-  // One base must be sin(x), the other cos(x), with the same x
   const leftSin = egraph.findOp(leftCh[0], "fn:sin");
   const rightCos = egraph.findOp(rightCh[0], "fn:cos");
   if (leftSin && rightCos) {
     const sinArg = unaryChild(leftSin);
     const cosArg = unaryChild(rightCos);
-    if (sinArg !== null && cosArg !== null && egraph.find(sinArg) === egraph.find(cosArg)) {
-      return true;
-    }
+    if (sinArg !== null && cosArg !== null && egraph.find(sinArg) === egraph.find(cosArg)) return true;
   }
-
-  // Also check the reverse: left=cos², right=sin²
   const leftCos = egraph.findOp(leftCh[0], "fn:cos");
   const rightSin = egraph.findOp(rightCh[0], "fn:sin");
   if (leftCos && rightSin) {
     const cosArg = unaryChild(leftCos);
     const sinArg = unaryChild(rightSin);
-    if (cosArg !== null && sinArg !== null && egraph.find(cosArg) === egraph.find(sinArg)) {
-      return true;
-    }
+    if (cosArg !== null && sinArg !== null && egraph.find(cosArg) === egraph.find(sinArg)) return true;
   }
-
   return null;
 }
 
-/**
- * Double angle formulas.
- */
 const doubleAngleRules: RewriteRule[] = [
   {
     name: "double-angle-sin",
     apply(egraph, classId, node) {
-      // 2 * sin(x) * cos(x) → sin(2*x)
-      // We look for mul(A, B) where one side is 2*sin(x) or sin(x)*2 and other is cos(x), or similar.
-      // Simplified: look for mul(mul(2, sin(x)), cos(x)) pattern via e-class search.
       if (node.op !== "mul") return [];
       const ch = binChildren(node);
       if (!ch) return [];
-
-      // Check pattern: left is mul with lit:2 and sin, right is cos
-      const result = matchDoubleAngleSin(egraph, ch[0], ch[1]);
-      if (result !== null) {
+      const argId = matchDoubleAngleSin(egraph, ch[0], ch[1]);
+      if (argId !== null) {
         const two = egraph.addNode({ op: "lit:2", children: [] });
-        const twoX = egraph.addNode({ op: "mul", children: [two, result] });
+        const twoX = egraph.addNode({ op: "mul", children: [two, argId] });
         const sin2x = egraph.addNode({ op: "fn:sin", children: [twoX] });
         return [{ id: classId, newId: sin2x }];
       }
@@ -1356,12 +1453,9 @@ const doubleAngleRules: RewriteRule[] = [
   {
     name: "cos-double-angle-diff",
     apply(egraph, classId, node) {
-      // cos²(x) - sin²(x) → cos(2x)
       if (node.op !== "sub") return [];
       const ch = binChildren(node);
       if (!ch) return [];
-
-      // left = cos(x)^2, right = sin(x)^2
       const leftPow = egraph.findOp(ch[0], "pow");
       const rightPow = egraph.findOp(ch[1], "pow");
       if (!leftPow || !rightPow) return [];
@@ -1369,7 +1463,6 @@ const doubleAngleRules: RewriteRule[] = [
       const rch = binChildren(rightPow);
       if (!lch || !rch) return [];
       if (egraph.getLiteral(lch[1]) !== 2 || egraph.getLiteral(rch[1]) !== 2) return [];
-
       const leftCos = egraph.findOp(lch[0], "fn:cos");
       const rightSin = egraph.findOp(rch[0], "fn:sin");
       if (!leftCos || !rightSin) return [];
@@ -1377,7 +1470,6 @@ const doubleAngleRules: RewriteRule[] = [
       const sinArg = unaryChild(rightSin);
       if (cosArg === null || sinArg === null) return [];
       if (egraph.find(cosArg) !== egraph.find(sinArg)) return [];
-
       const two = egraph.addNode({ op: "lit:2", children: [] });
       const twoX = egraph.addNode({ op: "mul", children: [two, cosArg] });
       const cos2x = egraph.addNode({ op: "fn:cos", children: [twoX] });
@@ -1386,47 +1478,24 @@ const doubleAngleRules: RewriteRule[] = [
   },
 ];
 
-/**
- * Match pattern: one e-class is 2*sin(x) (or sin(x)*2) and the other is cos(x),
- * returning the argument x if matched.
- */
 function matchDoubleAngleSin(egraph: EGraph, aId: EClassId, bId: EClassId): EClassId | null {
-  // Check if aId contains mul(2, sin(x)) and bId contains cos(x)
   const mulNode = egraph.findOp(aId, "mul");
-  if (mulNode) {
-    const mch = binChildren(mulNode);
-    if (mch) {
-      // Check for 2 * sin(x)
-      const lit = egraph.getLiteral(mch[0]);
-      if (lit === 2) {
-        const sinNode = egraph.findOp(mch[1], "fn:sin");
-        if (sinNode) {
-          const sinArg = unaryChild(sinNode);
-          if (sinArg !== null) {
-            const cosNode = egraph.findOp(bId, "fn:cos");
-            if (cosNode) {
-              const cosArg = unaryChild(cosNode);
-              if (cosArg !== null && egraph.find(sinArg) === egraph.find(cosArg)) {
-                return sinArg;
-              }
-            }
-          }
-        }
-      }
-      // Check for sin(x) * 2
-      const litR = egraph.getLiteral(mch[1]);
-      if (litR === 2) {
-        const sinNode = egraph.findOp(mch[0], "fn:sin");
-        if (sinNode) {
-          const sinArg = unaryChild(sinNode);
-          if (sinArg !== null) {
-            const cosNode = egraph.findOp(bId, "fn:cos");
-            if (cosNode) {
-              const cosArg = unaryChild(cosNode);
-              if (cosArg !== null && egraph.find(sinArg) === egraph.find(cosArg)) {
-                return sinArg;
-              }
-            }
+  if (!mulNode) return null;
+  const mch = binChildren(mulNode);
+  if (!mch) return null;
+  for (const [litIdx, sinIdx] of [
+    [0, 1],
+    [1, 0],
+  ] as const) {
+    if (egraph.getLiteral(mch[litIdx]) === 2) {
+      const sinNode = egraph.findOp(mch[sinIdx], "fn:sin");
+      if (sinNode) {
+        const sinArg = unaryChild(sinNode);
+        if (sinArg !== null) {
+          const cosNode = egraph.findOp(bId, "fn:cos");
+          if (cosNode) {
+            const cosArg = unaryChild(cosNode);
+            if (cosArg !== null && egraph.find(sinArg) === egraph.find(cosArg)) return sinArg;
           }
         }
       }
@@ -1454,7 +1523,6 @@ export const DEFAULT_RULES: RewriteRule[] = [
   ...doubleAngleRules,
   ...subToAddRules,
 ];
-
 // ─────────────────────────────────────────────────────────────────────
 // High-level API
 // ─────────────────────────────────────────────────────────────────────
