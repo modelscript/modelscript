@@ -353,6 +353,13 @@ function toggleAddPicker(sessionId: string): void {
           <div class="desc">Browse for a .fmu or modelDescription.xml file</div>
         </div>
       </div>
+      <div class="add-picker-option" data-picker-action="ssp" data-session="${sessionId}">
+        <span class="icon">🧩</span>
+        <div>
+          <span class="label">From SSP File</span>
+          <div class="desc">Browse for a .ssp archive file</div>
+        </div>
+      </div>
       <div class="add-picker-divider"></div>
       <div class="add-picker-option" data-picker-action="wrapper" data-session="${sessionId}">
         <span class="icon">🔧</span>
@@ -381,6 +388,9 @@ function toggleAddPicker(sessionId: string): void {
         case "fmu":
           vscode.postMessage({ type: "publishFmu", sessionId: session });
           break;
+        case "ssp":
+          vscode.postMessage({ type: "publishSsp", sessionId: session });
+          break;
         case "wrapper":
           vscode.postMessage({ type: "createCosimWrapper", sessionId: session });
           break;
@@ -407,7 +417,7 @@ function renderParticipants(sessionId: string, participants: ParticipantInfo[]):
     .map(
       (p) => `
     <div class="session-meta" style="margin-top:2px">
-      ${p.type === "fmu" ? "📦" : "📄"} <strong>${p.modelName}</strong> <span style="opacity:0.6">(${p.type}${p.variables ? `, ${p.variables} vars` : ""})</span>
+      ${p.type === "fmu" ? "📦" : p.type === "ssp" ? "🧩" : "📄"} <strong>${p.modelName}</strong> <span style="opacity:0.6">(${p.type}${p.variables ? `, ${p.variables} vars` : ""})</span>
     </div>`,
     )
     .join("");

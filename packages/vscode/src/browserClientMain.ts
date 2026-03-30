@@ -15,9 +15,11 @@ import { ModelicaNotebookSerializer } from "./notebookSerializer";
 import { ProjectTreeProvider } from "./projectTreeProvider";
 import { SimulationPanel } from "./simulationPanel";
 import { SINE_WAVE_FMU_BASE64 } from "./sineWaveFmu";
+import { SSP_VIEW_SCHEME, SspContentProvider, SspEditorProvider } from "./sspDocumentProvider";
 
 let client: LanguageClient | undefined;
 let fmuContentProvider: FmuContentProvider | undefined;
+let sspContentProvider: SspContentProvider | undefined;
 
 /**
  * Simple in-memory filesystem provider for the `tmp` scheme.
@@ -141,6 +143,17 @@ export async function activate(context: vscode.ExtensionContext) {
   const fmuEditor = new FmuEditorProvider(fmuContentProvider);
   context.subscriptions.push(
     vscode.window.registerCustomEditorProvider(FmuEditorProvider.viewType, fmuEditor, {
+      supportsMultipleEditorsPerDocument: false,
+      webviewOptions: { retainContextWhenHidden: false },
+    }),
+  );
+
+  // Register virtual document provider and custom editor for SSP files
+  sspContentProvider = new SspContentProvider();
+  context.subscriptions.push(workspace.registerTextDocumentContentProvider(SSP_VIEW_SCHEME, sspContentProvider));
+  const sspEditor = new SspEditorProvider(sspContentProvider);
+  context.subscriptions.push(
+    vscode.window.registerCustomEditorProvider(SspEditorProvider.viewType, sspEditor, {
       supportsMultipleEditorsPerDocument: false,
       webviewOptions: { retainContextWhenHidden: false },
     }),

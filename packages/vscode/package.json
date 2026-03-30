@@ -160,6 +160,16 @@
           }
         ],
         "priority": "default"
+      },
+      {
+        "viewType": "modelscript.sspViewer",
+        "displayName": "SSP Viewer",
+        "selector": [
+          {
+            "filenamePattern": "*.ssp"
+          }
+        ],
+        "priority": "default"
       }
     ],
     "grammars": [
