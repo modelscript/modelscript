@@ -17,9 +17,29 @@ import { MODELSCRIPT_CAS_PACKAGE } from "./modelica/symbolic/cas-bindings.js";
 import { ModelicaStoredDefinitionSyntaxNode } from "./modelica/syntax.js";
 import { Scope } from "./scope.js";
 
+/** Homotopy continuation strategy for initialization. */
+export type HomotopyMode = "none" | "residual" | "symbolic" | "fixed-point" | "parameter" | "auto";
+
+/** Initialization preconditioner strategy. */
+export type PreconditionerMode = "none" | "branch-and-bound";
+
+/** Solver configuration for initialization and nonlinear solving. */
+export interface InitSolverConfig {
+  /** Preconditioner for initial guess (default: "none"). */
+  preconditioner?: PreconditionerMode;
+  /** Automatic homotopy continuation mode (default: "auto"). */
+  homotopyMode?: HomotopyMode;
+  /** Whether to use McCormick relaxations for tighter sBB bounds (default: false). */
+  mccormickRelaxation?: boolean;
+  /** Maximum number of λ continuation steps (default: 50). */
+  maxHomotopySteps?: number;
+}
+
 export interface ModelicaCompilerOptions {
   arrayMode?: "scalarize" | "preserve";
   fmiVersion?: "2.0" | "3.0";
+  /** Initialization solver configuration. */
+  solver?: InitSolverConfig;
 }
 
 /**

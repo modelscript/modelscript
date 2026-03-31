@@ -7,23 +7,37 @@
  * must hold at t=0. This module formulates initialization as a root-finding
  * problem: R(z) = 0 where R_i = LHS_i - RHS_i, solved via Newton-Raphson
  * with exact Jacobian from StaticTapeBuilder reverse-mode AD.
+ *
+ * The advanced pipeline supports:
+ *   1. SystemInitializer BLT decomposition (structured init blocks)
+ *   2. sBB preconditioner (global optimization for initial guess)
+ *   3. MINLP heuristics (freeze-and-solve for discrete variables)
+ *   4. Multi-strategy homotopy fallback (residual/symbolic/fixed-point/parameter)
  */
 
+import type { InitSolverConfig } from "../context.js";
 import { StaticTapeBuilder, type TapeOp } from "./ad-codegen.js";
 import { evaluateTapeForward, evaluateTapeReverse } from "./ad-jacobian.js";
+import { expandArrayBounds, solveSBB, type DomainBox } from "./branch-and-bound.js";
 import {
   ModelicaArray,
   ModelicaArrayEquation,
   ModelicaBooleanLiteral,
+  ModelicaBooleanVariable,
+  ModelicaFunctionCallExpression,
+  ModelicaIntegerVariable,
+  ModelicaNameExpression,
   type ModelicaDAE,
   type ModelicaEquation,
   type ModelicaExpression,
-  ModelicaFunctionCallExpression,
-  ModelicaNameExpression,
 } from "./dae.js";
+import { solveWithAutoHomotopy } from "./homotopy-strategies.js";
+import { Interval } from "./interval.js";
+import { freezeAndSolve } from "./minlp-heuristics.js";
 import { type SolverOptions } from "./solver-options.js";
 import { getCachedSundialsWasm } from "./sundials-wasm.js";
 import { ModelicaVariability } from "./syntax.js";
+import { buildInitBLT, type ImplicitInitBlock } from "./system-initializer.js";
 
 /** Result of initial equation solving. */
 export interface InitSolverResult {
@@ -705,4 +719,297 @@ function simpleEval(expr: ModelicaExpression, env: Map<string, number>): number 
     }
   }
   return null;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// Advanced Initialization Pipeline
+// ══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Solve initial equations using the full advanced pipeline:
+ *   1. SystemInitializer BLT → structured init blocks
+ *   2. For each block:
+ *      a. Explicit → direct assignment
+ *      b. Implicit + discrete → MINLP freeze-and-solve
+ *      c. Implicit + preconditioner → sBB for initial guess
+ *      d. Newton-Raphson with AD Jacobian
+ *      e. Fallback → multi-strategy homotopy
+ *
+ * @param dae           The flattened DAE
+ * @param startValues   Initial guesses for variable values
+ * @param parameters    Parameter values (constants during initialization)
+ * @param startTime     Simulation start time
+ * @param solverOptions Solver options (integrator, nonlinear, etc.)
+ * @param initConfig    Initialization solver configuration
+ * @returns Solver result with computed initial values
+ */
+export function solveInitialEquationsAdvanced(
+  dae: ModelicaDAE,
+  startValues: Map<string, number>,
+  parameters: Map<string, number>,
+  startTime: number,
+  solverOptions?: SolverOptions,
+  initConfig?: InitSolverConfig,
+): InitSolverResult {
+  const result: InitSolverResult = {
+    values: new Map(startValues),
+    iterations: 0,
+    residualNorm: 0,
+    converged: true,
+  };
+
+  if (dae.initialEquations.length === 0 && dae.equations.length === 0) return result;
+
+  // Step 1: Build initialization BLT
+  const { blocks } = buildInitBLT(dae);
+  if (blocks.length === 0) return result;
+
+  // Build environment
+  const env = new Map<string, number>(parameters);
+  env.set("time", startTime);
+  for (const [name, val] of startValues) {
+    if (!env.has(name)) env.set(name, val);
+  }
+
+  // Identify discrete variables for MINLP
+  const discreteSet = new Set<string>();
+  for (const v of dae.variables) {
+    if (v instanceof ModelicaIntegerVariable || v instanceof ModelicaBooleanVariable) {
+      discreteSet.add(v.name);
+    }
+  }
+
+  const useSBB = initConfig?.preconditioner === "branch-and-bound";
+  const homotopyMode = initConfig?.homotopyMode ?? "auto";
+  const maxHomotopySteps = initConfig?.maxHomotopySteps ?? 50;
+  const tol = solverOptions?.atol ?? 1e-10;
+  const maxNewtonIter = solverOptions?.maxNonlinearIterations ?? 50;
+
+  // Step 2: Process each block sequentially
+  for (const block of blocks) {
+    if (block.type === "explicit") {
+      // Direct assignment
+      const val = simpleEval(block.expr, env);
+      if (val !== null && isFinite(val)) {
+        env.set(block.target, val);
+        result.values.set(block.target, val);
+      }
+      continue;
+    }
+
+    // Implicit block
+    const implicitBlock = block as ImplicitInitBlock;
+
+    // Step 2a: MINLP heuristic for blocks with discrete variables
+    if (implicitBlock.hasDiscreteVars) {
+      const minlpResult = freezeAndSolve(implicitBlock, env, discreteSet, 10, maxNewtonIter, tol);
+      if (minlpResult.converged) {
+        result.iterations += minlpResult.totalNewtonIterations;
+        result.residualNorm = minlpResult.residualNorm;
+        for (const [name, val] of minlpResult.values) {
+          result.values.set(name, val);
+          env.set(name, val);
+        }
+        continue;
+      }
+    }
+
+    // Build AD tapes for this block's residuals
+    const tapeData: { ops: TapeOp[]; outputIndex: number }[] = [];
+    for (const eq of implicitBlock.equations) {
+      const tape = new StaticTapeBuilder();
+      const lhsIdx = tape.walk(eq.lhs);
+      const rhsIdx = tape.walk(eq.rhs);
+      const residualIdx = tape.pushOp({ type: "sub", a: lhsIdx, b: rhsIdx });
+      tapeData.push({ ops: [...tape.ops], outputIndex: residualIdx });
+    }
+
+    const unknownList = implicitBlock.unknowns;
+    const nUnknowns = unknownList.length;
+    const nSolve = Math.min(tapeData.length, nUnknowns);
+    const z = unknownList.map((name) => env.get(name) ?? 0);
+
+    // Step 2b: sBB preconditioner for better initial guess
+    if (useSBB && nSolve > 0) {
+      const variables = unknownList.slice(0, nSolve);
+      const initialBox: DomainBox = new Map();
+      for (const vName of variables) {
+        // Use variable bounds from attributes, or default range
+        const v = dae.variables.get(vName);
+        const lo = v?.attributes.get("min");
+        const hi = v?.attributes.get("max");
+        const loVal = lo && typeof lo === "object" && "value" in lo ? (lo as { value: number }).value : -1e6;
+        const hiVal = hi && typeof hi === "object" && "value" in hi ? (hi as { value: number }).value : 1e6;
+        initialBox.set(vName, new Interval(loVal, hiVal));
+      }
+
+      // Expand array bounds
+      const expandedBox = expandArrayBounds(initialBox, dae);
+
+      // Build a combined objective tape: sum of squared residuals
+      // We copy each individual residual tape's ops into a single combined tape,
+      // adjusting indices as we go.
+      const combinedOps: TapeOp[] = [];
+      const residualIndices: number[] = [];
+      for (const td of tapeData) {
+        const offset = combinedOps.length;
+        // Copy all ops from this tape, adjusting any index references by offset
+        for (const op of td.ops) {
+          combinedOps.push(shiftTapeOp(op, offset));
+        }
+        residualIndices.push(td.outputIndex + offset);
+      }
+      // Sum squared residuals: sum(R_i^2)
+      let sumIdx = combinedOps.length;
+      combinedOps.push({ type: "const", val: 0 });
+      for (const residIdx of residualIndices) {
+        const sqIdx = combinedOps.length;
+        combinedOps.push({ type: "mul", a: residIdx, b: residIdx });
+        const newSum = combinedOps.length;
+        combinedOps.push({ type: "add", a: sumIdx, b: sqIdx });
+        sumIdx = newSum;
+      }
+
+      try {
+        const sbbResult = solveSBB(
+          { ops: combinedOps, outputIndex: sumIdx },
+          [], // No constraints for preconditioner
+          variables,
+          expandedBox,
+          { maxNodes: 100, absTol: 1e-4 },
+        );
+        // Use sBB solution as initial guess
+        for (let i = 0; i < nUnknowns; i++) {
+          const name = unknownList[i];
+          if (name) {
+            const sbbVal = sbbResult.solution.get(name);
+            if (sbbVal !== undefined) {
+              z[i] = sbbVal;
+              env.set(name, sbbVal);
+            }
+          }
+        }
+      } catch {
+        // sBB failed — continue with original initial guess
+      }
+    }
+
+    // Step 2c: Newton-Raphson with AD Jacobian
+    let newtonConverged = false;
+    for (let iter = 0; iter < maxNewtonIter; iter++) {
+      result.iterations++;
+
+      for (let i = 0; i < nUnknowns; i++) {
+        const name = unknownList[i];
+        if (name) env.set(name, z[i] ?? 0);
+      }
+
+      const R = new Array(nSolve).fill(0) as number[];
+      const J: number[][] = [];
+      for (let i = 0; i < nSolve; i++) J[i] = new Array(nSolve).fill(0) as number[];
+
+      for (let row = 0; row < nSolve; row++) {
+        const td = tapeData[row];
+        if (!td) continue;
+        const t = evaluateTapeForward(td.ops, env);
+        R[row] = t[td.outputIndex] ?? 0;
+        const grads = evaluateTapeReverse(td.ops, t, td.outputIndex);
+        const jRow = J[row];
+        if (!jRow) continue;
+        for (let col = 0; col < nSolve; col++) {
+          const varName = unknownList[col];
+          if (varName) jRow[col] = grads.get(varName) ?? 0;
+        }
+      }
+
+      let norm = 0;
+      for (let i = 0; i < nSolve; i++) norm += Math.abs(R[i] ?? 0);
+      result.residualNorm = norm;
+
+      if (norm < tol) {
+        newtonConverged = true;
+        break;
+      }
+
+      const negR = R.map((r) => -(r ?? 0));
+      const dz = solveLU(J, negR, nSolve);
+      for (let i = 0; i < nSolve; i++) z[i] = (z[i] ?? 0) + (dz[i] ?? 0);
+    }
+
+    // Store Newton results
+    for (let i = 0; i < nUnknowns; i++) {
+      const name = unknownList[i];
+      if (name) {
+        result.values.set(name, z[i] ?? 0);
+        env.set(name, z[i] ?? 0);
+      }
+    }
+
+    // Step 2d: Homotopy fallback if Newton failed
+    if (!newtonConverged && homotopyMode !== "none") {
+      const hResult = solveWithAutoHomotopy(
+        homotopyMode,
+        tapeData,
+        unknownList,
+        nSolve,
+        env,
+        startValues,
+        maxHomotopySteps,
+      );
+      if (hResult.converged) {
+        result.iterations += hResult.iterations;
+        result.residualNorm = hResult.residualNorm;
+        for (const [name, val] of hResult.values) {
+          result.values.set(name, val);
+          env.set(name, val);
+        }
+      } else {
+        result.converged = false;
+      }
+    } else if (!newtonConverged) {
+      result.converged = false;
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Shift all index references in a TapeOp by the given offset.
+ * Used when combining multiple tapes into a single combined tape.
+ */
+function shiftTapeOp(op: TapeOp, offset: number): TapeOp {
+  if (offset === 0) return { ...op };
+  switch (op.type) {
+    case "const":
+    case "var":
+      return { ...op };
+    case "add":
+    case "sub":
+    case "mul":
+    case "div":
+    case "pow":
+      return { ...op, a: op.a + offset, b: op.b + offset };
+    case "neg":
+    case "sin":
+    case "cos":
+    case "tan":
+    case "exp":
+    case "log":
+    case "sqrt":
+      return { ...op, a: op.a + offset };
+    case "vec_var":
+    case "vec_const":
+      return { ...op };
+    case "vec_add":
+    case "vec_sub":
+    case "vec_mul":
+      return { ...op, a: op.a + offset, b: op.b + offset };
+    case "vec_neg":
+      return { ...op, a: op.a + offset };
+    case "vec_subscript":
+      return { ...op, a: op.a + offset };
+    case "nop":
+      return op;
+  }
 }
