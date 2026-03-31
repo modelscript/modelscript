@@ -408,7 +408,7 @@ export function buildSbbFromDAE(
 export function expandArrayBounds(box: DomainBox, dae: ModelicaDAE): DomainBox {
   const expanded: DomainBox = new Map();
   for (const [name, interval] of box) {
-    const v = dae.variables.find((dv) => dv.name === name);
+    const v = dae.variables.get(name);
     if (v?.arrayDimensions && v.arrayDimensions.length > 0) {
       const size = v.arrayDimensions.reduce((a: number, b: number) => a * b, 1);
       for (let i = 0; i < size; i++) {

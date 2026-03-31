@@ -250,7 +250,7 @@ export function buildAdJacobian(dae: ModelicaDAE): ((t: number, y: number[]) => 
       const baseName = ld || rd;
       if (!baseName) continue;
       const rhs = ld ? se.expression2 : se.expression1;
-      const v = dae.variables.find((dv) => dv.name === baseName);
+      const v = dae.variables.get(baseName);
       const dims = v?.arrayDimensions ?? [];
       const size = dims.length > 0 ? dims.reduce((a: number, b: number) => a * b, 1) : 1;
       for (let i = 0; i < size; i++) {

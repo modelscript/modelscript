@@ -21,6 +21,210 @@ export interface SourceLocation {
   endCol: number;
 }
 
+/**
+ * O(1) variable lookup table that wraps a flat ModelicaVariable[] array with
+ * Map-based indices.  Three access patterns are supported:
+ *
+ * 1. **Exact name**: `get(name)`, `has(name)`
+ * 2. **Array root prefix**: `getArrayElements("x")` returns all `x[1]`, `x[2,3]`, …
+ * 3. **Encoded suffix**: `getEncoded("y")` returns the variable whose name is `\0…\0y`
+ *
+ * The backing array preserves insertion order for serialization and test output.
+ */
+export class SymbolTable {
+  /** Ordered backing array — preserved for serialization / iteration. */
+  private _items: ModelicaVariable[] = [];
+
+  /** Exact name → variable. */
+  private _byName = new Map<string, ModelicaVariable>();
+
+  /** Array root name → indexed element variables (e.g. "x" → [x[1], x[2], …]). */
+  private _byArrayRoot = new Map<string, ModelicaVariable[]>();
+
+  /** Decoded suffix → encoded variable (for `\0prefix\0suffix` naming). */
+  private _byEncodedSuffix = new Map<string, ModelicaVariable>();
+
+  // ── Exact-match lookups ──
+
+  get(name: string): ModelicaVariable | undefined {
+    return this._byName.get(name);
+  }
+
+  has(name: string): boolean {
+    return this._byName.has(name);
+  }
+
+  // ── Array-prefix lookups ──
+
+  getArrayElements(baseName: string): ModelicaVariable[] {
+    return this._byArrayRoot.get(baseName) ?? [];
+  }
+
+  hasArrayElements(baseName: string): boolean {
+    return this._byArrayRoot.has(baseName);
+  }
+
+  // ── Encoded (\0) variable lookups ──
+
+  getEncoded(decodedName: string): ModelicaVariable | undefined {
+    return this._byEncodedSuffix.get(decodedName);
+  }
+
+  // ── Mutation ──
+
+  push(variable: ModelicaVariable): void {
+    this._items.push(variable);
+    this._indexVariable(variable);
+  }
+
+  remove(variable: ModelicaVariable): void {
+    const idx = this._items.indexOf(variable);
+    if (idx >= 0) {
+      this._items.splice(idx, 1);
+      this._deindexVariable(variable);
+    }
+  }
+
+  bulkRemove(varSet: Set<ModelicaVariable>): void {
+    this._items = this._items.filter((v) => !varSet.has(v));
+    // Rebuild indices fully — cheaper than N individual deindex calls
+    this._rebuildIndices();
+  }
+
+  // ── Array-compatible interface ──
+
+  get length(): number {
+    return this._items.length;
+  }
+
+  /** Direct indexed access. */
+  at(index: number): ModelicaVariable | undefined {
+    return this._items[index];
+  }
+
+  /** Return the backing array (read-only view for iteration/serialization). */
+  toArray(): readonly ModelicaVariable[] {
+    return this._items;
+  }
+
+  /** Replace the entire contents (used when bulk-assigning `dae.variables = filtered`). */
+  replaceAll(items: ModelicaVariable[]): void {
+    this._items = items;
+    this._rebuildIndices();
+  }
+
+  // Delegate array-like methods to the backing array
+  filter(predicate: (v: ModelicaVariable, i: number, arr: ModelicaVariable[]) => boolean): ModelicaVariable[] {
+    return this._items.filter(predicate);
+  }
+
+  some(predicate: (v: ModelicaVariable, i: number, arr: ModelicaVariable[]) => boolean): boolean {
+    return this._items.some(predicate);
+  }
+
+  find(predicate: (v: ModelicaVariable, i: number, arr: ModelicaVariable[]) => boolean): ModelicaVariable | undefined {
+    return this._items.find(predicate);
+  }
+
+  findIndex(predicate: (v: ModelicaVariable, i: number, arr: ModelicaVariable[]) => boolean): number {
+    return this._items.findIndex(predicate);
+  }
+
+  forEach(callbackfn: (value: ModelicaVariable, index: number, array: ModelicaVariable[]) => void): void {
+    this._items.forEach(callbackfn);
+  }
+
+  map<T>(callbackfn: (value: ModelicaVariable, index: number, array: ModelicaVariable[]) => T): T[] {
+    return this._items.map(callbackfn);
+  }
+
+  every(predicate: (v: ModelicaVariable, i: number, arr: ModelicaVariable[]) => boolean): boolean {
+    return this._items.every(predicate);
+  }
+
+  slice(start?: number, end?: number): ModelicaVariable[] {
+    return this._items.slice(start, end);
+  }
+
+  sort(compareFn: (a: ModelicaVariable, b: ModelicaVariable) => number): this {
+    this._items.sort(compareFn);
+    return this;
+  }
+
+  splice(start: number, deleteCount: number): ModelicaVariable[] {
+    const removed = this._items.splice(start, deleteCount);
+    for (const v of removed) this._deindexVariable(v);
+    return removed;
+  }
+
+  indexOf(variable: ModelicaVariable): number {
+    return this._items.indexOf(variable);
+  }
+
+  [Symbol.iterator](): IterableIterator<ModelicaVariable> {
+    return this._items[Symbol.iterator]();
+  }
+
+  // ── Private index management ──
+
+  private _indexVariable(v: ModelicaVariable): void {
+    this._byName.set(v.name, v);
+
+    // Array root index: "foo[1,2]" → root "foo"
+    const bracketIdx = v.name.indexOf("[");
+    if (bracketIdx > 0) {
+      const root = v.name.substring(0, bracketIdx);
+      let arr = this._byArrayRoot.get(root);
+      if (!arr) {
+        arr = [];
+        this._byArrayRoot.set(root, arr);
+      }
+      arr.push(v);
+    }
+
+    // Encoded variable index: "\0prefix\0suffix" → suffix
+    if (v.name.startsWith("\0")) {
+      const lastNull = v.name.lastIndexOf("\0");
+      if (lastNull > 0) {
+        const suffix = v.name.substring(lastNull + 1);
+        this._byEncodedSuffix.set(suffix, v);
+      }
+    }
+  }
+
+  private _deindexVariable(v: ModelicaVariable): void {
+    this._byName.delete(v.name);
+
+    const bracketIdx = v.name.indexOf("[");
+    if (bracketIdx > 0) {
+      const root = v.name.substring(0, bracketIdx);
+      const arr = this._byArrayRoot.get(root);
+      if (arr) {
+        const idx = arr.indexOf(v);
+        if (idx >= 0) arr.splice(idx, 1);
+        if (arr.length === 0) this._byArrayRoot.delete(root);
+      }
+    }
+
+    if (v.name.startsWith("\0")) {
+      const lastNull = v.name.lastIndexOf("\0");
+      if (lastNull > 0) {
+        const suffix = v.name.substring(lastNull + 1);
+        this._byEncodedSuffix.delete(suffix);
+      }
+    }
+  }
+
+  private _rebuildIndices(): void {
+    this._byName.clear();
+    this._byArrayRoot.clear();
+    this._byEncodedSuffix.clear();
+    for (const v of this._items) {
+      this._indexVariable(v);
+    }
+  }
+}
+
 export class ModelicaDAE {
   name: string;
   description: string | null;
@@ -35,7 +239,7 @@ export class ModelicaDAE {
   initialAlgorithms: ModelicaStatement[][] = [];
   /** Algebraic loops (SCCs) detected during flattening. */
   algebraicLoops: { variables: string[]; equations: ModelicaEquation[] }[] = [];
-  variables: ModelicaVariable[] = [];
+  variables: SymbolTable = new SymbolTable();
   stateMachines: ModelicaStateMachine[] = [];
   /** Clock partitions identified by the synchronous clock inference pass. */
   clockPartitions: ModelicaClockPartition[] = [];
@@ -138,8 +342,8 @@ export class ModelicaDAE {
    */
   get stateVariables(): ModelicaRealVariable[] {
     return this.variables.filter(
-      (v): v is ModelicaRealVariable => v instanceof ModelicaRealVariable && v.variability === null,
-    );
+      (v) => v instanceof ModelicaRealVariable && v.variability === null,
+    ) as ModelicaRealVariable[];
   }
 
   /**
@@ -147,8 +351,8 @@ export class ModelicaDAE {
    */
   get derivativeVariables(): ModelicaRealVariable[] {
     return this.variables.filter(
-      (v): v is ModelicaRealVariable => v instanceof ModelicaRealVariable && v.name.startsWith("der("),
-    );
+      (v) => v instanceof ModelicaRealVariable && v.name.startsWith("der("),
+    ) as ModelicaRealVariable[];
   }
 
   /**

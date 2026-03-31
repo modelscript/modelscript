@@ -934,7 +934,7 @@ export function eliminateAliases(dae: ModelicaDAE): void {
       const { aliasVar, targetExpr } = alias;
 
       // Don't eliminate parameters, constants, or derivatives
-      const varDef = dae.variables.find((v) => v.name === aliasVar);
+      const varDef = dae.variables.get(aliasVar);
       if (!varDef) continue;
       if (varDef.variability === ModelicaVariability.PARAMETER || varDef.variability === ModelicaVariability.CONSTANT) {
         continue;
@@ -957,8 +957,8 @@ export function eliminateAliases(dae: ModelicaDAE): void {
       dae.equations.splice(i, 1);
 
       // Remove the alias variable
-      const varIdx = dae.variables.findIndex((v) => v.name === aliasVar);
-      if (varIdx >= 0) dae.variables.splice(varIdx, 1);
+      const aliasVarDef = dae.variables.get(aliasVar);
+      if (aliasVarDef) dae.variables.remove(aliasVarDef);
 
       // Remove from unknowns set
       unknowns.delete(aliasVar);
