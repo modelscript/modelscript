@@ -17,11 +17,25 @@
 
 import type { ModelicaDAE } from "./dae.js";
 import { ModelicaIntegerLiteral, ModelicaRealLiteral } from "./dae.js";
+import type { MonteCarloOptions, RandomVariable } from "./monte-carlo.js";
 import { luFactor, luSolve, ModelicaSimulator } from "./simulator.js";
+import type { SolverOptions } from "./solver-options.js";
+import {
+  ProgressiveHedging,
+  SampleAverageApproximation,
+  type MultiStageStochasticProblem,
+  type StochasticProblem,
+} from "./stochastic-optimizer.js";
 import { ModelicaVariability } from "./syntax.js";
 import { Tape, type TapeNode } from "./tape.js";
 
 // ── Public interfaces ──
+
+/** Transcription method for optimal control. */
+export type TranscriptionMethod = "trapezoidal" | "lgr" | "multiple-shooting" | "single-shooting";
+
+/** Robust optimization formulation. */
+export type RobustMethod = "worst-case" | "chance-constrained" | "expected-value" | "cvar" | "distributionally-robust";
 
 export interface OptimizationProblem {
   /** Lagrange cost integrand expression string, e.g. "u^2" */
@@ -40,6 +54,51 @@ export interface OptimizationProblem {
   tolerance?: number;
   /** Maximum SQP iterations (default 200) */
   maxIterations?: number;
+  /** Override parameters for the simulation */
+  parameterOverrides?: Map<string, number>;
+  /** Solver options for optimization and simulation */
+  solverOptions?: SolverOptions;
+  /** Transcription method (default: "trapezoidal") */
+  method?: TranscriptionMethod;
+  /** Random variables with uncertainty distributions */
+  randomVariables?: RandomVariable[];
+  /** Robust/stochastic optimization formulation */
+  robustMethod?: RobustMethod;
+  /** Conditional Value at Risk (CVaR) confidence level (e.g. 0.95) */
+  cvarLevel?: number;
+  /** Chance constraint probability level (default: 0.95) */
+  chanceLevel?: number;
+  /** Monte Carlo options (for SAA-based methods) */
+  monteCarloOptions?: MonteCarloOptions;
+  /** Whether to use analytical uncertainty propagation in the NLP (default: true) */
+  analyticalUncertainty?: boolean;
+}
+
+/**
+ * Transcription strategy interface: converts a continuous-time OCP
+ * into a finite-dimensional NLP.
+ */
+export interface TranscriptionStrategy {
+  /** Number of NLP decision variables. */
+  nVars: number;
+  /** Number of equality constraints. */
+  nEq: number;
+  /** Initial guess. */
+  z0: Float64Array;
+  /** Lower bounds on decision variables. */
+  lb: Float64Array;
+  /** Upper bounds on decision variables. */
+  ub: Float64Array;
+  /** Evaluate the NLP objective. */
+  evalObjective(z: Float64Array): number;
+  /** Evaluate the NLP equality constraints. */
+  evalConstraints(z: Float64Array, c: Float64Array): void;
+  /** Time grid for results extraction. */
+  tGrid: number[];
+  /** Extract state trajectories from the NLP solution. */
+  extractStates(z: Float64Array): Map<string, number[]>;
+  /** Extract control trajectories from the NLP solution. */
+  extractControls(z: Float64Array): Map<string, number[]>;
 }
 
 export interface OptimizationResult {
@@ -55,6 +114,119 @@ export interface OptimizationResult {
   /** Cost at each SQP iteration */
   costHistory: number[];
   messages: string;
+}
+
+// ── LGR Quadrature Utilities ──
+
+/**
+ * Compute Legendre-Gauss-Radau (LGR) collocation nodes and quadrature weights
+ * on the interval [-1, 1]. The right endpoint +1 is included as a node.
+ *
+ * Uses the companion matrix eigenvalue method for the LGR nodes.
+ * @param degree Number of interior collocation points (total nodes = degree + 1).
+ */
+export function lgrNodesAndWeights(degree: number): { nodes: number[]; weights: number[] } {
+  if (degree < 1) return { nodes: [1], weights: [2] };
+
+  // LGR nodes: roots of P_n(x) + P_{n-1}(x) where P_n is Legendre polynomial
+  // For small degrees, use known analytical values
+  const N = degree;
+  const nodes: number[] = new Array(N + 1);
+  const weights: number[] = new Array(N + 1);
+
+  // Initial guess via Chebyshev nodes
+  for (let i = 0; i < N; i++) {
+    nodes[i] = -Math.cos((Math.PI * (2 * i + 1)) / (2 * N));
+  }
+  nodes[N] = 1; // Right endpoint is always included in LGR
+
+  // Newton iteration to refine interior nodes (roots of P_N + P_{N-1})
+  for (let i = 0; i < N; i++) {
+    let x = nodes[i]!;
+    for (let iter = 0; iter < 100; iter++) {
+      // Evaluate P_N(x) and P_{N-1}(x) via recurrence
+      let pNm1 = 1,
+        pN = x;
+      for (let k = 2; k <= N; k++) {
+        const pNp1 = ((2 * k - 1) * x * pN - (k - 1) * pNm1) / k;
+        pNm1 = pN;
+        pN = pNp1;
+      }
+      // Also need P_{N-1}
+      let qNm2 = 1,
+        qNm1 = x;
+      for (let k = 2; k < N; k++) {
+        const q = ((2 * k - 1) * x * qNm1 - (k - 1) * qNm2) / k;
+        qNm2 = qNm1;
+        qNm1 = q;
+      }
+      const f = pN + (N > 1 ? qNm1 : 1);
+      // Derivative: P'_N(x) + P'_{N-1}(x)
+      const dpN = (N * (pNm1 - x * pN)) / (1 - x * x + 1e-30);
+      let dpNm1 = 0;
+      if (N > 1) dpNm1 = ((N - 1) * (qNm2 - x * qNm1)) / (1 - x * x + 1e-30);
+      const df = dpN + dpNm1;
+      if (Math.abs(df) < 1e-30) break;
+      const dx = -f / df;
+      x += dx;
+      if (Math.abs(dx) < 1e-15) break;
+    }
+    nodes[i] = x;
+  }
+
+  // Compute weights via the formula: w_i = (1 - x_i) / (N * P_{N-1}(x_i))^2
+  for (let i = 0; i <= N; i++) {
+    const x = nodes[i]!;
+    // Evaluate P_{N}(x) and P_{N-1}(x)
+    let pNm1 = 1,
+      pN = x;
+    for (let k = 2; k <= N; k++) {
+      const pNp1 = ((2 * k - 1) * x * pN - (k - 1) * pNm1) / k;
+      pNm1 = pN;
+      pN = pNp1;
+    }
+    if (i < N) {
+      // Interior LGR weight
+      weights[i] = (1 - x) / (N * N * pNm1 * pNm1 + 1e-30);
+    } else {
+      // Endpoint weight
+      weights[i] = 2 / (N * N + N);
+    }
+  }
+
+  return { nodes, weights };
+}
+
+/**
+ * Compute the LGR differentiation matrix D such that D @ f ≈ f'
+ * at the LGR collocation nodes.
+ */
+export function lgrDifferentiationMatrix(nodes: number[]): Float64Array {
+  const N = nodes.length;
+  const D = new Float64Array(N * N);
+
+  for (let i = 0; i < N; i++) {
+    for (let j = 0; j < N; j++) {
+      if (i !== j) {
+        // Barycentric Lagrange differentiation
+        let numI = 1,
+          numJ = 1;
+        for (let k = 0; k < N; k++) {
+          if (k !== i) numI *= nodes[i]! - nodes[k]!;
+          if (k !== j) numJ *= nodes[j]! - nodes[k]!;
+        }
+        D[i * N + j] = numI !== 0 ? numJ / (numI * (nodes[i]! - nodes[j]!)) : 0;
+      }
+    }
+    // Diagonal: D[i,i] = -sum_{j≠i} D[i,j]
+    let diag = 0;
+    for (let j = 0; j < N; j++) {
+      if (j !== i) diag -= D[i * N + j]!;
+    }
+    D[i * N + i] = diag;
+  }
+
+  return D;
 }
 
 // ── SQP Solver ──
@@ -305,7 +477,70 @@ export class ModelicaOptimizer {
     this.problem = problem;
   }
 
-  optimize(): OptimizationResult {
+  /**
+   * Solve the optimal control problem.
+   *
+   * If the problem contains random variables, it dispatches to the
+   * stochastic optimization solvers (SAA or Progressive Hedging).
+   */
+  public solve(augmentedLagrangian?: {
+    multipliers: Map<string, number[]>;
+    consensus: Map<string, number[]>;
+    rho: number;
+  }): OptimizationResult {
+    // ── Stochastic Optimization Dispatch ──
+    if (this.problem.randomVariables && this.problem.randomVariables.length > 0) {
+      if (this.problem.robustMethod === "distributionally-robust" || augmentedLagrangian) {
+        // Use Progressive Hedging (augmentedLagrangian is passed during PH iterations)
+        if (!augmentedLagrangian) {
+          const ph = new ProgressiveHedging();
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const { randomVariables, ...baseProblem } = this.problem;
+          const msProblem: MultiStageStochasticProblem = {
+            stages: [
+              { variables: this.problem.controls, ...(this.problem.method ? { method: this.problem.method } : {}) },
+            ],
+            scenarios: [], // Will be generated by PH
+            weights: [],
+          };
+          return ph.solve(
+            msProblem,
+            (bp, overrides, aug) => {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const subSolver = new (this.constructor as any)(this.dae, {
+                ...bp,
+                parameterOverrides: overrides,
+              });
+              return subSolver.solve(aug);
+            },
+            baseProblem,
+          );
+        }
+      } else {
+        // Default to Sample Average Approximation for expected-value, chance-constrained, CVaR
+        // Only run SAA if we're not already inside a PH subproblem loop (augmentedLagrangian is undefined)
+        if (!augmentedLagrangian) {
+          const saa = new SampleAverageApproximation();
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const { randomVariables, monteCarloOptions, ...baseProblem } = this.problem;
+          const sp: StochasticProblem = {
+            baseProblem,
+            randomVariables: this.problem.randomVariables,
+            ...(this.problem.monteCarloOptions ? { monteCarloOptions: this.problem.monteCarloOptions } : {}),
+          };
+          return saa.solve(sp, (bp, overrides) => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const subSolver = new (this.constructor as any)(this.dae, {
+              ...bp,
+              parameterOverrides: overrides,
+            });
+            return subSolver.solve();
+          });
+        }
+      }
+    }
+
+    // ── Deterministic NLP Construction ──
     const { startTime, stopTime, numIntervals, controls, controlBounds } = this.problem;
     const tol = this.problem.tolerance ?? 1e-6;
     const maxIter = this.problem.maxIterations ?? DEFAULT_MAX_ITER;
@@ -429,6 +664,31 @@ export class ModelicaOptimizer {
       return m;
     };
 
+    // Augmented Lagrangian penalty for Progressive Hedging consensus
+    const evaluateAugmentedLagrangian = (z: Float64Array): number => {
+      if (!augmentedLagrangian) return 0;
+      let penalty = 0;
+      const { multipliers, consensus, rho } = augmentedLagrangian;
+
+      for (let j = 0; j < nControls; j++) {
+        const name = controls[j]!;
+        const w = multipliers.get(name);
+        const xbar = consensus.get(name);
+        if (!w || !xbar) continue;
+
+        for (let k = 0; k < nPoints; k++) {
+          const idx = k * varsPerPoint + nStates + j;
+          const u_k = z[idx]!;
+          const w_k = w[k] ?? 0;
+          const xbar_k = xbar[k] ?? 0;
+          const diff = u_k - xbar_k;
+
+          penalty += w_k * diff + (rho / 2) * diff * diff;
+        }
+      }
+      return penalty;
+    };
+
     // Objective: trapezoidal integration of Lagrange cost
     const evalObjective = (z: Float64Array): number => {
       let cost = 0;
@@ -443,6 +703,7 @@ export class ModelicaOptimizer {
         const w = k === 0 || k === N ? 0.5 : 1.0;
         cost += w * dt * L;
       }
+      cost += evaluateAugmentedLagrangian(z);
       return cost;
     };
 
@@ -565,15 +826,38 @@ export class ModelicaOptimizer {
       evalJacobian,
     );
 
+    // Run one final simulation with the optimal controls to get the fine-grained state trajectories
+    const optControls = new Map<string, number[]>();
+    for (let j = 0; j < nControls; j++) {
+      const name = controls[j]!;
+      const uOpt = new Array<number>(nPoints);
+      for (let k = 0; k < nPoints; k++) {
+        uOpt[k] = result.z[k * varsPerPoint + nStates + j]!;
+      }
+      optControls.set(name, uOpt);
+    }
+
     // Extract results
     const stateTrajectories = new Map<string, number[]>();
     const controlTrajectories = new Map<string, number[]>();
+
+    const finalSimOpts = {
+      parameterOverrides: new Map<string, number>(this.problem.parameterOverrides ?? []),
+      ...(this.problem.solverOptions ? { solverOptions: this.problem.solverOptions } : {}),
+    };
+    for (let k = 0; k < N; k++) {
+      for (const name of controls) {
+        finalSimOpts.parameterOverrides.set(name, optControls.get(name)![k]!);
+      }
+    }
+
+    const simResult = this.simulator.simulate(startTime, stopTime, dt, finalSimOpts);
 
     for (let i = 0; i < nStates; i++) {
       const name = stateNames[i]!;
       const vals: number[] = [];
       for (let k = 0; k < nPoints; k++) {
-        vals.push(result.z[k * varsPerPoint + i]!);
+        vals.push(simResult.y[k]![i]!);
       }
       stateTrajectories.set(name, vals);
     }

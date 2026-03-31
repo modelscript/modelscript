@@ -103,6 +103,18 @@ export function buildFmuArchive(
     }
   }
 
+  // ── Inject JS/TS Dependencies ──
+  const crawledJsPaths = new Set<string>();
+  const crawlDaeForJs = (d: ModelicaDAE) => {
+    if (d.jsSource && d.jsPath && !crawledJsPaths.has(d.jsPath)) {
+      crawledJsPaths.add(d.jsPath);
+      const basename = d.jsPath.split(/[/\\]/).pop() ?? "dependency.js";
+      files.set(`resources/${basename}`, encoder.encode(d.jsSource));
+    }
+    for (const fn of d.functions) crawlDaeForJs(fn);
+  };
+  crawlDaeForJs(dae);
+
   // ── buildDescription.xml (FMI 3.0 §2.5) ──
   const buildDescLines = [
     '<?xml version="1.0" encoding="UTF-8"?>',

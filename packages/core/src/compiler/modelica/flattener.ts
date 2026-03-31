@@ -23,6 +23,7 @@ import {
   ModelicaEnumerationVariable,
   ModelicaEquation,
   ModelicaExpression,
+  ModelicaExpressionVariable,
   ModelicaForEquation,
   ModelicaForStatement,
   ModelicaFunctionCallEquation,
@@ -67,8 +68,10 @@ import {
   ModelicaClassInstance,
   ModelicaClockClassInstance,
   ModelicaComponentInstance,
+  ModelicaElementModification,
   ModelicaEntity,
   ModelicaEnumerationClassInstance,
+  ModelicaExpressionClassInstance,
   ModelicaExtendsClassInstance,
   ModelicaIntegerClassInstance,
   ModelicaModelVisitor,
@@ -91,6 +94,7 @@ import {
   ModelicaComplexAssignmentStatementSyntaxNode,
   ModelicaComponentReferenceSyntaxNode,
   ModelicaConnectEquationSyntaxNode,
+  ModelicaElementModificationSyntaxNode,
   ModelicaEquationSectionSyntaxNode,
   ModelicaExpressionSyntaxNode,
   ModelicaFlow,
@@ -447,7 +451,7 @@ const BUILTIN_ARRAY_HANDLERS: ReadonlyMap<string, BuiltinArrayHandler> = new Map
             let arrayBindingExpression =
               resolved.modification?.evaluatedExpression ?? resolved.modification?.expression;
             if (!arrayBindingExpression && resolved.modification?.modificationExpression?.expression) {
-              const interp = new ModelicaInterpreter();
+              const interp = new ModelicaInterpreter(true);
               arrayBindingExpression = resolved.modification.modificationExpression.expression.accept(
                 interp,
                 resolved.parent ?? undefined,
@@ -641,6 +645,57 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
    * @param args - A tuple of `[prefixString, activeDAE]` to pass context down.
    */
   visitClassInstance(node: ModelicaClassInstance, args: [string, ModelicaDAE]): void {
+    // Check for Optimization modifiers (objective)
+    if (node.classKind === ModelicaClassKind.OPTIMIZATION) {
+      // For top-level optimization classes, the modifier (objective = cost, startTime = 0, ...)
+      // lives on the LongClassSpecifier's classModification, not on node.modification.
+      const classSpec = node.abstractSyntaxNode?.classSpecifier;
+      const classMod = classSpec instanceof ModelicaLongClassSpecifierSyntaxNode ? classSpec.classModification : null;
+      if (classMod) {
+        for (const modArg of classMod.modificationArguments) {
+          if (
+            modArg instanceof ModelicaElementModificationSyntaxNode &&
+            modArg.identifier?.text === "objective" &&
+            modArg.modification?.modificationExpression?.expression
+          ) {
+            args[1].objective = modArg.modification.modificationExpression.expression.accept(
+              new ModelicaSyntaxFlattener(this.options),
+              {
+                prefix: args[0],
+                classInstance: node,
+                dae: args[1],
+                stmtCollector: [],
+                activeClassStack: this.activeClassStack,
+                structuralFinalParams: new Set<string>(),
+              },
+            ) as ModelicaExpression;
+          }
+        }
+      }
+      // Also try the instance-level modification (e.g. when the model is used as a component type)
+      if (!args[1].objective && node.modification) {
+        for (const modArg of node.modification.modificationArguments) {
+          if (
+            modArg instanceof ModelicaElementModification &&
+            modArg.name === "objective" &&
+            modArg.modificationExpression?.expression
+          ) {
+            args[1].objective = modArg.modificationExpression.expression.accept(
+              new ModelicaSyntaxFlattener(this.options),
+              {
+                prefix: args[0],
+                classInstance: node,
+                dae: args[1],
+                stmtCollector: [],
+                activeClassStack: this.activeClassStack,
+                structuralFinalParams: new Set<string>(),
+              },
+            ) as ModelicaExpression;
+          }
+        }
+      }
+    }
+
     // Pre-pass: augment expandable connectors with virtual components from connect equations
     this.#augmentExpandableConnectors(node);
 
@@ -1059,7 +1114,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       node.abstractSyntaxNode as { conditionAttribute?: { condition?: ModelicaExpressionSyntaxNode | null } } | null
     )?.conditionAttribute?.condition;
     if (conditionExpr) {
-      const interp = new ModelicaInterpreter();
+      const interp = new ModelicaInterpreter(true);
       const conditionValue = conditionExpr.accept(interp, node.parent ?? undefined);
       if (conditionValue instanceof ModelicaBooleanLiteral && !conditionValue.value) return;
     }
@@ -1353,6 +1408,17 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         node.modification?.description ?? node.description,
         causality,
         isFinal,
+      );
+    } else if (node.classInstance instanceof ModelicaExpressionClassInstance) {
+      variable = new ModelicaExpressionVariable(
+        name,
+        varExpression,
+        attributes,
+        variability,
+        node.modification?.description ?? node.description,
+        causality,
+        isFinal,
+        isProtected,
       );
     }
     // Propagate Evaluate=true (isFinal) to the referenced variable if it's a direct assignment
@@ -3262,7 +3328,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
             let arrayBindingExpression =
               resolved.modification?.evaluatedExpression ?? resolved.modification?.expression;
             if (!arrayBindingExpression && resolved.modification?.modificationExpression?.expression) {
-              const interp = new ModelicaInterpreter();
+              const interp = new ModelicaInterpreter(true);
               arrayBindingExpression = resolved.modification.modificationExpression.expression.accept(
                 interp,
                 resolved.parent ?? undefined,
@@ -4785,6 +4851,15 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
 
     // Register the function definition early to prevent infinite recursion when
     // the function body references itself (directly or via name resolution).
+    if (
+      resolved.parent &&
+      "jsSource" in resolved.parent &&
+      typeof (resolved.parent as { jsSource?: unknown }).jsSource === "string"
+    ) {
+      fnDae.jsSource = (resolved.parent as { jsSource: string }).jsSource;
+      const jsP = (resolved.parent as { jsPath?: string }).jsPath;
+      if (typeof jsP === "string") fnDae.jsPath = jsP;
+    }
     targetDae.functions.push(fnDae);
 
     // Flatten algorithm and equation sections (these still use the standard path)
@@ -5153,7 +5228,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         }
         const arrayPrefix = baseName + "[";
         const arraySize = ctx.dae.variables.filter((v) => v.name.startsWith(arrayPrefix)).length;
-        const interp = new ModelicaInterpreter();
+        const interp = new ModelicaInterpreter(true);
         interp.endValue = arraySize > 0 ? arraySize : null;
         const resolvedIndices: number[] = [];
         let rangeIndices: number[] | null = null;
@@ -5470,7 +5545,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       conditionBool = condition.value;
     } else if (node.condition) {
       // Try interpreter evaluation (resolves parameter values like x=4)
-      const interp = new ModelicaInterpreter();
+      const interp = new ModelicaInterpreter(true);
       const interpResult = node.condition.accept(interp, ctx.classInstance);
       if (interpResult instanceof ModelicaBooleanLiteral) {
         conditionBool = interpResult.value;
@@ -6083,7 +6158,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       if (p.arraySubscripts?.subscripts?.length) {
         const subs: string[] = [];
         for (const sub of p.arraySubscripts.subscripts) {
-          const val = sub.expression?.accept(new ModelicaInterpreter(), ctx.classInstance);
+          const val = sub.expression?.accept(new ModelicaInterpreter(true), ctx.classInstance);
           // Extract the numeric value from the interpreter result
           if (val instanceof ModelicaIntegerLiteral) {
             subs.push(String(val.value));
@@ -7854,7 +7929,7 @@ function tryFoldBuiltinFunction(functionName: string, args: ModelicaExpression[]
  */
 export function findAlgebraicLoops(dae: ModelicaDAE): void {
   const { sortedEquations, algebraicLoops } = performBltTransformation(dae);
-  dae.equations = sortedEquations;
+  dae.sortedEquations = sortedEquations;
 
   if (algebraicLoops.length > 0) {
     console.log(`[DAE] Found ${algebraicLoops.length} algebraic loop(s) in ${dae.name}`);

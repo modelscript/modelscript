@@ -16,7 +16,16 @@
   "license": "AGPL-3.0-or-later",
   "author": "Mohamad Omar Nachawati <mnachawa@gmail.com>",
   "type": "module",
-  "exports": "./dist/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "files": [
     "package.json",
     "README.md",

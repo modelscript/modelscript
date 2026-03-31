@@ -1560,7 +1560,12 @@ ModelicaLinter.register(ModelicaErrorCode.TYPE_MISMATCH_BINDING, {
         classInstance instanceof ModelicaArrayClassInstance
           ? classInstance.elementClassInstance?.name
           : classInstance.name;
-      if (declaredType && literalType !== declaredType && !isImplicitlyConvertible(literalType, declaredType)) {
+      if (
+        declaredType &&
+        declaredType !== "Expression" &&
+        literalType !== declaredType &&
+        !isImplicitlyConvertible(literalType, declaredType)
+      ) {
         diagnosticsCallback(
           ModelicaErrorCode.TYPE_MISMATCH_BINDING.severity,
           ModelicaErrorCode.TYPE_MISMATCH_BINDING.code,

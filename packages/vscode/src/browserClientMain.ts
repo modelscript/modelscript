@@ -15,9 +15,11 @@ import { ModelicaNotebookSerializer } from "./notebookSerializer";
 import { ProjectTreeProvider } from "./projectTreeProvider";
 import { SimulationPanel } from "./simulationPanel";
 import { SINE_WAVE_FMU_BASE64 } from "./sineWaveFmu";
+import { SSP_VIEW_SCHEME, SspContentProvider, SspEditorProvider } from "./sspDocumentProvider";
 
 let client: LanguageClient | undefined;
 let fmuContentProvider: FmuContentProvider | undefined;
+let sspContentProvider: SspContentProvider | undefined;
 
 /**
  * Simple in-memory filesystem provider for the `tmp` scheme.
@@ -146,7 +148,18 @@ export async function activate(context: vscode.ExtensionContext) {
     }),
   );
 
-  const documentSelector = [{ language: "modelica" }];
+  // Register virtual document provider and custom editor for SSP files
+  sspContentProvider = new SspContentProvider();
+  context.subscriptions.push(workspace.registerTextDocumentContentProvider(SSP_VIEW_SCHEME, sspContentProvider));
+  const sspEditor = new SspEditorProvider(sspContentProvider);
+  context.subscriptions.push(
+    vscode.window.registerCustomEditorProvider(SspEditorProvider.viewType, sspEditor, {
+      supportsMultipleEditorsPerDocument: false,
+      webviewOptions: { retainContextWhenHidden: false },
+    }),
+  );
+
+  const documentSelector = [{ language: "modelica" }, { pattern: "**/*.{js,ts}" }];
 
   // Options to control the language client
   const clientOptions: LanguageClientOptions = {
@@ -438,8 +451,8 @@ export async function activate(context: vscode.ExtensionContext) {
     projectTreeProvider.refresh();
   });
 
-  // Watch for .mo file changes to refresh the project tree
-  const moWatcher = vscode.workspace.createFileSystemWatcher("**/*.mo");
+  // Watch for module changes to refresh the project tree
+  const moWatcher = vscode.workspace.createFileSystemWatcher("**/*.{mo,js,ts}");
   moWatcher.onDidCreate(() => projectTreeProvider.refresh());
   moWatcher.onDidDelete(() => projectTreeProvider.refresh());
   context.subscriptions.push(moWatcher);
@@ -733,8 +746,8 @@ async function scanWorkspaceFiles(): Promise<vscode.Uri[]> {
   const maxRetries = 5;
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      const moFiles = await workspace.findFiles("**/*.mo");
-      console.log(`[workspace-scan] Found ${moFiles.length} .mo files in workspace`);
+      const moFiles = await workspace.findFiles("**/*.{mo,js,ts}");
+      console.log(`[workspace-scan] Found ${moFiles.length} files matching .mo/.js/.ts rules`);
       for (const uri of moFiles) {
         try {
           await workspace.openTextDocument(uri);

@@ -84,6 +84,7 @@ module.exports = grammar({
             field("function", "function"),
           ),
           field("operator", "operator"),
+          field("optimization", "optimization"),
         ),
       ),
 

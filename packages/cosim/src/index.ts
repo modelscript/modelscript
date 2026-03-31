@@ -33,3 +33,9 @@ export * from "./fmu/storage.js";
 
 // ── WebSocket ──
 export * from "./ws/stream.js";
+
+// ── SSP ──
+export * from "./ssp/export.js";
+export * from "./ssp/import.js";
+export * from "./ssp/ssd-parser.js";
+export * from "./ssp/types.js";

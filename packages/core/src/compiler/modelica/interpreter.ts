@@ -7,7 +7,10 @@ import {
   ModelicaBooleanLiteral,
   ModelicaEnumerationLiteral,
   ModelicaExpression,
+  ModelicaExpressionValue,
+  ModelicaFunctionCallExpression,
   ModelicaIntegerLiteral,
+  ModelicaNameExpression,
   ModelicaObject,
   ModelicaRealLiteral,
   ModelicaStringLiteral,
@@ -20,10 +23,12 @@ import {
   ModelicaClassInstance,
   ModelicaComponentInstance,
   ModelicaEnumerationClassInstance,
+  ModelicaExpressionClassInstance,
   ModelicaIntegerClassInstance,
   ModelicaModification,
   ModelicaParameterModification,
 } from "./model.js";
+import { evaluateCASFunction, isCASFunction } from "./symbolic/cas-bindings.js";
 import {
   ModelicaArrayConcatenationSyntaxNode,
   ModelicaArrayConstructorSyntaxNode,
@@ -373,7 +378,11 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
   visitBinaryExpression(node: ModelicaBinaryExpressionSyntaxNode, scope: Scope): ModelicaExpression | null {
     const operand1 = node.operand1?.accept(this, scope);
     const operand2 = node.operand2?.accept(this, scope);
-    if (node.operator && operand1 && operand2) return ModelicaBinaryExpression.new(node.operator, operand1, operand2);
+
+    if (node.operator && operand1 && operand2) {
+      return ModelicaBinaryExpression.new(node.operator, operand1, operand2);
+    }
+
     return null;
   }
 
@@ -503,6 +512,16 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     } else {
       throw new Error();
     }
+
+    if (
+      !result &&
+      (namedElement instanceof ModelicaExpressionClassInstance ||
+        (namedElement instanceof ModelicaComponentInstance &&
+          namedElement.classInstance instanceof ModelicaExpressionClassInstance))
+    ) {
+      result = new ModelicaNameExpression(node.parts.map((p) => p.identifier?.text).join("."));
+    }
+
     // Handle array subscripts on the last part
     const lastPart = node.parts[node.parts.length - 1];
     const subscripts = lastPart?.arraySubscripts?.subscripts;
@@ -1365,7 +1384,7 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     fn: (x: number) => number,
     node: ModelicaFunctionCallSyntaxNode,
     scope: Scope,
-  ): ModelicaExpression | null {
+  ): ModelicaExpression | null | undefined {
     const args = this.evaluateArgs(node, scope);
     const arg = args[0];
     const numVal =
@@ -1374,7 +1393,7 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
       const result = fn(numVal);
       if (Number.isFinite(result)) return new ModelicaRealLiteral(result);
     }
-    return null;
+    return undefined;
   }
 
   /** Evaluate abs/sign/ceil/floor — preserves Integer type for abs and sign. */
@@ -1383,7 +1402,7 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     fn: (x: number) => number,
     node: ModelicaFunctionCallSyntaxNode,
     scope: Scope,
-  ): ModelicaExpression | null {
+  ): ModelicaExpression | null | undefined {
     const args = this.evaluateArgs(node, scope);
     const arg = args[0];
     const numVal =
@@ -1397,11 +1416,11 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
         return new ModelicaRealLiteral(result);
       }
     }
-    return null;
+    return undefined;
   }
 
   /** atan2(y, x) — four-quadrant inverse tangent (§3.7.3). */
-  #evaluateAtan2(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
+  #evaluateAtan2(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null | undefined {
     const args = this.evaluateArgs(node, scope);
     const y = toNumber(args[0] ?? null);
     const x = toNumber(args[1] ?? null);
@@ -1409,7 +1428,7 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
       const result = Math.atan2(y, x);
       if (Number.isFinite(result)) return new ModelicaRealLiteral(result);
     }
-    return null;
+    return undefined;
   }
 
   /** div(x, y) — algebraic quotient truncated toward zero (§3.7.2). */
@@ -1557,8 +1576,31 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
       if (result !== undefined) return result;
     }
 
+    // Handle CAS symbolic functions (e.g., ModelScript.CAS.simplify)
     const functionInstance = scope.resolveComponentReference(node.functionReference);
-    if (!(functionInstance instanceof ModelicaClassInstance)) return null;
+    if (!(functionInstance instanceof ModelicaClassInstance)) {
+      // Fallback: construct an unresolved symbolic function call for algebraic manipulation
+      const args = this.evaluateArgs(node, scope).filter((a): a is ModelicaExpression => a !== null);
+      if (node.functionReference) {
+        return new ModelicaFunctionCallExpression(
+          node.functionReference.parts.map((p) => p.identifier?.text).join("."),
+          args,
+        );
+      }
+      return null;
+    }
+
+    let fqName = "";
+    let current: Scope | null = functionInstance;
+    while (current && current instanceof ModelicaClassInstance && current.name) {
+      fqName = fqName ? `${current.name}.${fqName}` : current.name;
+      current = current.parent;
+    }
+
+    if (functionInstance.classKind === ModelicaClassKind.FUNCTION && fqName && isCASFunction(fqName)) {
+      const args = this.evaluateArgs(node, scope).filter((a): a is ModelicaExpression => a !== null);
+      return evaluateCASFunction(fqName, args);
+    }
     const parameters: ModelicaParameterModification[] = [];
     const inputParameters = Array.from(functionInstance.inputParameters);
     if (node.functionCallArguments?.arguments) {
@@ -1596,8 +1638,55 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
         clonedFunction = functionInstance.clone(modification);
       }
 
-      // Execute algorithm statements to compute output values
-      if (this.#evaluateAlgorithms && this.#functionCallDepth < ModelicaInterpreter.MAX_FUNCTION_CALL_DEPTH) {
+      // Execute algorithm statements or JS source to compute output values
+      let jsExecuted: ModelicaExpression | null = null;
+
+      if (
+        this.#evaluateAlgorithms &&
+        clonedFunction.parent &&
+        "jsSource" in clonedFunction.parent &&
+        typeof (clonedFunction.parent as { jsSource?: unknown }).jsSource === "string"
+      ) {
+        const jsSource = (clonedFunction.parent as { jsSource: string }).jsSource;
+        const transpiled = jsSource
+          .replace(/import\s+.*?from\s+['"].*?['"];?/g, "")
+          .replace(/export\s+function/g, "function")
+          .replace(/export\s+const/g, "const")
+          .replace(/export\s+\{([^}]+)\};?/g, "")
+          .replace(/export\s+default\s+([a-zA-Z_$][\w$]*);?/g, "");
+
+        const args: unknown[] = [];
+        for (const inputParameter of clonedFunction.inputParameters) {
+          const expr = ModelicaExpression.fromClassInstance(inputParameter.classInstance);
+          if (expr instanceof ModelicaRealLiteral || expr instanceof ModelicaIntegerLiteral) {
+            args.push(expr.value);
+          } else if (expr instanceof ModelicaBooleanLiteral) {
+            args.push(expr.value);
+          } else if (expr instanceof ModelicaStringLiteral) {
+            args.push(expr.value);
+          } else {
+            args.push(0);
+          }
+        }
+
+        try {
+          const executor = new Function(`
+            ${transpiled}
+            return ${clonedFunction.name}(...arguments);
+          `);
+          const result = executor(...args);
+
+          if (typeof result === "number") {
+            jsExecuted = new ModelicaRealLiteral(result);
+          } else if (typeof result === "boolean") {
+            jsExecuted = new ModelicaBooleanLiteral(result);
+          } else if (typeof result === "string") {
+            jsExecuted = new ModelicaStringLiteral(result);
+          }
+        } catch (e) {
+          console.error(`[JS Interop] Error executing function ${clonedFunction.name}:`, e);
+        }
+      } else if (this.#evaluateAlgorithms && this.#functionCallDepth < ModelicaInterpreter.MAX_FUNCTION_CALL_DEPTH) {
         this.#functionCallDepth++;
         try {
           for (const statement of clonedFunction.algorithms) {
@@ -1608,6 +1697,10 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
         } finally {
           this.#functionCallDepth--;
         }
+      }
+
+      if (jsExecuted) {
+        return jsExecuted;
       }
 
       const outputExpressions: ModelicaExpression[] = [];
@@ -1634,10 +1727,10 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
    */
   visitSimpleAssignmentStatement(node: ModelicaSimpleAssignmentStatementSyntaxNode, scope: Scope): null {
     const value = node.source?.accept(this, scope);
+    const targetName = node.target?.parts?.[0]?.identifier?.text;
     if (!value) return null;
 
     const lastPart = node.target?.parts?.[node.target.parts.length - 1];
-    const targetName = node.target?.parts?.[0]?.identifier?.text;
     if (!targetName) return null;
 
     const resolved = scope.resolveSimpleName(targetName);
@@ -1849,11 +1942,24 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
 
   /** Convert any ModelicaExpression to a human-readable string for print(). */
   static expressionToString(expr: ModelicaExpression): string {
+    if (expr instanceof ModelicaExpressionValue) return ModelicaInterpreter.expressionToString(expr.value);
     if (expr instanceof ModelicaStringLiteral) return expr.value;
     if (expr instanceof ModelicaIntegerLiteral) return String(expr.value);
     if (expr instanceof ModelicaRealLiteral) return String(expr.value);
     if (expr instanceof ModelicaBooleanLiteral) return expr.value ? "true" : "false";
-    if (expr instanceof ModelicaEnumerationLiteral) return expr.stringValue;
+    if (expr instanceof ModelicaNameExpression) return expr.name;
+    if (expr instanceof ModelicaBinaryExpression) {
+      const op1 = ModelicaInterpreter.expressionToString(expr.operand1);
+      const op2 = ModelicaInterpreter.expressionToString(expr.operand2);
+      return `${op1} ${expr.operator} ${op2}`;
+    }
+    if (expr instanceof ModelicaUnaryExpression) {
+      return `${expr.operator}${ModelicaInterpreter.expressionToString(expr.operand)}`;
+    }
+    if (expr instanceof ModelicaFunctionCallExpression) {
+      const args = expr.args.map((a) => ModelicaInterpreter.expressionToString(a)).join(", ");
+      return `${expr.functionName}(${args})`;
+    }
     if (expr instanceof ModelicaArray) {
       const inner = expr.elements.map((e) => ModelicaInterpreter.expressionToString(e)).join(", ");
       return `{${inner}}`;
@@ -2243,7 +2349,7 @@ export function evaluateCondition(component: ModelicaComponentInstance): boolean
   if (!node || !("conditionAttribute" in node) || !node.conditionAttribute?.condition) return true;
 
   const condition = node.conditionAttribute.condition;
-  const interpreter = new ModelicaInterpreter();
+  const interpreter = new ModelicaInterpreter(true);
   try {
     const result = condition.accept(interpreter, component.parent ?? component);
     if (result instanceof ModelicaBooleanLiteral) {

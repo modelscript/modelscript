@@ -594,6 +594,16 @@
           }
         ]
       },
+      "optimization": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "optimization",
+            "named": false
+          }
+        ]
+      },
       "package": {
         "multiple": false,
         "required": false,
@@ -5679,6 +5689,10 @@
   },
   {
     "type": "operator",
+    "named": false
+  },
+  {
+    "type": "optimization",
     "named": false
   },
   {

@@ -57,6 +57,7 @@ import {
   ModelicaFmuEntity,
   ModelicaFunctionCallSyntaxNode,
   ModelicaInterpreter,
+  ModelicaJavascriptEntity,
   ModelicaLibrary,
   ModelicaLinter,
   ModelicaNamedElement,
@@ -925,6 +926,25 @@ documents.onDidClose((event) => {
 async function validateTextDocument(textDocument: TextDocument): Promise<void> {
   const diagnostics: Diagnostic[] = [];
   const text = textDocument.getText();
+
+  // Handle Javascript/TypeScript sidecar files natively via mock entity
+  if (textDocument.uri.endsWith(".js") || textDocument.uri.endsWith(".ts")) {
+    const context = sharedContext ?? new Context(sharedFs);
+    const entity = new ModelicaJavascriptEntity(context, textDocument.uri);
+    entity.jsSource = text;
+    // Derive name from generic path (e.g. file:///.../Test.js -> Test)
+    const filename = textDocument.uri.split("/").pop();
+    if (filename) {
+      entity.name = filename.replace(/\.[tj]s$/, "");
+    }
+    entity.instantiate(); // Regex parses and natively hydrates the parameters
+    workspaceInstances.set(textDocument.uri, [entity]);
+    documentInstances.set(textDocument.uri, [entity]);
+    documentContexts.set(textDocument.uri, context);
+    connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: [] });
+    connection.sendNotification("modelscript/projectTreeChanged");
+    return;
+  }
 
   if (parserReady && parser) {
     // Full tree-sitter + ModelicaLinter pipeline (matching morsel's processContent)

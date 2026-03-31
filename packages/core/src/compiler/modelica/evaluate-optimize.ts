@@ -19,6 +19,7 @@ import {
   ModelicaStringLiteral,
 } from "./dae.js";
 import { ModelicaClassInstance } from "./model.js";
+import type { SolverOptions } from "./solver-options.js";
 import {
   ModelicaComponentReferenceSyntaxNode,
   type ModelicaFunctionCallSyntaxNode,
@@ -145,6 +146,21 @@ export function evaluateOptimize(
   const tolerance = getNamedArgNum("tolerance") ?? 1e-6;
   const maxIterations = getNamedArgNum("maxIterations") ?? 200;
 
+  // Parse solver options
+  const solverOptions: SolverOptions = {};
+  const _int = getNamedArgStr("integrator") as SolverOptions["integrator"];
+  if (_int !== undefined) solverOptions.integrator = _int;
+  const _nonlin = getNamedArgStr("nonlinear") as SolverOptions["nonlinear"];
+  if (_nonlin !== undefined) solverOptions.nonlinear = _nonlin;
+  const _lin = getNamedArgStr("linear") as SolverOptions["linear"];
+  if (_lin !== undefined) solverOptions.linear = _lin;
+  const _jac = getNamedArgStr("jacobian") as SolverOptions["jacobian"];
+  if (_jac !== undefined) solverOptions.jacobian = _jac;
+  const _opt = getNamedArgStr("optimizer") as SolverOptions["optimizer"];
+  if (_opt !== undefined) solverOptions.optimizer = _opt;
+  const _lp = getNamedArgStr("lpSolver") as SolverOptions["lpSolver"];
+  if (_lp !== undefined) solverOptions.lpSolver = _lp;
+
   // ── Step 4: Run optimization ──
   let result: {
     success: boolean;
@@ -166,6 +182,7 @@ export function evaluateOptimize(
       numIntervals,
       tolerance,
       maxIterations,
+      solverOptions,
     });
     result = optimizer.optimize();
   } catch (e) {

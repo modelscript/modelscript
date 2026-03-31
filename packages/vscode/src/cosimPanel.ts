@@ -66,7 +66,7 @@ interface LocalParticipant {
   id: string;
   modelName: string;
   uri: string;
-  type: "modelica" | "fmu";
+  type: "modelica" | "fmu" | "ssp";
   variables: number;
   /** Backing participant (LSP-based Modelica or browser-based FMU). */
   participant: BrowserParticipant;
@@ -540,6 +540,90 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
       this.localFetchParticipants(sessionId);
     } catch (e) {
       this.postMessage({ type: "error", message: `Failed to load FMU: ${e}` });
+    }
+  }
+
+  /** Publish an SSP archive, creating local FMU participants for each component and wiring them together. */
+  private async localPublishSsp(sessionId: string): Promise<void> {
+    const session = this.localSessions.get(sessionId);
+    if (!session) {
+      this.postMessage({ type: "error", message: "Session not found." });
+      return;
+    }
+
+    const uris = await vscode.window.showOpenDialog({
+      canSelectMany: false,
+      filters: { "SSP Archive": ["ssp"] },
+      title: "Select SSP Archive",
+    });
+
+    if (!uris || uris.length === 0) return;
+
+    try {
+      const fileUri = uris[0];
+      const data = await vscode.workspace.fs.readFile(fileUri);
+      const sspBytes = new Uint8Array(data);
+
+      const { unzipSync } = await import("fflate");
+      const { parseSsd } = await import("./sspParser");
+
+      const unzipped = unzipSync(sspBytes);
+      const ssdData = unzipped["SystemStructure.ssd"];
+      if (!ssdData) throw new Error("SystemStructure.ssd missing from archive.");
+
+      const xml = new TextDecoder().decode(ssdData);
+      const ssp = parseSsd(xml);
+
+      if (ssp.components.length === 0) {
+        throw new Error("SSP archive contains no components.");
+      }
+
+      const compIdMap = new Map<string, string>();
+
+      // Add each component as a participant
+      for (const comp of ssp.components) {
+        if (!comp.source) continue;
+
+        const fmuData = unzipped[comp.source];
+        if (!fmuData) {
+          vscode.window.showWarningMessage(`SSP component ${comp.name} missing FMU source: ${comp.source}`);
+          continue;
+        }
+
+        const participantId = `ssp-${comp.name}-${Date.now().toString(36)}`;
+        compIdMap.set(comp.name, participantId);
+
+        const fmuParticipant = new FmuBrowserParticipant(participantId, fmuData);
+
+        const localParticipant: LocalParticipant = {
+          id: participantId,
+          modelName: comp.name,
+          uri: `${fileUri.toString()}#${comp.name}`,
+          type: "ssp",
+          variables: 0,
+          participant: fmuParticipant,
+        };
+
+        session.participants.push(localParticipant);
+      }
+
+      // Add couplings
+      for (const conn of ssp.connections) {
+        const fromId = compIdMap.get(conn.startElement);
+        const toId = compIdMap.get(conn.endElement);
+        if (fromId && toId) {
+          session.couplings.push({
+            from: { participantId: fromId, variableName: conn.startConnector },
+            to: { participantId: toId, variableName: conn.endConnector },
+          });
+        }
+      }
+
+      vscode.window.showInformationMessage(`Enrolled SSP "${ssp.name}" with ${ssp.components.length} components.`);
+      this.localFetchSessions();
+      this.localFetchParticipants(sessionId);
+    } catch (e) {
+      this.postMessage({ type: "error", message: `Failed to load SSP: ${e}` });
     }
   }
 
