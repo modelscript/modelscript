@@ -2,6 +2,8 @@ import * as vscode from "vscode";
 import { Uri, commands, workspace } from "vscode";
 import { LanguageClientOptions } from "vscode-languageclient";
 import { LanguageClient } from "vscode-languageclient/browser";
+import { boxTexturedBase64, foxBase64 } from "./cadModels";
+import { CadViewerPanel } from "./cadViewerPanel";
 import { ChatViewProvider } from "./chatPanel";
 import { CosimViewProvider } from "./cosimPanel";
 import { DiagramEditorProvider } from "./diagramEditorProvider";
@@ -16,6 +18,37 @@ import { ProjectTreeProvider } from "./projectTreeProvider";
 import { SimulationPanel } from "./simulationPanel";
 import { SINE_WAVE_FMU_BASE64 } from "./sineWaveFmu";
 import { SSP_VIEW_SCHEME, SspContentProvider, SspEditorProvider } from "./sspDocumentProvider";
+
+function decodeBase64ToArray(base64: string): Uint8Array {
+  // Extract only base64 characters
+  const b64 = base64.replace(/[^A-Za-z0-9+/=]/g, "");
+
+  // Calculate unpadded length
+  let padding = 0;
+  if (b64.endsWith("==")) padding = 2;
+  else if (b64.endsWith("=")) padding = 1;
+  const bufferLength = b64.length * 0.75 - padding;
+
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  const lookup = new Uint8Array(256);
+  for (let i = 0; i < chars.length; i++) {
+    lookup[chars.charCodeAt(i)] = i;
+  }
+
+  const bytes = new Uint8Array(bufferLength);
+  let p = 0;
+  for (let i = 0; i < b64.length; i += 4) {
+    const encoded1 = lookup[b64.charCodeAt(i)];
+    const encoded2 = lookup[b64.charCodeAt(i + 1)];
+    const encoded3 = lookup[b64.charCodeAt(i + 2)];
+    const encoded4 = lookup[b64.charCodeAt(i + 3)];
+
+    bytes[p++] = (encoded1 << 2) | (encoded2 >> 4);
+    if (p < bufferLength) bytes[p++] = ((encoded2 & 15) << 4) | (encoded3 >> 2);
+    if (p < bufferLength) bytes[p++] = ((encoded3 & 3) << 6) | (encoded4 & 63);
+  }
+  return bytes;
+}
 
 let client: LanguageClient | undefined;
 let fmuContentProvider: FmuContentProvider | undefined;
@@ -314,6 +347,10 @@ export async function activate(context: vscode.ExtensionContext) {
         vscode.commands.executeCommand("vscode.openWith", tab.input.uri, "default");
       }
     }),
+    commands.registerCommand("modelscript.openCadViewer", () => {
+      if (!client) return;
+      CadViewerPanel.createOrShow(context.extensionUri, client);
+    }),
     commands.registerCommand("modelscript.runSimulation", async () => {
       if (!client) return;
       const editor = vscode.window.activeTextEditor;
@@ -554,6 +591,33 @@ async function initWorkspaceAndTree(
             "",
           ].join("\n");
           break;
+        case "cad-assembly":
+          filename = "RobotAssembly.mo";
+          content = [
+            'model RobotAssembly "3D CAD Robot Assembly"',
+            "  // Base of the robot",
+            '  Real base_angle = 0 "Base rotation angle";',
+            '  Real base annotation(CAD(uri="Fox.glb", position={0, 0, 0}, scale={0.02, 0.02, 0.02}));',
+            "",
+            "  // A payload block",
+            '  Real payload annotation(CAD(uri="BoxTextured.glb", position={2, 0, 2}, scale={0.5, 0.5, 0.5}));',
+            "",
+            "  // An interactive port attachment point",
+            '  Real target annotation(CADPort(feature="TargetArea", offsetPosition={2, 1, 2}));',
+            "equation",
+            "  base = 0;",
+            "  payload = 1;",
+            "  target = 2;",
+            "end RobotAssembly;",
+            "",
+          ].join("\n");
+
+          await workspace.fs.writeFile(Uri.joinPath(workspaceUri, "Fox.glb"), decodeBase64ToArray(foxBase64));
+          await workspace.fs.writeFile(
+            Uri.joinPath(workspaceUri, "BoxTextured.glb"),
+            decodeBase64ToArray(boxTexturedBase64),
+          );
+          break;
         case "script":
           filename = "simulate.mos";
           content = `// A simple Modelica script\nloadString("\nmodel HelloWorld\n  Real x(start=1);\nequation\n  der(x) = -x;\nend HelloWorld;\n");\n\nsimulate(HelloWorld, stopTime=5);\n`;
@@ -713,8 +777,11 @@ async function initWorkspaceAndTree(
           }
         }
       }
-    } catch (e) {
-      console.warn("[blank-project] Failed to create template model:", e);
+    } catch (e: unknown) {
+      console.error("[blank-project] Failed to create template model:", e);
+      vscode.window.showErrorMessage(
+        "Workspace Init Error: " + (e instanceof Error ? e.stack || e.message : String(e)),
+      );
     }
   } else {
     // For non-memfs workspaces (e.g. GitHub repos), scan for existing .mo files

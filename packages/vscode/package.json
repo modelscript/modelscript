@@ -1,7 +1,7 @@
 {
   "name": "modelscript",
   "displayName": "ModelScript — Modelica for VS Code",
-  "version": "0.0.3",
+  "version": "0.0.10",
   "description": "Complete Modelica development environment — diagram editing, simulation, scripting, notebooks, and bundled MSL. No external tools required.",
   "categories": [
     "Programming Languages",
@@ -48,6 +48,11 @@
         "command": "modelscript.openDiagramSource",
         "title": "ModelScript: Open Source",
         "icon": "$(go-to-file)"
+      },
+      {
+        "command": "modelscript.openCadViewer",
+        "title": "ModelScript: Open 3D Viewer",
+        "icon": "$(play-circle)"
       },
       {
         "command": "modelscript.runSimulation",
@@ -313,6 +318,11 @@
           "group": "navigation"
         },
         {
+          "command": "modelscript.openCadViewer",
+          "when": "editorLangId == modelica",
+          "group": "navigation"
+        },
+        {
           "command": "modelscript.openDiagramSource",
           "when": "activeCustomEditorId == modelscript.diagram",
           "group": "navigation"
@@ -451,11 +461,19 @@
     "@antv/x6-plugin-selection": "^2.2.2",
     "@mlc-ai/web-llm": "*",
     "@modelscript/lsp": "*",
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.5.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "three": "^0.183.2",
     "vscode-languageclient": "^9.0.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@stylistic/eslint-plugin": "^2.9.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@types/three": "^0.183.1",
     "@types/vscode": "^1.100.0",
     "@vscode/test-web": "^0.0.80",
     "@vscode/vsce": "^3.7.1",
