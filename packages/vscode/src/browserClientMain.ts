@@ -159,7 +159,7 @@ export async function activate(context: vscode.ExtensionContext) {
     }),
   );
 
-  const documentSelector = [{ language: "modelica" }];
+  const documentSelector = [{ language: "modelica" }, { pattern: "**/*.{js,ts}" }];
 
   // Options to control the language client
   const clientOptions: LanguageClientOptions = {
@@ -451,8 +451,8 @@ export async function activate(context: vscode.ExtensionContext) {
     projectTreeProvider.refresh();
   });
 
-  // Watch for .mo file changes to refresh the project tree
-  const moWatcher = vscode.workspace.createFileSystemWatcher("**/*.mo");
+  // Watch for module changes to refresh the project tree
+  const moWatcher = vscode.workspace.createFileSystemWatcher("**/*.{mo,js,ts}");
   moWatcher.onDidCreate(() => projectTreeProvider.refresh());
   moWatcher.onDidDelete(() => projectTreeProvider.refresh());
   context.subscriptions.push(moWatcher);
@@ -746,8 +746,8 @@ async function scanWorkspaceFiles(): Promise<vscode.Uri[]> {
   const maxRetries = 5;
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      const moFiles = await workspace.findFiles("**/*.mo");
-      console.log(`[workspace-scan] Found ${moFiles.length} .mo files in workspace`);
+      const moFiles = await workspace.findFiles("**/*.{mo,js,ts}");
+      console.log(`[workspace-scan] Found ${moFiles.length} files matching .mo/.js/.ts rules`);
       for (const uri of moFiles) {
         try {
           await workspace.openTextDocument(uri);

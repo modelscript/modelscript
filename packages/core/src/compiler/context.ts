@@ -217,6 +217,15 @@ export class Context extends Scope {
   }
 
   /**
+   * Manually injects a pre-constructed Modelica class into the compiler context.
+   *
+   * @param classInstance - The root class instance to attach.
+   */
+  addClass(classInstance: ModelicaClassInstance): void {
+    this.#classes.push(classInstance);
+  }
+
+  /**
    * Parses source code using the registered parser for the given extension.
    *
    * @param extname - The file extension determining which parser to use.

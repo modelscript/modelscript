@@ -16,6 +16,7 @@ export * from "./compiler/modelica/fmu-codegen.js";
 export * from "./compiler/modelica/fmu.js";
 export * from "./compiler/modelica/i18n.js";
 export * from "./compiler/modelica/interpreter.js";
+export * from "./compiler/modelica/javascript-entity.js";
 export * from "./compiler/modelica/linter.js";
 export * from "./compiler/modelica/model.js";
 export * from "./compiler/modelica/optimizer.js";

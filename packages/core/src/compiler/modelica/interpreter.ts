@@ -2349,7 +2349,7 @@ export function evaluateCondition(component: ModelicaComponentInstance): boolean
   if (!node || !("conditionAttribute" in node) || !node.conditionAttribute?.condition) return true;
 
   const condition = node.conditionAttribute.condition;
-  const interpreter = new ModelicaInterpreter();
+  const interpreter = new ModelicaInterpreter(true);
   try {
     const result = condition.accept(interpreter, component.parent ?? component);
     if (result instanceof ModelicaBooleanLiteral) {

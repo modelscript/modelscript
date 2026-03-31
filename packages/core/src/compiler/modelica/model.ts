@@ -647,7 +647,10 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
   }
 
   clone(modification?: ModelicaModification | null): ModelicaClassInstance {
-    if (!this.abstractSyntaxNode) throw new Error();
+    if (!this.abstractSyntaxNode) {
+      if (!modification) return this;
+      throw new Error(`Cannot clone class instance ${this.name} without abstract syntax node`);
+    }
     const mergedModification = ModelicaModification.merge(this.#modification, modification);
     const hash = mergedModification?.hash ?? "";
     const cachedInstance = this.cloneCache.get(hash);

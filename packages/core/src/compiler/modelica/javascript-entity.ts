@@ -8,10 +8,42 @@ import type { Scope } from "../scope.js";
 import {
   ModelicaClassInstance,
   ModelicaComponentInstance,
+  ModelicaModification,
   type ModelicaElement,
   type ModelicaNamedElement,
 } from "./model.js";
 import { ModelicaCausality, ModelicaClassKind, type ModelicaIdentifierSyntaxNode } from "./syntax.js";
+
+/**
+ * A Modelica class instance representing a synthetic Javascript function export.
+ */
+export class ModelicaSyntheticFunctionInstance extends ModelicaClassInstance {
+  override clone(modification?: ModelicaModification | null): ModelicaClassInstance {
+    const cloned = new ModelicaSyntheticFunctionInstance(this.parent ?? this);
+    cloned.name = this.name;
+    cloned.classKind = this.classKind;
+    cloned.instantiated = true;
+    cloned.declaredElements = [];
+    for (const c of this.declaredElements) {
+      if (c instanceof ModelicaComponentInstance) {
+        const clonedComp = new ModelicaComponentInstance(cloned, null);
+        clonedComp.name = c.name;
+        clonedComp.causality = c.causality;
+        if (c.classInstance) {
+          const modArg = modification?.modificationArguments?.find((cm) => cm.name === c.name);
+          const newMod =
+            modArg && modification?.scope
+              ? new ModelicaModification(modification.scope, [], null, null, modArg.expression)
+              : null;
+          clonedComp.classInstance = c.classInstance.clone(newMod);
+        }
+        clonedComp.instantiated = true;
+        cloned.declaredElements.push(clonedComp);
+      }
+    }
+    return cloned;
+  }
+}
 
 /**
  * A Modelica class instance backed by a Javascript/Typescript file.
@@ -19,7 +51,7 @@ import { ModelicaCausality, ModelicaClassKind, type ModelicaIdentifierSyntaxNode
 export class ModelicaJavascriptEntity extends ModelicaClassInstance {
   jsPath: string;
   jsSource: string | null = null;
-  #syntheticComponents: ModelicaComponentInstance[] = [];
+  #syntheticElements: ModelicaElement[] = [];
   #loaded = false;
 
   constructor(parent: Scope, path: string) {
@@ -40,9 +72,9 @@ export class ModelicaJavascriptEntity extends ModelicaClassInstance {
 
   override get elements(): IterableIterator<ModelicaElement> {
     if (!this.instantiated && !this.instantiating) this.instantiate();
-    const components = this.#syntheticComponents;
+    const elements = this.#syntheticElements;
     return (function* () {
-      yield* components;
+      yield* elements;
     })();
   }
 
@@ -55,8 +87,8 @@ export class ModelicaJavascriptEntity extends ModelicaClassInstance {
     if (!simpleName) return null;
     if (!this.instantiated && !this.instantiating) this.instantiate();
 
-    for (const comp of this.#syntheticComponents) {
-      if (comp.name === simpleName) return comp;
+    for (const elem of this.#syntheticElements) {
+      if ("name" in elem && elem.name === simpleName) return elem as ModelicaNamedElement;
     }
 
     return super.resolveSimpleName(identifier, global, encapsulated);
@@ -69,7 +101,7 @@ export class ModelicaJavascriptEntity extends ModelicaClassInstance {
     try {
       if (!this.#loaded) this.load();
       this.declaredElements = [];
-      this.#syntheticComponents = [];
+      this.#syntheticElements = [];
 
       if (!this.jsSource) return;
 
@@ -91,7 +123,7 @@ export class ModelicaJavascriptEntity extends ModelicaClassInstance {
 
         if (!funcName) continue;
 
-        const funcClass = new ModelicaClassInstance(this);
+        const funcClass = new ModelicaSyntheticFunctionInstance(this);
         funcClass.name = funcName;
         funcClass.classKind = ModelicaClassKind.FUNCTION;
         funcClass.instantiated = true;
@@ -127,12 +159,9 @@ export class ModelicaJavascriptEntity extends ModelicaClassInstance {
         outputComp.instantiated = true;
         funcClass.declaredElements.push(outputComp);
 
-        const comp = new ModelicaComponentInstance(this, null);
-        comp.name = funcName;
-        comp.classInstance = funcClass;
-        comp.instantiated = true;
-        this.#syntheticComponents.push(comp);
-        this.declaredElements.push(comp);
+        this.#syntheticElements.push(funcClass);
+        this.declaredElements.push(funcClass);
+        console.log(`[DEBUG] JS Entity loaded function: ${funcName}`);
       }
 
       // Allow parsing: export const FOO = 42;
@@ -145,7 +174,7 @@ export class ModelicaJavascriptEntity extends ModelicaClassInstance {
         const baseType = types.number;
         if (baseType) comp.classInstance = baseType.clone();
         comp.instantiated = true;
-        this.#syntheticComponents.push(comp);
+        this.#syntheticElements.push(comp);
         this.declaredElements.push(comp);
       }
 
@@ -161,15 +190,13 @@ export class ModelicaJavascriptEntity extends ModelicaClassInstance {
           const comp = new ModelicaComponentInstance(this, null);
           comp.name = name;
           // By default, make it a function for simplicity
-          const funcClass = new ModelicaClassInstance(this);
+          const funcClass = new ModelicaSyntheticFunctionInstance(this);
           funcClass.name = name;
           funcClass.classKind = ModelicaClassKind.FUNCTION;
           funcClass.instantiated = true;
           funcClass.declaredElements = [];
-          comp.classInstance = funcClass;
-          comp.instantiated = true;
-          this.#syntheticComponents.push(comp);
-          this.declaredElements.push(comp);
+          this.#syntheticElements.push(funcClass);
+          this.declaredElements.push(funcClass);
         }
       }
 

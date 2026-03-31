@@ -451,7 +451,7 @@ const BUILTIN_ARRAY_HANDLERS: ReadonlyMap<string, BuiltinArrayHandler> = new Map
             let arrayBindingExpression =
               resolved.modification?.evaluatedExpression ?? resolved.modification?.expression;
             if (!arrayBindingExpression && resolved.modification?.modificationExpression?.expression) {
-              const interp = new ModelicaInterpreter();
+              const interp = new ModelicaInterpreter(true);
               arrayBindingExpression = resolved.modification.modificationExpression.expression.accept(
                 interp,
                 resolved.parent ?? undefined,
@@ -1114,7 +1114,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       node.abstractSyntaxNode as { conditionAttribute?: { condition?: ModelicaExpressionSyntaxNode | null } } | null
     )?.conditionAttribute?.condition;
     if (conditionExpr) {
-      const interp = new ModelicaInterpreter();
+      const interp = new ModelicaInterpreter(true);
       const conditionValue = conditionExpr.accept(interp, node.parent ?? undefined);
       if (conditionValue instanceof ModelicaBooleanLiteral && !conditionValue.value) return;
     }
@@ -3328,7 +3328,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
             let arrayBindingExpression =
               resolved.modification?.evaluatedExpression ?? resolved.modification?.expression;
             if (!arrayBindingExpression && resolved.modification?.modificationExpression?.expression) {
-              const interp = new ModelicaInterpreter();
+              const interp = new ModelicaInterpreter(true);
               arrayBindingExpression = resolved.modification.modificationExpression.expression.accept(
                 interp,
                 resolved.parent ?? undefined,
@@ -5228,7 +5228,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         }
         const arrayPrefix = baseName + "[";
         const arraySize = ctx.dae.variables.filter((v) => v.name.startsWith(arrayPrefix)).length;
-        const interp = new ModelicaInterpreter();
+        const interp = new ModelicaInterpreter(true);
         interp.endValue = arraySize > 0 ? arraySize : null;
         const resolvedIndices: number[] = [];
         let rangeIndices: number[] | null = null;
@@ -5545,7 +5545,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       conditionBool = condition.value;
     } else if (node.condition) {
       // Try interpreter evaluation (resolves parameter values like x=4)
-      const interp = new ModelicaInterpreter();
+      const interp = new ModelicaInterpreter(true);
       const interpResult = node.condition.accept(interp, ctx.classInstance);
       if (interpResult instanceof ModelicaBooleanLiteral) {
         conditionBool = interpResult.value;
@@ -6158,7 +6158,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       if (p.arraySubscripts?.subscripts?.length) {
         const subs: string[] = [];
         for (const sub of p.arraySubscripts.subscripts) {
-          const val = sub.expression?.accept(new ModelicaInterpreter(), ctx.classInstance);
+          const val = sub.expression?.accept(new ModelicaInterpreter(true), ctx.classInstance);
           // Extract the numeric value from the interpreter result
           if (val instanceof ModelicaIntegerLiteral) {
             subs.push(String(val.value));
