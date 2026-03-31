@@ -341,6 +341,16 @@
           "command": "modelscript.autoLayout",
           "when": "activeCustomEditorId == modelscript.diagram",
           "group": "navigation"
+        },
+        {
+          "command": "modelscript.analyzeBlt",
+          "when": "editorLangId == modelica",
+          "group": "navigation"
+        },
+        {
+          "command": "modelscript.showClassHierarchy",
+          "when": "editorLangId == modelica",
+          "group": "navigation"
         }
       ],
       "view/item/context": [

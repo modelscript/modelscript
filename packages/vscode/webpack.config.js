@@ -179,6 +179,7 @@ const webviewConfig = {
     chatWebview: "./src/webview/chatWebview.ts",
     chatWorker: "./src/webview/chatWorker.ts",
     cadWebview: "./src/webview/cadWebview.tsx",
+    analysisWebview: "./src/webview/analysisWebview.ts",
   },
   output: {
     filename: "[name].js",
