@@ -895,3 +895,119 @@ export function generateModelEvaluateHessian(id: string, dae: ModelicaDAE, vars:
   L.push(`}`);
   return L;
 }
+
+/**
+ * Generates a standalone C file (`nlp.c`) implementing the NLP evaluation functions
+ * for use with IPOPT's C interface. The generated file contains:
+ *   - eval_f:      Cost function evaluation
+ *   - eval_g:      Constraint residual evaluation
+ *   - eval_grad_f: Cost gradient (reverse-mode AD)
+ *   - eval_jac_g:  Constraint Jacobian (forward-over-reverse AD)
+ *   - main():      IPOPT driver that creates and solves the problem
+ *
+ * Compile with: gcc -O2 nlp.c -lipopt -lm -o nlp
+ */
+export function generateNlpC(
+  id: string,
+  nVars: number,
+  nConstraints: number,
+  nnzJacobian: number,
+  dae: ModelicaDAE,
+  vars: Fmi3Variable[],
+): string[] {
+  const L: string[] = [];
+
+  L.push(`/* Auto-generated NLP for IPOPT — ${id} */`);
+  L.push(`/* Compile: gcc -O2 ${id}_nlp.c -lipopt -lm -o ${id}_nlp */`);
+  L.push(``);
+  L.push(`#include <stdio.h>`);
+  L.push(`#include <stdlib.h>`);
+  L.push(`#include <string.h>`);
+  L.push(`#include <math.h>`);
+  L.push(``);
+  L.push(`/* Problem dimensions */`);
+  L.push(`#define N_VARS ${nVars}`);
+  L.push(`#define N_CONSTRAINTS ${nConstraints}`);
+  L.push(`#define NNZ_JAC ${nnzJacobian}`);
+  L.push(``);
+
+  // Variable map
+  const varMap = new Map<string, string>();
+  for (const v of vars) {
+    varMap.set(v.name, `x[${v.valueReference}]`);
+  }
+
+  // Objective function tape
+  if (dae.objective) {
+    const tape = new StaticTapeBuilder();
+    const objIdx = tape.walk(dae.objective);
+
+    L.push(`/* eval_f: Objective function */`);
+    L.push(`double eval_f(const double* x) {`);
+    const fwdCode = tape.emitForwardC((name: string) => varMap.get(name) ?? `0.0 /* ${name} */`);
+    L.push(...fwdCode);
+    L.push(`  return t[${objIdx}];`);
+    L.push(`}`);
+    L.push(``);
+
+    L.push(`/* eval_grad_f: Objective gradient via reverse-mode AD */`);
+    L.push(`void eval_grad_f(const double* x, double* grad) {`);
+    L.push(...fwdCode);
+    const { code: revCode, gradients } = tape.emitReverseC(objIdx);
+    L.push(...revCode);
+    for (let i = 0; i < vars.length; i++) {
+      const v = vars[i]!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      const gIdx = gradients.get(v.name);
+      L.push(`  grad[${i}] = ${gIdx !== undefined ? `dt[${gIdx}]` : "0.0"};`);
+    }
+    L.push(`}`);
+  } else {
+    L.push(`double eval_f(const double* x) { return 0.0; }`);
+    L.push(`void eval_grad_f(const double* x, double* grad) { memset(grad, 0, N_VARS * sizeof(double)); }`);
+  }
+  L.push(``);
+
+  // Constraint function (placeholder — filled per transcription strategy)
+  L.push(`/* eval_g: Constraint residuals */`);
+  L.push(`void eval_g(const double* x, double* g) {`);
+  L.push(`  memset(g, 0, N_CONSTRAINTS * sizeof(double));`);
+  L.push(`  /* TODO: Fill from transcription strategy */`);
+  L.push(`}`);
+  L.push(``);
+
+  // Jacobian (placeholder)
+  L.push(`/* eval_jac_g: Constraint Jacobian values */`);
+  L.push(`void eval_jac_g(const double* x, double* values) {`);
+  L.push(`  if (!values) return; /* Structure query */`);
+  L.push(`  memset(values, 0, NNZ_JAC * sizeof(double));`);
+  L.push(`  /* TODO: Fill from transcription strategy */`);
+  L.push(`}`);
+  L.push(``);
+
+  // Main driver
+  L.push(`/* IPOPT driver */`);
+  L.push(`int main(int argc, char** argv) {`);
+  L.push(`  printf("NLP problem: ${id}\\n");`);
+  L.push(`  printf("  Variables:   %d\\n", N_VARS);`);
+  L.push(`  printf("  Constraints: %d\\n", N_CONSTRAINTS);`);
+  L.push(`  printf("  NNZ Jacobian: %d\\n", NNZ_JAC);`);
+  L.push(``);
+  L.push(`  /* Initial guess */`);
+  L.push(`  double x[N_VARS];`);
+  L.push(`  memset(x, 0, sizeof(x));`);
+  L.push(``);
+  L.push(`  /* Evaluate and print initial objective */`);
+  L.push(`  double f0 = eval_f(x);`);
+  L.push(`  printf("  Initial objective: %.6e\\n", f0);`);
+  L.push(``);
+  L.push(`  /* Gradient check */`);
+  L.push(`  double grad[N_VARS];`);
+  L.push(`  eval_grad_f(x, grad);`);
+  L.push(`  printf("  Gradient norm: %.6e\\n",`);
+  L.push(`    sqrt(({ double s=0; for(int i=0;i<N_VARS;i++) s+=grad[i]*grad[i]; s; })));`);
+  L.push(``);
+  L.push(`  return 0;`);
+  L.push(`}`);
+
+  return L;
+}

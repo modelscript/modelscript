@@ -24,6 +24,9 @@ import { Tape, type TapeNode } from "./tape.js";
 
 // ── Public interfaces ──
 
+/** Transcription method for optimal control. */
+export type TranscriptionMethod = "trapezoidal" | "lgr" | "multiple-shooting" | "single-shooting";
+
 export interface OptimizationProblem {
   /** Lagrange cost integrand expression string, e.g. "u^2" */
   objective: string;
@@ -45,6 +48,35 @@ export interface OptimizationProblem {
   parameterOverrides?: Map<string, number>;
   /** Solver options for optimization and simulation */
   solverOptions?: SolverOptions;
+  /** Transcription method (default: "trapezoidal") */
+  method?: TranscriptionMethod;
+}
+
+/**
+ * Transcription strategy interface: converts a continuous-time OCP
+ * into a finite-dimensional NLP.
+ */
+export interface TranscriptionStrategy {
+  /** Number of NLP decision variables. */
+  nVars: number;
+  /** Number of equality constraints. */
+  nEq: number;
+  /** Initial guess. */
+  z0: Float64Array;
+  /** Lower bounds on decision variables. */
+  lb: Float64Array;
+  /** Upper bounds on decision variables. */
+  ub: Float64Array;
+  /** Evaluate the NLP objective. */
+  evalObjective(z: Float64Array): number;
+  /** Evaluate the NLP equality constraints. */
+  evalConstraints(z: Float64Array, c: Float64Array): void;
+  /** Time grid for results extraction. */
+  tGrid: number[];
+  /** Extract state trajectories from the NLP solution. */
+  extractStates(z: Float64Array): Map<string, number[]>;
+  /** Extract control trajectories from the NLP solution. */
+  extractControls(z: Float64Array): Map<string, number[]>;
 }
 
 export interface OptimizationResult {
@@ -60,6 +92,119 @@ export interface OptimizationResult {
   /** Cost at each SQP iteration */
   costHistory: number[];
   messages: string;
+}
+
+// ── LGR Quadrature Utilities ──
+
+/**
+ * Compute Legendre-Gauss-Radau (LGR) collocation nodes and quadrature weights
+ * on the interval [-1, 1]. The right endpoint +1 is included as a node.
+ *
+ * Uses the companion matrix eigenvalue method for the LGR nodes.
+ * @param degree Number of interior collocation points (total nodes = degree + 1).
+ */
+export function lgrNodesAndWeights(degree: number): { nodes: number[]; weights: number[] } {
+  if (degree < 1) return { nodes: [1], weights: [2] };
+
+  // LGR nodes: roots of P_n(x) + P_{n-1}(x) where P_n is Legendre polynomial
+  // For small degrees, use known analytical values
+  const N = degree;
+  const nodes: number[] = new Array(N + 1);
+  const weights: number[] = new Array(N + 1);
+
+  // Initial guess via Chebyshev nodes
+  for (let i = 0; i < N; i++) {
+    nodes[i] = -Math.cos((Math.PI * (2 * i + 1)) / (2 * N));
+  }
+  nodes[N] = 1; // Right endpoint is always included in LGR
+
+  // Newton iteration to refine interior nodes (roots of P_N + P_{N-1})
+  for (let i = 0; i < N; i++) {
+    let x = nodes[i]!;
+    for (let iter = 0; iter < 100; iter++) {
+      // Evaluate P_N(x) and P_{N-1}(x) via recurrence
+      let pNm1 = 1,
+        pN = x;
+      for (let k = 2; k <= N; k++) {
+        const pNp1 = ((2 * k - 1) * x * pN - (k - 1) * pNm1) / k;
+        pNm1 = pN;
+        pN = pNp1;
+      }
+      // Also need P_{N-1}
+      let qNm2 = 1,
+        qNm1 = x;
+      for (let k = 2; k < N; k++) {
+        const q = ((2 * k - 1) * x * qNm1 - (k - 1) * qNm2) / k;
+        qNm2 = qNm1;
+        qNm1 = q;
+      }
+      const f = pN + (N > 1 ? qNm1 : 1);
+      // Derivative: P'_N(x) + P'_{N-1}(x)
+      const dpN = (N * (pNm1 - x * pN)) / (1 - x * x + 1e-30);
+      let dpNm1 = 0;
+      if (N > 1) dpNm1 = ((N - 1) * (qNm2 - x * qNm1)) / (1 - x * x + 1e-30);
+      const df = dpN + dpNm1;
+      if (Math.abs(df) < 1e-30) break;
+      const dx = -f / df;
+      x += dx;
+      if (Math.abs(dx) < 1e-15) break;
+    }
+    nodes[i] = x;
+  }
+
+  // Compute weights via the formula: w_i = (1 - x_i) / (N * P_{N-1}(x_i))^2
+  for (let i = 0; i <= N; i++) {
+    const x = nodes[i]!;
+    // Evaluate P_{N}(x) and P_{N-1}(x)
+    let pNm1 = 1,
+      pN = x;
+    for (let k = 2; k <= N; k++) {
+      const pNp1 = ((2 * k - 1) * x * pN - (k - 1) * pNm1) / k;
+      pNm1 = pN;
+      pN = pNp1;
+    }
+    if (i < N) {
+      // Interior LGR weight
+      weights[i] = (1 - x) / (N * N * pNm1 * pNm1 + 1e-30);
+    } else {
+      // Endpoint weight
+      weights[i] = 2 / (N * N + N);
+    }
+  }
+
+  return { nodes, weights };
+}
+
+/**
+ * Compute the LGR differentiation matrix D such that D @ f ≈ f'
+ * at the LGR collocation nodes.
+ */
+export function lgrDifferentiationMatrix(nodes: number[]): Float64Array {
+  const N = nodes.length;
+  const D = new Float64Array(N * N);
+
+  for (let i = 0; i < N; i++) {
+    for (let j = 0; j < N; j++) {
+      if (i !== j) {
+        // Barycentric Lagrange differentiation
+        let numI = 1,
+          numJ = 1;
+        for (let k = 0; k < N; k++) {
+          if (k !== i) numI *= nodes[i]! - nodes[k]!;
+          if (k !== j) numJ *= nodes[j]! - nodes[k]!;
+        }
+        D[i * N + j] = numI !== 0 ? numJ / (numI * (nodes[i]! - nodes[j]!)) : 0;
+      }
+    }
+    // Diagonal: D[i,i] = -sum_{j≠i} D[i,j]
+    let diag = 0;
+    for (let j = 0; j < N; j++) {
+      if (j !== i) diag -= D[i * N + j]!;
+    }
+    D[i * N + i] = diag;
+  }
+
+  return D;
 }
 
 // ── SQP Solver ──

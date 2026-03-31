@@ -66,3 +66,25 @@ export { Polynomial, Term, TermOrder, computeGroebnerBasis, sPolynomial } from "
 
 // Modelica CAS bindings
 export { CAS_FUNCTIONS, MODELSCRIPT_CAS_PACKAGE, evaluateCASFunction, isCASFunction } from "./cas-bindings.js";
+
+// N-Dimensional Tensor AD
+export {
+  SparsityPattern,
+  TensorNode,
+  TensorTape,
+  broadcastShape,
+  matmulShape,
+  shapeSize,
+  shapesEqual,
+} from "./tensor.js";
+export type { TensorOpType, TensorShape } from "./tensor.js";
+
+// Tensor E-Graph
+export {
+  TENSOR_RULES,
+  emitFusedKernelC,
+  identifyFusableChains,
+  tensorEgraphSimplify,
+  tensorNodeCost,
+} from "./egraph-tensor.js";
+export type { FusedKernel } from "./egraph-tensor.js";
