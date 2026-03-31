@@ -5240,9 +5240,8 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         }
         if (resolvedFromFlattener.length === subscriptNodes.length) {
           const indexedName = baseName + "[" + resolvedFromFlattener.join(",") + "]";
-          for (const variable of ctx.dae.variables) {
-            if (variable.name === indexedName) return variable;
-          }
+          const variable = ctx.dae.variables.get(indexedName);
+          if (variable) return variable;
         }
         // Try the interpreter for subscripts containing parameters (e.g. work[x] where x=4)
         // This must happen BEFORE the symbolic fallback to resolve structural parameters.
@@ -5291,9 +5290,8 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         }
         if (resolvedIndices.length === subscriptNodes.length) {
           const indexedName = baseName + "[" + resolvedIndices.join(",") + "]";
-          for (const variable of ctx.dae.variables) {
-            if (variable.name === indexedName) return variable;
-          }
+          const variable = ctx.dae.variables.get(indexedName);
+          if (variable) return variable;
         }
         // Expand range subscripts into a ModelicaArray of individual indexed variables
         // e.g. work[4:-1:2] → [work[4], work[3], work[2]]
@@ -5339,9 +5337,8 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         if (typeof loopVal === "number") return new ModelicaIntegerLiteral(loopVal);
         return new ModelicaIntegerLiteral(0);
       }
-      for (const variable of ctx.dae.variables) {
-        if (variable.name === name) return variable;
-      }
+      const variable = ctx.dae.variables.get(name);
+      if (variable) return variable;
       // If exact match not found, look for array element variables with this prefix
       // This handles references like x[:] or bare array name y
       const prefix = name + "[";
@@ -5399,10 +5396,8 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       }
       // Check for encoded array function parameters (\0[dims]\0name) — return a
       // name expression with the bare name so the printer outputs it cleanly.
-      for (const variable of ctx.dae.variables) {
-        if (variable.name.startsWith("\0") && variable.name.endsWith("\0" + name)) {
-          return new ModelicaNameExpression(name);
-        }
+      if (ctx.dae.variables.getEncoded(name)) {
+        return new ModelicaNameExpression(name);
       }
     }
     // Fall back to a symbolic name for unresolved references
