@@ -1440,6 +1440,39 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     }
 
     if (variable) {
+      // Extract CAD and CADPort annotations
+      const formatCADAnnotation = (modName: string, modArg: { modificationArguments: unknown[] }): string => {
+        const parts: string[] = [];
+        for (const arg of modArg.modificationArguments) {
+          if (arg instanceof ModelicaElementModification && arg.name) {
+            const expr = arg.expression;
+            if (expr instanceof ModelicaStringLiteral) parts.push(`${arg.name}="${expr.value}"`);
+            else if (expr instanceof ModelicaRealLiteral || expr instanceof ModelicaIntegerLiteral)
+              parts.push(`${arg.name}=${expr.value}`);
+            else if (expr instanceof ModelicaBooleanLiteral) parts.push(`${arg.name}=${expr.value ? "true" : "false"}`);
+            else if (expr instanceof ModelicaArray) {
+              const vals = expr.elements
+                .map((e) => (e instanceof ModelicaRealLiteral || e instanceof ModelicaIntegerLiteral ? e.value : 0))
+                .join(", ");
+              parts.push(`${arg.name}={${vals}}`);
+            }
+          }
+        }
+        return `${modName}(${parts.join(", ")})`;
+      };
+
+      if (node.annotations && Array.isArray(node.annotations)) {
+        const cadAnnotation = node.annotations.find((a) => a.name === "CAD");
+        if (cadAnnotation instanceof ModelicaClassInstance && cadAnnotation.modification) {
+          variable.cadAnnotationString = formatCADAnnotation("CAD", cadAnnotation.modification);
+        } else {
+          const cadPortAnnotation = node.annotations.find((a) => a.name === "CADPort");
+          if (cadPortAnnotation instanceof ModelicaClassInstance && cadPortAnnotation.modification) {
+            variable.cadAnnotationString = formatCADAnnotation("CADPort", cadPortAnnotation.modification);
+          }
+        }
+      }
+
       // Set flow/stream prefix for connector variables
       if (node.flowPrefix === ModelicaFlow.FLOW) variable.flowPrefix = "flow";
       else if (node.flowPrefix === ModelicaFlow.STREAM) variable.flowPrefix = "stream";

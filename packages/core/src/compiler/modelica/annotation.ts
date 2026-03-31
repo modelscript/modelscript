@@ -172,5 +172,21 @@ class Annotation
     String text;
   end Choice;
 
+  // CAD Integration
+
+  record CAD
+    String uri "URI to the STEP or GLTF file";
+    Real scale[3] = {1, 1, 1};
+    Real position[3] = {0, 0, 0};
+    Real rotation[4] = {0, 0, 0, 1} "Quaternion";
+  end CAD;
+
+  record CADPort
+    String feature "Name of the CAD feature (e.g., face, edge, vertex) to mate with";
+    Real offsetScale[3] = {1, 1, 1};
+    Real offsetPosition[3] = {0, 0, 0};
+    Real offsetRotation[4] = {0, 0, 0, 1};
+  end CADPort;
+
 end Annotation;
 `;

@@ -2676,6 +2676,37 @@ connection.onRequest("modelscript/getDiagramData", (params: { uri: string; class
   }
 });
 
+// Custom request: get CAD components for the webview
+connection.onRequest("modelscript/getCadComponents", (params: { uri: string }) => {
+  const instances = documentInstances.get(params.uri);
+  if (!instances || instances.length === 0) {
+    return [];
+  }
+
+  const classInstance = instances[0];
+
+  try {
+    if (!classInstance.instantiated) {
+      classInstance.instantiate();
+    }
+    const dae = new ModelicaDAE(classInstance.name || "Model");
+    const flattener = new ModelicaFlattener();
+    classInstance.accept(flattener, ["", dae]);
+
+    // Extract variables with CAD annotations
+    return (
+      dae.variables
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .filter((v: any) => v.cadAnnotationString)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .map((v: any) => ({ name: v.name, cad: v.cadAnnotationString }))
+    );
+  } catch (e) {
+    console.error("[cad] Error extracting CAD components:", e);
+    return [];
+  }
+});
+
 // ── Diagram mutation handlers ──
 
 connection.onRequest(

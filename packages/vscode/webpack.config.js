@@ -178,6 +178,7 @@ const webviewConfig = {
     cosimWebview: "./src/webview/cosimWebview.ts",
     chatWebview: "./src/webview/chatWebview.ts",
     chatWorker: "./src/webview/chatWorker.ts",
+    cadWebview: "./src/webview/cadWebview.tsx",
   },
   output: {
     filename: "[name].js",
@@ -186,13 +187,13 @@ const webviewConfig = {
   },
   resolve: {
     mainFields: ["browser", "module", "main"],
-    extensions: [".ts", ".js"],
+    extensions: [".tsx", ".ts", ".js"],
     alias: {},
   },
   module: {
     rules: [
       {
-        test: /\.ts$/,
+        test: /\.tsx?$/,
         exclude: /node_modules/,
         use: [
           { loader: "ts-loader", options: { configFile: path.resolve(__dirname, "src", "webview", "tsconfig.json") } },
@@ -235,7 +236,7 @@ const notebookRendererConfig = {
   },
   resolve: {
     mainFields: ["browser", "module", "main"],
-    extensions: [".ts", ".js"],
+    extensions: [".tsx", ".ts", ".js"],
     alias: {},
   },
   module: {

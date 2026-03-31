@@ -2094,6 +2094,8 @@ export abstract class ModelicaVariable extends ModelicaPrimaryExpression {
   arrayDimensions: number[] | null;
   /** Clock domain index (undefined = continuous time). */
   clockDomain?: number | undefined;
+  /** Extracted CAD / 3D annotations (as raw string or JSON), e.g. "CAD(uri=\"...\")" */
+  cadAnnotationString: string | null;
 
   constructor(
     name: string,
@@ -2121,6 +2123,7 @@ export abstract class ModelicaVariable extends ModelicaPrimaryExpression {
     this.arrayDimensions = null;
     /** Clock domain index (undefined = continuous time). */
     this.clockDomain = undefined;
+    this.cadAnnotationString = null;
   }
 
   override get hash(): string {
@@ -2158,7 +2161,8 @@ export class ModelicaBooleanVariable extends ModelicaVariable {
     return this.attributes.get("start") ?? null;
   }
 
-  override get toJSON(): string {
+  override get toJSON(): JSONValue {
+    if (this.cadAnnotationString) return { name: this.name, cad: this.cadAnnotationString };
     return this.name;
   }
 
@@ -2201,7 +2205,8 @@ export class ModelicaIntegerVariable extends ModelicaVariable {
     return this.attributes.get("start") ?? null;
   }
 
-  override get toJSON(): string {
+  override get toJSON(): JSONValue {
+    if (this.cadAnnotationString) return { name: this.name, cad: this.cadAnnotationString };
     return this.name;
   }
 
@@ -2256,7 +2261,8 @@ export class ModelicaRealVariable extends ModelicaVariable {
     return this.attributes.get("stateSelect") ?? null;
   }
 
-  override get toJSON(): string {
+  override get toJSON(): JSONValue {
+    if (this.cadAnnotationString) return { name: this.name, cad: this.cadAnnotationString };
     return this.name;
   }
 
@@ -2299,7 +2305,8 @@ export class ModelicaStringVariable extends ModelicaVariable {
     return this.attributes.get("start") ?? null;
   }
 
-  override get toJSON(): string {
+  override get toJSON(): JSONValue {
+    if (this.cadAnnotationString) return { name: this.name, cad: this.cadAnnotationString };
     return this.name;
   }
 
@@ -2322,7 +2329,8 @@ export class ModelicaExpressionVariable extends ModelicaVariable {
     return visitor.visitExpressionVariable(this, argument);
   }
 
-  override get toJSON(): string {
+  override get toJSON(): JSONValue {
+    if (this.cadAnnotationString) return { name: this.name, cad: this.cadAnnotationString };
     return this.name;
   }
 
@@ -2345,7 +2353,8 @@ export class ModelicaClockVariable extends ModelicaVariable {
     return visitor.visitClockVariable(this, argument);
   }
 
-  override get toJSON(): string {
+  override get toJSON(): JSONValue {
+    if (this.cadAnnotationString) return { name: this.name, cad: this.cadAnnotationString };
     return this.name;
   }
 
@@ -2414,7 +2423,8 @@ export class ModelicaEnumerationVariable extends ModelicaVariable {
     return this.attributes.get("start") ?? null;
   }
 
-  override get toJSON(): string {
+  override get toJSON(): JSONValue {
+    if (this.cadAnnotationString) return { name: this.name, cad: this.cadAnnotationString };
     return this.name;
   }
 
@@ -4270,6 +4280,7 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
       variable.expression.accept(this);
     }
     if (variable.description) this.out.write(' "' + variable.description + '"');
+    if (variable.cadAnnotationString) this.out.write(" annotation(" + variable.cadAnnotationString + ")");
     this.out.write(";\n");
   }
 
