@@ -51,7 +51,7 @@ export function registerOptimizeDeps(d: OptimizeDeps): void {
  * 1. Resolves the first positional argument as a class type reference.
  * 2. Flattens the class into a DAE.
  * 3. Extracts optimization parameters from named arguments.
- * 4. Runs ModelicaOptimizer.optimize().
+ * 4. Runs ModelicaOptimizer.solve().
  * 5. Returns a ModelicaObject record with optimization results.
  */
 export function evaluateOptimize(
@@ -184,7 +184,7 @@ export function evaluateOptimize(
       maxIterations,
       solverOptions,
     });
-    result = optimizer.optimize();
+    result = optimizer.solve();
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return buildErrorResult(msg);

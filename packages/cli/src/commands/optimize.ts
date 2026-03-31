@@ -145,7 +145,7 @@ export const Optimize: CommandModule<{}, OptimizeArgs> = {
       ...(args.tolerance !== undefined && { tolerance: args.tolerance }),
       ...(args.maxIterations !== undefined && { maxIterations: args.maxIterations }),
     });
-    const result = optimizer.optimize();
+    const result = optimizer.solve();
 
     // Print status
     console.error(result.messages);
