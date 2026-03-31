@@ -78,6 +78,7 @@ const DiagramEditor = React.lazy(() => import("./diagram"));
 const SimulationResults = React.lazy(() =>
   import("./simulation-results").then((m) => ({ default: m.SimulationResults })),
 );
+const CadViewerPanel = React.lazy(() => import("./cad-viewer").then((m) => ({ default: m.CadViewer })));
 
 const EXAMPLE_PATHS = [
   {
@@ -165,6 +166,7 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [context, setContext] = useState<Context | null>(null);
   const [view, setView] = useState<View>(View.SPLIT_COLUMNS);
   const [showResultsView, setShowResultsView] = useState(false);
+  const [showCadView, setShowCadView] = useState(false);
   const [simulationVariables, setSimulationVariables] = useState<string[]>([]);
   const [selectedSimulationVariables, setSelectedSimulationVariables] = useState<string[]>([]);
   const [simulationParameters, setSimulationParameters] = useState<ParameterInfo[]>([]);
@@ -1996,9 +1998,18 @@ export default function MorselEditor(props: MorselEditorProps) {
                     zIndex: 100,
                   }}
                 >
-                  <SegmentedControl aria-label="Center Pane View" onChange={(i) => setShowResultsView(i === 1)}>
-                    <SegmentedControl.Button selected={!showResultsView} leadingVisual={WorkflowIcon}>
+                  <SegmentedControl
+                    aria-label="Center Pane View"
+                    onChange={(i) => {
+                      setShowResultsView(i === 2);
+                      setShowCadView(i === 1);
+                    }}
+                  >
+                    <SegmentedControl.Button selected={!showResultsView && !showCadView} leadingVisual={WorkflowIcon}>
                       {translations.diagram}
+                    </SegmentedControl.Button>
+                    <SegmentedControl.Button selected={showCadView} leadingVisual={StackIcon}>
+                      3D
                     </SegmentedControl.Button>
                     <SegmentedControl.Button selected={showResultsView} leadingVisual={PulseIcon}>
                       {translations.simulation}
@@ -2012,10 +2023,10 @@ export default function MorselEditor(props: MorselEditorProps) {
                       inset: 0,
                       display: "flex",
                       flexDirection: "row",
-                      visibility: !showResultsView ? "visible" : "hidden",
-                      opacity: !showResultsView ? 1 : 0,
-                      pointerEvents: !showResultsView ? "auto" : "none",
-                      zIndex: !showResultsView ? 1 : 0,
+                      visibility: !showResultsView && !showCadView ? "visible" : "hidden",
+                      opacity: !showResultsView && !showCadView ? 1 : 0,
+                      pointerEvents: !showResultsView && !showCadView ? "auto" : "none",
+                      zIndex: !showResultsView && !showCadView ? 1 : 0,
                     }}
                   >
                     <div className="flex-1 overflow-hidden" style={{ minWidth: 0 }}>
@@ -2563,6 +2574,39 @@ export default function MorselEditor(props: MorselEditorProps) {
                         />
                       </>
                     )}
+                  </div>
+
+                  {/* 3D CAD Viewer pane */}
+                  <div
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      display: showCadView ? "flex" : "none",
+                      flexDirection: "column",
+                      overflow: "hidden",
+                      minHeight: 0,
+                      zIndex: showCadView ? 2 : 0,
+                      backgroundColor: "var(--color-canvas-default)",
+                    }}
+                  >
+                    <Suspense fallback={null}>
+                      <CadViewerPanel
+                        components={[]}
+                        selectedName={selectedComponent?.name}
+                        onSelect={(name) => {
+                          if (!name) {
+                            setSelectedComponent(null);
+                          } else {
+                            const searchInstance = diagramClassInstance ?? classInstances[0];
+                            const component = searchInstance?.components
+                              ? Array.from(searchInstance.components).find((c) => c.name === name)
+                              : null;
+                            setSelectedComponent(component || null);
+                          }
+                        }}
+                        dark={colorMode === "dark"}
+                      />
+                    </Suspense>
                   </div>
 
                   <div
