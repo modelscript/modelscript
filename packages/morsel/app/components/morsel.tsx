@@ -5,15 +5,21 @@ import {
   Context,
   decodeDataUrl,
   encodeDataUrl,
+  ModelicaArray,
+  ModelicaBooleanLiteral,
   ModelicaClassInstance,
   ModelicaClassKind,
   ModelicaComponentClauseSyntaxNode,
   ModelicaComponentInstance,
   ModelicaDAE,
   ModelicaDAEPrinter,
+  ModelicaElementModification,
   ModelicaEntity,
   ModelicaFlattener,
+  ModelicaIntegerLiteral,
+  ModelicaRealLiteral,
   ModelicaSimulator,
+  ModelicaStringLiteral,
   StringWriter,
   type IDiagram,
   type ParameterInfo,
@@ -73,6 +79,7 @@ import TreeWidget from "./tree";
 import { VariablesTree } from "./variables-tree";
 
 import AddLibraryModal from "./add-library-modal";
+import { parseCadAnnotationString, type CadAnnotation, type CadComponent, type CadPortAnnotation } from "./cad-viewer";
 const CodeEditor = React.lazy(() => import("./code"));
 const DiagramEditor = React.lazy(() => import("./diagram"));
 const SimulationResults = React.lazy(() =>
@@ -186,6 +193,65 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [treeVisible, setTreeVisible] = useState(true);
   const [windowWidth, setWindowWidth] = useState(typeof window !== "undefined" ? window.innerWidth : 1200);
   const [splitRatio, setSplitRatio] = useState(0.5);
+
+  const cadComponents = useMemo<CadComponent[]>(() => {
+    if (!diagramClassInstance) return [];
+
+    const formatCADAnnotation = (modName: string, modArg: { modificationArguments: unknown[] }): string => {
+      const parts: string[] = [];
+      for (const arg of modArg.modificationArguments) {
+        if (arg instanceof ModelicaElementModification && arg.name) {
+          const expr = arg.expression;
+          if (expr instanceof ModelicaStringLiteral) parts.push(`${arg.name}="${expr.value}"`);
+          else if (expr instanceof ModelicaRealLiteral || expr instanceof ModelicaIntegerLiteral)
+            parts.push(`${arg.name}=${expr.value}`);
+          else if (expr instanceof ModelicaBooleanLiteral) parts.push(`${arg.name}=${expr.value ? "true" : "false"}`);
+          else if (expr instanceof ModelicaArray) {
+            const vals = expr.elements
+              .map((e) => (e instanceof ModelicaRealLiteral || e instanceof ModelicaIntegerLiteral ? e.value : 0))
+              .join(", ");
+            parts.push(`${arg.name}={${vals}}`);
+          }
+        }
+      }
+      return `${modName}(${parts.join(", ")})`;
+    };
+
+    const result: CadComponent[] = [];
+    for (const comp of diagramClassInstance.components) {
+      if (!comp.name) continue;
+
+      let cadComp: CadComponent | null = null;
+      const cadAnnotation = comp.annotations.find((a) => a.name === "CAD");
+      if (cadAnnotation instanceof ModelicaClassInstance && cadAnnotation.modification) {
+        const cadStr = formatCADAnnotation("CAD", cadAnnotation.modification);
+        const parsed = parseCadAnnotationString(cadStr) as CadAnnotation;
+        if (parsed) {
+          cadComp = { name: comp.name, cad: parsed, ports: [] };
+          result.push(cadComp);
+        }
+      }
+
+      if (comp.classInstance) {
+        for (const subComp of comp.classInstance.components) {
+          if (!subComp.name) continue;
+          const portAnnotation = subComp.annotations.find((a) => a.name === "CADPort");
+          if (portAnnotation instanceof ModelicaClassInstance && portAnnotation.modification) {
+            const portStr = formatCADAnnotation("CADPort", portAnnotation.modification);
+            const parsedPort = parseCadAnnotationString(portStr) as CadPortAnnotation;
+            if (parsedPort) {
+              if (!cadComp) {
+                cadComp = { name: comp.name, cad: { uri: "" }, ports: [] };
+                result.push(cadComp);
+              }
+              cadComp.ports?.push({ name: subComp.name, port: parsedPort });
+            }
+          }
+        }
+      }
+    }
+    return result;
+  }, [diagramClassInstance]);
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const isDraggingSplit = useRef(false);
   const [treeWidth, setTreeWidth] = useState(300);
@@ -2591,7 +2657,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                   >
                     <Suspense fallback={null}>
                       <CadViewerPanel
-                        components={[]}
+                        components={cadComponents}
                         selectedName={selectedComponent?.name}
                         onSelect={(name) => {
                           if (!name) {
