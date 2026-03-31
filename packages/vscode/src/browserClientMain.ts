@@ -7,6 +7,7 @@ import { boxTexturedBase64, foxBase64 } from "./cadModels";
 import { CadViewerPanel } from "./cadViewerPanel";
 import { ChatViewProvider } from "./chatPanel";
 import { CosimViewProvider } from "./cosimPanel";
+import { ModelScriptDebugSession } from "./debugAdapter";
 import { DiagramEditorProvider } from "./diagramEditorProvider";
 import { FMU_VIEW_SCHEME, FmuContentProvider, FmuEditorProvider } from "./fmuDocumentProvider";
 import { LibraryTreeProvider } from "./libraryTreeProvider";
@@ -148,8 +149,71 @@ class MemoryFileSystemProvider implements vscode.FileSystemProvider {
   }
 }
 
+import { StoppedEvent } from "@vscode/debugadapter";
+import { activeDebugSession, setLspDebugCallbacks } from "./debugAdapter";
+
+class InlineDebugAdapterFactory implements vscode.DebugAdapterDescriptorFactory {
+  createDebugAdapterDescriptor(session: vscode.DebugSession): vscode.ProviderResult<vscode.DebugAdapterDescriptor> {
+    // Keep session around to satisfy TS, though we do not use it
+    void session;
+    return new vscode.DebugAdapterInlineImplementation(new ModelScriptDebugSession());
+  }
+}
+
 export async function activate(context: vscode.ExtensionContext) {
   console.log("ModelScript extension activated");
+
+  context.subscriptions.push(
+    vscode.debug.registerDebugAdapterDescriptorFactory("modelscript", new InlineDebugAdapterFactory()),
+  );
+
+  setLspDebugCallbacks(
+    async (program: string) => {
+      let uri = program;
+      try {
+        const doc = vscode.workspace.textDocuments.find((d) => d.uri.path === program || d.fileName === program);
+        if (doc) uri = doc.uri.toString();
+        else uri = vscode.Uri.file(program).toString();
+      } catch {
+        /* ignore */
+      }
+      if (client) {
+        const result = await client.sendRequest<{ error?: string }>("modelscript/simulateDebug", { uri });
+        if (result && result.error) {
+          vscode.window.showErrorMessage(`Debugger failed to start: ${result.error}`);
+        }
+        return result;
+      }
+      return { error: "LSP Client not active" };
+    },
+    async () => {
+      if (client) await client.sendRequest("modelscript/debuggerContinue");
+    },
+    async () => {
+      if (client) return client.sendRequest("modelscript/debuggerVariables");
+      return [];
+    },
+    async (program: string, bps: { line: number; column?: number }[]) => {
+      let uri = program;
+      try {
+        const doc = vscode.workspace.textDocuments.find((d) => d.uri.path === program || d.fileName === program);
+        if (doc) uri = doc.uri.toString();
+        else uri = vscode.Uri.file(program).toString();
+      } catch {
+        /* ignore */
+      }
+      if (client) await client.sendNotification("modelscript/setBreakpoints", { uri, breakpoints: bps });
+    },
+    async () => {
+      if (client) await client.sendRequest("modelscript/debuggerContinue", { step: true });
+    },
+  );
+
+  context.subscriptions
+    .push
+    // We can't push 'client.onNotification' to subscriptions directly, but we can set it up after client init.
+    // In browserClientMain.ts, the client is initialized later, so we'll just wait for it.
+    ();
 
   // Clean up any stale Modelica color overrides persisted by a previous version.
   // VS Code's built-in themes (Dark Modern, Light Modern) already color the LSP's
@@ -208,6 +272,15 @@ export async function activate(context: vscode.ExtensionContext) {
 
   await client.start();
   console.log("ModelScript language server is ready");
+
+  client.onNotification("modelscript/debuggerStopped", (params: { uri?: string; line?: number; column?: number }) => {
+    if (activeDebugSession) {
+      activeDebugSession.lastStoppedUri = params.uri;
+      activeDebugSession.lastStoppedLine = params.line;
+      activeDebugSession.lastStoppedColumn = params.column;
+      activeDebugSession.sendEvent(new StoppedEvent("step", 1));
+    }
+  });
 
   // Register AI integration components (proposed APIs — may not be available in web builds)
   try {

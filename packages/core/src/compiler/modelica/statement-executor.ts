@@ -12,6 +12,7 @@
 
 import {
   ExpressionEvaluator,
+  ModelicaArray,
   ModelicaAssignmentStatement,
   ModelicaBooleanLiteral,
   ModelicaBreakStatement,
@@ -426,6 +427,14 @@ function evaluateRange(range: ModelicaExpression, evaluator: ExpressionEvaluator
   }
 
   // Single-value "range" (e.g., used in `for i in {1, 3, 5}`)
+  if (range instanceof ModelicaArray) {
+    const values: number[] = [];
+    for (const el of range.elements) {
+      const v = evaluator.evaluate(el);
+      if (v !== null) values.push(v);
+    }
+    return values;
+  }
   if (range instanceof ModelicaRealLiteral || range instanceof ModelicaIntegerLiteral) {
     return [range.value];
   }
@@ -576,6 +585,374 @@ export function buildFunctionLookup(functions: ModelicaDAE[]): (name: string, ar
     if (!funcDae) return null;
     return executeFunction(funcDae, args, lookup);
   };
+  (lookup as unknown as { __funcMap: Map<string, ModelicaDAE> }).__funcMap = funcMap;
 
   return lookup;
+}
+
+export async function executeFunctionAsync(
+  funcDae: ModelicaDAE,
+  argValues: number[],
+  parentLookup?: (name: string, args: number[]) => number | null,
+  debuggerHook?: import("./simulator.js").SimulationDebugger,
+): Promise<number | null> {
+  if (++currentCallDepth > MAX_CALL_DEPTH) {
+    currentCallDepth--;
+    throw new Error(`Maximum call depth (${MAX_CALL_DEPTH}) exceeded in function '${funcDae.name}'.`);
+  }
+
+  try {
+    const inputVars = funcDae.variables.filter((v) => v.causality === "input");
+    const outputVars = funcDae.variables.filter((v) => v.causality === "output");
+    const otherVars = funcDae.variables.filter((v) => v.causality !== "input" && v.causality !== "output");
+
+    const funcEnv = new Map<string, number>();
+    const funcEvaluator = new ExpressionEvaluator(funcEnv);
+    funcEvaluator.functionLookup = parentLookup ?? null;
+
+    for (let i = 0; i < inputVars.length; i++) {
+      const inputVar = inputVars[i];
+      if (!inputVar) continue;
+
+      if (i < argValues.length) {
+        funcEnv.set(inputVar.name, argValues[i] ?? 0);
+      } else if (inputVar.expression) {
+        const defaultVal = funcEvaluator.evaluate(inputVar.expression);
+        funcEnv.set(inputVar.name, defaultVal ?? 0);
+      }
+    }
+
+    for (const outVar of outputVars) {
+      if (outVar.expression) {
+        const val = funcEvaluator.evaluate(outVar.expression);
+        if (val !== null) funcEnv.set(outVar.name, val);
+      }
+    }
+
+    for (const localVar of otherVars) {
+      if (localVar.expression) {
+        const val = funcEvaluator.evaluate(localVar.expression);
+        if (val !== null) funcEnv.set(localVar.name, val);
+      }
+    }
+
+    for (const section of funcDae.algorithms) {
+      try {
+        await executeStatementsAsync(section, funcEvaluator, parentLookup, debuggerHook);
+      } catch (e) {
+        if (e === ReturnSignal) break;
+        throw e;
+      }
+    }
+
+    if (outputVars.length > 0) {
+      const firstOutput = outputVars[0];
+      if (firstOutput) {
+        return funcEnv.get(firstOutput.name) ?? null;
+      }
+    }
+
+    return null;
+  } finally {
+    currentCallDepth--;
+  }
+}
+
+// --- ASYNC DUALS FOR DEBUGGING ---
+
+export async function executeStatementsAsync(
+  statements: ModelicaStatement[],
+  evaluator: ExpressionEvaluator,
+  functionLookup?: (name: string, args: number[]) => number | null,
+  debuggerHook?: import("./simulator.js").SimulationDebugger,
+): Promise<void> {
+  for (const stmt of statements) {
+    await executeStatementAsync(stmt, evaluator, functionLookup, debuggerHook);
+  }
+}
+
+async function executeStatementAsync(
+  stmt: ModelicaStatement,
+  evaluator: ExpressionEvaluator,
+  functionLookup?: (name: string, args: number[]) => number | null,
+  debuggerHook?: import("./simulator.js").SimulationDebugger,
+): Promise<void> {
+  if (debuggerHook?.onStatement) {
+    await debuggerHook.onStatement(stmt, evaluator);
+  }
+  // ── Assignment: target := source ──
+  if (stmt instanceof ModelicaAssignmentStatement) {
+    const value = evaluator.evaluate(stmt.source);
+    if (value !== null) {
+      const targetName = extractTargetName(stmt.target);
+      if (targetName) {
+        evaluator.env.set(targetName, value);
+      }
+    }
+    return;
+  }
+
+  // ── For-loop: for i in range loop ... end for ──
+  if (stmt instanceof ModelicaForStatement) {
+    await executeForStatementAsync(stmt, evaluator, functionLookup, debuggerHook);
+    return;
+  }
+
+  // ── While-loop: while cond loop ... end while ──
+  if (stmt instanceof ModelicaWhileStatement) {
+    await executeWhileStatementAsync(stmt, evaluator, functionLookup, debuggerHook);
+    return;
+  }
+
+  // ── If-statement: if cond then ... elseif ... else ... end if ──
+  if (stmt instanceof ModelicaIfStatement) {
+    await executeIfStatementAsync(stmt, evaluator, functionLookup, debuggerHook);
+    return;
+  }
+
+  // ── Return: terminates function execution ──
+  if (stmt instanceof ModelicaReturnStatement) {
+    throw ReturnSignal;
+  }
+
+  // ── Break: terminates enclosing loop ──
+  if (stmt instanceof ModelicaBreakStatement) {
+    throw BreakSignal;
+  }
+
+  // ── Procedure call: functionName(args) ──
+  if (stmt instanceof ModelicaProcedureCallStatement) {
+    await executeProcedureCallAsync(stmt, evaluator, functionLookup, debuggerHook);
+    return;
+  }
+
+  // ── Complex assignment: (x, y, _) := f(args) ──
+  if (stmt instanceof ModelicaComplexAssignmentStatement) {
+    await executeComplexAssignmentAsync(stmt, evaluator, functionLookup, debuggerHook);
+    return;
+  }
+
+  // ── When-statement (in algorithm sections) ──
+  if (stmt instanceof ModelicaWhenStatement) {
+    await executeWhenStatementAsync(stmt, evaluator, functionLookup, debuggerHook);
+    return;
+  }
+
+  // Unknown statement type — silently skip
+}
+
+async function executeForStatementAsync(
+  stmt: ModelicaForStatement,
+  evaluator: ExpressionEvaluator,
+  functionLookup?: (name: string, args: number[]) => number | null,
+  debuggerHook?: import("./simulator.js").SimulationDebugger,
+): Promise<void> {
+  const rangeValues = evaluateRange(stmt.range, evaluator);
+  if (!rangeValues) return;
+
+  const previousValue = evaluator.env.get(stmt.indexName);
+  let iterCount = 0;
+
+  try {
+    for (const indexVal of rangeValues) {
+      if (++iterCount > MAX_FOR_ITERATIONS) {
+        throw new Error(`For-loop exceeded ${MAX_FOR_ITERATIONS} iterations (index '${stmt.indexName}').`);
+      }
+      evaluator.env.set(stmt.indexName, indexVal);
+      try {
+        await executeStatementsAsync(stmt.statements, evaluator, functionLookup, debuggerHook);
+      } catch (e) {
+        if (e === BreakSignal) break;
+        throw e; // ReturnSignal propagates up
+      }
+    }
+  } finally {
+    // Restore previous value of the loop variable (or delete if it didn't exist)
+    if (previousValue !== undefined) {
+      evaluator.env.set(stmt.indexName, previousValue);
+    } else {
+      evaluator.env.delete(stmt.indexName);
+    }
+  }
+}
+
+async function executeWhileStatementAsync(
+  stmt: ModelicaWhileStatement,
+  evaluator: ExpressionEvaluator,
+  functionLookup?: (name: string, args: number[]) => number | null,
+  debuggerHook?: import("./simulator.js").SimulationDebugger,
+): Promise<void> {
+  let iterCount = 0;
+
+  while (true) {
+    if (++iterCount > MAX_WHILE_ITERATIONS) {
+      throw new Error(`While-loop exceeded ${MAX_WHILE_ITERATIONS} iterations.`);
+    }
+
+    const condVal = evaluator.evaluate(stmt.condition);
+    if (condVal === null || condVal === 0) break;
+
+    try {
+      await executeStatementsAsync(stmt.statements, evaluator, functionLookup, debuggerHook);
+    } catch (e) {
+      if (e === BreakSignal) break;
+      throw e;
+    }
+  }
+}
+
+async function executeIfStatementAsync(
+  stmt: ModelicaIfStatement,
+  evaluator: ExpressionEvaluator,
+  functionLookup?: (name: string, args: number[]) => number | null,
+  debuggerHook?: import("./simulator.js").SimulationDebugger,
+): Promise<void> {
+  const condVal = evaluator.evaluate(stmt.condition);
+  if (condVal !== null && condVal !== 0) {
+    await executeStatementsAsync(stmt.statements, evaluator, functionLookup, debuggerHook);
+    return;
+  }
+
+  for (const clause of stmt.elseIfClauses) {
+    const elseIfCond = evaluator.evaluate(clause.condition);
+    if (elseIfCond !== null && elseIfCond !== 0) {
+      await executeStatementsAsync(clause.statements, evaluator, functionLookup, debuggerHook);
+      return;
+    }
+  }
+
+  if (stmt.elseStatements.length > 0) {
+    await executeStatementsAsync(stmt.elseStatements, evaluator, functionLookup, debuggerHook);
+  }
+}
+
+async function executeProcedureCallAsync(
+  stmt: ModelicaProcedureCallStatement,
+  evaluator: ExpressionEvaluator,
+  functionLookup?: (name: string, args: number[]) => number | null,
+  debuggerHook?: import("./simulator.js").SimulationDebugger,
+): Promise<void> {
+  const call = stmt.call;
+
+  // Handle built-in procedure-like calls
+  if (call.functionName === "assert") {
+    // assert(condition, message) — evaluate condition; if false, throw
+    const firstArg = call.args[0];
+    if (firstArg) {
+      const condVal = evaluator.evaluate(firstArg);
+      if (condVal !== null && condVal === 0) {
+        // TODO: extract message from args[1] when string support is added
+        throw new Error("Modelica assertion failed");
+      }
+    }
+    return;
+  }
+
+  if (call.functionName === "terminate") {
+    throw new Error("Modelica terminate() called");
+  }
+
+  if (call.functionName === "print") {
+    // Silently consume print() calls
+    return;
+  }
+
+  // Delegate to the function lookup for user-defined procedures
+  if (functionLookup) {
+    const argValues: number[] = [];
+    for (const arg of call.args) {
+      const val = evaluator.evaluate(arg);
+      if (val === null) return; // Can't evaluate args — skip
+      argValues.push(val);
+    }
+
+    const fnMap = (functionLookup as { __funcMap?: Map<string, ModelicaDAE> }).__funcMap;
+    if (fnMap) {
+      const funcDae = fnMap.get(call.functionName);
+      if (funcDae) {
+        await executeFunctionAsync(funcDae, argValues, functionLookup, debuggerHook);
+        return;
+      }
+    }
+
+    functionLookup(call.functionName, argValues);
+  }
+}
+
+async function executeComplexAssignmentAsync(
+  stmt: ModelicaComplexAssignmentStatement,
+  evaluator: ExpressionEvaluator,
+  functionLookup?: (name: string, args: number[]) => number | null,
+  debuggerHook?: import("./simulator.js").SimulationDebugger,
+): Promise<void> {
+  // For now, only handle the case where the source is a single expression
+  // that can be evaluated to a scalar.  Full multi-output function support
+  // requires Step 1.2 (user-defined function calls).
+  if (stmt.targets.length === 1) {
+    const target = stmt.targets[0];
+    if (target) {
+      const value = evaluator.evaluate(stmt.source);
+      if (value !== null) {
+        const name = extractTargetName(target);
+        if (name) evaluator.env.set(name, value);
+      }
+    }
+    return;
+  }
+
+  // Multi-output: delegate to functionLookup if available
+  if (functionLookup && stmt.source instanceof ModelicaFunctionCallExpression) {
+    const argValues: number[] = [];
+    for (const arg of stmt.source.args) {
+      const val = evaluator.evaluate(arg);
+      if (val === null) return;
+      argValues.push(val);
+    }
+
+    let result: number | null;
+    const fnMap = (functionLookup as { __funcMap?: Map<string, ModelicaDAE> }).__funcMap;
+    if (fnMap) {
+      const funcDae = fnMap.get(stmt.source.functionName);
+      if (funcDae) {
+        result = await executeFunctionAsync(funcDae, argValues, functionLookup, debuggerHook);
+      } else {
+        result = functionLookup(stmt.source.functionName, argValues);
+      }
+    } else {
+      result = functionLookup(stmt.source.functionName, argValues);
+    }
+
+    if (result !== null && stmt.targets.length > 0) {
+      const firstTarget = stmt.targets[0];
+      if (firstTarget) {
+        const name = extractTargetName(firstTarget);
+        if (name) evaluator.env.set(name, result);
+      }
+    }
+  }
+}
+
+async function executeWhenStatementAsync(
+  stmt: ModelicaWhenStatement,
+  evaluator: ExpressionEvaluator,
+  functionLookup?: (name: string, args: number[]) => number | null,
+  debuggerHook?: import("./simulator.js").SimulationDebugger,
+): Promise<void> {
+  // In algorithm sections, a when-statement fires on the rising edge
+  // of its condition.  For steady-state / initialization contexts,
+  // we evaluate the condition and execute the body if it's true.
+  const condVal = evaluator.evaluate(stmt.condition);
+  if (condVal !== null && condVal !== 0) {
+    await executeStatementsAsync(stmt.statements, evaluator, functionLookup, debuggerHook);
+    return;
+  }
+
+  // Check elseWhen clauses
+  for (const clause of stmt.elseWhenClauses) {
+    const elseCondVal = evaluator.evaluate(clause.condition);
+    if (elseCondVal !== null && elseCondVal !== 0) {
+      await executeStatementsAsync(clause.statements, evaluator, functionLookup, debuggerHook);
+      return;
+    }
+  }
 }

@@ -13,6 +13,14 @@ import {
 } from "./model.js";
 import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "./syntax.js";
 
+export interface SourceLocation {
+  filePath?: string;
+  startLine: number;
+  startCol: number;
+  endLine: number;
+  endCol: number;
+}
+
 export class ModelicaDAE {
   name: string;
   description: string | null;
@@ -212,6 +220,7 @@ export class ModelicaDAE {
 
 export abstract class ModelicaEquation {
   description: string | null;
+  location?: SourceLocation;
   /** Clock domain index (undefined = continuous time). */
   clockDomain?: number | undefined;
 
@@ -496,6 +505,7 @@ export class ModelicaWhenEquation extends ModelicaEquation {
 }
 
 export abstract class ModelicaStatement {
+  location?: SourceLocation;
   abstract accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R;
   abstract get hash(): string;
   abstract get toJSON(): JSONValue;

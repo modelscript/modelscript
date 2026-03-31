@@ -4252,3 +4252,119 @@ function buildComponentTree(classInstance: ModelicaClassInstance, depth = 0): Co
 
 // Listen on the connection
 connection.listen();
+
+let debuggerResumeCallback: (() => void) | undefined;
+let currentDebugEnv: Map<string, number> | undefined;
+let stepMode = true; // Initially true to stop on first statement
+const breakpointsMap = new Map<string, { line: number; column?: number }[]>();
+
+connection.onNotification(
+  "modelscript/setBreakpoints",
+  (params: { uri: string; breakpoints: { line: number; column?: number }[] }) => {
+    breakpointsMap.set(params.uri, params.breakpoints);
+  },
+);
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+connection.onRequest("modelscript/debuggerContinue", (params?: any) => {
+  stepMode = params?.step || false;
+  if (debuggerResumeCallback) {
+    debuggerResumeCallback();
+    debuggerResumeCallback = undefined;
+  }
+  return { ok: true };
+});
+
+function formatDebugValue(val: unknown): string {
+  if (val !== null && typeof val === "object" && "elements" in val) {
+    const arrVal = val as { elements: unknown[] };
+    if (Array.isArray(arrVal.elements)) {
+      return `[${arrVal.elements.map(formatDebugValue).join(", ")}]`;
+    }
+  }
+  return String(val);
+}
+
+connection.onRequest("modelscript/debuggerVariables", () => {
+  if (!currentDebugEnv) return [];
+  // Sort variables alphabetically for better UX
+  const entries = Array.from(currentDebugEnv.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  return entries.map(([name, value]) => ({
+    name,
+    value: formatDebugValue(value),
+    variablesReference: 0,
+  }));
+});
+
+connection.onRequest(
+  "modelscript/simulateDebug",
+  async (params: { uri: string; className?: string }): Promise<unknown> => {
+    let instances = documentInstances.get(params.uri);
+    if (!instances || instances.length === 0) {
+      const doc = documents.get(params.uri);
+      if (doc) {
+        await validateTextDocument(doc);
+        instances = documentInstances.get(params.uri);
+      }
+    }
+    if (!instances || instances.length === 0) {
+      return {
+        error: `No class instances found for ${params.uri}. Available: ${Array.from(documentInstances.keys()).join(", ")}`,
+      };
+    }
+
+    let classInstance = instances[0];
+    if (params.className) {
+      const found = instances.find((i) => i.name === params.className);
+      if (found) classInstance = found;
+    }
+
+    try {
+      if (!classInstance.instantiated) {
+        classInstance.instantiate();
+      }
+
+      const dae = new ModelicaDAE(classInstance.name || "Model");
+      const flattener = new ModelicaFlattener();
+      classInstance.accept(flattener, ["", dae]);
+      flattener.generateFlowBalanceEquations(dae);
+      flattener.foldDAEConstants(dae);
+
+      stepMode = true; // Reset step mode on new simulation run
+
+      const simulator = new ModelicaSimulator(dae, {
+        onStatement: async (stmt, evaluator) => {
+          const bps = breakpointsMap.get(params.uri) || [];
+          const isBreakpoint = bps.some((bp) => bp.line === stmt.location?.startLine);
+
+          if (stepMode || isBreakpoint) {
+            stepMode = false;
+            currentDebugEnv = evaluator.env;
+            // Send notification to the VS Code client
+            connection.sendNotification("modelscript/debuggerStopped", {
+              uri: params.uri,
+              line: stmt.location?.startLine,
+              column: stmt.location?.startCol,
+            });
+            // Wait for client to send modelscript/debuggerContinue
+            await new Promise<void>((resolve) => {
+              debuggerResumeCallback = resolve;
+            });
+            currentDebugEnv = undefined;
+          }
+        },
+      });
+      simulator.prepare();
+
+      const exp = simulator.dae.experiment;
+      const startTime = exp.startTime ?? 0;
+      const stopTime = exp.stopTime ?? 10;
+      const step = exp.interval ?? (stopTime - startTime) / 100;
+
+      const result = await simulator.simulateAsync(startTime, stopTime, step);
+      return result;
+    } catch (error: unknown) {
+      return { error: error instanceof Error ? error.message : String(error) };
+    }
+  },
+);

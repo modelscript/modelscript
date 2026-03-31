@@ -1,3 +1,4 @@
+import type { ModelicaSyntaxNode } from "./syntax.js";
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { StringWriter } from "../../util/io.js";
@@ -5710,7 +5711,9 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       if (effectiveTarget instanceof ModelicaArray && effectiveTarget.elements.length === 0) {
         return null;
       }
-      ctx.stmtCollector.push(new ModelicaAssignmentStatement(effectiveTarget, source));
+      ctx.stmtCollector.push(
+        withLoc(new ModelicaAssignmentStatement(effectiveTarget, source), node as unknown as ModelicaSyntaxNode),
+      );
     }
     return null;
   }
@@ -5740,7 +5743,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       }
     }
     const call = new ModelicaFunctionCallExpression(functionName, flatArgs);
-    ctx.stmtCollector.push(new ModelicaProcedureCallStatement(call));
+    ctx.stmtCollector.push(withLoc(new ModelicaProcedureCallStatement(call), node as unknown as ModelicaSyntaxNode));
     // Collect function definition if it's a user-defined function
     this.#collectFunctionDefinition(functionName, ctx);
     return null;
@@ -5767,9 +5770,14 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       const target = nonNullTargets[0].target;
       const index = nonNullTargets[0].index;
       const subscripted = new ModelicaSubscriptedExpression(source, [new ModelicaIntegerLiteral(index + 1)]);
-      if (target) ctx.stmtCollector.push(new ModelicaAssignmentStatement(target, subscripted));
+      if (target)
+        ctx.stmtCollector.push(
+          withLoc(new ModelicaAssignmentStatement(target, subscripted), node as unknown as ModelicaSyntaxNode),
+        );
     } else {
-      ctx.stmtCollector.push(new ModelicaComplexAssignmentStatement(targets, source));
+      ctx.stmtCollector.push(
+        withLoc(new ModelicaComplexAssignmentStatement(targets, source), node as unknown as ModelicaSyntaxNode),
+      );
     }
     // Collect function definition if it's a user-defined function
     this.#collectFunctionDefinition(functionName, ctx);
@@ -5777,12 +5785,12 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
   }
 
   visitBreakStatement(node: ModelicaBreakStatementSyntaxNode, ctx: FlattenerContext): null {
-    ctx.stmtCollector.push(new ModelicaBreakStatement());
+    ctx.stmtCollector.push(withLoc(new ModelicaBreakStatement(), node as unknown as ModelicaSyntaxNode));
     return null;
   }
 
   visitReturnStatement(node: ModelicaReturnStatementSyntaxNode, ctx: FlattenerContext): null {
-    ctx.stmtCollector.push(new ModelicaReturnStatement());
+    ctx.stmtCollector.push(withLoc(new ModelicaReturnStatement(), node as unknown as ModelicaSyntaxNode));
     return null;
   }
 
@@ -5864,7 +5872,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       const forStmt = new ModelicaForStatement(indexName, range, statements);
       statements = [forStmt];
     }
-    for (const stmt of statements) ctx.stmtCollector.push(stmt);
+    for (const stmt of statements) ctx.stmtCollector.push(withLoc(stmt, node as unknown as ModelicaSyntaxNode));
     return null;
   }
 
@@ -6008,7 +6016,8 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
           // Condition is `true`: take this branch, everything after becomes dead
           if (keptBranches.length === 0) {
             // This is the first live branch — emit its body directly (no if needed)
-            for (const stmt of branch.statements) ctx.stmtCollector.push(stmt);
+            for (const stmt of branch.statements)
+              ctx.stmtCollector.push(withLoc(stmt, node as unknown as ModelicaSyntaxNode));
             return null;
           } else {
             // This is an elseif with `true` — it becomes the final else
@@ -6027,7 +6036,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
 
     // After processing: if no branches remain, emit the else body directly
     if (keptBranches.length === 0) {
-      for (const stmt of resolvedElse) ctx.stmtCollector.push(stmt);
+      for (const stmt of resolvedElse) ctx.stmtCollector.push(withLoc(stmt, node as unknown as ModelicaSyntaxNode));
       return null;
     }
 
@@ -6036,7 +6045,10 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     if (!mainBranch) return null;
     const remainingElseIfs = keptBranches.slice(1);
     ctx.stmtCollector.push(
-      new ModelicaIfStatement(mainBranch.condition, mainBranch.statements, remainingElseIfs, resolvedElse),
+      withLoc(
+        new ModelicaIfStatement(mainBranch.condition, mainBranch.statements, remainingElseIfs, resolvedElse),
+        node as unknown as ModelicaSyntaxNode,
+      ),
     );
     return null;
   }
@@ -6052,7 +6064,12 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       const clauseStatements = this.flattenStatements(clause.statements ?? [], ctx);
       elseWhenClauses.push({ condition: clauseCondition, statements: clauseStatements });
     }
-    ctx.stmtCollector.push(new ModelicaWhenStatement(condition, thenStatements, elseWhenClauses));
+    ctx.stmtCollector.push(
+      withLoc(
+        new ModelicaWhenStatement(condition, thenStatements, elseWhenClauses),
+        node as unknown as ModelicaSyntaxNode,
+      ),
+    );
     return null;
   }
 
@@ -6060,7 +6077,9 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     const condition = node.condition?.accept(this, ctx);
     if (!condition) return null;
     const statements = this.flattenStatements(node.statements ?? [], ctx);
-    ctx.stmtCollector.push(new ModelicaWhileStatement(condition, statements));
+    ctx.stmtCollector.push(
+      withLoc(new ModelicaWhileStatement(condition, statements), node as unknown as ModelicaSyntaxNode),
+    );
     return null;
   }
 
@@ -7968,4 +7987,21 @@ export function findAlgebraicLoops(dae: ModelicaDAE): void {
     console.log(`[DAE] Found ${algebraicLoops.length} algebraic loop(s) in ${dae.name}`);
     dae.algebraicLoops = algebraicLoops;
   }
+}
+
+function withLoc<T extends ModelicaStatement | ModelicaEquation>(
+  node: T,
+  syntaxNode: ModelicaSyntaxNode | null | undefined,
+): T {
+  if (syntaxNode?.sourceRange && "location" in node) {
+    (
+      node as unknown as { location?: { startLine: number; startCol: number; endLine: number; endCol: number } }
+    ).location = {
+      startLine: syntaxNode.sourceRange.startRow + 1,
+      startCol: syntaxNode.sourceRange.startCol + 1,
+      endLine: syntaxNode.sourceRange.endRow + 1,
+      endCol: syntaxNode.sourceRange.endCol + 1,
+    };
+  }
+  return node;
 }

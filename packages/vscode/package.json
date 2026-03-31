@@ -38,6 +38,11 @@
     "watch": "webpack --watch"
   },
   "contributes": {
+    "breakpoints": [
+      {
+        "language": "modelica"
+      }
+    ],
     "commands": [
       {
         "command": "modelscript.openDiagram",
@@ -190,6 +195,45 @@
           }
         ],
         "priority": "default"
+      }
+    ],
+    "debuggers": [
+      {
+        "type": "modelscript",
+        "label": "ModelScript Simulator",
+        "program": "./dist/browserClientMain.js",
+        "runtime": "vscode",
+        "languages": [
+          "modelica"
+        ],
+        "configurationAttributes": {
+          "launch": {
+            "required": [
+              "program"
+            ],
+            "properties": {
+              "program": {
+                "type": "string",
+                "description": "Absolute path to the Modelica source file.",
+                "default": "${file}"
+              },
+              "stopOnEntry": {
+                "type": "boolean",
+                "description": "Automatically stop after launch.",
+                "default": true
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "type": "modelscript",
+            "request": "launch",
+            "name": "Debug ModelScript",
+            "program": "${file}",
+            "stopOnEntry": true
+          }
+        ]
       }
     ],
     "grammars": [
@@ -493,6 +537,7 @@
     "@modelscript/lsp": "*",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.5.0",
+    "@vscode/debugadapter": "^1.68.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "three": "^0.183.2",
