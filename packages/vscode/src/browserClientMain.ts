@@ -481,6 +481,82 @@ export async function activate(context: vscode.ExtensionContext) {
       cosimProvider.refresh();
       mqttTreeProvider.refresh();
     }),
+    // ── Analytical commands ──
+    commands.registerCommand("modelscript.showClassHierarchy", async () => {
+      if (!client) return;
+      const editor = vscode.window.activeTextEditor;
+      if (!editor || editor.document.languageId !== "modelica") {
+        vscode.window.showWarningMessage("Open a Modelica file first.");
+        return;
+      }
+      try {
+        const result = await client.sendRequest<{
+          name: string;
+          kind: string;
+          description: string | null;
+          children: unknown[];
+        } | null>("modelscript/getClassHierarchy", { uri: editor.document.uri.toString() });
+        if (!result) {
+          vscode.window.showInformationMessage("No class hierarchy available.");
+          return;
+        }
+        outputChannel.clear();
+        outputChannel.show(true);
+        outputChannel.appendLine("=== Class Hierarchy ===");
+        const printNode = (
+          node: { name: string; kind: string; description: string | null; children: unknown[] },
+          indent: string,
+        ) => {
+          const desc = node.description ? ` — ${node.description}` : "";
+          outputChannel.appendLine(`${indent}${node.kind} ${node.name}${desc}`);
+          for (const child of node.children) {
+            printNode(child as typeof node, indent + "  extends ");
+          }
+        };
+        printNode(result, "");
+      } catch (e) {
+        vscode.window.showErrorMessage(`Class hierarchy error: ${e}`);
+      }
+    }),
+    commands.registerCommand("modelscript.analyzeBlt", async () => {
+      if (!client) return;
+      const editor = vscode.window.activeTextEditor;
+      if (!editor || editor.document.languageId !== "modelica") {
+        vscode.window.showWarningMessage("Open a Modelica file first.");
+        return;
+      }
+      try {
+        const result = await client.sendRequest<{
+          className: string;
+          variables: string[];
+          equations: string[];
+          algebraicLoops: { variables: string[]; equations: string[] }[];
+          equationCount: number;
+          unknownCount: number;
+        } | null>("modelscript/analyzeBlt", { uri: editor.document.uri.toString() });
+        if (!result) {
+          vscode.window.showInformationMessage("No BLT analysis available.");
+          return;
+        }
+        outputChannel.clear();
+        outputChannel.show(true);
+        outputChannel.appendLine(`=== BLT Analysis: ${result.className} ===`);
+        outputChannel.appendLine(`Equations: ${result.equationCount}`);
+        outputChannel.appendLine(`Unknowns: ${result.unknownCount}`);
+        outputChannel.appendLine(`Variables: ${result.variables.join(", ")}`);
+        if (result.algebraicLoops.length > 0) {
+          outputChannel.appendLine(`\nAlgebraic Loops: ${result.algebraicLoops.length}`);
+          for (let i = 0; i < result.algebraicLoops.length; i++) {
+            const loop = result.algebraicLoops[i];
+            outputChannel.appendLine(`  Loop ${i + 1} (size ${loop.variables.length}): ${loop.variables.join(", ")}`);
+          }
+        } else {
+          outputChannel.appendLine("\nNo algebraic loops detected ✓");
+        }
+      } catch (e) {
+        vscode.window.showErrorMessage(`BLT analysis error: ${e}`);
+      }
+    }),
   );
 
   // Listen for project tree updates from the LSP server

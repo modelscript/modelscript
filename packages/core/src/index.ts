@@ -3,6 +3,7 @@
 export * from "./compiler/context.js";
 export * from "./compiler/modelica/annotation.js";
 export * from "./compiler/modelica/bdf.js";
+export * from "./compiler/modelica/blt.js";
 export * from "./compiler/modelica/dae.js";
 export * from "./compiler/modelica/dopri5.js";
 export * from "./compiler/modelica/dual-evaluator.js";

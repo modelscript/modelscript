@@ -112,6 +112,16 @@
         "command": "modelscript.cosimRefresh",
         "title": "ModelScript: Refresh Co-Simulation",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "modelscript.showClassHierarchy",
+        "title": "ModelScript: Show Class Hierarchy",
+        "icon": "$(type-hierarchy)"
+      },
+      {
+        "command": "modelscript.analyzeBlt",
+        "title": "ModelScript: Analyze Equation System",
+        "icon": "$(graph)"
       }
     ],
     "configuration": [

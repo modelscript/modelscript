@@ -3,6 +3,7 @@ import { BrowserMessageReader, BrowserMessageWriter, createConnection } from "vs
 import {
   CodeAction,
   CodeActionKind,
+  CodeLens,
   Color,
   ColorInformation,
   ColorPresentation,
@@ -13,6 +14,8 @@ import {
   DocumentHighlightKind,
   DocumentSymbol,
   InitializeResult,
+  InlayHint,
+  InlayHintKind,
   ParameterInformation,
   SemanticTokens,
   SemanticTokensBuilder,
@@ -70,6 +73,7 @@ import {
   ModelicaSyntaxNode,
   Scope,
   generateMultiModelWrapper,
+  performBltTransformation,
   registerOptimizeDeps,
   registerSimulateDeps,
   type Dirent,
@@ -879,6 +883,8 @@ connection.onInitialize((params): InitializeResult => {
       codeActionKinds: [CodeActionKind.QuickFix],
     },
     workspaceSymbolProvider: true,
+    codeLensProvider: { resolveProvider: false },
+    inlayHintProvider: true,
   };
   return { capabilities };
 });
@@ -3846,6 +3852,321 @@ connection.onRequest(
       const msg = e instanceof Error ? e.message : String(e);
       console.error(`[fmu] Failed to register FMU '${params.name}':`, msg);
       return { ok: false, error: msg };
+    }
+  },
+);
+
+// ── Code Lens Provider ──
+
+connection.onRequest("textDocument/codeLens", (params): CodeLens[] => {
+  if (!parserReady || !parser) return [];
+
+  const uri = params.textDocument.uri;
+  const instances = documentInstances.get(uri);
+  if (!instances || instances.length === 0) return [];
+
+  const document = documents.get(uri);
+  if (!document) return [];
+
+  const lenses: CodeLens[] = [];
+
+  for (const instance of instances) {
+    if (!instance.instantiated) {
+      try {
+        instance.instantiate();
+      } catch {
+        continue;
+      }
+    }
+
+    // Find the line of the class definition
+    const sourceRange = instance.abstractSyntaxNode?.sourceRange;
+    if (!sourceRange) continue;
+    const startLine = sourceRange.startRow;
+
+    // Only emit analytical lenses for simulatable class kinds
+    const isSimulatable =
+      instance.classKind === ModelicaClassKind.MODEL ||
+      instance.classKind === ModelicaClassKind.BLOCK ||
+      instance.classKind === ModelicaClassKind.CLASS;
+
+    if (isSimulatable) {
+      // Flatten to get equation/variable counts
+      try {
+        const dae = new ModelicaDAE(instance.name || "Model");
+        const flattener = new ModelicaFlattener();
+        instance.accept(flattener, ["", dae]);
+
+        const nEqs = dae.equations.length;
+        const nVars = dae.variables.filter(
+          (v) =>
+            (v as { variability?: unknown }).variability === null || (v as { name: string }).name.startsWith("der("),
+        ).length;
+
+        if (nEqs > 0 || nVars > 0) {
+          lenses.push({
+            range: {
+              start: { line: startLine, character: 0 },
+              end: { line: startLine, character: 0 },
+            },
+            command: {
+              title: `📐 ${nEqs} equation${nEqs !== 1 ? "s" : ""}, ${nVars} unknown${nVars !== 1 ? "s" : ""}`,
+              command: "",
+            },
+          });
+        }
+
+        // Check for algebraic loops via BLT
+        if (dae.algebraicLoops.length > 0) {
+          for (const loop of dae.algebraicLoops) {
+            lenses.push({
+              range: {
+                start: { line: startLine, character: 0 },
+                end: { line: startLine, character: 0 },
+              },
+              command: {
+                title: `⚠️ Algebraic loop (size ${loop.variables.length}): ${loop.variables.slice(0, 3).join(", ")}${loop.variables.length > 3 ? "…" : ""}`,
+                command: "",
+              },
+            });
+          }
+        }
+      } catch (e) {
+        console.warn(`[codeLens] Could not flatten ${instance.name}:`, e);
+      }
+    }
+
+    // Extends count lens
+    let extendsCount = 0;
+    try {
+      for (const ext of instance.extendsClassInstances) {
+        if (ext) extendsCount++;
+      }
+    } catch {
+      // ignore
+    }
+    if (extendsCount > 0) {
+      lenses.push({
+        range: {
+          start: { line: startLine, character: 0 },
+          end: { line: startLine, character: 0 },
+        },
+        command: {
+          title: `🏗️ ${extendsCount} extends`,
+          command: "",
+        },
+      });
+    }
+  }
+
+  return lenses;
+});
+
+// ── Inlay Hints Provider ──
+
+connection.onRequest("textDocument/inlayHint", (params): InlayHint[] => {
+  if (!parserReady || !parser) return [];
+
+  const uri = params.textDocument.uri;
+  const instances = documentInstances.get(uri);
+  if (!instances || instances.length === 0) return [];
+
+  const document = documents.get(uri);
+  if (!document) return [];
+
+  const hints: InlayHint[] = [];
+
+  for (const instance of instances) {
+    if (!instance.instantiated) continue;
+
+    // Only process simulatable classes for start value hints
+    const isSimulatable =
+      instance.classKind === ModelicaClassKind.MODEL ||
+      instance.classKind === ModelicaClassKind.BLOCK ||
+      instance.classKind === ModelicaClassKind.CLASS;
+    if (!isSimulatable) continue;
+
+    try {
+      const dae = new ModelicaDAE(instance.name || "Model");
+      const flattener = new ModelicaFlattener();
+      instance.accept(flattener, ["", dae]);
+
+      // For each variable, show start value if it has one
+      for (const v of dae.variables) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const rv = v as any;
+        if (rv.start !== undefined && rv.start !== null && rv.start !== 0) {
+          // Try to find the component declaration in the source for this variable
+          // Only show for top-level (non-dotted) names declared in this class
+          const varName = v.name;
+          if (varName.includes(".") || varName.startsWith("der(")) continue;
+
+          // Find the declaration position in the source text
+          for (const element of instance.declaredElements) {
+            if (element instanceof ModelicaComponentInstance && element.name === varName) {
+              const sr = element.abstractSyntaxNode?.sourceRange;
+              if (sr && sr.startRow >= params.range.start.line && sr.startRow <= params.range.end.line) {
+                const identNode = element.abstractSyntaxNode?.declaration?.identifier;
+                const identSr = identNode?.sourceRange;
+                if (identSr) {
+                  hints.push({
+                    position: { line: identSr.endRow, character: identSr.endCol },
+                    label: ` start=${rv.start}`,
+                    kind: InlayHintKind.Parameter,
+                    paddingLeft: true,
+                  });
+                }
+              }
+              break;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn(`[inlayHint] Could not flatten ${instance.name}:`, e);
+    }
+  }
+
+  return hints;
+});
+
+// ── Class Hierarchy RPC ──
+
+interface ClassHierarchyNode {
+  name: string;
+  kind: string;
+  description: string | null;
+  children: ClassHierarchyNode[];
+}
+
+function buildClassHierarchy(classInstance: ModelicaClassInstance, visited = new Set<string>()): ClassHierarchyNode {
+  const name = classInstance.compositeName || classInstance.name || "<unknown>";
+  if (visited.has(name)) {
+    return { name, kind: classInstance.classKind || "class", description: classInstance.description, children: [] };
+  }
+  visited.add(name);
+
+  const children: ClassHierarchyNode[] = [];
+  try {
+    for (const ext of classInstance.extendsClassInstances) {
+      if (ext.classInstance) {
+        children.push(buildClassHierarchy(ext.classInstance, visited));
+      }
+    }
+  } catch {
+    // ignore errors during hierarchy traversal
+  }
+
+  return {
+    name,
+    kind: classInstance.classKind || "class",
+    description: classInstance.description,
+    children,
+  };
+}
+
+connection.onRequest(
+  "modelscript/getClassHierarchy",
+  (params: { uri: string; className?: string }): ClassHierarchyNode | null => {
+    const instances = documentInstances.get(params.uri);
+    if (!instances || instances.length === 0) return null;
+
+    let target = instances[0];
+    if (params.className) {
+      const found = instances.find((i) => i.name === params.className || i.compositeName === params.className);
+      if (found) target = found;
+    }
+
+    if (!target.instantiated) {
+      try {
+        target.instantiate();
+      } catch {
+        return null;
+      }
+    }
+
+    return buildClassHierarchy(target);
+  },
+);
+
+// ── BLT Analysis RPC ──
+
+interface BltAnalysisResult {
+  className: string;
+  variables: string[];
+  equations: string[];
+  algebraicLoops: { variables: string[]; equations: string[] }[];
+  equationCount: number;
+  unknownCount: number;
+}
+
+connection.onRequest(
+  "modelscript/analyzeBlt",
+  (params: { uri: string; className?: string }): BltAnalysisResult | null => {
+    const instances = documentInstances.get(params.uri);
+    if (!instances || instances.length === 0) return null;
+
+    let target = instances[0];
+    if (params.className) {
+      const found = instances.find((i) => i.name === params.className || i.compositeName === params.className);
+      if (found) target = found;
+    }
+
+    if (!target.instantiated) {
+      try {
+        target.instantiate();
+      } catch {
+        return null;
+      }
+    }
+
+    try {
+      const dae = new ModelicaDAE(target.name || "Model");
+      const flattener = new ModelicaFlattener();
+      target.accept(flattener, ["", dae]);
+
+      // Run BLT transformation
+      const { algebraicLoops } = performBltTransformation(dae);
+
+      // Serialize equation text via toJSON
+      const eqTexts = dae.equations.map((eq) => {
+        try {
+          const json = eq.toJSON;
+          if (json && typeof json === "object" && "expression1" in json && "expression2" in json) {
+            return `${JSON.stringify(json.expression1)} = ${JSON.stringify(json.expression2)}`;
+          }
+          return JSON.stringify(json);
+        } catch {
+          return "<equation>";
+        }
+      });
+
+      const varNames = dae.variables.map((v) => v.name);
+
+      const unknownCount = dae.variables.filter(
+        (v) => (v as { variability?: unknown }).variability === null || (v as { name: string }).name.startsWith("der("),
+      ).length;
+
+      return {
+        className: target.name || "Model",
+        variables: varNames,
+        equations: eqTexts,
+        algebraicLoops: algebraicLoops.map((loop) => ({
+          variables: loop.variables,
+          equations: loop.equations.map((eq) => {
+            try {
+              return JSON.stringify(eq.toJSON);
+            } catch {
+              return "<equation>";
+            }
+          }),
+        })),
+        equationCount: dae.equations.length,
+        unknownCount,
+      };
+    } catch (e) {
+      console.error(`[analyzeBlt] Error:`, e);
+      return null;
     }
   },
 );
