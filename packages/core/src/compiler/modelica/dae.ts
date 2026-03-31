@@ -1720,7 +1720,7 @@ export class ModelicaBooleanLiteral extends ModelicaLiteral {
 
   override get hash(): string {
     const hash = createHash("sha256");
-    hash.update(String(this.value));
+    hash.update(this.value ? "true" : "false");
     return hash.digest("hex");
   }
 
@@ -1732,8 +1732,42 @@ export class ModelicaBooleanLiteral extends ModelicaLiteral {
     const id = `_:expr_${this.hash.substring(0, 8)}`;
     return [
       { s: id, p: "rdf:type", o: "modelica:BooleanLiteral" },
-      { s: id, p: "modelica:value", o: this.value },
+      { s: id, p: "modelica:value", o: `"${this.value}"^^xsd:boolean` },
     ];
+  }
+}
+
+export class ModelicaExpressionValue extends ModelicaLiteral {
+  value: ModelicaExpression;
+
+  constructor(value: ModelicaExpression) {
+    super();
+    this.value = value;
+  }
+
+  override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
+    return visitor.visitExpressionValue(this, argument);
+  }
+
+  override get hash(): string {
+    const hash = createHash("sha256");
+    hash.update("expr_val:");
+    hash.update(this.value.hash);
+    return hash.digest("hex");
+  }
+
+  override get toJSON(): JSONValue {
+    return { type: "ExpressionValue", value: this.value.toJSON };
+  }
+
+  override get toRDF(): Triple[] {
+    const id = `_:expr_${this.hash.substring(0, 8)}`;
+    const triples: Triple[] = [
+      { s: id, p: "rdf:type", o: "modelica:ExpressionValue" },
+      { s: id, p: "modelica:value", o: `_:expr_${this.value.hash.substring(0, 8)}` },
+    ];
+    triples.push(...this.value.toRDF);
+    return triples;
   }
 }
 
@@ -2273,6 +2307,29 @@ export class ModelicaStringVariable extends ModelicaVariable {
     const id = `_:var_${this.name}`;
     const triples: Triple[] = [
       { s: id, p: "rdf:type", o: "modelica:StringVariable" },
+      { s: id, p: "modelica:name", o: this.name },
+    ];
+    if (this.expression) {
+      triples.push({ s: id, p: "modelica:expression", o: `_:expr_${this.expression.hash.substring(0, 8)}` });
+      triples.push(...this.expression.toRDF);
+    }
+    return triples;
+  }
+}
+
+export class ModelicaExpressionVariable extends ModelicaVariable {
+  override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
+    return visitor.visitExpressionVariable(this, argument);
+  }
+
+  override get toJSON(): string {
+    return this.name;
+  }
+
+  override get toRDF(): Triple[] {
+    const id = `_:var_${this.name}`;
+    const triples: Triple[] = [
+      { s: id, p: "rdf:type", o: "modelica:ExpressionVariable" },
       { s: id, p: "modelica:name", o: this.name },
     ];
     if (this.expression) {
@@ -3617,6 +3674,9 @@ export interface IModelicaDAEVisitor<R, A> {
 
   visitBooleanLiteral(node: ModelicaBooleanLiteral, argument?: A): R;
 
+  visitExpressionValue(node: ModelicaExpressionValue, argument?: A): R;
+  visitExpressionVariable(node: ModelicaExpressionVariable, argument?: A): R;
+
   visitBooleanVariable(node: ModelicaBooleanVariable, argument?: A): R;
 
   visitColonExpression(node: ModelicaColonExpression, argument?: A): R;
@@ -3746,6 +3806,14 @@ export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void,
   }
 
   visitBooleanLiteral(node: ModelicaBooleanLiteral, argument?: A): void {
+    /* no-op */
+  }
+
+  visitExpressionValue(node: ModelicaExpressionValue, argument?: A): void {
+    node.value.accept(this, argument);
+  }
+
+  visitExpressionVariable(node: ModelicaExpressionVariable, argument?: A): void {
     /* no-op */
   }
 
@@ -4151,6 +4219,8 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
       this.out.write(variable.customTypeName ?? "Real");
     } else if (variable instanceof ModelicaStringVariable) {
       this.out.write("String");
+    } else if (variable instanceof ModelicaExpressionVariable) {
+      this.out.write("Expression");
     } else if (variable instanceof ModelicaEnumerationVariable) {
       this.out.write("enumeration(" + variable.enumerationLiterals.map((e) => e.stringValue).join(", ") + ")");
     } else {
@@ -4273,6 +4343,10 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     this.out.write(":");
   }
 
+  visitExpressionValue(node: ModelicaExpressionValue): void {
+    node.value.accept(this);
+  }
+
   visitEnumerationLiteral(node: ModelicaEnumerationLiteral): void {
     if (node.typeName) {
       this.out.write(node.typeName + "." + node.stringValue);
@@ -4283,6 +4357,10 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
 
   visitEnumerationVariable(node: ModelicaEnumerationVariable): void {
     this.out.write(String(node.name));
+  }
+
+  visitExpressionVariable(node: ModelicaExpressionVariable): void {
+    this.out.write(node.name);
   }
 
   visitForEquation(node: ModelicaForEquation): void {
@@ -4603,6 +4681,9 @@ class PantelidesDepVisitor extends ModelicaDAEVisitor<Set<string>> {
     if (deps) deps.add(node.name);
   }
   override visitIntegerVariable(node: ModelicaIntegerVariable, deps?: Set<string>): void {
+    if (deps) deps.add(node.name);
+  }
+  override visitExpressionVariable(node: ModelicaExpressionVariable, deps?: Set<string>): void {
     if (deps) deps.add(node.name);
   }
 }

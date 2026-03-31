@@ -98,12 +98,20 @@ export function differentiateExpr(expr: ModelicaExpression, varName: string): Mo
   return ZERO;
 }
 
-// ── Constants ──
-const ZERO = new ModelicaRealLiteral(0);
-const ONE = new ModelicaRealLiteral(1);
-const TWO = new ModelicaRealLiteral(2);
-const HALF = new ModelicaRealLiteral(0.5);
-const NEG_ONE = new ModelicaRealLiteral(-1);
+// ── Constants (Lazy Initialized to avoid ESM circular dependencies) ──
+const makeLazy = (val: number) => {
+  let instance: ModelicaRealLiteral | undefined;
+  return new Proxy({} as ModelicaRealLiteral, {
+    get: (_, p) => Reflect.get((instance ??= new ModelicaRealLiteral(val)), p),
+    getPrototypeOf: () => ModelicaRealLiteral.prototype,
+  });
+};
+
+const ZERO = makeLazy(0);
+const ONE = makeLazy(1);
+const TWO = makeLazy(2);
+const HALF = makeLazy(0.5);
+const NEG_ONE = makeLazy(-1);
 
 // ── Helpers ──
 

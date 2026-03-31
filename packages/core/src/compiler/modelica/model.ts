@@ -1315,6 +1315,8 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
 
     // Predefined type checks
     if (this instanceof ModelicaPredefinedClassInstance || other instanceof ModelicaPredefinedClassInstance) {
+      // Expression predefined type accepts any source expression
+      if (this.name === "Expression") return true;
       // Same predefined type
       if (this.name === other.name) return true;
       // Integer → Real coercion (§10.6.13)
@@ -2321,6 +2323,9 @@ export const PREDEFINED_ATTRIBUTES: Record<string, Record<string, string>> = {
     start: "The initial value of the variable.",
     fixed: "Whether the initial value is fixed.",
   },
+  Expression: {
+    value: "The unevaluated AST expression of the variable.",
+  },
 };
 
 export const PREDEFINED_ATTRIBUTE_TYPES: Record<string, Record<string, string>> = {
@@ -2356,6 +2361,9 @@ export const PREDEFINED_ATTRIBUTE_TYPES: Record<string, Record<string, string>> 
     quantity: "String",
     start: "String",
     fixed: "Boolean",
+  },
+  Expression: {
+    value: "Expression",
   },
 };
 
@@ -2521,6 +2529,24 @@ export class ModelicaStringClassInstance extends ModelicaPredefinedClassInstance
 
   get start(): ModelicaExpression | null {
     return this.modification?.getModificationArgument("start")?.expression ?? null;
+  }
+}
+
+export class ModelicaExpressionClassInstance extends ModelicaPredefinedClassInstance {
+  constructor(parent: Scope | null, modification?: ModelicaModification | null) {
+    super(parent, "Expression", modification);
+  }
+
+  override accept<R, A>(visitor: IModelicaModelVisitor<R, A>, argument?: A): R {
+    return visitor.visitExpressionClassInstance(this, argument);
+  }
+
+  override clone(modification?: ModelicaModification | null): ModelicaExpressionClassInstance {
+    if (!this.instantiated && !this.instantiating) this.instantiate();
+    const mergedModification = ModelicaModification.merge(this.modification, modification);
+    const classInstance = new ModelicaExpressionClassInstance(this.parent, mergedModification);
+    classInstance.instantiate();
+    return classInstance;
   }
 }
 
@@ -3458,6 +3484,8 @@ export interface IModelicaModelVisitor<R, A> {
   visitRealClassInstance(node: ModelicaRealClassInstance, argument?: A): R;
 
   visitStringClassInstance(node: ModelicaStringClassInstance, argument?: A): R;
+
+  visitExpressionClassInstance(node: ModelicaExpressionClassInstance, argument?: A): R;
 }
 
 export abstract class ModelicaModelVisitor<A> implements IModelicaModelVisitor<void, A> {
@@ -3502,6 +3530,10 @@ export abstract class ModelicaModelVisitor<A> implements IModelicaModelVisitor<v
   }
 
   visitStringClassInstance(node: ModelicaStringClassInstance, argument?: A): void {
+    /* no-op */
+  }
+
+  visitExpressionClassInstance(node: ModelicaExpressionClassInstance, argument?: A): void {
     /* no-op */
   }
 }
@@ -3710,5 +3742,16 @@ export class ModelicaModelPrinter extends ModelicaModelVisitor<number> {
     }
     this.indent(indent);
     this.out.write("end String;\n");
+  }
+
+  visitExpressionClassInstance(node: ModelicaExpressionClassInstance, indent = 0): void {
+    this.indent(indent);
+    this.out.write("type Expression\n");
+    this.indent(indent + 1);
+    this.out.write("ExpressionType ⟨value⟩ = ");
+    node.expression?.accept(new ModelicaDAEPrinter(this.out));
+    this.out.write(";\n");
+    this.indent(indent);
+    this.out.write("end Expression;\n");
   }
 }

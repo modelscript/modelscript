@@ -14,7 +14,12 @@
  */
 
 import type { ModelicaExpression } from "../dae.js";
-import { ModelicaFunctionCallExpression, ModelicaNameExpression, ModelicaRealLiteral } from "../dae.js";
+import {
+  ModelicaExpressionValue,
+  ModelicaFunctionCallExpression,
+  ModelicaNameExpression,
+  ModelicaRealLiteral,
+} from "../dae.js";
 import { differentiateExpr, simplifyExpr } from "../symbolic-diff.js";
 import { egraphSimplify } from "./egraph.js";
 import { collectTerms, expandExpr, getLiteralValue, normalizeExpr } from "./expand.js";
@@ -37,40 +42,45 @@ export const CAS_FUNCTIONS = new Map<string, (args: ModelicaExpression[]) => Mod
   [
     "ModelScript.CAS.simplify",
     (args) => {
-      if (args.length < 1 || !args[0]) return null;
-      return egraphSimplify(args[0]);
+      const expr = unwrapExpr(args[0]);
+      if (!expr) return null;
+      return new ModelicaExpressionValue(egraphSimplify(expr));
     },
   ],
 
   [
     "ModelScript.CAS.expand",
     (args) => {
-      if (args.length < 1 || !args[0]) return null;
-      return expandExpr(args[0]);
+      const expr = unwrapExpr(args[0]);
+      if (!expr) return null;
+      return new ModelicaExpressionValue(expandExpr(expr));
     },
   ],
 
   [
     "ModelScript.CAS.normalize",
     (args) => {
-      if (args.length < 1 || !args[0]) return null;
-      return normalizeExpr(args[0]);
+      const expr = unwrapExpr(args[0]);
+      if (!expr) return null;
+      return new ModelicaExpressionValue(normalizeExpr(expr));
     },
   ],
 
   [
     "ModelScript.CAS.trigSimplify",
     (args) => {
-      if (args.length < 1 || !args[0]) return null;
-      return trigSimplify(args[0]);
+      const expr = unwrapExpr(args[0]);
+      if (!expr) return null;
+      return new ModelicaExpressionValue(trigSimplify(expr));
     },
   ],
 
   [
     "ModelScript.CAS.trigExpand",
     (args) => {
-      if (args.length < 1 || !args[0]) return null;
-      return trigExpand(args[0]);
+      const expr = unwrapExpr(args[0]);
+      if (!expr) return null;
+      return new ModelicaExpressionValue(trigExpand(expr));
     },
   ],
 
@@ -78,14 +88,14 @@ export const CAS_FUNCTIONS = new Map<string, (args: ModelicaExpression[]) => Mod
   [
     "ModelScript.CAS.diff",
     (args) => {
-      if (args.length < 2 || !args[0] || !args[1]) return null;
-      const varName = extractVarName(args[1]);
-      if (!varName) return null;
+      const expr = unwrapExpr(args[0]);
+      const varName = extractVarName(unwrapExpr(args[1]));
+      if (!expr || !varName) return null;
       if (args.length >= 3 && args[2]) {
         const n = getLiteralValue(args[2]);
-        if (n !== null && n > 0) return nthDerivative(args[0], varName, n);
+        if (n !== null && n > 0) return new ModelicaExpressionValue(nthDerivative(expr, varName, n));
       }
-      return simplifyExpr(differentiateExpr(args[0], varName));
+      return new ModelicaExpressionValue(simplifyExpr(differentiateExpr(expr, varName)));
     },
   ],
 
@@ -93,10 +103,11 @@ export const CAS_FUNCTIONS = new Map<string, (args: ModelicaExpression[]) => Mod
   [
     "ModelScript.CAS.integrate",
     (args) => {
-      if (args.length < 2 || !args[0] || !args[1]) return null;
-      const varName = extractVarName(args[1]);
-      if (!varName) return null;
-      return integrateExpr(args[0], varName);
+      const expr = unwrapExpr(args[0]);
+      const varName = extractVarName(unwrapExpr(args[1]));
+      if (!expr || !varName) return null;
+      const res = integrateExpr(expr, varName);
+      return res ? new ModelicaExpressionValue(res) : null;
     },
   ],
 
@@ -104,25 +115,25 @@ export const CAS_FUNCTIONS = new Map<string, (args: ModelicaExpression[]) => Mod
   [
     "ModelScript.CAS.solve",
     (args) => {
-      if (args.length < 2 || !args[0] || !args[1]) return null;
-      const varName = extractVarName(args[1]);
-      if (!varName) return null;
-      const solutions = solveForVariable(args[0], varName);
+      const expr = unwrapExpr(args[0]);
+      const varName = extractVarName(unwrapExpr(args[1]));
+      if (!expr || !varName) return null;
+      const solutions = solveForVariable(expr, varName);
       // Return first solution (most useful for single-variable equations)
-      return solutions.length > 0 ? (solutions[0] ?? null) : null;
+      return solutions.length > 0 && solutions[0] ? new ModelicaExpressionValue(solutions[0]) : null;
     },
   ],
 
   [
     "ModelScript.CAS.solveAll",
     (args) => {
-      if (args.length < 2 || !args[0] || !args[1]) return null;
-      const varName = extractVarName(args[1]);
-      if (!varName) return null;
-      const solutions = solveForVariable(args[0], varName);
+      const expr = unwrapExpr(args[0]);
+      const varName = extractVarName(unwrapExpr(args[1]));
+      if (!expr || !varName) return null;
+      const solutions = solveForVariable(expr, varName);
       if (solutions.length === 0) return null;
-      // Return as an array-like nested expression
-      return solutions.length === 1 ? (solutions[0] ?? null) : buildArray(solutions);
+      // Return as an array of expressions
+      return buildArray(solutions.map((s) => new ModelicaExpressionValue(s)));
     },
   ],
 
@@ -130,10 +141,11 @@ export const CAS_FUNCTIONS = new Map<string, (args: ModelicaExpression[]) => Mod
   [
     "ModelScript.CAS.factor",
     (args) => {
-      if (args.length < 2 || !args[0] || !args[1]) return null;
-      const varName = extractVarName(args[1]);
-      if (!varName) return null;
-      return factorQuadratic(args[0], varName);
+      const expr = unwrapExpr(args[0]);
+      const varName = extractVarName(unwrapExpr(args[1]));
+      if (!expr || !varName) return null;
+      const res = factorQuadratic(expr, varName);
+      return res ? new ModelicaExpressionValue(res) : null;
     },
   ],
 
@@ -141,13 +153,15 @@ export const CAS_FUNCTIONS = new Map<string, (args: ModelicaExpression[]) => Mod
   [
     "ModelScript.CAS.taylor",
     (args) => {
-      if (args.length < 4 || !args[0] || !args[1] || !args[2] || !args[3]) return null;
-      const varName = extractVarName(args[1]);
-      if (!varName) return null;
-      const point = getLiteralValue(args[2]);
-      const order = getLiteralValue(args[3]);
+      const expr = unwrapExpr(args[0]);
+      const varName = extractVarName(unwrapExpr(args[1]));
+      const pointExpr = unwrapExpr(args[2]);
+      const orderExpr = unwrapExpr(args[3]);
+      if (!expr || !varName || !pointExpr || !orderExpr) return null;
+      const point = getLiteralValue(pointExpr);
+      const order = getLiteralValue(orderExpr);
       if (point === null || order === null) return null;
-      return taylorSeries(args[0], varName, point, Math.round(order));
+      return new ModelicaExpressionValue(taylorSeries(expr, varName, point, Math.round(order)));
     },
   ],
 
@@ -155,13 +169,14 @@ export const CAS_FUNCTIONS = new Map<string, (args: ModelicaExpression[]) => Mod
   [
     "ModelScript.CAS.limit",
     (args) => {
-      if (args.length < 3 || !args[0] || !args[1] || !args[2]) return null;
-      const varName = extractVarName(args[1]);
-      if (!varName) return null;
-      const point = getLiteralValue(args[2]);
+      const expr = unwrapExpr(args[0]);
+      const varName = extractVarName(unwrapExpr(args[1]));
+      const pointExpr = unwrapExpr(args[2]);
+      if (!expr || !varName || !pointExpr) return null;
+      const point = getLiteralValue(pointExpr);
       if (point === null) return null;
-      const result = limit(args[0], varName, point);
-      return result !== null ? new ModelicaRealLiteral(result) : null;
+      const result = limit(expr, varName, point);
+      return result !== null ? new ModelicaExpressionValue(new ModelicaRealLiteral(result)) : null;
     },
   ],
 
@@ -169,12 +184,12 @@ export const CAS_FUNCTIONS = new Map<string, (args: ModelicaExpression[]) => Mod
   [
     "ModelScript.CAS.degree",
     (args) => {
-      if (args.length < 2 || !args[0] || !args[1]) return null;
-      const varName = extractVarName(args[1]);
-      if (!varName) return null;
-      const terms = collectTerms(args[0], varName);
+      const expr = unwrapExpr(args[0]);
+      const varName = extractVarName(unwrapExpr(args[1]));
+      if (!expr || !varName) return null;
+      const terms = collectTerms(expr, varName);
       const maxDeg = Math.max(0, ...terms.keys());
-      return new ModelicaRealLiteral(maxDeg);
+      return new ModelicaRealLiteral(maxDeg); // Integers are fine to return as literals
     },
   ],
 
@@ -182,12 +197,12 @@ export const CAS_FUNCTIONS = new Map<string, (args: ModelicaExpression[]) => Mod
   [
     "ModelScript.CAS.roots",
     (args) => {
-      if (args.length < 2 || !args[0] || !args[1]) return null;
-      const varName = extractVarName(args[1]);
-      if (!varName) return null;
-      const roots = rationalRoots(args[0], varName);
+      const expr = unwrapExpr(args[0]);
+      const varName = extractVarName(unwrapExpr(args[1]));
+      if (!expr || !varName) return null;
+      const roots = rationalRoots(expr, varName);
       if (roots.length === 0) return null;
-      return buildArray(roots.map((r) => new ModelicaRealLiteral(r)));
+      return buildArray(roots.map((r) => new ModelicaRealLiteral(r))); // Return numeric roots as array
     },
   ],
 ]);
@@ -231,98 +246,98 @@ package ModelScript
   package CAS "Computer Algebra System"
 
     function simplify "Simplify an expression using E-Graph equality saturation"
-      input Real expr;
-      output Real result;
+      input Expression expr;
+      output Expression result;
       external "builtin";
     end simplify;
 
     function expand "Expand polynomial expressions (distribute multiplication)"
-      input Real expr;
-      output Real result;
+      input Expression expr;
+      output Expression result;
       external "builtin";
     end expand;
 
     function normalize "Normalize to canonical form via E-Graph"
-      input Real expr;
-      output Real result;
+      input Expression expr;
+      output Expression result;
       external "builtin";
     end normalize;
 
     function trigSimplify "Simplify using trigonometric identities"
-      input Real expr;
-      output Real result;
+      input Expression expr;
+      output Expression result;
       external "builtin";
     end trigSimplify;
 
     function trigExpand "Expand trig expressions using addition formulas"
-      input Real expr;
-      output Real result;
+      input Expression expr;
+      output Expression result;
       external "builtin";
     end trigExpand;
 
     function diff "Symbolic differentiation"
-      input Real expr;
-      input Real var "Variable to differentiate with respect to";
+      input Expression expr;
+      input Expression var "Variable to differentiate with respect to (as an expression node)";
       input Integer n = 1 "Order of derivative";
-      output Real result;
+      output Expression result;
       external "builtin";
     end diff;
 
     function integrate "Symbolic anti-differentiation"
-      input Real expr;
-      input Real var "Variable to integrate with respect to";
-      output Real result;
+      input Expression expr;
+      input Expression var "Variable to integrate with respect to";
+      output Expression result;
       external "builtin";
     end integrate;
 
     function solve "Solve expr = 0 for var (returns first solution)"
-      input Real expr;
-      input Real var "Variable to solve for";
-      output Real result;
+      input Expression expr;
+      input Expression var "Variable to solve for";
+      output Expression result;
       external "builtin";
     end solve;
 
     function solveAll "Solve expr = 0 for var (returns all solutions)"
-      input Real expr;
-      input Real var "Variable to solve for";
-      output Real[:] result;
+      input Expression expr;
+      input Expression var "Variable to solve for";
+      output Expression[:] result;
       external "builtin";
     end solveAll;
 
     function factor "Factor a quadratic polynomial"
-      input Real expr;
-      input Real var;
-      output Real result;
+      input Expression expr;
+      input Expression var;
+      output Expression result;
       external "builtin";
     end factor;
 
     function taylor "Taylor series expansion"
-      input Real expr;
-      input Real var;
+      input Expression expr;
+      input Expression var;
       input Real point;
       input Integer order;
-      output Real result;
+      output Expression result;
       external "builtin";
     end taylor;
 
     function limit "Evaluate limit of expr as var -> point"
-      input Real expr;
-      input Real var;
+      input Expression expr;
+      input Expression var;
       input Real point;
-      output Real result;
+      output Expression result;
       external "builtin";
     end limit;
 
     function degree "Get polynomial degree of expr in var"
-      input Real expr;
-      input Real var;
+      input Expression expr;
+      input Expression var;
       output Integer result;
       external "builtin";
     end degree;
 
-    function roots "Find rational roots of polynomial expr in var"
-      input Real expr;
-      input Real var;
+    function roots "Find rational roots of polynomial expr in var (returns numeric roots)"
+      input Expression expr;
+      input Expression var;
       output Real[:] result;
       external "builtin";
     end roots;
@@ -335,12 +350,19 @@ end ModelScript;
 // Utilities
 // ─────────────────────────────────────────────────────────────────────
 
-function extractVarName(expr: ModelicaExpression): string | null {
+function extractVarName(expr: ModelicaExpression | null | undefined): string | null {
+  if (!expr) return null;
   if (expr instanceof ModelicaNameExpression) return expr.name;
-  if (expr && typeof expr === "object" && "name" in expr) {
+  if (typeof expr === "object" && "name" in expr) {
     return (expr as { name: string }).name;
   }
   return null;
+}
+
+function unwrapExpr(expr: ModelicaExpression | null | undefined): ModelicaExpression | null {
+  if (!expr) return null;
+  if (expr instanceof ModelicaExpressionValue) return expr.value;
+  return expr;
 }
 
 function buildArray(exprs: ModelicaExpression[]): ModelicaExpression {

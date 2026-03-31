@@ -7,6 +7,7 @@ import {
   ModelicaClockClassInstance,
   ModelicaComponentInstance,
   ModelicaElement,
+  ModelicaExpressionClassInstance,
   ModelicaIntegerClassInstance,
   ModelicaNamedElement,
   ModelicaRealClassInstance,
@@ -24,6 +25,7 @@ let scopeClock: ModelicaClockClassInstance | null = null;
 let scopeInteger: ModelicaIntegerClassInstance | null = null;
 let scopeReal: ModelicaRealClassInstance | null = null;
 let scopeString: ModelicaStringClassInstance | null = null;
+let scopeExpression: ModelicaExpressionClassInstance | null = null;
 
 export abstract class Scope {
   #parent: WeakRef<Scope> | null;
@@ -131,6 +133,9 @@ export abstract class Scope {
       case "String":
         if (!scopeString) scopeString = new ModelicaStringClassInstance(null, null);
         return scopeString;
+      case "Expression":
+        if (!scopeExpression) scopeExpression = new ModelicaExpressionClassInstance(null, null);
+        return scopeExpression;
     }
     return (
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

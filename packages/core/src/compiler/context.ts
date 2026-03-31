@@ -13,6 +13,7 @@ import {
   type ModelicaElement,
 } from "./modelica/model.js";
 import { ModelicaPoParser, ModelicaTranslation } from "./modelica/po.js";
+import { MODELSCRIPT_CAS_PACKAGE } from "./modelica/symbolic/cas-bindings.js";
 import { ModelicaStoredDefinitionSyntaxNode } from "./modelica/syntax.js";
 import { Scope } from "./scope.js";
 
@@ -41,6 +42,7 @@ export class Context extends Scope {
   constructor(fs: FileSystem) {
     super(null);
     this.#fs = fs;
+    this.load(MODELSCRIPT_CAS_PACKAGE);
   }
 
   readonly hash = "root";

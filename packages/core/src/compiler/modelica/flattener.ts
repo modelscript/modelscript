@@ -23,6 +23,7 @@ import {
   ModelicaEnumerationVariable,
   ModelicaEquation,
   ModelicaExpression,
+  ModelicaExpressionVariable,
   ModelicaForEquation,
   ModelicaForStatement,
   ModelicaFunctionCallEquation,
@@ -70,6 +71,7 @@ import {
   ModelicaElementModification,
   ModelicaEntity,
   ModelicaEnumerationClassInstance,
+  ModelicaExpressionClassInstance,
   ModelicaExtendsClassInstance,
   ModelicaIntegerClassInstance,
   ModelicaModelVisitor,
@@ -1406,6 +1408,17 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         node.modification?.description ?? node.description,
         causality,
         isFinal,
+      );
+    } else if (node.classInstance instanceof ModelicaExpressionClassInstance) {
+      variable = new ModelicaExpressionVariable(
+        name,
+        varExpression,
+        attributes,
+        variability,
+        node.modification?.description ?? node.description,
+        causality,
+        isFinal,
+        isProtected,
       );
     }
     // Propagate Evaluate=true (isFinal) to the referenced variable if it's a direct assignment
