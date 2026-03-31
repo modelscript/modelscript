@@ -269,6 +269,8 @@ export class ModelicaDAE {
   whenClauses: ModelicaWhenEquation[] = [];
   /** Optimization objective expression (Cost function). */
   objective: ModelicaExpression | null = null;
+  /** Structural connect(a, b) pairs preserved for ECAD netlist extraction. */
+  connectPairs: { a: string; b: string; aComponent: string; bComponent: string }[] = [];
 
   constructor(name: string, description?: string | null) {
     this.name = name;

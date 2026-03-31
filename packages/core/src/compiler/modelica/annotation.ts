@@ -188,5 +188,66 @@ class Annotation
     Real offsetRotation[4] = {0, 0, 0, 1};
   end CADPort;
 
+  // PCB / ECAD Integration
+
+  type PCBLayer = enumeration(TopCopper, BottomCopper, InnerCopper1, InnerCopper2,
+                              TopSilkscreen, BottomSilkscreen,
+                              TopSolderMask, BottomSolderMask,
+                              TopPaste, BottomPaste,
+                              BoardOutline);
+
+  type PCBPadShape = enumeration(Circle, Rect, Oval, RoundRect);
+
+  record PCB
+    String footprint "Standard footprint name (e.g., SOIC-8, QFP-48, 0805)";
+    PCBLayer layer = PCBLayer.TopCopper "Primary component layer";
+    Real x = 0 "Board X position (mm)";
+    Real y = 0 "Board Y position (mm)";
+    Real angle = 0 "Rotation angle (degrees)";
+  end PCB;
+
+  record PCBPad
+    String name "Pad identifier (e.g., 1, 2, A1)";
+    String pin "Modelica pin name to map to (e.g., p, n)";
+    PCBPadShape shape = PCBPadShape.Circle;
+    Real width = 1.0 "Pad width (mm)";
+    Real height = 1.0 "Pad height (mm)";
+    Real drill = 0.0 "Drill diameter for through-hole pads (mm), 0 = SMD";
+    Real x = 0 "Relative X offset from component origin (mm)";
+    Real y = 0 "Relative Y offset from component origin (mm)";
+    PCBLayer layer = PCBLayer.TopCopper;
+    Real cornerRadius = 0.0 "Corner radius for RoundRect pads (mm)";
+  end PCBPad;
+
+  record PCBTrace
+    PCBLayer layer = PCBLayer.TopCopper;
+    Real width = 0.254 "Trace width (mm), default 10mil";
+    Real points[:, 2] "Waypoints as {{x1,y1},{x2,y2},...}";
+    String net "Net name this trace belongs to";
+  end PCBTrace;
+
+  record PCBVia
+    Real x "Via X position (mm)";
+    Real y "Via Y position (mm)";
+    Real drill = 0.3 "Drill diameter (mm)";
+    Real annularRing = 0.15 "Annular ring width (mm)";
+    PCBLayer startLayer = PCBLayer.TopCopper;
+    PCBLayer endLayer = PCBLayer.BottomCopper;
+    String net "Net name this via belongs to";
+  end PCBVia;
+
+  record PCBBoardOutline
+    Real points[:, 2] "Board edge polygon as {{x1,y1},{x2,y2},...}";
+    Real cornerRadius = 0.0 "Corner rounding radius (mm)";
+  end PCBBoardOutline;
+
+  record PCBDesignRules
+    Real minTraceWidth = 0.127 "Minimum trace width (mm), default 5mil";
+    Real minClearance = 0.127 "Minimum copper-to-copper clearance (mm)";
+    Real minViaDrill = 0.2 "Minimum via drill diameter (mm)";
+    Real minAnnularRing = 0.1 "Minimum via annular ring (mm)";
+    Real boardEdgeClearance = 0.25 "Minimum clearance to board edge (mm)";
+  end PCBDesignRules;
+
 end Annotation;
 `;

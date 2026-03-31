@@ -6146,6 +6146,16 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     const comp2 = this.#resolveConnectComponent(ref2, ctx);
     if (!comp1 || !comp2) return null;
 
+    // Preserve structural connect pair for ECAD netlist extraction
+    const dotIdx1 = name1.lastIndexOf(".");
+    const dotIdx2 = name2.lastIndexOf(".");
+    ctx.dae.connectPairs.push({
+      a: name1,
+      b: name2,
+      aComponent: dotIdx1 >= 0 ? name1.substring(0, dotIdx1) : name1,
+      bComponent: dotIdx2 >= 0 ? name2.substring(0, dotIdx2) : name2,
+    });
+
     // Collect leaf variables from both connector sides
     const leaves1 = this.#collectConnectorLeaves(comp1, name1);
     const leaves2 = this.#collectConnectorLeaves(comp2, name2);
