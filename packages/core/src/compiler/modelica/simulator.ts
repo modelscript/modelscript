@@ -35,6 +35,7 @@ import { type Dopri5Options, dopri5 as dopri5Solver } from "./dopri5.js";
 import { DualExpressionEvaluator } from "./dual-evaluator.js";
 import { Dual } from "./dual.js";
 import { solveInitialEquations } from "./init-solver.js";
+import { type MonteCarloResult, type RandomVariable, runMonteCarloSimulation } from "./monte-carlo.js";
 import { ReverseExpressionEvaluator } from "./reverse-evaluator.js";
 import { type SolverOptions, resolveSolverOptions } from "./solver-options.js";
 import { buildFunctionLookup, executeStatements } from "./statement-executor.js";
@@ -2303,15 +2304,71 @@ export class ModelicaSimulator {
       atol?: number;
       rtol?: number;
       solverOptions?: SolverOptions;
+      randomVariables?: RandomVariable[];
     },
-  ): { t: number[]; y: number[][]; states: string[] } {
-    // Resolve unified solver options (merge legacy fields with SolverOptions)
+  ): { t: number[]; y: number[][]; states: string[]; uncertainty?: MonteCarloResult } {
+    // ── Pre-dispatch for Monte Carlo Simulation ──
     const solverOpts = resolveSolverOptions({
       ...options?.solverOptions,
       ...(options?.solver ? { integrator: options.solver } : {}),
       ...(options?.atol !== undefined ? { atol: options.atol } : {}),
       ...(options?.rtol !== undefined ? { rtol: options.rtol } : {}),
     });
+
+    if (options?.randomVariables && options.randomVariables.length > 0) {
+      if (solverOpts.uncertainty === "monte-carlo" || solverOpts.uncertainty === "auto") {
+        const mcOpts = {
+          numSamples: solverOpts.mcSamples,
+          seed: solverOpts.mcSeed,
+          latinHypercube: true,
+          antithetic: true,
+        };
+        const mcResult = runMonteCarloSimulation(
+          (overrides: Map<string, number>) => {
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            const { randomVariables, ...restOpts } = options ?? {};
+            return this.simulate(startTime, stopTime, step, {
+              ...restOpts,
+              parameterOverrides: overrides,
+            });
+          },
+          options.randomVariables,
+          mcOpts,
+        );
+        // Extract mean trajectory for standard return format
+        const tGrid = mcResult.statistics.values().next().value?.mean || [];
+        const tLength = tGrid.length;
+        const meanY: number[][] = [];
+        const stateVarsArr = Array.from(this.stateVars);
+
+        for (let i = 0; i < tLength; i++) {
+          const pt: number[] = [];
+          for (const state of stateVarsArr) {
+            const stats = mcResult.statistics.get(state);
+            pt.push(stats?.mean[i] ?? 0);
+          }
+          meanY.push(pt);
+        }
+
+        // Re-construct the time grid (uniform step assumed for mean trajectory extraction)
+        const tObj: number[] = [];
+        for (let i = 0; i < tLength; i++) {
+          tObj.push(startTime + i * step);
+        }
+
+        return {
+          t: tObj,
+          y: meanY,
+          states: stateVarsArr,
+          uncertainty: mcResult,
+        };
+      } else {
+        // Analytical propagation (Linearized covariance ODEs) via augmented system
+        // [Future implementation: extend the DAE with covariance block]
+        console.warn("Analytical uncertainty in simulator not yet fully implemented. Using deterministic map.");
+      }
+    }
+
     this.prepare();
 
     // Reset solver state for this simulation run

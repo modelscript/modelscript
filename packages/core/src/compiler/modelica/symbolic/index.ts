@@ -88,3 +88,58 @@ export {
   tensorNodeCost,
 } from "./egraph-tensor.js";
 export type { FusedKernel } from "./egraph-tensor.js";
+
+// Gaussian Uncertainty Propagation
+export {
+  GaussianTuple,
+  emitGaussianForwardC,
+  evaluateTapeGaussian,
+  gaAdd,
+  gaCos,
+  gaDiv,
+  gaExp,
+  gaLog,
+  gaMul,
+  gaNeg,
+  gaSin,
+  gaSqrt,
+  gaSub,
+  gaTan,
+  unscentedTransform,
+} from "../gaussian.js";
+
+// Monte Carlo Engine
+export {
+  Xoshiro256pp,
+  distributionMean,
+  distributionVariance,
+  isGaussian,
+  latinHypercubeSample,
+  normalQuantile,
+  runMonteCarloSimulation,
+  runMonteCarloTape,
+  sampleDistribution,
+} from "../monte-carlo.js";
+export type {
+  Distribution,
+  MonteCarloOptions,
+  MonteCarloResult,
+  RandomVariable,
+  ScalarMCResult,
+  VariableStatistics,
+} from "../monte-carlo.js";
+
+// Stochastic Optimization
+export {
+  ProgressiveHedging,
+  SampleAverageApproximation,
+  computeVSSandEVPI,
+  generateScenarios,
+} from "../stochastic-optimizer.js";
+export type {
+  MultiStageStochasticProblem,
+  Scenario,
+  StageDefinition,
+  StochasticProblem,
+  StochasticResult,
+} from "../stochastic-optimizer.js";

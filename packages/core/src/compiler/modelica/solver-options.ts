@@ -82,6 +82,19 @@ export type OptimizerMethod =
   /** COIN-OR Couenne via WASM (exact global MINLP). */
   | "couenne";
 
+// ── Uncertainty Propagation ──
+
+/** Available uncertainty propagation methods. */
+export type UncertaintyMethod =
+  /** First-order linearized Gaussian moment propagation (default). */
+  | "analytical"
+  /** Monte Carlo sampling (general-purpose fallback). */
+  | "monte-carlo"
+  /** Unscented Transform (better accuracy for nonlinear models). */
+  | "unscented"
+  /** Auto-select: analytical for Gaussian inputs, MC for non-Gaussian. */
+  | "auto";
+
 // ── LP/MILP ──
 
 /** Available LP/MILP solver methods. */
@@ -137,6 +150,15 @@ export interface SolverOptions {
 
   /** Initial integrator step size (0 = auto). */
   initialStep?: number;
+
+  /** Uncertainty propagation method (default: "auto"). */
+  uncertainty?: UncertaintyMethod;
+
+  /** Monte Carlo sample count (default: 1000). */
+  mcSamples?: number;
+
+  /** Monte Carlo seed for reproducibility (default: undefined = random). */
+  mcSeed?: number;
 }
 
 /** Default solver options — pure TS methods, no WASM dependencies. */
@@ -153,6 +175,9 @@ export const DEFAULT_SOLVER_OPTIONS: Readonly<Required<SolverOptions>> = {
   maxSteps: 100000,
   maxStep: 0,
   initialStep: 0,
+  uncertainty: "auto",
+  mcSamples: 1000,
+  mcSeed: 0,
 };
 
 /**
@@ -174,6 +199,9 @@ export function resolveSolverOptions(opts?: SolverOptions): Readonly<Required<So
     maxSteps: opts.maxSteps ?? DEFAULT_SOLVER_OPTIONS.maxSteps,
     maxStep: opts.maxStep ?? DEFAULT_SOLVER_OPTIONS.maxStep,
     initialStep: opts.initialStep ?? DEFAULT_SOLVER_OPTIONS.initialStep,
+    uncertainty: opts.uncertainty ?? DEFAULT_SOLVER_OPTIONS.uncertainty,
+    mcSamples: opts.mcSamples ?? DEFAULT_SOLVER_OPTIONS.mcSamples,
+    mcSeed: opts.mcSeed ?? DEFAULT_SOLVER_OPTIONS.mcSeed,
   };
 }
 
