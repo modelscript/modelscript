@@ -412,24 +412,33 @@ export function simplifyExpr(expr: ModelicaExpression): ModelicaExpression {
     return new ModelicaUnaryExpression(expr.operator, op);
   }
 
+  const toNum = (e: ModelicaExpression): number | null =>
+    e instanceof ModelicaRealLiteral ? e.value : e instanceof ModelicaIntegerLiteral ? e.value : null;
+
   if (expr instanceof ModelicaBinaryExpression) {
     const l = simplifyExpr(expr.operand1);
     const r = simplifyExpr(expr.operand2);
 
     // Constant folding
-    if (l instanceof ModelicaRealLiteral && r instanceof ModelicaRealLiteral) {
+    const ln = toNum(l);
+    const rn = toNum(r);
+
+    if (ln !== null && rn !== null) {
+      const isInt = l instanceof ModelicaIntegerLiteral && r instanceof ModelicaIntegerLiteral;
       switch (expr.operator) {
         case ModelicaBinaryOperator.ADDITION:
-          return new ModelicaRealLiteral(l.value + r.value);
+          return isInt ? new ModelicaIntegerLiteral(ln + rn) : new ModelicaRealLiteral(ln + rn);
         case ModelicaBinaryOperator.SUBTRACTION:
-          return new ModelicaRealLiteral(l.value - r.value);
+          return isInt ? new ModelicaIntegerLiteral(ln - rn) : new ModelicaRealLiteral(ln - rn);
         case ModelicaBinaryOperator.MULTIPLICATION:
-          return new ModelicaRealLiteral(l.value * r.value);
+          return isInt ? new ModelicaIntegerLiteral(ln * rn) : new ModelicaRealLiteral(ln * rn);
         case ModelicaBinaryOperator.DIVISION:
-          if (r.value !== 0) return new ModelicaRealLiteral(l.value / r.value);
+          if (rn !== 0) return new ModelicaRealLiteral(ln / rn);
           break;
         case ModelicaBinaryOperator.EXPONENTIATION:
-          return new ModelicaRealLiteral(Math.pow(l.value, r.value));
+          return isInt && rn >= 0
+            ? new ModelicaIntegerLiteral(Math.pow(ln, rn))
+            : new ModelicaRealLiteral(Math.pow(ln, rn));
       }
     }
 
@@ -469,6 +478,34 @@ export function simplifyExpr(expr: ModelicaExpression): ModelicaExpression {
 
   if (expr instanceof ModelicaFunctionCallExpression) {
     const args = (expr.args as ModelicaExpression[]).map(simplifyExpr);
+
+    // Constant folding for functions
+    if (args.length === 1) {
+      const n = args[0] !== undefined ? toNum(args[0]) : null;
+      if (n !== null) {
+        const fn = expr.functionName;
+        if (fn === "sqrt" || fn === "Modelica.Math.sqrt") {
+          if (n >= 0) return new ModelicaRealLiteral(Math.sqrt(n));
+        } else if (fn === "sin" || fn === "Modelica.Math.sin") return new ModelicaRealLiteral(Math.sin(n));
+        else if (fn === "cos" || fn === "Modelica.Math.cos") return new ModelicaRealLiteral(Math.cos(n));
+        else if (fn === "tan" || fn === "Modelica.Math.tan") return new ModelicaRealLiteral(Math.tan(n));
+        else if (fn === "asin" || fn === "Modelica.Math.asin") return new ModelicaRealLiteral(Math.asin(n));
+        else if (fn === "acos" || fn === "Modelica.Math.acos") return new ModelicaRealLiteral(Math.acos(n));
+        else if (fn === "atan" || fn === "Modelica.Math.atan") return new ModelicaRealLiteral(Math.atan(n));
+        else if (fn === "exp" || fn === "Modelica.Math.exp") return new ModelicaRealLiteral(Math.exp(n));
+        else if (fn === "log" || fn === "Modelica.Math.log") return new ModelicaRealLiteral(Math.log(n));
+        else if (fn === "log10" || fn === "Modelica.Math.log10") return new ModelicaRealLiteral(Math.log10(n));
+        else if (fn === "abs" || fn === "Modelica.Math.abs")
+          return args[0] instanceof ModelicaIntegerLiteral
+            ? new ModelicaIntegerLiteral(Math.abs(n))
+            : new ModelicaRealLiteral(Math.abs(n));
+      }
+    } else if (args.length === 2 && (expr.functionName === "atan2" || expr.functionName === "Modelica.Math.atan2")) {
+      const y = args[0] !== undefined ? toNum(args[0]) : null;
+      const x = args[1] !== undefined ? toNum(args[1]) : null;
+      if (y !== null && x !== null) return new ModelicaRealLiteral(Math.atan2(y, x));
+    }
+
     return new ModelicaFunctionCallExpression(expr.functionName, args);
   }
 

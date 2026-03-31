@@ -118,7 +118,7 @@ export const CAS_FUNCTIONS = new Map<string, (args: ModelicaExpression[]) => Mod
       const expr = unwrapExpr(args[0]);
       const varName = extractVarName(unwrapExpr(args[1]));
       if (!expr || !varName) return null;
-      const solutions = solveForVariable(expr, varName);
+      const solutions = solveForVariable(expr, varName).map(simplifyExpr);
       // Return first solution (most useful for single-variable equations)
       return solutions.length > 0 && solutions[0] ? new ModelicaExpressionValue(solutions[0]) : null;
     },
@@ -130,7 +130,7 @@ export const CAS_FUNCTIONS = new Map<string, (args: ModelicaExpression[]) => Mod
       const expr = unwrapExpr(args[0]);
       const varName = extractVarName(unwrapExpr(args[1]));
       if (!expr || !varName) return null;
-      const solutions = solveForVariable(expr, varName);
+      const solutions = solveForVariable(expr, varName).map(simplifyExpr);
       if (solutions.length === 0) return null;
       // Return as an array of expressions
       return buildArray(solutions.map((s) => new ModelicaExpressionValue(s)));
