@@ -491,6 +491,10 @@ export async function activate(context: vscode.ExtensionContext) {
       if (!client) return;
       AnalysisPanel.createOrShowBlt(context.extensionUri, client);
     }),
+    commands.registerCommand("modelscript.showComponentTree", () => {
+      if (!client) return;
+      AnalysisPanel.createOrShowComponentTree(context.extensionUri, client);
+    }),
   );
 
   // Listen for project tree updates from the LSP server

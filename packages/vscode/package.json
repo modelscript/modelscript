@@ -122,6 +122,11 @@
         "command": "modelscript.analyzeBlt",
         "title": "ModelScript: Analyze Equation System",
         "icon": "$(graph)"
+      },
+      {
+        "command": "modelscript.showComponentTree",
+        "title": "ModelScript: Show Component Tree",
+        "icon": "$(list-tree)"
       }
     ],
     "configuration": [
@@ -349,6 +354,11 @@
         },
         {
           "command": "modelscript.showClassHierarchy",
+          "when": "editorLangId == modelica",
+          "group": "navigation"
+        },
+        {
+          "command": "modelscript.showComponentTree",
           "when": "editorLangId == modelica",
           "group": "navigation"
         }

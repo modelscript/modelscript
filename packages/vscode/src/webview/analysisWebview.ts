@@ -278,6 +278,140 @@ declare function acquireVsCodeApi(): {
     return name.substring(0, maxLen - 1) + "…";
   }
 
+  // ── Component Tree Renderer ──
+
+  interface ComponentNode {
+    name: string;
+    typeName: string;
+    kind: string;
+    variability: string | null;
+    causality: string | null;
+    description: string | null;
+    children: ComponentNode[];
+  }
+
+  const variabilityIcons: Record<string, string> = {
+    parameter: "⚙️",
+    constant: "🔒",
+    discrete: "🎯",
+  };
+
+  function renderComponentTree(data: ComponentNode): void {
+    placeholderEl.style.display = "none";
+    contentEl.innerHTML = "";
+
+    const header = document.createElement("h2");
+    header.textContent = `Component Tree — ${data.name}`;
+    contentEl.appendChild(header);
+
+    // Stats
+    const totalComponents = countNodes(data) - 1; // exclude root
+    const statsDiv = document.createElement("div");
+    statsDiv.className = "stats";
+    statsDiv.innerHTML = `
+      <div class="stat-card">
+        <div class="stat-label">Components</div>
+        <div class="stat-value">${totalComponents}</div>
+      </div>
+    `;
+    contentEl.appendChild(statsDiv);
+
+    const tree = buildComponentNode(data, true);
+    contentEl.appendChild(tree);
+  }
+
+  function countNodes(node: ComponentNode): number {
+    let count = 1;
+    for (const child of node.children) {
+      count += countNodes(child);
+    }
+    return count;
+  }
+
+  function buildComponentNode(node: ComponentNode, expanded: boolean): HTMLElement {
+    const container = document.createElement("div");
+    container.className = "tree-node";
+
+    const row = document.createElement("div");
+    row.className = "tree-row";
+
+    const hasChildren = node.children.length > 0;
+
+    // Toggle
+    const toggle = document.createElement("span");
+    toggle.className = "tree-toggle";
+    toggle.textContent = hasChildren ? (expanded ? "▼" : "▶") : "  ";
+    row.appendChild(toggle);
+
+    // Kind icon
+    const icon = document.createElement("span");
+    icon.className = "tree-icon";
+    if (node.variability && variabilityIcons[node.variability]) {
+      icon.textContent = variabilityIcons[node.variability];
+    } else {
+      icon.textContent = kindIcons[node.kind] || "📦";
+    }
+    row.appendChild(icon);
+
+    // Name
+    const name = document.createElement("span");
+    name.className = "tree-name";
+    name.textContent = node.name;
+    row.appendChild(name);
+
+    // Type badge
+    const typeBadge = document.createElement("span");
+    typeBadge.className = "tree-kind";
+    typeBadge.textContent = node.typeName;
+    row.appendChild(typeBadge);
+
+    // Causality badge
+    if (node.causality) {
+      const causalityBadge = document.createElement("span");
+      causalityBadge.className = "tree-kind";
+      causalityBadge.style.background = node.causality === "input" ? "#1a7f37" : "#0550ae";
+      causalityBadge.style.color = "#fff";
+      causalityBadge.textContent = node.causality;
+      row.appendChild(causalityBadge);
+    }
+
+    // Description
+    if (node.description) {
+      const desc = document.createElement("span");
+      desc.className = "tree-desc";
+      desc.textContent = ` — ${node.description}`;
+      row.appendChild(desc);
+    }
+
+    container.appendChild(row);
+
+    // Children
+    if (hasChildren) {
+      const childContainer = document.createElement("div");
+      childContainer.className = "tree-children";
+      childContainer.style.display = expanded ? "block" : "none";
+
+      for (const child of node.children) {
+        childContainer.appendChild(buildComponentNode(child, node.children.length < 20));
+      }
+      container.appendChild(childContainer);
+
+      toggle.addEventListener("click", () => {
+        const visible = childContainer.style.display !== "none";
+        childContainer.style.display = visible ? "none" : "block";
+        toggle.textContent = visible ? "▶" : "▼";
+      });
+
+      row.addEventListener("dblclick", () => {
+        const visible = childContainer.style.display !== "none";
+        childContainer.style.display = visible ? "none" : "block";
+        toggle.textContent = visible ? "▶" : "▼";
+      });
+    }
+
+    return container;
+  }
+
   // ── Message Handler ──
 
   window.addEventListener("message", (event) => {
@@ -288,6 +422,9 @@ declare function acquireVsCodeApi(): {
         break;
       case "hierarchyData":
         renderHierarchy(msg.data);
+        break;
+      case "componentTreeData":
+        renderComponentTree(msg.data);
         break;
     }
   });

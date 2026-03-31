@@ -3911,7 +3911,7 @@ connection.onRequest("textDocument/codeLens", (params): CodeLens[] => {
             },
             command: {
               title: `📐 ${nEqs} equation${nEqs !== 1 ? "s" : ""}, ${nVars} unknown${nVars !== 1 ? "s" : ""}`,
-              command: "",
+              command: "modelscript.analyzeBlt",
             },
           });
         }
@@ -3926,7 +3926,7 @@ connection.onRequest("textDocument/codeLens", (params): CodeLens[] => {
               },
               command: {
                 title: `⚠️ Algebraic loop (size ${loop.variables.length}): ${loop.variables.slice(0, 3).join(", ")}${loop.variables.length > 3 ? "…" : ""}`,
-                command: "",
+                command: "modelscript.analyzeBlt",
               },
             });
           }
@@ -3953,7 +3953,7 @@ connection.onRequest("textDocument/codeLens", (params): CodeLens[] => {
         },
         command: {
           title: `🏗️ ${extendsCount} extends`,
-          command: "",
+          command: "modelscript.showClassHierarchy",
         },
       });
     }
@@ -4170,6 +4170,85 @@ connection.onRequest(
     }
   },
 );
+
+// ── Component Tree RPC ──
+
+interface ComponentTreeNode {
+  name: string;
+  typeName: string;
+  kind: string;
+  variability: string | null;
+  causality: string | null;
+  description: string | null;
+  children: ComponentTreeNode[];
+}
+
+connection.onRequest(
+  "modelscript/getComponentTree",
+  (params: { uri: string; className?: string }): ComponentTreeNode | null => {
+    const instances = documentInstances.get(params.uri);
+    if (!instances || instances.length === 0) return null;
+
+    let target = instances[0];
+    if (params.className) {
+      const found = instances.find((i) => i.name === params.className || i.compositeName === params.className);
+      if (found) target = found;
+    }
+
+    if (!target.instantiated) {
+      try {
+        target.instantiate();
+      } catch {
+        return null;
+      }
+    }
+
+    return buildComponentTree(target);
+  },
+);
+
+function buildComponentTree(classInstance: ModelicaClassInstance, depth = 0): ComponentTreeNode {
+  const children: ComponentTreeNode[] = [];
+  if (depth < 5) {
+    try {
+      for (const comp of classInstance.components) {
+        if (comp instanceof ModelicaComponentInstance) {
+          const childCI = comp.classInstance;
+          const childNode: ComponentTreeNode = {
+            name: comp.name || "<unnamed>",
+            typeName: childCI?.name || "<unknown>",
+            kind: childCI?.classKind || "unknown",
+            variability: comp.variability,
+            causality: comp.causality,
+            description: comp.description,
+            children: [],
+          };
+          if (childCI) {
+            try {
+              const subtree = buildComponentTree(childCI, depth + 1);
+              childNode.children = subtree.children;
+            } catch {
+              // ignore
+            }
+          }
+          children.push(childNode);
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return {
+    name: classInstance.name || "<unnamed>",
+    typeName: classInstance.compositeName || classInstance.name || "<unnamed>",
+    kind: classInstance.classKind || "class",
+    variability: null,
+    causality: null,
+    description: classInstance.description,
+    children,
+  };
+}
 
 // Listen on the connection
 connection.listen();

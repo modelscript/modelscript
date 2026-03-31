@@ -22,9 +22,20 @@ interface ClassHierarchyNode {
   children: ClassHierarchyNode[];
 }
 
+interface ComponentTreeNode {
+  name: string;
+  typeName: string;
+  kind: string;
+  variability: string | null;
+  causality: string | null;
+  description: string | null;
+  children: ComponentTreeNode[];
+}
+
 export class AnalysisPanel {
   static bltPanel: AnalysisPanel | undefined;
   static hierarchyPanel: AnalysisPanel | undefined;
+  static componentTreePanel: AnalysisPanel | undefined;
   static readonly viewType = "modelscript.analysis";
 
   private readonly panel: vscode.WebviewPanel;
@@ -123,10 +134,56 @@ export class AnalysisPanel {
     );
   }
 
+  static async createOrShowComponentTree(extensionUri: vscode.Uri, client: LanguageClient) {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor || editor.document.languageId !== "modelica") {
+      vscode.window.showWarningMessage("Open a Modelica file to view component tree.");
+      return;
+    }
+
+    const uri = editor.document.uri.toString();
+
+    await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: "Loading component tree…",
+        cancellable: false,
+      },
+      async () => {
+        const result: ComponentTreeNode | null = await client.sendRequest("modelscript/getComponentTree", { uri });
+
+        if (!result) {
+          vscode.window.showInformationMessage("No component tree available for this file.");
+          return;
+        }
+
+        if (AnalysisPanel.componentTreePanel) {
+          AnalysisPanel.componentTreePanel.panel.reveal(vscode.ViewColumn.Beside);
+          AnalysisPanel.componentTreePanel.postComponentTreeData(result);
+          return;
+        }
+
+        const panel = vscode.window.createWebviewPanel(
+          AnalysisPanel.viewType,
+          `Components: ${result.name}`,
+          vscode.ViewColumn.Beside,
+          {
+            enableScripts: true,
+            retainContextWhenHidden: true,
+            localResourceRoots: [vscode.Uri.joinPath(extensionUri, "dist")],
+          },
+        );
+
+        AnalysisPanel.componentTreePanel = new AnalysisPanel(panel, extensionUri, "componentTree");
+        AnalysisPanel.componentTreePanel.postComponentTreeData(result);
+      },
+    );
+  }
+
   private constructor(
     panel: vscode.WebviewPanel,
     extensionUri: vscode.Uri,
-    private readonly mode: "blt" | "hierarchy",
+    private readonly mode: "blt" | "hierarchy" | "componentTree",
   ) {
     this.panel = panel;
     this.extensionUri = extensionUri;
@@ -146,6 +203,13 @@ export class AnalysisPanel {
       vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
       vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast;
     this.panel.webview.postMessage({ type: "hierarchyData", data, isDark });
+  }
+
+  private postComponentTreeData(data: ComponentTreeNode) {
+    const isDark =
+      vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
+      vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast;
+    this.panel.webview.postMessage({ type: "componentTreeData", data, isDark });
   }
 
   private getHtmlForWebview(): string {
@@ -343,8 +407,10 @@ export class AnalysisPanel {
   dispose() {
     if (this.mode === "blt") {
       AnalysisPanel.bltPanel = undefined;
-    } else {
+    } else if (this.mode === "hierarchy") {
       AnalysisPanel.hierarchyPanel = undefined;
+    } else {
+      AnalysisPanel.componentTreePanel = undefined;
     }
     this.panel.dispose();
     while (this.disposables.length) {
