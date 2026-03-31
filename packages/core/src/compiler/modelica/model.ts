@@ -573,6 +573,7 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
   #modification: ModelicaModification | null = null;
   #qualifiedImports = new Map<string, ModelicaClassInstance>();
   #unqualifiedImports: ModelicaClassInstance[] = [];
+  #elementsByName: Map<string, ModelicaNamedElement> | null = null;
   classKind: ModelicaClassKind;
   cloneCache = new Map<string, ModelicaClassInstance>();
   declaredElements: ModelicaElement[] = [];
@@ -699,6 +700,30 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
   }
 
   // TODO: fix this method
+  override getNamedElement(name: string): ModelicaNamedElement | null {
+    if (!this.instantiated && !this.instantiating) this.instantiate();
+
+    // If we're still instantiating, fallback to linear scan because the list is changing
+    if (this.instantiating && !this.instantiated) {
+      for (const element of this.declaredElements) {
+        if (element instanceof ModelicaNamedElement && element.name === name) return element;
+      }
+      return null;
+    }
+
+    if (!this.#elementsByName) {
+      this.#elementsByName = new Map();
+      for (const element of this.declaredElements) {
+        if (element instanceof ModelicaNamedElement && element.name) {
+          if (!this.#elementsByName.has(element.name)) {
+            this.#elementsByName.set(element.name, element);
+          }
+        }
+      }
+    }
+    return this.#elementsByName.get(name) ?? null;
+  }
+
   override get elements(): IterableIterator<ModelicaElement> {
     if (!this.instantiated && !this.instantiating) this.instantiate();
     // eslint-disable-next-line @typescript-eslint/no-this-alias
@@ -1042,6 +1067,7 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     if (this.instantiating) throw Error("reentrant error: class is already being instantiated");
     this.instantiating = true;
     this.declaredElements = [];
+    this.#elementsByName = null;
     this.#importClauses = [];
     this.#qualifiedImports = new Map<string, ModelicaClassInstance>();
     this.#unqualifiedImports = [];
@@ -1702,6 +1728,7 @@ export class ModelicaEntity extends ModelicaClassInstance {
   subEntities: ModelicaEntity[] = [];
   unstructured = false;
   #entityHash: string | null = null;
+  #subEntitiesByName: Map<string, ModelicaEntity> | null = null;
 
   constructor(parent: Scope, path: string) {
     super(parent);
@@ -1715,6 +1742,30 @@ export class ModelicaEntity extends ModelicaClassInstance {
   override clone(modification?: ModelicaModification | null): ModelicaClassInstance {
     if (!this.#loaded) this.load();
     return super.clone(modification);
+  }
+
+  override getNamedElement(name: string): ModelicaNamedElement | null {
+    if (!this.instantiated && !this.instantiating) this.instantiate();
+
+    // If we're still instantiating, fallback to linear scan because the list is changing
+    if (this.instantiating && !this.instantiated) {
+      for (const sub of this.subEntities) {
+        if (sub.name === name) return sub;
+      }
+      return super.getNamedElement(name);
+    }
+
+    if (!this.#subEntitiesByName) {
+      this.#subEntitiesByName = new Map();
+      for (const sub of this.subEntities) {
+        if (sub.name && !this.#subEntitiesByName.has(sub.name)) {
+          this.#subEntitiesByName.set(sub.name, sub);
+        }
+      }
+    }
+    const sub = this.#subEntitiesByName.get(name);
+    if (sub) return sub;
+    return super.getNamedElement(name);
   }
 
   override get elements(): IterableIterator<ModelicaElement> {
@@ -1749,6 +1800,7 @@ export class ModelicaEntity extends ModelicaClassInstance {
     if (this.#loaded) return;
     this.#loaded = true;
     this.subEntities = [];
+    this.#subEntitiesByName = null;
     const context = this.context;
     if (!context) throw new Error(`ModelicaEntity.load: no context for path '${this.path}'`);
     const stats = context.fs.stat(this.path);

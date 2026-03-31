@@ -42,6 +42,13 @@ export abstract class Scope {
     return this.#parent?.deref() ?? null;
   }
 
+  getNamedElement(name: string): ModelicaNamedElement | null {
+    for (const element of this.elements) {
+      if (element instanceof ModelicaNamedElement && element.name === name) return element;
+    }
+    return null;
+  }
+
   query(name: string): ModelicaNamedElement | null {
     return this.resolveName(name.split("."));
   }
@@ -99,9 +106,9 @@ export abstract class Scope {
     try {
       let scope: Scope | null = global ? this.root : this;
       while (scope) {
-        for (const element of scope.elements) {
-          if (element instanceof ModelicaNamedElement && element.name === simpleName) return element;
-        }
+        const namedElement = scope.getNamedElement(simpleName);
+        if (namedElement) return namedElement;
+
         if (scope instanceof ModelicaClassInstance) {
           const element = scope.qualifiedImports.get(simpleName);
           if (element != null) return element;
@@ -181,6 +188,10 @@ export class ModelicaLoopScope extends Scope {
     return "";
   }
 
+  override getNamedElement(name: string): ModelicaNamedElement | null {
+    return this.bindings.get(name) ?? null;
+  }
+
   override resolveSimpleName(
     identifier: ModelicaIdentifierSyntaxNode | string | null | undefined,
     global = false,
@@ -213,6 +224,10 @@ export class ModelicaScriptScope extends Scope {
 
   override get hash(): string {
     return "";
+  }
+
+  override getNamedElement(name: string): ModelicaNamedElement | null {
+    return this.variables.get(name) ?? this.classDefinitions.get(name) ?? null;
   }
 
   override resolveSimpleName(
