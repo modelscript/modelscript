@@ -368,17 +368,7 @@
       "editor/title": [
         {
           "command": "modelscript.openDiagram",
-          "when": "editorLangId == modelica",
-          "group": "navigation"
-        },
-        {
-          "command": "modelscript.runSimulation",
-          "when": "editorLangId == modelica",
-          "group": "navigation"
-        },
-        {
-          "command": "modelscript.openCadViewer",
-          "when": "editorLangId == modelica",
+          "when": "editorLangId == modelica && activeCustomEditorId != modelscript.diagram",
           "group": "navigation"
         },
         {
@@ -387,23 +377,8 @@
           "group": "navigation"
         },
         {
-          "command": "modelscript.autoLayout",
-          "when": "activeCustomEditorId == modelscript.diagram",
-          "group": "navigation"
-        },
-        {
-          "command": "modelscript.analyzeBlt",
-          "when": "editorLangId == modelica",
-          "group": "navigation"
-        },
-        {
-          "command": "modelscript.showClassHierarchy",
-          "when": "editorLangId == modelica",
-          "group": "navigation"
-        },
-        {
-          "command": "modelscript.showComponentTree",
-          "when": "editorLangId == modelica",
+          "command": "modelscript.runSimulation",
+          "when": "editorLangId == modelica || activeCustomEditorId == modelscript.diagram",
           "group": "navigation"
         }
       ],
