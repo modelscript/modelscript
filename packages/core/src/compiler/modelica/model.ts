@@ -699,13 +699,12 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     })();
   }
 
-  // TODO: fix this method
   override getNamedElement(name: string): ModelicaNamedElement | null {
     if (!this.instantiated && !this.instantiating) this.instantiate();
 
     // If we're still instantiating, fallback to linear scan because the list is changing
     if (this.instantiating && !this.instantiated) {
-      for (const element of this.declaredElements) {
+      for (const element of this.elements) {
         if (element instanceof ModelicaNamedElement && element.name === name) return element;
       }
       return null;
@@ -713,7 +712,7 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
 
     if (!this.#elementsByName) {
       this.#elementsByName = new Map();
-      for (const element of this.declaredElements) {
+      for (const element of this.elements) {
         if (element instanceof ModelicaNamedElement && element.name) {
           if (!this.#elementsByName.has(element.name)) {
             this.#elementsByName.set(element.name, element);

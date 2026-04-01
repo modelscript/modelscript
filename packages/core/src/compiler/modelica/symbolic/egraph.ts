@@ -24,6 +24,7 @@ import {
   ModelicaBinaryExpression,
   ModelicaBooleanLiteral,
   ModelicaFunctionCallExpression,
+  ModelicaIfElseExpression,
   ModelicaIntegerLiteral,
   ModelicaNameExpression,
   ModelicaRealLiteral,
@@ -328,6 +329,19 @@ export class EGraph {
       return this.makeEClass({ op: `fn:${expr.functionName}`, children: childIds });
     }
 
+    // If/else expressions
+    if (expr instanceof ModelicaIfElseExpression) {
+      const condId = this.add(expr.condition);
+      const thenId = this.add(expr.thenExpression);
+      const elseIfIds: EClassId[] = [];
+      for (const clause of expr.elseIfClauses) {
+        elseIfIds.push(this.add(clause.condition));
+        elseIfIds.push(this.add(clause.expression));
+      }
+      const elseId = this.add(expr.elseExpression);
+      return this.makeEClass({ op: "ifelse", children: [condId, thenId, ...elseIfIds, elseId] });
+    }
+
     // Fallback: opaque node
     return this.makeEClass({ op: "opaque", children: [] });
   }
@@ -376,32 +390,17 @@ export class EGraph {
    */
   rebuild(): void {
     while (this.pending.length > 0) {
-      const batch = [...this.pending];
-      this.pending = [];
-
-      // Rebuild hashcons
-      const newHashcons = new Map<string, EClassId>();
-      for (const [, id] of this.hashcons) {
-        const canonical = this.uf.find(id);
-        const nodes = this.classes.get(canonical);
-        if (nodes) {
-          for (const node of nodes) {
-            const newKey = this.canonicalKey(node);
-            const existing = newHashcons.get(newKey);
-            if (existing !== undefined) {
-              const existingCanon = this.uf.find(existing);
-              const currentCanon = this.uf.find(canonical);
-              if (existingCanon !== currentCanon) {
-                this.pending.push([existingCanon, currentCanon]);
-                this.uf.union(existingCanon, currentCanon);
-              }
-            } else {
-              newHashcons.set(newKey, canonical);
-            }
-          }
+      // De-duplicate worklist using Set of canonical IDs
+      const batchMap = new Map<string, [EClassId, EClassId]>();
+      for (const [a, b] of this.pending) {
+        const rA = this.uf.find(a);
+        const rB = this.uf.find(b);
+        if (rA !== rB) {
+          batchMap.set(`${Math.min(rA, rB)},${Math.max(rA, rB)}`, [rA, rB]);
         }
       }
-      this.hashcons = newHashcons;
+      const batch = Array.from(batchMap.values());
+      this.pending = [];
 
       // Re-merge classes that were split
       for (const [a, b] of batch) {
@@ -417,6 +416,32 @@ export class EGraph {
           this.classes.delete(other);
         }
       }
+
+      // Repair hashcons and identify newly congruent nodes
+      const newHashcons = new Map<string, EClassId>();
+      for (const [classId, nodes] of this.classes.entries()) {
+        const canonicalClass = this.uf.find(classId);
+        // Only canonicalize up to 50 nodes per class to prevent explosive string hashing on massive e-classes
+        // The remaining nodes are functionally equivalent and keeping the first 50 paths is plenty for structural matching
+        const iterNodes = nodes.length > 50 ? nodes.slice(0, 50) : nodes;
+        for (const node of iterNodes) {
+          const canonNode: ENode = { op: node.op, children: node.children.map((c) => this.uf.find(c)) };
+
+          let childHash = "";
+          for (let i = 0; i < canonNode.children.length; i++) {
+            childHash += canonNode.children[i] + (i < canonNode.children.length - 1 ? "," : "");
+          }
+          const hash = canonNode.op + "(" + childHash + ")";
+
+          const existing = newHashcons.get(hash);
+          if (existing !== undefined) {
+            this.merge(canonicalClass, this.uf.find(existing));
+          } else {
+            newHashcons.set(hash, canonicalClass);
+          }
+        }
+      }
+      this.hashcons = newHashcons;
     }
   }
 
@@ -431,6 +456,8 @@ export class EGraph {
       // Collect all canonical class IDs (snapshot to avoid mutation during iteration)
       const classIds = Array.from(this.classes.keys()).map((id) => this.uf.find(id));
       const uniqueIds = [...new Set(classIds)];
+
+      console.log(`[EGRAPH-DEBUG] saturate iter ${iter}/${maxIterations}, ${uniqueIds.length} classes`);
 
       for (const classId of uniqueIds) {
         const nodes = this.classes.get(this.uf.find(classId));
@@ -565,6 +592,21 @@ export class EGraph {
       return new ModelicaFunctionCallExpression(fname, children);
     }
 
+    // If/else expressions
+    if (node.op === "ifelse" && children.length >= 3) {
+      const condition = children[0] as ModelicaExpression;
+      const thenExpression = children[1] as ModelicaExpression;
+      const elseIfClauses: { condition: ModelicaExpression; expression: ModelicaExpression }[] = [];
+      for (let i = 2; i < children.length - 1; i += 2) {
+        elseIfClauses.push({
+          condition: children[i] as ModelicaExpression,
+          expression: children[i + 1] as ModelicaExpression,
+        });
+      }
+      const elseExpression = children[children.length - 1] as ModelicaExpression;
+      return new ModelicaIfElseExpression(condition, thenExpression, elseIfClauses, elseExpression);
+    }
+
     return null;
   }
 
@@ -685,8 +727,8 @@ export function conditionalRewrite(
   const rhs = parsePattern(rhsSexpr);
   return {
     name,
-    apply(egraph, eClassId) {
-      const substitutions = matchPattern(egraph, lhs, eClassId);
+    apply(egraph, eClassId, node) {
+      const substitutions = matchPattern(egraph, lhs, node, eClassId);
       const merges: { id: EClassId; newId: EClassId }[] = [];
       for (const subst of substitutions) {
         if (condition(egraph, subst)) {
@@ -802,13 +844,29 @@ export function runEqualitySaturation(
       break;
     }
 
+    let limitBreached = false;
+
     for (const classId of classIds) {
+      if (limitBreached) break;
       const nodes = egraph.getNodes(classId);
       const nodeSnapshot = [...nodes];
 
       for (const node of nodeSnapshot) {
+        if (limitBreached) break;
         for (const rule of rules) {
           if (!cfg.scheduler.canFireRule(rule, iter)) continue;
+
+          // Enforce limits strictly to prevent mid-iteration runaways
+          if (Date.now() - start > cfg.maxTimeMs) {
+            stopReason = "TimeLimit";
+            limitBreached = true;
+            break;
+          }
+          if (egraph.nodeCount() > cfg.maxNodeCount) {
+            stopReason = "NodeLimit";
+            limitBreached = true;
+            break;
+          }
 
           const merges = rule.apply(egraph, egraph.find(classId), node);
           let numMerged = 0;
@@ -825,6 +883,8 @@ export function runEqualitySaturation(
     }
 
     egraph.rebuild();
+    if (limitBreached) break;
+
     if (!anyMerged) {
       stopReason = "Saturated";
       break;
@@ -856,13 +916,13 @@ export function multiRewrite(
   const parsedPatterns = patterns.map(parsePattern);
   return {
     name,
-    apply(egraph, eClassId) {
+    apply(egraph, eClassId, node) {
       // Only match first pattern against this e-class; if it matches,
       // search all e-classes for subsequent patterns with compatible substitutions.
       if (parsedPatterns.length === 0) return [];
       const firstPat = parsedPatterns[0];
       if (!firstPat) return [];
-      const firstMatches = matchPattern(egraph, firstPat, eClassId);
+      const firstMatches = matchPattern(egraph, firstPat, node, eClassId);
       if (firstMatches.length === 0) return [];
 
       const allMerges: { id: EClassId; newId: EClassId }[] = [];
@@ -886,21 +946,24 @@ function matchRemainingPatterns(egraph: EGraph, patterns: PatternNode[], subst: 
 
   // Search all e-classes for matches of this pattern
   for (const classId of egraph.classIds()) {
-    const matches = matchPattern(egraph, pat, egraph.find(classId));
-    for (const m of matches) {
-      // Check consistency with existing substitution
-      let consistent = true;
-      for (const [k, v] of subst) {
-        const mv = m.get(k);
-        if (mv !== undefined && egraph.find(mv) !== egraph.find(v)) {
-          consistent = false;
-          break;
+    const canon = egraph.find(classId);
+    for (const node of egraph.getNodes(canon)) {
+      const matches = matchPattern(egraph, pat, node, canon);
+      for (const m of matches) {
+        // Check consistency with existing substitution
+        let consistent = true;
+        for (const [k, v] of subst) {
+          const mv = m.get(k);
+          if (mv !== undefined && egraph.find(mv) !== egraph.find(v)) {
+            consistent = false;
+            break;
+          }
         }
-      }
-      if (consistent) {
-        const merged = new Map(subst);
-        for (const [k, v] of m) merged.set(k, v);
-        results.push(...matchRemainingPatterns(egraph, remaining, merged));
+        if (consistent) {
+          const merged = new Map(subst);
+          for (const [k, v] of m) merged.set(k, v);
+          results.push(...matchRemainingPatterns(egraph, remaining, merged));
+        }
       }
     }
   }
@@ -1040,6 +1103,22 @@ function binaryOpToTag(op: ModelicaBinaryOperator): string {
     case ModelicaBinaryOperator.EXPONENTIATION:
     case ModelicaBinaryOperator.ELEMENTWISE_EXPONENTIATION:
       return "pow";
+    case ModelicaBinaryOperator.LESS_THAN:
+      return "lt";
+    case ModelicaBinaryOperator.LESS_THAN_OR_EQUAL:
+      return "lte";
+    case ModelicaBinaryOperator.GREATER_THAN:
+      return "gt";
+    case ModelicaBinaryOperator.GREATER_THAN_OR_EQUAL:
+      return "gte";
+    case ModelicaBinaryOperator.EQUALITY:
+      return "eq";
+    case ModelicaBinaryOperator.INEQUALITY:
+      return "neq";
+    case ModelicaBinaryOperator.LOGICAL_AND:
+      return "and";
+    case ModelicaBinaryOperator.LOGICAL_OR:
+      return "or";
     default:
       return `binop:${op}`;
   }
@@ -1057,7 +1136,26 @@ function tagToBinaryOp(tag: string): ModelicaBinaryOperator | null {
       return ModelicaBinaryOperator.DIVISION;
     case "pow":
       return ModelicaBinaryOperator.EXPONENTIATION;
+    case "lt":
+      return ModelicaBinaryOperator.LESS_THAN;
+    case "lte":
+      return ModelicaBinaryOperator.LESS_THAN_OR_EQUAL;
+    case "gt":
+      return ModelicaBinaryOperator.GREATER_THAN;
+    case "gte":
+      return ModelicaBinaryOperator.GREATER_THAN_OR_EQUAL;
+    case "eq":
+      return ModelicaBinaryOperator.EQUALITY;
+    case "neq":
+      return ModelicaBinaryOperator.INEQUALITY;
+    case "and":
+      return ModelicaBinaryOperator.LOGICAL_AND;
+    case "or":
+      return ModelicaBinaryOperator.LOGICAL_OR;
     default:
+      if (tag.startsWith("binop:")) {
+        return tag.slice(6) as ModelicaBinaryOperator;
+      }
       return null;
   }
 }
@@ -1145,12 +1243,20 @@ function tokenize(s: string): string[] {
 export type Substitution = Map<string, EClassId>;
 
 /**
- * Match a pattern against an e-class in the e-graph.
+ * Match a pattern against a specific e-node in the e-graph.
  * Returns all valid substitutions (may be empty if no match).
  */
-export function matchPattern(egraph: EGraph, pattern: PatternNode, eClassId: EClassId): Substitution[] {
+export function matchPattern(egraph: EGraph, pattern: PatternNode, node: ENode, eClassId: EClassId): Substitution[] {
   const results: Substitution[] = [];
-  matchRec(egraph, pattern, eClassId, new Map(), results);
+  if (pattern.kind === "var") {
+    const existing = new Map<string, EClassId>();
+    existing.set(pattern.name, egraph.find(eClassId));
+    results.push(existing);
+    return results;
+  }
+
+  if (node.op !== pattern.op || node.children.length !== pattern.children.length) return [];
+  matchChildren(egraph, pattern.children, node.children, 0, new Map(), results);
   return results;
 }
 
@@ -1228,8 +1334,8 @@ export function rewrite(name: string, lhsSexpr: string, rhsSexpr: string): Rewri
   const rhs = parsePattern(rhsSexpr);
   return {
     name,
-    apply(egraph, eClassId) {
-      const substitutions = matchPattern(egraph, lhs, eClassId);
+    apply(egraph, eClassId, node) {
+      const substitutions = matchPattern(egraph, lhs, node, eClassId);
       const merges: { id: EClassId; newId: EClassId }[] = [];
       for (const subst of substitutions) {
         const newId = instantiatePattern(egraph, rhs, subst);
@@ -1542,6 +1648,6 @@ export const DEFAULT_RULES: RewriteRule[] = [
 export function egraphSimplify(expr: ModelicaExpression, maxIterations = 20): ModelicaExpression {
   const egraph = new EGraph();
   const rootId = egraph.add(expr);
-  egraph.saturate(DEFAULT_RULES, maxIterations);
+  runEqualitySaturation(egraph, DEFAULT_RULES, { maxIterations, maxNodeCount: 10_000 });
   return egraph.extract(rootId);
 }

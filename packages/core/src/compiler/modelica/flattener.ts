@@ -81,6 +81,7 @@ import {
   ModelicaParameterModification,
   ModelicaPredefinedClassInstance,
   ModelicaRealClassInstance,
+  ModelicaShortClassInstance,
   ModelicaStringClassInstance,
 } from "./model.js";
 import {
@@ -515,6 +516,24 @@ import type { ModelicaCompilerOptions } from "../context.js";
  * Visitor that traverses the semantic Modelica object model and flattens it into a DAE structure.
  * This class handles the instantiation and flattening of arrays, records, blocks, models, and variables.
  */
+/**
+ * Resolves through ShortClasses and ExtendsClasses to find a predefined base class,
+ * returning it if found, or null otherwise.
+ */
+function getUnderlyingPredefinedClass(cls: ModelicaClassInstance | null): ModelicaPredefinedClassInstance | null {
+  if (!cls) return null;
+  if (cls instanceof ModelicaPredefinedClassInstance) return cls;
+  if (cls instanceof ModelicaShortClassInstance) return getUnderlyingPredefinedClass(cls.classInstance);
+  // Recursively check extends clauses for user-defined short classes extending predefined types
+  for (const el of cls.elements) {
+    if (el instanceof ModelicaExtendsClassInstance && el.classInstance) {
+      const base = getUnderlyingPredefinedClass(el.classInstance);
+      if (base) return base;
+    }
+  }
+  return null;
+}
+
 export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE]> {
   options: ModelicaCompilerOptions;
 
@@ -1124,7 +1143,13 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     // Use the more restrictive variability between the outer context and this component's own
     const effectiveVariability = this.#outerVariability ?? node.variability;
 
-    if (node.classInstance instanceof ModelicaPredefinedClassInstance) {
+    if (name.includes("V.f") || name.includes("V.phase")) {
+      console.log(
+        `Checking ${name}: classInstance=${node.classInstance?.constructor.name}, underlying=${getUnderlyingPredefinedClass(node.classInstance)?.constructor.name ?? "NULL"}`,
+      );
+    }
+
+    if (getUnderlyingPredefinedClass(node.classInstance)) {
       this.#flattenPredefinedClass(node, name, args, effectiveVariability);
     } else if (node.classInstance instanceof ModelicaEnumerationClassInstance) {
       this.#flattenEnumerationClass(node, name, args);
@@ -1327,6 +1352,12 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           }
         }
       }
+    }
+
+    if (name.includes("f") || name.includes("phase") || name === "V.V") {
+      console.log(
+        `flattenPredefinedClass pushing variable ${name}, classInstance=${node.classInstance?.constructor.name}`,
+      );
     }
 
     if (node.classInstance instanceof ModelicaBooleanClassInstance) {
@@ -1997,6 +2028,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     // f = 0.0. If they are connected, they participate in the sum-to-zero equation.
     for (const flowVar of this.#allFlowVars) {
       if (!this.#connectedFlowVars.has(flowVar)) {
+        console.log(`Generating 0.0 for unconnected flow: ${flowVar}`);
         dae.equations.push(
           new ModelicaSimpleEquation(new ModelicaNameExpression(flowVar), new ModelicaRealLiteral(0.0)),
         );
@@ -6094,6 +6126,15 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     const ref2 = node.componentReference2;
     if (!ref1 || !ref2) return null;
 
+    if (ctx.prefix === "") {
+      console.log(
+        "Visit connect:",
+        ref1.parts.map((p) => p.identifier?.text).join("."),
+        "to",
+        ref2.parts.map((p) => p.identifier?.text).join("."),
+      );
+    }
+
     // Check if this entire connect equation was removed via `break connect(...)`
     if (ctx.brokenConnects && ctx.brokenConnects.size > 0) {
       // Include array subscripts in the key to match (e.g. c1[i] not just c1)
@@ -6139,7 +6180,10 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     // Resolve the component instances
     const comp1 = this.#resolveConnectComponent(ref1, ctx);
     const comp2 = this.#resolveConnectComponent(ref2, ctx);
-    if (!comp1 || !comp2) return null;
+    if (!comp1 || !comp2) {
+      console.error(`Connect component resolution failed: ${name1}=${!!comp1}, ${name2}=${!!comp2}`);
+      return null;
+    }
 
     // Preserve structural connect pair for ECAD netlist extraction
     const dotIdx1 = name1.lastIndexOf(".");
@@ -6154,6 +6198,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     // Collect leaf variables from both connector sides
     const leaves1 = this.#collectConnectorLeaves(comp1, name1);
     const leaves2 = this.#collectConnectorLeaves(comp2, name2);
+    console.log(`leaves1 size=${leaves1.size}, leaves2 size=${leaves2.size}`);
 
     // Match variables by their local name suffix and generate equations
     for (const [localName, info1] of leaves1) {
@@ -6175,6 +6220,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         // Defer flow equation generation — collect pairs for connection-set-based KCL.
         // Per Modelica spec §9.2, all flows at a connection set node sum to zero.
         if (ctx.flowConnectPairs) {
+          console.log(`Adding flow pair: ${info1.fullName} - ${info2.fullName}`);
           ctx.flowConnectPairs.push({ name1: info1.fullName, name2: info2.fullName });
         } else {
           // Fallback: generate pairwise equation if flowConnectPairs not available
@@ -6276,7 +6322,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     if (!classInst) return result;
 
     // For predefined types (Real, Integer, etc.), this component IS the leaf
-    if (classInst instanceof ModelicaPredefinedClassInstance) {
+    if (getUnderlyingPredefinedClass(classInst)) {
       result.set("", {
         fullName: prefix,
         isFlow: comp.flowPrefix === ModelicaFlow.FLOW,
@@ -6298,7 +6344,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       if (!element.name) continue;
 
       const elemClass = element.classInstance;
-      if (elemClass instanceof ModelicaPredefinedClassInstance) {
+      if (getUnderlyingPredefinedClass(elemClass)) {
         // Leaf variable
         result.set(element.name, {
           fullName: prefix + "." + element.name,

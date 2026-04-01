@@ -584,7 +584,12 @@ export class ModelicaSimulator {
     this.debuggerHook = debuggerHook;
   }
 
+  get _blocks() {
+    return this.executionBlocks;
+  }
+
   public prepare(): void {
+    this.executionBlocks = [];
     const assignments: { target: string; expr: ModelicaExpression; isDerivative: boolean }[] = [];
     const definedVars = new Set<string>();
 
@@ -613,10 +618,24 @@ export class ModelicaSimulator {
       return root;
     }
 
-    function aliasUnion(a: string, b: string): void {
+    const paramSet = this.parameters;
+    // Track equations that alias a parameter to a variable — these should be
+    // treated as algebraic equations (simple assignments), not union-find aliases,
+    // because consuming them as aliases reduces the equation count without
+    // reducing the unknown-variable count.
+    const paramAliasEquations: ModelicaSimpleEquation[] = [];
+    function aliasUnion(a: string, b: string, eq?: ModelicaSimpleEquation): void {
       const rootA = aliasFind(a);
       const rootB = aliasFind(b);
       if (rootA !== rootB) {
+        const aIsParam = paramSet.has(a) || paramSet.has(rootA);
+        const bIsParam = paramSet.has(b) || paramSet.has(rootB);
+        if ((aIsParam || bIsParam) && !(aIsParam && bIsParam)) {
+          // One side is a parameter, the other is a variable.
+          // Don't alias — push as a regular equation instead.
+          if (eq) paramAliasEquations.push(eq);
+          return;
+        }
         // Prefer shorter names or state variables as canonical
         aliasParent.set(rootB, rootA);
       }
@@ -696,7 +715,7 @@ export class ModelicaSimulator {
         const rhsName = extractVarName(eq.expression2);
         if (lhsName && rhsName) {
           // This is an alias equation: A = B
-          aliasUnion(lhsName, rhsName);
+          aliasUnion(lhsName, rhsName, eq);
         } else {
           // Check for negated alias: A + B = 0  or  0 = A + B  →  A = -B
           // These are collected for the simulation output (to show .n.i variables)
@@ -727,6 +746,11 @@ export class ModelicaSimulator {
       }
     }
 
+    // Re-inject param→variable alias equations as regular equations
+    for (const eq of paramAliasEquations) {
+      nonAliasEquations.push(eq);
+    }
+
     // Build the substitution map: for each aliased variable, map to its canonical name
     this.aliasMap = new Map<string, string>();
     for (const name of aliasParent.keys()) {
@@ -735,6 +759,7 @@ export class ModelicaSimulator {
         this.aliasMap.set(name, canonical);
       }
     }
+
     const aliasMap = this.aliasMap;
 
     // Build negated alias map from A + B = 0 pairs (flow balance equations).
