@@ -62,6 +62,7 @@ import {
   ModelicaSimpleAssignmentStatementSyntaxNode,
   ModelicaSimpleEquationSyntaxNode,
   ModelicaSimpleImportClauseSyntaxNode,
+  ModelicaSpecialEquationSyntaxNode,
   ModelicaStringLiteralSyntaxNode,
   ModelicaSyntaxNode,
   ModelicaSyntaxPrinter,
@@ -71,6 +72,7 @@ import {
   ModelicaUnsignedIntegerLiteralSyntaxNode,
   ModelicaUnsignedRealLiteralSyntaxNode,
   ModelicaVariability,
+  ModelicaWhenEquationSyntaxNode,
   ModelicaWhenStatementSyntaxNode,
   type IModelicaSyntaxVisitor,
   type ModelicaClassDefinitionSyntaxNode,
@@ -850,12 +852,39 @@ ModelicaLinter.register(ModelicaErrorCode.UNBALANCED_MODEL, {
     // Count equations from equation sections, excluding connect() equations.
     // Connect equations expand into topology-based equations (potential equality + flow balance)
     // and cannot be counted 1:1.
-    let nEquations = 0;
-    for (const equation of node.equations) {
-      if (!(equation instanceof ModelicaConnectEquationSyntaxNode)) {
-        nEquations++;
+    function getEquationCount(eqs: Iterable<ModelicaEquationSyntaxNode>): number {
+      let count = 0;
+      for (const eq of eqs) {
+        if (eq instanceof ModelicaConnectEquationSyntaxNode) {
+          continue; // Topology, skip
+        } else if (eq instanceof ModelicaWhenEquationSyntaxNode) {
+          // when-equations contribute the sum of their inner equations
+          count += getEquationCount(eq.equations);
+          for (const elseWhen of eq.elseWhenEquationClauses) {
+            count += getEquationCount(elseWhen.equations);
+          }
+        } else if (eq instanceof ModelicaIfEquationSyntaxNode) {
+          // Assume branches are meant to be balanced; count the 'then' block
+          count += getEquationCount(eq.equations);
+        } else if (eq instanceof ModelicaForEquationSyntaxNode) {
+          // Static counting of for-loops is an approximation
+          count += getEquationCount(eq.equations);
+        } else if (eq instanceof ModelicaSpecialEquationSyntaxNode) {
+          // Standard function calls count as 0 (procedural side effects) or returned components
+          // reinit() is explicitly defined to NOT count as an equation.
+          const name = eq.functionReference?.parts?.[0]?.identifier?.text;
+          if (name !== "reinit") {
+            // OMC ignores assert/print as well.
+          }
+        } else {
+          // Simple equations and other constructs count as 1
+          count++;
+        }
       }
+      return count;
     }
+
+    let nEquations = getEquationCount(node.equations);
 
     // Each algorithm section contributes as many equations as assigned variables.
     // As a simplification, count each statement as one equation.
