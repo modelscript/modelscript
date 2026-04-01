@@ -76,7 +76,7 @@ export function registerMCPTools(context: vscode.ExtensionContext, client: Langu
             new vscode.LanguageModelTextPart(`Class '${options.input.name}' not found.`),
           ]);
         }
-        return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(JSON.stringify(result, null, 2))]);
+        return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(JSON.stringify(result))]);
       },
     }),
   );
@@ -91,7 +91,47 @@ export function registerMCPTools(context: vscode.ExtensionContext, client: Langu
           classes: { name: string; kind: string }[];
           syntaxErrors: string[];
         }>("modelscript/parse", { code: options.input.code });
-        return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(JSON.stringify(result, null, 2))]);
+        return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(JSON.stringify(result))]);
+      },
+    }),
+  );
+
+  // modelscript_add_component
+  context.subscriptions.push(
+    vscode.lm.registerTool("modelscript_add_component", {
+      async invoke(
+        options: vscode.LanguageModelToolInvocationOptions<{ className: string; classKind?: string }>,
+      ): Promise<vscode.LanguageModelToolResult> {
+        try {
+          await vscode.commands.executeCommand(
+            "modelscript.addToDiagram",
+            options.input.className,
+            options.input.classKind,
+          );
+          return new vscode.LanguageModelToolResult([
+            new vscode.LanguageModelTextPart(`Added ${options.input.className} to the active model.`),
+          ]);
+        } catch (e) {
+          return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(`Error: ${e}`)]);
+        }
+      },
+    }),
+  );
+
+  // modelscript_simulate_and_plot
+  context.subscriptions.push(
+    vscode.lm.registerTool("modelscript_simulate_and_plot", {
+      async invoke(): Promise<vscode.LanguageModelToolResult> {
+        try {
+          await vscode.commands.executeCommand("modelscript.runSimulation");
+          return new vscode.LanguageModelToolResult([
+            new vscode.LanguageModelTextPart(
+              "Simulation triggered successfully. The results will appear in the simulation panel plot.",
+            ),
+          ]);
+        } catch (e) {
+          return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(`Error: ${e}`)]);
+        }
       },
     }),
   );

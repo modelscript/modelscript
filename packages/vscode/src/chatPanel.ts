@@ -85,6 +85,42 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         case "modelscript_parse":
           result = await this.client.sendRequest("modelscript/parse", { code: msg.input.code });
           break;
+        case "modelscript_add_component": {
+          const editorBefore = vscode.window.activeTextEditor;
+          const fileName = editorBefore ? editorBefore.document.fileName.split(/[/\\]/).pop() : "unknown.mo";
+          const linesBefore = editorBefore ? editorBefore.document.lineCount : 0;
+
+          // Gracefully unwrap if the frontend accidentally sends an extra input layer
+          const actualInput =
+            msg.input && typeof msg.input.input === "object" ? (msg.input.input as Record<string, unknown>) : msg.input;
+
+          await vscode.commands.executeCommand(
+            "modelscript.addToDiagram",
+            actualInput.className,
+            actualInput.classKind || "model",
+          );
+
+          // Wait a tick for VS Code's text editor to physically apply the component edit
+          await new Promise((r) => setTimeout(r, 200));
+
+          const editorAfter = vscode.window.activeTextEditor;
+          const linesAfter = editorAfter ? editorAfter.document.lineCount : 0;
+          const added = Math.max(1, linesAfter - linesBefore);
+
+          result = {
+            success: true,
+            message: `Added ${msg.input.className} to diagram.`,
+            action: "Edited",
+            file: fileName,
+            added,
+            deleted: 0,
+          };
+          break;
+        }
+        case "modelscript_simulate_and_plot":
+          await vscode.commands.executeCommand("modelscript.runSimulation");
+          result = { success: true, message: "Simulation triggered and panel opened." };
+          break;
         default:
           result = { error: `Unknown tool: ${msg.tool}` };
       }
@@ -217,27 +253,39 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       padding: 12px;
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 6px;
     }
     .msg {
-      max-width: 90%;
-      padding: 8px 12px;
-      border-radius: 8px;
       line-height: 1.5;
-      white-space: pre-wrap;
+      font-size: 13px;
       word-wrap: break-word;
+      padding: 0;
+      width: 100%;
     }
     .msg.user {
       align-self: flex-end;
       background: var(--vscode-button-background, #0078d4);
       color: var(--vscode-button-foreground, #fff);
-      border-bottom-right-radius: 2px;
+      padding: 8px 12px;
+      border-radius: 12px 12px 0 12px;
+      max-width: 85%;
+      width: auto;
     }
     .msg.assistant {
-      align-self: flex-start;
-      background: var(--vscode-editorWidget-background, #252526);
-      border: 1px solid var(--vscode-editorWidget-border, #454545);
-      border-bottom-left-radius: 2px;
+      align-self: stretch;
+      background: transparent;
+      border: none;
+      padding: 0;
+      width: 100%;
+    }
+    .response-block {
+      background: var(--vscode-textBlockQuote-background, rgba(128,128,128,0.1));
+      padding: 8px 12px;
+      border-radius: 0 12px 12px 12px;
+      display: inline-block;
+      max-width: 95%;
+      box-sizing: border-box;
+      margin-top: 4px;
     }
     .msg.tool {
       align-self: flex-start;
@@ -280,6 +328,33 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       40% { opacity: 1; }
     }
 
+    /* Thoughts */
+    .think-block {
+      margin: 8px 0;
+      font-size: 13px;
+      color: var(--vscode-foreground, #ccc);
+    }
+    .think-block summary {
+      cursor: pointer;
+      user-select: none;
+    }
+    .think-content {
+      margin-top: 4px;
+      white-space: pre-wrap;
+      opacity: 0.6;
+    }
+    
+    .animated-ellipsis::after {
+      content: "";
+      animation: ellipsis 1.5s infinite steps(4, end);
+    }
+    @keyframes ellipsis {
+      0% { content: ""; }
+      25% { content: "."; }
+      50% { content: ".."; }
+      75% { content: "..."; }
+    }
+
     /* Math rendering */
     .math-inline {
       font-family: 'Cambria Math', 'Latin Modern Math', 'STIX Two Math', serif;
@@ -301,65 +376,76 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
     /* Input area */
     #input-area {
+      padding: 12px 16px;
+      background: transparent;
+      border-top: none;
+    }
+    .input-wrapper {
       display: flex;
-      gap: 4px;
-      padding: 8px 12px;
-      border-top: 1px solid var(--vscode-panel-border, #333);
-      background: var(--vscode-sideBar-background, #1e1e1e);
+      align-items: flex-end;
+      gap: 8px;
+      background: var(--vscode-input-background, #3c3c3c);
+      border: 1px solid var(--vscode-input-border, #3c3c3c);
+      border-radius: 20px;
+      padding: 6px 6px 6px 16px;
+      transition: border-color 0.2s ease;
+    }
+    .input-wrapper:focus-within {
+      border-color: var(--vscode-focusBorder, #0078d4);
     }
     #input {
       flex: 1;
       resize: none;
-      background: var(--vscode-input-background, #3c3c3c);
+      background: transparent;
       color: var(--vscode-input-foreground, #ccc);
-      border: 1px solid var(--vscode-input-border, #3c3c3c);
-      border-radius: 4px;
-      padding: 8px 10px;
+      border: none;
+      padding: 5px 0;
       font-family: var(--vscode-font-family, system-ui, sans-serif);
       font-size: 13px;
-      line-height: 1.4;
-      min-height: 36px;
+      line-height: 18px;
+      min-height: 28px;
       max-height: 120px;
       outline: none;
     }
-    #input:focus {
-      border-color: var(--vscode-focusBorder, #0078d4);
-    }
     #send-btn {
-      align-self: center;
+      align-self: flex-end;
       background: var(--vscode-button-background, #0078d4);
       color: var(--vscode-button-foreground, #fff);
       border: none;
-      border-radius: 4px;
-      padding: 8px 12px;
+      border-radius: 50%;
+      min-width: 28px;
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       cursor: pointer;
-      font-size: 13px;
-      font-weight: 500;
+      margin-bottom: 3px;
+      transition: background 0.2s ease, transform 0.1s ease;
     }
-    #send-btn:hover {
+    #send-btn svg {
+      width: 14px;
+      height: 14px;
+      fill: currentColor;
+    }
+    #send-btn:hover:not(:disabled) {
       background: var(--vscode-button-hoverBackground, #026ec1);
+      transform: scale(1.05);
     }
     #send-btn:disabled {
-      opacity: 0.5;
+      opacity: 0.4;
       cursor: not-allowed;
+      background: var(--vscode-editorWidget-background, #252526);
+      color: var(--vscode-input-foreground, #888);
     }
 
-    /* Empty state: center input vertically, stack send button below */
+    /* Empty state */
     body.empty #messages { display: none; }
     body.empty {
       justify-content: center;
     }
     body.empty #input-area {
-      flex-direction: column;
-      border-top: none;
       padding: 16px 24px;
-    }
-    body.empty #input {
-      min-height: 60px;
-    }
-    body.empty #send-btn {
-      align-self: stretch;
-      padding: 10px;
     }
   </style>
 </head>
@@ -376,11 +462,17 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   </div>
   <div id="messages"></div>
   <div id="input-area">
-    <textarea id="input" rows="1" placeholder="Ask about Modelica..." disabled></textarea>
-    <button id="send-btn" disabled>Send</button>
+    <div class="input-wrapper">
+      <textarea id="input" rows="1" placeholder="Ask about Modelica..." disabled></textarea>
+      <button id="send-btn" disabled title="Send">
+        <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
+          <path d="M8.6 1L15 7.4L15 8.1L8.6 14.5L7.9 13.8L13.3 8.5H1V7.5H13.3L7.9 2.1L8.6 1Z"/>
+        </svg>
+      </button>
+    </div>
   </div>
   <script nonce="${nonce}">var MODEL_BASE_URL = "${modelBaseUrl}";</script>
-  <script nonce="${nonce}" src="${scriptUri}"></script>
+  <script nonce="${nonce}" src="${scriptUri}?t=${Date.now()}"></script>
 </body>
 </html>`;
   }

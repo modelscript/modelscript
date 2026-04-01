@@ -43,7 +43,17 @@ let activeFileContent: string | null = null;
 
 const MODEL_ID = "Qwen3-0.6B-q4f16_1-MLC";
 
-const SYSTEM_PROMPT = `You are ModelScript AI, a Modelica language assistant. Answer questions about Modelica code concisely. When the user provides code context, base your answer on that specific code. Do not use <think> tags.`;
+const SYSTEM_PROMPT = `You are ModelScript AI, an expert Modelica assistant.
+To invoke actions contextually, you MUST output exactly this raw text format (do not use markdown code blocks):
+TOOL_CALL: {"tool": "TOOL_NAME", "input": {"arg1": "value"}}
+
+Available tools:
+- modelscript_add_component: Insert a component. Input: {"className": "...", "classKind": "model"}. Use when asked to add a component.
+- modelscript_simulate_and_plot: Run simulation and plot results dynamically. Input: {}. Use when asked to simulate or plot.
+- modelscript_query: Print internal class hierarchy. Input: {"name": "..."}
+- modelscript_parse: Syntax-check code. Input: {"code": "..."}
+
+Do not use <think> tags. Base your answers concisely on the context provided.`;
 
 // ── WebLLM Engine (runs in main thread, GPU inference in internal workers) ──
 
@@ -129,18 +139,42 @@ function stripThinkTags(text: string): string {
 }
 
 function formatContent(text: string): string {
-  let html = stripThinkTags(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  if (!text) return "";
+  let displayText = text;
+  const tcIdx = displayText.indexOf("TOOL_CALL:");
+  if (tcIdx !== -1) {
+    displayText = displayText.substring(0, tcIdx);
+  }
+
+  let html = displayText.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
   html = html.replace(/```(\w*)\n([\s\S]*?)```/g, "<pre><code>$2</code></pre>");
   html = html.replace(
     /`([^`]+)`/g,
     '<code style="background:var(--vscode-textCodeBlock-background,#1a1a1a);padding:1px 4px;border-radius:3px;">$1</code>',
   );
   html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-  // Display math: $$...$$
   html = html.replace(/\$\$([\s\S]*?)\$\$/g, (_m, expr) => `<div class="math-block">${renderLatex(expr)}</div>`);
-  // Inline math: $...$
   html = html.replace(/\$([^$\n]+)\$/g, (_m, expr) => `<span class="math-inline">${renderLatex(expr)}</span>`);
-  return html;
+  html = html.replace(/\n/g, "<br>");
+
+  const thinkRegex = /&lt;think&gt;([\s\S]*?)(?:&lt;\/think&gt;|$)/;
+  const match = html.match(thinkRegex);
+
+  let thinkHtml = "";
+  if (match) {
+    const isClosed = html.includes("&lt;/think&gt;");
+    const content = match[1];
+    const summary = isClosed ? "Thought Process" : 'Thinking<span class="animated-ellipsis"></span>';
+    thinkHtml = `<details class="think-block"><summary>${summary}</summary><div class="think-content">${content}</div></details>`;
+    html = html.replace(thinkRegex, "");
+  }
+
+  if (html.trim()) {
+    html = `<div class="response-block" style="align-self: stretch;">${html}</div>`;
+  }
+
+  return thinkHtml + html;
 }
 
 function renderLatex(expr: string): string {
@@ -215,26 +249,31 @@ async function sendMessage(): Promise<void> {
 
   isGenerating = true;
   inputEl.value = "";
-  inputEl.style.height = "36px";
+  inputEl.style.height = "28px";
   sendBtn.disabled = true;
 
-  // Show what the user typed, but send augmented version with context to the model
+  // Show what the user typed
   addMessage("user", text);
 
-  // Build the augmented user message with workspace context prepended
-  let augmentedText = "";
+  conversation.push({ role: "user", content: text });
+
+  // Prune history to keep only the last 6 turns (3 exchanges)
+  if (conversation.length > 6) {
+    conversation.splice(0, conversation.length - 6);
+  }
+
+  console.log("[chat] context:", { activeFile: activeFileName, hasContent: !!activeFileContent });
+
+  // Dynamically inject the active file context into the system prompt (not the conversation history)
+  let dynamicSystemPrompt = SYSTEM_PROMPT;
   if (activeFileName && activeFileContent) {
     const lines = activeFileContent.split("\n");
     const truncated = lines.length > 25 ? lines.slice(0, 25).join("\n") + "\n// ..." : activeFileContent;
-    augmentedText += `Here is the code from "${activeFileName}" currently open in the editor:\n${truncated}\n\n`;
+    dynamicSystemPrompt += `\n\nActive file "${activeFileName}":\n\`\`\`modelica\n${truncated}\n\`\`\``;
   }
-  augmentedText += text;
 
-  conversation.push({ role: "user", content: augmentedText });
-  console.log("[chat] context:", { activeFile: activeFileName, hasContent: !!activeFileContent });
-
-  // Build messages: short system prompt + conversation with augmented user messages
-  const messages: ChatMessage[] = [{ role: "system", content: SYSTEM_PROMPT }, ...conversation];
+  // Build messages: dynamic system prompt + conversation
+  const messages: ChatMessage[] = [{ role: "system", content: dynamicSystemPrompt }, ...conversation];
 
   const typingEl = addTypingIndicator();
 
@@ -245,11 +284,28 @@ async function sendMessage(): Promise<void> {
       messages,
       temperature: 0.7,
       max_tokens: 2048,
-      stream: false,
+      stream: true,
     });
 
-    let rawText = completion.choices?.[0]?.message?.content ?? "";
-    let finishReason = completion.choices?.[0]?.finish_reason ?? "stop";
+    typingEl.remove();
+    const msgEl = addMessage("assistant", "Thinking...");
+
+    let rawText = "";
+    let finishReason = "stop";
+
+    for await (const chunk of completion) {
+      rawText += chunk.choices[0]?.delta?.content || "";
+      if (chunk.choices[0]?.finish_reason) {
+        finishReason = chunk.choices[0].finish_reason;
+      }
+      if (rawText) {
+        msgEl.innerHTML = formatContent(rawText);
+      } else {
+        msgEl.innerHTML = 'Thinking<span class="animated-ellipsis"></span>';
+      }
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
     let visibleText = stripThinkTags(rawText);
 
     // If the model only produced <think> content, retry once with a direct instruction
@@ -263,10 +319,20 @@ async function sendMessage(): Promise<void> {
         messages: retryMessages,
         temperature: 0.5,
         max_tokens: 2048,
-        stream: false,
+        stream: true,
       });
-      rawText = retry.choices?.[0]?.message?.content ?? "";
-      finishReason = retry.choices?.[0]?.finish_reason ?? "stop";
+
+      rawText = "";
+      for await (const chunk of retry) {
+        rawText += chunk.choices[0]?.delta?.content || "";
+        if (rawText) {
+          msgEl.innerHTML = formatContent(rawText);
+        } else {
+          msgEl.innerHTML = 'Thinking<span class="animated-ellipsis"></span>';
+        }
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      }
+      finishReason = "stop"; // Reset finish reason for retry
       visibleText = stripThinkTags(rawText);
     }
 
@@ -282,38 +348,101 @@ async function sendMessage(): Promise<void> {
         messages: contMessages,
         temperature: 0.7,
         max_tokens: 2048,
-        stream: false,
+        stream: true,
       });
-      const contChunk = stripThinkTags(cont.choices?.[0]?.message?.content ?? "");
+
+      let contRaw = "";
+      for await (const chunk of cont) {
+        contRaw += chunk.choices[0]?.delta?.content || "";
+        if (contRaw) {
+          msgEl.innerHTML = formatContent(rawText + " " + contRaw);
+        }
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      }
+
+      const contChunk = stripThinkTags(contRaw);
       if (contChunk) {
         visibleText += " " + contChunk;
-        rawText += cont.choices?.[0]?.message?.content ?? "";
+        rawText += contRaw;
       }
     }
 
-    typingEl.remove();
     statusEl.textContent = "Qwen3-0.6B ready";
 
-    if (visibleText) {
-      addMessage("assistant", visibleText);
-    } else {
-      addMessage("assistant", "I couldn't generate a response. Try a shorter or more specific question.");
+    if (!visibleText) {
+      msgEl.innerHTML = "I couldn't generate a response. Try a shorter or more specific question.";
     }
 
     conversation.push({ role: "assistant", content: visibleText || rawText });
 
     // Check for tool calls in the response
-    const toolCallMatch = visibleText.match(/TOOL_CALL:\s*(\{[\s\S]*?\})/);
-    if (toolCallMatch) {
+    const toolCallIndex = visibleText.indexOf("TOOL_CALL:");
+    if (toolCallIndex !== -1) {
       try {
-        const toolReq = JSON.parse(toolCallMatch[1]);
-        const toolName = toolReq.tool;
-        delete toolReq.tool;
+        const jsonStart = visibleText.indexOf("{", toolCallIndex);
+        let jsonStr = "";
 
-        addMessage("tool", `🔧 Calling ${toolName}...`);
-        const toolResult = await requestToolCall(toolName, toolReq);
+        if (jsonStart !== -1) {
+          let braceCount = 0;
+          let jsonEnd = jsonStart;
+          for (let i = jsonStart; i < visibleText.length; i++) {
+            if (visibleText[i] === "{") braceCount++;
+            else if (visibleText[i] === "}") braceCount--;
+
+            if (braceCount === 0) {
+              jsonEnd = i;
+              break;
+            }
+          }
+          if (braceCount === 0) {
+            jsonStr = visibleText.substring(jsonStart, jsonEnd + 1);
+          }
+        }
+
+        if (!jsonStr) {
+          throw new Error("Could not find properly closed JSON object for tool call.");
+        }
+
+        const toolReq = JSON.parse(jsonStr);
+        const toolName = toolReq.tool;
+        const toolInput = toolReq.input || {};
+
+        const callMsgEl = addMessage("tool", "");
+        callMsgEl.style.width = "100%";
+        callMsgEl.style.alignSelf = "stretch";
+        callMsgEl.style.display = "block";
+        callMsgEl.classList.remove("tool");
+        callMsgEl.innerHTML = `
+          <div style="display: flex; align-items: center; gap: 8px; opacity: 0.8; font-size: 12px; margin: 2px 0;">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0a8 8 0 100 16A8 8 0 008 0zm.5 12.5h-1v-5h1v5zm0-6h-1v-1h1v1z"/></svg>
+            <span>Action: <b>${toolName}</b></span>
+          </div>
+        `;
+
+        const toolResult = (await requestToolCall(toolName, toolInput)) as Record<string, unknown>;
         const resultStr = typeof toolResult === "string" ? toolResult : JSON.stringify(toolResult, null, 2);
-        addMessage("tool", resultStr);
+
+        if (toolResult && toolResult.action === "Edited" && toolResult.file) {
+          callMsgEl.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 8px; background: var(--vscode-textBlockQuote-background, rgba(128,128,128,0.1)); border-radius: 4px; padding: 4px 8px; font-size: 12.5px; font-family: var(--vscode-font-family, system-ui, sans-serif); margin: 2px 0; width: 100%; box-sizing: border-box;">
+              <svg style="opacity: 0.7;" width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                <path d="M13.8 4.7l-3.5-3.5A1 1 0 0 0 9.6 1H3a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V5.4a1 1 0 0 0-.2-.7zM10 2.4L12.6 5H10V2.4zM13 14H3V2h6v4h4v8z"/>
+              </svg>
+              <span style="opacity: 0.9; font-weight: 500;">${toolName}</span>
+              <span style="color: var(--vscode-descriptionForeground); font-family: monospace; font-size: 11.5px;">${toolResult.file}</span>
+              <span style="margin-left: auto; color: var(--vscode-gitDecoration-addedResourceForeground, #81b88b);">+${toolResult.added || 0}</span>
+              <span style="color: var(--vscode-gitDecoration-deletedResourceForeground, #c74e39); margin-left: 4px;">-${toolResult.deleted || 0}</span>
+            </div>
+          `;
+        } else {
+          callMsgEl.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 8px; background: var(--vscode-textBlockQuote-background, rgba(128,128,128,0.1)); border-radius: 4px; padding: 4px 8px; font-size: 12.5px; margin: 2px 0; width: 100%; box-sizing: border-box;">
+              <svg style="opacity: 0.7;" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0a8 8 0 100 16A8 8 0 008 0zm.5 12.5h-1v-5h1v5zm0-6h-1v-1h1v1z"/></svg>
+              <span style="opacity: 0.9; font-weight: 500;">${toolName}</span>
+              <span style="margin-left: auto; font-family: monospace; opacity: 0.6; font-size: 11px;">Success</span>
+            </div>
+          `;
+        }
 
         conversation.push({
           role: "user",
@@ -322,15 +451,26 @@ async function sendMessage(): Promise<void> {
 
         const followUpTyping = addTypingIndicator();
         const followUp = await engine.chat.completions.create({
-          messages: [{ role: "system", content: SYSTEM_PROMPT }, ...conversation],
+          messages: [{ role: "system", content: dynamicSystemPrompt }, ...conversation],
           temperature: 0.7,
           max_tokens: 4096,
-          stream: false,
+          stream: true,
         });
         followUpTyping.remove();
 
-        const followUpText = followUp.choices?.[0]?.message?.content ?? "";
-        addMessage("assistant", followUpText);
+        const followUpMsgEl = addMessage("assistant", "Thinking...");
+        let followUpRaw = "";
+        for await (const chunk of followUp) {
+          followUpRaw += chunk.choices[0]?.delta?.content || "";
+          if (followUpRaw) {
+            followUpMsgEl.innerHTML = formatContent(followUpRaw);
+          } else {
+            followUpMsgEl.innerHTML = 'Thinking<span class="animated-ellipsis"></span>';
+          }
+          messagesEl.scrollTop = messagesEl.scrollHeight;
+        }
+
+        const followUpText = stripThinkTags(followUpRaw) || followUpRaw;
         conversation.push({ role: "assistant", content: followUpText });
       } catch (toolErr) {
         addMessage("tool", `⚠️ Tool error: ${toolErr instanceof Error ? toolErr.message : String(toolErr)}`);
@@ -356,7 +496,7 @@ inputEl.addEventListener("keydown", (e) => {
   }
 });
 inputEl.addEventListener("input", () => {
-  inputEl.style.height = "36px";
+  inputEl.style.height = "28px";
   inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + "px";
 });
 

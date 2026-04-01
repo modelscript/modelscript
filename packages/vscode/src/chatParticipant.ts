@@ -2,22 +2,10 @@
 
 import * as vscode from "vscode";
 
-const SYSTEM_PROMPT = `You are ModelScript AI, an expert Modelica language assistant integrated into the ModelScript IDE.
-
-You help users with:
-- Writing and debugging Modelica models, packages, functions, and connectors
-- Understanding the Modelica Standard Library (MSL) components
-- Setting up simulations and interpreting results
-- Explaining compiler diagnostics and suggesting fixes
-- Modelica language concepts: equations vs algorithms, inheritance, modifications, annotations
-
-You have access to the following tools:
-- modelscript_flatten: Flatten a Modelica class to its DAE (equation system) form
-- modelscript_simulate: Simulate a model and get time-series results
-- modelscript_query: Inspect a class's components, equations, and hierarchy
-- modelscript_parse: Parse inline Modelica code and check for syntax errors
-
-When referencing Modelica code, use proper syntax. When the user asks about a specific class, use the query tool first to understand it before generating explanations.`;
+const SYSTEM_PROMPT = `You are ModelScript AI, an expert Modelica assistant. Help users write code, debug issues, and run simulations.
+When referencing Modelica code, use proper syntax. When asked about a specific class, use modelscript_query first.
+When the user wants to visually plot or simulate to see results in the IDE, use modelscript_simulate_and_plot.
+When asked to add/insert a component, use modelscript_add_component.`;
 
 /**
  * Register the @modelscript chat participant.
@@ -39,8 +27,9 @@ export function registerChatParticipant(context: vscode.ExtensionContext): void 
       // Build messages
       const messages = [vscode.LanguageModelChatMessage.User(SYSTEM_PROMPT)];
 
-      // Add conversation history
-      for (const turn of chatContext.history) {
+      // Add conversation history (keep only the last 4 turns to save context limit)
+      const recentHistory = chatContext.history.slice(-4);
+      for (const turn of recentHistory) {
         if (turn instanceof vscode.ChatResponseTurn) {
           let text = "";
           for (const part of turn.response) {
