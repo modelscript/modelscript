@@ -373,7 +373,9 @@ export class ModelicaDAE {
    */
   computeDerivatives(time: number, stateValues: Map<string, number>): Map<string, number> {
     // Build the value environment
-    const env = new Map<string, number>();
+    const evaluator = new ExpressionEvaluator();
+    evaluator.currentTime = time;
+    const env = evaluator.env;
     env.set("time", time);
 
     // Populate state values
@@ -381,38 +383,85 @@ export class ModelicaDAE {
       env.set(name, value);
     }
 
-    // Populate parameters and constants from their binding expressions
-    for (const variable of this.variables) {
-      if (
-        variable.variability === ModelicaVariability.PARAMETER ||
-        variable.variability === ModelicaVariability.CONSTANT
-      ) {
-        if (variable.expression) {
-          const value = evaluateExpression(variable.expression, env);
-          if (value !== null) env.set(variable.name, value);
+    // Multi-pass parameter/constant evaluation to handle dependency chains
+    for (let pass = 0; pass < 10; pass++) {
+      let changed = false;
+      for (const variable of this.variables) {
+        if (
+          variable.variability === ModelicaVariability.PARAMETER ||
+          variable.variability === ModelicaVariability.CONSTANT
+        ) {
+          if (env.has(variable.name)) continue;
+          const binding = variable.expression ?? (variable instanceof ModelicaRealVariable ? variable.start : null);
+          if (binding) {
+            const value = evaluator.evaluate(binding);
+            if (value !== null) {
+              env.set(variable.name, value);
+              changed = true;
+            }
+          }
         }
       }
+      if (!changed) break;
+    }
+
+    // Evaluate algebraic equations (non-derivatives) before derivative extraction.
+    // Use multi-pass to handle chains like y = f(u), u = g(x).
+    for (let pass = 0; pass < 10; pass++) {
+      let changed = false;
+      for (const equation of this.equations) {
+        if (!(equation instanceof ModelicaSimpleEquation)) continue;
+        const lhsDer = extractDerName(equation.expression1);
+        const rhsDer = extractDerName(equation.expression2);
+        if (lhsDer || rhsDer) continue; // Skip differential equations for now
+
+        // Check if LHS or RHS is a simple name we can solve for
+        if (
+          equation.expression1 instanceof ModelicaNameExpression ||
+          equation.expression1 instanceof ModelicaVariable
+        ) {
+          const name =
+            equation.expression1 instanceof ModelicaVariable ? equation.expression1.name : equation.expression1.name;
+          if (!env.has(name)) {
+            const val = evaluator.evaluate(equation.expression2);
+            if (val !== null) {
+              env.set(name, val);
+              changed = true;
+            }
+          }
+        } else if (
+          equation.expression2 instanceof ModelicaNameExpression ||
+          equation.expression2 instanceof ModelicaVariable
+        ) {
+          const name =
+            equation.expression2 instanceof ModelicaVariable ? equation.expression2.name : equation.expression2.name;
+          if (!env.has(name)) {
+            const val = evaluator.evaluate(equation.expression1);
+            if (val !== null) {
+              env.set(name, val);
+              changed = true;
+            }
+          }
+        }
+      }
+      if (!changed) break;
     }
 
     // Evaluate equations to extract derivative values.
-    // For each equation of the form:  lhs = rhs
-    //   - If lhs is der(x), compute rhs
-    //   - If rhs is der(x), compute lhs
     const derivatives = new Map<string, number>();
-
     for (const equation of this.equations) {
       if (!(equation instanceof ModelicaSimpleEquation)) continue;
       const lhsDer = extractDerName(equation.expression1);
       const rhsDer = extractDerName(equation.expression2);
 
       if (lhsDer) {
-        const value = evaluateExpression(equation.expression2, env);
+        const value = evaluator.evaluate(equation.expression2);
         if (value !== null) {
           derivatives.set(lhsDer, value);
           env.set(`der(${lhsDer})`, value);
         }
       } else if (rhsDer) {
-        const value = evaluateExpression(equation.expression1, env);
+        const value = evaluator.evaluate(equation.expression1);
         if (value !== null) {
           derivatives.set(rhsDer, value);
           env.set(`der(${rhsDer})`, value);
@@ -3062,30 +3111,43 @@ export class ExpressionEvaluator {
       if (a === null) return null;
       switch (name) {
         case "sin":
+        case "Modelica.Math.sin":
           return Math.sin(a);
         case "cos":
+        case "Modelica.Math.cos":
           return Math.cos(a);
         case "tan":
+        case "Modelica.Math.tan":
           return Math.tan(a);
         case "asin":
+        case "Modelica.Math.asin":
           return Math.asin(a);
         case "acos":
+        case "Modelica.Math.acos":
           return Math.acos(a);
         case "atan":
+        case "Modelica.Math.atan":
           return Math.atan(a);
         case "sinh":
+        case "Modelica.Math.sinh":
           return Math.sinh(a);
         case "cosh":
+        case "Modelica.Math.cosh":
           return Math.cosh(a);
         case "tanh":
+        case "Modelica.Math.tanh":
           return Math.tanh(a);
         case "exp":
+        case "Modelica.Math.exp":
           return Math.exp(a);
         case "log":
+        case "Modelica.Math.log":
           return a > 0 ? Math.log(a) : null;
         case "log10":
+        case "Modelica.Math.log10":
           return a > 0 ? Math.log10(a) : null;
         case "sqrt":
+        case "Modelica.Math.sqrt":
           return a >= 0 ? Math.sqrt(a) : null;
         case "abs":
           return Math.abs(a);

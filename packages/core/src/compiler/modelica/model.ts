@@ -571,7 +571,7 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
   #abstractSyntaxNode: ModelicaClassDefinitionSyntaxNode | ModelicaShortClassDefinitionSyntaxNode | null;
   #importClauses: ModelicaImportClauseSyntaxNode[] = [];
   #modification: ModelicaModification | null = null;
-  #qualifiedImports = new Map<string, ModelicaClassInstance>();
+  #qualifiedImports = new Map<string, ModelicaNamedElement>();
   #unqualifiedImports: ModelicaClassInstance[] = [];
   #elementsByName: Map<string, ModelicaNamedElement> | null = null;
   classKind: ModelicaClassKind;
@@ -1018,14 +1018,20 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     }
     if (outerModificationArgument instanceof ModelicaElementModification) {
       return new ModelicaModification(
-        this,
+        outerModificationArgument.scope ?? this,
         modificationArguments,
         outerModificationArgument.modificationExpression,
         outerModificationArgument.description,
         outerModificationArgument.expression,
       );
     } else if (outerModificationArgument instanceof ModelicaParameterModification) {
-      return new ModelicaModification(this, modificationArguments, null, null, outerModificationArgument.expression);
+      return new ModelicaModification(
+        outerModificationArgument.scope ?? this,
+        modificationArguments,
+        null,
+        null,
+        outerModificationArgument.expression,
+      );
     }
     return new ModelicaModification(this, modificationArguments);
   }
@@ -1068,7 +1074,7 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     this.declaredElements = [];
     this.#elementsByName = null;
     this.#importClauses = [];
-    this.#qualifiedImports = new Map<string, ModelicaClassInstance>();
+    this.#qualifiedImports = new Map<string, ModelicaNamedElement>();
     this.#unqualifiedImports = [];
 
     // Pre-scan AST body for element-level redeclare class/component definitions.
@@ -1264,9 +1270,12 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     }
     for (const importClause of this.#importClauses) {
       const packageInstance = this.resolveName(importClause.packageName, true);
-      if (!(packageInstance instanceof ModelicaClassInstance)) continue;
+      if (!(packageInstance instanceof ModelicaClassInstance || packageInstance instanceof ModelicaComponentInstance))
+        continue;
       if (importClause instanceof ModelicaUnqualifiedImportClauseSyntaxNode) {
-        this.#unqualifiedImports.push(packageInstance);
+        if (packageInstance instanceof ModelicaClassInstance) {
+          this.#unqualifiedImports.push(packageInstance);
+        }
       } else if (importClause instanceof ModelicaSimpleImportClauseSyntaxNode) {
         const shortName = importClause.shortName?.text;
         const name = shortName == null ? packageInstance.name : shortName;
@@ -1274,7 +1283,10 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
       } else if (importClause instanceof ModelicaCompoundImportClauseSyntaxNode) {
         for (const importName of importClause.importNames) {
           const qualifiedImport = packageInstance.resolveSimpleName(importName);
-          if (qualifiedImport instanceof ModelicaClassInstance) {
+          if (
+            qualifiedImport instanceof ModelicaClassInstance ||
+            qualifiedImport instanceof ModelicaComponentInstance
+          ) {
             if (qualifiedImport.name) this.#qualifiedImports.set(qualifiedImport.name, qualifiedImport);
           }
         }
@@ -1512,7 +1524,7 @@ export class ModelicaClassInstance extends ModelicaNamedElement {
     return false;
   }
 
-  get qualifiedImports(): Map<string, ModelicaClassInstance> {
+  get qualifiedImports(): Map<string, ModelicaNamedElement> {
     return this.#qualifiedImports;
   }
 
@@ -2198,7 +2210,7 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
 
     if (outerModificationArgument instanceof ModelicaElementModification) {
       const mod = new ModelicaModification(
-        this,
+        outerModificationArgument.scope ?? this,
         filteredArgs,
         outerModificationArgument.modificationExpression ?? modificationSyntaxNode?.modificationExpression,
         outerModificationArgument.description,
@@ -2213,12 +2225,18 @@ export class ModelicaComponentInstance extends ModelicaNamedElement {
       this.#mergeConstrainingArgs(mod);
       return mod;
     } else if (outerModificationArgument instanceof ModelicaParameterModification) {
-      const mod = new ModelicaModification(this, filteredArgs, null, null, outerModificationArgument.expression);
+      const mod = new ModelicaModification(
+        outerModificationArgument.scope ?? this,
+        filteredArgs,
+        null,
+        null,
+        outerModificationArgument.expression,
+      );
       mod.annotations = annotationFromArg;
       this.#mergeConstrainingArgs(mod);
       return mod;
     }
-    const mod = new ModelicaModification(this, filteredArgs, modificationSyntaxNode?.modificationExpression);
+    const mod = new ModelicaModification(this.parent, filteredArgs, modificationSyntaxNode?.modificationExpression);
     mod.annotations = ModelicaModification.merge(
       annotationFromArg,
       this.abstractSyntaxNode?.annotationClause
@@ -3478,7 +3496,7 @@ export class ModelicaComponentRedeclaration extends ModelicaElementRedeclaration
   constructor(scope: Scope | null, abstractSyntaxNode: ModelicaElementRedeclarationSyntaxNode) {
     super(scope, abstractSyntaxNode);
     this.componentInstance = new ModelicaComponentInstance(
-      scope?.parent as ModelicaClassInstance,
+      scope as ModelicaClassInstance,
       abstractSyntaxNode.componentClause?.componentDeclaration ?? null,
     );
   }

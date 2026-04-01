@@ -151,12 +151,13 @@ interface FlattenerContext {
   /** Top-level DAE for collecting function definitions (avoids nesting inside function DAEs). */
   rootDae?: ModelicaDAE;
   /** Instance composition hierarchy for outer/inner resolution. */
-  activeClassStack?: ModelicaClassInstance[];
+  activeClassStack?: ModelicaClassInstance[] | undefined;
+  /** Map from class instance in the stack to its corresponding prefix in the DAE. */
+  activePrefixes?: Map<ModelicaClassInstance, string> | undefined;
   /** Stream variable connections from connect equations, for inStream() expansion. */
   streamConnections?: { side1: string; side2: string }[];
   /** Deferred flow variable connection pairs for connection-set-based flow balance generation. */
   flowConnectPairs?: { name1: string; name2: string }[];
-  /** Monomorphization bindings for higher order functions */
   /** Monomorphization bindings for higher order functions */
   functionBindings?: Map<string, ModelicaPartialFunctionExpression | string>;
 
@@ -562,6 +563,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
   }
 
   activeClassStack: ModelicaClassInstance[] = [];
+  activePrefixes: Map<ModelicaClassInstance, string> = new Map<ModelicaClassInstance, string>();
   /**
    * Pre-pass: scan connect equations for references to expandable connector members
    * that don't exist yet, and create virtual components on the expandable connector.
@@ -685,6 +687,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
                 dae: args[1],
                 stmtCollector: [],
                 activeClassStack: this.activeClassStack,
+                activePrefixes: this.activePrefixes,
                 structuralFinalParams: new Set<string>(),
               },
             ) as ModelicaExpression;
@@ -707,6 +710,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
                 dae: args[1],
                 stmtCollector: [],
                 activeClassStack: this.activeClassStack,
+                activePrefixes: this.activePrefixes,
                 structuralFinalParams: new Set<string>(),
               },
             ) as ModelicaExpression;
@@ -749,10 +753,10 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       }
     }
     this.activeClassStack.push(node);
+    this.activePrefixes.set(node, args[0]);
     for (const element of node.elements) {
       if (element instanceof ModelicaComponentInstance) element.accept(this, args);
     }
-    this.activeClassStack.pop();
     for (const declaredElement of node.declaredElements) {
       if (declaredElement instanceof ModelicaExtendsClassInstance) declaredElement.accept(this, args);
     }
@@ -779,6 +783,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           structuralFinalParams: this.#structuralFinalParams,
           connectedFlowVars: this.#connectedFlowVars,
           activeClassStack: this.activeClassStack,
+          activePrefixes: this.activePrefixes,
           flowConnectPairs: this.#flowConnectPairs,
           streamConnections: this.#streamConnectPairs,
         });
@@ -796,6 +801,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
             dae: args[1],
             stmtCollector: collector,
             structuralFinalParams: this.#structuralFinalParams,
+            activePrefixes: this.activePrefixes,
             activeClassStack: this.activeClassStack,
           });
         }
@@ -900,6 +906,9 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       }
       this.#streamConnectPairs = [];
     }
+
+    this.activePrefixes.delete(node);
+    this.activeClassStack.pop();
 
     // Restore previous structural params
     this.#structuralFinalParams = savedStructural;
@@ -1191,6 +1200,57 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     }
   }
 
+  #getEvaluationScope(
+    node: ModelicaComponentInstance,
+    defaultPrefix: string,
+  ): { prefix: string; classInstance: ModelicaClassInstance } {
+    const defaultCtx = node.parent ?? ({} as ModelicaClassInstance);
+    const modScope = node.modification?.scope;
+    if (!modScope) return { prefix: defaultPrefix, classInstance: defaultCtx };
+
+    const parts = defaultPrefix ? defaultPrefix.split(".") : [];
+
+    // The activeClassStack contains the hierarchy of class instances being flattened.
+    // Index 0 represents the root model (prefix "").
+    // Index 1 represents the first nested component's class instance. Its prefix corresponds to the first part.
+    // If defaultPrefix is "Vb.signalSource" (length 2), activeClassStack will typically have length 3:
+    // [0] RLC (root, prefix="")
+    // [1] SineVoltage (instantiated as Vb, prefix="Vb")
+    // [2] Sine (instantiated as Vb.signalSource, prefix="Vb.signalSource")
+    for (let i = this.activeClassStack.length - 1; i >= 0; i--) {
+      const ancestorClass = this.activeClassStack[i];
+      if (!ancestorClass) continue;
+
+      let match = false;
+      if (
+        ancestorClass === modScope ||
+        (ancestorClass as { originalClassInstance?: unknown }).originalClassInstance === modScope
+      ) {
+        match = true;
+      } else if (ancestorClass instanceof ModelicaComponentInstance) {
+        if (
+          ancestorClass.classInstance === modScope ||
+          (ancestorClass.classInstance as { originalClassInstance?: unknown })?.originalClassInstance === modScope
+        ) {
+          match = true;
+        }
+      }
+
+      if (match) {
+        // Find how many parts correspond to this index
+        // Generally, the prefix has one fewer parts than the active class stack depth.
+        // Wait: The prefix string accumulates component names.
+        // Stack index 0 -> 0 parts -> ""
+        // Stack index 1 -> 1 part  -> "Vb"
+        // Stack index 2 -> 2 parts -> "Vb.signalSource"
+        const prefix = i === 0 || parts.length === 0 ? "" : parts.slice(0, Math.min(i, parts.length)).join(".");
+        return { prefix, classInstance: ancestorClass };
+      }
+    }
+
+    return { prefix: defaultPrefix, classInstance: defaultCtx };
+  }
+
   #flattenPredefinedClass(
     node: ModelicaComponentInstance,
     name: string,
@@ -1244,14 +1304,16 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       }
       if (!expression && node.modification?.modificationExpression?.expression) {
         const syntaxFlattener = new ModelicaSyntaxFlattener(this.options);
+        const evalScope = this.#getEvaluationScope(node, args[0]);
         expression =
           node.modification.modificationExpression.expression.accept(syntaxFlattener, {
-            prefix: args[0],
-            classInstance: node.parent ?? ({} as ModelicaClassInstance),
+            prefix: evalScope.prefix,
+            classInstance: evalScope.classInstance,
             dae: args[1],
             stmtCollector: [],
             structuralFinalParams: this.#structuralFinalParams,
             activeClassStack: this.activeClassStack,
+            activePrefixes: this.activePrefixes,
           }) ?? null;
       }
       // Even if the constant was evaluated, collect any function definitions
@@ -1259,13 +1321,15 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       const rawConstExpr = node.modification?.modificationExpression?.expression;
       if (rawConstExpr) {
         const syntaxFlattener = new ModelicaSyntaxFlattener(this.options);
+        const evalScope = this.#getEvaluationScope(node, args[0]);
         syntaxFlattener.collectFunctionRefsFromAST(rawConstExpr, {
-          prefix: args[0],
-          classInstance: node.parent ?? ({} as ModelicaClassInstance),
+          prefix: evalScope.prefix,
+          classInstance: evalScope.classInstance,
           dae: args[1],
           stmtCollector: [],
           structuralFinalParams: this.#structuralFinalParams,
           activeClassStack: this.activeClassStack,
+          activePrefixes: this.activePrefixes,
         });
       }
     } else if (variability === ModelicaVariability.PARAMETER) {
@@ -1276,13 +1340,16 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       expression = null;
       if (node.modification?.modificationExpression?.expression) {
         const syntaxFlattener = new ModelicaSyntaxFlattener(this.options);
+        const evalScope = this.#getEvaluationScope(node, args[0]);
         expression =
           node.modification.modificationExpression.expression.accept(syntaxFlattener, {
-            prefix: args[0],
-            classInstance: node.parent ?? ({} as ModelicaClassInstance),
+            prefix: evalScope.prefix,
+            classInstance: evalScope.classInstance,
             dae: args[1],
             stmtCollector: [],
             structuralFinalParams: this.#structuralFinalParams,
+            activeClassStack: this.activeClassStack,
+            activePrefixes: this.activePrefixes,
           }) ?? null;
       }
       // Distribute array-valued parameter bindings when inside an array element iteration
@@ -1296,6 +1363,10 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       // Only fall back to evaluatedExpression if no symbolic form exists
       if (!expression) {
         expression = node.modification?.evaluatedExpression ?? null;
+      }
+      // Finally, if still no expression, use 'start' as the default for parameters
+      if (!expression && variability === ModelicaVariability.PARAMETER) {
+        expression = attributes.get("start") ?? null;
       }
     } else {
       // For non-constant, non-parameter: prefer symbolic reference from syntax flattener
@@ -1311,6 +1382,8 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
             dae: args[1],
             stmtCollector: [],
             structuralFinalParams: this.#structuralFinalParams,
+            activeClassStack: this.activeClassStack,
+            activePrefixes: this.activePrefixes,
           }) ?? null;
       }
       // Fall back to interpreter-evaluated expression
@@ -1352,12 +1425,6 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           }
         }
       }
-    }
-
-    if (name.includes("f") || name.includes("phase") || name === "V.V") {
-      console.log(
-        `flattenPredefinedClass pushing variable ${name}, classInstance=${node.classInstance?.constructor.name}`,
-      );
     }
 
     if (node.classInstance instanceof ModelicaBooleanClassInstance) {
@@ -1619,6 +1686,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           stmtCollector: [],
           structuralFinalParams: this.#structuralFinalParams,
           activeClassStack: this.activeClassStack,
+          activePrefixes: this.activePrefixes,
         }) ?? null;
       if (syntaxResult) {
         if (!isCompileTimeEvaluableEarly && savedBinding && !hasMalformedBinding) {
@@ -1649,6 +1717,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         stmtCollector: [],
         structuralFinalParams: this.#structuralFinalParams,
         activeClassStack: this.activeClassStack,
+        activePrefixes: this.activePrefixes,
       });
     }
     // Fold if-expressions whose conditions are structural final parameters.
@@ -1989,6 +2058,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
             structuralFinalParams: this.#structuralFinalParams,
             connectedFlowVars: this.#connectedFlowVars,
             activeClassStack: this.activeClassStack,
+            activePrefixes: this.activePrefixes,
             flowConnectPairs: this.#flowConnectPairs,
             streamConnections: this.#streamConnectPairs,
             ...(brokenNames.size > 0 ? { brokenNames } : {}),
@@ -4428,11 +4498,12 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
   #resolveFullyQualifiedName(functionName: string, ctx: FlattenerContext): string {
     const parts = functionName.split(".");
     const resolved = ctx.classInstance.resolveName(parts);
-    if (!(resolved instanceof ModelicaClassInstance)) return functionName;
+    if (!(resolved instanceof ModelicaClassInstance || resolved instanceof ModelicaComponentInstance))
+      return functionName;
 
     // Build FQ name by walking the parent chain
     const nameSegments: string[] = [];
-    let current: ModelicaClassInstance | null = resolved;
+    let current: ModelicaNamedElement | null = resolved;
     while (current) {
       const name = current.name;
       if (!name) break;
@@ -4719,6 +4790,8 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
                 classInstance: resolved,
                 dae: fnDae,
                 stmtCollector: [],
+                activeClassStack: ctx.activeClassStack,
+                activePrefixes: ctx.activePrefixes,
               });
               if (flatExpr) {
                 const out = new StringWriter();
@@ -4754,6 +4827,8 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
             dae: fnDae,
             stmtCollector: [],
             loopVariables: enclosingConstants,
+            activeClassStack: ctx.activeClassStack,
+            activePrefixes: ctx.activePrefixes,
             ...(componentPrefix ? { componentFunctionPrefix: componentPrefix } : {}),
           }) ?? null;
       }
@@ -4936,6 +5011,8 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
           dae: fnDae,
           stmtCollector: [],
           rootDae: targetDae,
+          activeClassStack: ctx.activeClassStack,
+          activePrefixes: ctx.activePrefixes,
           ...(componentPrefix ? { componentFunctionPrefix: componentPrefix } : {}),
           ...(ctx.functionBindings ? { functionBindings: ctx.functionBindings } : {}),
         });
@@ -4950,6 +5027,8 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
           dae: fnDae,
           stmtCollector: collector,
           rootDae: targetDae,
+          activeClassStack: ctx.activeClassStack,
+          activePrefixes: ctx.activePrefixes,
           ...(componentPrefix ? { componentFunctionPrefix: componentPrefix } : {}),
           ...(ctx.functionBindings ? { functionBindings: ctx.functionBindings } : {}),
         });
@@ -5128,37 +5207,117 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     node: ModelicaComponentReferenceSyntaxNode,
     ctx: FlattenerContext,
   ): ModelicaExpression | null {
-    // Resolve outer references: if the first part refers to an `outer` component,
-    // find the corresponding `inner` declaration by walking up the instance hierarchy
-    let effectivePrefix = ctx.prefix;
-    const firstPartName = node.parts?.[0]?.identifier?.text;
-    if (firstPartName && ctx.classInstance) {
-      const resolved = ctx.classInstance.resolveSimpleName(firstPartName, false, true);
-      if (resolved instanceof ModelicaComponentInstance && resolved.isOuter && !resolved.isInner) {
-        // Walk up the instance hierarchy (activeClassStack) to find the inner declaration.
-        // The prefix needs to be stripped one level for each stack frame we ascend.
-        const stack = ctx.activeClassStack ?? [];
-        let prefixParts = effectivePrefix.split(".");
-        for (let i = stack.length - 1; i >= 0; i--) {
-          prefixParts = prefixParts.slice(0, -1);
-          const ancestorClass = stack[i];
-          if (!ancestorClass) continue;
-          let found = false;
-          for (const el of ancestorClass.elements) {
-            if (el instanceof ModelicaComponentInstance && el.name === firstPartName && el.isInner) {
-              effectivePrefix = prefixParts.join(".");
-              found = true;
-              break;
-            }
-          }
-          if (found) break;
-        }
-      }
-    }
     const rawName = node.parts.map((c) => c.identifier?.text ?? "<ERROR>").join(".");
     // Built-in variables like 'time' should never be prefixed
     const isBuiltinVar = rawName === "time";
-    const name = isBuiltinVar ? rawName : (effectivePrefix === "" ? "" : effectivePrefix + ".") + rawName;
+
+    let name: string;
+    if (!isBuiltinVar && !node.global && ctx.classInstance) {
+      // Resolve the full identifier to determine if it belongs to the instance hierarchy or is global
+      const resolved = ctx.classInstance.resolveName(node.parts.map((p) => p.identifier?.text ?? ""));
+      const firstPartName = node.parts[0]?.identifier?.text ?? "";
+      const firstPartResolved = ctx.classInstance.resolveName([firstPartName]);
+
+      if (
+        firstPartResolved instanceof ModelicaComponentInstance ||
+        firstPartResolved instanceof ModelicaClassInstance
+      ) {
+        // Find if any class in the active stack "owns" the BASE of this element
+        let ownerPrefix: string | undefined;
+
+        if (ctx.activeClassStack && ctx.activePrefixes) {
+          for (let i = ctx.activeClassStack.length - 1; i >= 0; i--) {
+            const stackClass = ctx.activeClassStack[i];
+            if (!stackClass) continue;
+
+            // Resolve the base identifier against this class in the stack
+            const localResolved = stackClass.resolveName([firstPartName]);
+            if (localResolved) {
+              let isOwned = false;
+
+              // We compare abstractSyntaxNodes to handle cloned instances sharing the same declaration.
+              const localAST =
+                "abstractSyntaxNode" in localResolved
+                  ? (localResolved as { abstractSyntaxNode?: unknown }).abstractSyntaxNode
+                  : undefined;
+              const resolvedAST =
+                firstPartResolved && "abstractSyntaxNode" in firstPartResolved
+                  ? (firstPartResolved as { abstractSyntaxNode?: unknown }).abstractSyntaxNode
+                  : undefined;
+
+              if (localResolved === firstPartResolved || (localAST && resolvedAST && localAST === resolvedAST)) {
+                // verify that stackClass (or its base classes) is the lexical parent of the resolved element.
+                const ownerClass = localResolved.parent;
+                if (localResolved === stackClass) {
+                  isOwned = true;
+                } else {
+                  const queue: ModelicaClassInstance[] = [stackClass];
+                  const visited = new Set<ModelicaClassInstance>();
+
+                  while (queue.length > 0) {
+                    const cls = queue.shift();
+                    if (!cls || visited.has(cls)) continue;
+                    visited.add(cls);
+
+                    const clsAST =
+                      "abstractSyntaxNode" in cls
+                        ? (cls as { abstractSyntaxNode?: unknown }).abstractSyntaxNode
+                        : undefined;
+                    const ownerAST =
+                      ownerClass && "abstractSyntaxNode" in ownerClass
+                        ? (ownerClass as { abstractSyntaxNode?: unknown }).abstractSyntaxNode
+                        : undefined;
+
+                    if (cls === ownerClass || cls === localResolved || (clsAST && ownerAST && clsAST === ownerAST)) {
+                      isOwned = true;
+                      break;
+                    }
+
+                    for (const ext of cls.extendsClassInstances) {
+                      if (ext.classInstance) {
+                        queue.push(ext.classInstance);
+                      }
+                    }
+                  }
+                }
+              }
+
+              if (isOwned) {
+                ownerPrefix = ctx.activePrefixes.get(stackClass);
+                break;
+              }
+            }
+          }
+        }
+
+        if (ownerPrefix !== undefined) {
+          name = (ownerPrefix === "" ? "" : ownerPrefix + ".") + rawName;
+        } else {
+          if (rawName === "v" || rawName === "i" || rawName === "p.v") {
+            // console.log(`[REF DEBUG] rawName=${rawName} prefix=${ctx.prefix} ownerPrefix=MISSING`);
+          }
+          // Not found in any active instance — it's an external/imported reference
+          // Use fully qualified name to avoid incorrect prefixing
+          name = this.#resolveFullyQualifiedName(rawName, ctx);
+        }
+
+        // Fold constants immediately if they have an evaluated value
+        if (resolved instanceof ModelicaComponentInstance && resolved.variability === ModelicaVariability.CONSTANT) {
+          const evaluated = resolved.modification?.evaluatedExpression;
+          if (evaluated && isLiteral(evaluated)) {
+            return evaluated;
+          }
+        }
+      } else {
+        // Fallback for unresolved or other cases: keep original logic but be careful
+        name = (ctx.prefix === "" ? "" : ctx.prefix + ".") + rawName;
+      }
+    } else if (isBuiltinVar) {
+      name = rawName;
+    } else {
+      // Global reference (.Modelica...) or no classInstance context
+      name = rawName;
+    }
     // Resolve enum literal references like E.one when E is an enumeration type
     if (node.parts.length === 2 && ctx.classInstance) {
       const typeName = node.parts[0]?.identifier?.text;
@@ -5259,9 +5418,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
 
         // First try to resolve using the already-flattened subscript expressions
         // (this handles loop variables resolved via loopVariables binding)
-        const baseName =
-          (effectivePrefix === "" ? "" : effectivePrefix + ".") +
-          node.parts.map((c) => c.identifier?.text ?? "").join(".");
+        const baseName = name;
         const resolvedFromFlattener: number[] = [];
         for (const sub of subscripts) {
           if (sub instanceof ModelicaIntegerLiteral) {
