@@ -3884,7 +3884,7 @@ connection.onRequest("textDocument/codeLens", (params): CodeLens[] => {
         instance.accept(flattener, ["", dae]);
         flattener.generateFlowBalanceEquations(dae);
 
-        const nEqs = dae.equations.length;
+        const nEqs = dae.equations.filter((eq) => eq.constructor.name !== "ModelicaFunctionCallEquation").length;
         const nVars = dae.variables.filter(
           (v) =>
             (v as { variability?: unknown }).variability === null || (v as { name: string }).name.startsWith("der("),
@@ -4117,17 +4117,19 @@ connection.onRequest(
       const { algebraicLoops } = performBltTransformation(dae);
 
       // Serialize equation text via toJSON
-      const eqTexts = dae.equations.map((eq) => {
-        try {
-          const json = eq.toJSON;
-          if (json && typeof json === "object" && "expression1" in json && "expression2" in json) {
-            return `${JSON.stringify(json.expression1)} = ${JSON.stringify(json.expression2)}`;
+      const eqTexts = dae.equations
+        .filter((eq) => eq.constructor.name !== "ModelicaFunctionCallEquation")
+        .map((eq) => {
+          try {
+            const json = eq.toJSON;
+            if (json && typeof json === "object" && "expression1" in json && "expression2" in json) {
+              return `${JSON.stringify(json.expression1)} = ${JSON.stringify(json.expression2)}`;
+            }
+            return JSON.stringify(json);
+          } catch {
+            return "<equation>";
           }
-          return JSON.stringify(json);
-        } catch {
-          return "<equation>";
-        }
-      });
+        });
 
       const varNames = dae.variables.map((v) => v.name);
 
@@ -4149,7 +4151,7 @@ connection.onRequest(
             }
           }),
         })),
-        equationCount: dae.equations.length,
+        equationCount: dae.equations.filter((eq) => eq.constructor.name !== "ModelicaFunctionCallEquation").length,
         unknownCount,
       };
     } catch (e) {
