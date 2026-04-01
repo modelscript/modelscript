@@ -113,7 +113,7 @@ export function bdf(
   outputTimes: number[],
   options: BdfOptions = {},
   eventFunctions?: ((t: number, y: number[]) => number)[],
-  eventCallback?: (t: number, y: number[], eventIdx: number) => number[],
+  eventCallback?: (t: number, y: number[], eventIdx: number, dir: 1 | -1) => number[],
 ): BdfResult {
   const atol = options.atol ?? 1e-6;
   const rtol = options.rtol ?? 1e-6;
@@ -308,45 +308,59 @@ export function bdf(
     // ── Step accepted ──
     result.acceptedSteps++;
 
-    // Dense output for intermediate output times
-    while (outputIdx < outputTimes.length && (outputTimes[outputIdx] ?? tEnd) <= tNew + 1e-14) {
-      const tOut = outputTimes[outputIdx] ?? tNew;
-      if (Math.abs(tOut - tNew) < 1e-14) {
-        result.times.push(tNew);
-        result.states.push([...yNewton]);
-      } else if (Math.abs(tOut - t) < 1e-14) {
-        result.times.push(t);
-        result.states.push([...y]);
-      } else {
-        // Linear interpolation within [t, tNew]
-        const theta = (tOut - t) / h;
-        const yInterp = new Array(n) as number[];
-        for (let i = 0; i < n; i++) {
-          yInterp[i] = (1 - theta) * (y[i] ?? 0) + theta * (yNewton[i] ?? 0);
-        }
-        result.times.push(tOut);
-        result.states.push(yInterp);
-      }
-      outputIdx++;
-    }
-
-    // ── Event detection ──
+    // ── Event Detection & Dense Output ──
+    let eventOccurred = false;
     if (eventFunctions && prevEventValues && eventCallback) {
       const newEventValues = eventFunctions.map((g) => g(tNew, yNewton));
       for (let ei = 0; ei < eventFunctions.length; ei++) {
         const prev = prevEventValues[ei] ?? 0;
         const curr = newEventValues[ei] ?? 0;
         if (prev * curr < 0) {
+          eventOccurred = true;
           // Sign change — bisect to find event time
           const eventFn = eventFunctions[ei];
           if (!eventFn) continue;
+
+          // ── Bisection to find exact event time ──
           const tEvent = bisectEvent(eventFn, t, tNew, y, yNewton, h, n);
-          const theta = (tEvent - t) / h;
+          const thetaEvent = (tEvent - t) / h;
           const yEvent = new Array(n) as number[];
           for (let i = 0; i < n; i++) {
-            yEvent[i] = (1 - theta) * (y[i] ?? 0) + theta * (yNewton[i] ?? 0);
+            yEvent[i] = (1 - thetaEvent) * (y[i] ?? 0) + thetaEvent * (yNewton[i] ?? 0);
           }
-          const yAfter = eventCallback(tEvent, yEvent, ei);
+
+          // ── Output interpolation BEFORE the event! ──
+          while (outputIdx < outputTimes.length && (outputTimes[outputIdx] ?? tEnd) <= tEvent + 1e-14) {
+            const tOut = outputTimes[outputIdx] ?? tEvent;
+            if (Math.abs(tOut - tEvent) < 1e-14) {
+              result.times.push(tEvent);
+              result.states.push([...yEvent]);
+            } else if (Math.abs(tOut - t) < 1e-14) {
+              result.times.push(t);
+              result.states.push([...y]);
+            } else {
+              // Linear interpolation within [t, tEvent]
+              const theta = (tOut - t) / h;
+              const yInterp = new Array(n) as number[];
+              for (let i = 0; i < n; i++) {
+                yInterp[i] = (1 - theta) * (y[i] ?? 0) + theta * (yNewton[i] ?? 0);
+              }
+              result.times.push(tOut);
+              result.states.push(yInterp);
+            }
+            outputIdx++;
+          }
+
+          // ── Fire event callback ──
+          const dir = curr < 0 ? -1 : 1;
+          const yAfter = eventCallback(tEvent, yEvent, ei, dir);
+
+          // Output explicit post-event state so the plot shows instantaneous jump
+          if (result.times[result.times.length - 1] === tEvent) {
+            result.times.push(tEvent);
+            result.states.push([...yAfter]);
+          }
+
           // Restart from event
           t = tEvent;
           y = yAfter;
@@ -361,15 +375,40 @@ export function bdf(
           break;
         }
       }
-      if (!eventFunctions.some((g, ei) => (prevEventValues?.[ei] ?? 0) * g(tNew, yNewton) < 0)) {
-        // No event — advance normally
-        t = tNew;
-        y = yNewton;
-        fCurrent = fNew;
-        history.unshift({ t, y: [...y], f: [...fCurrent] });
-        if (history.length > maxOrder + 1) history.pop();
+      if (!eventOccurred) {
         prevEventValues = newEventValues;
       }
+    }
+
+    // ── Dense output for intermediate output times if NO event interrupted this step ──
+    if (!eventOccurred) {
+      while (outputIdx < outputTimes.length && (outputTimes[outputIdx] ?? tEnd) <= tNew + 1e-14) {
+        const tOut = outputTimes[outputIdx] ?? tNew;
+        if (Math.abs(tOut - tNew) < 1e-14) {
+          result.times.push(tNew);
+          result.states.push([...yNewton]);
+        } else if (Math.abs(tOut - t) < 1e-14) {
+          result.times.push(t);
+          result.states.push([...y]);
+        } else {
+          // Linear interpolation within [t, tNew]
+          const theta = (tOut - t) / h;
+          const yInterp = new Array(n) as number[];
+          for (let i = 0; i < n; i++) {
+            yInterp[i] = (1 - theta) * (y[i] ?? 0) + theta * (yNewton[i] ?? 0);
+          }
+          result.times.push(tOut);
+          result.states.push(yInterp);
+        }
+        outputIdx++;
+      }
+
+      // No event — advance normally
+      t = tNew;
+      y = yNewton;
+      fCurrent = fNew;
+      history.unshift({ t, y: [...y], f: [...fCurrent] });
+      if (history.length > maxOrder + 1) history.pop();
     } else {
       // No event detection — advance
       t = tNew;

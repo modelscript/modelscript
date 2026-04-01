@@ -2246,9 +2246,15 @@ export class ModelicaSimulator {
         dopriOpts,
         eventFns.length > 0 ? eventFns : undefined,
         eventFns.length > 0
-          ? (tE: number, yE: number[], eventIdx: number) => {
+          ? (tE: number, yE: number[], eventIdx: number, dir: 1 | -1) => {
               const clause = this.whenClauses[eventIdx];
               if (clause) {
+                if (
+                  (clause.zeroCrossingDirection === "negative" && dir !== -1) ||
+                  (clause.zeroCrossingDirection === "positive" && dir !== 1)
+                ) {
+                  return yE;
+                }
                 // Update pre-values to the state just before the event
                 for (let i = 0; i < stateList.length; i++) {
                   const name = stateList[i];
@@ -2303,9 +2309,15 @@ export class ModelicaSimulator {
         bdfOpts,
         eventFns.length > 0 ? eventFns : undefined,
         eventFns.length > 0
-          ? (tE: number, yE: number[], eventIdx: number) => {
+          ? (tE: number, yE: number[], eventIdx: number, dir: 1 | -1) => {
               const clause = this.whenClauses[eventIdx];
               if (clause) {
+                if (
+                  (clause.zeroCrossingDirection === "negative" && dir !== -1) ||
+                  (clause.zeroCrossingDirection === "positive" && dir !== 1)
+                ) {
+                  return yE;
+                }
                 for (let i = 0; i < stateList.length; i++) {
                   const name = stateList[i];
                   if (name) evaluator.preValues.set(name, yE[i] ?? 0);
@@ -2360,9 +2372,15 @@ export class ModelicaSimulator {
         dopriOpts,
         eventFns.length > 0 ? eventFns : undefined,
         eventFns.length > 0
-          ? (tE: number, yE: number[], eventIdx: number) => {
+          ? (tE: number, yE: number[], eventIdx: number, dir: 1 | -1) => {
               const clause = this.whenClauses[eventIdx];
               if (clause) {
+                if (
+                  (clause.zeroCrossingDirection === "negative" && dir !== -1) ||
+                  (clause.zeroCrossingDirection === "positive" && dir !== 1)
+                ) {
+                  return yE;
+                }
                 for (let i = 0; i < stateList.length; i++) {
                   const name = stateList[i];
                   if (name) evaluator.preValues.set(name, yE[i] ?? 0);
@@ -2400,9 +2418,15 @@ export class ModelicaSimulator {
           bdfOpts,
           eventFns.length > 0 ? eventFns : undefined,
           eventFns.length > 0
-            ? (tE: number, yE: number[], eventIdx: number) => {
+            ? (tE: number, yE: number[], eventIdx: number, dir: 1 | -1) => {
                 const clause = this.whenClauses[eventIdx];
                 if (clause) {
+                  if (
+                    (clause.zeroCrossingDirection === "negative" && dir !== -1) ||
+                    (clause.zeroCrossingDirection === "positive" && dir !== 1)
+                  ) {
+                    return yE;
+                  }
                   this.fireWhenActions(clause, evaluator, yE, stateIndexMap);
                 }
                 return yE;
@@ -3853,8 +3877,12 @@ export class ModelicaSimulator {
       for (const clause of this.whenClauses) {
         eventFns.push((tE: number, yE: number[]) => {
           populateEnv(tE, yE);
+          if (clause.zeroCrossingFn) {
+            return clause.zeroCrossingFn(evaluator) ?? 0;
+          }
           const val = evaluator.evaluate(clause.condition);
-          return val ?? 0;
+          // Map boolean to a continuous-ish value: true → -1, false → +1
+          return val !== null && val !== 0 ? -1 : 1;
         });
       }
 
@@ -3874,9 +3902,24 @@ export class ModelicaSimulator {
         dopriOpts,
         eventFns.length > 0 ? eventFns : undefined,
         eventFns.length > 0
-          ? (tE: number, yE: number[], eventIdx: number) => {
+          ? (tE: number, yE: number[], eventIdx: number, dir: 1 | -1) => {
               const clause = this.whenClauses[eventIdx];
               if (clause) {
+                if (
+                  (clause.zeroCrossingDirection === "negative" && dir !== -1) ||
+                  (clause.zeroCrossingDirection === "positive" && dir !== 1)
+                ) {
+                  return yE;
+                }
+                for (let i = 0; i < stateList.length; i++) {
+                  const name = stateList[i];
+                  if (name) evaluator.preValues.set(name, yE[i] ?? 0);
+                }
+                evaluator.env.set("time", tE);
+                for (let i = 0; i < stateList.length; i++) {
+                  const name = stateList[i];
+                  if (name) evaluator.env.set(name, yE[i] ?? 0);
+                }
                 this.fireWhenActions(clause, evaluator, yE, stateIndexMap);
               }
               return yE;
@@ -3900,8 +3943,12 @@ export class ModelicaSimulator {
       for (const clause of this.whenClauses) {
         eventFns.push((tE: number, yE: number[]) => {
           populateEnv(tE, yE);
+          if (clause.zeroCrossingFn) {
+            return clause.zeroCrossingFn(evaluator) ?? 0;
+          }
           const val = evaluator.evaluate(clause.condition);
-          return val ?? 0;
+          // Map boolean to a continuous-ish value: true → -1, false → +1
+          return val !== null && val !== 0 ? -1 : 1;
         });
       }
 
@@ -3921,9 +3968,24 @@ export class ModelicaSimulator {
         bdfOpts,
         eventFns.length > 0 ? eventFns : undefined,
         eventFns.length > 0
-          ? (tE: number, yE: number[], eventIdx: number) => {
+          ? (tE: number, yE: number[], eventIdx: number, dir: 1 | -1) => {
               const clause = this.whenClauses[eventIdx];
               if (clause) {
+                if (
+                  (clause.zeroCrossingDirection === "negative" && dir !== -1) ||
+                  (clause.zeroCrossingDirection === "positive" && dir !== 1)
+                ) {
+                  return yE;
+                }
+                for (let i = 0; i < stateList.length; i++) {
+                  const name = stateList[i];
+                  if (name) evaluator.preValues.set(name, yE[i] ?? 0);
+                }
+                evaluator.env.set("time", tE);
+                for (let i = 0; i < stateList.length; i++) {
+                  const name = stateList[i];
+                  if (name) evaluator.env.set(name, yE[i] ?? 0);
+                }
                 this.fireWhenActions(clause, evaluator, yE, stateIndexMap);
               }
               return yE;
@@ -3947,8 +4009,12 @@ export class ModelicaSimulator {
       for (const clause of this.whenClauses) {
         eventFns.push((tE: number, yE: number[]) => {
           populateEnv(tE, yE);
+          if (clause.zeroCrossingFn) {
+            return clause.zeroCrossingFn(evaluator) ?? 0;
+          }
           const val = evaluator.evaluate(clause.condition);
-          return val ?? 0;
+          // Map boolean to a continuous-ish value: true → -1, false → +1
+          return val !== null && val !== 0 ? -1 : 1;
         });
       }
 
@@ -3969,9 +4035,24 @@ export class ModelicaSimulator {
         dopriOpts,
         eventFns.length > 0 ? eventFns : undefined,
         eventFns.length > 0
-          ? (tE: number, yE: number[], eventIdx: number) => {
+          ? (tE: number, yE: number[], eventIdx: number, dir: 1 | -1) => {
               const clause = this.whenClauses[eventIdx];
               if (clause) {
+                if (
+                  (clause.zeroCrossingDirection === "negative" && dir !== -1) ||
+                  (clause.zeroCrossingDirection === "positive" && dir !== 1)
+                ) {
+                  return yE;
+                }
+                for (let i = 0; i < stateList.length; i++) {
+                  const name = stateList[i];
+                  if (name) evaluator.preValues.set(name, yE[i] ?? 0);
+                }
+                evaluator.env.set("time", tE);
+                for (let i = 0; i < stateList.length; i++) {
+                  const name = stateList[i];
+                  if (name) evaluator.env.set(name, yE[i] ?? 0);
+                }
                 this.fireWhenActions(clause, evaluator, yE, stateIndexMap);
               }
               return yE;
@@ -4000,9 +4081,15 @@ export class ModelicaSimulator {
           bdfOpts,
           eventFns.length > 0 ? eventFns : undefined,
           eventFns.length > 0
-            ? (tE: number, yE: number[], eventIdx: number) => {
+            ? (tE: number, yE: number[], eventIdx: number, dir: 1 | -1) => {
                 const clause = this.whenClauses[eventIdx];
                 if (clause) {
+                  if (
+                    (clause.zeroCrossingDirection === "negative" && dir !== -1) ||
+                    (clause.zeroCrossingDirection === "positive" && dir !== 1)
+                  ) {
+                    return yE;
+                  }
                   this.fireWhenActions(clause, evaluator, yE, stateIndexMap);
                 }
                 return yE;

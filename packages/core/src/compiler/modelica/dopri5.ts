@@ -79,7 +79,7 @@ export type RhsFunction = (t: number, y: number[]) => number[];
  * Receives the event time, state at that time, and the event index.
  * Should return the (possibly modified) state vector after the event.
  */
-export type EventCallback = (t: number, y: number[], eventIdx: number) => number[];
+export type EventCallback = (t: number, y: number[], eventIdx: number, dir: 1 | -1) => number[];
 
 /**
  * Integrate an ODE system using the Dormand-Prince 5(4) method.
@@ -202,64 +202,79 @@ export function dopri5(
 
       const tNew = t + h;
 
-      // ── Dense output for intermediate output times ──
-      while (outputIdx < outputTimes.length && (outputTimes[outputIdx] ?? tEnd) <= tNew + 1e-14) {
-        const tOut = outputTimes[outputIdx] ?? tNew;
-        if (tOut <= t + 1e-14) {
-          // tOut is at or before the start of this step
-          result.times.push(t);
-          result.states.push([...y]);
-        } else if (Math.abs(tOut - tNew) < 1e-14) {
-          // tOut at the end of this step
-          result.times.push(tNew);
-          result.states.push([...yNew]);
-        } else {
-          // Interpolate within [t, tNew]
-          const theta = (tOut - t) / h;
-          const yInterp = hermiteInterpolation(y, yNew, k[0] ?? [], k[6] ?? [], h, theta, n);
-          result.times.push(tOut);
-          result.states.push(yInterp);
-        }
-        outputIdx++;
-      }
-
-      // ── Event detection ──
+      // ── Event Detection & Dense Output ──
+      let eventOccurred = false;
       if (eventFunctions && prevEventValues && eventCallback) {
         const newEventValues = eventFunctions.map((g) => g(tNew, yNew));
         for (let ei = 0; ei < eventFunctions.length; ei++) {
           const prev = prevEventValues[ei] ?? 0;
           const curr = newEventValues[ei] ?? 0;
           if (prev * curr < 0) {
+            eventOccurred = true;
             const eventFn = eventFunctions[ei];
             if (!eventFn) continue;
+
+            // ── Bisection to find exact event time ──
             const tEvent = bisectEvent(eventFn, t, tNew, y, yNew, k, h, n);
-            // Interpolate state at event time
-            const theta = (tEvent - t) / h;
-            const yEvent = hermiteInterpolation(y, yNew, k[0] ?? [], k[6] ?? [], h, theta, n);
-            // Fire event callback
-            const yAfter = eventCallback(tEvent, yEvent, ei);
-            // Restart from event time with modified state
+            const thetaEvent = (tEvent - t) / h;
+            const yEvent = hermiteInterpolation(y, yNew, k[0] ?? [], k[6] ?? [], h, thetaEvent, n);
+
+            // ── Output interpolation BEFORE the event! ──
+            while (outputIdx < outputTimes.length && (outputTimes[outputIdx] ?? tEnd) <= tEvent + 1e-14) {
+              const tOut = outputTimes[outputIdx] ?? tEvent;
+              if (tOut <= t + 1e-14) {
+                result.times.push(t);
+                result.states.push([...y]);
+              } else if (Math.abs(tOut - tEvent) < 1e-14) {
+                result.times.push(tEvent);
+                result.states.push([...yEvent]);
+              } else {
+                const theta = (tOut - t) / h;
+                const yInterp = hermiteInterpolation(y, yNew, k[0] ?? [], k[6] ?? [], h, theta, n);
+                result.times.push(tOut);
+                result.states.push(yInterp);
+              }
+              outputIdx++;
+            }
+
+            // ── Fire event callback ──
+            const dir = curr < 0 ? -1 : 1;
+            const yAfter = eventCallback(tEvent, yEvent, ei, dir);
+
+            // ── Restart solver at event time ──
             t = tEvent;
             y = yAfter;
             k1 = f(t, y);
             result.fEvals++;
             k[0] = k1;
             prevEventValues = eventFunctions.map((g) => g(t, y));
-            // Don't update t/y below — already done
             break; // process one event per step
           }
         }
-        if (!eventFunctions.some((g, ei) => (prevEventValues?.[ei] ?? 0) * g(tNew, yNew) < 0)) {
-          // No event (or already handled) — advance normally
-          t = tNew;
-          y = yNew;
-          // FSAL: k7 of this step = k1 of next step
-          k1 = k[6] ?? k1;
-          k[0] = k1;
+        if (!eventOccurred) {
           prevEventValues = newEventValues;
         }
-      } else {
-        // No event detection — advance normally
+      }
+
+      // ── Dense output for intermediate output times if NO event interrupted this step ──
+      if (!eventOccurred) {
+        while (outputIdx < outputTimes.length && (outputTimes[outputIdx] ?? tEnd) <= tNew + 1e-14) {
+          const tOut = outputTimes[outputIdx] ?? tNew;
+          if (tOut <= t + 1e-14) {
+            result.times.push(t);
+            result.states.push([...y]);
+          } else if (Math.abs(tOut - tNew) < 1e-14) {
+            result.times.push(tNew);
+            result.states.push([...yNew]);
+          } else {
+            const theta = (tOut - t) / h;
+            const yInterp = hermiteInterpolation(y, yNew, k[0] ?? [], k[6] ?? [], h, theta, n);
+            result.times.push(tOut);
+            result.states.push(yInterp);
+          }
+          outputIdx++;
+        }
+
         t = tNew;
         y = yNew;
         // FSAL: k7 of this step = k1 of next step
