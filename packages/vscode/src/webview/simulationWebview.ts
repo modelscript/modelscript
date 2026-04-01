@@ -56,7 +56,7 @@ let animFrameId: number | null = null;
 /* eslint-disable @typescript-eslint/no-non-null-assertion */
 const canvas = document.getElementById("canvas") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d")!;
-const legendEl = document.getElementById("legend")!;
+const treeViewEl = document.getElementById("tree-view")!;
 const placeholderEl = document.getElementById("placeholder")!;
 const tooltipEl = document.getElementById("tooltip")!;
 const containerEl = document.getElementById("chart-container")!;
@@ -65,7 +65,71 @@ const liveStatusEl = document.getElementById("live-status")!;
 const liveStatusTextEl = document.getElementById("live-status-text")!;
 const btnPause = document.getElementById("btn-pause")!;
 const btnClear = document.getElementById("btn-clear")!;
+const btnResetView = document.getElementById("btn-reset-view")!;
 /* eslint-enable @typescript-eslint/no-non-null-assertion */
+
+// ── Viewport Panning & Zooming ──
+let customBounds: { tMin: number; tMax: number; yMin: number; yMax: number } | null = null;
+let isDragging = false;
+let dragStartX = 0;
+let dragStartY = 0;
+let baseBounds: { tMin: number; tMax: number; yMin: number; yMax: number } | null = null;
+
+function calculateDefaultBounds(): { tMin: number; tMax: number; yMin: number; yMax: number } | null {
+  if (isLiveMode && liveBuffer && liveBuffer.count > 0) {
+    const times = liveBuffer.times;
+    const tMin = times[0];
+    const tMax = times[times.length - 1];
+    let yMin = Infinity;
+    let yMax = -Infinity;
+    for (const [name, vals] of liveBuffer.values) {
+      if (hiddenVars.has(name)) continue;
+      for (const v of vals) {
+        if (isFinite(v)) {
+          if (v < yMin) yMin = v;
+          if (v > yMax) yMax = v;
+        }
+      }
+    }
+    if (!isFinite(yMin) || !isFinite(yMax)) {
+      yMin = 0;
+      yMax = 1;
+    }
+    if (yMin === yMax) {
+      yMin -= 1;
+      yMax += 1;
+    }
+    const yPad = (yMax - yMin) * 0.05;
+    return { tMin, tMax, yMin: yMin - yPad, yMax: yMax + yPad };
+  } else if (!isLiveMode && currentData && currentData.t.length > 0) {
+    const { t, y, states } = currentData;
+    const tMin = t[0];
+    const tMax = t[t.length - 1];
+    let yMin = Infinity;
+    let yMax = -Infinity;
+    for (let vi = 0; vi < states.length; vi++) {
+      if (hiddenVars.has(states[vi])) continue;
+      for (let i = 0; i < t.length; i++) {
+        const v = y[i]?.[vi];
+        if (v !== undefined && isFinite(v)) {
+          if (v < yMin) yMin = v;
+          if (v > yMax) yMax = v;
+        }
+      }
+    }
+    if (!isFinite(yMin) || !isFinite(yMax)) {
+      yMin = 0;
+      yMax = 1;
+    }
+    if (yMin === yMax) {
+      yMin -= 1;
+      yMax += 1;
+    }
+    const yPad = (yMax - yMin) * 0.05;
+    return { tMin, tMax, yMin: yMin - yPad, yMax: yMax + yPad };
+  }
+  return null;
+}
 
 // ── Toolbar buttons ──
 
@@ -86,6 +150,12 @@ btnClear?.addEventListener("click", () => {
   }
 });
 
+btnResetView?.addEventListener("click", () => {
+  customBounds = null;
+  if (isLiveMode) drawLive();
+  else draw();
+});
+
 // Handle messages from extension
 window.addEventListener("message", (event) => {
   const msg = event.data;
@@ -99,7 +169,7 @@ window.addEventListener("message", (event) => {
     containerEl.style.display = "flex";
     toolbarEl.classList.remove("visible");
     stopLiveLoop();
-    buildLegend();
+    buildTreeView(msg.data.states);
     draw();
   } else if (msg.type === "liveMode") {
     // Live MQTT streaming mode
@@ -150,6 +220,104 @@ const resizeObserver = new ResizeObserver(() => {
   if (currentData || (isLiveMode && liveBuffer)) draw();
 });
 resizeObserver.observe(canvas);
+
+// ── Chart Interaction Events ──
+
+canvas.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  if (!currentData && (!isLiveMode || !liveBuffer)) return;
+
+  const rect = canvas.getBoundingClientRect();
+  const margin = { top: 16, right: 24, bottom: 40, left: 64 };
+  const plotW = rect.width - margin.left - margin.right;
+  const plotH = rect.height - margin.top - margin.bottom;
+
+  let bounds = customBounds;
+  if (!bounds) {
+    bounds = calculateDefaultBounds();
+    if (!bounds) return;
+  }
+
+  const x = e.clientX - rect.left - margin.left;
+  const y = e.clientY - rect.top - margin.top;
+
+  // Only zoom if hovering within plot rect
+  if (x < 0 || x > plotW || y < 0 || y > plotH) return;
+
+  const rx = x / plotW;
+  const ry = 1 - y / plotH;
+
+  const tRange = bounds.tMax - bounds.tMin;
+  const yRange = bounds.yMax - bounds.yMin;
+
+  const tPointer = bounds.tMin + rx * tRange;
+  const yPointer = bounds.yMin + ry * yRange;
+
+  const zoomFactor = Math.pow(1.001, e.deltaY);
+
+  const newTRange = tRange * zoomFactor;
+  const newYRange = yRange * zoomFactor;
+
+  if (newTRange < 1e-12 || newYRange < 1e-12) return;
+
+  customBounds = {
+    tMin: tPointer - rx * newTRange,
+    tMax: tPointer + (1 - rx) * newTRange,
+    yMin: yPointer - ry * newYRange,
+    yMax: yPointer + (1 - ry) * newYRange,
+  };
+
+  if (isLiveMode) drawLive();
+  else draw();
+});
+
+canvas.addEventListener("pointerdown", (e) => {
+  if (e.button !== 0) return;
+  isDragging = true;
+  dragStartX = e.clientX;
+  dragStartY = e.clientY;
+
+  baseBounds = customBounds || calculateDefaultBounds();
+  canvas.setPointerCapture(e.pointerId);
+});
+
+canvas.addEventListener("pointermove", (e) => {
+  if (!isDragging || !baseBounds) return;
+
+  const rect = canvas.getBoundingClientRect();
+  const margin = { top: 16, right: 24, bottom: 40, left: 64 };
+  const plotW = rect.width - margin.left - margin.right;
+  const plotH = rect.height - margin.top - margin.bottom;
+  if (plotW <= 0 || plotH <= 0) return;
+
+  const dx = e.clientX - dragStartX;
+  const dy = e.clientY - dragStartY;
+
+  const tRange = baseBounds.tMax - baseBounds.tMin;
+  const yRange = baseBounds.yMax - baseBounds.yMin;
+
+  const dt = -(dx / plotW) * tRange;
+  const dyScaled = (dy / plotH) * yRange;
+
+  customBounds = {
+    tMin: baseBounds.tMin + dt,
+    tMax: baseBounds.tMax + dt,
+    yMin: baseBounds.yMin + dyScaled,
+    yMax: baseBounds.yMax + dyScaled,
+  };
+
+  if (isLiveMode) drawLive();
+  else draw();
+});
+
+canvas.addEventListener("pointerup", (e) => {
+  isDragging = false;
+  canvas.releasePointerCapture(e.pointerId);
+});
+canvas.addEventListener("pointercancel", (e) => {
+  isDragging = false;
+  canvas.releasePointerCapture(e.pointerId);
+});
 
 // ── Live mode: MQTT over WebSocket ──
 
@@ -390,8 +558,8 @@ function addLivePoint(variableKey: string, time: number, value: number): void {
   if (!liveBuffer.values.has(variableKey)) {
     liveBuffer.variableNames.push(variableKey);
     liveBuffer.values.set(variableKey, []);
-    // Rebuild legend
-    buildLiveLegend();
+    // Rebuild tree
+    buildTreeView(liveBuffer.variableNames);
   }
 
   // Add time point
@@ -438,37 +606,140 @@ function stopLiveLoop(): void {
   }
 }
 
-// ── Live legend ──
+// ── Tree View ──
 
-function buildLiveLegend(): void {
-  if (!liveBuffer) return;
-  legendEl.innerHTML = "";
-  liveBuffer.variableNames.forEach((name, i) => {
+interface TreeNode {
+  name: string;
+  fullName: string;
+  children: Map<string, TreeNode>;
+  isVariable: boolean;
+  colorIndex?: number;
+}
+
+function buildTreeView(variables: string[]): void {
+  const root: TreeNode = { name: "", fullName: "", children: new Map(), isVariable: false };
+
+  variables.forEach((variable, i) => {
+    const parts = variable.split(".");
+    let current = root;
+    let path = "";
+
+    for (let j = 0; j < parts.length; j++) {
+      const part = parts[j];
+      path = path ? `${path}.${part}` : part;
+
+      if (!current.children.has(part)) {
+        current.children.set(part, {
+          name: part,
+          fullName: path,
+          children: new Map(),
+          isVariable: j === parts.length - 1,
+          colorIndex: j === parts.length - 1 ? i : undefined,
+        });
+      }
+      current = current.children.get(part) as TreeNode;
+    }
+  });
+
+  treeViewEl.innerHTML = "";
+
+  function renderNode(node: TreeNode, parentEl: HTMLElement) {
+    const li = document.createElement("li");
+    li.className = "tree-node";
+
     const item = document.createElement("div");
-    item.className = "legend-item";
+    item.className = "tree-item";
 
-    const swatch = document.createElement("div");
-    swatch.className = "legend-swatch";
-    swatch.style.background = COLORS[i % COLORS.length];
+    const hasChildren = node.children.size > 0;
+    const caret = document.createElement("span");
+    caret.className = "tree-caret " + (hasChildren ? "expanded" : "empty");
+    item.appendChild(caret);
+
+    if (node.isVariable) {
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.className = "tree-checkbox";
+      checkbox.checked = !hiddenVars.has(node.fullName);
+
+      const swatch = document.createElement("div");
+      swatch.style.width = "10px";
+      swatch.style.height = "10px";
+      swatch.style.borderRadius = "2px";
+      swatch.style.marginRight = "6px";
+      if (node.colorIndex !== undefined) {
+        swatch.style.background = COLORS[node.colorIndex % COLORS.length];
+      }
+
+      item.appendChild(checkbox);
+      item.appendChild(swatch);
+
+      checkbox.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (checkbox.checked) {
+          hiddenVars.delete(node.fullName);
+        } else {
+          hiddenVars.add(node.fullName);
+        }
+        if (isLiveMode) drawLive();
+        else draw();
+      });
+
+      // Clicking the row toggles the checkbox
+      item.addEventListener("click", (e) => {
+        if ((e.target as HTMLElement).tagName !== "INPUT") {
+          checkbox.click();
+        }
+      });
+    }
 
     const label = document.createElement("span");
-    label.textContent = name;
-
-    item.appendChild(swatch);
+    label.className = "tree-label";
+    label.textContent = node.name;
+    label.title = node.fullName;
     item.appendChild(label);
 
-    item.addEventListener("click", () => {
-      if (hiddenVars.has(name)) {
-        hiddenVars.delete(name);
-        item.classList.remove("hidden");
-      } else {
-        hiddenVars.add(name);
-        item.classList.add("hidden");
-      }
-    });
+    li.appendChild(item);
 
-    legendEl.appendChild(item);
+    if (hasChildren) {
+      const childrenUl = document.createElement("ul");
+      childrenUl.className = "tree-children expanded";
+
+      item.addEventListener("click", (e) => {
+        if (node.isVariable && (e.target as HTMLElement).tagName === "INPUT") return;
+        const isExpanded = childrenUl.classList.contains("expanded");
+        if (isExpanded) {
+          childrenUl.classList.remove("expanded");
+          caret.classList.remove("expanded");
+        } else {
+          childrenUl.classList.add("expanded");
+          caret.classList.add("expanded");
+        }
+      });
+
+      const childNodes = Array.from(node.children.values()).sort((a, b) => {
+        if (a.children.size > 0 && b.children.size === 0) return -1;
+        if (a.children.size === 0 && b.children.size > 0) return 1;
+        return a.name.localeCompare(b.name);
+      });
+
+      for (const child of childNodes) {
+        renderNode(child, childrenUl);
+      }
+      li.appendChild(childrenUl);
+    }
+
+    parentEl.appendChild(li);
+  }
+
+  const sortedRoots = Array.from(root.children.values()).sort((a, b) => {
+    if (a.children.size > 0 && b.children.size === 0) return -1;
+    if (a.children.size === 0 && b.children.size > 0) return 1;
+    return a.name.localeCompare(b.name);
   });
+
+  for (const child of sortedRoots) {
+    renderNode(child, treeViewEl);
+  }
 }
 
 // ── Live drawing ──
@@ -496,34 +767,8 @@ function drawLive(): void {
   if (plotW <= 0 || plotH <= 0) return;
 
   const times = liveBuffer.times;
-  const tMin = times[0];
-  const tMax = times[times.length - 1];
-
-  let yMin = Infinity;
-  let yMax = -Infinity;
-
-  for (const [name, vals] of liveBuffer.values) {
-    if (hiddenVars.has(name)) continue;
-    for (const v of vals) {
-      if (isFinite(v)) {
-        if (v < yMin) yMin = v;
-        if (v > yMax) yMax = v;
-      }
-    }
-  }
-
-  if (!isFinite(yMin) || !isFinite(yMax)) {
-    yMin = 0;
-    yMax = 1;
-  }
-  if (yMin === yMax) {
-    yMin -= 1;
-    yMax += 1;
-  }
-
-  const yPad = (yMax - yMin) * 0.05;
-  yMin -= yPad;
-  yMax += yPad;
+  const bounds = customBounds || calculateDefaultBounds() || { tMin: 0, tMax: 1, yMin: 0, yMax: 1 };
+  const { tMin, tMax, yMin, yMax } = bounds;
 
   const xScale = (v: number) => margin.left + ((v - tMin) / (tMax - tMin || 1)) * plotW;
   const yScale = (v: number) => margin.top + plotH - ((v - yMin) / (yMax - yMin)) * plotH;
@@ -611,40 +856,7 @@ function drawLive(): void {
   ctx.restore();
 }
 
-// ── Batch mode legend & drawing ──
-
-function buildLegend() {
-  if (!currentData) return;
-  legendEl.innerHTML = "";
-  currentData.states.forEach((name, i) => {
-    const item = document.createElement("div");
-    item.className = "legend-item";
-    item.dataset.var = name;
-
-    const swatch = document.createElement("div");
-    swatch.className = "legend-swatch";
-    swatch.style.background = COLORS[i % COLORS.length];
-
-    const label = document.createElement("span");
-    label.textContent = name;
-
-    item.appendChild(swatch);
-    item.appendChild(label);
-
-    item.addEventListener("click", () => {
-      if (hiddenVars.has(name)) {
-        hiddenVars.delete(name);
-        item.classList.remove("hidden");
-      } else {
-        hiddenVars.add(name);
-        item.classList.add("hidden");
-      }
-      draw();
-    });
-
-    legendEl.appendChild(item);
-  });
-}
+// ── Batch mode drawing ──
 
 function draw() {
   if (!currentData || currentData.t.length === 0) return;
@@ -672,40 +884,12 @@ function draw() {
 
   // Data ranges
   const { t, y, states } = currentData;
-  const tMin = t[0];
-  const tMax = t[t.length - 1];
-
-  let yMin = Infinity;
-  let yMax = -Infinity;
-  for (let vi = 0; vi < states.length; vi++) {
-    if (hiddenVars.has(states[vi])) continue;
-    for (let i = 0; i < t.length; i++) {
-      const v = y[i]?.[vi];
-      if (v !== undefined && isFinite(v)) {
-        if (v < yMin) yMin = v;
-        if (v > yMax) yMax = v;
-      }
-    }
-  }
-
-  // Handle case where all vars are hidden or flat
-  if (!isFinite(yMin) || !isFinite(yMax)) {
-    yMin = 0;
-    yMax = 1;
-  }
-  if (yMin === yMax) {
-    yMin -= 1;
-    yMax += 1;
-  }
-
-  // Add 5% padding
-  const yPad = (yMax - yMin) * 0.05;
-  yMin -= yPad;
-  yMax += yPad;
+  const bounds = customBounds || calculateDefaultBounds() || { tMin: 0, tMax: 1, yMin: 0, yMax: 1 };
+  const { tMin, tMax, yMin, yMax } = bounds;
 
   // Coordinate transform
-  const xScale = (v: number) => margin.left + ((v - tMin) / (tMax - tMin)) * plotW;
-  const yScale = (v: number) => margin.top + plotH - ((v - yMin) / (yMax - yMin)) * plotH;
+  const xScale = (v: number) => margin.left + ((v - tMin) / (tMax - tMin || 1)) * plotW;
+  const yScale = (v: number) => margin.top + plotH - ((v - yMin) / (yMax - yMin || 1)) * plotH;
 
   // Clear
   ctx.clearRect(0, 0, w, h);
@@ -810,8 +994,8 @@ canvas.addEventListener("mousemove", (e) => {
   }
 
   const { t, y, states } = currentData;
-  const tMin = t[0];
-  const tMax = t[t.length - 1];
+  const bounds = customBounds || calculateDefaultBounds() || { tMin: t[0], tMax: t[t.length - 1], yMin: 0, yMax: 1 };
+  const { tMin, tMax } = bounds;
   const tVal = tMin + ((mx - margin.left) / plotW) * (tMax - tMin);
 
   // Find nearest time index

@@ -208,11 +208,43 @@ export class SimulationPanel {
       color: var(--vscode-foreground, #ccc);
       font-family: var(--vscode-font-family, system-ui, sans-serif);
     }
-    #chart-container {
+    #main-layout {
       width: 100%;
       height: 100%;
       display: flex;
+      flex-direction: row;
+    }
+    #sidebar {
+      width: 250px;
+      min-width: 150px;
+      max-width: 50%;
+      resize: horizontal;
+      overflow: auto;
+      border-right: 1px solid var(--vscode-panel-border, #333);
+      display: flex;
       flex-direction: column;
+      background: var(--vscode-sideBar-background, #252526);
+    }
+    #sidebar-header {
+      padding: 8px 16px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      color: var(--vscode-sideBarTitle-foreground, #ccc);
+      border-bottom: 1px solid var(--vscode-panel-border, #333);
+      flex-shrink: 0;
+    }
+    #tree-view {
+      flex: 1;
+      overflow: auto;
+      padding: 4px 0;
+    }
+    #chart-container {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      position: relative;
     }
     #toolbar {
       display: none;
@@ -245,30 +277,61 @@ export class SimulationPanel {
     @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
     #toolbar .status-text { color: var(--vscode-descriptionForeground); }
     #toolbar .spacer { flex: 1; }
-    #legend {
-      padding: 8px 16px;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px 16px;
-      font-size: 12px;
-      border-bottom: 1px solid var(--vscode-panel-border, #333);
+    /* Tree View Native Controls */
+    .tree-node {
+      list-style: none;
+      padding-left: 14px;
+      margin: 0;
     }
-    .legend-item {
+    .tree-root {
+      padding-left: 0;
+    }
+    .tree-item {
       display: flex;
       align-items: center;
-      gap: 4px;
+      padding: 4px 4px 4px 8px;
       cursor: pointer;
-      opacity: 1;
-      transition: opacity 0.15s;
+      user-select: none;
+      color: var(--vscode-sideBar-foreground, #ccc);
+      font-size: 13px;
     }
-    .legend-item.hidden {
-      opacity: 0.35;
-      text-decoration: line-through;
+    .tree-item:hover {
+      background: var(--vscode-list-hoverBackground, #2a2d2e);
     }
-    .legend-swatch {
-      width: 12px;
-      height: 3px;
-      border-radius: 1px;
+    .tree-caret {
+      width: 16px;
+      height: 16px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.1s;
+    }
+    .tree-caret::before {
+      content: "▶";
+      font-size: 10px;
+      color: var(--vscode-icon-foreground, #c5c5c5);
+    }
+    .tree-caret.expanded {
+      transform: rotate(90deg);
+    }
+    .tree-caret.empty {
+      visibility: hidden;
+    }
+    .tree-checkbox {
+      margin: 0 6px 0 0;
+      accent-color: var(--vscode-button-background, #0e639c);
+      cursor: pointer;
+    }
+    .tree-label {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .tree-children {
+      display: none;
+    }
+    .tree-children.expanded {
+      display: block;
     }
     canvas {
       flex: 1;
@@ -297,17 +360,24 @@ export class SimulationPanel {
   </style>
 </head>
 <body>
-  <div id="chart-container">
-    <div id="toolbar">
-      <div class="status-indicator" id="live-status"></div>
-      <span class="status-text" id="live-status-text">Disconnected</span>
-      <span class="spacer"></span>
-      <button id="btn-pause">⏸ Pause</button>
-      <button id="btn-clear">Clear</button>
+  <div id="main-layout">
+    <div id="sidebar">
+      <div id="sidebar-header">Variables</div>
+      <ul id="tree-view" class="tree-node tree-root"></ul>
     </div>
-    <div id="legend"></div>
-    <canvas id="canvas"></canvas>
-    <div id="tooltip"></div>
+    <div id="chart-container">
+      <div id="toolbar">
+        <div class="status-indicator" id="live-status"></div>
+        <span class="status-text" id="live-status-text">Disconnected</span>
+        <span class="spacer"></span>
+        <button id="btn-pause">⏸ Pause</button>
+        <button id="btn-clear">Clear</button>
+        <button id="btn-reset-view">⌂ Reset View</button>
+      </div>
+      <!-- legend was removed -->
+      <canvas id="canvas"></canvas>
+      <div id="tooltip"></div>
+    </div>
   </div>
   <div id="placeholder">Run a simulation to see results</div>
   <script nonce="${nonce}" src="${scriptUri}"></script>
