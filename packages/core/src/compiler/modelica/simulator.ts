@@ -1311,14 +1311,12 @@ export class ModelicaSimulator {
 
     // Extract when-clauses
     this.whenClauses = [];
-    for (const eq of this.dae.equations) {
-      if (eq instanceof ModelicaWhenEquation) {
-        const mainClause = this.buildWhenClause(eq.condition, eq.equations);
-        if (mainClause) this.whenClauses.push(mainClause);
-        for (const elseWhen of eq.elseWhenClauses) {
-          const clause = this.buildWhenClause(elseWhen.condition, elseWhen.equations);
-          if (clause) this.whenClauses.push(clause);
-        }
+    for (const eq of this.dae.whenClauses) {
+      const mainClause = this.buildWhenClause(eq.condition, eq.equations);
+      if (mainClause) this.whenClauses.push(mainClause);
+      for (const elseWhen of eq.elseWhenClauses) {
+        const clause = this.buildWhenClause(elseWhen.condition, elseWhen.equations);
+        if (clause) this.whenClauses.push(clause);
       }
     }
 
@@ -2223,8 +2221,12 @@ export class ModelicaSimulator {
       for (const clause of this.whenClauses) {
         eventFns.push((tE: number, yE: number[]) => {
           populateEnv(tE, yE);
+          if (clause.zeroCrossingFn) {
+            return clause.zeroCrossingFn(evaluator) ?? 0;
+          }
           const val = evaluator.evaluate(clause.condition);
-          return val ?? 0;
+          // Map boolean to a continuous-ish value: true → -1, false → +1
+          return val !== null && val !== 0 ? -1 : 1;
         });
       }
 
@@ -2247,6 +2249,16 @@ export class ModelicaSimulator {
           ? (tE: number, yE: number[], eventIdx: number) => {
               const clause = this.whenClauses[eventIdx];
               if (clause) {
+                // Update pre-values to the state just before the event
+                for (let i = 0; i < stateList.length; i++) {
+                  const name = stateList[i];
+                  if (name) evaluator.preValues.set(name, yE[i] ?? 0);
+                }
+                evaluator.env.set("time", tE);
+                for (let i = 0; i < stateList.length; i++) {
+                  const name = stateList[i];
+                  if (name) evaluator.env.set(name, yE[i] ?? 0);
+                }
                 this.fireWhenActions(clause, evaluator, yE, stateIndexMap);
               }
               return yE;
@@ -2294,6 +2306,15 @@ export class ModelicaSimulator {
           ? (tE: number, yE: number[], eventIdx: number) => {
               const clause = this.whenClauses[eventIdx];
               if (clause) {
+                for (let i = 0; i < stateList.length; i++) {
+                  const name = stateList[i];
+                  if (name) evaluator.preValues.set(name, yE[i] ?? 0);
+                }
+                evaluator.env.set("time", tE);
+                for (let i = 0; i < stateList.length; i++) {
+                  const name = stateList[i];
+                  if (name) evaluator.env.set(name, yE[i] ?? 0);
+                }
                 this.fireWhenActions(clause, evaluator, yE, stateIndexMap);
               }
               return yE;
@@ -2342,6 +2363,15 @@ export class ModelicaSimulator {
           ? (tE: number, yE: number[], eventIdx: number) => {
               const clause = this.whenClauses[eventIdx];
               if (clause) {
+                for (let i = 0; i < stateList.length; i++) {
+                  const name = stateList[i];
+                  if (name) evaluator.preValues.set(name, yE[i] ?? 0);
+                }
+                evaluator.env.set("time", tE);
+                for (let i = 0; i < stateList.length; i++) {
+                  const name = stateList[i];
+                  if (name) evaluator.env.set(name, yE[i] ?? 0);
+                }
                 this.fireWhenActions(clause, evaluator, yE, stateIndexMap);
               }
               return yE;
@@ -3107,6 +3137,7 @@ export class ModelicaSimulator {
   //  Detect which when-clause had a triggering sign change
   // ──────────────────────────────────────────────────────────────────
   private detectTriggeredClause(gPre: number[], gPost: number[]): number {
+    console.log("detect", gPre, gPost);
     for (let i = 0; i < this.whenClauses.length; i++) {
       const clause = this.whenClauses[i];
       if (!clause) continue;

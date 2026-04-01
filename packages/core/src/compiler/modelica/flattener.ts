@@ -2980,6 +2980,10 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
 
     for (const eq of dae.equations) extractEq(eq);
     for (const eq of dae.initialEquations) extractEq(eq);
+
+    // Remove when equations from continuous equations lists so they don't corrupt BLT
+    dae.equations = dae.equations.filter((eq) => !(eq instanceof ModelicaWhenEquation));
+    dae.initialEquations = dae.initialEquations.filter((eq) => !(eq instanceof ModelicaWhenEquation));
   }
 }
 
