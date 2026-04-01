@@ -29,6 +29,7 @@ import {
   ModelicaRealLiteral,
   ModelicaStringLiteral,
   ModelicaUnaryExpression,
+  ModelicaVariable,
 } from "../dae.js";
 import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "../syntax.js";
 
@@ -302,8 +303,8 @@ export class EGraph {
     }
 
     // Variable references
-    if (expr instanceof ModelicaNameExpression) {
-      return this.makeEClass({ op: `var:${expr.name}`, children: [] });
+    if (expr instanceof ModelicaNameExpression || expr instanceof ModelicaVariable) {
+      return this.makeEClass({ op: `var:${(expr as ModelicaNameExpression | ModelicaVariable).name}`, children: [] });
     }
 
     // Unary expressions
