@@ -902,7 +902,6 @@ documents.onDidChangeContent((change) => {
   // Short debounce: batch rapid-fire opens from workspace scanning, then re-validate all
   if (revalidationTimer) clearTimeout(revalidationTimer);
   revalidationTimer = setTimeout(() => {
-    console.log(`[cross-file] re-validating all ${documents.all().length} open documents`);
     for (const doc of documents.all()) {
       validateTextDocument(doc);
     }
@@ -1008,7 +1007,6 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
         const resolved = context.resolveName(withinNames);
         if (resolved) {
           parentScope = resolved;
-          console.log(`[cross-file] within '${withinNames.join(".")}' resolved from MSL context`);
         } else {
           // Try to find the within-package among workspace instances
           for (const instances of workspaceInstances.values()) {
@@ -1020,15 +1018,11 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
                 }
                 if (target instanceof ModelicaClassInstance) {
                   parentScope = target;
-                  console.log(`[cross-file] within '${withinNames.join(".")}' resolved from workspace instances`);
                 }
                 break;
               }
             }
             if (parentScope !== context) break;
-          }
-          if (parentScope === context) {
-            console.log(`[cross-file] within '${withinNames.join(".")}' could not be resolved`);
           }
         }
       }
@@ -1040,9 +1034,6 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
           allInstances.push(...instances);
         }
       }
-      console.log(
-        `[cross-file] ${textDocument.uri.split("/").pop()}: ${allInstances.length} cross-file instances, ${workspaceInstances.size} total docs`,
-      );
 
       // Instantiate classes from this document — reuse unchanged classes
       const thisDocInstances: ModelicaClassInstance[] = [];
@@ -1058,7 +1049,6 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
       };
 
       // Two-pass: first create all instances (so they're visible as siblings)
-      let reusedCount = 0;
       for (const classDef of node.classDefinitions) {
         const className = getClassDefName(classDef);
         const cstNode = classDef.sourceRange;
@@ -1076,7 +1066,6 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
           newClassCache.set(className, cachedEntry);
           // Re-emit cached diagnostics
           diagnostics.push(...cachedEntry.diagnostics);
-          reusedCount++;
         } else {
           // Changed or new class — build fresh instance
           const instance = new ModelicaClassInstance(editorScope, classDef);
@@ -1114,10 +1103,6 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
       if (cached) {
         cached.classCache = newClassCache;
       }
-
-      console.log(
-        `[incremental] ${textDocument.uri.split("/").pop()}: ${thisDocInstances.length} classes, ${reusedCount} reused, ${thisDocInstances.length - reusedCount} rebuilt`,
-      );
 
       // Cache instances for cross-file resolution and hover
       workspaceInstances.set(textDocument.uri, thisDocInstances);
@@ -2881,7 +2866,8 @@ connection.onRequest(
       const exp = simulator.dae.experiment;
       const startTime = params.startTime ?? exp.startTime ?? 0;
       const stopTime = params.stopTime ?? exp.stopTime ?? 10;
-      const step = params.interval ?? exp.interval ?? (stopTime - startTime) / 100;
+      const numIntervals = exp.numberOfIntervals ?? 500;
+      const step = params.interval ?? exp.interval ?? (stopTime - startTime) / numIntervals;
 
       const result = simulator.simulate(startTime, stopTime, step, {
         solver: (params.solver ?? "dopri5") as "rk4" | "dopri5" | "bdf" | "auto",
@@ -3896,6 +3882,7 @@ connection.onRequest("textDocument/codeLens", (params): CodeLens[] => {
         const dae = new ModelicaDAE(instance.name || "Model");
         const flattener = new ModelicaFlattener();
         instance.accept(flattener, ["", dae]);
+        flattener.generateFlowBalanceEquations(dae);
 
         const nEqs = dae.equations.length;
         const nVars = dae.variables.filter(
@@ -4124,6 +4111,7 @@ connection.onRequest(
       const dae = new ModelicaDAE(target.name || "Model");
       const flattener = new ModelicaFlattener();
       target.accept(flattener, ["", dae]);
+      flattener.generateFlowBalanceEquations(dae);
 
       // Run BLT transformation
       const { algebraicLoops } = performBltTransformation(dae);

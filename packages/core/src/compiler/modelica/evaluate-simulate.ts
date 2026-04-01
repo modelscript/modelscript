@@ -124,7 +124,7 @@ export function evaluateSimulate(
   const exp = dae.experiment;
   const startTime = getNamedArg("startTime") ?? getPositionalArg(1) ?? exp.startTime ?? 0;
   const stopTime = getNamedArg("stopTime") ?? getPositionalArg(2) ?? exp.stopTime ?? 10;
-  const numberOfIntervals = getNamedArg("numberOfIntervals") ?? getPositionalArg(3) ?? 500;
+  const numberOfIntervals = getNamedArg("numberOfIntervals") ?? getPositionalArg(3) ?? exp.numberOfIntervals ?? 500;
   const tolerance = getNamedArg("tolerance") ?? getPositionalArg(4) ?? exp.tolerance ?? 1e-6;
   const outputIntervalArg = getNamedArg("outputInterval") ?? getPositionalArg(5);
   const step =

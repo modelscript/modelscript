@@ -34,6 +34,7 @@ const COLORS = [
 let currentData: SimulationData | null = null;
 let isDark = true;
 const hiddenVars = new Set<string>();
+const seenVars = new Set<string>();
 
 // ── Live mode state ──
 let isLiveMode = false;
@@ -66,7 +67,18 @@ const liveStatusTextEl = document.getElementById("live-status-text")!;
 const btnPause = document.getElementById("btn-pause")!;
 const btnClear = document.getElementById("btn-clear")!;
 const btnResetView = document.getElementById("btn-reset-view")!;
+const checkboxSmooth = document.getElementById("checkbox-smooth") as HTMLInputElement;
 /* eslint-enable @typescript-eslint/no-non-null-assertion */
+
+let currentInterpolation = "smooth";
+checkboxSmooth?.addEventListener("change", (e) => {
+  currentInterpolation = (e.target as HTMLInputElement).checked ? "smooth" : "linear";
+  if (isLiveMode) {
+    drawLive();
+  } else {
+    draw();
+  }
+});
 
 // ── Viewport Panning & Zooming ──
 let customBounds: { tMin: number; tMax: number; yMin: number; yMax: number } | null = null;
@@ -164,10 +176,18 @@ window.addEventListener("message", (event) => {
     isLiveMode = false;
     currentData = msg.data;
     isDark = msg.isDark;
-    hiddenVars.clear();
+
+    msg.data.states.forEach((state: string) => {
+      if (!seenVars.has(state)) {
+        hiddenVars.add(state);
+        seenVars.add(state);
+      }
+    });
+
     placeholderEl.style.display = "none";
     containerEl.style.display = "flex";
-    toolbarEl.classList.remove("visible");
+    toolbarEl.classList.add("visible");
+    toolbarEl.classList.remove("live-mode");
     stopLiveLoop();
     buildTreeView(msg.data.states);
     draw();
@@ -176,10 +196,10 @@ window.addEventListener("message", (event) => {
     isLiveMode = true;
     isDark = msg.isDark;
     currentData = null;
-    hiddenVars.clear();
+
     placeholderEl.style.display = "none";
     containerEl.style.display = "flex";
-    toolbarEl.classList.add("visible");
+    toolbarEl.classList.add("visible", "live-mode");
     connectMqttWs(
       msg.mqttWsUrl as string,
       msg.sessionId as string | undefined,
@@ -190,10 +210,10 @@ window.addEventListener("message", (event) => {
     isLiveMode = true;
     isDark = msg.isDark;
     currentData = null;
-    hiddenVars.clear();
+
     placeholderEl.style.display = "none";
     containerEl.style.display = "flex";
-    toolbarEl.classList.add("visible");
+    toolbarEl.classList.add("visible", "live-mode");
     setLiveStatus("connected", "Local mode");
     // Initialize empty live buffer (no WebSocket needed)
     liveBuffer = {
@@ -558,6 +578,10 @@ function addLivePoint(variableKey: string, time: number, value: number): void {
   if (!liveBuffer.values.has(variableKey)) {
     liveBuffer.variableNames.push(variableKey);
     liveBuffer.values.set(variableKey, []);
+    if (!seenVars.has(variableKey)) {
+      hiddenVars.add(variableKey);
+      seenVars.add(variableKey);
+    }
     // Rebuild tree
     buildTreeView(liveBuffer.variableNames);
   }
@@ -680,6 +704,7 @@ function buildTreeView(variables: string[]): void {
         } else {
           hiddenVars.add(node.fullName);
         }
+        customBounds = null;
         if (isLiveMode) drawLive();
         else draw();
       });
@@ -836,17 +861,29 @@ function drawLive(): void {
     ctx.lineJoin = "round";
     ctx.beginPath();
 
-    let started = false;
+    const pts: { x: number; y: number }[] = [];
     for (let i = 0; i < vals.length; i++) {
       const val = vals[i];
       if (!isFinite(val)) continue;
-      const px = xScale(times[i]);
-      const py = yScale(val);
-      if (!started) {
-        ctx.moveTo(px, py);
-        started = true;
-      } else {
-        ctx.lineTo(px, py);
+      pts.push({ x: xScale(times[i]), y: yScale(val) });
+    }
+
+    if (currentInterpolation === "smooth") {
+      drawSmoothSpline(ctx, pts);
+    } else {
+      let prevPy = 0;
+      let started = false;
+      for (const pt of pts) {
+        if (!started) {
+          ctx.moveTo(pt.x, pt.y);
+          started = true;
+        } else {
+          if (currentInterpolation === "step-after") {
+            ctx.lineTo(pt.x, prevPy);
+          }
+          ctx.lineTo(pt.x, pt.y);
+        }
+        prevPy = pt.y;
       }
     }
     ctx.stroke();
@@ -854,6 +891,37 @@ function drawLive(): void {
   }
 
   ctx.restore();
+}
+
+// ── Helper ──
+function drawSmoothSpline(ctx: CanvasRenderingContext2D, pts: { x: number; y: number }[]) {
+  if (pts.length === 0) return;
+  ctx.moveTo(pts[0].x, pts[0].y);
+  if (pts.length === 1) return;
+
+  const tension = 0.25;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+
+    if (Math.abs(p2.x - p1.x) < 0.1) {
+      ctx.lineTo(p2.x, p2.y);
+      continue;
+    }
+
+    let p0 = i > 0 ? pts[i - 1] : p1;
+    if (Math.abs(p1.x - p0.x) < 0.1) p0 = p1;
+
+    let p3 = i < pts.length - 2 ? pts[i + 2] : p2;
+    if (Math.abs(p3.x - p2.x) < 0.1) p3 = p2;
+
+    const t1x = (p2.x - p0.x) * tension;
+    const t1y = (p2.y - p0.y) * tension;
+    const t2x = (p3.x - p1.x) * tension;
+    const t2y = (p3.y - p1.y) * tension;
+
+    ctx.bezierCurveTo(p1.x + t1x / 3, p1.y + t1y / 3, p2.x - t2x / 3, p2.y - t2y / 3, p2.x, p2.y);
+  }
 }
 
 // ── Batch mode drawing ──
@@ -958,17 +1026,29 @@ function draw() {
     ctx.lineJoin = "round";
     ctx.beginPath();
 
-    let started = false;
+    const pts: { x: number; y: number }[] = [];
     for (let i = 0; i < t.length; i++) {
       const val = y[i]?.[vi];
       if (val === undefined || !isFinite(val)) continue;
-      const px = xScale(t[i]);
-      const py = yScale(val);
-      if (!started) {
-        ctx.moveTo(px, py);
-        started = true;
-      } else {
-        ctx.lineTo(px, py);
+      pts.push({ x: xScale(t[i]), y: yScale(val) });
+    }
+
+    if (currentInterpolation === "smooth") {
+      drawSmoothSpline(ctx, pts);
+    } else {
+      let prevPy = 0;
+      let started = false;
+      for (const pt of pts) {
+        if (!started) {
+          ctx.moveTo(pt.x, pt.y);
+          started = true;
+        } else {
+          if (currentInterpolation === "step-after") {
+            ctx.lineTo(pt.x, prevPy);
+          }
+          ctx.lineTo(pt.x, pt.y);
+        }
+        prevPy = pt.y;
       }
     }
     ctx.stroke();

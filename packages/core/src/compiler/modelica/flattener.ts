@@ -6381,17 +6381,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         // Defer flow equation generation — collect pairs for connection-set-based KCL.
         // Per Modelica spec §9.2, all flows at a connection set node sum to zero.
         if (ctx.flowConnectPairs) {
-          console.log(`Adding flow pair: ${info1.fullName} - ${info2.fullName}`);
           ctx.flowConnectPairs.push({ name1: info1.fullName, name2: info2.fullName });
-        } else {
-          // Fallback: generate pairwise equation if flowConnectPairs not available
-          const sum = new ModelicaBinaryExpression(
-            ModelicaBinaryOperator.ADDITION,
-            new ModelicaNameExpression(info1.fullName),
-            new ModelicaNameExpression(info2.fullName),
-          );
-          const lhs = new ModelicaUnaryExpression(ModelicaUnaryOperator.UNARY_MINUS, sum);
-          ctx.dae.equations.push(new ModelicaSimpleEquation(lhs, new ModelicaRealLiteral(0.0)));
         }
         // Track these flow variables as connected
         ctx.connectedFlowVars?.add(info1.fullName);

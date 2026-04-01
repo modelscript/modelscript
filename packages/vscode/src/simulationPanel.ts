@@ -255,6 +255,23 @@ export class SimulationPanel {
       border-bottom: 1px solid var(--vscode-panel-border, #333);
     }
     #toolbar.visible { display: flex; }
+    #toolbar:not(.live-mode) .live-only {
+      display: none;
+    }
+    #toolbar select {
+      background: var(--vscode-dropdown-background);
+      color: var(--vscode-dropdown-foreground);
+      border: 1px solid var(--vscode-dropdown-border);
+      padding: 4px 8px;
+      font-family: inherit;
+      font-size: 11px;
+      border-radius: 2px;
+      cursor: pointer;
+    }
+    #toolbar select:focus {
+      outline: 1px solid var(--vscode-focusBorder);
+      outline-offset: -1px;
+    }
     #toolbar button {
       padding: 2px 8px;
       border: 1px solid var(--vscode-button-border, transparent);
@@ -280,7 +297,7 @@ export class SimulationPanel {
     /* Tree View Native Controls */
     .tree-node {
       list-style: none;
-      padding-left: 14px;
+      padding-left: 8px;
       margin: 0;
     }
     .tree-root {
@@ -329,6 +346,8 @@ export class SimulationPanel {
     }
     .tree-children {
       display: none;
+      margin: 0;
+      padding: 0;
     }
     .tree-children.expanded {
       display: block;
@@ -367,11 +386,14 @@ export class SimulationPanel {
     </div>
     <div id="chart-container">
       <div id="toolbar">
-        <div class="status-indicator" id="live-status"></div>
-        <span class="status-text" id="live-status-text">Disconnected</span>
+        <div class="status-indicator live-only" id="live-status"></div>
+        <span class="status-text live-only" id="live-status-text">Disconnected</span>
         <span class="spacer"></span>
-        <button id="btn-pause">⏸ Pause</button>
-        <button id="btn-clear">Clear</button>
+        <label style="display: flex; align-items: center; gap: 4px; color: var(--vscode-foreground); cursor: pointer;">
+          <input type="checkbox" id="checkbox-smooth" checked> Smooth Curves
+        </label>
+        <button id="btn-pause" class="live-only">⏸ Pause</button>
+        <button id="btn-clear" class="live-only">Clear</button>
         <button id="btn-reset-view">⌂ Reset View</button>
       </div>
       <!-- legend was removed -->

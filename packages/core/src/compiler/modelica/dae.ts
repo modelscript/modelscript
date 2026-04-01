@@ -262,7 +262,13 @@ export class ModelicaDAE {
   /** Diagnostics emitted during flattening (e.g. type errors, invalid iterators). */
   diagnostics: ModelicaDiagnostic[] = [];
   /** Experiment annotation data (StartTime, StopTime, Tolerance, etc.). */
-  experiment: { startTime?: number; stopTime?: number; tolerance?: number; interval?: number } = {};
+  experiment: {
+    startTime?: number;
+    stopTime?: number;
+    tolerance?: number;
+    interval?: number;
+    numberOfIntervals?: number;
+  } = {};
   /** Event indicators (zero-crossing functions) for state events. */
   eventIndicators: ModelicaExpression[] = [];
   /** Discrete state updates extracted from `when` clauses. */
