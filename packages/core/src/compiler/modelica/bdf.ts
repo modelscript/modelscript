@@ -322,12 +322,9 @@ export function bdf(
           if (!eventFn) continue;
 
           // ── Bisection to find exact event time ──
-          const tEvent = bisectEvent(eventFn, t, tNew, y, yNewton, h, n);
+          const tEvent = bisectEvent(eventFn, t, tNew, y, yNewton, fCurrent, fNew, h, n);
           const thetaEvent = (tEvent - t) / h;
-          const yEvent = new Array(n) as number[];
-          for (let i = 0; i < n; i++) {
-            yEvent[i] = (1 - thetaEvent) * (y[i] ?? 0) + thetaEvent * (yNewton[i] ?? 0);
-          }
+          const yEvent = cubicHermiteInterpolate(thetaEvent, y, yNewton, fCurrent, fNew, h, n);
 
           // ── Output interpolation BEFORE the event! ──
           while (outputIdx < outputTimes.length && (outputTimes[outputIdx] ?? tEnd) <= tEvent + 1e-14) {
@@ -339,14 +336,9 @@ export function bdf(
               result.times.push(t);
               result.states.push([...y]);
             } else {
-              // Linear interpolation within [t, tEvent]
               const theta = (tOut - t) / h;
-              const yInterp = new Array(n) as number[];
-              for (let i = 0; i < n; i++) {
-                yInterp[i] = (1 - theta) * (y[i] ?? 0) + theta * (yNewton[i] ?? 0);
-              }
               result.times.push(tOut);
-              result.states.push(yInterp);
+              result.states.push(cubicHermiteInterpolate(theta, y, yNewton, fCurrent, fNew, h, n));
             }
             outputIdx++;
           }
@@ -391,14 +383,9 @@ export function bdf(
           result.times.push(t);
           result.states.push([...y]);
         } else {
-          // Linear interpolation within [t, tNew]
           const theta = (tOut - t) / h;
-          const yInterp = new Array(n) as number[];
-          for (let i = 0; i < n; i++) {
-            yInterp[i] = (1 - theta) * (y[i] ?? 0) + theta * (yNewton[i] ?? 0);
-          }
           result.times.push(tOut);
-          result.states.push(yInterp);
+          result.states.push(cubicHermiteInterpolate(theta, y, yNewton, fCurrent, fNew, h, n));
         }
         outputIdx++;
       }
@@ -646,6 +633,8 @@ function bisectEvent(
   tHi: number,
   yLo: number[],
   yHi: number[],
+  fLo: number[],
+  fHi: number[],
   h: number,
   n: number,
 ): number {
@@ -660,12 +649,8 @@ function bisectEvent(
     const tMid = (lo + hi) / 2;
     if (hi - lo < tol) break;
 
-    // Linear interpolation for state at tMid
     const theta = (tMid - tLo) / h;
-    const yMid = new Array(n) as number[];
-    for (let i = 0; i < n; i++) {
-      yMid[i] = (1 - theta) * (yLo[i] ?? 0) + theta * (yHi[i] ?? 0);
-    }
+    const yMid = cubicHermiteInterpolate(theta, yLo, yHi, fLo, fHi, h, n);
     const gMid = eventFn(tMid, yMid);
 
     if (gLo * gMid <= 0) {
@@ -677,4 +662,31 @@ function bisectEvent(
   }
 
   return (lo + hi) / 2;
+}
+
+/**
+ * Cubic Hermite interpolation for dense output.
+ */
+function cubicHermiteInterpolate(
+  theta: number,
+  y0: number[],
+  y1: number[],
+  f0: number[],
+  f1: number[],
+  h: number,
+  n: number,
+): number[] {
+  const theta2 = theta * theta;
+  const theta3 = theta2 * theta;
+
+  const h00 = 2 * theta3 - 3 * theta2 + 1;
+  const h10 = theta3 - 2 * theta2 + theta;
+  const h01 = -2 * theta3 + 3 * theta2;
+  const h11 = theta3 - theta2;
+
+  const yInterp = new Array(n) as number[];
+  for (let i = 0; i < n; i++) {
+    yInterp[i] = h00 * (y0[i] ?? 0) + h10 * h * (f0[i] ?? 0) + h01 * (y1[i] ?? 0) + h11 * h * (f1[i] ?? 0);
+  }
+  return yInterp;
 }
