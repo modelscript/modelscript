@@ -3542,6 +3542,7 @@ export class ModelicaSimulator {
       rtol?: number;
       solverOptions?: SolverOptions;
       randomVariables?: RandomVariable[];
+      realtimeFactor?: number;
     },
   ): Promise<{
     t: number[];
@@ -3859,212 +3860,109 @@ export class ModelicaSimulator {
 
     // ── Solver dispatch ──
     const solverChoice = solverOpts.integrator;
-    let res: { t: number[]; y: number[][] };
+    let res: { t: number[]; y: number[][] } = { t: [], y: [] };
 
-    if (solverChoice === "dopri5") {
-      // Build output times array
-      const numSteps = Math.max(1, Math.ceil((stopTime - startTime) / step));
-      const outputTimes: number[] = [];
-      for (let i = 0; i <= numSteps; i++) {
-        outputTimes.push(startTime + i * step);
-      }
-      if ((outputTimes[outputTimes.length - 1] ?? 0) < stopTime - 1e-14) {
-        outputTimes.push(stopTime);
-      }
+    let chunkedSim = false;
+    const rtf = options?.realtimeFactor ?? 0;
+    let chunkStep = step;
 
-      // Build event functions from when-clause zero crossings
-      const eventFns: ((t: number, y: number[]) => number)[] = [];
-      for (const clause of this.whenClauses) {
-        eventFns.push((tE: number, yE: number[]) => {
-          populateEnv(tE, yE);
-          if (clause.zeroCrossingFn) {
-            return clause.zeroCrossingFn(evaluator) ?? 0;
-          }
-          const val = evaluator.evaluate(clause.condition);
-          // Map boolean to a continuous-ish value: true → -1, false → +1
-          return val !== null && val !== 0 ? -1 : 1;
-        });
-      }
+    if (rtf > 0) {
+      chunkedSim = true;
+      chunkStep = Math.min(step, 0.1);
+    }
 
-      const dopriOpts: Dopri5Options = {
-        atol: solverOpts.atol,
-        rtol: solverOpts.rtol,
-        maxStep: step,
-        initialStep: step / 10,
-      };
+    if (!chunkedSim) {
+      if (solverChoice === "dopri5") {
+        // Build output times array
+        const numSteps = Math.max(1, Math.ceil((stopTime - startTime) / step));
+        const outputTimes: number[] = [];
+        for (let i = 0; i <= numSteps; i++) {
+          outputTimes.push(startTime + i * step);
+        }
+        if ((outputTimes[outputTimes.length - 1] ?? 0) < stopTime - 1e-14) {
+          outputTimes.push(stopTime);
+        }
 
-      const dopriResult = dopri5Solver(
-        f,
-        startTime,
-        initialValues,
-        stopTime,
-        outputTimes,
-        dopriOpts,
-        eventFns.length > 0 ? eventFns : undefined,
-        eventFns.length > 0
-          ? (tE: number, yE: number[], eventIdx: number, dir: 1 | -1) => {
-              const clause = this.whenClauses[eventIdx];
-              if (clause) {
-                if (
-                  (clause.zeroCrossingDirection === "negative" && dir !== -1) ||
-                  (clause.zeroCrossingDirection === "positive" && dir !== 1)
-                ) {
-                  return yE;
-                }
-                for (let i = 0; i < stateList.length; i++) {
-                  const name = stateList[i];
-                  if (name) evaluator.preValues.set(name, yE[i] ?? 0);
-                }
-                evaluator.env.set("time", tE);
-                for (let i = 0; i < stateList.length; i++) {
-                  const name = stateList[i];
-                  if (name) evaluator.env.set(name, yE[i] ?? 0);
-                }
-                this.fireWhenActions(clause, evaluator, yE, stateIndexMap);
-              }
-              return yE;
+        // Build event functions from when-clause zero crossings
+        const eventFns: ((t: number, y: number[]) => number)[] = [];
+        for (const clause of this.whenClauses) {
+          eventFns.push((tE: number, yE: number[]) => {
+            populateEnv(tE, yE);
+            if (clause.zeroCrossingFn) {
+              return clause.zeroCrossingFn(evaluator) ?? 0;
             }
-          : undefined,
-      );
+            const val = evaluator.evaluate(clause.condition);
+            // Map boolean to a continuous-ish value: true → -1, false → +1
+            return val !== null && val !== 0 ? -1 : 1;
+          });
+        }
 
-      res = { t: dopriResult.times, y: dopriResult.states };
-    } else if (solverChoice === "bdf") {
-      // BDF solver for stiff systems
-      const numSteps = Math.max(1, Math.ceil((stopTime - startTime) / step));
-      const outputTimes: number[] = [];
-      for (let i = 0; i <= numSteps; i++) {
-        outputTimes.push(startTime + i * step);
-      }
-      if ((outputTimes[outputTimes.length - 1] ?? 0) < stopTime - 1e-14) {
-        outputTimes.push(stopTime);
-      }
+        const dopriOpts: Dopri5Options = {
+          atol: solverOpts.atol,
+          rtol: solverOpts.rtol,
+          maxStep: step,
+          initialStep: step / 10,
+        };
 
-      const eventFns: ((t: number, y: number[]) => number)[] = [];
-      for (const clause of this.whenClauses) {
-        eventFns.push((tE: number, yE: number[]) => {
-          populateEnv(tE, yE);
-          if (clause.zeroCrossingFn) {
-            return clause.zeroCrossingFn(evaluator) ?? 0;
-          }
-          const val = evaluator.evaluate(clause.condition);
-          // Map boolean to a continuous-ish value: true → -1, false → +1
-          return val !== null && val !== 0 ? -1 : 1;
-        });
-      }
-
-      const bdfOpts: BdfOptions = {
-        atol: solverOpts.atol,
-        rtol: solverOpts.rtol,
-        maxStep: step,
-        initialStep: step / 10,
-      };
-
-      const bdfResult = bdfSolver(
-        f,
-        startTime,
-        initialValues,
-        stopTime,
-        outputTimes,
-        bdfOpts,
-        eventFns.length > 0 ? eventFns : undefined,
-        eventFns.length > 0
-          ? (tE: number, yE: number[], eventIdx: number, dir: 1 | -1) => {
-              const clause = this.whenClauses[eventIdx];
-              if (clause) {
-                if (
-                  (clause.zeroCrossingDirection === "negative" && dir !== -1) ||
-                  (clause.zeroCrossingDirection === "positive" && dir !== 1)
-                ) {
-                  return yE;
+        const dopriResult = dopri5Solver(
+          f,
+          startTime,
+          initialValues,
+          stopTime,
+          outputTimes,
+          dopriOpts,
+          eventFns.length > 0 ? eventFns : undefined,
+          eventFns.length > 0
+            ? (tE: number, yE: number[], eventIdx: number, dir: 1 | -1) => {
+                const clause = this.whenClauses[eventIdx];
+                if (clause) {
+                  if (
+                    (clause.zeroCrossingDirection === "negative" && dir !== -1) ||
+                    (clause.zeroCrossingDirection === "positive" && dir !== 1)
+                  ) {
+                    return yE;
+                  }
+                  for (let i = 0; i < stateList.length; i++) {
+                    const name = stateList[i];
+                    if (name) evaluator.preValues.set(name, yE[i] ?? 0);
+                  }
+                  evaluator.env.set("time", tE);
+                  for (let i = 0; i < stateList.length; i++) {
+                    const name = stateList[i];
+                    if (name) evaluator.env.set(name, yE[i] ?? 0);
+                  }
+                  this.fireWhenActions(clause, evaluator, yE, stateIndexMap);
                 }
-                for (let i = 0; i < stateList.length; i++) {
-                  const name = stateList[i];
-                  if (name) evaluator.preValues.set(name, yE[i] ?? 0);
-                }
-                evaluator.env.set("time", tE);
-                for (let i = 0; i < stateList.length; i++) {
-                  const name = stateList[i];
-                  if (name) evaluator.env.set(name, yE[i] ?? 0);
-                }
-                this.fireWhenActions(clause, evaluator, yE, stateIndexMap);
+                return yE;
               }
-              return yE;
+            : undefined,
+        );
+
+        res = { t: dopriResult.times, y: dopriResult.states };
+      } else if (solverChoice === "bdf") {
+        // BDF solver for stiff systems
+        const numSteps = Math.max(1, Math.ceil((stopTime - startTime) / step));
+        const outputTimes: number[] = [];
+        for (let i = 0; i <= numSteps; i++) {
+          outputTimes.push(startTime + i * step);
+        }
+        if ((outputTimes[outputTimes.length - 1] ?? 0) < stopTime - 1e-14) {
+          outputTimes.push(stopTime);
+        }
+
+        const eventFns: ((t: number, y: number[]) => number)[] = [];
+        for (const clause of this.whenClauses) {
+          eventFns.push((tE: number, yE: number[]) => {
+            populateEnv(tE, yE);
+            if (clause.zeroCrossingFn) {
+              return clause.zeroCrossingFn(evaluator) ?? 0;
             }
-          : undefined,
-      );
+            const val = evaluator.evaluate(clause.condition);
+            // Map boolean to a continuous-ish value: true → -1, false → +1
+            return val !== null && val !== 0 ? -1 : 1;
+          });
+        }
 
-      res = { t: bdfResult.times, y: bdfResult.states };
-    } else if (solverChoice === "auto") {
-      // Auto solver: start with DOPRI5, fall back to BDF if too many rejections
-      const numSteps = Math.max(1, Math.ceil((stopTime - startTime) / step));
-      const outputTimes: number[] = [];
-      for (let i = 0; i <= numSteps; i++) {
-        outputTimes.push(startTime + i * step);
-      }
-      if ((outputTimes[outputTimes.length - 1] ?? 0) < stopTime - 1e-14) {
-        outputTimes.push(stopTime);
-      }
-
-      const eventFns: ((t: number, y: number[]) => number)[] = [];
-      for (const clause of this.whenClauses) {
-        eventFns.push((tE: number, yE: number[]) => {
-          populateEnv(tE, yE);
-          if (clause.zeroCrossingFn) {
-            return clause.zeroCrossingFn(evaluator) ?? 0;
-          }
-          const val = evaluator.evaluate(clause.condition);
-          // Map boolean to a continuous-ish value: true → -1, false → +1
-          return val !== null && val !== 0 ? -1 : 1;
-        });
-      }
-
-      // Try DOPRI5 first
-      const dopriOpts: Dopri5Options = {
-        atol: solverOpts.atol,
-        rtol: solverOpts.rtol,
-        maxStep: step,
-        initialStep: step / 10,
-      };
-
-      const dopriResult = dopri5Solver(
-        f,
-        startTime,
-        initialValues,
-        stopTime,
-        outputTimes,
-        dopriOpts,
-        eventFns.length > 0 ? eventFns : undefined,
-        eventFns.length > 0
-          ? (tE: number, yE: number[], eventIdx: number, dir: 1 | -1) => {
-              const clause = this.whenClauses[eventIdx];
-              if (clause) {
-                if (
-                  (clause.zeroCrossingDirection === "negative" && dir !== -1) ||
-                  (clause.zeroCrossingDirection === "positive" && dir !== 1)
-                ) {
-                  return yE;
-                }
-                for (let i = 0; i < stateList.length; i++) {
-                  const name = stateList[i];
-                  if (name) evaluator.preValues.set(name, yE[i] ?? 0);
-                }
-                evaluator.env.set("time", tE);
-                for (let i = 0; i < stateList.length; i++) {
-                  const name = stateList[i];
-                  if (name) evaluator.env.set(name, yE[i] ?? 0);
-                }
-                this.fireWhenActions(clause, evaluator, yE, stateIndexMap);
-              }
-              return yE;
-            }
-          : undefined,
-      );
-
-      // Stiffness heuristic: if rejection ratio is too high, re-run with BDF
-      const rejectionRatio = dopriResult.acceptedSteps > 0 ? dopriResult.rejectedSteps / dopriResult.acceptedSteps : 0;
-
-      if (rejectionRatio > 0.5) {
-        // Too many rejections — likely stiff. Switch to BDF.
         const bdfOpts: BdfOptions = {
           atol: solverOpts.atol,
           rtol: solverOpts.rtol,
@@ -4090,29 +3988,236 @@ export class ModelicaSimulator {
                   ) {
                     return yE;
                   }
+                  for (let i = 0; i < stateList.length; i++) {
+                    const name = stateList[i];
+                    if (name) evaluator.preValues.set(name, yE[i] ?? 0);
+                  }
+                  evaluator.env.set("time", tE);
+                  for (let i = 0; i < stateList.length; i++) {
+                    const name = stateList[i];
+                    if (name) evaluator.env.set(name, yE[i] ?? 0);
+                  }
                   this.fireWhenActions(clause, evaluator, yE, stateIndexMap);
                 }
                 return yE;
               }
             : undefined,
         );
+
         res = { t: bdfResult.times, y: bdfResult.states };
+      } else if (solverChoice === "auto") {
+        // Auto solver: start with DOPRI5, fall back to BDF if too many rejections
+        const numSteps = Math.max(1, Math.ceil((stopTime - startTime) / step));
+        const outputTimes: number[] = [];
+        for (let i = 0; i <= numSteps; i++) {
+          outputTimes.push(startTime + i * step);
+        }
+        if ((outputTimes[outputTimes.length - 1] ?? 0) < stopTime - 1e-14) {
+          outputTimes.push(stopTime);
+        }
+
+        const eventFns: ((t: number, y: number[]) => number)[] = [];
+        for (const clause of this.whenClauses) {
+          eventFns.push((tE: number, yE: number[]) => {
+            populateEnv(tE, yE);
+            if (clause.zeroCrossingFn) {
+              return clause.zeroCrossingFn(evaluator) ?? 0;
+            }
+            const val = evaluator.evaluate(clause.condition);
+            // Map boolean to a continuous-ish value: true → -1, false → +1
+            return val !== null && val !== 0 ? -1 : 1;
+          });
+        }
+
+        // Try DOPRI5 first
+        const dopriOpts: Dopri5Options = {
+          atol: solverOpts.atol,
+          rtol: solverOpts.rtol,
+          maxStep: step,
+          initialStep: step / 10,
+        };
+
+        const dopriResult = dopri5Solver(
+          f,
+          startTime,
+          initialValues,
+          stopTime,
+          outputTimes,
+          dopriOpts,
+          eventFns.length > 0 ? eventFns : undefined,
+          eventFns.length > 0
+            ? (tE: number, yE: number[], eventIdx: number, dir: 1 | -1) => {
+                const clause = this.whenClauses[eventIdx];
+                if (clause) {
+                  if (
+                    (clause.zeroCrossingDirection === "negative" && dir !== -1) ||
+                    (clause.zeroCrossingDirection === "positive" && dir !== 1)
+                  ) {
+                    return yE;
+                  }
+                  for (let i = 0; i < stateList.length; i++) {
+                    const name = stateList[i];
+                    if (name) evaluator.preValues.set(name, yE[i] ?? 0);
+                  }
+                  evaluator.env.set("time", tE);
+                  for (let i = 0; i < stateList.length; i++) {
+                    const name = stateList[i];
+                    if (name) evaluator.env.set(name, yE[i] ?? 0);
+                  }
+                  this.fireWhenActions(clause, evaluator, yE, stateIndexMap);
+                }
+                return yE;
+              }
+            : undefined,
+        );
+
+        // Stiffness heuristic: if rejection ratio is too high, re-run with BDF
+        const rejectionRatio =
+          dopriResult.acceptedSteps > 0 ? dopriResult.rejectedSteps / dopriResult.acceptedSteps : 0;
+
+        if (rejectionRatio > 0.5) {
+          // Too many rejections — likely stiff. Switch to BDF.
+          const bdfOpts: BdfOptions = {
+            atol: solverOpts.atol,
+            rtol: solverOpts.rtol,
+            maxStep: step,
+            initialStep: step / 10,
+          };
+
+          const bdfResult = bdfSolver(
+            f,
+            startTime,
+            initialValues,
+            stopTime,
+            outputTimes,
+            bdfOpts,
+            eventFns.length > 0 ? eventFns : undefined,
+            eventFns.length > 0
+              ? (tE: number, yE: number[], eventIdx: number, dir: 1 | -1) => {
+                  const clause = this.whenClauses[eventIdx];
+                  if (clause) {
+                    if (
+                      (clause.zeroCrossingDirection === "negative" && dir !== -1) ||
+                      (clause.zeroCrossingDirection === "positive" && dir !== 1)
+                    ) {
+                      return yE;
+                    }
+                    this.fireWhenActions(clause, evaluator, yE, stateIndexMap);
+                  }
+                  return yE;
+                }
+              : undefined,
+          );
+          res = { t: bdfResult.times, y: bdfResult.states };
+        } else {
+          res = { t: dopriResult.times, y: dopriResult.states };
+        }
       } else {
-        res = { t: dopriResult.times, y: dopriResult.states };
+        // Fixed-step RK4
+        res = this.rk4WithEvents(
+          f,
+          startTime,
+          stopTime,
+          initialValues,
+          step,
+          stateList,
+          stateIndexMap,
+          evaluator,
+          options?.signal,
+        );
       }
     } else {
-      // Fixed-step RK4
-      res = this.rk4WithEvents(
-        f,
-        startTime,
-        stopTime,
-        initialValues,
-        step,
-        stateList,
-        stateIndexMap,
-        evaluator,
-        options?.signal,
-      );
+      // ── Chunked Real-Time Run (Asynchronous) ──
+      const realStartTimeMs = performance.now();
+      let currentT = startTime;
+      let currentY = initialValues;
+
+      const eventFns: ((tE: number, yE: number[]) => number)[] = [];
+      for (const clause of this.whenClauses) {
+        eventFns.push((tE: number, yE: number[]) => {
+          populateEnv(tE, yE);
+          if (clause.zeroCrossingFn) {
+            return clause.zeroCrossingFn(evaluator) ?? 0;
+          }
+          const val = evaluator.evaluate(clause.condition);
+          return val !== null && val !== 0 ? -1 : 1;
+        });
+      }
+
+      const eventCallback =
+        eventFns.length > 0
+          ? (tE: number, yE: number[], eventIdx: number, dir: 1 | -1) => {
+              const clause = this.whenClauses[eventIdx];
+              if (clause) {
+                if (
+                  (clause.zeroCrossingDirection === "negative" && dir !== -1) ||
+                  (clause.zeroCrossingDirection === "positive" && dir !== 1)
+                )
+                  return yE;
+                for (let i = 0; i < stateList.length; i++) {
+                  const name = stateList[i];
+                  if (name) evaluator.preValues.set(name, yE[i] ?? 0);
+                }
+                evaluator.env.set("time", tE);
+                for (let i = 0; i < stateList.length; i++) {
+                  const name = stateList[i];
+                  if (name) evaluator.env.set(name, yE[i] ?? 0);
+                }
+                this.fireWhenActions(clause, evaluator, yE, stateIndexMap);
+              }
+              return yE;
+            }
+          : undefined;
+
+      while (currentT < stopTime - 1e-14) {
+        const nextT = Math.min(currentT + chunkStep, stopTime);
+        const outputTimes = [currentT, nextT];
+
+        let chunkRes: { times: number[]; states: number[][] };
+        if (solverChoice === "dopri5" || solverChoice === "auto") {
+          chunkRes = dopri5Solver(
+            f,
+            currentT,
+            currentY,
+            nextT,
+            outputTimes,
+            { maxStep: chunkStep, atol: solverOpts.atol, rtol: solverOpts.rtol },
+            eventFns.length > 0 ? eventFns : undefined,
+            eventCallback,
+          );
+        } else {
+          chunkRes = bdfSolver(
+            f,
+            currentT,
+            currentY,
+            nextT,
+            outputTimes,
+            { maxStep: chunkStep, atol: solverOpts.atol, rtol: solverOpts.rtol },
+            eventFns.length > 0 ? eventFns : undefined,
+            eventCallback,
+          );
+        }
+
+        if (currentT === startTime) {
+          res.t.push(chunkRes.times[0] ?? 0);
+          res.y.push(chunkRes.states[0] ?? []);
+        }
+        res.t.push(chunkRes.times[chunkRes.times.length - 1] ?? 0);
+        res.y.push(chunkRes.states[chunkRes.states.length - 1] ?? []);
+
+        currentY = chunkRes.states[chunkRes.states.length - 1] ?? [];
+        currentT = nextT;
+
+        const expectedWallMs = ((currentT - startTime) / rtf) * 1000;
+        const elapsedWallMs = performance.now() - realStartTimeMs;
+        const sleepMs = expectedWallMs - elapsedWallMs;
+
+        if (sleepMs > 0) {
+          await new Promise((r) => setTimeout(r, sleepMs));
+        } else {
+          await new Promise((r) => (setImmediate ? setImmediate(r) : setTimeout(r, 0)));
+        }
+      }
     }
 
     // Build complete result with ODE states + algebraic vars + derivatives.

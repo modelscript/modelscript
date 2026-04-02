@@ -18,6 +18,7 @@ interface SimulateArgs {
   interval?: number;
   format: string;
   solver: string;
+  realtime?: number;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
@@ -65,10 +66,14 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
         type: "string",
         choices: ["rk4", "dopri5", "bdf", "auto"],
         default: "dopri5",
+      })
+      .option("realtime", {
+        description: "run simulation in real-time mode with given scale factor (e.g., 1.0 for 1x)",
+        type: "number",
       });
     // eslint-disable-next-line @typescript-eslint/no-empty-object-type
   }) as CommandModule<{}, SimulateArgs>["builder"],
-  handler: (args) => {
+  handler: async (args) => {
     const parser = new Parser();
     parser.setLanguage(Modelica);
     Context.registerParser(".mo", parser);
@@ -161,28 +166,56 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
     const step = args.interval ?? exp.interval ?? (stopTime - startTime) / 1000;
 
     // Run simulation
-    const result = simulator.simulate(startTime, stopTime, step, {
-      solver: args.solver as "rk4" | "dopri5" | "bdf" | "auto",
-    });
-    const states = result.states;
-
-    // Output results
-    if (args.format === "json") {
-      const rows = result.t.map((t: number, i: number) => {
-        const row: Record<string, number> = { time: t };
-        states.forEach((state: string, vIndex: number) => {
-          row[state] = result.y[i]?.[vIndex] ?? 0;
-        });
-        return row;
+    const states = Array.from(simulator.stateVars) as string[];
+    if (args.realtime !== undefined && args.realtime > 0) {
+      if (args.format === "csv") {
+        const header = ["time", ...states].join(",");
+        process.stdout.write(header + "\n");
+      }
+      // Stream results
+      const res = await simulator.simulateAsync(startTime, stopTime, step, {
+        solver: args.solver as "rk4" | "dopri5" | "bdf" | "auto",
+        realtimeFactor: args.realtime,
       });
-      process.stdout.write(JSON.stringify(rows, null, 2) + "\n");
+      // Print everything at the end for JSON. If we want we can stream CSV.
+      if (args.format === "json") {
+        const rows = res.t.map((t: number, i: number) => {
+          const row: Record<string, number> = { time: t };
+          states.forEach((state: string, vIndex: number) => {
+            row[state] = res.y[i]?.[vIndex] ?? 0;
+          });
+          return row;
+        });
+        process.stdout.write(JSON.stringify(rows, null, 2) + "\n");
+      } else {
+        for (let i = 0; i < res.t.length; i++) {
+          const values = [res.t[i], ...states.map((_: string, vIndex: number) => res.y[i]?.[vIndex] ?? 0)];
+          process.stdout.write(values.join(",") + "\n");
+        }
+      }
     } else {
-      // CSV format
-      const header = ["time", ...states].join(",");
-      process.stdout.write(header + "\n");
-      for (let i = 0; i < result.t.length; i++) {
-        const values = [result.t[i], ...states.map((_: string, vIndex: number) => result.y[i]?.[vIndex] ?? 0)];
-        process.stdout.write(values.join(",") + "\n");
+      const result = simulator.simulate(startTime, stopTime, step, {
+        solver: args.solver as "rk4" | "dopri5" | "bdf" | "auto",
+      });
+
+      // Output results
+      if (args.format === "json") {
+        const rows = result.t.map((t: number, i: number) => {
+          const row: Record<string, number> = { time: t };
+          states.forEach((state: string, vIndex: number) => {
+            row[state] = result.y[i]?.[vIndex] ?? 0;
+          });
+          return row;
+        });
+        process.stdout.write(JSON.stringify(rows, null, 2) + "\n");
+      } else {
+        // CSV format
+        const header = ["time", ...states].join(",");
+        process.stdout.write(header + "\n");
+        for (let i = 0; i < result.t.length; i++) {
+          const values = [result.t[i], ...states.map((_: string, vIndex: number) => result.y[i]?.[vIndex] ?? 0)];
+          process.stdout.write(values.join(",") + "\n");
+        }
       }
     }
   },

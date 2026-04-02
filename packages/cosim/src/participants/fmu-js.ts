@@ -17,6 +17,7 @@ import type { FmiModelDescription, FmiScalarVariable } from "../fmu/model-descri
 import type { FmuStorage, StoredFmu } from "../fmu/storage.js";
 import type { ParticipantMetadata, ParticipantVariable } from "../mqtt/protocol.js";
 import type { CoSimParticipant } from "../participant.js";
+import { JsSimulatorParticipant } from "./js-simulator.js";
 
 /**
  * Options for creating an FMU-JS participant.
@@ -58,8 +59,14 @@ export class FmuJsParticipant implements CoSimParticipant {
   /** Whether the participant has been initialized. */
   private initialized = false;
 
+  private readonly storage: FmuStorage;
+
+  /** Underlying js simulator if model.json is present inside the Fmu */
+  private simulatorParticipant?: JsSimulatorParticipant;
+
   constructor(options: FmuJsParticipantOptions) {
     this.id = options.id;
+    this.storage = options.storage;
 
     // Load metadata from storage
     const stored = options.storage.get(options.fmuId);
@@ -99,9 +106,22 @@ export class FmuJsParticipant implements CoSimParticipant {
     };
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async initialize(startTime: number, _stopTime: number, _stepSize: number): Promise<void> {
     this.currentTime = startTime;
+
+    // Load model.json if it exists inside the FmuStorage
+    const modelJsonString = this.storage.getModelJson(this.id);
+
+    if (modelJsonString) {
+      try {
+        JSON.parse(modelJsonString); // Validate JSON format
+        // Internal DAE rehydration removed due to incomplete TOJSON serialization in AST.
+        // FmuJsParticipant must be initialized via DAE pass-through or native FMU solvers.
+        console.warn(`[FmuJsParticipant] DAE embedded in ${this.id} cannot be deserialized yet.`);
+      } catch (err) {
+        console.warn(`[FmuJsParticipant] Failed to load embedded DAE from ${this.id}:`, err);
+      }
+    }
 
     // Initialize variable values from FMU start attributes
     for (const v of this.modelDesc.variables) {
@@ -121,6 +141,14 @@ export class FmuJsParticipant implements CoSimParticipant {
       this.currentTime = this.modelDesc.defaultExperiment.startTime;
     }
 
+    if (this.simulatorParticipant) {
+      await this.simulatorParticipant.initialize(startTime, _stopTime, _stepSize);
+      // sync our override maps
+      for (const [name, value] of this.values) {
+        this.simulatorParticipant.setInputs(new Map([[name, value]]));
+      }
+    }
+
     this.initialized = true;
     void this.storedFmu; // retained for future model.json loading
   }
@@ -128,15 +156,20 @@ export class FmuJsParticipant implements CoSimParticipant {
   async doStep(currentTime: number, stepSize: number): Promise<void> {
     if (!this.initialized) throw new Error("FMU-JS participant not initialized");
 
-    // Apply input overrides before stepping
-    for (const [name, value] of this.inputOverrides) {
-      this.values.set(name, value);
+    if (this.simulatorParticipant) {
+      // Pass the inputs
+      await this.simulatorParticipant.setInputs(this.inputOverrides);
+      await this.simulatorParticipant.doStep(currentTime, stepSize);
+      const outs = await this.simulatorParticipant.getOutputs();
+      for (const [name, value] of outs) {
+        this.values.set(name, value);
+      }
+    } else {
+      // Apply input overrides before stepping
+      for (const [name, value] of this.inputOverrides) {
+        this.values.set(name, value);
+      }
     }
-
-    // In passthrough mode: input values propagate to outputs
-    // A full FMU-JS implementation would run the embedded DAE here.
-    // For now, we support direct I/O coupling which is sufficient
-    // for signal routing and external data integration.
 
     this.currentTime = currentTime + stepSize;
     this.inputOverrides.clear();

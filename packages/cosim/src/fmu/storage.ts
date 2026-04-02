@@ -152,6 +152,13 @@ export class FmuStorage {
     return readFileSync(xmlPath, "utf-8");
   }
 
+  /** Get the embedded model.json (serialized DAE) content if it exists. */
+  getModelJson(id: string): string | null {
+    const archive = this.getArchive(id);
+    if (!archive) return null;
+    return extractFileFromZip(archive, "resources/model.json");
+  }
+
   /** Get the terminalsAndIcons.xml content (if it exists). */
   getTerminalsAndIcons(id: string): string | null {
     const xmlPath = join(this.storageDir, id, "terminalsAndIcons.xml");
