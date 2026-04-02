@@ -849,6 +849,72 @@ async function initWorkspaceAndTree(
           await vscode.window.showTextDocument(controllerDoc, { preview: false });
           break;
         }
+        case "uns-mqtt": {
+          const encoder = new TextEncoder();
+          filename = "DigitalTwin.mo";
+          content = [
+            'model DigitalTwin "Real-Time Digital Twin with UNS/MQTT"',
+            '  // 1. Open the Co-Simulation panel and check "Browser-Local" mode.',
+            '  // 2. Click "Custom..." and create a session with a huge Stop Time (e.g., 86400).',
+            '  // 3. Click "+ Add Participant", then "From Open .mo File".',
+            "  // 4. Connect the Vite/React HMI to ws://localhost:9001 or use the provided HTML HMI.",
+            "",
+            '  parameter Real target_speed = 10.0 "Override via: .../cmd/DigitalTwin/target_speed";',
+            '  Real speed(start=0) "Telemetry published to: .../data/DigitalTwin/speed";',
+            "equation",
+            "  der(speed) = (target_speed - speed) * 1.5;",
+            "end DigitalTwin;\n",
+          ].join("\n");
+
+          const hmiHtml = [
+            "<!DOCTYPE html>",
+            "<html><head><title>HMI</title>",
+            '<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>',
+            "<style>body{font-family:sans-serif;text-align:center;padding-top:50px;} h1{font-size:3rem;}</style>",
+            "</head><body>",
+            "<h2>Conveyor Speed</h2>",
+            '<h1 id="speed">0.00</h1>',
+            "<p>Live telemetry via MQTT Unified Namespace</p>",
+            "<script>",
+            "  // Connect to embedded ModelScript MQTT broker",
+            '  const client = mqtt.connect("ws://localhost:9001");',
+            '  client.on("connect", () => {',
+            '    console.log("Connected to broker");',
+            '    client.subscribe("modelscript/site/default/area/default/line/session1/cell/DigitalTwin/data/speed");',
+            "  });",
+            '  client.on("message", (t, m) => {',
+            '    document.getElementById("speed").innerText = parseFloat(m.toString()).toFixed(2);',
+            "  });",
+            "</script>",
+            "</body></html>",
+          ].join("\n");
+
+          const readmeMd = [
+            "# UNS / Real-Time MQTT Example",
+            "",
+            "This workspace demonstrates how to stream live telemetry from a Modelica simulation directly to an external HMI web app.",
+            "",
+            "## Running the Co-Simulation",
+            "",
+            "1. Open the **Co-Simulation** panel in the sidebar",
+            '2. Click **"Browser-Local"** to enable local mode (starts the embedded broker)',
+            "3. Click **Custom...** to create a new session:",
+            "   - Set **Stop Time** to `86400` (1 day) so it runs continuously",
+            "   - Click **Create**",
+            "4. With `DigitalTwin.mo` open in the editor, click **+ Add Participant** -> **From Open .mo File**",
+            "5. Click **Start**",
+            "",
+            "## Viewing the HMI",
+            "",
+            "Open `hmi.html` in your browser or run a live server. It connects directly to the embedded MQTT broker in the IDE and subscribes to the unified namespace.",
+          ].join("\n");
+
+          const hmiUri = Uri.joinPath(workspaceUri, "hmi.html");
+          const readmeUri = Uri.joinPath(workspaceUri, "README.md");
+          await workspace.fs.writeFile(hmiUri, encoder.encode(hmiHtml));
+          await workspace.fs.writeFile(readmeUri, encoder.encode(readmeMd));
+          break;
+        }
       }
 
       if (filename && content) {

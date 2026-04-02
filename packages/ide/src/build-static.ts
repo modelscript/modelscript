@@ -227,6 +227,14 @@ const landingHtml = `<!DOCTYPE html>
       <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M 2 20 Q 7 -12 12 20 Q 16 2 20 16"></path><circle cx="20" cy="16" r="3.5" fill="#da3633" stroke="none"></circle></svg></div>
       <span class="tpl-name">Bouncing Ball</span>
     </a>
+    <a href="/vscode/workbench/#memfs:cosim" class="tpl-card">
+      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3" /><circle cx="18" cy="6" r="3" /><circle cx="12" cy="18" r="3" /><path d="M8.5 7.5L10.5 16M15.5 7.5L13.5 16" /><path d="M9 6h6" stroke-dasharray="2 2" /></svg></div>
+      <span class="tpl-name">Co-Simulation</span>
+    </a>
+    <a href="/vscode/workbench/#memfs:uns-mqtt" class="tpl-card">
+      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path><polyline points="16 6 12 2 8 6"></polyline><line x1="12" y1="2" x2="12" y2="15"></line></svg></div>
+      <span class="tpl-name">UNS / Digital Twin</span>
+    </a>
     <a href="/vscode/workbench/#memfs:rlc" class="tpl-card">
       <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h3l2-4 4 8 4-8 4 8 2-4h2"></path></svg></div>
       <span class="tpl-name">RLC Circuit</span>

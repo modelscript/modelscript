@@ -53,6 +53,8 @@
   },
   "dependencies": {
     "@modelscript/core": "*",
+    "aedes": "^1.0.2",
+    "aedes-server-factory": "^0.2.1",
     "mqtt": "^5.10.0",
     "pg": "^8.13.0",
     "ws": "^8.18.0"

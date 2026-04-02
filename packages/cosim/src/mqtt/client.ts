@@ -29,7 +29,9 @@ import {
 
 export interface MqttClientOptions {
   /** MQTT broker URL (e.g., mqtt://localhost:1883). */
-  brokerUrl: string;
+  brokerUrl?: string;
+  /** Custom stream builder for in-memory browser brokers. */
+  streamBuilder?: () => unknown;
   /** Client ID (auto-generated if not provided). */
   clientId?: string | undefined;
   /** UNS context for topic construction. */
@@ -45,7 +47,8 @@ type MessageHandler<T> = (message: T, topic: string) => void;
  */
 export class CosimMqttClient {
   private client: MqttJsClient | null = null;
-  private readonly brokerUrl: string;
+  private readonly brokerUrl: string | undefined;
+  private readonly streamBuilder: (() => unknown) | undefined;
   private readonly clientId: string;
   readonly unsContext: UnsContext;
 
@@ -61,6 +64,7 @@ export class CosimMqttClient {
 
   constructor(options: MqttClientOptions) {
     this.brokerUrl = options.brokerUrl;
+    this.streamBuilder = options.streamBuilder;
     this.clientId = options.clientId ?? `modelscript-${Math.random().toString(36).slice(2, 10)}`;
     this.unsContext = options.unsContext;
   }
@@ -85,7 +89,15 @@ export class CosimMqttClient {
         };
       }
 
-      this.client = mqtt.connect(this.brokerUrl, opts);
+      if (this.streamBuilder) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        this.client = mqtt.connect({ ...opts, builder: this.streamBuilder } as any);
+      } else if (this.brokerUrl) {
+        this.client = mqtt.connect(this.brokerUrl, opts);
+      } else {
+        reject(new Error("Must provide either brokerUrl or streamBuilder"));
+        return;
+      }
 
       this.client.on("connect", () => {
         resolve();

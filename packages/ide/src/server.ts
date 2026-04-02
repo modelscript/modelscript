@@ -339,6 +339,10 @@ app.get("/", (_req, res) => {
       <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3" /><circle cx="18" cy="6" r="3" /><circle cx="12" cy="18" r="3" /><path d="M8.5 7.5L10.5 16M15.5 7.5L13.5 16" /><path d="M9 6h6" stroke-dasharray="2 2" /></svg></div>
       <span class="tpl-name">Co-Simulation</span>
     </a>
+    <a href="/vscode/workbench/#memfs:uns-mqtt" class="tpl-card">
+      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path><polyline points="16 6 12 2 8 6"></polyline><line x1="12" y1="2" x2="12" y2="15"></line></svg></div>
+      <span class="tpl-name">UNS / Digital Twin</span>
+    </a>
   </div>
 </div>
 <script>
