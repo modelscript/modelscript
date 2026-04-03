@@ -34,6 +34,7 @@ jobs:
         with:
           node-version-file: ".nvmrc"
           cache: "npm"
+          registry-url: "https://registry.npmjs.org"
       - name: Import GPG Key
         uses: crazy-max/ghaction-import-gpg@v6
         with:
@@ -73,6 +74,7 @@ jobs:
         run: npx nx release publish --yes
         env:
           NPM_CONFIG_PROVENANCE: true
+          NODE_AUTH_TOKEN: ""
 
       # --- Publish VS Code Extension ---
       - name: Sync VS Code Extension Version
