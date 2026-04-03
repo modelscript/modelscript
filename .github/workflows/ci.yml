@@ -29,6 +29,8 @@ jobs:
           key: ${{ runner.os }}-msl-v4.1.0
       - name: Install Dependencies
         run: npm ci
+        env:
+          CXXFLAGS: "-std=c++20"
       - name: Download MSL
         run: node scripts/download-msl.cjs
       - name: Run Build
