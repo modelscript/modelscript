@@ -1,3 +1,13 @@
+## 0.0.16 (2026-04-03)
+
+### 🩹 Fixes
+
+- **ci:** correct npm provenance auth for trusted publishers ([95e1341](https://github.com/modelscript/modelscript/commit/95e1341))
+
+### ❤️ Thank You
+
+- Mohamad Omar Nachawati @nachawati
+
 ## 0.0.15 (2026-04-03)
 
 This was a version bump only for @modelscript/core to align it with other projects, there were no code changes.

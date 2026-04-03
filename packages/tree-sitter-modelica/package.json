@@ -1,6 +1,6 @@
 {
   "name": "@modelscript/tree-sitter-modelica",
-  "version": "0.0.15",
+  "version": "0.0.16",
   "description": "Modelica grammar for tree-sitter",
   "keywords": [
     "incremental",
