@@ -560,6 +560,78 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
    */
   visitEntity(node: ModelicaEntity, args: [string, ModelicaDAE]): void {
     this.visitClassInstance(node, args);
+    this.extractCSGTopology(node, args[1]);
+  }
+
+  /**
+   * Post-Pass: Extracts Constructive Solid Geometry topological execution graphs
+   * from the flattened Modelica physical simulation network.
+   */
+  private extractCSGTopology(rootNode: ModelicaClassInstance, dae: ModelicaDAE) {
+    dae.csgGraph = { nodes: [] };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const walk = (node: any, prefix: string) => {
+      let typeName = "";
+      let classInst: ModelicaClassInstance | null = null;
+
+      if (node instanceof ModelicaComponentInstance && node.classInstance) {
+        typeName = node.classInstance.name ?? "";
+        classInst = node.classInstance;
+      } else if (node instanceof ModelicaClassInstance) {
+        typeName = node.name ?? "";
+        classInst = node;
+      }
+
+      const uuid = prefix ? prefix : "root";
+
+      const getNum = (varName: string, defaultVal: number): number => {
+        const v = dae.variables.find((v) => v.name === varName);
+        if (v?.expression && "value" in v.expression) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          return Number((v.expression as any).value) || defaultVal;
+        }
+        return defaultVal;
+      };
+
+      if (dae.csgGraph) {
+        if (typeName === "Stock") {
+          const width = getNum(`${uuid}.width`, 100);
+          const length = getNum(`${uuid}.length`, 200);
+          const height = getNum(`${uuid}.height`, 50);
+
+          dae.csgGraph.nodes.push({
+            type: "Stock",
+            uuid,
+            parameters: { width, length, height },
+            inputs: [],
+            outputs: [`${uuid}.shapeOut`],
+          });
+        } else if (typeName === "MillingOperation") {
+          const tool_diameter = getNum(`${uuid}.tool_diameter`, 10);
+          const depth_of_cut = getNum(`${uuid}.depth_of_cut`, 10);
+          const feed_rate = getNum(`${uuid}.feed_rate`, 100);
+
+          dae.csgGraph.nodes.push({
+            type: "MillingOperation",
+            uuid,
+            parameters: { tool_diameter, depth_of_cut, feed_rate },
+            inputs: [`${uuid}.shapeIn`],
+            outputs: [`${uuid}.shapeOut`],
+          });
+        }
+      }
+
+      if (classInst) {
+        for (const el of classInst.elements) {
+          if (el instanceof ModelicaComponentInstance) {
+            walk(el, prefix ? `${prefix}.${el.name ?? "unnamed"}` : (el.name ?? "unnamed"));
+          }
+        }
+      }
+    };
+
+    walk(rootNode, "");
   }
 
   activeClassStack: ModelicaClassInstance[] = [];
@@ -917,6 +989,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       this.#assembleStateMachines(args[1]);
       this.#partitionClocks(args[1]);
       this.#extractEventIndicators(args[1]);
+      this.extractCSGTopology(node, args[1]);
 
       // Extract experiment annotation (StartTime, StopTime, Tolerance, Interval)
       for (const ann of node.annotations) {

@@ -37,6 +37,7 @@
   },
   "dependencies": {
     "@modelscript/core": "*",
+    "@modelscript/csg": "*",
     "@modelscript/tree-sitter-modelica": "*",
     "@npmcli/package-json": "^7.0.0",
     "adm-zip": "^0.5.16",

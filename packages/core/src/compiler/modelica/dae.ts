@@ -21,6 +21,18 @@ export interface SourceLocation {
   endCol: number;
 }
 
+export interface CSGExecutionGraph {
+  nodes: CSGNode[];
+}
+
+export interface CSGNode {
+  type: string;
+  uuid: string;
+  parameters: Record<string, number>;
+  inputs: string[];
+  outputs: string[];
+}
+
 /**
  * O(1) variable lookup table that wraps a flat ModelicaVariable[] array with
  * Map-based indices.  Three access patterns are supported:
@@ -277,6 +289,8 @@ export class ModelicaDAE {
   objective: ModelicaExpression | null = null;
   /** Structural connect(a, b) pairs preserved for ECAD netlist extraction. */
   connectPairs: { a: string; b: string; aComponent: string; bComponent: string }[] = [];
+  /** Procedural CAD execution topology extracted for opencascade workers. */
+  csgGraph: CSGExecutionGraph | null = null;
 
   constructor(name: string, description?: string | null) {
     this.name = name;

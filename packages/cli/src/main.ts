@@ -6,6 +6,7 @@ import PackageJson from "@npmcli/package-json";
 import path from "node:path";
 import yargs from "yargs/yargs";
 import { Cosim } from "./commands/cosim.js";
+import { BuildCSG } from "./commands/csg.js";
 import { ExportFmu } from "./commands/export-fmu.js";
 import { Flatten } from "./commands/flatten.js";
 import { I18n } from "./commands/i18n.js";
@@ -40,6 +41,7 @@ yargs(process.argv.slice(2))
   .command(Render)
   .command(Simulate)
   .command(Unpublish)
+  .command(BuildCSG)
   .strictCommands()
   .demandCommand()
   .help()
