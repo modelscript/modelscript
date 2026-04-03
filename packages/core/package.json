@@ -81,6 +81,10 @@
   "engines": {
     "node": ">=22"
   },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "nx": {
     "implicitDependencies": [
       "!@modelscript/cli"
