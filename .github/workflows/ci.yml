@@ -32,9 +32,9 @@ jobs:
       - name: Download MSL
         run: node scripts/download-msl.cjs
       - name: Run Build
-        run: npx lerna run build
+        run: npm run build
       - name: Run Tests
-        run: npx lerna run test
+        run: npm run test
         if: always()
       - name: Publish Test Report
         uses: ctrf-io/github-test-reporter@v1
@@ -42,7 +42,7 @@ jobs:
           report-path: "**/ctrf/*.json"
         if: always()
       - name: Run Lint
-        run: npx lerna run lint
+        run: npm run lint
       - name: Package VS Code Extension
         run: npx @vscode/vsce package --no-dependencies
         working-directory: packages/vscode

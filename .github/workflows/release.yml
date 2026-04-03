@@ -57,11 +57,11 @@ jobs:
       - name: Download MSL
         run: node scripts/download-msl.cjs
       - name: Build
-        run: npx lerna run build
+        run: npm run build
       - name: Test
-        run: npx lerna run test
+        run: npm run test
       - name: Lint
-        run: npx lerna run lint
+        run: npm run lint
 
       # --- Version, Changelog, Tag ---
       - name: Version & Changelog
