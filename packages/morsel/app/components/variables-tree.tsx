@@ -2,6 +2,7 @@
 
 import { Checkbox, TreeView } from "@primer/react";
 import { useMemo } from "react";
+import { SIMULATION_COLORS } from "./simulation-results";
 
 interface VariablesTreeProps {
   variables: string[];
@@ -46,6 +47,8 @@ export function VariablesTree({ variables, selectedVariables, onToggleVariable }
   const renderNode = (node: TreeNode) => {
     const isSelected = selectedVariables.includes(node.fullName);
     const hasChildren = node.children.size > 0;
+    const selectedIndex = selectedVariables.indexOf(node.fullName);
+    const color = isSelected ? SIMULATION_COLORS[selectedIndex % SIMULATION_COLORS.length] : undefined;
 
     const items = Array.from(node.children.values()).sort((a, b) => {
       // Directories first, then alphabetical
@@ -63,12 +66,25 @@ export function VariablesTree({ variables, selectedVariables, onToggleVariable }
       >
         <TreeView.LeadingVisual>
           {node.isVariable ? (
-            <Checkbox
-              checked={isSelected}
-              onChange={() => onToggleVariable(node.fullName)}
-              onClick={(e: React.MouseEvent) => e.stopPropagation()}
-              aria-label={isSelected ? "Hide variable" : "Show variable"}
-            />
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <Checkbox
+                checked={isSelected}
+                onChange={() => onToggleVariable(node.fullName)}
+                onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                aria-label={isSelected ? "Hide variable" : "Show variable"}
+              />
+              {isSelected && (
+                <div
+                  style={{
+                    width: 12,
+                    height: 12,
+                    borderRadius: 2,
+                    backgroundColor: color,
+                    flexShrink: 0,
+                  }}
+                />
+              )}
+            </div>
           ) : null}
         </TreeView.LeadingVisual>
         {node.name}

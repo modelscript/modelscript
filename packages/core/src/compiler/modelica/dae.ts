@@ -267,7 +267,7 @@ export class ModelicaDAE {
     stopTime?: number;
     tolerance?: number;
     interval?: number;
-    numberOfIntervals?: number;
+    __modelscript_equidistantOutput?: boolean;
   } = {};
   /** Event indicators (zero-crossing functions) for state events. */
   eventIndicators: ModelicaExpression[] = [];

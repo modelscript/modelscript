@@ -11,6 +11,17 @@ interface SimulationResult {
   t: number[];
   y: number[][];
   states: string[];
+  parameters?: {
+    name: string;
+    type: "real" | "integer" | "boolean" | "enumeration";
+    defaultValue: number;
+    min?: number;
+    max?: number;
+    step: number;
+    unit?: string;
+    enumLiterals?: { ordinal: number; label: string }[];
+  }[];
+  experiment?: { startTime?: number; stopTime?: number; interval?: number; tolerance?: number };
   error?: string;
 }
 
@@ -21,6 +32,8 @@ export class SimulationPanel {
   private readonly panel: vscode.WebviewPanel;
   private readonly extensionUri: vscode.Uri;
   private readonly liveMode: boolean;
+  public sourceUri?: string;
+  private client?: LanguageClient;
   private disposables: vscode.Disposable[] = [];
 
   static async createOrShow(extensionUri: vscode.Uri, client: LanguageClient) {
@@ -55,6 +68,7 @@ export class SimulationPanel {
 
         // Create or reuse panel
         if (SimulationPanel.currentPanel) {
+          SimulationPanel.currentPanel.sourceUri = uri;
           SimulationPanel.currentPanel.panel.reveal(vscode.ViewColumn.Beside);
           SimulationPanel.currentPanel.postResults(result);
           return;
@@ -72,6 +86,8 @@ export class SimulationPanel {
         );
 
         SimulationPanel.currentPanel = new SimulationPanel(panel, extensionUri, false);
+        SimulationPanel.currentPanel.client = client;
+        SimulationPanel.currentPanel.sourceUri = uri;
         SimulationPanel.currentPanel.postResults(result);
       },
     );
@@ -149,6 +165,68 @@ export class SimulationPanel {
     this.liveMode = liveMode;
     this.panel.webview.html = this.getHtmlForWebview();
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
+    this.panel.webview.onDidReceiveMessage(
+      async (msg) => {
+        if (msg.type === "simulateRequest" && this.client) {
+          const uri = this.sourceUri;
+          if (!uri) return;
+
+          await vscode.window.withProgress(
+            {
+              location: vscode.ProgressLocation.Notification,
+              title: "Simulating with new parameters...",
+              cancellable: false,
+            },
+            async () => {
+              if (!this.client) return;
+              const result: SimulationResult = await this.client.sendRequest("modelscript/simulate", {
+                uri,
+                startTime: msg.payload.startTime,
+                stopTime: msg.payload.stopTime,
+                interval: msg.payload.interval,
+                parameterOverrides: msg.payload.parameterOverrides,
+              });
+
+              if (result.error) {
+                vscode.window.showErrorMessage(`Simulation failed: ${result.error}`);
+                return;
+              }
+              if (result.t.length === 0) {
+                vscode.window.showWarningMessage("Simulation produced no data.");
+                return;
+              }
+
+              // Inject user requested overrides back into the result so the webview preserves them
+              if (result.experiment) {
+                if (msg.payload.startTime !== undefined) result.experiment.startTime = msg.payload.startTime;
+                if (msg.payload.stopTime !== undefined) result.experiment.stopTime = msg.payload.stopTime;
+                if (msg.payload.interval !== undefined) result.experiment.interval = msg.payload.interval;
+                if (msg.payload.tolerance !== undefined) result.experiment.tolerance = msg.payload.tolerance;
+              } else {
+                result.experiment = {
+                  startTime: msg.payload.startTime,
+                  stopTime: msg.payload.stopTime,
+                  interval: msg.payload.interval,
+                  tolerance: msg.payload.tolerance,
+                };
+              }
+
+              if (result.parameters && msg.payload.parameterOverrides) {
+                for (const p of result.parameters) {
+                  if (msg.payload.parameterOverrides[p.name] !== undefined) {
+                    p.defaultValue = msg.payload.parameterOverrides[p.name];
+                  }
+                }
+              }
+
+              this.postResults(result);
+            },
+          );
+        }
+      },
+      null,
+      this.disposables,
+    );
   }
 
   private postResults(result: SimulationResult) {
@@ -215,29 +293,108 @@ export class SimulationPanel {
       flex-direction: row;
     }
     #sidebar {
-      width: 250px;
-      min-width: 150px;
+      width: 300px;
+      min-width: 200px;
       max-width: 50%;
       resize: horizontal;
-      overflow: auto;
+      overflow-y: auto;
+      overflow-x: hidden;
       border-right: 1px solid var(--vscode-panel-border, #333);
+      background: var(--vscode-sideBar-background, #252526);
       display: flex;
       flex-direction: column;
-      background: var(--vscode-sideBar-background, #252526);
     }
-    #sidebar-header {
+    .sidebar-section {
+      border-bottom: 1px solid var(--vscode-panel-border, #333);
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+    }
+    .sidebar-section.collapsed {
+      flex: 0 0 auto;
+    }
+    .sidebar-header {
       padding: 8px 16px;
       font-size: 11px;
       font-weight: 600;
       text-transform: uppercase;
       color: var(--vscode-sideBarTitle-foreground, #ccc);
-      border-bottom: 1px solid var(--vscode-panel-border, #333);
-      flex-shrink: 0;
+      cursor: pointer;
+      user-select: none;
+      display: flex;
+      align-items: center;
+      background: rgba(0,0,0,0.1);
     }
-    #tree-view {
-      flex: 1;
-      overflow: auto;
+    .sidebar-header:hover {
+      background: rgba(0,0,0,0.2);
+    }
+    .sidebar-header::before {
+      content: "▼";
+      font-size: 9px;
+      margin-right: 6px;
+      transition: transform 0.1s;
+    }
+    .sidebar-section.collapsed .sidebar-header::before {
+      transform: rotate(-90deg);
+    }
+    .sidebar-content {
       padding: 4px 0;
+      display: block;
+      flex: 1;
+      overflow-y: auto;
+    }
+    .sidebar-section.collapsed .sidebar-content {
+      display: none;
+    }
+    .settings-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 4px 16px;
+      font-size: 12px;
+    }
+    .settings-row label {
+      color: var(--vscode-sideBar-foreground, #ccc);
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      margin-right: 8px;
+    }
+    .settings-row input {
+      width: 80px;
+      background: var(--vscode-input-background, #3c3c3c);
+      color: var(--vscode-input-foreground, #ccc);
+      border: 1px solid var(--vscode-input-border, transparent);
+      padding: 2px 4px;
+      font-family: inherit;
+      font-size: 12px;
+      border-radius: 2px;
+    }
+    .settings-row input:focus {
+      outline: 1px solid var(--vscode-focusBorder);
+      outline-offset: -1px;
+    }
+    .simulate-btn-container {
+      padding: 12px 16px;
+    }
+    .simulate-btn {
+      width: 100%;
+      padding: 6px;
+      background: var(--vscode-button-background, #0e639c);
+      color: var(--vscode-button-foreground, #ffffff);
+      border: none;
+      border-radius: 2px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+    }
+    .simulate-btn:hover {
+      background: var(--vscode-button-hoverBackground, #1177bb);
+    }
+    #tree-view, #parameters-view {
+      margin: 0;
     }
     #chart-container {
       flex: 1;
@@ -245,6 +402,13 @@ export class SimulationPanel {
       display: flex;
       flex-direction: column;
       position: relative;
+    }
+    canvas {
+      flex: 1;
+      width: 100%;
+      height: 100%;
+      min-width: 0;
+      min-height: 0;
     }
     #toolbar {
       display: none;
@@ -381,8 +545,28 @@ export class SimulationPanel {
 <body>
   <div id="main-layout">
     <div id="sidebar">
-      <div id="sidebar-header">Variables</div>
-      <ul id="tree-view" class="tree-node tree-root"></ul>
+      <div class="sidebar-section">
+        <div class="sidebar-header" onclick="this.parentElement.classList.toggle('collapsed')">Variables</div>
+        <div class="sidebar-content">
+          <ul id="tree-view" class="tree-node tree-root"></ul>
+        </div>
+      </div>
+      <div class="sidebar-section" id="params-section" style="display: none;">
+        <div class="sidebar-header" onclick="this.parentElement.classList.toggle('collapsed')">Parameters</div>
+        <div class="sidebar-content" id="parameters-view"></div>
+      </div>
+      <div class="sidebar-section" id="settings-section" style="display: none;">
+        <div class="sidebar-header" onclick="this.parentElement.classList.toggle('collapsed')">Simulation Settings</div>
+        <div class="sidebar-content" id="settings-view">
+          <div class="settings-row"><label>Start Time</label><input type="number" id="st-start" step="any"></div>
+          <div class="settings-row"><label>Stop Time</label><input type="number" id="st-stop" step="any"></div>
+          <div class="settings-row"><label>Interval</label><input type="number" id="st-interval" step="any"></div>
+          <div class="settings-row"><label>Tolerance</label><input type="number" id="st-tolerance" step="any"></div>
+          <div class="simulate-btn-container">
+            <button id="btn-simulate" class="simulate-btn">Simulate</button>
+          </div>
+        </div>
+      </div>
     </div>
     <div id="chart-container">
       <div id="toolbar">

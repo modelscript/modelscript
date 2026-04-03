@@ -1901,6 +1901,7 @@ export class ModelicaSimulator {
       rtol?: number;
       solverOptions?: SolverOptions;
       randomVariables?: RandomVariable[];
+      equidistantOutput?: boolean;
     },
   ): { t: number[]; y: number[][]; states: string[]; uncertainty?: MonteCarloResult } {
     // ── Pre-dispatch for Monte Carlo Simulation ──
@@ -2235,6 +2236,7 @@ export class ModelicaSimulator {
         rtol: solverOpts.rtol,
         maxStep: step,
         initialStep: step / 10,
+        ...(options?.equidistantOutput !== undefined ? { equidistantOutput: options.equidistantOutput } : {}),
       };
 
       const dopriResult = dopri5Solver(
@@ -2361,6 +2363,7 @@ export class ModelicaSimulator {
         rtol: solverOpts.rtol,
         maxStep: step,
         initialStep: step / 10,
+        ...(options?.equidistantOutput !== undefined ? { equidistantOutput: options.equidistantOutput } : {}),
       };
 
       const dopriResult = dopri5Solver(

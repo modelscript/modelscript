@@ -930,15 +930,25 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
             }
             return undefined;
           };
+          const getBool = (paramName: string): boolean | undefined => {
+            const mod = ann.modification?.getModificationArgument(paramName);
+            if (mod && "expression" in mod) {
+              const expr = (mod as { expression?: ModelicaExpression | null }).expression;
+              if (expr instanceof ModelicaBooleanLiteral) return expr.value;
+            }
+            return undefined;
+          };
           const exp = args[1].experiment;
           const startTime = getNum("StartTime");
           const stopTime = getNum("StopTime");
           const tolerance = getNum("Tolerance");
           const interval = getNum("Interval");
+          const eqOut = getBool("__modelscript_equidistantOutput");
           if (startTime !== undefined) exp.startTime = startTime;
           if (stopTime !== undefined) exp.stopTime = stopTime;
           if (tolerance !== undefined) exp.tolerance = tolerance;
           if (interval !== undefined) exp.interval = interval;
+          if (eqOut !== undefined) exp.__modelscript_equidistantOutput = eqOut;
         }
       }
     }
@@ -6287,15 +6297,6 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     const ref2 = node.componentReference2;
     if (!ref1 || !ref2) return null;
 
-    if (ctx.prefix === "") {
-      console.log(
-        "Visit connect:",
-        ref1.parts.map((p) => p.identifier?.text).join("."),
-        "to",
-        ref2.parts.map((p) => p.identifier?.text).join("."),
-      );
-    }
-
     // Check if this entire connect equation was removed via `break connect(...)`
     if (ctx.brokenConnects && ctx.brokenConnects.size > 0) {
       // Include array subscripts in the key to match (e.g. c1[i] not just c1)
@@ -6359,7 +6360,6 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     // Collect leaf variables from both connector sides
     const leaves1 = this.#collectConnectorLeaves(comp1, name1);
     const leaves2 = this.#collectConnectorLeaves(comp2, name2);
-    console.log(`leaves1 size=${leaves1.size}, leaves2 size=${leaves2.size}`);
 
     // Match variables by their local name suffix and generate equations
     for (const [localName, info1] of leaves1) {

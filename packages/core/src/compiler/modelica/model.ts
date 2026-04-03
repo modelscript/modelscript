@@ -460,8 +460,29 @@ export class ModelicaExtendsClassInstance extends ModelicaElement {
             for (const el of this.classInstance.elements) {
               if (el instanceof ModelicaNamedElement && el.name) elementNames.add(el.name);
             }
+
+            const localArgNames = new Set<string>();
+            if (this.abstractSyntaxNode?.classOrInheritanceModification != null) {
+              for (const arg of this.abstractSyntaxNode.classOrInheritanceModification
+                .modificationArgumentOrInheritanceModifications ?? []) {
+                if (arg instanceof ModelicaElementModificationSyntaxNode) {
+                  if (arg.identifier?.text) localArgNames.add(arg.identifier.text);
+                } else if (arg instanceof ModelicaElementRedeclarationSyntaxNode) {
+                  const redeclName =
+                    arg.componentClause?.componentDeclaration?.declaration?.identifier?.text ??
+                    arg.shortClassDefinition?.identifier?.text;
+                  if (redeclName) localArgNames.add(redeclName);
+                }
+              }
+            }
+
             for (const modArg of this.#modification.modificationArguments) {
-              if (modArg.name && modArg.name !== "annotation" && !elementNames.has(modArg.name)) {
+              if (
+                modArg.name &&
+                localArgNames.has(modArg.name) &&
+                modArg.name !== "annotation" &&
+                !elementNames.has(modArg.name)
+              ) {
                 this.parent?.diagnostics.push(
                   makeDiagnostic(
                     ModelicaErrorCode.MODIFIER_NOT_FOUND,

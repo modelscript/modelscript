@@ -4,6 +4,7 @@ import {
   ModelicaDAEVisitor,
   ModelicaEquation,
   ModelicaExpression,
+  ModelicaFunctionCallEquation,
   ModelicaIntegerVariable,
   ModelicaNameExpression,
   ModelicaRealVariable,
@@ -114,7 +115,16 @@ export function performBltTransformation(dae: ModelicaDAE): {
     }
   }
 
-  const equations = [...dae.equations];
+  const equations: ModelicaEquation[] = [];
+  const constraintEquations: ModelicaEquation[] = [];
+
+  for (const eq of dae.equations) {
+    if (eq instanceof ModelicaFunctionCallEquation) {
+      constraintEquations.push(eq);
+    } else {
+      equations.push(eq);
+    }
+  }
 
   // 2. Build Bipartite Graph E -> V
   // eqDeps maps from equation index to set of unknown variable names it depends on
@@ -278,7 +288,8 @@ export function performBltTransformation(dae: ModelicaDAE): {
                 if (idx >= 0) sccEqs[idx] = isolated;
                 equations[eqIdx] = isolated;
                 // Propagate back to the original DAE so output uses the isolated form
-                dae.equations[eqIdx] = isolated;
+                const origIdx = dae.equations.indexOf(matchingEq);
+                if (origIdx >= 0) dae.equations[origIdx] = isolated;
               } else {
                 // implicit single variable loop — cannot isolate
                 algebraicLoops.push({ variables: scc, equations: sccEqs });
@@ -299,6 +310,9 @@ export function performBltTransformation(dae: ModelicaDAE): {
       if (eq) sortedEquations.push(eq);
     }
   }
+
+  // Add constraint and assertion equations at the very end
+  sortedEquations.push(...constraintEquations);
 
   return { sortedEquations, algebraicLoops };
 }

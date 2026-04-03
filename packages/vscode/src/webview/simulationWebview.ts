@@ -68,6 +68,23 @@ const btnPause = document.getElementById("btn-pause")!;
 const btnClear = document.getElementById("btn-clear")!;
 const btnResetView = document.getElementById("btn-reset-view")!;
 const checkboxSmooth = document.getElementById("checkbox-smooth") as HTMLInputElement;
+
+const vscodeApi = (window as typeof window & { acquireVsCodeApi?: () => { postMessage: (msg: unknown) => void } })
+  .acquireVsCodeApi
+  ? (window as typeof window & { acquireVsCodeApi?: () => { postMessage: (msg: unknown) => void } }).acquireVsCodeApi!()
+  : null;
+
+// Settings & Parameters DOM elements
+const paramsSection = document.getElementById("params-section")!;
+const settingsSection = document.getElementById("settings-section")!;
+const parametersView = document.getElementById("parameters-view")!;
+const btnSimulate = document.getElementById("btn-simulate")!;
+const tStartInput = document.getElementById("st-start") as HTMLInputElement;
+const tStopInput = document.getElementById("st-stop") as HTMLInputElement;
+const intervalInput = document.getElementById("st-interval") as HTMLInputElement;
+const toleranceInput = document.getElementById("st-tolerance") as HTMLInputElement;
+
+let currentParameters: Record<string, HTMLInputElement> = {};
 /* eslint-enable @typescript-eslint/no-non-null-assertion */
 
 let currentInterpolation = "smooth";
@@ -86,6 +103,7 @@ let isDragging = false;
 let dragStartX = 0;
 let dragStartY = 0;
 let baseBounds: { tMin: number; tMax: number; yMin: number; yMax: number } | null = null;
+let hoverIndex: number | null = null;
 
 function calculateDefaultBounds(): { tMin: number; tMax: number; yMin: number; yMax: number } | null {
   if (isLiveMode && liveBuffer && liveBuffer.count > 0) {
@@ -190,6 +208,45 @@ window.addEventListener("message", (event) => {
     toolbarEl.classList.remove("live-mode");
     stopLiveLoop();
     buildTreeView(msg.data.states);
+
+    // Fill in Parameters
+    if (msg.data.parameters && msg.data.parameters.length > 0) {
+      paramsSection.style.display = "flex";
+      parametersView.innerHTML = "";
+      currentParameters = {};
+
+      msg.data.parameters.forEach(
+        (p: { name: string; description?: string; defaultValue: number; type: string; unit?: string }) => {
+          const row = document.createElement("div");
+          row.className = "settings-row";
+
+          const label = document.createElement("label");
+          label.textContent = p.name + (p.unit ? ` [${p.unit}]` : "");
+          label.title = p.description || p.name;
+
+          const input = document.createElement("input");
+          input.type = "number";
+          input.step = "any";
+          input.value = typeof p.defaultValue === "number" ? p.defaultValue.toString() : "";
+
+          row.appendChild(label);
+          row.appendChild(input);
+          parametersView.appendChild(row);
+          currentParameters[p.name] = input;
+        },
+      );
+    } else {
+      paramsSection.style.display = "none";
+    }
+
+    // Fill in Experiment Settings
+    settingsSection.style.display = "flex";
+    const exp = msg.data.experiment || {};
+    tStartInput.value = (exp.startTime ?? 0).toString();
+    tStopInput.value = (exp.stopTime ?? 10).toString();
+    intervalInput.value = (exp.interval ?? ((exp.stopTime ?? 10) - (exp.startTime ?? 0)) / 500).toString();
+    toleranceInput.value = (exp.tolerance ?? 1e-4).toString();
+
     draw();
   } else if (msg.type === "liveMode") {
     // Live MQTT streaming mode
@@ -239,7 +296,31 @@ window.addEventListener("message", (event) => {
 const resizeObserver = new ResizeObserver(() => {
   if (currentData || (isLiveMode && liveBuffer)) draw();
 });
-resizeObserver.observe(canvas);
+resizeObserver.observe(containerEl); // Observe the chart container instead of canvas directly
+
+btnSimulate?.addEventListener("click", () => {
+  if (!vscodeApi) return;
+  const parameterOverrides: Record<string, number> = {};
+  for (const [name, input] of Object.entries(currentParameters)) {
+    if (input.value !== "") {
+      const val = parseFloat(input.value);
+      if (!isNaN(val)) {
+        parameterOverrides[name] = val;
+      }
+    }
+  }
+
+  vscodeApi.postMessage({
+    type: "simulateRequest",
+    payload: {
+      startTime: tStartInput.value ? parseFloat(tStartInput.value) : undefined,
+      stopTime: tStopInput.value ? parseFloat(tStopInput.value) : undefined,
+      interval: intervalInput.value ? parseFloat(intervalInput.value) : undefined,
+      tolerance: toleranceInput.value ? parseFloat(toleranceInput.value) : undefined,
+      parameterOverrides,
+    },
+  });
+});
 
 // ── Chart Interaction Events ──
 
@@ -1055,6 +1136,39 @@ function draw() {
   }
 
   ctx.restore();
+
+  // Draw hover tracer
+  if (hoverIndex !== null && hoverIndex < t.length) {
+    const hx = xScale(t[hoverIndex]);
+
+    // Vertical line
+    ctx.strokeStyle = axisColor;
+    ctx.setLineDash([4, 4]);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(hx, margin.top);
+    ctx.lineTo(hx, margin.top + plotH);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Circles
+    for (let vi = 0; vi < states.length; vi++) {
+      if (hiddenVars.has(states[vi])) continue;
+      const val = y[hoverIndex]?.[vi];
+      if (val === undefined || !isFinite(val)) continue;
+
+      const hy = yScale(val);
+      if (hy >= margin.top && hy <= margin.top + plotH) {
+        ctx.fillStyle = isDark ? "#2d2d2d" : "#ffffff";
+        ctx.strokeStyle = COLORS[vi % COLORS.length];
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(hx, hy, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
+  }
 }
 
 // Tooltip on mousemove
@@ -1070,6 +1184,10 @@ canvas.addEventListener("mousemove", (e) => {
 
   if (mx < margin.left || mx > margin.left + plotW || my < margin.top || my > margin.top + plotH) {
     tooltipEl.style.display = "none";
+    if (hoverIndex !== null) {
+      hoverIndex = null;
+      draw();
+    }
     return;
   }
 
@@ -1109,10 +1227,19 @@ canvas.addEventListener("mousemove", (e) => {
   if (ty + th > rect.height - 8) ty = e.clientY - rect.top - th - 12;
   tooltipEl.style.left = tx + "px";
   tooltipEl.style.top = ty + "px";
+
+  if (hoverIndex !== closest) {
+    hoverIndex = closest;
+    draw();
+  }
 });
 
 canvas.addEventListener("mouseleave", () => {
   tooltipEl.style.display = "none";
+  if (hoverIndex !== null) {
+    hoverIndex = null;
+    draw();
+  }
 });
 
 // Utility: nice tick values

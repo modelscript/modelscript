@@ -1,7 +1,20 @@
 import { Spinner } from "@primer/react";
 import Papa from "papaparse";
 import { useEffect, useState } from "react";
-import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+
+export const SIMULATION_COLORS = [
+  "#0969da",
+  "#2da44e",
+  "#bf3989",
+  "#db6d28",
+  "#8250df",
+  "#1168e3",
+  "#218bff",
+  "#a371f7",
+  "#3fb950",
+  "#e34c26",
+];
 
 interface SimulationResultsProps {
   jobId?: string | null;
@@ -172,63 +185,52 @@ export function SimulationResults({
     return <div style={{ padding: "32px", color: "var(--color-fg-muted)" }}>No data available to plot.</div>;
   }
 
-  // Generate distinct colors for lines
-  const colors = [
-    "#0969da",
-    "#2da44e",
-    "#bf3989",
-    "#db6d28",
-    "#8250df",
-    "#1168e3",
-    "#218bff",
-    "#a371f7",
-    "#3fb950",
-    "#e34c26",
-  ];
-
   return (
     <div style={{ padding: "32px", height: "100%", display: "flex", flexDirection: "column" }}>
       <h2 style={{ margin: 0, marginBottom: "16px", fontSize: "16px", fontWeight: "bold" }}>Simulation Results</h2>
-      <div style={{ flex: 1, minHeight: 0 }}>
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart
-            data={data}
-            margin={{
-              top: 5,
-              right: 30,
-              left: 20,
-              bottom: 5,
-            }}
-          >
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis
-              dataKey="time"
-              type="number"
-              domain={["dataMin", "dataMax"]}
-              tickFormatter={(val) => val.toFixed(2)}
-              label={{ value: "Time (s)", position: "insideBottomRight", offset: -5 }}
-            />
-            <YAxis />
-            <Tooltip
-              labelFormatter={(val) => {
-                const num = typeof val === "number" ? val : Number(val);
-                return `Time: ${isNaN(num) ? val : num.toFixed(4)}s`;
+      <div style={{ flex: 1, minHeight: 0, minWidth: 0, position: "relative" }}>
+        <div style={{ position: "absolute", top: 0, bottom: 0, left: 0, right: 0 }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart
+              data={data}
+              margin={{
+                top: 10,
+                right: 30,
+                left: 20,
+                bottom: 35,
               }}
-            />
-            <Legend />
-            {selectedVariables.map((v, i) => (
-              <Line
-                key={v}
-                type="monotone"
-                dataKey={v}
-                stroke={colors[i % colors.length]}
-                dot={false}
-                activeDot={{ r: 4 }}
-                isAnimationActive={false}
+            >
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis
+                dataKey="time"
+                type="number"
+                domain={["dataMin", "dataMax"]}
+                tickFormatter={(val) => val.toFixed(2)}
+                label={{ value: "time (s)", position: "insideBottom", offset: -20 }}
               />
-            ))}
-          </LineChart>
-        </ResponsiveContainer>
+              <YAxis />
+              <Tooltip
+                labelFormatter={(val) => {
+                  const num = typeof val === "number" ? val : Number(val);
+                  return `Time: ${isNaN(num) ? val : num.toFixed(4)}s`;
+                }}
+              />
+              {/* <Legend verticalAlign="top" height={36} /> -- Disabled to prevent Recharts infinite update loop crash */}
+              {selectedVariables.map((v, i) => (
+                <Line
+                  key={v}
+                  type="linear"
+                  dataKey={v}
+                  stroke={SIMULATION_COLORS[i % SIMULATION_COLORS.length]}
+                  strokeWidth={1}
+                  dot={false}
+                  activeDot={{ r: 4 }}
+                  isAnimationActive={false}
+                />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
       </div>
     </div>
   );

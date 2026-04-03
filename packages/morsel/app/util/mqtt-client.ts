@@ -11,10 +11,8 @@
  * designed for server-side Node.js usage.
  */
 
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore — mqtt/dist/mqtt.min is the browser-safe entry point
 import type { MqttClient as MqttJsClient } from "mqtt";
-import mqtt from "mqtt/dist/mqtt.min";
+import mqtt from "mqtt";
 
 /** Connection state. */
 export type MqttConnectionState = "disconnected" | "connecting" | "connected" | "error";

@@ -103,6 +103,18 @@ function BooleanParameterRow({
   onChange: (name: string, value: number) => void;
   onReset: (name: string) => void;
 }) {
+  // Use a ref-based stable callback to prevent Primer ToggleSwitch from infinite looping in useEffect
+  // because the `onChange` prop passed from parent components changes every render.
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+
+  const handleToggle = useCallback(
+    (checked: boolean) => {
+      onChangeRef.current(info.name, checked ? 1 : 0);
+    },
+    [info.name],
+  );
+
   return (
     <div style={ROW_STYLE}>
       <ResetButton visible={isOverridden} name={info.name} onReset={onReset} />
@@ -111,7 +123,7 @@ function BooleanParameterRow({
       </span>
       <ToggleSwitch
         checked={currentValue !== 0}
-        onChange={() => onChange(info.name, currentValue !== 0 ? 0 : 1)}
+        onChange={handleToggle}
         size="small"
         aria-label={info.name}
         aria-labelledby=""
@@ -260,6 +272,59 @@ export function SimulationParameters({ parameters, overrides, onChange, onReset 
               />
             );
         }
+      })}
+    </div>
+  );
+}
+
+export interface ExperimentOverrides {
+  startTime?: number;
+  stopTime?: number;
+  interval?: number;
+  tolerance?: number;
+}
+
+export function SimulationExperimentSettings({
+  experiment,
+  overrides,
+  onChange,
+  onReset,
+}: {
+  experiment?: { startTime?: number; stopTime?: number; interval?: number; tolerance?: number };
+  overrides: ExperimentOverrides;
+  onChange: (name: keyof ExperimentOverrides, value: number) => void;
+  onReset: (name: keyof ExperimentOverrides) => void;
+}) {
+  const defaults = {
+    startTime: experiment?.startTime ?? 0,
+    stopTime: experiment?.stopTime ?? 10,
+    interval: experiment?.interval ?? ((experiment?.stopTime ?? 10) - (experiment?.startTime ?? 0)) / 500,
+    tolerance: experiment?.tolerance ?? 1e-6,
+  };
+
+  const fields: { key: keyof ExperimentOverrides; label: string }[] = [
+    { key: "startTime", label: "Start Time" },
+    { key: "stopTime", label: "Stop Time" },
+    { key: "interval", label: "Interval" },
+    { key: "tolerance", label: "Tolerance" },
+  ];
+
+  return (
+    <div style={{ paddingTop: 4, paddingBottom: 4 }}>
+      {fields.map(({ key, label }) => {
+        const isOverridden = overrides[key] !== undefined;
+        const currentValue = isOverridden ? overrides[key]! : defaults[key];
+
+        return (
+          <NumericParameterRow
+            key={key}
+            info={{ name: label, type: "real", defaultValue: defaults[key] } as any}
+            currentValue={currentValue}
+            isOverridden={isOverridden}
+            onChange={(_, val) => onChange(key, val)}
+            onReset={() => onReset(key)}
+          />
+        );
       })}
     </div>
   );

@@ -52,6 +52,8 @@ export interface Dopri5Options {
   initialStep?: number;
   /** Maximum number of steps (default: 100000). */
   maxSteps?: number;
+  /** If true, output values only at `outputTimes`. If false, outputs every internal solver step (default: true). */
+  equidistantOutput?: boolean;
 }
 
 /** Result of a DOPRI5 integration. */
@@ -108,6 +110,7 @@ export function dopri5(
   const rtol = options.rtol ?? 1e-6;
   const maxStep = options.maxStep ?? Math.abs(tEnd - t0);
   const maxSteps = options.maxSteps ?? 100000;
+  const equidistant = options.equidistantOutput !== false;
   const n = y0.length;
 
   // ── Output setup ──
@@ -121,10 +124,15 @@ export function dopri5(
 
   // Sorted output queue
   let outputIdx = 0;
-  while (outputIdx < outputTimes.length && (outputTimes[outputIdx] ?? t0) <= t0) {
+  if (equidistant) {
+    while (outputIdx < outputTimes.length && (outputTimes[outputIdx] ?? t0) <= t0) {
+      result.times.push(t0);
+      result.states.push([...y0]);
+      outputIdx++;
+    }
+  } else {
     result.times.push(t0);
     result.states.push([...y0]);
-    outputIdx++;
   }
 
   // ── Initial step size estimation ──
@@ -220,21 +228,26 @@ export function dopri5(
             const yEvent = hermiteInterpolation(y, yNew, k[0] ?? [], k[6] ?? [], h, thetaEvent, n);
 
             // ── Output interpolation BEFORE the event! ──
-            while (outputIdx < outputTimes.length && (outputTimes[outputIdx] ?? tEnd) <= tEvent + 1e-14) {
-              const tOut = outputTimes[outputIdx] ?? tEvent;
-              if (tOut <= t + 1e-14) {
-                result.times.push(t);
-                result.states.push([...y]);
-              } else if (Math.abs(tOut - tEvent) < 1e-14) {
-                result.times.push(tEvent);
-                result.states.push([...yEvent]);
-              } else {
-                const theta = (tOut - t) / h;
-                const yInterp = hermiteInterpolation(y, yNew, k[0] ?? [], k[6] ?? [], h, theta, n);
-                result.times.push(tOut);
-                result.states.push(yInterp);
+            if (equidistant) {
+              while (outputIdx < outputTimes.length && (outputTimes[outputIdx] ?? tEnd) <= tEvent + 1e-14) {
+                const tOut = outputTimes[outputIdx] ?? tEvent;
+                if (tOut <= t + 1e-14) {
+                  result.times.push(t);
+                  result.states.push([...y]);
+                } else if (Math.abs(tOut - tEvent) < 1e-14) {
+                  result.times.push(tEvent);
+                  result.states.push([...yEvent]);
+                } else {
+                  const theta = (tOut - t) / h;
+                  const yInterp = hermiteInterpolation(y, yNew, k[0] ?? [], k[6] ?? [], h, theta, n);
+                  result.times.push(tOut);
+                  result.states.push(yInterp);
+                }
+                outputIdx++;
               }
-              outputIdx++;
+            } else {
+              result.times.push(tEvent);
+              result.states.push([...yEvent]);
             }
 
             // ── Fire event callback ──
@@ -258,21 +271,26 @@ export function dopri5(
 
       // ── Dense output for intermediate output times if NO event interrupted this step ──
       if (!eventOccurred) {
-        while (outputIdx < outputTimes.length && (outputTimes[outputIdx] ?? tEnd) <= tNew + 1e-14) {
-          const tOut = outputTimes[outputIdx] ?? tNew;
-          if (tOut <= t + 1e-14) {
-            result.times.push(t);
-            result.states.push([...y]);
-          } else if (Math.abs(tOut - tNew) < 1e-14) {
-            result.times.push(tNew);
-            result.states.push([...yNew]);
-          } else {
-            const theta = (tOut - t) / h;
-            const yInterp = hermiteInterpolation(y, yNew, k[0] ?? [], k[6] ?? [], h, theta, n);
-            result.times.push(tOut);
-            result.states.push(yInterp);
+        if (equidistant) {
+          while (outputIdx < outputTimes.length && (outputTimes[outputIdx] ?? tEnd) <= tNew + 1e-14) {
+            const tOut = outputTimes[outputIdx] ?? tNew;
+            if (tOut <= t + 1e-14) {
+              result.times.push(t);
+              result.states.push([...y]);
+            } else if (Math.abs(tOut - tNew) < 1e-14) {
+              result.times.push(tNew);
+              result.states.push([...yNew]);
+            } else {
+              const theta = (tOut - t) / h;
+              const yInterp = hermiteInterpolation(y, yNew, k[0] ?? [], k[6] ?? [], h, theta, n);
+              result.times.push(tOut);
+              result.states.push(yInterp);
+            }
+            outputIdx++;
           }
-          outputIdx++;
+        } else {
+          result.times.push(tNew);
+          result.states.push([...yNew]);
         }
 
         t = tNew;
@@ -294,7 +312,11 @@ export function dopri5(
   }
 
   // Ensure we output the final state if not already done
-  if (result.times.length === 0 || (result.times[result.times.length - 1] ?? -1) < tEnd - 1e-14) {
+  const shouldPushFinal = equidistant
+    ? result.times.length === 0 || (result.times[result.times.length - 1] ?? -1) < tEnd - 1e-14
+    : result.times.length === 0 || Math.abs((result.times[result.times.length - 1] ?? -1) - tEnd) > 1e-14;
+
+  if (shouldPushFinal) {
     result.times.push(t);
     result.states.push([...y]);
   }

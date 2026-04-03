@@ -88,11 +88,16 @@ export function simulateRouter(storage: LibraryStorage, jobQueue: JobQueue): exp
 
         // Use a simple fileNamePrefix so the CSV output path is predictable
         const fileNamePrefix = modelName.replace(/\./g, "_");
+        const simArgs = [qualifiedModelName, `outputFormat="csv"`, `fileNamePrefix="${fileNamePrefix}"`];
+        if (req.body.numberOfIntervals) {
+          simArgs.push(`numberOfIntervals=${req.body.numberOfIntervals}`);
+        }
+
         const mosContents = `
 ${loadModels.join("\n")}
 ${loadFiles.map((f) => `loadFile("${f}");`).join("\n")}
 ${adhocMoPath ? `loadFile("${adhocMoPath}");` : ""}
-simulate(${qualifiedModelName}, outputFormat="csv", fileNamePrefix="${fileNamePrefix}");
+simulate(${simArgs.join(", ")});
 getErrorString();
 `;
 

@@ -42,7 +42,6 @@ import {
   SponsorTiersIcon,
   StackIcon,
   SunIcon,
-  TriangleDownIcon,
   UnwrapIcon,
   UploadIcon,
   WorkflowIcon,
@@ -51,6 +50,7 @@ import {
 import {
   ActionList,
   ActionMenu,
+  Button,
   Dialog,
   IconButton,
   SegmentedControl,
@@ -68,12 +68,10 @@ import { mountLibrary, WebFileSystem } from "~/util/filesystem";
 import { getTranslations, uiLanguages } from "~/util/i18n";
 import type { CodeEditorHandle } from "./code";
 import ComponentList from "./component-list";
-import { CosimPanel } from "./cosim-panel";
 import type { DiagramEditorHandle } from "./diagram";
-import { MqttTreeWidget } from "./mqtt-tree";
 import OpenFileDropzone from "./open-file-dropzone";
 import PropertiesWidget from "./properties";
-import { SimulationParameters } from "./simulation-parameters";
+import { SimulationExperimentSettings, SimulationParameters, type ExperimentOverrides } from "./simulation-parameters";
 import { Splash, type ModelData } from "./splash";
 import TreeWidget from "./tree";
 import { VariablesTree } from "./variables-tree";
@@ -157,13 +155,9 @@ export default function MorselEditor(props: MorselEditorProps) {
   const openFileButtonRef = useRef<HTMLButtonElement>(null);
   const [isFlattenDialogOpen, setFlattenDialogOpen] = useState(false);
   const [flattenedCode, setFlattenedCode] = useState("");
-  const [isSimulateDialogOpen, setSimulateDialogOpen] = useState(false);
   const [simulationStatus, setSimulationStatus] = useState<any>(null);
-  const [simulationJobId, setSimulationJobId] = useState<string | null>(null);
-  const [simulationMode, setSimulationMode] = useState<"server" | "local">("local");
   const [cosimDataSource, setCosimDataSource] = useState<"local" | "mqtt-live" | "historian-replay">("local");
   const [localSimulationData, setLocalSimulationData] = useState<Record<string, number | string>[] | null>(null);
-  const simulationIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const simulateAbortControllerRef = useRef<AbortController | null>(null);
   const codeEditorRef = useRef<CodeEditorHandle>(null);
   const [decodedContent] = decodeDataUrl(props.dataUrl ?? null);
@@ -180,6 +174,8 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [parameterOverrides, setParameterOverrides] = useState<Map<string, number>>(new Map());
   const cachedSimulatorRef = useRef<ModelicaSimulator | null>(null);
   const [lastLoadedContent, setLastLoadedContent] = useState<string>("");
+
+  const [experimentOverrides, setExperimentOverrides] = useState<ExperimentOverrides>({});
   const [isDirtyDialogOpen, setDirtyDialogOpen] = useState(false);
   const [pendingSelection, setPendingSelection] = useState<ModelicaClassInstance | null>(null);
   const [selectedComponent, setSelectedComponent] = useState<ModelicaComponentInstance | null>(null);
@@ -312,81 +308,10 @@ export default function MorselEditor(props: MorselEditorProps) {
     }
   }, [treeVisible, props.embed]);
 
-  // Keep a ref so the main effect can read overrides without depending on them
-  const parameterOverridesRef = useRef(parameterOverrides);
-  parameterOverridesRef.current = parameterOverrides;
-
-  // Main auto-simulate: full flatten + simulate when the model changes
-  useEffect(() => {
-    if (showResultsView && simulationMode === "local" && classInstances.length > 0) {
-      const instance = diagramClassInstance ?? classInstances[0];
-      if (!instance) return;
-
-      simulateAbortControllerRef.current?.abort();
-      const abortController = new AbortController();
-      simulateAbortControllerRef.current = abortController;
-
-      const timer = setTimeout(async () => {
-        if (!instance.instantiated) {
-          instance.instantiate();
-        }
-
-        try {
-          const dae = new ModelicaDAE(instance.name || "Model");
-          const flattener = new ModelicaFlattener();
-          instance.accept(flattener, ["", dae]);
-
-          const simulator = new ModelicaSimulator(dae);
-          simulator.prepare();
-          cachedSimulatorRef.current = simulator;
-          setSimulationParameters(simulator.getParameterInfo());
-          const states = Array.from(simulator.stateVars);
-
-          if (states.length === 0) {
-            throw new Error(
-              "No simulation variables are available to plot for this model. Ensure you have equations defining state variables or parameters.",
-            );
-          }
-
-          const exp = dae.experiment;
-          const startTime = exp.startTime ?? 0;
-          const stopTime = exp.stopTime ?? 10;
-          const step = exp.interval ?? (stopTime - startTime) / 1000;
-
-          const result = await simulator.simulate(startTime, stopTime, step, {
-            signal: abortController.signal,
-            parameterOverrides: parameterOverridesRef.current,
-          });
-
-          const chartData = result.t.map((t: number, i: number) => {
-            const row: Record<string, number | string> = { time: t };
-            result.states?.forEach((state: string, vIndex: number) => {
-              row[state] = result.y[i]?.[vIndex] ?? 0;
-            });
-            return row;
-          });
-
-          setLocalSimulationData(chartData);
-          setSimulationStatus({ status: "completed" });
-        } catch (e) {
-          if ((e as Error).message === "Simulation aborted") return;
-          setSimulationStatus({
-            status: "failed",
-            error: e instanceof Error ? e.message : String(e),
-          });
-        }
-      }, 1000);
-      return () => {
-        clearTimeout(timer);
-        abortController.abort();
-      };
-    }
-  }, [classInstances, showResultsView, simulationMode, diagramClassInstance]);
-
   // Lightweight re-simulate when only parameter overrides change (skip flattening)
   useEffect(() => {
     const simulator = cachedSimulatorRef.current;
-    if (!simulator || !showResultsView || simulationMode !== "local") return;
+    if (!simulator || !showResultsView) return;
     // Skip on first render — the main effect handles initial simulation
     if (parameterOverrides.size === 0) return;
 
@@ -397,7 +322,7 @@ export default function MorselEditor(props: MorselEditorProps) {
         const exp = simulator.dae.experiment;
         const startTime = exp.startTime ?? 0;
         const stopTime = exp.stopTime ?? 10;
-        const step = exp.interval ?? (stopTime - startTime) / 1000;
+        const step = exp.interval ?? (stopTime - startTime) / 500;
         const result = await simulator.simulate(startTime, stopTime, step, {
           signal: abortController.signal,
           parameterOverrides,
@@ -420,7 +345,7 @@ export default function MorselEditor(props: MorselEditorProps) {
       clearTimeout(timer);
       abortController.abort();
     };
-  }, [parameterOverrides, showResultsView, simulationMode]);
+  }, [parameterOverrides, showResultsView]);
 
   useEffect(() => {
     const saved = localStorage.getItem("recentModels");
@@ -485,7 +410,7 @@ export default function MorselEditor(props: MorselEditorProps) {
       const Modelica = await Language.load("/tree-sitter-modelica.wasm");
       const parser = new Parser();
       parser.setLanguage(Modelica);
-      Context.registerParser(".mo", parser);
+      Context.registerParser(".mo", parser as any);
 
       setLoadingProgress(40);
       setLoadingMessage("Fetching Modelica Standard Library…");
@@ -1589,7 +1514,7 @@ export default function MorselEditor(props: MorselEditorProps) {
     }
   };
 
-  const handleSimulate = async (type: "server" | "local" = "server") => {
+  const handleSimulate = async () => {
     if (!codeEditorRef.current || !context) return;
     const instances = await codeEditorRef.current.sync();
     const instance = diagramClassInstance ?? instances[0];
@@ -1600,143 +1525,81 @@ export default function MorselEditor(props: MorselEditorProps) {
     }
 
     setSimulationStatus({ status: "pending", error: null });
-    setSimulationJobId(null);
     setLocalSimulationData(null);
-    setSimulationVariables([]);
-    setSelectedSimulationVariables([]);
 
-    if (type === "server") {
-      setSimulateDialogOpen(true);
-    }
-
-    // We do NOT set showResultsView(false) here because if the user is typing
-    // while in Local mode with Results view open, hiding and showing the results
-    // would cause UI flicker AND an infinite React useEffect dependency loop!
-
-    if (type === "local") {
-      simulateAbortControllerRef.current?.abort();
-      const abortController = new AbortController();
-      simulateAbortControllerRef.current = abortController;
-
-      try {
-        const dae = new ModelicaDAE(instance.name || "Model");
-        const flattener = new ModelicaFlattener();
-        instance.accept(flattener, ["", dae]);
-        flattener.generateFlowBalanceEquations(dae);
-        flattener.foldDAEConstants(dae);
-
-        const simulator = new ModelicaSimulator(dae);
-        simulator.prepare();
-        cachedSimulatorRef.current = simulator;
-        setSimulationParameters(simulator.getParameterInfo());
-        setParameterOverrides(new Map());
-        const states = Array.from(simulator.stateVars);
-
-        if (states.length === 0) {
-          throw new Error(
-            "No simulation variables are available to plot for this model. Ensure you have equations defining state variables or parameters.",
-          );
-        }
-
-        const exp2 = simulator.dae.experiment;
-        const startTime2 = exp2.startTime ?? 0;
-        const stopTime2 = exp2.stopTime ?? 10;
-        const step2 = exp2.interval ?? (stopTime2 - startTime2) / 100;
-        const result = await simulator.simulate(startTime2, stopTime2, step2, {
-          signal: abortController.signal,
-          parameterOverrides,
-        });
-
-        const chartData = result.t.map((t: number, i: number) => {
-          const row: Record<string, number | string> = { time: t };
-          result.states?.forEach((state: string, vIndex: number) => {
-            row[state] = result.y[i]?.[vIndex] ?? 0;
-          });
-          return row;
-        });
-
-        setLocalSimulationData(chartData);
-        setSimulationStatus({ status: "completed" });
-        setSimulateDialogOpen(false);
-        setShowResultsView(true);
-        return;
-      } catch (e: any) {
-        if (e.message === "Simulation aborted") {
-          return;
-        }
-        setSimulationStatus({ status: "failed", error: e instanceof Error ? e.message : String(e) });
-        setShowResultsView(true);
-        return;
-      }
-    }
-
-    const dependencies = Array.from(context.listLibraries()).map((lib) => ({
-      name: lib.name,
-      version: lib.entity.annotation<string>("version") || "0.0.0", // Fallback version
-    }));
+    simulateAbortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    simulateAbortControllerRef.current = abortController;
 
     try {
-      const response = await fetch("/api/v1/simulate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          modelName: instance.compositeName || "Model",
-          modelSource: editor?.getValue(),
-          dependencies,
-        }),
+      const dae = new ModelicaDAE(instance.name || "Model");
+      const flattener = new ModelicaFlattener();
+      instance.accept(flattener, ["", dae]);
+      flattener.generateFlowBalanceEquations(dae);
+      flattener.foldDAEConstants(dae);
+
+      const simulator = new ModelicaSimulator(dae);
+      simulator.prepare();
+      cachedSimulatorRef.current = simulator;
+
+      const paramInfo = simulator.getParameterInfo();
+      const currentParamNames = new Set(paramInfo.map((p) => p.name));
+      setSimulationParameters(paramInfo);
+
+      // Filter out parameter overrides that no longer exist
+      setParameterOverrides((prev) => {
+        const next = new Map(prev);
+        for (const key of prev.keys()) {
+          if (!currentParamNames.has(key)) next.delete(key);
+        }
+        return next;
       });
 
-      if (!response.ok) {
-        throw new Error(await response.text());
+      const states = Array.from(simulator.stateVars);
+      setSimulationVariables(states);
+      // We no longer eagerly filter selectedSimulationVariables against simulator.stateVars because stateVars
+      // only contains continuous states, not algebraic variables or parameters which the user might have checked.
+      // Retaining them as-is ensures checkboxes persist across text edits and re-simulation.
+
+      if (states.length === 0) {
+        throw new Error(
+          "No simulation variables are available to plot for this model. Ensure you have equations defining state variables or parameters.",
+        );
       }
 
-      const { jobId } = await response.json();
-      setSimulationJobId(jobId);
+      const exp2 = simulator.dae.experiment;
+      const startTime2 = experimentOverrides.startTime ?? exp2.startTime ?? 0;
+      const stopTime2 = experimentOverrides.stopTime ?? exp2.stopTime ?? 10;
+      const step2 = experimentOverrides.interval ?? exp2.interval ?? (stopTime2 - startTime2) / 500;
+      const tolerance2 = experimentOverrides.tolerance ?? exp2.tolerance ?? 1e-6;
 
-      // Start polling
-      if (simulationIntervalRef.current) clearInterval(simulationIntervalRef.current);
-      simulationIntervalRef.current = setInterval(async () => {
-        try {
-          const res = await fetch(`/api/v1/simulate/${jobId}`);
-          if (res.ok) {
-            const data = await res.json();
-            setSimulationStatus(data);
-            if (data.status === "completed") {
-              clearInterval(simulationIntervalRef.current!);
-              setSimulateDialogOpen(false);
-              setShowResultsView(true);
-            } else if (data.status === "failed") {
-              clearInterval(simulationIntervalRef.current!);
-              alert(`Simulation failed: ${data.error}`);
-            }
-          } else if (res.status === 404) {
-            setSimulationStatus({
-              status: "failed",
-              error: "Simulation job not found. The server may have been restarted.",
-            });
-            clearInterval(simulationIntervalRef.current!);
-            alert("Simulation job not found. The server may have been restarted.");
-          } else {
-            // Handle other non-ok responses during polling
-            const errorText = await res.text();
-            setSimulationStatus({
-              status: "failed",
-              error: `Simulation polling failed: ${res.status} ${res.statusText} - ${errorText}`,
-            });
-            clearInterval(simulationIntervalRef.current!);
-            alert(`Simulation polling failed: ${res.status} ${res.statusText} - ${errorText}`);
-          }
-        } catch (err) {
-          console.error("Polling simulation status failed:", err);
-          const error = `Simulation polling failed due to network error: ${err instanceof Error ? err.message : String(err)}`;
-          setSimulationStatus({ status: "failed", error });
-          clearInterval(simulationIntervalRef.current!);
-          alert(error);
-        }
-      }, 1000) as any;
-    } catch (e) {
-      console.error("Simulation failed:", e);
+      // Ensure spinner renders before locking thread
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      const result = await simulator.simulate(startTime2, stopTime2, step2, {
+        signal: abortController.signal,
+        parameterOverrides,
+      });
+
+      const chartData = result.t.map((t: number, i: number) => {
+        const row: Record<string, number | string> = { time: t };
+        result.states?.forEach((state: string, vIndex: number) => {
+          row[state] = result.y[i]?.[vIndex] ?? 0;
+        });
+        return row;
+      });
+
+      setLocalSimulationData(chartData);
+      setSimulationStatus({ status: "completed" });
+      setShowResultsView(true);
+      return;
+    } catch (e: any) {
+      if (e.message === "Simulation aborted") {
+        return;
+      }
       setSimulationStatus({ status: "failed", error: e instanceof Error ? e.message : String(e) });
+      setShowResultsView(true);
+      return;
     }
   };
 
@@ -1751,7 +1614,16 @@ export default function MorselEditor(props: MorselEditorProps) {
         <div className="d-flex flex-1" style={{ minHeight: 0 }}>
           {treeVisible && (
             <>
-              <div style={{ width: treeWidth, display: "flex", flexDirection: "column", minWidth: 200, maxWidth: 600 }}>
+              <div
+                style={{
+                  width: treeWidth,
+                  display: "flex",
+                  flexDirection: "column",
+                  minHeight: 0,
+                  minWidth: 200,
+                  maxWidth: 600,
+                }}
+              >
                 {!showResultsView && (
                   <>
                     <div
@@ -1843,10 +1715,8 @@ export default function MorselEditor(props: MorselEditorProps) {
                         filter={debouncedFilter}
                         version={contextVersion}
                         language={language}
-                        selectedClassName={selectedTreeClassName}
                       />
                     </div>
-                    <MqttTreeWidget width="100%" />
                   </>
                 )}
                 <div className="text-bold px-3 py-2 border-top border-bottom bg-canvas-subtle">
@@ -1904,6 +1774,37 @@ export default function MorselEditor(props: MorselEditorProps) {
                           });
                         }}
                       />
+                    </div>
+                  </>
+                )}
+                {showResultsView && (
+                  <>
+                    <div className="text-bold px-3 py-2 border-top border-bottom bg-canvas-subtle">
+                      Simulation Settings
+                    </div>
+                    <div style={{ padding: "0" }}>
+                      <SimulationExperimentSettings
+                        experiment={cachedSimulatorRef.current?.dae?.experiment}
+                        overrides={experimentOverrides}
+                        onChange={(name, value) => setExperimentOverrides((prev) => ({ ...prev, [name]: value }))}
+                        onReset={(name) => {
+                          setExperimentOverrides((prev) => {
+                            const next = { ...prev };
+                            delete next[name];
+                            return next;
+                          });
+                        }}
+                      />
+                      <div className="p-3">
+                        <Button
+                          variant="primary"
+                          block
+                          onClick={() => handleSimulate()}
+                          disabled={simulationStatus?.status === "pending" || simulationStatus?.status === "processing"}
+                        >
+                          Simulate
+                        </Button>
+                      </div>
                     </div>
                   </>
                 )}
@@ -2067,15 +1968,12 @@ export default function MorselEditor(props: MorselEditorProps) {
                   <SegmentedControl
                     aria-label="Center Pane View"
                     onChange={(i) => {
-                      setShowResultsView(i === 2);
-                      setShowCadView(i === 1);
+                      setShowResultsView(i === 1);
+                      setShowCadView(false);
                     }}
                   >
                     <SegmentedControl.Button selected={!showResultsView && !showCadView} leadingVisual={WorkflowIcon}>
                       {translations.diagram}
-                    </SegmentedControl.Button>
-                    <SegmentedControl.Button selected={showCadView} leadingVisual={StackIcon}>
-                      3D
                     </SegmentedControl.Button>
                     <SegmentedControl.Button selected={showResultsView} leadingVisual={PulseIcon}>
                       {translations.simulation}
@@ -2687,17 +2585,9 @@ export default function MorselEditor(props: MorselEditorProps) {
                       backgroundColor: "var(--color-canvas-default)",
                     }}
                   >
-                    <CosimPanel
-                      dataSource={cosimDataSource}
-                      onDataSourceChange={setCosimDataSource}
-                      colorMode={colorMode === "dark" ? "dark" : "light"}
-                    />
-                    {(simulationJobId && simulationStatus?.status === "completed") ||
-                    localSimulationData ||
-                    simulationStatus?.status === "failed" ? (
+                    {localSimulationData || simulationStatus?.status === "failed" ? (
                       <Suspense fallback={null}>
                         <SimulationResults
-                          jobId={simulationJobId}
                           localData={localSimulationData}
                           selectedVariables={selectedSimulationVariables}
                           onVariablesLoaded={handleVariablesLoaded}
@@ -2716,9 +2606,14 @@ export default function MorselEditor(props: MorselEditorProps) {
                           color: "var(--color-fg-muted)",
                         }}
                       >
-                        {simulationStatus?.status === "pending" || simulationStatus?.status === "processing"
-                          ? "Simulation in progress... please wait."
-                          : "No simulation results available. Click 'Simulate' to generate results."}
+                        {simulationStatus?.status === "pending" || simulationStatus?.status === "processing" ? (
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "16px" }}>
+                            <Spinner size="large" />
+                            <div>Simulation in progress... please wait.</div>
+                          </div>
+                        ) : (
+                          "No simulation results available. Click 'Simulate' to generate results."
+                        )}
                       </div>
                     )}
                   </div>
@@ -3003,52 +2898,14 @@ export default function MorselEditor(props: MorselEditorProps) {
             />
           </div>
           <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
-          <div
-            style={{
-              display: "flex",
-              alignItems: "stretch",
-              border: `1px solid ${colorMode === "dark" ? "#30363d" : "#d0d7de"}`,
-              borderRadius: "6px",
-              overflow: "hidden",
-            }}
-          >
-            <IconButton
-              icon={PlayIcon}
-              size="small"
-              variant="invisible"
-              aria-label={translations.simulateModel}
-              title={
-                simulationMode === "server"
-                  ? `${translations.simulateModel} (OpenModelica)`
-                  : `${translations.simulateModel} (math.js)`
-              }
-              onClick={() => handleSimulate(simulationMode)}
-              style={{ borderRadius: 0, paddingRight: 4, paddingLeft: 6 }}
-            />
-            <div style={{ width: 1, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
-            <ActionMenu>
-              <ActionMenu.Anchor>
-                <IconButton
-                  icon={TriangleDownIcon}
-                  size="small"
-                  variant="invisible"
-                  aria-label="Simulation mode"
-                  title="Simulation mode"
-                  style={{ borderRadius: 0, paddingLeft: 4, paddingRight: 6 }}
-                />
-              </ActionMenu.Anchor>
-              <ActionMenu.Overlay align="end">
-                <ActionList selectionVariant="single">
-                  <ActionList.Item selected={simulationMode === "server"} onSelect={() => setSimulationMode("server")}>
-                    Server Simulation (OpenModelica)
-                  </ActionList.Item>
-                  <ActionList.Item selected={simulationMode === "local"} onSelect={() => setSimulationMode("local")}>
-                    Local Simulation (math.js)
-                  </ActionList.Item>
-                </ActionList>
-              </ActionMenu.Overlay>
-            </ActionMenu>
-          </div>
+          <IconButton
+            icon={PlayIcon}
+            size="small"
+            variant="invisible"
+            aria-label={translations.simulateModel}
+            title={translations.simulateModel}
+            onClick={() => handleSimulate()}
+          />
           <IconButton
             icon={StackIcon}
             size="small"
@@ -3387,48 +3244,6 @@ export default function MorselEditor(props: MorselEditorProps) {
             onClearRecent={handleClearRecent}
             translations={translations}
           />
-        )}
-        {isSimulateDialogOpen && (
-          <Dialog
-            title="Simulation"
-            onClose={() => {
-              setSimulateDialogOpen(false);
-              if (simulationIntervalRef.current) {
-                clearInterval(simulationIntervalRef.current);
-                simulationIntervalRef.current = null;
-              }
-            }}
-          >
-            <div style={{ padding: 20, textAlign: "center", minWidth: 300 }}>
-              {simulationStatus?.status === "completed" ? (
-                <>
-                  <div style={{ marginBottom: 20, color: "#3fb950" }}>Simulation completed successfully!</div>
-                  <IconButton
-                    icon={DownloadIcon}
-                    aria-label="Download Results"
-                    onClick={() => {
-                      if (simulationJobId) {
-                        window.open(`/api/v1/simulate/${simulationJobId}/result`, "_blank");
-                      }
-                    }}
-                  />
-                  <div style={{ marginTop: 10 }}>Download Results (.mat)</div>
-                </>
-              ) : simulationStatus?.status === "failed" ? (
-                <>
-                  <div style={{ marginBottom: 20, color: "#f85149" }}>Simulation failed</div>
-                  <div style={{ fontSize: 12, color: "#8b949e", maxWidth: 400, margin: "0 auto" }}>
-                    {simulationStatus.error || "An unknown error occurred."}
-                  </div>
-                </>
-              ) : (
-                <>
-                  <Spinner size="large" style={{ marginBottom: 20 }} />
-                  <div>Simulating {simulationStatus?.status || "pending"}...</div>
-                </>
-              )}
-            </div>
-          </Dialog>
         )}
       </div>
     </>

@@ -16,7 +16,7 @@ import { registerMCPTools } from "./mcpBridge";
 import { MqttTreeProvider } from "./mqttTreeProvider";
 import { ModelicaNotebookController } from "./notebookController";
 import { ModelicaNotebookSerializer } from "./notebookSerializer";
-import { ProjectTreeProvider } from "./projectTreeProvider";
+
 import { SimulationPanel } from "./simulationPanel";
 import { SINE_WAVE_FMU_BASE64 } from "./sineWaveFmu";
 import { SSP_VIEW_SCHEME, SspContentProvider, SspEditorProvider } from "./sspDocumentProvider";
@@ -357,18 +357,6 @@ export async function activate(context: vscode.ExtensionContext) {
     }),
   );
 
-  // Register project tree view (with drag support for FMU nodes)
-  const projectTreeProvider = new ProjectTreeProvider(client);
-  projectTreeProvider.onDragStart = (data) => {
-    diagramProvider.postToActiveWebviews({ type: "startPlacement", ...data });
-  };
-  const projectTreeView = vscode.window.createTreeView("modelscript.projectTree", {
-    treeDataProvider: projectTreeProvider,
-    dragAndDropController: projectTreeProvider,
-    canSelectMany: false,
-  });
-  context.subscriptions.push(projectTreeView);
-
   // Status bar item to show loading progress
   const statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, -100);
   statusItem.text = "$(sync~spin) ModelScript: Loading...";
@@ -389,7 +377,7 @@ export async function activate(context: vscode.ExtensionContext) {
         setTimeout(() => statusItem.hide(), 5000);
         // Auto-refresh UI components now that LSP is fully initialized
         treeProvider.refresh();
-        projectTreeProvider.refresh();
+
         break;
       case "error":
         statusItem.text = `$(warning) ${params.message}`;
@@ -506,20 +494,7 @@ export async function activate(context: vscode.ExtensionContext) {
         vscode.window.showErrorMessage(`Failed to add component: ${e}`);
       }
     }),
-    commands.registerCommand("modelscript.openProjectFile", async (uri: string, line?: number) => {
-      try {
-        const docUri = vscode.Uri.parse(uri);
-        const doc = await workspace.openTextDocument(docUri);
-        const editor = await vscode.window.showTextDocument(doc, vscode.ViewColumn.One);
-        if (line !== undefined) {
-          const position = new vscode.Position(line, 0);
-          editor.selection = new vscode.Selection(position, position);
-          editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter);
-        }
-      } catch (e) {
-        console.error("[project-tree] Error opening file:", e);
-      }
-    }),
+
     // ── Co-Simulation commands ──
     commands.registerCommand("modelscript.cosimConnect", () => {
       cosimProvider.refresh();
@@ -569,23 +544,6 @@ export async function activate(context: vscode.ExtensionContext) {
       AnalysisPanel.createOrShowComponentTree(context.extensionUri, client);
     }),
   );
-
-  // Listen for project tree updates from the LSP server
-  client.onNotification("modelscript/projectTreeChanged", () => {
-    projectTreeProvider.refresh();
-  });
-
-  // Watch for module changes to refresh the project tree
-  const moWatcher = vscode.workspace.createFileSystemWatcher("**/*.{mo,js,ts}");
-  moWatcher.onDidCreate(() => projectTreeProvider.refresh());
-  moWatcher.onDidDelete(() => projectTreeProvider.refresh());
-  context.subscriptions.push(moWatcher);
-
-  // Watch for .xml file changes (FMU model descriptions) to refresh the project tree
-  const xmlWatcher = vscode.workspace.createFileSystemWatcher("**/*.xml");
-  xmlWatcher.onDidCreate(() => projectTreeProvider.refresh());
-  xmlWatcher.onDidDelete(() => projectTreeProvider.refresh());
-  context.subscriptions.push(xmlWatcher);
 
   // Register the custom editor provider for modelica diagrams
   context.subscriptions.push(

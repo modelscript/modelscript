@@ -2830,12 +2830,25 @@ connection.onRequest(
     startTime?: number;
     stopTime?: number;
     interval?: number;
+    equidistant?: boolean;
     solver?: string;
     format?: string;
+    parameterOverrides?: Record<string, number>;
   }): {
     t: number[];
     y: number[][];
     states: string[];
+    parameters?: {
+      name: string;
+      type: "real" | "integer" | "boolean" | "enumeration";
+      defaultValue: number;
+      min?: number;
+      max?: number;
+      step: number;
+      unit?: string;
+      enumLiterals?: { ordinal: number; label: string }[];
+    }[];
+    experiment?: { startTime?: number; stopTime?: number; interval?: number; tolerance?: number };
     error?: string;
   } => {
     const instances = documentInstances.get(params.uri);
@@ -2866,11 +2879,12 @@ connection.onRequest(
       const exp = simulator.dae.experiment;
       const startTime = params.startTime ?? exp.startTime ?? 0;
       const stopTime = params.stopTime ?? exp.stopTime ?? 10;
-      const numIntervals = exp.numberOfIntervals ?? 500;
-      const step = params.interval ?? exp.interval ?? (stopTime - startTime) / numIntervals;
+      const step = params.interval ?? exp.interval ?? (stopTime - startTime) / 500;
 
       const result = simulator.simulate(startTime, stopTime, step, {
         solver: (params.solver ?? "dopri5") as "rk4" | "dopri5" | "bdf" | "auto",
+        equidistantOutput: params.equidistant ?? exp.__modelscript_equidistantOutput ?? true,
+        parameterOverrides: params.parameterOverrides ? new Map(Object.entries(params.parameterOverrides)) : undefined,
       });
 
       if (params.format === "csv") {
@@ -2880,13 +2894,22 @@ connection.onRequest(
           lines.push(values.join(","));
         }
         // Return CSV as a text field alongside the structured data
-        return { t: result.t, y: result.y, states: result.states, error: undefined };
+        return {
+          t: result.t,
+          y: result.y,
+          states: result.states,
+          parameters: simulator.getParameterInfo(),
+          experiment: exp,
+          error: undefined,
+        };
       }
 
       return {
         t: result.t,
         y: result.y,
         states: result.states,
+        parameters: simulator.getParameterInfo(),
+        experiment: exp,
       };
     } catch (e) {
       console.error("[simulate] Error:", e);
@@ -3983,6 +4006,8 @@ connection.onRequest("textDocument/inlayHint", (params): InlayHint[] => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const rv = v as any;
         if (rv.start !== undefined && rv.start !== null && rv.start !== 0) {
+          if (typeof rv.start === "object") continue;
+
           // Try to find the component declaration in the source for this variable
           // Only show for top-level (non-dotted) names declared in this class
           const varName = v.name;
