@@ -1,3 +1,31 @@
+## 0.0.11 (2026-04-03)
+
+### 🚀 Features
+
+- **ide:** add real-time digital twin co-simulation workspace template ([e993b10](https://github.com/modelscript/modelscript/commit/e993b10))
+- **core:** implement real-time simulation pacing ([7464f33](https://github.com/modelscript/modelscript/commit/7464f33))
+- web-native ECAD architecture with PCB annotations, netlist extraction, gerber export, ecad-canvas package ([c9aa709](https://github.com/modelscript/modelscript/commit/c9aa709))
+- cad integration - annotation extraction, 3d viewer, vr support ([91b31e9](https://github.com/modelscript/modelscript/commit/91b31e9))
+- **core:** add bonmin and couenne minlp solver support, optimize coinor build script ([2e0eb57](https://github.com/modelscript/modelscript/commit/2e0eb57))
+- **morsel,api:** integrate cosim panel into simulation view, add pg dependency ([458c1e6](https://github.com/modelscript/modelscript/commit/458c1e6))
+- **morsel,cli:** add cosim data source panel, cli status command ([10a201a](https://github.com/modelscript/modelscript/commit/10a201a))
+- **cosim:** add timescaledb init schema, session cleanup, docker health checks ([373e4ff](https://github.com/modelscript/modelscript/commit/373e4ff))
+- **cosim:** add browser mqtt client, react simulation hook, cli cosim commands ([46d22dc](https://github.com/modelscript/modelscript/commit/46d22dc))
+- **cosim:** add fmu upload/storage/parsing api, websocket variable streaming ([55f96b7](https://github.com/modelscript/modelscript/commit/55f96b7))
+- **cosim:** add api routes, mqtt model tree, and historian replayer ([d4071ec](https://github.com/modelscript/modelscript/commit/d4071ec))
+- **cosim:** scaffold @modelscript/cosim package with mqtt co-simulation engine, uns topic hierarchy, gauss-seidel orchestrator, historian recorder, docker mosquitto + timescaledb ([7744ad4](https://github.com/modelscript/modelscript/commit/7744ad4))
+
+### 🩹 Fixes
+
+- **vscode:** resolve simulation breakpoints, DAP continuations, and array variables ([dd61de0](https://github.com/modelscript/modelscript/commit/dd61de0))
+- **vscode:** resolve WebGL context loss and 3D visualizer asset loading, refactor React Suspense boundaries ([6b99eef](https://github.com/modelscript/modelscript/commit/6b99eef))
+- **core,cli:** rename optimizer.optimize to optimizer.solve to match new api ([40e7a2c](https://github.com/modelscript/modelscript/commit/40e7a2c))
+- **core:** extract optimization objective from LongClassSpecifier classModification ([03f8ec6](https://github.com/modelscript/modelscript/commit/03f8ec6))
+
+### ❤️ Thank You
+
+- Mohamad Omar Nachawati @nachawati
+
 ## 0.0.10 (2026-03-28)
 
 ### 🚀 Features
