@@ -277,10 +277,10 @@ export function computeConnectRemove(
 
   if (!connectEq || !connectEq.sourceRange) return [];
 
-  const startLine = connectEq.startPosition.row;
-  const startCol = connectEq.startPosition.column;
-  const endLine = connectEq.endPosition.row;
-  const endCol = connectEq.endPosition.column;
+  const startLine = connectEq.sourceRange.startRow;
+  const startCol = connectEq.sourceRange.startCol;
+  const endLine = connectEq.sourceRange.endRow;
+  const endCol = connectEq.sourceRange.endCol;
 
   return [makeDeleteRange(lines, startLine, startCol, endLine, endCol)];
 }
@@ -312,10 +312,10 @@ export function computeComponentsDelete(
       edits.push(
         makeDeleteRange(
           lines,
-          ce.startPosition.row,
-          ce.startPosition.column,
-          ce.endPosition.row,
-          ce.endPosition.column,
+          ce.sourceRange.startRow,
+          ce.sourceRange.startCol,
+          ce.sourceRange.endRow,
+          ce.sourceRange.endCol,
         ),
       );
     }
@@ -367,14 +367,14 @@ export function computeEdgePointEdits(
 
     if (!connectEq?.sourceRange) continue;
 
-    const key = `${connectEq.startPosition.row}:${connectEq.startPosition.column}`;
+    const key = `${connectEq.sourceRange.startRow}:${connectEq.sourceRange.startCol}`;
     if (seen.has(key)) continue;
     seen.add(key);
 
-    const startLine = connectEq.startPosition.row;
-    const startCol = connectEq.startPosition.column;
-    const endLine = connectEq.endPosition.row;
-    const endCol = connectEq.endPosition.column;
+    const startLine = connectEq.sourceRange.startRow;
+    const startCol = connectEq.sourceRange.startCol;
+    const endLine = connectEq.sourceRange.endRow;
+    const endCol = connectEq.sourceRange.endCol;
 
     const range = Range.create(startLine, startCol, endLine, endCol);
     const text = getTextInRange(lines, startLine, startCol, endLine, endCol);

@@ -1552,12 +1552,12 @@ connection.onHover((params) => {
   const word = lineContent.substring(wordStart, wordEnd);
   if (!word) return null;
 
-  // Expand to full dotted path (e.g. Modelica.SIunits.Voltage)
+  // Expand dotted path to the LEFT ONLY, up to the cursor's word.
+  // This ensures hovering over `Analog` in `Modelica.Electrical.Analog.Basic.Ground` resolves to `Analog`,
+  // not the full leaf type.
   let start = wordStart;
-  let end = wordEnd;
+  let end = wordEnd; // Do not scan right for definitions of nested paths
   while (start > 0 && (lineContent[start - 1] === "." || /[a-zA-Z0-9_]/.test(lineContent[start - 1]))) start--;
-  while (end < lineContent.length && (lineContent[end] === "." || /[a-zA-Z0-9_]/.test(lineContent[end]))) end++;
-  if (lineContent[end - 1] === ".") end--;
   const fullPath = lineContent.substring(start, end);
 
   // Get cached scope from validation
@@ -1724,12 +1724,10 @@ function resolveElementAtPosition(
   const word = lineContent.substring(wordStart, wordEnd);
   if (!word) return null;
 
-  // Expand to full dotted path
+  // Expand dotted path to the LEFT ONLY, up to the cursor's word.
   let start = wordStart;
-  let end = wordEnd;
+  const end = wordEnd; // Do not scan right for definitions of nested paths
   while (start > 0 && (lineContent[start - 1] === "." || /[a-zA-Z0-9_]/.test(lineContent[start - 1]))) start--;
-  while (end < lineContent.length && (lineContent[end] === "." || /[a-zA-Z0-9_]/.test(lineContent[end]))) end++;
-  if (lineContent[end - 1] === ".") end--;
   const fullPath = lineContent.substring(start, end);
 
   const instances = documentInstances.get(document.uri);
