@@ -73,7 +73,7 @@ jobs:
       - name: Publish to npm
         run: npx nx release publish --yes
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: true
 
       # --- Publish VS Code Extension ---
       - name: Sync VS Code Extension Version
