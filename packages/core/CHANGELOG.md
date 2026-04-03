@@ -1,3 +1,13 @@
+## 0.0.17 (2026-04-03)
+
+### 🩹 Fixes
+
+- **ci:** restore registry-url for npm trusted publisher oidc ([a73a22f](https://github.com/modelscript/modelscript/commit/a73a22f))
+
+### ❤️ Thank You
+
+- Mohamad Omar Nachawati @nachawati
+
 ## 0.0.16 (2026-04-03)
 
 ### 🩹 Fixes
