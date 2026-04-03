@@ -725,21 +725,28 @@ function buildTreeView(variables: string[]): void {
   const root: TreeNode = { name: "", fullName: "", children: new Map(), isVariable: false };
 
   variables.forEach((variable, i) => {
-    const parts = variable.split(".");
-    let current = root;
-    let path = "";
+    const isDer = variable.startsWith("der(") && variable.endsWith(")");
+    const innerVar = isDer ? variable.slice(4, -1) : variable;
+    const originalParts = innerVar.split(".");
 
-    for (let j = 0; j < parts.length; j++) {
-      const part = parts[j];
-      path = path ? `${path}.${part}` : part;
+    let current = root;
+    let prefix = "";
+
+    for (let j = 0; j < originalParts.length; j++) {
+      const isLeaf = j === originalParts.length - 1;
+      const basePart = originalParts[j];
+
+      const part = isLeaf && isDer ? `der(${basePart})` : basePart;
+      prefix = prefix ? `${prefix}.${basePart}` : basePart;
+      const fullName = isLeaf ? variable : prefix;
 
       if (!current.children.has(part)) {
         current.children.set(part, {
           name: part,
-          fullName: path,
+          fullName: fullName,
           children: new Map(),
-          isVariable: j === parts.length - 1,
-          colorIndex: j === parts.length - 1 ? i : undefined,
+          isVariable: isLeaf,
+          colorIndex: isLeaf ? i : undefined,
         });
       }
       current = current.children.get(part) as TreeNode;

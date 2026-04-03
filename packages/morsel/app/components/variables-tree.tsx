@@ -22,20 +22,27 @@ export function VariablesTree({ variables, selectedVariables, onToggleVariable }
     const root: TreeNode = { name: "", fullName: "", children: new Map(), isVariable: false };
 
     for (const variable of variables) {
-      const parts = variable.split(".");
-      let current = root;
-      let path = "";
+      const isDer = variable.startsWith("der(") && variable.endsWith(")");
+      const innerVar = isDer ? variable.slice(4, -1) : variable;
+      const originalParts = innerVar.split(".");
 
-      for (let i = 0; i < parts.length; i++) {
-        const part = parts[i];
-        path = path ? `${path}.${part}` : part;
+      let current = root;
+      let prefix = "";
+
+      for (let i = 0; i < originalParts.length; i++) {
+        const isLeaf = i === originalParts.length - 1;
+        const basePart = originalParts[i];
+
+        const part = isLeaf && isDer ? `der(${basePart})` : basePart;
+        prefix = prefix ? `${prefix}.${basePart}` : basePart;
+        const fullName = isLeaf ? variable : prefix;
 
         if (!current.children.has(part)) {
           current.children.set(part, {
             name: part,
-            fullName: path,
+            fullName: fullName,
             children: new Map(),
-            isVariable: i === parts.length - 1,
+            isVariable: isLeaf,
           });
         }
         current = current.children.get(part)!;
