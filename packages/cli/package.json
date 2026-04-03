@@ -1,6 +1,6 @@
 {
   "name": "@modelscript/cli",
-  "version": "0.0.17",
+  "version": "0.0.18",
   "description": "CLI for ModelScript",
   "keywords": [
     "modelscript"
