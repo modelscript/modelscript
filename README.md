@@ -50,7 +50,7 @@ This project is a monorepo managed with **Lerna**, **Nx**, and **npm workspaces*
 
 ### Prerequisites
 
-- **Node.js** ≥ 22 (see `.nvmrc`)
+- **Node.js** ≥ 24 (see `.nvmrc`)
 - **emsdk** (required for building the Tree-sitter WASM parser):
   ```bash
   git clone https://github.com/emscripten-core/emsdk.git
