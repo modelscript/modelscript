@@ -229,14 +229,11 @@ export function dopri5(
 
             // ── Output interpolation BEFORE the event! ──
             if (equidistant) {
-              while (outputIdx < outputTimes.length && (outputTimes[outputIdx] ?? tEnd) <= tEvent + 1e-14) {
+              while (outputIdx < outputTimes.length && (outputTimes[outputIdx] ?? tEnd) < tEvent - 1e-14) {
                 const tOut = outputTimes[outputIdx] ?? tEvent;
-                if (tOut <= t + 1e-14) {
+                if (Math.abs(tOut - t) < 1e-14) {
                   result.times.push(t);
                   result.states.push([...y]);
-                } else if (Math.abs(tOut - tEvent) < 1e-14) {
-                  result.times.push(tEvent);
-                  result.states.push([...yEvent]);
                 } else {
                   const theta = (tOut - t) / h;
                   const yInterp = hermiteInterpolation(y, yNew, k[0] ?? [], k[6] ?? [], h, theta, n);
@@ -245,14 +242,23 @@ export function dopri5(
                 }
                 outputIdx++;
               }
-            } else {
-              result.times.push(tEvent);
-              result.states.push([...yEvent]);
+              // Advance outputIdx if an outputTime lands exactly on the event
+              if (outputIdx < outputTimes.length && Math.abs((outputTimes[outputIdx] ?? tEnd) - tEvent) < 1e-14) {
+                outputIdx++;
+              }
             }
+
+            // ALWAYS force output of the event point for exact precision
+            result.times.push(tEvent);
+            result.states.push([...yEvent]);
 
             // ── Fire event callback ──
             const dir = curr < 0 ? -1 : 1;
             const yAfter = eventCallback(tEvent, yEvent, ei, dir);
+
+            // Output explicit post-event state so the plot shows instantaneous jump
+            result.times.push(tEvent);
+            result.states.push([...yAfter]);
 
             // ── Restart solver at event time ──
             t = tEvent;
