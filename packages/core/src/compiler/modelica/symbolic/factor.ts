@@ -7,10 +7,10 @@
  * extraction, quadratic factoring, and rational root theorem search.
  */
 
+import { ModelicaBinaryOperator } from "@modelscript/modelica-ast";
 import type { ModelicaExpression } from "../dae.js";
 import { ModelicaBinaryExpression, ModelicaNameExpression, ModelicaRealLiteral } from "../dae.js";
 import { add, mul, sub, ZERO } from "../symbolic-diff.js";
-import { ModelicaBinaryOperator } from "../syntax.js";
 import { egraphSimplify } from "./egraph.js";
 import { collectTerms, expandExpr, getLiteralValue } from "./expand.js";
 

@@ -15,6 +15,7 @@
  * or implicit algebraic loops — that the init-solver can process sequentially.
  */
 
+import { ModelicaVariability } from "@modelscript/modelica-ast";
 import {
   ModelicaArray,
   ModelicaArrayEquation,
@@ -26,7 +27,6 @@ import {
   ModelicaIntegerVariable,
   ModelicaNameExpression,
 } from "./dae.js";
-import { ModelicaVariability } from "./syntax.js";
 
 // ── Public types ──
 

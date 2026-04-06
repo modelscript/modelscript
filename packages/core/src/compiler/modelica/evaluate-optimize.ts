@@ -7,6 +7,11 @@
  * circular ESM dependencies.
  */
 
+import {
+  ModelicaComponentReferenceSyntaxNode,
+  type ModelicaFunctionCallSyntaxNode,
+  type ModelicaSyntaxNode,
+} from "@modelscript/modelica-ast";
 import type { Scope } from "../scope.js";
 import {
   ModelicaArray,
@@ -20,11 +25,6 @@ import {
 } from "./dae.js";
 import { ModelicaClassInstance } from "./model.js";
 import type { SolverOptions } from "./solver-options.js";
-import {
-  ModelicaComponentReferenceSyntaxNode,
-  type ModelicaFunctionCallSyntaxNode,
-  type ModelicaSyntaxNode,
-} from "./syntax.js";
 
 type ScriptExpressionEvaluator = (node: ModelicaSyntaxNode, scope: Scope) => ModelicaExpression | null;
 

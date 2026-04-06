@@ -15,6 +15,7 @@
  * Pure TypeScript — no native dependencies.
  */
 
+import { ModelicaVariability } from "@modelscript/modelica-ast";
 import type { ModelicaDAE } from "./dae.js";
 import { ModelicaIntegerLiteral, ModelicaRealLiteral } from "./dae.js";
 import type { MonteCarloOptions, RandomVariable } from "./monte-carlo.js";
@@ -26,7 +27,6 @@ import {
   type MultiStageStochasticProblem,
   type StochasticProblem,
 } from "./stochastic-optimizer.js";
-import { ModelicaVariability } from "./syntax.js";
 import { Tape, type TapeNode } from "./tape.js";
 
 // ── Public interfaces ──

@@ -217,8 +217,8 @@ export function solveLinearSystem(
 // Utilities
 // ─────────────────────────────────────────────────────────────────────
 
+import { ModelicaUnaryOperator } from "@modelscript/modelica-ast";
 import { ModelicaBinaryExpression, ModelicaFunctionCallExpression, ModelicaUnaryExpression } from "../dae.js";
-import { ModelicaUnaryOperator } from "../syntax.js";
 
 function negate(expr: ModelicaExpression): ModelicaExpression {
   const val = getLiteralValue(expr);

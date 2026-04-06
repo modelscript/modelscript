@@ -12,6 +12,11 @@
  * of flattener.ts / simulator.ts from this module.
  */
 
+import {
+  ModelicaComponentReferenceSyntaxNode,
+  type ModelicaFunctionCallSyntaxNode,
+  type ModelicaSyntaxNode,
+} from "@modelscript/modelica-ast";
 import type { Scope } from "../scope.js";
 import {
   ModelicaArray,
@@ -24,11 +29,6 @@ import {
 } from "./dae.js";
 import { ModelicaClassInstance } from "./model.js";
 import type { SolverOptions } from "./solver-options.js";
-import {
-  ModelicaComponentReferenceSyntaxNode,
-  type ModelicaFunctionCallSyntaxNode,
-  type ModelicaSyntaxNode,
-} from "./syntax.js";
 
 /**
  * Callback type for evaluating an expression node within a scope.

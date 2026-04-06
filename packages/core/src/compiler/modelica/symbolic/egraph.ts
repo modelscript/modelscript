@@ -19,6 +19,7 @@
  * before structural analysis and symbolic isolation.
  */
 
+import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "@modelscript/modelica-ast";
 import type { ModelicaExpression } from "../dae.js";
 import {
   ModelicaBinaryExpression,
@@ -32,7 +33,6 @@ import {
   ModelicaUnaryExpression,
   ModelicaVariable,
 } from "../dae.js";
-import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "../syntax.js";
 
 // ─────────────────────────────────────────────────────────────────────
 // Types

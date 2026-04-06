@@ -2,10 +2,8 @@
 
 /* eslint-disable @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars */
 
-import { toEnum } from "../../util/enum.js";
-import type { Writer } from "../../util/io.js";
-import type { Point, SyntaxNode } from "../../util/tree-sitter.js";
-import type { JSONValue, Triple } from "../../util/types.js";
+import type { JSONValue, Point, SyntaxNode, Triple, Writer } from "@modelscript/utils";
+import { toEnum } from "@modelscript/utils";
 
 export interface IModelicaSyntaxNode {
   "@type": string;

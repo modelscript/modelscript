@@ -10,6 +10,7 @@
  * engine for simplification of results.
  */
 
+import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "@modelscript/modelica-ast";
 import type { ModelicaExpression } from "../dae.js";
 import {
   ModelicaBinaryExpression,
@@ -20,7 +21,6 @@ import {
   ModelicaUnaryExpression,
 } from "../dae.js";
 import { add, differentiateExpr, div, mul, ONE, pow, simplifyExpr, sub, ZERO } from "../symbolic-diff.js";
-import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "../syntax.js";
 import { egraphSimplify } from "./egraph.js";
 import { getLiteralValue } from "./expand.js";
 

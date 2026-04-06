@@ -14,6 +14,7 @@
  * archive, so no separate XML file is needed.
  */
 
+import { ModelicaCausality, ModelicaClassKind, type ModelicaIdentifierSyntaxNode } from "@modelscript/modelica-ast";
 import { inflateRaw } from "pako";
 import type { Scope } from "../scope.js";
 import type { IModelicaModelVisitor } from "./model.js";
@@ -23,7 +24,6 @@ import {
   type ModelicaElement,
   type ModelicaNamedElement,
 } from "./model.js";
-import { ModelicaCausality, ModelicaClassKind, type ModelicaIdentifierSyntaxNode } from "./syntax.js";
 
 // ── FMU model description types ──
 

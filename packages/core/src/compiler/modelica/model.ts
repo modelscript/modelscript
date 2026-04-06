@@ -1,25 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 /* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/class-literal-property-style */
 
-import { createHash } from "../../util/hash.js";
+import { createHash } from "@modelscript/utils";
 
-import type { Writer } from "../../util/io.js";
-import logger from "../../util/logger.js";
-import type { JSONValue, Triple } from "../../util/types.js";
-import { makeWeakRef, makeWeakRefArray } from "../../util/weak.js";
-import { Context } from "../context.js";
-import { Scope } from "../scope.js";
-import { ANNOTATION } from "./annotation.js";
-import {
-  ModelicaArray,
-  ModelicaDAEPrinter,
-  ModelicaEnumerationLiteral,
-  ModelicaExpression,
-  ModelicaIntegerLiteral,
-} from "./dae.js";
-import { ModelicaErrorCode, makeDiagnostic, type ModelicaDiagnostic } from "./errors.js";
-import { ModelicaInterpreter } from "./interpreter.js";
-import { SCRIPTING } from "./scripting.js";
 import {
   ModelicaAlgorithmSectionSyntaxNode,
   ModelicaAnnotationClauseSyntaxNode,
@@ -59,7 +42,22 @@ import {
   ModelicaVariability,
   ModelicaVisibility,
   type ModelicaComponentDeclarationSyntaxNode,
-} from "./syntax.js";
+} from "@modelscript/modelica-ast";
+import type { JSONValue, Triple, Writer } from "@modelscript/utils";
+import { logger, makeWeakRef, makeWeakRefArray } from "@modelscript/utils";
+import { Context } from "../context.js";
+import { Scope } from "../scope.js";
+import { ANNOTATION } from "./annotation.js";
+import {
+  ModelicaArray,
+  ModelicaDAEPrinter,
+  ModelicaEnumerationLiteral,
+  ModelicaExpression,
+  ModelicaIntegerLiteral,
+} from "./dae.js";
+import { ModelicaErrorCode, makeDiagnostic, type ModelicaDiagnostic } from "./errors.js";
+import { ModelicaInterpreter } from "./interpreter.js";
+import { SCRIPTING } from "./scripting.js";
 
 export abstract class ModelicaNode extends Scope {
   #instantiated = false;

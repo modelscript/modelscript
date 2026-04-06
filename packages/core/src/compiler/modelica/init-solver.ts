@@ -15,6 +15,7 @@
  *   4. Multi-strategy homotopy fallback (residual/symbolic/fixed-point/parameter)
  */
 
+import { ModelicaVariability } from "@modelscript/modelica-ast";
 import type { InitSolverConfig } from "../context.js";
 import { StaticTapeBuilder, type TapeOp } from "./ad-codegen.js";
 import { evaluateTapeForward, evaluateTapeReverse } from "./ad-jacobian.js";
@@ -36,7 +37,6 @@ import { Interval } from "./interval.js";
 import { freezeAndSolve } from "./minlp-heuristics.js";
 import { type SolverOptions } from "./solver-options.js";
 import { getCachedSundialsWasm } from "./sundials-wasm.js";
-import { ModelicaVariability } from "./syntax.js";
 import { buildInitBLT, type ImplicitInitBlock } from "./system-initializer.js";
 
 /** Result of initial equation solving. */

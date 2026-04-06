@@ -1,5 +1,34 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import {
+  ModelicaArrayConcatenationSyntaxNode,
+  ModelicaArrayConstructorSyntaxNode,
+  ModelicaBinaryExpressionSyntaxNode,
+  ModelicaBooleanLiteralSyntaxNode,
+  ModelicaClassKind,
+  ModelicaComplexAssignmentStatementSyntaxNode,
+  ModelicaComponentReferenceSyntaxNode,
+  ModelicaEndExpressionSyntaxNode,
+  ModelicaExpressionSyntaxNode,
+  ModelicaForStatementSyntaxNode,
+  ModelicaFunctionCallSyntaxNode,
+  ModelicaIfElseExpressionSyntaxNode,
+  ModelicaIfStatementSyntaxNode,
+  ModelicaOutputExpressionListSyntaxNode,
+  ModelicaProcedureCallStatementSyntaxNode,
+  ModelicaRangeExpressionSyntaxNode,
+  ModelicaSimpleAssignmentStatementSyntaxNode,
+  ModelicaStoredDefinitionSyntaxNode,
+  ModelicaStringLiteralSyntaxNode,
+  ModelicaSyntaxNode,
+  ModelicaSyntaxVisitor,
+  ModelicaUnaryExpressionSyntaxNode,
+  ModelicaUnsignedIntegerLiteralSyntaxNode,
+  ModelicaUnsignedRealLiteralSyntaxNode,
+  ModelicaVariability,
+  ModelicaWhenStatementSyntaxNode,
+  ModelicaWhileStatementSyntaxNode,
+} from "@modelscript/modelica-ast";
 import { ModelicaLoopScope, ModelicaScriptScope, type Scope } from "../scope.js";
 import {
   ModelicaArray,
@@ -29,35 +58,6 @@ import {
   ModelicaParameterModification,
 } from "./model.js";
 import { evaluateCASFunction, isCASFunction } from "./symbolic/cas-bindings.js";
-import {
-  ModelicaArrayConcatenationSyntaxNode,
-  ModelicaArrayConstructorSyntaxNode,
-  ModelicaBinaryExpressionSyntaxNode,
-  ModelicaBooleanLiteralSyntaxNode,
-  ModelicaClassKind,
-  ModelicaComplexAssignmentStatementSyntaxNode,
-  ModelicaComponentReferenceSyntaxNode,
-  ModelicaEndExpressionSyntaxNode,
-  ModelicaExpressionSyntaxNode,
-  ModelicaForStatementSyntaxNode,
-  ModelicaFunctionCallSyntaxNode,
-  ModelicaIfElseExpressionSyntaxNode,
-  ModelicaIfStatementSyntaxNode,
-  ModelicaOutputExpressionListSyntaxNode,
-  ModelicaProcedureCallStatementSyntaxNode,
-  ModelicaRangeExpressionSyntaxNode,
-  ModelicaSimpleAssignmentStatementSyntaxNode,
-  ModelicaStoredDefinitionSyntaxNode,
-  ModelicaStringLiteralSyntaxNode,
-  ModelicaSyntaxNode,
-  ModelicaSyntaxVisitor,
-  ModelicaUnaryExpressionSyntaxNode,
-  ModelicaUnsignedIntegerLiteralSyntaxNode,
-  ModelicaUnsignedRealLiteralSyntaxNode,
-  ModelicaVariability,
-  ModelicaWhenStatementSyntaxNode,
-  ModelicaWhileStatementSyntaxNode,
-} from "./syntax.js";
 
 /** Set of Modelica built-in array function names handled directly by the interpreter. */
 const BUILTIN_ARRAY_FUNCTIONS = new Set([

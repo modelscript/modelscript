@@ -1,32 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { StringWriter } from "../../util/io.js";
-import type { Range, Tree } from "../../util/tree-sitter.js";
-import { Scope } from "../scope.js";
-import { ModelicaArray } from "./dae.js";
-import { ModelicaErrorCode, type ErrorCodeDef } from "./errors.js";
-import {
-  ENUMERATION_ATTRIBUTE_TYPES,
-  ModelicaArrayClassInstance,
-  ModelicaBooleanClassInstance,
-  ModelicaClassInstance,
-  ModelicaComponentInstance,
-  ModelicaElementModification,
-  ModelicaEntity,
-  ModelicaEnumerationClassInstance,
-  ModelicaExtendsClassInstance,
-  ModelicaIntegerClassInstance,
-  ModelicaLibrary,
-  ModelicaModelVisitor,
-  ModelicaModificationArgument,
-  ModelicaNamedElement,
-  ModelicaNode,
-  ModelicaPredefinedClassInstance,
-  ModelicaRealClassInstance,
-  ModelicaStringClassInstance,
-  PREDEFINED_ATTRIBUTE_TYPES,
-  type IModelicaModelVisitor,
-} from "./model.js";
 import {
   ModelicaAlgorithmSectionSyntaxNode,
   ModelicaArrayConcatenationSyntaxNode,
@@ -86,7 +59,34 @@ import {
   type ModelicaStoredDefinitionSyntaxNode,
   type ModelicaTypeSpecifierSyntaxNode,
   type ModelicaWithinDirectiveSyntaxNode,
-} from "./syntax.js";
+} from "@modelscript/modelica-ast";
+import type { Range, Tree } from "@modelscript/utils";
+import { StringWriter } from "@modelscript/utils";
+import { Scope } from "../scope.js";
+import { ModelicaArray } from "./dae.js";
+import { ModelicaErrorCode, type ErrorCodeDef } from "./errors.js";
+import {
+  ENUMERATION_ATTRIBUTE_TYPES,
+  ModelicaArrayClassInstance,
+  ModelicaBooleanClassInstance,
+  ModelicaClassInstance,
+  ModelicaComponentInstance,
+  ModelicaElementModification,
+  ModelicaEntity,
+  ModelicaEnumerationClassInstance,
+  ModelicaExtendsClassInstance,
+  ModelicaIntegerClassInstance,
+  ModelicaLibrary,
+  ModelicaModelVisitor,
+  ModelicaModificationArgument,
+  ModelicaNamedElement,
+  ModelicaNode,
+  ModelicaPredefinedClassInstance,
+  ModelicaRealClassInstance,
+  ModelicaStringClassInstance,
+  PREDEFINED_ATTRIBUTE_TYPES,
+  type IModelicaModelVisitor,
+} from "./model.js";
 
 /**
  * Callback function signature for reporting diagnostic messages.
@@ -1519,9 +1519,8 @@ ModelicaLinter.register(ModelicaErrorCode.TYPE_MISMATCH_MODIFIER, {
 
 /** Get the Modelica type name for a literal syntax node, or null if not a literal. */
 function getLiteralTypeName(
-  node: import("./syntax.js").ModelicaExpressionSyntaxNode | null | undefined,
+  node: import("@modelscript/modelica-ast").ModelicaExpressionSyntaxNode | null | undefined,
 ): string | null {
-  if (!node) return null;
   if (node instanceof ModelicaBooleanLiteralSyntaxNode) return "Boolean";
   if (node instanceof ModelicaStringLiteralSyntaxNode) return "String";
   if (node instanceof ModelicaUnsignedIntegerLiteralSyntaxNode) return "Integer";

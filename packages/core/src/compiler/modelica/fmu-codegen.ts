@@ -14,6 +14,7 @@
  * Works in both browser and Node.js environments (pure string generation).
  */
 
+import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "@modelscript/modelica-ast";
 import { StaticTapeBuilder } from "./ad-codegen.js";
 import type { ModelicaDAE, ModelicaExpression } from "./dae.js";
 import {
@@ -35,7 +36,6 @@ import {
 } from "./dae.js";
 import type { FmuOptions, FmuResult } from "./fmi.js";
 import { differentiateExpr, simplifyExpr } from "./symbolic-diff.js";
-import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "./syntax.js";
 
 /** Generated C source files. */
 export interface FmuCSourceFiles {

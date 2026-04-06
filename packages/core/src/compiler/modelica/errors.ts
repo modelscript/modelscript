@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { Range } from "../../util/tree-sitter.js";
+import type { Range } from "@modelscript/utils";
 
 /**
  * Severity level for a diagnostic.

@@ -17,6 +17,7 @@
  * If no arguments are given, all subdirectories under testsuite/ are run.
  */
 
+import { ModelicaClassKind, ModelicaStoredDefinitionSyntaxNode } from "@modelscript/modelica-ast";
 import Modelica from "@modelscript/tree-sitter-modelica";
 import fs from "node:fs";
 import path from "node:path";
@@ -26,7 +27,6 @@ import { Context } from "../src/compiler/context.js";
 import { ModelicaJavascriptEntity } from "../src/compiler/modelica/javascript-entity.js";
 import { ModelicaLinter } from "../src/compiler/modelica/linter.js";
 import { ModelicaClassInstance } from "../src/compiler/modelica/model.js";
-import { ModelicaClassKind, ModelicaStoredDefinitionSyntaxNode } from "../src/compiler/modelica/syntax.js";
 import { generateHtmlReport } from "./ctrf-to-html.js";
 
 // ── Tree-sitter setup ────────────────────────────────────────────────────────

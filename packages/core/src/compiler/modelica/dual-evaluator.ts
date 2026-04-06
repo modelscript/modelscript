@@ -7,6 +7,7 @@
  * propagating derivatives through the computation graph via the chain rule.
  */
 
+import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "@modelscript/modelica-ast";
 import {
   ModelicaBinaryExpression,
   ModelicaBooleanLiteral,
@@ -23,7 +24,6 @@ import {
   ModelicaVariable,
 } from "./dae.js";
 import { Dual } from "./dual.js";
-import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "./syntax.js";
 
 export class DualExpressionEvaluator {
   /** Variable environment: name → Dual value. */

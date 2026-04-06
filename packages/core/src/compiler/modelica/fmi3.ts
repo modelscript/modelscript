@@ -15,6 +15,7 @@
  * FMI 3.0 specification: https://fmi-standard.org/
  */
 
+import { ModelicaVariability } from "@modelscript/modelica-ast";
 import type { ModelicaDAE, ModelicaExpression, ModelicaVariable } from "./dae.js";
 import {
   ModelicaArray,
@@ -32,7 +33,6 @@ import {
   ModelicaSubscriptedExpression,
   ModelicaUnaryExpression,
 } from "./dae.js";
-import { ModelicaVariability } from "./syntax.js";
 
 // ── Public interface ──
 

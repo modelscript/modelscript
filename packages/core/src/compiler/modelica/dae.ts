@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
-import { createHash } from "../../util/hash.js";
-import type { Writer } from "../../util/io.js";
-import type { JSONValue, Triple } from "../../util/types.js";
+import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "@modelscript/modelica-ast";
+import type { JSONValue, Triple, Writer } from "@modelscript/utils";
+import { createHash } from "@modelscript/utils";
 import type { ModelicaDiagnostic } from "./errors.js";
 import {
   ModelicaArrayClassInstance,
@@ -11,7 +11,6 @@ import {
   ModelicaEnumerationClassInstance,
   ModelicaPredefinedClassInstance,
 } from "./model.js";
-import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "./syntax.js";
 
 export interface SourceLocation {
   filePath?: string;

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "@modelscript/modelica-ast";
 import { type BdfOptions, bdf as bdfSolver } from "./bdf.js";
 import {
   ExpressionEvaluator,
@@ -42,7 +43,6 @@ import { buildFunctionLookup, executeStatements, executeStatementsAsync } from "
 import { getCachedSundialsWasm } from "./sundials-wasm.js";
 import { isolateSymbolically } from "./symbolic.js";
 import { egraphSimplify } from "./symbolic/egraph.js";
-import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "./syntax.js";
 import { Tape, type TapeNode } from "./tape.js";
 
 /** Describes a single action inside a when-clause body. */

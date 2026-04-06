@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { ModelicaClassKind } from "@modelscript/modelica-ast";
 import {
   Ellipse,
   Image,
@@ -31,7 +32,6 @@ import {
   ModelicaRealClassInstance,
   type ModelicaClassInstance,
 } from "./model.js";
-import { ModelicaClassKind } from "./syntax.js";
 import {
   Arrow,
   FillPattern,

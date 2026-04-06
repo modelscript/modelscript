@@ -11,6 +11,7 @@
  * FMI 2.0 specification: https://fmi-standard.org/
  */
 
+import { ModelicaVariability } from "@modelscript/modelica-ast";
 import type { ModelicaDAE, ModelicaExpression, ModelicaVariable } from "./dae.js";
 import {
   ModelicaArray,
@@ -29,7 +30,6 @@ import {
   ModelicaUnaryExpression,
 } from "./dae.js";
 import type { SolverOptions } from "./solver-options.js";
-import { ModelicaVariability } from "./syntax.js";
 
 // ── Public interface ──
 

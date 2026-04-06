@@ -16,6 +16,7 @@
  * structural check (`isExplicitlySolvableFor`) cannot handle.
  */
 
+import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "@modelscript/modelica-ast";
 import type { ModelicaExpression } from "./dae.js";
 import {
   ModelicaBinaryExpression,
@@ -29,7 +30,6 @@ import {
   ModelicaUnaryExpression,
 } from "./dae.js";
 import { add, differentiateExpr, div, isOne, isZero, mul, ONE, simplifyExpr, sub, ZERO } from "./symbolic-diff.js";
-import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "./syntax.js";
 
 // ─────────────────────────────────────────────────────────────────────
 // Public API

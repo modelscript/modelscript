@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ModelicaEntity, ModelicaLibrary } from "./model.js";
 import {
   ModelicaAnnotationClauseSyntaxNode,
   ModelicaArrayConcatenationSyntaxNode,
@@ -15,7 +14,8 @@ import {
   type ModelicaClassModificationSyntaxNode,
   type ModelicaExpressionSyntaxNode,
   type ModelicaSyntaxNode,
-} from "./syntax.js";
+} from "@modelscript/modelica-ast";
+import { ModelicaEntity, ModelicaLibrary } from "./model.js";
 
 interface PotEntry {
   msgid: string;

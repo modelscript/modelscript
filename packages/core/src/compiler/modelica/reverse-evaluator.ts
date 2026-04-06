@@ -7,6 +7,7 @@
  * within a `Tape`, recording operations for backward-pass gradient computation.
  */
 
+import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "@modelscript/modelica-ast";
 import {
   ModelicaBinaryExpression,
   ModelicaBooleanLiteral,
@@ -22,7 +23,6 @@ import {
   ModelicaUnaryExpression,
   ModelicaVariable,
 } from "./dae.js";
-import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "./syntax.js";
 import { type Tape, type TapeNode } from "./tape.js";
 
 export class ReverseExpressionEvaluator {

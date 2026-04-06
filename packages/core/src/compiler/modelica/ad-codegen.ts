@@ -1,3 +1,4 @@
+import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "@modelscript/modelica-ast";
 import {
   ModelicaArray,
   ModelicaArrayEquation,
@@ -12,7 +13,6 @@ import {
   ModelicaSubscriptedExpression,
   ModelicaUnaryExpression,
 } from "./dae.js";
-import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "./syntax.js";
 
 export type TapeOp =
   | { type: "const"; val: number }

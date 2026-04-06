@@ -19,6 +19,7 @@
  *   - Sensitivity analysis in the TypeScript simulator
  */
 
+import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "@modelscript/modelica-ast";
 import type { ModelicaExpression } from "./dae.js";
 import {
   ModelicaBinaryExpression,
@@ -31,7 +32,6 @@ import {
   ModelicaStringLiteral,
   ModelicaUnaryExpression,
 } from "./dae.js";
-import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "./syntax.js";
 
 /**
  * Symbolically differentiate an expression with respect to a variable.

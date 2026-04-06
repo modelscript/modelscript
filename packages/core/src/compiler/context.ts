@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { FileSystem } from "../util/filesystem.js";
-import { StringWriter } from "../util/io.js";
-import type { Parser, Tree } from "../util/tree-sitter.js";
+import { ModelicaStoredDefinitionSyntaxNode } from "@modelscript/modelica-ast";
+import type { FileSystem, Parser, Tree } from "@modelscript/utils";
+import { StringWriter } from "@modelscript/utils";
 import { ModelicaDAE, ModelicaDAEPrinter } from "./modelica/dae.js";
 import { ModelicaFlattener, findAlgebraicLoops } from "./modelica/flattener.js";
 import {
@@ -14,7 +14,6 @@ import {
 } from "./modelica/model.js";
 import { ModelicaPoParser, ModelicaTranslation } from "./modelica/po.js";
 import { MODELSCRIPT_CAS_PACKAGE } from "./modelica/symbolic/cas-bindings.js";
-import { ModelicaStoredDefinitionSyntaxNode } from "./modelica/syntax.js";
 import { Scope } from "./scope.js";
 
 /** Homotopy continuation strategy for initialization. */

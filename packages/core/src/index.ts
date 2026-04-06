@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+export * from "@modelscript/modelica-ast";
+export * from "@modelscript/utils";
 export * from "./compiler/context.js";
 export * from "./compiler/modelica/annotation.js";
 export * from "./compiler/modelica/bdf.js";
@@ -26,16 +28,8 @@ export * from "./compiler/modelica/simulator.js";
 export * from "./compiler/modelica/ssp-archive.js";
 export * from "./compiler/modelica/statement-executor.js";
 export * from "./compiler/modelica/svg.js";
-export * from "./compiler/modelica/syntax.js";
 export * from "./compiler/modelica/tape.js";
 export * from "./compiler/modelica/types.js";
 export * from "./compiler/modelica/units.js";
 export * from "./compiler/modelica/wrapper-template.js";
 export * from "./compiler/scope.js";
-export * from "./util/color-inversion.js";
-export * from "./util/enum.js";
-export * from "./util/filesystem.js";
-export * from "./util/io.js";
-export * from "./util/logger.js";
-export * from "./util/tree-sitter.js";
-export * from "./util/weak.js";

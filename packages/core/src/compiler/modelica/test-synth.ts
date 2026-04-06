@@ -1,10 +1,10 @@
+import { ModelicaStoredDefinitionSyntaxNode } from "@modelscript/modelica-ast";
 import Modelica from "@modelscript/tree-sitter-modelica";
+import type { FileSystem } from "@modelscript/utils";
 import Parser from "tree-sitter";
-import type { FileSystem } from "../../util/filesystem.js";
 import { Context } from "../context.js";
 import { ModelicaFmuEntity } from "./fmu.js";
 import { ModelicaClassInstance, ModelicaComponentInstance, ModelicaElement, ModelicaNamedElement } from "./model.js";
-import { ModelicaStoredDefinitionSyntaxNode } from "./syntax.js";
 
 // Minimal stub — the FMU test doesn't use filesystem operations
 const stubFs = {} as FileSystem;

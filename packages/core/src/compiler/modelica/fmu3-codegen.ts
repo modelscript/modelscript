@@ -7,6 +7,7 @@
  * for Model Exchange, Co-Simulation, and Scheduled Execution.
  */
 
+import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "@modelscript/modelica-ast";
 import type { ModelicaDAE, ModelicaExpression } from "./dae.js";
 import {
   ModelicaArrayEquation,
@@ -22,7 +23,6 @@ import {
   ModelicaWhenEquation,
 } from "./dae.js";
 import type { Fmi3Options, Fmi3Result, Fmi3Variable } from "./fmi3.js";
-import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "./syntax.js";
 
 /** Sanitize a Modelica name into a valid C identifier. */
 function sanitizeIdentifier(name: string): string {

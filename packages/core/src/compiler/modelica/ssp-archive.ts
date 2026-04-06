@@ -17,6 +17,7 @@
  * system and exposes them as typed variable descriptors for flattener use.
  */
 
+import { ModelicaCausality, ModelicaClassKind, type ModelicaIdentifierSyntaxNode } from "@modelscript/modelica-ast";
 import { inflateRaw } from "pako";
 import type { Scope } from "../scope.js";
 import type { IModelicaModelVisitor } from "./model.js";
@@ -26,7 +27,6 @@ import {
   type ModelicaElement,
   type ModelicaNamedElement,
 } from "./model.js";
-import { ModelicaCausality, ModelicaClassKind, type ModelicaIdentifierSyntaxNode } from "./syntax.js";
 
 /** Connector descriptor extracted from an SSP system boundary. */
 export interface SspBoundaryVariable {

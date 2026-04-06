@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { makeWeakRef } from "../util/weak.js";
+import {
+  ModelicaIdentifierSyntaxNode,
+  ModelicaNameSyntaxNode,
+  ModelicaTypeSpecifierSyntaxNode,
+  type ModelicaComponentReferenceSyntaxNode,
+} from "@modelscript/modelica-ast";
+import { makeWeakRef } from "@modelscript/utils";
 import {
   ModelicaBooleanClassInstance,
   ModelicaClassInstance,
@@ -13,12 +19,6 @@ import {
   ModelicaRealClassInstance,
   ModelicaStringClassInstance,
 } from "./modelica/model.js";
-import {
-  ModelicaIdentifierSyntaxNode,
-  ModelicaNameSyntaxNode,
-  ModelicaTypeSpecifierSyntaxNode,
-  type ModelicaComponentReferenceSyntaxNode,
-} from "./modelica/syntax.js";
 
 let scopeBoolean: ModelicaBooleanClassInstance | null = null;
 let scopeClock: ModelicaClockClassInstance | null = null;
