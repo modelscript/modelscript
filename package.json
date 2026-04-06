@@ -18,7 +18,8 @@
   "author": "Mohamad Omar Nachawati <mnachawa@gmail.com>",
   "type": "module",
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "languages/*/*"
   ],
   "scripts": {
     "build": "nx run-many --target=build",

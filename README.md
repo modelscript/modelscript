@@ -21,17 +21,17 @@ ModelScript is a comprehensive Modelica compilation, simulation, optimization, a
 
 This project is a monorepo managed with **Lerna**, **Nx**, and **npm workspaces**.
 
-| Package                                                                 | Description                                                                        |
-| ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| [`@modelscript/core`](./packages/core/)                                 | Compiler engine — parsing, semantic analysis, flattening, simulation, linting      |
-| [`@modelscript/cli`](./packages/cli/)                                   | `msc` command-line interface — flatten, simulate, optimize, lint, render, and more |
-| [`@modelscript/api`](./packages/api/)                                   | REST API server — simulation, publishing, GraphQL, SPARQL, and RDF                 |
-| [`@modelscript/morsel`](./packages/morsel/)                             | Visual Modelica editor — code editing, diagram viewer, simulation, and plotting    |
-| [`@modelscript/web`](./packages/web/)                                   | Web frontend for browsing and exploring Modelica libraries                         |
-| [`@modelscript/ide`](./packages/ide/)                                   | VS Code Web IDE — browser-based Modelica development environment                   |
-| [`@modelscript/lsp`](./packages/lsp/)                                   | Language Server Protocol — completions, hover, diagnostics, formatting, colors     |
-| [`@modelscript/vscode`](./packages/vscode/)                             | VS Code extension — syntax highlighting, LSP client, diagram view                  |
-| [`@modelscript/tree-sitter-modelica`](./packages/tree-sitter-modelica/) | Tree-sitter grammar for Modelica (native + WASM)                                   |
+| Package                                                                           | Description                                                                        |
+| --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| [`@modelscript/core`](./packages/core/)                                           | Compiler engine — parsing, semantic analysis, flattening, simulation, linting      |
+| [`@modelscript/cli`](./packages/cli/)                                             | `msc` command-line interface — flatten, simulate, optimize, lint, render, and more |
+| [`@modelscript/api`](./packages/api/)                                             | REST API server — simulation, publishing, GraphQL, SPARQL, and RDF                 |
+| [`@modelscript/morsel`](./packages/morsel/)                                       | Visual Modelica editor — code editing, diagram viewer, simulation, and plotting    |
+| [`@modelscript/web`](./packages/web/)                                             | Web frontend for browsing and exploring Modelica libraries                         |
+| [`@modelscript/ide`](./packages/ide/)                                             | VS Code Web IDE — browser-based Modelica development environment                   |
+| [`@modelscript/lsp`](./packages/lsp/)                                             | Language Server Protocol — completions, hover, diagnostics, formatting, colors     |
+| [`@modelscript/vscode`](./packages/vscode/)                                       | VS Code extension — syntax highlighting, LSP client, diagram view                  |
+| [`@modelscript/tree-sitter-modelica`](./languages/modelica/tree-sitter-modelica/) | Tree-sitter grammar for Modelica (native + WASM)                                   |
 
 ## Core Features
 

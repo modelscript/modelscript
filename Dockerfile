@@ -15,9 +15,9 @@ FROM node:22-alpine AS deps
 RUN apk add --no-cache python3 make g++
 WORKDIR /app
 COPY package.json package-lock.json ./
-COPY packages/tree-sitter-modelica/package.json packages/tree-sitter-modelica/grammar.js packages/tree-sitter-modelica/binding.gyp packages/tree-sitter-modelica/
-COPY packages/tree-sitter-modelica/bindings packages/tree-sitter-modelica/bindings
-COPY packages/tree-sitter-modelica/src packages/tree-sitter-modelica/src
+COPY languages/modelica/tree-sitter-modelica/package.json languages/modelica/tree-sitter-modelica/grammar.js languages/modelica/tree-sitter-modelica/binding.gyp languages/modelica/tree-sitter-modelica/
+COPY languages/modelica/tree-sitter-modelica/bindings languages/modelica/tree-sitter-modelica/bindings
+COPY languages/modelica/tree-sitter-modelica/src languages/modelica/tree-sitter-modelica/src
 COPY packages/core/package.json packages/core/
 COPY packages/api/package.json packages/api/
 COPY packages/morsel/package.json packages/morsel/
@@ -29,14 +29,14 @@ COPY packages/ide/package.json packages/ide/
 COPY packages/cosim/package.json packages/cosim/
 RUN --mount=type=cache,target=/root/.npm npm ci --ignore-scripts
 # Build native addon from committed parser source
-RUN cd packages/tree-sitter-modelica && npx node-gyp rebuild
+RUN cd languages/modelica/tree-sitter-modelica && npx node-gyp rebuild
 
 # ==============================================================================
 # API
 # ==============================================================================
 FROM deps AS build-api-false
 COPY packages/core packages/core
-COPY packages/tree-sitter-modelica packages/tree-sitter-modelica
+COPY languages/modelica/tree-sitter-modelica languages/modelica/tree-sitter-modelica
 COPY packages/cosim packages/cosim
 COPY packages/api packages/api
 RUN npm run clean -w packages/core && npx tsc -p packages/core \
@@ -55,8 +55,8 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY packages/core/package.json packages/core/
 COPY packages/cosim/package.json packages/cosim/
-COPY packages/tree-sitter-modelica/package.json packages/tree-sitter-modelica/grammar.js packages/tree-sitter-modelica/binding.gyp packages/tree-sitter-modelica/
-COPY packages/tree-sitter-modelica/bindings packages/tree-sitter-modelica/bindings
+COPY languages/modelica/tree-sitter-modelica/package.json languages/modelica/tree-sitter-modelica/grammar.js languages/modelica/tree-sitter-modelica/binding.gyp languages/modelica/tree-sitter-modelica/
+COPY languages/modelica/tree-sitter-modelica/bindings languages/modelica/tree-sitter-modelica/bindings
 COPY packages/api/package.json packages/api/
 COPY packages/morsel/package.json packages/morsel/
 COPY packages/web/package.json packages/web/
@@ -65,8 +65,8 @@ COPY packages/lsp/package.json packages/lsp/
 COPY packages/vscode/package.json packages/vscode/
 COPY packages/ide/package.json packages/ide/
 RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev --ignore-scripts
-COPY --from=deps /app/packages/tree-sitter-modelica/src packages/tree-sitter-modelica/src
-COPY --from=deps /app/packages/tree-sitter-modelica/build packages/tree-sitter-modelica/build
+COPY --from=deps /app/languages/modelica/tree-sitter-modelica/src languages/modelica/tree-sitter-modelica/src
+COPY --from=deps /app/languages/modelica/tree-sitter-modelica/build languages/modelica/tree-sitter-modelica/build
 COPY --from=deps /app/node_modules/@modelscript/tree-sitter-modelica node_modules/@modelscript/tree-sitter-modelica
 COPY --from=build-api /app/packages/core/dist packages/core/dist
 COPY --from=build-api /app/packages/cosim/dist packages/cosim/dist
@@ -81,7 +81,7 @@ CMD ["node", "packages/api/dist/main.js"]
 FROM deps AS build-morsel-false
 COPY scripts scripts
 COPY packages/core packages/core
-COPY packages/tree-sitter-modelica packages/tree-sitter-modelica
+COPY languages/modelica/tree-sitter-modelica languages/modelica/tree-sitter-modelica
 COPY packages/morsel packages/morsel
 RUN node scripts/download-msl.cjs && cp scripts/ModelicaStandardLibrary_v4.1.0.zip packages/morsel/public/
 RUN npm run clean -w packages/core && npx tsc -p packages/core \
@@ -137,7 +137,7 @@ RUN bash scripts/download-model.sh
 FROM deps AS build-ide-false
 COPY scripts scripts
 COPY packages/core packages/core
-COPY packages/tree-sitter-modelica packages/tree-sitter-modelica
+COPY languages/modelica/tree-sitter-modelica languages/modelica/tree-sitter-modelica
 COPY packages/lsp packages/lsp
 COPY packages/vscode packages/vscode
 COPY packages/ide packages/ide
@@ -169,7 +169,7 @@ COPY packages/web/package.json packages/web/
 COPY packages/cli/package.json packages/cli/
 COPY packages/core/package.json packages/core/
 COPY packages/lsp/package.json packages/lsp/
-COPY packages/tree-sitter-modelica/package.json packages/tree-sitter-modelica/grammar.js packages/tree-sitter-modelica/binding.gyp packages/tree-sitter-modelica/
+COPY languages/modelica/tree-sitter-modelica/package.json languages/modelica/tree-sitter-modelica/grammar.js languages/modelica/tree-sitter-modelica/binding.gyp languages/modelica/tree-sitter-modelica/
 RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev --ignore-scripts
 COPY --from=build-ide /app/packages/ide/dist packages/ide/dist
 COPY --from=build-ide /app/packages/ide/vscode-web packages/ide/vscode-web
