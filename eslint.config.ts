@@ -15,10 +15,18 @@ export default defineConfig([
             "eslint.config.ts",
             "languages/modelica/tree-sitter-modelica/grammar.js",
             "languages/modelica/tree-sitter-modelica/bindings/node/index.d.ts",
+            "scripts/generate-ast.ts",
           ],
         },
         tsconfigRootDir: import.meta.dirname,
       },
+    },
+  },
+  {
+    files: ["scripts/**/*.ts"],
+    rules: {
+      "@typescript-eslint/no-non-null-assertion": "off",
+      "@typescript-eslint/consistent-generic-constructors": "off",
     },
   },
   {
