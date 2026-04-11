@@ -41,7 +41,7 @@
     "@modelscript/tree-sitter-modelica": "*",
     "@svgdotjs/svg.js": "^3.2.5",
     "bcryptjs": "^3.0.3",
-    "better-sqlite3": "^11.9.1",
+    "better-sqlite3": "^12.8.0",
     "express": "^5.1.0",
     "graphql": "^16.13.0",
     "graphql-http": "^1.22.4",
