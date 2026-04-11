@@ -20,7 +20,7 @@
  *   "Generalized McCormick Relaxations", JOGO.
  */
 
-import type { TapeOp } from "./ad-codegen.js";
+import type { TapeOp } from "../tape.js";
 import { Interval, iaCos, iaDiv, iaMul, iaPow, iaSin, iaTan } from "./interval.js";
 
 /** McCormick relaxation tuple at a single tape node. */

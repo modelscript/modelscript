@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 export * from "@modelscript/modelica-ast";
+export * from "@modelscript/symbolics";
 export * from "@modelscript/utils";
 export * from "./compiler/context.js";
 export * from "./compiler/modelica/annotation.js";
 export * from "./compiler/modelica/bdf.js";
-export * from "./compiler/modelica/blt.js";
-export * from "./compiler/modelica/dae.js";
 export * from "./compiler/modelica/dopri5.js";
 export * from "./compiler/modelica/dual-evaluator.js";
 export * from "./compiler/modelica/dual.js";

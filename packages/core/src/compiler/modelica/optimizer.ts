@@ -16,8 +16,8 @@
  */
 
 import { ModelicaVariability } from "@modelscript/modelica-ast";
-import type { ModelicaDAE } from "./dae.js";
-import { ModelicaIntegerLiteral, ModelicaRealLiteral } from "./dae.js";
+import type { ModelicaDAE } from "@modelscript/symbolics";
+import { ModelicaIntegerLiteral, ModelicaRealLiteral } from "@modelscript/symbolics";
 import type { MonteCarloOptions, RandomVariable } from "./monte-carlo.js";
 import { luFactor, luSolve, ModelicaSimulator } from "./simulator.js";
 import type { SolverOptions } from "./solver-options.js";

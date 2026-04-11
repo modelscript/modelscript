@@ -22,7 +22,7 @@ import {
   ModelicaRealVariable,
   ModelicaUnaryExpression,
   ModelicaVariable,
-} from "./dae.js";
+} from "@modelscript/symbolics";
 import { Dual } from "./dual.js";
 
 export class DualExpressionEvaluator {

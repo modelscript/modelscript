@@ -11,13 +11,13 @@
  * finite-difference approximations with exact analytical derivatives.
  */
 
-import { StaticTapeBuilder, type TapeOp } from "./ad-codegen.js";
 import {
   ModelicaArrayEquation,
   type ModelicaDAE,
   type ModelicaExpression,
   ModelicaFunctionCallExpression,
-} from "./dae.js";
+} from "@modelscript/symbolics";
+import { StaticTapeBuilder, type TapeOp } from "./ad-codegen.js";
 
 /** Extract derivative name from expression like der(x). */
 function extractDer(expr: ModelicaExpression): string | null {

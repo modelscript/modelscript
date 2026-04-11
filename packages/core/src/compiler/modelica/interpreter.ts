@@ -29,8 +29,9 @@ import {
   ModelicaWhenStatementSyntaxNode,
   ModelicaWhileStatementSyntaxNode,
 } from "@modelscript/modelica-ast";
-import { ModelicaLoopScope, ModelicaScriptScope, type Scope } from "../scope.js";
 import {
+  evaluateCASFunction,
+  isCASFunction,
   ModelicaArray,
   ModelicaBinaryExpression,
   ModelicaBooleanLiteral,
@@ -44,7 +45,8 @@ import {
   ModelicaRealLiteral,
   ModelicaStringLiteral,
   ModelicaUnaryExpression,
-} from "./dae.js";
+} from "@modelscript/symbolics";
+import { ModelicaLoopScope, ModelicaScriptScope, type Scope } from "../scope.js";
 import { evaluateOptimize } from "./evaluate-optimize.js";
 import { evaluateSimulate } from "./evaluate-simulate.js";
 import {
@@ -57,7 +59,6 @@ import {
   ModelicaModification,
   ModelicaParameterModification,
 } from "./model.js";
-import { evaluateCASFunction, isCASFunction } from "./symbolic/cas-bindings.js";
 
 /** Set of Modelica built-in array function names handled directly by the interpreter. */
 const BUILTIN_ARRAY_FUNCTIONS = new Set([
@@ -1828,7 +1829,7 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
         // First-time instantiation for dynamically created script variables
         if (value instanceof ModelicaObject && value.classInstance) {
           // Record value: use the record's class instance directly
-          componentTarget.classInstance = value.classInstance.clone(mod);
+          componentTarget.classInstance = (value.classInstance as ModelicaClassInstance).clone(mod);
         } else {
           let typeName = "Real";
           if (value instanceof ModelicaIntegerLiteral) typeName = "Integer";
@@ -2237,7 +2238,7 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
         if (typeDefinition instanceof ModelicaClassInstance) {
           instance.classInstance = typeDefinition.clone(mod);
         } else if (initialValue instanceof ModelicaObject && initialValue.classInstance) {
-          instance.classInstance = initialValue.classInstance.clone(mod);
+          instance.classInstance = (initialValue.classInstance as ModelicaClassInstance).clone(mod);
         } else {
           // Fallback to basic types if the type definition couldn't be resolved
           let inferredType = "Real";

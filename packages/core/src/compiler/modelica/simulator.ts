@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "@modelscript/modelica-ast";
-import { type BdfOptions, bdf as bdfSolver } from "./bdf.js";
 import {
   ExpressionEvaluator,
   ModelicaBinaryExpression,
@@ -30,8 +29,11 @@ import {
   ModelicaUnaryExpression,
   ModelicaVariable,
   ModelicaWhenEquation,
+  egraphSimplify,
+  isolateSymbolically,
   pantelidesIndexReduction,
-} from "./dae.js";
+} from "@modelscript/symbolics";
+import { type BdfOptions, bdf as bdfSolver } from "./bdf.js";
 import { type Dopri5Options, dopri5 as dopri5Solver } from "./dopri5.js";
 import { DualExpressionEvaluator } from "./dual-evaluator.js";
 import { Dual } from "./dual.js";
@@ -41,8 +43,6 @@ import { ReverseExpressionEvaluator } from "./reverse-evaluator.js";
 import { type SolverOptions, resolveSolverOptions } from "./solver-options.js";
 import { buildFunctionLookup, executeStatements, executeStatementsAsync } from "./statement-executor.js";
 import { getCachedSundialsWasm } from "./sundials-wasm.js";
-import { isolateSymbolically } from "./symbolic.js";
-import { egraphSimplify } from "./symbolic/egraph.js";
 import { Tape, type TapeNode } from "./tape.js";
 
 /** Describes a single action inside a when-clause body. */
@@ -79,7 +79,7 @@ export type ExecutionBlock =
       /** Residual equations, used to compute Newton residual for tearing vars. */
       residualEqs: { target: string; expr: ModelicaExpression; isDerivative: boolean }[];
     }
-  | { type: "algorithm"; statements: import("./dae.js").ModelicaStatement[] };
+  | { type: "algorithm"; statements: import("@modelscript/symbolics").ModelicaStatement[] };
 
 /** A when-clause ready for evaluation during simulation. */
 interface WhenClause {
@@ -4483,7 +4483,7 @@ function substituteIndexInExpr(expr: ModelicaExpression, indexName: string, inde
 /** Hooks for integrating an external debugger (e.g., Debug Adapter Protocol). */
 export interface SimulationDebugger {
   onStatement?: (
-    stmt: import("./dae.js").ModelicaStatement,
-    evaluator: import("./dae.js").ExpressionEvaluator,
+    stmt: import("@modelscript/symbolics").ModelicaStatement,
+    evaluator: import("@modelscript/symbolics").ExpressionEvaluator,
   ) => Promise<void>;
 }

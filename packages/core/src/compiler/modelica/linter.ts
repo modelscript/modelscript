@@ -60,10 +60,10 @@ import {
   type ModelicaTypeSpecifierSyntaxNode,
   type ModelicaWithinDirectiveSyntaxNode,
 } from "@modelscript/modelica-ast";
+import { ModelicaArray } from "@modelscript/symbolics";
 import type { Range, Tree } from "@modelscript/utils";
 import { StringWriter } from "@modelscript/utils";
 import { Scope } from "../scope.js";
-import { ModelicaArray } from "./dae.js";
 import { ModelicaErrorCode, type ErrorCodeDef } from "./errors.js";
 import {
   ENUMERATION_ATTRIBUTE_TYPES,

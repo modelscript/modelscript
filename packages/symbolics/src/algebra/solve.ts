@@ -10,11 +10,11 @@
  * Integrates with the E-Graph engine for expression simplification.
  */
 
-import type { ModelicaExpression } from "../dae.js";
-import { ModelicaRealLiteral } from "../dae.js";
-import { add, div, mul, sub, ZERO } from "../symbolic-diff.js";
-import { egraphSimplify } from "./egraph.js";
-import { collectTerms, expandExpr, getLiteralValue } from "./expand.js";
+import { add, div, mul, sub, ZERO } from "../calculus/derivative.js";
+import { egraphSimplify } from "../simplify/egraph.js";
+import { collectTerms, expandExpr, getLiteralValue } from "../simplify/expand.js";
+import type { ModelicaExpression } from "../systems/index.js";
+import { ModelicaRealLiteral } from "../systems/index.js";
 
 // ─────────────────────────────────────────────────────────────────────
 // Public API
@@ -262,7 +262,7 @@ function solveQuarticNumeric(a: number, b: number, c: number, d: number, e: numb
 // ─────────────────────────────────────────────────────────────────────
 
 import { ModelicaUnaryOperator } from "@modelscript/modelica-ast";
-import { ModelicaFunctionCallExpression, ModelicaUnaryExpression } from "../dae.js";
+import { ModelicaFunctionCallExpression, ModelicaUnaryExpression } from "../systems/index.js";
 
 function negate(expr: ModelicaExpression): ModelicaExpression {
   const val = getLiteralValue(expr);

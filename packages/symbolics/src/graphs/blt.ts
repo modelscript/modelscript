@@ -1,3 +1,5 @@
+import { isolateSymbolically } from "../ir/expressions.js";
+import { egraphSimplify } from "../simplify/egraph.js";
 import {
   ModelicaBooleanVariable,
   ModelicaDAE,
@@ -9,9 +11,7 @@ import {
   ModelicaNameExpression,
   ModelicaRealVariable,
   ModelicaSimpleEquation,
-} from "./dae.js";
-import { isolateSymbolically } from "./symbolic.js";
-import { egraphSimplify } from "./symbolic/egraph.js";
+} from "../systems/index.js";
 
 /**
  * Visitor that collects all variable names referenced in an expression/equation.

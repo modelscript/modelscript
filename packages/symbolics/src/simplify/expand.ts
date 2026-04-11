@@ -8,7 +8,8 @@
  */
 
 import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "@modelscript/modelica-ast";
-import type { ModelicaExpression } from "../dae.js";
+import { add, div, isZero, mul, pow, sub, ZERO } from "../calculus/derivative.js";
+import type { ModelicaExpression } from "../systems/index.js";
 import {
   ModelicaBinaryExpression,
   ModelicaFunctionCallExpression,
@@ -16,8 +17,7 @@ import {
   ModelicaNameExpression,
   ModelicaRealLiteral,
   ModelicaUnaryExpression,
-} from "../dae.js";
-import { add, div, isOne, isZero, mul, pow, sub, ZERO } from "../symbolic-diff.js";
+} from "../systems/index.js";
 import { egraphSimplify } from "./egraph.js";
 
 // ─────────────────────────────────────────────────────────────────────
@@ -343,6 +343,3 @@ export function getLiteralValue(expr: ModelicaExpression): number | null {
   if (expr instanceof ModelicaIntegerLiteral) return expr.value;
   return null;
 }
-
-/** Check if expression represents constant one. */
-export { isOne, isZero };

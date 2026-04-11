@@ -20,7 +20,7 @@
  */
 
 import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "@modelscript/modelica-ast";
-import type { ModelicaExpression } from "../dae.js";
+import type { ModelicaExpression } from "../systems/index.js";
 import {
   ModelicaBinaryExpression,
   ModelicaBooleanLiteral,
@@ -32,7 +32,7 @@ import {
   ModelicaStringLiteral,
   ModelicaUnaryExpression,
   ModelicaVariable,
-} from "../dae.js";
+} from "../systems/index.js";
 
 // ─────────────────────────────────────────────────────────────────────
 // Types

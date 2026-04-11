@@ -7,11 +7,11 @@
  * and linear system solving on ModelicaExpression matrices.
  */
 
-import type { ModelicaExpression } from "../dae.js";
-import { ModelicaNameExpression, ModelicaRealLiteral } from "../dae.js";
-import { add, div, isZero, mul, ONE, sub, ZERO } from "../symbolic-diff.js";
-import { egraphSimplify } from "./egraph.js";
-import { collectTerms, expandExpr, getLiteralValue } from "./expand.js";
+import { add, div, isZero, mul, ONE, sub, ZERO } from "../calculus/derivative.js";
+import { egraphSimplify } from "../simplify/egraph.js";
+import { collectTerms, expandExpr, getLiteralValue } from "../simplify/expand.js";
+import type { ModelicaExpression } from "../systems/index.js";
+import { ModelicaNameExpression, ModelicaRealLiteral } from "../systems/index.js";
 
 // ─────────────────────────────────────────────────────────────────────
 // Types
@@ -218,7 +218,7 @@ export function solveLinearSystem(
 // ─────────────────────────────────────────────────────────────────────
 
 import { ModelicaUnaryOperator } from "@modelscript/modelica-ast";
-import { ModelicaBinaryExpression, ModelicaFunctionCallExpression, ModelicaUnaryExpression } from "../dae.js";
+import { ModelicaBinaryExpression, ModelicaFunctionCallExpression, ModelicaUnaryExpression } from "../systems/index.js";
 
 function negate(expr: ModelicaExpression): ModelicaExpression {
   const val = getLiteralValue(expr);

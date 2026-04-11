@@ -43,18 +43,18 @@ import {
   ModelicaVisibility,
   type ModelicaComponentDeclarationSyntaxNode,
 } from "@modelscript/modelica-ast";
-import type { JSONValue, Triple, Writer } from "@modelscript/utils";
-import { logger, makeWeakRef, makeWeakRefArray } from "@modelscript/utils";
-import { Context } from "../context.js";
-import { Scope } from "../scope.js";
-import { ANNOTATION } from "./annotation.js";
 import {
   ModelicaArray,
   ModelicaDAEPrinter,
   ModelicaEnumerationLiteral,
   ModelicaExpression,
   ModelicaIntegerLiteral,
-} from "./dae.js";
+} from "@modelscript/symbolics";
+import type { JSONValue, Triple, Writer } from "@modelscript/utils";
+import { logger, makeWeakRef, makeWeakRefArray } from "@modelscript/utils";
+import { Context } from "../context.js";
+import { Scope } from "../scope.js";
+import { ANNOTATION } from "./annotation.js";
 import { ModelicaErrorCode, makeDiagnostic, type ModelicaDiagnostic } from "./errors.js";
 import { ModelicaInterpreter } from "./interpreter.js";
 import { SCRIPTING } from "./scripting.js";

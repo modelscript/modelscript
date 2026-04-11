@@ -17,9 +17,9 @@
  *   "Mixed-integer nonlinear optimization", Acta Numerica.
  */
 
+import type { ModelicaExpression } from "@modelscript/symbolics";
 import { StaticTapeBuilder, type TapeOp } from "./ad-codegen.js";
 import { evaluateTapeForward, evaluateTapeReverse } from "./ad-jacobian.js";
-import type { ModelicaExpression } from "./dae.js";
 import type { ImplicitInitBlock } from "./system-initializer.js";
 
 /** Result of the MINLP freeze-and-solve iteration. */

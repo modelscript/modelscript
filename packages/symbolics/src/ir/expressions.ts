@@ -17,7 +17,19 @@
  */
 
 import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "@modelscript/modelica-ast";
-import type { ModelicaExpression } from "./dae.js";
+import {
+  add,
+  differentiateExpr,
+  div,
+  isOne,
+  isZero,
+  mul,
+  ONE,
+  simplifyExpr,
+  sub,
+  ZERO,
+} from "../calculus/derivative.js";
+import type { ModelicaExpression } from "../systems/index.js";
 import {
   ModelicaBinaryExpression,
   ModelicaDAE,
@@ -28,8 +40,7 @@ import {
   ModelicaRealVariable,
   ModelicaSimpleEquation,
   ModelicaUnaryExpression,
-} from "./dae.js";
-import { add, differentiateExpr, div, isOne, isZero, mul, ONE, simplifyExpr, sub, ZERO } from "./symbolic-diff.js";
+} from "../systems/index.js";
 
 // ─────────────────────────────────────────────────────────────────────
 // Public API

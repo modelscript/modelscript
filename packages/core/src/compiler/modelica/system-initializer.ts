@@ -26,7 +26,7 @@ import {
   ModelicaFunctionCallExpression,
   ModelicaIntegerVariable,
   ModelicaNameExpression,
-} from "./dae.js";
+} from "@modelscript/symbolics";
 
 // ── Public types ──
 

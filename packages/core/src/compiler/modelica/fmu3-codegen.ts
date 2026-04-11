@@ -8,7 +8,7 @@
  */
 
 import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "@modelscript/modelica-ast";
-import type { ModelicaDAE, ModelicaExpression } from "./dae.js";
+import type { ModelicaDAE, ModelicaExpression } from "@modelscript/symbolics";
 import {
   ModelicaArrayEquation,
   ModelicaBinaryExpression,
@@ -21,7 +21,7 @@ import {
   ModelicaStringLiteral,
   ModelicaUnaryExpression,
   ModelicaWhenEquation,
-} from "./dae.js";
+} from "@modelscript/symbolics";
 import type { Fmi3Options, Fmi3Result, Fmi3Variable } from "./fmi3.js";
 
 /** Sanitize a Modelica name into a valid C identifier. */

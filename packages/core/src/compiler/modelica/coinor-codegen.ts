@@ -15,8 +15,8 @@
  *   4. Output results
  */
 
+import type { ModelicaExpression } from "@modelscript/symbolics";
 import { StaticTapeBuilder } from "./ad-codegen.js";
-import type { ModelicaExpression } from "./dae.js";
 import type { SolverOptions } from "./solver-options.js";
 
 // ── Public interface ──

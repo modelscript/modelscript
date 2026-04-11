@@ -4,13 +4,78 @@
 import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "@modelscript/modelica-ast";
 import type { JSONValue, Triple, Writer } from "@modelscript/utils";
 import { createHash } from "@modelscript/utils";
-import type { ModelicaDiagnostic } from "./errors.js";
-import {
-  ModelicaArrayClassInstance,
-  ModelicaClassInstance,
-  ModelicaEnumerationClassInstance,
-  ModelicaPredefinedClassInstance,
-} from "./model.js";
+
+// ─────────────────────────────────────────────────────────────────────
+// Structural interfaces for types that live in @modelscript/core.
+// These let symbolics depend on the *shape* rather than the concrete
+// classes, breaking the circular dependency.
+// ─────────────────────────────────────────────────────────────────────
+
+/** Mirrors ModelicaDiagnostic from @modelscript/core/errors. */
+export interface Diagnostic {
+  code: number;
+  rule: string;
+  severity: "error" | "warning" | "info";
+  message: string;
+  range: { startPosition: { row: number; column: number }; endPosition: { row: number; column: number } } | null;
+}
+
+/** Structural interface for core's ModelicaClassInstance hierarchy. */
+export interface IClassInstance {
+  readonly instantiated: boolean;
+  readonly instantiating: boolean;
+  instantiate(): void;
+  readonly name?: string | null;
+  readonly hash?: string;
+  readonly modification?: { expression?: ModelicaExpression | null } | null;
+  readonly abstractSyntaxNode?: unknown;
+  readonly components: Iterable<IComponentInstance>;
+  readonly classKind?: string;
+  clone?(): IClassInstance;
+}
+
+/** Structural interface for class instances that represent arrays. */
+export interface IArrayClassInstance extends IClassInstance {
+  readonly elements?: IClassInstance[];
+  readonly shape: number[];
+}
+
+/** Structural interface for class instances that represent enumerations. */
+export interface IEnumerationClassInstance extends IClassInstance {
+  readonly value: ModelicaExpression;
+}
+
+/** Structural interface for predefined (built-in) class instances. */
+export interface IPredefinedClassInstance extends IClassInstance {
+  readonly expression: ModelicaExpression;
+}
+
+/** Structural interface for component instances. */
+export interface IComponentInstance {
+  readonly name?: string | null;
+  readonly instantiated: boolean;
+  readonly instantiating: boolean;
+  instantiate(): void;
+  readonly classInstance?: IClassInstance | null;
+  readonly modification?: { expression?: ModelicaExpression | null } | null;
+}
+
+// ── Duck-type guards ──
+
+/** @internal */
+function isArrayClassInstance(ci: IClassInstance): ci is IArrayClassInstance {
+  return "shape" in ci && Array.isArray((ci as IArrayClassInstance).shape);
+}
+
+/** @internal */
+function isEnumerationClassInstance(ci: IClassInstance): ci is IEnumerationClassInstance {
+  return "value" in ci && (ci as IEnumerationClassInstance).value instanceof ModelicaExpression;
+}
+
+/** @internal — resolved lazily because `ModelicaExpression` is declared later in this file. */
+function isPredefinedClassInstance(ci: IClassInstance): ci is IPredefinedClassInstance {
+  return "expression" in ci && (ci as IPredefinedClassInstance).expression instanceof ModelicaExpression;
+}
 
 export interface SourceLocation {
   filePath?: string;
@@ -259,7 +324,7 @@ export class ModelicaDAE {
    */
   externalObjects: ModelicaExternalObjectDescriptor[] = [];
   /** Diagnostics emitted during flattening (e.g. type errors, invalid iterators). */
-  diagnostics: ModelicaDiagnostic[] = [];
+  diagnostics: Diagnostic[] = [];
   /** Experiment annotation data (StartTime, StopTime, Tolerance, etc.). */
   experiment: {
     startTime?: number;
@@ -1113,7 +1178,7 @@ export abstract class ModelicaExpression {
   abstract get toRDF(): Triple[];
 
   static fromClassInstance(
-    classInstance: ModelicaClassInstance | null | undefined,
+    classInstance: IClassInstance | null | undefined,
     evaluator?: (expr: ModelicaExpression) => ModelicaExpression | null,
   ): ModelicaExpression | null {
     if (!classInstance) {
@@ -1121,18 +1186,17 @@ export abstract class ModelicaExpression {
     }
     if (!classInstance.instantiated && !classInstance.instantiating) classInstance.instantiate();
 
-    if (classInstance instanceof ModelicaArrayClassInstance) {
+    // Duck-type check: array class instances have a `shape` property
+    if (isArrayClassInstance(classInstance)) {
       let elements: ModelicaExpression[] = [];
       for (const element of classInstance.elements ?? []) {
-        if (element instanceof ModelicaClassInstance) {
-          const expression = ModelicaExpression.fromClassInstance(element, evaluator);
-          if (expression) elements.push(expression);
-        }
+        const expression = ModelicaExpression.fromClassInstance(element, evaluator);
+        if (expression) elements.push(expression);
       }
       // If we couldn't evaluate elements (e.g. disabled function algorithms),
       // returning an empty array here masks the original AST from the flattener.
       // Return null to signal evaluation failure unless the array is genuinely sized 0.
-      if (elements.length === 0 && classInstance.shape.some((d) => d > 0)) {
+      if (elements.length === 0 && classInstance.shape.some((d: number) => d > 0)) {
         return null;
       }
 
@@ -1147,9 +1211,9 @@ export abstract class ModelicaExpression {
       }
 
       return new ModelicaArray([classInstance.shape[0] ?? 0], elements);
-    } else if (classInstance instanceof ModelicaEnumerationClassInstance) {
+    } else if (isEnumerationClassInstance(classInstance)) {
       return classInstance.value;
-    } else if (classInstance instanceof ModelicaPredefinedClassInstance) {
+    } else if (isPredefinedClassInstance(classInstance)) {
       return classInstance.expression;
     } else if (classInstance.modification?.expression instanceof ModelicaObject) {
       return classInstance.modification.expression;
@@ -1161,7 +1225,10 @@ export abstract class ModelicaExpression {
         if (!component.name) continue;
         if (!component.instantiated && !component.instantiating) component.instantiate();
 
-        let value = ModelicaExpression.fromClassInstance(component.classInstance, evaluator);
+        let value = ModelicaExpression.fromClassInstance(
+          component.classInstance as IClassInstance | null | undefined,
+          evaluator,
+        );
         if (!value && evaluator && component.modification?.expression) {
           // Fall back to evaluating the component's default binding expression
           value = evaluator(component.modification.expression);
@@ -1926,10 +1993,10 @@ export class ModelicaTupleExpression extends ModelicaExpression {
 }
 
 export class ModelicaObject extends ModelicaPrimaryExpression {
-  #classInstance: ModelicaClassInstance | null;
+  #classInstance: IClassInstance | null;
   elements: Map<string, ModelicaExpression>;
 
-  constructor(elements: Map<string, ModelicaExpression>, classInstance?: ModelicaClassInstance | null) {
+  constructor(elements: Map<string, ModelicaExpression>, classInstance?: IClassInstance | null) {
     super();
     this.elements = elements;
     this.#classInstance = classInstance ?? null;
@@ -1939,7 +2006,7 @@ export class ModelicaObject extends ModelicaPrimaryExpression {
     return visitor.visitObject(this, argument);
   }
 
-  get classInstance(): ModelicaClassInstance | null {
+  get classInstance(): IClassInstance | null {
     return this.#classInstance;
   }
 

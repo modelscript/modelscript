@@ -22,7 +22,7 @@ import {
   ModelicaRealVariable,
   ModelicaUnaryExpression,
   ModelicaVariable,
-} from "./dae.js";
+} from "@modelscript/symbolics";
 import { type Tape, type TapeNode } from "./tape.js";
 
 export class ReverseExpressionEvaluator {

@@ -11,7 +11,7 @@
  *   "Introduction to Interval Analysis", SIAM.
  */
 
-import type { TapeOp } from "./ad-codegen.js";
+import type { TapeOp } from "../tape.js";
 
 /** A closed interval [lo, hi]. */
 export class Interval {

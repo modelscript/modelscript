@@ -31,7 +31,7 @@ import {
   ModelicaVariable,
   ModelicaWhenStatement,
   ModelicaWhileStatement,
-} from "./dae.js";
+} from "@modelscript/symbolics";
 
 /**
  * Sentinel thrown when a `return` statement is executed inside a
@@ -367,7 +367,7 @@ function executeWhenStatement(
 //  Utility: extract a variable name from an assignment target
 // ──────────────────────────────────────────────────────────────────
 
-import type { ModelicaExpression } from "./dae.js";
+import type { ModelicaExpression } from "@modelscript/symbolics";
 
 /**
  * Extract the variable name from an assignment target expression.

@@ -12,7 +12,7 @@
  * data contract between the compiler and the ECAD canvas frontend.
  */
 
-import type { ModelicaDAE } from "../../modelica/dae.js";
+import type { ModelicaDAE } from "@modelscript/symbolics";
 
 // ── Public types ──
 

@@ -16,11 +16,8 @@
  */
 
 import { ModelicaVariability } from "@modelscript/modelica-ast";
-import type { InitSolverConfig } from "../context.js";
-import { StaticTapeBuilder, type TapeOp } from "./ad-codegen.js";
-import { evaluateTapeForward, evaluateTapeReverse } from "./ad-jacobian.js";
-import { expandArrayBounds, solveSBB, type DomainBox } from "./branch-and-bound.js";
 import {
+  Interval,
   ModelicaArray,
   ModelicaArrayEquation,
   ModelicaBooleanLiteral,
@@ -31,9 +28,12 @@ import {
   type ModelicaDAE,
   type ModelicaEquation,
   type ModelicaExpression,
-} from "./dae.js";
+} from "@modelscript/symbolics";
+import type { InitSolverConfig } from "../context.js";
+import { StaticTapeBuilder, type TapeOp } from "./ad-codegen.js";
+import { evaluateTapeForward, evaluateTapeReverse } from "./ad-jacobian.js";
+import { expandArrayBounds, solveSBB, type DomainBox } from "./branch-and-bound.js";
 import { solveWithAutoHomotopy } from "./homotopy-strategies.js";
-import { Interval } from "./interval.js";
 import { freezeAndSolve } from "./minlp-heuristics.js";
 import { type SolverOptions } from "./solver-options.js";
 import { getCachedSundialsWasm } from "./sundials-wasm.js";

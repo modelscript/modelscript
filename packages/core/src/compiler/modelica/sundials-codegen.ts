@@ -14,7 +14,7 @@
  *   5. Writes results to CSV on stdout
  */
 
-import type { ModelicaDAE } from "./dae.js";
+import type { ModelicaDAE } from "@modelscript/symbolics";
 import type { FmuResult } from "./fmi.js";
 import type { SolverOptions } from "./solver-options.js";
 

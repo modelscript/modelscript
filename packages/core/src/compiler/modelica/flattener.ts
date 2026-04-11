@@ -48,8 +48,6 @@ import {
   ModelicaWhenStatementSyntaxNode,
   ModelicaWhileStatementSyntaxNode,
 } from "@modelscript/modelica-ast";
-import { performBltTransformation } from "./blt.js";
-import { BUILTIN_FUNCTIONS, BUILTIN_VARIABLES } from "./builtins.js";
 import {
   ModelicaArray,
   ModelicaArrayEquation,
@@ -101,11 +99,13 @@ import {
   ModelicaWhenEquation,
   ModelicaWhenStatement,
   ModelicaWhileStatement,
+  performBltTransformation,
   type ModelicaElseIfClause,
   type ModelicaElseWhenClause,
   type ModelicaFunctionTypeSignature,
   type ModelicaObject,
-} from "./dae.js";
+} from "@modelscript/symbolics";
+import { BUILTIN_FUNCTIONS, BUILTIN_VARIABLES } from "./builtins.js";
 import { makeDiagnostic, ModelicaErrorCode } from "./errors.js";
 import { buildFilledArray, ModelicaInterpreter } from "./interpreter.js";
 import {

@@ -2,6 +2,14 @@
 
 import { ModelicaClassKind } from "@modelscript/modelica-ast";
 import {
+  ModelicaBooleanLiteral,
+  ModelicaEnumerationLiteral,
+  ModelicaExpression,
+  ModelicaIntegerLiteral,
+  ModelicaRealLiteral,
+  ModelicaStringLiteral,
+} from "@modelscript/symbolics";
+import {
   Ellipse,
   Image,
   Marker,
@@ -17,14 +25,6 @@ import {
   type Shape,
   type Text,
 } from "@svgdotjs/svg.js";
-import {
-  ModelicaBooleanLiteral,
-  ModelicaEnumerationLiteral,
-  ModelicaExpression,
-  ModelicaIntegerLiteral,
-  ModelicaRealLiteral,
-  ModelicaStringLiteral,
-} from "./dae.js";
 import { evaluateCondition } from "./interpreter.js";
 import {
   ModelicaComponentInstance,

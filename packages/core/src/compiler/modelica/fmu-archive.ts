@@ -16,8 +16,8 @@
  *     model.json          (serialized DAE for JS-based runtime)
  */
 
+import type { ModelicaDAE } from "@modelscript/symbolics";
 import { deflateRaw } from "pako";
-import type { ModelicaDAE } from "./dae.js";
 import type { FmuOptions, FmuResult } from "./fmi.js";
 import { generateFmu } from "./fmi.js";
 import { generateFmi3 } from "./fmi3.js";

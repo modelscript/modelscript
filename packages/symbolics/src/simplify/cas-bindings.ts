@@ -13,19 +13,19 @@
  * hooks into the ExpressionEvaluator's `functionLookup` callback.
  */
 
-import type { ModelicaExpression } from "../dae.js";
+import { solveForVariable } from "../algebra/solve.js";
+import { differentiateExpr, simplifyExpr } from "../calculus/derivative.js";
+import { integrateExpr, limit, nthDerivative, taylorSeries } from "../calculus/integrate.js";
+import type { ModelicaExpression } from "../systems/index.js";
 import {
   ModelicaExpressionValue,
   ModelicaFunctionCallExpression,
   ModelicaNameExpression,
   ModelicaRealLiteral,
-} from "../dae.js";
-import { differentiateExpr, simplifyExpr } from "../symbolic-diff.js";
+} from "../systems/index.js";
 import { egraphSimplify } from "./egraph.js";
 import { collectTerms, expandExpr, getLiteralValue, normalizeExpr } from "./expand.js";
 import { factorQuadratic, rationalRoots } from "./factor.js";
-import { integrateExpr, limit, nthDerivative, taylorSeries } from "./integrate.js";
-import { solveForVariable } from "./solve.js";
 import { trigExpand, trigSimplify } from "./trigsimp.js";
 
 // ─────────────────────────────────────────────────────────────────────

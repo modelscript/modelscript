@@ -11,7 +11,9 @@
  */
 
 import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "@modelscript/modelica-ast";
-import type { ModelicaExpression } from "../dae.js";
+import { egraphSimplify } from "../simplify/egraph.js";
+import { getLiteralValue } from "../simplify/expand.js";
+import type { ModelicaExpression } from "../systems/index.js";
 import {
   ModelicaBinaryExpression,
   ModelicaFunctionCallExpression,
@@ -19,10 +21,8 @@ import {
   ModelicaNameExpression,
   ModelicaRealLiteral,
   ModelicaUnaryExpression,
-} from "../dae.js";
-import { add, differentiateExpr, div, mul, ONE, pow, simplifyExpr, sub, ZERO } from "../symbolic-diff.js";
-import { egraphSimplify } from "./egraph.js";
-import { getLiteralValue } from "./expand.js";
+} from "../systems/index.js";
+import { add, differentiateExpr, div, mul, ONE, pow, simplifyExpr, sub, ZERO } from "./derivative.js";
 
 // ─────────────────────────────────────────────────────────────────────
 // Public API

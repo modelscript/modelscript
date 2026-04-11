@@ -7,7 +7,7 @@
  * and provides a high-level `trigSimplify` function.
  */
 
-import type { ModelicaExpression } from "../dae.js";
+import type { ModelicaExpression } from "../systems/index.js";
 import { BackoffScheduler, DEFAULT_RULES, EGraph, rewrite, runEqualitySaturation, type RewriteRule } from "./egraph.js";
 
 // ─────────────────────────────────────────────────────────────────────

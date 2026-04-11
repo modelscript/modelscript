@@ -16,7 +16,7 @@
  */
 
 import { ModelicaVariability } from "@modelscript/modelica-ast";
-import type { ModelicaDAE, ModelicaExpression, ModelicaVariable } from "./dae.js";
+import type { ModelicaDAE, ModelicaExpression, ModelicaVariable } from "@modelscript/symbolics";
 import {
   ModelicaArray,
   ModelicaBinaryExpression,
@@ -32,7 +32,7 @@ import {
   ModelicaStringVariable,
   ModelicaSubscriptedExpression,
   ModelicaUnaryExpression,
-} from "./dae.js";
+} from "@modelscript/symbolics";
 
 // ── Public interface ──
 

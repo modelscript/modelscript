@@ -15,9 +15,9 @@
  */
 
 import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "@modelscript/modelica-ast";
-import { StaticTapeBuilder } from "./ad-codegen.js";
-import type { ModelicaDAE, ModelicaExpression } from "./dae.js";
+import type { ModelicaDAE, ModelicaExpression } from "@modelscript/symbolics";
 import {
+  differentiateExpr,
   ModelicaArray,
   ModelicaArrayEquation,
   ModelicaBinaryExpression,
@@ -33,9 +33,10 @@ import {
   ModelicaStringLiteral,
   ModelicaTransitionEquation,
   ModelicaUnaryExpression,
-} from "./dae.js";
+  simplifyExpr,
+} from "@modelscript/symbolics";
+import { StaticTapeBuilder } from "./ad-codegen.js";
 import type { FmuOptions, FmuResult } from "./fmi.js";
-import { differentiateExpr, simplifyExpr } from "./symbolic-diff.js";
 
 /** Generated C source files. */
 export interface FmuCSourceFiles {

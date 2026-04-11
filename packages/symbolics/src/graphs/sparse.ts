@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/prefer-for-of */
-import { StaticTapeBuilder } from "./ad-codegen.js";
-import { ModelicaArrayEquation, ModelicaDAE, ModelicaExpression } from "./dae.js";
+import { ModelicaArrayEquation, ModelicaDAE, ModelicaExpression } from "../systems/index.js";
+import { StaticTapeBuilder } from "../tape.js";
 
 /** Extract derivative name (like der(x)) from expression without depending on external module. */
 function extractDer(expr: ModelicaExpression): string | null {

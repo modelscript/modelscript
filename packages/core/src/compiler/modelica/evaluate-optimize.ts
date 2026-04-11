@@ -12,7 +12,6 @@ import {
   type ModelicaFunctionCallSyntaxNode,
   type ModelicaSyntaxNode,
 } from "@modelscript/modelica-ast";
-import type { Scope } from "../scope.js";
 import {
   ModelicaArray,
   ModelicaBooleanLiteral,
@@ -22,7 +21,8 @@ import {
   ModelicaObject,
   ModelicaRealLiteral,
   ModelicaStringLiteral,
-} from "./dae.js";
+} from "@modelscript/symbolics";
+import type { Scope } from "../scope.js";
 import { ModelicaClassInstance } from "./model.js";
 import type { SolverOptions } from "./solver-options.js";
 

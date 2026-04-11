@@ -25,11 +25,10 @@
  *    for the global optimisation of nonconvex MINLPs", Computers & Chem. Eng.
  */
 
+import type { ModelicaDAE, ModelicaExpression } from "@modelscript/symbolics";
+import { Interval, evaluateTapeInterval, evaluateTapeMcCormick } from "@modelscript/symbolics";
 import { StaticTapeBuilder, type TapeOp } from "./ad-codegen.js";
 import { evaluateTapeForward, evaluateTapeReverse } from "./ad-jacobian.js";
-import type { ModelicaDAE, ModelicaExpression } from "./dae.js";
-import { Interval, evaluateTapeInterval } from "./interval.js";
-import { evaluateTapeMcCormick } from "./mccormick.js";
 
 /** A box in the search space: variable name → [lo, hi] */
 export type DomainBox = Map<string, Interval>;
