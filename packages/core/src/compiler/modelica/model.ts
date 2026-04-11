@@ -53,7 +53,13 @@ import {
 import type { JSONValue, Triple, Writer } from "@modelscript/utils";
 import { logger, makeWeakRef, makeWeakRefArray } from "@modelscript/utils";
 import { Context } from "../context.js";
-import { Scope } from "../scope.js";
+import {
+  Scope,
+  registerModelClasses,
+  setAnnotationScopeGetter,
+  setBuiltInResolver,
+  setScriptingScopeGetter,
+} from "../scope.js";
 import { ANNOTATION } from "./annotation.js";
 import { ModelicaErrorCode, makeDiagnostic, type ModelicaDiagnostic } from "./errors.js";
 import { ModelicaInterpreter } from "./interpreter.js";
@@ -3846,3 +3852,44 @@ export class ModelicaModelPrinter extends ModelicaModelVisitor<number> {
     this.out.write("end Expression;\n");
   }
 }
+
+let scopeBoolean: ModelicaBooleanClassInstance | null = null;
+let scopeClock: ModelicaClockClassInstance | null = null;
+let scopeInteger: ModelicaIntegerClassInstance | null = null;
+let scopeReal: ModelicaRealClassInstance | null = null;
+let scopeString: ModelicaStringClassInstance | null = null;
+let scopeExpression: ModelicaExpressionClassInstance | null = null;
+
+setBuiltInResolver((name: string) => {
+  switch (name) {
+    case "Boolean":
+      if (!scopeBoolean) scopeBoolean = new ModelicaBooleanClassInstance(null, null);
+      return scopeBoolean;
+    case "Clock":
+      if (!scopeClock) scopeClock = new ModelicaClockClassInstance(null, null);
+      return scopeClock;
+    case "Integer":
+      if (!scopeInteger) scopeInteger = new ModelicaIntegerClassInstance(null, null);
+      return scopeInteger;
+    case "Real":
+      if (!scopeReal) scopeReal = new ModelicaRealClassInstance(null, null);
+      return scopeReal;
+    case "String":
+      if (!scopeString) scopeString = new ModelicaStringClassInstance(null, null);
+      return scopeString;
+    case "Expression":
+      if (!scopeExpression) scopeExpression = new ModelicaExpressionClassInstance(null, null);
+      return scopeExpression;
+  }
+  return null;
+});
+
+setAnnotationScopeGetter(() => ModelicaElement.annotationClassInstance);
+
+setScriptingScopeGetter(() => ModelicaElement.scriptingClassInstance);
+
+registerModelClasses({
+  NamedElement: ModelicaNamedElement as unknown as new (...args: unknown[]) => unknown,
+  ClassInstance: ModelicaClassInstance as unknown as new (...args: unknown[]) => unknown,
+  ComponentInstance: ModelicaComponentInstance as unknown as new (...args: unknown[]) => unknown,
+});

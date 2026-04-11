@@ -141,7 +141,15 @@ const browserServerConfig = {
           to: path.join(__dirname, "server", "dist", "web-tree-sitter.wasm"),
         },
         {
-          from: path.resolve(__dirname, "..", "tree-sitter-modelica", "tree-sitter-modelica.wasm"),
+          from: path.resolve(
+            __dirname,
+            "..",
+            "..",
+            "languages",
+            "modelica",
+            "tree-sitter-modelica",
+            "tree-sitter-modelica.wasm",
+          ),
           to: path.join(__dirname, "server", "dist", "tree-sitter-modelica.wasm"),
         },
         {

@@ -7,25 +7,51 @@ import {
   type ModelicaComponentReferenceSyntaxNode,
 } from "@modelscript/modelica-ast";
 import { makeWeakRef } from "@modelscript/utils";
-import {
-  ModelicaBooleanClassInstance,
+import type {
   ModelicaClassInstance,
-  ModelicaClockClassInstance,
   ModelicaComponentInstance,
   ModelicaElement,
-  ModelicaExpressionClassInstance,
-  ModelicaIntegerClassInstance,
   ModelicaNamedElement,
-  ModelicaRealClassInstance,
-  ModelicaStringClassInstance,
 } from "./modelica/model.js";
 
-let scopeBoolean: ModelicaBooleanClassInstance | null = null;
-let scopeClock: ModelicaClockClassInstance | null = null;
-let scopeInteger: ModelicaIntegerClassInstance | null = null;
-let scopeReal: ModelicaRealClassInstance | null = null;
-let scopeString: ModelicaStringClassInstance | null = null;
-let scopeExpression: ModelicaExpressionClassInstance | null = null;
+// ── Dependency-injected class constructors ──────────────────────────────────
+// Registered by model.ts at module-evaluation time so that scope.ts can use
+// proper `instanceof` checks without a circular runtime import.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _ModelicaNamedElement: (new (...args: any[]) => any) | null = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _ModelicaClassInstance: (new (...args: any[]) => any) | null = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _ModelicaComponentInstance: (new (...args: any[]) => any) | null = null;
+
+export function registerModelClasses(classes: {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  NamedElement: new (...args: any[]) => any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ClassInstance: new (...args: any[]) => any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ComponentInstance: new (...args: any[]) => any;
+}) {
+  _ModelicaNamedElement = classes.NamedElement;
+  _ModelicaClassInstance = classes.ClassInstance;
+  _ModelicaComponentInstance = classes.ComponentInstance;
+}
+
+// ── Dependency-injected callbacks ───────────────────────────────────────────
+let _resolveBuiltIn: ((name: string) => ModelicaNamedElement | null) | null = null;
+export function setBuiltInResolver(fn: (name: string) => ModelicaNamedElement | null) {
+  _resolveBuiltIn = fn;
+}
+
+let _getAnnotationScope: (() => ModelicaNamedElement | null) | null = null;
+export function setAnnotationScopeGetter(fn: () => ModelicaNamedElement | null) {
+  _getAnnotationScope = fn;
+}
+
+let _getScriptingScope: (() => ModelicaNamedElement | null) | null = null;
+export function setScriptingScopeGetter(fn: () => ModelicaNamedElement | null) {
+  _getScriptingScope = fn;
+}
 
 export abstract class Scope {
   #parent: WeakRef<Scope> | null;
@@ -44,7 +70,10 @@ export abstract class Scope {
 
   getNamedElement(name: string): ModelicaNamedElement | null {
     for (const element of this.elements) {
-      if (element instanceof ModelicaNamedElement && element.name === name) return element;
+      if (_ModelicaNamedElement && element instanceof _ModelicaNamedElement) {
+        const named = element as unknown as ModelicaNamedElement;
+        if (named.name === name) return named;
+      }
     }
     return null;
   }
@@ -60,9 +89,10 @@ export abstract class Scope {
     const parts = componentReference.parts;
     if (parts.length === 0) return null;
     let element = this.resolveSimpleName(parts[0]?.identifier, componentReference.global);
-    if (element instanceof ModelicaComponentInstance) {
-      if (!element.instantiated && !element.instantiating) element.instantiate();
-      element = element.classInstance;
+    if (_ModelicaComponentInstance && element instanceof _ModelicaComponentInstance) {
+      const comp = element as unknown as ModelicaComponentInstance;
+      if (!comp.instantiated && !comp.instantiating) comp.instantiate();
+      element = comp.classInstance;
     }
     if (!element) return null;
     for (let i = 1; i < parts.length; i++) {
@@ -109,10 +139,11 @@ export abstract class Scope {
         const namedElement = scope.getNamedElement(simpleName);
         if (namedElement) return namedElement;
 
-        if (scope instanceof ModelicaClassInstance) {
-          const element = scope.qualifiedImports.get(simpleName);
+        if (_ModelicaClassInstance && scope instanceof _ModelicaClassInstance) {
+          const classScope = scope as unknown as ModelicaClassInstance;
+          const element = classScope.qualifiedImports.get(simpleName);
           if (element != null) return element;
-          for (const unqualifiedImport of scope.unqualifiedImports) {
+          for (const unqualifiedImport of classScope.unqualifiedImports) {
             const element = unqualifiedImport.resolveSimpleName(identifier);
             if (element != null) return element;
           }
@@ -124,32 +155,22 @@ export abstract class Scope {
       scopeSet.delete(simpleName);
       if (scopeSet.size === 0) Scope.#resolving.delete(this);
     }
-    switch (simpleName) {
-      case "Boolean":
-        if (!scopeBoolean) scopeBoolean = new ModelicaBooleanClassInstance(null, null);
-        return scopeBoolean;
-      case "Clock":
-        if (!scopeClock) scopeClock = new ModelicaClockClassInstance(null, null);
-        return scopeClock;
-      case "Integer":
-        if (!scopeInteger) scopeInteger = new ModelicaIntegerClassInstance(null, null);
-        return scopeInteger;
-      case "Real":
-        if (!scopeReal) scopeReal = new ModelicaRealClassInstance(null, null);
-        return scopeReal;
-      case "String":
-        if (!scopeString) scopeString = new ModelicaStringClassInstance(null, null);
-        return scopeString;
-      case "Expression":
-        if (!scopeExpression) scopeExpression = new ModelicaExpressionClassInstance(null, null);
-        return scopeExpression;
+    if (_resolveBuiltIn) {
+      const builtIn = _resolveBuiltIn(simpleName);
+      if (builtIn) return builtIn;
     }
-    return (
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ((this as any) !== ModelicaElement.annotationClassInstance
-        ? ModelicaElement.annotationClassInstance?.resolveSimpleName(simpleName, false, encapsulated)
-        : null) ?? null
-    );
+
+    if (_getAnnotationScope) {
+      const annotationScope = _getAnnotationScope();
+      if (
+        (annotationScope as unknown) !== (this as unknown) &&
+        annotationScope &&
+        typeof (annotationScope as Scope).resolveSimpleName === "function"
+      ) {
+        return (annotationScope as unknown as Scope).resolveSimpleName(simpleName, false, encapsulated) ?? null;
+      }
+    }
+    return null;
   }
 
   resolveTypeSpecifier(typeSpecifier: ModelicaTypeSpecifierSyntaxNode | null | undefined): ModelicaNamedElement | null {
@@ -241,8 +262,13 @@ export class ModelicaScriptScope extends Scope {
       if (this.classDefinitions.has(name)) return this.classDefinitions.get(name) ?? null;
     }
     // Check scripting built-in types (SimulationResult, SimulationOptions, etc.)
-    const scriptingResult = ModelicaElement.scriptingClassInstance?.resolveSimpleName(identifier, false, true) ?? null;
-    if (scriptingResult) return scriptingResult;
+    if (_getScriptingScope) {
+      const scriptingScope = _getScriptingScope();
+      if (scriptingScope && typeof (scriptingScope as unknown as Scope).resolveSimpleName === "function") {
+        const scriptingResult = (scriptingScope as unknown as Scope).resolveSimpleName(identifier, false, true);
+        if (scriptingResult) return scriptingResult;
+      }
+    }
     return super.resolveSimpleName(identifier, global, encapsulated);
   }
 }
