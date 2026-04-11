@@ -26,8 +26,13 @@
  */
 
 import type { ModelicaDAE, ModelicaExpression } from "@modelscript/symbolics";
-import { Interval, evaluateTapeInterval, evaluateTapeMcCormick } from "@modelscript/symbolics";
-import { StaticTapeBuilder, type TapeOp } from "./ad-codegen.js";
+import {
+  Interval,
+  StaticTapeBuilder,
+  evaluateTapeInterval,
+  evaluateTapeMcCormick,
+  type TapeOp,
+} from "@modelscript/symbolics";
 import { evaluateTapeForward, evaluateTapeReverse } from "./ad-jacobian.js";
 
 /** A box in the search space: variable name → [lo, hi] */

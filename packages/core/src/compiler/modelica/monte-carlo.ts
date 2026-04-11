@@ -16,7 +16,7 @@
  * for Sample Average Approximation (SAA) in stochastic optimization.
  */
 
-import type { TapeOp } from "./ad-codegen.js";
+import type { TapeOp } from "@modelscript/symbolics";
 
 // ─────────────────────────────────────────────────────────────────────
 // Distribution Types

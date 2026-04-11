@@ -22,7 +22,6 @@ import type { FmuOptions, FmuResult } from "./fmi.js";
 import { generateFmu } from "./fmi.js";
 import { generateFmi3 } from "./fmi3.js";
 import { generateFmuCSources } from "./fmu-codegen.js";
-import type { ModelicaSimulator } from "./simulator.js";
 
 /** Options for FMU archive generation. */
 export interface FmuArchiveOptions extends FmuOptions {
@@ -49,15 +48,14 @@ export interface FmuArchiveResult {
  *
  * @param dae       The flattened DAE
  * @param options   FMU archive options
- * @param simulator Optional simulator instance (for state variable detection)
+ * @param stateVars Optional set of state variable names
  * @returns FMU archive result with the ZIP bytes
  */
 export function buildFmuArchive(
   dae: ModelicaDAE,
   options: FmuArchiveOptions,
-  simulator?: ModelicaSimulator,
+  stateVars: Set<string> = new Set<string>(),
 ): FmuArchiveResult {
-  const stateVars = simulator?.stateVars ?? new Set<string>();
   const fmuResult = generateFmu(dae, options, stateVars);
   const fmi3Result = generateFmi3(dae, options, stateVars);
   const id = options.modelIdentifier;

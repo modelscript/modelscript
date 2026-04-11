@@ -16,8 +16,9 @@ import {
   type ModelicaDAE,
   type ModelicaExpression,
   ModelicaFunctionCallExpression,
+  StaticTapeBuilder,
+  type TapeOp,
 } from "@modelscript/symbolics";
-import { StaticTapeBuilder, type TapeOp } from "./ad-codegen.js";
 
 /** Extract derivative name from expression like der(x). */
 function extractDer(expr: ModelicaExpression): string | null {

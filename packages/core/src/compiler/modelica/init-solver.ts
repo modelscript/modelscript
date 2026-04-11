@@ -25,12 +25,13 @@ import {
   ModelicaFunctionCallExpression,
   ModelicaIntegerVariable,
   ModelicaNameExpression,
+  StaticTapeBuilder,
   type ModelicaDAE,
   type ModelicaEquation,
   type ModelicaExpression,
+  type TapeOp,
 } from "@modelscript/symbolics";
 import type { InitSolverConfig } from "../context.js";
-import { StaticTapeBuilder, type TapeOp } from "./ad-codegen.js";
 import { evaluateTapeForward, evaluateTapeReverse } from "./ad-jacobian.js";
 import { expandArrayBounds, solveSBB, type DomainBox } from "./branch-and-bound.js";
 import { solveWithAutoHomotopy } from "./homotopy-strategies.js";

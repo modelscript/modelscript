@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+export * from "@modelscript/fmi";
 export * from "@modelscript/modelica-ast";
 export * from "@modelscript/symbolics";
 export * from "@modelscript/utils";
@@ -12,9 +13,6 @@ export * from "./compiler/modelica/dual.js";
 export * from "./compiler/modelica/evaluate-optimize.js";
 export * from "./compiler/modelica/evaluate-simulate.js";
 export * from "./compiler/modelica/flattener.js";
-export * from "./compiler/modelica/fmi.js";
-export * from "./compiler/modelica/fmu-archive.js";
-export * from "./compiler/modelica/fmu-codegen.js";
 export * from "./compiler/modelica/fmu.js";
 export * from "./compiler/modelica/i18n.js";
 export * from "./compiler/modelica/interpreter.js";

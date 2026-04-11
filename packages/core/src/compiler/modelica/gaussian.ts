@@ -22,7 +22,7 @@
  *   - Smith, R.C. (2014), "Uncertainty Quantification", SIAM.
  */
 
-import type { TapeOp } from "./ad-codegen.js";
+import type { TapeOp } from "@modelscript/symbolics";
 
 // ─────────────────────────────────────────────────────────────────────
 // Gaussian Tuple

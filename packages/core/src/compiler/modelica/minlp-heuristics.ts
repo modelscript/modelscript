@@ -18,7 +18,7 @@
  */
 
 import type { ModelicaExpression } from "@modelscript/symbolics";
-import { StaticTapeBuilder, type TapeOp } from "./ad-codegen.js";
+import { StaticTapeBuilder, type TapeOp } from "@modelscript/symbolics";
 import { evaluateTapeForward, evaluateTapeReverse } from "./ad-jacobian.js";
 import type { ImplicitInitBlock } from "./system-initializer.js";
 

@@ -223,7 +223,7 @@ export const ExportFmu: CommandModule<{}, ExportFmuArgs> = {
         includeModelJson: true,
       };
 
-      const result = buildFmuArchive(dae, archiveOptions, simulator);
+      const result = buildFmuArchive(dae, archiveOptions, simulator.stateVars);
       const outputPath = args.output ?? `${modelIdentifier}.fmu`;
 
       // ── Optional compilation ──
