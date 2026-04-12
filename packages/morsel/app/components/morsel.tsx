@@ -18,12 +18,12 @@ import {
   ModelicaFlattener,
   ModelicaIntegerLiteral,
   ModelicaRealLiteral,
-  ModelicaSimulator,
   ModelicaStringLiteral,
   StringWriter,
   type IDiagram,
   type ParameterInfo,
 } from "@modelscript/core";
+import { ModelicaSimulator } from "@modelscript/simulator";
 import {
   ColumnsIcon,
   DownloadIcon,

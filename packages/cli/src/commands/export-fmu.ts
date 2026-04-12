@@ -1,20 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { FmuArchiveOptions } from "@modelscript/core";
+import { Context, ModelicaDAE, ModelicaFlattener, ModelicaLinter } from "@modelscript/core";
 import {
-  Context,
+  type FmuArchiveOptions,
   FMI2_FUNCTIONS_H,
   FMI2_FUNCTION_TYPES_H,
   FMI2_TYPES_PLATFORM_H,
-  ModelicaDAE,
-  ModelicaFlattener,
-  ModelicaLinter,
-  ModelicaSimulator,
   buildFmuArchive,
   createZip,
   generateFmu,
   generateFmuCSources,
-} from "@modelscript/core";
+} from "@modelscript/fmi";
+import { ModelicaSimulator } from "@modelscript/simulator";
 import Modelica from "@modelscript/tree-sitter-modelica";
 import { execSync } from "node:child_process";
 import fs from "node:fs";

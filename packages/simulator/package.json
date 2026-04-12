@@ -47,6 +47,7 @@
     "watch": "tsc --watch"
   },
   "dependencies": {
+    "@modelscript/core": "*",
     "@modelscript/modelica-ast": "*",
     "@modelscript/symbolics": "*"
   },

@@ -6,6 +6,7 @@ export * from "./branch-and-bound.js";
 export { dopri5, type Dopri5Options, type Dopri5Result, type EventCallback, type RhsFunction } from "./dopri5.js";
 export * from "./dual-evaluator.js";
 export * from "./dual.js";
+export * from "./evaluate-simulate.js";
 export * from "./gaussian.js";
 export * from "./homotopy-strategies.js";
 export * from "./init-solver.js";
@@ -16,9 +17,9 @@ export * from "./simulator.js";
 export * from "./solver-options.js";
 export * from "./statement-executor.js";
 export {
-  SundialsWasmSolver,
   getCachedSundialsWasm,
   loadSundialsWasm,
+  SundialsWasmSolver,
   type KinsolWasmResult,
   type EventCallback as SundialsEventCallback,
   type EventFunction as SundialsEventFunction,
@@ -28,3 +29,7 @@ export {
 } from "./sundials-wasm.js";
 export * from "./system-initializer.js";
 export * from "./tape.js";
+
+import { ModelicaInterpreter, type BuiltinScriptingFunction } from "@modelscript/core";
+import { evaluateSimulate } from "./evaluate-simulate.js";
+ModelicaInterpreter.scriptingHandlers.set("simulate", evaluateSimulate as unknown as BuiltinScriptingFunction);

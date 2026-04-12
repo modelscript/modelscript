@@ -15,6 +15,7 @@
  *   4. Multi-strategy homotopy fallback (residual/symbolic/fixed-point/parameter)
  */
 
+import type { InitSolverConfig } from "@modelscript/core";
 import { ModelicaVariability } from "@modelscript/modelica-ast";
 import {
   Interval,
@@ -38,23 +39,6 @@ import { freezeAndSolve } from "./minlp-heuristics.js";
 import { type SolverOptions } from "./solver-options.js";
 import { getCachedSundialsWasm } from "./sundials-wasm.js";
 import { buildInitBLT, type ImplicitInitBlock } from "./system-initializer.js";
-/** Homotopy continuation mode. */
-export type HomotopyMode = "none" | "residual" | "symbolic" | "fixed-point" | "parameter" | "auto";
-
-/** Preconditioner for initial guess. */
-export type PreconditionerMode = "none" | "branch-and-bound";
-
-/** Configuration for the initialization solver. */
-export interface InitSolverConfig {
-  /** Preconditioner for initial guess (default: "none"). */
-  preconditioner?: PreconditionerMode;
-  /** Automatic homotopy continuation mode (default: "auto"). */
-  homotopyMode?: HomotopyMode;
-  /** Whether to use McCormick relaxations for tighter sBB bounds (default: false). */
-  mccormickRelaxation?: boolean;
-  /** Maximum number of λ continuation steps (default: 50). */
-  maxHomotopySteps?: number;
-}
 
 /** Result of initial equation solving. */
 export interface InitSolverResult {

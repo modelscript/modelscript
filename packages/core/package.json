@@ -48,10 +48,7 @@
     "*.{ts,tsx,js,json,md,yml,css}": "prettier --write"
   },
   "dependencies": {
-    "@modelscript/fmi": "*",
     "@modelscript/modelica-ast": "*",
-    "@modelscript/optimizer": "*",
-    "@modelscript/simulator": "*",
     "@modelscript/symbolics": "*",
     "@modelscript/utils": "*",
     "@svgdotjs/svg.js": "^3.2.5",

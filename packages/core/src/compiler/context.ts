@@ -14,14 +14,18 @@ import {
 } from "./modelica/model.js";
 import { ModelicaPoParser, ModelicaTranslation } from "./modelica/po.js";
 import { Scope } from "./scope.js";
-
-import type { HomotopyMode, InitSolverConfig, PreconditionerMode } from "@modelscript/simulator";
-export type { HomotopyMode, InitSolverConfig, PreconditionerMode };
+export type HomotopyMode = "none" | "residual" | "symbolic" | "fixed-point" | "parameter" | "auto";
+export type PreconditionerMode = "none" | "branch-and-bound";
+export interface InitSolverConfig {
+  preconditioner?: PreconditionerMode;
+  homotopyMode?: HomotopyMode;
+  mccormickRelaxation?: boolean;
+  maxHomotopySteps?: number;
+}
 
 export interface ModelicaCompilerOptions {
   arrayMode?: "scalarize" | "preserve";
   fmiVersion?: "2.0" | "3.0";
-  /** Initialization solver configuration. */
   solver?: InitSolverConfig;
 }
 

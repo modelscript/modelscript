@@ -12,6 +12,7 @@
  * of flattener.ts / simulator.ts from this module.
  */
 
+import { ModelicaClassInstance, type Scope } from "@modelscript/core";
 import {
   ModelicaComponentReferenceSyntaxNode,
   type ModelicaFunctionCallSyntaxNode,
@@ -27,8 +28,6 @@ import {
   ModelicaRealLiteral,
   ModelicaStringLiteral,
 } from "@modelscript/symbolics";
-import type { Scope } from "../scope.js";
-import { ModelicaClassInstance } from "./model.js";
 
 /**
  * Callback type for evaluating an expression node within a scope.

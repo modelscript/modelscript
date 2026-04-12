@@ -1757,7 +1757,12 @@ export class ModelicaShortClassInstance extends ModelicaClassInstance {
   }
 }
 
+export interface ExternalEntityLoader {
+  tryLoad(parent: ModelicaEntity, directoryPath: string, direntName: string): ModelicaEntity | null;
+}
+
 export class ModelicaEntity extends ModelicaClassInstance {
+  static loaders: ExternalEntityLoader[] = [];
   #storedDefinitionSyntaxNode: ModelicaStoredDefinitionSyntaxNode | null = null;
   #loaded = false;
   path: string;
@@ -1858,39 +1863,17 @@ export class ModelicaEntity extends ModelicaClassInstance {
         } else if (dirent.isFile()) {
           const ext = context.fs.extname(dirent.name);
           if (dirent.name === "package.mo") continue;
-          // Check for FMI model description XML files
-          if (ext === ".xml") {
-            const xmlPath = context.fs.join(this.path, dirent.name);
-            try {
-              const xmlContent = context.fs.read(xmlPath);
-              if (xmlContent.includes("fmiModelDescription")) {
-                // Lazy import to avoid circular dependency (fmu.ts imports from model.ts)
-                // eslint-disable-next-line @typescript-eslint/no-require-imports
-                const { ModelicaFmuEntity } = require("./fmu.js") as typeof import("./fmu.js");
-                const fmuEntity = new ModelicaFmuEntity(this, xmlPath);
-                fmuEntity.name = dirent.name.replace(/\.xml$/, "");
-                this.subEntities.push(fmuEntity as unknown as ModelicaEntity);
-              }
-            } catch {
-              // Skip unreadable XML files
+          let externalLoaded = false;
+          for (const loader of ModelicaEntity.loaders) {
+            const loadedEntity = loader.tryLoad(this, this.path, dirent.name);
+            if (loadedEntity) {
+              this.subEntities.push(loadedEntity);
+              externalLoaded = true;
+              break;
             }
-            continue;
           }
-          // Check for SSP archives
-          if (ext === ".ssp") {
-            const sspPath = context.fs.join(this.path, dirent.name);
-            try {
-              // Lazy import to avoid circular dependency
-              // eslint-disable-next-line @typescript-eslint/no-require-imports
-              const { ModelicaSspEntity } = require("./ssp-archive.js") as typeof import("./ssp-archive.js");
-              const sspEntity = new ModelicaSspEntity(this, sspPath);
-              sspEntity.name = dirent.name.replace(/\.ssp$/, "");
-              this.subEntities.push(sspEntity as unknown as ModelicaEntity);
-            } catch {
-              // Skip unreadable SSP files
-            }
-            continue;
-          }
+          if (externalLoaded) continue;
+
           // Check for JS/TS files
           if (ext === ".js" || ext === ".ts") {
             const jsPath = context.fs.join(this.path, dirent.name);

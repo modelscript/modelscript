@@ -57,31 +57,28 @@ import {
   ModelicaElement,
   ModelicaEnumerationClassInstance,
   ModelicaFlattener,
-  ModelicaFmuEntity,
   ModelicaFunctionCallSyntaxNode,
   ModelicaInterpreter,
   ModelicaJavascriptEntity,
   ModelicaLibrary,
   ModelicaLinter,
   ModelicaNamedElement,
-  ModelicaOptimizer,
   ModelicaProcedureCallStatementSyntaxNode,
   ModelicaScriptScope,
   ModelicaSimpleAssignmentStatementSyntaxNode,
-  ModelicaSimulator,
   ModelicaStoredDefinitionSyntaxNode,
   ModelicaSyntaxNode,
   Scope,
-  generateMultiModelWrapper,
   performBltTransformation,
-  registerOptimizeDeps,
-  registerSimulateDeps,
   type Dirent,
   type FileSystem,
   type IDiagram,
   type Range,
   type Stats,
 } from "@modelscript/core";
+import { ModelicaFmuEntity, generateMultiModelWrapper } from "@modelscript/fmi";
+import { ModelicaOptimizer, registerOptimizeDeps } from "@modelscript/optimizer";
+import { ModelicaSimulator, registerSimulateDeps } from "@modelscript/simulator";
 
 // Register flattener/simulator constructors for the scripting simulate() function.
 // This breaks the circular dependency: interpreter → evaluate-simulate → flattener.
@@ -4759,7 +4756,8 @@ connection.onRequest(
       stepMode = true; // Reset step mode on new simulation run
 
       const simulator = new ModelicaSimulator(dae, {
-        onStatement: async (stmt, evaluator) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        onStatement: async (stmt: any, evaluator: any) => {
           const bps = breakpointsMap.get(params.uri) || [];
           const isBreakpoint = bps.some((bp) => bp.line === stmt.location?.startLine);
 

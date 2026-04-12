@@ -11,6 +11,9 @@
   },
   "dependencies": {
     "@modelscript/core": "*",
+    "@modelscript/fmi": "*",
+    "@modelscript/optimizer": "*",
+    "@modelscript/simulator": "*",
     "fflate": "^0.8.2",
     "vscode-languageserver": "^9.0.1",
     "vscode-languageserver-textdocument": "^1.0.11",

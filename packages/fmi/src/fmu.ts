@@ -14,16 +14,15 @@
  * archive, so no separate XML file is needed.
  */
 
-import { ModelicaCausality, ModelicaClassKind, type ModelicaIdentifierSyntaxNode } from "@modelscript/modelica-ast";
-import { inflateRaw } from "pako";
-import type { Scope } from "../scope.js";
-import type { IModelicaModelVisitor } from "./model.js";
+import type { IModelicaModelVisitor, Scope } from "@modelscript/core";
 import {
   ModelicaClassInstance,
   ModelicaComponentInstance,
   type ModelicaElement,
   type ModelicaNamedElement,
-} from "./model.js";
+} from "@modelscript/core";
+import { ModelicaCausality, ModelicaClassKind, type ModelicaIdentifierSyntaxNode } from "@modelscript/modelica-ast";
+import { inflateRaw } from "pako";
 
 // ── FMU model description types ──
 
@@ -298,7 +297,7 @@ export class ModelicaFmuEntity extends ModelicaClassInstance {
     return visitor.visitClassInstance(this, argument);
   }
 
-  override clone(modification?: import("./model.js").ModelicaModification | null): ModelicaClassInstance {
+  override clone(modification?: import("@modelscript/core").ModelicaModification | null): ModelicaClassInstance {
     if (!this.#loaded) this.load();
     const cloned = new ModelicaFmuEntity(this.parent ?? this, this.path, this.#xmlContent ?? undefined);
     cloned.name = this.name;
@@ -553,7 +552,15 @@ export class ModelicaFmuEntity extends ModelicaClassInstance {
 
     // Try reading from filesystem if no pre-supplied content
     if (!xmlContent) {
-      const context = this.context;
+      // Find the compilation context dynamically to access fs
+      // eslint-disable-next-line @typescript-eslint/no-this-alias
+      let node: Scope | undefined | null = this;
+      while (node && !("context" in node)) {
+        node = node.parent;
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const context: any = node && "context" in node ? (node as unknown as { context: unknown }).context : null;
+
       if (context) {
         try {
           xmlContent = context.fs.read(this.path);

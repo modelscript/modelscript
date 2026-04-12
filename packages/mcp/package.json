@@ -23,6 +23,9 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@modelscript/core": "*",
+    "@modelscript/fmi": "*",
+    "@modelscript/optimizer": "*",
+    "@modelscript/simulator": "*",
     "@modelscript/tree-sitter-modelica": "*",
     "tree-sitter": "^0.25.0",
     "zod": "^3.25.67"

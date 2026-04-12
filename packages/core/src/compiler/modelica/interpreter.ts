@@ -47,8 +47,6 @@ import {
   ModelicaUnaryExpression,
 } from "@modelscript/symbolics";
 import { ModelicaLoopScope, ModelicaScriptScope, type Scope } from "../scope.js";
-import { evaluateOptimize } from "./evaluate-optimize.js";
-import { evaluateSimulate } from "./evaluate-simulate.js";
 import {
   ModelicaArrayClassInstance,
   ModelicaClassInstance,
@@ -59,6 +57,12 @@ import {
   ModelicaModification,
   ModelicaParameterModification,
 } from "./model.js";
+
+export type BuiltinScriptingFunction = (
+  node: ModelicaFunctionCallSyntaxNode,
+  scope: Scope,
+  evalCb: (expr: ModelicaSyntaxNode, s: Scope) => ModelicaExpression | null,
+) => ModelicaExpression | null;
 
 /** Set of Modelica built-in array function names handled directly by the interpreter. */
 const BUILTIN_ARRAY_FUNCTIONS = new Set([
@@ -280,6 +284,9 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
   #endValue: number | null = null;
   /** Optional callback to receive output from the builtin print() function. */
   #printCallback: ((msg: string) => void) | undefined;
+
+  /** Registry for built-in scripting functions (e.g. simulate, optimize) to avoid strict dependencies. */
+  static scriptingHandlers = new Map<string, BuiltinScriptingFunction>();
 
   /**
    * Initializes a new ModelicaInterpreter.
@@ -1563,12 +1570,12 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
       if (result !== undefined) return result;
     }
 
-    // Handle scripting API functions
-    if (rawFuncName === "simulate") {
-      return this.#evaluateSimulate(node, scope);
-    }
-    if (rawFuncName === "optimize") {
-      return this.#evaluateOptimize(node, scope);
+    // Handle scripting API functions dynamically via registry
+    if (rawFuncName && ModelicaInterpreter.scriptingHandlers.has(rawFuncName)) {
+      const handler = ModelicaInterpreter.scriptingHandlers.get(rawFuncName);
+      if (handler) {
+        return handler(node, scope, (expr: ModelicaSyntaxNode, s: Scope) => expr.accept(this, s));
+      }
     }
 
     // Handle built-in math/conversion/special functions
@@ -2317,25 +2324,6 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
    */
   visitUnsignedRealLiteral(node: ModelicaUnsignedRealLiteralSyntaxNode): ModelicaRealLiteral {
     return new ModelicaRealLiteral(node.value);
-  }
-
-  /**
-   * Evaluate the scripting-level `simulate(ClassName, ...)` built-in function.
-   *
-   * Delegates to evaluate-simulate.ts to avoid circular dependency
-   * (interpreter → flattener → model → interpreter).
-   */
-  #evaluateSimulate(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
-    return evaluateSimulate(node, scope, (expr: ModelicaSyntaxNode, s: Scope) => expr.accept(this, s));
-  }
-
-  /**
-   * Evaluate the scripting-level `optimize(ClassName, ...)` built-in function.
-   *
-   * Delegates to evaluate-optimize.ts to avoid circular dependency.
-   */
-  #evaluateOptimize(node: ModelicaFunctionCallSyntaxNode, scope: Scope): ModelicaExpression | null {
-    return evaluateOptimize(node, scope, (expr: ModelicaSyntaxNode, s: Scope) => expr.accept(this, s));
   }
 }
 

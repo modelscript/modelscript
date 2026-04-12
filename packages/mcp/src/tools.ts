@@ -9,10 +9,10 @@ import {
   ModelicaDAEPrinter,
   ModelicaFlattener,
   ModelicaLinter,
-  ModelicaSimulator,
   ModelicaStoredDefinitionSyntaxNode,
   StringWriter,
 } from "@modelscript/core";
+import { ModelicaSimulator } from "@modelscript/simulator";
 import path from "node:path";
 import { z } from "zod";
 import { NodeFileSystem } from "./filesystem.js";

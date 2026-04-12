@@ -37,6 +37,9 @@
   },
   "dependencies": {
     "@modelscript/core": "*",
+    "@modelscript/fmi": "*",
+    "@modelscript/optimizer": "*",
+    "@modelscript/simulator": "*",
     "@modelscript/tree-sitter-modelica": "*",
     "@npmcli/package-json": "^7.0.0",
     "adm-zip": "^0.5.16",

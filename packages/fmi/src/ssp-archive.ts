@@ -17,16 +17,15 @@
  * system and exposes them as typed variable descriptors for flattener use.
  */
 
-import { ModelicaCausality, ModelicaClassKind, type ModelicaIdentifierSyntaxNode } from "@modelscript/modelica-ast";
-import { inflateRaw } from "pako";
-import type { Scope } from "../scope.js";
-import type { IModelicaModelVisitor } from "./model.js";
+import type { IModelicaModelVisitor, Scope } from "@modelscript/core";
 import {
   ModelicaClassInstance,
   ModelicaComponentInstance,
   type ModelicaElement,
   type ModelicaNamedElement,
-} from "./model.js";
+} from "@modelscript/core";
+import { ModelicaCausality, ModelicaClassKind, type ModelicaIdentifierSyntaxNode } from "@modelscript/modelica-ast";
+import { inflateRaw } from "pako";
 
 /** Connector descriptor extracted from an SSP system boundary. */
 export interface SspBoundaryVariable {
@@ -519,7 +518,13 @@ export class ModelicaSspEntity extends ModelicaClassInstance {
 
     if (this.metadata) return;
 
-    const context = this.context;
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    let node: Scope | undefined | null = this;
+    while (node && !("context" in node)) {
+      node = node.parent;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const context: any = node && "context" in node ? (node as unknown as { context: unknown }).context : null;
     if (context) {
       try {
         const data = context.fs.readBinary(this.sspPath);

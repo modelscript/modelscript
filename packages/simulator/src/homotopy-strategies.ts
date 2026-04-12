@@ -23,9 +23,9 @@
  *   "Introduction to Numerical Continuation Methods", SIAM.
  */
 
+import type { HomotopyMode } from "@modelscript/core";
 import type { TapeOp } from "@modelscript/symbolics";
 import { evaluateTapeForward, evaluateTapeReverse } from "./ad-jacobian.js";
-import type { HomotopyMode } from "./init-solver.js";
 
 /** Result of a homotopy solve attempt. */
 export interface HomotopyResult {
