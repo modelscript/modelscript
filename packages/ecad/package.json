@@ -1,0 +1,65 @@
+{
+  "name": "@modelscript/ecad",
+  "version": "0.0.0",
+  "description": "ECAD structural extraction and Gerber layout generator for ModelScript",
+  "keywords": [
+    "modelscript",
+    "ecad",
+    "netlist",
+    "gerber"
+  ],
+  "homepage": "https://modelscript.org",
+  "bugs": {
+    "url": "https://github.com/modelscript/modelscript/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/modelscript/modelscript.git"
+  },
+  "license": "AGPL-3.0-or-later",
+  "author": "Mohamad Omar Nachawati <mnachawa@gmail.com>",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "package.json",
+    "README.md",
+    "src/**/*.ts",
+    "dist/**/*.js",
+    "dist/**/*.js.map",
+    "dist/**/*.d.ts",
+    "dist/**/*.d.ts.map"
+  ],
+  "scripts": {
+    "build": "npm run clean && tsc",
+    "clean": "rimraf dist",
+    "lint": "eslint src --ext ts",
+    "watch": "tsc --watch"
+  },
+  "dependencies": {
+    "@modelscript/core": "*"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^25.3.2",
+    "eslint": "^9.39.1",
+    "rimraf": "^6.1.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.3"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}

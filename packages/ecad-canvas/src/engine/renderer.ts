@@ -11,7 +11,7 @@
  */
 
 // Re-declared locally to avoid deep import into @modelscript/core internals.
-// These mirror the types in core/src/compiler/backend/ecad/netlist.ts.
+// These mirror the types in @modelscript/ecad.
 interface NetlistPin {
   name: string;
   component: string;
