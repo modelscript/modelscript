@@ -22,7 +22,7 @@ import Modelica from "@modelscript/tree-sitter-modelica";
 import fs from "node:fs";
 import path from "node:path";
 import Parser from "tree-sitter";
-import { NodeFileSystem } from "../../../packages/cli/src/util/filesystem.js";
+import { NodeFileSystem } from "../../../apps/cli/src/util/filesystem.js";
 import { Context } from "../src/compiler/context.js";
 import { ModelicaJavascriptEntity } from "../src/compiler/modelica/javascript-entity.js";
 import { ModelicaLinter } from "../src/compiler/modelica/linter.js";

@@ -3,7 +3,7 @@
 # Files are cached — re-running is a no-op if all files already exist.
 #
 # Usage: ./scripts/download-model.sh [target_dir]
-# Default target_dir: packages/ide/models
+# Default target_dir: apps/ide/models
 
 set -euo pipefail
 

@@ -30,7 +30,7 @@ export default defineConfig([
     },
   },
   {
-    files: ["packages/morsel/**/*.{ts,tsx}"],
+    files: ["apps/morsel/**/*.{ts,tsx}"],
     rules: {
       "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/no-non-null-assertion": "off",

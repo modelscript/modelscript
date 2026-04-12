@@ -40,7 +40,7 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - api-data:/app/packages/api/data
+      - api-data:/app/apps/api/data
     depends_on:
       mqtt:
         condition: service_healthy

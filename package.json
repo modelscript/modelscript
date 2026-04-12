@@ -16,8 +16,9 @@
   },
   "license": "AGPL-3.0-or-later",
   "author": "Mohamad Omar Nachawati <mnachawa@gmail.com>",
-  "type": "module",
   "workspaces": [
+    "apps/*",
+    "extensions/*",
     "packages/*",
     "languages/*/*"
   ],
@@ -26,7 +27,7 @@
     "clean": "nx run-many --target=clean",
     "dev": "nx run-many --target=dev --projects=@modelscript/api,@modelscript/morsel,@modelscript/web,@modelscript/ide --parallel=4",
     "dev:ide": "npm run dev --workspace=@modelscript/ide",
-    "dev:vscode": "npm run test-web --workspace=packages/vscode",
+    "dev:vscode": "npm run test-web --workspace=extensions/vscode",
     "docker:build": "docker compose build",
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f",
@@ -34,7 +35,7 @@
     "format": "prettier . --write",
     "lint": "nx run-many --target=lint",
     "prepare": "husky",
-    "preview:ide": "npx tsx packages/ide/src/preview-static.ts",
+    "preview:ide": "npx tsx apps/ide/src/preview-static.ts",
     "release": "nx release",
     "release:dry-run": "nx release --dry-run",
     "test": "nx run-many --target=test"

@@ -1,6 +1,6 @@
 import Modelica from "@modelscript/tree-sitter-modelica";
 import Parser from "tree-sitter";
-import { NodeFileSystem } from "../../../packages/cli/src/util/filesystem.js";
+import { NodeFileSystem } from "../../../apps/cli/src/util/filesystem.js";
 import { Context } from "../src/compiler/context.js";
 import { ModelicaDAE, ModelicaDAEPrinter } from "../src/compiler/modelica/dae.js";
 import { ModelicaFlattener } from "../src/compiler/modelica/flattener.js";
