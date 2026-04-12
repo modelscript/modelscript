@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-export interface OptimizationResult {
+export interface IpoptResult {
   status: string;
   objectiveValue: number;
   variables: Record<string, number[]>;
@@ -9,7 +9,7 @@ export interface OptimizationResult {
 export class IpoptSolver {
   constructor(public modelDllPath: string) {}
 
-  public async solve(): Promise<OptimizationResult> {
+  public async solve(): Promise<IpoptResult> {
     // Stub implementation
     // Future work will load the DLL via ffi-napi or as WASM
     // and invoke the IpStdCInterface callbacks
