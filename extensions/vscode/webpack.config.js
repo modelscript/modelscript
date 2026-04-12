@@ -48,91 +48,10 @@ const browserClientConfig = {
   externals: {
     vscode: "commonjs vscode",
   },
-  performance: {
-    hints: false,
-  },
-  optimization: {
-    minimizer: [
-      new TerserPlugin({
-        terserOptions: {
-          keep_classnames: true,
-          keep_fnames: true,
-        },
-      }),
-    ],
-  },
-  devtool: "nosources-source-map",
-};
-
-/** @type WebpackConfig */
-const browserServerConfig = {
-  context: path.resolve(__dirname, "..", "lsp"),
-  mode: "none",
-  target: "webworker",
-  entry: {
-    browserServerMain: "./src/browserServerMain.ts",
-  },
-  output: {
-    filename: "[name].js",
-    path: path.join(__dirname, "server", "dist"),
-    libraryTarget: "var",
-    library: "serverExportVar",
-    devtoolModuleFilenameTemplate: "../[resource-path]",
-  },
-  resolve: {
-    mainFields: ["browser", "module", "main"],
-    extensions: [".ts", ".js"],
-    alias: {},
-    fallback: {
-      // Node.js built-ins needed by pino (used by @modelscript/core logger)
-      assert: false,
-      buffer: false,
-      child_process: false,
-      crypto: false,
-      diagnostics_channel: false,
-      events: false,
-      fs: false,
-      http: false,
-      module: false,
-      https: false,
-      net: false,
-      os: false,
-      path: false,
-      process: false,
-      stream: false,
-      string_decoder: false,
-      tls: false,
-      url: false,
-      util: false,
-      worker_threads: false,
-      zlib: false,
-    },
-  },
-  module: {
-    rules: [
-      {
-        test: /\.ts$/,
-        exclude: /node_modules/,
-        use: [
-          {
-            loader: "ts-loader",
-            options: {
-              configFile: path.resolve(__dirname, "..", "lsp", "tsconfig.json"),
-            },
-          },
-        ],
-      },
-    ],
-  },
   plugins: [
-    // Stub process.env for pino and other Node.js code
     new webpack.DefinePlugin({
       "process.env": JSON.stringify({}),
       "process.browser": JSON.stringify(true),
-    }),
-    // Handle node: scheme URIs used by pino and other Node.js modules
-    new webpack.NormalModuleReplacementPlugin(/^node:/, (resource) => {
-      resource.request = resource.request.replace(/^node:/, "");
     }),
     new CopyPlugin({
       patterns: [
@@ -155,6 +74,10 @@ const browserServerConfig = {
         {
           from: path.resolve(__dirname, "..", "..", "scripts", "ModelicaStandardLibrary_v4.1.0.zip"),
           to: path.join(__dirname, "server", "dist", "ModelicaStandardLibrary_v4.1.0.zip"),
+        },
+        {
+          from: path.resolve(__dirname, "..", "..", "packages", "lsp", "dist"),
+          to: path.join(__dirname, "server", "dist"),
         },
       ],
     }),
@@ -273,4 +196,4 @@ const notebookRendererConfig = {
   devtool: "nosources-source-map",
 };
 
-module.exports = [browserClientConfig, browserServerConfig, webviewConfig, notebookRendererConfig];
+module.exports = [browserClientConfig, webviewConfig, notebookRendererConfig];

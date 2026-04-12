@@ -1,0 +1,1966 @@
+[
+  {
+    "type": "AdditiveExpression",
+    "named": true,
+    "fields": {
+      "operand": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "MultiplicativeExpression",
+            "named": true
+          }
+        ]
+      },
+      "operator": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "AdditiveOperator",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "AdditiveOperator",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "AndExpression",
+    "named": true,
+    "fields": {
+      "operand": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "EqualityExpression",
+            "named": true
+          },
+          {
+            "type": "EqualityExpressionReference",
+            "named": true
+          }
+        ]
+      },
+      "operator": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "&",
+            "named": false
+          },
+          {
+            "type": "and",
+            "named": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "Argument",
+    "named": true,
+    "fields": {
+      "ownedRelationship": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ArgumentValue",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ArgumentMember",
+    "named": true,
+    "fields": {
+      "ownedRelatedElement": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "Argument",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ArgumentValue",
+    "named": true,
+    "fields": {
+      "ownedRelatedElement": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "OwnedExpression",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "BaseExpression",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "BodyExpression",
+          "named": true
+        },
+        {
+          "type": "ConstructorExpression",
+          "named": true
+        },
+        {
+          "type": "FeatureReferenceExpression",
+          "named": true
+        },
+        {
+          "type": "InvocationExpression",
+          "named": true
+        },
+        {
+          "type": "LiteralExpression",
+          "named": true
+        },
+        {
+          "type": "MetadataAccessExpression",
+          "named": true
+        },
+        {
+          "type": "NullExpression",
+          "named": true
+        },
+        {
+          "type": "SequenceExpression",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "BodyExpression",
+    "named": true,
+    "fields": {
+      "ownedRelationship": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ExpressionBodyMember",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "BodyParameter",
+    "named": true,
+    "fields": {
+      "declaredName": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "Name",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "BodyParameterMember",
+    "named": true,
+    "fields": {
+      "ownedRelatedElement": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "BodyParameter",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "BooleanValue",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "ClassificationExpression",
+    "named": true,
+    "fields": {
+      "operand": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "MetadataReference",
+            "named": true
+          },
+          {
+            "type": "RelationalExpression",
+            "named": true
+          }
+        ]
+      },
+      "operator": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "CastOperator",
+            "named": true
+          },
+          {
+            "type": "ClassificationTestOperator",
+            "named": true
+          },
+          {
+            "type": "MetaCastOperator",
+            "named": true
+          },
+          {
+            "type": "MetaClassificationTestOperator",
+            "named": true
+          }
+        ]
+      },
+      "typeReference": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "TypeReferenceMember",
+            "named": true
+          }
+        ]
+      },
+      "typeResult": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "TypeResultMember",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ClassificationTestOperator",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "ConditionalExpression",
+    "named": true,
+    "fields": {
+      "elseOperand": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "OwnedExpressionReference",
+            "named": true
+          }
+        ]
+      },
+      "operand": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "NullCoalescingExpression",
+            "named": true
+          }
+        ]
+      },
+      "operator": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "if",
+            "named": false
+          }
+        ]
+      },
+      "thenOperand": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "OwnedExpressionReference",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "NullCoalescingExpression",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "ConstructorExpression",
+    "named": true,
+    "fields": {
+      "result": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ConstructorResultMember",
+            "named": true
+          }
+        ]
+      },
+      "type": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "InstantiatedTypeMember",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ConstructorResult",
+    "named": true,
+    "fields": {
+      "argument": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "ArgumentMember",
+            "named": true
+          }
+        ]
+      },
+      "namedArgument": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "NamedArgumentMember",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ConstructorResultMember",
+    "named": true,
+    "fields": {
+      "ownedRelatedElement": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ConstructorResult",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ElementReferenceMember",
+    "named": true,
+    "fields": {
+      "memberElement": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "QualifiedName",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "EqualityExpression",
+    "named": true,
+    "fields": {
+      "operand": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "ClassificationExpression",
+            "named": true
+          }
+        ]
+      },
+      "operator": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "EqualityOperator",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "EqualityExpressionMember",
+    "named": true,
+    "fields": {
+      "ownedRelatedElement": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "EqualityExpression",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "EqualityExpressionReference",
+    "named": true,
+    "fields": {
+      "ownedRelationship": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "EqualityExpressionMember",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "EqualityOperator",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "ExponentiationExpression",
+    "named": true,
+    "fields": {
+      "operand": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "ExponentiationExpression",
+            "named": true
+          },
+          {
+            "type": "UnaryExpression",
+            "named": true
+          }
+        ]
+      },
+      "operator": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ExponentiationOperator",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ExponentiationOperator",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "ExpressionBody",
+    "named": true,
+    "fields": {
+      "parameter": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "BodyParameterMember",
+            "named": true
+          }
+        ]
+      },
+      "result": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ResultExpressionMember",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ExpressionBodyMember",
+    "named": true,
+    "fields": {
+      "ownedRelatedElement": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ExpressionBody",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ExtentExpression",
+    "named": true,
+    "fields": {
+      "operator": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "all",
+            "named": false
+          }
+        ]
+      },
+      "typeResult": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "TypeResultMember",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "PrimaryExpression",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "FeatureChainMember",
+    "named": true,
+    "fields": {
+      "memberElement": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "QualifiedName",
+            "named": true
+          }
+        ]
+      },
+      "ownedRelatedElement": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "OwnedFeatureChain",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "FeatureReferenceExpression",
+    "named": true,
+    "fields": {
+      "ownedRelationship": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "FeatureReferenceMember",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "FeatureReferenceMember",
+    "named": true,
+    "fields": {
+      "memberElement": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "QualifiedName",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "FunctionReference",
+    "named": true,
+    "fields": {
+      "ownedRelationship": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ReferenceTyping",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "FunctionReferenceExpression",
+    "named": true,
+    "fields": {
+      "ownedRelationship": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "FunctionReferenceMember",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "FunctionReferenceMember",
+    "named": true,
+    "fields": {
+      "ownedRelatedElement": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "FunctionReference",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "GlobalQualification",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "ImpliesExpression",
+    "named": true,
+    "fields": {
+      "operand": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "OrExpression",
+            "named": true
+          },
+          {
+            "type": "OrExpressionReference",
+            "named": true
+          }
+        ]
+      },
+      "operator": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "implies",
+            "named": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ImpliesExpressionMember",
+    "named": true,
+    "fields": {
+      "ownedRelatedElement": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ImpliesExpression",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ImpliesExpressionReference",
+    "named": true,
+    "fields": {
+      "ownedRelationship": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ImpliesExpressionMember",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "InstantiatedTypeMember",
+    "named": true,
+    "fields": {
+      "memberElement": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "QualifiedName",
+            "named": true
+          }
+        ]
+      },
+      "ownedRelatedElement": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "OwnedFeatureChain",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "InvocationExpression",
+    "named": true,
+    "fields": {
+      "argument": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "ArgumentMember",
+            "named": true
+          }
+        ]
+      },
+      "namedArgument": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "NamedArgumentMember",
+            "named": true
+          }
+        ]
+      },
+      "type": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "InstantiatedTypeMember",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "LiteralBoolean",
+    "named": true,
+    "fields": {
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "BooleanValue",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "LiteralExpression",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "LiteralBoolean",
+          "named": true
+        },
+        {
+          "type": "LiteralInfinity",
+          "named": true
+        },
+        {
+          "type": "LiteralInteger",
+          "named": true
+        },
+        {
+          "type": "LiteralReal",
+          "named": true
+        },
+        {
+          "type": "LiteralString",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "LiteralInfinity",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "LiteralInteger",
+    "named": true,
+    "fields": {
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "DECIMAL_VALUE",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "LiteralReal",
+    "named": true,
+    "fields": {
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "RealValue",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "LiteralString",
+    "named": true,
+    "fields": {
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "STRING_VALUE",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "MetadataAccessExpression",
+    "named": true,
+    "fields": {
+      "ownedRelationship": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ElementReferenceMember",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "MetadataReference",
+    "named": true,
+    "fields": {
+      "ownedRelationship": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ElementReferenceMember",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "MultiplicativeExpression",
+    "named": true,
+    "fields": {
+      "operand": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "ExponentiationExpression",
+            "named": true
+          }
+        ]
+      },
+      "operator": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "MultiplicativeOperator",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "MultiplicativeOperator",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "Name",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "ID",
+          "named": true
+        },
+        {
+          "type": "UNRESTRICTED_NAME",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "NamedArgument",
+    "named": true,
+    "fields": {
+      "parameterRedefinition": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ParameterRedefinition",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ArgumentValue",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "NamedArgumentMember",
+    "named": true,
+    "fields": {
+      "ownedRelatedElement": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "NamedArgument",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "NullCoalescingExpression",
+    "named": true,
+    "fields": {
+      "operand": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "ImpliesExpression",
+            "named": true
+          },
+          {
+            "type": "ImpliesExpressionReference",
+            "named": true
+          }
+        ]
+      },
+      "operator": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "??",
+            "named": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "NullExpression",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "OrExpression",
+    "named": true,
+    "fields": {
+      "operand": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "XorExpression",
+            "named": true
+          },
+          {
+            "type": "XorExpressionReference",
+            "named": true
+          }
+        ]
+      },
+      "operator": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "or",
+            "named": false
+          },
+          {
+            "type": "|",
+            "named": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "OrExpressionMember",
+    "named": true,
+    "fields": {
+      "ownedRelatedElement": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "OrExpression",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "OrExpressionReference",
+    "named": true,
+    "fields": {
+      "ownedRelationship": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "OrExpressionMember",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "OwnedExpression",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "ConditionalExpression",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "OwnedExpressionMember",
+    "named": true,
+    "root": true,
+    "fields": {
+      "ownedRelatedElement": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "OwnedExpression",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "OwnedExpressionReference",
+    "named": true,
+    "fields": {
+      "ownedRelationship": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "OwnedExpressionMember",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "OwnedFeatureChain",
+    "named": true,
+    "fields": {
+      "chaining": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "OwnedFeatureChaining",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "OwnedFeatureChaining",
+    "named": true,
+    "fields": {
+      "chainingFeature": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "QualifiedName",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ParameterRedefinition",
+    "named": true,
+    "fields": {
+      "redefinedFeature": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "QualifiedName",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "PrimaryExpression",
+    "named": true,
+    "fields": {
+      "argument": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "ArgumentMember",
+            "named": true
+          }
+        ]
+      },
+      "base": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "BaseExpression",
+            "named": true
+          }
+        ]
+      },
+      "body": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "BodyExpression",
+            "named": true
+          }
+        ]
+      },
+      "collect": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "BodyExpression",
+            "named": true
+          }
+        ]
+      },
+      "featureChain": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "FeatureChainMember",
+            "named": true
+          }
+        ]
+      },
+      "filterOperand": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "SequenceExpression",
+            "named": true
+          }
+        ]
+      },
+      "functionRef": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "FunctionReferenceExpression",
+            "named": true
+          }
+        ]
+      },
+      "indexOperand": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "SequenceExpression",
+            "named": true
+          }
+        ]
+      },
+      "invocationType": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "InstantiatedTypeMember",
+            "named": true
+          }
+        ]
+      },
+      "namedArgument": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "NamedArgumentMember",
+            "named": true
+          }
+        ]
+      },
+      "operator": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "[",
+            "named": false
+          }
+        ]
+      },
+      "select": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "BodyExpression",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "Qualification",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "Name",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "QualifiedName",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "Name",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "GlobalQualification",
+          "named": true
+        },
+        {
+          "type": "Qualification",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "RangeExpression",
+    "named": true,
+    "fields": {
+      "operand": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "AdditiveExpression",
+            "named": true
+          }
+        ]
+      },
+      "operator": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "..",
+            "named": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "RealValue",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "DECIMAL_VALUE",
+          "named": true
+        },
+        {
+          "type": "EXP_VALUE",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "ReferenceTyping",
+    "named": true,
+    "fields": {
+      "type": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "QualifiedName",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "RelationalExpression",
+    "named": true,
+    "fields": {
+      "operand": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "RangeExpression",
+            "named": true
+          }
+        ]
+      },
+      "operator": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "RelationalOperator",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "RelationalOperator",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "ResultExpressionMember",
+    "named": true,
+    "fields": {
+      "ownedRelatedElement": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "OwnedExpression",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "SequenceExpression",
+    "named": true,
+    "fields": {
+      "operand": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "SequenceExpression",
+            "named": true
+          }
+        ]
+      },
+      "operator": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": ",",
+            "named": false
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "OwnedExpression",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "TypeReference",
+    "named": true,
+    "fields": {
+      "ownedRelationship": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ReferenceTyping",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "TypeReferenceMember",
+    "named": true,
+    "fields": {
+      "ownedRelatedElement": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "TypeReference",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "TypeResultMember",
+    "named": true,
+    "fields": {
+      "ownedRelatedElement": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "TypeReference",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "UnaryExpression",
+    "named": true,
+    "fields": {
+      "operand": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ExtentExpression",
+            "named": true
+          }
+        ]
+      },
+      "operator": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "UnaryOperator",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "ExtentExpression",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "UnaryOperator",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "XorExpression",
+    "named": true,
+    "fields": {
+      "operand": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "AndExpression",
+            "named": true
+          }
+        ]
+      },
+      "operator": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "xor",
+            "named": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "XorExpressionMember",
+    "named": true,
+    "fields": {
+      "ownedRelatedElement": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "XorExpression",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "XorExpressionReference",
+    "named": true,
+    "fields": {
+      "ownedRelationship": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "XorExpressionMember",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "!=",
+    "named": false
+  },
+  {
+    "type": "!==",
+    "named": false
+  },
+  {
+    "type": "#",
+    "named": false
+  },
+  {
+    "type": "$",
+    "named": false
+  },
+  {
+    "type": "%",
+    "named": false
+  },
+  {
+    "type": "&",
+    "named": false
+  },
+  {
+    "type": "(",
+    "named": false
+  },
+  {
+    "type": ")",
+    "named": false
+  },
+  {
+    "type": "*",
+    "named": false
+  },
+  {
+    "type": "**",
+    "named": false
+  },
+  {
+    "type": "+",
+    "named": false
+  },
+  {
+    "type": ",",
+    "named": false
+  },
+  {
+    "type": "-",
+    "named": false
+  },
+  {
+    "type": "->",
+    "named": false
+  },
+  {
+    "type": ".",
+    "named": false
+  },
+  {
+    "type": "..",
+    "named": false
+  },
+  {
+    "type": ".?",
+    "named": false
+  },
+  {
+    "type": "/",
+    "named": false
+  },
+  {
+    "type": "::",
+    "named": false
+  },
+  {
+    "type": ";",
+    "named": false
+  },
+  {
+    "type": "<",
+    "named": false
+  },
+  {
+    "type": "<=",
+    "named": false
+  },
+  {
+    "type": "=",
+    "named": false
+  },
+  {
+    "type": "==",
+    "named": false
+  },
+  {
+    "type": "===",
+    "named": false
+  },
+  {
+    "type": ">",
+    "named": false
+  },
+  {
+    "type": ">=",
+    "named": false
+  },
+  {
+    "type": "?",
+    "named": false
+  },
+  {
+    "type": "??",
+    "named": false
+  },
+  {
+    "type": "@",
+    "named": false
+  },
+  {
+    "type": "CastOperator",
+    "named": true
+  },
+  {
+    "type": "DECIMAL_VALUE",
+    "named": true
+  },
+  {
+    "type": "EXP_VALUE",
+    "named": true
+  },
+  {
+    "type": "ID",
+    "named": true
+  },
+  {
+    "type": "ML_NOTE",
+    "named": true,
+    "extra": true
+  },
+  {
+    "type": "MetaCastOperator",
+    "named": true
+  },
+  {
+    "type": "MetaClassificationTestOperator",
+    "named": true
+  },
+  {
+    "type": "SL_NOTE",
+    "named": true,
+    "extra": true
+  },
+  {
+    "type": "STRING_VALUE",
+    "named": true
+  },
+  {
+    "type": "UNRESTRICTED_NAME",
+    "named": true
+  },
+  {
+    "type": "[",
+    "named": false
+  },
+  {
+    "type": "]",
+    "named": false
+  },
+  {
+    "type": "^",
+    "named": false
+  },
+  {
+    "type": "all",
+    "named": false
+  },
+  {
+    "type": "and",
+    "named": false
+  },
+  {
+    "type": "else",
+    "named": false
+  },
+  {
+    "type": "false",
+    "named": false
+  },
+  {
+    "type": "hastype",
+    "named": false
+  },
+  {
+    "type": "if",
+    "named": false
+  },
+  {
+    "type": "implies",
+    "named": false
+  },
+  {
+    "type": "in",
+    "named": false
+  },
+  {
+    "type": "istype",
+    "named": false
+  },
+  {
+    "type": "metadata",
+    "named": false
+  },
+  {
+    "type": "new",
+    "named": false
+  },
+  {
+    "type": "not",
+    "named": false
+  },
+  {
+    "type": "null",
+    "named": false
+  },
+  {
+    "type": "or",
+    "named": false
+  },
+  {
+    "type": "true",
+    "named": false
+  },
+  {
+    "type": "xor",
+    "named": false
+  },
+  {
+    "type": "{",
+    "named": false
+  },
+  {
+    "type": "|",
+    "named": false
+  },
+  {
+    "type": "}",
+    "named": false
+  },
+  {
+    "type": "~",
+    "named": false
+  }
+]

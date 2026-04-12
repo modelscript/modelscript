@@ -14,7 +14,7 @@ const HOST = process.env.HOST || "localhost";
 
 // Paths
 const VSCODE_WEB_DIR = resolve(__dirname, "..", "vscode-web");
-const MODELSCRIPT_EXT_DIR = resolve(__dirname, "..", "..", "vscode");
+const MODELSCRIPT_EXT_DIR = resolve(__dirname, "..", "..", "..", "extensions", "vscode");
 const GITHUB_FS_EXT_DIR = resolve(__dirname, "..", "github-fs");
 const VIEWS_DIR = resolve(__dirname, "views");
 

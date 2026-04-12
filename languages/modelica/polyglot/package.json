@@ -1,0 +1,19 @@
+{
+  "name": "@modelscript/modelica-polyglot",
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    "./compat-shim": "./dist/compat-shim.js",
+    "./query_hooks": "./dist/query_hooks.js",
+    "./indexer_config": "./dist/indexer_config.js",
+    "./ref_config": "./dist/ref_config.js",
+    "./expression-evaluator": "./dist/expression-evaluator.js"
+  },
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@modelscript/polyglot": "*",
+    "tree-sitter-cli": "^0.25.10"
+  }
+}

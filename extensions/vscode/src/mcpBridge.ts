@@ -96,43 +96,51 @@ export function registerMCPTools(context: vscode.ExtensionContext, client: Langu
     }),
   );
 
-  // modelscript_add_component
-  context.subscriptions.push(
-    vscode.lm.registerTool("modelscript_add_component", {
-      async invoke(
-        options: vscode.LanguageModelToolInvocationOptions<{ className: string; classKind?: string }>,
-      ): Promise<vscode.LanguageModelToolResult> {
-        try {
-          await vscode.commands.executeCommand(
-            "modelscript.addToDiagram",
-            options.input.className,
-            options.input.classKind,
-          );
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart(`Added ${options.input.className} to the active model.`),
-          ]);
-        } catch (e) {
-          return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(`Error: ${e}`)]);
-        }
-      },
-    }),
-  );
+  // modelscript_add_component (not in package.json languageModelTools — register defensively)
+  try {
+    context.subscriptions.push(
+      vscode.lm.registerTool("modelscript_add_component", {
+        async invoke(
+          options: vscode.LanguageModelToolInvocationOptions<{ className: string; classKind?: string }>,
+        ): Promise<vscode.LanguageModelToolResult> {
+          try {
+            await vscode.commands.executeCommand(
+              "modelscript.addToDiagram",
+              options.input.className,
+              options.input.classKind,
+            );
+            return new vscode.LanguageModelToolResult([
+              new vscode.LanguageModelTextPart(`Added ${options.input.className} to the active model.`),
+            ]);
+          } catch (e) {
+            return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(`Error: ${e}`)]);
+          }
+        },
+      }),
+    );
+  } catch {
+    /* tool not contributed in package.json */
+  }
 
-  // modelscript_simulate_and_plot
-  context.subscriptions.push(
-    vscode.lm.registerTool("modelscript_simulate_and_plot", {
-      async invoke(): Promise<vscode.LanguageModelToolResult> {
-        try {
-          await vscode.commands.executeCommand("modelscript.runSimulation");
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart(
-              "Simulation triggered successfully. The results will appear in the simulation panel plot.",
-            ),
-          ]);
-        } catch (e) {
-          return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(`Error: ${e}`)]);
-        }
-      },
-    }),
-  );
+  // modelscript_simulate_and_plot (not in package.json languageModelTools — register defensively)
+  try {
+    context.subscriptions.push(
+      vscode.lm.registerTool("modelscript_simulate_and_plot", {
+        async invoke(): Promise<vscode.LanguageModelToolResult> {
+          try {
+            await vscode.commands.executeCommand("modelscript.runSimulation");
+            return new vscode.LanguageModelToolResult([
+              new vscode.LanguageModelTextPart(
+                "Simulation triggered successfully. The results will appear in the simulation panel plot.",
+              ),
+            ]);
+          } catch (e) {
+            return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(`Error: ${e}`)]);
+          }
+        },
+      }),
+    );
+  } catch {
+    /* tool not contributed in package.json */
+  }
 }

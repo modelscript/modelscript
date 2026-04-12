@@ -10,6 +10,7 @@ export * from "./compiler/modelica/i18n.js";
 export * from "./compiler/modelica/interpreter.js";
 export * from "./compiler/modelica/javascript-entity.js";
 export * from "./compiler/modelica/linter.js";
+export * from "./compiler/modelica/metascript-bridge.js";
 export * from "./compiler/modelica/model.js";
 export * from "./compiler/modelica/svg.js";
 export * from "./compiler/modelica/types.js";

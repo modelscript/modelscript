@@ -1,0 +1,44 @@
+{
+  "name": "@modelscript/polyglot",
+  "version": "0.0.0",
+  "description": "A language workbench for generating tree-sitter grammars, typed AST wrappers, symbol indexers, and query hooks from a single declarative file.",
+  "keywords": [],
+  "license": "ISC",
+  "author": "",
+  "type": "module",
+  "exports": {
+    ".": "./dist/src/index.js",
+    "./runtime": "./dist/src/runtime.js",
+    "./symbol-indexer": "./dist/src/symbol-indexer.js",
+    "./query-engine": "./dist/src/query-engine.js",
+    "./resolver": "./dist/src/resolver.js",
+    "./lsp-bridge": "./dist/src/lsp-bridge.js",
+    "./workspace-index": "./dist/src/workspace-index.js",
+    "./semantic-node": "./dist/src/semantic-node.js",
+    "./generate-ast-classes": "./dist/src/generate-ast-classes.js"
+  },
+  "main": "dist/src/index.js",
+  "directories": {
+    "example": "examples"
+  },
+  "scripts": {
+    "build": "tsc",
+    "generate": "tsx src/cli.ts",
+    "playground": "tsx src/cli.ts playground",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@types/ws": "^8.18.1",
+    "web-tree-sitter": "^0.26.8",
+    "ws": "^8.20.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.2",
+    "tree-sitter-cli": "^0.26.8",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2",
+    "vitest": "^3.2.4"
+  }
+}

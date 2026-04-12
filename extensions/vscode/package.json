@@ -265,6 +265,36 @@
         }
       },
       {
+        "name": "modelscript_add_component",
+        "displayName": "Add component to Diagram",
+        "modelDescription": "Adds a component (model, block, connector) to the currently active diagram. Input: { className: string, classKind?: string }. The language client will handle placing the component.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "className": {
+              "type": "string",
+              "description": "Fully qualified Modelica class name of the component being added"
+            },
+            "classKind": {
+              "type": "string",
+              "description": "The class kind (e.g. 'model', 'block', 'connector')"
+            }
+          },
+          "required": [
+            "className"
+          ]
+        }
+      },
+      {
+        "name": "modelscript_simulate_and_plot",
+        "displayName": "Simulate and Plot",
+        "modelDescription": "Triggers a simulation and plots the result for the currently active Modelica file.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      {
         "name": "modelscript_simulate",
         "displayName": "Simulate Modelica Model",
         "modelDescription": "Simulate a Modelica model and return time-series results. Input: { name: string, startTime?: number, stopTime?: number, solver?: string, format?: 'csv'|'json' }.",

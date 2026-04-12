@@ -9,7 +9,7 @@ import { join, resolve } from "path";
 const __dirname = import.meta.dirname;
 const OUT_DIR = resolve(__dirname, "..", "dist", "static");
 const VSCODE_WEB_DIR = resolve(__dirname, "..", "vscode-web");
-const MODELSCRIPT_EXT_DIR = resolve(__dirname, "..", "..", "vscode");
+const MODELSCRIPT_EXT_DIR = resolve(__dirname, "..", "..", "..", "extensions", "vscode");
 const GITHUB_FS_EXT_DIR = resolve(__dirname, "..", "github-fs");
 
 if (!existsSync(VSCODE_WEB_DIR)) {

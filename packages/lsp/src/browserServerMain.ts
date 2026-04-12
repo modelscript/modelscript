@@ -1,3 +1,4 @@
+/* eslint-disable */
 import { BrowserMessageReader, BrowserMessageWriter, createConnection } from "vscode-languageserver/browser";
 
 import {
@@ -47,15 +48,14 @@ import { unzipSync } from "fflate";
 
 import {
   Context,
+  LSPBridge,
   ModelicaClassDefinitionSyntaxNode,
   ModelicaClassInstance,
   ModelicaClassKind,
-  ModelicaComponentDeclarationSyntaxNode,
   ModelicaComponentInstance,
   ModelicaComponentReferenceSyntaxNode,
   ModelicaDAE,
   ModelicaElement,
-  ModelicaEnumerationClassInstance,
   ModelicaFlattener,
   ModelicaFunctionCallSyntaxNode,
   ModelicaInterpreter,
@@ -69,6 +69,10 @@ import {
   ModelicaStoredDefinitionSyntaxNode,
   ModelicaSyntaxNode,
   Scope,
+  createModelicaLSPBridge,
+  createModelicaQueryEngine,
+  createModelicaScopeResolver,
+  createModelicaWorkspaceIndex,
   performBltTransformation,
   type Dirent,
   type FileSystem,
@@ -480,6 +484,10 @@ const documentContexts = new Map<string, Context>();
 /* Workspace-wide class instances — keyed by document URI */
 const workspaceInstances = new Map<string, ModelicaClassInstance[]>();
 
+/* LSP-Bridge polyglot indexing */
+const globalWorkspaceIndex = createModelicaWorkspaceIndex();
+const documentLSPBridges = new Map<string, LSPBridge>();
+
 /* Resolve a modification/annotation path element to its named element */
 
 function resolvePathElement(node: SyntaxNode, scope: Scope): ModelicaNamedElement | null {
@@ -563,8 +571,8 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
     // The extensionUri may be an HTTP URL or a VS Code internal URI scheme.
     // For static deployments, we need to ensure it resolves to an HTTP URL.
     let serverDistBase = `${extensionUri}/server/dist`;
-    console.log(`[tree-sitter] extensionUri: ${extensionUri}`);
-    console.log(`[tree-sitter] serverDistBase: ${serverDistBase}`);
+    connection.console.info(`[tree-sitter] extensionUri: ${extensionUri}`);
+    connection.console.info(`[tree-sitter] serverDistBase: ${serverDistBase}`);
 
     // If the URI isn't HTTP(S), try to construct an HTTP URL from the worker's location
     if (!serverDistBase.startsWith("http://") && !serverDistBase.startsWith("https://")) {
@@ -572,7 +580,7 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
       const origin = (globalThis as unknown as { location?: { origin?: string } }).location?.origin;
       if (origin) {
         serverDistBase = `${origin}/static/devextensions/server/dist`;
-        console.log(`[tree-sitter] Using fallback serverDistBase: ${serverDistBase}`);
+        connection.console.info(`[tree-sitter] Using fallback serverDistBase: ${serverDistBase}`);
       }
     }
 
@@ -589,13 +597,13 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
     Context.registerParser(".mo", parser);
     Context.registerParser(".mos", parser);
     parserReady = true;
-    console.log("Tree-sitter Modelica parser initialized");
+    connection.console.info("Tree-sitter Modelica parser initialized");
 
     // Load the Modelica Standard Library from the bundled zip
     await loadMSL(serverDistBase);
 
     // Re-validate strictly AFTER MSL and parser are ready!
-    console.log(`[lsp] Initialization complete. Re-validating ${documents.all().length} open documents.`);
+    connection.console.info(`[lsp] Initialization complete. Re-validating ${documents.all().length} open documents.`);
 
     // We must run validation twice to ensure cross-file dependencies (like CosimSetup -> Controller)
     // are resolved with the updated instances, regardless of the arbitrary documents.all() order.
@@ -606,8 +614,8 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
     }
 
     connection.sendNotification("modelscript/status", { state: "ready", message: "ModelScript" });
-  } catch (e) {
-    console.error("Failed to initialize tree-sitter:", e);
+  } catch (e: any) {
+    connection.console.error(`Failed to initialize tree-sitter: ${e}\n${e.stack}`);
     parserReady = false;
     connection.sendNotification("modelscript/status", { state: "error", message: "Parser initialization failed" });
   }
@@ -750,7 +758,9 @@ async function loadMSL(serverDistBase: string): Promise<void> {
         }
       }
     }
-    console.log("MSL libraries registered in shared context");
+    console.log(
+      `MSL libraries registered in shared context. Total elements in context: ${Array.from(sharedContext.elements).length}`,
+    );
   } catch (e) {
     console.error("Failed to load MSL zip:", e);
   }
@@ -843,12 +853,17 @@ const legend: SemanticTokensLegend = { tokenTypes, tokenModifiers };
 /* Language server initialization */
 
 connection.onInitialize((params): InitializeResult => {
+  connection.console.info("[lsp] onInitialize called");
   // Get the extension URI from initializationOptions
   const extensionUri = params.initializationOptions?.extensionUri as string;
+
   if (extensionUri) {
-    initTreeSitter(extensionUri);
+    connection.console.info(`[lsp] Triggering initTreeSitter with extensionUri=${extensionUri}`);
+    initTreeSitter(extensionUri).catch((e) => {
+      connection.console.error(`[lsp] initTreeSitter threw an error: ${e}\n${e.stack}`);
+    });
   } else {
-    console.warn("No extensionUri provided — tree-sitter disabled");
+    connection.console.warn("No extensionUri provided — tree-sitter disabled");
   }
 
   const capabilities: ServerCapabilities = {
@@ -987,6 +1002,21 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
       tree = context.parse(".mo", text);
     }
     documentTrees.set(textDocument.uri, { text, tree, classCache: oldCached?.classCache ?? new Map() });
+
+    // --- LSP-Bridge Integration ---
+    if (globalWorkspaceIndex.has(textDocument.uri)) {
+      globalWorkspaceIndex.markDirty(textDocument.uri, () => tree.rootNode);
+    } else {
+      globalWorkspaceIndex.register(textDocument.uri, () => tree.rootNode);
+    }
+
+    // Create query engine and resolver over the unified workspace index
+    const unifiedIndex = globalWorkspaceIndex.toUnified();
+    const engine = createModelicaQueryEngine(unifiedIndex);
+    const resolver = createModelicaScopeResolver(unifiedIndex);
+    const bridge = createModelicaLSPBridge(unifiedIndex, engine, resolver, text, textDocument.uri);
+    documentLSPBridges.set(textDocument.uri, bridge);
+    // ------------------------------
 
     // Lint the raw parse tree (catches ERROR and MISSING nodes)
     linter.lint(tree, textDocument.uri);
@@ -1478,43 +1508,18 @@ connection.onRequest("textDocument/semanticTokens/full", (params) => {
   return computeSemanticTokens(document);
 });
 
-// Completion provider — dot-path resolution (matching morsel) + keyword fallback
+// Completion provider — polyglot-driven scoped completion + keyword fallback
 connection.onCompletion((params): CompletionItem[] => {
   const document = documents.get(params.textDocument.uri);
-  if (!document) {
-    return [];
-  }
+  const bridge = documentLSPBridges.get(params.textDocument.uri);
+  if (!document || !bridge) return [];
 
-  const position = params.position;
   const text = document.getText();
-  const lines = text.split("\n");
-  const lineContent = lines[position.line] ?? "";
-  const textUntilPosition = lineContent.substring(0, position.character);
+  const offset = document.offsetAt(params.position);
+  const items = bridge.completion(offset, text) as unknown as CompletionItem[];
 
-  // Check for dot-path completion (e.g. "SomeModel." or "Modelica.SIunits.")
-  const match = textUntilPosition.match(/([a-zA-Z0-9_]+(\.[a-zA-Z0-9_]+)*)\.$/);
-  if (match) {
-    const path = match[1];
-    const instances = documentInstances.get(params.textDocument.uri);
-    const context = documentContexts.get(params.textDocument.uri);
-    const scope: Scope | undefined = instances?.[0] ?? context;
-
-    if (scope) {
-      const element = scope.resolveName(path.split("."));
-      if (element) {
-        const items: CompletionItem[] = [];
-        for (const child of element.elements) {
-          if (child instanceof ModelicaNamedElement && child.name) {
-            items.push({
-              label: child.name,
-              kind: child instanceof ModelicaClassInstance ? CompletionItemKind.Class : CompletionItemKind.Field,
-              detail: child.description ?? undefined,
-            });
-          }
-        }
-        return items;
-      }
-    }
+  if (items.length > 0) {
+    return items;
   }
 
   // Fallback: keyword completions
@@ -1527,174 +1532,21 @@ connection.onCompletion((params): CompletionItem[] => {
 });
 
 connection.onHover((params) => {
-  if (!parserReady || !parser) {
-    return null;
-  }
-
   const document = documents.get(params.textDocument.uri);
-  if (!document) {
-    return null;
-  }
+  const bridge = documentLSPBridges.get(params.textDocument.uri);
+  if (!document || !bridge) return null;
 
-  const position = params.position;
-  const text = document.getText();
-  const lines = text.split("\n");
-  const lineContent = lines[position.line] ?? "";
+  const offset = document.offsetAt(params.position);
+  const hoverDef = bridge.hover(offset);
+  if (!hoverDef) return null;
 
-  // Find the word under cursor
-  let wordStart = position.character;
-  let wordEnd = position.character;
-  while (wordStart > 0 && /[_a-zA-Z0-9]/.test(lineContent[wordStart - 1])) wordStart--;
-  while (wordEnd < lineContent.length && /[_a-zA-Z0-9]/.test(lineContent[wordEnd])) wordEnd++;
-  const word = lineContent.substring(wordStart, wordEnd);
-  if (!word) return null;
-
-  // Expand dotted path to the LEFT ONLY, up to the cursor's word.
-  // This ensures hovering over `Analog` in `Modelica.Electrical.Analog.Basic.Ground` resolves to `Analog`,
-  // not the full leaf type.
-  let start = wordStart;
-  let end = wordEnd; // Do not scan right for definitions of nested paths
-  while (start > 0 && (lineContent[start - 1] === "." || /[a-zA-Z0-9_]/.test(lineContent[start - 1]))) start--;
-  const fullPath = lineContent.substring(start, end);
-
-  // Get cached scope from validation
-  const instances = documentInstances.get(params.textDocument.uri);
-  const context = documentContexts.get(params.textDocument.uri);
-  const scope: Scope | undefined = instances?.[0] ?? context;
-  if (!scope) return null;
-
-  // Ensure annotation and scripting classes are initialized
-  if (!ModelicaElement.annotationClassInstance && context) {
-    ModelicaElement.initializeAnnotationClass(context);
-  }
-  if (!ModelicaElement.scriptingClassInstance && context) {
-    ModelicaElement.initializeScriptingClass(context);
-  }
-
-  try {
-    const tree = getDocumentTree(params.textDocument.uri);
-    if (!tree) return null;
-    try {
-      const rootNode = tree.rootNode;
-      const searchRow = position.line;
-      const searchCol = Math.max(0, wordStart);
-      const searchEndCol = wordEnd;
-
-      const current: SyntaxNode | null = rootNode.descendantForPosition(
-        { row: searchRow, column: searchCol },
-        { row: searchRow, column: searchEndCol },
-      );
-
-      let element: ModelicaNamedElement | null = null;
-
-      // Unified path resolution for modifications and arguments
-      let currentPathNode: SyntaxNode | null = current;
-      let isOverValue = false;
-      let isOverName = false;
-
-      while (currentPathNode) {
-        if (
-          currentPathNode.type === "Name" &&
-          (currentPathNode.parent?.type === "ElementModification" ||
-            currentPathNode.parent?.type === "ElementRedeclaration")
-        ) {
-          isOverName = true;
-          break;
-        }
-        if (currentPathNode.type === "IDENT" && currentPathNode.parent?.type === "NamedArgument") {
-          isOverName = true;
-          break;
-        }
-        if (
-          currentPathNode.type === "Modification" ||
-          currentPathNode.type === "FunctionCallArguments" ||
-          currentPathNode.type === "ArgumentList"
-        ) {
-          isOverValue = true;
-        }
-        if (
-          currentPathNode.type === "ElementModification" ||
-          currentPathNode.type === "NamedArgument" ||
-          currentPathNode.type === "FunctionCall"
-        ) {
-          break;
-        }
-        currentPathNode = currentPathNode.parent;
-      }
-
-      if ((isOverName || isOverValue) && currentPathNode) {
-        const resolved = resolvePathElement(currentPathNode, scope);
-
-        if (isOverName) {
-          element = resolved;
-        } else if (isOverValue && resolved) {
-          const typeScope =
-            resolved instanceof ModelicaComponentInstance
-              ? resolved.classInstance
-              : resolved instanceof ModelicaClassInstance
-                ? resolved
-                : null;
-          if (typeScope) {
-            element = typeScope.resolveName(fullPath.split("."));
-            if (!element && fullPath !== word) {
-              element = typeScope.resolveName(word.split("."));
-            }
-          }
-        }
-      }
-
-      if (!element) {
-        element = scope.resolveName(fullPath.split("."));
-        if (!element && fullPath !== word) {
-          element = scope.resolveName(word.split("."));
-          if (element) {
-            start = wordStart;
-            end = wordEnd;
-          }
-        }
-      }
-
-      if (element instanceof ModelicaNamedElement) {
-        const contents: string[] = [];
-        if (element instanceof ModelicaEnumerationClassInstance && element.value) {
-          const value = element.value;
-          contents.push(`**enumeration literal** \`${value.stringValue}\` : \`${element.name}\``);
-          if (value.description) {
-            contents.push(value.description);
-          }
-        } else if (element instanceof ModelicaClassInstance) {
-          contents.push(`**${element.classKind}** \`${element.compositeName}\``);
-        } else if (element instanceof ModelicaComponentInstance) {
-          const typeName = element.declaredType?.compositeName ?? element.classInstance?.compositeName ?? "UnknownType";
-          contents.push(`**component** \`${element.name}\` : \`${typeName}\``);
-        } else {
-          contents.push(`\`${element.name}\``);
-        }
-
-        if (element.description && !(element instanceof ModelicaEnumerationClassInstance && element.value)) {
-          contents.push(element.description);
-        }
-
-        return {
-          contents: {
-            kind: "markdown" as const,
-            value: contents.join("\n\n"),
-          },
-          range: {
-            start: { line: position.line, character: start },
-            end: { line: position.line, character: end },
-          },
-        };
-      }
-
-      return null;
-    } finally {
-      // Tree is managed by cache
-    }
-  } catch (e) {
-    console.error("Hover resolution failed:", e);
-    return null;
-  }
+  return {
+    contents: {
+      kind: "markdown" as const,
+      value: hoverDef.contents,
+    },
+    range: hoverDef.range as any,
+  };
 });
 
 /* Go to Definition — reuses hover's resolution logic to locate declarations */
@@ -1851,33 +1703,11 @@ function isDescendantOf(child: ModelicaNamedElement, ancestor: ModelicaNamedElem
 
 connection.onDefinition((params) => {
   const document = documents.get(params.textDocument.uri);
-  if (!document) return null;
+  const bridge = documentLSPBridges.get(params.textDocument.uri);
+  if (!document || !bridge) return null;
 
-  const resolved = resolveElementAtPosition(document, params.position);
-  if (!resolved) return null;
-
-  const { element, uri } = resolved;
-  const syntaxNode = element.abstractSyntaxNode;
-  if (!syntaxNode?.sourceRange) return null;
-
-  // Use the identifier node for selection if available (class or component name)
-  let targetRange = syntaxNode.sourceRange;
-  if (element instanceof ModelicaClassInstance) {
-    const ident = (element.abstractSyntaxNode as ModelicaClassDefinitionSyntaxNode | null)?.identifier;
-    if (ident?.sourceRange) targetRange = ident.sourceRange;
-  } else if (element instanceof ModelicaComponentInstance) {
-    const decl = element.abstractSyntaxNode;
-    const ident = (decl as ModelicaComponentDeclarationSyntaxNode | null)?.declaration?.identifier;
-    if (ident?.sourceRange) targetRange = ident.sourceRange;
-  }
-
-  return {
-    uri,
-    range: {
-      start: { line: targetRange.startRow, character: targetRange.startCol },
-      end: { line: targetRange.endRow, character: targetRange.endCol },
-    },
-  };
+  const offset = document.offsetAt(params.position);
+  return bridge.definition(offset) as any;
 });
 
 /* Document formatting — uses tree-sitter parse + format() */
@@ -1986,148 +1816,15 @@ connection.onColorPresentation((params) => {
 
 /* Document symbols — enables Outline panel and breadcrumb navigation */
 
-/** Map a Modelica class prefix keyword to the most appropriate SymbolKind */
-function classKindToSymbolKind(prefixes: SyntaxNode | null): SymbolKind {
-  if (!prefixes) return SymbolKind.Class;
-  const text = prefixes.text;
-  if (text.includes("package")) return SymbolKind.Package;
-  if (text.includes("function")) return SymbolKind.Function;
-  if (text.includes("type")) return SymbolKind.TypeParameter;
-  if (text.includes("record")) return SymbolKind.Struct;
-  if (text.includes("connector")) return SymbolKind.Interface;
-  if (text.includes("operator")) return SymbolKind.Operator;
-  return SymbolKind.Class;
-}
-
-function nodeRange(node: SyntaxNode): {
-  start: { line: number; character: number };
-  end: { line: number; character: number };
-} {
-  return {
-    start: { line: node.startPosition.row, character: node.startPosition.column },
-    end: { line: node.endPosition.row, character: node.endPosition.column },
-  };
-}
-
-function collectDocumentSymbols(node: SyntaxNode): DocumentSymbol[] {
-  const symbols: DocumentSymbol[] = [];
-
-  for (let i = 0; i < node.childCount; i++) {
-    const child = node.child(i);
-    if (!child) continue;
-
-    if (child.type === "ClassDefinition") {
-      const prefixes = child.childForFieldName("classPrefixes");
-      const specifier = child.childForFieldName("classSpecifier");
-      const ident = specifier?.childForFieldName("identifier");
-      const name = ident?.text ?? "unknown";
-      const kind = classKindToSymbolKind(prefixes);
-      const detail = prefixes?.text ?? "";
-
-      const sym: DocumentSymbol = {
-        name,
-        detail,
-        kind,
-        range: nodeRange(child),
-        selectionRange: ident ? nodeRange(ident) : nodeRange(child),
-        children: specifier ? collectDocumentSymbols(specifier) : [],
-      };
-      symbols.push(sym);
-    } else if (child.type === "ComponentClause") {
-      const typeSpec = child.childForFieldName("typeSpecifier");
-      const typeName = typeSpec?.text ?? "";
-      // Each ComponentClause can declare multiple components
-      const decls = child.children.filter((c: SyntaxNode) => c.type === "ComponentDeclaration");
-      for (const decl of decls) {
-        const declaration = decl.childForFieldName("declaration");
-        const ident = declaration?.childForFieldName("identifier");
-        const name = ident?.text ?? "unknown";
-        symbols.push({
-          name,
-          detail: typeName,
-          kind: SymbolKind.Variable,
-          range: nodeRange(decl),
-          selectionRange: ident ? nodeRange(ident) : nodeRange(decl),
-        });
-      }
-    } else if (child.type === "EquationSection" || child.type === "InitialEquationSection") {
-      const label = child.type === "InitialEquationSection" ? "initial equation" : "equation";
-      const eqSymbols: DocumentSymbol[] = [];
-      // Collect connect equations as children
-      for (let j = 0; j < child.childCount; j++) {
-        const eq = child.child(j);
-        if (!eq) continue;
-        if (eq.type === "SpecialEquation") {
-          const connectNode = eq.children.find((c: SyntaxNode) => c.type === "ConnectEquation");
-          if (connectNode) {
-            const refs = connectNode.children.filter((c: SyntaxNode) => c.type === "ComponentReference");
-            const connName = refs.length >= 2 ? `connect(${refs[0].text}, ${refs[1].text})` : "connect(...)";
-            eqSymbols.push({
-              name: connName,
-              kind: SymbolKind.Event,
-              range: nodeRange(eq),
-              selectionRange: nodeRange(connectNode),
-            });
-          }
-        }
-      }
-      symbols.push({
-        name: label,
-        kind: SymbolKind.Namespace,
-        range: nodeRange(child),
-        selectionRange: nodeRange(child),
-        children: eqSymbols.length > 0 ? eqSymbols : undefined,
-      });
-    } else if (child.type === "AlgorithmSection" || child.type === "InitialAlgorithmSection") {
-      const label = child.type === "InitialAlgorithmSection" ? "initial algorithm" : "algorithm";
-      symbols.push({
-        name: label,
-        kind: SymbolKind.Namespace,
-        range: nodeRange(child),
-        selectionRange: nodeRange(child),
-      });
-    } else if (child.type === "ExtendsClause") {
-      const typeSpec = child.childForFieldName("typeSpecifier");
-      const name = typeSpec?.text ?? "extends";
-      symbols.push({
-        name: `extends ${name}`,
-        kind: SymbolKind.Interface,
-        range: nodeRange(child),
-        selectionRange: typeSpec ? nodeRange(typeSpec) : nodeRange(child),
-      });
-    } else if (
-      child.type === "SimpleImportClause" ||
-      child.type === "CompoundImportClause" ||
-      child.type === "UnqualifiedImportClause"
-    ) {
-      const nameNode = child.childForFieldName("name");
-      const name = nameNode?.text ?? "import";
-      symbols.push({
-        name: `import ${name}`,
-        kind: SymbolKind.Module,
-        range: nodeRange(child),
-        selectionRange: nameNode ? nodeRange(nameNode) : nodeRange(child),
-      });
-    } else if (child.type === "ElementSection") {
-      // Recurse into public/protected sections
-      symbols.push(...collectDocumentSymbols(child));
-    }
-  }
-
-  return symbols;
-}
-
 connection.onDocumentSymbol((params) => {
-  if (!parserReady || !parser) return [];
-  const document = documents.get(params.textDocument.uri);
-  if (!document) return [];
-
-  const tree = getDocumentTree(params.textDocument.uri);
-  if (!tree) return [];
   try {
-    return collectDocumentSymbols(tree.rootNode);
-  } finally {
-    // Tree is managed by cache — no delete needed
+    const bridge = documentLSPBridges.get(params.textDocument.uri);
+    if (!bridge) return [];
+    // Bridge returns LSPDocumentSymbol[]; cast to the server-library DocumentSymbol type.
+    return bridge.documentSymbols() as unknown as DocumentSymbol[];
+  } catch (e: any) {
+    connection.console.error(`[documentSymbol] ${e.message}`);
+    return [];
   }
 });
 
@@ -2185,6 +1882,16 @@ connection.onFoldingRanges((params) => {
 });
 
 /* Selection Ranges — enables smart Expand/Shrink selection */
+
+function nodeRange(node: SyntaxNode): {
+  start: { line: number; character: number };
+  end: { line: number; character: number };
+} {
+  return {
+    start: { line: node.startPosition.row, character: node.startPosition.column },
+    end: { line: node.endPosition.row, character: node.endPosition.column },
+  };
+}
 
 connection.onSelectionRanges((params) => {
   if (!parserReady || !parser) return [];
@@ -2346,42 +2053,11 @@ connection.onSignatureHelp((params) => {
 
 connection.onReferences((params) => {
   const document = documents.get(params.textDocument.uri);
-  if (!document) return [];
+  const bridge = documentLSPBridges.get(params.textDocument.uri);
+  if (!document || !bridge) return [];
 
-  const resolved = resolveElementAtPosition(document, params.position);
-  if (!resolved) return [];
-
-  const targetElement = resolved.element;
-  const targetName = targetElement.name;
-  if (!targetName) return [];
-
-  const locations: {
-    uri: string;
-    range: { start: { line: number; character: number }; end: { line: number; character: number } };
-  }[] = [];
-
-  // Search all open documents
-  for (const doc of documents.all()) {
-    const tree = getDocumentTree(doc.uri);
-    if (!tree) continue;
-
-    const collectRefs = (node: SyntaxNode) => {
-      if (node.type === "IDENT" && node.text === targetName) {
-        locations.push({
-          uri: doc.uri,
-          range: nodeRange(node),
-        });
-      }
-      for (let i = 0; i < node.childCount; i++) {
-        const child = node.child(i);
-        if (child) collectRefs(child);
-      }
-    };
-
-    collectRefs(tree.rootNode);
-  }
-
-  return locations;
+  const offset = document.offsetAt(params.position);
+  return bridge.references(offset) as any;
 });
 
 /* Rename — renames a symbol across the current document */

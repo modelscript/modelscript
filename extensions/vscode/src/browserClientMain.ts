@@ -260,18 +260,26 @@ export async function activate(context: vscode.ExtensionContext) {
   const documentSelector = [{ language: "modelica" }, { pattern: "**/*.{js,ts}" }];
 
   // Options to control the language client
+  const lspOutputChannel = vscode.window.createOutputChannel("ModelScript Language Server");
   const clientOptions: LanguageClientOptions = {
     documentSelector,
     synchronize: {},
     initializationOptions: {
       extensionUri: context.extensionUri.toString(),
     },
+    outputChannel: lspOutputChannel,
   };
 
   client = createWorkerLanguageClient(context, clientOptions);
 
-  await client.start();
-  console.log("ModelScript language server is ready");
+  try {
+    await client.start();
+    console.log("ModelScript language server is ready");
+    lspOutputChannel.appendLine("[client] Language server started successfully");
+  } catch (e) {
+    console.error("ModelScript language server failed to start:", e);
+    lspOutputChannel.appendLine(`[client] Language server FAILED to start: ${e}`);
+  }
 
   client.onNotification("modelscript/debuggerStopped", (params: { uri?: string; line?: number; column?: number }) => {
     if (activeDebugSession) {
@@ -394,6 +402,11 @@ export async function activate(context: vscode.ExtensionContext) {
       }
     }),
   );
+
+  // Trigger once for the initially active editor (since the event doesn't fire for the first tab)
+  if (vscode.window.activeTextEditor?.document.languageId === "modelica") {
+    treeProvider.setDocumentUri(vscode.window.activeTextEditor.document.uri.toString());
+  }
 
   // Register commands
   context.subscriptions.push(
