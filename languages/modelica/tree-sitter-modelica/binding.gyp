@@ -23,6 +23,9 @@
           "cflags_c": [
             "-std=c11",
           ],
+          "cflags_cc": [
+            "-std=c++20",
+          ],
         }, { # OS == "win"
           "cflags_c": [
             "/std:c11",

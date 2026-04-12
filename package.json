@@ -43,6 +43,9 @@
     "*.{ts,tsx}": "eslint --ext ts,tsx",
     "*.{ts,tsx,js,json,md,yml,css}": "prettier --write --ignore-unknown"
   },
+  "dependencies": {
+    "tree-sitter": "^0.25.0"
+  },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@nx/js": "^22.6.1",

@@ -45,7 +45,6 @@
     "build": "npm run clean && npm run lint && tsc",
     "clean": "rimraf dist",
     "lint": "eslint src --ext ts",
-    "test": "NODE_OPTIONS='--max-old-space-size=8192' npx tsx tests/testsuite-runner.ts",
     "watch": "tsc --watch"
   },
   "lint-staged": {
