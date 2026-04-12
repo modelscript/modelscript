@@ -20,7 +20,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@stylistic/eslint-plugin": "^2.9.0",
+    "@stylistic/eslint-plugin": "^5.10.0",
     "@types/express": "^5.0.3",
     "esbuild": "^0.25.5",
     "eslint": "^9.13.0",
