@@ -1,13 +1,13 @@
 {
-  "name": "@modelscript/fmi",
+  "name": "@modelscript/optimizer",
   "version": "0.0.0",
-  "description": "FMI 2.0/3.0 model description, C code generation, and FMU archive builder for ModelScript",
+  "description": "Optimal control and NLP solver for ModelScript — SQP, stochastic optimization, COIN-OR codegen",
   "keywords": [
     "modelscript",
-    "fmi",
-    "fmu",
-    "co-simulation",
-    "model-exchange"
+    "optimization",
+    "sqp",
+    "nlp",
+    "optimal-control"
   ],
   "homepage": "https://modelscript.org",
   "bugs": {
@@ -47,8 +47,8 @@
   },
   "dependencies": {
     "@modelscript/modelica-ast": "*",
-    "@modelscript/symbolics": "*",
-    "pako": "^2.1.0"
+    "@modelscript/simulator": "*",
+    "@modelscript/symbolics": "*"
   },
   "devDependencies": {
     "@types/node": "^25.3.2",

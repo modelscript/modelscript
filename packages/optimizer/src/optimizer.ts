@@ -16,18 +16,16 @@
  */
 
 import { ModelicaVariability } from "@modelscript/modelica-ast";
+import type { MonteCarloOptions, RandomVariable, SolverOptions } from "@modelscript/simulator";
+import { luFactor, luSolve, ModelicaSimulator, Tape, type TapeNode } from "@modelscript/simulator";
 import type { ModelicaDAE } from "@modelscript/symbolics";
 import { ModelicaIntegerLiteral, ModelicaRealLiteral } from "@modelscript/symbolics";
-import type { MonteCarloOptions, RandomVariable } from "./monte-carlo.js";
-import { luFactor, luSolve, ModelicaSimulator } from "./simulator.js";
-import type { SolverOptions } from "./solver-options.js";
 import {
   ProgressiveHedging,
   SampleAverageApproximation,
   type MultiStageStochasticProblem,
   type StochasticProblem,
 } from "./stochastic-optimizer.js";
-import { Tape, type TapeNode } from "./tape.js";
 
 // ── Public interfaces ──
 

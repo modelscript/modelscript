@@ -25,7 +25,7 @@ import {
   Xoshiro256pp,
   latinHypercubeSample,
   sampleDistribution,
-} from "./monte-carlo.js";
+} from "@modelscript/simulator";
 import type { OptimizationProblem, OptimizationResult, TranscriptionMethod } from "./optimizer.js";
 
 // ─────────────────────────────────────────────────────────────────────

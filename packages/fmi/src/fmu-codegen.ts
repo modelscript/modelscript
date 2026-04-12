@@ -34,8 +34,8 @@ import {
   ModelicaTransitionEquation,
   ModelicaUnaryExpression,
   simplifyExpr,
+  StaticTapeBuilder,
 } from "@modelscript/symbolics";
-import { StaticTapeBuilder } from "./ad-codegen.js";
 import type { FmuOptions, FmuResult } from "./fmi.js";
 
 /** Generated C source files. */

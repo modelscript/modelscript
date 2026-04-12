@@ -1,13 +1,14 @@
 {
-  "name": "@modelscript/fmi",
+  "name": "@modelscript/simulator",
   "version": "0.0.0",
-  "description": "FMI 2.0/3.0 model description, C code generation, and FMU archive builder for ModelScript",
+  "description": "ODE/DAE simulation engine for ModelScript — solvers, initialization, AD, uncertainty propagation",
   "keywords": [
     "modelscript",
-    "fmi",
-    "fmu",
-    "co-simulation",
-    "model-exchange"
+    "simulation",
+    "ode",
+    "dae",
+    "runge-kutta",
+    "bdf"
   ],
   "homepage": "https://modelscript.org",
   "bugs": {
@@ -47,8 +48,7 @@
   },
   "dependencies": {
     "@modelscript/modelica-ast": "*",
-    "@modelscript/symbolics": "*",
-    "pako": "^2.1.0"
+    "@modelscript/symbolics": "*"
   },
   "devDependencies": {
     "@types/node": "^25.3.2",

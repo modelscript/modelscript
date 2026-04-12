@@ -24,8 +24,8 @@
  */
 
 import type { TapeOp } from "@modelscript/symbolics";
-import type { HomotopyMode } from "../context.js";
 import { evaluateTapeForward, evaluateTapeReverse } from "./ad-jacobian.js";
+import type { HomotopyMode } from "./init-solver.js";
 
 /** Result of a homotopy solve attempt. */
 export interface HomotopyResult {

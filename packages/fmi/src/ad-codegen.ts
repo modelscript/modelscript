@@ -1,6 +1,4 @@
 import { ModelicaArrayEquation, ModelicaDAE, type ModelicaExpression, StaticTapeBuilder } from "@modelscript/symbolics";
-export { StaticTapeBuilder } from "@modelscript/symbolics";
-export type { TapeOp } from "@modelscript/symbolics";
 
 import { type Fmi3Variable } from "./fmi3.js";
 

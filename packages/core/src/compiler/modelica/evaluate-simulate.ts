@@ -17,6 +17,7 @@ import {
   type ModelicaFunctionCallSyntaxNode,
   type ModelicaSyntaxNode,
 } from "@modelscript/modelica-ast";
+import type { SolverOptions } from "@modelscript/simulator";
 import {
   ModelicaArray,
   ModelicaDAE,
@@ -28,7 +29,6 @@ import {
 } from "@modelscript/symbolics";
 import type { Scope } from "../scope.js";
 import { ModelicaClassInstance } from "./model.js";
-import type { SolverOptions } from "./solver-options.js";
 
 /**
  * Callback type for evaluating an expression node within a scope.

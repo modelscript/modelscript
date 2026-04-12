@@ -15,9 +15,9 @@
  *   4. Output results
  */
 
+import type { SolverOptions } from "@modelscript/simulator";
 import type { ModelicaExpression } from "@modelscript/symbolics";
 import { StaticTapeBuilder } from "@modelscript/symbolics";
-import type { SolverOptions } from "./solver-options.js";
 
 // ── Public interface ──
 

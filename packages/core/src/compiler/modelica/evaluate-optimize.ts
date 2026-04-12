@@ -12,6 +12,7 @@ import {
   type ModelicaFunctionCallSyntaxNode,
   type ModelicaSyntaxNode,
 } from "@modelscript/modelica-ast";
+import type { SolverOptions } from "@modelscript/simulator";
 import {
   ModelicaArray,
   ModelicaBooleanLiteral,
@@ -24,7 +25,6 @@ import {
 } from "@modelscript/symbolics";
 import type { Scope } from "../scope.js";
 import { ModelicaClassInstance } from "./model.js";
-import type { SolverOptions } from "./solver-options.js";
 
 type ScriptExpressionEvaluator = (node: ModelicaSyntaxNode, scope: Scope) => ModelicaExpression | null;
 
