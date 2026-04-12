@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "./dist",
+    "module": "nodenext",
+    "target": "esnext",
+    "lib": ["esnext", "DOM"],
+    "declaration": true,
+    "strict": false,
+    "skipLibCheck": true,
+    "noEmitOnError": false,
+    "noImplicitAny": false,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "moduleResolution": "nodenext"
+  },
+  "include": ["*.ts"]
+}

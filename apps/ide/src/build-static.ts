@@ -31,7 +31,7 @@ console.log("  Copying ModelScript extension...");
 const extDestDir = join(OUT_DIR, "static", "devextensions");
 mkdirSync(extDestDir, { recursive: true });
 // Copy essential root files
-for (const file of ["package.json", "language-configuration.json"]) {
+for (const file of ["package.json", "language-configuration.json", "sysml-language-configuration.json"]) {
   const src = join(MODELSCRIPT_EXT_DIR, file);
   if (existsSync(src)) {
     cpSync(src, join(extDestDir, file));
@@ -68,6 +68,25 @@ if (!existsSync(modelicaWasmSrc)) {
 mkdirSync(join(extDestDir, "server", "dist"), { recursive: true });
 cpSync(modelicaWasmSrc, modelicaWasmDest);
 console.log(`  Copied tree-sitter-modelica.wasm to ${modelicaWasmDest}`);
+
+// Ensure tree-sitter-sysml2.wasm is also copied
+const sysml2WasmSrc = resolve(
+  __dirname,
+  "..",
+  "..",
+  "..",
+  "languages",
+  "sysml2",
+  "polyglot",
+  "tree-sitter-sysml2.wasm",
+);
+const sysml2WasmDest = join(extDestDir, "server", "dist", "tree-sitter-sysml2.wasm");
+if (existsSync(sysml2WasmSrc)) {
+  cpSync(sysml2WasmSrc, sysml2WasmDest);
+  console.log(`  Copied tree-sitter-sysml2.wasm to ${sysml2WasmDest}`);
+} else {
+  console.warn("  Warning: tree-sitter-sysml2.wasm not found, SysML support will be disabled");
+}
 
 // 3. Copy GitHub FS extension
 console.log("  Copying GitHub FS extension...");

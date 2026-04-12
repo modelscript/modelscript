@@ -73,6 +73,10 @@ import {
   createModelicaQueryEngine,
   createModelicaScopeResolver,
   createModelicaWorkspaceIndex,
+  createSysML2LSPBridge,
+  createSysML2QueryEngine,
+  createSysML2ScopeResolver,
+  createSysML2WorkspaceIndex,
   performBltTransformation,
   type Dirent,
   type FileSystem,
@@ -486,7 +490,12 @@ const workspaceInstances = new Map<string, ModelicaClassInstance[]>();
 
 /* LSP-Bridge polyglot indexing */
 const globalWorkspaceIndex = createModelicaWorkspaceIndex();
+const sysml2WorkspaceIndex = createSysML2WorkspaceIndex();
 const documentLSPBridges = new Map<string, LSPBridge>();
+
+/* SysML2 parser (separate from Modelica) */
+let sysml2Parser: Parser | null = null;
+let sysml2ParserReady = false;
 
 /* Resolve a modification/annotation path element to its named element */
 
@@ -598,6 +607,17 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
     Context.registerParser(".mos", parser);
     parserReady = true;
     connection.console.info("Tree-sitter Modelica parser initialized");
+
+    // Initialize SysML2 parser
+    try {
+      const SysML2 = await Language.load(`${serverDistBase}/tree-sitter-sysml2.wasm`);
+      sysml2Parser = new Parser();
+      sysml2Parser.setLanguage(SysML2);
+      sysml2ParserReady = true;
+      connection.console.info("Tree-sitter SysML2 parser initialized");
+    } catch (e2: any) {
+      connection.console.warn(`SysML2 parser not available: ${e2.message}`);
+    }
 
     // Load the Modelica Standard Library from the bundled zip
     await loadMSL(serverDistBase);
@@ -960,6 +980,57 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
     documentContexts.set(textDocument.uri, context);
     connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: [] });
     connection.sendNotification("modelscript/projectTreeChanged");
+    return;
+  }
+
+  // Handle SysML2 files via the polyglot SysML2 pipeline
+  if (textDocument.uri.endsWith(".sysml") && sysml2ParserReady && sysml2Parser) {
+    try {
+      const tree = sysml2Parser.parse(text);
+      if (!tree) {
+        connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: [] });
+        return;
+      }
+
+      // Register/update in SysML2 workspace index
+      if (sysml2WorkspaceIndex.has(textDocument.uri)) {
+        sysml2WorkspaceIndex.markDirty(textDocument.uri, () => tree.rootNode);
+      } else {
+        sysml2WorkspaceIndex.register(textDocument.uri, () => tree.rootNode);
+      }
+
+      // Create query engine, resolver, and LSP bridge for the document
+      const unifiedIndex = sysml2WorkspaceIndex.toUnified();
+      const engine = createSysML2QueryEngine(unifiedIndex);
+      const resolver = createSysML2ScopeResolver(unifiedIndex);
+      const bridge = createSysML2LSPBridge(unifiedIndex, engine, resolver, text, textDocument.uri);
+      documentLSPBridges.set(textDocument.uri, bridge);
+
+      // Collect parse errors from the tree
+      const sysmlDiagnostics: Diagnostic[] = [];
+      const collectErrors = (node: SyntaxNode) => {
+        if (node.type === "ERROR" || node.isMissing) {
+          sysmlDiagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            range: {
+              start: { line: node.startPosition.row, character: node.startPosition.column },
+              end: { line: node.endPosition.row, character: node.endPosition.column },
+            },
+            message: node.isMissing ? `Missing ${node.type}` : "Syntax error",
+            source: "sysml2",
+          });
+        }
+        for (let i = 0; i < node.childCount; i++) {
+          collectErrors(node.child(i)!);
+        }
+      };
+      collectErrors(tree.rootNode);
+
+      connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: sysmlDiagnostics });
+    } catch (e: any) {
+      connection.console.error(`[sysml2] Error processing ${textDocument.uri}: ${e.message}`);
+      connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: [] });
+    }
     return;
   }
 

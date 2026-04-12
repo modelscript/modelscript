@@ -51,6 +51,7 @@
     "@modelscript/modelica-polyglot": "*",
     "@modelscript/polyglot": "*",
     "@modelscript/symbolics": "*",
+    "@modelscript/sysml2-polyglot": "*",
     "@modelscript/utils": "*",
     "@svgdotjs/svg.js": "^3.2.5",
     "helmlab": "^0.6.4",

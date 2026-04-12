@@ -257,7 +257,7 @@ export async function activate(context: vscode.ExtensionContext) {
     }),
   );
 
-  const documentSelector = [{ language: "modelica" }, { pattern: "**/*.{js,ts}" }];
+  const documentSelector = [{ language: "modelica" }, { language: "sysml" }, { pattern: "**/*.{js,ts}" }];
 
   // Options to control the language client
   const lspOutputChannel = vscode.window.createOutputChannel("ModelScript Language Server");

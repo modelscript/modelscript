@@ -1,0 +1,16 @@
+{
+  "name": "@modelscript/sysml2-polyglot",
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    "./query_hooks": "./dist/query_hooks.js",
+    "./indexer_config": "./dist/indexer_config.js",
+    "./ref_config": "./dist/ref_config.js"
+  },
+  "scripts": {
+    "build": "tsc || true"
+  },
+  "dependencies": {
+    "@modelscript/polyglot": "*"
+  }
+}

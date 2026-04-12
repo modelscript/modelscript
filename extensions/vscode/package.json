@@ -237,6 +237,11 @@
         "language": "modelica",
         "scopeName": "source.modelica",
         "path": "./syntaxes/modelica.tmLanguage.json"
+      },
+      {
+        "language": "sysml",
+        "scopeName": "source.sysml",
+        "path": "./syntaxes/sysml.tmLanguage.json"
       }
     ],
     "keybindings": [
@@ -388,6 +393,17 @@
           "light": "./images/icon.png",
           "dark": "./images/icon.png"
         }
+      },
+      {
+        "id": "sysml",
+        "aliases": [
+          "SysML",
+          "sysml"
+        ],
+        "extensions": [
+          ".sysml"
+        ],
+        "configuration": "./sysml-language-configuration.json"
       }
     ],
     "menus": {

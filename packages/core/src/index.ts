@@ -15,5 +15,6 @@ export * from "./compiler/modelica/model.js";
 export * from "./compiler/modelica/svg.js";
 export * from "./compiler/modelica/types.js";
 export * from "./compiler/modelica/units.js";
+export * from "./compiler/sysml2/sysml2-bridge.js";
 
 export * from "./compiler/scope.js";
