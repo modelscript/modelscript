@@ -305,12 +305,16 @@ export class QueryEngine {
   }
 
   /**
-   * Run all lint queries for ALL symbols in the index.
+   * Run all lint queries. If `resourceId` is provided, only runs lints for symbols
+   * belonging to that specific document, preventing massive performance bottlenecks
+   * when processing the standard library.
    * Returns a flat array of diagnostics with resolved byte positions.
    */
-  runAllLints(): LintDiagnostic[] {
+  runAllLints(resourceId?: string): LintDiagnostic[] {
     const diagnostics: LintDiagnostic[] = [];
     for (const [id, entry] of this.index.symbols) {
+      if (resourceId && entry.resourceId !== resourceId) continue;
+
       for (const { lintName, result } of this.runLints(id)) {
         // Resolve byte range: explicit range > field lookup > symbol range
         let startByte = result.startByte ?? entry.startByte;

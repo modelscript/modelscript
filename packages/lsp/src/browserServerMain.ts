@@ -1134,11 +1134,8 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
       collectErrors(tree.rootNode);
 
       // Run Polyglot declarative lints (e.g. multiplicity bounds, usage matching)
-      const engineDiags = engine.runAllLints();
+      const engineDiags = engine.runAllLints(textDocument.uri);
       for (const d of engineDiags) {
-        const entry = unifiedIndex.symbols.get(d.symbolId);
-        if (entry && entry.resourceId !== textDocument.uri) continue;
-
         const start = bridge["positions"].offsetToPosition(d.startByte);
         const end = bridge["positions"].offsetToPosition(d.endByte);
         let severity: DiagnosticSeverity = DiagnosticSeverity.Warning;
