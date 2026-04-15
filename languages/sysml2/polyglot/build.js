@@ -32,8 +32,8 @@ if (shouldBuild) {
     delete pkg.type;
     fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2));
 
-    execSync("tree-sitter generate", { stdio: "inherit", cwd: __dirname });
-    execSync("tree-sitter build --wasm", { stdio: "inherit", cwd: __dirname });
+    execSync("npx --yes tree-sitter-cli generate", { stdio: "inherit", cwd: __dirname });
+    execSync("npx --yes tree-sitter-cli build --wasm", { stdio: "inherit", cwd: __dirname });
   } catch (err) {
     console.error("Failed to build WASM:", err.message);
     process.exitCode = 1;
