@@ -47,23 +47,23 @@ jobs:
         run: npm run lint
       - name: Package VS Code Extension
         run: npx @vscode/vsce package --no-dependencies
-        working-directory: packages/vscode
+        working-directory: extensions/vscode
       - name: Upload VSIX Artifact
         uses: actions/upload-artifact@v4
         with:
           name: modelscript-vsix
-          path: packages/vscode/*.vsix
+          path: extensions/vscode/*.vsix
       - name: SPA fallback for GitHub Pages
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         run: |
-          cp packages/site/build/client/index.html packages/site/build/client/404.html
+          cp apps/site/build/client/index.html apps/site/build/client/404.html
       - name: Deploy Site
         uses: peaceiris/actions-gh-pages@v4
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         with:
           personal_token: ${{ secrets.MODELSCRIPT_SITE_DEPLOY_PAT }}
           external_repository: modelscript/modelscript.github.io
-          publish_dir: ./packages/site/build/client
+          publish_dir: ./apps/site/build/client
 
       # --- Docker ---
       - uses: docker/setup-buildx-action@v3

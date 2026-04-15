@@ -77,56 +77,56 @@ jobs:
 
       # --- Publish VS Code Extension ---
       - name: Sync VS Code Extension Version
-        run: npm pkg set version=$(node -p 'require("./packages/core/package.json").version') --workspace=packages/vscode
+        run: npm pkg set version=$(node -p 'require("./packages/core/package.json").version') --workspace=extensions/vscode
       - name: Package VS Code Extension
         run: npx @vscode/vsce package --no-dependencies
-        working-directory: packages/vscode
+        working-directory: extensions/vscode
       - name: Upload VSIX Artifact
         uses: actions/upload-artifact@v4
         with:
           name: modelscript-vsix
-          path: packages/vscode/*.vsix
+          path: extensions/vscode/*.vsix
       - name: Publish to VS Code Marketplace
         run: npx @vscode/vsce publish --no-dependencies -p ${{ secrets.VSCE_PAT }}
-        working-directory: packages/vscode
+        working-directory: extensions/vscode
       - name: Publish to Open VSX
         run: npx ovsx publish *.vsix -p ${{ secrets.OVSX_PAT }}
-        working-directory: packages/vscode
+        working-directory: extensions/vscode
 
       # --- Deploy Apps (Morsel, IDE) ---
       - name: SPA fallback for Morsel
-        run: cp packages/morsel/build/client/index.html packages/morsel/build/client/404.html
+        run: cp apps/morsel/build/client/index.html apps/morsel/build/client/404.html
       - name: Deploy Morsel
         uses: peaceiris/actions-gh-pages@v4
         with:
           personal_token: ${{ secrets.MODELSCRIPT_MORSEL_DEPLOY_PAT }}
           external_repository: modelscript-morsel/modelscript-morsel.github.io
-          publish_dir: ./packages/morsel/build/client
+          publish_dir: ./apps/morsel/build/client
 
       - name: Cache WebLLM Model
         id: cache-model
         uses: actions/cache@v4
         with:
-          path: packages/ide/models
+          path: apps/ide/models
           key: ${{ runner.os }}-qwen3-0.6b-q4f16_1-mlc-v2
       - name: Download WebLLM Model
         if: steps.cache-model.outputs.cache-hit != 'true'
-        run: bash packages/ide/scripts/download-model.sh
+        run: bash apps/ide/scripts/download-model.sh
       - name: Build IDE Static
         run: npm run build-static --workspace=@modelscript/ide
       - name: Copy model to IDE static output
         run: |
-          mkdir -p packages/ide/dist/static/api/models/Qwen3-0.6B-q4f16_1-MLC/resolve/main
-          cp packages/ide/models/Qwen3-0.6B-q4f16_1-ctx4k_cs1k-webgpu.wasm packages/ide/dist/static/api/models/
-          cp packages/ide/models/Qwen3-0.6B-q4f16_1-MLC/*.json packages/ide/dist/static/api/models/Qwen3-0.6B-q4f16_1-MLC/resolve/main/
-          cp packages/ide/models/Qwen3-0.6B-q4f16_1-MLC/*.bin packages/ide/dist/static/api/models/Qwen3-0.6B-q4f16_1-MLC/resolve/main/
-          cp packages/ide/models/Qwen3-0.6B-q4f16_1-MLC/*.txt packages/ide/dist/static/api/models/Qwen3-0.6B-q4f16_1-MLC/resolve/main/ 2>/dev/null || true
+          mkdir -p apps/ide/dist/static/api/models/Qwen3-0.6B-q4f16_1-MLC/resolve/main
+          cp apps/ide/models/Qwen3-0.6B-q4f16_1-ctx4k_cs1k-webgpu.wasm apps/ide/dist/static/api/models/
+          cp apps/ide/models/Qwen3-0.6B-q4f16_1-MLC/*.json apps/ide/dist/static/api/models/Qwen3-0.6B-q4f16_1-MLC/resolve/main/
+          cp apps/ide/models/Qwen3-0.6B-q4f16_1-MLC/*.bin apps/ide/dist/static/api/models/Qwen3-0.6B-q4f16_1-MLC/resolve/main/
+          cp apps/ide/models/Qwen3-0.6B-q4f16_1-MLC/*.txt apps/ide/dist/static/api/models/Qwen3-0.6B-q4f16_1-MLC/resolve/main/ 2>/dev/null || true
       - name: Deploy IDE
         uses: peaceiris/actions-gh-pages@v4
         with:
           personal_token: ${{ secrets.MODELSCRIPT_IDE_DEPLOY_PAT }}
           external_repository: modelscript-ide/modelscript-ide.github.io
-          publish_dir: ./packages/ide/dist/static
+          publish_dir: ./apps/ide/dist/static
 
       # --- Publish Docker images to GHCR ---
       - uses: docker/setup-buildx-action@v3
