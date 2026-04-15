@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "express": "^5.1.0",
+    "express-rate-limit": "^8.3.2",
     "http-proxy-middleware": "^3.0.5"
   },
   "devDependencies": {

@@ -9,6 +9,8 @@ declare function acquireVsCodeApi(): {
   setState(s: unknown): void;
 };
 
+import DOMPurify from "dompurify";
+
 (function () {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const _vscode = acquireVsCodeApi();
@@ -141,7 +143,7 @@ declare function acquireVsCodeApi(): {
       }
     }
 
-    contentEl.innerHTML = statsHtml + tableHtml + loopHtml;
+    contentEl.innerHTML = DOMPurify.sanitize(statsHtml + tableHtml + loopHtml);
 
     // Tooltip on hover
     const cells = contentEl.querySelectorAll("td[data-eq]");
@@ -152,7 +154,9 @@ declare function acquireVsCodeApi(): {
         const varIdx = parseInt(el.getAttribute("data-var") || "0");
         const varName = data.variables[varIdx] || "?";
         const filled = el.classList.contains("filled");
-        tooltipEl.innerHTML = `<strong>eq${eqIdx + 1}</strong> × <strong>${escapeHtml(varName)}</strong>${filled ? " — <em>depends</em>" : ""}`;
+        tooltipEl.innerHTML = DOMPurify.sanitize(
+          `<strong>eq${eqIdx + 1}</strong> × <strong>${escapeHtml(varName)}</strong>${filled ? " — <em>depends</em>" : ""}`,
+        );
         tooltipEl.style.display = "block";
         const rect = el.getBoundingClientRect();
         tooltipEl.style.left = `${rect.right + 8}px`;

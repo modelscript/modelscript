@@ -1,5 +1,6 @@
 import { AlertIcon } from "@primer/octicons-react";
 import { Heading, Label, NavList, Spinner, Text, Truncate } from "@primer/react";
+import DOMPurify from "dompurify";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import styled, { css, keyframes } from "styled-components";
@@ -384,7 +385,11 @@ const ClassDetailPage: React.FC = () => {
           <SectionTitle as="h3">Documentation</SectionTitle>
           <DocCard>
             {cls.documentation ? (
-              <div dangerouslySetInnerHTML={{ __html: rewriteModelicaUris(cls.documentation, version!) }} />
+              <div
+                dangerouslySetInnerHTML={{
+                  __html: DOMPurify.sanitize(rewriteModelicaUris(cls.documentation, version!)),
+                }}
+              />
             ) : cls.description ? (
               <Text as="p" style={{ color: "var(--color-text-primary)", lineHeight: 1.7, margin: 0 }}>
                 {cls.description}

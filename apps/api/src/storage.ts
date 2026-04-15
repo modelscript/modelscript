@@ -187,7 +187,7 @@ export class LibraryStorage {
    * Format: `<dataDir>/<name>/<version>/extracted/<name>`
    */
   getExtractedPath(name: string, version: string): string {
-    return path.join(this.#dataDir, name, version, "extracted", name);
+    return path.join(this.#dataDir, this.#safe(name), this.#safe(version), "extracted", this.#safe(name));
   }
 
   /**
@@ -222,12 +222,19 @@ export class LibraryStorage {
     return true;
   }
 
+  #safe(val: string): string {
+    if (/[/\\]/.test(val) || val === ".." || val === ".") {
+      throw new Error(`Invalid path component: ${val}`);
+    }
+    return val;
+  }
+
   #svgDir(name: string, version: string, className: string): string {
-    return path.join(this.#dataDir, name, version, "svgs", className);
+    return path.join(this.#dataDir, this.#safe(name), this.#safe(version), "svgs", this.#safe(className));
   }
 
   #filePath(name: string, version: string): string {
-    return path.join(this.#dataDir, name, `${version}.zip`);
+    return path.join(this.#dataDir, this.#safe(name), `${this.#safe(version)}.zip`);
   }
 }
 

@@ -4,6 +4,7 @@
 // and a GitHub FileSystemProvider for loading GitHub repositories.
 
 import express from "express";
+import rateLimit from "express-rate-limit";
 import { existsSync, readFileSync } from "fs";
 import { createProxyMiddleware } from "http-proxy-middleware";
 import { join, resolve } from "path";
@@ -159,6 +160,14 @@ function renderWorkbench(protocol: string, host: string, folderConfig: Record<st
 // ── Create Express app ──
 
 const app = express();
+
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use(limiter);
 
 // CORS headers for VS Code Web — the extension host runs in a blob worker
 // with a different origin, so we need permissive CORS.
@@ -366,11 +375,25 @@ app.get("/github.com/:owner/:repo/tree/:ref/*subpath", (req, res) => {
   res.send(renderWrapper("github", owner, repo, ref));
 });
 
+function escapeHtml(unsafe: string): string {
+  return unsafe
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 function renderWrapper(provider: string, owner: string, repo: string, ref: string): string {
   const folderUri = `${provider}:///${owner}/${repo}?ref=${ref}`;
+  const safeOwner = escapeHtml(owner);
+  const safeRepo = escapeHtml(repo);
+  const safeRef = escapeHtml(ref);
+  const safeProvider = escapeHtml(provider);
+
   return `<!DOCTYPE html>
 <html><head>
-<title>${owner}/${repo} — ModelScript IDE</title>
+<title>${safeOwner}/${safeRepo} — ModelScript IDE</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -386,9 +409,9 @@ function renderWrapper(provider: string, owner: string, repo: string, ref: strin
 <div class="header">
   <a href="/">ModelScript</a>
   <span class="sep">/</span>
-  <a href="/${provider}.com/${owner}/${repo}">${owner}<span class="sep">/</span><span class="repo">${repo}</span></a>
+  <a href="/${safeProvider}.com/${safeOwner}/${safeRepo}">${safeOwner}<span class="sep">/</span><span class="repo">${safeRepo}</span></a>
   <span class="sep">@</span>
-  <span style="color: #8b949e; font-family: monospace; font-size: 13px;">${ref}</span>
+  <span style="color: #8b949e; font-family: monospace; font-size: 13px;">${safeRef}</span>
 </div>
 <iframe src="/vscode/workbench?folder=${encodeURIComponent(folderUri)}"></iframe>
 </body></html>`;

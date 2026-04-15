@@ -1,5 +1,6 @@
 import { AlertIcon, ChevronDownIcon, ChevronRightIcon } from "@primer/octicons-react";
 import { Heading, Label, Spinner, Text } from "@primer/react";
+import DOMPurify from "dompurify";
 import React, { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import styled, { css, keyframes } from "styled-components";
@@ -522,7 +523,11 @@ const LibraryDetailPage: React.FC = () => {
           <SectionTitle as="h3">Readme</SectionTitle>
           <DocCard>
             {rootClass?.documentation ? (
-              <div dangerouslySetInnerHTML={{ __html: rewriteModelicaUris(rootClass.documentation, version!) }} />
+              <div
+                dangerouslySetInnerHTML={{
+                  __html: DOMPurify.sanitize(rewriteModelicaUris(rootClass.documentation, version!)),
+                }}
+              />
             ) : rootClass?.description ? (
               <Text as="p" style={{ color: "var(--color-text-primary)", lineHeight: 1.7, margin: 0 }}>
                 {rootClass.description}

@@ -69,6 +69,16 @@ const btnClear = document.getElementById("btn-clear")!;
 const btnResetView = document.getElementById("btn-reset-view")!;
 const checkboxSmooth = document.getElementById("checkbox-smooth") as HTMLInputElement;
 
+function escapeHtmlSim(unsafe: string): string {
+  if (!unsafe) return "";
+  return unsafe
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 const vscodeApi = (window as typeof window & { acquireVsCodeApi?: () => { postMessage: (msg: unknown) => void } })
   .acquireVsCodeApi
   ? (window as typeof window & { acquireVsCodeApi?: () => { postMessage: (msg: unknown) => void } }).acquireVsCodeApi!()
@@ -1219,7 +1229,8 @@ canvas.addEventListener("mousemove", (e) => {
     if (hiddenVars.has(states[vi])) continue;
     const val = y[closest]?.[vi];
     const color = COLORS[vi % COLORS.length];
-    html += `<div><span style="color:${color}">●</span> ${states[vi]}: ${val !== undefined ? val.toFixed(6) : "N/A"}</div>`;
+    const safeName = escapeHtmlSim(states[vi]);
+    html += `<div><span style="color:${color}">●</span> ${safeName}: ${val !== undefined ? val.toFixed(6) : "N/A"}</div>`;
   }
 
   tooltipEl.innerHTML = html;

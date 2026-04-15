@@ -42,6 +42,16 @@ const btnCancelSession = document.getElementById("btn-cancel-session")!;
 const errorContainer = document.getElementById("error-container")!;
 /* eslint-enable @typescript-eslint/no-non-null-assertion */
 
+function escapeHtmlCosim(unsafe: string): string {
+  if (!unsafe) return "";
+  return String(unsafe)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 // ── State ──
 
 let isLocalMode = true; // Default to local mode
@@ -252,7 +262,8 @@ function renderSessions(sessions: SessionInfo[]): void {
 
   sessionsList.innerHTML = sessions
     .map((s) => {
-      const id = s.sessionId ?? s.id;
+      const id = escapeHtmlCosim(s.sessionId ?? s.id);
+      const safeState = escapeHtmlCosim(s.state);
       const stateClass =
         s.state === "running"
           ? "running"
@@ -264,7 +275,7 @@ function renderSessions(sessions: SessionInfo[]): void {
       return `
       <div class="session-card" data-session-id="${id}">
         <div class="session-header">
-          <span class="badge ${stateClass}">${s.state}</span>
+          <span class="badge ${stateClass}">${safeState}</span>
           <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${id}">${id.slice(0, 12)}…</span>
           <button data-action="delete" data-id="${id}" class="secondary" style="padding:1px 4px;font-size:10px" title="Delete session">✕</button>
         </div>
@@ -329,9 +340,10 @@ function toggleAddPicker(sessionId: string): void {
   }
 
   container.style.display = "";
+  const safeId = escapeHtmlCosim(sessionId);
   container.innerHTML = `
     <div class="add-picker">
-      <div class="add-picker-option" data-picker-action="cosim" data-session="${sessionId}">
+      <div class="add-picker-option" data-picker-action="cosim" data-session="${safeId}">
         <span class="icon">🔗</span>
         <div>
           <span class="label">From Modelica Wrapper</span>
@@ -339,21 +351,21 @@ function toggleAddPicker(sessionId: string): void {
           <div class="desc">Import participants &amp; couplings from the open .mo file with connect() equations</div>
         </div>
       </div>
-      <div class="add-picker-option" data-picker-action="model" data-session="${sessionId}">
+      <div class="add-picker-option" data-picker-action="model" data-session="${safeId}">
         <span class="icon">📄</span>
         <div>
           <span class="label">From Open .mo File</span>
           <div class="desc">Add the active Modelica model as a single participant</div>
         </div>
       </div>
-      <div class="add-picker-option" data-picker-action="fmu" data-session="${sessionId}">
+      <div class="add-picker-option" data-picker-action="fmu" data-session="${safeId}">
         <span class="icon">📦</span>
         <div>
           <span class="label">From FMU File</span>
           <div class="desc">Browse for a .fmu or modelDescription.xml file</div>
         </div>
       </div>
-      <div class="add-picker-option" data-picker-action="ssp" data-session="${sessionId}">
+      <div class="add-picker-option" data-picker-action="ssp" data-session="${safeId}">
         <span class="icon">🧩</span>
         <div>
           <span class="label">From SSP File</span>
@@ -361,7 +373,7 @@ function toggleAddPicker(sessionId: string): void {
         </div>
       </div>
       <div class="add-picker-divider"></div>
-      <div class="add-picker-option" data-picker-action="wrapper" data-session="${sessionId}">
+      <div class="add-picker-option" data-picker-action="wrapper" data-session="${safeId}">
         <span class="icon">🔧</span>
         <div>
           <span class="label">Generate Wrapper</span>
@@ -417,7 +429,7 @@ function renderParticipants(sessionId: string, participants: ParticipantInfo[]):
     .map(
       (p) => `
     <div class="session-meta" style="margin-top:2px">
-      ${p.type === "fmu" ? "📦" : p.type === "ssp" ? "🧩" : "📄"} <strong>${p.modelName}</strong> <span style="opacity:0.6">(${p.type}${p.variables ? `, ${p.variables} vars` : ""})</span>
+      ${p.type === "fmu" ? "📦" : p.type === "ssp" ? "🧩" : "📄"} <strong>${escapeHtmlCosim(p.modelName)}</strong> <span style="opacity:0.6">(${escapeHtmlCosim(p.type)}${p.variables ? `, ${Number(p.variables)} vars` : ""})</span>
     </div>`,
     )
     .join("");
@@ -441,9 +453,9 @@ function renderCouplings(sessionId: string, couplings: CouplingInfo[]): void {
         .map(
           (c) => `
         <div class="coupling-item">
-          <span>${abbreviateId(c.from.participantId)}.${c.from.variableName}</span>
+          <span>${escapeHtmlCosim(abbreviateId(c.from.participantId))}.${escapeHtmlCosim(c.from.variableName)}</span>
           <span class="coupling-arrow">──→</span>
-          <span>${abbreviateId(c.to.participantId)}.${c.to.variableName}</span>
+          <span>${escapeHtmlCosim(abbreviateId(c.to.participantId))}.${escapeHtmlCosim(c.to.variableName)}</span>
         </div>`,
         )
         .join("")}

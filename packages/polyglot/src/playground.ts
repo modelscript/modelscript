@@ -477,17 +477,39 @@ export async function startPlayground(options: PlaygroundOptions): Promise<void>
             );
           } catch (e1) {
             console.warn(`[playground/${langName}] Direct query load failed:`, e1);
-            // Patterns can be multi-line blocks `[ ... ] @cap`, or single line `( ... )`.
-            // A simple way is to match `[` to `] @...`, OR match a line starting with `(` or `"`.
-            // We use a regex that handles up to 2 levels of nested parens inside `( ... )`,
-            // and captures the `@...` inside or outside.
-            // Better yet, just match:
-            // 1) `[ ... ] @...` multi line
-            // 2) `( ... )` single line where parens are matched up to 2 levels deep
-            // 3) `"..." @...` single line
-            const patternRegex =
-              /(?:;\s*[^\n]*\n)*(?:\[[\s\S]*?\]\s*@[\w.]+|\((?:[^()]+|\([^()]*\))*\)(?:\s*@[\w.]+)?|"[^"]*"\s*@[\w.]+)/g;
-            const patterns = querySource.match(patternRegex) || [];
+            // Extract query patterns securely by parsing top-level items
+            const patterns: string[] = [];
+            let current = "";
+            let depth = 0;
+            let inString = false;
+
+            for (let i = 0; i < querySource.length; i++) {
+              const char = querySource[i];
+              current += char;
+
+              if (inString) {
+                if (char === '"' && querySource[i - 1] !== "\\") inString = false;
+              } else if (char === '"') {
+                inString = true;
+              } else if (char === "(" || char === "[") {
+                depth++;
+              } else if (char === ")" || char === "]") {
+                depth--;
+              }
+
+              if (depth === 0 && !inString && current.trim().length > 0) {
+                // If we reach depth 0, we might have trailing captures `@name`.
+                // Consume them until next newline or start of next token.
+                while (i + 1 < querySource.length && /[\s@\w.]/.test(querySource[i + 1])) {
+                  current += querySource[++i];
+                  if (querySource[i] === "\n") break;
+                }
+                patterns.push(current.trim());
+                current = "";
+              }
+            }
+            if (current.trim()) patterns.push(current.trim());
+
             const validPatterns: string[] = [];
             let removedCount = 0;
 

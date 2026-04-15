@@ -2,6 +2,7 @@
 
 import type { CosimMqttClient } from "@modelscript/cosim";
 import express from "express";
+import rateLimit from "express-rate-limit";
 import type { Pool } from "pg";
 
 import { LibraryDatabase } from "./database.js";
@@ -42,6 +43,15 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   const dbPool = opts.dbPool ?? null;
 
   app.use(express.json());
+
+  // Rate Limiting
+  const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 200, // Limit each IP to 200 requests per `window`
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+  app.use(limiter);
 
   // CORS — allow all origins (VS Code webviews, Morsel, etc.)
   app.use((_req, res, next) => {
