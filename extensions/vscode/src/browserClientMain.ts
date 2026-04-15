@@ -16,6 +16,7 @@ import { registerMCPTools } from "./mcpBridge";
 import { MqttTreeProvider } from "./mqttTreeProvider";
 import { ModelicaNotebookController } from "./notebookController";
 import { ModelicaNotebookSerializer } from "./notebookSerializer";
+import { SysML2PaletteProvider } from "./sysml2PaletteProvider";
 
 import { SimulationPanel } from "./simulationPanel";
 import { SINE_WAVE_FMU_BASE64 } from "./sineWaveFmu";
@@ -80,6 +81,13 @@ class MemoryFileSystemProvider implements vscode.FileSystemProvider {
     if (this.files.has(path)) {
       return { type: vscode.FileType.File, ctime: 0, mtime: Date.now(), size: this.files.get(path)?.length ?? 0 };
     }
+    // Fall back to open text documents — files created through the VS Code UI may
+    // exist only in the text model layer, not yet persisted to our in-memory store.
+    const doc = vscode.workspace.textDocuments.find((d) => d.uri.scheme === uri.scheme && d.uri.path === path);
+    if (doc) {
+      const content = new TextEncoder().encode(doc.getText());
+      return { type: vscode.FileType.File, ctime: 0, mtime: Date.now(), size: content.length };
+    }
     throw vscode.FileSystemError.FileNotFound(uri);
   }
 
@@ -116,6 +124,14 @@ class MemoryFileSystemProvider implements vscode.FileSystemProvider {
   readFile(uri: vscode.Uri): Uint8Array {
     const data = this.files.get(uri.path);
     if (data) return data;
+    // Fall back to open text documents (see stat() comment above)
+    const doc = vscode.workspace.textDocuments.find((d) => d.uri.scheme === uri.scheme && d.uri.path === uri.path);
+    if (doc) {
+      const content = new TextEncoder().encode(doc.getText());
+      // Persist into our store so subsequent reads don't need the fallback
+      this.files.set(uri.path, content);
+      return content;
+    }
     throw vscode.FileSystemError.FileNotFound(uri);
   }
 
@@ -233,6 +249,12 @@ export async function activate(context: vscode.ExtensionContext) {
     memFs.createDirectory(folders[0].uri);
     context.subscriptions.push(workspace.registerFileSystemProvider("memfs", memFs, { isCaseSensitive: true }));
     console.log("[blank-project] Registered memfs:// filesystem provider");
+
+    // Scaffold template files SYNCHRONOUSLY into the memfs store so they exist
+    // before VS Code attempts to restore previously-open editors (including
+    // diagram custom editors) from a prior session. Without this, restored editors
+    // trigger FileNotFound because initWorkspaceAndTree runs asynchronously later.
+    scaffoldTemplateFiles(memFs, folders[0].uri);
   }
 
   // Register virtual document provider and custom editor for FMU files
@@ -357,6 +379,18 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(mqttTreeView);
   mqttTreeProvider.startPolling();
 
+  // Register SysML2 element palette tree view
+  const sysml2PaletteProvider = new SysML2PaletteProvider();
+  sysml2PaletteProvider.onDragStart = (data) => {
+    diagramProvider.postToActiveWebviews({ type: "startPlacement", ...data });
+  };
+  const sysml2PaletteView = vscode.window.createTreeView("modelscript.sysml2Palette", {
+    treeDataProvider: sysml2PaletteProvider,
+    dragAndDropController: sysml2PaletteProvider,
+    canSelectMany: false,
+  });
+  context.subscriptions.push(sysml2PaletteView);
+
   // Register co-simulation panel (sidebar webview)
   const cosimProvider = new CosimViewProvider(context.extensionUri, client);
   context.subscriptions.push(
@@ -400,6 +434,8 @@ export async function activate(context: vscode.ExtensionContext) {
       if (editor?.document.languageId === "modelica") {
         treeProvider.setDocumentUri(editor.document.uri.toString());
       }
+      // Set context key for SysML2 palette visibility
+      vscode.commands.executeCommand("setContext", "modelscript.sysml2Active", editor?.document.languageId === "sysml");
     }),
   );
 
@@ -410,10 +446,25 @@ export async function activate(context: vscode.ExtensionContext) {
 
   // Register commands
   context.subscriptions.push(
-    commands.registerCommand("modelscript.openDiagram", () => {
+    commands.registerCommand("modelscript.openDiagram", async () => {
       const activeEditor = vscode.window.activeTextEditor;
-      if (activeEditor && activeEditor.document.languageId === "modelica") {
-        vscode.commands.executeCommand("vscode.openWith", activeEditor.document.uri, DiagramEditorProvider.viewType);
+      if (
+        activeEditor &&
+        (activeEditor.document.languageId === "modelica" || activeEditor.document.languageId === "sysml")
+      ) {
+        try {
+          // Ensure the file exists on the filesystem before opening the custom editor.
+          // In memfs workspaces, files created in the text editor buffer may not be persisted
+          // to the MemoryFileSystemProvider yet, causing CustomTextEditorProvider to fail.
+          const docUri = activeEditor.document.uri;
+          if (docUri.scheme === "memfs") {
+            const content = new TextEncoder().encode(activeEditor.document.getText());
+            await workspace.fs.writeFile(docUri, content);
+          }
+          await vscode.commands.executeCommand("vscode.openWith", docUri, DiagramEditorProvider.viewType);
+        } catch (e: unknown) {
+          vscode.window.showErrorMessage(`Failed to open diagram: ${(e as Error)?.message || e}`);
+        }
       }
     }),
     commands.registerCommand("modelscript.openDiagramSource", () => {
@@ -447,19 +498,78 @@ export async function activate(context: vscode.ExtensionContext) {
     commands.registerCommand("modelscript.addToDiagram", async (firstArg: unknown, secondArg?: string) => {
       if (!client) return;
 
-      // Support both context menu (LibraryTreeItem) and direct call (className, classKind, iconSvg)
+      // Support both context menu (LibraryTreeItem / SysML2PaletteItem) and direct call
       let className: string;
       let classKind: string;
       if (firstArg && typeof firstArg === "object" && "info" in firstArg) {
-        // Called from tree item context menu
+        // Called from Modelica tree item context menu
         const item = firstArg as { info: { compositeName: string; classKind: string; iconSvg?: string } };
         className = item.info.compositeName;
         classKind = item.info.classKind;
+      } else if (firstArg && typeof firstArg === "object" && "elementInfo" in firstArg) {
+        // Called from SysML2 palette item context menu
+        const item = firstArg as { elementInfo: { type: string; element?: { elementType: string } } };
+        if (item.elementInfo.type === "element" && item.elementInfo.element) {
+          className = item.elementInfo.element.elementType;
+          classKind = "sysml2";
+        } else {
+          return;
+        }
       } else {
         className = firstArg as string;
         classKind = secondArg ?? "";
       }
 
+      // SysML2 element handling
+      if (classKind === "sysml2") {
+        let docUri = vscode.window.activeTextEditor?.document.uri.toString();
+        if (!docUri) {
+          const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
+          if (tab?.input instanceof vscode.TabInputCustom && tab.input.viewType === DiagramEditorProvider.viewType) {
+            docUri = tab.input.uri.toString();
+          }
+        }
+        if (!docUri || !docUri.endsWith(".sysml")) {
+          vscode.window.showWarningMessage("Open a SysML2 file first.");
+          return;
+        }
+
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const edits: any[] = await client.sendRequest("modelscript/addComponent", {
+            uri: docUri,
+            className, // This is the elementType (e.g., "PartDefinition")
+            x: 0,
+            y: 0,
+          });
+          if (edits && edits.length > 0) {
+            const workspaceEdit = new vscode.WorkspaceEdit();
+            const uri = vscode.Uri.parse(docUri);
+            for (const edit of edits) {
+              const range = new vscode.Range(
+                edit.range.start.line,
+                edit.range.start.character,
+                edit.range.end.line,
+                edit.range.end.character,
+              );
+              workspaceEdit.replace(uri, range, edit.newText);
+            }
+            await vscode.workspace.applyEdit(workspaceEdit);
+            // Format the type name for display
+            const displayName = className.replace(/([A-Z])/g, " $1").trim();
+            vscode.window.showInformationMessage(`Added ${displayName} to model.`);
+            setTimeout(() => {
+              vscode.commands.executeCommand("modelscript.autoLayout");
+            }, 600);
+          }
+        } catch (e) {
+          console.error("[addToDiagram] SysML2 Error:", e);
+          vscode.window.showErrorMessage(`Failed to add element: ${e}`);
+        }
+        return;
+      }
+
+      // Modelica element handling
       // Only allow models, blocks, and connectors
       if (classKind !== "model" && classKind !== "block" && classKind !== "connector") return;
 
@@ -587,6 +697,301 @@ function createWorkerLanguageClient(context: vscode.ExtensionContext, clientOpti
 }
 
 /**
+ * Scaffold template files synchronously into the MemoryFileSystemProvider.
+ * Called immediately after registering the memfs provider, before any async
+ * operations, so that VS Code's editor restoration can find the files.
+ */
+function scaffoldTemplateFiles(memFs: MemoryFileSystemProvider, workspaceUri: vscode.Uri): void {
+  const encoder = new TextEncoder();
+  const template = workspaceUri.path.substring(1) || "empty";
+  const templates: Record<string, Record<string, string>> = {
+    empty: {
+      "HelloWorld.mo": `model HelloWorld "A simple Modelica model"\n  Real x(start = 1);\n  parameter Real a = -1;\nequation\n  der(x) = a * x;\nend HelloWorld;\n`,
+    },
+    blank: {
+      "HelloWorld.mo": `model HelloWorld "A simple Modelica model"\n  Real x(start = 1);\n  parameter Real a = -1;\nequation\n  der(x) = a * x;\nend HelloWorld;\n`,
+    },
+    "bouncing-ball": {
+      "BouncingBall.mo": `model BouncingBall "A bouncing ball"\n  parameter Real e = 0.8 "Coefficient of restitution";\n  parameter Real g = 9.81 "Gravity";\n  Real h(start = 1) "Height";\n  Real v "Velocity";\nequation\n  der(h) = v;\n  der(v) = -g;\n  when h < 0 then\n    reinit(v, -e * pre(v));\n  end when;\nend BouncingBall;\n`,
+    },
+    rlc: {
+      "RLC.mo": [
+        'model RLC "RLC circuit with MSL components"',
+        "  Modelica.Electrical.Analog.Sources.SineVoltage Vb(V = 10, f = 50)",
+        "    annotation(Placement(transformation(origin = {-70, 0}, extent = {{-10, -10}, {10, 10}}, rotation = 270)));",
+        "  Modelica.Electrical.Analog.Basic.Inductor L(L = 0.5)",
+        "    annotation(Placement(transformation(origin = {0, 40}, extent = {{-10, -10}, {10, 10}})));",
+        "  Modelica.Electrical.Analog.Basic.Capacitor C(C = 1e-4)",
+        "    annotation(Placement(transformation(origin = {20, 0}, extent = {{-10, -10}, {10, 10}}, rotation = 270)));",
+        "  Modelica.Electrical.Analog.Basic.Resistor R(R = 100)",
+        "    annotation(Placement(transformation(origin = {60, 0}, extent = {{-10, -10}, {10, 10}}, rotation = 270)));",
+        "  Modelica.Electrical.Analog.Basic.Ground ground",
+        "    annotation(Placement(transformation(origin = {-70, -40}, extent = {{-10, -10}, {10, 10}})));",
+        "equation",
+        "  connect(Vb.p, L.p)",
+        "    annotation(Line(points = {{-70, 10}, {-70, 40}, {-10, 40}}, color = {0, 0, 255}));",
+        "  connect(L.n, C.p)",
+        "    annotation(Line(points = {{10, 40}, {20, 40}, {20, 10}}, color = {0, 0, 255}));",
+        "  connect(L.n, R.p)",
+        "    annotation(Line(points = {{10, 40}, {60, 40}, {60, 10}}, color = {0, 0, 255}));",
+        "  connect(R.n, Vb.n)",
+        "    annotation(Line(points = {{60, -10}, {60, -30}, {-70, -30}, {-70, -10}}, color = {0, 0, 255}));",
+        "  connect(C.n, Vb.n)",
+        "    annotation(Line(points = {{20, -10}, {20, -30}, {-70, -30}, {-70, -10}}, color = {0, 0, 255}));",
+        "  connect(Vb.n, ground.p)",
+        "    annotation(Line(points = {{-70, -10}, {-70, -30}}, color = {0, 0, 255}));",
+        "end RLC;",
+        "",
+      ].join("\n"),
+    },
+    "cad-assembly": {
+      "RobotAssembly.mo": [
+        'model RobotAssembly "3D CAD Robot Assembly"',
+        "  // Base of the robot",
+        '  Real base_angle = 0 "Base rotation angle";',
+        '  Real base annotation(CAD(uri="Fox.glb", position={0, 0, 0}, scale={0.02, 0.02, 0.02}));',
+        "",
+        "  // A payload block",
+        '  Real payload annotation(CAD(uri="BoxTextured.glb", position={2, 0, 2}, scale={0.5, 0.5, 0.5}));',
+        "",
+        "  // An interactive port attachment point",
+        '  Real target annotation(CADPort(feature="TargetArea", offsetPosition={2, 1, 2}));',
+        "equation",
+        "  base = 0;",
+        "  payload = 1;",
+        "  target = 2;",
+        "end RobotAssembly;",
+        "",
+      ].join("\n"),
+    },
+    sysml2: {
+      "VehicleSystem.sysml": [
+        "package VehicleSystem {",
+        "",
+        "  // ── Port Definitions ──",
+        "  port def TorquePort {",
+        "    attribute torqueValue : Real;",
+        "  }",
+        "",
+        "  port def ElectricalPort {",
+        "    attribute voltage : Real;",
+        "    attribute current : Real;",
+        "  }",
+        "",
+        "  port def FuelPort {",
+        "    attribute flowRate : Real;",
+        "  }",
+        "",
+        "  // ── Part Definitions ──",
+        "  part def Engine {",
+        "    attribute horsePower : Real;",
+        "    attribute displacement : Real;",
+        "",
+        "    port torqueOut : TorquePort;",
+        "    port fuelIn : FuelPort;",
+        "  }",
+        "",
+        "  part def Transmission {",
+        "    attribute gearRatio : Real;",
+        "    attribute numberOfGears : Integer;",
+        "",
+        "    port torqueIn : TorquePort;",
+        "    port torqueOut : TorquePort;",
+        "  }",
+        "",
+        "  part def Battery {",
+        "    attribute capacity : Real;",
+        "    attribute voltage : Real;",
+        "",
+        "    port electricalOut : ElectricalPort;",
+        "  }",
+        "",
+        "  part def BrakeSystem {",
+        "    attribute maxBrakingForce : Real;",
+        "    attribute absEnabled : Boolean;",
+        "  }",
+        "",
+        "  part def Wheel {",
+        "    attribute diameter : Real;",
+        "    attribute tirePressure : Real;",
+        "  }",
+        "",
+        "  part def FuelTank {",
+        "    attribute capacity : Real;",
+        "",
+        "    port fuelOut : FuelPort;",
+        "  }",
+        "",
+        "  // ── Top-Level Vehicle ──",
+        "  part def Vehicle {",
+        "    attribute mass : Real;",
+        "    attribute topSpeed : Real;",
+        "",
+        "    part engine : Engine;",
+        "    part transmission : Transmission;",
+        "    part battery : Battery;",
+        "    part brakes : BrakeSystem;",
+        "    part frontLeft : Wheel;",
+        "    part fuelTank : FuelTank;",
+        "",
+        "    connect engine.torqueOut to transmission.torqueIn;",
+        "    connect fuelTank.fuelOut to engine.fuelIn;",
+        "  }",
+        "",
+        "  // ── Actors & Use Cases ──",
+        "",
+        "  part def Driver { doc /* Primary operator. */ }",
+        "  part def Mechanic { doc /* Service technician. */ }",
+        "  part def FleetManager { doc /* Oversees fleet. */ }",
+        "  part def Passenger { doc /* Rides vehicle. */ }",
+        "  part def ChargingStation { doc /* Recharges battery. */ }",
+        "  part def Pedestrian { doc /* External actor. */ }",
+        "",
+        "  use case def DriveVehicle {",
+        "    subject vehicle : Vehicle;",
+        "    actor driver : Driver;",
+        "    include use case startUp : StartVehicle;",
+        "    include use case navigate : NavigateRoute;",
+        "  }",
+        "",
+        "  use case def StartVehicle {",
+        "    subject vehicle : Vehicle;",
+        "    actor driver : Driver;",
+        "  }",
+        "",
+        "  use case def NavigateRoute {",
+        "    subject vehicle : Vehicle;",
+        "    actor driver : Driver;",
+        "  }",
+        "",
+        "  use case def PerformMaintenance {",
+        "    subject vehicle : Vehicle;",
+        "    actor mechanic : Mechanic;",
+        "  }",
+        "",
+        "  use case def MonitorFleet {",
+        "    actor manager : FleetManager;",
+        "  }",
+        "",
+        "  use case def ChargeVehicle {",
+        "    subject vehicle : Vehicle;",
+        "    actor driver : Driver;",
+        "    actor station : ChargingStation;",
+        "  }",
+        "",
+        "  use case def UpdateSoftware {",
+        "    subject vehicle : Vehicle;",
+        "    actor mechanic : Mechanic;",
+        "  }",
+        "",
+        "  use case def AdjustClimateControl {",
+        "    subject vehicle : Vehicle;",
+        "    actor passenger : Passenger;",
+        "  }",
+        "",
+        "  use case def DetectObstacle {",
+        "    subject vehicle : Vehicle;",
+        "    actor pedestrian : Pedestrian;",
+        "    actor driver : Driver;",
+        "  }",
+        "}",
+        "",
+        "// ── Behavior ──",
+        "package VehicleBehavior {",
+        "",
+        "  action def StartEngine {",
+        "    in ignitionSignal : Boolean;",
+        "    out engineRunning : Boolean;",
+        "  }",
+        "",
+        "  action def Accelerate {",
+        "    in throttlePosition : Real;",
+        "    out newSpeed : Real;",
+        "  }",
+        "",
+        "  action def Brake {",
+        "    in brakeForce : Real;",
+        "    out newSpeed : Real;",
+        "  }",
+        "",
+        "  state def VehicleStates {",
+        "    state off;",
+        "    state idle;",
+        "    state driving;",
+        "",
+        "    transition off_to_idle",
+        "      first off",
+        "      then idle;",
+        "",
+        "    transition idle_to_driving",
+        "      first idle",
+        "      then driving;",
+        "  }",
+        "",
+        "}",
+        "",
+        "// ── Requirements ──",
+        "package VehicleRequirements {",
+        "",
+        "  requirement def MassRequirement {",
+        "    doc /* Total mass shall not exceed 2000 kg. */",
+        "    attribute maxMass : Real;",
+        "  }",
+        "",
+        "  requirement def SafetyRequirement {",
+        "    doc /* Vehicle shall pass NCAP 5-star rating. */",
+        "    attribute minRating : Integer;",
+        "  }",
+        "",
+        "  requirement def PerformanceRequirement {",
+        "    doc /* 0-100 km/h in under 6 seconds. */",
+        "    attribute targetTime : Real;",
+        "  }",
+        "",
+        "}",
+        "",
+        "// ── Analysis ──",
+        "package VehicleAnalysis {",
+        "",
+        "  calc def TotalMass {",
+        "    in bodyMass : Real;",
+        "    in drivetrainMass : Real;",
+        "    return : Real;",
+        "    bodyMass + drivetrainMass",
+        "  }",
+        "",
+        "  constraint def MaxMassConstraint {",
+        "    1500 + 200 <= 2000",
+        "  }",
+        "",
+        "}",
+        "",
+
+        "// ── Integration ──",
+        "package VehicleIntegration {",
+        "  part vehicle : VehicleSystem::Vehicle;",
+        "  satisfy VehicleRequirements::MassRequirement by vehicle;",
+        "  satisfy VehicleRequirements::SafetyRequirement by vehicle;",
+        "}",
+        "",
+      ].join("\n"),
+    },
+    script: {
+      "simulate.mos": `// A simple Modelica script\nloadString("\nmodel HelloWorld\n  Real x(start=1);\nequation\n  der(x) = -x;\nend HelloWorld;\n");\n\nsimulate(HelloWorld, stopTime=5);\n`,
+    },
+  };
+
+  const files = templates[template];
+  if (files) {
+    for (const [name, content] of Object.entries(files)) {
+      const fileUri = Uri.joinPath(workspaceUri, name);
+      memFs.writeFile(fileUri, encoder.encode(content));
+    }
+    console.log(`[blank-project] Scaffolded ${Object.keys(files).length} template file(s) for '${template}'`);
+  }
+}
+
+/**
  * Initialize the workspace: scan for .mo files or create a blank project,
  * then set up the library tree. Retries if the filesystem provider isn't
  * registered yet (e.g. GitHub FS extension still activating).
@@ -675,6 +1080,219 @@ async function initWorkspaceAndTree(
             Uri.joinPath(workspaceUri, "BoxTextured.glb"),
             decodeBase64ToArray(boxTexturedBase64),
           );
+          break;
+        case "sysml2":
+          filename = "VehicleSystem.sysml";
+          content = [
+            "package VehicleSystem {",
+            "",
+            "  // ── Port Definitions ──",
+            "  port def TorquePort {",
+            "    attribute torqueValue : Real;",
+            "  }",
+            "",
+            "  port def ElectricalPort {",
+            "    attribute voltage : Real;",
+            "    attribute current : Real;",
+            "  }",
+            "",
+            "  port def FuelPort {",
+            "    attribute flowRate : Real;",
+            "  }",
+            "",
+            "  // ── Part Definitions ──",
+            "  part def Engine {",
+            "    attribute horsePower : Real;",
+            "    attribute displacement : Real;",
+            "",
+            "    port torqueOut : TorquePort;",
+            "    port fuelIn : FuelPort;",
+            "  }",
+            "",
+            "  part def Transmission {",
+            "    attribute gearRatio : Real;",
+            "    attribute numberOfGears : Integer;",
+            "",
+            "    port torqueIn : TorquePort;",
+            "    port torqueOut : TorquePort;",
+            "  }",
+            "",
+            "  part def Battery {",
+            "    attribute capacity : Real;",
+            "    attribute voltage : Real;",
+            "",
+            "    port electricalOut : ElectricalPort;",
+            "  }",
+            "",
+            "  part def BrakeSystem {",
+            "    attribute maxBrakingForce : Real;",
+            "    attribute absEnabled : Boolean;",
+            "  }",
+            "",
+            "  part def Wheel {",
+            "    attribute diameter : Real;",
+            "    attribute tirePressure : Real;",
+            "  }",
+            "",
+            "  part def FuelTank {",
+            "    attribute capacity : Real;",
+            "",
+            "    port fuelOut : FuelPort;",
+            "  }",
+            "",
+            "  // ── Top-Level Vehicle ──",
+            "  part def Vehicle {",
+            "    attribute mass : Real;",
+            "    attribute topSpeed : Real;",
+            "",
+            "    part engine : Engine;",
+            "    part transmission : Transmission;",
+            "    part battery : Battery;",
+            "    part brakes : BrakeSystem;",
+            "    part frontLeft : Wheel;",
+            "    part fuelTank : FuelTank;",
+            "",
+            "    connect engine.torqueOut to transmission.torqueIn;",
+            "    connect fuelTank.fuelOut to engine.fuelIn;",
+            "  }",
+            "",
+            "  // ── Actors & Use Cases ──",
+            "",
+            "  part def Driver { doc /* Primary operator. */ }",
+            "  part def Mechanic { doc /* Service technician. */ }",
+            "  part def FleetManager { doc /* Oversees fleet. */ }",
+            "  part def Passenger { doc /* Rides vehicle. */ }",
+            "  part def ChargingStation { doc /* Recharges battery. */ }",
+            "  part def Pedestrian { doc /* External actor. */ }",
+            "",
+            "  use case def DriveVehicle {",
+            "    subject vehicle : Vehicle;",
+            "    actor driver : Driver;",
+            "    include use case startUp : StartVehicle;",
+            "    include use case navigate : NavigateRoute;",
+            "  }",
+            "",
+            "  use case def StartVehicle {",
+            "    subject vehicle : Vehicle;",
+            "    actor driver : Driver;",
+            "  }",
+            "",
+            "  use case def NavigateRoute {",
+            "    subject vehicle : Vehicle;",
+            "    actor driver : Driver;",
+            "  }",
+            "",
+            "  use case def PerformMaintenance {",
+            "    subject vehicle : Vehicle;",
+            "    actor mechanic : Mechanic;",
+            "  }",
+            "",
+            "  use case def MonitorFleet {",
+            "    actor manager : FleetManager;",
+            "  }",
+            "",
+            "  use case def ChargeVehicle {",
+            "    subject vehicle : Vehicle;",
+            "    actor driver : Driver;",
+            "    actor station : ChargingStation;",
+            "  }",
+            "",
+            "  use case def UpdateSoftware {",
+            "    subject vehicle : Vehicle;",
+            "    actor mechanic : Mechanic;",
+            "  }",
+            "",
+            "  use case def AdjustClimateControl {",
+            "    subject vehicle : Vehicle;",
+            "    actor passenger : Passenger;",
+            "  }",
+            "",
+            "  use case def DetectObstacle {",
+            "    subject vehicle : Vehicle;",
+            "    actor pedestrian : Pedestrian;",
+            "    actor driver : Driver;",
+            "  }",
+            "}",
+            "",
+            "// ── Behavior ──",
+            "package VehicleBehavior {",
+            "",
+            "  action def StartEngine {",
+            "    in ignitionSignal : Boolean;",
+            "    out engineRunning : Boolean;",
+            "  }",
+            "",
+            "  action def Accelerate {",
+            "    in throttlePosition : Real;",
+            "    out newSpeed : Real;",
+            "  }",
+            "",
+            "  action def Brake {",
+            "    in brakeForce : Real;",
+            "    out newSpeed : Real;",
+            "  }",
+            "",
+            "  state def VehicleStates {",
+            "    state off;",
+            "    state idle;",
+            "    state driving;",
+            "",
+            "    transition off_to_idle",
+            "      first off",
+            "      then idle;",
+            "",
+            "    transition idle_to_driving",
+            "      first idle",
+            "      then driving;",
+            "  }",
+            "",
+            "}",
+            "",
+            "// ── Requirements ──",
+            "package VehicleRequirements {",
+            "",
+            "  requirement def MassRequirement {",
+            "    doc /* Total mass shall not exceed 2000 kg. */",
+            "    attribute maxMass : Real;",
+            "  }",
+            "",
+            "  requirement def SafetyRequirement {",
+            "    doc /* Vehicle shall pass NCAP 5-star rating. */",
+            "    attribute minRating : Integer;",
+            "  }",
+            "",
+            "  requirement def PerformanceRequirement {",
+            "    doc /* 0-100 km/h in under 6 seconds. */",
+            "    attribute targetTime : Real;",
+            "  }",
+            "",
+            "}",
+            "",
+            "// ── Analysis ──",
+            "package VehicleAnalysis {",
+            "",
+            "  calc def TotalMass {",
+            "    in bodyMass : Real;",
+            "    in drivetrainMass : Real;",
+            "    return : Real;",
+            "    bodyMass + drivetrainMass",
+            "  }",
+            "",
+            "  constraint def MaxMassConstraint {",
+            "    1500 + 200 <= 2000",
+            "  }",
+            "",
+            "}",
+            "",
+
+            "// ── Integration ──",
+            "package VehicleIntegration {",
+            "  part vehicle : VehicleSystem::Vehicle;",
+            "  satisfy VehicleRequirements::MassRequirement by vehicle;",
+            "  satisfy VehicleRequirements::SafetyRequirement by vehicle;",
+            "}",
+            "",
+          ].join("\n");
           break;
         case "script":
           filename = "simulate.mos";

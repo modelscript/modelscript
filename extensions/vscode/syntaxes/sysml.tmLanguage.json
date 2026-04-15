@@ -6,12 +6,14 @@
     { "include": "#comments" },
     { "include": "#strings" },
     { "include": "#numbers" },
-    { "include": "#keywords" },
-    { "include": "#definition-keywords" },
-    { "include": "#usage-keywords" },
+    { "include": "#definition-declarations" },
+    { "include": "#structural-keywords" },
+    { "include": "#control-keywords" },
     { "include": "#modifier-keywords" },
+    { "include": "#builtin-types" },
     { "include": "#operators" },
-    { "include": "#types" }
+    { "include": "#type-annotations" },
+    { "include": "#identifiers" }
   ],
   "repository": {
     "comments": {
@@ -65,35 +67,36 @@
         }
       ]
     },
-    "keywords": {
+    "definition-declarations": {
+      "comment": "Two-word definition keywords like 'part def', 'attribute def', etc.",
+      "patterns": [
+        {
+          "match": "\\b(package|library|standard|part|attribute|port|connection|interface|allocation|action|state|constraint|requirement|concern|case|analysis|verification|use|view|viewpoint|rendering|enumeration|occurrence|item|calculation|metadata|flow)\\s+(def)\\b",
+          "captures": {
+            "1": { "name": "storage.type.sysml" },
+            "2": { "name": "storage.type.sysml" }
+          }
+        }
+      ]
+    },
+    "structural-keywords": {
+      "comment": "Core SysML structural keywords — package, part, attribute, etc.",
+      "patterns": [
+        {
+          "name": "storage.type.sysml",
+          "match": "\\b(package|library|standard|part|attribute|port|connection|interface|allocation|action|state|constraint|requirement|concern|case|analysis|verification|use|view|viewpoint|rendering|enumeration|occurrence|item|calculation|metadata|flow|connect)\\b"
+        }
+      ]
+    },
+    "control-keywords": {
       "patterns": [
         {
           "name": "keyword.control.sysml",
-          "match": "\\b(if|else|then|while|for|loop|return|in|out|inout|import|alias|about|accept|after|all|as|assign|assert|assume|at|bind|by|chains|collect|decide|default|defined|dependency|do|doc|done|emit|entry|exhibit|expose|filter|first|flow|fork|frame|from|hastype|intersect|include|istype|join|merge|message|metadata|multiplicity|namespace|nonunique|objective|of|on|ordered|perform|private|protected|public|readonly|redefines|ref|render|rep|require|satisfy|send|snapshot|specializes|stakeholder|subject|subsets|succession|then|timeslice|to|transition|union|until|use|variant|variation|verify|via|when)\\b"
+          "match": "\\b(if|else|then|while|for|loop|return|import|alias|about|accept|after|all|as|assign|assert|assume|at|bind|by|chains|collect|decide|default|defined|dependency|do|doc|done|emit|entry|exhibit|expose|filter|first|fork|frame|from|hastype|intersect|include|istype|join|merge|message|multiplicity|namespace|nonunique|objective|of|on|ordered|perform|private|protected|public|readonly|redefines|ref|render|rep|require|satisfy|send|snapshot|specializes|stakeholder|subject|subsets|succession|then|timeslice|to|transition|union|until|variant|variation|verify|via|when|in|out|inout)\\b"
         },
         {
           "name": "constant.language.sysml",
           "match": "\\b(true|false|null)\\b"
-        }
-      ]
-    },
-    "definition-keywords": {
-      "patterns": [
-        {
-          "name": "keyword.other.definition.sysml",
-          "match": "\\b(package|library|standard|part|attribute|port|connection|interface|allocation|action|state|constraint|requirement|concern|case|analysis|verification|use|view|viewpoint|rendering|enumeration|occurrence|item|calculation|metadata|flow)\\s+(?=def\\b)"
-        },
-        {
-          "name": "storage.type.sysml",
-          "match": "\\b(def|definition)\\b"
-        }
-      ]
-    },
-    "usage-keywords": {
-      "patterns": [
-        {
-          "name": "keyword.other.usage.sysml",
-          "match": "\\b(part|attribute|port|connection|interface|allocation|action|state|constraint|requirement|concern|case|analysis|verification|use|view|viewpoint|rendering|enumeration|occurrence|item|calculation|metadata|flow)\\b"
         }
       ]
     },
@@ -102,6 +105,15 @@
         {
           "name": "storage.modifier.sysml",
           "match": "\\b(abstract|variation|derived|end|readonly|individual|parallel)\\b"
+        }
+      ]
+    },
+    "builtin-types": {
+      "comment": "SysML built-in and common type names.",
+      "patterns": [
+        {
+          "name": "support.type.sysml",
+          "match": "\\b(Boolean|Integer|Real|String|Natural|Positive|NaturalNumber|Number|ScalarValues|Any|Anything|DataValue|Occurrence|Object|Item|Part|Port|Connection|Interface|Allocation|Action|State|Constraint|Requirement|Concern|Case|AnalysisCase|VerificationCase|View|Viewpoint|Rendering|Calculation|Flow)\\b"
         }
       ]
     },
@@ -121,11 +133,27 @@
         }
       ]
     },
-    "types": {
+    "type-annotations": {
+      "comment": "Type references after ':' — e.g., 'capacity : Number'",
       "patterns": [
         {
-          "name": "support.type.sysml",
-          "match": "\\b(Boolean|Integer|Real|String|Natural|Positive|NaturalNumber)\\b"
+          "match": "(:)\\s*([A-Z][a-zA-Z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.operator.type.sysml" },
+            "2": { "name": "entity.name.type.sysml" }
+          }
+        }
+      ]
+    },
+    "identifiers": {
+      "comment": "Names following definition keywords — e.g., 'part def Engine'",
+      "patterns": [
+        {
+          "match": "\\b(def)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "storage.type.sysml" },
+            "2": { "name": "entity.name.type.sysml" }
+          }
         }
       ]
     }

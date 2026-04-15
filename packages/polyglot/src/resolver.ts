@@ -15,6 +15,7 @@ import type { IndexerHook, RefHook, SymbolEntry, SymbolId, SymbolIndex } from ".
 export class ScopeResolver {
   private refHooksByRule: Map<string, RefHook>;
   private indexerHooksByRule: Map<string, IndexerHook>;
+  private implicitNames: Set<string> = new Set();
 
   constructor(
     private index: SymbolIndex,
@@ -23,6 +24,14 @@ export class ScopeResolver {
   ) {
     this.refHooksByRule = new Map(refHooks.map((h) => [h.ruleName, h]));
     this.indexerHooksByRule = new Map(indexerHooks.map((h) => [h.ruleName, h]));
+  }
+
+  /**
+   * Set names that are implicitly in scope (e.g. KerML types in SysML2).
+   * These names will be suppressed from unresolved-reference diagnostics.
+   */
+  setImplicitNames(names: Set<string> | string[]): void {
+    this.implicitNames = names instanceof Set ? names : new Set(names);
   }
 
   // =========================================================================
@@ -158,7 +167,8 @@ export class ScopeResolver {
    *
    * @returns Array of unresolved reference diagnostics with byte positions.
    */
-  resolveAllReferences(): Array<{
+  resolveAllReferences(resourceId?: string): Array<{
+    symbolId: SymbolId;
     startByte: number;
     endByte: number;
     name: string;
@@ -167,6 +177,7 @@ export class ScopeResolver {
     severity: "error" | "warning" | "info" | "hint";
   }> {
     const diagnostics: Array<{
+      symbolId: SymbolId;
       startByte: number;
       endByte: number;
       name: string;
@@ -178,6 +189,9 @@ export class ScopeResolver {
     for (const entry of this.index.symbols.values()) {
       const hook = this.refHooksByRule.get(entry.ruleName);
       if (!hook) continue; // Not a reference entry
+
+      // Skip entries from other documents when resourceId filter is provided
+      if (resourceId && entry.resourceId !== resourceId) continue;
 
       const name = entry.name;
       if (!name || name === "<anonymous>") continue;
@@ -205,9 +219,31 @@ export class ScopeResolver {
       // check if the type has a member matching the unresolved name.
       if (this.resolveViaFeatureChain(name, entry)) continue;
 
+      // Fallback 3: global name lookup.
+      // Languages like SysML2 have implicit imports (e.g. `import ScalarValues::*`)
+      // that make standard library types (Real, Integer, Boolean, String) available
+      // in all scopes. Rather than hard-coding these, check if the name exists
+      // ANYWHERE in the index as a non-reference declaration. If so, assume it's
+      // reachable via an implicit import and suppress the diagnostic.
+      const globalIds = this.index.byName.get(name);
+      if (globalIds && globalIds.length > 0) {
+        const hasDeclaration = globalIds.some((id) => {
+          const sym = this.index.symbols.get(id);
+          return sym && !this.refHooksByRule.has(sym.ruleName);
+        });
+        if (hasDeclaration) continue;
+      }
+
+      // Fallback 4: implicit names.
+      // Some types come from libraries that use a different grammar (e.g. KerML
+      // types like Real, Integer, Boolean, String in SysML2). These can't be
+      // indexed by the current parser but are always implicitly in scope.
+      if (this.implicitNames.has(name)) continue;
+
       const severity: "error" | "warning" | "info" | "hint" = "error";
 
       diagnostics.push({
+        symbolId: entry.id,
         startByte: entry.startByte,
         endByte: entry.endByte,
         name,

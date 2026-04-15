@@ -2168,8 +2168,12 @@
           "value": "["
         },
         {
-          "type": "SYMBOL",
-          "name": "MultiplicityExpressionMember"
+          "type": "FIELD",
+          "name": "lowerBound",
+          "content": {
+            "type": "SYMBOL",
+            "name": "MultiplicityExpressionMember"
+          }
         },
         {
           "type": "CHOICE",
@@ -2182,8 +2186,12 @@
                   "value": ".."
                 },
                 {
-                  "type": "SYMBOL",
-                  "name": "MultiplicityExpressionMember"
+                  "type": "FIELD",
+                  "name": "upperBound",
+                  "content": {
+                    "type": "SYMBOL",
+                    "name": "MultiplicityExpressionMember"
+                  }
                 }
               ]
             },
@@ -6328,8 +6336,25 @@
             {
               "type": "REPEAT",
               "content": {
-                "type": "SYMBOL",
-                "name": "_ActionBodyItem"
+                "type": "CHOICE",
+                "members": [
+                  {
+                    "type": "SYMBOL",
+                    "name": "_ActionBodyItem"
+                  },
+                  {
+                    "type": "SYMBOL",
+                    "name": "SubjectMember"
+                  },
+                  {
+                    "type": "SYMBOL",
+                    "name": "ActorMember"
+                  },
+                  {
+                    "type": "SYMBOL",
+                    "name": "StakeholderMember"
+                  }
+                ]
               }
             },
             {

@@ -168,6 +168,9 @@
         "selector": [
           {
             "filenamePattern": "*.mo"
+          },
+          {
+            "filenamePattern": "*.sysml"
           }
         ],
         "priority": "option"
@@ -410,7 +413,7 @@
       "editor/title": [
         {
           "command": "modelscript.openDiagram",
-          "when": "editorLangId == modelica && activeCustomEditorId != modelscript.diagram",
+          "when": "(editorLangId == modelica || editorLangId == sysml) && activeCustomEditorId != modelscript.diagram",
           "group": "navigation"
         },
         {
@@ -484,6 +487,12 @@
           "id": "modelscript.libraryTree",
           "name": "Modelica Libraries",
           "visibility": "visible"
+        },
+        {
+          "id": "modelscript.sysml2Palette",
+          "name": "SysML2 Elements",
+          "visibility": "visible",
+          "when": "resourceExtname == .sysml || modelscript.sysml2Active"
         }
       ],
       "modelscript-cosim": [

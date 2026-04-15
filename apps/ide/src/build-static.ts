@@ -255,6 +255,10 @@ const landingHtml = `<!DOCTYPE html>
       <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M 2 20 Q 7 -12 12 20 Q 16 2 20 16"></path><circle cx="20" cy="16" r="3.5" fill="#da3633" stroke="none"></circle></svg></div>
       <span class="tpl-name">Bouncing Ball</span>
     </a>
+    <a href="/vscode/workbench/#memfs:sysml2" class="tpl-card">
+      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="20" height="8" rx="1.5"/><rect x="2" y="14" width="9" height="8" rx="1.5"/><rect x="13" y="14" width="9" height="8" rx="1.5"/><line x1="7" y1="10" x2="7" y2="14"/><line x1="17" y1="10" x2="17" y2="14"/></svg></div>
+      <span class="tpl-name">SysML2 Vehicle</span>
+    </a>
     <a href="/vscode/workbench/#memfs:rlc" class="tpl-card">
       <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h3l2-4 4 8 4-8 4 8 2-4h2"></path></svg></div>
       <span class="tpl-name">RLC Circuit</span>

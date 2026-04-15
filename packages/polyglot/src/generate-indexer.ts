@@ -17,50 +17,86 @@ export function extractIndexerHooks(langConfig: any, $: Record<string, any>): In
 
   for (const [ruleName, ruleFn] of Object.entries<any>(langConfig.rules)) {
     const ruleAST = ruleFn($);
-
-    // Only process rules wrapped in def()
-    if (!ruleAST || ruleAST.type !== "def") continue;
-
-    const options = ruleAST.options;
-    if (!options) continue;
-
-    let kind = "Unknown";
-    let namePath = "name"; // default
-    let exportPaths: string[] = [];
-    let inheritPaths: string[] = [];
-    const metadataFieldPaths: Record<string, string> = {};
-
-    if (typeof options.symbol === "function") {
-      const self = createSelfProxy();
-      const symConfig = options.symbol(self);
-
-      if (symConfig.kind) kind = symConfig.kind;
-      if (symConfig.name) namePath = extractScopePath(symConfig.name);
-
-      if (symConfig.exports) {
-        exportPaths = symConfig.exports.map(extractScopePath);
-      }
-      if (symConfig.inherits) {
-        inheritPaths = symConfig.inherits.map(extractScopePath);
-      }
-      if (symConfig.attributes) {
-        for (const [key, accessor] of Object.entries(symConfig.attributes)) {
-          metadataFieldPaths[key] = extractScopePath(accessor as any);
-        }
-      }
-    }
-
-    hooks.push({
-      ruleName,
-      kind,
-      namePath,
-      exportPaths,
-      inheritPaths,
-      metadataFieldPaths,
-    });
+    collectIndexerHooks(ruleAST, ruleName, hooks);
   }
 
   return hooks;
+}
+
+function collectIndexerHooks(node: any, ruleName: string, hooks: IndexerHook[]): void {
+  if (!node || typeof node !== "object") return;
+
+  if (node.type === "def") {
+    const options = node.options;
+    if (options) {
+      let kind = "Unknown";
+      let namePath = "name"; // default
+      let exportPaths: string[] = [];
+      let inheritPaths: string[] = [];
+      const metadataFieldPaths: Record<string, string> = {};
+
+      if (typeof options.symbol === "function") {
+        const self = createSelfProxy();
+        const symConfig = options.symbol(self);
+
+        if (symConfig.kind) kind = symConfig.kind;
+        if (symConfig.name) namePath = extractScopePath(symConfig.name);
+
+        if (symConfig.exports) {
+          exportPaths = symConfig.exports.map(extractScopePath);
+        }
+        if (symConfig.inherits) {
+          inheritPaths = symConfig.inherits.map(extractScopePath);
+        }
+        if (symConfig.attributes) {
+          for (const [key, accessor] of Object.entries(symConfig.attributes)) {
+            metadataFieldPaths[key] = extractScopePath(accessor as any);
+          }
+        }
+      }
+
+      hooks.push({
+        ruleName,
+        kind,
+        namePath,
+        exportPaths,
+        inheritPaths,
+        metadataFieldPaths,
+      });
+    }
+  } else if (node.type === "ref") {
+    const opts = node.options || {};
+    let namePath = "name";
+    if (opts.name) {
+      const self = createSelfProxy();
+      const accessor = opts.name(self);
+      namePath = extractScopePath(accessor);
+    }
+    hooks.push({
+      ruleName,
+      kind: "Reference" as any, // Reference symbol kind
+      namePath,
+      exportPaths: [],
+      inheritPaths: [],
+      metadataFieldPaths: {},
+    });
+  } else if (node.type === "choice" || node.type === "seq") {
+    if (Array.isArray(node.args)) {
+      for (const arg of node.args) {
+        collectIndexerHooks(arg, ruleName, hooks);
+      }
+    }
+  } else if (
+    node.type === "opt" ||
+    node.type === "rep" ||
+    node.type === "rep1" ||
+    node.type === "token" ||
+    node.type === "token_immediate"
+  ) {
+    if (node.arg) {
+      collectIndexerHooks(node.arg, ruleName, hooks);
+    }
+  }
 }
 
 /**

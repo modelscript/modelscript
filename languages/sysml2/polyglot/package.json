@@ -5,12 +5,14 @@
   "exports": {
     "./query_hooks": "./dist/query_hooks.js",
     "./indexer_config": "./dist/indexer_config.js",
-    "./ref_config": "./dist/ref_config.js"
+    "./ref_config": "./dist/ref_config.js",
+    "./graphics_config": "./dist/graphics_config.js"
   },
   "scripts": {
-    "build": "tsc || true"
+    "build": "node build.js && tsc"
   },
   "dependencies": {
     "@modelscript/polyglot": "*"
-  }
+  },
+  "devDependencies": {}
 }

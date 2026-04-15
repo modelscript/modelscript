@@ -2000,6 +2000,10 @@
           "named": true
         },
         {
+          "type": "ActorMember",
+          "named": true
+        },
+        {
           "type": "AliasMember",
           "named": true
         },
@@ -2116,7 +2120,15 @@
           "named": true
         },
         {
+          "type": "StakeholderMember",
+          "named": true
+        },
+        {
           "type": "StateUsage",
+          "named": true
+        },
+        {
+          "type": "SubjectMember",
           "named": true
         },
         {
@@ -2282,6 +2294,10 @@
           "named": true
         },
         {
+          "type": "ActorMember",
+          "named": true
+        },
+        {
           "type": "AliasMember",
           "named": true
         },
@@ -2422,7 +2438,15 @@
           "named": true
         },
         {
+          "type": "StakeholderMember",
+          "named": true
+        },
+        {
           "type": "StateUsage",
+          "named": true
+        },
+        {
+          "type": "SubjectMember",
           "named": true
         },
         {
@@ -4567,6 +4591,10 @@
           "named": true
         },
         {
+          "type": "ActorMember",
+          "named": true
+        },
+        {
           "type": "AliasMember",
           "named": true
         },
@@ -4683,7 +4711,15 @@
           "named": true
         },
         {
+          "type": "StakeholderMember",
+          "named": true
+        },
+        {
           "type": "StateUsage",
+          "named": true
+        },
+        {
+          "type": "SubjectMember",
           "named": true
         },
         {
@@ -4849,6 +4885,10 @@
           "named": true
         },
         {
+          "type": "ActorMember",
+          "named": true
+        },
+        {
           "type": "AliasMember",
           "named": true
         },
@@ -4989,7 +5029,15 @@
           "named": true
         },
         {
+          "type": "StakeholderMember",
+          "named": true
+        },
+        {
           "type": "StateUsage",
+          "named": true
+        },
+        {
+          "type": "SubjectMember",
           "named": true
         },
         {
@@ -11117,6 +11165,10 @@
           "named": true
         },
         {
+          "type": "ActorMember",
+          "named": true
+        },
+        {
           "type": "AliasMember",
           "named": true
         },
@@ -11257,7 +11309,15 @@
           "named": true
         },
         {
+          "type": "StakeholderMember",
+          "named": true
+        },
+        {
           "type": "StateUsage",
+          "named": true
+        },
+        {
+          "type": "SubjectMember",
           "named": true
         },
         {
@@ -13498,16 +13558,27 @@
   {
     "type": "MultiplicityRange",
     "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "MultiplicityExpressionMember",
-          "named": true
-        }
-      ]
+    "fields": {
+      "lowerBound": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "MultiplicityExpressionMember",
+            "named": true
+          }
+        ]
+      },
+      "upperBound": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "MultiplicityExpressionMember",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
@@ -21545,6 +21616,10 @@
           "named": true
         },
         {
+          "type": "ActorMember",
+          "named": true
+        },
+        {
           "type": "AliasMember",
           "named": true
         },
@@ -21661,7 +21736,15 @@
           "named": true
         },
         {
+          "type": "StakeholderMember",
+          "named": true
+        },
+        {
           "type": "StateUsage",
+          "named": true
+        },
+        {
+          "type": "SubjectMember",
           "named": true
         },
         {
@@ -21827,6 +21910,10 @@
           "named": true
         },
         {
+          "type": "ActorMember",
+          "named": true
+        },
+        {
           "type": "AliasMember",
           "named": true
         },
@@ -21967,7 +22054,15 @@
           "named": true
         },
         {
+          "type": "StakeholderMember",
+          "named": true
+        },
+        {
           "type": "StateUsage",
+          "named": true
+        },
+        {
+          "type": "SubjectMember",
           "named": true
         },
         {

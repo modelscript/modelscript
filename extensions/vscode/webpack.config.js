@@ -80,6 +80,10 @@ const browserClientConfig = {
           to: path.join(__dirname, "server", "dist", "ModelicaStandardLibrary_v4.1.0.zip"),
         },
         {
+          from: path.resolve(__dirname, "..", "..", "scripts", "SysML-v2-Release-2026-03.zip"),
+          to: path.join(__dirname, "server", "dist", "SysML-v2-Release-2026-03.zip"),
+        },
+        {
           from: path.resolve(__dirname, "..", "..", "packages", "lsp", "dist"),
           to: path.join(__dirname, "server", "dist"),
         },

@@ -383,7 +383,7 @@ export interface X6Ports {
 /** Full GraphicsConfig — node, edge, and port configuration for X6 rendering. */
 export interface GraphicsConfig {
   /** The graphic role this node plays in diagram rendering. */
-  role: "node" | "edge" | "group" | "port-owner";
+  role: "node" | "edge" | "group" | "port-owner" | "compartment";
 
   /** Node/Group visual configuration (X6 addNode format). */
   node?: {

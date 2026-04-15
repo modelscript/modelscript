@@ -87,6 +87,8 @@ const usageAttrs = (_usageKind: string) => (self: any) => ({
     isOrdered: self.isOrdered,
     isNonunique: self.isNonunique,
     isConstant: self.isConstant,
+    multiplicityLower: self.ownedMultiplicity.ownedRelatedElement.lowerBound,
+    multiplicityUpper: self.ownedMultiplicity.ownedRelatedElement.upperBound,
   },
 });
 
@@ -1179,6 +1181,27 @@ const usageLints = {
     }
     return null;
   },
+  multiplicityBounds: (_db: QueryDB, self: SymbolEntry) => {
+    // metadata fields are extracted as strings from the CST if they existed
+    const lowerStr = self.metadata?.multiplicityLower as string | undefined;
+    if (!lowerStr) return null; // No multiplicity declared
+
+    let upperStr = self.metadata?.multiplicityUpper as string | undefined;
+    if (!upperStr) upperStr = lowerStr; // e.g. [3] means lower=3, upper=3
+
+    const parseBound = (s: string) => (s.trim() === "*" || s.includes("Infinity") ? Infinity : parseFloat(s));
+    const lower = parseBound(lowerStr);
+    const upper = parseBound(upperStr);
+
+    if (!isNaN(lower) && !isNaN(upper) && lower > upper) {
+      return error(
+        `Invalid multiplicity bounds: lower bound (${lowerStr}) cannot be greater than upper bound (${upperStr}).`,
+        { startByte: self.startByte, endByte: self.endByte },
+      );
+    }
+
+    return null;
+  },
 };
 
 /** Lint rules for Constraint Definition/Usage — report violated constraints */
@@ -1509,9 +1532,9 @@ const requirementUsageLintsEnhanced = {
 // ---------------------------------------------------------------------------
 
 /** Walk all descendants to find requirement/verification symbols */
-const collectDescendants = (db: QueryDB, parentId: string, ruleNames: string[]): SymbolEntry[] => {
+const collectDescendants = (db: QueryDB, parentId: number, ruleNames: string[]): SymbolEntry[] => {
   const results: SymbolEntry[] = [];
-  const walk = (id: string) => {
+  const walk = (id: number) => {
     for (const c of db.childrenOf(id)) {
       if (ruleNames.includes(c.ruleName)) results.push(c);
       if (c.kind === "Package" || c.kind === "Definition") walk(c.id);
@@ -2066,7 +2089,7 @@ export default language({
     Package: ($) =>
       def({
         syntax: seq(rep($._usage_modifier), "package", opt($._Identification), $._PackageBody),
-        symbol: (self) => ({
+        symbol: (self: any) => ({
           kind: "Package",
           name: self.declaredName,
           exports: [self.declaredName],
@@ -2087,7 +2110,7 @@ export default language({
           opt($._Identification),
           $._PackageBody,
         ),
-        symbol: (self) => ({
+        symbol: (self: any) => ({
           kind: "Package",
           name: self.declaredName,
           exports: [self.declaredName],
@@ -2169,7 +2192,7 @@ export default language({
     NamespaceImport: ($) =>
       def({
         syntax: seq($._ImportPrefix, choice($._ImportedNamespace, field("ownedRelatedElement", $.FilterPackage))),
-        symbol: (self) => ({
+        symbol: (self: any) => ({
           kind: "Import",
           name: self.importedNamespace,
           attributes: {
@@ -2403,7 +2426,12 @@ export default language({
     OwnedMultiplicity: ($) => field("ownedRelatedElement", $.MultiplicityRange),
 
     MultiplicityRange: ($) =>
-      seq("[", $.MultiplicityExpressionMember, opt(seq("..", $.MultiplicityExpressionMember)), "]"),
+      seq(
+        "[",
+        field("lowerBound", $.MultiplicityExpressionMember),
+        opt(seq("..", field("upperBound", $.MultiplicityExpressionMember))),
+        "]",
+      ),
 
     MultiplicityExpressionMember: ($) =>
       field("ownedRelatedElement", choice($._LiteralExpression, $.FeatureReferenceExpression)),
@@ -2553,6 +2581,7 @@ export default language({
           },
         },
         lints: definitionLints,
+        graphics: () => sysmlNodeGraphics({ stereotype: "enum def", fill: "#f3e5f5", stroke: "#7b1fa2" }),
       }),
 
     _EnumerationBody: ($) => choice(";", seq("{", rep(choice($.AnnotatingMember, $.EnumerationUsageMember)), "}")),
@@ -2589,6 +2618,7 @@ export default language({
         queries: definitionStructuralQueries,
         model: definitionModel,
         lints: definitionLints,
+        graphics: () => sysmlNodeGraphics({ stereotype: "occurrence def", fill: "#f5f5f5", stroke: "#616161" }),
       }),
 
     OccurrenceUsage: ($) =>
@@ -2662,6 +2692,7 @@ export default language({
         queries: definitionStructuralQueries,
         model: definitionModel,
         lints: definitionLints,
+        graphics: () => sysmlNodeGraphics({ stereotype: "port def", fill: "#fff9c4", stroke: "#f57f17" }),
         adapters: modelicaClassAdapter("connector"),
         diff: {
           ignore: ["annotationClause", "description"],
@@ -2771,6 +2802,7 @@ export default language({
         queries: usageQueries,
         model: usageModel,
         lints: usageLints,
+        graphics: () => sysmlEdgeGraphics({ label: "«bind»", stroke: "#37474f" }),
       }),
 
     SuccessionAsUsage: ($) =>
@@ -2788,6 +2820,7 @@ export default language({
         queries: usageQueries,
         model: usageModel,
         lints: usageLints,
+        graphics: () => sysmlEdgeGraphics({ label: "«succession»", stroke: "#455a64", strokeDasharray: "4 2" }),
       }),
 
     // =====================================================================
@@ -2808,6 +2841,7 @@ export default language({
         queries: definitionStructuralQueries,
         model: definitionModel,
         lints: definitionLints,
+        graphics: () => sysmlNodeGraphics({ stereotype: "interface def", fill: "#e0f2f1", stroke: "#00695c" }),
       }),
 
     InterfaceUsage: ($) =>
@@ -2823,6 +2857,7 @@ export default language({
         queries: usageQueries,
         model: usageModel,
         lints: usageLints,
+        graphics: () => sysmlEdgeGraphics({ label: "«interface»", stroke: "#00695c" }),
       }),
 
     // =====================================================================
@@ -2836,6 +2871,7 @@ export default language({
         queries: definitionStructuralQueries,
         model: definitionModel,
         lints: definitionLints,
+        graphics: () => sysmlNodeGraphics({ stereotype: "allocation def", fill: "#e8eaf6", stroke: "#283593" }),
       }),
 
     AllocationUsage: ($) =>
@@ -2852,6 +2888,7 @@ export default language({
         queries: usageQueries,
         model: usageModel,
         lints: usageLints,
+        graphics: () => sysmlEdgeGraphics({ label: "«allocate»", stroke: "#283593", strokeDasharray: "6 3" }),
       }),
 
     // =====================================================================
@@ -2865,6 +2902,7 @@ export default language({
         queries: definitionStructuralQueries,
         model: definitionModel,
         lints: definitionLints,
+        graphics: () => sysmlNodeGraphics({ stereotype: "flow def", fill: "#e1f5fe", stroke: "#01579b" }),
       }),
 
     FlowUsage: ($) =>
@@ -2887,6 +2925,7 @@ export default language({
         queries: usageQueries,
         model: usageModel,
         lints: usageLints,
+        graphics: () => sysmlEdgeGraphics({ label: "«flow»", stroke: "#01579b" }),
       }),
 
     SuccessionFlowUsage: ($) =>
@@ -2910,6 +2949,7 @@ export default language({
         queries: usageQueries,
         model: usageModel,
         lints: usageLints,
+        graphics: () => sysmlEdgeGraphics({ label: "«succession flow»", stroke: "#01579b", strokeDasharray: "4 2" }),
       }),
 
     PayloadFeatureMember: ($) => field("ownedRelatedElement", $.PayloadFeature),
@@ -3048,6 +3088,7 @@ export default language({
         queries: usageQueries,
         model: usageModel,
         lints: usageLints,
+        graphics: () => sysmlUsageGraphics({ stereotype: "action", fill: "#e3f2fd", stroke: "#1976d2" }),
       }),
 
     // -----------------------------------------------------------------
@@ -3117,6 +3158,7 @@ export default language({
         queries: usageQueries,
         model: usageModel,
         lints: usageLints,
+        graphics: () => sysmlUsageGraphics({ stereotype: "perform", fill: "#e3f2fd", stroke: "#0d47a1" }),
       }),
 
     // =====================================================================
@@ -3171,6 +3213,7 @@ export default language({
         queries: calculationUsageQueries,
         model: calculationUsageModel,
         lints: usageLints,
+        graphics: () => sysmlUsageGraphics({ stereotype: "calc", fill: "#e0f7fa", stroke: "#006064" }),
       }),
 
     // =====================================================================
@@ -3207,6 +3250,7 @@ export default language({
         symbol: usageAttrs("constraint"),
         queries: constraintUsageQueries,
         model: constraintUsageModel,
+        graphics: () => sysmlUsageGraphics({ stereotype: "constraint", fill: "#ffebee", stroke: "#b71c1c" }),
         lints: constraintUsageLintRules,
       }),
 
@@ -3284,6 +3328,7 @@ export default language({
         syntax: seq("subject", rep($._usage_modifier), $._Usage),
         symbol: usageAttrs("subject"),
         model: usageModel,
+        graphics: () => sysmlUsageGraphics({ stereotype: "subject", fill: "#f1f8e9", stroke: "#33691e" }),
       }),
 
     RequirementConstraintMember: ($) =>
@@ -3317,6 +3362,7 @@ export default language({
         syntax: seq("actor", rep($._usage_modifier), $._Usage),
         symbol: usageAttrs("actor"),
         model: usageModel,
+        graphics: () => sysmlUsageGraphics({ stereotype: "actor", fill: "#fff3e0", stroke: "#e65100" }),
       }),
 
     StakeholderMember: ($) => seq(opt($.VisibilityIndicator), field("ownedRelatedElement", $.StakeholderUsage)),
@@ -3326,6 +3372,7 @@ export default language({
         syntax: seq("stakeholder", rep($._usage_modifier), $._Usage),
         symbol: usageAttrs("stakeholder"),
         model: usageModel,
+        graphics: () => sysmlUsageGraphics({ stereotype: "stakeholder", fill: "#fbe9e7", stroke: "#bf360c" }),
       }),
 
     RequirementUsage: ($) =>
@@ -3341,6 +3388,7 @@ export default language({
         queries: requirementUsageQueries,
         model: requirementUsageModel,
         lints: requirementUsageLintsEnhanced,
+        graphics: () => sysmlUsageGraphics({ stereotype: "requirement", fill: "#f3e5f5", stroke: "#4a148c" }),
       }),
 
     SatisfyRequirementUsage: ($) =>
@@ -3383,6 +3431,7 @@ export default language({
         queries: definitionStructuralQueries,
         model: definitionModel,
         lints: definitionLints,
+        graphics: () => sysmlNodeGraphics({ stereotype: "concern def", fill: "#fce4ec", stroke: "#ad1457" }),
       }),
 
     ConcernUsage: ($) =>
@@ -3392,6 +3441,7 @@ export default language({
         queries: usageQueries,
         model: usageModel,
         lints: usageLints,
+        graphics: () => sysmlUsageGraphics({ stereotype: "concern", fill: "#fce4ec", stroke: "#c2185b" }),
       }),
 
     // =====================================================================
@@ -3412,9 +3462,19 @@ export default language({
         queries: definitionStructuralQueries,
         model: definitionModel,
         lints: definitionLints,
+        graphics: () => sysmlNodeGraphics({ stereotype: "case def", fill: "#ede7f6", stroke: "#4527a0" }),
       }),
 
-    _CaseBody: ($) => choice(";", seq("{", rep($._ActionBodyItem), opt($.ResultExpressionMember), "}")),
+    _CaseBody: ($) =>
+      choice(
+        ";",
+        seq(
+          "{",
+          rep(choice($._ActionBodyItem, $.SubjectMember, $.ActorMember, $.StakeholderMember)),
+          opt($.ResultExpressionMember),
+          "}",
+        ),
+      ),
 
     CaseUsage: ($) =>
       def({
@@ -3423,6 +3483,7 @@ export default language({
         queries: usageQueries,
         model: usageModel,
         lints: usageLints,
+        graphics: () => sysmlUsageGraphics({ stereotype: "case", fill: "#ede7f6", stroke: "#311b92" }),
       }),
 
     AnalysisCaseDefinition: ($) =>
@@ -3439,6 +3500,7 @@ export default language({
         queries: definitionStructuralQueries,
         model: definitionModel,
         lints: definitionLints,
+        graphics: () => sysmlNodeGraphics({ stereotype: "analysis case def", fill: "#ede7f6", stroke: "#311b92" }),
       }),
 
     AnalysisCaseUsage: ($) =>
@@ -3448,6 +3510,7 @@ export default language({
         queries: usageQueries,
         model: usageModel,
         lints: usageLints,
+        graphics: () => sysmlUsageGraphics({ stereotype: "analysis case", fill: "#ede7f6", stroke: "#512da8" }),
       }),
 
     VerificationCaseDefinition: ($) =>
@@ -3479,6 +3542,7 @@ export default language({
         symbol: usageAttrs("verificationCase"),
         queries: verificationCaseUsageQueries,
         model: verificationCaseUsageModel,
+        graphics: () => sysmlUsageGraphics({ stereotype: "verification case", fill: "#e8eaf6", stroke: "#1a237e" }),
         lints: verificationCaseUsageLints,
       }),
 
@@ -3532,6 +3596,7 @@ export default language({
         queries: definitionStructuralQueries,
         model: definitionModel,
         lints: definitionLints,
+        graphics: () => sysmlNodeGraphics({ stereotype: "use case def", fill: "#fce4ec", stroke: "#880e4f" }),
       }),
 
     UseCaseUsage: ($) =>
@@ -3541,6 +3606,7 @@ export default language({
         queries: usageQueries,
         model: usageModel,
         lints: usageLints,
+        graphics: () => sysmlUsageGraphics({ stereotype: "use case", fill: "#fce4ec", stroke: "#c2185b" }),
       }),
 
     IncludeUseCaseUsage: ($) =>
@@ -3633,6 +3699,7 @@ export default language({
         queries: { ...usageQueries, ...stateQueries },
         model: stateUsageModel,
         lints: usageLints,
+        graphics: () => sysmlUsageGraphics({ stereotype: "state", fill: "#fff8e1", stroke: "#fbc02d" }),
       }),
 
     ExhibitStateUsage: ($) =>
@@ -3654,6 +3721,7 @@ export default language({
             ...usageAttrs("state")(self).attributes,
             isParallel: self.isParallel,
           },
+          graphics: () => sysmlUsageGraphics({ stereotype: "exhibit", fill: "#fff8e1", stroke: "#ff8f00" }),
         }),
         queries: { ...usageQueries, ...stateQueries },
         model: stateUsageModel,
@@ -3703,6 +3771,7 @@ export default language({
         queries: definitionStructuralQueries,
         model: definitionModel,
         lints: definitionLints,
+        graphics: () => sysmlNodeGraphics({ stereotype: "view def", fill: "#efebe9", stroke: "#4e342e" }),
       }),
 
     ViewUsage: ($) =>
@@ -3718,6 +3787,7 @@ export default language({
         queries: usageQueries,
         model: usageModel,
         lints: usageLints,
+        graphics: () => sysmlUsageGraphics({ stereotype: "view", fill: "#efebe9", stroke: "#6d4c41" }),
       }),
 
     ViewpointDefinition: ($) =>
@@ -3734,6 +3804,7 @@ export default language({
         queries: definitionStructuralQueries,
         model: definitionModel,
         lints: definitionLints,
+        graphics: () => sysmlNodeGraphics({ stereotype: "viewpoint def", fill: "#efebe9", stroke: "#3e2723" }),
       }),
 
     ViewpointUsage: ($) =>
@@ -3749,6 +3820,7 @@ export default language({
         queries: usageQueries,
         model: usageModel,
         lints: usageLints,
+        graphics: () => sysmlUsageGraphics({ stereotype: "viewpoint", fill: "#efebe9", stroke: "#5d4037" }),
       }),
 
     // =====================================================================
@@ -3762,6 +3834,7 @@ export default language({
         queries: definitionStructuralQueries,
         model: definitionModel,
         lints: definitionLints,
+        graphics: () => sysmlNodeGraphics({ stereotype: "rendering def", fill: "#fafafa", stroke: "#424242" }),
       }),
 
     RenderingUsage: ($) =>
@@ -3771,6 +3844,7 @@ export default language({
         queries: usageQueries,
         model: usageModel,
         lints: usageLints,
+        graphics: () => sysmlUsageGraphics({ stereotype: "rendering", fill: "#fafafa", stroke: "#616161" }),
       }),
 
     // =====================================================================

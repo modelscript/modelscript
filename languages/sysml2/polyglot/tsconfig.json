@@ -14,5 +14,6 @@
     "isolatedModules": true,
     "moduleResolution": "nodenext"
   },
-  "include": ["*.ts"]
+  "include": ["*.ts"],
+  "exclude": ["diag_test.ts", "resolver_test.ts"]
 }

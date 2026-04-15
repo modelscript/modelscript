@@ -99,7 +99,15 @@ export class WorkspaceIndex {
         else byName.set(remapped.name, [newId]);
       }
 
-      file.index = { symbols, byName, childrenOf: new Map() };
+      // Re-map childrenOf to use global IDs
+      const childrenOf = new Map<SymbolId | null, SymbolId[]>();
+      for (const [parentId, childIds] of rawIndex.childrenOf) {
+        const newParentId = parentId !== null ? (idMap.get(parentId) ?? parentId) : null;
+        const newChildIds = childIds.map((cid) => idMap.get(cid) ?? cid);
+        childrenOf.set(newParentId, newChildIds);
+      }
+
+      file.index = { symbols, byName, childrenOf };
       file.dirty = false;
     }
 
@@ -146,7 +154,22 @@ export class WorkspaceIndex {
       }
     }
 
-    this.unifiedCache = { symbols, byName, childrenOf: new Map() };
+    // Merge childrenOf maps
+    const childrenOf = new Map<SymbolId | null, SymbolId[]>();
+    for (const uri of this.files.keys()) {
+      const fileIndex = this.getFileIndex(uri);
+      if (!fileIndex) continue;
+      for (const [parentId, childIds] of fileIndex.childrenOf) {
+        const existing = childrenOf.get(parentId);
+        if (existing) {
+          existing.push(...childIds);
+        } else {
+          childrenOf.set(parentId, [...childIds]);
+        }
+      }
+    }
+
+    this.unifiedCache = { symbols, byName, childrenOf };
     return this.unifiedCache;
   }
 

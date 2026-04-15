@@ -352,12 +352,61 @@ export function generateAstClasses(specs: ClassSpec[], langName: string): string
   lines.push(`import type { SemanticVisitor } from "@modelscript/polyglot/semantic-node";`);
   lines.push(``);
 
+  const mergedSpecs = new Map<string, ClassSpec & { kinds: string[] }>();
+  for (const spec of specs) {
+    if (mergedSpecs.has(spec.className)) {
+      const existing = mergedSpecs.get(spec.className)!;
+      existing.kinds.push(spec.kind);
+
+      const fieldNames = new Set(existing.fields.map((f) => f.name));
+      for (const field of spec.fields) {
+        if (!fieldNames.has(field.name)) {
+          existing.fields.push(field);
+          fieldNames.add(field.name);
+        }
+      }
+
+      const metaKeys = new Set(existing.metadataKeys);
+      for (const key of spec.metadataKeys) {
+        if (!metaKeys.has(key)) {
+          existing.metadataKeys.push(key);
+          metaKeys.add(key);
+        }
+      }
+
+      const queryNames = new Set(existing.queryNames);
+      for (const q of spec.queryNames) {
+        if (!queryNames.has(q)) {
+          existing.queryNames.push(q);
+          queryNames.add(q);
+        }
+      }
+
+      if (spec.model.properties) {
+        existing.model.properties = { ...existing.model.properties, ...spec.model.properties };
+      }
+      if (spec.model.queryTypes) {
+        existing.model.queryTypes = { ...existing.model.queryTypes, ...spec.model.queryTypes };
+      }
+      if (spec.model.fieldTypes) {
+        existing.model.fieldTypes = { ...existing.model.fieldTypes, ...spec.model.fieldTypes };
+      }
+      if (!existing.graphicsConfig && spec.graphicsConfig) {
+        existing.graphicsConfig = spec.graphicsConfig;
+      }
+    } else {
+      mergedSpecs.set(spec.className, { ...spec, kinds: [spec.kind] });
+    }
+  }
+
+  const uniqueSpecsArray = Array.from(mergedSpecs.values());
+
   // Determine visitor name
   const visitorName = `${toPascalCase(langName)}Visitor`;
-  const visitableSpecs = specs.filter((s) => s.model.visitable !== false);
+  const visitableSpecs = uniqueSpecsArray.filter((s) => s.model.visitable !== false);
 
   // Generate each class
-  for (const spec of specs) {
+  for (const spec of uniqueSpecsArray) {
     lines.push(...generateClass(spec, visitorName));
     lines.push(``);
   }
@@ -367,7 +416,7 @@ export function generateAstClasses(specs: ClassSpec[], langName: string): string
   lines.push(``);
 
   // Generate factory function
-  lines.push(...generateFactory(specs));
+  lines.push(...generateFactory(specs)); // Pass original specs for factory to get all kinds mapped
 
   return lines.join("\n") + "\n";
 }

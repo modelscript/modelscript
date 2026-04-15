@@ -91,9 +91,12 @@ function initGraph(isDark: boolean): Graph {
     },
     panning: { enabled: true },
     mousewheel: { enabled: true, global: true, modifiers: "ctrl" },
+    // We don't want runtime drag-to-reparent behavior.
+    // Parent-child relationships are strictly defined by semantic children via addChild().
+    embedding: { enabled: false },
     interacting: (cellView) => {
       if (cellView.cell.id === "__diagram_background__") return false;
-      return true;
+      return { nodeMovable: true, edgeMovable: true, edgeLabelMovable: true };
     },
     connecting: {
       allowBlank: false,
@@ -275,6 +278,22 @@ function initGraph(isDark: boolean): Graph {
       type: "move",
       items: [{ name: node.id, x: p.x, y: p.y, width: s.width, height: s.height, rotation: r, edges }],
     });
+  });
+
+  // Fit embeds when children move or resize
+  const tryFitEmbeds = (node: Cell) => {
+    const parent = node.getParent();
+    if (parent && parent.isNode()) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (parent as any).fit({ padding: { top: 40, left: 16, right: 16, bottom: 16 } });
+    }
+  };
+
+  g.on("node:change:position", ({ node, options }) => {
+    if (!options.skipParentHandler) tryFitEmbeds(node);
+  });
+  g.on("node:change:size", ({ node, options }) => {
+    if (!options.skipParentHandler) tryFitEmbeds(node);
   });
 
   // Node resized
@@ -570,7 +589,8 @@ function renderDiagram(data: any, isDark: boolean) {
   const edges: any[] = [];
 
   for (const node of data.nodes) {
-    nodes.push({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const nodeData: any = {
       id: node.id,
       x: node.x,
       y: node.y,
@@ -583,24 +603,36 @@ function renderDiagram(data: any, isDark: boolean) {
       ports: node.ports,
       data: { properties: node.properties },
       autoLayout: node.autoLayout,
-    });
+    };
+    // Forward polyglot X6 attrs and shape (selector-based rendering)
+    if (node.attrs) nodeData.attrs = node.attrs;
+    if (node.shape) nodeData.shape = node.shape;
+    if (node.parent) nodeData.parent = node.parent;
+    nodes.push(nodeData);
   }
 
   for (const edge of data.edges) {
-    edges.push({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const edgeData: any = {
       id: edge.id,
-      shape: "edge",
+      shape: edge.shape ?? "edge",
       zIndex: edge.zIndex,
       source: edge.source,
       target: edge.target,
       vertices: edge.vertices,
       connector: edge.connector,
-      router: { name: "normal" },
-      attrs: {
-        "z-index": "-10",
-        line: edge.attrs.line,
-      },
-    });
+      router: edge.router ?? { name: "normal" },
+    };
+    // Polyglot edges pass attrs as a full selector-keyed object;
+    // Modelica edges have attrs.line specifically
+    if (edge.attrs?.line) {
+      edgeData.attrs = { "z-index": "-10", line: edge.attrs.line };
+    } else if (edge.attrs) {
+      edgeData.attrs = edge.attrs;
+    }
+    // Forward labels (polyglot edge stereotypes like «connect», «satisfy»)
+    if (edge.labels) edgeData.labels = edge.labels;
+    edges.push(edgeData);
   }
 
   // Add diagram background if present
@@ -693,10 +725,88 @@ function renderDiagram(data: any, isDark: boolean) {
 
   const isFirstRender = g.getCells().length === 0;
 
+  // ── Layout Strategy ──
+  // The layout runs in 3 phases:
+  //   Phase 1: Sub-Dagre for each container to compute actual child bounding boxes
+  //   Phase 2: Top-level Dagre with expanded container sizes
+  //   Phase 3: Reposition children relative to final parent positions
+
+  const PAD = { top: 50, left: 20, right: 20, bottom: 20 };
+
+  // Build parent → children map from the node data
+  const parentChildMap = new Map<string, typeof nodes>();
+  for (const node of nodes) {
+    if (node.parent) {
+      const list = parentChildMap.get(node.parent) ?? [];
+      list.push(node);
+      parentChildMap.set(node.parent, list);
+    }
+  }
+
+  // ── Phase 1: Sub-Dagre layout for children inside each group container ──
+  // This computes the bounding box for each container and expands the parent
+  // node dimensions BEFORE the top-level layout runs.
+  // We store relative offsets so we can reposition after Phase 2.
+  const childRelativePositions = new Map<string, { dx: number; dy: number }>();
+
+  for (const [parentId, childNodes] of parentChildMap) {
+    const parentNode = nodes.find((n) => n.id === parentId);
+    if (!parentNode) continue;
+
+    const childIds = new Set(childNodes.map((c) => c.id));
+
+    const subDagre = new DagreLayout({
+      type: "dagre",
+      rankdir: "LR",
+      align: "UL",
+      ranksep: 40,
+      nodesep: 30,
+      begin: [0, 0],
+      controlPoints: true,
+    });
+
+    const subModel = {
+      nodes: childNodes.map((c) => ({ id: c.id, width: c.width, height: c.height })),
+      edges: edges
+        .filter((e) => {
+          const s = typeof e.source === "string" ? e.source : (e.source.cell as string);
+          const t = typeof e.target === "string" ? e.target : (e.target.cell as string);
+          return childIds.has(s) && childIds.has(t);
+        })
+        .map((e) => ({
+          source: typeof e.source === "string" ? e.source : (e.source.cell as string),
+          target: typeof e.target === "string" ? e.target : (e.target.cell as string),
+        })),
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const subResult = subDagre.layout(subModel as any);
+
+    // Store relative positions and compute bounding box
+    let maxRight = 0;
+    let maxBottom = 0;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    subResult.nodes?.forEach((laid: any) => {
+      const childNode = childNodes.find((c) => c.id === laid.id);
+      if (childNode) {
+        const dx = PAD.left + laid.x;
+        const dy = PAD.top + laid.y;
+        childRelativePositions.set(childNode.id, { dx, dy });
+        maxRight = Math.max(maxRight, dx + childNode.width + PAD.right);
+        maxBottom = Math.max(maxBottom, dy + childNode.height + PAD.bottom);
+      }
+    });
+
+    // Expand parent to fit children
+    parentNode.width = Math.max(maxRight, 220);
+    parentNode.height = Math.max(maxBottom, 80);
+  }
+
+  // ── Phase 2: Top-level Dagre layout with expanded container sizes ──
   const nodesToLayout: string[] = [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   nodes.forEach((node: any) => {
-    if (node.autoLayout) {
+    if (node.autoLayout && !node.parent) {
       nodesToLayout.push(node.id ?? "");
     }
   });
@@ -704,11 +814,11 @@ function renderDiagram(data: any, isDark: boolean) {
   if (nodesToLayout.length > 0) {
     const dagreLayout = new DagreLayout({
       type: "dagre",
-      rankdir: "LR",
+      rankdir: "TB",
       align: "UL",
-      ranksep: 0.5,
-      nodesep: 0.5,
-      begin: [-10, -10],
+      ranksep: 80,
+      nodesep: 60,
+      begin: [20, 20],
       controlPoints: true,
     });
 
@@ -739,7 +849,48 @@ function renderDiagram(data: any, isDark: boolean) {
     });
   }
 
+  // ── Phase 3: Reposition children relative to final parent positions ──
+  for (const [parentId, childNodes] of parentChildMap) {
+    const parentNode = nodes.find((n) => n.id === parentId);
+    if (!parentNode) continue;
+
+    for (const child of childNodes) {
+      const rel = childRelativePositions.get(child.id);
+      if (rel) {
+        child.x = parentNode.x + rel.dx;
+        child.y = parentNode.y + rel.dy;
+      }
+    }
+  }
+
+  // X6's fromJSON has a bug where it only partially wires up parent/child
+  // relationships when fed raw JSON (it sets the parent pointer on the child,
+  // but fails to populate the children array on the parent).
+  // This breaks dragging and embedding completely.
+
+  // 1. Stash the relationships and clean the JSON
+  const relations = new Map<string, string>(); // child id -> parent id
+  for (const n of nodes) {
+    if (n.parent) {
+      relations.set(n.id, n.parent);
+      delete n.parent;
+    }
+    if (n.children) {
+      delete n.children;
+    }
+  }
+
+  // 2. Load the flat graph
   g.fromJSON({ nodes, edges });
+
+  // 3. Programmatically establish all embedding relationships via standard API
+  for (const [childId, parentId] of relations) {
+    const parentCell = g.getCellById(parentId);
+    const childCell = g.getCellById(childId);
+    if (parentCell && childCell && parentCell.isNode() && childCell.isNode()) {
+      parentCell.addChild(childCell);
+    }
+  }
 
   // Only fit view on first render — preserve zoom/pan on subsequent updates
   if (cs && isFirstRender) {
@@ -781,6 +932,16 @@ document.addEventListener(
   },
   true,
 );
+
+// Initialize Diagram Type Select
+const diagramSelect = document.getElementById("diagramTypeSelect") as HTMLSelectElement;
+if (diagramSelect) {
+  diagramSelect.addEventListener("change", (e) => {
+    const spinner = document.getElementById("spinner");
+    if (spinner) spinner.style.display = "block";
+    postMessageToHost({ type: "changeDiagramType", diagramType: (e.target as HTMLSelectElement).value });
+  });
+}
 
 // Listen for messages from the extension host
 window.addEventListener("message", (event: MessageEvent) => {

@@ -41,6 +41,20 @@ import {
   computeParameterEdit,
   computePlacementEdits,
 } from "./diagramEdits";
+import {
+  createEmptyLayout,
+  removeElements,
+  updateConnectionVertices,
+  updateElementPositions,
+  type SysML2Layout,
+} from "./sysml2-layout";
+import {
+  computeSysML2ConnectionDelete,
+  computeSysML2ConnectionInsert,
+  computeSysML2ElementDelete,
+  computeSysML2ElementInsert,
+  generateUniqueName,
+} from "./sysml2DiagramEdits";
 
 import { Language, Parser, Node as SyntaxNode, Tree as TreeSitterTree } from "web-tree-sitter";
 
@@ -69,6 +83,7 @@ import {
   ModelicaStoredDefinitionSyntaxNode,
   ModelicaSyntaxNode,
   Scope,
+  buildSysML2DiagramData,
   createModelicaLSPBridge,
   createModelicaQueryEngine,
   createModelicaScopeResolver,
@@ -338,7 +353,6 @@ let sharedContext: Context | null = null;
 
 /* Tree-sitter state */
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let parser: any = null;
 let parserReady = false;
 
@@ -496,6 +510,10 @@ const documentLSPBridges = new Map<string, LSPBridge>();
 /* SysML2 parser (separate from Modelica) */
 let sysml2Parser: Parser | null = null;
 let sysml2ParserReady = false;
+let sysml2StdlibReady = false;
+
+/* SysML2 layout data — stores diagram positions in-memory (sidecar to .sysml files) */
+const sysml2Layouts = new Map<string, SysML2Layout>();
 
 /* Resolve a modification/annotation path element to its named element */
 
@@ -621,6 +639,11 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
 
     // Load the Modelica Standard Library from the bundled zip
     await loadMSL(serverDistBase);
+
+    // Load the SysML v2 Standard Library from the bundled zip
+    if (sysml2ParserReady) {
+      await loadSysML2StandardLibrary(serverDistBase);
+    }
 
     // Re-validate strictly AFTER MSL and parser are ready!
     connection.console.info(`[lsp] Initialization complete. Re-validating ${documents.all().length} open documents.`);
@@ -783,6 +806,90 @@ async function loadMSL(serverDistBase: string): Promise<void> {
     );
   } catch (e) {
     console.error("Failed to load MSL zip:", e);
+  }
+}
+
+// ---------------------------------------------------------------------------
+
+const SYSML_VERSION_KEY = "SysML-v2-Release-2026-03";
+
+async function loadSysML2StandardLibrary(serverDistBase: string): Promise<void> {
+  try {
+    connection.sendNotification("modelscript/status", {
+      state: "loading",
+      message: "Loading SysML v2 Standard Library...",
+    });
+
+    let fileEntries: Record<string, Uint8Array> | null = null;
+    try {
+      const db = await openMSLCache(); // Reuse MSL indexedDB
+      const cached = await idbGet<Record<string, ArrayBuffer>>(db, SYSML_VERSION_KEY);
+      if (cached) {
+        console.log("[sysml-cache] Cache hit — loading sysml stdlib from IndexedDB");
+        fileEntries = {};
+        for (const [name, buf] of Object.entries(cached)) {
+          fileEntries[name] = new Uint8Array(buf);
+        }
+      }
+      db.close();
+    } catch {
+      /* ignore */
+    }
+
+    if (!fileEntries) {
+      const response = await fetch(`${serverDistBase}/SysML-v2-Release-2026-03.zip`);
+      if (!response.ok) {
+        console.warn("SysML v2 standard library zip not found in dist");
+        return;
+      }
+      connection.sendNotification("modelscript/status", {
+        state: "loading",
+        message: "Decompressing SysML v2 library...",
+      });
+      const buffer = await response.arrayBuffer();
+      const zipData = new Uint8Array(buffer);
+      fileEntries = unzipSync(zipData);
+
+      try {
+        const db = await openMSLCache();
+        const serializable: Record<string, ArrayBuffer> = {};
+        for (const [name, data] of Object.entries(fileEntries)) {
+          if (name.endsWith(".sysml")) {
+            serializable[name] = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
+          }
+        }
+        await idbPut(db, SYSML_VERSION_KEY, serializable);
+        db.close();
+      } catch {
+        /* ignore */
+      }
+    }
+
+    let fileCount = 0;
+    const textDecoder = new TextDecoder("utf-8");
+    for (const [name, data] of Object.entries(fileEntries)) {
+      if (!name.endsWith(".sysml")) continue;
+      // Filter out only kerml/ and sysml.library/
+      if (!name.includes("kerml/") && !name.includes("sysml.library/")) continue;
+
+      const text = textDecoder.decode(data);
+      const uri = `sysml2://stdlib/${name}`;
+
+      // Store in documentTrees so LSP operations like Hover and GoToDef can access the text/tree
+      documentTrees.set(uri, { text, tree: null as any, classCache: new Map() });
+      sysml2WorkspaceIndex.register(uri, () => {
+        const tree = sysml2Parser!.parse(text);
+        const node = documentTrees.get(uri);
+        if (node && tree) node.tree = tree;
+        return tree!.rootNode;
+      });
+      fileCount++;
+    }
+
+    sysml2StdlibReady = true;
+    console.log(`SysML2 Standard Library loaded: ${fileCount} files registered in sysml2WorkspaceIndex.`);
+  } catch (e) {
+    console.error("Failed to load SysML2 standard library:", e);
   }
 }
 
@@ -1026,6 +1133,46 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
       };
       collectErrors(tree.rootNode);
 
+      // Run Polyglot declarative lints (e.g. multiplicity bounds, usage matching)
+      const engineDiags = engine.runAllLints();
+      for (const d of engineDiags) {
+        const entry = unifiedIndex.symbols.get(d.symbolId);
+        if (entry && entry.resourceId !== textDocument.uri) continue;
+
+        const start = bridge["positions"].offsetToPosition(d.startByte);
+        const end = bridge["positions"].offsetToPosition(d.endByte);
+        let severity: DiagnosticSeverity = DiagnosticSeverity.Warning;
+        if (d.severity === "error") severity = DiagnosticSeverity.Error;
+        if (d.severity === "info") severity = DiagnosticSeverity.Information;
+
+        sysmlDiagnostics.push({
+          severity,
+          range: { start, end },
+          message: d.message,
+          source: "sysml2",
+        });
+      }
+
+      // Collect unresolved references
+      // Skip unresolved-reference diagnostics while the SysML2 standard library
+      // is still loading — primitive types like Real/Integer/Boolean/String live
+      // in the stdlib and produce false positives until it's indexed.
+      const unresolvedRefs = sysml2StdlibReady ? resolver.resolveAllReferences(textDocument.uri) : [];
+      for (const r of unresolvedRefs) {
+        const start = bridge["positions"].offsetToPosition(r.startByte);
+        const end = bridge["positions"].offsetToPosition(r.endByte);
+        let severity: DiagnosticSeverity = DiagnosticSeverity.Error;
+        if (r.severity === "warning") severity = DiagnosticSeverity.Warning;
+        if (r.severity === "info") severity = DiagnosticSeverity.Information;
+
+        sysmlDiagnostics.push({
+          severity,
+          range: { start, end },
+          message: r.message,
+          source: "sysml2",
+        });
+      }
+
       connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: sysmlDiagnostics });
     } catch (e: any) {
       connection.console.error(`[sysml2] Error processing ${textDocument.uri}: ${e.message}`);
@@ -1061,7 +1208,7 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
 
     // Parse with tree-sitter (incremental when possible)
     const oldCached = documentTrees.get(textDocument.uri);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     let tree: any;
     if (oldCached && oldCached.text !== text) {
       const edit = computeTreeEdit(oldCached.text, text);
@@ -1452,7 +1599,6 @@ function checkExpressionReferences(
 
   // Recurse into child syntax nodes
   for (const key of Object.keys(node)) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const val = (node as any)[key];
     if (val instanceof ModelicaSyntaxNode) {
       checkExpressionReferences(val, assignedVars, classComponentNames, scope, diagnostics);
@@ -1471,6 +1617,11 @@ function checkExpressionReferences(
 function computeSemanticTokens(textDocument: TextDocument): SemanticTokens {
   const builder = new SemanticTokensBuilder();
   const text = textDocument.getText();
+
+  // SysML2 files use a separate parser and node-type classification
+  if (textDocument.uri.endsWith(".sysml")) {
+    return computeSysML2SemanticTokens(builder, text);
+  }
 
   // Try to parse with tree-sitter via document context
   const ctx = documentContexts.get(textDocument.uri);
@@ -1493,7 +1644,6 @@ function computeSemanticTokens(textDocument: TextDocument): SemanticTokens {
     modifier: number;
   }[] = [];
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const traverseTree = (node: any) => {
     let tokenType: string | null = null;
     const modifier = 0;
@@ -1571,6 +1721,300 @@ function computeSemanticTokens(textDocument: TextDocument): SemanticTokens {
   return builder.build();
 }
 
+// SysML2 structural keywords that correspond to storage.type in the grammar
+const sysml2StructuralKeywords = new Set([
+  "package",
+  "library",
+  "standard",
+  "part",
+  "attribute",
+  "port",
+  "connection",
+  "interface",
+  "allocation",
+  "action",
+  "state",
+  "constraint",
+  "requirement",
+  "concern",
+  "case",
+  "analysis",
+  "verification",
+  "use",
+  "view",
+  "viewpoint",
+  "rendering",
+  "enumeration",
+  "occurrence",
+  "item",
+  "calculation",
+  "metadata",
+  "flow",
+  "connect",
+  "def",
+]);
+
+// SysML2 control keywords
+const sysml2ControlKeywords = new Set([
+  "if",
+  "else",
+  "then",
+  "while",
+  "for",
+  "loop",
+  "return",
+  "import",
+  "alias",
+  "about",
+  "accept",
+  "after",
+  "all",
+  "as",
+  "assign",
+  "assert",
+  "assume",
+  "at",
+  "bind",
+  "by",
+  "chains",
+  "collect",
+  "decide",
+  "default",
+  "defined",
+  "dependency",
+  "do",
+  "doc",
+  "done",
+  "emit",
+  "entry",
+  "exhibit",
+  "expose",
+  "filter",
+  "first",
+  "fork",
+  "frame",
+  "from",
+  "hastype",
+  "intersect",
+  "include",
+  "istype",
+  "join",
+  "merge",
+  "message",
+  "multiplicity",
+  "namespace",
+  "nonunique",
+  "objective",
+  "of",
+  "on",
+  "ordered",
+  "perform",
+  "private",
+  "protected",
+  "public",
+  "readonly",
+  "redefines",
+  "ref",
+  "render",
+  "rep",
+  "require",
+  "satisfy",
+  "send",
+  "snapshot",
+  "specializes",
+  "stakeholder",
+  "subject",
+  "subsets",
+  "succession",
+  "timeslice",
+  "to",
+  "transition",
+  "union",
+  "until",
+  "variant",
+  "variation",
+  "verify",
+  "via",
+  "when",
+  "in",
+  "out",
+  "inout",
+  "abstract",
+  "derived",
+  "end",
+  "individual",
+  "parallel",
+]);
+
+// SysML2 built-in type names
+const sysml2BuiltinTypes = new Set([
+  "Boolean",
+  "Integer",
+  "Real",
+  "String",
+  "Natural",
+  "Positive",
+  "NaturalNumber",
+  "Number",
+  "ScalarValues",
+  "Any",
+  "Anything",
+  "DataValue",
+]);
+
+/**
+ * Compute semantic tokens for SysML2 documents using the SysML2 tree-sitter parser.
+ */
+function computeSysML2SemanticTokens(builder: SemanticTokensBuilder, text: string): SemanticTokens {
+  if (!sysml2ParserReady || !sysml2Parser) {
+    return builder.build();
+  }
+
+  let tree;
+  try {
+    tree = sysml2Parser.parse(text);
+  } catch {
+    return builder.build();
+  }
+  if (!tree) {
+    return builder.build();
+  }
+
+  const rawTokens: {
+    line: number;
+    char: number;
+    length: number;
+    typeIndex: number;
+    modifier: number;
+  }[] = [];
+
+  // SysML2 node types for definition names (after 'def Something')
+  const definitionTypes = new Set([
+    "PartDefinition",
+    "AttributeDefinition",
+    "PortDefinition",
+    "ConnectionDefinition",
+    "InterfaceDefinition",
+    "AllocationDefinition",
+    "ActionDefinition",
+    "StateDefinition",
+    "ConstraintDefinition",
+    "RequirementDefinition",
+    "ConcernDefinition",
+    "CaseDefinition",
+    "AnalysisCaseDefinition",
+    "VerificationCaseDefinition",
+    "ViewDefinition",
+    "ViewpointDefinition",
+    "RenderingDefinition",
+    "CalculationDefinition",
+    "EnumerationDefinition",
+    "OccurrenceDefinition",
+    "ItemDefinition",
+    "FlowDefinition",
+    "MetadataDefinition",
+  ]);
+
+  const usageTypes = new Set([
+    "PartUsage",
+    "AttributeUsage",
+    "PortUsage",
+    "ConnectionUsage",
+    "InterfaceUsage",
+    "AllocationUsage",
+    "ActionUsage",
+    "StateUsage",
+    "ConstraintUsage",
+    "RequirementUsage",
+    "ConcernUsage",
+    "CaseUsage",
+    "AnalysisCaseUsage",
+    "VerificationCaseUsage",
+    "ViewUsage",
+    "ViewpointUsage",
+    "RenderingUsage",
+    "CalculationUsage",
+    "EnumerationUsage",
+    "OccurrenceUsage",
+    "ItemUsage",
+    "FlowUsage",
+    "MetadataUsage",
+    "ReferenceUsage",
+    "DefaultReferenceUsage",
+  ]);
+
+  const traverse = (node: any) => {
+    let tokenType: string | null = null;
+    const modifier = 0;
+
+    const nodeType = node.type;
+    const nodeText = node.text;
+
+    // Named fields from the grammar — declaredName is usually an identifier
+    if (nodeType === "declaredName" || nodeType === "name") {
+      // Determine if this is a definition name (type) or usage name (variable)
+      const parent = node.parent;
+      if (parent && definitionTypes.has(parent.type)) {
+        tokenType = "type";
+      } else if (parent && usageTypes.has(parent.type)) {
+        tokenType = "variable";
+      } else if (parent?.type === "Package" || parent?.type === "LibraryPackage") {
+        tokenType = "namespace";
+      } else {
+        tokenType = "variable";
+      }
+    } else if (nodeType === "qualifiedName" || nodeType === "identification") {
+      // Skip — traverse children
+    } else if (sysml2StructuralKeywords.has(nodeText) && node.childCount === 0) {
+      tokenType = "keyword";
+    } else if (sysml2ControlKeywords.has(nodeText) && node.childCount === 0) {
+      tokenType = "keyword";
+    } else if (sysml2BuiltinTypes.has(nodeText) && node.childCount === 0) {
+      tokenType = "type";
+    } else if (nodeType === "comment" || nodeType === "line_comment" || nodeType === "block_comment") {
+      tokenType = "comment";
+    } else if (nodeType === "string_literal" || nodeType === "regular_expression") {
+      tokenType = "string";
+    } else if (nodeType === "integer_literal" || nodeType === "real_literal") {
+      tokenType = "number";
+    } else if (["+", "-", "*", "/", "=", "<", ">", "<=", ">=", "==", "!="].includes(nodeType)) {
+      tokenType = "operator";
+    }
+
+    if (tokenType !== null) {
+      const typeIndex = tokenTypes.indexOf(tokenType);
+      if (typeIndex >= 0 && node.startPosition.row === node.endPosition.row) {
+        const length = node.endPosition.column - node.startPosition.column;
+        if (
+          length > 0 &&
+          !rawTokens.some((t) => t.line === node.startPosition.row && t.char === node.startPosition.column)
+        ) {
+          rawTokens.push({
+            line: node.startPosition.row,
+            char: node.startPosition.column,
+            length,
+            typeIndex,
+            modifier,
+          });
+        }
+      }
+    }
+
+    for (const child of node.children) {
+      traverse(child);
+    }
+  };
+
+  traverse(tree.rootNode);
+
+  rawTokens.sort((a, b) => (a.line === b.line ? a.char - b.char : a.line - b.line));
+  for (const token of rawTokens) {
+    builder.push(token.line, token.char, token.length, token.typeIndex, token.modifier);
+  }
+
+  return builder.build();
+}
+
 connection.onRequest("textDocument/semanticTokens/full", (params) => {
   const document = documents.get(params.textDocument.uri);
   if (!document) {
@@ -1593,7 +2037,123 @@ connection.onCompletion((params): CompletionItem[] => {
     return items;
   }
 
-  // Fallback: keyword completions
+  // Fallback: keyword completions (language-specific)
+  if (params.textDocument.uri.endsWith(".sysml")) {
+    const sysml2Keywords = [
+      // Structural
+      "package",
+      "part",
+      "part def",
+      "attribute",
+      "attribute def",
+      "port",
+      "port def",
+      "item",
+      "item def",
+      "enum def",
+      "occurrence",
+      "occurrence def",
+      // Behavioral
+      "action",
+      "action def",
+      "state",
+      "state def",
+      "calc",
+      "calc def",
+      "transition",
+      "accept",
+      "send",
+      "assign",
+      "perform",
+      "exhibit",
+      // Requirements
+      "requirement",
+      "requirement def",
+      "constraint",
+      "constraint def",
+      "concern",
+      "concern def",
+      "assume",
+      "require",
+      // Analysis
+      "use case",
+      "use case def",
+      "case",
+      "case def",
+      "analysis",
+      "analysis case",
+      "verification",
+      // Interconnection
+      "connection",
+      "connection def",
+      "connect",
+      "interface",
+      "interface def",
+      "allocation",
+      "allocation def",
+      "flow",
+      "flow def",
+      "binding",
+      "succession",
+      // Views
+      "view",
+      "view def",
+      "viewpoint",
+      "viewpoint def",
+      "rendering",
+      "rendering def",
+      // Modifiers
+      "abstract",
+      "readonly",
+      "derived",
+      "end",
+      "ordered",
+      "nonunique",
+      "in",
+      "out",
+      "inout",
+      "ref",
+      "redefines",
+      "subsets",
+      "specializes",
+      // Control
+      "if",
+      "else",
+      "while",
+      "for",
+      "loop",
+      "return",
+      // Types
+      "Boolean",
+      "Integer",
+      "Real",
+      "String",
+      "Natural",
+      // Meta
+      "import",
+      "alias",
+      "doc",
+      "comment",
+      "about",
+      "actor",
+      "stakeholder",
+      "subject",
+      "objective",
+    ];
+    return sysml2Keywords.map((kw, index) => ({
+      label: kw,
+      kind: CompletionItemKind.Keyword,
+      data: index,
+      // Provide snippets for definition keywords
+      ...(kw.endsWith(" def")
+        ? {
+            insertText: `${kw} $1 {\n\t$0\n}`,
+            insertTextFormat: 2, // Snippet
+          }
+        : {}),
+    }));
+  }
+
   const allKeywords = [...keywords, ...typeKeywords];
   return allKeywords.map((kw, index) => ({
     label: kw,
@@ -1784,12 +2344,58 @@ connection.onDefinition((params) => {
 /* Document formatting — uses tree-sitter parse + format() */
 
 connection.onDocumentFormatting((params) => {
-  if (!parserReady || !parser) {
-    return [];
+  const document = documents.get(params.textDocument.uri);
+  if (!document) return [];
+
+  // SysML2 formatting — simple brace-based indentation
+  if (params.textDocument.uri.endsWith(".sysml")) {
+    const text = document.getText();
+    const tabSize = params.options.tabSize ?? 2;
+    const indent = params.options.insertSpaces !== false ? " ".repeat(tabSize) : "\t";
+    const lines = text.split("\n");
+    const formatted: string[] = [];
+    let depth = 0;
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        formatted.push("");
+        continue;
+      }
+
+      // Closing brace decreases indent before writing
+      if (trimmed.startsWith("}")) {
+        depth = Math.max(0, depth - 1);
+      }
+
+      formatted.push(indent.repeat(depth) + trimmed);
+
+      // Opening brace increases indent after writing
+      const openBraces = (trimmed.match(/{/g) || []).length;
+      const closeBraces = (trimmed.match(/}/g) || []).length;
+      depth = Math.max(0, depth + openBraces - closeBraces);
+      // But if we already decremented for a leading `}`, add it back since we counted it in closeBraces
+      if (trimmed.startsWith("}") && closeBraces > openBraces) {
+        // Already handled above, no adjustment needed
+      }
+    }
+
+    const result = formatted.join("\n");
+    const lastLine = document.lineCount - 1;
+    const lastChar = document.getText().length - document.offsetAt({ line: lastLine, character: 0 });
+    return [
+      {
+        range: {
+          start: { line: 0, character: 0 },
+          end: { line: lastLine, character: lastChar },
+        },
+        newText: result,
+      },
+    ];
   }
 
-  const document = documents.get(params.textDocument.uri);
-  if (!document) {
+  // Modelica formatting
+  if (!parserReady || !parser) {
     return [];
   }
 
@@ -1902,9 +2508,49 @@ connection.onDocumentSymbol((params) => {
 /* Folding Ranges — enables code folding for classes, sections, and control structures */
 
 connection.onFoldingRanges((params) => {
-  if (!parserReady || !parser) return [];
   const document = documents.get(params.textDocument.uri);
   if (!document) return [];
+
+  // SysML2 folding ranges
+  if (params.textDocument.uri.endsWith(".sysml")) {
+    if (!sysml2ParserReady || !sysml2Parser) return [];
+    const text = document.getText();
+    const tree = sysml2Parser.parse(text);
+    if (!tree) return [];
+
+    const ranges: { startLine: number; endLine: number; kind?: string }[] = [];
+    // Fold any node whose type ends in Definition, Usage, or is a package/body block
+    const collectFolds = (node: SyntaxNode) => {
+      const t = node.type;
+      if (
+        t.endsWith("Definition") ||
+        t.endsWith("Usage") ||
+        t === "Package" ||
+        t === "LibraryPackage" ||
+        t === "Namespace" ||
+        t === "Comment"
+      ) {
+        const startLine = node.startPosition.row;
+        const endLine = node.endPosition.row;
+        if (endLine > startLine) {
+          ranges.push({
+            startLine,
+            endLine,
+            kind: t === "Comment" ? "comment" : undefined,
+          });
+        }
+      }
+      for (let i = 0; i < node.childCount; i++) {
+        const child = node.child(i);
+        if (child) collectFolds(child);
+      }
+    };
+    collectFolds(tree.rootNode);
+    return ranges;
+  }
+
+  // Modelica folding ranges
+  if (!parserReady || !parser) return [];
 
   const tree = getDocumentTree(document.uri);
   if (!tree) return [];
@@ -1979,7 +2625,7 @@ connection.onSelectionRanges((params) => {
     });
 
     // Build the chain from innermost to outermost
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     let current: any = null;
     const ancestors: SyntaxNode[] = [];
     while (node) {
@@ -2124,81 +2770,162 @@ connection.onSignatureHelp((params) => {
 
 connection.onReferences((params) => {
   const document = documents.get(params.textDocument.uri);
-  const bridge = documentLSPBridges.get(params.textDocument.uri);
-  if (!document || !bridge) return [];
+  if (!document) return [];
+
+  const isSysML2 = params.textDocument.uri.endsWith(".sysml");
+  const unifiedIndex = isSysML2 ? sysml2WorkspaceIndex.toUnified() : globalWorkspaceIndex.toUnified();
+  const resolver = isSysML2 ? createSysML2ScopeResolver(unifiedIndex) : createModelicaScopeResolver(unifiedIndex);
 
   const offset = document.offsetAt(params.position);
-  return bridge.references(offset) as any;
-});
+  let targetEntry: any = null;
 
-/* Rename — renames a symbol across the current document */
+  for (const entry of unifiedIndex.symbols.values()) {
+    if (entry.resourceId === params.textDocument.uri && entry.startByte <= offset && offset < entry.endByte) {
+      if (!targetEntry || entry.endByte - entry.startByte < targetEntry.endByte - targetEntry.startByte) {
+        targetEntry = entry;
+      }
+    }
+  }
 
-connection.onPrepareRename((params) => {
-  const document = documents.get(params.textDocument.uri);
-  if (!document) return null;
+  if (!targetEntry) return [];
 
-  const text = document.getText();
-  const lines = text.split("\n");
-  const lineContent = lines[params.position.line] ?? "";
+  // Find the declarations this symbol refers to (or itself if it is a declaration)
+  let declarationIds: number[] = [];
+  if (resolver.isDeclaration(targetEntry)) {
+    declarationIds = [targetEntry.id as number];
+  } else {
+    const decls = resolver.resolve(targetEntry);
+    declarationIds = decls.map((d) => d.id as number);
+  }
 
-  let wordStart = params.position.character;
-  let wordEnd = params.position.character;
-  while (wordStart > 0 && /[_a-zA-Z0-9]/.test(lineContent[wordStart - 1])) wordStart--;
-  while (wordEnd < lineContent.length && /[_a-zA-Z0-9]/.test(lineContent[wordEnd])) wordEnd++;
-  const word = lineContent.substring(wordStart, wordEnd);
-  if (!word || /^[0-9]/.test(word)) return null;
+  const results: any[] = [];
+  const seen = new Set<string>();
 
-  // Verify it resolves to something
-  const resolved = resolveElementAtPosition(document, params.position);
-  if (!resolved) return null;
+  const addLocation = (uri: string, startByte: number, endByte: number) => {
+    let text = documents.get(uri)?.getText();
+    if (!text) {
+      const cached = documentTrees.get(uri);
+      if (cached) text = cached.text;
+    }
+    if (!text) return;
 
-  return {
-    range: {
-      start: { line: params.position.line, character: wordStart },
-      end: { line: params.position.line, character: wordEnd },
-    },
-    placeholder: word,
+    const dummyDoc = TextDocument.create(uri, "temp", 1, text);
+    const start = dummyDoc.positionAt(startByte);
+    const end = dummyDoc.positionAt(endByte);
+    const key = `${uri}:${start.line}:${start.character}`;
+
+    if (!seen.has(key)) {
+      seen.add(key);
+      results.push({ uri, range: { start, end } });
+    }
   };
+
+  for (const declId of declarationIds) {
+    // Include declaration
+    const declEntry = unifiedIndex.symbols.get(declId);
+    if (declEntry && declEntry.resourceId) {
+      addLocation(declEntry.resourceId, declEntry.startByte, declEntry.endByte);
+    }
+    // Include references
+    const refs = resolver.findReferences(declId);
+    for (const ref of refs) {
+      if (ref.resourceId) {
+        addLocation(ref.resourceId, ref.startByte, ref.endByte);
+      }
+    }
+  }
+
+  return results;
 });
+
+/* Rename — renames a symbol across all documents */
 
 connection.onRenameRequest((params) => {
   const document = documents.get(params.textDocument.uri);
   if (!document) return null;
 
-  const resolved = resolveElementAtPosition(document, params.position);
-  if (!resolved) return null;
+  const isSysML2 = params.textDocument.uri.endsWith(".sysml");
+  const unifiedIndex = isSysML2 ? sysml2WorkspaceIndex.toUnified() : globalWorkspaceIndex.toUnified();
+  const resolver = isSysML2 ? createSysML2ScopeResolver(unifiedIndex) : createModelicaScopeResolver(unifiedIndex);
 
-  const targetName = resolved.element.name;
-  if (!targetName) return null;
+  const offset = document.offsetAt(params.position);
+  let targetEntry: any = null;
+
+  for (const entry of unifiedIndex.symbols.values()) {
+    if (entry.resourceId === params.textDocument.uri && entry.startByte <= offset && offset < entry.endByte) {
+      if (!targetEntry || entry.endByte - entry.startByte < targetEntry.endByte - targetEntry.startByte) {
+        targetEntry = entry;
+      }
+    }
+  }
+
+  if (!targetEntry) return null;
+
+  let declarationIds: number[] = [];
+  if (resolver.isDeclaration(targetEntry)) {
+    declarationIds = [targetEntry.id as number];
+  } else {
+    const decls = resolver.resolve(targetEntry);
+    declarationIds = decls.map((d) => d.id as number);
+  }
+
+  if (declarationIds.length === 0) return null;
 
   const changes: WorkspaceEdit["changes"] = {};
+  const seen = new Set<string>();
 
-  // Find and replace all occurrences across open documents
-  for (const doc of documents.all()) {
-    const tree = getDocumentTree(doc.uri);
-    if (!tree) continue;
-    const edits: {
-      range: { start: { line: number; character: number }; end: { line: number; character: number } };
-      newText: string;
-    }[] = [];
+  const addEdit = (uri: string, startByte: number, endByte: number) => {
+    let text = documents.get(uri)?.getText();
+    if (!text) {
+      const cached = documentTrees.get(uri);
+      if (cached) text = cached.text;
+    }
+    if (!text) return;
 
-    const collectRenames = (node: SyntaxNode) => {
-      if (node.type === "IDENT" && node.text === targetName) {
-        edits.push({
-          range: nodeRange(node),
-          newText: params.newName,
-        });
+    const dummyDoc = TextDocument.create(uri, "temp", 1, text);
+    const start = dummyDoc.positionAt(startByte);
+    const end = dummyDoc.positionAt(endByte);
+    const key = `${uri}:${start.line}:${start.character}`;
+
+    if (!seen.has(key)) {
+      seen.add(key);
+      if (!changes[uri]) changes[uri] = [];
+      changes[uri].push({
+        range: { start, end },
+        newText: params.newName,
+      });
+    }
+  };
+
+  for (const declId of declarationIds) {
+    // Include declaration
+    const declEntry = unifiedIndex.symbols.get(declId);
+    if (declEntry && declEntry.resourceId && declEntry.name) {
+      // The entry byte range might include keywords/type, we just want to replace the name.
+      // E.g., `part engine : Engine`, `declEntry` spans the whole thing.
+      // Actually `targetName` length is from `declEntry.name.length`, but `declEntry.nameLoc` isn't available.
+      // In ModelScript indexing, `startByte` to `endByte` is usually the identifier for refs.
+      // For declarations, `startByte` to `endByte` is the WHOLE declaration body. That's a problem for rename!
+      // Let's use `name` and match the identifier.
+
+      const text = documents.get(declEntry.resourceId)?.getText() ?? documentTrees.get(declEntry.resourceId)?.text;
+      if (text) {
+        const dummyDoc = TextDocument.create(declEntry.resourceId, "temp", 1, text);
+        // Find exact occurrence of declaration name near the start
+        const nameMatch = text.substring(declEntry.startByte, declEntry.endByte).indexOf(declEntry.name);
+        if (nameMatch !== -1) {
+          const matchStart = declEntry.startByte + nameMatch;
+          const matchEnd = matchStart + declEntry.name.length;
+          addEdit(declEntry.resourceId, matchStart, matchEnd);
+        }
       }
-      for (let i = 0; i < node.childCount; i++) {
-        const child = node.child(i);
-        if (child) collectRenames(child);
+    }
+    // Include references
+    const refs = resolver.findReferences(declId);
+    for (const ref of refs) {
+      if (ref.resourceId) {
+        addEdit(ref.resourceId, ref.startByte, ref.endByte);
       }
-    };
-
-    collectRenames(tree.rootNode);
-
-    if (edits.length > 0) {
-      changes[doc.uri] = edits;
     }
   }
 
@@ -2388,26 +3115,71 @@ connection.onTypeDefinition((params) => {
 });
 
 // Custom request: get diagram data for the webview
-connection.onRequest("modelscript/getDiagramData", (params: { uri: string; className?: string }) => {
-  const instances = documentInstances.get(params.uri);
-  if (!instances || instances.length === 0) {
-    return null;
-  }
+connection.onRequest(
+  "modelscript/getDiagramData",
+  (params: { uri: string; className?: string; diagramType?: string }) => {
+    // SysML2 files use the polyglot diagram builder
+    if (params.uri.endsWith(".sysml")) {
+      try {
+        const unified = sysml2WorkspaceIndex.toUnified();
+        const resolver = createSysML2ScopeResolver(unified);
 
-  // Find the requested class instance (by name, or first one)
-  let classInstance = instances[0];
-  if (params.className) {
-    const found = instances.find((i) => i.name === params.className);
-    if (found) classInstance = found;
-  }
+        const diagramTypeRaw = params.diagramType ?? "All";
+        const validTypes = ["All", "BDD", "IBD", "StateMachine"];
+        const diagramType = validTypes.includes(diagramTypeRaw)
+          ? (diagramTypeRaw as "All" | "BDD" | "IBD" | "StateMachine")
+          : "All";
 
-  try {
-    return buildDiagramData(classInstance);
-  } catch (e) {
-    console.error("[diagram] Error building diagram data:", e);
-    return null;
-  }
-});
+        const data = buildSysML2DiagramData(unified, params.uri, resolver, diagramType);
+
+        // Merge stored layout positions into diagram data
+        const layout = sysml2Layouts.get(params.uri);
+        if (layout && data) {
+          for (const node of data.nodes) {
+            // Node IDs are prefixed with "n_" + symbolId — try matching by name
+            // Also try the raw node.id in case it was stored without prefix
+            const sym = [...unified.symbols.values()].find(
+              (s) => `n_${s.id}` === node.id && s.resourceId === params.uri,
+            );
+            const name = sym?.name;
+            if (name && layout.elements[name]) {
+              const el = layout.elements[name];
+              node.x = el.x;
+              node.y = el.y;
+              if (el.width) node.width = el.width;
+              if (el.height) node.height = el.height;
+              node.autoLayout = false;
+            }
+          }
+        }
+
+        return data;
+      } catch (e: any) {
+        connection.console.error(`[sysml2-diagram] Error building diagram data: ${e?.message ?? e}\n${e?.stack ?? ""}`);
+        return null;
+      }
+    }
+
+    const instances = documentInstances.get(params.uri);
+    if (!instances || instances.length === 0) {
+      return null;
+    }
+
+    // Find the requested class instance (by name, or first one)
+    let classInstance = instances[0];
+    if (params.className) {
+      const found = instances.find((i) => i.name === params.className);
+      if (found) classInstance = found;
+    }
+
+    try {
+      return buildDiagramData(classInstance);
+    } catch (e) {
+      console.error("[diagram] Error building diagram data:", e);
+      return null;
+    }
+  },
+);
 
 // Custom request: get CAD components for the webview
 connection.onRequest("modelscript/getCadComponents", (params: { uri: string }) => {
@@ -2427,13 +3199,11 @@ connection.onRequest("modelscript/getCadComponents", (params: { uri: string }) =
     classInstance.accept(flattener, ["", dae]);
 
     // Extract variables with CAD annotations
-    return (
-      dae.variables
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .filter((v: any) => v.cadAnnotationString)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .map((v: any) => ({ name: v.name, cad: v.cadAnnotationString }))
-    );
+    return dae.variables
+
+      .filter((v: any) => v.cadAnnotationString)
+
+      .map((v: any) => ({ name: v.name, cad: v.cadAnnotationString }));
   } catch (e) {
     console.error("[cad] Error extracting CAD components:", e);
     return [];
@@ -2456,6 +3226,31 @@ connection.onRequest(
       edges?: { source: string; target: string; points: { x: number; y: number }[] }[];
     }[];
   }) => {
+    // SysML2: store placement in the in-memory layout (no source text edits)
+    if (params.uri.endsWith(".sysml")) {
+      try {
+        let layout = sysml2Layouts.get(params.uri) ?? createEmptyLayout();
+        layout = updateElementPositions(layout, params.items);
+        // Also update edge vertices if provided
+        const edgeUpdates: { id: string; vertices: { x: number; y: number }[] }[] = [];
+        for (const item of params.items) {
+          if (item.edges) {
+            for (const edge of item.edges) {
+              edgeUpdates.push({ id: `${edge.source}→${edge.target}`, vertices: edge.points });
+            }
+          }
+        }
+        if (edgeUpdates.length > 0) {
+          layout = updateConnectionVertices(layout, edgeUpdates);
+        }
+        sysml2Layouts.set(params.uri, layout);
+        connection.console.log(`[sysml2] Layout updated for ${params.uri}: ${params.items.length} elements`);
+      } catch (e) {
+        console.error("[sysml2-diagram] updatePlacement error:", e);
+      }
+      return []; // No TextEdits — layout is stored externally
+    }
+
     const instances = documentInstances.get(params.uri);
     const doc = documents.get(params.uri);
     if (!instances?.[0] || !doc) return [];
@@ -2471,6 +3266,27 @@ connection.onRequest(
 connection.onRequest(
   "modelscript/addConnect",
   (params: { uri: string; source: string; target: string; points?: { x: number; y: number }[] }) => {
+    // SysML2: insert a connection usage in source text
+    if (params.uri.endsWith(".sysml")) {
+      const doc = documents.get(params.uri);
+      if (!doc) return [];
+      try {
+        const edits = computeSysML2ConnectionInsert(doc.getText(), params.source, params.target);
+        // Store edge vertices in layout
+        if (params.points && params.points.length > 0) {
+          let layout = sysml2Layouts.get(params.uri) ?? createEmptyLayout();
+          layout = updateConnectionVertices(layout, [
+            { id: `${params.source}→${params.target}`, vertices: params.points },
+          ]);
+          sysml2Layouts.set(params.uri, layout);
+        }
+        return edits;
+      } catch (e) {
+        console.error("[sysml2-diagram] addConnect error:", e);
+        return [];
+      }
+    }
+
     const instances = documentInstances.get(params.uri);
     const doc = documents.get(params.uri);
     if (!instances?.[0] || !doc) return [];
@@ -2484,6 +3300,18 @@ connection.onRequest(
 );
 
 connection.onRequest("modelscript/removeConnect", (params: { uri: string; source: string; target: string }) => {
+  // SysML2: remove a connection usage from source text
+  if (params.uri.endsWith(".sysml")) {
+    const doc = documents.get(params.uri);
+    if (!doc) return [];
+    try {
+      return computeSysML2ConnectionDelete(doc.getText(), params.source, params.target);
+    } catch (e) {
+      console.error("[sysml2-diagram] removeConnect error:", e);
+      return [];
+    }
+  }
+
   const instances = documentInstances.get(params.uri);
   const doc = documents.get(params.uri);
   if (!instances?.[0] || !doc) return [];
@@ -2498,6 +3326,22 @@ connection.onRequest("modelscript/removeConnect", (params: { uri: string; source
 connection.onRequest(
   "modelscript/updateEdgePoints",
   (params: { uri: string; edges: { source: string; target: string; points: { x: number; y: number }[] }[] }) => {
+    // SysML2: store edge vertices in the layout (no source text edits)
+    if (params.uri.endsWith(".sysml")) {
+      try {
+        let layout = sysml2Layouts.get(params.uri) ?? createEmptyLayout();
+        const updates = params.edges.map((e) => ({
+          id: `${e.source}→${e.target}`,
+          vertices: e.points,
+        }));
+        layout = updateConnectionVertices(layout, updates);
+        sysml2Layouts.set(params.uri, layout);
+      } catch (e) {
+        console.error("[sysml2-diagram] updateEdgePoints error:", e);
+      }
+      return []; // No TextEdits
+    }
+
     const instances = documentInstances.get(params.uri);
     const doc = documents.get(params.uri);
     if (!instances?.[0] || !doc) return [];
@@ -2512,6 +3356,24 @@ connection.onRequest(
 );
 
 connection.onRequest("modelscript/deleteComponents", (params: { uri: string; names: string[] }) => {
+  // SysML2: delete elements from source text and layout
+  if (params.uri.endsWith(".sysml")) {
+    const doc = documents.get(params.uri);
+    if (!doc) return [];
+    try {
+      const edits = computeSysML2ElementDelete(doc.getText(), params.names);
+      // Also clean up layout
+      const layout = sysml2Layouts.get(params.uri);
+      if (layout) {
+        sysml2Layouts.set(params.uri, removeElements(layout, params.names));
+      }
+      return edits;
+    } catch (e) {
+      console.error("[sysml2-diagram] deleteComponents error:", e);
+      return [];
+    }
+  }
+
   const instances = documentInstances.get(params.uri);
   const doc = documents.get(params.uri);
   if (!instances?.[0] || !doc) return [];
@@ -2524,6 +3386,11 @@ connection.onRequest("modelscript/deleteComponents", (params: { uri: string; nam
 });
 
 connection.onRequest("modelscript/updateComponentName", (params: { uri: string; oldName: string; newName: string }) => {
+  // SysML2: not yet supported (would need tree-sitter rename refactoring)
+  if (params.uri.endsWith(".sysml")) {
+    return [];
+  }
+
   const instances = documentInstances.get(params.uri);
   if (!instances?.[0]) return [];
   try {
@@ -2537,6 +3404,9 @@ connection.onRequest("modelscript/updateComponentName", (params: { uri: string; 
 connection.onRequest(
   "modelscript/updateComponentDescription",
   (params: { uri: string; name: string; description: string }) => {
+    // SysML2: not yet supported
+    if (params.uri.endsWith(".sysml")) return [];
+
     const instances = documentInstances.get(params.uri);
     const doc = documents.get(params.uri);
     if (!instances?.[0] || !doc) return [];
@@ -2552,6 +3422,9 @@ connection.onRequest(
 connection.onRequest(
   "modelscript/updateComponentParameter",
   (params: { uri: string; name: string; parameter: string; value: string }) => {
+    // SysML2: not yet supported
+    if (params.uri.endsWith(".sysml")) return [];
+
     const instances = documentInstances.get(params.uri);
     if (!instances?.[0]) return [];
     try {
@@ -3333,6 +4206,41 @@ connection.onRequest("modelscript/resetNotebookSession", async (params: { sessio
 
 // Custom request: add a component to a model (drag-drop from library tree)
 connection.onRequest("modelscript/addComponent", (params: { uri: string; className: string; x: number; y: number }) => {
+  // SysML2: insert a new element declaration in source text
+  if (params.uri.endsWith(".sysml")) {
+    const doc = documents.get(params.uri);
+    if (!doc) return [];
+    try {
+      const docText = doc.getText();
+      // className is the element type (e.g., "PartDefinition", "ActionUsage")
+      const elementType = params.className;
+      // Generate a base name from the type
+      const baseParts = elementType.replace("Definition", "").replace("Usage", "");
+      const baseName = baseParts.charAt(0).toLowerCase() + baseParts.slice(1);
+      const uniqueName = generateUniqueName(docText, baseName);
+
+      const edits = computeSysML2ElementInsert(docText, elementType, uniqueName);
+
+      // Store position in layout
+      let layout = sysml2Layouts.get(params.uri) ?? createEmptyLayout();
+      layout = updateElementPositions(layout, [
+        {
+          name: uniqueName,
+          x: Math.round(params.x),
+          y: Math.round(params.y),
+          width: 180,
+          height: 60,
+        },
+      ]);
+      sysml2Layouts.set(params.uri, layout);
+
+      return edits;
+    } catch (e) {
+      console.error("[sysml2-diagram] addComponent error:", e);
+      return [];
+    }
+  }
+
   const instances = documentInstances.get(params.uri);
   const doc = documents.get(params.uri);
   if (!instances?.[0] || !doc) return [];
@@ -3745,7 +4653,6 @@ connection.onRequest("textDocument/inlayHint", (params): InlayHint[] => {
 
       // For each variable, show start value if it has one
       for (const v of dae.variables) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const rv = v as any;
         if (rv.start !== undefined && rv.start !== null && rv.start !== 0) {
           if (typeof rv.start === "object") continue;
@@ -4239,7 +5146,7 @@ connection.onRequest(
       const signalData = params.data.signals;
 
       // Cost function: simulate and compute residual
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
       const simulate = async (_paramValues: number[]): Promise<number> => {
         for (const pName of params.parametersToFit) {
           if (!pName) continue;
@@ -4435,7 +5342,6 @@ connection.onNotification(
   },
 );
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 connection.onRequest("modelscript/debuggerContinue", (params?: any) => {
   stepMode = params?.step || false;
   if (debuggerResumeCallback) {
@@ -4503,7 +5409,6 @@ connection.onRequest(
       stepMode = true; // Reset step mode on new simulation run
 
       const simulator = new ModelicaSimulator(dae, {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         onStatement: async (stmt: any, evaluator: any) => {
           const bps = breakpointsMap.get(params.uri) || [];
           const isBreakpoint = bps.some((bp) => bp.line === stmt.location?.startLine);

@@ -13,7 +13,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
   const hooks = new Map<string, QueryHooks>();
   if (!langDef.rules) return hooks;
 
-  // MetadataUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming
+  // MetadataUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming, lint__multiplicityBounds
   {
     const $ = new Proxy(
       {},
@@ -121,7 +121,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // DefaultReferenceUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming
+  // DefaultReferenceUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming, lint__multiplicityBounds
   {
     const $ = new Proxy(
       {},
@@ -148,7 +148,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // ReferenceUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming
+  // ReferenceUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming, lint__multiplicityBounds
   {
     const $ = new Proxy(
       {},
@@ -202,7 +202,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // AttributeUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming
+  // AttributeUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming, lint__multiplicityBounds
   {
     const $ = new Proxy(
       {},
@@ -256,7 +256,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // EnumerationUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming
+  // EnumerationUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming, lint__multiplicityBounds
   {
     const $ = new Proxy(
       {},
@@ -310,7 +310,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // OccurrenceUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming
+  // OccurrenceUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming, lint__multiplicityBounds
   {
     const $ = new Proxy(
       {},
@@ -364,7 +364,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // ItemUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming
+  // ItemUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming, lint__multiplicityBounds
   {
     const $ = new Proxy(
       {},
@@ -418,7 +418,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // PartUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming
+  // PartUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming, lint__multiplicityBounds
   {
     const $ = new Proxy(
       {},
@@ -472,7 +472,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // PortUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming
+  // PortUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming, lint__multiplicityBounds
   {
     const $ = new Proxy(
       {},
@@ -526,7 +526,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // ConnectionUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming
+  // ConnectionUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming, lint__multiplicityBounds
   {
     const $ = new Proxy(
       {},
@@ -553,7 +553,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // BindingConnectorAsUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming
+  // BindingConnectorAsUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming, lint__multiplicityBounds
   {
     const $ = new Proxy(
       {},
@@ -580,7 +580,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // SuccessionAsUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming
+  // SuccessionAsUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming, lint__multiplicityBounds
   {
     const $ = new Proxy(
       {},
@@ -634,7 +634,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // InterfaceUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming
+  // InterfaceUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming, lint__multiplicityBounds
   {
     const $ = new Proxy(
       {},
@@ -688,7 +688,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // AllocationUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming
+  // AllocationUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming, lint__multiplicityBounds
   {
     const $ = new Proxy(
       {},
@@ -742,7 +742,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // FlowUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming
+  // FlowUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming, lint__multiplicityBounds
   {
     const $ = new Proxy(
       {},
@@ -769,7 +769,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // SuccessionFlowUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming
+  // SuccessionFlowUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming, lint__multiplicityBounds
   {
     const $ = new Proxy(
       {},
@@ -823,7 +823,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // ActionUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming
+  // ActionUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming, lint__multiplicityBounds
   {
     const $ = new Proxy(
       {},
@@ -931,7 +931,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // PerformActionUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming
+  // PerformActionUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming, lint__multiplicityBounds
   {
     const $ = new Proxy(
       {},
@@ -985,7 +985,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // CalculationUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, parameters, returnParameter, resultExpression, lint__usageNaming
+  // CalculationUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, parameters, returnParameter, resultExpression, lint__usageNaming, lint__multiplicityBounds
   {
     const $ = new Proxy(
       {},
@@ -1039,7 +1039,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // ConstraintUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, constraintResult, lint__usageNaming, lint__constraintViolated
+  // ConstraintUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, constraintResult, lint__usageNaming, lint__multiplicityBounds, lint__constraintViolated
   {
     const $ = new Proxy(
       {},
@@ -1066,7 +1066,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // AssertConstraintUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, constraintResult, lint__usageNaming, lint__constraintViolated
+  // AssertConstraintUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, constraintResult, lint__usageNaming, lint__multiplicityBounds, lint__constraintViolated
   {
     const $ = new Proxy(
       {},
@@ -1147,7 +1147,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // RequirementUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, subject, assumeConstraints, requireConstraints, isSatisfied, satisfiedBy, isVerified, verifiedBy, verificationStatus, constraintsMet, lint__usageNaming, lint__missingSubject, lint__cyclicSatisfaction, lint__requirementConstraintViolated, lint__requirementWithoutConstraint
+  // RequirementUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, subject, assumeConstraints, requireConstraints, isSatisfied, satisfiedBy, isVerified, verifiedBy, verificationStatus, constraintsMet, lint__usageNaming, lint__multiplicityBounds, lint__missingSubject, lint__cyclicSatisfaction, lint__requirementConstraintViolated, lint__requirementWithoutConstraint
   {
     const $ = new Proxy(
       {},
@@ -1174,7 +1174,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // SatisfyRequirementUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, satisfiedRequirement, satisfyingSubject, lint__usageNaming, lint__invalidTarget, lint__satisfyingViolatedRequirement
+  // SatisfyRequirementUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, satisfiedRequirement, satisfyingSubject, lint__usageNaming, lint__multiplicityBounds, lint__invalidTarget, lint__satisfyingViolatedRequirement
   {
     const $ = new Proxy(
       {},
@@ -1228,7 +1228,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // ConcernUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming
+  // ConcernUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming, lint__multiplicityBounds
   {
     const $ = new Proxy(
       {},
@@ -1282,7 +1282,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // CaseUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming
+  // CaseUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming, lint__multiplicityBounds
   {
     const $ = new Proxy(
       {},
@@ -1336,7 +1336,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // AnalysisCaseUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming
+  // AnalysisCaseUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming, lint__multiplicityBounds
   {
     const $ = new Proxy(
       {},
@@ -1390,7 +1390,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // VerificationCaseUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, verifiedRequirements, objective, lint__usageNaming, lint__emptyVerificationCase
+  // VerificationCaseUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, verifiedRequirements, objective, lint__usageNaming, lint__multiplicityBounds, lint__emptyVerificationCase
   {
     const $ = new Proxy(
       {},
@@ -1471,7 +1471,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // UseCaseUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming
+  // UseCaseUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming, lint__multiplicityBounds
   {
     const $ = new Proxy(
       {},
@@ -1552,7 +1552,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // StateUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, entryAction, doAction, exitAction, transitions, lint__usageNaming
+  // StateUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, entryAction, doAction, exitAction, transitions, lint__usageNaming, lint__multiplicityBounds
   {
     const $ = new Proxy(
       {},
@@ -1579,7 +1579,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // ExhibitStateUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, entryAction, doAction, exitAction, transitions, lint__usageNaming
+  // ExhibitStateUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, entryAction, doAction, exitAction, transitions, lint__usageNaming, lint__multiplicityBounds
   {
     const $ = new Proxy(
       {},
@@ -1660,7 +1660,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // ViewUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming
+  // ViewUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming, lint__multiplicityBounds
   {
     const $ = new Proxy(
       {},
@@ -1714,7 +1714,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // ViewpointUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming
+  // ViewpointUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming, lint__multiplicityBounds
   {
     const $ = new Proxy(
       {},
@@ -1768,7 +1768,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // RenderingUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming
+  // RenderingUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming, lint__multiplicityBounds
   {
     const $ = new Proxy(
       {},

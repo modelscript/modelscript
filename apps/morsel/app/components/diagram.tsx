@@ -699,6 +699,27 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
           global: true,
           modifiers: "ctrl",
         },
+        embedding: {
+          enabled: true,
+          findParent: "bbox",
+        },
+        translating: {
+          restrict(view) {
+            const cell = view.cell;
+            if (cell.isNode()) {
+              const parent = cell.getParent();
+              if (parent) {
+                const bbox = parent.getBBox();
+                bbox.x += 16;
+                bbox.y += 40;
+                bbox.width -= 32;
+                bbox.height -= 56;
+                return bbox;
+              }
+            }
+            return null;
+          },
+        },
         interacting: (cellView) => {
           if (cellView.cell.id === "__diagram_background__") return false;
           return true;
@@ -755,6 +776,20 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       );
       g.use(new Keyboard({ enabled: true }));
       g.use(new Snapline({ enabled: true, clean: false }));
+
+      const tryFitEmbeds = (node: Cell) => {
+        const parent = node.getParent();
+        if (parent && parent.isNode()) {
+          (parent as any).fitEmbeds({ padding: { top: 40, left: 16, right: 16, bottom: 16 } });
+        }
+      };
+
+      g.on("node:change:position", ({ node, options }) => {
+        if (!options.skipParentHandler) tryFitEmbeds(node);
+      });
+      g.on("node:change:size", ({ node, options }) => {
+        if (!options.skipParentHandler) tryFitEmbeds(node);
+      });
 
       g.bindKey(["backspace", "delete"], () => {
         const cells = g?.getSelectedCells();

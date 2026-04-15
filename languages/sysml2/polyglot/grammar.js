@@ -333,7 +333,12 @@ module.exports = grammar({
       choice(field("redefinedFeature", $.QualifiedName), field("ownedRelatedElement", $.OwnedFeatureChain)),
     OwnedMultiplicity: ($) => field("ownedRelatedElement", $.MultiplicityRange),
     MultiplicityRange: ($) =>
-      seq("[", $.MultiplicityExpressionMember, optional(seq("..", $.MultiplicityExpressionMember)), "]"),
+      seq(
+        "[",
+        field("lowerBound", $.MultiplicityExpressionMember),
+        optional(seq("..", field("upperBound", $.MultiplicityExpressionMember))),
+        "]",
+      ),
     MultiplicityExpressionMember: ($) =>
       field("ownedRelatedElement", choice($._LiteralExpression, $.FeatureReferenceExpression)),
     _Definition: ($) => seq(optional($._Identification), optional($._SubclassificationPart), $._DefinitionBody),
@@ -789,7 +794,16 @@ module.exports = grammar({
         optional($._SubclassificationPart),
         $._CaseBody,
       ),
-    _CaseBody: ($) => choice(";", seq("{", repeat($._ActionBodyItem), optional($.ResultExpressionMember), "}")),
+    _CaseBody: ($) =>
+      choice(
+        ";",
+        seq(
+          "{",
+          repeat(choice($._ActionBodyItem, $.SubjectMember, $.ActorMember, $.StakeholderMember)),
+          optional($.ResultExpressionMember),
+          "}",
+        ),
+      ),
     CaseUsage: ($) =>
       seq(repeat($._usage_modifier), "case", optional($._UsageDeclaration), optional($._ValuePart), $._CaseBody),
     AnalysisCaseDefinition: ($) =>

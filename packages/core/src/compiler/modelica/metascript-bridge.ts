@@ -36,11 +36,26 @@ const queryHooks = QUERY_HOOKS ?? (globalThis as any).__queryHooksFallback;
 const refHooks = REF_HOOKS ?? (globalThis as any).__refHooksFallback;
 const evaluator = modelicaEvaluator ?? (globalThis as any).__evaluatorFallback;
 
+// Convert refHooks into indexerHooks so reference nodes get indexed too.
+// The resolver needs reference entries in the index to detect unresolved refs.
+const defRuleNames = new Set(indexerHooks.map((h: any) => h.ruleName));
+const refAsIndexerHooks = (refHooks ?? [])
+  .filter((rh: any) => !defRuleNames.has(rh.ruleName))
+  .map((rh: any) => ({
+    ruleName: rh.ruleName,
+    kind: "Reference",
+    namePath: rh.namePath,
+    exportPaths: [],
+    inheritPaths: [],
+    metadataFieldPaths: {},
+  }));
+const allIndexerHooks = [...indexerHooks, ...refAsIndexerHooks];
+
 /**
  * Creates a configured WorkspaceIndex for Modelica.
  */
 export function createModelicaWorkspaceIndex(): WorkspaceIndex {
-  return new WorkspaceIndex(indexerHooks);
+  return new WorkspaceIndex(allIndexerHooks);
 }
 
 /**

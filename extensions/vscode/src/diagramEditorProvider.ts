@@ -56,13 +56,14 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     let updateTimeout: ReturnType<typeof setTimeout> | null = null;
     let diagramRequestNonce = 0;
     const uriString = document.uri.toString();
+    let currentDiagramType = "All";
 
     const debouncedUpdate = () => {
       if (updateTimeout) clearTimeout(updateTimeout);
       updateTimeout = setTimeout(() => {
         diagramRequestNonce++;
         const currentNonce = diagramRequestNonce;
-        this.requestDiagramData(webviewPanel, uriString, {
+        this.requestDiagramData(webviewPanel, uriString, currentDiagramType, {
           isCanceled: () => diagramRequestNonce !== currentNonce,
         });
       }, 500);
@@ -140,6 +141,11 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
               lspMethod = "modelscript/updateComponentParameter";
               lspParams = { uri: uriString, name: message.name, parameter: message.parameter, value: message.value };
               break;
+            case "changeDiagramType": {
+              currentDiagramType = message.diagramType;
+              debouncedUpdate();
+              break;
+            }
             case "undo": {
               // Standard undo command applies to the document representing this custom editor
               await vscode.commands.executeCommand("undo");
@@ -194,10 +200,11 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
   private async requestDiagramData(
     webviewPanel: vscode.WebviewPanel,
     uri: string,
+    diagramType: string,
     cancelToken?: { isCanceled: () => boolean },
   ) {
     try {
-      const data = await this.client.sendRequest("modelscript/getDiagramData", { uri });
+      const data = await this.client.sendRequest("modelscript/getDiagramData", { uri, diagramType });
       if (cancelToken?.isCanceled()) return;
       if (data) {
         const isDark =
@@ -261,6 +268,31 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
       animation: diagram-spin 0.7s linear infinite;
       display: none;
       z-index: 1000;
+    }
+    #toolbar {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 100;
+      display: flex;
+      gap: 8px;
+      background: var(--vscode-editorWidget-background, #252526);
+      border: 1px solid var(--vscode-widget-border, #454545);
+      border-radius: 4px;
+      padding: 4px 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      font-family: var(--vscode-font-family, sans-serif);
+      font-size: 12px;
+      align-items: center;
+    }
+    #toolbar select {
+      background: var(--vscode-dropdown-background, #3c3c3c);
+      color: var(--vscode-dropdown-foreground, #f0f0f0);
+      border: 1px solid var(--vscode-dropdown-border, #3c3c3c);
+      border-radius: 2px;
+      padding: 2px 4px;
+      font-size: 12px;
+      outline: none;
     }
     @keyframes diagram-spin { to { transform: rotate(360deg); } }
 
@@ -334,6 +366,15 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
   </style>
 </head>
 <body>
+  <div id="toolbar">
+    <span>Diagram View:</span>
+    <select id="diagramTypeSelect">
+      <option value="All">All (Flat Canvas)</option>
+      <option value="BDD">BDD (Block Definition)</option>
+      <option value="IBD">IBD (Internal Block)</option>
+      <option value="StateMachine">State Machine</option>
+    </select>
+  </div>
   <div id="container"></div>
   <div id="placeholder">Loading diagram...</div>
   <div id="spinner"></div>

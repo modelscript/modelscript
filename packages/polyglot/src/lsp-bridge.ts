@@ -138,6 +138,9 @@ export class LSPBridge {
     const docSymbols = new Set<SymbolId>();
     for (const entry of this.index.symbols.values()) {
       if (entry.resourceId && entry.resourceId !== this.documentUri) continue;
+      // Skip reference entries — they are internal resolution artifacts,
+      // not user-visible declarations (e.g. OwnedFeatureTyping)
+      if (entry.kind === "Reference") continue;
       docSymbols.add(entry.id);
     }
 
@@ -426,18 +429,40 @@ export class LSPBridge {
   }
 
   // =========================================================================
-  // textDocument/references
+  // textDocument/references & textDocument/rename (Workspace-wide access)
   // =========================================================================
 
-  references(byteOffset: number): LSPLocation[] {
+  /** Returns raw symbol entries for references, preserving cross-document resourceIds */
+  findReferencesRaw(byteOffset: number): { declaration: SymbolEntry | null; references: SymbolEntry[] } {
     const entry = this.findEntryAtOffset(byteOffset);
-    if (!entry) return [];
+    if (!entry) return { declaration: null, references: [] };
 
-    const refs = this.resolver.findReferences(entry.id);
-    return refs.map((ref) => ({
-      uri: this.documentUri,
-      range: this.positions.rangeFromBytes(ref.startByte, ref.endByte),
-    }));
+    let targetDecl = entry;
+
+    // Is the user hovering over a usage/reference instead of the definition?
+    // In SysML2, usage rule names end with "Usage" (e.g. "PartUsage"), but more generally
+    // we can check if it resolves to something.
+    const resolved = this.resolver.resolve(entry);
+    if (resolved.length > 0) {
+      targetDecl = resolved[0];
+    }
+
+    // Find all references mapping to the target declaration (workspace-wide)
+    const references = this.resolver.findReferences(targetDecl.id);
+    return { declaration: targetDecl, references };
+  }
+
+  references(byteOffset: number): LSPLocation[] {
+    const { references } = this.findReferencesRaw(byteOffset);
+
+    // Note: The legacy references() method only maps entries belonging to THIS document
+    // because this `positions` index is only valid for the current document.
+    return references
+      .filter((ref) => ref.resourceId === this.documentUri)
+      .map((ref) => ({
+        uri: this.documentUri,
+        range: this.positions.rangeFromBytes(ref.startByte, ref.endByte),
+      }));
   }
 
   // =========================================================================

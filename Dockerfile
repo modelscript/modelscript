@@ -83,7 +83,7 @@ COPY scripts scripts
 COPY packages/core packages/core
 COPY languages/modelica/tree-sitter-modelica languages/modelica/tree-sitter-modelica
 COPY apps/morsel apps/morsel
-RUN node scripts/download-msl.cjs && cp scripts/ModelicaStandardLibrary_v4.1.0.zip apps/morsel/public/
+RUN node scripts/download-msl.cjs && node scripts/download-sysml2.cjs && cp scripts/ModelicaStandardLibrary_v4.1.0.zip apps/morsel/public/ && cp scripts/SysML-v2-Release-2026-03.zip apps/morsel/public/
 RUN npm run clean -w packages/core && npx tsc -p packages/core \
     && npm run build -w apps/morsel
 

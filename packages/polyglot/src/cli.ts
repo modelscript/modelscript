@@ -165,7 +165,7 @@ function injectRecoveryIntoField(node: any, spec: RecoverySpec): string {
 
 async function generate(fileArg: string) {
   const inputFile = path.resolve(fileArg);
-  const mod = require(inputFile);
+  const mod = await import(`file://${inputFile}`);
   const langConfig = mod.default || mod;
 
   if (!langConfig || !langConfig.name) {

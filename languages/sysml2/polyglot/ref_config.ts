@@ -1,4 +1,3 @@
-/* eslint-disable */
 import type { RefHook } from "@modelscript/polyglot/runtime";
 
 export const REF_HOOKS: RefHook[] = [
