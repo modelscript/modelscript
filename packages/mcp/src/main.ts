@@ -14,7 +14,9 @@ import type { ServerContext } from "./types.js";
 // Initialize tree-sitter parser
 const parser = new Parser();
 parser.setLanguage(Modelica);
-Context.registerParser(".mo", parser);
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+Context.registerParser(".mo", parser as any);
 
 // Shared mutable context — populated by modelica_load tool
 const ctx: ServerContext = { current: null };

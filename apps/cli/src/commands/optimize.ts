@@ -92,7 +92,9 @@ export const Optimize: CommandModule<{}, OptimizeArgs> = {
   handler: (args) => {
     const parser = new Parser();
     parser.setLanguage(Modelica);
-    Context.registerParser(".mo", parser);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    Context.registerParser(".mo", parser as any);
     const context = new Context(new NodeFileSystem());
 
     for (const p of args.paths) context.addLibrary(p);

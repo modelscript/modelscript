@@ -27,12 +27,15 @@ export const I18n: CommandModule<Record<string, unknown>, I18nArgs> = {
         alias: "o",
         description: "path to the output .pot file",
         type: "string",
-      }) as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      }) as any;
   },
   handler: (args) => {
     const parser = new Parser();
     parser.setLanguage(Modelica);
-    Context.registerParser(".mo", parser);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    Context.registerParser(".mo", parser as any);
     const context = new Context(new NodeFileSystem());
 
     const extractor = new I18nExtractor();

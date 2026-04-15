@@ -61,6 +61,7 @@ export const Login: CommandModule<{}, LoginArgs> = {
       alias: "e",
       description: "Email address",
       type: "string",
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     }) as any;
   },

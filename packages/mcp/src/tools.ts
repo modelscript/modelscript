@@ -78,7 +78,12 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       linter.lint(tree);
 
       // Build AST
-      const storedDef = ModelicaStoredDefinitionSyntaxNode.new(null, tree.rootNode);
+      const storedDef = ModelicaStoredDefinitionSyntaxNode.new(
+        null,
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        tree.rootNode as any,
+      );
       const classes: { name: string; kind: string; components: string[]; equations: string[] }[] = [];
 
       if (storedDef) {

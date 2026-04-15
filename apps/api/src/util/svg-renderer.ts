@@ -30,7 +30,9 @@ function ensureParser(): void {
   if (parserRegistered) return;
   const parser = new Parser();
   parser.setLanguage(Modelica);
-  Context.registerParser(".mo", parser);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  Context.registerParser(".mo", parser as any);
   parserRegistered = true;
 }
 

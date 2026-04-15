@@ -44,8 +44,15 @@
     "*.{ts,tsx}": "eslint --ext ts,tsx",
     "*.{ts,tsx,js,json,md,yml,css}": "prettier --write --ignore-unknown"
   },
+  "overrides": {
+    "dompurify": "^3.4.0",
+    "elliptic": "^6.6.1",
+    "hono": "^4.12.14",
+    "path-to-regexp": "^8.4.2"
+  },
   "dependencies": {
-    "tree-sitter": "^0.25.0"
+    "glob": "^13.0.6",
+    "tree-sitter": "^0.21.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -43,7 +43,9 @@ export const Render: CommandModule<{}, RenderArgs> = {
   handler: (args) => {
     const parser = new Parser();
     parser.setLanguage(Modelica);
-    Context.registerParser(".mo", parser);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    Context.registerParser(".mo", parser as any);
     const context = new Context(new NodeFileSystem());
 
     // Build mapping from absolute resolved paths to user-provided paths

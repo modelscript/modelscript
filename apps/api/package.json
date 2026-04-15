@@ -51,7 +51,7 @@
     "pg": "^8.16.0",
     "semver": "^7.7.1",
     "svgdom": "^0.1.22",
-    "tree-sitter": "^0.25.0",
+    "tree-sitter": "^0.21.1",
     "xml-formatter": "^3.6.7",
     "yauzl": "^3.2.0"
   },

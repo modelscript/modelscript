@@ -27,7 +27,7 @@
     "@modelscript/optimizer": "*",
     "@modelscript/simulator": "*",
     "@modelscript/tree-sitter-modelica": "*",
-    "tree-sitter": "^0.25.0",
+    "tree-sitter": "^0.21.1",
     "zod": "^3.25.67"
   },
   "devDependencies": {
