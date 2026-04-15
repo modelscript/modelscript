@@ -47,8 +47,7 @@
   "overrides": {
     "dompurify": "^3.4.0",
     "elliptic": "^6.6.1",
-    "hono": "^4.12.14",
-    "path-to-regexp": "^8.4.2"
+    "hono": "^4.12.14"
   },
   "dependencies": {
     "glob": "^13.0.6",

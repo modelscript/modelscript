@@ -17,7 +17,8 @@
   "dependencies": {
     "express": "^5.1.0",
     "express-rate-limit": "^8.3.2",
-    "http-proxy-middleware": "^3.0.5"
+    "http-proxy-middleware": "^3.0.5",
+    "path-to-regexp": "^8.4.2"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
