@@ -58,7 +58,7 @@
     "baseline-browser-mapping": "^2.9.19",
     "tailwindcss": "^4.1.13",
     "typescript": "^5.9.2",
-    "vite": "^7.1.7",
+    "vite": "^7.3.2",
     "vite-plugin-commonjs": "^0.10.4",
     "vite-plugin-node-polyfills": "^0.25.0",
     "vite-plugin-static-copy": "^3.1.4",
