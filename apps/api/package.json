@@ -53,7 +53,7 @@
     "svgdom": "^0.1.22",
     "tree-sitter": "^0.21.1",
     "xml-formatter": "^3.6.7",
-    "yauzl": "^3.2.0"
+    "yauzl": "^3.3.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
