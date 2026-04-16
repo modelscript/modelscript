@@ -280,21 +280,7 @@ function initGraph(isDark: boolean): Graph {
     });
   });
 
-  // Fit embeds when children move or resize
-  const tryFitEmbeds = (node: Cell) => {
-    const parent = node.getParent();
-    if (parent && parent.isNode()) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (parent as any).fit({ padding: { top: 40, left: 16, right: 16, bottom: 16 } });
-    }
-  };
-
-  g.on("node:change:position", ({ node, options }) => {
-    if (!options.skipParentHandler) tryFitEmbeds(node);
-  });
-  g.on("node:change:size", ({ node, options }) => {
-    if (!options.skipParentHandler) tryFitEmbeds(node);
-  });
+  // We don't shrink/fit parents during drag to preserve Dagre layout spacings.
 
   // Node resized
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -731,7 +717,7 @@ function renderDiagram(data: any, isDark: boolean) {
   //   Phase 2: Top-level Dagre with expanded container sizes
   //   Phase 3: Reposition children relative to final parent positions
 
-  const PAD = { top: 50, left: 20, right: 20, bottom: 20 };
+  const PAD = { top: 60, left: 40, right: 40, bottom: 40 };
 
   // Build parent → children map from the node data
   const parentChildMap = new Map<string, typeof nodes>();
@@ -757,45 +743,83 @@ function renderDiagram(data: any, isDark: boolean) {
 
     const subDagre = new DagreLayout({
       type: "dagre",
-      rankdir: "LR",
+      rankdir: "TB",
       align: "UL",
       ranksep: 40,
-      nodesep: 30,
+      nodesep: 40,
       begin: [0, 0],
       controlPoints: true,
     });
 
+    const subEdges = edges
+      .filter((e) => {
+        const s = typeof e.source === "string" ? e.source : (e.source.cell as string);
+        const t = typeof e.target === "string" ? e.target : (e.target.cell as string);
+        return childIds.has(s) && childIds.has(t);
+      })
+      .map((e) => ({
+        source: typeof e.source === "string" ? e.source : (e.source.cell as string),
+        target: typeof e.target === "string" ? e.target : (e.target.cell as string),
+      }));
+
+    // Inject fake edges to wrap isolated nodes into 2 rows for a compact layout
+    const connectedSub = new Set<string>();
+    subEdges.forEach((e) => {
+      connectedSub.add(e.source);
+      connectedSub.add(e.target);
+    });
+    const isolatedSub = childNodes.filter((n) => !connectedSub.has(n.id)).map((n) => n.id);
+    if (isolatedSub.length > 2) {
+      const cols = Math.ceil(Math.sqrt(isolatedSub.length));
+      for (let i = 0; i < isolatedSub.length - cols; i++) {
+        subEdges.push({ source: isolatedSub[i], target: isolatedSub[i + cols] });
+      }
+    }
+
     const subModel = {
-      nodes: childNodes.map((c) => ({ id: c.id, width: c.width, height: c.height })),
-      edges: edges
-        .filter((e) => {
-          const s = typeof e.source === "string" ? e.source : (e.source.cell as string);
-          const t = typeof e.target === "string" ? e.target : (e.target.cell as string);
-          return childIds.has(s) && childIds.has(t);
-        })
-        .map((e) => ({
-          source: typeof e.source === "string" ? e.source : (e.source.cell as string),
-          target: typeof e.target === "string" ? e.target : (e.target.cell as string),
-        })),
+      nodes: childNodes.map((c) => ({
+        id: c.id,
+        width: c.width,
+        height: c.height,
+        size: [c.width || 220, c.height || 50],
+      })),
+      edges: subEdges,
     };
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const subResult = subDagre.layout(subModel as any);
 
-    // Store relative positions and compute bounding box
-    let maxRight = 0;
-    let maxBottom = 0;
+    let minX = Infinity;
+    let minY = Infinity;
+    const layoutCoords = new Map<string, { leftX: number; topY: number }>();
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     subResult.nodes?.forEach((laid: any) => {
       const childNode = childNodes.find((c) => c.id === laid.id);
       if (childNode) {
-        const dx = PAD.left + laid.x;
-        const dy = PAD.top + laid.y;
+        // Dagre returns coordinates of the center of the node. Convert to top-left for X6.
+        const leftX = laid.x - childNode.width / 2;
+        const topY = laid.y - childNode.height / 2;
+        minX = Math.min(minX, leftX);
+        minY = Math.min(minY, topY);
+        layoutCoords.set(childNode.id, { leftX, topY });
+      }
+    });
+
+    let maxRight = 0;
+    let maxBottom = 0;
+
+    for (const childNode of childNodes) {
+      const coords = layoutCoords.get(childNode.id);
+      if (coords) {
+        // Normalize against minX/minY so children start exactly inside PAD, handling negative Dagre bounds
+        const dx = PAD.left + (coords.leftX - minX);
+        const dy = PAD.top + (coords.topY - minY);
         childRelativePositions.set(childNode.id, { dx, dy });
         maxRight = Math.max(maxRight, dx + childNode.width + PAD.right);
         maxBottom = Math.max(maxBottom, dy + childNode.height + PAD.bottom);
       }
-    });
+    }
 
     // Expand parent to fit children
     parentNode.width = Math.max(maxRight, 220);
@@ -816,24 +840,48 @@ function renderDiagram(data: any, isDark: boolean) {
       type: "dagre",
       rankdir: "TB",
       align: "UL",
-      ranksep: 80,
+      ranksep: 60,
       nodesep: 60,
       begin: [20, 20],
       controlPoints: true,
     });
 
+    const modelEdges = edges
+      .filter((e) => {
+        const s = typeof e.source === "string" ? e.source : (e.source.cell as string);
+        const t = typeof e.target === "string" ? e.target : (e.target.cell as string);
+        return nodesToLayout.includes(s) && nodesToLayout.includes(t);
+      })
+      .map((e) => ({
+        source: typeof e.source === "string" ? e.source : (e.source.cell as string),
+        target: typeof e.target === "string" ? e.target : (e.target.cell as string),
+      }));
+
+    // Inject fake edges to wrap isolated top-level packages into 2 rows
+    const connectedTop = new Set<string>();
+    modelEdges.forEach((e) => {
+      connectedTop.add(e.source);
+      connectedTop.add(e.target);
+    });
+    const isolatedTop = nodes
+      .filter((n) => nodesToLayout.includes(n.id ?? ""))
+      .filter((n) => !connectedTop.has(n.id ?? ""))
+      .map((n) => n.id ?? "");
+    if (isolatedTop.length > 2) {
+      const cols = Math.ceil(Math.sqrt(isolatedTop.length));
+      for (let i = 0; i < isolatedTop.length - cols; i++) {
+        modelEdges.push({ source: isolatedTop[i], target: isolatedTop[i + cols] });
+      }
+    }
+
     const model = {
-      nodes: nodes.filter((n) => nodesToLayout.includes(n.id ?? "")),
-      edges: edges
-        .filter((e) => {
-          const s = typeof e.source === "string" ? e.source : (e.source.cell as string);
-          const t = typeof e.target === "string" ? e.target : (e.target.cell as string);
-          return nodesToLayout.includes(s) && nodesToLayout.includes(t);
-        })
-        .map((e) => ({
-          source: typeof e.source === "string" ? e.source : (e.source.cell as string),
-          target: typeof e.target === "string" ? e.target : (e.target.cell as string),
+      nodes: nodes
+        .filter((n) => nodesToLayout.includes(n.id ?? ""))
+        .map((n) => ({
+          ...n,
+          size: [n.width || 220, n.height || 100],
         })),
+      edges: modelEdges,
     };
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -843,8 +891,8 @@ function renderDiagram(data: any, isDark: boolean) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const node = nodes.find((no: any) => no.id === n.id);
       if (node) {
-        node.x = n.x;
-        node.y = n.y;
+        node.x = n.x - (node.width ?? 0) / 2;
+        node.y = n.y - (node.height ?? 0) / 2;
       }
     });
   }
@@ -991,8 +1039,8 @@ window.addEventListener("message", (event: MessageEvent) => {
         type: "dagre",
         rankdir: "LR",
         align: "UL",
-        ranksep: 0.5,
-        nodesep: 0.5,
+        ranksep: 100,
+        nodesep: 100,
         begin: [-10, -10],
         controlPoints: true,
       });

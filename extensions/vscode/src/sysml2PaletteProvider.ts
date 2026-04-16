@@ -163,17 +163,25 @@ const SYSML2_PALETTE: SysML2Category[] = [
 // ── Tree Items ──
 
 export class SysML2PaletteItem extends vscode.TreeItem {
+  public readonly elementInfo:
+    | { type: "category"; category: SysML2Category }
+    | { type: "element"; element: SysML2ElementType };
+
   constructor(
-    public readonly elementInfo:
-      | { type: "category"; category: SysML2Category }
-      | { type: "element"; element: SysML2ElementType },
+    elementInfo: { type: "category"; category: SysML2Category } | { type: "element"; element: SysML2ElementType },
   ) {
+    super(
+      elementInfo.type === "category" ? elementInfo.category.name : elementInfo.element.name,
+      elementInfo.type === "category"
+        ? vscode.TreeItemCollapsibleState.Collapsed
+        : vscode.TreeItemCollapsibleState.None,
+    );
+    this.elementInfo = elementInfo;
+
     if (elementInfo.type === "category") {
-      super(elementInfo.category.name, vscode.TreeItemCollapsibleState.Collapsed);
       this.iconPath = new vscode.ThemeIcon(elementInfo.category.icon);
       this.contextValue = "sysml2Category";
     } else {
-      super(elementInfo.element.name, vscode.TreeItemCollapsibleState.None);
       this.iconPath = new vscode.ThemeIcon(elementInfo.element.icon);
       this.description = elementInfo.element.description;
       this.contextValue = "sysml2Element";

@@ -1724,6 +1724,8 @@ const sysml2StructuralKeywords = new Set([
   "library",
   "standard",
   "part",
+  "actor",
+  "stakeholder",
   "attribute",
   "port",
   "connection",

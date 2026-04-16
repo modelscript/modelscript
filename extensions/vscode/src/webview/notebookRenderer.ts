@@ -68,26 +68,47 @@ export function activate() {
       if (nodesToLayout.length > 0) {
         const dagreLayout = new DagreLayout({
           type: "dagre",
-          rankdir: "LR",
+          rankdir: "TB",
           align: "UL",
-          ranksep: 0.5,
-          nodesep: 0.5,
-          begin: [-10, -10],
+          ranksep: 40,
+          nodesep: 40,
+          begin: [20, 20],
           controlPoints: true,
         });
 
+        const modelEdges = edges
+          .filter((e: { source: string | { cell: string }; target: string | { cell: string } }) => {
+            const s = typeof e.source === "string" ? e.source : e.source.cell;
+            const t = typeof e.target === "string" ? e.target : e.target.cell;
+            return nodesToLayout.includes(s) && nodesToLayout.includes(t);
+          })
+          .map((e: { source: string | { cell: string }; target: string | { cell: string } }) => ({
+            source: typeof e.source === "string" ? e.source : e.source.cell,
+            target: typeof e.target === "string" ? e.target : e.target.cell,
+          }));
+
+        // Inject fake edges to wrap isolated nodes into a square grid
+        const connectedNodes = new Set<string>();
+        modelEdges.forEach((e) => {
+          connectedNodes.add(e.source);
+          connectedNodes.add(e.target);
+        });
+        const isolatedNodes = nodesToLayout.filter((id) => !connectedNodes.has(id));
+        if (isolatedNodes.length > 2) {
+          const cols = Math.ceil(Math.sqrt(isolatedNodes.length));
+          for (let i = 0; i < isolatedNodes.length - cols; i++) {
+            modelEdges.push({ source: isolatedNodes[i], target: isolatedNodes[i + cols] });
+          }
+        }
+
         const model = {
-          nodes: nodes.filter((n: { id?: string }) => nodesToLayout.includes(n.id ?? "")),
-          edges: edges
-            .filter((e: { source: string | { cell: string }; target: string | { cell: string } }) => {
-              const s = typeof e.source === "string" ? e.source : e.source.cell;
-              const t = typeof e.target === "string" ? e.target : e.target.cell;
-              return nodesToLayout.includes(s) && nodesToLayout.includes(t);
-            })
-            .map((e: { source: string | { cell: string }; target: string | { cell: string } }) => ({
-              source: typeof e.source === "string" ? e.source : e.source.cell,
-              target: typeof e.target === "string" ? e.target : e.target.cell,
+          nodes: nodes
+            .filter((n: { id?: string }) => nodesToLayout.includes(n.id ?? ""))
+            .map((n: Record<string, unknown> & { id?: string; width?: number; height?: number }) => ({
+              ...n,
+              size: [n.width || 200, n.height || 80],
             })),
+          edges: modelEdges,
         };
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -97,8 +118,8 @@ export function activate() {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const node = nodes.find((no: any) => no.id === n.id);
           if (node) {
-            node.x = n.x;
-            node.y = n.y;
+            node.x = n.x - (node.width ?? 0) / 2;
+            node.y = n.y - (node.height ?? 0) / 2;
           }
         });
       }

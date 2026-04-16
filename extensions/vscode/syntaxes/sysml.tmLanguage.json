@@ -84,7 +84,7 @@
       "patterns": [
         {
           "name": "storage.type.sysml",
-          "match": "\\b(package|library|standard|part|attribute|port|connection|interface|allocation|action|state|constraint|requirement|concern|case|analysis|verification|use|view|viewpoint|rendering|enumeration|occurrence|item|calculation|metadata|flow|connect)\\b"
+          "match": "\\b(package|library|standard|part|actor|attribute|port|connection|interface|allocation|action|state|constraint|requirement|concern|case|analysis|verification|use|view|viewpoint|rendering|enumeration|occurrence|item|calculation|metadata|flow|connect|stakeholder)\\b"
         }
       ]
     },
@@ -92,7 +92,7 @@
       "patterns": [
         {
           "name": "keyword.control.sysml",
-          "match": "\\b(if|else|then|while|for|loop|return|import|alias|about|accept|after|all|as|assign|assert|assume|at|bind|by|chains|collect|decide|default|defined|dependency|do|doc|done|emit|entry|exhibit|expose|filter|first|fork|frame|from|hastype|intersect|include|istype|join|merge|message|multiplicity|namespace|nonunique|objective|of|on|ordered|perform|private|protected|public|readonly|redefines|ref|render|rep|require|satisfy|send|snapshot|specializes|stakeholder|subject|subsets|succession|then|timeslice|to|transition|union|until|variant|variation|verify|via|when|in|out|inout)\\b"
+          "match": "\\b(if|else|then|while|for|loop|return|import|alias|about|accept|after|all|as|assign|assert|assume|at|bind|by|chains|collect|decide|default|defined|dependency|do|doc|done|emit|entry|exhibit|expose|filter|first|fork|frame|from|hastype|intersect|include|istype|join|merge|message|multiplicity|namespace|nonunique|objective|of|on|ordered|perform|private|protected|public|readonly|redefines|ref|render|rep|require|satisfy|send|snapshot|specializes|subject|subsets|succession|then|timeslice|to|transition|union|until|variant|variation|verify|via|when|in|out|inout)\\b"
         },
         {
           "name": "constant.language.sysml",

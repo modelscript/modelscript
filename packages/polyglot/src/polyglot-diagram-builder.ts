@@ -144,6 +144,10 @@ export function buildPolyglotDiagram(
     "AnalysisCaseUsage",
     "ConcernDefinition",
     "ConcernUsage",
+    "PortDefinition",
+    "PortUsage",
+    "ActorDefinition",
+    "ActorUsage",
     "InterfaceDefinition",
     "FlowDefinition",
     "AllocationDefinition",
@@ -172,7 +176,14 @@ export function buildPolyglotDiagram(
 
   // Kinds that should NOT be absorbed into compartment text — they get their own
   // diagram nodes (PartUsage/PartDefinition) or become X6 ports (PortUsage).
-  const STANDALONE_CHILD_KINDS = new Set(["PartUsage", "PartDefinition", "PortUsage", "PortDefinition"]);
+  const STANDALONE_CHILD_KINDS = new Set([
+    "PartUsage",
+    "PartDefinition",
+    "PortUsage",
+    "PortDefinition",
+    "ActorUsage",
+    "StakeholderUsage",
+  ]);
 
   for (const sym of allSymbols) {
     if (sym.parentId === null) continue;
@@ -451,6 +462,97 @@ export function buildPolyglotDiagram(
     const textColor = strokeColor;
     const headerColor = strokeColor;
     const labelColor = "#1a1a1a";
+
+    // ── Special case: ActorUsage/ActorDefinition → stick figure ──
+    if (sym.ruleName === "ActorUsage" || sym.ruleName === "ActorDefinition") {
+      const actorWidth = 60;
+      const actorHeight = 80;
+
+      // Stick figure SVG path (head circle + body + arms + legs)
+      // Drawn in a 30×40 coordinate space, centered at x=15
+      const stickFigurePath =
+        "M 15 0 A 5 5 0 1 1 14.99 0 Z M 15 10 L 15 25 M 5 15 L 25 15 M 15 25 L 5 40 M 15 25 L 25 40";
+
+      const actorMarkup: any[] = [
+        { tagName: "rect", selector: "body" },
+        { tagName: "path", selector: "stickFigure" },
+        { tagName: "text", selector: "label" },
+      ];
+
+      const actorAttrs: Record<string, any> = {
+        body: {
+          fill: "transparent",
+          stroke: "none",
+          refWidth: "100%",
+          refHeight: "100%",
+        },
+        stickFigure: {
+          d: stickFigurePath,
+          fill: "transparent",
+          stroke: strokeColor,
+          strokeWidth: 2,
+          // Center the 30-wide figure within the 60-wide node
+          transform: "translate(15, 5)",
+        },
+        label: {
+          text: nameText,
+          fill: labelColor,
+          fontSize: 13,
+          fontWeight: "bold",
+          textAnchor: "middle",
+          textVerticalAnchor: "top",
+          refX: 0.5,
+          refY: 55,
+        },
+      };
+
+      const parameters: { name: string; value: string }[] = [];
+      for (const [key, value] of Object.entries(sym.metadata)) {
+        if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+          parameters.push({ name: key, value: String(value) });
+        }
+      }
+
+      const node: PolyglotDiagramNode = {
+        id: nodeId,
+        x: 0,
+        y: 0,
+        width: actorWidth,
+        height: actorHeight,
+        angle: 0,
+        opacity: 1,
+        zIndex: 10,
+        markup: actorMarkup,
+        attrs: actorAttrs,
+        shape: "rect",
+        ports: { groups: {}, items: [] },
+        properties: {
+          className: sym.ruleName,
+          description: sym.name,
+          parameters,
+        },
+        autoLayout: true,
+      };
+
+      // Resolve parent group embedding
+      if (sym.parentId !== null) {
+        let ancestorId: SymbolId | null = sym.parentId;
+        while (ancestorId !== null) {
+          const ancestorSym = index.symbols.get(ancestorId);
+          if (!ancestorSym) break;
+          if (groupKinds.has(ancestorSym.ruleName)) {
+            node.parent = symbolIdToNodeId.get(ancestorId);
+            node.autoLayout = false;
+            break;
+          }
+          ancestorId = ancestorSym.parentId;
+        }
+      }
+
+      actualNodeIds.add(node.id);
+      nodes.push(node);
+      continue;
+    }
 
     if (isStructural) {
       // ── Dynamic markup generation for compartmented BDD blocks ──
@@ -803,6 +905,40 @@ export function buildPolyglotDiagram(
             height: 8,
             fill: "#43a047",
           },
+          targetMarker: "",
+        },
+      },
+      labels: [],
+    });
+  }
+
+  // ── Create association edges for ActorUsage children ──
+  // Authors of use cases typically connect actors to the use case via a solid line without arrows.
+  for (const sym of allSymbols) {
+    if (sym.parentId === null) continue;
+    if (sym.ruleName !== "ActorUsage" && sym.ruleName !== "StakeholderUsage") continue;
+
+    const parentSym = index.symbols.get(sym.parentId);
+    if (!parentSym) continue;
+
+    const parentNodeId = symbolIdToNodeId.get(sym.parentId);
+    const childNodeId = symbolIdToNodeId.get(sym.id);
+    if (!parentNodeId || !childNodeId) continue;
+
+    edges.push({
+      id: `association_${sym.id}`,
+      shape: "edge",
+      zIndex: 1,
+      source: parentNodeId,
+      target: childNodeId,
+      router: "manhattan",
+      connector: "rounded",
+      attrs: {
+        line: {
+          stroke: "#4a4a4a",
+          strokeWidth: 1.5,
+          strokeDasharray: "4 2", // Dashed to differentiate from hard structural composition
+          sourceMarker: "",
           targetMarker: "",
         },
       },
