@@ -478,6 +478,7 @@ const documentContexts = new Map<string, Context>();
 
 /* Workspace-wide class instances — keyed by document URI */
 const workspaceInstances = new Map<string, ModelicaClassInstance[]>();
+const allWorkspaceIndices = new Map<string, any>();
 
 /* LSP-Bridge polyglot indexing */
 const globalWorkspaceIndex = createModelicaWorkspaceIndex();
@@ -3532,68 +3533,105 @@ interface ProjectTreeNodeInfo {
 connection.onRequest("modelscript/getProjectTree", (params: { parentId?: string }): ProjectTreeNodeInfo[] => {
   const nodes: ProjectTreeNodeInfo[] = [];
 
+  const globalUnified = globalWorkspaceIndex.toUnified();
+  const sysmlUnified = sysml2WorkspaceIndex.toUnified();
+
+  const allSymbols = new Map<string, any>();
+  for (const [id, entry] of globalUnified.symbols) allSymbols.set(id.toString(), entry);
+  for (const [id, entry] of sysmlUnified.symbols) allSymbols.set(id.toString(), entry);
+
+  // Group top-level elements by resourceId
+  const files = new Map<string, any[]>();
+  for (const entry of allSymbols.values()) {
+    if (entry.resourceId) {
+      if (!files.has(entry.resourceId)) files.set(entry.resourceId, []);
+      files.get(entry.resourceId)?.push(entry);
+    }
+  }
+
+  function getCompositeName(entry: any): string {
+    if (entry.parentId === null) return entry.name;
+    const parent = allSymbols.get(entry.parentId.toString());
+    if (!parent) return entry.name;
+    return getCompositeName(parent) + "." + entry.name;
+  }
+
+  function hasClassChildren(entry: any) {
+    for (const child of allSymbols.values()) {
+      if (child.parentId === entry.id && (child.kind === "Class" || child.kind === "Def")) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   if (!params.parentId) {
-    // Root level: return one node per open .mo document
-    for (const [uri, instances] of workspaceInstances) {
+    // Root level: return one node per parsed file (exclude stdlib)
+    for (const [uri, entries] of files.entries()) {
+      if (uri.startsWith("file:///lib/")) continue;
+
       const fileName = uri.split("/").pop() ?? uri;
+      let hasChildren = false;
+      for (const entry of entries) {
+        if ((entry.kind === "Class" || entry.kind === "Def") && entry.parentId === null) {
+          hasChildren = true;
+          break;
+        }
+      }
+
       nodes.push({
         id: uri,
         name: fileName,
         uri,
-        hasChildren: instances.length > 0,
+        hasChildren,
         isFile: true,
       });
     }
-    // Sort files alphabetically
     nodes.sort((a, b) => a.name.localeCompare(b.name));
   } else {
-    // Check if parentId is a document URI (file node) or a class composite name
-    const fileInstances = workspaceInstances.get(params.parentId);
-    if (fileInstances) {
-      // File level: return top-level classes from this document
-      for (const inst of fileInstances) {
-        const kind = resolveClassKind(inst);
-        const line = inst.abstractSyntaxNode?.startPosition.row;
-        nodes.push({
-          id: `${params.parentId}::${inst.compositeName}`,
-          name: inst.name || "",
-          uri: params.parentId,
-          compositeName: inst.compositeName,
-          classKind: kind,
-          hasChildren: classHasChildClasses(inst),
-          isFile: false,
-          iconSvg: getClassIconSvg(inst),
-          line,
-        });
+    const sepIdx = params.parentId.indexOf("::");
+    const isFileNode = sepIdx < 0;
+
+    if (isFileNode) {
+      const entries = files.get(params.parentId) ?? [];
+      for (const entry of entries) {
+        if ((entry.kind === "Class" || entry.kind === "Def") && entry.parentId === null) {
+          nodes.push({
+            id: `${params.parentId}::${getCompositeName(entry)}`,
+            name: entry.name,
+            uri: params.parentId,
+            compositeName: getCompositeName(entry),
+            classKind: (entry.metadata?.classKind as string) ?? (entry.metadata?.defKind as string) ?? "class",
+            hasChildren: hasClassChildren(entry),
+            isFile: false,
+          });
+        }
       }
     } else {
-      // Class level: find the parent class and return its child classes
-      const sepIdx = params.parentId.indexOf("::");
-      if (sepIdx >= 0) {
-        const docUri = params.parentId.substring(0, sepIdx);
-        const compositeName = params.parentId.substring(sepIdx + 2);
-        const instances = workspaceInstances.get(docUri);
-        if (instances) {
-          // Find the parent class by composite name
-          const parent = findClassByCompositeName(instances, compositeName);
-          if (parent) {
-            for (const child of parent.elements) {
-              if (child instanceof ModelicaClassInstance) {
-                const kind = resolveClassKind(child);
-                const line = child.abstractSyntaxNode?.startPosition.row;
-                nodes.push({
-                  id: `${docUri}::${child.compositeName}`,
-                  name: child.name || "",
-                  uri: docUri,
-                  compositeName: child.compositeName,
-                  classKind: kind,
-                  hasChildren: classHasChildClasses(child),
-                  isFile: false,
-                  iconSvg: getClassIconSvg(child),
-                  line,
-                });
-              }
-            }
+      const docUri = params.parentId.substring(0, sepIdx);
+      const compositeName = params.parentId.substring(sepIdx + 2);
+      const entries = files.get(docUri) ?? [];
+
+      let parentEntry: any = null;
+      for (const entry of entries) {
+        if (getCompositeName(entry) === compositeName) {
+          parentEntry = entry;
+          break;
+        }
+      }
+
+      if (parentEntry) {
+        for (const entry of entries) {
+          if (entry.parentId === parentEntry.id && (entry.kind === "Class" || entry.kind === "Def")) {
+            nodes.push({
+              id: `${docUri}::${getCompositeName(entry)}`,
+              name: entry.name,
+              uri: docUri,
+              compositeName: getCompositeName(entry),
+              classKind: (entry.metadata?.classKind as string) ?? (entry.metadata?.defKind as string) ?? "class",
+              hasChildren: hasClassChildren(entry),
+              isFile: false,
+            });
           }
         }
       }
@@ -3602,23 +3640,6 @@ connection.onRequest("modelscript/getProjectTree", (params: { parentId?: string 
 
   return nodes;
 });
-
-function findClassByCompositeName(
-  instances: ModelicaClassInstance[],
-  compositeName: string,
-): ModelicaClassInstance | null {
-  for (const inst of instances) {
-    if (inst.compositeName === compositeName) return inst;
-    // Search children recursively
-    for (const child of inst.elements) {
-      if (child instanceof ModelicaClassInstance) {
-        const found = findClassByCompositeName([child], compositeName);
-        if (found) return found;
-      }
-    }
-  }
-  return null;
-}
 
 // Custom request: get class icon SVG
 connection.onRequest("modelscript/getClassIcon", (params: { className: string; uri?: string }): string | null => {
@@ -3989,22 +4010,23 @@ connection.onRequest("modelscript/listClasses", (): { classes: { name: string; k
   const classes: { name: string; kind: string; uri: string }[] = [];
   const seen = new Set<string>();
 
-  for (const [uri, ctx] of documentContexts.entries()) {
-    try {
-      for (const element of ctx.elements) {
-        if (element instanceof ModelicaClassInstance && element.name) {
-          if (!seen.has(element.name)) {
-            seen.add(element.name);
-            classes.push({
-              name: element.name,
-              kind: element.classKind ?? "class",
-              uri,
-            });
-          }
-        }
+  const globalUnified = globalWorkspaceIndex.toUnified();
+  const sysmlUnified = sysml2WorkspaceIndex.toUnified();
+
+  const allSymbols = new Map<string, any>();
+  for (const [id, entry] of globalUnified.symbols) allSymbols.set(id.toString(), entry);
+  for (const [id, entry] of sysmlUnified.symbols) allSymbols.set(id.toString(), entry);
+
+  for (const entry of allSymbols.values()) {
+    if ((entry.kind === "Class" || entry.kind === "Def") && entry.parentId === null) {
+      if (!seen.has(entry.name)) {
+        seen.add(entry.name);
+        classes.push({
+          name: entry.name,
+          kind: (entry.metadata?.classKind as string) ?? (entry.metadata?.defKind as string) ?? "class",
+          uri: entry.resourceId,
+        });
       }
-    } catch {
-      // Skip problematic contexts
     }
   }
 
