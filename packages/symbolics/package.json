@@ -44,11 +44,11 @@
   "scripts": {
     "build": "npm run clean && npm run lint && tsc",
     "clean": "rimraf dist",
-    "lint": "eslint src --ext ts",
+    "lint": "eslint src",
     "watch": "tsc --watch"
   },
   "lint-staged": {
-    "*.ts": "eslint --ext ts",
+    "*.ts": "eslint",
     "*.{ts,tsx,js,json,md,yml,css}": "prettier --write"
   },
   "dependencies": {
@@ -59,6 +59,7 @@
     "@eslint/js": "^10.0.1",
     "@types/node": "^25.3.2",
     "eslint": "^9.39.1",
+    "lodash.merge": "^4.6.2",
     "rimraf": "^6.1.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",

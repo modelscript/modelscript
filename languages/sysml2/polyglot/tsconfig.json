@@ -12,7 +12,8 @@
     "noImplicitAny": false,
     "verbatimModuleSyntax": true,
     "isolatedModules": true,
-    "moduleResolution": "nodenext"
+    "moduleResolution": "nodenext",
+    "types": ["node"]
   },
   "include": ["*.ts"],
   "exclude": ["diag_test.ts", "resolver_test.ts"]

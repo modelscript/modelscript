@@ -32,7 +32,7 @@
   "scripts": {
     "build": "npm run clean && npm run lint && tsc && chmod +x dist/main.js",
     "clean": "rimraf dist",
-    "lint": "eslint src --ext ts",
+    "lint": "eslint src",
     "watch": "tsc --watch"
   },
   "dependencies": {

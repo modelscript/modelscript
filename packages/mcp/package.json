@@ -18,7 +18,7 @@
   "scripts": {
     "build": "NODE_OPTIONS=--max-old-space-size=8192 tsc",
     "clean": "rimraf dist",
-    "lint": "eslint src --ext ts"
+    "lint": "eslint src"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

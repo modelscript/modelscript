@@ -12,7 +12,7 @@
     "dev": "npm run download-vscode && PORT=3003 npx tsx src/server.ts",
     "download-model": "bash scripts/download-model.sh",
     "download-vscode": "npx tsx src/download-vscode.ts",
-    "lint": "eslint src --ext ts"
+    "lint": "eslint src"
   },
   "dependencies": {
     "express": "^5.1.0",

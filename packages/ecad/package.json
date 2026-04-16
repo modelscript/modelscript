@@ -41,7 +41,7 @@
   "scripts": {
     "build": "npm run clean && tsc",
     "clean": "rimraf dist",
-    "lint": "eslint src --ext ts",
+    "lint": "eslint src",
     "watch": "tsc --watch"
   },
   "dependencies": {

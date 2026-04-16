@@ -24,7 +24,6 @@ import type { ServerContext } from "./types.js";
 export function registerTools(server: McpServer, ctx: ServerContext): void {
   // ── modelica_load ──────────────────────────────────────────────────────
 
-  // @ts-expect-error — TS2589: MCP SDK generic inference too deep with z.array()
   server.tool(
     "modelica_load",
     "Load Modelica libraries from file system paths. Must be called before using other tools.",
@@ -151,7 +150,6 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
 
   // ── modelica_lint ──────────────────────────────────────────────────────
 
-  // @ts-expect-error — TS2589: MCP SDK generic inference too deep with z.optional()
   server.tool(
     "modelica_lint",
     "Lint loaded Modelica libraries and return diagnostics (errors, warnings) with source locations.",
@@ -213,7 +211,6 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
 
   // ── modelica_simulate ──────────────────────────────────────────────────
 
-  // @ts-expect-error — TS2589: MCP SDK generic inference too deep with z.optional()
   server.tool(
     "modelica_simulate",
     "Flatten and simulate a Modelica model, returning time-series results.",

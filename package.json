@@ -41,16 +41,23 @@
     "test": "nx run-many --target=test"
   },
   "lint-staged": {
-    "*.{ts,tsx}": "eslint --ext ts,tsx",
+    "*.{ts,tsx}": "eslint",
     "*.{ts,tsx,js,json,md,yml,css}": "prettier --write --ignore-unknown"
   },
   "overrides": {
+    "@antv/x6-plugin-selection": {
+      "@antv/x6": "$@antv/x6"
+    },
     "dompurify": "^3.4.0",
     "elliptic": "^6.6.1",
     "hono": "^4.12.14"
   },
   "dependencies": {
+    "@eslint/config-array": "^0.19.2",
+    "@eslint/eslintrc": "^3.2.0",
+    "ajv": "^8.17.0",
     "glob": "^13.0.6",
+    "lodash.merge": "^4.6.2",
     "tree-sitter": "^0.21.1"
   },
   "devDependencies": {
