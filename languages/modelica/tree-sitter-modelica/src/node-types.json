@@ -4655,7 +4655,6 @@
   {
     "type": "StoredDefinition",
     "named": true,
-    "root": true,
     "fields": {
       "classDefinition": {
         "multiple": true,
@@ -5495,8 +5494,7 @@
   },
   {
     "type": "BLOCK_COMMENT",
-    "named": true,
-    "extra": true
+    "named": true
   },
   {
     "type": "BOM",
@@ -5508,8 +5506,7 @@
   },
   {
     "type": "LINE_COMMENT",
-    "named": true,
-    "extra": true
+    "named": true
   },
   {
     "type": "STRING",

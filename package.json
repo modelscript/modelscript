@@ -58,7 +58,7 @@
     "ajv": "^8.17.0",
     "glob": "^13.0.6",
     "lodash.merge": "^4.6.2",
-    "tree-sitter": "^0.21.1"
+    "tree-sitter": "^0.22.4"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
