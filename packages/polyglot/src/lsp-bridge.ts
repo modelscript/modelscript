@@ -179,20 +179,24 @@ export class LSPBridge {
 
   // =========================================================================
   // textDocument/definition
-  // =========================================================================
-
   definition(byteOffset: number): LSPLocation | null {
+    const target = this.definitionRaw(byteOffset);
+    if (!target) return null;
+    return {
+      uri: this.documentUri,
+      range: this.positions.rangeFromBytes(target.startByte, target.endByte),
+    };
+  }
+
+  /** Returns the raw resolved symbol entry, preserving cross-document resourceIds */
+  definitionRaw(byteOffset: number): SymbolEntry | null {
     const refEntry = this.findEntryAtOffset(byteOffset);
     if (!refEntry) return null;
 
     const targets = this.resolver.resolve(refEntry);
     if (targets.length === 0) return null;
 
-    const target = targets[0]; // Return first match
-    return {
-      uri: this.documentUri,
-      range: this.positions.rangeFromBytes(target.startByte, target.endByte),
-    };
+    return targets[0];
   }
 
   // =========================================================================
@@ -422,10 +426,50 @@ export class LSPBridge {
       // No hover query defined — fall back to default
     }
 
+    let md = `**${entry.kind}** \`${entry.name}\``;
+    const meta = entry.metadata;
+    if (meta) {
+      if (typeof meta.typeSpecifier === "string") md += ` : ${meta.typeSpecifier}`;
+      if (typeof meta.variability === "string") md = `${meta.variability} ` + md;
+      if (typeof meta.causality === "string") md = `${meta.causality} ` + md;
+      if (typeof meta.description === "string" && meta.description) md += `\n\n*${meta.description}*`;
+    }
+
     return {
-      contents: `**${entry.kind}** \`${entry.name}\``,
+      contents: md,
       range: this.positions.rangeFromBytes(entry.startByte, entry.endByte),
     };
+  }
+
+  // =========================================================================
+  // textDocument/typeDefinition
+  // =========================================================================
+
+  /** Returns the raw symbol entry for the type of the element at the offset, preserving cross-document resourceIds */
+  typeDefinitionRaw(byteOffset: number): SymbolEntry | null {
+    const refEntry = this.findEntryAtOffset(byteOffset);
+    if (!refEntry) return null;
+
+    let targetDecl = refEntry;
+    const resolved = this.resolver.resolve(refEntry);
+    if (resolved.length > 0) {
+      targetDecl = resolved[0];
+    }
+
+    try {
+      const typeResult = this.engine.query<SymbolEntry | null>("resolvedType", targetDecl.id);
+      if (typeResult) return typeResult;
+    } catch {
+      // ignore
+    }
+
+    const children = this.getExportedChildren(targetDecl.id);
+    const typeRef = children.find((c) => c.kind === "Reference");
+    if (typeRef) {
+      const typeResolved = this.resolver.resolve(typeRef);
+      if (typeResolved.length > 0) return typeResolved[0];
+    }
+    return null;
   }
 
   // =========================================================================

@@ -343,6 +343,126 @@ export class QueryEngine {
   }
 
   // =========================================================================
+  // Public QueryDB Facade
+  // =========================================================================
+
+  /**
+   * Create a public (non-dependency-tracked) QueryDB facade.
+   *
+   * Used by external consumers (e.g., compat-shim's QueryBackedClassInstance)
+   * that need to invoke queries and access symbols outside of the Salsa
+   * dependency tracking context.
+   *
+   * Unlike `createTrackedDB()`, accesses through this facade are NOT recorded
+   * as dependencies of any executing query.
+   */
+  toQueryDB(): QueryDB {
+    const engine = this;
+
+    return {
+      symbol(id: SymbolId): SymbolEntry | undefined {
+        return engine.resolveEntry(id);
+      },
+
+      childrenOf(id: SymbolId): SymbolEntry[] {
+        const results: SymbolEntry[] = [];
+        for (const entry of engine.allEntries()) {
+          if (entry.parentId === id) {
+            results.push(entry);
+          }
+        }
+        return results;
+      },
+
+      childrenOfField(id: SymbolId, fieldName: string): SymbolEntry[] {
+        const results: SymbolEntry[] = [];
+        for (const entry of engine.allEntries()) {
+          if (entry.parentId === id && entry.fieldName === fieldName) {
+            results.push(entry);
+          }
+        }
+        return results;
+      },
+
+      parentOf(id: SymbolId): SymbolEntry | undefined {
+        const entry = engine.resolveEntry(id);
+        if (!entry || entry.parentId === null) return undefined;
+        return engine.resolveEntry(entry.parentId);
+      },
+
+      exportsOf(id: SymbolId): SymbolEntry[] {
+        return this.childrenOf(id);
+      },
+
+      query<T = unknown>(queryName: string, id: SymbolId): T {
+        return engine.fetch(queryName, id) as T;
+      },
+
+      byName(name: string): SymbolEntry[] {
+        const ids = engine.index.byName.get(name);
+        if (!ids) return [];
+        return ids.map((id) => engine.resolveEntry(id)).filter(Boolean) as SymbolEntry[];
+      },
+
+      queryWith<T = unknown>(queryName: string, id: SymbolId, args: Record<string, unknown>): T {
+        return engine.fetch(queryName, id) as T;
+      },
+
+      specialize<T = unknown>(baseId: SymbolId, args: SpecializationArgs<T>): SymbolId {
+        const cacheKey = `${baseId}:${args.hash}`;
+        const existing = engine.specializeCache.get(cacheKey);
+        if (existing !== undefined) return existing;
+
+        const base = engine.resolveEntry(baseId);
+        if (!base) throw new Error(`Cannot specialize unknown symbol ${baseId}`);
+
+        const virtualId = engine.nextVirtualId--;
+        const virtualEntry: SymbolEntry = {
+          ...base,
+          id: virtualId,
+          metadata: { ...base.metadata },
+        };
+
+        engine.virtualEntries.set(virtualId, virtualEntry);
+        engine.specializationArgs.set(virtualId, args as SpecializationArgs);
+        engine.specializationBases.set(virtualId, baseId);
+        engine.specializeCache.set(cacheKey, virtualId);
+        engine.inputRevisions.set(virtualId, engine.currentRevision);
+
+        return virtualId;
+      },
+
+      argsOf<T = unknown>(id: SymbolId): SpecializationArgs<T> | null {
+        return (engine.specializationArgs.get(id) as SpecializationArgs<T>) ?? null;
+      },
+
+      baseOf(id: SymbolId): SymbolId | null {
+        return engine.specializationBases.get(id) ?? null;
+      },
+
+      evaluate(expression: unknown, scopeId?: SymbolId | null): unknown {
+        if (!engine.evaluator) {
+          throw new Error("No expression evaluator configured on the QueryEngine");
+        }
+        const scope = scopeId ? (engine.resolveEntry(scopeId) ?? null) : null;
+        return engine.evaluator(expression, scope, this);
+      },
+
+      cstText(startByte: number, endByte: number): string | null {
+        if (!engine.tree) return null;
+        return engine.tree.getText(startByte, endByte);
+      },
+
+      cstNode(id: SymbolId): unknown | null {
+        if (!engine.tree) return null;
+        const entry = engine.resolveEntry(id);
+        if (!entry) return null;
+        return engine.tree.getNode(entry.startByte, entry.endByte);
+      },
+    };
+  }
+
+  // =========================================================================
   // Salsa Algorithm: fetch → deep_verify → execute → backdate
   // =========================================================================
 

@@ -67,21 +67,19 @@ import {
   ModelicaClassInstance,
   ModelicaClassKind,
   ModelicaComponentInstance,
-  ModelicaComponentReferenceSyntaxNode,
   ModelicaDAE,
   ModelicaElement,
   ModelicaFlattener,
-  ModelicaFunctionCallSyntaxNode,
   ModelicaInterpreter,
   ModelicaJavascriptEntity,
   ModelicaLibrary,
   ModelicaLinter,
   ModelicaNamedElement,
-  ModelicaProcedureCallStatementSyntaxNode,
   ModelicaScriptScope,
-  ModelicaSimpleAssignmentStatementSyntaxNode,
   ModelicaStoredDefinitionSyntaxNode,
-  ModelicaSyntaxNode,
+  PositionIndex,
+  QueryBackedClassInstance,
+  QueryEngine,
   Scope,
   buildSysML2DiagramData,
   createModelicaLSPBridge,
@@ -96,7 +94,6 @@ import {
   type Dirent,
   type FileSystem,
   type IDiagram,
-  type Range,
   type Stats,
 } from "@modelscript/core";
 import { ModelicaFmuEntity, generateMultiModelWrapper } from "@modelscript/fmi";
@@ -474,26 +471,6 @@ function getDocumentTree(uri: string): TreeSitterTree | null {
   return updateDocumentTree(uri, text);
 }
 
-/* Scope wrapper for editor-level class instances (matching morsel's EditorScope) */
-
-class EditorScope extends Scope {
-  #instances: ModelicaClassInstance[];
-
-  constructor(parent: Scope, instances: ModelicaClassInstance[]) {
-    super(parent);
-    this.#instances = instances;
-  }
-
-  get elements(): IterableIterator<ModelicaElement> {
-    const instances = this.#instances;
-    return (function* () {
-      yield* instances;
-    })();
-  }
-
-  readonly hash = "editor";
-}
-
 /* Per-document state for hover resolution */
 
 const documentInstances = new Map<string, ModelicaClassInstance[]>();
@@ -506,6 +483,9 @@ const workspaceInstances = new Map<string, ModelicaClassInstance[]>();
 const globalWorkspaceIndex = createModelicaWorkspaceIndex();
 const sysml2WorkspaceIndex = createSysML2WorkspaceIndex();
 const documentLSPBridges = new Map<string, LSPBridge>();
+
+/** Per-document QueryEngine — used by compat-shim to create QueryBackedClassInstance wrappers */
+const documentQueryEngines = new Map<string, QueryEngine>();
 
 /* SysML2 parser (separate from Modelica) */
 let sysml2Parser: Parser | null = null;
@@ -1179,29 +1159,8 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
   }
 
   if (parserReady && parser) {
-    // Full tree-sitter + ModelicaLinter pipeline (matching morsel's processContent)
-    // Use the shared context (with MSL loaded) when available, otherwise a bare context
+    // Polyglot-only pipeline: tree-sitter parse → SymbolIndex → QueryEngine → diagnostics
     const context = sharedContext ?? new Context(sharedFs);
-    const linter = new ModelicaLinter(
-      (
-        _type: string,
-        _code: number,
-        message: string,
-        _resource: string | null | undefined,
-        range: Range | null | undefined,
-      ) => {
-        if (!range) return;
-        diagnostics.push({
-          severity: DiagnosticSeverity.Error,
-          range: {
-            start: { line: range.startPosition.row, character: range.startPosition.column },
-            end: { line: range.endPosition.row, character: range.endPosition.column },
-          },
-          message,
-          source: "modelscript",
-        });
-      },
-    );
 
     // Parse with tree-sitter (incremental when possible)
     const oldCached = documentTrees.get(textDocument.uri);
@@ -1218,144 +1177,87 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
     }
     documentTrees.set(textDocument.uri, { text, tree, classCache: oldCached?.classCache ?? new Map() });
 
-    // --- LSP-Bridge Integration ---
+    // --- Polyglot Pipeline ---
     if (globalWorkspaceIndex.has(textDocument.uri)) {
       globalWorkspaceIndex.markDirty(textDocument.uri, () => tree.rootNode);
     } else {
       globalWorkspaceIndex.register(textDocument.uri, () => tree.rootNode);
     }
 
-    // Create query engine and resolver over the unified workspace index
+    // Create query engine, resolver, and LSP bridge over the unified workspace index
     const unifiedIndex = globalWorkspaceIndex.toUnified();
     const engine = createModelicaQueryEngine(unifiedIndex);
     const resolver = createModelicaScopeResolver(unifiedIndex);
     const bridge = createModelicaLSPBridge(unifiedIndex, engine, resolver, text, textDocument.uri);
     documentLSPBridges.set(textDocument.uri, bridge);
-    // ------------------------------
+    documentQueryEngines.set(textDocument.uri, engine as unknown as QueryEngine);
 
-    // Lint the raw parse tree (catches ERROR and MISSING nodes)
-    linter.lint(tree, textDocument.uri);
-
-    // Build syntax nodes and lint them
-    const node = ModelicaStoredDefinitionSyntaxNode.new(null, tree.rootNode);
-    if (node) {
-      linter.lint(node, textDocument.uri);
-
-      // Resolve the within directive to find the correct parent scope (matching morsel)
-      let parentScope: Scope = context;
-      const withinParts = node.withinDirective?.packageName?.parts;
-      if (withinParts && withinParts.length > 0) {
-        const withinNames = withinParts.map((p) => p.text).filter((t): t is string => t !== null && t !== undefined);
-        const resolved = context.resolveName(withinNames);
-        if (resolved) {
-          parentScope = resolved;
-        } else {
-          // Try to find the within-package among workspace instances
-          for (const instances of workspaceInstances.values()) {
-            for (const inst of instances) {
-              if (inst.name === withinNames[0]) {
-                let target: ModelicaNamedElement | null = inst;
-                for (let i = 1; i < withinNames.length && target; i++) {
-                  target = target.resolveSimpleName(withinNames[i], false, true);
-                }
-                if (target instanceof ModelicaClassInstance) {
-                  parentScope = target;
-                }
-                break;
-              }
-            }
-            if (parentScope !== context) break;
-          }
-        }
+    // 1. Collect parse errors from the tree (ERROR and MISSING nodes)
+    const collectParseErrors = (node: SyntaxNode) => {
+      if (node.type === "ERROR" || node.isMissing) {
+        diagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          range: {
+            start: { line: node.startPosition.row, character: node.startPosition.column },
+            end: { line: node.endPosition.row, character: node.endPosition.column },
+          },
+          message: node.isMissing ? `Missing ${node.type}` : "Syntax error",
+          source: "modelscript",
+        });
       }
-
-      // Collect instances from all other open documents for cross-file resolution
-      const allInstances: ModelicaClassInstance[] = [];
-      for (const [uri, instances] of workspaceInstances) {
-        if (uri !== textDocument.uri) {
-          allInstances.push(...instances);
-        }
+      for (let i = 0; i < node.childCount; i++) {
+        collectParseErrors(node.child(i)!);
       }
+    };
+    collectParseErrors(tree.rootNode);
 
-      // Instantiate classes from this document — reuse unchanged classes
-      const thisDocInstances: ModelicaClassInstance[] = [];
-      const combinedInstances = [...allInstances, ...thisDocInstances];
-      const editorScope = new EditorScope(parentScope, combinedInstances);
-      const prevClassCache = oldCached?.classCache ?? new Map<string, CachedClassEntry>();
-      const newClassCache = new Map<string, CachedClassEntry>();
-      const isIncremental = oldCached && oldCached.text !== text;
+    // 2. Run Polyglot declarative lints (Salsa-memoized queries from language.ts)
+    const engineDiags = engine.runAllLints(textDocument.uri);
+    for (const d of engineDiags) {
+      const start = (bridge as any).positions.offsetToPosition(d.startByte);
+      const end = (bridge as any).positions.offsetToPosition(d.endByte);
+      let severity: DiagnosticSeverity = DiagnosticSeverity.Warning;
+      if (d.severity === "error") severity = DiagnosticSeverity.Error;
+      if (d.severity === "info") severity = DiagnosticSeverity.Information;
 
-      // Helper to get class name from a class definition's CST node
-      const getClassDefName = (classDef: ModelicaClassDefinitionSyntaxNode): string | null => {
-        return classDef.identifier?.text ?? null;
-      };
-
-      // Two-pass: first create all instances (so they're visible as siblings)
-      for (const classDef of node.classDefinitions) {
-        const className = getClassDefName(classDef);
-        const cstNode = classDef.sourceRange;
-        // Check if this class definition's CST subtree is unchanged
-        const cstClassNode = tree.rootNode
-          .childrenForFieldName("classDefinition")
-          .find((c: SyntaxNode) => cstNode && c.startIndex === cstNode.startIndex);
-        const hasChanges = !isIncremental || !cstClassNode || cstClassNode.hasChanges;
-        const cachedEntry = className ? prevClassCache.get(className) : null;
-
-        if (!hasChanges && cachedEntry && className) {
-          // Reuse cached instance — class subtree is unchanged
-          thisDocInstances.push(cachedEntry.instance);
-          combinedInstances.push(cachedEntry.instance);
-          newClassCache.set(className, cachedEntry);
-          // Re-emit cached diagnostics
-          diagnostics.push(...cachedEntry.diagnostics);
-        } else {
-          // Changed or new class — build fresh instance
-          const instance = new ModelicaClassInstance(editorScope, classDef);
-          thisDocInstances.push(instance);
-          combinedInstances.push(instance);
-          if (className) {
-            // We'll fill diagnostics after instantiation
-            newClassCache.set(className, { classDef, instance, diagnostics: [] });
-          }
-        }
-      }
-
-      // Then instantiate and lint only the new/changed instances
-      for (const instance of thisDocInstances) {
-        const className = instance.name;
-        const cacheEntry = className ? newClassCache.get(className) : null;
-        // Skip if this is a reused instance (diagnostics already emitted)
-        if (cacheEntry && cacheEntry.instance === instance && cacheEntry.diagnostics.length === 0) {
-          try {
-            const preDiagCount = diagnostics.length;
-            instance.instantiate();
-            linter.lint(instance, textDocument.uri);
-            // Capture diagnostics produced by this instance
-            if (cacheEntry) {
-              cacheEntry.diagnostics = diagnostics.slice(preDiagCount);
-            }
-          } catch (e) {
-            console.error("Lint error for instance:", e);
-          }
-        }
-      }
-
-      // Update the class cache
-      const cached = documentTrees.get(textDocument.uri);
-      if (cached) {
-        cached.classCache = newClassCache;
-      }
-
-      // Cache instances for cross-file resolution and hover
-      workspaceInstances.set(textDocument.uri, thisDocInstances);
-      documentInstances.set(textDocument.uri, thisDocInstances);
-      documentContexts.set(textDocument.uri, context);
-
-      // For .mos script files and .monb notebook cells, lint statements (undeclared variables, invalid record fields)
-      if (textDocument.uri.endsWith(".mos") || textDocument.uri.includes(".monb")) {
-        lintScriptStatements(node, thisDocInstances, editorScope, diagnostics);
-      }
+      diagnostics.push({
+        severity,
+        range: { start, end },
+        message: d.message,
+        source: "modelscript",
+      });
     }
+
+    // 3. Collect unresolved reference diagnostics from the polyglot resolver
+    const unresolvedRefs = resolver.resolveAllReferences(textDocument.uri);
+    for (const r of unresolvedRefs) {
+      const start = (bridge as any).positions.offsetToPosition(r.startByte);
+      const end = (bridge as any).positions.offsetToPosition(r.endByte);
+      let severity: DiagnosticSeverity = DiagnosticSeverity.Error;
+      if (r.severity === "warning") severity = DiagnosticSeverity.Warning;
+      if (r.severity === "info") severity = DiagnosticSeverity.Information;
+
+      diagnostics.push({
+        severity,
+        range: { start, end },
+        message: r.message,
+        source: "modelscript",
+      });
+    }
+
+    // 4. Create QueryBackedClassInstance wrappers from the polyglot index
+    //    for backward compatibility with downstream handlers (diagram, simulation, etc.)
+    const db = engine.toQueryDB();
+    const thisDocInstances: ModelicaClassInstance[] = [];
+    for (const [id, entry] of unifiedIndex.symbols) {
+      if (entry.resourceId !== textDocument.uri) continue;
+      if (entry.kind !== "Class" || entry.parentId !== null) continue; // Top-level classes only
+      const wrapper = new QueryBackedClassInstance(id, db) as unknown as ModelicaClassInstance;
+      thisDocInstances.push(wrapper);
+    }
+    workspaceInstances.set(textDocument.uri, thisDocInstances);
+    documentInstances.set(textDocument.uri, thisDocInstances);
+    documentContexts.set(textDocument.uri, context);
   } else {
     // Fallback: basic regex validation when tree-sitter is not available
     const openComments = (text.match(/\/\*/g) || []).length;
@@ -1377,236 +1279,6 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
 
   // Notify the client that project tree data may have changed
   connection.sendNotification("modelscript/projectTreeChanged");
-}
-
-/* Script statement linter — validates .mos file statements */
-
-/** Built-in function/type names that don't need declaration */
-const SCRIPT_BUILTINS = new Set([
-  "print",
-  "abs",
-  "sign",
-  "sqrt",
-  "ceil",
-  "floor",
-  "mod",
-  "rem",
-  "sin",
-  "cos",
-  "tan",
-  "asin",
-  "acos",
-  "atan",
-  "atan2",
-  "exp",
-  "log",
-  "log10",
-  "max",
-  "min",
-  "sum",
-  "product",
-  "size",
-  "ndims",
-  "fill",
-  "zeros",
-  "ones",
-  "identity",
-  "diagonal",
-  "linspace",
-  "cat",
-  "array",
-  "transpose",
-  "symmetric",
-  "der",
-  "initial",
-  "terminal",
-  "pre",
-  "edge",
-  "change",
-  "reinit",
-  "noEvent",
-  "smooth",
-  "sample",
-  "delay",
-  "assert",
-  "terminate",
-  "String",
-  "Integer",
-  "Real",
-  "Boolean",
-  "true",
-  "false",
-  "time",
-  // Scripting API
-  "simulate",
-]);
-
-/**
- * Lints script statements for undeclared variable references and
- * invalid named arguments in record/class constructor calls.
- */
-function lintScriptStatements(
-  storedDef: ModelicaStoredDefinitionSyntaxNode,
-  classInstances: ModelicaClassInstance[],
-  scope: Scope,
-  diagnostics: Diagnostic[],
-): void {
-  // Track assigned variable names
-  const assignedVars = new Set<string>();
-  // Map of class names to their component names (for record constructor validation)
-  const classComponentNames = new Map<string, Set<string>>();
-  for (const inst of classInstances) {
-    if (inst.name) {
-      const componentNames = new Set<string>();
-      try {
-        if (!inst.instantiated) inst.instantiate();
-        for (const el of inst.elements) {
-          if (el instanceof ModelicaComponentInstance && el.name) {
-            componentNames.add(el.name);
-          }
-        }
-      } catch {
-        // ignore instantiation errors, already linted
-      }
-      classComponentNames.set(inst.name, componentNames);
-    }
-  }
-
-  // Register variables declared in top-level script component clauses
-  for (const componentClause of storedDef.componentClauses) {
-    for (const decl of componentClause.componentDeclarations) {
-      if (decl.declaration?.modification?.modificationExpression) {
-        checkExpressionReferences(
-          decl.declaration.modification.modificationExpression,
-          assignedVars,
-          classComponentNames,
-          scope,
-          diagnostics,
-        );
-      }
-      const targetName = decl.declaration?.identifier?.text;
-      if (targetName) assignedVars.add(targetName);
-    }
-  }
-
-  for (const stmt of storedDef.statements) {
-    if (stmt instanceof ModelicaSimpleAssignmentStatementSyntaxNode) {
-      // Check RHS expressions for undeclared references
-      if (stmt.source) {
-        checkExpressionReferences(stmt.source, assignedVars, classComponentNames, scope, diagnostics);
-      }
-      // Register LHS as assigned (scripts auto-vivify variables)
-      const targetName = stmt.target?.parts?.[0]?.identifier?.text;
-      if (targetName) assignedVars.add(targetName);
-    } else if (stmt instanceof ModelicaProcedureCallStatementSyntaxNode) {
-      // Check function call arguments for undeclared references
-      if (stmt.functionCallArguments) {
-        for (const arg of stmt.functionCallArguments.arguments ?? []) {
-          if (arg.expression) {
-            checkExpressionReferences(arg.expression, assignedVars, classComponentNames, scope, diagnostics);
-          }
-        }
-      }
-      // Don't flag the function name itself as undeclared — it could be a built-in
-    }
-  }
-}
-
-/** Recursively check expression syntax nodes for undeclared references and invalid constructor arguments. */
-function checkExpressionReferences(
-  node: ModelicaSyntaxNode,
-  assignedVars: Set<string>,
-  classComponentNames: Map<string, Set<string>>,
-  scope: Scope,
-  diagnostics: Diagnostic[],
-): void {
-  if (node instanceof ModelicaFunctionCallSyntaxNode) {
-    // Check if this is a record constructor call like A(xx=1)
-    const funcName = node.functionReference?.parts?.[0]?.identifier?.text;
-    if (funcName && classComponentNames.has(funcName)) {
-      const validComponents = classComponentNames.get(funcName);
-      // Validate named arguments
-      for (const namedArg of node.functionCallArguments?.namedArguments ?? []) {
-        const argName = namedArg.identifier?.text;
-        const identNode = namedArg.identifier;
-        if (argName && validComponents && !validComponents.has(argName) && identNode) {
-          diagnostics.push({
-            severity: DiagnosticSeverity.Error,
-            range: {
-              start: { line: identNode.startPosition.row, character: identNode.startPosition.column },
-              end: { line: identNode.endPosition.row, character: identNode.endPosition.column },
-            },
-            message: `'${argName}' is not a component of record '${funcName}'.`,
-            source: "modelscript",
-          });
-        }
-      }
-    } else if (funcName && !SCRIPT_BUILTINS.has(funcName) && !scope.resolveSimpleName(funcName)) {
-      const identNode = node.functionReference?.parts?.[0]?.identifier;
-      if (identNode) {
-        diagnostics.push({
-          severity: DiagnosticSeverity.Error,
-          range: {
-            start: { line: identNode.startPosition.row, character: identNode.startPosition.column },
-            end: { line: identNode.endPosition.row, character: identNode.endPosition.column },
-          },
-          message: `Unknown function or record '${funcName}'.`,
-          source: "modelscript",
-        });
-      }
-    }
-    // Also check positional arguments for references
-    for (const arg of node.functionCallArguments?.arguments ?? []) {
-      if (arg.expression) {
-        checkExpressionReferences(arg.expression, assignedVars, classComponentNames, scope, diagnostics);
-      }
-    }
-    for (const namedArg of node.functionCallArguments?.namedArguments ?? []) {
-      if (namedArg.argument?.expression) {
-        checkExpressionReferences(namedArg.argument.expression, assignedVars, classComponentNames, scope, diagnostics);
-      }
-    }
-    return;
-  }
-
-  if (node instanceof ModelicaComponentReferenceSyntaxNode) {
-    // Check if the root identifier is declared
-    const rootName = node.parts?.[0]?.identifier?.text;
-    const identNode = node.parts?.[0]?.identifier;
-    if (
-      rootName &&
-      !assignedVars.has(rootName) &&
-      !SCRIPT_BUILTINS.has(rootName) &&
-      !classComponentNames.has(rootName) &&
-      !scope.resolveSimpleName(rootName) &&
-      identNode
-    ) {
-      diagnostics.push({
-        severity: DiagnosticSeverity.Warning,
-        range: {
-          start: { line: identNode.startPosition.row, character: identNode.startPosition.column },
-          end: { line: identNode.endPosition.row, character: identNode.endPosition.column },
-        },
-        message: `Variable '${rootName}' is used before being assigned.`,
-        source: "modelscript",
-      });
-    }
-    return;
-  }
-
-  // Recurse into child syntax nodes
-  for (const key of Object.keys(node)) {
-    const val = (node as any)[key];
-    if (val instanceof ModelicaSyntaxNode) {
-      checkExpressionReferences(val, assignedVars, classComponentNames, scope, diagnostics);
-    } else if (Array.isArray(val)) {
-      for (const item of val) {
-        if (item instanceof ModelicaSyntaxNode) {
-          checkExpressionReferences(item, assignedVars, classComponentNames, scope, diagnostics);
-        }
-      }
-    }
-  }
 }
 
 /* Semantic tokens provider — tree-sitter AST traversal matching morsel's code.tsx exactly */
@@ -2181,154 +1853,33 @@ connection.onHover((params) => {
 
 /* Go to Definition — reuses hover's resolution logic to locate declarations */
 
-/**
- * Resolve a Modelica element at a given text position.
- * Shared by hover and go-to-definition.
- */
-function resolveElementAtPosition(
-  document: TextDocument,
-  position: { line: number; character: number },
-): { element: ModelicaNamedElement; uri: string } | null {
-  if (!parserReady || !parser) return null;
+/** Helper to convert a SymbolEntry to a cross-file LSP Location */
+function symbolEntryToLocation(entry: any): { uri: string; range: any } | null {
+  const uri = entry.resourceId;
+  if (!uri) return null;
 
-  const text = document.getText();
-  const lines = text.split("\n");
-  const lineContent = lines[position.line] ?? "";
-
-  // Find the word under cursor
-  let wordStart = position.character;
-  let wordEnd = position.character;
-  while (wordStart > 0 && /[_a-zA-Z0-9]/.test(lineContent[wordStart - 1])) wordStart--;
-  while (wordEnd < lineContent.length && /[_a-zA-Z0-9]/.test(lineContent[wordEnd])) wordEnd++;
-  const word = lineContent.substring(wordStart, wordEnd);
-  if (!word) return null;
-
-  // Expand dotted path to the LEFT ONLY, up to the cursor's word.
-  let start = wordStart;
-  const end = wordEnd; // Do not scan right for definitions of nested paths
-  while (start > 0 && (lineContent[start - 1] === "." || /[a-zA-Z0-9_]/.test(lineContent[start - 1]))) start--;
-  const fullPath = lineContent.substring(start, end);
-
-  const instances = documentInstances.get(document.uri);
-  const context = documentContexts.get(document.uri);
-  const scope: Scope | undefined = instances?.[0] ?? context;
-  if (!scope) return null;
-
-  // Ensure annotation and scripting classes are initialized
-  if (!ModelicaElement.annotationClassInstance && context) {
-    ModelicaElement.initializeAnnotationClass(context);
+  // If the file is open, we already have a PositionIndex in its LSPBridge
+  const bridge = documentLSPBridges.get(uri);
+  if (bridge) {
+    const range = (bridge as any).positions.rangeFromBytes(entry.startByte, entry.endByte);
+    return { uri, range };
   }
 
-  try {
-    const tree = getDocumentTree(document.uri);
-    if (!tree) return null;
-    try {
-      const rootNode = tree.rootNode;
-      const current: SyntaxNode | null = rootNode.descendantForPosition(
-        { row: position.line, column: Math.max(0, wordStart) },
-        { row: position.line, column: wordEnd },
-      );
-
-      let element: ModelicaNamedElement | null = null;
-
-      // Check if inside a modification/annotation path
-      let currentPathNode: SyntaxNode | null = current;
-      let isOverValue = false;
-      let isOverName = false;
-
-      while (currentPathNode) {
-        if (
-          currentPathNode.type === "Name" &&
-          (currentPathNode.parent?.type === "ElementModification" ||
-            currentPathNode.parent?.type === "ElementRedeclaration")
-        ) {
-          isOverName = true;
-          break;
-        }
-        if (currentPathNode.type === "IDENT" && currentPathNode.parent?.type === "NamedArgument") {
-          isOverName = true;
-          break;
-        }
-        if (
-          currentPathNode.type === "Modification" ||
-          currentPathNode.type === "FunctionCallArguments" ||
-          currentPathNode.type === "ArgumentList"
-        ) {
-          isOverValue = true;
-        }
-        if (
-          currentPathNode.type === "ElementModification" ||
-          currentPathNode.type === "NamedArgument" ||
-          currentPathNode.type === "FunctionCall"
-        ) {
-          break;
-        }
-        currentPathNode = currentPathNode.parent;
-      }
-
-      if ((isOverName || isOverValue) && currentPathNode) {
-        const resolved = resolvePathElement(currentPathNode, scope);
-        if (isOverName) {
-          element = resolved;
-        } else if (isOverValue && resolved) {
-          const typeScope =
-            resolved instanceof ModelicaComponentInstance
-              ? resolved.classInstance
-              : resolved instanceof ModelicaClassInstance
-                ? resolved
-                : null;
-          if (typeScope) {
-            element = typeScope.resolveName(fullPath.split("."));
-            if (!element && fullPath !== word) {
-              element = typeScope.resolveName(word.split("."));
-            }
-          }
-        }
-      }
-
-      if (!element) {
-        element = scope.resolveName(fullPath.split("."));
-        if (!element && fullPath !== word) {
-          element = scope.resolveName(word.split("."));
-        }
-      }
-
-      if (element instanceof ModelicaNamedElement) {
-        // Find the URI that owns this element
-        let elementUri = document.uri; // Default: same document
-
-        // Check if it's defined in a different open document
-        for (const [uri, instances] of documentInstances) {
-          if (uri === document.uri) continue;
-          for (const inst of instances) {
-            if (inst === element || isDescendantOf(element, inst)) {
-              elementUri = uri;
-              break;
-            }
-          }
-          if (elementUri !== document.uri) break;
-        }
-
-        return { element, uri: elementUri };
-      }
-      return null;
-    } finally {
-      // Tree is managed by cache
-    }
-  } catch {
-    return null;
+  // File is not open and we don't have text. Fallback to line 1 to avoid sync IO.
+  // In the future, we could resolve positions asynchronously from VFS.
+  const text = documentTrees.get(uri)?.text;
+  if (!text) {
+    return {
+      uri,
+      range: {
+        start: { line: 0, character: 0 },
+        end: { line: 0, character: 0 },
+      },
+    };
   }
-}
 
-/** Check if `child` is within the parent hierarchy of `ancestor` */
-function isDescendantOf(child: ModelicaNamedElement, ancestor: ModelicaNamedElement): boolean {
-  let current: Scope | null = child.parent;
-  while (current) {
-    if (current === ancestor) return true;
-    if (!("parent" in current)) return false;
-    current = (current as ModelicaNamedElement).parent;
-  }
-  return false;
+  const positions = new PositionIndex(text);
+  return { uri, range: positions.rangeFromBytes(entry.startByte, entry.endByte) };
 }
 
 connection.onDefinition((params) => {
@@ -2337,7 +1888,9 @@ connection.onDefinition((params) => {
   if (!document || !bridge) return null;
 
   const offset = document.offsetAt(params.position);
-  return bridge.definition(offset) as any;
+  const rawTarget = (bridge as any).definitionRaw(offset);
+  if (!rawTarget) return null;
+  return symbolEntryToLocation(rawTarget) as any;
 });
 
 /* Document formatting — uses tree-sitter parse + format() */
@@ -2715,26 +2268,38 @@ connection.onSignatureHelp((params) => {
     }
     if (!funcCallNode) return null;
 
-    // Get the function reference
     const refNode = funcCallNode.children.find((c: SyntaxNode) => c.type === "ComponentReference");
     if (!refNode) return null;
 
-    const instances = documentInstances.get(params.textDocument.uri);
-    const context = documentContexts.get(params.textDocument.uri);
-    const scope: Scope | undefined = instances?.[0] ?? context;
-    if (!scope) return null;
+    const bridge = documentLSPBridges.get(params.textDocument.uri);
+    if (!bridge) return null;
 
-    const funcElement = scope.resolveName(refNode.text.split("."));
-    if (!(funcElement instanceof ModelicaClassInstance)) return null;
-    if (funcElement.classKind !== ModelicaClassKind.FUNCTION && funcElement.classKind !== ModelicaClassKind.RECORD)
+    // Use polyglot to resolve the function reference
+    const funcTarget = (bridge as any).definitionRaw(refNode.startIndex);
+    if (!funcTarget || funcTarget.kind !== "Class") return null;
+
+    // Quick check if it's a function or record (from metadata classKind)
+    const classKind = funcTarget.metadata?.classKind;
+    if (classKind !== "function" && classKind !== "record") {
       return null;
+    }
 
-    // Collect input parameters
+    // Collect all elements, filter to input parameters
+    let allElements: any[] = [];
+    try {
+      allElements = (bridge as any).engine.query("allElements", funcTarget.id) || [];
+    } catch {
+      // fallback
+    }
+
+    const inputParams = allElements.filter((c) => c.kind === "Component" && c.metadata?.causality === "input");
+
+    // Collect parameter information
     const paramInfos: ParameterInformation[] = [];
-    for (const param of funcElement.inputParameters) {
-      const typeName = param.declaredType?.compositeName ?? param.classInstance?.compositeName ?? "?";
+    for (const param of inputParams) {
+      const typeName = param.metadata?.typeSpecifier ?? "?";
       const label = `${typeName} ${param.name}`;
-      paramInfos.push(ParameterInformation.create(label, param.description ?? undefined));
+      paramInfos.push(ParameterInformation.create(label, param.metadata?.description ?? undefined));
     }
 
     // Determine which parameter is active based on comma count before cursor
@@ -2756,7 +2321,7 @@ connection.onSignatureHelp((params) => {
     const sigLabel = `${refNode.text}(${paramInfos.map((p) => p.label).join(", ")})`;
 
     return {
-      signatures: [SignatureInformation.create(sigLabel, funcElement.description ?? undefined, ...paramInfos)],
+      signatures: [SignatureInformation.create(sigLabel, funcTarget.metadata?.description ?? undefined, ...paramInfos)],
       activeSignature: 0,
       activeParameter,
     };
@@ -3068,49 +2633,14 @@ function collectWorkspaceSymbols(
 
 connection.onTypeDefinition((params) => {
   const document = documents.get(params.textDocument.uri);
-  if (!document) return null;
+  const bridge = documentLSPBridges.get(params.textDocument.uri);
+  if (!document || !bridge) return null;
 
-  const resolved = resolveElementAtPosition(document, params.position);
-  if (!resolved) return null;
+  const offset = document.offsetAt(params.position);
+  const typeTarget = (bridge as any).typeDefinitionRaw(offset);
+  if (!typeTarget) return null;
 
-  const { element, uri } = resolved;
-
-  // For components, jump to their type class
-  let targetClass: ModelicaClassInstance | null = null;
-  if (element instanceof ModelicaComponentInstance) {
-    targetClass = element.declaredType ?? element.classInstance ?? null;
-  } else if (element instanceof ModelicaClassInstance) {
-    // Already a class — nothing to jump to
-    return null;
-  }
-
-  if (!targetClass) return null;
-  const syntaxNode = targetClass.abstractSyntaxNode;
-  if (!syntaxNode?.sourceRange) return null;
-
-  // Use identifier for precise location
-  const ident = (syntaxNode as ModelicaClassDefinitionSyntaxNode | null)?.identifier;
-  const targetRange = ident?.sourceRange ?? syntaxNode.sourceRange;
-
-  // Find the URI for this class
-  let targetUri = uri;
-  for (const [docUri, instances] of documentInstances) {
-    for (const inst of instances) {
-      if (inst === targetClass || isDescendantOf(targetClass, inst)) {
-        targetUri = docUri;
-        break;
-      }
-    }
-    if (targetUri !== uri) break;
-  }
-
-  return {
-    uri: targetUri,
-    range: {
-      start: { line: targetRange.startRow, character: targetRange.startCol },
-      end: { line: targetRange.endRow, character: targetRange.endCol },
-    },
-  };
+  return symbolEntryToLocation(typeTarget) as any;
 });
 
 // Custom request: get diagram data for the webview
