@@ -140,6 +140,12 @@ export class QueryBackedClassInstance extends QueryBackedElement {
   // Elements
   // -------------------------------------------------------------------------
 
+  /**
+   * The abstract syntax node for this class instance.
+   * Backed by the Polyglot CST node.
+   * This is implemented below with a Proxy to provide legacy properties.
+   */
+
   private wrapElement(eid: SymbolId): QueryBackedElement | null {
     const entry = this.db.symbol(eid);
     if (!entry) return null;
@@ -180,6 +186,81 @@ export class QueryBackedClassInstance extends QueryBackedElement {
     const children = this.db.childrenOf(this.id);
     // Component elements and nested classes declared within this scope
     return children.map((entry) => this.wrapElement(entry.id)).filter((e): e is QueryBackedElement => e !== null);
+  }
+
+  /**
+   * Virtual components added by connect equations to expandable connectors.
+   * Required by ModelicaFlattener.
+   */
+  virtualComponents = new Map<string, any>();
+
+  /**
+   * Diagnostics for this class instance.
+   * Required by ModelicaFlattener.
+   */
+  diagnostics: any[] = [];
+
+  /**
+   * Input parameters of this class (if it's a function).
+   */
+  inputParameters: any[] = [];
+
+  /**
+   * Output parameters of this class (if it's a function).
+   */
+  outputParameters: any[] = [];
+
+  /**
+   * All annotations for this class instance.
+   * Returns an array of QueryBackedElement.
+   */
+  get annotations(): any[] {
+    // For now, return empty to prevent "not iterable" crashes.
+    // In a full implementation, we would query the CST for AnnotationClauses.
+    return [];
+  }
+
+  /**
+   * Get a specific annotation by name.
+   */
+  annotation(name: string): any {
+    return null;
+  }
+
+  /**
+   * The abstract syntax node for this class instance.
+   * Backed by the Polyglot CST node.
+   */
+  get abstractSyntaxNode(): any {
+    const cst = this.db.cstNode(this.id);
+    if (!cst || typeof cst !== "object") return null;
+    // Proxy the CST node to provide expected properties like .sections
+    return new Proxy(cst as object, {
+      get(target, prop) {
+        if (prop === "sections") {
+          // Try to return sections from the CST node if possible
+          // In the metascript CST, we can use childrenForFieldName or similar.
+          // For now, just return an empty array if not present on target.
+          return (target as any).sections ?? [];
+        }
+        return (target as any)[prop];
+      },
+    });
+  }
+
+  /** All sections in the class definition. */
+  get sections(): any[] {
+    return this.abstractSyntaxNode?.sections ?? [];
+  }
+
+  /** Equation sections. */
+  get equationSections(): any[] {
+    return this.sections.filter((s) => s.type === "EquationSection");
+  }
+
+  /** Algorithm sections. */
+  get algorithmSections(): any[] {
+    return this.sections.filter((s) => s.type === "AlgorithmSection");
   }
 
   /**
