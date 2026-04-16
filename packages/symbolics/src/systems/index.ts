@@ -4191,6 +4191,7 @@ export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void,
 
   visitDAE(node: ModelicaDAE, argument?: A): void {
     for (const variable of node.variables) variable.accept(this, argument);
+    for (const clause of node.whenClauses) clause.accept(this, argument);
     for (const equation of node.equations) equation.accept(this, argument);
   }
 
@@ -4660,8 +4661,9 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
       this.out.write("initial algorithm\n");
       for (const stmt of section) stmt.accept(this);
     }
-    if (node.equations.length > 0) {
+    if (node.equations.length > 0 || node.whenClauses.length > 0) {
       this.out.write("equation\n");
+      for (const clause of node.whenClauses) clause.accept(this);
       for (const equation of node.equations) equation.accept(this);
     }
     for (const section of node.algorithms) {
@@ -4679,8 +4681,9 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     for (const variable of fn.variables) {
       this.#emitVariable(variable);
     }
-    if (fn.equations.length > 0) {
+    if (fn.equations.length > 0 || fn.whenClauses.length > 0) {
       this.out.write("equation\n");
+      for (const clause of fn.whenClauses) clause.accept(this);
       for (const equation of fn.equations) equation.accept(this);
     }
     for (const section of fn.algorithms) {

@@ -5297,7 +5297,31 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
               }
 
               if (isOwned) {
-                ownerPrefix = ctx.activePrefixes.get(stackClass);
+                if (
+                  localResolved instanceof ModelicaComponentInstance &&
+                  localResolved.isOuter &&
+                  !localResolved.isInner
+                ) {
+                  let foundInnerPrefix: string | undefined;
+                  for (let j = ctx.activeClassStack.length - 1; j >= 0; j--) {
+                    const ancestorClass = ctx.activeClassStack[j];
+                    if (!ancestorClass) continue;
+                    let hasInner = false;
+                    for (const el of ancestorClass.elements) {
+                      if (el instanceof ModelicaComponentInstance && el.isInner && el.name === localResolved.name) {
+                        hasInner = true;
+                        break;
+                      }
+                    }
+                    if (hasInner) {
+                      foundInnerPrefix = ctx.activePrefixes.get(ancestorClass);
+                      break;
+                    }
+                  }
+                  ownerPrefix = foundInnerPrefix !== undefined ? foundInnerPrefix : ctx.activePrefixes.get(stackClass);
+                } else {
+                  ownerPrefix = ctx.activePrefixes.get(stackClass);
+                }
                 break;
               }
             }
@@ -5307,9 +5331,6 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         if (ownerPrefix !== undefined) {
           name = (ownerPrefix === "" ? "" : ownerPrefix + ".") + rawName;
         } else {
-          if (rawName === "v" || rawName === "i" || rawName === "p.v") {
-            // console.log(`[REF DEBUG] rawName=${rawName} prefix=${ctx.prefix} ownerPrefix=MISSING`);
-          }
           // Not found in any active instance — it's an external/imported reference
           // Use fully qualified name to avoid incorrect prefixing
           name = this.#resolveFullyQualifiedName(rawName, ctx);
