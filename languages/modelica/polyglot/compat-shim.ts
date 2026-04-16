@@ -140,6 +140,28 @@ export class QueryBackedClassInstance extends QueryBackedElement {
   // Elements
   // -------------------------------------------------------------------------
 
+  private wrapElement(eid: SymbolId): QueryBackedElement | null {
+    const entry = this.db.symbol(eid);
+    if (!entry) return null;
+    if (entry.kind === "Component") {
+      return new QueryBackedComponentInstance(eid, this.db);
+    }
+    if (entry.kind === "Class") {
+      const meta = entry.metadata as Record<string, unknown>;
+      if (meta?.isPredefined) {
+        if (entry.name === "Integer") return new QueryBackedIntegerClassInstance(eid, this.db);
+        if (entry.name === "Boolean") return new QueryBackedBooleanClassInstance(eid, this.db);
+        if (entry.name === "String") return new QueryBackedStringClassInstance(eid, this.db);
+        if (entry.name === "Real") return new QueryBackedRealClassInstance(eid, this.db);
+      }
+      if (meta?.isEnumeration) return new QueryBackedEnumerationClassInstance(eid, this.db);
+      const arrayDims = this.db.query("arrayDimensions", eid);
+      if (arrayDims && (arrayDims as number[]).length > 0) return new QueryBackedArrayClassInstance(eid, this.db);
+      return new QueryBackedClassInstance(eid, this.db);
+    }
+    return new QueryBackedElement(eid, this.db);
+  }
+
   /**
    * All instantiated elements (components, nested classes, imports).
    * Replaces the mutable `elements` array.
@@ -147,29 +169,17 @@ export class QueryBackedClassInstance extends QueryBackedElement {
   get elements(): QueryBackedElement[] {
     const ids = this.db.query<SymbolId[]>("instantiate", this.id);
     if (!ids) return [];
-    return ids
-      .map((eid): QueryBackedElement | null => {
-        const entry = this.db.symbol(eid);
-        if (!entry) return null;
-        if (entry.kind === "Component") {
-          return new QueryBackedComponentInstance(eid, this.db);
-        }
-        if (entry.kind === "Class") {
-          const meta = entry.metadata as Record<string, unknown>;
-          if (meta?.isPredefined) {
-            if (entry.name === "Integer") return new QueryBackedIntegerClassInstance(eid, this.db);
-            if (entry.name === "Boolean") return new QueryBackedBooleanClassInstance(eid, this.db);
-            if (entry.name === "String") return new QueryBackedStringClassInstance(eid, this.db);
-            if (entry.name === "Real") return new QueryBackedRealClassInstance(eid, this.db);
-          }
-          if (meta?.isEnumeration) return new QueryBackedEnumerationClassInstance(eid, this.db);
-          const arrayDims = this.db.query("arrayDimensions", eid);
-          if (arrayDims && (arrayDims as number[]).length > 0) return new QueryBackedArrayClassInstance(eid, this.db);
-          return new QueryBackedClassInstance(eid, this.db);
-        }
-        return new QueryBackedElement(eid, this.db);
-      })
-      .filter(Boolean) as QueryBackedElement[];
+    return ids.map((eid) => this.wrapElement(eid)).filter((e): e is QueryBackedElement => e !== null);
+  }
+
+  /**
+   * Only the elements that are directly declared inside this class instance.
+   * This retrieves direct children from the symbol index avoiding inherited elements.
+   */
+  get declaredElements(): QueryBackedElement[] {
+    const children = this.db.childrenOf(this.id);
+    // Component elements and nested classes declared within this scope
+    return children.map((entry) => this.wrapElement(entry.id)).filter((e): e is QueryBackedElement => e !== null);
   }
 
   /**
@@ -442,7 +452,26 @@ export class QueryBackedRealClassInstance extends QueryBackedClassInstance {}
 export class QueryBackedEnumerationClassInstance extends QueryBackedClassInstance {}
 export class QueryBackedArrayClassInstance extends QueryBackedClassInstance {
   get shape(): number[] {
+    // Note: The array instance in compat-shim is bound to the component type's class ID,
+    // but the component itself is where the `arrayDimensions` are evaluated unless it's a type alias.
+    // However, the caller usually accesses `shape` or evaluating `arrayDimensions`.
+    // In legacy, `arraySubscripts` and `enumDimensions` exist.
     return this.db.query("arrayDimensions", this.id) ?? [];
+  }
+
+  get elementClassInstance(): QueryBackedClassInstance {
+    const classEntry = this.db.symbol(this.id);
+    if (classEntry) {
+      const meta = classEntry.metadata as Record<string, unknown>;
+      if (meta?.isPredefined) {
+        if (classEntry.name === "Integer") return new QueryBackedIntegerClassInstance(this.id, this.db);
+        if (classEntry.name === "Boolean") return new QueryBackedBooleanClassInstance(this.id, this.db);
+        if (classEntry.name === "String") return new QueryBackedStringClassInstance(this.id, this.db);
+        if (classEntry.name === "Real") return new QueryBackedRealClassInstance(this.id, this.db);
+      }
+      if (meta?.isEnumeration) return new QueryBackedEnumerationClassInstance(this.id, this.db);
+    }
+    return new QueryBackedClassInstance(this.id, this.db);
   }
 }
 
