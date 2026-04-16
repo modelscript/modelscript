@@ -7,7 +7,7 @@
  * for Model Exchange, Co-Simulation, and Scheduled Execution.
  */
 
-import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "@modelscript/modelica-ast";
+import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "@modelscript/modelica-polyglot/ast";
 import type { ModelicaDAE, ModelicaExpression } from "@modelscript/symbolics";
 import {
   ModelicaArrayEquation,

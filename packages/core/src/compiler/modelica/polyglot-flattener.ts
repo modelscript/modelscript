@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import type { ModelicaSyntaxNode } from "@modelscript/modelica-ast";
+import { ModelicaSyntaxNode } from "@modelscript/modelica-polyglot/ast";
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { StringWriter } from "@modelscript/utils";
@@ -48,7 +48,7 @@ import {
   ModelicaWhenEquationSyntaxNode,
   ModelicaWhenStatementSyntaxNode,
   ModelicaWhileStatementSyntaxNode,
-} from "@modelscript/modelica-ast";
+} from "@modelscript/modelica-polyglot/ast";
 import {
   QueryBackedArrayClassInstance as ModelicaArrayClassInstance,
   QueryBackedBooleanClassInstance as ModelicaBooleanClassInstance,
@@ -568,13 +568,27 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
 
   activeClassStack: ModelicaClassInstance[] = [];
   activePrefixes: Map<ModelicaClassInstance, string> = new Map<ModelicaClassInstance, string>();
+
+  /**
+   * Helper to get a properly wrapped AST node from a class instance.
+   * This handles the bridge between the Polyglot CST and legacy ASTM nodes.
+   */
+  #getAstNode(node: ModelicaClassInstance): any {
+    const abstractNode = node.abstractSyntaxNode;
+    if (!abstractNode) return null;
+    if (abstractNode instanceof ModelicaSyntaxNode) return abstractNode;
+    // If it's a raw Polyglot CST node, wrap it using the factory
+    return ModelicaSyntaxNode.new(null, abstractNode);
+  }
+
   /**
    * Pre-pass: scan connect equations for references to expandable connector members
    * that don't exist yet, and create virtual components on the expandable connector.
    * Per §9.1.3, expandable connectors are dynamically augmented by connect equations.
    */
   #augmentExpandableConnectors(node: ModelicaClassInstance): void {
-    for (const section of node.abstractSyntaxNode?.sections ?? []) {
+    const astNode = this.#getAstNode(node);
+    for (const section of astNode?.sections ?? []) {
       if (!(section instanceof ModelicaEquationSectionSyntaxNode)) continue;
       for (const eq of section.equations) {
         if (!(eq instanceof ModelicaConnectEquationSyntaxNode)) continue;
@@ -674,7 +688,8 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     if (node.classKind === ModelicaClassKind.OPTIMIZATION) {
       // For top-level optimization classes, the modifier (objective = cost, startTime = 0, ...)
       // lives on the LongClassSpecifier's classModification, not on node.modification.
-      const classSpec = node.abstractSyntaxNode?.classSpecifier;
+      const astNode = this.#getAstNode(node);
+      const classSpec = astNode?.classSpecifier;
       const classMod = classSpec instanceof ModelicaLongClassSpecifierSyntaxNode ? classSpec.classModification : null;
       if (classMod) {
         for (const modArg of classMod.modificationArguments) {
@@ -764,9 +779,10 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     for (const declaredElement of node.declaredElements) {
       if (declaredElement instanceof ModelicaExtendsClassInstance) declaredElement.accept(this, args);
     }
+    const astNode = this.#getAstNode(node);
     // Process only locally-declared equation/algorithm sections (not inherited ones).
     // Inherited equations are handled by visitExtendsClassInstance with proper break context.
-    const localSections = [...(node.abstractSyntaxNode?.sections ?? [])];
+    const localSections = [...(astNode?.sections ?? [])];
     // Process equation sections in reverse order to match OpenModelica's flattening behavior
     // (later equation sections appear before earlier ones in the output)
     const equationSections = localSections.filter(
@@ -1152,8 +1168,9 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     }
 
     // Evaluate conditional components (e.g., `Real x if false;`)
+    const astNode = this.#getAstNode(node);
     const conditionExpr = (
-      node.abstractSyntaxNode as { conditionAttribute?: { condition?: ModelicaExpressionSyntaxNode | null } } | null
+      astNode as { conditionAttribute?: { condition?: ModelicaExpressionSyntaxNode | null } } | null
     )?.conditionAttribute?.condition;
     if (conditionExpr) {
       const interp = new ModelicaInterpreter(true);

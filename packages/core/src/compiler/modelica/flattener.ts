@@ -1,4 +1,4 @@
-import type { ModelicaSyntaxNode } from "@modelscript/modelica-ast";
+import type { ModelicaSyntaxNode } from "@modelscript/modelica-polyglot/ast";
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { StringWriter } from "@modelscript/utils";
@@ -47,7 +47,7 @@ import {
   ModelicaWhenEquationSyntaxNode,
   ModelicaWhenStatementSyntaxNode,
   ModelicaWhileStatementSyntaxNode,
-} from "@modelscript/modelica-ast";
+} from "@modelscript/modelica-polyglot/ast";
 import {
   ModelicaArray,
   ModelicaArrayEquation,

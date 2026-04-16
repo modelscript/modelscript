@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ModelicaClassKind } from "@modelscript/modelica-ast";
+import { ModelicaClassKind } from "@modelscript/modelica-polyglot/ast";
 import {
   ModelicaBooleanLiteral,
   ModelicaEnumerationLiteral,

@@ -261,7 +261,7 @@ function solveQuarticNumeric(a: number, b: number, c: number, d: number, e: numb
 // Utilities
 // ─────────────────────────────────────────────────────────────────────
 
-import { ModelicaUnaryOperator } from "@modelscript/modelica-ast";
+import { ModelicaUnaryOperator } from "@modelscript/modelica-polyglot/ast";
 import { ModelicaFunctionCallExpression, ModelicaUnaryExpression } from "../systems/index.js";
 
 function negate(expr: ModelicaExpression): ModelicaExpression {

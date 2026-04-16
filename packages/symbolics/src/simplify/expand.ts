@@ -7,7 +7,7 @@
  * for canonical form computation when normalization is requested.
  */
 
-import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "@modelscript/modelica-ast";
+import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "@modelscript/modelica-polyglot/ast";
 import { add, div, isZero, mul, pow, sub, ZERO } from "../calculus/derivative.js";
 import type { ModelicaExpression } from "../systems/index.js";
 import {

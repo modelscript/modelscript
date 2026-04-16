@@ -59,7 +59,7 @@ import {
   type ModelicaStoredDefinitionSyntaxNode,
   type ModelicaTypeSpecifierSyntaxNode,
   type ModelicaWithinDirectiveSyntaxNode,
-} from "@modelscript/modelica-ast";
+} from "@modelscript/modelica-polyglot/ast";
 import { ModelicaArray } from "@modelscript/symbolics";
 import type { Range, Tree } from "@modelscript/utils";
 import { StringWriter } from "@modelscript/utils";
@@ -1519,7 +1519,7 @@ ModelicaLinter.register(ModelicaErrorCode.TYPE_MISMATCH_MODIFIER, {
 
 /** Get the Modelica type name for a literal syntax node, or null if not a literal. */
 function getLiteralTypeName(
-  node: import("@modelscript/modelica-ast").ModelicaExpressionSyntaxNode | null | undefined,
+  node: import("@modelscript/modelica-polyglot/ast").ModelicaExpressionSyntaxNode | null | undefined,
 ): string | null {
   if (node instanceof ModelicaBooleanLiteralSyntaxNode) return "Boolean";
   if (node instanceof ModelicaStringLiteralSyntaxNode) return "String";

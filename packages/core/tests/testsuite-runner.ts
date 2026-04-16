@@ -17,7 +17,7 @@
  * If no arguments are given, all subdirectories under testsuite/ are run.
  */
 
-import { ModelicaClassKind, ModelicaStoredDefinitionSyntaxNode } from "@modelscript/modelica-ast";
+import { ModelicaClassKind, ModelicaStoredDefinitionSyntaxNode } from "@modelscript/modelica-polyglot/ast";
 import Modelica from "@modelscript/tree-sitter-modelica";
 import fs from "node:fs";
 import path from "node:path";

@@ -50,6 +50,9 @@ declare module "@modelscript/polyglot/workspace-index" {
 }
 
 declare module "@modelscript/modelica-polyglot/compat-shim" {
+  export type AbstractSyntaxNodeFactory = (cst: any) => any;
+  export function registerAbstractSyntaxNodeFactory(factory: AbstractSyntaxNodeFactory): void;
+
   export class QueryBackedElement {
     name: string;
     compositeName: string;

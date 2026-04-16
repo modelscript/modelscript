@@ -12,7 +12,7 @@ import {
   ModelicaComponentReferenceSyntaxNode,
   type ModelicaFunctionCallSyntaxNode,
   type ModelicaSyntaxNode,
-} from "@modelscript/modelica-ast";
+} from "@modelscript/modelica-polyglot/ast";
 import type { SolverOptions } from "@modelscript/simulator";
 import {
   ModelicaArray,

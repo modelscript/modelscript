@@ -28,7 +28,7 @@ import {
   ModelicaVariability,
   ModelicaWhenStatementSyntaxNode,
   ModelicaWhileStatementSyntaxNode,
-} from "@modelscript/modelica-ast";
+} from "@modelscript/modelica-polyglot/ast";
 import {
   evaluateCASFunction,
   isCASFunction,

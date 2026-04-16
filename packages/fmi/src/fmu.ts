@@ -21,7 +21,11 @@ import {
   type ModelicaElement,
   type ModelicaNamedElement,
 } from "@modelscript/core";
-import { ModelicaCausality, ModelicaClassKind, type ModelicaIdentifierSyntaxNode } from "@modelscript/modelica-ast";
+import {
+  ModelicaCausality,
+  ModelicaClassKind,
+  type ModelicaIdentifierSyntaxNode,
+} from "@modelscript/modelica-polyglot/ast";
 import { inflateRaw } from "pako";
 
 // ── FMU model description types ──

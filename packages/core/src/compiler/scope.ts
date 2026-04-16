@@ -5,7 +5,7 @@ import {
   ModelicaNameSyntaxNode,
   ModelicaTypeSpecifierSyntaxNode,
   type ModelicaComponentReferenceSyntaxNode,
-} from "@modelscript/modelica-ast";
+} from "@modelscript/modelica-polyglot/ast";
 import { makeWeakRef } from "@modelscript/utils";
 import type {
   ModelicaClassInstance,

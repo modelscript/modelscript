@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ModelicaStoredDefinitionSyntaxNode } from "@modelscript/modelica-ast";
+import { ModelicaStoredDefinitionSyntaxNode } from "@modelscript/modelica-polyglot/ast";
 import { MODELSCRIPT_CAS_PACKAGE, ModelicaDAE, ModelicaDAEPrinter } from "@modelscript/symbolics";
 import type { FileSystem, Parser, Tree } from "@modelscript/utils";
 import { StringWriter } from "@modelscript/utils";

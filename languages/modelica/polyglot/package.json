@@ -7,6 +7,8 @@
     "./query_hooks": "./dist/query_hooks.js",
     "./indexer_config": "./dist/indexer_config.js",
     "./ref_config": "./dist/ref_config.js",
+    "./types": "./dist/types.js",
+    "./ast": "./dist/ast.js",
     "./expression-evaluator": "./dist/expression-evaluator.js"
   },
   "scripts": {

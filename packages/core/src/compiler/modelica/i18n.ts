@@ -14,7 +14,7 @@ import {
   type ModelicaClassModificationSyntaxNode,
   type ModelicaExpressionSyntaxNode,
   type ModelicaSyntaxNode,
-} from "@modelscript/modelica-ast";
+} from "@modelscript/modelica-polyglot/ast";
 import { ModelicaEntity, ModelicaLibrary } from "./model.js";
 
 interface PotEntry {

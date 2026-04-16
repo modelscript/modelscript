@@ -28,6 +28,27 @@ import type { QueryDB, SymbolEntry, SymbolId } from "@modelscript/polyglot";
 import { type ModelicaModArgs, type ModificationArg, modelicaMod } from "./modification-args.js";
 
 // ---------------------------------------------------------------------------
+// AST Factory Registry
+// ---------------------------------------------------------------------------
+
+/**
+ * Factory type for wrapping raw CST nodes into legacy AST nodes.
+ * This allows the polyglot package to remain decoupled from modelica-ast.
+ */
+export type AbstractSyntaxNodeFactory = (cst: any) => any;
+
+/** Default factory: returns the raw CST node unwrapped. */
+let abstractSyntaxNodeFactory: AbstractSyntaxNodeFactory = (cst) => cst;
+
+/**
+ * Register a factory function to automatically wrap CST nodes.
+ * Used by @modelscript/core to inject ModelicaSyntaxNode.new().
+ */
+export function registerAbstractSyntaxNodeFactory(factory: AbstractSyntaxNodeFactory): void {
+  abstractSyntaxNodeFactory = factory;
+}
+
+// ---------------------------------------------------------------------------
 // QueryBackedElement (generic base)
 // ---------------------------------------------------------------------------
 
@@ -211,13 +232,22 @@ export class QueryBackedClassInstance extends QueryBackedElement {
   outputParameters: any[] = [];
 
   /**
+   * The abstract syntax node for this class instance.
+   * Backed by the Polyglot CST node, potentially wrapped via the AST factory.
+   */
+  get abstractSyntaxNode(): any {
+    const cst = this.db.cstNode(this.id);
+    if (!cst) return null;
+    return abstractSyntaxNodeFactory(cst);
+  }
+
+  /**
    * All annotations for this class instance.
-   * Returns an array of QueryBackedElement.
    */
   get annotations(): any[] {
-    // For now, return empty to prevent "not iterable" crashes.
-    // In a full implementation, we would query the CST for AnnotationClauses.
-    return [];
+    const ast = this.abstractSyntaxNode;
+    // Walk the AST annotation clause if it exists
+    return ast?.annotationClause ? [ast.annotationClause] : [];
   }
 
   /**
@@ -227,40 +257,31 @@ export class QueryBackedClassInstance extends QueryBackedElement {
     return null;
   }
 
-  /**
-   * The abstract syntax node for this class instance.
-   * Backed by the Polyglot CST node.
-   */
-  get abstractSyntaxNode(): any {
-    const cst = this.db.cstNode(this.id);
-    if (!cst || typeof cst !== "object") return null;
-    // Proxy the CST node to provide expected properties like .sections
-    return new Proxy(cst as object, {
-      get(target, prop) {
-        if (prop === "sections") {
-          // Try to return sections from the CST node if possible
-          // In the metascript CST, we can use childrenForFieldName or similar.
-          // For now, just return an empty array if not present on target.
-          return (target as any).sections ?? [];
-        }
-        return (target as any)[prop];
-      },
-    });
-  }
-
   /** All sections in the class definition. */
   get sections(): any[] {
-    return this.abstractSyntaxNode?.sections ?? [];
+    const ast = this.abstractSyntaxNode;
+    if (!ast) return [];
+    // If it's a legacy AST node, it has a .sections getter.
+    // If it's a raw CST node, it might have .sections if we used a Proxy, or we return empty.
+    return ast.sections ? [...ast.sections] : [];
   }
 
   /** Equation sections. */
   get equationSections(): any[] {
-    return this.sections.filter((s) => s.type === "EquationSection");
+    const ast = this.abstractSyntaxNode;
+    if (!ast) return [];
+    if (ast.equationSections) return [...ast.equationSections];
+    // Fallback for raw CST or mocks
+    return this.sections.filter((s) => (s as any).type === "EquationSection");
   }
 
   /** Algorithm sections. */
   get algorithmSections(): any[] {
-    return this.sections.filter((s) => s.type === "AlgorithmSection");
+    const ast = this.abstractSyntaxNode;
+    if (!ast) return [];
+    if (ast.algorithmSections) return [...ast.algorithmSections];
+    // Fallback for raw CST or mocks
+    return this.sections.filter((s) => (s as any).type === "AlgorithmSection");
   }
 
   /**

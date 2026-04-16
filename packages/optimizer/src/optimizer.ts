@@ -15,7 +15,7 @@
  * Pure TypeScript — no native dependencies.
  */
 
-import { ModelicaVariability } from "@modelscript/modelica-ast";
+import { ModelicaVariability } from "@modelscript/modelica-polyglot/ast";
 import type { MonteCarloOptions, RandomVariable, SolverOptions } from "@modelscript/simulator";
 import { luFactor, luSolve, ModelicaSimulator, Tape, type TapeNode } from "@modelscript/simulator";
 import type { ModelicaDAE } from "@modelscript/symbolics";

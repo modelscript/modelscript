@@ -10,7 +10,7 @@
  * engine for simplification of results.
  */
 
-import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "@modelscript/modelica-ast";
+import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "@modelscript/modelica-polyglot/ast";
 import { egraphSimplify } from "../simplify/egraph.js";
 import { getLiteralValue } from "../simplify/expand.js";
 import type { ModelicaExpression } from "../systems/index.js";

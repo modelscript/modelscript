@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-export * from "@modelscript/modelica-ast";
+export * from "@modelscript/modelica-polyglot/ast";
 export * from "@modelscript/symbolics";
 export * from "@modelscript/utils";
 export * from "./compiler/context.js";

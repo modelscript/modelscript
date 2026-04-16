@@ -14,7 +14,7 @@
  * Works in both browser and Node.js environments (pure string generation).
  */
 
-import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "@modelscript/modelica-ast";
+import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "@modelscript/modelica-polyglot/ast";
 import type { ModelicaDAE, ModelicaExpression } from "@modelscript/symbolics";
 import {
   differentiateExpr,

@@ -4,7 +4,11 @@
  * Javascript interoperability. Parses JS/TS exports into Modelica components.
  */
 
-import { ModelicaCausality, ModelicaClassKind, type ModelicaIdentifierSyntaxNode } from "@modelscript/modelica-ast";
+import {
+  ModelicaCausality,
+  ModelicaClassKind,
+  type ModelicaIdentifierSyntaxNode,
+} from "@modelscript/modelica-polyglot/ast";
 import type { Scope } from "../scope.js";
 import {
   ModelicaClassInstance,

@@ -42,7 +42,7 @@ import {
   ModelicaVariability,
   ModelicaVisibility,
   type ModelicaComponentDeclarationSyntaxNode,
-} from "@modelscript/modelica-ast";
+} from "@modelscript/modelica-polyglot/ast";
 import {
   ModelicaArray,
   ModelicaDAEPrinter,

@@ -15,6 +15,8 @@ import { QueryEngine } from "@modelscript/polyglot/query-engine";
 import { ScopeResolver } from "@modelscript/polyglot/resolver";
 import { WorkspaceIndex } from "@modelscript/polyglot/workspace-index";
 
+import * as ModelicaAST from "@modelscript/modelica-polyglot/ast";
+
 // @ts-expect-error — TSC resolves camelCase aliases, but the actual exports are UPPER_CASE
 import { INDEXER_HOOKS } from "@modelscript/modelica-polyglot/indexer_config";
 // @ts-expect-error — TSC resolves camelCase aliases, but the actual exports are UPPER_CASE
@@ -26,7 +28,12 @@ import {
   QueryBackedClassInstance,
   QueryBackedComponentInstance,
   QueryBackedElement,
+  registerAbstractSyntaxNodeFactory,
 } from "@modelscript/modelica-polyglot/compat-shim";
+
+// Bridge the Polyglot CST to the Legacy AST for flattener and simulator compatibility.
+// This preserves the @modelscript/modelica-polyglot package's decoupling from modelica-ast.
+registerAbstractSyntaxNodeFactory((cst: any) => ModelicaAST.ModelicaSyntaxNode.new(null, cst));
 
 // @ts-expect-error — TSC resolves as `modelicaExpressionEvaluator` but actual export name is `modelicaEvaluator`
 import { modelicaEvaluator } from "@modelscript/modelica-polyglot/expression-evaluator";
