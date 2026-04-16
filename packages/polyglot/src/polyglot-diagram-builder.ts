@@ -928,12 +928,28 @@ export function buildPolyglotDiagram(
           if (addedTypingEdges.has(edgeKey)) continue;
           addedTypingEdges.add(edgeKey);
 
+          let finalSource: string | { cell: string; port: string } = usageNodeId;
+          if (usageNodeId.includes(".")) {
+            const parts = usageNodeId.split(".");
+            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+            const port = parts.pop()!;
+            finalSource = { cell: parts.join("."), port };
+          }
+
+          let finalTarget: string | { cell: string; port: string } = defNodeId;
+          if (defNodeId.includes(".")) {
+            const parts = defNodeId.split(".");
+            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+            const port = parts.pop()!;
+            finalTarget = { cell: parts.join("."), port };
+          }
+
           edges.push({
             id: `typing_${sym.id}_${target.id}`,
             shape: "edge",
             zIndex: 1,
-            source: usageNodeId,
-            target: defNodeId,
+            source: finalSource,
+            target: finalTarget,
             router: "manhattan",
             connector: "rounded",
             attrs: {
