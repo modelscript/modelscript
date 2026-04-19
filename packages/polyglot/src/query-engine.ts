@@ -448,16 +448,16 @@ export class QueryEngine {
         return engine.evaluator(expression, scope, this);
       },
 
-      cstText(startByte: number, endByte: number): string | null {
+      cstText(startByte: number, endByte: number, entry?: SymbolEntry): string | null {
         if (!engine.tree) return null;
-        return engine.tree.getText(startByte, endByte);
+        return engine.tree.getText(startByte, endByte, entry);
       },
 
       cstNode(id: SymbolId): unknown | null {
         if (!engine.tree) return null;
         const entry = engine.resolveEntry(id);
         if (!entry) return null;
-        return engine.tree.getNode(entry.startByte, entry.endByte);
+        return engine.tree.getNode(entry.startByte, entry.endByte, entry);
       },
     };
   }
@@ -803,16 +803,16 @@ export class QueryEngine {
         return engine.evaluator(expression, scope, this);
       },
 
-      cstText(startByte: number, endByte: number): string | null {
+      cstText(startByte: number, endByte: number, entry?: SymbolEntry): string | null {
         if (!engine.tree) return null;
-        return engine.tree.getText(startByte, endByte);
+        return engine.tree.getText(startByte, endByte, entry);
       },
 
       cstNode(id: SymbolId): unknown | null {
         if (!engine.tree) return null;
         const entry = engine.resolveEntry(id);
         if (!entry) return null;
-        return engine.tree.getNode(entry.startByte, entry.endByte);
+        return engine.tree.getNode(entry.startByte, entry.endByte, entry);
       },
     };
   }

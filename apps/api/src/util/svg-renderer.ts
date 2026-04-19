@@ -49,13 +49,15 @@ function extractModifiers(modification: ModelicaModification | null): { name: st
   if (!modification) return result;
 
   for (const arg of modification.modificationArguments) {
-    const name = arg.name;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const name = (arg as any).name;
     if (name) {
       let value: string | null = null;
       try {
         const expr = arg.expression;
         if (expr) {
-          const json = expr.toJSON;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const json = (expr as any).toJSON;
           value = typeof json === "string" ? json : JSON.stringify(json);
         }
       } catch {
@@ -117,7 +119,7 @@ export async function processLibrary(
   const memBefore = process.memoryUsage();
   console.log(`[publish] Memory before addLibrary: ${Math.round(memBefore.heapUsed / 1024 / 1024)}MB heap`);
 
-  const library = context.addLibrary(libraryPath);
+  const library = await context.addLibrary(libraryPath);
   if (!library) {
     throw new Error(`Failed to load library from: ${libraryPath}`);
   }

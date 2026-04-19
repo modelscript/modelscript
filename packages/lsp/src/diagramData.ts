@@ -15,16 +15,8 @@ import {
   evaluateCondition,
   formatUnit,
   LinePattern,
-  ModelicaBooleanLiteral,
   ModelicaClassKind,
   ModelicaComponentInstance,
-  ModelicaElement,
-  ModelicaEnumerationLiteral,
-  ModelicaExpression,
-  ModelicaIntegerLiteral,
-  ModelicaRealClassInstance,
-  ModelicaRealLiteral,
-  ModelicaStringLiteral,
   ModelicaVariability,
   Smooth,
   TextAlignment,
@@ -131,6 +123,23 @@ export interface DiagramData {
 
 // ── Build diagram data from a class instance ──
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function formatPropertyValue(expr: any): string | undefined {
+  if (expr == null) return undefined;
+  if ("text" in expr && typeof expr.text === "string") return expr.text;
+  if (
+    "value" in expr &&
+    (typeof expr.value === "string" || typeof expr.value === "number" || typeof expr.value === "boolean")
+  ) {
+    return String(expr.value);
+  }
+  const json = typeof expr.toJSON === "function" ? expr.toJSON() : expr.toJSON;
+  if (json != null && typeof json !== "object") {
+    return String(json);
+  }
+  return undefined;
+}
+
 export function buildDiagramData(classInstance: ModelicaClassInstance): DiagramData {
   const nodes: DiagramNode[] = [];
   const edges: DiagramEdge[] = [];
@@ -138,7 +147,7 @@ export function buildDiagramData(classInstance: ModelicaClassInstance): DiagramD
   // Build nodes for each component
   for (const component of classInstance.components) {
     if (!component.name) continue;
-    const condition = evaluateCondition(component);
+    const condition = evaluateCondition(component, classInstance);
     if (condition === false) continue;
 
     const componentClassInstance = component.classInstance;
@@ -190,7 +199,7 @@ export function buildDiagramData(classInstance: ModelicaClassInstance): DiagramD
     // Build ports
     const ports: DiagramPort[] = [];
     for (const connector of componentClassInstance.components) {
-      const connectorCondition = evaluateCondition(connector);
+      const connectorCondition = evaluateCondition(connector, componentClassInstance);
       if (connectorCondition === false) continue;
 
       const connectorClassInstance = connector.classInstance;
@@ -249,27 +258,34 @@ export function buildDiagramData(classInstance: ModelicaClassInstance): DiagramD
     const parameters: ComponentPropertyData["parameters"] = [];
     for (const element of componentClassInstance.elements) {
       if (element instanceof ModelicaComponentInstance && element.variability === ModelicaVariability.PARAMETER) {
-        const compArgExpr = component.modification?.getModificationArgument(element.name ?? "")?.expression;
-        const elemExpr = element.modification?.expression;
-        const value = compArgExpr?.toJSON?.toString() ?? elemExpr?.toJSON?.toString() ?? "-";
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const compArgExpr = (component.modification as any)?.getModificationArgument(element.name ?? "")?.expression;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const elemExpr = (element.modification as any)?.expression;
+        const value = formatPropertyValue(compArgExpr) ?? formatPropertyValue(elemExpr) ?? "-";
 
-        const unitExpr = element.classInstance?.modification?.getModificationArgument("unit")?.expression;
-        const rawUnit = unitExpr?.toJSON?.toString()?.replace(/^"|"$/g, "") || undefined;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const unitExpr = (element.classInstance?.modification as any)?.getModificationArgument("unit")?.expression;
+        const rawUnit = formatPropertyValue(unitExpr)?.replace(/^"|"$/g, "");
         const unit = rawUnit ? formatUnit(rawUnit) : undefined;
         const isBoolean = element.classInstance?.name === "Boolean";
 
         parameters.push({
           name: element.name ?? "",
           value,
-          description: element.localizedDescription ?? undefined,
+          description: element.description ?? undefined,
           isBoolean,
           unit,
         });
       }
     }
 
-    const docAnnotation = componentClassInstance.annotation<{ info?: string; revisions?: string }>("Documentation");
-    const context = classInstance.context;
+    const docAnnotation = componentClassInstance.annotation("Documentation") as {
+      info?: string;
+      revisions?: string;
+    } | null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const context = (classInstance as any).context;
 
     const processHtml = (html: string | undefined): string | undefined => {
       if (!html) return html;
@@ -340,13 +356,15 @@ export function buildDiagramData(classInstance: ModelicaClassInstance): DiagramD
   // Build edges from connect equations
   const nodeIds = new Set(nodes.map((n) => n.id));
   for (const connectEquation of classInstance.connectEquations) {
-    const c1 = connectEquation.componentReference1?.parts.map((c) => c.identifier?.text ?? "");
-    const c2 = connectEquation.componentReference2?.parts.map((c) => c.identifier?.text ?? "");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const c1 = connectEquation.componentReference1?.parts.map((c: any) => c.identifier?.text ?? "");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const c2 = connectEquation.componentReference2?.parts.map((c: any) => c.identifier?.text ?? "");
     if (!c1 || !c2 || c1.length === 0 || c2.length === 0) continue;
     if (!nodeIds.has(c1[0]) || !nodeIds.has(c2[0])) continue;
 
-    const annotations = ModelicaElement.instantiateAnnotations(classInstance, connectEquation.annotationClause);
-    const line: ILine | null = classInstance.annotation("Line", annotations);
+    const line: ILine | null =
+      typeof connectEquation.annotation === "function" ? connectEquation.annotation("Line") : null;
     const strokeColor = `rgb(${line?.color?.[0] ?? 0}, ${line?.color?.[1] ?? 0}, ${line?.color?.[2] ?? 255})`;
     const strokeWidth = (line?.thickness ?? 0.25) * 2;
     const stroke = line?.visible === false || line?.pattern === LinePattern.NONE ? "none" : strokeColor;
@@ -686,28 +704,35 @@ function renderTextX6(
   // Text substitution — matches core svg.ts renderText() exactly
   const rawText = graphicItem.textString ?? graphicItem.string ?? "";
   const replacer = (_match: string, name: string): string => {
+    // 1. Check if the specific component instance overrides this parameter
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const compArgExpr = (componentInstance?.modification as any)?.getModificationArgument(name)?.expression;
+    const compVal = formatPropertyValue(compArgExpr);
+
     const namedElement = classInstance?.resolveName(name.split("."));
-    if (!namedElement || !("classInstance" in namedElement)) return namedElement?.name ?? name;
-    const ci = (namedElement as ModelicaComponentInstance).classInstance;
+
+    // 2. Check if the class provides a default value for this parameter
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const elemExpr = (namedElement as any)?.modification?.expression;
+    const elemVal = formatPropertyValue(elemExpr);
+
+    const finalVal = compVal ?? elemVal;
+
     let unitString = "";
-    if (ci instanceof ModelicaRealClassInstance) {
-      const unitExp = ci?.unit;
-      if (unitExp instanceof ModelicaStringLiteral && unitExp.value) {
-        unitString = " " + formatUnit(unitExp.value);
-      }
+    if (namedElement && "classInstance" in namedElement) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const unitExpr = (
+        (namedElement as ModelicaComponentInstance).classInstance?.modification as any
+      )?.getModificationArgument("unit")?.expression;
+      const rawUnit = formatPropertyValue(unitExpr)?.replace(/^"|"$/g, "");
+      if (rawUnit) unitString = " " + formatUnit(rawUnit);
     }
-    const expression = ModelicaExpression.fromClassInstance(ci);
-    if (expression instanceof ModelicaIntegerLiteral || expression instanceof ModelicaRealLiteral) {
-      return formatNumber(expression.value) + unitString;
-    } else if (expression instanceof ModelicaEnumerationLiteral) {
-      return expression.stringValue;
-    } else if (expression instanceof ModelicaStringLiteral) {
-      return expression.value;
-    } else if (expression instanceof ModelicaBooleanLiteral) {
-      return String(expression.value);
-    } else {
-      return name;
+
+    if (finalVal !== undefined && finalVal !== "") {
+      return finalVal + unitString;
     }
+
+    return name;
   };
   const ESCAPED_PERCENT = "__PERCENT__";
   const textContent = rawText
@@ -1025,20 +1050,6 @@ function createRadialGradientX6(defs: X6Markup[], lineColor?: IColor, fillColor?
 }
 
 // ── Helpers ──
-
-function formatNumber(value: number): string {
-  if (value === 0) return "0";
-  const abs = Math.abs(value);
-  if (abs >= 10000 || abs < 0.1) {
-    const exp = Math.floor(Math.log10(abs));
-    const eng = Math.floor(exp / 3) * 3;
-    const mantissa = value / Math.pow(10, eng);
-    const mantissaStr = Number.isInteger(mantissa) ? String(mantissa) : parseFloat(mantissa.toPrecision(4)).toString();
-    return `${mantissaStr}e${eng}`;
-  }
-  const rounded = parseFloat(value.toFixed(3));
-  return String(rounded);
-}
 
 function unflipText(node: X6Markup, sx: number, sy: number): void {
   if (!node?.children) return;

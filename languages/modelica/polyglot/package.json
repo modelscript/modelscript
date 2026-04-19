@@ -3,13 +3,38 @@
   "version": "0.0.0",
   "type": "module",
   "exports": {
-    "./compat-shim": "./dist/compat-shim.js",
-    "./query_hooks": "./dist/query_hooks.js",
-    "./indexer_config": "./dist/indexer_config.js",
-    "./ref_config": "./dist/ref_config.js",
-    "./types": "./dist/types.js",
-    "./ast": "./dist/ast.js",
-    "./expression-evaluator": "./dist/expression-evaluator.js"
+    "./compat-shim": {
+      "types": "./dist/compat-shim.d.ts",
+      "default": "./dist/compat-shim.js"
+    },
+    "./query_hooks": {
+      "types": "./dist/query_hooks.d.ts",
+      "default": "./dist/query_hooks.js"
+    },
+    "./indexer_config": {
+      "types": "./dist/indexer_config.d.ts",
+      "default": "./dist/indexer_config.js"
+    },
+    "./ref_config": {
+      "types": "./dist/ref_config.d.ts",
+      "default": "./dist/ref_config.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "default": "./dist/types.js"
+    },
+    "./ast": {
+      "types": "./dist/ast.d.ts",
+      "default": "./dist/ast.js"
+    },
+    "./expression-evaluator": {
+      "types": "./dist/expression-evaluator.d.ts",
+      "default": "./dist/expression-evaluator.js"
+    },
+    "./predefined-types": {
+      "types": "./dist/predefined-types.d.ts",
+      "default": "./dist/predefined-types.js"
+    }
   },
   "scripts": {
     "build": "tsc"

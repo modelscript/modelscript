@@ -30,7 +30,7 @@ export const Flatten: CommandModule<{}, FlattenArgs> = {
         type: "string",
       });
   },
-  handler: (args) => {
+  handler: async (args) => {
     const parser = new Parser();
     parser.setLanguage(Modelica);
 
@@ -44,7 +44,7 @@ export const Flatten: CommandModule<{}, FlattenArgs> = {
       pathMap.set(path.resolve(p), p);
     }
 
-    for (const p of args.paths) context.addLibrary(p);
+    for (const p of args.paths) await context.addLibrary(p);
     const instance = context.query(args.name);
     if (!instance) {
       console.error(`'${args.name}' not found`);
@@ -53,7 +53,8 @@ export const Flatten: CommandModule<{}, FlattenArgs> = {
 
     // Flatten the model
     const dae = new ModelicaDAE(instance.name ?? "DAE", instance.description);
-    instance.accept(new ModelicaFlattener(), ["", dae]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (instance as any).accept(new ModelicaFlattener(), ["", dae]);
 
     // Run the linter to collect diagnostics
     const diagnostics: { type: string; code: number; message: string; resource: string | null; range: Range | null }[] =
@@ -70,9 +71,11 @@ export const Flatten: CommandModule<{}, FlattenArgs> = {
       },
     );
     for (const cls of context.classes) {
-      linter.lint(cls);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      linter.lint(cls as any);
     }
-    linter.lint(instance);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    linter.lint(instance as any);
 
     // Convert absolute resource path to user-provided relative path
     const toUserPath = (absPath: string | null) => {

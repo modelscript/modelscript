@@ -30,7 +30,7 @@ export const Instantiate: CommandModule<{}, InstantiateArgs> = {
         type: "string",
       });
   },
-  handler: (args) => {
+  handler: async (args) => {
     const parser = new Parser();
     parser.setLanguage(Modelica);
 
@@ -44,7 +44,7 @@ export const Instantiate: CommandModule<{}, InstantiateArgs> = {
       pathMap.set(path.resolve(p), p);
     }
 
-    for (const p of args.paths) context.addLibrary(p);
+    for (const p of args.paths) await context.addLibrary(p);
     const instance = context.query(args.name);
     if (!instance) {
       console.error(`'${args.name}' not found`);

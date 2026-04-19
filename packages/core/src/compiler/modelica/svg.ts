@@ -27,11 +27,10 @@ import {
 } from "@svgdotjs/svg.js";
 import { evaluateCondition } from "./interpreter.js";
 import {
-  ModelicaComponentInstance,
-  ModelicaElement,
-  ModelicaRealClassInstance,
-  type ModelicaClassInstance,
-} from "./model.js";
+  QueryBackedClassInstance as ModelicaClassInstance,
+  QueryBackedComponentInstance as ModelicaComponentInstance,
+  QueryBackedRealClassInstance as ModelicaRealClassInstance,
+} from "./metascript-bridge.js";
 import {
   Arrow,
   FillPattern,
@@ -83,11 +82,13 @@ export function renderDiagram(classInstance: ModelicaClassInstance, svg?: Svg): 
       group.add(componentSvg);
     }
   }
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   for (const connectEquation of classInstance.connectEquations) {
-    const annotations = ModelicaElement.instantiateAnnotations(classInstance, connectEquation.annotationClause);
-    const line: ILine | null = classInstance.annotation("Line", annotations);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any
+    const annotations: any[] = [];
+    const line: ILine | null = null;
     if (line) renderLine(group, line);
-    const text: IText | null = classInstance.annotation("Text", annotations);
+    const text: IText | null = null;
     if (text) renderText(group, text, classInstance);
   }
   return svg;

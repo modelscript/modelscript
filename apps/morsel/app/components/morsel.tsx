@@ -21,9 +21,8 @@ import {
   ModelicaStringLiteral,
   StringWriter,
   type IDiagram,
-  type ParameterInfo,
 } from "@modelscript/core";
-import { ModelicaSimulator } from "@modelscript/simulator";
+import { ModelicaSimulator, type ParameterInfo } from "@modelscript/simulator";
 import {
   ColumnsIcon,
   DownloadIcon,
@@ -3166,17 +3165,17 @@ export default function MorselEditor(props: MorselEditorProps) {
                   const entries = context.fs.readdir(path);
                   const hasPackage = entries.some((e) => e.name === "package.mo");
                   if (hasPackage) {
-                    context.addLibrary(path);
+                    await context.addLibrary(path);
                   } else {
                     const dirs = entries.filter((e) => e.isDirectory());
                     if (dirs.length === 1) {
-                      context.addLibrary(`${path}/${dirs[0].name}`);
+                      await context.addLibrary(`${path}/${dirs[0].name}`);
                     } else {
                       for (const dir of dirs) {
                         const libName = dir.name.split(" ")[0];
                         const libPath = `${path}/${dir.name}`;
                         try {
-                          const lib = context.addLibrary(libPath);
+                          const lib = await context.addLibrary(libPath);
                           if (lib) {
                             console.log(`Loaded library: ${libName} from ${libPath}`);
                           }

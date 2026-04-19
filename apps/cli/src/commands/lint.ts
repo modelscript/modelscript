@@ -29,7 +29,7 @@ export const Lint: CommandModule<{}, LintArgs> = {
         type: "string",
       });
   },
-  handler: (args) => {
+  handler: async (args) => {
     const diagnosticsMap = new Map<
       string | null,
       {
@@ -61,9 +61,10 @@ export const Lint: CommandModule<{}, LintArgs> = {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     Context.registerParser(".mo", parser as any);
     const context = new Context(new NodeFileSystem());
-    for (const path of args.paths ?? []) context.addLibrary(path);
+    for (const path of args.paths ?? []) await context.addLibrary(path);
     const library = new ModelicaLibrary(context, args.path);
-    linter.lint(library);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    linter.lint(library as any);
 
     for (const resource of diagnosticsMap.keys()) {
       const diagnostics = diagnosticsMap.get(resource);

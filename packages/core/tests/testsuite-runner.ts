@@ -24,9 +24,9 @@ import path from "node:path";
 import Parser from "tree-sitter";
 import { NodeFileSystem } from "../../../apps/cli/src/util/filesystem.js";
 import { Context } from "../src/compiler/context.js";
-import { ModelicaJavascriptEntity } from "../src/compiler/modelica/javascript-entity.js";
+
 import { ModelicaLinter } from "../src/compiler/modelica/linter.js";
-import { ModelicaClassInstance } from "../src/compiler/modelica/model.js";
+import { QueryBackedClassInstance as ModelicaClassInstance } from "../src/compiler/modelica/metascript-bridge.js";
 import { generateHtmlReport } from "./ctrf-to-html.js";
 
 // ── Tree-sitter setup ────────────────────────────────────────────────────────
@@ -213,18 +213,6 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode = fal
     const context = new Context(new NodeFileSystem());
     context.load(testCase.source);
 
-    // Support for loading alongside ModelicaJavascriptEntity mockups
-    const dir = path.dirname(testCase.file);
-    if (fs.existsSync(dir)) {
-      const jsFiles = fs.readdirSync(dir).filter((f) => f.endsWith(".js") || f.endsWith(".ts"));
-      if (jsFiles.length > 0) {
-        for (const jsFile of jsFiles) {
-          const jsEntity = new ModelicaJavascriptEntity(context, path.join(dir, jsFile));
-          jsEntity.name = jsFile.replace(/\.[tj]s$/, "");
-          context.addClass(jsEntity);
-        }
-      }
-    }
     // When the last class is a package (e.g., `package Ticket4365 ... end Ticket4365;`),
     // prefer the last non-package class (model/block/class) since OpenModelica tests
     // typically flatten a specific model within the file, not the package itself.
@@ -388,7 +376,8 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode = fal
     return makeResult("failed", `Output mismatch:\n--- Expected ---\n${expected}\n--- Actual ---\n${actual}`);
   } catch (error) {
     if (testCase.metadata.status === "incorrect") return makeResult("passed");
-    return makeResult("failed", `Exception: ${error instanceof Error ? error.message : String(error)}`);
+    console.error(error);
+    return makeResult("failed", `Exception: ${error instanceof Error ? error.stack : String(error)}`);
   }
 }
 

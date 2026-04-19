@@ -71,8 +71,6 @@ import {
   ModelicaElement,
   ModelicaFlattener,
   ModelicaInterpreter,
-  ModelicaJavascriptEntity,
-  ModelicaLibrary,
   ModelicaLinter,
   ModelicaNamedElement,
   ModelicaScriptScope,
@@ -368,6 +366,7 @@ interface CachedTree {
 }
 
 const documentTrees = new Map<string, CachedTree>();
+const lazyLibTrees = new Map<string, { tree: any; text: string }>();
 
 /**
  * Compute the position (row, column) at a given byte index in a string.
@@ -524,7 +523,7 @@ function resolvePathElement(node: SyntaxNode, scope: Scope): ModelicaNamedElemen
         const funcRef = refNode.text;
         baseElement = scope.resolveName(funcRef.split("."));
         if (!baseElement) {
-          const annotationClass = ModelicaElement.annotationClassInstance;
+          const annotationClass = (ModelicaElement as any).annotationClassInstance;
           if (annotationClass) {
             baseElement = annotationClass.resolveSimpleName(funcRef);
             if (!baseElement && funcRef.includes(".")) {
@@ -540,7 +539,7 @@ function resolvePathElement(node: SyntaxNode, scope: Scope): ModelicaNamedElemen
     }
 
     if (pathNode.type === "AnnotationClause") {
-      baseElement = ModelicaElement.annotationClassInstance;
+      baseElement = (ModelicaElement as any).annotationClassInstance;
       foundBase = true;
       break;
     }
@@ -770,21 +769,89 @@ async function loadMSL(serverDistBase: string): Promise<void> {
     const libEntries = sharedFs.readdir("/lib");
     const hasPackage = libEntries.some((e) => e.name === "package.mo");
     if (hasPackage) {
-      sharedContext.addLibrary("/lib");
+      await sharedContext.addLibrary("/lib", { skipIndex: true });
     } else {
       for (const entry of libEntries) {
         if (entry.isDirectory()) {
           try {
-            sharedContext.addLibrary(`/lib/${entry.name}`);
+            await sharedContext.addLibrary(`/lib/${entry.name}`, { skipIndex: true });
           } catch (e) {
             console.warn(`Failed to load library from /lib/${entry.name}:`, e);
           }
         }
       }
     }
+    // Perform a single indexing pass after all libraries are registered
+    connection.sendNotification("modelscript/status", { state: "loading", message: "Indexing MSL classes..." });
+    await sharedContext.finalizeLibraries();
     console.log(
       `MSL libraries registered in shared context. Total elements in context: ${Array.from(sharedContext.elements).length}`,
     );
+
+    // Register MSL files lazily in the polyglot workspace index so the QueryEngine
+    // can resolve qualified type specifiers (e.g. Modelica.Electrical.Analog.Sources.SineVoltage).
+    // We use lazy tree factories so files are only parsed the first time they're needed.
+    if (parser) {
+      connection.sendNotification("modelscript/status", { state: "loading", message: "Indexing MSL for polyglot..." });
+      let registeredCount = 0;
+      const mslTreeCache = new Map<string, any>();
+      const registerDirLazy = (dirPath: string) => {
+        try {
+          const entries = sharedFs.readdir(dirPath);
+          for (const entry of entries) {
+            const fullPath = `${dirPath}/${entry.name}`;
+            if (entry.isDirectory()) {
+              registerDirLazy(fullPath);
+            } else if (entry.name.endsWith(".mo")) {
+              const uri = `file://${fullPath}`;
+
+              // Compute parentFQN based on directory structure
+              // e.g. /lib/Modelica/Electrical/package.mo -> "Modelica"
+              let parentFQN = "";
+              const relPath = fullPath.substring(5); // strip "/lib/"
+              const parts = relPath.split("/");
+              if (parts[parts.length - 1] === "package.mo") {
+                parts.pop(); // Remove "package.mo"
+                parts.pop(); // Remove the package dir name itself
+              } else {
+                parts.pop(); // Remove "Filename.mo"
+              }
+              // The top-level directory in the MSL zip has a version string (e.g. "Modelica 4.1.0").
+              // This must be stripped to map correctly to the FQN "Modelica".
+              if (parts.length > 0) {
+                parts[0] = parts[0].split(" ")[0];
+              }
+              parentFQN = parts.join(".");
+
+              globalWorkspaceIndex.register(
+                uri,
+                () => {
+                  // Lazy: parse the file only when its tree is first requested
+                  if (!mslTreeCache.has(fullPath)) {
+                    try {
+                      const text = sharedFs.read(fullPath);
+                      if (text) {
+                        const tree = sharedContext!.parse(".mo", text);
+                        mslTreeCache.set(fullPath, tree);
+                      }
+                    } catch {
+                      mslTreeCache.set(fullPath, null);
+                    }
+                  }
+                  return mslTreeCache.get(fullPath)?.rootNode ?? null;
+                },
+                parentFQN,
+              );
+              registeredCount++;
+            }
+          }
+        } catch {
+          // Directory might not exist
+        }
+      };
+      registerDirLazy("/lib");
+      console.log(`[polyglot] Registered ${registeredCount} MSL files lazily in globalWorkspaceIndex`);
+    }
   } catch (e) {
     console.error("Failed to load MSL zip:", e);
   }
@@ -1055,8 +1122,14 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
   // Handle Javascript/TypeScript sidecar files natively via mock entity
   if (textDocument.uri.endsWith(".js") || textDocument.uri.endsWith(".ts")) {
     const context = sharedContext ?? new Context(sharedFs);
-    const entity = new ModelicaJavascriptEntity(context, textDocument.uri);
-    entity.jsSource = text;
+    const entity = {
+      isClassInstance: true,
+      jsSource: text,
+      name: "",
+      context,
+      uri: textDocument.uri,
+      instantiate() {},
+    } as any;
     // Derive name from generic path (e.g. file:///.../Test.js -> Test)
     const filename = textDocument.uri.split("/").pop();
     if (filename) {
@@ -1087,10 +1160,25 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
         sysml2WorkspaceIndex.register(textDocument.uri, () => tree.rootNode);
       }
 
-      // Create query engine, resolver, and LSP bridge for the document
+      // Create or update query engine, resolver, and LSP bridge for the document
       const unifiedIndex = sysml2WorkspaceIndex.toUnified();
-      const engine = createSysML2QueryEngine(unifiedIndex);
-      const resolver = createSysML2ScopeResolver(unifiedIndex);
+
+      let engine = documentQueryEngines.get(textDocument.uri) as any;
+      if (engine) {
+        engine.updateIndex(unifiedIndex);
+      } else {
+        engine = createSysML2QueryEngine(unifiedIndex);
+        documentQueryEngines.set(textDocument.uri, engine);
+      }
+
+      let resolver = (engine as any).__resolverCache;
+      if (!resolver) {
+        resolver = createSysML2ScopeResolver(unifiedIndex);
+        (engine as any).__resolverCache = resolver;
+      } else {
+        resolver.updateIndex(unifiedIndex);
+      }
+
       const bridge = createSysML2LSPBridge(unifiedIndex, engine, resolver, text, textDocument.uri);
       documentLSPBridges.set(textDocument.uri, bridge);
 
@@ -1187,11 +1275,86 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
 
     // Create query engine, resolver, and LSP bridge over the unified workspace index
     const unifiedIndex = globalWorkspaceIndex.toUnified();
-    const engine = createModelicaQueryEngine(unifiedIndex);
-    const resolver = createModelicaScopeResolver(unifiedIndex);
+
+    const cstTreeWrapper = {
+      getText(startByte: number, endByte: number, entry?: any): string | null {
+        if (!entry || !entry.resourceId) return null;
+        const uri = entry.resourceId;
+        const docTree = documentTrees.get(uri);
+        if (docTree && docTree.tree && docTree.text) return docTree.text.substring(startByte, endByte);
+
+        let lazyCache = lazyLibTrees.get(uri);
+        if (!lazyCache && sharedContext) {
+          try {
+            const fsPath = uri.startsWith("file://") ? uri.substring(7) : uri;
+            const text = sharedContext.fs.read(fsPath);
+            if (text) {
+              const tree = sharedContext.parse(uri.endsWith(".sysml") ? ".sysml" : ".mo", text);
+              lazyCache = { tree, text };
+              lazyLibTrees.set(uri, lazyCache);
+            }
+          } catch (e) {
+            // ignore
+          }
+        }
+        if (lazyCache) return lazyCache.text.substring(startByte, endByte);
+        return null;
+      },
+      getNode(startByte: number, endByte: number, entry?: any): any | null {
+        if (!entry || !entry.resourceId) return null;
+        const uri = entry.resourceId;
+        const docTree = documentTrees.get(uri);
+        if (docTree && docTree.tree)
+          return docTree.tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte - 1));
+
+        let lazyCache = lazyLibTrees.get(uri);
+        if (!lazyCache && sharedContext) {
+          try {
+            const fsPath = uri.startsWith("file://") ? uri.substring(7) : uri;
+            const text = sharedContext.fs.read(fsPath);
+            if (text) {
+              const tree = sharedContext.parse(uri.endsWith(".sysml") ? ".sysml" : ".mo", text);
+              lazyCache = { tree, text };
+              lazyLibTrees.set(uri, lazyCache);
+            } else {
+              connection.console.error(`[cstTreeWrapper] failed to read fsPath: ${fsPath}`);
+            }
+          } catch (e) {
+            connection.console.error(`[cstTreeWrapper] exception parsing ${uri}: ${e}`);
+          }
+        }
+        if (lazyCache) {
+          const n = lazyCache.tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte - 1));
+          if (!n)
+            connection.console.error(
+              `[cstTreeWrapper] descendantForIndex returned null for ${uri} [${startByte}-${endByte}]`,
+            );
+          return n;
+        }
+        connection.console.error(`[cstTreeWrapper] lazyCache completely empty for ${uri}`);
+        return null;
+      },
+    };
+
+    let engine = documentQueryEngines.get(textDocument.uri) as any;
+    if (engine) {
+      engine.updateIndex(unifiedIndex);
+      if (typeof engine.updateTree === "function") engine.updateTree(cstTreeWrapper);
+    } else {
+      engine = createModelicaQueryEngine(unifiedIndex, cstTreeWrapper);
+      documentQueryEngines.set(textDocument.uri, engine);
+    }
+
+    let resolver = (engine as any).__resolverCache;
+    if (!resolver) {
+      resolver = createModelicaScopeResolver(unifiedIndex);
+      (engine as any).__resolverCache = resolver;
+    } else {
+      resolver.updateIndex(unifiedIndex);
+    }
+
     const bridge = createModelicaLSPBridge(unifiedIndex, engine, resolver, text, textDocument.uri);
     documentLSPBridges.set(textDocument.uri, bridge);
-    documentQueryEngines.set(textDocument.uri, engine as unknown as QueryEngine);
 
     // 1. Collect parse errors from the tree (ERROR and MISSING nodes)
     const collectParseErrors = (node: SyntaxNode) => {
@@ -2567,13 +2730,8 @@ connection.onWorkspaceSymbol((params) => {
   if (sharedContext && symbols.length < MAX_RESULTS) {
     for (const element of sharedContext.elements) {
       if (symbols.length >= MAX_RESULTS) break;
-      if (element instanceof ModelicaLibrary) {
-        for (const child of element.elements) {
-          if (symbols.length >= MAX_RESULTS) break;
-          if (child instanceof ModelicaClassInstance) {
-            collectWorkspaceSymbols(child, "", query, symbols, MAX_RESULTS);
-          }
-        }
+      if (element instanceof ModelicaClassInstance) {
+        collectWorkspaceSymbols(element, "", query, symbols, MAX_RESULTS);
       }
     }
   }
@@ -2599,7 +2757,7 @@ function collectWorkspaceSymbols(
 
   const name = element.compositeName;
   if (name && name.toLowerCase().includes(query)) {
-    const range = element.abstractSyntaxNode?.sourceRange;
+    const range = (element as any).abstractSyntaxNode?.sourceRange || (element as any).ast?.sourceRange;
     symbols.push({
       name,
       kind: element instanceof ModelicaClassInstance ? SymbolKind.Class : SymbolKind.Variable,
@@ -2703,9 +2861,29 @@ connection.onRequest(
     }
 
     try {
-      return buildDiagramData(classInstance);
-    } catch (e) {
-      console.error("[diagram] Error building diagram data:", e);
+      connection.console.error(`[diagram] classInstance name: ${classInstance.name} kind: ${classInstance.classKind}`);
+      connection.console.error(`[diagram] elements: ${classInstance.elements?.length ?? "N/A"}`);
+      connection.console.error(`[diagram] components: ${classInstance.components?.length ?? "N/A"}`);
+      for (const comp of classInstance.components ?? []) {
+        connection.console.error(
+          `[diagram]   component: ${comp.name} classInstance: ${!!comp.classInstance} classKind: ${comp.classInstance?.classKind}`,
+        );
+      }
+      connection.console.error(`[diagram] connectEquations: ${classInstance.connectEquations?.length ?? "N/A"}`);
+      const result = buildDiagramData(classInstance);
+      connection.console.error(`[diagram] result nodes: ${result?.nodes?.length} edges: ${result?.edges?.length}`);
+      for (const node of result?.nodes ?? []) {
+        const portIds = node.ports?.items?.map((p: any) => p.id).join(", ") ?? "";
+        connection.console.error(`[diagram]   node: ${node.id} ports=[${portIds}]`);
+      }
+      for (const edge of result?.edges ?? []) {
+        connection.console.error(
+          `[diagram]   edge: ${edge.id} src=${edge.source.cell}:${edge.source.port} tgt=${edge.target.cell}:${edge.target.port}`,
+        );
+      }
+      return result;
+    } catch (e: any) {
+      connection.console.error(`[diagram] Error building diagram data: ${e?.message ?? e}\n${e?.stack ?? ""}`);
       return null;
     }
   },
@@ -3431,8 +3609,19 @@ connection.onRequest("modelscript/getLibraryTree", (params: { uri: string; paren
 });
 
 function classHasChildClasses(cls: ModelicaClassInstance): boolean {
-  for (const child of cls.elements) {
-    if (child instanceof ModelicaClassInstance) return true;
+  try {
+    const entry = (cls as any).entry;
+    if (!entry) return false;
+    const db = (cls as any).db;
+    if (!db) return false;
+    const children = db.childrenOf(entry.id);
+    if (!children) return false;
+
+    for (const child of children) {
+      if (child && child.kind === "Class") return true;
+    }
+  } catch {
+    // fallback or ignore
   }
   return false;
 }
@@ -3452,8 +3641,8 @@ function resolveClassKind(cls: ModelicaClassInstance): string {
     const classSpecifier = asn.classSpecifier;
     if (classSpecifier && "typeSpecifier" in classSpecifier) {
       // Short class specifier — resolve the referenced type's kind
-      const resolved = cls.parent?.resolveSimpleName?.(classSpecifier.identifier?.text);
-      if (resolved && "classKind" in resolved) {
+      const resolved = (cls as any).parent?.resolveSimpleName?.(classSpecifier.identifier?.text);
+      if (resolved && ("classKind" in resolved || resolved.classKind)) {
         const resolvedKind = (resolved as ModelicaClassInstance).classKind;
         if (resolvedKind && resolvedKind !== "class") return resolvedKind;
       }
@@ -3482,37 +3671,60 @@ function toTreeNode(cls: ModelicaClassInstance): TreeNodeInfo {
 
 function getTreeChildren(context: Context, parentId?: string): TreeNodeInfo[] {
   const nodes: TreeNodeInfo[] = [];
+  const engine = context.queryEngine;
+  if (!engine) return nodes;
+
+  const db = engine.toQueryDB();
+  const index = (engine as any).index;
+
+  function getCompositeName(entry: any): string {
+    if (entry.parentId === null) return entry.name;
+    const parent = index.symbols.get(entry.parentId);
+    if (!parent) return entry.name;
+    return getCompositeName(parent) + "." + entry.name;
+  }
 
   if (!parentId) {
-    // Root level: return libraries and top-level user classes
-    for (const element of context.elements) {
-      if (element instanceof ModelicaLibrary) {
-        // Get top-level classes from the library
-        for (const child of element.elements) {
-          if (child instanceof ModelicaClassInstance) {
-            nodes.push(toTreeNode(child));
-          }
+    // Root level: return top-level classes
+    connection.console.error("[library-tree] getTreeChildren ROOT LEVEL");
+    for (const [id, entry] of index.symbols) {
+      if (entry.parentId === null && entry.kind === "Class") {
+        connection.console.error(`[library-tree] Found root class: ${entry.name} (${id})`);
+        const cls = new (QueryBackedClassInstance as any)(id, db) as unknown as ModelicaClassInstance;
+        // Avoid duplicates
+        if (!nodes.some((n) => n.id === cls.compositeName)) {
+          nodes.push(toTreeNode(cls));
         }
-      } else if (element instanceof ModelicaClassInstance) {
-        nodes.push(toTreeNode(element));
       }
     }
   } else {
     // Find the parent and return its class children
-    try {
-      const parent = context.query(parentId);
-      if (parent instanceof ModelicaClassInstance) {
-        for (const child of parent.elements) {
-          if (child instanceof ModelicaClassInstance) {
-            nodes.push(toTreeNode(child));
+    let parentIdNum: number | null = null;
+    connection.console.error(`[library-tree] getTreeChildren searching for parent FQN: ${parentId}`);
+    for (const [id, entry] of index.symbols) {
+      if (entry.kind === "Class") {
+        if (getCompositeName(entry) === parentId) {
+          parentIdNum = id;
+          connection.console.error(`[library-tree] Found parent class: ${entry.name} (${id})`);
+          break;
+        }
+      }
+    }
+
+    if (parentIdNum !== null) {
+      for (const [id, entry] of index.symbols) {
+        if (entry.parentId === parentIdNum && entry.kind === "Class") {
+          const cls = new (QueryBackedClassInstance as any)(id, db) as unknown as ModelicaClassInstance;
+          if (!nodes.some((n) => n.id === cls.compositeName)) {
+            nodes.push(toTreeNode(cls));
           }
         }
       }
-    } catch (e) {
-      console.error("[library-tree] Error getting children:", e);
     }
   }
 
+  // Sort nodes alphabetically
+  nodes.sort((a, b) => a.name.localeCompare(b.name));
   return nodes;
 }
 
@@ -3806,9 +4018,9 @@ connection.onRequest("modelscript/addComponent", (params: { uri: string; classNa
       if (context) {
         const droppedClass = context.query(params.className);
         if (droppedClass instanceof ModelicaClassInstance) {
-          const defaultName = droppedClass.annotation<string>("defaultComponentName");
+          const defaultName = droppedClass.annotation("defaultComponentName") as string | null;
           if (defaultName) {
-            baseName = droppedClass.translate(defaultName);
+            baseName = (droppedClass as any).translate?.(defaultName) ?? defaultName;
           } else {
             baseName = (droppedClass.localizedName || shortName).toLowerCase();
           }
@@ -4049,7 +4261,7 @@ connection.onRequest(
       fmuEntity.load();
       fmuEntity.instantiate();
       const uri = `__fmu__:${params.name}`;
-      workspaceInstances.set(uri, [fmuEntity]);
+      workspaceInstances.set(uri, [fmuEntity as any]);
       console.log(`[fmu] Registered FMU entity '${params.name}' via custom request`);
       // Re-validate all .mo documents to pick up the new FMU class
       for (const doc of documents.all()) {

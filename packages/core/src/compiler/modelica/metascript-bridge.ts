@@ -25,15 +25,34 @@ import { QUERY_HOOKS } from "@modelscript/modelica-polyglot/query_hooks";
 import { REF_HOOKS } from "@modelscript/modelica-polyglot/ref_config";
 
 import {
+  QueryBackedArrayClassInstance,
+  QueryBackedBooleanClassInstance,
   QueryBackedClassInstance,
+  QueryBackedClockClassInstance,
   QueryBackedComponentInstance,
   QueryBackedElement,
+  QueryBackedElementModification,
+  QueryBackedEnumerationClassInstance,
+  QueryBackedExpressionClassInstance,
+  QueryBackedExtendsClassInstance,
+  QueryBackedIntegerClassInstance,
+  QueryBackedModification,
+  QueryBackedPredefinedClassInstance,
+  QueryBackedRealClassInstance,
+  QueryBackedShortClassInstance,
+  QueryBackedStringClassInstance,
   registerAbstractSyntaxNodeFactory,
+  registerAnnotationEvaluator,
 } from "@modelscript/modelica-polyglot/compat-shim";
+
+import { AnnotationEvaluator } from "./annotation-evaluator.js";
 
 // Bridge the Polyglot CST to the Legacy AST for flattener and simulator compatibility.
 // This preserves the @modelscript/modelica-polyglot package's decoupling from modelica-ast.
 registerAbstractSyntaxNodeFactory((cst: any) => ModelicaAST.ModelicaSyntaxNode.new(null, cst));
+
+const annotationEvaluator = new AnnotationEvaluator();
+registerAnnotationEvaluator((ast: any, name: string) => annotationEvaluator.evaluate(ast, name));
 
 // @ts-expect-error — TSC resolves as `modelicaExpressionEvaluator` but actual export name is `modelicaEvaluator`
 import { modelicaEvaluator } from "@modelscript/modelica-polyglot/expression-evaluator";
@@ -58,6 +77,8 @@ const refAsIndexerHooks = (refHooks ?? [])
   }));
 const allIndexerHooks = [...indexerHooks, ...refAsIndexerHooks];
 
+import { injectPredefinedTypes } from "@modelscript/modelica-polyglot/predefined-types";
+
 /**
  * Creates a configured WorkspaceIndex for Modelica.
  */
@@ -68,15 +89,21 @@ export function createModelicaWorkspaceIndex(): WorkspaceIndex {
 /**
  * Creates a configured QueryEngine for a given SymbolIndex.
  */
-export function createModelicaQueryEngine(index: any): QueryEngine {
-  return new QueryEngine(index, queryHooks, { evaluator });
+export function createModelicaQueryEngine(index: any, tree?: any): QueryEngine {
+  const symbolIndex = index?.toUnified ? index.toUnified() : index;
+  injectPredefinedTypes(symbolIndex);
+  return new QueryEngine(symbolIndex, queryHooks, { evaluator, tree });
 }
 
 /**
  * Creates a configured ScopeResolver for a given SymbolIndex.
  */
+import { BUILTIN_MODELICA_NAMES } from "./linter.js";
+
 export function createModelicaScopeResolver(index: any): ScopeResolver {
-  return new ScopeResolver(index, refHooks, indexerHooks);
+  const resolver = new ScopeResolver(index, refHooks, indexerHooks);
+  resolver.setImplicitNames(BUILTIN_MODELICA_NAMES);
+  return resolver;
 }
 
 /**
@@ -92,6 +119,23 @@ export function createModelicaLSPBridge(
   return new LSPBridge(index, engine, resolver, new PositionIndex(sourceText), documentUri);
 }
 
-export { LSPBridge, PositionIndex, QueryEngine, ScopeResolver, WorkspaceIndex };
+export { injectPredefinedTypes, LSPBridge, PositionIndex, QueryEngine, ScopeResolver, WorkspaceIndex };
 
-export { QueryBackedClassInstance, QueryBackedComponentInstance, QueryBackedElement };
+export {
+  QueryBackedArrayClassInstance,
+  QueryBackedBooleanClassInstance,
+  QueryBackedClassInstance,
+  QueryBackedClockClassInstance,
+  QueryBackedComponentInstance,
+  QueryBackedElement,
+  QueryBackedElementModification,
+  QueryBackedEnumerationClassInstance,
+  QueryBackedExpressionClassInstance,
+  QueryBackedExtendsClassInstance,
+  QueryBackedIntegerClassInstance,
+  QueryBackedModification,
+  QueryBackedPredefinedClassInstance,
+  QueryBackedRealClassInstance,
+  QueryBackedShortClassInstance,
+  QueryBackedStringClassInstance,
+};

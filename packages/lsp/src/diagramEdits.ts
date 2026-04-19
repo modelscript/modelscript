@@ -275,12 +275,12 @@ export function computeConnectRemove(
     return (c1 === source && c2 === target) || (c1 === target && c2 === source);
   });
 
-  if (!connectEq || !connectEq.sourceRange) return [];
+  if (!connectEq || !connectEq.ast?.sourceRange) return [];
 
-  const startLine = connectEq.sourceRange.startRow;
-  const startCol = connectEq.sourceRange.startCol;
-  const endLine = connectEq.sourceRange.endRow;
-  const endCol = connectEq.sourceRange.endCol;
+  const startLine = connectEq.ast.sourceRange.startRow;
+  const startCol = connectEq.ast.sourceRange.startCol;
+  const endLine = connectEq.ast.sourceRange.endRow;
+  const endCol = connectEq.ast.sourceRange.endCol;
 
   return [makeDeleteRange(lines, startLine, startCol, endLine, endCol)];
 }
@@ -308,14 +308,14 @@ export function computeComponentsDelete(
     const involvesComponent = [...nameSet].some(
       (name) => c1 === name || c1.startsWith(`${name}.`) || c2 === name || c2.startsWith(`${name}.`),
     );
-    if (involvesComponent && ce.sourceRange) {
+    if (involvesComponent && ce.ast?.sourceRange) {
       edits.push(
         makeDeleteRange(
           lines,
-          ce.sourceRange.startRow,
-          ce.sourceRange.startCol,
-          ce.sourceRange.endRow,
-          ce.sourceRange.endCol,
+          ce.ast.sourceRange.startRow,
+          ce.ast.sourceRange.startCol,
+          ce.ast.sourceRange.endRow,
+          ce.ast.sourceRange.endCol,
         ),
       );
     }
@@ -365,16 +365,16 @@ export function computeEdgePointEdits(
       return (c1 === edge.source && c2 === edge.target) || (c1 === edge.target && c2 === edge.source);
     });
 
-    if (!connectEq?.sourceRange) continue;
+    if (!connectEq?.ast?.sourceRange) continue;
 
-    const key = `${connectEq.sourceRange.startRow}:${connectEq.sourceRange.startCol}`;
+    const key = `${connectEq.ast.sourceRange.startRow}:${connectEq.ast.sourceRange.startCol}`;
     if (seen.has(key)) continue;
     seen.add(key);
 
-    const startLine = connectEq.sourceRange.startRow;
-    const startCol = connectEq.sourceRange.startCol;
-    const endLine = connectEq.sourceRange.endRow;
-    const endCol = connectEq.sourceRange.endCol;
+    const startLine = connectEq.ast.sourceRange.startRow;
+    const startCol = connectEq.ast.sourceRange.startCol;
+    const endLine = connectEq.ast.sourceRange.endRow;
+    const endCol = connectEq.ast.sourceRange.endCol;
 
     const range = Range.create(startLine, startCol, endLine, endCol);
     const text = getTextInRange(lines, startLine, startCol, endLine, endCol);

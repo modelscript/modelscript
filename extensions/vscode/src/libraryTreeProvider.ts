@@ -63,7 +63,7 @@ export class LibraryTreeItem extends vscode.TreeItem {
     // Use SVG icon from LSP if available, otherwise fall back to codicons
     if (info.iconSvg) {
       const iconUri = svgToIconUri(info.iconSvg);
-      this.iconPath = { light: iconUri, dark: iconUri };
+      this.iconPath = iconUri;
     } else {
       this.iconPath = classKindToIcon(info.classKind);
     }

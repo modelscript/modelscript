@@ -43,6 +43,100 @@ import {
 } from "@modelscript/polyglot";
 import { isBroken, modelicaMod, subModification, type ModelicaModArgs } from "./modification-args.js";
 
+const BUILTIN_MODELICA_NAMES = new Set([
+  // Independent variable
+  "time",
+  // Built-in operators
+  "der",
+  "pre",
+  "edge",
+  "change",
+  "reinit",
+  "initial",
+  "terminal",
+  "sample",
+  "noEvent",
+  "smooth",
+  "delay",
+  "cardinality",
+  "inStream",
+  "actualStream",
+  // Synchronous Language Elements
+  "Clock",
+  "hold",
+  "previous",
+  "backSample",
+  "shiftSample",
+  "subSample",
+  "superSample",
+  "noClock",
+  "interval",
+  "initialState",
+  "activeState",
+  "ticksInState",
+  "timeInState",
+  "transition",
+  // Assertions / utilities
+  "assert",
+  "print",
+  "terminate",
+  // Mathematical functions
+  "abs",
+  "sign",
+  "sqrt",
+  "exp",
+  "log",
+  "log10",
+  "sin",
+  "cos",
+  "tan",
+  "asin",
+  "acos",
+  "atan",
+  "atan2",
+  "sinh",
+  "cosh",
+  "tanh",
+  "floor",
+  "ceil",
+  "integer",
+  "mod",
+  "rem",
+  "div",
+  // Array / reduction functions
+  "max",
+  "min",
+  "sum",
+  "product",
+  "ndims",
+  "size",
+  "zeros",
+  "ones",
+  "fill",
+  "identity",
+  "diagonal",
+  "transpose",
+  "cat",
+  "scalar",
+  "vector",
+  "matrix",
+  "cross",
+  "skew",
+  "outerProduct",
+  "symmetric",
+  // Type names
+  "String",
+  "Integer",
+  "Boolean",
+  "Real",
+  // Modelica package
+  "Modelica",
+  // Enumerations
+  "enumeration",
+  // Scripting API
+  "simulate",
+]);
+
 // ---------------------------------------------------------------------------
 // Helper combinators (mirrors grammar.js utility functions)
 // ---------------------------------------------------------------------------
@@ -352,55 +446,68 @@ export default language({
               }
             }
 
-            // Inherited elements for lookup
-            const inheritedByName = new Map<string, SymbolEntry>();
-            for (const child of children) {
-              if (child.kind === "Extends") {
-                const baseEntries = db.byName(child.name);
-                const baseClass = baseEntries?.[0];
-                if (baseClass) {
-                  for (const inherited of db.childrenOf(baseClass.id)) {
-                    if (inherited.name && !inheritedByName.has(inherited.name)) {
-                      inheritedByName.set(inherited.name, inherited);
+            // Inherited elements for lookup (LAZY to avoid cycles)
+            let inheritedByName: Map<string, SymbolEntry> | null = null;
+            const getInherited = () => {
+              if (inheritedByName) return inheritedByName;
+              inheritedByName = new Map<string, SymbolEntry>();
+              for (const child of children) {
+                if (child.kind === "Extends") {
+                  const baseClass = db.query<SymbolEntry | null>("resolvedBaseClass", child.id);
+                  if (baseClass) {
+                    for (const inherited of db.childrenOf(baseClass.id)) {
+                      if (inherited.name && inherited.kind !== "Reference" && !inheritedByName.has(inherited.name)) {
+                        inheritedByName.set(inherited.name, inherited);
+                      }
                     }
                   }
                 }
               }
-            }
+              return inheritedByName;
+            };
 
             const isEncapsulated = !!(self.metadata as Record<string, unknown>)?.encapsulated;
 
             // Return the resolver closure
-            return (name: string, encapsulated = false): SymbolEntry | null => {
+            return (name: string, encapsulated = false, skipInherited = false): SymbolEntry | null => {
               // 1. Direct elements
               const direct = directByName.get(name);
               if (direct) return direct;
 
               // 2. Inherited elements
-              const inherited = inheritedByName.get(name);
-              if (inherited) return inherited;
+              if (!skipInherited) {
+                const inherited = getInherited().get(name);
+                if (inherited) return inherited;
+              }
 
               // 3. Qualified imports
               const qualPkg = qualifiedImports.get(name);
               if (qualPkg) {
                 const resolved = db.byName(qualPkg);
-                return resolved?.[0] ?? null;
+                return (
+                  resolved?.find((e) => e.kind === "Class" || e.kind === "Package" || e.kind === "Function") ?? null
+                );
               }
 
               // 4. Compound imports
               for (const ci of compoundImports) {
                 if (ci.names.includes(name)) {
                   const resolved = db.byName(`${ci.pkg}.${name}`);
-                  if (resolved?.[0]) return resolved[0];
+                  const foundEntry = resolved?.find(
+                    (e) => e.kind === "Class" || e.kind === "Package" || e.kind === "Function",
+                  );
+                  if (foundEntry) return foundEntry;
                 }
               }
 
               // 5. Unqualified imports
               for (const pkg of unqualifiedImportPkgs) {
-                const pkgEntry = db.byName(pkg)?.[0];
+                const pkgEntry = db
+                  .byName(pkg)
+                  ?.find((e) => e.kind === "Class" || e.kind === "Package" || e.kind === "Function");
                 if (pkgEntry) {
                   for (const pkgChild of db.childrenOf(pkgEntry.id)) {
-                    if (pkgChild.name === name) return pkgChild;
+                    if (pkgChild.name === name && pkgChild.kind !== "Reference") return pkgChild;
                   }
                 }
               }
@@ -409,17 +516,19 @@ export default language({
               if (!encapsulated && !isEncapsulated && self.parentId !== null) {
                 const parentEntry = db.symbol(self.parentId);
                 if (parentEntry && (parentEntry.kind === "Class" || parentEntry.kind === "Package")) {
-                  const parentResolver = db.query<(n: string, enc?: boolean) => SymbolEntry | null>(
+                  const parentResolver = db.query<(n: string, enc?: boolean, skip?: boolean) => SymbolEntry | null>(
                     "resolveSimpleName",
                     parentEntry.id,
                   );
-                  if (parentResolver) return parentResolver(name, false);
+                  if (parentResolver) return parentResolver(name, false, skipInherited);
                 }
               }
 
               // 7. Predefined types fallback
               const predefined = db.byName(name);
-              return predefined?.[0] ?? null;
+              return (
+                predefined?.find((e) => e.kind === "Class" || e.kind === "Package" || e.kind === "Function") ?? null
+              );
             };
           },
 
@@ -430,25 +539,35 @@ export default language({
            * into children for each subsequent part.
            */
           resolveName: (db: QueryDB, self: SymbolEntry) => {
-            return (qualifiedName: string): SymbolEntry | null => {
+            return (qualifiedName: string, skipInherited = false): SymbolEntry | null => {
               const parts = qualifiedName.split(".");
               if (parts.length === 0) return null;
 
               // Resolve first part via scope resolution
-              const resolver = db.query<(n: string, enc?: boolean) => SymbolEntry | null>("resolveSimpleName", self.id);
-              let current = resolver?.(parts[0]!) ?? null;
+              const resolver = db.query<(n: string, enc?: boolean, skip?: boolean) => SymbolEntry | null>(
+                "resolveSimpleName",
+                self.id,
+              );
+              let current = resolver?.(parts[0]!, false, skipInherited) ?? null;
               if (!current) return null;
 
               // Navigate remaining parts
               for (let i = 1; i < parts.length; i++) {
                 const part = parts[i]!;
                 let found: SymbolEntry | null = null;
+                let fallback: SymbolEntry | null = null;
                 for (const child of db.childrenOf(current.id)) {
                   if (child.name === part) {
-                    found = child;
-                    break;
+                    // Prefer Class/Component/Extends over Reference entries
+                    if (child.kind !== "Reference") {
+                      found = child;
+                      break;
+                    } else if (!fallback) {
+                      fallback = child;
+                    }
                   }
                 }
+                if (!found) found = fallback;
                 if (!found) return null;
                 current = found;
               }
@@ -518,8 +637,15 @@ export default language({
                   if (isBroken(outerMod, child.name)) continue;
 
                   // Resolve the base class
-                  const baseEntries = db.byName(child.name);
-                  const baseClass = baseEntries?.[0];
+                  const resolveName = db.query<(n: string) => SymbolEntry | null>("resolveName", self.id);
+                  let baseClass: SymbolEntry | null | undefined = undefined;
+                  if (resolveName) {
+                    baseClass = resolveName(child.name);
+                  }
+                  if (!baseClass) {
+                    baseClass = db.byName(child.name)?.find((e) => e.kind === "Class" || e.kind === "Package") ?? null;
+                  }
+
                   if (!baseClass) {
                     // Unresolved extends — skip but still record the extends entry
                     elements.push(child.id);
@@ -553,6 +679,9 @@ export default language({
                 } else if (child.kind === "Import") {
                   // Imports are not instantiated elements but recorded for scope
                   elements.push(child.id);
+                } else if (child.kind === "Reference") {
+                  // References shouldn't be instantiated as child elements
+                  continue;
                 } else {
                   // Other children (equations, algorithms, etc.)
                   elements.push(child.id);
@@ -606,8 +735,45 @@ export default language({
           },
           /** Warn if the class body is empty (no members at all). */
           emptyClass: (db: QueryDB, self: SymbolEntry) => {
-            if (db.childrenOf(self.id).length === 0) {
+            if (db.childrenOf(self.id).filter((c: any) => c.kind !== "Reference").length === 0) {
               return info(`Class '${self.name}' has no members`);
+            }
+            return null;
+          },
+          /** Error if endIdentifier does not match class identifier. */
+          identifierMismatch: (db: QueryDB, self: SymbolEntry) => {
+            const cst = db.cstNode(self.id) as any;
+            if (!cst) return null;
+            const classSpec = cst.childForFieldName("classSpecifier");
+            if (classSpec) {
+              const startId = classSpec.childForFieldName("identifier")?.text;
+              const endId = classSpec.childForFieldName("endIdentifier")?.text;
+              if (startId && endId && startId !== endId) {
+                return error(`Class end identifier '${endId}' does not match class name '${startId}'`);
+              }
+            }
+            return null;
+          },
+          /** Error if duplicate element names exist in this class. */
+          duplicateElement: (db: QueryDB, self: SymbolEntry) => {
+            const names = new Set<string>();
+            const elements = db.childrenOf(self.id);
+            const duplicates = new Set<string>();
+            for (const el of elements) {
+              if ((el.kind !== "Class" && el.kind !== "Component") || !el.name || BUILTIN_MODELICA_NAMES.has(el.name))
+                continue;
+              if (names.has(el.name)) {
+                duplicates.add(el.name);
+              } else {
+                names.add(el.name);
+              }
+            }
+            if (duplicates.size > 0) {
+              const results = [];
+              for (const dup of duplicates) {
+                results.push(error(`Duplicate element '${dup}' in class '${self.name}'`));
+              }
+              return results;
             }
             return null;
           },
@@ -926,8 +1092,21 @@ export default language({
           resolvedBaseClass: (db: QueryDB, self: SymbolEntry) => {
             const baseName = self.name;
             if (!baseName) return null;
+            // Use resolveName from the enclosing class for proper scope resolution
+            if (self.parentId !== null) {
+              const resolveName = db.query<(n: string, skip?: boolean) => SymbolEntry | null>(
+                "resolveName",
+                self.parentId,
+              );
+              if (resolveName) {
+                // Pass true for skipInherited to prevent cyclic lookup in extends clauses
+                const resolved = resolveName(baseName, true);
+                if (resolved && resolved.kind !== "Reference") return resolved;
+              }
+            }
+            // Fallback to global lookup, filtering out Reference entries
             const entries = db.byName(baseName);
-            return entries?.[0] ?? null;
+            return entries?.find((e) => e.kind === "Class" || e.kind === "Package") ?? entries?.[0] ?? null;
           },
           /**
            * Get the merged modification for this extends clause.
@@ -1028,36 +1207,35 @@ export default language({
     // =====================================================================
 
     ComponentClause: ($) =>
+      seq(
+        opt(field("redeclare", "redeclare")),
+        opt(field("final", "final")),
+        opt(field("inner", "inner")),
+        opt(field("outer", "outer")),
+        opt(field("replaceable", "replaceable")),
+        opt(field("flow", choice("flow", "stream"))),
+        opt(field("variability", choice("discrete", "parameter", "constant"))),
+        opt(field("causality", choice("input", "output"))),
+        field("typeSpecifier", $.TypeSpecifier),
+        opt(field("arraySubscripts", $.ArraySubscripts)),
+        commaSep1(field("componentDeclaration", $.ComponentDeclaration)),
+        opt(field("constrainingClause", $.ConstrainingClause)),
+        ";",
+      ),
+
+    ComponentDeclaration: ($) =>
       def({
         syntax: seq(
-          opt(field("redeclare", "redeclare")),
-          opt(field("final", "final")),
-          opt(field("inner", "inner")),
-          opt(field("outer", "outer")),
-          opt(field("replaceable", "replaceable")),
-          opt(field("flow", choice("flow", "stream"))),
-          opt(field("variability", choice("discrete", "parameter", "constant"))),
-          opt(field("causality", choice("input", "output"))),
-          field("typeSpecifier", $.TypeSpecifier),
-          opt(field("arraySubscripts", $.ArraySubscripts)),
-          commaSep1(field("componentDeclaration", $.ComponentDeclaration)),
-          opt(field("constrainingClause", $.ConstrainingClause)),
-          ";",
+          field("declaration", $.Declaration),
+          opt(field("conditionAttribute", $.ConditionAttribute)),
+          opt(field("description", $.Description)),
+          opt(field("annotationClause", $.AnnotationClause)),
         ),
         symbol: (self) => ({
           kind: "Component",
-          name: self.componentDeclaration.declaration.identifier,
+          name: self.declaration.identifier,
           attributes: {
-            typeSpecifier: self.typeSpecifier,
-            variability: self.variability,
-            causality: self.causality,
-            flow: self.flow,
-            redeclare: self.redeclare,
-            final: self.final,
-            inner: self.inner,
-            outer: self.outer,
-            replaceable: self.replaceable,
-            modification: self.componentDeclaration.declaration.modification,
+            modification: self.declaration.modification,
           },
         }),
         queries: {
@@ -1065,10 +1243,30 @@ export default language({
            * Resolve the type specifier to the class it references.
            */
           resolvedType: (db: QueryDB, self: SymbolEntry) => {
-            const typeName = (self.metadata as Record<string, unknown>)?.typeSpecifier;
+            const cstNode = db.cstNode(self.id);
+            let current = cstNode as any;
+            while (current && current.type !== "ComponentClause") {
+              current = current.parent;
+            }
+            let typeName = current?.childForFieldName("typeSpecifier")?.text ?? "";
             if (!typeName || typeof typeName !== "string") return null;
-            const entries = db.byName(typeName);
-            return entries?.[0] ?? null;
+
+            // Try qualified resolution from parent scope
+            if (typeName.includes(".") && self.parentId !== null) {
+              const parentEntry = db.symbol(self.parentId);
+              if (parentEntry && (parentEntry.kind === "Class" || parentEntry.kind === "Package")) {
+                const qualResolver = db.query<(n: string) => SymbolEntry | null>("resolveName", parentEntry.id);
+                if (qualResolver) {
+                  const resolved = qualResolver(typeName);
+                  if (resolved) return resolved;
+                }
+              }
+            }
+
+            // Fallback: global lookup by simple name (last segment for qualified, full for simple)
+            const simpleName = typeName.includes(".") ? typeName.split(".").pop()! : typeName;
+            const entries = db.byName(simpleName);
+            return entries?.find((e) => e.kind === "Class" || e.kind === "Package" || e.kind === "Function") ?? null;
           },
           /**
            * Get the effective modification for this component as a
@@ -1147,13 +1345,92 @@ export default language({
            * Check if this component's type is a connector.
            */
           isConnectorType: (db: QueryDB, self: SymbolEntry) => {
-            const typeName = (self.metadata as Record<string, unknown>)?.typeSpecifier;
+            const cstNode = db.cstNode(self.id);
+            let current = cstNode as any;
+            while (current && current.type !== "ComponentClause") {
+              current = current.parent;
+            }
+            let typeName = current?.childForFieldName("typeSpecifier")?.text;
             if (!typeName || typeof typeName !== "string") return false;
-            const entries = db.byName(typeName);
-            const typeEntry = entries?.[0];
+
+            let typeEntry: SymbolEntry | null = null;
+
+            // Try qualified resolution from parent scope
+            if (typeName.includes(".") && self.parentId !== null) {
+              const parentEntry = db.symbol(self.parentId);
+              if (parentEntry && (parentEntry.kind === "Class" || parentEntry.kind === "Package")) {
+                const qualResolver = db.query<(n: string) => SymbolEntry | null>("resolveName", parentEntry.id);
+                if (qualResolver) {
+                  typeEntry = qualResolver(typeName);
+                }
+              }
+            }
+
+            // Fallback: global lookup by simple name
+            if (!typeEntry) {
+              const simpleName = typeName.includes(".") ? typeName.split(".").pop()! : typeName;
+              const entries = db.byName(simpleName);
+              typeEntry =
+                entries?.find((e) => e.kind === "Class" || e.kind === "Package" || e.kind === "Function") ?? null;
+            }
+
             if (!typeEntry) return false;
             const classPrefixes = (typeEntry.metadata as Record<string, unknown>)?.classPrefixes;
             return typeof classPrefixes === "string" && classPrefixes.includes("connector");
+          },
+
+          variability: (db: QueryDB, self: SymbolEntry) => {
+            let current = db.cstNode(self.id) as any;
+            while (current && current.type !== "ComponentClause") current = current.parent;
+            return current?.childForFieldName("variability")?.text ?? null;
+          },
+
+          causality: (db: QueryDB, self: SymbolEntry) => {
+            let current = db.cstNode(self.id) as any;
+            while (current && current.type !== "ComponentClause") current = current.parent;
+            return current?.childForFieldName("causality")?.text ?? null;
+          },
+
+          flowPrefix: (db: QueryDB, self: SymbolEntry) => {
+            let current = db.cstNode(self.id) as any;
+            while (current && current.type !== "ComponentClause") current = current.parent;
+            return current?.childForFieldName("flow")?.text ?? null;
+          },
+
+          isFinal: (db: QueryDB, self: SymbolEntry) => {
+            let current = db.cstNode(self.id) as any;
+            while (current && current.type !== "ComponentClause") current = current.parent;
+            return !!current?.childForFieldName("final");
+          },
+
+          isRedeclare: (db: QueryDB, self: SymbolEntry) => {
+            let current = db.cstNode(self.id) as any;
+            while (current && current.type !== "ComponentClause") current = current.parent;
+            return !!current?.childForFieldName("redeclare");
+          },
+
+          isInner: (db: QueryDB, self: SymbolEntry) => {
+            let current = db.cstNode(self.id) as any;
+            while (current && current.type !== "ComponentClause") current = current.parent;
+            return !!current?.childForFieldName("inner");
+          },
+
+          isReplaceable: (db: QueryDB, self: SymbolEntry) => {
+            let current = db.cstNode(self.id) as any;
+            while (current && current.type !== "ComponentClause") current = current.parent;
+            return !!current?.childForFieldName("replaceable");
+          },
+
+          isProtected: (db: QueryDB, self: SymbolEntry) => {
+            let current = db.cstNode(self.id) as any;
+            while (current && current.type !== "ElementSection") current = current.parent;
+            return current ? current.childForFieldName("protected") !== null : false;
+          },
+
+          isOuter: (db: QueryDB, self: SymbolEntry) => {
+            let current = db.cstNode(self.id) as any;
+            while (current && current.type !== "ComponentClause") current = current.parent;
+            return !!current?.childForFieldName("outer");
           },
 
           // =================================================================
@@ -1171,29 +1448,41 @@ export default language({
            * This replaces ModelicaComponentInstance.classInstance.
            */
           classInstance: (db: QueryDB, self: SymbolEntry) => {
-            const meta = self.metadata as Record<string, unknown>;
-            const typeName = meta?.typeSpecifier as string | undefined;
+            const cstNode = db.cstNode(self.id);
+            let current = cstNode as any;
+            while (current && current.type !== "ComponentClause") {
+              current = current.parent;
+            }
+            let typeName = current?.childForFieldName("typeSpecifier")?.text;
             if (!typeName) return null;
 
-            // Resolve the type specifier
-            // First try: look up from enclosing class scope
             let typeEntry: SymbolEntry | null = null;
             if (self.parentId !== null) {
               const parentEntry = db.symbol(self.parentId);
               if (parentEntry && (parentEntry.kind === "Class" || parentEntry.kind === "Package")) {
-                const resolver = db.query<(n: string, enc?: boolean) => SymbolEntry | null>(
-                  "resolveSimpleName",
-                  parentEntry.id,
-                );
-                if (resolver) {
-                  typeEntry = resolver(typeName);
+                // Use resolveName for qualified (dotted) names, resolveSimpleName for simple names
+                if (typeName.includes(".")) {
+                  const qualResolver = db.query<(n: string) => SymbolEntry | null>("resolveName", parentEntry.id);
+                  if (qualResolver) {
+                    typeEntry = qualResolver(typeName);
+                  }
+                } else {
+                  const resolver = db.query<(n: string, enc?: boolean) => SymbolEntry | null>(
+                    "resolveSimpleName",
+                    parentEntry.id,
+                  );
+                  if (resolver) {
+                    typeEntry = resolver(typeName);
+                  }
                 }
               }
             }
-            // Fallback: global lookup
+            // Fallback: global lookup by simple name (last segment)
             if (!typeEntry) {
-              const entries = db.byName(typeName);
-              typeEntry = entries?.[0] ?? null;
+              const simpleName = typeName.includes(".") ? typeName.split(".").pop()! : typeName;
+              const entries = db.byName(simpleName);
+              typeEntry =
+                entries?.find((e) => e.kind === "Class" || e.kind === "Package" || e.kind === "Function") ?? null;
             }
             if (!typeEntry) return null;
 
@@ -1219,12 +1508,22 @@ export default language({
            *   - { kind: "expression", cstBytes: [start, end] } — symbolic expression
            */
           arrayDimensions: (db: QueryDB, self: SymbolEntry) => {
-            // Get the CST node for this ComponentClause
+            // Get the CST node for this ComponentDeclaration
             const cst = db.cstNode(self.id) as import("@modelscript/polyglot/symbol-indexer").CSTNode | null;
             if (!cst) return null;
 
-            // Navigate to the arraySubscripts field
-            const arraySubNode = cst.childForFieldName("arraySubscripts");
+            // Navigate up to ComponentClause
+            let current = cst as any;
+            while (current && current.type !== "ComponentDeclaration" && current.type !== "ComponentClause") {
+              current = current.parent;
+            }
+            let arraySubNode = current?.childForFieldName("arraySubscripts");
+            if (!arraySubNode) {
+              while (current && current.type !== "ComponentClause") {
+                current = current.parent;
+              }
+              arraySubNode = current?.childForFieldName("arraySubscripts");
+            }
             if (!arraySubNode) return null;
 
             const subscripts: Array<
@@ -1265,7 +1564,14 @@ export default language({
           name: "ComponentDeclaration",
           specializable: true,
           visitable: true,
-          properties: {
+          properties: {},
+          queryTypes: {
+            resolvedType: "SemanticNode | null",
+            effectiveModification: "unknown",
+            isConnectorType: "boolean",
+            classInstance: "SymbolId | null",
+            arrayDimensions:
+              "Array<{ kind: 'literal'; value: number } | { kind: 'flexible' } | { kind: 'expression'; cstBytes: readonly [number, number] }> | null",
             variability: "string | null",
             causality: "string | null",
             isFinal: "boolean",
@@ -1275,14 +1581,6 @@ export default language({
             isProtected: "boolean",
             flowPrefix: "string | null",
             isRedeclare: "boolean",
-          },
-          queryTypes: {
-            resolvedType: "SemanticNode | null",
-            effectiveModification: "ModelicaModArgs | null",
-            isConnectorType: "boolean",
-            classInstance: "SymbolId | null",
-            arrayDimensions:
-              "Array<{ kind: 'literal'; value: number } | { kind: 'flexible' } | { kind: 'expression'; cstBytes: readonly [number, number] }> | null",
           },
         },
         lints: {
@@ -2026,14 +2324,6 @@ export default language({
         }),
       }),
 
-    ComponentDeclaration: ($) =>
-      seq(
-        field("declaration", $.Declaration),
-        opt(field("conditionAttribute", $.ConditionAttribute)),
-        opt(field("description", $.Description)),
-        opt(field("annotationClause", $.AnnotationClause)),
-      ),
-
     ConditionAttribute: ($) => seq("if", field("condition", $._Expression)),
 
     Declaration: ($) =>
@@ -2658,7 +2948,6 @@ export default language({
 
     BOOLEAN: () => choice("false", "true"),
 
-    /* eslint-disable no-control-regex */
     IDENT: () =>
       token(
         choice(

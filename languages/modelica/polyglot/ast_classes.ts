@@ -7,7 +7,6 @@
 import type { QueryDB, SpecializationArgs, SymbolEntry, SymbolId } from "@modelscript/polyglot/runtime";
 import type { SemanticVisitor } from "@modelscript/polyglot/semantic-node";
 import { GenericNode, SemanticNode } from "@modelscript/polyglot/semantic-node";
-import type { ModelicaModArgs } from "./modification-args.js";
 
 export class ClassDefinition extends SemanticNode {
   get kind(): string {
@@ -507,136 +506,26 @@ export class ComponentDeclaration extends SemanticNode {
   }
 
   // --- CST Fields ---
-  /** Field: redeclare */
-  get redeclare(): string | null {
-    return this.field("redeclare");
+  /** Field: declaration */
+  get declaration(): string | null {
+    return this.field("declaration");
   }
-  /** Field: final */
-  get final(): string | null {
-    return this.field("final");
+  /** Field: conditionAttribute */
+  get conditionAttribute(): string | null {
+    return this.field("conditionAttribute");
   }
-  /** Field: inner */
-  get inner(): string | null {
-    return this.field("inner");
+  /** Field: description */
+  get description(): string | null {
+    return this.field("description");
   }
-  /** Field: outer */
-  get outer(): string | null {
-    return this.field("outer");
-  }
-  /** Field: replaceable */
-  get replaceable(): string | null {
-    return this.field("replaceable");
-  }
-  /** Field: flow */
-  get flow(): string | null {
-    return this.field("flow");
-  }
-  /** Field: variability */
-  get variability(): string | null {
-    return this.field("variability");
-  }
-  /** Field: causality */
-  get causality(): string | null {
-    return this.field("causality");
-  }
-  /** Field: typeSpecifier */
-  get typeSpecifier(): string | null {
-    return this.field("typeSpecifier");
-  }
-  /** Field: arraySubscripts */
-  get arraySubscripts(): string | null {
-    return this.field("arraySubscripts");
-  }
-  /** Field: componentDeclaration */
-  get componentDeclaration(): string | null {
-    return this.field("componentDeclaration");
-  }
-  /** Field: constrainingClause */
-  get constrainingClause(): string | null {
-    return this.field("constrainingClause");
+  /** Field: annotationClause */
+  get annotationClause(): string | null {
+    return this.field("annotationClause");
   }
 
   // --- Metadata ---
   get modification(): string | null {
     return this.attribute("modification");
-  }
-
-  // --- Mutable Properties (CST default + runtime override) ---
-  #isFinal: boolean | undefined = false;
-
-  get isFinal(): boolean {
-    if (this.#isFinal !== undefined) return this.#isFinal;
-    return (this.attribute("isFinal") as unknown as boolean) ?? false;
-  }
-
-  set isFinal(value: boolean) {
-    this.#isFinal = value;
-  }
-
-  #isInner: boolean | undefined = false;
-
-  get isInner(): boolean {
-    if (this.#isInner !== undefined) return this.#isInner;
-    return (this.attribute("isInner") as unknown as boolean) ?? false;
-  }
-
-  set isInner(value: boolean) {
-    this.#isInner = value;
-  }
-
-  #isOuter: boolean | undefined = false;
-
-  get isOuter(): boolean {
-    if (this.#isOuter !== undefined) return this.#isOuter;
-    return (this.attribute("isOuter") as unknown as boolean) ?? false;
-  }
-
-  set isOuter(value: boolean) {
-    this.#isOuter = value;
-  }
-
-  #isReplaceable: boolean | undefined = false;
-
-  get isReplaceable(): boolean {
-    if (this.#isReplaceable !== undefined) return this.#isReplaceable;
-    return (this.attribute("isReplaceable") as unknown as boolean) ?? false;
-  }
-
-  set isReplaceable(value: boolean) {
-    this.#isReplaceable = value;
-  }
-
-  #isProtected: boolean | undefined = false;
-
-  get isProtected(): boolean {
-    if (this.#isProtected !== undefined) return this.#isProtected;
-    return (this.attribute("isProtected") as unknown as boolean) ?? false;
-  }
-
-  set isProtected(value: boolean) {
-    this.#isProtected = value;
-  }
-
-  #flowPrefix: string | null | undefined = undefined;
-
-  get flowPrefix(): string | null {
-    if (this.#flowPrefix !== undefined) return this.#flowPrefix;
-    return this.attribute("flowPrefix") ?? (undefined as unknown as string | null);
-  }
-
-  set flowPrefix(value: string | null) {
-    this.#flowPrefix = value;
-  }
-
-  #isRedeclare: boolean | undefined = false;
-
-  get isRedeclare(): boolean {
-    if (this.#isRedeclare !== undefined) return this.#isRedeclare;
-    return (this.attribute("isRedeclare") as unknown as boolean) ?? false;
-  }
-
-  set isRedeclare(value: boolean) {
-    this.#isRedeclare = value;
   }
 
   // --- Computed Properties (query-backed) ---
@@ -645,11 +534,8 @@ export class ComponentDeclaration extends SemanticNode {
     return entry ? (wrapEntry(entry, this.db) as SemanticNode | null) : (null as unknown as SemanticNode | null);
   }
 
-  get effectiveModification(): ModelicaModArgs | null {
-    const entry = this.query<SymbolEntry | null>("effectiveModification");
-    return entry
-      ? (wrapEntry(entry, this.db) as unknown as ModelicaModArgs | null)
-      : (null as unknown as ModelicaModArgs | null);
+  get effectiveModification(): unknown {
+    return this.query<unknown>("effectiveModification");
   }
 
   get isConnectorType(): boolean {
@@ -660,16 +546,57 @@ export class ComponentDeclaration extends SemanticNode {
     return this.query<SymbolId | null>("classInstance");
   }
 
-  get arrayDimensions(): Array<
-    | { kind: "literal"; value: number }
-    | { kind: "flexible" }
-    | { kind: "expression"; cstBytes: readonly [number, number] }
-  > | null {
-    return this.query<Array<
-      | { kind: "literal"; value: number }
-      | { kind: "flexible" }
-      | { kind: "expression"; cstBytes: readonly [number, number] }
-    > | null>("arrayDimensions");
+  get arrayDimensions():
+    | (
+        | { kind: "literal"; value: number }
+        | { kind: "flexible" }
+        | { kind: "expression"; cstBytes: readonly [number, number] }
+      )[]
+    | null {
+    return this.query<
+      | (
+          | { kind: "literal"; value: number }
+          | { kind: "flexible" }
+          | { kind: "expression"; cstBytes: readonly [number, number] }
+        )[]
+      | null
+    >("arrayDimensions");
+  }
+
+  get variability(): string | null {
+    return this.query<string | null>("variability");
+  }
+
+  get causality(): string | null {
+    return this.query<string | null>("causality");
+  }
+
+  get isFinal(): boolean {
+    return this.query<boolean>("isFinal");
+  }
+
+  get isInner(): boolean {
+    return this.query<boolean>("isInner");
+  }
+
+  get isOuter(): boolean {
+    return this.query<boolean>("isOuter");
+  }
+
+  get isReplaceable(): boolean {
+    return this.query<boolean>("isReplaceable");
+  }
+
+  get isProtected(): boolean {
+    return this.query<boolean>("isProtected");
+  }
+
+  get flowPrefix(): string | null {
+    return this.query<string | null>("flowPrefix");
+  }
+
+  get isRedeclare(): boolean {
+    return this.query<boolean>("isRedeclare");
   }
 
   // --- Graphics ---

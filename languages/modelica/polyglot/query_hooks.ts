@@ -13,7 +13,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
   const hooks = new Map<string, QueryHooks>();
   if (!langDef.rules) return hooks;
 
-  // ClassDefinition: members, nestedClasses, components, extendsClasses, imports, inputParameters, outputParameters, parameters, constants, connectEquations, allElements, isConnector, resolveModification, resolveSimpleName, resolveName, instantiate, lint__classNamingConvention, lint__emptyClass
+  // ClassDefinition: members, nestedClasses, components, extendsClasses, imports, inputParameters, outputParameters, parameters, constants, connectEquations, allElements, isConnector, resolveModification, resolveSimpleName, resolveName, instantiate, lint__classNamingConvention, lint__emptyClass, lint__identifierMismatch, lint__duplicateElement
   {
     const $ = new Proxy(
       {},
@@ -67,7 +67,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // ComponentClause: resolvedType, effectiveModification, isConnectorType, classInstance, arrayDimensions, lint__componentNamingConvention, lint__unresolvedTypeSpecifier, lint__recursiveDefinition, lint__typeMismatch, lint__bindingTypeMismatch, lint__arrayShapeMismatch, lint__arrayElementTypeMismatch, lint__unresolvedReference, lint__functionCallMismatch, lint__evolutionCheck
+  // ComponentDeclaration: resolvedType, effectiveModification, isConnectorType, variability, causality, flowPrefix, isFinal, isRedeclare, isInner, isReplaceable, isProtected, isOuter, classInstance, arrayDimensions, lint__componentNamingConvention, lint__unresolvedTypeSpecifier, lint__recursiveDefinition, lint__typeMismatch, lint__bindingTypeMismatch, lint__arrayShapeMismatch, lint__arrayElementTypeMismatch, lint__unresolvedReference, lint__functionCallMismatch, lint__evolutionCheck
   {
     const $ = new Proxy(
       {},
@@ -77,7 +77,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["ComponentClause"]($);
+    const rule = langDef.rules!["ComponentDeclaration"]($);
     if (rule && (rule as any).type === "def") {
       const opts = (rule as any).options;
       const merged: Record<string, any> = {};
@@ -89,7 +89,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         }
       }
       if (Object.keys(merged).length > 0) {
-        hooks.set("ComponentClause", merged);
+        hooks.set("ComponentDeclaration", merged);
       }
     }
   }

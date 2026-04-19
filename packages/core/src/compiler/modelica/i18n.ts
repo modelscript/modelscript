@@ -15,7 +15,7 @@ import {
   type ModelicaExpressionSyntaxNode,
   type ModelicaSyntaxNode,
 } from "@modelscript/modelica-polyglot/ast";
-import { ModelicaEntity, ModelicaLibrary } from "./model.js";
+import type { ModelicaLibrary } from "../context.js";
 
 interface PotEntry {
   msgid: string;
@@ -303,26 +303,20 @@ export class I18nExtractor {
   }
 
   /**
-   * Extract translatable strings from a library by walking its entities
-   * without instantiation.
+   * Extract translatable strings from a library by walking its registered files
+   * in the workspace index.
    */
   extractFromLibrary(library: ModelicaLibrary) {
-    const entity = library.entity;
-    // Load (parse) without instantiating
-    entity.load();
-    this.extractFromEntity(entity);
-  }
-
-  /**
-   * Recursively extract from an entity and its sub-entities.
-   */
-  private extractFromEntity(entity: ModelicaEntity) {
-    // Extract from this entity's stored definition
-    this.extractFromStoredDefinition(entity.storedDefinitionSyntaxNode, entity.path);
-
-    // Recursively extract from sub-entities
-    for (const subEntity of entity.subEntities) {
-      this.extractFromEntity(subEntity);
+    const context = library.context;
+    for (const uri of context.workspaceIndex.uris) {
+      if (uri.startsWith(library.path)) {
+        const tree = context.getTree(uri);
+        if (tree?.rootNode) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const node = ModelicaStoredDefinitionSyntaxNode.new(null, tree.rootNode as any);
+          if (node) this.extractFromStoredDefinition(node, uri);
+        }
+      }
     }
   }
 

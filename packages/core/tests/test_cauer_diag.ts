@@ -13,7 +13,7 @@ Context.registerParser(".mo", parser);
 async function main() {
   const ctx = new Context(new NodeFileSystem());
   const packageDir = "/home/omar/git/modelscript/packages/core/tests/msl/Modelica 4.1.0";
-  ctx.addLibrary(packageDir);
+  await ctx.addLibrary(packageDir);
 
   const className = "Modelica.Electrical.Analog.Examples.CauerLowPassAnalog";
   const cls = ctx.query(className);

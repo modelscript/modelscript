@@ -17,13 +17,8 @@
  * system and exposes them as typed variable descriptors for flattener use.
  */
 
-import type { IModelicaModelVisitor, Scope } from "@modelscript/core";
-import {
-  ModelicaClassInstance,
-  ModelicaComponentInstance,
-  type ModelicaElement,
-  type ModelicaNamedElement,
-} from "@modelscript/core";
+import type { Scope } from "@modelscript/core";
+import { ModelicaClassInstance } from "@modelscript/core";
 import {
   ModelicaCausality,
   ModelicaClassKind,
@@ -312,6 +307,58 @@ function escapeXml(str: string): string {
 
 // ── ModelicaSspEntity ──
 
+class SyntheticClassInstance {
+  isClassInstance = true;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  parent: any = null;
+  name = "";
+  classKind: string = ModelicaClassKind.CONNECTOR;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  declaredElements: any[] = [];
+  instantiated = true;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars
+  clone(_mod: any): any {
+    return this;
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars
+  accept(_visitor: any, _args: any): any {
+    return null;
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars
+  resolveSimpleName(_name: string): any {
+    return null;
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars
+  annotation(_name: string, _anns: any): any {
+    return null;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  get elements(): IterableIterator<any> {
+    const list = this.declaredElements;
+    return (function* () {
+      yield* list;
+    })();
+  }
+}
+
+class SyntheticComponentInstance {
+  isComponentInstance = true;
+  name = "";
+  description: string | null = null;
+  causality: string | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  classInstance: any = null;
+  instantiated = false;
+  variability = "continuous";
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars
+  annotation<T>(_name: string, _annotations?: any): T | null {
+    return null;
+  }
+}
+
 /**
  * A Modelica class instance backed by an SSP archive.
  *
@@ -322,17 +369,29 @@ function escapeXml(str: string): string {
  *
  * Analogous to `ModelicaFmuEntity` in `fmu.ts`.
  */
-export class ModelicaSspEntity extends ModelicaClassInstance {
+export class ModelicaSspEntity {
+  isClassInstance = true;
   /** Path to the SSP archive or identifier. */
   sspPath: string;
   /** Parsed SSP metadata. */
   metadata: SspArchiveMetadata | null = null;
   /** Synthetic component instances created during instantiation. */
-  #syntheticComponents: ModelicaComponentInstance[] = [];
+  #syntheticComponents: SyntheticComponentInstance[] = [];
   #loaded = false;
 
+  parent: Scope;
+  name = "";
+  description: string | null = null;
+  classKind: string;
+  instantiated = false;
+  instantiating = false;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  declaredElements: any[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  root: any = null;
+
   constructor(parent: Scope, path: string, metadata?: SspArchiveMetadata) {
-    super(parent);
+    this.parent = parent;
     this.sspPath = path;
     this.classKind = ModelicaClassKind.BLOCK;
     if (metadata) {
@@ -359,11 +418,14 @@ export class ModelicaSspEntity extends ModelicaClassInstance {
     return entity;
   }
 
-  override accept<R, A>(visitor: IModelicaModelVisitor<R, A>, argument?: A): R {
-    return visitor.visitClassInstance(this, argument);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  accept<R, A>(visitor: any, argument?: A): R {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return visitor.visitClassInstance(this as any, argument);
   }
 
-  override clone(): ModelicaClassInstance {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  clone(): any {
     if (!this.#loaded) this.load();
     const cloned = new ModelicaSspEntity(this.parent ?? this, this.sspPath, this.metadata ?? undefined);
     cloned.name = this.name;
@@ -372,7 +434,8 @@ export class ModelicaSspEntity extends ModelicaClassInstance {
     return cloned;
   }
 
-  override get elements(): IterableIterator<ModelicaElement> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  get elements(): IterableIterator<any> {
     if (!this.instantiated && !this.instantiating) this.instantiate();
     const components = this.#syntheticComponents;
     return (function* () {
@@ -380,11 +443,14 @@ export class ModelicaSspEntity extends ModelicaClassInstance {
     })();
   }
 
-  override resolveSimpleName(
+  resolveSimpleName(
     identifier: ModelicaIdentifierSyntaxNode | string | null | undefined,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     global = false,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     encapsulated = false,
-  ): ModelicaNamedElement | null {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ): any | null {
     const simpleName = typeof identifier === "string" ? identifier : identifier?.text;
     if (!simpleName) return null;
     if (!this.instantiated && !this.instantiating) this.instantiate();
@@ -393,11 +459,13 @@ export class ModelicaSspEntity extends ModelicaClassInstance {
       if (comp.name === simpleName) return comp;
     }
 
-    return super.resolveSimpleName(identifier, global, encapsulated);
+    return null;
   }
 
-  override annotation<T>(name: string, annotations?: ModelicaNamedElement[] | null): T | null {
-    if ((name === "Icon" || name === "Diagram") && (!annotations || annotations === this.annotations)) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  annotation<T>(name: string, annotations?: any[] | null): T | null {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if ((name === "Icon" || name === "Diagram") && (!annotations || annotations === (this as any).annotations)) {
       if (!this.#loaded) this.load();
       return {
         "@type": name,
@@ -413,10 +481,10 @@ export class ModelicaSspEntity extends ModelicaClassInstance {
         graphics: this.#buildSspGraphics(),
       } as unknown as T;
     }
-    return super.annotation(name, annotations);
+    return null;
   }
 
-  override instantiate(): void {
+  instantiate(): void {
     if (this.instantiated) return;
     if (this.instantiating) return;
     this.instantiating = true;
@@ -442,7 +510,7 @@ export class ModelicaSspEntity extends ModelicaClassInstance {
       let outputCount = 0;
 
       for (const v of [...inputs, ...outputs, ...params]) {
-        const comp = new ModelicaComponentInstance(this, null);
+        const comp = new SyntheticComponentInstance();
         comp.name = v.name;
         comp.description = null;
 
@@ -456,16 +524,14 @@ export class ModelicaSspEntity extends ModelicaClassInstance {
         if (isInput || isOutput) {
           // Create synthetic CONNECTOR type for diagram rendering
           if (baseType) {
-            const connector = baseType.clone();
-            connector.classKind = ModelicaClassKind.CONNECTOR;
-            connector.declaredElements = [];
+            const connector = new SyntheticClassInstance();
+            connector.name = baseType.name;
+            connector.parent = this;
             comp.classInstance = connector;
           } else {
-            const connector = new ModelicaClassInstance(this);
-            connector.classKind = ModelicaClassKind.CONNECTOR;
+            const connector = new SyntheticClassInstance();
             connector.name = isInput ? `${v.type}Input` : `${v.type}Output`;
-            connector.instantiated = true;
-            connector.declaredElements = [];
+            connector.parent = this;
             comp.classInstance = connector;
           }
 
@@ -489,8 +555,10 @@ export class ModelicaSspEntity extends ModelicaClassInstance {
                 [120, y + 10],
               ];
 
-          comp.annotation = function <T2>(aName: string, anns?: ModelicaNamedElement[] | null): T2 | null {
-            if (aName === "Placement" && (!anns || anns === this.annotations)) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          comp.annotation = function <T2>(aName: string, anns?: any): T2 | null {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            if (aName === "Placement" && (!anns || anns === (this as any).annotations)) {
               return {
                 "@type": "Placement",
                 visible: true,
@@ -498,10 +566,11 @@ export class ModelicaSspEntity extends ModelicaClassInstance {
                 iconTransformation: { extent, rotation: 0, origin: [0, 0], "@type": "Transformation" },
               } as unknown as T2;
             }
-            return ModelicaComponentInstance.prototype.annotation.call(this, aName, anns) as T2 | null;
+            return null;
           };
         } else if (baseType) {
-          comp.classInstance = baseType.clone();
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          comp.classInstance = baseType.clone(null as any);
         }
 
         comp.instantiated = true;
@@ -522,8 +591,8 @@ export class ModelicaSspEntity extends ModelicaClassInstance {
 
     if (this.metadata) return;
 
-    // eslint-disable-next-line @typescript-eslint/no-this-alias
-    let node: Scope | undefined | null = this;
+    // eslint-disable-next-line @typescript-eslint/no-this-alias, @typescript-eslint/no-explicit-any
+    let node: any = this;
     while (node && !("context" in node)) {
       node = node.parent;
     }

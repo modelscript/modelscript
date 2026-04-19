@@ -370,7 +370,7 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(treeView);
 
   // Register MQTT participant tree view
-  const mqttTreeProvider = new MqttTreeProvider(client);
+  const mqttTreeProvider = new MqttTreeProvider(client, context);
   const mqttTreeView = vscode.window.createTreeView("modelscript.mqttTree", {
     treeDataProvider: mqttTreeProvider,
     dragAndDropController: mqttTreeProvider,

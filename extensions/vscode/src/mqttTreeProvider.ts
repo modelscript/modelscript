@@ -58,11 +58,6 @@ function causalityToIcon(causality: string): vscode.ThemeIcon {
   }
 }
 
-function svgToIconUri(svg: string): vscode.Uri {
-  const encoded = encodeURIComponent(svg);
-  return vscode.Uri.parse(`data:image/svg+xml;utf8,${encoded}`);
-}
-
 type MqttTreeItem = MqttParticipantItem | MqttVariableItem;
 
 export class MqttParticipantItem extends vscode.TreeItem {
@@ -72,12 +67,9 @@ export class MqttParticipantItem extends vscode.TreeItem {
     this.description = info.type;
     this.contextValue = "mqttParticipant";
 
-    if (info.iconSvg) {
-      const iconUri = svgToIconUri(info.iconSvg);
-      this.iconPath = { light: iconUri, dark: iconUri };
-    } else {
-      this.iconPath = participantTypeToIcon(info.type);
-    }
+    // Due to VS Code Content Security Policy on TreeItem.iconPath, dynamically
+    // generated Uris and data: URIs render as blank spaces. We must use native codicons.
+    this.iconPath = participantTypeToIcon(info.type);
 
     // Double-click triggers addToDiagram
     this.command = {
@@ -118,6 +110,7 @@ export class MqttTreeProvider
 
   constructor(
     private readonly client: LanguageClient,
+    private readonly context: vscode.ExtensionContext,
     private readonly pollIntervalMs = 5000,
   ) {
     // Read API URL from settings
@@ -184,7 +177,11 @@ export class MqttTreeProvider
   async getChildren(element?: MqttTreeItem): Promise<MqttTreeItem[]> {
     if (!element) {
       // Root: return all participants
-      return this.participants.map((p) => new MqttParticipantItem(p));
+      const items: MqttParticipantItem[] = [];
+      for (const p of this.participants) {
+        items.push(new MqttParticipantItem(p));
+      }
+      return items;
     }
 
     if (element instanceof MqttParticipantItem) {

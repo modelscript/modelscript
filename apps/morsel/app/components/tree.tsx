@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Context, ModelicaClassInstance, ModelicaEntity, ModelicaLibrary, renderIcon } from "@modelscript/core";
+import {
+  Context,
+  QueryBackedClassInstance as ModelicaClassInstance,
+  ModelicaLibrary,
+  renderIcon,
+} from "@modelscript/core";
 import { ChevronDownIcon, ChevronRightIcon, PackageIcon } from "@primer/octicons-react";
 import { NavList, useTheme } from "@primer/react";
 import React from "react";
@@ -66,8 +71,8 @@ interface TreeNodeProps {
 function getClassChildren(element: ModelicaClassInstance): ModelicaClassInstance[] {
   const children: ModelicaClassInstance[] = [];
   for (const child of element.elements) {
-    if (child instanceof ModelicaClassInstance) {
-      children.push(child);
+    if (child && "isClassInstance" in (child as any)) {
+      children.push(child as ModelicaClassInstance);
     }
   }
   return children;
@@ -250,8 +255,8 @@ const LibraryGroup = React.memo(function LibraryGroup(props: LibraryGroupProps) 
     ? (() => {
         const result: ModelicaClassInstance[] = [];
         for (const child of library.elements) {
-          if (child instanceof ModelicaClassInstance) {
-            result.push(child);
+          if (child && "isClassInstance" in (child as any)) {
+            result.push(child as ModelicaClassInstance);
           }
         }
         return result;
@@ -376,21 +381,19 @@ const TreeWidget = React.memo(function TreeWidget(props: TreeWidgetProps) {
     setSearchState({ searching: true, results: [], totalMatches: 0, done: false });
 
     // Collect all traversable roots into a flat work queue
-    // Use ModelicaEntity tree (cheap load()) instead of .elements (expensive instantiate())
-    type WorkItem = { entity: ModelicaEntity; prefix: string } | { instance: ModelicaClassInstance | ModelicaLibrary };
+    type WorkItem = { id: number; prefix: string } | { instance: ModelicaClassInstance | ModelicaLibrary };
     const workQueue: WorkItem[] = [];
+    const unified = props.context.workspaceIndex.toUnified();
+
     for (const element of props.context.elements) {
       if (element instanceof ModelicaLibrary) {
-        // Seed with the library's root entity
-        const entity = element.entity;
-        entity.load();
-        workQueue.push({ entity, prefix: "" });
-      } else if (element instanceof ModelicaEntity) {
-        element.load();
-        workQueue.push({ entity: element, prefix: "" });
-      } else if (element instanceof ModelicaClassInstance) {
-        // User code — fall back to instance traversal
-        workQueue.push({ instance: element });
+        for (const [id, sym] of unified.symbols) {
+          if (sym.parentId === null && sym.resourceId.startsWith(element.path) && sym.kind === "Class") {
+            workQueue.push({ id, prefix: "" });
+          }
+        }
+      } else if (element && "isClassInstance" in (element as any)) {
+        workQueue.push({ instance: element as ModelicaClassInstance });
       }
     }
 
@@ -410,39 +413,48 @@ const TreeWidget = React.memo(function TreeWidget(props: TreeWidgetProps) {
         const item = workQueue[queueIndex++];
         processed++;
 
-        if ("entity" in item) {
-          const { entity, prefix } = item;
-          const compositeName = prefix ? `${prefix}.${entity.name}` : (entity.name ?? "");
+        if ("id" in item) {
+          const { id, prefix } = item;
+          const sym = unified.symbols.get(id);
+          if (!sym) continue;
+
+          const compositeName = prefix ? `${prefix}.${sym.name}` : sym.name;
           if (compositeName.toLowerCase().includes(filter)) {
             totalMatches++;
             if (results.length < SEARCH_RESULT_LIMIT) {
-              results.push(entity);
+              const qdb = props.context!.queryEngine.toQueryDB();
+              const instance = new ModelicaClassInstance(id, qdb);
+              results.push(instance as any);
             }
           }
-          // Enqueue sub-entities (cheap: just reads directory listing)
-          for (const sub of entity.subEntities) {
-            sub.load();
-            workQueue.push({ entity: sub, prefix: compositeName });
+          const childrenIds = unified.childrenOf.get(id);
+          if (childrenIds) {
+            for (const childId of childrenIds) {
+              workQueue.push({ id: childId, prefix: compositeName });
+            }
           }
         } else {
           // Fallback for non-entity class instances (user code)
           const ci = item.instance;
-          if (ci instanceof ModelicaClassInstance) {
-            if (ci.compositeName.toLowerCase().includes(filter)) {
+          if (ci && "isClassInstance" in (ci as any)) {
+            const classInstance = ci as ModelicaClassInstance;
+            if (classInstance.compositeName.toLowerCase().includes(filter)) {
               totalMatches++;
               if (results.length < SEARCH_RESULT_LIMIT) {
-                results.push(ci);
+                results.push(classInstance);
               }
             }
-            for (const child of ci.elements) {
-              if (child instanceof ModelicaClassInstance) {
-                workQueue.push({ instance: child });
+            if (classInstance.elements) {
+              for (const child of classInstance.elements) {
+                if (child && "isClassInstance" in (child as any)) {
+                  workQueue.push({ instance: child as ModelicaClassInstance });
+                }
               }
             }
           } else if (ci instanceof ModelicaLibrary) {
             for (const child of ci.elements) {
-              if (child instanceof ModelicaClassInstance) {
-                workQueue.push({ instance: child });
+              if (child && "isClassInstance" in (child as any)) {
+                workQueue.push({ instance: child as ModelicaClassInstance });
               }
             }
           }
@@ -552,11 +564,11 @@ const TreeWidget = React.memo(function TreeWidget(props: TreeWidgetProps) {
       }
     } else {
       for (const element of props.context.elements) {
-        if (element instanceof ModelicaClassInstance) {
+        if (element && "isClassInstance" in (element as any)) {
           elements.push(
             <TreeNode
               key={element.name}
-              element={element}
+              element={element as ModelicaClassInstance}
               onSelect={props.onSelect}
               onHighlight={props.onHighlight}
               depth={0}

@@ -52,12 +52,28 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
 
     webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview);
 
-    let isDiagramUpdate = false;
+    // Tracks the kind of edit that was just applied to the document.
+    // - 'spatial': move/resize/edgeMove — suppress re-render (visual state already correct)
+    // - 'semantic': parameter/name/description/connect/delete/drop — immediate re-render
+    // - null: no pending edit — external change, use debounced re-render
+    let pendingEditKind: "spatial" | "semantic" | null = null;
     let updateTimeout: ReturnType<typeof setTimeout> | null = null;
     let diagramRequestNonce = 0;
     const uriString = document.uri.toString();
     let currentDiagramType = "All";
 
+    /** Immediately request fresh diagram data (cancels any pending debounced request). */
+    const immediateUpdate = () => {
+      if (updateTimeout) clearTimeout(updateTimeout);
+      updateTimeout = null;
+      diagramRequestNonce++;
+      const currentNonce = diagramRequestNonce;
+      this.requestDiagramData(webviewPanel, uriString, currentDiagramType, {
+        isCanceled: () => diagramRequestNonce !== currentNonce,
+      });
+    };
+
+    /** Request diagram data after a debounce (for external text changes like user typing). */
     const debouncedUpdate = () => {
       if (updateTimeout) clearTimeout(updateTimeout);
       updateTimeout = setTimeout(() => {
@@ -78,6 +94,9 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
       // Apply the edit without saving the file so the CustomEditor tracks dirty state
       await vscode.workspace.applyEdit(workspaceEdit);
     };
+
+    // Spatial operations that don't need a diagram re-render after text edits
+    const spatialOps = new Set(["modelscript/updatePlacement", "modelscript/updateEdgePoints"]);
 
     // Listen for messages from the webview (diagram mutations)
     webviewPanel.webview.onDidReceiveMessage(
@@ -143,49 +162,65 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
               break;
             case "changeDiagramType": {
               currentDiagramType = message.diagramType;
-              debouncedUpdate();
+              immediateUpdate();
               break;
             }
             case "undo": {
               // Standard undo command applies to the document representing this custom editor
               await vscode.commands.executeCommand("undo");
-              debouncedUpdate();
+              immediateUpdate();
               break;
             }
             case "redo": {
               await vscode.commands.executeCommand("redo");
-              debouncedUpdate();
+              immediateUpdate();
               break;
             }
           }
 
           if (lspMethod) {
             diagramRequestNonce++; // Cancel incoming stale diagramData
-            isDiagramUpdate = true;
+            // Tag the pending edit so the document change handler knows how to react
+            pendingEditKind = spatialOps.has(lspMethod) ? "spatial" : "semantic";
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const edits: any[] = await this.client.sendRequest(lspMethod, lspParams);
             if (edits && edits.length > 0) {
               await applyTextEdits(uriString, edits);
+            } else {
+              // No edits returned — reset immediately
+              pendingEditKind = null;
             }
-            // Reset flag after a short delay to allow the document change event to fire
-            setTimeout(() => {
-              isDiagramUpdate = false;
-            }, 100);
           }
         } catch (e) {
           console.error("[diagram] Error applying diagram edit:", e);
-          isDiagramUpdate = false;
+          pendingEditKind = null;
         }
       },
       undefined,
       this.context.subscriptions,
     );
 
-    // Watch for text document changes to re-render the diagram if the source changes externally
+    // React to text document changes with the appropriate strategy:
+    // - Spatial edit (move/resize): suppress re-render (user already dragged the element)
+    // - Semantic edit (parameter/name/etc.): immediate re-render (model changed)
+    // - External edit (user typing): debounced re-render
     const changeDocumentSubscription = vscode.workspace.onDidChangeTextDocument((e) => {
-      if (e.document.uri.toString() === document.uri.toString() && !isDiagramUpdate) {
-        debouncedUpdate();
+      if (e.document.uri.toString() !== document.uri.toString()) return;
+
+      const editKind = pendingEditKind;
+      pendingEditKind = null; // Consume the flag
+
+      if (editKind === "spatial") {
+        // Spatial edit — no re-render needed
+        return;
       }
+      if (editKind === "semantic") {
+        // Semantic edit — immediate refresh
+        immediateUpdate();
+        return;
+      }
+      // External change — debounced refresh
+      debouncedUpdate();
     });
 
     // Make sure we get rid of the listener when our editor is closed.

@@ -89,7 +89,7 @@ export const Optimize: CommandModule<{}, OptimizeArgs> = {
       });
     // eslint-disable-next-line @typescript-eslint/no-empty-object-type
   }) as CommandModule<{}, OptimizeArgs>["builder"],
-  handler: (args) => {
+  handler: async (args) => {
     const parser = new Parser();
     parser.setLanguage(Modelica);
 
@@ -97,7 +97,7 @@ export const Optimize: CommandModule<{}, OptimizeArgs> = {
     Context.registerParser(".mo", parser as any);
     const context = new Context(new NodeFileSystem());
 
-    for (const p of args.paths) context.addLibrary(p);
+    for (const p of args.paths) await context.addLibrary(p);
     const instance = context.query(args.name);
     if (!instance) {
       console.error(`'${args.name}' not found`);
@@ -106,7 +106,8 @@ export const Optimize: CommandModule<{}, OptimizeArgs> = {
 
     // Flatten the model
     const dae = new ModelicaDAE(instance.name ?? "DAE", instance.description);
-    instance.accept(new ModelicaFlattener(), ["", dae]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (instance as any).accept(new ModelicaFlattener(), ["", dae]);
 
     // Parse control names
     const controlNames = args.controls.split(",").map((s) => s.trim());

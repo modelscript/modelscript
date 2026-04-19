@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
+
 import {
   ModelicaArrayConcatenationSyntaxNode,
   ModelicaArrayConstructorSyntaxNode,
@@ -48,15 +50,43 @@ import {
 } from "@modelscript/symbolics";
 import { ModelicaLoopScope, ModelicaScriptScope, type Scope } from "../scope.js";
 import {
-  ModelicaArrayClassInstance,
-  ModelicaClassInstance,
-  ModelicaComponentInstance,
-  ModelicaEnumerationClassInstance,
-  ModelicaExpressionClassInstance,
-  ModelicaIntegerClassInstance,
-  ModelicaModification,
-  ModelicaParameterModification,
-} from "./model.js";
+  QueryBackedArrayClassInstance as ModelicaArrayClassInstance,
+  QueryBackedClassInstance as ModelicaClassInstance,
+  QueryBackedComponentInstance as ModelicaComponentInstance,
+  QueryBackedEnumerationClassInstance as ModelicaEnumerationClassInstance,
+  QueryBackedExpressionClassInstance as ModelicaExpressionClassInstance,
+} from "./metascript-bridge.js";
+import { ModelicaParameterModification } from "./parameter-modification.js";
+
+/**
+ * Lightweight shim avoiding legacy Polyglot wrapper instantiation inside execution loops.
+ */
+export class SyntheticInterpreterVariable {
+  public readonly isClassInstance = true;
+  public readonly isComponentInstance = true;
+  public classInstance: any = null;
+
+  constructor(
+    public readonly name: string,
+    public readonly evaluatedExpression: ModelicaExpression | null = null,
+  ) {}
+
+  readonly classKind = "class";
+
+  get modification() {
+    return { evaluatedExpression: this.evaluatedExpression };
+  }
+
+  clone(mod: any) {
+    const clone = new SyntheticInterpreterVariable(this.name, mod?.bindingExpression ?? this.evaluatedExpression);
+    clone.classInstance = this.classInstance;
+    return clone;
+  }
+}
+
+function toModArgs(expr: ModelicaExpression | null, args: any[] = []): any {
+  return { bindingExpression: expr, args };
+}
 
 export type BuiltinScriptingFunction = (
   node: ModelicaFunctionCallSyntaxNode,
@@ -352,10 +382,8 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
         const values = this.#evaluateIteratorRange(forIndex.expression, currentScope);
         if (!values) return false;
         for (const val of values) {
-          const mod = new ModelicaModification(currentScope, [], null, null, new ModelicaIntegerLiteral(val));
-          const instance = new ModelicaIntegerClassInstance(currentScope, mod);
-          instance.instantiate();
-          const bindings = new Map<string, ModelicaClassInstance>();
+          const instance = new SyntheticInterpreterVariable(varName, new ModelicaIntegerLiteral(val));
+          const bindings = new Map<string, any>();
           bindings.set(varName, instance);
           const innerScope = new ModelicaLoopScope(currentScope, bindings);
           iterate(depth + 1, innerScope);
@@ -518,7 +546,22 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
         result = ModelicaExpression.fromClassInstance(namedElement.classInstance);
       }
     } else {
-      throw new Error();
+      // Duck-type fallback: handle annotation enum stubs and QueryBacked elements
+      const duck = namedElement as any;
+
+      const modExpr = duck.modification?.evaluatedExpression ?? duck.modification?.expression;
+      if (modExpr instanceof ModelicaExpression) {
+        result = modExpr;
+      } else if (typeof modExpr === "number" || typeof modExpr === "boolean" || typeof modExpr === "string") {
+        if (typeof modExpr === "number") result = new ModelicaRealLiteral(modExpr);
+        else if (typeof modExpr === "boolean") result = new ModelicaBooleanLiteral(modExpr);
+        else result = new ModelicaStringLiteral(modExpr);
+      } else if (duck.isComponentInstance) {
+        // Fallback for QueryBackedComponentInstance parameters that don't have a literal value yet
+        result = new ModelicaNameExpression(node.parts.map((p) => p.identifier?.text).join("."));
+      } else {
+        result = null;
+      }
     }
 
     if (
@@ -658,7 +701,7 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
    * @param _scope - The current scope.
    * @returns The evaluated end integer value based on the current dimension, or null if unknown.
    */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
   visitEndExpression(_node: ModelicaEndExpressionSyntaxNode, _scope: Scope): ModelicaExpression | null {
     if (this.#endValue != null) return new ModelicaIntegerLiteral(this.#endValue);
     return null;
@@ -705,10 +748,8 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
       if (!values) return false;
 
       for (const val of values) {
-        const mod = new ModelicaModification(currentScope, [], null, null, new ModelicaIntegerLiteral(val));
-        const instance = new ModelicaIntegerClassInstance(currentScope, mod);
-        instance.instantiate();
-        const bindings = new Map<string, ModelicaClassInstance>();
+        const instance = new SyntheticInterpreterVariable(varName, new ModelicaIntegerLiteral(val));
+        const bindings = new Map<string, any>();
         bindings.set(varName, instance);
         const innerScope = new ModelicaLoopScope(currentScope, bindings);
         iterate(depth + 1, innerScope);
@@ -1599,7 +1640,7 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     }
 
     let fqName = "";
-    let current: Scope | null = functionInstance;
+    let current: Scope | null = functionInstance as any;
     while (current && current instanceof ModelicaClassInstance && current.name) {
       fqName = fqName ? `${current.name}.${fqName}` : current.name;
       current = current.parent;
@@ -1624,26 +1665,25 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
       if (name && expression) parameters.push(new ModelicaParameterModification(scope, name, expression));
     }
     if (functionInstance.classKind === ModelicaClassKind.RECORD) {
+      const modArgs = toModArgs(
+        null,
+        parameters.map((p) => ({ name: p.name, value: p.expression })),
+      );
       return ModelicaExpression.fromClassInstance(
-        functionInstance.clone(new ModelicaModification(scope, parameters)),
+        functionInstance.clone(modArgs),
         (expr) => (expr as unknown as ModelicaSyntaxNode).accept(this, scope) ?? null,
       );
     } else if (functionInstance.classKind === ModelicaClassKind.FUNCTION) {
-      const modification = new ModelicaModification(scope, parameters);
-      // When evaluating algorithms, create a fresh clone to avoid mutating cached instances.
-      // The clone cache returns the same instance on repeated calls, so algorithm execution
-      // (which mutates output parameters in-place) would corrupt the cache.
-      let clonedFunction: ModelicaClassInstance;
+      const modArgs = toModArgs(
+        null,
+        parameters.map((p) => ({ name: p.name, value: p.expression })),
+      );
+      let clonedFunction: any;
+
       if (this.#evaluateAlgorithms && functionInstance.abstractSyntaxNode) {
-        const mergedModification = ModelicaModification.merge(functionInstance.modification, modification);
-        clonedFunction = ModelicaClassInstance.new(
-          functionInstance.parent,
-          functionInstance.abstractSyntaxNode,
-          mergedModification,
-        );
-        clonedFunction.instantiate();
+        clonedFunction = functionInstance.clone(modArgs);
       } else {
-        clonedFunction = functionInstance.clone(modification);
+        clonedFunction = functionInstance.clone(modArgs);
       }
 
       // Execute algorithm statements or JS source to compute output values
@@ -1742,21 +1782,18 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     if (!targetName) return null;
 
     const resolved = scope.resolveSimpleName(targetName);
-    let componentTarget: ModelicaComponentInstance;
-    if (resolved instanceof ModelicaComponentInstance) {
+    let componentTarget: any;
+    if (resolved && (resolved as any).isComponentInstance) {
       componentTarget = resolved;
     } else if (this.#evaluateAlgorithms) {
       // Scripts or evaluated algorithms: allow dynamic variable creation
-      componentTarget = new ModelicaComponentInstance(null, null, null);
-      componentTarget.name = targetName;
-      componentTarget.instantiated = true;
-
       // Find the ScriptScope to bind dynamic variables to
       let scriptScope: Scope | null = scope;
       while (scriptScope && !(scriptScope instanceof ModelicaScriptScope)) {
         scriptScope = scriptScope.parent;
       }
       if (scriptScope instanceof ModelicaScriptScope) {
+        componentTarget = new SyntheticInterpreterVariable(targetName, null);
         scriptScope.variables.set(targetName, componentTarget);
       } else {
         return null; // No script scope available
@@ -1825,18 +1862,18 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
           }
         }
 
-        const mod = new ModelicaModification(null, [], null, null, newArray);
+        const mod = toModArgs(newArray);
         componentTarget.classInstance = componentTarget.classInstance?.clone(mod) ?? null;
       }
     } else {
-      const mod = new ModelicaModification(null, [], null, null, value);
+      const mod = toModArgs(value);
       if (componentTarget.classInstance) {
         componentTarget.classInstance = componentTarget.classInstance.clone(mod);
       } else {
         // First-time instantiation for dynamically created script variables
         if (value instanceof ModelicaObject && value.classInstance) {
           // Record value: use the record's class instance directly
-          componentTarget.classInstance = (value.classInstance as ModelicaClassInstance).clone(mod);
+          componentTarget.classInstance = (value.classInstance as any).clone(toModArgs(value));
         } else {
           let typeName = "Real";
           if (value instanceof ModelicaIntegerLiteral) typeName = "Integer";
@@ -1846,7 +1883,7 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
 
           const typeDefinition = scope.resolveSimpleName(typeName);
           if (typeDefinition instanceof ModelicaClassInstance) {
-            componentTarget.classInstance = typeDefinition.clone(mod);
+            componentTarget.classInstance = typeDefinition.clone(toModArgs(value));
           }
         }
       }
@@ -1884,18 +1921,15 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
       if (name && expression) parameters.push(new ModelicaParameterModification(scope, name, expression));
     }
 
-    const modification = new ModelicaModification(scope, parameters);
-    let clonedFunction: ModelicaClassInstance;
+    const modArgs = toModArgs(
+      null,
+      parameters.map((p) => ({ name: p.name, value: p.expression })),
+    );
+    let clonedFunction: any;
     if (this.#evaluateAlgorithms && functionInstance.abstractSyntaxNode) {
-      const mergedModification = ModelicaModification.merge(functionInstance.modification, modification);
-      clonedFunction = ModelicaClassInstance.new(
-        functionInstance.parent,
-        functionInstance.abstractSyntaxNode,
-        mergedModification,
-      );
-      clonedFunction.instantiate();
+      clonedFunction = functionInstance.clone(modArgs);
     } else {
-      clonedFunction = functionInstance.clone(modification);
+      clonedFunction = functionInstance.clone(modArgs);
     }
 
     if (this.#evaluateAlgorithms && this.#functionCallDepth < ModelicaInterpreter.MAX_FUNCTION_CALL_DEPTH) {
@@ -2008,9 +2042,9 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
         const targetName = targetExpr.parts?.[0]?.identifier?.text;
         if (targetName) {
           const target = scope.resolveSimpleName(targetName);
-          if (target instanceof ModelicaComponentInstance) {
-            const mod = new ModelicaModification(null, [], null, null, value);
-            target.classInstance = target.classInstance?.clone(mod) ?? null;
+          if (target && (target as any).isComponentInstance) {
+            const mod = toModArgs(value);
+            (target as any).classInstance = (target as any).classInstance?.clone(mod) ?? null;
           }
         }
       }
@@ -2160,10 +2194,8 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
 
       // Execute body for each iteration value
       for (const val of values) {
-        const bindings = new Map<string, ModelicaClassInstance>();
-        const mod = new ModelicaModification(scope, [], null, null, new ModelicaIntegerLiteral(val));
-        const instance = new ModelicaIntegerClassInstance(scope, mod);
-        instance.instantiate();
+        const bindings = new Map<string, any>();
+        const instance = new SyntheticInterpreterVariable(varName, new ModelicaIntegerLiteral(val));
         bindings.set(varName, instance);
         const loopScope = new ModelicaLoopScope(scope, bindings);
         try {
@@ -2215,9 +2247,9 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
 
     // Register class definitions (e.g., record A ... end A;) in the script scope
     for (const classDef of node.classDefinitions) {
-      const classInstance = ModelicaClassInstance.new(scriptScope, classDef);
+      const classInstance = new SyntheticInterpreterVariable(classDef.identifier?.text ?? "Anonymous");
       if (classInstance.name) {
-        scriptScope.classDefinitions.set(classInstance.name, classInstance);
+        scriptScope.classDefinitions.set(classInstance.name, classInstance as any);
       }
     }
 
@@ -2230,9 +2262,8 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
         const name = decl.declaration?.identifier?.text;
         if (!name) continue;
 
-        const instance = new ModelicaComponentInstance(null, decl);
-        instance.name = name;
-        instance.instantiated = true;
+        const instance = new SyntheticInterpreterVariable(name);
+        instance.classInstance = null;
 
         let initialValue: ModelicaExpression | null = null;
         if (decl.declaration?.modification?.modificationExpression) {
@@ -2240,12 +2271,12 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
             decl.declaration.modification.modificationExpression.expression?.accept(this, scriptScope) ?? null;
         }
 
-        const mod = new ModelicaModification(null, [], null, null, initialValue);
+        const mod = toModArgs(initialValue);
 
-        if (typeDefinition instanceof ModelicaClassInstance) {
-          instance.classInstance = typeDefinition.clone(mod);
+        if (typeDefinition) {
+          instance.classInstance = (typeDefinition as any).clone(mod);
         } else if (initialValue instanceof ModelicaObject && initialValue.classInstance) {
-          instance.classInstance = (initialValue.classInstance as ModelicaClassInstance).clone(mod);
+          instance.classInstance = (initialValue.classInstance as any).clone(mod);
         } else {
           // Fallback to basic types if the type definition couldn't be resolved
           let inferredType = "Real";
@@ -2254,12 +2285,12 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
           else if (initialValue instanceof ModelicaBooleanLiteral) inferredType = "Boolean";
 
           const inferredTypeDef = scriptScope.resolveSimpleName(inferredType);
-          if (inferredTypeDef instanceof ModelicaClassInstance) {
-            instance.classInstance = inferredTypeDef.clone(mod);
+          if (inferredTypeDef) {
+            instance.classInstance = (inferredTypeDef as any).clone(mod);
           }
         }
 
-        scriptScope.variables.set(name, instance);
+        scriptScope.variables.set(name, instance as any);
       }
     }
 
@@ -2333,20 +2364,24 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
  * @param component - The component instance holding the condition attribute.
  * @returns The evaluated boolean result. Returns true if no condition is present. Returns undefined if evaluation fails.
  */
-export function evaluateCondition(component: ModelicaComponentInstance): boolean | undefined {
+export function evaluateCondition(
+  component: ModelicaComponentInstance,
+  parentContext?: ModelicaClassInstance,
+): boolean | undefined {
   const node = component.abstractSyntaxNode;
   if (!node || !("conditionAttribute" in node) || !node.conditionAttribute?.condition) return true;
 
   const condition = node.conditionAttribute.condition;
   const interpreter = new ModelicaInterpreter(true);
+  let result;
   try {
-    const result = condition.accept(interpreter, component.parent ?? component);
+    result = condition.accept(interpreter, parentContext ?? component.parent ?? component);
     if (result instanceof ModelicaBooleanLiteral) {
       return result.value;
     }
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
   } catch (e) {
-    // Ignore evaluation failures
+    console.warn(`[evaluateCondition] failed for ${component.name}:`, e);
   }
+  console.log(`[evaluateCondition] result for ${component.name}:`, condition.concreteSyntaxNode?.text, "=>", result);
   return undefined;
 }

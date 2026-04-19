@@ -21,7 +21,7 @@ export const Parse: CommandModule<{}, ParseArgs> = {
       type: "string",
     });
   },
-  handler: (args) => {
+  handler: async (args) => {
     const parser = new Parser();
     parser.setLanguage(Modelica);
     const text = readFileSync(args.file, "utf8");

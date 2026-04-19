@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import {
   ModelicaIdentifierSyntaxNode,
   ModelicaNameSyntaxNode,
@@ -8,34 +10,11 @@ import {
 } from "@modelscript/modelica-polyglot/ast";
 import { makeWeakRef } from "@modelscript/utils";
 import type {
-  ModelicaClassInstance,
-  ModelicaComponentInstance,
-  ModelicaElement,
-  ModelicaNamedElement,
-} from "./modelica/model.js";
-
-// ── Dependency-injected class constructors ──────────────────────────────────
-// Registered by model.ts at module-evaluation time so that scope.ts can use
-// proper `instanceof` checks without a circular runtime import.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let _ModelicaNamedElement: (new (...args: any[]) => any) | null = null;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let _ModelicaClassInstance: (new (...args: any[]) => any) | null = null;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let _ModelicaComponentInstance: (new (...args: any[]) => any) | null = null;
-
-export function registerModelClasses(classes: {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  NamedElement: new (...args: any[]) => any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ClassInstance: new (...args: any[]) => any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ComponentInstance: new (...args: any[]) => any;
-}) {
-  _ModelicaNamedElement = classes.NamedElement;
-  _ModelicaClassInstance = classes.ClassInstance;
-  _ModelicaComponentInstance = classes.ComponentInstance;
-}
+  QueryBackedClassInstance as ModelicaClassInstance,
+  QueryBackedComponentInstance as ModelicaComponentInstance,
+  QueryBackedElement as ModelicaElement,
+  QueryBackedElement as ModelicaNamedElement,
+} from "./modelica/metascript-bridge.js";
 
 // ── Dependency-injected callbacks ───────────────────────────────────────────
 let _resolveBuiltIn: ((name: string) => ModelicaNamedElement | null) | null = null;
@@ -70,9 +49,8 @@ export abstract class Scope {
 
   getNamedElement(name: string): ModelicaNamedElement | null {
     for (const element of this.elements) {
-      if (_ModelicaNamedElement && element instanceof _ModelicaNamedElement) {
-        const named = element as unknown as ModelicaNamedElement;
-        if (named.name === name) return named;
+      if ("name" in element && (element as { name?: string }).name === name) {
+        return element as unknown as ModelicaNamedElement;
       }
     }
     return null;
@@ -89,14 +67,18 @@ export abstract class Scope {
     const parts = componentReference.parts;
     if (parts.length === 0) return null;
     let element = this.resolveSimpleName(parts[0]?.identifier, componentReference.global);
-    if (_ModelicaComponentInstance && element instanceof _ModelicaComponentInstance) {
+    if (element && "instantiated" in element && "classInstance" in element) {
       const comp = element as unknown as ModelicaComponentInstance;
-      if (!comp.instantiated && !comp.instantiating) comp.instantiate();
+      if (!comp.instantiated && !comp.instantiating && typeof comp.instantiate === "function") {
+        comp.instantiate();
+      }
       element = comp.classInstance;
     }
     if (!element) return null;
     for (let i = 1; i < parts.length; i++) {
-      element = element.resolveSimpleName(parts[i]?.identifier, false, true);
+      const partIdentifier = parts[i]?.identifier;
+      const nameStr = typeof partIdentifier === "string" ? partIdentifier : (partIdentifier?.text ?? "");
+      element = element.resolveSimpleName(nameStr, false, true) as any;
       if (element == null) return null;
     }
     return element;
@@ -108,7 +90,9 @@ export abstract class Scope {
     let namedElement = this.resolveSimpleName(parts[0], global);
     if (!namedElement) return null;
     for (let i = 1; i < parts.length; i++) {
-      namedElement = namedElement.resolveSimpleName(parts[i], false, true);
+      const part = parts[i];
+      const nameStr = typeof part === "string" ? part : (part?.text ?? "");
+      namedElement = namedElement.resolveSimpleName(nameStr, false, true) as any;
       if (!namedElement) return null;
     }
     return namedElement;
@@ -139,7 +123,7 @@ export abstract class Scope {
         const namedElement = scope.getNamedElement(simpleName);
         if (namedElement) return namedElement;
 
-        if (_ModelicaClassInstance && scope instanceof _ModelicaClassInstance) {
+        if ("qualifiedImports" in scope && "unqualifiedImports" in scope) {
           const classScope = scope as unknown as ModelicaClassInstance;
           const element = classScope.qualifiedImports.get(simpleName);
           if (element != null) return element;
@@ -165,7 +149,7 @@ export abstract class Scope {
       if (
         (annotationScope as unknown) !== (this as unknown) &&
         annotationScope &&
-        typeof (annotationScope as Scope).resolveSimpleName === "function"
+        typeof (annotationScope as any).resolveSimpleName === "function"
       ) {
         return (annotationScope as unknown as Scope).resolveSimpleName(simpleName, false, encapsulated) ?? null;
       }

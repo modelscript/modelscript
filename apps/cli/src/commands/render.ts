@@ -40,7 +40,7 @@ export const Render: CommandModule<{}, RenderArgs> = {
         default: false,
       });
   },
-  handler: (args) => {
+  handler: async (args) => {
     const parser = new Parser();
     parser.setLanguage(Modelica);
 
@@ -54,7 +54,7 @@ export const Render: CommandModule<{}, RenderArgs> = {
       pathMap.set(path.resolve(p), p);
     }
 
-    for (const p of args.paths) context.addLibrary(p);
+    for (const p of args.paths) await context.addLibrary(p);
     const instance = context.query(args.name);
     if (!instance) {
       console.error(`'${args.name}' not found`);

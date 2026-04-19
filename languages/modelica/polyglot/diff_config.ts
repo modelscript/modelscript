@@ -7,7 +7,7 @@
 import type { DiffConfig } from "@modelscript/polyglot";
 
 export const diffConfig: Record<string, DiffConfig> = {
-  ComponentClause: {
+  ComponentDeclaration: {
     ignore: ["annotationClause", "description"],
     minor: ["visibility"],
     breaking: ["typeSpecifier", "causality", "isParameter"],

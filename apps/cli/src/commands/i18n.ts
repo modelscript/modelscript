@@ -30,7 +30,7 @@ export const I18n: CommandModule<Record<string, unknown>, I18nArgs> = {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       }) as any;
   },
-  handler: (args) => {
+  handler: async (args) => {
     const parser = new Parser();
     parser.setLanguage(Modelica);
 
@@ -41,7 +41,7 @@ export const I18n: CommandModule<Record<string, unknown>, I18nArgs> = {
     const extractor = new I18nExtractor();
 
     for (const path of args.paths) {
-      const library = context.addLibrary(path);
+      const library = await context.addLibrary(path);
       if (library) {
         extractor.extractFromLibrary(library);
       }

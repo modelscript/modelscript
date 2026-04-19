@@ -1,17 +1,18 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ModelicaStoredDefinitionSyntaxNode } from "@modelscript/modelica-polyglot/ast";
+import type { QueryEngine } from "@modelscript/polyglot/query-engine";
+import type { WorkspaceIndex } from "@modelscript/polyglot/workspace-index";
 import { MODELSCRIPT_CAS_PACKAGE, ModelicaDAE, ModelicaDAEPrinter } from "@modelscript/symbolics";
 import type { FileSystem, Parser, Tree } from "@modelscript/utils";
 import { StringWriter } from "@modelscript/utils";
 import { ModelicaFlattener, findAlgebraicLoops } from "./modelica/flattener.js";
 import {
-  ModelicaClassInstance,
-  ModelicaComponentInstance,
-  ModelicaExtendsClassInstance,
-  ModelicaLibrary,
-  type ModelicaElement,
-} from "./modelica/model.js";
+  QueryBackedClassInstance,
+  createModelicaQueryEngine,
+  createModelicaWorkspaceIndex,
+  injectPredefinedTypes,
+} from "./modelica/metascript-bridge.js";
 import { ModelicaPoParser, ModelicaTranslation } from "./modelica/po.js";
 import { Scope } from "./scope.js";
 export type HomotopyMode = "none" | "residual" | "symbolic" | "fixed-point" | "parameter" | "auto";
@@ -29,17 +30,54 @@ export interface ModelicaCompilerOptions {
   solver?: InitSolverConfig;
 }
 
+export class ModelicaLibrary {
+  name: string;
+  constructor(
+    public context: Context,
+    public path: string,
+  ) {
+    this.name = path.split(/[/\\]/).pop()?.replace(/\.mo$/, "") ?? "Untitled";
+
+    const stat = context.fs.stat(path);
+    if (stat?.isDirectory()) {
+      const pkgPath = context.fs.join(path, "package.mo");
+      if (context.fs.stat(pkgPath)?.isFile()) {
+        const text = context.fs.read(pkgPath);
+        const match = text.match(/package\s+([a-zA-Z0-9_]+)/);
+        if (match && match[1]) {
+          this.name = match[1];
+        }
+      }
+    }
+  }
+}
+
 /**
- * The compiler context managing file system resources, translations, plugins, and loaded Modelica code.
+ * The polyglot compiler context managing file system resources and loaded Modelica code.
  */
 export class Context extends Scope {
-  #classes: ModelicaClassInstance[] = [];
+  #classes: QueryBackedClassInstance[] = [];
   #fs: FileSystem;
   #libraries: ModelicaLibrary[] = [];
   #translations = new Map<string, ModelicaTranslation>();
   #language: string | null = null;
+  #workspaceIndex: WorkspaceIndex;
+  #queryEngine: QueryEngine;
+  #trees = new Map<string, Tree>();
 
-  static #parsers = new Map<string, Parser>();
+  get workspaceIndex(): WorkspaceIndex {
+    return this.#workspaceIndex;
+  }
+
+  get queryEngine(): QueryEngine {
+    return this.#queryEngine;
+  }
+
+  getTree(uri: string): Tree | undefined {
+    return this.#trees.get(uri);
+  }
+
+  static _parsers = new Map<string, Parser>();
 
   /**
    * Initializes a new compiler Context.
@@ -49,7 +87,41 @@ export class Context extends Scope {
   constructor(fs: FileSystem) {
     super(null);
     this.#fs = fs;
-    this.load(MODELSCRIPT_CAS_PACKAGE);
+    this.#workspaceIndex = createModelicaWorkspaceIndex();
+
+    // Provide a CSTTree that looks up trees by resourceId cached in Context
+    const contextTree = {
+      getText: (startByte: number, endByte: number, entry?: any) => {
+        if (!entry || !entry.resourceId) return null;
+        const tree = this.#trees.get(entry.resourceId);
+        if (!tree) return null;
+        return tree.rootNode.text.substring(startByte, endByte);
+      },
+      getNode: (startByte: number, endByte: number, entry?: any) => {
+        console.log(
+          "getNode called. startByte:",
+          startByte,
+          "endByte:",
+          endByte,
+          "entry?",
+          !!entry,
+          "resourceId:",
+          entry?.resourceId,
+        );
+        if (!entry || !entry.resourceId) return null;
+        const tree = this.#trees.get(entry.resourceId);
+        if (!tree) {
+          console.log("tree not found for resourceId:", entry.resourceId);
+          return null;
+        }
+        const node = tree.rootNode.descendantForIndex(startByte, endByte);
+        console.log("found descendant?", !!node, "type:", node?.type);
+        return node;
+      },
+    };
+
+    this.#queryEngine = createModelicaQueryEngine(this.#workspaceIndex.toUnified(), contextTree);
+    this.load(MODELSCRIPT_CAS_PACKAGE, "modelscript-cas.mo");
   }
 
   readonly hash = "root";
@@ -60,7 +132,7 @@ export class Context extends Scope {
    * @param path - The absolute file system path to the directory or file representing the library.
    * @returns The loaded ModelicaLibrary instance, or null if the path does not point to a valid library.
    */
-  addLibrary(path: string): ModelicaLibrary | null {
+  async addLibrary(path: string, options?: { skipIndex?: boolean }): Promise<ModelicaLibrary | null> {
     let library = this.getLibrary(path);
     if (library) return library;
 
@@ -74,6 +146,72 @@ export class Context extends Scope {
 
     library = new ModelicaLibrary(this, path);
     this.#libraries.push(library);
+
+    // Crawl and register Modelica files
+    const crawl = (dir: string, currentFQN: string) => {
+      const s = this.#fs.stat(dir);
+      if (!s) return;
+      if (s.isFile()) {
+        if (dir.endsWith(".mo")) {
+          const basename = dir.split(/[/\\]/).pop();
+          let parentFQN: string | undefined = currentFQN;
+
+          if (basename === "package.mo") {
+            const parts = currentFQN.split(".");
+            parts.pop();
+            parentFQN = parts.length > 0 ? parts.join(".") : undefined;
+          }
+
+          // Register for lazy loading
+          this.#workspaceIndex.register(
+            dir,
+            () => {
+              const text = this.#fs.read(dir);
+              const tree = this.parse(".mo", text);
+              this.#trees.set(dir, tree);
+              return tree.rootNode as any;
+            },
+            parentFQN,
+          );
+        }
+      } else if (s.isDirectory()) {
+        for (const entry of this.#fs.readdir(dir)) {
+          const entryMode = this.#fs.stat(this.#fs.join(dir, entry.name));
+          if (entryMode?.isDirectory()) {
+            const nextFQN = `${currentFQN}.${entry.name}`;
+            crawl(this.#fs.join(dir, entry.name), nextFQN);
+          } else {
+            crawl(this.#fs.join(dir, entry.name), currentFQN);
+          }
+        }
+      }
+    };
+    crawl(path, library.name);
+
+    // Skip the expensive indexing step when batching multiple addLibrary calls.
+    // The caller should call finalizeLibraries() once after all libraries are registered.
+    if (options?.skipIndex) {
+      if (this.#language) {
+        this.loadTranslationsForLibrary(library, this.#language);
+      }
+      return library;
+    }
+
+    // Update the engine
+    const unified = await this.#workspaceIndex.toUnifiedAsync();
+    injectPredefinedTypes(unified);
+    this.#queryEngine.updateIndex(unified);
+
+    // Hydrate root classes
+    for (const id of this.#queryEngine.index.symbols.keys()) {
+      const entry = this.#queryEngine.index.symbols.get(id);
+      if (entry && entry.parentId === null && entry.kind === "Class") {
+        if (!this.#classes.some((c) => c.id === id)) {
+          this.#classes.push(new QueryBackedClassInstance(id, this.#queryEngine.toQueryDB()));
+        }
+      }
+    }
+
     if (this.#language) {
       this.loadTranslationsForLibrary(library, this.#language);
     }
@@ -81,25 +219,39 @@ export class Context extends Scope {
   }
 
   /**
-   * Gets all loaded Modelica elements across the context and its loaded libraries.
-   *
-   * @returns An iterable iterator over all top-level ModelicaElements.
+   * Finalize all libraries that were added with `skipIndex: true`.
+   * Performs a single indexing pass and hydrates root classes.
+   * Call this once after batching multiple `addLibrary({ skipIndex: true })` calls.
    */
-  get elements(): IterableIterator<ModelicaElement> {
+  async finalizeLibraries(): Promise<void> {
+    const unified = await this.#workspaceIndex.toUnifiedAsync();
+    injectPredefinedTypes(unified);
+    this.#queryEngine.updateIndex(unified);
+
+    // Hydrate root classes
+    for (const id of this.#queryEngine.index.symbols.keys()) {
+      const entry = this.#queryEngine.index.symbols.get(id);
+      if (entry && entry.parentId === null && entry.kind === "Class") {
+        if (!this.#classes.some((c) => c.id === id)) {
+          this.#classes.push(new QueryBackedClassInstance(id, this.#queryEngine.toQueryDB()));
+        }
+      }
+    }
+  }
+
+  get elements(): IterableIterator<any> {
     const classes = this.#classes;
     const libraries = this.#libraries;
     return (function* () {
       yield* classes;
-      for (const library of libraries) {
-        if (library) yield* library.elements;
-      }
+      yield* libraries;
     })();
   }
 
   /**
    * Returns the array of top-level classes loaded via `load()`.
    */
-  get classes(): readonly ModelicaClassInstance[] {
+  get classes(): readonly QueryBackedClassInstance[] {
     return this.#classes;
   }
 
@@ -118,14 +270,20 @@ export class Context extends Scope {
   }
 
   flattenDAE(name: string, options?: ModelicaCompilerOptions): ModelicaDAE | null {
-    const instance = this.query(name);
+    const parts = name.split(".");
+    let instance: QueryBackedClassInstance | undefined = this.classes.find((c) => c.name === parts[0]);
+    for (let i = 1; i < parts.length && instance; i++) {
+      const next = [...instance.declaredElements].find((e: any) => e.name === parts[i] && e.isClassInstance);
+      instance = next as QueryBackedClassInstance | undefined;
+    }
     if (!instance) return null;
-    const dae = new ModelicaDAE(name ?? instance.name ?? "DAE", instance.description);
-    // Set classKind to 'function' only for function classes; tests expect 'class' for all others
-    if (
-      instance instanceof ModelicaClassInstance &&
-      (instance.classKind === "function" || instance.classKind === "operator function")
-    ) {
+
+    const dae = new ModelicaDAE(
+      name ?? instance.name ?? "DAE",
+      (instance.entry?.metadata?.description as string) ?? null,
+    );
+
+    if (instance.classKind === "function" || instance.classKind === "operator function") {
       dae.classKind = instance.classKind;
     }
     const flattener = new ModelicaFlattener(options);
@@ -133,35 +291,13 @@ export class Context extends Scope {
     flattener.generateFlowBalanceEquations(dae);
     flattener.foldDAEConstants(dae);
     findAlgebraicLoops(dae);
-    // Check for validation errors (e.g. invalid modification targets)
-    if (instance instanceof ModelicaClassInstance && this.#hasErrors(instance)) return null;
+
     // Check for flattener-level diagnostics (e.g. invalid for-loop iterators, assignment to input/constant)
     const hasDAEErrors = (d: ModelicaDAE): boolean =>
       d.diagnostics.some((diag) => diag.severity === "error") || d.functions.some(hasDAEErrors);
     if (hasDAEErrors(dae)) return null;
 
     return dae;
-  }
-
-  /**
-   * Recursively checks if a given Modelica class instance or its dependencies have validation errors.
-   *
-   * @param instance - The class instance to validate.
-   * @param visited - A set of already visited class instances to prevent infinite loops (used internally).
-   * @returns True if any errors are found, false otherwise.
-   */
-  #hasErrors(instance: ModelicaClassInstance, visited = new Set<ModelicaClassInstance>()): boolean {
-    if (visited.has(instance)) return false;
-    visited.add(instance);
-    if (instance.diagnostics.length > 0) return true;
-    for (const element of instance.declaredElements) {
-      if (element instanceof ModelicaComponentInstance && element.classInstance) {
-        if (this.#hasErrors(element.classInstance, visited)) return true;
-      } else if (element instanceof ModelicaExtendsClassInstance && element.classInstance) {
-        if (this.#hasErrors(element.classInstance, visited)) return true;
-      }
-    }
-    return false;
   }
 
   /**
@@ -194,7 +330,7 @@ export class Context extends Scope {
    * @throws Error if no parser is registered for the given extension.
    */
   getParser(extname: string): Parser {
-    const parser = Context.#parsers.get(extname);
+    const parser = (Context as any)._parsers.get(extname);
     if (!parser) throw new Error(`no parser registered for extension '${extname}'`);
     return parser;
   }
@@ -216,11 +352,24 @@ export class Context extends Scope {
    *
    * @param input - The raw Modelica source code string.
    */
-  load(input: string): void {
+  load(input: string, resourceId?: string): Tree {
     const tree = this.parse(".mo", input);
-    const node = ModelicaStoredDefinitionSyntaxNode.new(null, tree.rootNode);
-    for (const classDefinition of node?.classDefinitions ?? [])
-      this.#classes.push(ModelicaClassInstance.new(this, classDefinition));
+    const uri = resourceId ?? "synthetic-" + Math.random().toString();
+    this.#trees.set(uri, tree);
+
+    this.#workspaceIndex.register(uri, () => tree.rootNode as any);
+    const unified = this.#workspaceIndex.toUnified();
+    injectPredefinedTypes(unified);
+    this.#queryEngine.updateIndex(unified);
+
+    this.#classes = this.#classes.filter((c) => c.db.symbol(c.id)?.resourceId !== uri);
+    for (const id of this.#queryEngine.index.symbols.keys()) {
+      const entry = this.#queryEngine.index.symbols.get(id);
+      if (entry && entry.parentId === null && entry.kind === "Class" && entry.resourceId === uri) {
+        this.#classes.push(new QueryBackedClassInstance(id, this.#queryEngine.toQueryDB()));
+      }
+    }
+    return tree;
   }
 
   /**
@@ -228,7 +377,7 @@ export class Context extends Scope {
    *
    * @param classInstance - The root class instance to attach.
    */
-  addClass(classInstance: ModelicaClassInstance): void {
+  addClass(classInstance: QueryBackedClassInstance): void {
     this.#classes.push(classInstance);
   }
 
@@ -252,7 +401,7 @@ export class Context extends Scope {
    * @param parser - The tree-sitter Parser instance to register.
    */
   static registerParser(extname: string, parser: Parser) {
-    Context.#parsers.set(extname, parser);
+    (Context as any)._parsers.set(extname, parser);
   }
 
   /**

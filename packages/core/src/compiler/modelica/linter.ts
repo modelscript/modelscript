@@ -66,27 +66,25 @@ import { StringWriter } from "@modelscript/utils";
 import { Scope } from "../scope.js";
 import { ModelicaErrorCode, type ErrorCodeDef } from "./errors.js";
 import {
-  ENUMERATION_ATTRIBUTE_TYPES,
-  ModelicaArrayClassInstance,
-  ModelicaBooleanClassInstance,
-  ModelicaClassInstance,
-  ModelicaComponentInstance,
-  ModelicaElementModification,
-  ModelicaEntity,
-  ModelicaEnumerationClassInstance,
-  ModelicaExtendsClassInstance,
-  ModelicaIntegerClassInstance,
-  ModelicaLibrary,
-  ModelicaModelVisitor,
-  ModelicaModificationArgument,
-  ModelicaNamedElement,
-  ModelicaNode,
-  ModelicaPredefinedClassInstance,
-  ModelicaRealClassInstance,
-  ModelicaStringClassInstance,
-  PREDEFINED_ATTRIBUTE_TYPES,
-  type IModelicaModelVisitor,
-} from "./model.js";
+  QueryBackedArrayClassInstance as ModelicaArrayClassInstance,
+  QueryBackedBooleanClassInstance as ModelicaBooleanClassInstance,
+  QueryBackedClassInstance as ModelicaClassInstance,
+  QueryBackedComponentInstance as ModelicaComponentInstance,
+  QueryBackedElementModification as ModelicaElementModification,
+  QueryBackedElement as ModelicaEntity,
+  QueryBackedEnumerationClassInstance as ModelicaEnumerationClassInstance,
+  QueryBackedExtendsClassInstance as ModelicaExtendsClassInstance,
+  QueryBackedIntegerClassInstance as ModelicaIntegerClassInstance,
+  QueryBackedElement as ModelicaLibrary,
+  QueryBackedModification as ModelicaModificationArgument,
+  QueryBackedElement as ModelicaNamedElement,
+  QueryBackedElement as ModelicaNode,
+  QueryBackedPredefinedClassInstance as ModelicaPredefinedClassInstance,
+  QueryBackedRealClassInstance as ModelicaRealClassInstance,
+  QueryBackedStringClassInstance as ModelicaStringClassInstance,
+} from "./metascript-bridge.js";
+import { ENUMERATION_ATTRIBUTE_TYPES, PREDEFINED_ATTRIBUTE_TYPES } from "./predefined.js";
+import { ModelicaModelVisitor, type IModelicaModelVisitor } from "./visitor.js";
 
 /**
  * Callback function signature for reporting diagnostic messages.
@@ -516,82 +514,7 @@ export class ModelicaSyntaxLinter extends ModelicaSyntaxVisitor<void, string | n
   }
 }
 
-ModelicaLinter.register(ModelicaErrorCode.DUPLICATE_ELEMENT, {
-  visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
-    const names = new Set();
-    for (const element of node.elements) {
-      if (element instanceof ModelicaNamedElement) {
-        // Skip built-in type names (Real, Integer, Boolean, String, etc.)
-        // Array class instances include the element type class as a named element
-        if (element.name && BUILTIN_MODELICA_NAMES.has(element.name)) continue;
-        if (names.has(element.name)) {
-          let range: Range | null = null;
-          if (element instanceof ModelicaClassInstance) {
-            range = element.abstractSyntaxNode?.identifier ?? null;
-          } else if (element instanceof ModelicaComponentInstance) {
-            range = element.abstractSyntaxNode?.declaration?.identifier ?? null;
-          }
-          diagnosticsCallback(
-            ModelicaErrorCode.DUPLICATE_ELEMENT.severity,
-            ModelicaErrorCode.DUPLICATE_ELEMENT.code,
-            ModelicaErrorCode.DUPLICATE_ELEMENT.message(element.name ?? ""),
-            range,
-          );
-        } else {
-          names.add(element.name);
-        }
-      }
-    }
-  },
-});
-
-ModelicaLinter.register(ModelicaErrorCode.IDENTIFIER_MISMATCH, {
-  visitLongClassSpecifier(
-    node: ModelicaLongClassSpecifierSyntaxNode,
-    diagnosticsCallback: DiagnosticsCallbackWithoutResource,
-  ): void {
-    if (node.identifier?.text !== node.endIdentifier?.text) {
-      diagnosticsCallback(
-        ModelicaErrorCode.IDENTIFIER_MISMATCH.severity,
-        ModelicaErrorCode.IDENTIFIER_MISMATCH.code,
-        ModelicaErrorCode.IDENTIFIER_MISMATCH.message(),
-        node.identifier,
-      );
-    }
-  },
-});
-
-ModelicaLinter.register(ModelicaErrorCode.CLASS_NOT_FOUND, {
-  visitComponentInstance(
-    node: ModelicaComponentInstance,
-    diagnosticsCallback: DiagnosticsCallbackWithoutResource,
-  ): void {
-    if (!node.instantiated) node.instantiate();
-    if (node.classInstance == null) {
-      const typeSpecifier = node.abstractSyntaxNode?.parent?.typeSpecifier;
-      diagnosticsCallback(
-        ModelicaErrorCode.CLASS_NOT_FOUND.severity,
-        ModelicaErrorCode.CLASS_NOT_FOUND.code,
-        ModelicaErrorCode.CLASS_NOT_FOUND.message(typeSpecifier?.text ?? "", node.parent?.name ?? ""),
-        typeSpecifier,
-      );
-    }
-  },
-});
-
-/**
- * Built-in Modelica names that are always in scope.
- * These include:
- *  - time: the independent simulation variable
- *  - der, pre, edge, change, reinit, initial, terminal, sample, noEvent, smooth, delay, cardinality,
- *    inStream, actualStream: built-in operators
- *  - assert, print, terminate: built-in assertions/utilities
- *  - abs, sign, sqrt, exp, log, log10, sin, cos, tan, asin, acos, atan, atan2, sinh, cosh, tanh,
- *    floor, ceil, integer, mod, rem, div, max, min, sum, product, ndims, size, zeros, ones, fill,
- *    identity, diagonal, transpose, cat, scalar, vector, matrix, cross, skew, outerProduct, symmetric,
- *    String, Integer, Boolean, Real, Modelica: built-in functions and types
- */
-const BUILTIN_MODELICA_NAMES = new Set([
+export const BUILTIN_MODELICA_NAMES = new Set([
   // Independent variable
   "time",
   // Built-in operators
@@ -686,11 +609,11 @@ const BUILTIN_MODELICA_NAMES = new Set([
 ]);
 
 class ModelicaExpressionNameResolutionVisitor extends ModelicaSyntaxVisitor<void, DiagnosticsCallbackWithoutResource> {
-  #scope: Scope;
+  #scope: { resolveName: (parts: string[]) => unknown | null };
   #localNames = new Set<string>();
   #brokenComponents: Set<string>;
 
-  constructor(scope: Scope, brokenComponents?: Set<string>) {
+  constructor(scope: { resolveName: (parts: string[]) => unknown | null }, brokenComponents?: Set<string>) {
     super();
     this.#scope = scope;
     this.#brokenComponents = brokenComponents ?? new Set();
@@ -1223,15 +1146,17 @@ ModelicaLinter.register(ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH, {
  * Returns the LAST component instance (c), or null if resolution fails.
  */
 function resolveToComponent(
-  scope: Scope,
+  scope: { resolveSimpleName: (name: string, global?: boolean, encapsulated?: boolean) => unknown | null },
   componentRef: ModelicaComponentReferenceSyntaxNode | null,
 ): ModelicaComponentInstance | null {
   if (!componentRef) return null;
   const parts = componentRef.parts;
   if (parts.length === 0) return null;
 
+  if (!parts[0]?.identifier?.text) return null;
+
   // Resolve first part in the given scope
-  let element: ModelicaNamedElement | null = scope.resolveSimpleName(parts[0]?.identifier, componentRef.global);
+  let element = scope.resolveSimpleName(parts[0].identifier.text, componentRef.global);
   if (!(element instanceof ModelicaComponentInstance)) return null;
 
   // Follow through remaining parts
@@ -1239,7 +1164,9 @@ function resolveToComponent(
     if (!element.instantiated && !element.instantiating) (element as ModelicaComponentInstance).instantiate();
     const classInst: ModelicaClassInstance | null = (element as ModelicaComponentInstance).classInstance;
     if (!classInst) return null;
-    element = classInst.resolveSimpleName(parts[i]?.identifier, false, true);
+    const nextIdentifier = parts[i]?.identifier?.text;
+    if (!nextIdentifier) return null;
+    element = classInst.resolveSimpleName(nextIdentifier, false, true);
     if (!(element instanceof ModelicaComponentInstance)) return null;
   }
 
@@ -1270,7 +1197,9 @@ class ArraySubscriptChecker extends ModelicaSyntaxVisitor<null, null> {
     if (!node.parts || node.parts.length === 0) return super.visitComponentReference(node, context);
 
     let currentElement: ModelicaComponentInstance | null;
-    const firstResolved = this.#scope.resolveSimpleName(node.parts[0]?.identifier, node.global);
+    const firstIdentifier = node.parts[0]?.identifier?.text;
+    if (!firstIdentifier) return null;
+    const firstResolved = this.#scope.resolveSimpleName(firstIdentifier, node.global);
     if (firstResolved instanceof ModelicaComponentInstance) {
       currentElement = firstResolved;
     } else {
@@ -1360,7 +1289,9 @@ class ArraySubscriptChecker extends ModelicaSyntaxVisitor<null, null> {
         }
         if (!nextScope) break;
 
-        const nextElement = nextScope.resolveSimpleName(node.parts[i + 1]?.identifier, false, true);
+        const identifierText = node.parts[i + 1]?.identifier?.text;
+        if (!identifierText) return null;
+        const nextElement = nextScope.resolveSimpleName(identifierText, false, true);
         if (!(nextElement instanceof ModelicaComponentInstance)) break;
         currentElement = nextElement;
       }

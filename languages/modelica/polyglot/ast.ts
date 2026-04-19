@@ -2407,7 +2407,7 @@ export class ModelicaModificationExpressionSyntaxNode
     super(parent, concreteSyntaxNode, abstractSyntaxNode);
     this.expression = ModelicaExpressionSyntaxNode.new(
       this,
-      concreteSyntaxNode?.childForFieldName("expression"),
+      concreteSyntaxNode?.childForFieldName("expression") ?? concreteSyntaxNode?.firstNamedChild,
       abstractSyntaxNode?.expression,
     );
     this.break = abstractSyntaxNode?.break ?? concreteSyntaxNode?.childForFieldName("break") != null;

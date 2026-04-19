@@ -27,6 +27,7 @@ function postMessageToHost(msg: any) {
 }
 
 let graph: Graph | null = null;
+let selectedNodeId: string | null = null;
 
 /** Get connected edge metadata for a node (for move/resize updates) */
 function getConnectedEdges(
@@ -427,6 +428,7 @@ function initGraph(isDark: boolean): Graph {
 
   g.on("node:click", ({ node }) => {
     if (!graph) return;
+    selectedNodeId = node.id;
     const data = node.getData();
     showProperties({ id: node.id, properties: data?.properties });
 
@@ -462,6 +464,7 @@ function initGraph(isDark: boolean): Graph {
   });
 
   g.on("blank:click", () => {
+    selectedNodeId = null;
     document.getElementById("properties-panel")?.classList.remove("open");
   });
 
@@ -949,6 +952,15 @@ function renderDiagram(data: any, isDark: boolean) {
       height: cs.height * 1.25,
     };
     g.zoomToRect(expandedRect);
+  }
+
+  // Restore property panel for previously selected node after re-render
+  if (selectedNodeId) {
+    const restoredNode = g.getCellById(selectedNodeId);
+    if (restoredNode && restoredNode.isNode()) {
+      const data = restoredNode.getData();
+      showProperties({ id: restoredNode.id, properties: data?.properties });
+    }
   }
 }
 

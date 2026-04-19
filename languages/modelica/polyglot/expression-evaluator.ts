@@ -129,9 +129,29 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
 
   // Simple name reference — resolve in scope
   if (/^[a-zA-Z_]\w*(\.[a-zA-Z_]\w*)*$/.test(trimmed) && scope) {
-    const resolved = db.byName(trimmed);
-    if (resolved && resolved.length > 0) {
-      return resolved[0];
+    const isQualified = trimmed.includes(".");
+    const resolveHook = isQualified ? "resolveName" : "resolveSimpleName";
+    const resolver = db.query<(name: string) => SymbolEntry | null>(resolveHook, scope.id);
+    if (resolver) {
+      const resolved = resolver(trimmed);
+      if (resolved) {
+        if (resolved.ruleName === "EnumerationLiteral" && resolved.name) {
+          return resolved.name;
+        }
+        return resolved;
+      }
+    }
+
+    // Fallback if the hook fails (e.g. built-in constants)
+    const resolvedFallback = db.byName(trimmed);
+    if (resolvedFallback && resolvedFallback.length > 0) {
+      const resolved = resolvedFallback[0];
+      if (resolved) {
+        if (resolved.ruleName === "EnumerationLiteral" && resolved.name) {
+          return resolved.name;
+        }
+        return resolved;
+      }
     }
   }
 

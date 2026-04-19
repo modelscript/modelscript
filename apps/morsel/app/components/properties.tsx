@@ -214,7 +214,7 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
     }
   }
 
-  const doc = component.classInstance?.annotation<{ info?: string; revisions?: string }>("Documentation");
+  const doc = component.classInstance?.annotation("Documentation") as { info?: string; revisions?: string } | null;
 
   const processHtml = (html: string | undefined) => {
     if (!html) return "";

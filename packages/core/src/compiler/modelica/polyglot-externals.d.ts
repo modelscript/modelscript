@@ -53,6 +53,9 @@ declare module "@modelscript/modelica-polyglot/compat-shim" {
   export type AbstractSyntaxNodeFactory = (cst: any) => any;
   export function registerAbstractSyntaxNodeFactory(factory: AbstractSyntaxNodeFactory): void;
 
+  export type AnnotationEvaluator = (ast: any, name: string) => any;
+  export function registerAnnotationEvaluator(evaluator: AnnotationEvaluator): void;
+
   export class QueryBackedElement {
     name: string;
     compositeName: string;
@@ -133,6 +136,7 @@ declare module "@modelscript/modelica-polyglot/compat-shim" {
   export class QueryBackedPredefinedClassInstance extends QueryBackedClassInstance {}
   export class QueryBackedShortClassInstance extends QueryBackedClassInstance {}
   export class QueryBackedClockClassInstance extends QueryBackedClassInstance {}
+  export class QueryBackedExpressionClassInstance extends QueryBackedClassInstance {}
   export class QueryBackedIntegerClassInstance extends QueryBackedClassInstance {}
   export class QueryBackedBooleanClassInstance extends QueryBackedClassInstance {}
   export class QueryBackedStringClassInstance extends QueryBackedClassInstance {}

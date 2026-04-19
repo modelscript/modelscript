@@ -35,7 +35,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       const loaded: string[] = [];
       for (const p of paths) {
         const resolved = path.resolve(p);
-        const library = context.addLibrary(resolved);
+        const library = await context.addLibrary(resolved);
         if (library) {
           loaded.push(library.name ?? resolved);
         } else {
@@ -194,7 +194,8 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       // Lint all or specific library
       for (const library of ctx.current.listLibraries()) {
         if (lintPath && library.path !== path.resolve(lintPath)) continue;
-        linter.lint(library);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        linter.lint(library as any);
       }
 
       if (diagnostics.length === 0) {
@@ -240,7 +241,8 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
 
       // Flatten
       const dae = new ModelicaDAE(instance.name ?? "DAE", instance.description);
-      instance.accept(new ModelicaFlattener(), ["", dae]);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (instance as any).accept(new ModelicaFlattener(), ["", dae]);
 
       // Check for errors
       const errors: string[] = [];
@@ -338,7 +340,8 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       // Flatten to get equations
       const dae = new ModelicaDAE(element.name ?? name, element.description);
       try {
-        element.accept(new ModelicaFlattener(), ["", dae]);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (element as any).accept(new ModelicaFlattener(), ["", dae]);
       } catch {
         // Flatten may fail for some classes — still return what we can
       }

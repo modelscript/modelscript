@@ -220,7 +220,7 @@ export function createSelfProxy(path: string = ""): SelfAccessor {
     get(_, prop) {
       if (prop === SCOPE_PATH) return path;
       const newPath = path ? `${path}.${String(prop)}` : String(prop);
-      return createSelfProxy(newPath);
+      return createSelfProxy(newPath) as any;
     },
   });
 }
@@ -409,13 +409,13 @@ export interface GraphicsConfig {
     /** X6 edge shape name (default: "edge"). */
     shape?: string;
     /** Field path pointing to the source node symbol. */
-    source?: SelfAccessor;
+    source?: SelfAccessor | string;
     /** Field path pointing to the target node symbol. */
-    target?: SelfAccessor;
+    target?: SelfAccessor | string;
     /** Field path to resolve source port name. */
-    sourcePort?: SelfAccessor;
+    sourcePort?: SelfAccessor | string;
     /** Field path to resolve target port name. */
-    targetPort?: SelfAccessor;
+    targetPort?: SelfAccessor | string;
     /** Edge attrs (line styles, markers). */
     attrs?: X6Attrs;
     /** Edge labels (stereotype text, etc). */

@@ -350,7 +350,7 @@ export type ExpressionEvaluator = (expression: unknown, scope: SymbolEntry | nul
  */
 export interface CSTTree {
   /** Extract source text for a byte range. */
-  getText(startByte: number, endByte: number): string | null;
+  getText(startByte: number, endByte: number, entry?: SymbolEntry): string | null;
   /** Get the CST node covering a byte range (smallest node that spans it). */
-  getNode(startByte: number, endByte: number): unknown | null;
+  getNode(startByte: number, endByte: number, entry?: SymbolEntry): unknown | null;
 }

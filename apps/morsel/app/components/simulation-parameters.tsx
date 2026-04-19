@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { ParameterInfo } from "@modelscript/core";
+import { type ParameterInfo } from "@modelscript/simulator";
 import { SyncIcon } from "@primer/octicons-react";
 import { ActionList, ActionMenu, IconButton, TextInput, ToggleSwitch } from "@primer/react";
 import { useCallback, useRef, useState } from "react";

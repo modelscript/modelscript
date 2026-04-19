@@ -59,7 +59,8 @@ export function registerResources(server: McpServer, ctx: ServerContext): void {
 
     const classes: { name: string; kind: string; library: string }[] = [];
     for (const lib of ctx.current.listLibraries()) {
-      for (const element of lib.elements) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const element of (lib as any).elements) {
         if (element instanceof ModelicaClassInstance) {
           classes.push({
             name: element.name ?? "<anonymous>",
