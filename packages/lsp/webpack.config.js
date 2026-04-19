@@ -19,6 +19,7 @@ const browserServerConfig = {
   output: {
     filename: "[name].js",
     path: path.join(__dirname, "dist"),
+    publicPath: "",
     libraryTarget: "var",
     library: "serverExportVar",
     devtoolModuleFilenameTemplate: "../[resource-path]",
