@@ -5,6 +5,7 @@
 // - Double-click on a leaf item (model, block, connector) triggers "Add to Diagram"
 // - Right-click context menu also offers "Add to Diagram"
 // - Icons: SVG data URIs from the LSP when available, codicon fallback otherwise
+// - Icons are loaded LAZILY after tree items are displayed, to keep expansion instant
 
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
@@ -91,6 +92,12 @@ export class LibraryTreeProvider
 
   private documentUri: string | undefined;
 
+  /** Cache of already-fetched SVG icons, keyed by compositeName. */
+  private iconCache = new Map<string, string>();
+
+  /** Set of compositeNames currently being fetched (to avoid duplicate requests). */
+  private iconFetchPending = new Set<string>();
+
   constructor(private readonly client: LanguageClient) {}
 
   refresh(uri?: string): void {
@@ -127,7 +134,7 @@ export class LibraryTreeProvider
     const dragData = {
       className: item.info.compositeName,
       classKind: item.info.classKind,
-      iconSvg: item.info.iconSvg,
+      iconSvg: item.info.iconSvg ?? this.iconCache.get(item.info.compositeName),
     };
 
     const payload = JSON.stringify(dragData);
@@ -147,16 +154,67 @@ export class LibraryTreeProvider
         parentId: element?.info.id,
       });
 
-      return nodes.map(
+      // Apply cached icons to nodes that have them
+      for (const node of nodes) {
+        const cached = this.iconCache.get(node.compositeName);
+        if (cached) node.iconSvg = cached;
+      }
+
+      const items = nodes.map(
         (node) =>
           new LibraryTreeItem(
             node,
             node.hasChildren ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None,
           ),
       );
+
+      // Lazily fetch icons for nodes that don't have them yet.
+      // Only fetch for non-package classes (packages rarely have interesting icons).
+      const nodesNeedingIcons = nodes.filter(
+        (n) => !n.iconSvg && !this.iconFetchPending.has(n.compositeName) && n.classKind !== "package",
+      );
+
+      if (nodesNeedingIcons.length > 0) {
+        this.fetchIconsInBackground(nodesNeedingIcons);
+      }
+
+      return items;
     } catch (e) {
       console.error("[library-tree] Error fetching children:", e);
       return [];
+    }
+  }
+
+  /**
+   * Fetch SVG icons for a batch of nodes in the background.
+   * When icons arrive, cache them and refresh the tree to display them.
+   */
+  private async fetchIconsInBackground(nodes: TreeNodeInfo[]): Promise<void> {
+    const toFetch = nodes.map((n) => n.compositeName);
+    for (const name of toFetch) this.iconFetchPending.add(name);
+
+    let anyFetched = false;
+
+    for (const className of toFetch) {
+      try {
+        const svg: string | null = await this.client.sendRequest("modelscript/getClassIcon", {
+          className,
+          uri: this.documentUri,
+        });
+        if (svg) {
+          this.iconCache.set(className, svg);
+          anyFetched = true;
+        }
+      } catch {
+        // Icon fetch failed — will use codicon fallback
+      } finally {
+        this.iconFetchPending.delete(className);
+      }
+    }
+
+    // Refresh the tree to show the newly fetched icons
+    if (anyFetched) {
+      this._onDidChangeTreeData.fire(undefined);
     }
   }
 }
