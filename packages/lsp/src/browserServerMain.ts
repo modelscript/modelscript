@@ -629,17 +629,36 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
 
     // Re-validate strictly AFTER MSL and parser are ready!
     connection.console.info(`[lsp] Initialization complete. Re-validating ${documents.all().length} open documents.`);
-    connection.sendNotification("modelscript/status", { state: "loading", message: "Indexing workspace..." });
 
-    // We must run validation twice to ensure cross-file dependencies (like CosimSetup -> Controller)
-    // are resolved with the updated instances, regardless of the arbitrary documents.all() order.
-    for (let pass = 1; pass <= 2; pass++) {
-      for (const doc of documents.all()) {
-        await validateTextDocument(doc);
-      }
+    // Initial fast validation pass — uses toUnifiedPartial() which only merges
+    // already-parsed files (just the open documents). No MSL parsing happens here.
+    for (const doc of documents.all()) {
+      await validateTextDocument(doc);
     }
 
     connection.sendNotification("modelscript/status", { state: "ready", message: "ModelScript" });
+
+    // Background-index remaining MSL files progressively, then re-validate
+    // with the full unified index for cross-file resolution.
+    const pending = globalWorkspaceIndex.pendingFileCount;
+    if (pending > 0) {
+      connection.console.info(`[lsp] Background-indexing ${pending} remaining files...`);
+      globalWorkspaceIndex
+        .indexRemainingInBackground(20, (indexed, total) => {
+          if (indexed % 200 === 0) {
+            connection.console.info(`[lsp] Background indexing: ${indexed}/${total}`);
+          }
+        })
+        .then(async () => {
+          connection.console.info(`[lsp] Background indexing complete. Re-validating documents.`);
+          // Re-validate with full index for cross-file resolution
+          for (let pass = 1; pass <= 2; pass++) {
+            for (const doc of documents.all()) {
+              await validateTextDocument(doc);
+            }
+          }
+        });
+    }
   } catch (e: any) {
     connection.console.error(`Failed to initialize tree-sitter: ${e}\n${e.stack}`);
     parserReady = false;
@@ -1276,8 +1295,10 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
       globalWorkspaceIndex.register(textDocument.uri, () => tree.rootNode);
     }
 
-    // Create query engine, resolver, and LSP bridge over the unified workspace index
-    const unifiedIndex = await globalWorkspaceIndex.toUnifiedAsync();
+    // Create query engine, resolver, and LSP bridge over the unified workspace index.
+    // Use toUnifiedPartial() to avoid blocking on parsing ALL MSL files —
+    // only merges files that have already been indexed.
+    const unifiedIndex = globalWorkspaceIndex.toUnifiedPartial();
 
     const cstTreeWrapper = {
       getText(startByte: number, endByte: number, entry?: any): string | null {

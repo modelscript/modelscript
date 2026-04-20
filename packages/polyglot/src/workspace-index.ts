@@ -236,6 +236,98 @@ export class WorkspaceIndex {
     return this.unifiedCache;
   }
 
+  /**
+   * Build a unified index from ONLY already-parsed files.
+   * Does NOT trigger any lazy loaders — skips files whose index is null.
+   * This is O(already-parsed files), not O(all files).
+   *
+   * Use this for initial document validation to avoid blocking on full MSL parsing.
+   * The result is NOT cached as unifiedCache (since it's partial).
+   */
+  toUnifiedPartial(): SymbolIndex {
+    if (this.unifiedCache) return this.unifiedCache;
+
+    const symbols = new Map<SymbolId, SymbolEntry>();
+    const byName = new Map<string, SymbolId[]>();
+    const childrenOf = new Map<SymbolId | null, SymbolId[]>();
+
+    for (const [_uri, file] of this.files) {
+      if (!file.index) continue; // Skip unindexed files — no parsing triggered
+
+      for (const [id, entry] of file.index.symbols) {
+        symbols.set(id, entry);
+      }
+
+      for (const [name, ids] of file.index.byName) {
+        const existing = byName.get(name);
+        if (existing) existing.push(...ids);
+        else byName.set(name, [...ids]);
+      }
+
+      for (const [parentId, ids] of file.index.childrenOf) {
+        const existing = childrenOf.get(parentId);
+        if (existing) {
+          for (const cid of ids) {
+            if (!existing.includes(cid)) existing.push(cid);
+          }
+        } else {
+          childrenOf.set(parentId, [...ids]);
+        }
+      }
+    }
+
+    this.stitchParentFQNs(symbols, byName, childrenOf);
+    return { symbols, byName, childrenOf };
+  }
+
+  /**
+   * Count of files not yet indexed (lazy loaders not yet invoked).
+   */
+  get pendingFileCount(): number {
+    let count = 0;
+    for (const file of this.files.values()) {
+      if (!file.index) count++;
+    }
+    return count;
+  }
+
+  /**
+   * Progressively index remaining files in the background.
+   * Yields to the event loop every `batchSize` files.
+   * Calls `onProgress` with (indexed, total) periodically.
+   * When complete, sets the unified cache.
+   */
+  async indexRemainingInBackground(
+    batchSize = 20,
+    onProgress?: (indexed: number, total: number) => void,
+  ): Promise<void> {
+    const urisToIndex: string[] = [];
+    for (const [uri, file] of this.files) {
+      if (!file.index && file.loader) urisToIndex.push(uri);
+    }
+
+    if (urisToIndex.length === 0) return;
+
+    const total = urisToIndex.length;
+    let indexed = 0;
+
+    for (const uri of urisToIndex) {
+      this.getFileIndex(uri); // Triggers lazy parsing
+      indexed++;
+
+      if (indexed % batchSize === 0) {
+        onProgress?.(indexed, total);
+        await new Promise((r) => setTimeout(r, 0)); // Yield
+      }
+    }
+
+    onProgress?.(total, total);
+
+    // Now build the full unified cache
+    this.unifiedCache = null; // Force rebuild
+    this.toUnified();
+  }
+
   private stitchParentFQNs(
     symbols: Map<SymbolId, SymbolEntry>,
     byName: Map<string, SymbolId[]>,
