@@ -629,6 +629,7 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
 
     // Re-validate strictly AFTER MSL and parser are ready!
     connection.console.info(`[lsp] Initialization complete. Re-validating ${documents.all().length} open documents.`);
+    connection.sendNotification("modelscript/status", { state: "loading", message: "Indexing workspace..." });
 
     // We must run validation twice to ensure cross-file dependencies (like CosimSetup -> Controller)
     // are resolved with the updated instances, regardless of the arbitrary documents.all() order.
@@ -1163,7 +1164,7 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
       }
 
       // Create or update query engine, resolver, and LSP bridge for the document
-      const unifiedIndex = sysml2WorkspaceIndex.toUnified();
+      const unifiedIndex = await sysml2WorkspaceIndex.toUnifiedAsync();
 
       let engine = documentQueryEngines.get(textDocument.uri) as any;
       if (engine) {
@@ -1276,7 +1277,7 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
     }
 
     // Create query engine, resolver, and LSP bridge over the unified workspace index
-    const unifiedIndex = globalWorkspaceIndex.toUnified();
+    const unifiedIndex = await globalWorkspaceIndex.toUnifiedAsync();
 
     const cstTreeWrapper = {
       getText(startByte: number, endByte: number, entry?: any): string | null {
