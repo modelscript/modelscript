@@ -124,9 +124,7 @@ import {
 } from "@modelscript/symbolics";
 import { BUILTIN_FUNCTIONS, BUILTIN_VARIABLES } from "./builtins.js";
 import { makeDiagnostic, ModelicaErrorCode } from "./errors.js";
-import { buildFilledArray, ModelicaInterpreter } from "./interpreter.js";
-
-import { ModelicaParameterModification } from "./parameter-modification.js";
+import { buildFilledArray, ModelicaInterpreter, ModelicaParameterModification } from "./interpreter.js";
 import { ModelicaModelVisitor } from "./visitor.js";
 
 /** Module-level counter for generating unique temp variable names in comprehensions. */

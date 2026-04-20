@@ -104,7 +104,14 @@ class AnnotationEnumLiteralInstance {
  * structures from the polyglot CST into plain JSON objects matching IIcon / IPlacement.
  */
 export class AnnotationEvaluator {
-  private interpreter = new ModelicaInterpreter(false);
+  private _interpreter: ModelicaInterpreter | null = null;
+  private get interpreter() {
+    if (!this._interpreter) {
+      this._interpreter = new ModelicaInterpreter(false);
+    }
+    return this._interpreter;
+  }
+
   private scope: Scope;
 
   constructor() {

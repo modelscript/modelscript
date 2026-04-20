@@ -598,6 +598,7 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
         return `${serverDistBase}/${file}`;
       },
     });
+
     const Modelica = await Language.load(`${serverDistBase}/tree-sitter-modelica.wasm`);
     parser = new Parser();
     parser.setLanguage(Modelica);
@@ -611,10 +612,11 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
       const SysML2 = await Language.load(`${serverDistBase}/tree-sitter-sysml2.wasm`);
       sysml2Parser = new Parser();
       sysml2Parser.setLanguage(SysML2);
+      Context.registerParser(".sysml", sysml2Parser as any);
       sysml2ParserReady = true;
       connection.console.info("Tree-sitter SysML2 parser initialized");
-    } catch (e2: any) {
-      connection.console.warn(`SysML2 parser not available: ${e2.message}`);
+    } catch (e) {
+      connection.console.warn(`[tree-sitter] Failed to load SysML2 language: ${e}`);
     }
 
     // Load the Modelica Standard Library from the bundled zip
