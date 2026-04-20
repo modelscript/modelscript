@@ -27,7 +27,6 @@ import {
   ModelicaUnaryExpressionSyntaxNode,
   ModelicaUnsignedIntegerLiteralSyntaxNode,
   ModelicaUnsignedRealLiteralSyntaxNode,
-  ModelicaVariability,
   ModelicaWhenStatementSyntaxNode,
   ModelicaWhileStatementSyntaxNode,
 } from "@modelscript/modelica-polyglot/ast";
@@ -535,13 +534,13 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     if (namedElement instanceof ModelicaClassInstance) result = ModelicaExpression.fromClassInstance(namedElement);
     else if (namedElement instanceof ModelicaComponentInstance) {
       if (!namedElement.instantiated && !namedElement.instantiating) namedElement.instantiate();
-      if (namedElement.variability === ModelicaVariability.CONSTANT) {
-        const modExpr = namedElement.modification?.evaluatedExpression ?? namedElement.modification?.expression;
-        if (modExpr instanceof ModelicaExpression) {
-          result = modExpr;
-        } else {
-          result = ModelicaExpression.fromClassInstance(namedElement.classInstance);
-        }
+      const modExpr = namedElement.modification?.evaluatedExpression ?? namedElement.modification?.expression;
+      if (modExpr instanceof ModelicaExpression) {
+        result = modExpr;
+      } else if (typeof modExpr === "number" || typeof modExpr === "boolean" || typeof modExpr === "string") {
+        if (typeof modExpr === "number") result = new ModelicaRealLiteral(modExpr);
+        else if (typeof modExpr === "boolean") result = new ModelicaBooleanLiteral(modExpr);
+        else result = new ModelicaStringLiteral(modExpr);
       } else {
         result = ModelicaExpression.fromClassInstance(namedElement.classInstance);
       }

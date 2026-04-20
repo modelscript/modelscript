@@ -37,6 +37,7 @@ export class WorkspaceIndex {
   register(uri: string, loader: () => CSTNode, parentFQN?: string): void {
     this.files.set(uri, { index: null, loader, parentFQN, dirty: true });
     this.unifiedCache = null;
+    this.skeletonCache = null;
   }
 
   /**
@@ -50,6 +51,7 @@ export class WorkspaceIndex {
       file.index = null; // Clear old index
       if (loader) file.loader = loader;
       this.unifiedCache = null;
+      this.skeletonCache = null;
     }
   }
 
@@ -59,6 +61,7 @@ export class WorkspaceIndex {
   remove(uri: string): void {
     this.files.delete(uri);
     this.unifiedCache = null;
+    this.skeletonCache = null;
   }
 
   /**
@@ -311,5 +314,116 @@ export class WorkspaceIndex {
   /** Check if a file is registered. */
   has(uri: string): boolean {
     return this.files.has(uri);
+  }
+
+  /**
+   * Get a lightweight tree index without parsing any files.
+   * Returns the cached unified index if available (already built by document processing),
+   * otherwise builds a skeleton from file registration metadata (URI paths + parentFQNs).
+   *
+   * This is designed for the library tree view, which only needs class names,
+   * parent-child relationships, and approximate class kinds.
+   */
+  toTreeIndex(): SymbolIndex {
+    if (this.unifiedCache) return this.unifiedCache;
+    return this.toTreeSkeleton();
+  }
+
+  /** Cached skeleton index — invalidated alongside unifiedCache. */
+  private skeletonCache: SymbolIndex | null = null;
+
+  /**
+   * Build a lightweight SymbolIndex from file registration metadata only.
+   * Infers class names from URIs and hierarchy from parentFQNs.
+   * Does NOT call any file loaders or trigger parsing.
+   *
+   * Entries have:
+   * - kind: "Class"
+   * - name: from URI filename or directory name
+   * - metadata.classPrefixes: "package" for package.mo, "" otherwise
+   * - parentId: resolved from parentFQN
+   */
+  private toTreeSkeleton(): SymbolIndex {
+    if (this.skeletonCache) return this.skeletonCache;
+
+    const symbols = new Map<SymbolId, SymbolEntry>();
+    const byName = new Map<string, SymbolId[]>();
+    const childrenOf = new Map<SymbolId | null, SymbolId[]>();
+
+    let nextId: SymbolId = 1;
+    // FQN → SymbolId for parent resolution
+    const fqnToId = new Map<string, SymbolId>();
+
+    // First pass: create entries from registered files
+    const pendingEntries: Array<{
+      id: SymbolId;
+      name: string;
+      parentFQN: string;
+      isPackage: boolean;
+    }> = [];
+
+    for (const [uri, file] of this.files) {
+      // Infer class name from URI
+      const path = uri.startsWith("file://") ? uri.substring(7) : uri;
+      const segments = path.split("/");
+      const fileName = segments[segments.length - 1];
+
+      let name: string;
+      let isPackage = false;
+
+      if (fileName === "package.mo") {
+        // Package: name is the directory containing package.mo
+        const dirName = segments[segments.length - 2] ?? "";
+        // Strip version string if present (e.g. "Modelica 4.1.0" → "Modelica")
+        name = dirName.split(" ")[0];
+        isPackage = true;
+      } else if (fileName.endsWith(".mo")) {
+        name = fileName.slice(0, -3); // Strip .mo
+      } else {
+        continue; // Skip non-Modelica files
+      }
+
+      if (!name) continue;
+
+      const id = nextId++;
+      const parentFQN = file.parentFQN ?? "";
+      const fqn = parentFQN ? `${parentFQN}.${name}` : name;
+
+      fqnToId.set(fqn, id);
+      pendingEntries.push({ id, name, parentFQN, isPackage });
+    }
+
+    // Second pass: resolve parents and build the index
+    for (const { id, name, parentFQN, isPackage } of pendingEntries) {
+      const parentId = parentFQN ? (fqnToId.get(parentFQN) ?? null) : null;
+
+      const entry: SymbolEntry = {
+        id,
+        kind: "Class",
+        name,
+        ruleName: "ClassDefinition",
+        namePath: "classSpecifier.identifier",
+        startByte: 0,
+        endByte: 0,
+        parentId,
+        exports: [],
+        inherits: [],
+        metadata: { classPrefixes: isPackage ? "package" : "" },
+        fieldName: null,
+      };
+
+      symbols.set(id, entry);
+
+      const existing = byName.get(name);
+      if (existing) existing.push(id);
+      else byName.set(name, [id]);
+
+      const siblings = childrenOf.get(parentId);
+      if (siblings) siblings.push(id);
+      else childrenOf.set(parentId, [id]);
+    }
+
+    this.skeletonCache = { symbols, byName, childrenOf };
+    return this.skeletonCache;
   }
 }

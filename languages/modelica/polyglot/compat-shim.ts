@@ -250,12 +250,18 @@ export class QueryBackedClassInstance extends QueryBackedElement {
   get shortClassTarget(): QueryBackedClassInstance | null {
     if (this.classKind !== "type") return null;
     const cst = this.db.cstNode(this.id) as any;
-    if (!cst) return null;
+    if (!cst) {
+      console.log(`[shortClassTarget] CST node missing for ${this.name} (${this.id})`);
+      return null;
+    }
     // Navigate to the ShortClassSpecifier's typeSpecifier
     const classSpecifier = cst.childForFieldName?.("classSpecifier");
     const typeSpec = classSpecifier?.childForFieldName?.("typeSpecifier");
     const typeName = typeSpec?.text;
-    if (!typeName) return null;
+    if (!typeName) {
+      console.log(`[shortClassTarget] No typeName parsed from CST for ${this.name}`);
+      return null;
+    }
     // Resolve using the enclosing scope via full name resolution
     const parentId = this.entry?.parentId;
     if (parentId !== null && parentId !== undefined) {
@@ -264,15 +270,35 @@ export class QueryBackedClassInstance extends QueryBackedElement {
         const resolved = resolver(typeName);
         if (resolved?.id) {
           return this.wrapElement(resolved.id) as QueryBackedClassInstance | null;
+        } else {
+          console.log(`[shortClassTarget] resolveName returned null for typeName=${typeName} in parentId=${parentId}`);
         }
+      } else {
+        console.log(`[shortClassTarget] No resolver found for parentId=${parentId}`);
       }
     }
-    // Fallback: global lookup
-    const entries = this.db.byName(typeName);
-    const entry = entries?.find((e: any) => e.kind === "Class");
-    if (entry) {
-      return this.wrapElement(entry.id) as QueryBackedClassInstance | null;
+    // Fallback: global lookup with dotted path traversal
+    const parts = typeName.split(".");
+    let currentEntries = this.db.byName(parts[0]!);
+    let current = currentEntries?.find((e: any) => e.kind === "Class" || e.kind === "Package") ?? currentEntries?.[0];
+
+    if (current) {
+      for (let i = 1; i < parts.length; i++) {
+        const childName = parts[i];
+        const children = this.db.childrenOf(current.id);
+        const child = children.find((c: any) => c.name === childName && c.kind !== "Reference");
+        if (!child) {
+          current = undefined;
+          break;
+        }
+        current = child;
+      }
     }
+
+    if (current && current.kind === "Class") {
+      return this.wrapElement(current.id) as QueryBackedClassInstance | null;
+    }
+    console.log(`[shortClassTarget] Fallback global lookup failed to find Class for typeName=${typeName}`);
     return null;
   }
 

@@ -1219,6 +1219,14 @@ export abstract class ModelicaExpression {
       return classInstance.modification.expression;
     } else if (!classInstance.abstractSyntaxNode && classInstance.modification?.expression) {
       return classInstance.modification.expression;
+    } else if (classInstance.classKind === "boolean" || classInstance.name === "Boolean") {
+      return new ModelicaBooleanLiteral(false);
+    } else if (classInstance.classKind === "integer" || classInstance.name === "Integer") {
+      return new ModelicaIntegerLiteral(0);
+    } else if (classInstance.classKind === "real" || classInstance.name === "Real") {
+      return new ModelicaRealLiteral(0.0);
+    } else if (classInstance.classKind === "string" || classInstance.name === "String") {
+      return new ModelicaStringLiteral("");
     } else {
       const elements = new Map<string, ModelicaExpression>();
       for (const component of classInstance.components) {

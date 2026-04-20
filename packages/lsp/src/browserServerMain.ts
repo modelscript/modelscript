@@ -3599,128 +3599,116 @@ interface TreeNodeInfo {
   iconSvg?: string;
 }
 
-connection.onRequest("modelscript/getLibraryTree", (params: { uri: string; parentId?: string }): TreeNodeInfo[] => {
-  const context = documentContexts.get(params.uri);
-  if (!context) {
-    // Try any available context
-    const anyCtx = documentContexts.values().next().value;
-    if (!anyCtx) return [];
-    return getTreeChildren(anyCtx, params.parentId);
+// ── Fast library tree: works directly from SymbolIndex metadata ──
+// No QueryBackedClassInstance creation, no instantiation, no icon rendering.
+// Uses childrenOf map for O(1) parent-child lookups.
+
+/** Known Modelica class kind keywords — order matters (last match wins in classPrefixes text). */
+const CLASS_KIND_KEYWORDS = [
+  "class",
+  "model",
+  "record",
+  "block",
+  "connector",
+  "type",
+  "package",
+  "function",
+  "operator",
+  "optimization",
+];
+
+/**
+ * Extract the class kind from a classPrefixes metadata string.
+ * The metadata is the full text of the ClassPrefixes CST node,
+ * e.g. "partial model", "expandable connector", "pure function".
+ */
+function classKindFromPrefixes(prefixesText: unknown): string {
+  if (typeof prefixesText !== "string" || !prefixesText) return "class";
+  const lower = prefixesText.toLowerCase();
+  // Find the last class-kind keyword in the string
+  for (let i = CLASS_KIND_KEYWORDS.length - 1; i >= 0; i--) {
+    if (lower.includes(CLASS_KIND_KEYWORDS[i])) return CLASS_KIND_KEYWORDS[i];
   }
-  return getTreeChildren(context, params.parentId);
+  return "class";
+}
+
+/** FQN → SymbolId cache — avoids O(n) scans on repeated getTreeChildren calls. */
+let fqnCache = new Map<string, number>();
+/** The unified index revision this cache was built against. */
+let fqnCacheIndex: any = null;
+
+function getCompositeName(entry: any, index: any): string {
+  if (entry.parentId === null) return entry.name;
+  const parent = index.symbols.get(entry.parentId);
+  if (!parent) return entry.name;
+  return getCompositeName(parent, index) + "." + entry.name;
+}
+
+connection.onRequest("modelscript/getLibraryTree", (params: { uri: string; parentId?: string }): TreeNodeInfo[] => {
+  // Use toTreeIndex() — returns the full unified index if cached,
+  // or a lightweight skeleton from file metadata (no parsing needed)
+  const unifiedIndex = globalWorkspaceIndex.toTreeIndex();
+  if (!unifiedIndex) return [];
+
+  // Invalidate FQN cache when the index changes
+  if (fqnCacheIndex !== unifiedIndex) {
+    fqnCache = new Map();
+    fqnCacheIndex = unifiedIndex;
+  }
+
+  return getTreeChildrenFast(unifiedIndex, params.parentId);
 });
 
-function classHasChildClasses(cls: ModelicaClassInstance): boolean {
-  try {
-    const entry = (cls as any).entry;
-    if (!entry) return false;
-    const db = (cls as any).db;
-    if (!db) return false;
-    const children = db.childrenOf(entry.id);
-    if (!children) return false;
-
-    for (const child of children) {
-      if (child && child.kind === "Class") return true;
-    }
-  } catch {
-    // fallback or ignore
-  }
-  return false;
-}
-
-function resolveClassKind(cls: ModelicaClassInstance): string {
-  // cls.classKind is set from abstractSyntaxNode.classPrefixes.classKind in the constructor,
-  // but for lazily-loaded library entries, classPrefixes may be null, defaulting to "class".
-  // Walk up: check the class definition syntax node's class prefixes directly.
-  const kind = cls.classKind;
-  if (kind && kind !== "class") return kind;
-  // Try to get the actual kind from the syntax node chain
-  const asn = cls.abstractSyntaxNode;
-  if (asn) {
-    const prefixes = asn.classPrefixes;
-    if (prefixes?.classKind && prefixes.classKind !== "class") return prefixes.classKind;
-    // For short class specifiers, check the classSpecifier that wraps them
-    const classSpecifier = asn.classSpecifier;
-    if (classSpecifier && "typeSpecifier" in classSpecifier) {
-      // Short class specifier — resolve the referenced type's kind
-      const resolved = (cls as any).parent?.resolveSimpleName?.(classSpecifier.identifier?.text);
-      if (resolved && ("classKind" in resolved || resolved.classKind)) {
-        const resolvedKind = (resolved as ModelicaClassInstance).classKind;
-        if (resolvedKind && resolvedKind !== "class") return resolvedKind;
-      }
-    }
-  }
-  return kind || "class";
-}
-
-function toTreeNode(cls: ModelicaClassInstance): TreeNodeInfo {
-  if (!cls.instantiated && !cls.instantiating) {
-    try {
-      cls.instantiate();
-    } catch {
-      // ignore instantiation errors for invalid files in the tree
-    }
-  }
-  return {
-    id: cls.compositeName,
-    name: cls.name || "",
-    compositeName: cls.compositeName,
-    classKind: resolveClassKind(cls),
-    hasChildren: classHasChildClasses(cls),
-    iconSvg: getClassIconSvg(cls),
-  };
-}
-
-function getTreeChildren(context: Context, parentId?: string): TreeNodeInfo[] {
+function getTreeChildrenFast(index: any, parentId?: string): TreeNodeInfo[] {
   const nodes: TreeNodeInfo[] = [];
-  const engine = context.queryEngine;
-  if (!engine) return nodes;
-
-  const db = engine.toQueryDB();
-  const index = (engine as any).index;
-
-  function getCompositeName(entry: any): string {
-    if (entry.parentId === null) return entry.name;
-    const parent = index.symbols.get(entry.parentId);
-    if (!parent) return entry.name;
-    return getCompositeName(parent) + "." + entry.name;
-  }
 
   if (!parentId) {
-    // Root level: return top-level classes
-    connection.console.error("[library-tree] getTreeChildren ROOT LEVEL");
-    for (const [id, entry] of index.symbols) {
-      if (entry.parentId === null && entry.kind === "Class") {
-        connection.console.error(`[library-tree] Found root class: ${entry.name} (${id})`);
-        const cls = new (QueryBackedClassInstance as any)(id, db) as unknown as ModelicaClassInstance;
-        // Avoid duplicates
-        if (!nodes.some((n) => n.id === cls.compositeName)) {
-          nodes.push(toTreeNode(cls));
-        }
-      }
+    // Root level: get children of null (top-level symbols)
+    const rootChildIds = index.childrenOf.get(null) ?? [];
+    for (const id of rootChildIds) {
+      const entry = index.symbols.get(id);
+      if (!entry || entry.kind !== "Class") continue;
+      const compositeName = entry.name; // Root classes have no parent
+      nodes.push({
+        id: compositeName,
+        name: entry.name,
+        compositeName,
+        classKind: classKindFromPrefixes(entry.metadata?.classPrefixes),
+        hasChildren: hasClassChildren(index, id),
+      });
+      // Cache FQN → ID
+      fqnCache.set(compositeName, id);
     }
   } else {
-    // Find the parent and return its class children
-    let parentIdNum: number | null = null;
-    connection.console.error(`[library-tree] getTreeChildren searching for parent FQN: ${parentId}`);
-    for (const [id, entry] of index.symbols) {
-      if (entry.kind === "Class") {
-        if (getCompositeName(entry) === parentId) {
+    // Find the parent's numeric ID
+    let parentIdNum = fqnCache.get(parentId);
+
+    if (parentIdNum === undefined) {
+      // Cache miss — search the index (one-time cost per FQN)
+      for (const [id, entry] of index.symbols) {
+        if (entry.kind === "Class" && getCompositeName(entry, index) === parentId) {
           parentIdNum = id;
-          connection.console.error(`[library-tree] Found parent class: ${entry.name} (${id})`);
+          fqnCache.set(parentId, id);
           break;
         }
       }
     }
 
-    if (parentIdNum !== null) {
-      for (const [id, entry] of index.symbols) {
-        if (entry.parentId === parentIdNum && entry.kind === "Class") {
-          const cls = new (QueryBackedClassInstance as any)(id, db) as unknown as ModelicaClassInstance;
-          if (!nodes.some((n) => n.id === cls.compositeName)) {
-            nodes.push(toTreeNode(cls));
-          }
-        }
+    if (parentIdNum !== undefined) {
+      const childIds = index.childrenOf.get(parentIdNum) ?? [];
+      for (const id of childIds) {
+        const entry = index.symbols.get(id);
+        if (!entry || entry.kind !== "Class") continue;
+        const compositeName = parentId + "." + entry.name;
+        nodes.push({
+          id: compositeName,
+          name: entry.name,
+          compositeName,
+          classKind: classKindFromPrefixes(entry.metadata?.classPrefixes),
+          hasChildren: hasClassChildren(index, id),
+        });
+        // Cache FQN → ID
+        fqnCache.set(compositeName, id);
       }
     }
   }
@@ -3728,6 +3716,17 @@ function getTreeChildren(context: Context, parentId?: string): TreeNodeInfo[] {
   // Sort nodes alphabetically
   nodes.sort((a, b) => a.name.localeCompare(b.name));
   return nodes;
+}
+
+/** Check if a symbol has any Class children using the childrenOf map. */
+function hasClassChildren(index: any, symbolId: number): boolean {
+  const childIds = index.childrenOf.get(symbolId);
+  if (!childIds) return false;
+  for (const id of childIds) {
+    const entry = index.symbols.get(id);
+    if (entry?.kind === "Class") return true;
+  }
+  return false;
 }
 
 // Custom request: get project tree (workspace files and their classes)
