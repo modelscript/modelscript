@@ -3295,7 +3295,11 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     if (resolved.instantiate) resolved.instantiate();
 
     // The component's declared type must be an operator record
-    const declaredType = resolved.declaredType;
+    let declaredType = resolved.declaredType;
+    while (declaredType?.classKind === ModelicaClassKind.TYPE && declaredType.shortClassTarget) {
+      declaredType = declaredType.shortClassTarget;
+    }
+
     if (!declaredType || declaredType.classKind !== ModelicaClassKind.OPERATOR_RECORD) {
       console.log(
         `resolveOperatorRecordFunction FAILING on declaredType. declaredType exists? ${!!declaredType}. classKind? ${declaredType?.classKind}`,

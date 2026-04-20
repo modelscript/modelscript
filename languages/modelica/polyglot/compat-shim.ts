@@ -256,16 +256,15 @@ export class QueryBackedClassInstance extends QueryBackedElement {
     const typeSpec = classSpecifier?.childForFieldName?.("typeSpecifier");
     const typeName = typeSpec?.text;
     if (!typeName) return null;
-    // Resolve using the enclosing scope
+    // Resolve using the enclosing scope via full name resolution
     const parentId = this.entry?.parentId;
     if (parentId !== null && parentId !== undefined) {
-      const resolver = this.db.query<(n: string, enc?: boolean) => { id: SymbolId } | null>(
-        "resolveSimpleName",
-        parentId,
-      );
-      const resolved = resolver?.(typeName);
-      if (resolved?.id) {
-        return this.wrapElement(resolved.id) as QueryBackedClassInstance | null;
+      const resolver = this.db.query<(n: string) => { id: SymbolId } | null>("resolveName", parentId);
+      if (resolver) {
+        const resolved = resolver(typeName);
+        if (resolved?.id) {
+          return this.wrapElement(resolved.id) as QueryBackedClassInstance | null;
+        }
       }
     }
     // Fallback: global lookup
