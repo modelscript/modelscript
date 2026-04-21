@@ -229,11 +229,19 @@ export class LSPBridge {
     const scopeId = scopeEntry?.id ?? null;
 
     const visible = this.resolver.visibleSymbols(scopeId);
-    return visible.map((entry) => ({
-      label: entry.name,
-      kind: this.mapSymbolKind(entry.kind),
-      detail: entry.kind,
-    }));
+    const seen = new Set<string>();
+    const results: LSPCompletionItem[] = [];
+    for (const entry of visible) {
+      if (!seen.has(entry.name)) {
+        seen.add(entry.name);
+        results.push({
+          label: entry.name,
+          kind: this.mapSymbolKind(entry.kind),
+          detail: entry.kind,
+        });
+      }
+    }
+    return results;
   }
 
   /**
@@ -253,7 +261,24 @@ export class LSPBridge {
     const scopeId = scopeEntry?.id ?? null;
 
     // 2. Resolve `varName` lexically to find its declaration
-    const varDecls = this.resolver.resolveName(varName, scopeId);
+    let varDecls = this.resolver.resolveName(varName, scopeId);
+
+    // Fallback: global name search across the entire index.
+    // This handles cases where tree-sitter parse errors (from incomplete text
+    // during typing) corrupt the scope hierarchy, causing lexical resolution
+    // to miss symbols that are actually in scope.
+    if (varDecls.length === 0) {
+      const globalIds = this.index.byName.get(varName);
+      if (globalIds) {
+        for (const id of globalIds) {
+          const entry = this.index.symbols.get(id);
+          if (entry && this.resolver.isDeclaration(entry)) {
+            varDecls.push(entry);
+          }
+        }
+      }
+    }
+
     if (varDecls.length === 0) return [];
 
     const varDecl = varDecls[0];
@@ -267,11 +292,13 @@ export class LSPBridge {
     // 4. If the variable itself is a scope (e.g. a class), show its members directly
     const children = this.getExportedChildren(varDecl.id);
     if (children.length > 0) {
-      return children.map((child) => ({
-        label: child.name,
-        kind: this.mapSymbolKind(child.kind),
-        detail: child.kind,
-      }));
+      return children
+        .filter((child) => this.resolver.isDeclaration(child))
+        .map((child) => ({
+          label: child.name,
+          kind: this.mapSymbolKind(child.kind),
+          detail: child.kind,
+        }));
     }
 
     return [];
@@ -302,10 +329,23 @@ export class LSPBridge {
     }
 
     // Strategy 2: Check child Reference entries (from ref() hooks)
-    const childRefs = this.getExportedChildren(entry.id).filter((c) => !this.resolver.isDeclaration(c)); // Reference entries
+    // Use both parentId scan AND childrenOf map for resilience
+    const childRefs = this.getExportedChildren(entry.id).filter((c) => !this.resolver.isDeclaration(c));
     for (const ref of childRefs) {
       if (ref.name && ref.name.length > 0) {
-        const typeDecls = this.resolver.resolveName(ref.name, entry.parentId);
+        // Try lexical resolution first, then global byName fallback
+        let typeDecls = this.resolver.resolveName(ref.name, entry.parentId);
+        if (typeDecls.length === 0) {
+          const globalIds = this.index.byName.get(ref.name);
+          if (globalIds) {
+            for (const id of globalIds) {
+              const globalEntry = this.index.symbols.get(id);
+              if (globalEntry && this.resolver.isDeclaration(globalEntry)) {
+                typeDecls.push(globalEntry);
+              }
+            }
+          }
+        }
         if (typeDecls.length > 0 && this.resolver.isDeclaration(typeDecls[0])) {
           return typeDecls[0];
         }
@@ -394,13 +434,15 @@ export class LSPBridge {
 
   /**
    * Get exported children of a symbol scope.
+   * Uses the index's childrenOf map for O(1) lookup.
    */
   private getExportedChildren(scopeId: SymbolId): SymbolEntry[] {
     const results: SymbolEntry[] = [];
-    for (const entry of this.index.symbols.values()) {
-      if (entry.parentId === scopeId) {
-        results.push(entry);
-      }
+    const childIds = this.index.childrenOf.get(scopeId);
+    if (!childIds) return results;
+    for (const childId of childIds) {
+      const entry = this.index.symbols.get(childId);
+      if (entry) results.push(entry);
     }
     return results;
   }
@@ -541,7 +583,8 @@ export class LSPBridge {
     let bestSize = Infinity;
 
     for (const entry of this.index.symbols.values()) {
-      if (entry.startByte <= offset && offset < entry.endByte) {
+      if (entry.resourceId !== this.documentUri) continue;
+      if (entry.startByte <= offset && offset <= entry.endByte) {
         const size = entry.endByte - entry.startByte;
         if (size < bestSize) {
           // Check if this entry is a scope-creator (has children in the index)

@@ -183,6 +183,17 @@ export class UsageNode extends SemanticNode {
     return entries.map((e) => wrapEntry(e, this.db)) as SemanticNode[];
   }
 
+  // --- Query Accessors ---
+  get resolvedSource(): SemanticNode[] {
+    const entries = this.query<SymbolEntry[]>("resolvedSource");
+    return entries.map((e) => wrapEntry(e, this.db));
+  }
+
+  get resolvedTarget(): SemanticNode[] {
+    const entries = this.query<SymbolEntry[]>("resolvedTarget");
+    return entries.map((e) => wrapEntry(e, this.db));
+  }
+
   // --- Graphics ---
   get graphics() {
     return {
@@ -310,6 +321,12 @@ export class DefinitionNode extends SemanticNode {
   get superclassifiers(): DefinitionNode[] {
     const entries = this.query<SymbolEntry[]>("superclassifiers");
     return entries.map((e) => wrapEntry(e, this.db)) as DefinitionNode[];
+  }
+
+  // --- Query Accessors ---
+  get extractTopology(): SemanticNode[] {
+    const entries = this.query<SymbolEntry[]>("extractTopology");
+    return entries.map((e) => wrapEntry(e, this.db));
   }
 
   // --- Graphics ---
@@ -620,6 +637,11 @@ export class EnumerationNode extends SemanticNode {
     return entries.map((e) => wrapEntry(e, this.db));
   }
 
+  get extractTopology(): SemanticNode[] {
+    const entries = this.query<SymbolEntry[]>("extractTopology");
+    return entries.map((e) => wrapEntry(e, this.db));
+  }
+
   // --- Graphics ---
   get graphics() {
     return {
@@ -792,6 +814,12 @@ export class CalculationDefinitionNode extends SemanticNode {
 
   get resultExpression(): unknown {
     return this.query<unknown>("resultExpression");
+  }
+
+  // --- Query Accessors ---
+  get extractTopology(): SemanticNode[] {
+    const entries = this.query<SymbolEntry[]>("extractTopology");
+    return entries.map((e) => wrapEntry(e, this.db));
   }
 
   // --- Graphics ---
@@ -1138,6 +1166,17 @@ export class ConstraintDefinitionNode extends SemanticNode {
     return this.query<boolean | null>("constraintResult");
   }
 
+  // --- Query Accessors ---
+  get extractTopology(): SemanticNode[] {
+    const entries = this.query<SymbolEntry[]>("extractTopology");
+    return entries.map((e) => wrapEntry(e, this.db));
+  }
+
+  get dynamicConstraintResult(): SemanticNode[] {
+    const entries = this.query<SymbolEntry[]>("dynamicConstraintResult");
+    return entries.map((e) => wrapEntry(e, this.db));
+  }
+
   // --- Graphics ---
   get graphics() {
     return {
@@ -1352,6 +1391,12 @@ export class ConstraintUsageNode extends SemanticNode {
     return this.query<boolean | null>("constraintResult");
   }
 
+  // --- Query Accessors ---
+  get dynamicConstraintResult(): SemanticNode[] {
+    const entries = this.query<SymbolEntry[]>("dynamicConstraintResult");
+    return entries.map((e) => wrapEntry(e, this.db));
+  }
+
   // --- Graphics ---
   get graphics() {
     return {
@@ -1523,6 +1568,12 @@ export class RequirementDefinitionNode extends SemanticNode {
 
   get constraintsMet(): boolean | null {
     return this.query<boolean | null>("constraintsMet");
+  }
+
+  // --- Query Accessors ---
+  get extractTopology(): SemanticNode[] {
+    const entries = this.query<SymbolEntry[]>("extractTopology");
+    return entries.map((e) => wrapEntry(e, this.db));
   }
 
   // --- Graphics ---
@@ -2102,6 +2153,12 @@ export class VerificationCaseDefinitionNode extends SemanticNode {
     return entry ? (wrapEntry(entry, this.db) as SemanticNode | null) : (null as unknown as SemanticNode | null);
   }
 
+  // --- Query Accessors ---
+  get extractTopology(): SemanticNode[] {
+    const entries = this.query<SymbolEntry[]>("extractTopology");
+    return entries.map((e) => wrapEntry(e, this.db));
+  }
+
   // --- Graphics ---
   get graphics() {
     return {
@@ -2471,6 +2528,12 @@ export class StateDefinitionNode extends SemanticNode {
     return entries.map((e) => wrapEntry(e, this.db)) as SemanticNode[];
   }
 
+  // --- Query Accessors ---
+  get extractTopology(): SemanticNode[] {
+    const entries = this.query<SymbolEntry[]>("extractTopology");
+    return entries.map((e) => wrapEntry(e, this.db));
+  }
+
   // --- Graphics ---
   get graphics() {
     return {
@@ -2727,6 +2790,11 @@ export class StateUsageNode extends SemanticNode {
 
   get superclassifiers(): SemanticNode[] {
     const entries = this.query<SymbolEntry[]>("superclassifiers");
+    return entries.map((e) => wrapEntry(e, this.db));
+  }
+
+  get extractTopology(): SemanticNode[] {
+    const entries = this.query<SymbolEntry[]>("extractTopology");
     return entries.map((e) => wrapEntry(e, this.db));
   }
 

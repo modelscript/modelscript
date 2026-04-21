@@ -157,16 +157,31 @@ const definitionStructuralQueries = {
       }
 
       // Check implements in SysML itself (or modelica index)
-      const implementsTarget = (entry.metadata as any)?.implementsTarget;
+      let implementsTarget = (entry.metadata as any)?.implementsTarget as string | undefined;
+      const ann = (entry.metadata as any)?.annotationClause as string | undefined;
+      if (!implementsTarget && ann) {
+        const match = ann.match(/SysML\s*\(\s*implements\s*=\s*"([^"]+)"\s*\)/);
+        if (match) implementsTarget = match[1];
+      }
+
       if (implementsTarget) {
         const res = db.byName(implementsTarget);
         if (res && res.length > 0) node.targetClassId = res[0].id;
       }
 
-      const parts = db.childrenOf(entry.id).filter((c) => c.ruleName === "PartUsage");
+      const parts = db.childrenOf(entry.id).filter((c) => c.ruleName === "PartUsage" || c.ruleName === "SubjectUsage");
       for (const part of parts) {
         const childNode = walk(part.id, entry.id, path);
         if (childNode) node.children.push(childNode);
+
+        // If this part is a SubjectUsage and its type maps to a Class or Definition, optionally adopt its targetClassId
+        // to bootstrap the root definition (useful if the subject IS the model to simulate)
+        if (part.ruleName === "SubjectUsage" && !node.targetClassId) {
+          const typeNode = usageQueries.resolvedType(db, part);
+          if (typeNode && typeNode.kind === "Class") {
+            node.targetClassId = typeNode.id;
+          }
+        }
       }
 
       const connects = db.childrenOf(entry.id).filter((c) => c.ruleName === "ConnectionUsage");
@@ -191,7 +206,46 @@ const definitionStructuralQueries = {
 
     walk(self.id, null, "");
 
-    return { rootIds, nodes, edges };
+    // Build explicit sysmlPath → simVarName mapping.
+    // The root node's path segment is stripped because Modelica (and most simulators)
+    // flatten under the top-level model without repeating its name.
+    const variableMap = new Map<string, string>();
+    const rootPath = self.name || "";
+    const rootPrefix = rootPath ? rootPath + "." : "";
+
+    const buildVarMap = (node: import("@modelscript/polyglot").TopologyNode) => {
+      if (node.path && node.path !== rootPath) {
+        // Strip root prefix: "circuit.C.v" → "C.v"
+        const simPath = node.path.startsWith(rootPrefix) ? node.path.substring(rootPrefix.length) : node.path;
+        variableMap.set(node.path, simPath);
+      }
+
+      // Also map attribute children of each part (e.g., part.voltage → part.v)
+      const usageEntry = db.symbol(node.usageId);
+      if (usageEntry) {
+        for (const attr of db.childrenOf(usageEntry.id)) {
+          if (attr.ruleName === "AttributeUsage" && attr.name) {
+            const sysmlAttrPath = node.path ? `${node.path}.${attr.name}` : attr.name;
+            const simAttrPath =
+              node.path && node.path.startsWith(rootPrefix)
+                ? `${node.path.substring(rootPrefix.length)}.${attr.name}`
+                : sysmlAttrPath;
+            variableMap.set(sysmlAttrPath, simAttrPath);
+          }
+        }
+      }
+
+      for (const child of node.children) {
+        buildVarMap(child);
+      }
+    };
+
+    for (const rootId of rootIds) {
+      const rootNode = nodes.get(rootId);
+      if (rootNode) buildVarMap(rootNode);
+    }
+
+    return { rootIds, nodes, edges, variableMap };
   },
 };
 
@@ -204,7 +258,7 @@ const usageQueries = {
       if (child.ruleName === "OwnedFeatureTyping" && child.name) {
         const targets = db.byName(child.name);
         for (const t of targets) {
-          if (t.kind === "Definition" || t.kind === "Enumeration") return t;
+          if (t.kind === "Definition" || t.kind === "Enumeration" || t.kind === "Class") return t;
         }
       }
     }
@@ -392,6 +446,36 @@ const resolveFeaturePath = (db: QueryDB, names: string[], scopeId: number | null
         break;
       }
     }
+
+    // Cross-Language Resolution: If the member is not found in the SysML type,
+    // search across the UnifiedWorkspace for any implementation targets (e.g. Modelica classes)
+    if (!found) {
+      for (const sym of db.allEntries()) {
+        const meta = sym.metadata as Record<string, unknown> | undefined;
+        let implementsTarget: string | undefined = undefined;
+
+        // Fast path for native SysML items
+        if (meta?.implementsTarget === typeDef.name) {
+          implementsTarget = typeDef.name;
+        }
+        // Fallback for external languages like Modelica
+        else if (meta?.annotationClause && typeof meta.annotationClause === "string") {
+          const match = meta.annotationClause.match(/SysML\s*\(\s*implements\s*=\s*"([^"]+)"\s*\)/);
+          if (match && match[1] === typeDef.name) implementsTarget = match[1];
+        }
+
+        if (implementsTarget) {
+          for (const child of db.childrenOf(sym.id)) {
+            if (child.name === memberName) {
+              found = child;
+              break; // Found in Modelica/external class
+            }
+          }
+        }
+        if (found) break;
+      }
+    }
+
     if (!found) return undefined;
 
     // If this is the last step, return the value
@@ -3604,7 +3688,7 @@ export default language({
         ";",
         seq(
           "{",
-          rep(choice($._ActionBodyItem, $.SubjectMember, $.ActorMember, $.StakeholderMember)),
+          rep(choice($._ActionBodyItem, $.SubjectMember, $.ActorMember, $.StakeholderMember, $.ObjectiveMember)),
           opt($.ResultExpressionMember),
           "}",
         ),
@@ -3710,7 +3794,13 @@ export default language({
 
     ObjectiveRequirementUsage: ($) =>
       def({
-        syntax: seq("objective", rep($._usage_modifier), $._RequirementBody),
+        syntax: seq(
+          "objective",
+          rep($._usage_modifier),
+          opt($._UsageDeclaration),
+          opt($._ValuePart),
+          $._RequirementBody,
+        ),
         symbol: usageAttrs("objective"),
         model: usageModel,
       }),

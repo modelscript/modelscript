@@ -14,7 +14,9 @@ import {
   ModelicaStoredDefinitionSyntaxNode,
   StringWriter,
 } from "@modelscript/core";
+import { QueryBasedFlattener } from "@modelscript/modelica-polyglot/flattener-query";
 import modelicaLangFallback from "@modelscript/modelica-polyglot/language";
+import type { TopologyGraph } from "@modelscript/polyglot";
 import { UnifiedWorkspace, WorkspaceIndex } from "@modelscript/polyglot";
 import { ModelicaSimulator } from "@modelscript/simulator";
 import sysml2LangFallback from "@modelscript/sysml2-polyglot/language";
@@ -22,9 +24,6 @@ import path from "node:path";
 import { z } from "zod";
 import { NodeFileSystem } from "./filesystem.js";
 import type { ServerContext } from "./types.js";
-// @ts-expect-error No types for fallback module
-import { QueryBasedFlattener } from "@modelscript/modelica-polyglot/flattener-query";
-import type { TopologyGraph } from "@modelscript/polyglot";
 
 /**
  * Register all Modelica MCP tools on the server.

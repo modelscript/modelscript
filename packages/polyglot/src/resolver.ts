@@ -71,25 +71,29 @@ export class ScopeResolver {
    */
   visibleSymbols(scopeId: SymbolId | null): SymbolEntry[] {
     const results: SymbolEntry[] = [];
-    const seen = new Set<SymbolId>();
+    const seenIds = new Set<SymbolId>();
+    const seenNames = new Set<string>();
 
     let currentScopeId = scopeId;
     while (currentScopeId !== null) {
       const scopeEntry = this.index.symbols.get(currentScopeId);
       if (!scopeEntry) break;
 
-      // Add exported children
+      // Add exported children (declarations only — skip reference entries)
       for (const child of this.exportedChildren(currentScopeId)) {
-        if (!seen.has(child.id)) {
-          seen.add(child.id);
+        if (!this.isDeclaration(child)) continue;
+        if (!seenIds.has(child.id) && !seenNames.has(child.name)) {
+          seenIds.add(child.id);
+          seenNames.add(child.name);
           results.push(child);
         }
       }
 
       // Add inherited members
       for (const member of this.inheritedMembers(currentScopeId, new Set())) {
-        if (!seen.has(member.id)) {
-          seen.add(member.id);
+        if (!seenIds.has(member.id) && !seenNames.has(member.name)) {
+          seenIds.add(member.id);
+          seenNames.add(member.name);
           results.push(member);
         }
       }
@@ -98,9 +102,12 @@ export class ScopeResolver {
     }
 
     // Also include file-level symbols (parentId === null)
+    // Only include declarations, deduplicate by name (keeps the most local match)
     for (const entry of this.index.symbols.values()) {
-      if (entry.parentId === null && !seen.has(entry.id)) {
-        seen.add(entry.id);
+      if (entry.parentId === null && !seenIds.has(entry.id) && !seenNames.has(entry.name)) {
+        if (!this.isDeclaration(entry)) continue;
+        seenIds.add(entry.id);
+        seenNames.add(entry.name);
         results.push(entry);
       }
     }
@@ -501,10 +508,11 @@ export class ScopeResolver {
    */
   private exportedChildren(scopeId: SymbolId): SymbolEntry[] {
     const results: SymbolEntry[] = [];
-    for (const entry of this.index.symbols.values()) {
-      if (entry.parentId === scopeId) {
-        results.push(entry);
-      }
+    const childIds = this.index.childrenOf.get(scopeId);
+    if (!childIds) return results;
+    for (const childId of childIds) {
+      const entry = this.index.symbols.get(childId);
+      if (entry) results.push(entry);
     }
     return results;
   }
@@ -560,8 +568,11 @@ export class ScopeResolver {
    */
   private findRefChildren(scopeId: SymbolId): SymbolEntry[] {
     const results: SymbolEntry[] = [];
-    for (const entry of this.index.symbols.values()) {
-      if (entry.parentId === scopeId && this.refHooksByRule.has(entry.ruleName)) {
+    const childIds = this.index.childrenOf.get(scopeId);
+    if (!childIds) return results;
+    for (const childId of childIds) {
+      const entry = this.index.symbols.get(childId);
+      if (entry && this.refHooksByRule.has(entry.ruleName)) {
         results.push(entry);
       }
     }

@@ -99,6 +99,7 @@ import {
 } from "@modelscript/core";
 import { ModelicaFmuEntity, generateMultiModelWrapper } from "@modelscript/fmi";
 import { ModelicaOptimizer, registerOptimizeDeps } from "@modelscript/optimizer";
+import { VerificationRunner } from "@modelscript/polyglot";
 import { ModelicaSimulator, registerSimulateDeps } from "@modelscript/simulator";
 
 // Register flattener/simulator constructors for the scripting simulate() function.
@@ -1116,17 +1117,47 @@ documents.listen(connection);
 
 // Validate documents when they change, and re-validate other open docs for cross-file resolution
 let revalidationTimer: ReturnType<typeof setTimeout> | null = null;
+let verificationTimer: ReturnType<typeof setTimeout> | null = null;
+let activeVerification: AbortController | null = null;
+const verificationDiagnosticsByUri = new Map<string, Diagnostic[]>();
+const activeValidationTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function flushValidation(uri: string) {
+  const timer = activeValidationTimers.get(uri);
+  if (timer) {
+    clearTimeout(timer);
+    activeValidationTimers.delete(uri);
+    const doc = documents.get(uri);
+    if (doc) validateTextDocument(doc);
+  }
+}
 
 documents.onDidChangeContent((change) => {
-  validateTextDocument(change.document);
+  const uri = change.document.uri;
+  verificationDiagnosticsByUri.delete(uri);
 
-  // Short debounce: batch rapid-fire opens from workspace scanning, then re-validate all
+  const existingTimer = activeValidationTimers.get(uri);
+  if (existingTimer) clearTimeout(existingTimer);
+
+  activeValidationTimers.set(
+    uri,
+    setTimeout(() => {
+      const doc = documents.get(uri);
+      if (doc) validateTextDocument(doc);
+      activeValidationTimers.delete(uri);
+    }, 200),
+  );
+
+  // Debounced cross-file revalidation: re-validate OTHER open docs for cross-file resolution.
+  // Use a longer debounce to avoid cascading validations on rapid keystrokes.
   if (revalidationTimer) clearTimeout(revalidationTimer);
   revalidationTimer = setTimeout(() => {
     for (const doc of documents.all()) {
-      validateTextDocument(doc);
+      if (doc.uri !== change.document.uri) {
+        validateTextDocument(doc);
+      }
     }
-  }, 200);
+  }, 1500);
 });
 
 // Clean up when a document is closed
@@ -1195,7 +1226,7 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
       }
 
       // Create or update query engine, resolver, and LSP bridge for the document
-      const unifiedIndex = await unifiedWorkspace.toUnifiedAsync();
+      const unifiedIndex = unifiedWorkspace.toUnifiedPartial();
 
       let engine = documentQueryEngines.get(textDocument.uri) as any;
       if (engine) {
@@ -1218,20 +1249,21 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
 
       // Collect parse errors from the tree
       const sysmlDiagnostics: Diagnostic[] = [];
-      const collectErrors = (node: SyntaxNode) => {
+      const collectErrors = (node: SyntaxNode | any) => {
+        if (!node) return;
+        if (typeof node.hasError === "function" ? !node.hasError() : node.hasError === false) return;
         if (node.type === "ERROR" || node.isMissing) {
+          const start = bridge["positions"].offsetToPosition(node.startIndex);
+          const end = bridge["positions"].offsetToPosition(node.endIndex);
           sysmlDiagnostics.push({
             severity: DiagnosticSeverity.Error,
-            range: {
-              start: { line: node.startPosition.row, character: node.startPosition.column },
-              end: { line: node.endPosition.row, character: node.endPosition.column },
-            },
-            message: node.isMissing ? `Missing ${node.type}` : "Syntax error",
+            range: { start, end },
+            message: node.isMissing ? `Missing ${node.type}` : `Syntax error`,
             source: "sysml2",
           });
         }
         for (let i = 0; i < node.childCount; i++) {
-          collectErrors(node.child(i)!);
+          collectErrors(node.child(i));
         }
       };
       collectErrors(tree.rootNode);
@@ -1271,6 +1303,11 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
           message: r.message,
           source: "sysml2",
         });
+      }
+
+      const vDiags = verificationDiagnosticsByUri.get(textDocument.uri);
+      if (vDiags) {
+        sysmlDiagnostics.push(...vDiags);
       }
 
       connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: sysmlDiagnostics });
@@ -1403,23 +1440,25 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
     documentLSPBridges.set(textDocument.uri, bridge);
 
     // 1. Collect parse errors from the tree (ERROR and MISSING nodes)
-    const collectParseErrors = (node: SyntaxNode) => {
-      if (node.type === "ERROR" || node.isMissing) {
+    const collectErrors = (node: any) => {
+      if (!node) return;
+      if (typeof node.hasError === "function" ? !node.hasError() : node.hasError === false) return;
+
+      if (node.isMissing || node.type === "ERROR") {
+        const start = bridge["positions"].offsetToPosition(node.startIndex);
+        const end = bridge["positions"].offsetToPosition(node.endIndex);
         diagnostics.push({
           severity: DiagnosticSeverity.Error,
-          range: {
-            start: { line: node.startPosition.row, character: node.startPosition.column },
-            end: { line: node.endPosition.row, character: node.endPosition.column },
-          },
-          message: node.isMissing ? `Missing ${node.type}` : "Syntax error",
+          range: { start, end },
+          message: `Syntax error`,
           source: "modelscript",
         });
       }
       for (let i = 0; i < node.childCount; i++) {
-        collectParseErrors(node.child(i)!);
+        collectErrors(node.child(i));
       }
     };
-    collectParseErrors(tree.rootNode);
+    collectErrors(tree.rootNode);
 
     // 2. Run Polyglot declarative lints (Salsa-memoized queries from language.ts)
     const engineDiags = engine.runAllLints(textDocument.uri);
@@ -1944,6 +1983,7 @@ connection.onRequest("textDocument/semanticTokens/full", (params) => {
 
 // Completion provider — polyglot-driven scoped completion + keyword fallback
 connection.onCompletion((params): CompletionItem[] => {
+  flushValidation(params.textDocument.uri);
   const document = documents.get(params.textDocument.uri);
   const bridge = documentLSPBridges.get(params.textDocument.uri);
   if (!document || !bridge) return [];
@@ -2082,6 +2122,7 @@ connection.onCompletion((params): CompletionItem[] => {
 });
 
 connection.onHover((params) => {
+  flushValidation(params.textDocument.uri);
   const document = documents.get(params.textDocument.uri);
   const bridge = documentLSPBridges.get(params.textDocument.uri);
   if (!document || !bridge) return null;
@@ -2131,6 +2172,7 @@ function symbolEntryToLocation(entry: any): { uri: string; range: any } | null {
 }
 
 connection.onDefinition((params) => {
+  flushValidation(params.textDocument.uri);
   const document = documents.get(params.textDocument.uri);
   const bridge = documentLSPBridges.get(params.textDocument.uri);
   if (!document || !bridge) return null;
@@ -2581,6 +2623,7 @@ connection.onSignatureHelp((params) => {
 /* Find References — locates all occurrences of a symbol across open documents */
 
 connection.onReferences(async (params) => {
+  flushValidation(params.textDocument.uri);
   const document = documents.get(params.textDocument.uri);
   if (!document) return [];
 
@@ -5325,3 +5368,95 @@ connection.onRequest(
     }
   },
 );
+
+connection.onRequest("modelscript/runVerification", async (params: { uri: string }) => {
+  try {
+    const textDocument = documents.get(params.uri);
+    if (!textDocument) throw new Error("Document not found");
+
+    if (activeVerification) activeVerification.abort();
+    activeVerification = new AbortController();
+    const signal = activeVerification.signal;
+
+    const db = unifiedWorkspace.toUnifiedPartial();
+    const fileNodes = Array.from(db.symbols.values()).filter(
+      (s) =>
+        s.resourceId === textDocument.uri &&
+        (s.ruleName === "VerifyRequirementUsage" ||
+          s.ruleName === "AnalysisCaseDefinition" ||
+          s.ruleName === "AnalysisCaseUsage" ||
+          s.ruleName === "VerificationCaseDefinition" ||
+          s.ruleName === "VerificationCaseUsage"),
+    );
+
+    if (fileNodes.length === 0) return { ok: true };
+
+    const sysmlEngine = createSysML2QueryEngine(db);
+    const sysmlDB = sysmlEngine.toQueryDB();
+    const newDiagnostics: Diagnostic[] = [];
+
+    for (const verifyUsage of fileNodes) {
+      if (signal.aborted) return { ok: false };
+
+      const topo = sysmlDB.query("extractTopology", verifyUsage.id) as any;
+      if (!topo || topo.rootIds.length === 0) continue;
+
+      const rootNode = topo.nodes.get(topo.rootIds[0]);
+      if (!rootNode?.targetClassId) continue;
+
+      const targetModel = new QueryBackedClassInstance(rootNode.targetClassId, sysmlDB) as any;
+      targetModel.instantiate();
+
+      const dae = new ModelicaDAE(targetModel.name || "Model");
+      const mFlattener = new ModelicaFlattener();
+      targetModel.accept(mFlattener, ["", dae]);
+      mFlattener.generateFlowBalanceEquations(dae);
+      mFlattener.foldDAEConstants(dae);
+
+      const simulator = new ModelicaSimulator(dae);
+      simulator.prepare();
+      const simResult = await simulator.simulateAsync(0, 10, 0.1, {
+        signal,
+        realtimeFactor: 1000000,
+      });
+
+      if (signal.aborted) return { ok: false };
+
+      // Create a runner per topology with the explicit variable mapping
+      const runner = new VerificationRunner(sysmlDB, topo.variableMap);
+      const vResults = runner.verifyCase(verifyUsage.id, simResult);
+      for (const vr of vResults) {
+        if (!vr.isSatisfied) {
+          const targetNode = db.symbols.get(vr.constraintId);
+          if (!targetNode) continue;
+
+          const bridge = documentLSPBridges.get(textDocument.uri);
+          if (!bridge) continue;
+
+          const start = bridge["positions"].offsetToPosition(targetNode.startByte);
+          const end = bridge["positions"].offsetToPosition(targetNode.endByte);
+          newDiagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            range: { start, end },
+            message: vr.message
+              ? `Verification Failed: ${vr.message}`
+              : `Verification Failed: the system simulation trajectory violated this constraint.`,
+            source: "sysml2-verifier",
+          });
+        }
+      }
+    }
+
+    if (signal.aborted) return { ok: false };
+
+    // Store verification diagnostics persistently for this URI until next edit
+    verificationDiagnosticsByUri.set(textDocument.uri, newDiagnostics);
+
+    // Trigger validation loop to merge and push diagnostics instantly
+    validateTextDocument(textDocument);
+    return { ok: true };
+  } catch (e: any) {
+    connection.console.error(`[sysml2-verifier] Error: ${e.message}`);
+    throw new Error(e.message);
+  }
+});

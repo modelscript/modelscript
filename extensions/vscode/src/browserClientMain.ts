@@ -495,6 +495,23 @@ export async function activate(context: vscode.ExtensionContext) {
         SimulationPanel.createOrShow(context.extensionUri, client);
       }
     }),
+    commands.registerCommand("modelscript.runVerification", async () => {
+      if (!client) return;
+      const editor = vscode.window.activeTextEditor;
+      if (editor?.document.languageId === "sysml") {
+        await vscode.window.withProgress(
+          { location: vscode.ProgressLocation.Notification, title: "Running SysML Requirements Verification..." },
+          async () => {
+            try {
+              if (client && editor)
+                await client.sendRequest("modelscript/runVerification", { uri: editor.document.uri.toString() });
+            } catch (e: unknown) {
+              vscode.window.showErrorMessage(`Verification failed: ${(e as Error).message}`);
+            }
+          },
+        );
+      }
+    }),
     commands.registerCommand("modelscript.addToDiagram", async (firstArg: unknown, secondArg?: string) => {
       if (!client) return;
 
@@ -994,10 +1011,10 @@ function scaffoldTemplateFiles(memFs: MemoryFileSystemProvider, workspaceUri: vs
         "  // The actual constraint that is verified against the simulation results",
         "  analysis def VerifyVoltage {",
         "    subject circuit : RCCircuitSys;",
-        "    objective requirement : MaxVoltageReq;",
+        "    objective req : MaxVoltageReq;",
         "    ",
         "    constraint max_v {",
-        "      circuit.C.v <= requirement.maxLimit",
+        "      circuit.C.v <= req.maxLimit",
         "    }",
         "  }",
         "}",
@@ -1344,17 +1361,13 @@ async function initWorkspaceAndTree(
             "    attribute maxLimit : Real = 8.0;",
             "  }",
             "",
-            "  part def RCCircuitSys {",
-            "    // This part is allocated to the Modelica class 'Circuit'",
-            "  }",
-            "",
             "  // The actual constraint that is verified against the simulation results",
             "  analysis def VerifyVoltage {",
-            "    subject circuit : RCCircuitSys;",
-            "    objective requirement : MaxVoltageReq;",
+            "    subject circuit : Circuit;",
+            "    objective req : MaxVoltageReq;",
             "    ",
             "    constraint max_v {",
-            "      circuit.C.v <= requirement.maxLimit",
+            "      circuit.v <= req.maxLimit",
             "    }",
             "  }",
             "}",
@@ -1366,17 +1379,13 @@ async function initWorkspaceAndTree(
             new TextEncoder().encode(
               [
                 'model Circuit "RC Circuit implementation"',
-                '  annotation(SysML(implements="SystemVerification::RCCircuitSys"));',
                 "  ",
-                "  Modelica.Electrical.Analog.Sources.StepVoltage source(V=10, startTime=0.1);",
-                "  Modelica.Electrical.Analog.Basic.Resistor R(R=10);",
-                "  Modelica.Electrical.Analog.Basic.Capacitor C(C=0.1);",
-                "  Modelica.Electrical.Analog.Basic.Ground ground;",
+                "  Real v(start=0);",
+                "  parameter Real R = 10;",
+                "  parameter Real C = 0.1;",
+                "  parameter Real V_source = 10;",
                 "equation",
-                "  connect(source.p, R.p);",
-                "  connect(R.n, C.p);",
-                "  connect(C.n, source.n);",
-                "  connect(source.n, ground.p);",
+                "  der(v) = (V_source - v) / (R * C);",
                 "end Circuit;",
                 "",
               ].join("\n"),

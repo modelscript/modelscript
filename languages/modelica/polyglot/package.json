@@ -38,6 +38,10 @@
     "./language": {
       "types": "./dist/language.d.ts",
       "default": "./dist/language.js"
+    },
+    "./flattener-query": {
+      "types": "./dist/flattener-query.d.ts",
+      "default": "./dist/flattener-query.js"
     }
   },
   "scripts": {

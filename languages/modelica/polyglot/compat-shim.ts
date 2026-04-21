@@ -695,7 +695,13 @@ export class QueryBackedClassInstance extends QueryBackedElement {
 
   /** All abstract classes inherited by this class. */
   get extendsClassInstances(): { classInstance: QueryBackedClassInstance | null }[] {
-    const extendsClauses = this.db.query<any[]>("extendsClasses", this.id) ?? [];
+    let extendsClauses: any[] = [];
+    try {
+      extendsClauses = this.db.query<any[]>("extendsClasses", this.id) ?? [];
+    } catch {
+      // Query not available for this rule (e.g., SysML2 Package) — no extends
+      return [];
+    }
     return extendsClauses.map((ext) => {
       // resolvedBaseClass returns a SymbolEntry (not a SymbolId), so extract .id
       const baseEntry = this.db.query<{ id: SymbolId } | null>("resolvedBaseClass", ext.id);

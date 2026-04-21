@@ -1,7 +1,14 @@
-/* eslint-disable */
 import type { IndexerHook } from "@modelscript/polyglot/runtime";
 
 export const INDEXER_HOOKS: IndexerHook[] = [
+  {
+    ruleName: "Annotation",
+    kind: "Reference",
+    namePath: "annotatedElement",
+    exportPaths: [],
+    inheritPaths: [],
+    metadataFieldPaths: {},
+  },
   {
     ruleName: "MetadataUsage",
     kind: "Usage",
@@ -18,7 +25,17 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       isOrdered: "isOrdered",
       isNonunique: "isNonunique",
       isConstant: "isConstant",
+      multiplicityLower: "ownedMultiplicity.ownedRelatedElement.lowerBound",
+      multiplicityUpper: "ownedMultiplicity.ownedRelatedElement.upperBound",
     },
+  },
+  {
+    ruleName: "MetadataTyping",
+    kind: "Reference",
+    namePath: "type",
+    exportPaths: [],
+    inheritPaths: [],
+    metadataFieldPaths: {},
   },
   {
     ruleName: "MetadataDefinition",
@@ -61,12 +78,76 @@ export const INDEXER_HOOKS: IndexerHook[] = [
     metadataFieldPaths: { isImportAll: "isImportAll", isRecursive: "isRecursive" },
   },
   {
+    ruleName: "_ImportedMembership",
+    kind: "Reference",
+    namePath: "importedMembership",
+    exportPaths: [],
+    inheritPaths: [],
+    metadataFieldPaths: {},
+  },
+  {
     ruleName: "NamespaceImport",
     kind: "Import",
     namePath: "importedNamespace",
     exportPaths: [],
     inheritPaths: [],
     metadataFieldPaths: { isImportAll: "isImportAll", isRecursive: "isRecursive" },
+  },
+  {
+    ruleName: "_ImportedNamespace",
+    kind: "Reference",
+    namePath: "importedNamespace",
+    exportPaths: [],
+    inheritPaths: [],
+    metadataFieldPaths: {},
+  },
+  {
+    ruleName: "OwnedSubclassification",
+    kind: "Reference",
+    namePath: "superclassifier",
+    exportPaths: [],
+    inheritPaths: [],
+    metadataFieldPaths: {},
+  },
+  {
+    ruleName: "OwnedFeatureTyping",
+    kind: "Reference",
+    namePath: "type",
+    exportPaths: [],
+    inheritPaths: [],
+    metadataFieldPaths: {},
+  },
+  {
+    ruleName: "OwnedSubsetting",
+    kind: "Reference",
+    namePath: "subsettedFeature",
+    exportPaths: [],
+    inheritPaths: [],
+    metadataFieldPaths: {},
+  },
+  {
+    ruleName: "OwnedReferenceSubsetting",
+    kind: "Reference",
+    namePath: "referencedFeature",
+    exportPaths: [],
+    inheritPaths: [],
+    metadataFieldPaths: {},
+  },
+  {
+    ruleName: "OwnedCrossSubsetting",
+    kind: "Reference",
+    namePath: "crossedFeature",
+    exportPaths: [],
+    inheritPaths: [],
+    metadataFieldPaths: {},
+  },
+  {
+    ruleName: "OwnedRedefinition",
+    kind: "Reference",
+    namePath: "redefinedFeature",
+    exportPaths: [],
+    inheritPaths: [],
+    metadataFieldPaths: {},
   },
   {
     ruleName: "DefaultReferenceUsage",
@@ -84,6 +165,8 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       isOrdered: "isOrdered",
       isNonunique: "isNonunique",
       isConstant: "isConstant",
+      multiplicityLower: "ownedMultiplicity.ownedRelatedElement.lowerBound",
+      multiplicityUpper: "ownedMultiplicity.ownedRelatedElement.upperBound",
     },
   },
   {
@@ -102,6 +185,8 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       isOrdered: "isOrdered",
       isNonunique: "isNonunique",
       isConstant: "isConstant",
+      multiplicityLower: "ownedMultiplicity.ownedRelatedElement.lowerBound",
+      multiplicityUpper: "ownedMultiplicity.ownedRelatedElement.upperBound",
     },
   },
   {
@@ -128,6 +213,8 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       isOrdered: "isOrdered",
       isNonunique: "isNonunique",
       isConstant: "isConstant",
+      multiplicityLower: "ownedMultiplicity.ownedRelatedElement.lowerBound",
+      multiplicityUpper: "ownedMultiplicity.ownedRelatedElement.upperBound",
     },
   },
   {
@@ -162,6 +249,8 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       isOrdered: "isOrdered",
       isNonunique: "isNonunique",
       isConstant: "isConstant",
+      multiplicityLower: "ownedMultiplicity.ownedRelatedElement.lowerBound",
+      multiplicityUpper: "ownedMultiplicity.ownedRelatedElement.upperBound",
     },
   },
   {
@@ -188,6 +277,8 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       isOrdered: "isOrdered",
       isNonunique: "isNonunique",
       isConstant: "isConstant",
+      multiplicityLower: "ownedMultiplicity.ownedRelatedElement.lowerBound",
+      multiplicityUpper: "ownedMultiplicity.ownedRelatedElement.upperBound",
     },
   },
   {
@@ -214,6 +305,8 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       isOrdered: "isOrdered",
       isNonunique: "isNonunique",
       isConstant: "isConstant",
+      multiplicityLower: "ownedMultiplicity.ownedRelatedElement.lowerBound",
+      multiplicityUpper: "ownedMultiplicity.ownedRelatedElement.upperBound",
     },
   },
   {
@@ -240,6 +333,8 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       isOrdered: "isOrdered",
       isNonunique: "isNonunique",
       isConstant: "isConstant",
+      multiplicityLower: "ownedMultiplicity.ownedRelatedElement.lowerBound",
+      multiplicityUpper: "ownedMultiplicity.ownedRelatedElement.upperBound",
     },
   },
   {
@@ -266,7 +361,17 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       isOrdered: "isOrdered",
       isNonunique: "isNonunique",
       isConstant: "isConstant",
+      multiplicityLower: "ownedMultiplicity.ownedRelatedElement.lowerBound",
+      multiplicityUpper: "ownedMultiplicity.ownedRelatedElement.upperBound",
     },
+  },
+  {
+    ruleName: "ConjugatedPortTyping",
+    kind: "Reference",
+    namePath: "conjugatedPortDefinition",
+    exportPaths: [],
+    inheritPaths: [],
+    metadataFieldPaths: {},
   },
   {
     ruleName: "ConnectionDefinition",
@@ -292,6 +397,8 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       isOrdered: "isOrdered",
       isNonunique: "isNonunique",
       isConstant: "isConstant",
+      multiplicityLower: "ownedMultiplicity.ownedRelatedElement.lowerBound",
+      multiplicityUpper: "ownedMultiplicity.ownedRelatedElement.upperBound",
     },
   },
   {
@@ -310,6 +417,8 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       isOrdered: "isOrdered",
       isNonunique: "isNonunique",
       isConstant: "isConstant",
+      multiplicityLower: "ownedMultiplicity.ownedRelatedElement.lowerBound",
+      multiplicityUpper: "ownedMultiplicity.ownedRelatedElement.upperBound",
     },
   },
   {
@@ -328,6 +437,8 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       isOrdered: "isOrdered",
       isNonunique: "isNonunique",
       isConstant: "isConstant",
+      multiplicityLower: "ownedMultiplicity.ownedRelatedElement.lowerBound",
+      multiplicityUpper: "ownedMultiplicity.ownedRelatedElement.upperBound",
     },
   },
   {
@@ -354,6 +465,8 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       isOrdered: "isOrdered",
       isNonunique: "isNonunique",
       isConstant: "isConstant",
+      multiplicityLower: "ownedMultiplicity.ownedRelatedElement.lowerBound",
+      multiplicityUpper: "ownedMultiplicity.ownedRelatedElement.upperBound",
     },
   },
   {
@@ -380,6 +493,8 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       isOrdered: "isOrdered",
       isNonunique: "isNonunique",
       isConstant: "isConstant",
+      multiplicityLower: "ownedMultiplicity.ownedRelatedElement.lowerBound",
+      multiplicityUpper: "ownedMultiplicity.ownedRelatedElement.upperBound",
     },
   },
   {
@@ -406,6 +521,8 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       isOrdered: "isOrdered",
       isNonunique: "isNonunique",
       isConstant: "isConstant",
+      multiplicityLower: "ownedMultiplicity.ownedRelatedElement.lowerBound",
+      multiplicityUpper: "ownedMultiplicity.ownedRelatedElement.upperBound",
     },
   },
   {
@@ -424,7 +541,17 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       isOrdered: "isOrdered",
       isNonunique: "isNonunique",
       isConstant: "isConstant",
+      multiplicityLower: "ownedMultiplicity.ownedRelatedElement.lowerBound",
+      multiplicityUpper: "ownedMultiplicity.ownedRelatedElement.upperBound",
     },
+  },
+  {
+    ruleName: "FlowFeature",
+    kind: "Reference",
+    namePath: "ownedRelationship",
+    exportPaths: [],
+    inheritPaths: [],
+    metadataFieldPaths: {},
   },
   {
     ruleName: "ActionDefinition",
@@ -450,6 +577,8 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       isOrdered: "isOrdered",
       isNonunique: "isNonunique",
       isConstant: "isConstant",
+      multiplicityLower: "ownedMultiplicity.ownedRelatedElement.lowerBound",
+      multiplicityUpper: "ownedMultiplicity.ownedRelatedElement.upperBound",
     },
   },
   {
@@ -468,6 +597,8 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       isOrdered: "isOrdered",
       isNonunique: "isNonunique",
       isConstant: "isConstant",
+      multiplicityLower: "ownedMultiplicity.ownedRelatedElement.lowerBound",
+      multiplicityUpper: "ownedMultiplicity.ownedRelatedElement.upperBound",
     },
   },
   {
@@ -486,6 +617,8 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       isOrdered: "isOrdered",
       isNonunique: "isNonunique",
       isConstant: "isConstant",
+      multiplicityLower: "ownedMultiplicity.ownedRelatedElement.lowerBound",
+      multiplicityUpper: "ownedMultiplicity.ownedRelatedElement.upperBound",
     },
   },
   {
@@ -504,6 +637,8 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       isOrdered: "isOrdered",
       isNonunique: "isNonunique",
       isConstant: "isConstant",
+      multiplicityLower: "ownedMultiplicity.ownedRelatedElement.lowerBound",
+      multiplicityUpper: "ownedMultiplicity.ownedRelatedElement.upperBound",
     },
   },
   {
@@ -522,6 +657,8 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       isOrdered: "isOrdered",
       isNonunique: "isNonunique",
       isConstant: "isConstant",
+      multiplicityLower: "ownedMultiplicity.ownedRelatedElement.lowerBound",
+      multiplicityUpper: "ownedMultiplicity.ownedRelatedElement.upperBound",
     },
   },
   {
@@ -548,6 +685,8 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       isOrdered: "isOrdered",
       isNonunique: "isNonunique",
       isConstant: "isConstant",
+      multiplicityLower: "ownedMultiplicity.ownedRelatedElement.lowerBound",
+      multiplicityUpper: "ownedMultiplicity.ownedRelatedElement.upperBound",
     },
   },
   {
@@ -574,6 +713,8 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       isOrdered: "isOrdered",
       isNonunique: "isNonunique",
       isConstant: "isConstant",
+      multiplicityLower: "ownedMultiplicity.ownedRelatedElement.lowerBound",
+      multiplicityUpper: "ownedMultiplicity.ownedRelatedElement.upperBound",
     },
   },
   {
@@ -592,6 +733,8 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       isOrdered: "isOrdered",
       isNonunique: "isNonunique",
       isConstant: "isConstant",
+      multiplicityLower: "ownedMultiplicity.ownedRelatedElement.lowerBound",
+      multiplicityUpper: "ownedMultiplicity.ownedRelatedElement.upperBound",
     },
   },
   {
@@ -618,6 +761,8 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       isOrdered: "isOrdered",
       isNonunique: "isNonunique",
       isConstant: "isConstant",
+      multiplicityLower: "ownedMultiplicity.ownedRelatedElement.lowerBound",
+      multiplicityUpper: "ownedMultiplicity.ownedRelatedElement.upperBound",
     },
   },
   {
@@ -636,6 +781,8 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       isOrdered: "isOrdered",
       isNonunique: "isNonunique",
       isConstant: "isConstant",
+      multiplicityLower: "ownedMultiplicity.ownedRelatedElement.lowerBound",
+      multiplicityUpper: "ownedMultiplicity.ownedRelatedElement.upperBound",
     },
   },
   {
@@ -654,6 +801,8 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       isOrdered: "isOrdered",
       isNonunique: "isNonunique",
       isConstant: "isConstant",
+      multiplicityLower: "ownedMultiplicity.ownedRelatedElement.lowerBound",
+      multiplicityUpper: "ownedMultiplicity.ownedRelatedElement.upperBound",
     },
   },
   {
@@ -672,6 +821,8 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       isOrdered: "isOrdered",
       isNonunique: "isNonunique",
       isConstant: "isConstant",
+      multiplicityLower: "ownedMultiplicity.ownedRelatedElement.lowerBound",
+      multiplicityUpper: "ownedMultiplicity.ownedRelatedElement.upperBound",
     },
   },
   {
@@ -690,6 +841,8 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       isOrdered: "isOrdered",
       isNonunique: "isNonunique",
       isConstant: "isConstant",
+      multiplicityLower: "ownedMultiplicity.ownedRelatedElement.lowerBound",
+      multiplicityUpper: "ownedMultiplicity.ownedRelatedElement.upperBound",
     },
   },
   {
@@ -708,6 +861,8 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       isOrdered: "isOrdered",
       isNonunique: "isNonunique",
       isConstant: "isConstant",
+      multiplicityLower: "ownedMultiplicity.ownedRelatedElement.lowerBound",
+      multiplicityUpper: "ownedMultiplicity.ownedRelatedElement.upperBound",
     },
   },
   {
@@ -734,6 +889,8 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       isOrdered: "isOrdered",
       isNonunique: "isNonunique",
       isConstant: "isConstant",
+      multiplicityLower: "ownedMultiplicity.ownedRelatedElement.lowerBound",
+      multiplicityUpper: "ownedMultiplicity.ownedRelatedElement.upperBound",
     },
   },
   {
@@ -760,6 +917,8 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       isOrdered: "isOrdered",
       isNonunique: "isNonunique",
       isConstant: "isConstant",
+      multiplicityLower: "ownedMultiplicity.ownedRelatedElement.lowerBound",
+      multiplicityUpper: "ownedMultiplicity.ownedRelatedElement.upperBound",
     },
   },
   {
@@ -786,6 +945,8 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       isOrdered: "isOrdered",
       isNonunique: "isNonunique",
       isConstant: "isConstant",
+      multiplicityLower: "ownedMultiplicity.ownedRelatedElement.lowerBound",
+      multiplicityUpper: "ownedMultiplicity.ownedRelatedElement.upperBound",
     },
   },
   {
@@ -812,6 +973,8 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       isOrdered: "isOrdered",
       isNonunique: "isNonunique",
       isConstant: "isConstant",
+      multiplicityLower: "ownedMultiplicity.ownedRelatedElement.lowerBound",
+      multiplicityUpper: "ownedMultiplicity.ownedRelatedElement.upperBound",
     },
   },
   {
@@ -830,6 +993,8 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       isOrdered: "isOrdered",
       isNonunique: "isNonunique",
       isConstant: "isConstant",
+      multiplicityLower: "ownedMultiplicity.ownedRelatedElement.lowerBound",
+      multiplicityUpper: "ownedMultiplicity.ownedRelatedElement.upperBound",
     },
   },
   {
@@ -848,6 +1013,8 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       isOrdered: "isOrdered",
       isNonunique: "isNonunique",
       isConstant: "isConstant",
+      multiplicityLower: "ownedMultiplicity.ownedRelatedElement.lowerBound",
+      multiplicityUpper: "ownedMultiplicity.ownedRelatedElement.upperBound",
     },
   },
   {
@@ -874,6 +1041,8 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       isOrdered: "isOrdered",
       isNonunique: "isNonunique",
       isConstant: "isConstant",
+      multiplicityLower: "ownedMultiplicity.ownedRelatedElement.lowerBound",
+      multiplicityUpper: "ownedMultiplicity.ownedRelatedElement.upperBound",
     },
   },
   {
@@ -892,6 +1061,8 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       isOrdered: "isOrdered",
       isNonunique: "isNonunique",
       isConstant: "isConstant",
+      multiplicityLower: "ownedMultiplicity.ownedRelatedElement.lowerBound",
+      multiplicityUpper: "ownedMultiplicity.ownedRelatedElement.upperBound",
     },
   },
   {
@@ -918,6 +1089,8 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       isOrdered: "isOrdered",
       isNonunique: "isNonunique",
       isConstant: "isConstant",
+      multiplicityLower: "ownedMultiplicity.ownedRelatedElement.lowerBound",
+      multiplicityUpper: "ownedMultiplicity.ownedRelatedElement.upperBound",
       isParallel: "isParallel",
     },
   },
@@ -937,6 +1110,8 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       isOrdered: "isOrdered",
       isNonunique: "isNonunique",
       isConstant: "isConstant",
+      multiplicityLower: "ownedMultiplicity.ownedRelatedElement.lowerBound",
+      multiplicityUpper: "ownedMultiplicity.ownedRelatedElement.upperBound",
       isParallel: "isParallel",
     },
   },
@@ -956,6 +1131,8 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       isOrdered: "isOrdered",
       isNonunique: "isNonunique",
       isConstant: "isConstant",
+      multiplicityLower: "ownedMultiplicity.ownedRelatedElement.lowerBound",
+      multiplicityUpper: "ownedMultiplicity.ownedRelatedElement.upperBound",
     },
   },
   {
@@ -982,6 +1159,8 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       isOrdered: "isOrdered",
       isNonunique: "isNonunique",
       isConstant: "isConstant",
+      multiplicityLower: "ownedMultiplicity.ownedRelatedElement.lowerBound",
+      multiplicityUpper: "ownedMultiplicity.ownedRelatedElement.upperBound",
     },
   },
   {
@@ -1008,6 +1187,8 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       isOrdered: "isOrdered",
       isNonunique: "isNonunique",
       isConstant: "isConstant",
+      multiplicityLower: "ownedMultiplicity.ownedRelatedElement.lowerBound",
+      multiplicityUpper: "ownedMultiplicity.ownedRelatedElement.upperBound",
     },
   },
   {
@@ -1034,6 +1215,64 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       isOrdered: "isOrdered",
       isNonunique: "isNonunique",
       isConstant: "isConstant",
+      multiplicityLower: "ownedMultiplicity.ownedRelatedElement.lowerBound",
+      multiplicityUpper: "ownedMultiplicity.ownedRelatedElement.upperBound",
     },
+  },
+  {
+    ruleName: "ReferenceTyping",
+    kind: "Reference",
+    namePath: "type",
+    exportPaths: [],
+    inheritPaths: [],
+    metadataFieldPaths: {},
+  },
+  {
+    ruleName: "FeatureChainMember",
+    kind: "Reference",
+    namePath: "memberElement",
+    exportPaths: [],
+    inheritPaths: [],
+    metadataFieldPaths: {},
+  },
+  {
+    ruleName: "FeatureReferenceMember",
+    kind: "Reference",
+    namePath: "memberElement",
+    exportPaths: [],
+    inheritPaths: [],
+    metadataFieldPaths: {},
+  },
+  {
+    ruleName: "ElementReferenceMember",
+    kind: "Reference",
+    namePath: "memberElement",
+    exportPaths: [],
+    inheritPaths: [],
+    metadataFieldPaths: {},
+  },
+  {
+    ruleName: "InstantiatedTypeMember",
+    kind: "Reference",
+    namePath: "memberElement",
+    exportPaths: [],
+    inheritPaths: [],
+    metadataFieldPaths: {},
+  },
+  {
+    ruleName: "OwnedFeatureChaining",
+    kind: "Reference",
+    namePath: "chainingFeature",
+    exportPaths: [],
+    inheritPaths: [],
+    metadataFieldPaths: {},
+  },
+  {
+    ruleName: "ParameterRedefinition",
+    kind: "Reference",
+    namePath: "redefinedFeature",
+    exportPaths: [],
+    inheritPaths: [],
+    metadataFieldPaths: {},
   },
 ];

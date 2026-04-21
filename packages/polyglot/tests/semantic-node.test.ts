@@ -36,23 +36,30 @@ function makeEntry(
 
 function makeDb(entries: SymbolEntry[]): QueryDB {
   const byId = new Map(entries.map((e) => [e.id, e]));
-  return {
-    symbol(id) {
+  const db: QueryDB = {
+    symbol(id: number) {
       return byId.get(id) ?? undefined;
     },
     childrenOf(id) {
       return entries.filter((e) => e.parentId === id);
     },
-    childrenOfField(id, fieldName) {
-      return entries.filter((e) => e.parentId === id && e.fieldName === fieldName);
+    childrenOfField: (id: number, fieldName: string) => {
+      const children = db.childrenOf(id);
+      return children.filter((c) => c.fieldName === fieldName);
     },
-    exportsOf(id) {
-      return entries.filter((e) => e.parentId === id);
+    exportsOf: (id: number) => db.childrenOf(id),
+    parentOf: (id: number) => {
+      const s = db.symbol(id);
+      if (!s || s.parentId === null) return undefined;
+      return db.symbol(s.parentId);
     },
-    parentOf(id) {
-      const entry = byId.get(id);
-      if (!entry || entry.parentId === null) return undefined;
-      return byId.get(entry.parentId) ?? undefined;
+    allEntries: () => {
+      const entries: SymbolEntry[] = [];
+      for (let i = 1; i <= 3; i++) {
+        const s = db.symbol(i);
+        if (s) entries.push(s);
+      }
+      return entries;
     },
     query<T>(_name: string, _id: number): T {
       return [] as unknown as T;
@@ -82,6 +89,7 @@ function makeDb(entries: SymbolEntry[]): QueryDB {
       return null;
     },
   };
+  return db;
 }
 
 // ---------------------------------------------------------------------------

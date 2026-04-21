@@ -139,6 +139,9 @@ export interface QueryDB {
   /** Look up all symbols with a given name across the index. */
   byName(name: string): SymbolEntry[];
 
+  /** Access all underlying entries in the database. Useful for cross-language searches. */
+  allEntries(): SymbolEntry[];
+
   /**
    * Invoke a query with additional arguments beyond symbolId.
    * Enables compound keys like (symbolId, otherSymbolId) for

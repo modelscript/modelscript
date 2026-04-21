@@ -404,6 +404,10 @@ export class QueryEngine {
         return ids.map((id) => engine.resolveEntry(id)).filter(Boolean) as SymbolEntry[];
       },
 
+      allEntries(): SymbolEntry[] {
+        return Array.from(engine.allEntries());
+      },
+
       queryWith<T = unknown>(queryName: string, id: SymbolId, args: Record<string, unknown>): T {
         return engine.fetch(queryName, id) as T;
       },
@@ -737,6 +741,14 @@ export class QueryEngine {
           tracker?.recordInput(id);
           const entry = engine.resolveEntry(id);
           if (entry) results.push(entry);
+        }
+        return results;
+      },
+
+      allEntries(): SymbolEntry[] {
+        const results = Array.from(engine.allEntries());
+        for (const r of results) {
+          tracker?.recordInput(r.id);
         }
         return results;
       },

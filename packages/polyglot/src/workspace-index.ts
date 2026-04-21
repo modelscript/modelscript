@@ -37,6 +37,7 @@ export class WorkspaceIndex {
   register(uri: string, loader: () => CSTNode, parentFQN?: string): void {
     this.files.set(uri, { index: null, loader, parentFQN, dirty: true });
     this.unifiedCache = null;
+    this.partialCache = null;
     this.skeletonCache = null;
   }
 
@@ -51,6 +52,7 @@ export class WorkspaceIndex {
       file.index = null; // Clear old index
       if (loader) file.loader = loader;
       this.unifiedCache = null;
+      this.partialCache = null;
       this.skeletonCache = null;
     }
   }
@@ -61,6 +63,7 @@ export class WorkspaceIndex {
   remove(uri: string): void {
     this.files.delete(uri);
     this.unifiedCache = null;
+    this.partialCache = null;
     this.skeletonCache = null;
   }
 
@@ -246,6 +249,7 @@ export class WorkspaceIndex {
    */
   toUnifiedPartial(): SymbolIndex {
     if (this.unifiedCache) return this.unifiedCache;
+    if (this.partialCache) return this.partialCache;
 
     const symbols = new Map<SymbolId, SymbolEntry>();
     const byName = new Map<string, SymbolId[]>();
@@ -277,7 +281,8 @@ export class WorkspaceIndex {
     }
 
     this.stitchParentFQNs(symbols, byName, childrenOf);
-    return { symbols, byName, childrenOf };
+    this.partialCache = { symbols, byName, childrenOf };
+    return this.partialCache;
   }
 
   /**
@@ -443,6 +448,9 @@ export class WorkspaceIndex {
     if (this.unifiedCache) return this.unifiedCache;
     return this.toTreeSkeleton();
   }
+
+  /** Cached partial index — invalidated alongside unifiedCache. */
+  private partialCache: SymbolIndex | null = null;
 
   /** Cached skeleton index — invalidated alongside unifiedCache. */
   private skeletonCache: SymbolIndex | null = null;

@@ -257,21 +257,24 @@ export default language({
           opt(field("constrainingClause", $.ConstrainingClause)),
           ";",
         ),
-        symbol: (self) => ({
-          kind: "Class",
-          name: self.classSpecifier.identifier,
-          exports: [self.classSpecifier.identifier],
-          inherits: [self.classSpecifier.identifier],
-          attributes: {
-            classPrefixes: self.classPrefixes,
-            redeclare: self.redeclare,
-            final: self.final,
-            inner: self.inner,
-            outer: self.outer,
-            replaceable: self.replaceable,
-            encapsulated: self.encapsulated,
-          },
-        }),
+        symbol: (self) => {
+          return {
+            kind: "Class",
+            name: self.classSpecifier!.identifier,
+            exports: self.classSpecifier?.identifier ? [self.classSpecifier.identifier] : [],
+            inherits: self.classSpecifier?.identifier ? [self.classSpecifier.identifier] : [],
+            attributes: {
+              classPrefixes: self.classPrefixes,
+              redeclare: self.redeclare,
+              final: self.final,
+              inner: self.inner,
+              outer: self.outer,
+              replaceable: self.replaceable,
+              encapsulated: self.encapsulated,
+              annotationClause: (self.classSpecifier as any).annotationClause,
+            },
+          };
+        },
         queries: {
           /** All direct children of this class. */
           members: (db, self) => db.childrenOf(self.id),

@@ -799,7 +799,7 @@ module.exports = grammar({
         ";",
         seq(
           "{",
-          repeat(choice($._ActionBodyItem, $.SubjectMember, $.ActorMember, $.StakeholderMember)),
+          repeat(choice($._ActionBodyItem, $.SubjectMember, $.ActorMember, $.StakeholderMember, $.ObjectiveMember)),
           optional($.ResultExpressionMember),
           "}",
         ),
@@ -852,7 +852,14 @@ module.exports = grammar({
       ),
     ObjectiveMember: ($) =>
       seq(optional($.VisibilityIndicator), field("ownedRelatedElement", $.ObjectiveRequirementUsage)),
-    ObjectiveRequirementUsage: ($) => seq("objective", repeat($._usage_modifier), $._RequirementBody),
+    ObjectiveRequirementUsage: ($) =>
+      seq(
+        "objective",
+        repeat($._usage_modifier),
+        optional($._UsageDeclaration),
+        optional($._ValuePart),
+        $._RequirementBody,
+      ),
     UseCaseDefinition: ($) =>
       seq(
         repeat($._usage_modifier),

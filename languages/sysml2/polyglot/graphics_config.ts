@@ -2039,8 +2039,14 @@ export const graphicsConfig: Record<string, GraphicsConfig> = {
     node: {
       shape: "rect",
       markup: [
-        { tagName: "rect", selector: "body" },
-        { tagName: "text", selector: "label" },
+        {
+          tagName: "rect",
+          selector: "body",
+        },
+        {
+          tagName: "text",
+          selector: "label",
+        },
       ],
       attrs: {
         body: {
@@ -2049,6 +2055,7 @@ export const graphicsConfig: Record<string, GraphicsConfig> = {
           strokeWidth: 1.5,
           rx: 4,
           ry: 4,
+          strokeDasharray: "6 3",
         },
         label: {
           text: "{{name}}",
@@ -2060,8 +2067,8 @@ export const graphicsConfig: Record<string, GraphicsConfig> = {
         },
       },
       size: {
-        width: 60,
-        height: 80,
+        width: 140,
+        height: 40,
       },
     },
   },

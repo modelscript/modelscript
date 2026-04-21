@@ -40,7 +40,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // MetadataDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization
+  // MetadataDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, extractTopology, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization
   {
     const $ = new Proxy(
       {},
@@ -175,7 +175,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // AttributeDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization
+  // AttributeDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, extractTopology, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization
   {
     const $ = new Proxy(
       {},
@@ -229,7 +229,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // EnumerationDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization
+  // EnumerationDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, extractTopology, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization
   {
     const $ = new Proxy(
       {},
@@ -283,7 +283,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // OccurrenceDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization
+  // OccurrenceDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, extractTopology, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization
   {
     const $ = new Proxy(
       {},
@@ -337,7 +337,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // ItemDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization
+  // ItemDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, extractTopology, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization
   {
     const $ = new Proxy(
       {},
@@ -391,7 +391,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // PartDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization
+  // PartDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, extractTopology, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization
   {
     const $ = new Proxy(
       {},
@@ -445,7 +445,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // PortDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization
+  // PortDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, extractTopology, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization
   {
     const $ = new Proxy(
       {},
@@ -499,7 +499,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // ConnectionDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization
+  // ConnectionDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, extractTopology, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization
   {
     const $ = new Proxy(
       {},
@@ -607,7 +607,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // InterfaceDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization
+  // InterfaceDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, extractTopology, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization
   {
     const $ = new Proxy(
       {},
@@ -661,7 +661,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // AllocationDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization
+  // AllocationDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, extractTopology, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization
   {
     const $ = new Proxy(
       {},
@@ -688,7 +688,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // AllocationUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, lint__usageNaming, lint__multiplicityBounds
+  // AllocationUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, resolvedSource, resolvedTarget, lint__usageNaming, lint__multiplicityBounds, lint__allocationTargetUnresolved, lint__allocationSourceUnresolved, lint__portInterfaceMismatch
   {
     const $ = new Proxy(
       {},
@@ -715,7 +715,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // FlowDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization
+  // FlowDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, extractTopology, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization
   {
     const $ = new Proxy(
       {},
@@ -796,7 +796,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // ActionDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization
+  // ActionDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, extractTopology, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization
   {
     const $ = new Proxy(
       {},
@@ -958,7 +958,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // CalculationDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, parameters, returnParameter, resultExpression, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization
+  // CalculationDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, extractTopology, parameters, returnParameter, resultExpression, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization
   {
     const $ = new Proxy(
       {},
@@ -1012,7 +1012,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // ConstraintDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, constraintResult, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization, lint__constraintViolated
+  // ConstraintDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, extractTopology, constraintResult, dynamicConstraintResult, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization, lint__constraintViolated
   {
     const $ = new Proxy(
       {},
@@ -1039,7 +1039,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // ConstraintUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, constraintResult, lint__usageNaming, lint__multiplicityBounds, lint__constraintViolated
+  // ConstraintUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, constraintResult, dynamicConstraintResult, lint__usageNaming, lint__multiplicityBounds, lint__constraintViolated
   {
     const $ = new Proxy(
       {},
@@ -1066,7 +1066,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // AssertConstraintUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, constraintResult, lint__usageNaming, lint__multiplicityBounds, lint__constraintViolated
+  // AssertConstraintUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, constraintResult, dynamicConstraintResult, lint__usageNaming, lint__multiplicityBounds, lint__constraintViolated
   {
     const $ = new Proxy(
       {},
@@ -1093,7 +1093,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // RequirementDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, subject, assumeConstraints, requireConstraints, actors, stakeholders, isSatisfied, satisfiedBy, isVerified, verifiedBy, verificationStatus, constraintsMet, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization, lint__missingSubject, lint__cyclicSatisfaction, lint__requirementConstraintViolated, lint__requirementWithoutConstraint, lint__evolutionCheck
+  // RequirementDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, extractTopology, subject, assumeConstraints, requireConstraints, actors, stakeholders, isSatisfied, satisfiedBy, isVerified, verifiedBy, verificationStatus, constraintsMet, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization, lint__missingSubject, lint__cyclicSatisfaction, lint__requirementConstraintViolated, lint__requirementWithoutConstraint, lint__evolutionCheck
   {
     const $ = new Proxy(
       {},
@@ -1120,7 +1120,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // RequirementConstraintUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, constraintResult
+  // RequirementConstraintUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, constraintResult, dynamicConstraintResult
   {
     const $ = new Proxy(
       {},
@@ -1201,7 +1201,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // ConcernDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization
+  // ConcernDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, extractTopology, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization
   {
     const $ = new Proxy(
       {},
@@ -1255,7 +1255,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // CaseDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization
+  // CaseDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, extractTopology, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization
   {
     const $ = new Proxy(
       {},
@@ -1309,7 +1309,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // AnalysisCaseDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization
+  // AnalysisCaseDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, extractTopology, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization
   {
     const $ = new Proxy(
       {},
@@ -1363,7 +1363,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // VerificationCaseDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, verifiedRequirements, objective, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization, lint__emptyVerificationCase, lint__missingObjective
+  // VerificationCaseDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, extractTopology, verifiedRequirements, objective, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization, lint__emptyVerificationCase, lint__missingObjective
   {
     const $ = new Proxy(
       {},
@@ -1390,7 +1390,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // VerificationCaseUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, verifiedRequirements, objective, lint__usageNaming, lint__multiplicityBounds, lint__emptyVerificationCase
+  // VerificationCaseUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, verifiedRequirements, objective, lint__usageNaming, lint__multiplicityBounds, lint__emptyVerificationCase, lint__verificationResult
   {
     const $ = new Proxy(
       {},
@@ -1444,7 +1444,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // UseCaseDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization
+  // UseCaseDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, extractTopology, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization
   {
     const $ = new Proxy(
       {},
@@ -1525,7 +1525,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // StateDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, entryAction, doAction, exitAction, transitions, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization
+  // StateDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, extractTopology, entryAction, doAction, exitAction, transitions, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization
   {
     const $ = new Proxy(
       {},
@@ -1552,7 +1552,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // StateUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, entryAction, doAction, exitAction, transitions, lint__usageNaming, lint__multiplicityBounds
+  // StateUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, extractTopology, entryAction, doAction, exitAction, transitions, lint__usageNaming, lint__multiplicityBounds
   {
     const $ = new Proxy(
       {},
@@ -1579,7 +1579,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // ExhibitStateUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, entryAction, doAction, exitAction, transitions, lint__usageNaming, lint__multiplicityBounds
+  // ExhibitStateUsage: ownedFeatures, resolvedType, redefinedFeatures, subsettedFeatures, members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, extractTopology, entryAction, doAction, exitAction, transitions, lint__usageNaming, lint__multiplicityBounds
   {
     const $ = new Proxy(
       {},
@@ -1633,7 +1633,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // ViewDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization
+  // ViewDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, extractTopology, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization
   {
     const $ = new Proxy(
       {},
@@ -1687,7 +1687,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // ViewpointDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization
+  // ViewpointDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, extractTopology, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization
   {
     const $ = new Proxy(
       {},
@@ -1741,7 +1741,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // RenderingDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization
+  // RenderingDefinition: members, ownedDefinitions, ownedUsages, imports, ownedParts, ownedAttributes, ownedPorts, ownedActions, ownedConstraints, ownedConnections, superclassifiers, extractTopology, lint__definitionNaming, lint__emptyDefinition, lint__duplicateFeatureName, lint__circularSpecialization
   {
     const $ = new Proxy(
       {},

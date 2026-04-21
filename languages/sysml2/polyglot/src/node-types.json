@@ -2076,6 +2076,10 @@
           "named": true
         },
         {
+          "type": "ObjectiveMember",
+          "named": true
+        },
+        {
           "type": "OccurrenceUsage",
           "named": true
         },
@@ -2375,6 +2379,10 @@
         },
         {
           "type": "NonOccurrenceUsageMember",
+          "named": true
+        },
+        {
+          "type": "ObjectiveMember",
           "named": true
         },
         {
@@ -4667,6 +4675,10 @@
           "named": true
         },
         {
+          "type": "ObjectiveMember",
+          "named": true
+        },
+        {
           "type": "OccurrenceUsage",
           "named": true
         },
@@ -4966,6 +4978,10 @@
         },
         {
           "type": "NonOccurrenceUsageMember",
+          "named": true
+        },
+        {
+          "type": "ObjectiveMember",
           "named": true
         },
         {
@@ -11249,6 +11265,10 @@
           "named": true
         },
         {
+          "type": "ObjectiveMember",
+          "named": true
+        },
+        {
           "type": "OccurrenceUsage",
           "named": true
         },
@@ -13941,6 +13961,26 @@
     "type": "ObjectiveRequirementUsage",
     "named": true,
     "fields": {
+      "declaredName": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "Name",
+            "named": true
+          }
+        ]
+      },
+      "declaredShortName": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "Name",
+            "named": true
+          }
+        ]
+      },
       "direction": {
         "multiple": true,
         "required": false,
@@ -13999,6 +14039,26 @@
           }
         ]
       },
+      "isNonunique": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "nonunique",
+            "named": false
+          }
+        ]
+      },
+      "isOrdered": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ordered",
+            "named": false
+          }
+        ]
+      },
       "isRef": {
         "multiple": true,
         "required": false,
@@ -14041,6 +14101,14 @@
           "named": true
         },
         {
+          "type": "FeatureTyping",
+          "named": true
+        },
+        {
+          "type": "FeatureValue",
+          "named": true
+        },
+        {
           "type": "Import",
           "named": true
         },
@@ -14050,6 +14118,26 @@
         },
         {
           "type": "OccurrenceUsageMember",
+          "named": true
+        },
+        {
+          "type": "OwnedCrossSubsetting",
+          "named": true
+        },
+        {
+          "type": "OwnedMultiplicity",
+          "named": true
+        },
+        {
+          "type": "OwnedRedefinition",
+          "named": true
+        },
+        {
+          "type": "OwnedReferenceSubsetting",
+          "named": true
+        },
+        {
+          "type": "OwnedSubsetting",
           "named": true
         },
         {
@@ -21692,6 +21780,10 @@
           "named": true
         },
         {
+          "type": "ObjectiveMember",
+          "named": true
+        },
+        {
           "type": "OccurrenceUsage",
           "named": true
         },
@@ -21991,6 +22083,10 @@
         },
         {
           "type": "NonOccurrenceUsageMember",
+          "named": true
+        },
+        {
+          "type": "ObjectiveMember",
           "named": true
         },
         {

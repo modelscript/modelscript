@@ -6353,6 +6353,10 @@
                   {
                     "type": "SYMBOL",
                     "name": "StakeholderMember"
+                  },
+                  {
+                    "type": "SYMBOL",
+                    "name": "ObjectiveMember"
                   }
                 ]
               }
@@ -6805,6 +6809,30 @@
             "type": "SYMBOL",
             "name": "_usage_modifier"
           }
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_UsageDeclaration"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_ValuePart"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
         },
         {
           "type": "SYMBOL",

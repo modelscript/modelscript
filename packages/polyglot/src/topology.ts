@@ -32,4 +32,11 @@ export interface TopologyGraph {
   rootIds: SymbolId[];
   nodes: Map<SymbolId, TopologyNode>;
   edges: TopologyEdge[];
+  /**
+   * Explicit mapping from SysML feature paths (e.g. "circuit.C.v") to
+   * simulation variable names (e.g. "C.v") produced during topology extraction.
+   * Allows the verifier to resolve constraint operands without guessing
+   * how the target simulator flattens hierarchical names.
+   */
+  variableMap?: Map<string, string>;
 }

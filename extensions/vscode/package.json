@@ -65,6 +65,11 @@
         "icon": "$(play)"
       },
       {
+        "command": "modelscript.runVerification",
+        "title": "ModelScript: Run SysML Verification",
+        "icon": "$(check-all)"
+      },
+      {
         "command": "modelscript.addToDiagram",
         "title": "ModelScript: Add to Diagram",
         "icon": "$(add)"
@@ -424,6 +429,11 @@
         {
           "command": "modelscript.runSimulation",
           "when": "editorLangId == modelica || activeCustomEditorId == modelscript.diagram",
+          "group": "navigation"
+        },
+        {
+          "command": "modelscript.runVerification",
+          "when": "editorLangId == sysml && activeCustomEditorId != modelscript.diagram",
           "group": "navigation"
         }
       ],
