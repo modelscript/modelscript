@@ -10,7 +10,7 @@
     "./language": "./dist/language.js"
   },
   "scripts": {
-    "build": "node build.js && tsc"
+    "build": "node build.js && prettier --write . --ignore-unknown && tsc"
   },
   "dependencies": {
     "@modelscript/polyglot": "*"
