@@ -34,6 +34,10 @@
     "./predefined-types": {
       "types": "./dist/predefined-types.d.ts",
       "default": "./dist/predefined-types.js"
+    },
+    "./language": {
+      "types": "./dist/language.d.ts",
+      "default": "./dist/language.js"
     }
   },
   "scripts": {

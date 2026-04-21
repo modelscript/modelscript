@@ -24,7 +24,7 @@
  * ```
  */
 
-import type { QueryDB, SymbolEntry, SymbolId } from "@modelscript/polyglot";
+import type { QueryDB, SymbolEntry, SymbolId, TopologyGraph } from "@modelscript/polyglot";
 import type { ModelicaModArgs } from "./modification-args.js";
 
 // ---------------------------------------------------------------------------
@@ -176,6 +176,65 @@ export class QueryBasedFlattener {
     this.flattenElements(elements, "", dae);
 
     // Post-processing: expand connections into equations
+    this.expandConnections(dae);
+
+    return dae;
+  }
+
+  /**
+   * Flatten a hybrid system from a SysML TopologyGraph.
+   * Walks the topology, instantiating Modelica artifacts bound to each node.
+   */
+  flattenFromTopology(graph: TopologyGraph): FlatDAE {
+    const dae: FlatDAE = {
+      className: "HybridSystem",
+      variables: [],
+      equations: [],
+      connections: [],
+      initialEquations: [],
+      algorithms: [],
+      diagnostics: [],
+    };
+
+    const processTopologyNode = (nodeId: SymbolId, prefix: string) => {
+      const node = graph.nodes.get(nodeId);
+      if (!node) return;
+
+      const currentPrefix = prefix ? `${prefix}.${node.path.split(".").pop()}` : node.path.split(".").pop()!;
+
+      // Flatten target Modelica class if bound
+      if (node.targetClassId) {
+        const elements = this.db.query<SymbolId[]>("instantiate", node.targetClassId);
+        if (elements) {
+          this.flattenElements(elements, currentPrefix, dae);
+        }
+      }
+
+      for (const child of node.children) {
+        processTopologyNode(child.usageId, currentPrefix);
+      }
+    };
+
+    for (const rootId of graph.rootIds) {
+      processTopologyNode(rootId, "");
+    }
+
+    // Process explicit topology edges as Modelica connect equations
+    for (const edge of graph.edges) {
+      const srcNode = graph.nodes.get(edge.sourceId);
+      const tgtNode = graph.nodes.get(edge.targetId);
+      if (srcNode && tgtNode) {
+        // We emit connect equations using their simple paths. The flow
+        // expansion step will later process these.
+        dae.equations.push({
+          text: `connect(${srcNode.path}, ${tgtNode.path})`,
+          isConnect: true,
+          components: [srcNode.path, tgtNode.path],
+        });
+        dae.connections.push({ a: srcNode.path, b: tgtNode.path });
+      }
+    }
+
     this.expandConnections(dae);
 
     return dae;

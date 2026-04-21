@@ -6,7 +6,8 @@
     "./query_hooks": "./dist/query_hooks.js",
     "./indexer_config": "./dist/indexer_config.js",
     "./ref_config": "./dist/ref_config.js",
-    "./graphics_config": "./dist/graphics_config.js"
+    "./graphics_config": "./dist/graphics_config.js",
+    "./language": "./dist/language.js"
   },
   "scripts": {
     "build": "node build.js && tsc"

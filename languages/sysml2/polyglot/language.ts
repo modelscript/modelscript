@@ -126,6 +126,73 @@ const definitionStructuralQueries = {
     }
     return results;
   },
+  extractTopology: (db: QueryDB, self: SymbolEntry) => {
+    // Basic extraction to stub out Phase 3 logic
+    const rootIds = [self.id];
+    const nodes = new Map<number, import("@modelscript/polyglot").TopologyNode>();
+    const edges: import("@modelscript/polyglot").TopologyEdge[] = [];
+
+    const walk = (entryId: number, parentId: number | null, pathPrefix: string) => {
+      const entry = db.symbol(entryId);
+      if (!entry) return;
+
+      const path = pathPrefix ? `${pathPrefix}.${entry.name}` : entry.name || "";
+      const node: import("@modelscript/polyglot").TopologyNode = {
+        usageId: entry.id,
+        path,
+        targetClassId: null,
+        typeName: "",
+        children: [],
+        parentId,
+      };
+      nodes.set(entry.id, node);
+
+      // Check allocation
+      const allocations = db.childrenOf(entry.id).filter((c) => c.ruleName === "AllocationUsage");
+      for (const alloc of allocations) {
+        const target = db.query<SymbolEntry | null>("resolvedTarget", alloc.id);
+        if (target) {
+          node.targetClassId = target.id;
+        }
+      }
+
+      // Check implements in SysML itself (or modelica index)
+      const implementsTarget = (entry.metadata as any)?.implementsTarget;
+      if (implementsTarget) {
+        const res = db.byName(implementsTarget);
+        if (res && res.length > 0) node.targetClassId = res[0].id;
+      }
+
+      const parts = db.childrenOf(entry.id).filter((c) => c.ruleName === "PartUsage");
+      for (const part of parts) {
+        const childNode = walk(part.id, entry.id, path);
+        if (childNode) node.children.push(childNode);
+      }
+
+      const connects = db.childrenOf(entry.id).filter((c) => c.ruleName === "ConnectionUsage");
+      for (const conn of connects) {
+        // extract endpoints
+        const refs = db.childrenOf(conn.id).filter((c) => c.kind === "Reference");
+        if (refs.length >= 2) {
+          const src = db.resolveName(refs[0].name, conn.parentId);
+          const tgt = db.resolveName(refs[1].name, conn.parentId);
+          if (src.length > 0 && tgt.length > 0) {
+            edges.push({
+              sourceId: src[0].id,
+              targetId: tgt[0].id,
+              connectionId: conn.id,
+            });
+          }
+        }
+      }
+
+      return node;
+    };
+
+    walk(self.id, null, "");
+
+    return { rootIds, nodes, edges };
+  },
 };
 
 /** Queries for all Usage rules */
@@ -803,6 +870,13 @@ const evaluateConstraintBody = (db: QueryDB, self: SymbolEntry): boolean | null 
 const constraintEvalQueries = {
   /** Evaluate the constraint body and return true/false/null */
   constraintResult: (db: QueryDB, self: SymbolEntry) => evaluateConstraintBody(db, self),
+
+  /** Dynamic simulation-backed validation via VerificationRunner */
+  dynamicConstraintResult: (db: QueryDB, self: SymbolEntry) => {
+    // Re-evaluates automatically when SimulationResult inputs (Salsa queries) change
+    // db.query<SimulationResult>("activeSimulation", ...)
+    return null; // stubbed
+  },
 };
 
 /** Constraint Definition model with evaluation */
@@ -1406,6 +1480,66 @@ const verificationCaseUsageLints = {
     if (verifyMembers.length === 0 && self.name) {
       return info(`Verification case '${self.name}' has no 'verify' members`, { field: "declaredName" });
     }
+    return null;
+  },
+  /** Provide a hook into the VerificationRunner for incremental verification */
+  verificationResult: (db: QueryDB, self: SymbolEntry) => {
+    // Requires a SimulationResult object to evaluate.
+    // In practice, this would look up another query that returns the simulation object:
+    // const simResult = db.query<SimulationResult>("simulationData", self.id);
+    return null;
+  },
+};
+
+/** Queries for Allocation usage */
+const allocationQueries = {
+  ...usageQueries,
+  resolvedSource: (db: QueryDB, self: SymbolEntry) => {
+    const refs = db.childrenOf(self.id).filter((c) => c.kind === "Reference");
+    if (refs.length >= 2) {
+      const resolved = db.resolveName(refs[0].name, self.parentId);
+      if (resolved.length > 0) return resolved[0];
+    }
+    return null;
+  },
+  resolvedTarget: (db: QueryDB, self: SymbolEntry) => {
+    const refs = db.childrenOf(self.id).filter((c) => c.kind === "Reference");
+    if (refs.length >= 2) {
+      // In allocate A to B, A is refs[0] and B is refs[1]
+      const resolved = db.resolveName(refs[1].name, self.parentId);
+      if (resolved.length > 0) return resolved[0];
+    }
+    return null;
+  },
+};
+
+/** Lint rules for AllocationUsage */
+const allocationLints = {
+  ...usageLints,
+  allocationTargetUnresolved: (db: QueryDB, self: SymbolEntry) => {
+    const refs = db.childrenOf(self.id).filter((c) => c.kind === "Reference");
+    if (refs.length >= 2) {
+      const targetName = refs[1].name;
+      const resolved = db.resolveName(targetName, self.parentId);
+      if (resolved.length === 0) {
+        return error(`Allocation target '${targetName}' could not be resolved`, { field: "declaredName" });
+      }
+    }
+    return null;
+  },
+  allocationSourceUnresolved: (db: QueryDB, self: SymbolEntry) => {
+    const refs = db.childrenOf(self.id).filter((c) => c.kind === "Reference");
+    if (refs.length >= 2) {
+      const sourceName = refs[0].name;
+      const resolved = db.resolveName(sourceName, self.parentId);
+      if (resolved.length === 0) {
+        return error(`Allocation source '${sourceName}' could not be resolved`, { field: "declaredName" });
+      }
+    }
+    return null;
+  },
+  portInterfaceMismatch: (db: QueryDB, self: SymbolEntry) => {
+    // Basic lint for port-interface matching (stubbed for future deeper types)
     return null;
   },
 };
@@ -2885,9 +3019,9 @@ export default language({
           $._DefinitionBody,
         ),
         symbol: usageAttrs("allocation"),
-        queries: usageQueries,
+        queries: allocationQueries,
         model: usageModel,
-        lints: usageLints,
+        lints: allocationLints,
         graphics: () => sysmlEdgeGraphics({ label: "«allocate»", stroke: "#283593", strokeDasharray: "6 3" }),
       }),
 

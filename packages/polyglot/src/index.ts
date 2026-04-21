@@ -13,6 +13,11 @@ import type {
   SymbolId,
   SymbolIndex,
 } from "./runtime.js";
+export * from "./simulation.js";
+export * from "./topology.js";
+export { UnifiedWorkspace } from "./unified-workspace.js";
+export * from "./verifier.js";
+export { WorkspaceIndex } from "./workspace-index.js";
 export type {
   CSTTree,
   CycleInfo,

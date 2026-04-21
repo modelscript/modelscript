@@ -485,6 +485,17 @@ const allWorkspaceIndices = new Map<string, any>();
 /* LSP-Bridge polyglot indexing */
 const globalWorkspaceIndex = createModelicaWorkspaceIndex();
 const sysml2WorkspaceIndex = createSysML2WorkspaceIndex();
+
+import { UnifiedWorkspace } from "@modelscript/polyglot";
+// @ts-expect-error
+import modelicaLangFallback from "@modelscript/modelica-polyglot/language";
+// @ts-expect-error
+import sysml2LangFallback from "@modelscript/sysml2-polyglot/language";
+
+const unifiedWorkspace = new UnifiedWorkspace();
+unifiedWorkspace.registerWorkspace("modelica", globalWorkspaceIndex, modelicaLangFallback);
+unifiedWorkspace.registerWorkspace("sysml2", sysml2WorkspaceIndex, sysml2LangFallback);
+
 const documentLSPBridges = new Map<string, LSPBridge>();
 
 /** Per-document QueryEngine — used by compat-shim to create QueryBackedClassInstance wrappers */
@@ -1186,7 +1197,7 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
       }
 
       // Create or update query engine, resolver, and LSP bridge for the document
-      const unifiedIndex = await sysml2WorkspaceIndex.toUnifiedAsync();
+      const unifiedIndex = await unifiedWorkspace.toUnifiedAsync();
 
       let engine = documentQueryEngines.get(textDocument.uri) as any;
       if (engine) {
@@ -1310,7 +1321,7 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
     // Create query engine, resolver, and LSP bridge over the unified workspace index.
     // Use toUnifiedPartial() to avoid blocking on parsing ALL MSL files —
     // only merges files that have already been indexed.
-    let unifiedIndex = globalWorkspaceIndex.toUnifiedPartial();
+    let unifiedIndex = unifiedWorkspace.toUnifiedPartial();
 
     const cstTreeWrapper = {
       getText(startByte: number, endByte: number, entry?: any): string | null {
@@ -1458,7 +1469,7 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
     }
 
     if (dirty) {
-      unifiedIndex = globalWorkspaceIndex.toUnifiedPartial();
+      unifiedIndex = unifiedWorkspace.toUnifiedPartial();
       injectPredefinedTypes(unifiedIndex);
       engine.updateIndex(unifiedIndex);
       resolver.updateIndex(unifiedIndex);
@@ -2888,7 +2899,7 @@ connection.onRequest(
     // SysML2 files use the polyglot diagram builder
     if (params.uri.endsWith(".sysml")) {
       try {
-        const unified = sysml2WorkspaceIndex.toUnified();
+        const unified = unifiedWorkspace.toUnified();
         const resolver = createSysML2ScopeResolver(unified);
 
         const diagramTypeRaw = params.diagramType ?? "All";
@@ -3961,7 +3972,7 @@ connection.onRequest("modelscript/getClassIcon", (params: { className: string; u
       if (uri) {
         globalWorkspaceIndex.getFileIndex(uri);
         // We must update the engine's index so it sees the newly parsed file
-        const newIndex = globalWorkspaceIndex.toUnifiedPartial();
+        const newIndex = unifiedWorkspace.toUnifiedPartial();
         injectPredefinedTypes(newIndex);
         const engine = documentQueryEngines.get(docUri) as any;
         if (engine) engine.updateIndex(newIndex);

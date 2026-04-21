@@ -12,11 +12,19 @@ import {
   ModelicaStoredDefinitionSyntaxNode,
   StringWriter,
 } from "@modelscript/core";
+import { UnifiedWorkspace, WorkspaceIndex } from "@modelscript/polyglot";
 import { ModelicaSimulator } from "@modelscript/simulator";
 import path from "node:path";
 import { z } from "zod";
 import { NodeFileSystem } from "./filesystem.js";
 import type { ServerContext } from "./types.js";
+// @ts-expect-error No types for fallback module
+import modelicaLangFallback from "@modelscript/modelica-polyglot/language";
+// @ts-expect-error No types for fallback module
+import sysml2LangFallback from "@modelscript/sysml2-polyglot/language";
+// @ts-expect-error No types for fallback module
+import { QueryBasedFlattener } from "@modelscript/modelica-polyglot/flattener-query";
+import type { TopologyGraph } from "@modelscript/polyglot";
 
 /**
  * Register all Modelica MCP tools on the server.
@@ -289,6 +297,52 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         });
         return { content: [{ type: "text" as const, text: JSON.stringify(rows, null, 2) }] };
       }
+    },
+  );
+
+  // ── hybrid_simulate ────────────────────────────────────────────────────
+
+  server.tool(
+    "hybrid_simulate",
+    "Flatten and simulate a hybrid SysML v2 / Modelica system.",
+    {
+      name: z.string().describe("Fully qualified part/class name to simulate"),
+      paths: z.array(z.string()).describe("Paths to load into UnifiedWorkspace"),
+      startTime: z.number().optional(),
+      stopTime: z.number().optional(),
+    },
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    async ({ name, paths, startTime, stopTime }) => {
+      const u = new UnifiedWorkspace();
+      const mIdx = new WorkspaceIndex([]);
+      const sIdx = new WorkspaceIndex([]);
+      u.registerWorkspace("modelica", mIdx, modelicaLangFallback);
+      u.registerWorkspace("sysml2", sIdx, sysml2LangFallback);
+
+      const db = u.toUnifiedAsync ? await u.toUnifiedAsync() : u.toUnified();
+
+      const entries = db.byName(name);
+      if (entries.length === 0) {
+        return { content: [{ type: "text" as const, text: `Class '${name}' not found.` }], isError: true };
+      }
+
+      const flattener = new QueryBasedFlattener(db);
+      let daeObj;
+
+      if (entries[0].language === "sysml2") {
+        const topology = db.query("extractTopology", entries[0].id) as TopologyGraph;
+        daeObj = flattener.flattenFromTopology(topology);
+      } else {
+        daeObj = flattener.flatten(entries[0].id);
+      }
+
+      const dae = new ModelicaDAE(daeObj.className, "");
+      // Map flat DAE to ModelicaDAE...
+      const simulator = new ModelicaSimulator(dae);
+      simulator.prepare();
+      const result = simulator.simulate(startTime ?? 0, stopTime ?? 10, 0.1, { solver: "dopri5" });
+
+      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
     },
   );
 

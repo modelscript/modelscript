@@ -1231,13 +1231,22 @@ export default language({
           opt(field("description", $.Description)),
           opt(field("annotationClause", $.AnnotationClause)),
         ),
-        symbol: (self) => ({
-          kind: "Component",
-          name: self.declaration.identifier,
-          attributes: {
-            modification: self.declaration.modification,
-          },
-        }),
+        symbol: (self) => {
+          let implementsTarget: string | undefined = undefined;
+          if (self.annotationClause && typeof self.annotationClause === "string") {
+            const match = self.annotationClause.match(/SysML\s*\(\s*implements\s*=\s*"([^"]+)"\s*\)/);
+            if (match) implementsTarget = match[1];
+          }
+
+          return {
+            kind: "Component",
+            name: self.declaration.identifier,
+            attributes: {
+              modification: self.declaration.modification,
+              ...(implementsTarget ? { implementsTarget } : {}),
+            },
+          };
+        },
         queries: {
           /**
            * Resolve the type specifier to the class it references.
@@ -1614,6 +1623,28 @@ export default language({
           componentNamingConvention: (_db: QueryDB, self: SymbolEntry) => {
             if (self.name && /^[A-Z]/.test(self.name)) {
               return warning(`Component '${self.name}' should start with a lowercase letter`, {
+                field: "componentDeclaration",
+              });
+            }
+            return null;
+          },
+          /** Error if the component specifies a SysML implements target that cannot be resolved in the SysML index. */
+          implementsTargetUnresolved: (db: QueryDB, self: SymbolEntry) => {
+            const meta = self.metadata as Record<string, unknown>;
+            const targetName = meta?.implementsTarget as string | undefined;
+            if (!targetName) return null;
+
+            // In the unified workspace, SysML parts/requirements are registered
+            // under byName. We can just check the simple name.
+            // Ideally, we restrict it to sysml2 language or SysML specific definitions.
+            const entries = db.byName(targetName);
+            const foundSysML = entries.find(
+              (e) =>
+                e.language === "sysml2" && (e.kind === "Part" || e.kind === "Requirement" || e.kind === "Definition"),
+            );
+
+            if (!foundSysML) {
+              return error(`SysML implements target '${targetName}' could not be resolved in the workspace`, {
                 field: "componentDeclaration",
               });
             }

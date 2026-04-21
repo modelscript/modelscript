@@ -54,6 +54,12 @@ export interface SymbolEntry {
    * The URI of the document containing this symbol. Populated by WorkspaceIndex.
    */
   resourceId?: string;
+  /**
+   * The language this symbol belongs to (e.g., "modelica", "sysml2").
+   * Populated by UnifiedWorkspace when merging multi-language indices.
+   * Null for single-language workspaces.
+   */
+  language?: string;
 }
 
 /** The full symbol index for a single file. */
