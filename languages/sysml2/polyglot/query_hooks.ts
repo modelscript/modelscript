@@ -1,4 +1,3 @@
-/* eslint-disable */
 import type { QueryHooks } from "@modelscript/polyglot/runtime";
 
 // Import the language definition to access query lambdas directly.
@@ -23,15 +22,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["MetadataUsage"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["MetadataUsage"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -50,15 +50,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["MetadataDefinition"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["MetadataDefinition"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -77,15 +78,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["Package"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["Package"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -104,15 +106,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["LibraryPackage"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["LibraryPackage"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -131,15 +134,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["DefaultReferenceUsage"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["DefaultReferenceUsage"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -158,15 +162,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["ReferenceUsage"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["ReferenceUsage"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -185,15 +190,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["AttributeDefinition"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["AttributeDefinition"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -212,15 +218,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["AttributeUsage"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["AttributeUsage"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -239,15 +246,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["EnumerationDefinition"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["EnumerationDefinition"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -266,15 +274,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["EnumerationUsage"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["EnumerationUsage"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -293,15 +302,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["OccurrenceDefinition"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["OccurrenceDefinition"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -320,15 +330,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["OccurrenceUsage"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["OccurrenceUsage"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -347,15 +358,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["ItemDefinition"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["ItemDefinition"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -374,15 +386,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["ItemUsage"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["ItemUsage"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -401,15 +414,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["PartDefinition"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["PartDefinition"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -428,15 +442,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["PartUsage"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["PartUsage"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -455,15 +470,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["PortDefinition"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["PortDefinition"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -482,15 +498,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["PortUsage"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["PortUsage"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -509,15 +526,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["ConnectionDefinition"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["ConnectionDefinition"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -536,15 +554,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["ConnectionUsage"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["ConnectionUsage"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -563,15 +582,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["BindingConnectorAsUsage"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["BindingConnectorAsUsage"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -590,15 +610,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["SuccessionAsUsage"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["SuccessionAsUsage"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -617,15 +638,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["InterfaceDefinition"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["InterfaceDefinition"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -644,15 +666,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["InterfaceUsage"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["InterfaceUsage"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -671,15 +694,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["AllocationDefinition"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["AllocationDefinition"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -698,15 +722,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["AllocationUsage"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["AllocationUsage"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -725,15 +750,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["FlowDefinition"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["FlowDefinition"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -752,15 +778,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["FlowUsage"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["FlowUsage"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -779,15 +806,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["SuccessionFlowUsage"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["SuccessionFlowUsage"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -806,15 +834,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["ActionDefinition"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["ActionDefinition"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -833,15 +862,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["ActionUsage"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["ActionUsage"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -860,15 +890,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["AcceptActionNode"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["AcceptActionNode"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -887,15 +918,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["SendActionNode"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["SendActionNode"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -914,15 +946,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["AssignActionNode"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["AssignActionNode"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -941,15 +974,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["PerformActionUsage"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["PerformActionUsage"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -968,15 +1002,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["CalculationDefinition"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["CalculationDefinition"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -995,15 +1030,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["CalculationUsage"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["CalculationUsage"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -1022,15 +1058,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["ConstraintDefinition"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["ConstraintDefinition"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -1049,15 +1086,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["ConstraintUsage"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["ConstraintUsage"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -1076,15 +1114,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["AssertConstraintUsage"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["AssertConstraintUsage"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -1103,15 +1142,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["RequirementDefinition"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["RequirementDefinition"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -1130,15 +1170,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["RequirementConstraintUsage"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["RequirementConstraintUsage"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -1157,15 +1198,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["RequirementUsage"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["RequirementUsage"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -1184,15 +1226,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["SatisfyRequirementUsage"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["SatisfyRequirementUsage"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -1211,15 +1254,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["ConcernDefinition"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["ConcernDefinition"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -1238,15 +1282,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["ConcernUsage"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["ConcernUsage"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -1265,15 +1310,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["CaseDefinition"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["CaseDefinition"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -1292,15 +1338,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["CaseUsage"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["CaseUsage"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -1319,15 +1366,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["AnalysisCaseDefinition"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["AnalysisCaseDefinition"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -1346,15 +1394,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["AnalysisCaseUsage"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["AnalysisCaseUsage"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -1373,15 +1422,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["VerificationCaseDefinition"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["VerificationCaseDefinition"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -1400,15 +1450,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["VerificationCaseUsage"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["VerificationCaseUsage"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -1427,15 +1478,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["VerifyRequirementUsage"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["VerifyRequirementUsage"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -1454,15 +1506,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["UseCaseDefinition"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["UseCaseDefinition"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -1481,15 +1534,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["UseCaseUsage"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["UseCaseUsage"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -1508,15 +1562,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["IncludeUseCaseUsage"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["IncludeUseCaseUsage"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -1535,15 +1590,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["StateDefinition"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["StateDefinition"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -1562,15 +1618,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["StateUsage"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["StateUsage"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -1589,15 +1646,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["ExhibitStateUsage"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["ExhibitStateUsage"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -1616,15 +1674,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["TransitionUsage"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["TransitionUsage"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -1643,15 +1702,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["ViewDefinition"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["ViewDefinition"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -1670,15 +1730,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["ViewUsage"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["ViewUsage"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -1697,15 +1758,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["ViewpointDefinition"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["ViewpointDefinition"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -1724,15 +1786,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["ViewpointUsage"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["ViewpointUsage"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -1751,15 +1814,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["RenderingDefinition"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["RenderingDefinition"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {
@@ -1778,15 +1842,16 @@ function buildQueryHooks(): Map<string, QueryHooks> {
         },
       },
     );
-    const rule = langDef.rules!["RenderingUsage"]($);
-    if (rule && (rule as any).type === "def") {
-      const opts = (rule as any).options;
-      const merged: Record<string, any> = {};
+    const rule = (langDef.rules as Record<string, unknown>)["RenderingUsage"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
       if (opts?.queries) Object.assign(merged, opts.queries);
       // Register lint functions as lint__<name> queries
       if (opts?.lints) {
-        for (const [name, fn] of Object.entries(opts.lints)) {
-          merged["lint__" + name] = fn;
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
         }
       }
       if (Object.keys(merged).length > 0) {

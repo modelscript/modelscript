@@ -101,6 +101,7 @@ import { ModelicaFmuEntity, generateMultiModelWrapper } from "@modelscript/fmi";
 import { ModelicaOptimizer, registerOptimizeDeps } from "@modelscript/optimizer";
 import { VerificationRunner } from "@modelscript/polyglot";
 import { ModelicaSimulator, registerSimulateDeps } from "@modelscript/simulator";
+import { getRequirements, getTraceabilityMatrix } from "./requirements";
 
 // Register flattener/simulator constructors for the scripting simulate() function.
 // This breaks the circular dependency: interpreter → evaluate-simulate → flattener.
@@ -5368,6 +5369,28 @@ connection.onRequest(
     }
   },
 );
+
+// ── Requirements Management: spreadsheet data for webview editors ──
+
+connection.onRequest("modelscript/getRequirements", (params: { uri: string }) => {
+  try {
+    const db = unifiedWorkspace.toUnifiedPartial();
+    return getRequirements(db, params.uri);
+  } catch (e) {
+    console.error("[requirements] Error:", e);
+    return [];
+  }
+});
+
+connection.onRequest("modelscript/getTraceabilityMatrix", (params: { uri: string }) => {
+  try {
+    const db = unifiedWorkspace.toUnifiedPartial();
+    return getTraceabilityMatrix(db, params.uri);
+  } catch (e) {
+    console.error("[traceability] Error:", e);
+    return { sources: [], targets: [], links: [] };
+  }
+});
 
 connection.onRequest("modelscript/runVerification", async (params: { uri: string }) => {
   try {

@@ -133,6 +133,16 @@
         "command": "modelscript.showComponentTree",
         "title": "ModelScript: Show Component Tree",
         "icon": "$(list-tree)"
+      },
+      {
+        "command": "modelscript.openRequirements",
+        "title": "ModelScript: Open Requirements Editor",
+        "icon": "$(checklist)"
+      },
+      {
+        "command": "modelscript.openVerificationDashboard",
+        "title": "ModelScript: Open V&V Dashboard",
+        "icon": "$(shield)"
       }
     ],
     "configuration": [
@@ -199,6 +209,16 @@
           }
         ],
         "priority": "default"
+      },
+      {
+        "viewType": "modelscript.requirementsEditor",
+        "displayName": "Requirements Editor",
+        "selector": [
+          {
+            "filenamePattern": "*.sysml"
+          }
+        ],
+        "priority": "option"
       }
     ],
     "debuggers": [
@@ -434,6 +454,16 @@
         {
           "command": "modelscript.runVerification",
           "when": "editorLangId == sysml && activeCustomEditorId != modelscript.diagram",
+          "group": "navigation"
+        },
+        {
+          "command": "modelscript.openRequirements",
+          "when": "editorLangId == sysml",
+          "group": "navigation"
+        },
+        {
+          "command": "modelscript.openVerificationDashboard",
+          "when": "editorLangId == sysml",
           "group": "navigation"
         }
       ],

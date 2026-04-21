@@ -345,9 +345,7 @@ export function generateAstClasses(specs: ClassSpec[], langName: string): string
   lines.push(`// Language: ${langName}`);
   lines.push(`// =============================================================================`);
   lines.push(``);
-  lines.push(
-    `import type { QueryDB, SymbolEntry, SymbolId, SpecializationArgs } from "@modelscript/polyglot/runtime";`,
-  );
+  lines.push(`import type { QueryDB, SymbolEntry, SpecializationArgs } from "@modelscript/polyglot/runtime";`);
   lines.push(`import { SemanticNode, GenericNode } from "@modelscript/polyglot/semantic-node";`);
   lines.push(`import type { SemanticVisitor } from "@modelscript/polyglot/semantic-node";`);
   lines.push(``);
@@ -416,7 +414,7 @@ export function generateAstClasses(specs: ClassSpec[], langName: string): string
   lines.push(``);
 
   // Generate factory function
-  lines.push(...generateFactory(specs)); // Pass original specs for factory to get all kinds mapped
+  lines.push(...generateFactory(uniqueSpecsArray as any)); // Pass unique specs array to get all kinds mapped
 
   return lines.join("\n") + "\n";
 }
@@ -433,7 +431,7 @@ function generateClass(spec: ClassSpec, visitorName: string): string[] {
   lines.push(`export class ${className} extends ${baseClass}${implStr} {`);
 
   // Kind
-  lines.push(`  get kind(): string { return ${JSON.stringify(spec.kind)}; }`);
+  lines.push(`  readonly kind = ${JSON.stringify(spec.kind)};`);
   lines.push(``);
 
   // --- CST-derived fields ---
@@ -584,7 +582,7 @@ function generateClass(spec: ClassSpec, visitorName: string): string[] {
     lines.push(`  // --- Clone / Specialize ---`);
     lines.push(`  clone<T>(args: SpecializationArgs<T>): ${className} {`);
     lines.push(`    const virtualId = this.specialize(args);`);
-    lines.push(`    const virtualEntry = this.db.symbol(virtualId)!;`);
+    lines.push(`    const virtualEntry = this.db.symbol(virtualId) as SymbolEntry;`);
     lines.push(`    return new ${className}(virtualEntry, this.db);`);
     lines.push(`  }`);
     lines.push(``);
@@ -638,9 +636,10 @@ function generateVisitor(specs: ClassSpec[], visitorName: string): string[] {
 }
 
 /**
- * Generate the wrapEntry factory function.
+ * Wrap a SymbolEntry into its typed SemanticNode subclass.
+ * Dispatches by entry.kind to the correct generated class.
  */
-function generateFactory(specs: ClassSpec[]): string[] {
+export function generateFactory(specs: (ClassSpec & { kinds: string[] })[]): string[] {
   const lines: string[] = [];
 
   lines.push(`/**`);
@@ -649,8 +648,16 @@ function generateFactory(specs: ClassSpec[]): string[] {
   lines.push(` */`);
   lines.push(`export function wrapEntry(entry: SymbolEntry, db: QueryDB): SemanticNode {`);
   lines.push(`  switch (entry.kind) {`);
+  const emittedKinds = new Set<string>();
   for (const spec of specs) {
-    lines.push(`    case ${JSON.stringify(spec.kind)}: return new ${spec.className}(entry, db);`);
+    const uniqueKinds = Array.from(new Set(spec.kinds));
+    for (const kind of uniqueKinds) {
+      if (kind === "Unknown") continue;
+      if (!emittedKinds.has(kind)) {
+        emittedKinds.add(kind);
+        lines.push(`    case ${JSON.stringify(kind)}: return new ${spec.className}(entry, db);`);
+      }
+    }
   }
   lines.push(`    default: return new GenericNode(entry, db);`);
   lines.push(`  }`);

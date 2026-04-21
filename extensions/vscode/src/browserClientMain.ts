@@ -16,7 +16,9 @@ import { registerMCPTools } from "./mcpBridge";
 import { MqttTreeProvider } from "./mqttTreeProvider";
 import { ModelicaNotebookController } from "./notebookController";
 import { ModelicaNotebookSerializer } from "./notebookSerializer";
+import { RequirementsEditorProvider } from "./requirementsEditorProvider";
 import { SysML2PaletteProvider } from "./sysml2PaletteProvider";
+import { VerificationPanel } from "./verificationPanel";
 
 import { SimulationPanel } from "./simulationPanel";
 import { SINE_WAVE_FMU_BASE64 } from "./sineWaveFmu";
@@ -683,6 +685,23 @@ export async function activate(context: vscode.ExtensionContext) {
       if (!client) return;
       AnalysisPanel.createOrShowComponentTree(context.extensionUri, client);
     }),
+    // ── MBSE views: Requirements & V&V ──
+    commands.registerCommand("modelscript.openRequirements", async () => {
+      const editor = vscode.window.activeTextEditor;
+      if (editor?.document.languageId === "sysml") {
+        await vscode.commands.executeCommand(
+          "vscode.openWith",
+          editor.document.uri,
+          RequirementsEditorProvider.viewType,
+        );
+      } else {
+        vscode.window.showWarningMessage("Open a SysML file first.");
+      }
+    }),
+    commands.registerCommand("modelscript.openVerificationDashboard", () => {
+      if (!client) return;
+      VerificationPanel.createOrShow(context.extensionUri, client);
+    }),
   );
 
   // Register the custom editor provider for modelica diagrams
@@ -691,6 +710,17 @@ export async function activate(context: vscode.ExtensionContext) {
       webviewOptions: { retainContextWhenHidden: true },
     }),
   );
+
+  // Register the requirements editor for SysML documents
+  if (client) {
+    const requirementsProvider = new RequirementsEditorProvider(context.extensionUri, client);
+    context.subscriptions.push(
+      vscode.window.registerCustomEditorProvider(RequirementsEditorProvider.viewType, requirementsProvider, {
+        supportsMultipleEditorsPerDocument: true,
+        webviewOptions: { retainContextWhenHidden: false },
+      }),
+    );
+  }
 
   // Pre-open all .mo files in the workspace so the LSP server can track them.
   // This is fire-and-forget: don't crash the extension if the filesystem isn't ready.
