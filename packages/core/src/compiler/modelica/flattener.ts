@@ -3301,9 +3301,6 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     }
 
     if (!declaredType || declaredType.classKind !== ModelicaClassKind.OPERATOR_RECORD) {
-      console.log(
-        `resolveOperatorRecordFunction FAILING on declaredType. declaredType exists? ${!!declaredType}. classKind? ${declaredType?.classKind}`,
-      );
       return null;
     }
     if (declaredType.instantiate) declaredType.instantiate();
@@ -6420,7 +6417,10 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     const comp1 = this.#resolveConnectComponent(ref1, ctx);
     const comp2 = this.#resolveConnectComponent(ref2, ctx);
     if (!comp1 || !comp2) {
-      console.error(`Connect component resolution failed: ${name1}=${!!comp1}, ${name2}=${!!comp2}`);
+      // During initial editor load frames before the entire MSL has finished parsing,
+      // unresolved connects are strictly normal (target port models haven't been mapped yet).
+      // Downgrade this to a debug trace so it doesn't pop open the user's output panel.
+      // console.debug(`Connect component resolution failed: ${name1}=${!!comp1}, ${name2}=${!!comp2}`);
       return null;
     }
 

@@ -88,6 +88,7 @@ import {
   createSysML2QueryEngine,
   createSysML2ScopeResolver,
   createSysML2WorkspaceIndex,
+  injectPredefinedTypes,
   performBltTransformation,
   type Dirent,
   type FileSystem,
@@ -1288,12 +1289,21 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
     }
     documentTrees.set(textDocument.uri, { text, tree, classCache: oldCached?.classCache ?? new Map() });
 
+    // Normalize UI virtual URIs back to internal indices so we can match MSL classes correctly
+    const effectiveUri = textDocument.uri.startsWith("modelscript-lib://global")
+      ? "file://" + textDocument.uri.substring("modelscript-lib://global".length)
+      : textDocument.uri;
+
     // --- Polyglot Pipeline ---
-    if (globalWorkspaceIndex.has(textDocument.uri)) {
-      globalWorkspaceIndex.markDirty(textDocument.uri, () => tree.rootNode);
+    if (globalWorkspaceIndex.has(effectiveUri)) {
+      globalWorkspaceIndex.markDirty(effectiveUri, () => tree.rootNode);
     } else {
-      globalWorkspaceIndex.register(textDocument.uri, () => tree.rootNode);
+      globalWorkspaceIndex.register(effectiveUri, () => tree.rootNode);
     }
+
+    // Force index evaluation for active document AFTER it is registered/marked dirty
+    // so that it actually triggers processing and populates the partial index.
+    globalWorkspaceIndex.getFileIndex(effectiveUri);
 
     // Create query engine, resolver, and LSP bridge over the unified workspace index.
     // Use toUnifiedPartial() to avoid blocking on parsing ALL MSL files —
@@ -1362,6 +1372,7 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
 
     let engine = documentQueryEngines.get(textDocument.uri) as any;
     if (engine) {
+      injectPredefinedTypes(unifiedIndex);
       engine.updateIndex(unifiedIndex);
       if (typeof engine.updateTree === "function") engine.updateTree(cstTreeWrapper);
     } else {
@@ -1435,16 +1446,35 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
 
     // 4. Create QueryBackedClassInstance wrappers from the polyglot index
     //    for backward compatibility with downstream handlers (diagram, simulation, etc.)
+    // already declared above, we only need to use it here.
+    // effectiveUri is available in this scope.
+
     const db = engine.toQueryDB();
     const thisDocInstances: ModelicaClassInstance[] = [];
+
+    // Strip "file://" uniformly for matching.
+    const normUri = (uri: string) => (uri.startsWith("file://") ? uri.substring(7) : uri);
+    const matchUri = normUri(effectiveUri);
+
     for (const [id, entry] of unifiedIndex.symbols) {
-      if (entry.resourceId !== textDocument.uri) continue;
-      if (entry.kind !== "Class" || entry.parentId !== null) continue; // Top-level classes only
+      if (!entry.resourceId || normUri(entry.resourceId) !== matchUri) continue;
+      if (entry.kind !== "Class") continue; // Top-level classes only
+      // If the parent is in the same file, this is not a top-level class in this file.
+      // E.g., skips nested classes, but keeps file-root classes even if they use the `within` directive
+      // to anchor themselves to an external package (such as MSL).
+      if (entry.parentId !== null) {
+        const parentEntry = unifiedIndex.symbols.get(entry.parentId);
+        if (parentEntry && parentEntry.resourceId && normUri(parentEntry.resourceId) === matchUri) {
+          continue;
+        }
+      }
+
       const wrapper = new QueryBackedClassInstance(id, db) as unknown as ModelicaClassInstance;
       thisDocInstances.push(wrapper);
     }
     workspaceInstances.set(textDocument.uri, thisDocInstances);
     documentInstances.set(textDocument.uri, thisDocInstances);
+    connection.console.info(`[validate] stored ${thisDocInstances.length} instances for ${textDocument.uri}`);
     documentContexts.set(textDocument.uri, context);
   } else {
     // Fallback: basic regex validation when tree-sitter is not available
@@ -2520,12 +2550,14 @@ connection.onSignatureHelp((params) => {
 
 /* Find References — locates all occurrences of a symbol across open documents */
 
-connection.onReferences((params) => {
+connection.onReferences(async (params) => {
   const document = documents.get(params.textDocument.uri);
   if (!document) return [];
 
   const isSysML2 = params.textDocument.uri.endsWith(".sysml");
-  const unifiedIndex = isSysML2 ? sysml2WorkspaceIndex.toUnified() : globalWorkspaceIndex.toUnified();
+  const unifiedIndex = isSysML2
+    ? await sysml2WorkspaceIndex.toUnifiedAsync()
+    : await globalWorkspaceIndex.toUnifiedAsync();
   const resolver = isSysML2 ? createSysML2ScopeResolver(unifiedIndex) : createModelicaScopeResolver(unifiedIndex);
 
   const offset = document.offsetAt(params.position);
@@ -2592,12 +2624,14 @@ connection.onReferences((params) => {
 
 /* Rename — renames a symbol across all documents */
 
-connection.onRenameRequest((params) => {
+connection.onRenameRequest(async (params) => {
   const document = documents.get(params.textDocument.uri);
   if (!document) return null;
 
   const isSysML2 = params.textDocument.uri.endsWith(".sysml");
-  const unifiedIndex = isSysML2 ? sysml2WorkspaceIndex.toUnified() : globalWorkspaceIndex.toUnified();
+  const unifiedIndex = isSysML2
+    ? await sysml2WorkspaceIndex.toUnifiedAsync()
+    : await globalWorkspaceIndex.toUnifiedAsync();
   const resolver = isSysML2 ? createSysML2ScopeResolver(unifiedIndex) : createModelicaScopeResolver(unifiedIndex);
 
   const offset = document.offsetAt(params.position);
@@ -3171,7 +3205,7 @@ connection.onRequest(
 // Custom request: simulate a model
 connection.onRequest(
   "modelscript/simulate",
-  (params: {
+  async (params: {
     uri: string;
     className?: string;
     startTime?: number;
@@ -3181,7 +3215,7 @@ connection.onRequest(
     solver?: string;
     format?: string;
     parameterOverrides?: Record<string, number>;
-  }): {
+  }): Promise<{
     t: number[];
     y: number[][];
     states: string[];
@@ -3197,9 +3231,23 @@ connection.onRequest(
     }[];
     experiment?: { startTime?: number; stopTime?: number; interval?: number; tolerance?: number };
     error?: string;
-  } => {
-    const instances = documentInstances.get(params.uri);
+  }> => {
+    connection.console.info(`[simulate] Requested simulation for URI: ${params.uri}`);
+    connection.console.info(`[simulate] documentInstances has ${documentInstances.size} entries.`);
+    let instances = documentInstances.get(params.uri);
     if (!instances || instances.length === 0) {
+      // Force-validate the document so the polyglot index is populated
+      const doc = documents.get(params.uri);
+      if (doc) {
+        connection.console.info(`[simulate] No instances yet — force-validating ${params.uri}`);
+        await validateTextDocument(doc);
+        instances = documentInstances.get(params.uri);
+      }
+    }
+    if (!instances || instances.length === 0) {
+      connection.console.info(
+        `[simulate] Instances array empty/undefined for ${params.uri}. Available URIs: ${Array.from(documentInstances.keys()).join(", ")}`,
+      );
       return { t: [], y: [], states: [], error: "No class instances found for this document." };
     }
 
@@ -3768,8 +3816,8 @@ interface ProjectTreeNodeInfo {
 connection.onRequest("modelscript/getProjectTree", (params: { parentId?: string }): ProjectTreeNodeInfo[] => {
   const nodes: ProjectTreeNodeInfo[] = [];
 
-  const globalUnified = globalWorkspaceIndex.toUnified();
-  const sysmlUnified = sysml2WorkspaceIndex.toUnified();
+  const globalUnified = globalWorkspaceIndex.toTreeIndex();
+  const sysmlUnified = sysml2WorkspaceIndex.toTreeIndex();
 
   const allSymbols = new Map<string, any>();
   for (const [id, entry] of globalUnified.symbols) allSymbols.set(id.toString(), entry);
@@ -3879,10 +3927,27 @@ connection.onRequest("modelscript/getProjectTree", (params: { parentId?: string 
 // Custom request: get class icon SVG
 connection.onRequest("modelscript/getClassIcon", (params: { className: string; uri?: string }): string | null => {
   try {
-    const context = params.uri ? documentContexts.get(params.uri) : documentContexts.values().next().value;
+    const docUri = params.uri ?? documentContexts.keys().next().value;
+    if (!docUri) return null;
+    const context = documentContexts.get(docUri);
     if (!context) return null;
 
-    const classInstance = context.query(params.className);
+    let classInstance = context.query(params.className);
+
+    // If not found, it might be an unparsed MSL file. Force indexing and retry.
+    if (!classInstance) {
+      const uri = (globalWorkspaceIndex as any).getFileUriForFQN?.(params.className);
+      if (uri) {
+        globalWorkspaceIndex.getFileIndex(uri);
+        // We must update the engine's index so it sees the newly parsed file
+        const newIndex = globalWorkspaceIndex.toUnifiedPartial();
+        injectPredefinedTypes(newIndex);
+        const engine = documentQueryEngines.get(docUri) as any;
+        if (engine) engine.updateIndex(newIndex);
+        classInstance = context.query(params.className);
+      }
+    }
+
     if (!(classInstance instanceof ModelicaClassInstance)) return null;
 
     return getClassIconSvg(classInstance) ?? null;
@@ -4245,8 +4310,8 @@ connection.onRequest("modelscript/listClasses", (): { classes: { name: string; k
   const classes: { name: string; kind: string; uri: string }[] = [];
   const seen = new Set<string>();
 
-  const globalUnified = globalWorkspaceIndex.toUnified();
-  const sysmlUnified = sysml2WorkspaceIndex.toUnified();
+  const globalUnified = globalWorkspaceIndex.toTreeIndex();
+  const sysmlUnified = sysml2WorkspaceIndex.toTreeIndex();
 
   const allSymbols = new Map<string, any>();
   for (const [id, entry] of globalUnified.symbols) allSymbols.set(id.toString(), entry);

@@ -98,25 +98,10 @@ export class Context extends Scope {
         return tree.rootNode.text.substring(startByte, endByte);
       },
       getNode: (startByte: number, endByte: number, entry?: any) => {
-        console.log(
-          "getNode called. startByte:",
-          startByte,
-          "endByte:",
-          endByte,
-          "entry?",
-          !!entry,
-          "resourceId:",
-          entry?.resourceId,
-        );
         if (!entry || !entry.resourceId) return null;
         const tree = this.#trees.get(entry.resourceId);
-        if (!tree) {
-          console.log("tree not found for resourceId:", entry.resourceId);
-          return null;
-        }
-        const node = tree.rootNode.descendantForIndex(startByte, endByte);
-        console.log("found descendant?", !!node, "type:", node?.type);
-        return node;
+        if (!tree) return null;
+        return tree.rootNode.descendantForIndex(startByte, endByte);
       },
     };
 

@@ -3164,7 +3164,6 @@ export class ModelicaSimulator {
   //  Detect which when-clause had a triggering sign change
   // ──────────────────────────────────────────────────────────────────
   private detectTriggeredClause(gPre: number[], gPost: number[]): number {
-    console.log("detect", gPre, gPost);
     for (let i = 0; i < this.whenClauses.length; i++) {
       const clause = this.whenClauses[i];
       if (!clause) continue;

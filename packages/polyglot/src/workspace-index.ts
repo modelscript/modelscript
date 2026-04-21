@@ -408,6 +408,29 @@ export class WorkspaceIndex {
     return this.files.has(uri);
   }
 
+  /** Gets the URI of the file that defines the given fully qualified class name. */
+  getFileUriForFQN(targetFqn: string): string | null {
+    for (const [uri, file] of this.files) {
+      const path = uri.startsWith("file://") ? uri.substring(7) : uri;
+      const segments = path.split("/");
+      const fileName = segments[segments.length - 1];
+
+      let name: string;
+      if (fileName === "package.mo") {
+        const dirName = segments[segments.length - 2] ?? "";
+        name = dirName.split(" ")[0];
+      } else if (fileName.endsWith(".mo")) {
+        name = fileName.slice(0, -3);
+      } else {
+        continue;
+      }
+
+      const fqn = file.parentFQN ? `${file.parentFQN}.${name}` : name;
+      if (fqn === targetFqn) return uri;
+    }
+    return null;
+  }
+
   /**
    * Get a lightweight tree index without parsing any files.
    * Returns the cached unified index if available (already built by document processing),
@@ -452,6 +475,7 @@ export class WorkspaceIndex {
       name: string;
       parentFQN: string;
       isPackage: boolean;
+      uri: string;
     }> = [];
 
     for (const [uri, file] of this.files) {
@@ -482,11 +506,11 @@ export class WorkspaceIndex {
       const fqn = parentFQN ? `${parentFQN}.${name}` : name;
 
       fqnToId.set(fqn, id);
-      pendingEntries.push({ id, name, parentFQN, isPackage });
+      pendingEntries.push({ id, name, parentFQN, isPackage, uri });
     }
 
     // Second pass: resolve parents and build the index
-    for (const { id, name, parentFQN, isPackage } of pendingEntries) {
+    for (const { id, name, parentFQN, isPackage, uri } of pendingEntries) {
       const parentId = parentFQN ? (fqnToId.get(parentFQN) ?? null) : null;
 
       const entry: SymbolEntry = {
@@ -502,6 +526,7 @@ export class WorkspaceIndex {
         inherits: [],
         metadata: { classPrefixes: isPackage ? "package" : "" },
         fieldName: null,
+        resourceId: uri,
       };
 
       symbols.set(id, entry);

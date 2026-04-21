@@ -4103,105 +4103,118 @@ export class ModelicaReturnStatementSyntaxNode
 
 export type IModelicaExpressionSyntaxNode = IModelicaSyntaxNode;
 
+let AST_CONSTRUCTION_DEPTH = 0;
+
 export abstract class ModelicaExpressionSyntaxNode extends ModelicaSyntaxNode implements IModelicaExpressionSyntaxNode {
   static override new(
     parent: ModelicaSyntaxNode | null,
     concreteSyntaxNode?: SyntaxNode | null,
     abstractSyntaxNode?: IModelicaExpressionSyntaxNode | null,
   ): ModelicaExpressionSyntaxNode | null {
-    switch (concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]) {
-      case ModelicaIfElseExpressionSyntaxNode.type:
-        return new ModelicaIfElseExpressionSyntaxNode(
-          parent,
-          concreteSyntaxNode,
-          abstractSyntaxNode as IModelicaIfElseExpressionSyntaxNode,
-        );
-      case ModelicaRangeExpressionSyntaxNode.type:
-        return new ModelicaRangeExpressionSyntaxNode(
-          parent,
-          concreteSyntaxNode,
-          abstractSyntaxNode as IModelicaRangeExpressionSyntaxNode,
-        );
-      case ModelicaUnaryExpressionSyntaxNode.type:
-        return new ModelicaUnaryExpressionSyntaxNode(
-          parent,
-          concreteSyntaxNode,
-          abstractSyntaxNode as IModelicaUnaryExpressionSyntaxNode,
-        );
-      case ModelicaBinaryExpressionSyntaxNode.type:
-        return new ModelicaBinaryExpressionSyntaxNode(
-          parent,
-          concreteSyntaxNode,
-          abstractSyntaxNode as IModelicaBinaryExpressionSyntaxNode,
-        );
-      case ModelicaFunctionCallSyntaxNode.type:
-        return new ModelicaFunctionCallSyntaxNode(
-          parent,
-          concreteSyntaxNode,
-          abstractSyntaxNode as IModelicaFunctionCallSyntaxNode,
-        );
-      case ModelicaComponentReferenceSyntaxNode.type:
-        return new ModelicaComponentReferenceSyntaxNode(
-          parent,
-          concreteSyntaxNode,
-          abstractSyntaxNode as IModelicaComponentReferenceSyntaxNode,
-        );
-      case ModelicaMemberAccessExpressionSyntaxNode.type:
-        return new ModelicaMemberAccessExpressionSyntaxNode(
-          parent,
-          concreteSyntaxNode,
-          abstractSyntaxNode as IModelicaMemberAccessExpressionSyntaxNode,
-        );
-      case ModelicaOutputExpressionListSyntaxNode.type:
-        return new ModelicaOutputExpressionListSyntaxNode(
-          parent,
-          concreteSyntaxNode,
-          abstractSyntaxNode as IModelicaOutputExpressionListSyntaxNode,
-        );
-      case ModelicaArrayConcatenationSyntaxNode.type:
-        return new ModelicaArrayConcatenationSyntaxNode(
-          parent,
-          concreteSyntaxNode,
-          abstractSyntaxNode as IModelicaArrayConcatenationSyntaxNode,
-        );
-      case ModelicaArrayConstructorSyntaxNode.type:
-        return new ModelicaArrayConstructorSyntaxNode(
-          parent,
-          concreteSyntaxNode,
-          abstractSyntaxNode as IModelicaArrayConstructorSyntaxNode,
-        );
-      case ModelicaEndExpressionSyntaxNode.type:
-        return new ModelicaEndExpressionSyntaxNode(
-          parent,
-          concreteSyntaxNode,
-          abstractSyntaxNode as IModelicaEndExpressionSyntaxNode,
-        );
-      case ModelicaBooleanLiteralSyntaxNode.type:
-        return new ModelicaBooleanLiteralSyntaxNode(
-          parent,
-          concreteSyntaxNode,
-          abstractSyntaxNode as IModelicaBooleanLiteralSyntaxNode,
-        );
-      case ModelicaStringLiteralSyntaxNode.type:
-        return new ModelicaStringLiteralSyntaxNode(
-          parent,
-          concreteSyntaxNode,
-          abstractSyntaxNode as IModelicaStringLiteralSyntaxNode,
-        );
-      case ModelicaUnsignedIntegerLiteralSyntaxNode.type:
-        return new ModelicaUnsignedIntegerLiteralSyntaxNode(
-          parent,
-          concreteSyntaxNode,
-          abstractSyntaxNode as IModelicaUnsignedIntegerLiteralSyntaxNode,
-        );
-      case ModelicaUnsignedRealLiteralSyntaxNode.type:
-        return new ModelicaUnsignedRealLiteralSyntaxNode(
-          parent,
-          concreteSyntaxNode,
-          abstractSyntaxNode as IModelicaUnsignedRealLiteralSyntaxNode,
-        );
-      default:
-        return null;
+    if (AST_CONSTRUCTION_DEPTH > 500) {
+      console.warn(
+        "Max AST construction depth reached! Returning null for deep expression to prevent Maximum call stack size exceeded.",
+      );
+      return null;
+    }
+    AST_CONSTRUCTION_DEPTH++;
+    try {
+      switch (concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]) {
+        case ModelicaIfElseExpressionSyntaxNode.type:
+          return new ModelicaIfElseExpressionSyntaxNode(
+            parent,
+            concreteSyntaxNode,
+            abstractSyntaxNode as IModelicaIfElseExpressionSyntaxNode,
+          );
+        case ModelicaRangeExpressionSyntaxNode.type:
+          return new ModelicaRangeExpressionSyntaxNode(
+            parent,
+            concreteSyntaxNode,
+            abstractSyntaxNode as IModelicaRangeExpressionSyntaxNode,
+          );
+        case ModelicaUnaryExpressionSyntaxNode.type:
+          return new ModelicaUnaryExpressionSyntaxNode(
+            parent,
+            concreteSyntaxNode,
+            abstractSyntaxNode as IModelicaUnaryExpressionSyntaxNode,
+          );
+        case ModelicaBinaryExpressionSyntaxNode.type:
+          return new ModelicaBinaryExpressionSyntaxNode(
+            parent,
+            concreteSyntaxNode,
+            abstractSyntaxNode as IModelicaBinaryExpressionSyntaxNode,
+          );
+        case ModelicaFunctionCallSyntaxNode.type:
+          return new ModelicaFunctionCallSyntaxNode(
+            parent,
+            concreteSyntaxNode,
+            abstractSyntaxNode as IModelicaFunctionCallSyntaxNode,
+          );
+        case ModelicaComponentReferenceSyntaxNode.type:
+          return new ModelicaComponentReferenceSyntaxNode(
+            parent,
+            concreteSyntaxNode,
+            abstractSyntaxNode as IModelicaComponentReferenceSyntaxNode,
+          );
+        case ModelicaMemberAccessExpressionSyntaxNode.type:
+          return new ModelicaMemberAccessExpressionSyntaxNode(
+            parent,
+            concreteSyntaxNode,
+            abstractSyntaxNode as IModelicaMemberAccessExpressionSyntaxNode,
+          );
+        case ModelicaOutputExpressionListSyntaxNode.type:
+          return new ModelicaOutputExpressionListSyntaxNode(
+            parent,
+            concreteSyntaxNode,
+            abstractSyntaxNode as IModelicaOutputExpressionListSyntaxNode,
+          );
+        case ModelicaArrayConcatenationSyntaxNode.type:
+          return new ModelicaArrayConcatenationSyntaxNode(
+            parent,
+            concreteSyntaxNode,
+            abstractSyntaxNode as IModelicaArrayConcatenationSyntaxNode,
+          );
+        case ModelicaArrayConstructorSyntaxNode.type:
+          return new ModelicaArrayConstructorSyntaxNode(
+            parent,
+            concreteSyntaxNode,
+            abstractSyntaxNode as IModelicaArrayConstructorSyntaxNode,
+          );
+        case ModelicaEndExpressionSyntaxNode.type:
+          return new ModelicaEndExpressionSyntaxNode(
+            parent,
+            concreteSyntaxNode,
+            abstractSyntaxNode as IModelicaEndExpressionSyntaxNode,
+          );
+        case ModelicaBooleanLiteralSyntaxNode.type:
+          return new ModelicaBooleanLiteralSyntaxNode(
+            parent,
+            concreteSyntaxNode,
+            abstractSyntaxNode as IModelicaBooleanLiteralSyntaxNode,
+          );
+        case ModelicaStringLiteralSyntaxNode.type:
+          return new ModelicaStringLiteralSyntaxNode(
+            parent,
+            concreteSyntaxNode,
+            abstractSyntaxNode as IModelicaStringLiteralSyntaxNode,
+          );
+        case ModelicaUnsignedIntegerLiteralSyntaxNode.type:
+          return new ModelicaUnsignedIntegerLiteralSyntaxNode(
+            parent,
+            concreteSyntaxNode,
+            abstractSyntaxNode as IModelicaUnsignedIntegerLiteralSyntaxNode,
+          );
+        case ModelicaUnsignedRealLiteralSyntaxNode.type:
+          return new ModelicaUnsignedRealLiteralSyntaxNode(
+            parent,
+            concreteSyntaxNode,
+            abstractSyntaxNode as IModelicaUnsignedRealLiteralSyntaxNode,
+          );
+        default:
+          return null;
+      }
+    } finally {
+      AST_CONSTRUCTION_DEPTH--;
     }
   }
 }

@@ -169,10 +169,7 @@ export class LibraryTreeProvider
       );
 
       // Lazily fetch icons for nodes that don't have them yet.
-      // Only fetch for non-package classes (packages rarely have interesting icons).
-      const nodesNeedingIcons = nodes.filter(
-        (n) => !n.iconSvg && !this.iconFetchPending.has(n.compositeName) && n.classKind !== "package",
-      );
+      const nodesNeedingIcons = nodes.filter((n) => !n.iconSvg && !this.iconFetchPending.has(n.compositeName));
 
       if (nodesNeedingIcons.length > 0) {
         this.fetchIconsInBackground(nodesNeedingIcons);

@@ -192,6 +192,8 @@ export class QueryBackedClassInstance extends QueryBackedElement {
 
   get classKind(): string {
     const meta = this.entry?.metadata as Record<string, unknown>;
+    if (typeof meta?.classKind === "string") return meta.classKind;
+
     const prefixes = ((meta?.classPrefixes as string) || "class").trim().toLowerCase();
 
     if (prefixes.includes("expandable connector")) return "expandable connector";
@@ -249,19 +251,16 @@ export class QueryBackedClassInstance extends QueryBackedElement {
    */
   get shortClassTarget(): QueryBackedClassInstance | null {
     if (this.classKind !== "type") return null;
+    // Predefined types (Real, Integer, etc.) are not short class specifiers
+    const meta = this.entry?.metadata as Record<string, unknown>;
+    if (meta?.isPredefined) return null;
     const cst = this.db.cstNode(this.id) as any;
-    if (!cst) {
-      console.log(`[shortClassTarget] CST node missing for ${this.name} (${this.id})`);
-      return null;
-    }
+    if (!cst) return null;
     // Navigate to the ShortClassSpecifier's typeSpecifier
     const classSpecifier = cst.childForFieldName?.("classSpecifier");
     const typeSpec = classSpecifier?.childForFieldName?.("typeSpecifier");
     const typeName = typeSpec?.text;
-    if (!typeName) {
-      console.log(`[shortClassTarget] No typeName parsed from CST for ${this.name}`);
-      return null;
-    }
+    if (!typeName) return null;
     // Resolve using the enclosing scope via full name resolution
     const parentId = this.entry?.parentId;
     if (parentId !== null && parentId !== undefined) {
@@ -270,17 +269,16 @@ export class QueryBackedClassInstance extends QueryBackedElement {
         const resolved = resolver(typeName);
         if (resolved?.id) {
           return this.wrapElement(resolved.id) as QueryBackedClassInstance | null;
-        } else {
-          console.log(`[shortClassTarget] resolveName returned null for typeName=${typeName} in parentId=${parentId}`);
         }
-      } else {
-        console.log(`[shortClassTarget] No resolver found for parentId=${parentId}`);
       }
     }
     // Fallback: global lookup with dotted path traversal
     const parts = typeName.split(".");
     let currentEntries = this.db.byName(parts[0]!);
-    let current = currentEntries?.find((e: any) => e.kind === "Class" || e.kind === "Package") ?? currentEntries?.[0];
+    let current =
+      currentEntries?.find((e: any) => (e.metadata as Record<string, unknown>)?.isPredefined) ??
+      currentEntries?.find((e: any) => e.kind === "Class" || e.kind === "Package") ??
+      currentEntries?.[0];
 
     if (current) {
       for (let i = 1; i < parts.length; i++) {
@@ -298,7 +296,7 @@ export class QueryBackedClassInstance extends QueryBackedElement {
     if (current && current.kind === "Class") {
       return this.wrapElement(current.id) as QueryBackedClassInstance | null;
     }
-    console.log(`[shortClassTarget] Fallback global lookup failed to find Class for typeName=${typeName}`);
+
     return null;
   }
 
@@ -842,7 +840,11 @@ export class QueryBackedComponentInstance extends QueryBackedClassInstance {
 
     // 2. Inline bindings from the AST (e.g., `start=1` or `= 9.81`)
     const ast = this.abstractSyntaxNode;
-    const rawAstMod = ast?.modification ?? ast?.declaration?.modification;
+    const rawAstMod =
+      ast?.modification ??
+      ast?.declaration?.modification ??
+      ast?.componentDeclarations?.[0]?.modification ??
+      ast?.declarations?.[0]?.modification;
     const astMod = rawAstMod ? new AstBackedModification(rawAstMod) : null;
 
     if (dbMod && astMod) return new MergedModification(dbMod, astMod);
@@ -874,6 +876,27 @@ export class QueryBackedComponentInstance extends QueryBackedClassInstance {
 export class QueryBackedExtendsClassInstance extends QueryBackedClassInstance {
   override accept<R, A>(visitor: any, argument?: A): R {
     return visitor.visitExtendsClassInstance(this, argument);
+  }
+
+  // Override getters that would issue ClassDefinition-specific queries
+  // against an ExtendsClause id, causing a crash.
+  get isPartial(): boolean {
+    return false;
+  }
+  get extendsClassInstances(): { classInstance: QueryBackedClassInstance | null }[] {
+    return [];
+  }
+  get nestedClasses(): QueryBackedClassInstance[] {
+    return [];
+  }
+  get connectEquations(): any[] {
+    return [];
+  }
+  get parameters(): any[] {
+    return [];
+  }
+  get elements(): QueryBackedElement[] {
+    return [];
   }
 
   /** Resolve the base class referenced by this extends clause. */
