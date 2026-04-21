@@ -1263,10 +1263,19 @@ export default language({
               }
             }
 
-            // Fallback: global lookup by simple name (last segment for qualified, full for simple)
+            // Fallback: global lookup — try full qualified name first, then simple name
+            if (typeName.includes(".")) {
+              const entries = db.byName(typeName);
+              const found = entries?.find((e) => e.kind === "Class" || e.kind === "Package" || e.kind === "Function");
+              if (found) return found;
+            }
             const simpleName = typeName.includes(".") ? typeName.split(".").pop()! : typeName;
             const entries = db.byName(simpleName);
-            return entries?.find((e) => e.kind === "Class" || e.kind === "Package" || e.kind === "Function") ?? null;
+            return (
+              entries?.find((e) => (e.metadata as Record<string, unknown>)?.isPredefined && e.kind === "Class") ??
+              entries?.find((e) => e.kind === "Class" || e.kind === "Package" || e.kind === "Function") ??
+              null
+            );
           },
           /**
            * Get the effective modification for this component as a
@@ -1366,12 +1375,19 @@ export default language({
               }
             }
 
-            // Fallback: global lookup by simple name
+            // Fallback: global lookup — try full qualified name first
+            if (!typeEntry && typeName.includes(".")) {
+              const entries = db.byName(typeName);
+              typeEntry =
+                entries?.find((e) => e.kind === "Class" || e.kind === "Package" || e.kind === "Function") ?? null;
+            }
             if (!typeEntry) {
               const simpleName = typeName.includes(".") ? typeName.split(".").pop()! : typeName;
               const entries = db.byName(simpleName);
               typeEntry =
-                entries?.find((e) => e.kind === "Class" || e.kind === "Package" || e.kind === "Function") ?? null;
+                entries?.find((e) => (e.metadata as Record<string, unknown>)?.isPredefined && e.kind === "Class") ??
+                entries?.find((e) => e.kind === "Class" || e.kind === "Package" || e.kind === "Function") ??
+                null;
             }
 
             if (!typeEntry) return false;
@@ -1477,12 +1493,22 @@ export default language({
                 }
               }
             }
-            // Fallback: global lookup by simple name (last segment)
+            // Fallback: global lookup — try full qualified name first, then simple name
+            if (!typeEntry && typeName.includes(".")) {
+              const entries = db.byName(typeName);
+              typeEntry =
+                entries?.find((e) => e.kind === "Class" || e.kind === "Package" || e.kind === "Function") ?? null;
+            }
             if (!typeEntry) {
               const simpleName = typeName.includes(".") ? typeName.split(".").pop()! : typeName;
               const entries = db.byName(simpleName);
+              // Prefer predefined types (Real, Integer, etc.) to avoid
+              // resolving e.g. "Temperature" to a random class instead of
+              // the correct SI type alias.
               typeEntry =
-                entries?.find((e) => e.kind === "Class" || e.kind === "Package" || e.kind === "Function") ?? null;
+                entries?.find((e) => (e.metadata as Record<string, unknown>)?.isPredefined && e.kind === "Class") ??
+                entries?.find((e) => e.kind === "Class" || e.kind === "Package" || e.kind === "Function") ??
+                null;
             }
             if (!typeEntry) return null;
 

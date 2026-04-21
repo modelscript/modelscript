@@ -1,6 +1,8 @@
 /* eslint-disable */
 import { BrowserMessageReader, BrowserMessageWriter, createConnection } from "vscode-languageserver/browser";
 
+Error.stackTraceLimit = Infinity;
+
 import {
   CodeAction,
   CodeActionKind,
@@ -1308,7 +1310,7 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
     // Create query engine, resolver, and LSP bridge over the unified workspace index.
     // Use toUnifiedPartial() to avoid blocking on parsing ALL MSL files —
     // only merges files that have already been indexed.
-    const unifiedIndex = globalWorkspaceIndex.toUnifiedPartial();
+    let unifiedIndex = globalWorkspaceIndex.toUnifiedPartial();
 
     const cstTreeWrapper = {
       getText(startByte: number, endByte: number, entry?: any): string | null {
@@ -1429,7 +1431,18 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
 
     // 3. Collect unresolved reference diagnostics from the polyglot resolver
     const unresolvedRefs = resolver.resolveAllReferences(textDocument.uri);
+    let dirty = false;
     for (const r of unresolvedRefs) {
+      // Force evaluate any missing class files based on their expected FQN
+      if (r.fqn) {
+        const uriToFix = (globalWorkspaceIndex as any).getFileUriForFQN?.(r.fqn);
+        if (uriToFix && !globalWorkspaceIndex.has(uriToFix)) {
+          globalWorkspaceIndex.getFileIndex(uriToFix);
+          dirty = true;
+          continue; // Wait until next validation pass when it's resolved
+        }
+      }
+
       const start = (bridge as any).positions.offsetToPosition(r.startByte);
       const end = (bridge as any).positions.offsetToPosition(r.endByte);
       let severity: DiagnosticSeverity = DiagnosticSeverity.Error;
@@ -1442,6 +1455,14 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
         message: r.message,
         source: "modelscript",
       });
+    }
+
+    if (dirty) {
+      unifiedIndex = globalWorkspaceIndex.toUnifiedPartial();
+      injectPredefinedTypes(unifiedIndex);
+      engine.updateIndex(unifiedIndex);
+      resolver.updateIndex(unifiedIndex);
+      // Let the references resolve on the next edit, or re-run here.
     }
 
     // 4. Create QueryBackedClassInstance wrappers from the polyglot index

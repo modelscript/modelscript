@@ -755,6 +755,13 @@ export class QueryBackedComponentInstance extends QueryBackedClassInstance {
   get isComponentInstance(): boolean {
     return true;
   }
+
+  /** The enclosing class instance that contains this component. */
+  get parent(): QueryBackedClassInstance | null {
+    const parentId = this.entry?.parentId;
+    if (parentId === null || parentId === undefined) return null;
+    return new QueryBackedClassInstance(parentId, this.db);
+  }
   /** The component's type specifier (e.g., "Real", "Modelica.Electrical.Pin"). */
   get typeSpecifier(): string {
     return ((this.entry?.metadata as Record<string, unknown>)?.typeSpecifier as string) ?? "";
@@ -994,10 +1001,15 @@ export class AstBackedModification {
     const t = this.expression.text;
     if (!t) return null;
 
-    const tType = this.expression.type;
+    const tType = this.expression.type ?? this.expression["@type"];
     if (tType === "BOOLEAN" || tType === "boolean_literal") {
       return t === "true";
     }
+
+    if (tType === "STRING" || tType === "string_literal") {
+      return t.replace(/^"|"$/g, "");
+    }
+
     if (
       tType === "UNSIGNED_INTEGER" ||
       tType === "UNSIGNED_REAL" ||

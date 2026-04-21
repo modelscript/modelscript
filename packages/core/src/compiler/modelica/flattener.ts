@@ -522,8 +522,11 @@ function getUnderlyingPredefinedClass(
   cls: ModelicaClassInstance | null,
   visited = new Set<unknown>(),
 ): ModelicaPredefinedClassInstance | null {
-  if (!cls || visited.has(cls)) return null;
-  visited.add(cls);
+  // Use proper unique semantic identifier key for cache tracking natively across disparate memory objects
+  const cacheKey = (cls as any)?.id ?? cls;
+  if (!cls || visited.has(cacheKey)) return null;
+  visited.add(cacheKey);
+
   const isQueryBackedPredefined =
     cls.name &&
     ["Real", "Integer", "Boolean", "String", "Clock", "Expression"].includes(cls.name) &&
@@ -700,6 +703,22 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
    * @param args - A tuple of `[prefixString, activeDAE]` to pass context down.
    */
   visitClassInstance(node: any /* ModelicaClassInstance */, args: [string, ModelicaDAE]): void {
+    // Cycle detection: if the same class (by semantic ID) is already on the
+    // active instantiation stack, we have a recursive component hierarchy
+    // (e.g., incorrect type resolution causing Temperature → FluidPort_a →
+    // MassFlowRate → System → Temperature). Per Modelica §4.5.3, classes may
+    // not contain components of their own type. Silently skip rather than
+    // stack-overflowing.
+    const nodeId = (node as any).id ?? node;
+    const nodeName = node.name || nodeId || "Unknown";
+    const alreadyOnStack = this.activeClassStack.some(
+      (n) => ((n as any).id ?? n) === nodeId || (n.name && n.name === nodeName),
+    );
+    if (alreadyOnStack) {
+      // Cycle detected — skip this class to prevent infinite recursion
+      return;
+    }
+
     // Check for Optimization modifiers (objective)
     if (node.classKind === ModelicaClassKind.OPTIMIZATION) {
       // For top-level optimization classes, the modifier (objective = cost, startTime = 0, ...)
@@ -5313,7 +5332,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     const isBuiltinVar = rawName === "time";
 
     let name: string;
-    if (!isBuiltinVar && !node.global && ctx.classInstance) {
+    if (!isBuiltinVar && !node.global && ctx.classInstance && typeof ctx.classInstance.resolveName === "function") {
       // Resolve the full identifier to determine if it belongs to the instance hierarchy or is global
       const resolved = ctx.classInstance.resolveName(node.parts.map((p) => p.identifier?.text ?? ""));
       const firstPartName = node.parts[0]?.identifier?.text ?? "";
@@ -6515,8 +6534,8 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     const firstName = ref.parts[0]?.identifier?.text;
     if (!firstName) return null;
     const firstResolved = ctx.classInstance.resolveSimpleName?.(firstName, false, true);
-    if (!(firstResolved instanceof ModelicaComponentInstance)) return null;
-    let resolved: ModelicaComponentInstance = firstResolved;
+    if (!firstResolved?.isComponentInstance) return null;
+    let resolved: any = firstResolved;
 
     // Walk through multi-part references (e.g., m.c -> resolve c within m's class)
     for (let i = 1; i < ref.parts.length; i++) {
@@ -6531,8 +6550,8 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       }
       if (!lookupClass) return null;
       const inner = lookupClass.resolveSimpleName?.(partName, false, true);
-      if (!(inner instanceof ModelicaComponentInstance)) return null;
-      resolved = inner as ModelicaComponentInstance;
+      if (!inner?.isComponentInstance) return null;
+      resolved = inner;
     }
     return resolved;
   }
@@ -6568,7 +6587,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
 
     // Enumerate sub-components
     for (const element of lookupClass.elements) {
-      if (!(element instanceof ModelicaComponentInstance)) continue;
+      if (!element?.isComponentInstance) continue;
       if (!element.name) continue;
 
       const elemClass = element.classInstance;
