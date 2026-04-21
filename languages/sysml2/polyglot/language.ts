@@ -173,13 +173,13 @@ const definitionStructuralQueries = {
       for (const conn of connects) {
         // extract endpoints
         const refs = db.childrenOf(conn.id).filter((c) => c.kind === "Reference");
-        if (refs.length >= 2) {
-          const src = db.resolveName(refs[0].name, conn.parentId);
-          const tgt = db.resolveName(refs[1].name, conn.parentId);
-          if (src.length > 0 && tgt.length > 0) {
+        if (refs.length >= 2 && refs[0].name && refs[1].name) {
+          const src = resolveFeatureInScope(db, conn.parentId, refs[0].name);
+          const tgt = resolveFeatureInScope(db, conn.parentId, refs[1].name);
+          if (src && tgt) {
             edges.push({
-              sourceId: src[0].id,
-              targetId: tgt[0].id,
+              sourceId: src.id,
+              targetId: tgt.id,
               connectionId: conn.id,
             });
           }
@@ -1495,19 +1495,19 @@ const verificationCaseUsageLints = {
 const allocationQueries = {
   ...usageQueries,
   resolvedSource: (db: QueryDB, self: SymbolEntry) => {
-    const refs = db.childrenOf(self.id).filter((c) => c.kind === "Reference");
+    const refs = db.childrenOf(self.id).filter((c) => c.kind === "Reference" && c.name);
     if (refs.length >= 2) {
-      const resolved = db.resolveName(refs[0].name, self.parentId);
-      if (resolved.length > 0) return resolved[0];
+      const resolved = resolveFeatureInScope(db, self.parentId, refs[0].name!);
+      if (resolved) return resolved;
     }
     return null;
   },
   resolvedTarget: (db: QueryDB, self: SymbolEntry) => {
-    const refs = db.childrenOf(self.id).filter((c) => c.kind === "Reference");
+    const refs = db.childrenOf(self.id).filter((c) => c.kind === "Reference" && c.name);
     if (refs.length >= 2) {
       // In allocate A to B, A is refs[0] and B is refs[1]
-      const resolved = db.resolveName(refs[1].name, self.parentId);
-      if (resolved.length > 0) return resolved[0];
+      const resolved = resolveFeatureInScope(db, self.parentId, refs[1].name!);
+      if (resolved) return resolved;
     }
     return null;
   },
@@ -1517,22 +1517,22 @@ const allocationQueries = {
 const allocationLints = {
   ...usageLints,
   allocationTargetUnresolved: (db: QueryDB, self: SymbolEntry) => {
-    const refs = db.childrenOf(self.id).filter((c) => c.kind === "Reference");
+    const refs = db.childrenOf(self.id).filter((c) => c.kind === "Reference" && c.name);
     if (refs.length >= 2) {
-      const targetName = refs[1].name;
-      const resolved = db.resolveName(targetName, self.parentId);
-      if (resolved.length === 0) {
+      const targetName = refs[1].name!;
+      const resolved = resolveFeatureInScope(db, self.parentId, targetName);
+      if (!resolved) {
         return error(`Allocation target '${targetName}' could not be resolved`, { field: "declaredName" });
       }
     }
     return null;
   },
   allocationSourceUnresolved: (db: QueryDB, self: SymbolEntry) => {
-    const refs = db.childrenOf(self.id).filter((c) => c.kind === "Reference");
+    const refs = db.childrenOf(self.id).filter((c) => c.kind === "Reference" && c.name);
     if (refs.length >= 2) {
-      const sourceName = refs[0].name;
-      const resolved = db.resolveName(sourceName, self.parentId);
-      if (resolved.length === 0) {
+      const sourceName = refs[0].name!;
+      const resolved = resolveFeatureInScope(db, self.parentId, sourceName);
+      if (!resolved) {
         return error(`Allocation source '${sourceName}' could not be resolved`, { field: "declaredName" });
       }
     }

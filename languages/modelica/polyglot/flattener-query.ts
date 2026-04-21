@@ -227,11 +227,13 @@ export class QueryBasedFlattener {
         // We emit connect equations using their simple paths. The flow
         // expansion step will later process these.
         dae.equations.push({
-          text: `connect(${srcNode.path}, ${tgtNode.path})`,
-          isConnect: true,
-          components: [srcNode.path, tgtNode.path],
+          kind: "connect",
+          sourceText: `connect(${srcNode.path}, ${tgtNode.path})`,
+          description: "",
+          lhs: "",
+          rhs: "",
         });
-        dae.connections.push({ a: srcNode.path, b: tgtNode.path });
+        dae.connections.push({ from: srcNode.path, to: tgtNode.path, hasFlow: false });
       }
     }
 

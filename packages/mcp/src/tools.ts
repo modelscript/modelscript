@@ -3,6 +3,8 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   Context,
+  createModelicaQueryEngine,
+  createSysML2QueryEngine,
   ModelicaClassInstance,
   ModelicaComponentInstance,
   ModelicaDAE,
@@ -12,16 +14,14 @@ import {
   ModelicaStoredDefinitionSyntaxNode,
   StringWriter,
 } from "@modelscript/core";
+import modelicaLangFallback from "@modelscript/modelica-polyglot/language";
 import { UnifiedWorkspace, WorkspaceIndex } from "@modelscript/polyglot";
 import { ModelicaSimulator } from "@modelscript/simulator";
+import sysml2LangFallback from "@modelscript/sysml2-polyglot/language";
 import path from "node:path";
 import { z } from "zod";
 import { NodeFileSystem } from "./filesystem.js";
 import type { ServerContext } from "./types.js";
-// @ts-expect-error No types for fallback module
-import modelicaLangFallback from "@modelscript/modelica-polyglot/language";
-// @ts-expect-error No types for fallback module
-import sysml2LangFallback from "@modelscript/sysml2-polyglot/language";
 // @ts-expect-error No types for fallback module
 import { QueryBasedFlattener } from "@modelscript/modelica-polyglot/flattener-query";
 import type { TopologyGraph } from "@modelscript/polyglot";
@@ -321,19 +321,26 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
 
       const db = u.toUnifiedAsync ? await u.toUnifiedAsync() : u.toUnified();
 
-      const entries = db.byName(name);
-      if (entries.length === 0) {
+      const entries = db.byName.get(name) || [];
+      const firstId = entries[0];
+      if (firstId === undefined) {
         return { content: [{ type: "text" as const, text: `Class '${name}' not found.` }], isError: true };
       }
 
-      const flattener = new QueryBasedFlattener(db);
+      const entry = db.symbols.get(firstId);
       let daeObj;
 
-      if (entries[0].language === "sysml2") {
-        const topology = db.query("extractTopology", entries[0].id) as TopologyGraph;
+      if (entry?.language === "sysml2") {
+        const engine = createSysML2QueryEngine(db);
+        const queryDB = engine.toQueryDB();
+        const flattener = new QueryBasedFlattener(queryDB);
+        const topology = queryDB.query("extractTopology", firstId) as TopologyGraph;
         daeObj = flattener.flattenFromTopology(topology);
       } else {
-        daeObj = flattener.flatten(entries[0].id);
+        const engine = createModelicaQueryEngine(db);
+        const queryDB = engine.toQueryDB();
+        const flattener = new QueryBasedFlattener(queryDB);
+        daeObj = flattener.flatten(firstId);
       }
 
       const dae = new ModelicaDAE(daeObj.className, "");

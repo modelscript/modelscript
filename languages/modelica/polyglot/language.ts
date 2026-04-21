@@ -1231,22 +1231,13 @@ export default language({
           opt(field("description", $.Description)),
           opt(field("annotationClause", $.AnnotationClause)),
         ),
-        symbol: (self) => {
-          let implementsTarget: string | undefined = undefined;
-          if (self.annotationClause && typeof self.annotationClause === "string") {
-            const match = self.annotationClause.match(/SysML\s*\(\s*implements\s*=\s*"([^"]+)"\s*\)/);
-            if (match) implementsTarget = match[1];
-          }
-
-          return {
-            kind: "Component",
-            name: self.declaration.identifier,
-            attributes: {
-              modification: self.declaration.modification,
-              ...(implementsTarget ? { implementsTarget } : {}),
-            },
-          };
-        },
+        symbol: (self) => ({
+          kind: "Component",
+          name: self.declaration.identifier,
+          attributes: {
+            modification: self.declaration.modification,
+          },
+        }),
         queries: {
           /**
            * Resolve the type specifier to the class it references.
@@ -1630,8 +1621,13 @@ export default language({
           },
           /** Error if the component specifies a SysML implements target that cannot be resolved in the SysML index. */
           implementsTargetUnresolved: (db: QueryDB, self: SymbolEntry) => {
-            const meta = self.metadata as Record<string, unknown>;
-            const targetName = meta?.implementsTarget as string | undefined;
+            const cst = db.cstNode(self.id) as any;
+            let current = cst;
+            while (current && current.type !== "ComponentDeclaration") current = current.parent;
+            const ann = current?.childForFieldName("annotationClause");
+            if (!ann) return null;
+            const match = ann.text.match(/SysML\s*\(\s*implements\s*=\s*"([^"]+)"\s*\)/);
+            const targetName = match ? match[1] : undefined;
             if (!targetName) return null;
 
             // In the unified workspace, SysML parts/requirements are registered

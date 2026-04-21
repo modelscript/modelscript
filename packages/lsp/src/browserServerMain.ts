@@ -486,10 +486,8 @@ const allWorkspaceIndices = new Map<string, any>();
 const globalWorkspaceIndex = createModelicaWorkspaceIndex();
 const sysml2WorkspaceIndex = createSysML2WorkspaceIndex();
 
-import { UnifiedWorkspace } from "@modelscript/polyglot";
-// @ts-expect-error
 import modelicaLangFallback from "@modelscript/modelica-polyglot/language";
-// @ts-expect-error
+import { UnifiedWorkspace } from "@modelscript/polyglot";
 import sysml2LangFallback from "@modelscript/sysml2-polyglot/language";
 
 const unifiedWorkspace = new UnifiedWorkspace();

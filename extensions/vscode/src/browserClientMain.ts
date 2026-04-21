@@ -979,6 +979,47 @@ function scaffoldTemplateFiles(memFs: MemoryFileSystemProvider, workspaceUri: vs
     script: {
       "simulate.mos": `// A simple Modelica script\nloadString("\nmodel HelloWorld\n  Real x(start=1);\nequation\n  der(x) = -x;\nend HelloWorld;\n");\n\nsimulate(HelloWorld, stopTime=5);\n`,
     },
+    "mbse-verification": {
+      "SystemVerification.sysml": [
+        "package SystemVerification {",
+        "  requirement def MaxVoltageReq {",
+        "    doc /* Maximum voltage across the capacitor shall not exceed 8.0 V */",
+        "    attribute maxLimit : Real = 8.0;",
+        "  }",
+        "",
+        "  part def RCCircuitSys {",
+        "    // This part is allocated to the Modelica class 'Circuit'",
+        "  }",
+        "",
+        "  // The actual constraint that is verified against the simulation results",
+        "  analysis def VerifyVoltage {",
+        "    subject circuit : RCCircuitSys;",
+        "    objective requirement : MaxVoltageReq;",
+        "    ",
+        "    constraint max_v {",
+        "      circuit.C.v <= requirement.maxLimit",
+        "    }",
+        "  }",
+        "}",
+        "",
+      ].join("\n"),
+      "Circuit.mo": [
+        'model Circuit "RC Circuit implementation"',
+        '  annotation(SysML(implements="SystemVerification::RCCircuitSys"));',
+        "  ",
+        "  Modelica.Electrical.Analog.Sources.StepVoltage source(V=10, startTime=0.1);",
+        "  Modelica.Electrical.Analog.Basic.Resistor R(R=10);",
+        "  Modelica.Electrical.Analog.Basic.Capacitor C(C=0.1);",
+        "  Modelica.Electrical.Analog.Basic.Ground ground;",
+        "equation",
+        "  connect(source.p, R.p);",
+        "  connect(R.n, C.p);",
+        "  connect(C.n, source.n);",
+        "  connect(source.n, ground.p);",
+        "end Circuit;",
+        "",
+      ].join("\n"),
+    },
   };
 
   const files = templates[template];
@@ -1293,6 +1334,54 @@ async function initWorkspaceAndTree(
             "}",
             "",
           ].join("\n");
+          break;
+        case "mbse-verification":
+          filename = "SystemVerification.sysml";
+          content = [
+            "package SystemVerification {",
+            "  requirement def MaxVoltageReq {",
+            "    doc /* Maximum voltage across the capacitor shall not exceed 8.0 V */",
+            "    attribute maxLimit : Real = 8.0;",
+            "  }",
+            "",
+            "  part def RCCircuitSys {",
+            "    // This part is allocated to the Modelica class 'Circuit'",
+            "  }",
+            "",
+            "  // The actual constraint that is verified against the simulation results",
+            "  analysis def VerifyVoltage {",
+            "    subject circuit : RCCircuitSys;",
+            "    objective requirement : MaxVoltageReq;",
+            "    ",
+            "    constraint max_v {",
+            "      circuit.C.v <= requirement.maxLimit",
+            "    }",
+            "  }",
+            "}",
+            "",
+          ].join("\n");
+          // Write the second file directly here
+          await workspace.fs.writeFile(
+            Uri.joinPath(workspaceUri, "Circuit.mo"),
+            new TextEncoder().encode(
+              [
+                'model Circuit "RC Circuit implementation"',
+                '  annotation(SysML(implements="SystemVerification::RCCircuitSys"));',
+                "  ",
+                "  Modelica.Electrical.Analog.Sources.StepVoltage source(V=10, startTime=0.1);",
+                "  Modelica.Electrical.Analog.Basic.Resistor R(R=10);",
+                "  Modelica.Electrical.Analog.Basic.Capacitor C(C=0.1);",
+                "  Modelica.Electrical.Analog.Basic.Ground ground;",
+                "equation",
+                "  connect(source.p, R.p);",
+                "  connect(R.n, C.p);",
+                "  connect(C.n, source.n);",
+                "  connect(source.n, ground.p);",
+                "end Circuit;",
+                "",
+              ].join("\n"),
+            ),
+          );
           break;
         case "script":
           filename = "simulate.mos";

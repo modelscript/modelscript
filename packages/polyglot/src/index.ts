@@ -13,6 +13,7 @@ import type {
   SymbolId,
   SymbolIndex,
 } from "./runtime.js";
+export { QueryEngine } from "./query-engine.js";
 export * from "./simulation.js";
 export * from "./topology.js";
 export { UnifiedWorkspace } from "./unified-workspace.js";
