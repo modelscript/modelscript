@@ -1,4 +1,3 @@
-/* eslint-disable */
 import { describe, expect, it } from "vitest";
 import { ScopeResolver } from "../src/resolver.js";
 import type { RefHook, SymbolEntry, SymbolIndex } from "../src/runtime.js";
