@@ -1,8 +1,8 @@
-import { ModelicaComponentInstance, ModelicaVariability } from "@modelscript/core";
 import { ChevronDownIcon, ChevronRightIcon } from "@primer/octicons-react";
 import { Button, Textarea, TextInput, ToggleSwitch, useTheme } from "@primer/react";
 import { useEffect, useState } from "react";
 import type { Translations } from "~/util/i18n";
+import type { ComponentProperties, PropertyData } from "~/util/lsp-bridge";
 import { ComponentIcon } from "./component-list";
 
 function formatUnit(unit: string): string {
@@ -10,11 +10,9 @@ function formatUnit(unit: string): string {
   return unit;
 }
 
-import type { Context } from "@modelscript/core";
-
 interface PropertiesWidgetProps {
-  component: ModelicaComponentInstance | null;
-  context?: Context | null;
+  properties: ComponentProperties | null;
+  context?: any;
   width?: number;
   onNameChange?: (name: string) => void;
   onDescriptionChange?: (description: string) => void;
@@ -24,19 +22,14 @@ interface PropertiesWidgetProps {
 
 function ParameterRow({
   parameter,
-  value,
-  unit,
-  isBoolean,
   colorMode,
   onParameterChange,
 }: {
-  parameter: ModelicaComponentInstance;
-  value: string;
-  unit?: string;
-  isBoolean?: boolean;
+  parameter: PropertyData;
   colorMode?: string;
   onParameterChange?: (name: string, value: string) => void;
 }) {
+  const { value, unit, isBoolean } = parameter;
   const [localValue, setLocalValue] = useState(value);
 
   useEffect(() => {
@@ -49,7 +42,7 @@ function ParameterRow({
 
     const timeoutId = setTimeout(() => {
       if (onParameterChange) {
-        onParameterChange(parameter.name!, localValue);
+        onParameterChange(parameter.name, localValue);
       }
     }, 500);
 
@@ -94,7 +87,7 @@ function ParameterRow({
               const newVal = isChecked ? "false" : "true";
               setLocalValue(newVal);
               if (onParameterChange) {
-                onParameterChange(parameter.name!, newVal);
+                onParameterChange(parameter.name, newVal);
               }
             }}
             onChange={() => {
@@ -120,7 +113,7 @@ function ParameterRow({
             onKeyUp={(e) => e.stopPropagation()}
             onBlur={() => {
               if (localValue !== value && onParameterChange) {
-                onParameterChange(parameter.name!, localValue);
+                onParameterChange(parameter.name, localValue);
               }
             }}
             trailingVisual={
@@ -136,7 +129,7 @@ function ParameterRow({
           />
         )}
       </div>
-      {parameter.description && (
+      {parameter.localizedDescription && (
         <div
           className="f6 color-fg-muted text-italic"
           style={{ marginTop: 2, fontSize: 11, paddingLeft: 0, opacity: 0.6 }}
@@ -150,7 +143,7 @@ function ParameterRow({
 
 export default function PropertiesWidget(props: PropertiesWidgetProps) {
   const { colorMode } = useTheme();
-  const { component, onNameChange, onDescriptionChange, onParameterChange, translations } = props;
+  const { properties, onNameChange, onDescriptionChange, onParameterChange, translations } = props;
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     info: true,
     parameters: true,
@@ -158,18 +151,18 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
     revisions: true,
   });
 
-  const [localName, setLocalName] = useState(component?.name || "");
-  const [localDescription, setLocalDescription] = useState(component?.description || "");
+  const [localName, setLocalName] = useState(properties?.name || "");
+  const [localDescription, setLocalDescription] = useState(properties?.description || "");
   const [descriptionEditing, setDescriptionEditing] = useState(false);
 
   useEffect(() => {
-    setLocalName(component?.name || "");
-    setLocalDescription(component?.description || "");
+    setLocalName(properties?.name || "");
+    setLocalDescription(properties?.description || "");
     setDescriptionEditing(false);
-  }, [component?.name, component?.description]);
+  }, [properties?.name, properties?.description]);
 
   useEffect(() => {
-    if (!localName || localName === component?.name) return;
+    if (!localName || localName === properties?.name) return;
 
     const timeoutId = setTimeout(() => {
       if (onNameChange) {
@@ -178,11 +171,11 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
     }, 500);
 
     return () => clearTimeout(timeoutId);
-  }, [localName, component?.name, onNameChange]);
+  }, [localName, properties?.name, onNameChange]);
 
   useEffect(() => {
-    const componentDescription = component?.description || "";
-    if (localDescription === componentDescription) return;
+    const propertiesDescription = properties?.description || "";
+    if (localDescription === propertiesDescription) return;
 
     const timeoutId = setTimeout(() => {
       if (onDescriptionChange) {
@@ -191,9 +184,9 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
     }, 500);
 
     return () => clearTimeout(timeoutId);
-  }, [localDescription, component?.description, onDescriptionChange]);
+  }, [localDescription, properties?.description, onDescriptionChange]);
 
-  if (!component) {
+  if (!properties) {
     return (
       <div
         className="height-full p-4 color-fg-muted f4 border-left"
@@ -205,20 +198,12 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
     );
   }
 
-  const parameters: ModelicaComponentInstance[] = [];
-  if (component.classInstance) {
-    for (const element of component.classInstance.elements) {
-      if (element instanceof ModelicaComponentInstance && element.variability === ModelicaVariability.PARAMETER) {
-        parameters.push(element);
-      }
-    }
-  }
-
-  const doc = component.classInstance?.annotation("Documentation") as { info?: string; revisions?: string } | null;
+  const parameters = properties.parameters || [];
+  const doc = properties.documentation;
 
   const processHtml = (html: string | undefined) => {
     if (!html) return "";
-    const context = props.context ?? component.context;
+    const context = props.context;
     if (!context) return html;
 
     return html.replace(/<img\s+[^>]*src=(["'])modelica:\/\/([^"']+)\1[^>]*>/gi, (match, quote, uriPath) => {
@@ -270,9 +255,9 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
         </summary>
         <div style={{ display: "flex", flexDirection: "column", padding: "8px 16px", gap: "12px" }}>
           <div style={{ display: "flex", flexDirection: "row", gap: "24px", alignItems: "stretch" }}>
-            {component.classInstance && (
+            {properties.iconSvg && (
               <div style={{ flexShrink: 0, display: "flex", alignItems: "center" }}>
-                <ComponentIcon classInstance={component.classInstance} size={80} darkMode={colorMode === "dark"} />
+                <ComponentIcon iconSvg={properties.iconSvg} size={80} darkMode={colorMode === "dark"} />
               </div>
             )}
             <div
@@ -293,7 +278,7 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
                   className="f6"
                   style={{ wordBreak: "break-all", lineHeight: "1.2", fontWeight: "normal", padding: "4px 0" }}
                 >
-                  {component.classInstance?.localizedName}
+                  {properties.localizedClassName || properties.className}
                 </div>
               </div>
               <div>
@@ -306,7 +291,7 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
                   value={localName}
                   onChange={(e) => setLocalName(e.target.value)}
                   onBlur={() => {
-                    if (localName !== component.name && onNameChange) {
+                    if (localName !== properties.name && onNameChange) {
                       onNameChange(localName);
                     }
                   }}
@@ -338,10 +323,10 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
                 onBlur={() => {
                   if (!localDescription) {
                     setDescriptionEditing(false);
-                    if (component.description && onDescriptionChange) {
+                    if (properties.description && onDescriptionChange) {
                       onDescriptionChange("");
                     }
-                  } else if (localDescription !== (component.description || "") && onDescriptionChange) {
+                  } else if (localDescription !== (properties.description || "") && onDescriptionChange) {
                     onDescriptionChange(localDescription);
                   }
                 }}
@@ -390,25 +375,12 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
           </summary>
           <div style={{ paddingBottom: 8 }}>
             {parameters.map((parameter) => {
-              const value =
-                (
-                  component.modification?.getModificationArgument(parameter.name ?? "")?.expression as any
-                )?.toJSON?.toString() ??
-                (parameter.modification?.expression as any)?.toJSON?.toString() ??
-                "-";
-              const unitExpr = parameter.classInstance?.modification?.getModificationArgument("unit")?.expression;
-              const rawUnit = unitExpr?.toJSON?.toString()?.replace(/^"|"$/g, "") || undefined;
-              const unit = rawUnit ? formatUnit(rawUnit) : undefined;
-              const isBoolean = parameter.classInstance?.name === "Boolean";
               return (
                 <ParameterRow
                   key={parameter.name}
                   parameter={parameter}
-                  value={value}
-                  unit={unit}
-                  isBoolean={isBoolean}
                   colorMode={colorMode}
-                  onParameterChange={props.onParameterChange}
+                  onParameterChange={onParameterChange}
                 />
               );
             })}

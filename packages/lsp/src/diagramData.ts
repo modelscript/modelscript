@@ -50,6 +50,7 @@ export interface X6Markup {
 // ── Diagram data JSON structure ──
 
 export interface ComponentPropertyData {
+  classKind?: string;
   className: string;
   description: string;
   parameters: {
@@ -319,6 +320,7 @@ export function buildDiagramData(classInstance: ModelicaClassInstance): DiagramD
     const iconSvg = getClassIconSvg(componentClassInstance, 80, true);
 
     const properties: ComponentPropertyData = {
+      classKind: componentClassInstance.classKind,
       className: componentClassInstance.name ?? "",
       description: component.description ?? "",
       parameters,

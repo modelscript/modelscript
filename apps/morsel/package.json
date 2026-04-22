@@ -48,6 +48,7 @@
     "recharts": "^3.7.0",
     "set-cookie-parser": "^2.6.0",
     "three": "^0.183.2",
+    "vscode-languageserver-protocol": "^3.17.5",
     "web-tree-sitter": "^0.26.7"
   },
   "devDependencies": {

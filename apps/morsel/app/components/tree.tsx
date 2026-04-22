@@ -1,127 +1,132 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import {
-  Context,
-  QueryBackedClassInstance as ModelicaClassInstance,
-  ModelicaLibrary,
-  renderIcon,
-} from "@modelscript/core";
+/**
+ * Library tree widget backed by LSP requests.
+ *
+ * All data comes from `modelscript/getLibraryTree` and
+ * `modelscript/searchClasses` — no in-process `Context` required.
+ */
+
 import { ChevronDownIcon, ChevronRightIcon, PackageIcon } from "@primer/octicons-react";
 import { NavList, useTheme } from "@primer/react";
 import React from "react";
+import { getClassIcon, getLibraryTree, searchClasses, type TreeNodeInfo } from "~/util/lsp-bridge";
 import { invertSvgColors } from "~/util/x6";
 
+// ────────────────────────────────────────────────────────────────────
+// Props
+// ────────────────────────────────────────────────────────────────────
+
 interface TreeWidgetProps {
-  context: Context | null;
-  onSelect: (classInstance: ModelicaClassInstance) => void;
+  /** LSP document URI (used as context for requests). */
+  uri: string;
+  /** Called when user double-clicks a class to open it. */
+  onSelect: (className: string, kind: string) => void;
+  /** Called when user single-clicks a class (highlight on diagram). */
   onHighlight?: (className: string) => void;
   width?: number | string;
   filter?: string;
+  /** Incremented to force a re-fetch. */
   version?: number;
   language?: string | null;
   selectedClassName?: string | null;
 }
 
-interface ClassIconProps {
-  classInstance: ModelicaClassInstance;
-}
+// ────────────────────────────────────────────────────────────────────
+// Icon component (fetches SVG from LSP with caching)
+// ────────────────────────────────────────────────────────────────────
 
-const iconSvgCache = new Map<string, string | null>();
+const iconCache = new Map<string, string | null>();
 
-const ClassIcon = React.memo(function ClassIcon(props: ClassIconProps) {
+function ClassIcon({ className }: { className: string }) {
   const { colorMode } = useTheme();
   const isDark = colorMode === "dark";
-  const cacheKey = props.classInstance.compositeName;
-  const svgString = React.useMemo(() => {
-    const cached = iconSvgCache.get(cacheKey);
-    if (cached !== undefined) return cached;
-    try {
-      const svg = renderIcon(props.classInstance, undefined, true, undefined, true);
-      const result = svg && svg.children().length > 0 ? svg.svg() : null;
-      iconSvgCache.set(cacheKey, result);
-      return result;
-    } catch (e) {
-      console.warn(`Failed to render icon for ${cacheKey}:`, e);
-      iconSvgCache.set(cacheKey, null);
-      return null;
-    }
-  }, [cacheKey]);
+  const [svg, setSvg] = React.useState<string | null>(iconCache.get(className) ?? null);
+  const requested = React.useRef(false);
 
-  if (!svgString) {
+  React.useEffect(() => {
+    if (iconCache.has(className)) {
+      setSvg(iconCache.get(className) ?? null);
+      return;
+    }
+    if (requested.current) return;
+    requested.current = true;
+
+    getClassIcon(className)
+      .then((result) => {
+        iconCache.set(className, result);
+        setSvg(result);
+      })
+      .catch(() => {
+        iconCache.set(className, null);
+      });
+  }, [className]);
+
+  if (!svg) {
     return <PackageIcon />;
   }
 
-  const displaySvg = invertSvgColors(svgString, isDark);
-
+  const displaySvg = invertSvgColors(svg, isDark);
   return (
     <div className="modelica-icon" style={{ width: 20, height: 20 }} dangerouslySetInnerHTML={{ __html: displaySvg }} />
   );
-});
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Tree Node
+// ────────────────────────────────────────────────────────────────────
 
 interface TreeNodeProps {
-  element: ModelicaClassInstance;
-  onSelect: (classInstance: ModelicaClassInstance) => void;
+  node: TreeNodeInfo;
+  uri: string;
+  onSelect: (className: string, kind: string) => void;
   onHighlight?: (className: string) => void;
   depth: number;
   showQualifiedName?: boolean;
-  language?: string | null;
   selectedClassName?: string | null;
 }
 
-function getClassChildren(element: ModelicaClassInstance): ModelicaClassInstance[] {
-  const children: ModelicaClassInstance[] = [];
-  for (const child of element.elements) {
-    if (child && "isClassInstance" in (child as any)) {
-      children.push(child as ModelicaClassInstance);
-    }
-  }
-  return children;
-}
-
 const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
-  const { element, onSelect, onHighlight, depth, showQualifiedName, language, selectedClassName } = props;
+  const { node, uri, onSelect, onHighlight, depth, showQualifiedName, selectedClassName } = props;
   const [expanded, setExpanded] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
-  const [children, setChildren] = React.useState<ModelicaClassInstance[] | null>(null);
-  const [hasChildren, setHasChildren] = React.useState<boolean | null>(null);
-  const iconRef = React.useRef<HTMLSpanElement>(null);
-  const dragImageRef = React.useRef<HTMLImageElement | null>(null);
+  const [children, setChildren] = React.useState<TreeNodeInfo[] | null>(null);
   const [hovered, setHovered] = React.useState(false);
+  const dragImageRef = React.useRef<HTMLImageElement | null>(null);
+
+  const displayName = showQualifiedName ? (node.compositeName ?? node.name) : (node.localizedName ?? node.name);
+  const compositeName = node.compositeName ?? node.name;
+  const isSelected = selectedClassName != null && compositeName === selectedClassName;
 
   const toggleExpand = React.useCallback(() => {
     setExpanded((prev) => {
-      if (!prev) {
-        // Expanding: show spinner, defer loading to next frame
+      if (!prev && node.hasChildren) {
         setLoading(true);
-        setTimeout(() => {
-          const result = getClassChildren(element);
-          setChildren(result);
-          setHasChildren(result.length > 0);
-          setLoading(false);
-        }, 0);
-      } else {
+        getLibraryTree(uri, node.id)
+          .then((result) => {
+            setChildren(result);
+            setLoading(false);
+          })
+          .catch(() => {
+            setChildren([]);
+            setLoading(false);
+          });
+      } else if (prev) {
         setChildren(null);
       }
       return !prev;
     });
-  }, [element]);
-
-  const showChevron = (hasChildren === null || hasChildren === true) && !showQualifiedName;
-  const isSelected = selectedClassName != null && element.compositeName === selectedClassName;
+  }, [node.id, node.hasChildren, uri]);
 
   const handleMouseEnter = () => {
     setHovered(true);
-    if (!dragImageRef.current) {
-      const svg = renderIcon(element, undefined, true, undefined, true);
-      if (svg) {
-        svg.size(40, 40);
-        const svgString = svg.svg();
-        const base64 = btoa(unescape(encodeURIComponent(svgString)));
-        const url = "data:image/svg+xml;base64," + base64;
-        const img = new Image();
-        img.src = url;
-        dragImageRef.current = img;
-      }
+    // Prepare drag image
+    if (!dragImageRef.current && node.iconSvg) {
+      const base64 = btoa(unescape(encodeURIComponent(node.iconSvg)));
+      const url = "data:image/svg+xml;base64," + base64;
+      const img = new Image();
+      img.src = url;
+      dragImageRef.current = img;
     }
   };
 
@@ -152,34 +157,32 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
         onMouseLeave={() => setHovered(false)}
         onClick={(e) => {
           e.stopPropagation();
-          onHighlight?.(element.compositeName);
+          onHighlight?.(compositeName);
         }}
         onDoubleClick={(e) => {
           e.stopPropagation();
-          onHighlight?.(element.compositeName);
-          onSelect(element);
+          onHighlight?.(compositeName);
+          onSelect(compositeName, node.kind ?? "class");
         }}
         draggable
         onDragStart={(e) => {
           e.dataTransfer.setData(
             "application/json",
             JSON.stringify({
-              className: element.compositeName,
-              classKind: element.classKind,
-              iconSvg: iconSvgCache.get(element.compositeName) ?? null,
+              className: compositeName,
+              classKind: node.kind,
+              iconSvg: node.iconSvg ?? null,
             }),
           );
           e.dataTransfer.effectAllowed = "copy";
 
-          if (dragImageRef.current && dragImageRef.current.complete) {
+          if (dragImageRef.current?.complete) {
             e.dataTransfer.setDragImage(dragImageRef.current, 20, 20);
-          } else if (iconRef.current) {
-            e.dataTransfer.setDragImage(iconRef.current, 10, 10);
           }
         }}
       >
         <span style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
-          {showChevron ? (
+          {node.hasChildren && !showQualifiedName ? (
             <span
               role="button"
               onClick={(e) => {
@@ -214,15 +217,12 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
           ) : (
             <span style={{ width: 12 }} />
           )}
-          <span ref={iconRef}>
-            <ClassIcon classInstance={element} />
+          <span>
+            <ClassIcon className={compositeName} />
           </span>
         </span>
-        <div
-          style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-          title={(showQualifiedName ? element.localizedCompositeName : element.localizedName) ?? undefined}
-        >
-          {showQualifiedName ? element.localizedCompositeName : element.localizedName}
+        <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={displayName}>
+          {displayName}
         </div>
       </li>
       {expanded &&
@@ -230,11 +230,11 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
         children?.map((child, i) => (
           <TreeNode
             key={`${child.name}-${i}`}
-            element={child}
+            node={child}
+            uri={uri}
             onSelect={onSelect}
             onHighlight={onHighlight}
             depth={depth + 1}
-            language={language}
             selectedClassName={selectedClassName}
           />
         ))}
@@ -242,127 +242,26 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
   );
 });
 
-interface LibraryGroupProps {
-  library: ModelicaLibrary;
-  onSelect: (classInstance: ModelicaClassInstance) => void;
-}
-
-const LibraryGroup = React.memo(function LibraryGroup(props: LibraryGroupProps) {
-  const { library, onSelect } = props;
-  const [expanded, setExpanded] = React.useState(false);
-
-  const children = expanded
-    ? (() => {
-        const result: ModelicaClassInstance[] = [];
-        for (const child of library.elements) {
-          if (child && "isClassInstance" in (child as any)) {
-            result.push(child as ModelicaClassInstance);
-          }
-        }
-        return result;
-      })()
-    : null;
-
-  return (
-    <NavList.Group title={library.path}>
-      <NavList.Item
-        onClick={(e) => {
-          e.stopPropagation();
-          setExpanded((prev) => !prev);
-        }}
-      >
-        <NavList.LeadingVisual>
-          <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            {expanded ? <ChevronDownIcon size={12} /> : <ChevronRightIcon size={12} />}
-            <PackageIcon />
-          </span>
-        </NavList.LeadingVisual>
-        {library.path.split("/").pop() ?? library.path}
-      </NavList.Item>
-      {expanded &&
-        children?.map((child, i) => (
-          <TreeNode key={`${child.name}-${i}`} element={child} onSelect={onSelect} depth={1} language={undefined} />
-        ))}
-    </NavList.Group>
-  );
-});
+// ────────────────────────────────────────────────────────────────────
+// Search results
+// ────────────────────────────────────────────────────────────────────
 
 const SEARCH_RESULT_LIMIT = 50;
-const SEARCH_CHUNK_SIZE = 100;
 
 interface SearchState {
-  results: ModelicaClassInstance[];
+  results: TreeNodeInfo[];
   searching: boolean;
   totalMatches: number;
   done: boolean;
 }
 
-const SearchResultNode = React.memo(function SearchResultNode(props: TreeNodeProps) {
-  const { element, onSelect, onHighlight, selectedClassName } = props;
-  const [hovered, setHovered] = React.useState(false);
-  const isSelected = selectedClassName != null && element.compositeName === selectedClassName;
-
-  return (
-    <li
-      style={{
-        listStyle: "none",
-        display: "flex",
-        alignItems: "center",
-        padding: "6px 8px",
-        paddingLeft: "8px",
-        margin: "0 8px",
-        cursor: "pointer",
-        fontSize: 14,
-        color: "var(--fgColor-default, var(--color-fg-default))",
-        backgroundColor: isSelected
-          ? "var(--control-transparent-bgColor-selected, var(--color-action-list-item-default-selected-bg, rgba(177, 186, 196, 0.2)))"
-          : hovered
-            ? "var(--control-transparent-bgColor-hover, var(--color-action-list-item-default-hover-bg, rgba(177, 186, 196, 0.12)))"
-            : "transparent",
-        borderRadius: 6,
-        gap: 8,
-        userSelect: "none",
-        transition: "background-color 0.1s ease",
-      }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      onClick={(e) => {
-        e.stopPropagation();
-        onHighlight?.(element.compositeName);
-      }}
-      onDoubleClick={(e) => {
-        e.stopPropagation();
-        onHighlight?.(element.compositeName);
-        onSelect(element);
-      }}
-      draggable
-      onDragStart={(e) => {
-        e.dataTransfer.setData(
-          "application/json",
-          JSON.stringify({
-            className: element.compositeName,
-            classKind: element.classKind,
-            iconSvg: iconSvgCache.get(element.compositeName) ?? null,
-          }),
-        );
-        e.dataTransfer.effectAllowed = "copy";
-      }}
-    >
-      <span style={{ display: "flex", alignItems: "center", flexShrink: 0 }}>
-        <ClassIcon classInstance={element} />
-      </span>
-      <div
-        style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-        title={element.localizedCompositeName ?? undefined}
-      >
-        {element.localizedCompositeName}
-      </div>
-    </li>
-  );
-});
+// ────────────────────────────────────────────────────────────────────
+// Main tree widget
+// ────────────────────────────────────────────────────────────────────
 
 const TreeWidget = React.memo(function TreeWidget(props: TreeWidgetProps) {
   const filter = props.filter?.toLowerCase() ?? "";
+  const [rootNodes, setRootNodes] = React.useState<TreeNodeInfo[]>([]);
   const [searchState, setSearchState] = React.useState<SearchState>({
     results: [],
     searching: false,
@@ -370,9 +269,18 @@ const TreeWidget = React.memo(function TreeWidget(props: TreeWidgetProps) {
     done: false,
   });
 
-  // Async chunked search
+  // Load root nodes
   React.useEffect(() => {
-    if (!filter || !props.context) {
+    if (!props.uri) return;
+
+    getLibraryTree(props.uri)
+      .then((nodes) => setRootNodes(nodes))
+      .catch((e) => console.warn("[tree] Failed to load root nodes:", e));
+  }, [props.uri, props.version]);
+
+  // Search
+  React.useEffect(() => {
+    if (!filter) {
       setSearchState({ results: [], searching: false, totalMatches: 0, done: false });
       return;
     }
@@ -380,206 +288,121 @@ const TreeWidget = React.memo(function TreeWidget(props: TreeWidgetProps) {
     let cancelled = false;
     setSearchState({ searching: true, results: [], totalMatches: 0, done: false });
 
-    // Collect all traversable roots into a flat work queue
-    type WorkItem = { id: number; prefix: string } | { instance: ModelicaClassInstance | ModelicaLibrary };
-    const workQueue: WorkItem[] = [];
-    const unified = props.context.workspaceIndex.toUnified();
-
-    for (const element of props.context.elements) {
-      if (element instanceof ModelicaLibrary) {
-        for (const [id, sym] of unified.symbols) {
-          if (sym.parentId === null && sym.resourceId.startsWith(element.path) && sym.kind === "Class") {
-            workQueue.push({ id, prefix: "" });
-          }
-        }
-      } else if (element && "isClassInstance" in (element as any)) {
-        workQueue.push({ instance: element as ModelicaClassInstance });
-      }
-    }
-
-    const results: ModelicaClassInstance[] = [];
-    let totalMatches = 0;
-    let queueIndex = 0;
-
-    const processChunk = () => {
-      if (cancelled) return;
-
-      let processed = 0;
-      while (queueIndex < workQueue.length && processed < SEARCH_CHUNK_SIZE) {
-        if (results.length >= SEARCH_RESULT_LIMIT && totalMatches > SEARCH_RESULT_LIMIT) {
-          // We have enough results and know there are more — stop early
-          break;
-        }
-        const item = workQueue[queueIndex++];
-        processed++;
-
-        if ("id" in item) {
-          const { id, prefix } = item;
-          const sym = unified.symbols.get(id);
-          if (!sym) continue;
-
-          const compositeName = prefix ? `${prefix}.${sym.name}` : sym.name;
-          if (compositeName.toLowerCase().includes(filter)) {
-            totalMatches++;
-            if (results.length < SEARCH_RESULT_LIMIT) {
-              const qdb = props.context!.queryEngine.toQueryDB();
-              const instance = new ModelicaClassInstance(id, qdb);
-              results.push(instance as any);
-            }
-          }
-          const childrenIds = unified.childrenOf.get(id);
-          if (childrenIds) {
-            for (const childId of childrenIds) {
-              workQueue.push({ id: childId, prefix: compositeName });
-            }
-          }
-        } else {
-          // Fallback for non-entity class instances (user code)
-          const ci = item.instance;
-          if (ci && "isClassInstance" in (ci as any)) {
-            const classInstance = ci as ModelicaClassInstance;
-            if (classInstance.compositeName.toLowerCase().includes(filter)) {
-              totalMatches++;
-              if (results.length < SEARCH_RESULT_LIMIT) {
-                results.push(classInstance);
-              }
-            }
-            if (classInstance.elements) {
-              for (const child of classInstance.elements) {
-                if (child && "isClassInstance" in (child as any)) {
-                  workQueue.push({ instance: child as ModelicaClassInstance });
-                }
-              }
-            }
-          } else if (ci instanceof ModelicaLibrary) {
-            for (const child of ci.elements) {
-              if (child && "isClassInstance" in (child as any)) {
-                workQueue.push({ instance: child as ModelicaClassInstance });
-              }
-            }
-          }
-        }
-      }
-
-      if (cancelled) return;
-
-      if (queueIndex >= workQueue.length || results.length >= SEARCH_RESULT_LIMIT) {
-        // Done
-        setSearchState({ results: [...results], searching: false, totalMatches, done: true });
-      } else {
-        // Yield to main thread, then continue
-        setSearchState({ results: [...results], searching: true, totalMatches, done: false });
-        setTimeout(processChunk, 0);
-      }
-    };
-
-    // Start on next frame to let React commit the "searching" state first
-    setTimeout(processChunk, 0);
+    searchClasses(filter, SEARCH_RESULT_LIMIT)
+      .then((result) => {
+        if (cancelled) return;
+        setSearchState({
+          results: result.results,
+          searching: false,
+          totalMatches: result.results.length,
+          done: true,
+        });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setSearchState({ results: [], searching: false, totalMatches: 0, done: true });
+      });
 
     return () => {
       cancelled = true;
     };
-  }, [filter, props.context, props.version]);
+  }, [filter, props.version]);
 
-  // Build element list
+  // Build elements
   const elements: React.ReactNode[] = [];
 
-  if (props.context) {
-    if (filter) {
-      for (const c of searchState.results) {
-        elements.push(
-          <SearchResultNode
-            key={c.compositeName}
-            element={c}
-            onSelect={props.onSelect}
-            onHighlight={props.onHighlight}
-            depth={0}
-            showQualifiedName={true}
-            language={props.language}
-            selectedClassName={props.selectedClassName}
-          />,
-        );
-      }
-      if (searchState.searching) {
-        elements.push(
-          <li
-            key="__searching__"
+  if (filter) {
+    // Search results
+    for (const node of searchState.results) {
+      elements.push(
+        <TreeNode
+          key={node.compositeName ?? node.name}
+          node={node}
+          uri={props.uri}
+          onSelect={props.onSelect}
+          onHighlight={props.onHighlight}
+          depth={0}
+          showQualifiedName={true}
+          selectedClassName={props.selectedClassName}
+        />,
+      );
+    }
+    if (searchState.searching) {
+      elements.push(
+        <li
+          key="__searching__"
+          style={{
+            listStyle: "none",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "12px 8px",
+            margin: "0 8px",
+            fontSize: 13,
+            color: "var(--fgColor-muted, var(--color-fg-muted))",
+            gap: 8,
+          }}
+        >
+          <span
             style={{
-              listStyle: "none",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: "12px 8px",
-              margin: "0 8px",
-              fontSize: 13,
-              color: "var(--fgColor-muted, var(--color-fg-muted))",
-              gap: 8,
+              display: "inline-block",
+              width: 12,
+              height: 12,
+              border: "2px solid var(--fgColor-muted, rgba(125, 133, 144, 0.4))",
+              borderTopColor: "var(--fgColor-default, var(--color-fg-default))",
+              borderRadius: "50%",
+              animation: "tree-spinner 0.6s linear infinite",
             }}
-          >
-            <span
-              style={{
-                display: "inline-block",
-                width: 12,
-                height: 12,
-                border: "2px solid var(--fgColor-muted, rgba(125, 133, 144, 0.4))",
-                borderTopColor: "var(--fgColor-default, var(--color-fg-default))",
-                borderRadius: "50%",
-                animation: "tree-spinner 0.6s linear infinite",
-              }}
-            />
-            Searching…
-          </li>,
-        );
-      } else if (searchState.totalMatches > SEARCH_RESULT_LIMIT) {
-        elements.push(
-          <li
-            key="__more__"
-            style={{
-              listStyle: "none",
-              padding: "8px 16px",
-              fontSize: 12,
-              color: "var(--fgColor-muted, var(--color-fg-muted))",
-              textAlign: "center",
-              fontStyle: "italic",
-            }}
-          >
-            Showing {SEARCH_RESULT_LIMIT} of {searchState.totalMatches}+ results
-          </li>,
-        );
-      } else if (searchState.done && searchState.results.length === 0) {
-        elements.push(
-          <li
-            key="__empty__"
-            style={{
-              listStyle: "none",
-              padding: "12px 16px",
-              fontSize: 13,
-              color: "var(--fgColor-muted, var(--color-fg-muted))",
-              textAlign: "center",
-            }}
-          >
-            No results found
-          </li>,
-        );
-      }
-    } else {
-      for (const element of props.context.elements) {
-        if (element && "isClassInstance" in (element as any)) {
-          elements.push(
-            <TreeNode
-              key={element.name}
-              element={element as ModelicaClassInstance}
-              onSelect={props.onSelect}
-              onHighlight={props.onHighlight}
-              depth={0}
-              language={props.language}
-              selectedClassName={props.selectedClassName}
-            />,
-          );
-        } else if (element instanceof ModelicaLibrary) {
-          elements.push(<LibraryGroup key={element.path} library={element} onSelect={props.onSelect} />);
-        }
-      }
+          />
+          Searching…
+        </li>,
+      );
+    } else if (searchState.totalMatches > SEARCH_RESULT_LIMIT) {
+      elements.push(
+        <li
+          key="__more__"
+          style={{
+            listStyle: "none",
+            padding: "8px 16px",
+            fontSize: 12,
+            color: "var(--fgColor-muted, var(--color-fg-muted))",
+            textAlign: "center",
+            fontStyle: "italic",
+          }}
+        >
+          Showing {SEARCH_RESULT_LIMIT} of {searchState.totalMatches}+ results
+        </li>,
+      );
+    } else if (searchState.done && searchState.results.length === 0) {
+      elements.push(
+        <li
+          key="__empty__"
+          style={{
+            listStyle: "none",
+            padding: "12px 16px",
+            fontSize: 13,
+            color: "var(--fgColor-muted, var(--color-fg-muted))",
+            textAlign: "center",
+          }}
+        >
+          No results found
+        </li>,
+      );
+    }
+  } else {
+    // Root tree nodes
+    for (const node of rootNodes) {
+      elements.push(
+        <TreeNode
+          key={node.id}
+          node={node}
+          uri={props.uri}
+          onSelect={props.onSelect}
+          onHighlight={props.onHighlight}
+          depth={0}
+          selectedClassName={props.selectedClassName}
+        />,
+      );
     }
   }
 

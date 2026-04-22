@@ -77,6 +77,7 @@ import {
   ModelicaNamedElement,
   ModelicaScriptScope,
   ModelicaStoredDefinitionSyntaxNode,
+  ModelicaVariability,
   PositionIndex,
   QueryBackedClassInstance,
   QueryEngine,
@@ -3931,6 +3932,39 @@ function hasClassChildren(index: any, symbolId: number): boolean {
   return false;
 }
 
+// Custom request: search classes by name across the workspace index
+connection.onRequest(
+  "modelscript/searchClasses",
+  (params: { query: string; limit?: number }): { results: TreeNodeInfo[] } => {
+    const query = (params.query ?? "").toLowerCase();
+    if (!query) return { results: [] };
+
+    const limit = params.limit ?? 50;
+    const unifiedIndex = globalWorkspaceIndex.toTreeIndex();
+    if (!unifiedIndex) return { results: [] };
+
+    const results: TreeNodeInfo[] = [];
+
+    for (const [id, entry] of unifiedIndex.symbols) {
+      if (entry.kind !== "Class") continue;
+      const compositeName = getCompositeName(entry, unifiedIndex);
+      if (compositeName.toLowerCase().includes(query)) {
+        results.push({
+          id: compositeName,
+          name: entry.name,
+          compositeName,
+          classKind: classKindFromPrefixes(entry.metadata?.classPrefixes),
+          hasChildren: hasClassChildren(unifiedIndex, id),
+        });
+        if (results.length >= limit) break;
+      }
+    }
+
+    results.sort((a, b) => a.compositeName.localeCompare(b.compositeName));
+    return { results };
+  },
+);
+
 // Custom request: get project tree (workspace files and their classes)
 interface ProjectTreeNodeInfo {
   id: string;
@@ -4397,6 +4431,97 @@ connection.onRequest(
       };
     } catch (e) {
       console.error("[mcp-bridge] query error:", e);
+      return null;
+    }
+  },
+);
+
+connection.onRequest(
+  "modelscript/getComponentProperties",
+  (params: {
+    uri: string;
+    className: string;
+    componentName: string;
+  }): {
+    name: string;
+    className: string;
+    localizedClassName: string;
+    description: string;
+    iconSvg?: string | null;
+    parameters: {
+      name: string;
+      localizedName?: string;
+      localizedDescription?: string;
+      value: string;
+      defaultValue: string;
+      unit?: string;
+      isBoolean?: boolean;
+    }[];
+    documentation?: { info?: string; revisions?: string };
+  } | null => {
+    let ctx = documentContexts.get(params.uri);
+    if (!ctx) {
+      for (const c of documentContexts.values()) {
+        ctx = c;
+        break;
+      }
+    }
+    if (!ctx) return null;
+
+    try {
+      const cls = ctx.query(params.className);
+      if (!cls || !(cls instanceof ModelicaClassInstance)) return null;
+
+      const component = Array.from(cls.components).find((c) => c.name === params.componentName);
+      if (!component) return null;
+
+      const parameters: any[] = [];
+      if (component.classInstance) {
+        for (const element of component.classInstance.elements) {
+          if (element instanceof ModelicaComponentInstance && element.variability === ModelicaVariability.PARAMETER) {
+            const value =
+              typeof (component.modification?.getModificationArgument(element.name ?? "")?.expression as any)?.value ===
+              "string"
+                ? (component.modification?.getModificationArgument(element.name ?? "")?.expression as any).value
+                : typeof (element.modification?.expression as any)?.value === "string"
+                  ? (element.modification?.expression as any).value
+                  : "-";
+
+            const unitExpr = element.classInstance?.modification?.getModificationArgument("unit")?.expression;
+            const rawUnit =
+              typeof (unitExpr as any)?.value === "string" ? (unitExpr as any).value.replace(/^"|"$/g, "") : undefined;
+            const unit = rawUnit === "1" || rawUnit === "" ? undefined : rawUnit;
+            const isBoolean = element.classInstance?.name === "Boolean";
+
+            parameters.push({
+              name: element.name ?? "",
+              localizedName: element.localizedName,
+              localizedDescription: (element as any).localizedDescription || element.description,
+              value,
+              defaultValue:
+                typeof (element.modification?.expression as any)?.value === "string"
+                  ? (element.modification?.expression as any).value
+                  : "-",
+              unit,
+              isBoolean,
+            });
+          }
+        }
+      }
+
+      const doc = component.classInstance?.annotation("Documentation") as { info?: string; revisions?: string } | null;
+
+      return {
+        name: component.name ?? "",
+        className: component.classInstance?.name ?? "",
+        localizedClassName: component.classInstance?.localizedName ?? "",
+        description: component.description ?? "",
+        iconSvg: component.classInstance ? getClassIconSvg(component.classInstance as ModelicaClassInstance) : null,
+        parameters,
+        documentation: doc ? { info: doc.info, revisions: doc.revisions } : undefined,
+      };
+    } catch (e) {
+      console.error("[lsp] getComponentProperties error:", e);
       return null;
     }
   },

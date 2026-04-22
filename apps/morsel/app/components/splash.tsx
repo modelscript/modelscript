@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Context } from "@modelscript/core";
 import { PlusIcon, TrashIcon, XIcon } from "@primer/octicons-react";
 import { IconButton } from "@primer/react";
 import React from "react";
@@ -20,7 +19,7 @@ interface SplashProps {
   onClearRecent: () => void;
   recentModels: ModelData[];
   exampleModels: ModelData[];
-  context: Context | null;
+  context?: any;
   colorMode?: string;
   translations: Translations;
 }
@@ -140,7 +139,7 @@ export const Splash: React.FC<SplashProps> = ({
             </div>
 
             {recentModels.map((model: ModelData) => (
-              <ModelGridItem key={model.id} model={model} onSelect={onSelect} context={context} colorMode={colorMode} />
+              <ModelGridItem key={model.id} model={model} onSelect={onSelect} colorMode={colorMode} />
             ))}
           </div>
         </section>
@@ -159,7 +158,7 @@ export const Splash: React.FC<SplashProps> = ({
             }}
           >
             {exampleModels.map((model: ModelData) => (
-              <ModelGridItem key={model.id} model={model} onSelect={onSelect} context={context} colorMode={colorMode} />
+              <ModelGridItem key={model.id} model={model} onSelect={onSelect} colorMode={colorMode} />
             ))}
           </div>
         </section>
@@ -171,7 +170,7 @@ export const Splash: React.FC<SplashProps> = ({
 const ModelGridItem: React.FC<{
   model: ModelData;
   onSelect: (model: ModelData) => void;
-  context: Context | null;
+  context?: any;
   colorMode: string;
 }> = ({ model, onSelect, context, colorMode }) => {
   const isDark = colorMode.includes("night") || colorMode.includes("dark");
@@ -204,7 +203,7 @@ const ModelGridItem: React.FC<{
         e.currentTarget.style.transform = "translateY(0)";
       }}
     >
-      <ModelPreview content={model.content} context={context} />
+      <ModelPreview />
       <span
         style={{
           fontSize: 14,

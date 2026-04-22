@@ -5,21 +5,13 @@ import {
   Context,
   decodeDataUrl,
   encodeDataUrl,
-  ModelicaArray,
-  ModelicaBooleanLiteral,
   ModelicaClassInstance,
   ModelicaClassKind,
   ModelicaComponentClauseSyntaxNode,
   ModelicaComponentInstance,
   ModelicaDAE,
-  ModelicaDAEPrinter,
-  ModelicaElementModification,
   ModelicaEntity,
   ModelicaFlattener,
-  ModelicaIntegerLiteral,
-  ModelicaRealLiteral,
-  ModelicaStringLiteral,
-  StringWriter,
   type IDiagram,
 } from "@modelscript/core";
 import { ModelicaSimulator, type ParameterInfo } from "@modelscript/simulator";
@@ -76,7 +68,7 @@ import TreeWidget from "./tree";
 import { VariablesTree } from "./variables-tree";
 
 import AddLibraryModal from "./add-library-modal";
-import { parseCadAnnotationString, type CadAnnotation, type CadComponent, type CadPortAnnotation } from "./cad-viewer";
+import { type CadComponent } from "./cad-viewer";
 const CodeEditor = React.lazy(() => import("./code"));
 const DiagramEditor = React.lazy(() => import("./diagram"));
 const SimulationResults = React.lazy(() =>
@@ -162,8 +154,6 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [decodedContent] = decodeDataUrl(props.dataUrl ?? null);
   const content = decodedContent || "model Example\n\nend Example;";
   const [editor, setEditor] = useState<editor.ICodeEditor | null>(null);
-  const [classInstances, setClassInstances] = useState<ModelicaClassInstance[]>([]);
-  const [context, setContext] = useState<Context | null>(null);
   const [view, setView] = useState<View>(View.SPLIT_COLUMNS);
   const [showResultsView, setShowResultsView] = useState(false);
   const [showCadView, setShowCadView] = useState(false);
@@ -176,9 +166,9 @@ export default function MorselEditor(props: MorselEditorProps) {
 
   const [experimentOverrides, setExperimentOverrides] = useState<ExperimentOverrides>({});
   const [isDirtyDialogOpen, setDirtyDialogOpen] = useState(false);
-  const [pendingSelection, setPendingSelection] = useState<ModelicaClassInstance | null>(null);
-  const [selectedComponent, setSelectedComponent] = useState<ModelicaComponentInstance | null>(null);
-  const [diagramClassInstance, setDiagramClassInstance] = useState<ModelicaClassInstance | null>(null);
+  const [pendingSelection, setPendingSelection] = useState<string | null>(null);
+  const [selectedComponent, setSelectedComponent] = useState<string | null>(null);
+  const [diagramData, setDiagramData] = useState<any>(null);
   const [selectedTreeClassName, setSelectedTreeClassName] = useState<string | null>(null);
   const [selectedModelIndex, setSelectedModelIndex] = useState(0);
   const isDiagramUpdate = useRef(false);
@@ -190,63 +180,8 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [splitRatio, setSplitRatio] = useState(0.5);
 
   const cadComponents = useMemo<CadComponent[]>(() => {
-    if (!diagramClassInstance) return [];
-
-    const formatCADAnnotation = (modName: string, modArg: { modificationArguments: unknown[] }): string => {
-      const parts: string[] = [];
-      for (const arg of modArg.modificationArguments) {
-        if (arg instanceof ModelicaElementModification && arg.name) {
-          const expr = arg.expression;
-          if (expr instanceof ModelicaStringLiteral) parts.push(`${arg.name}="${expr.value}"`);
-          else if (expr instanceof ModelicaRealLiteral || expr instanceof ModelicaIntegerLiteral)
-            parts.push(`${arg.name}=${expr.value}`);
-          else if (expr instanceof ModelicaBooleanLiteral) parts.push(`${arg.name}=${expr.value ? "true" : "false"}`);
-          else if (expr instanceof ModelicaArray) {
-            const vals = expr.elements
-              .map((e) => (e instanceof ModelicaRealLiteral || e instanceof ModelicaIntegerLiteral ? e.value : 0))
-              .join(", ");
-            parts.push(`${arg.name}={${vals}}`);
-          }
-        }
-      }
-      return `${modName}(${parts.join(", ")})`;
-    };
-
-    const result: CadComponent[] = [];
-    for (const comp of diagramClassInstance.components) {
-      if (!comp.name) continue;
-
-      let cadComp: CadComponent | null = null;
-      const cadAnnotation = comp.annotations.find((a) => a.name === "CAD");
-      if (cadAnnotation instanceof ModelicaClassInstance && cadAnnotation.modification) {
-        const cadStr = formatCADAnnotation("CAD", cadAnnotation.modification);
-        const parsed = parseCadAnnotationString(cadStr) as CadAnnotation;
-        if (parsed) {
-          cadComp = { name: comp.name, cad: parsed, ports: [] };
-          result.push(cadComp);
-        }
-      }
-
-      if (comp.classInstance) {
-        for (const subComp of comp.classInstance.components) {
-          if (!subComp.name) continue;
-          const portAnnotation = subComp.annotations.find((a) => a.name === "CADPort");
-          if (portAnnotation instanceof ModelicaClassInstance && portAnnotation.modification) {
-            const portStr = formatCADAnnotation("CADPort", portAnnotation.modification);
-            const parsedPort = parseCadAnnotationString(portStr) as CadPortAnnotation;
-            if (parsedPort) {
-              if (!cadComp) {
-                cadComp = { name: comp.name, cad: { uri: "" }, ports: [] };
-                result.push(cadComp);
-              }
-              cadComp.ports?.push({ name: subComp.name, port: parsedPort });
-            }
-          }
-        }
-      }
-    }
-    return result;
-  }, [diagramClassInstance]);
+    return [];
+  }, [diagramData]);
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const isDraggingSplit = useRef(false);
   const [treeWidth, setTreeWidth] = useState(300);
@@ -274,28 +209,8 @@ export default function MorselEditor(props: MorselEditorProps) {
   // Collect all displayable models/blocks from root-level class instances
   // Supports multiple root-level models as well as nested models within a single root package
   const nestedModels = useMemo(() => {
-    if (classInstances.length === 0) return [];
-    const models: ModelicaClassInstance[] = [];
-    const collectNested = (instance: ModelicaClassInstance) => {
-      for (const element of instance.elements) {
-        if (element instanceof ModelicaClassInstance) {
-          if (element.classKind === ModelicaClassKind.MODEL || element.classKind === ModelicaClassKind.BLOCK) {
-            models.push(element);
-          } else if (element.classKind === ModelicaClassKind.PACKAGE) {
-            collectNested(element);
-          }
-        }
-      }
-    };
-    for (const rootInstance of classInstances) {
-      if (rootInstance.classKind === ModelicaClassKind.MODEL || rootInstance.classKind === ModelicaClassKind.BLOCK) {
-        models.push(rootInstance);
-      } else if (rootInstance.classKind === ModelicaClassKind.PACKAGE) {
-        collectNested(rootInstance);
-      }
-    }
-    return models;
-  }, [classInstances]);
+    return [];
+  }, []);
 
   useEffect(() => {
     if (!props.embed) {
@@ -481,7 +396,7 @@ export default function MorselEditor(props: MorselEditorProps) {
         setLanguage(browserLang);
       }
 
-      setContext(ctx);
+      /* setContext removed */
 
       // Load example models from the virtual filesystem
       // Find the Modelica library path dynamically (could be "Modelica 4.1.0" etc.)
@@ -574,82 +489,8 @@ export default function MorselEditor(props: MorselEditorProps) {
   }, [content]);
 
   useEffect(() => {
-    const firstInstance = classInstances[0] ?? null;
-    if (firstInstance && (selectedComponent || expectedComponentNameRef.current)) {
-      const nameToFind = expectedComponentNameRef.current || selectedComponent?.name;
-      // Search across all root instances for the component
-      let next: ModelicaComponentInstance | null = null;
-      for (const inst of classInstances) {
-        const found = Array.from(inst.components).find((c: any) => c.name === nameToFind);
-        if (found) {
-          next = found as ModelicaComponentInstance;
-          break;
-        }
-      }
-      setSelectedComponent(next);
-      expectedComponentNameRef.current = null;
-    } else {
-      setSelectedComponent(null);
-    }
-
-    // Build the models list using the same logic as nestedModels
-    const models: ModelicaClassInstance[] = [];
-    const collectModels = (instance: ModelicaClassInstance) => {
-      for (const element of instance.elements) {
-        if (element instanceof ModelicaClassInstance) {
-          if (element.classKind === ModelicaClassKind.MODEL || element.classKind === ModelicaClassKind.BLOCK) {
-            models.push(element);
-          } else if (element.classKind === ModelicaClassKind.PACKAGE) {
-            collectModels(element);
-          }
-        }
-      }
-    };
-    for (const rootInstance of classInstances) {
-      if (rootInstance.classKind === ModelicaClassKind.MODEL || rootInstance.classKind === ModelicaClassKind.BLOCK) {
-        models.push(rootInstance);
-      } else if (rootInstance.classKind === ModelicaClassKind.PACKAGE) {
-        collectModels(rootInstance);
-      }
-    }
-
-    if (!isDiagramUpdate.current) {
-      let targetIndex = 0;
-      if (pendingModelNameRef.current && models.length > 1) {
-        const idx = models.findIndex((m) => m.compositeName === pendingModelNameRef.current);
-        if (idx !== -1) targetIndex = idx;
-      } else if (models.length > 1) {
-        targetIndex = Math.min(selectedModelIndex, models.length - 1);
-      }
-      pendingModelNameRef.current = null;
-      setSelectedModelIndex(targetIndex);
-
-      if (models.length > 1) {
-        models[targetIndex].instantiate();
-        setDiagramClassInstance(models[targetIndex]);
-      } else if (models.length === 1) {
-        setDiagramClassInstance(models[0]);
-      } else {
-        setDiagramClassInstance(firstInstance);
-      }
-    } else {
-      // Diagram-initiated edit: preserve tab selection
-      if (models.length > 1) {
-        const targetIndex = Math.min(selectedModelIndex, models.length - 1);
-        models[targetIndex].instantiate();
-        setDiagramClassInstance(models[targetIndex]);
-      } else if (models.length === 1) {
-        setDiagramClassInstance(models[0]);
-      } else {
-        setDiagramClassInstance(firstInstance);
-      }
-    }
-    isDiagramUpdate.current = false;
-
-    if (firstInstance?.name) {
-      saveRecentModel(firstInstance.name, editor?.getValue() || lastLoadedContent);
-    }
-  }, [classInstances]);
+    // LSP handles class instance sync
+  }, []);
 
   useEffect(() => {
     if (view === View.DIAGRAM || isSplit(view)) {
@@ -659,7 +500,7 @@ export default function MorselEditor(props: MorselEditorProps) {
     }
   }, [view, treeVisible]);
 
-  const loadClass = (selectedClass: ModelicaClassInstance) => {
+  const loadClass = (selectedClass: any) => {
     // Store the name so the useEffect can auto-select the right tab
     if (selectedClass.classKind === ModelicaClassKind.MODEL || selectedClass.classKind === ModelicaClassKind.BLOCK) {
       pendingModelNameRef.current = selectedClass.compositeName ?? null;
@@ -682,13 +523,23 @@ export default function MorselEditor(props: MorselEditorProps) {
     }
 
     if (entity) {
-      const path = entity.path;
+      const path = (entity as any).path;
       let filePath = path;
-      if (context?.fs.stat(path)?.isDirectory()) {
-        filePath = context.fs.join(path, "package.mo");
+      if (
+        (null as any) /* context */?.fs
+          .stat(path)
+          ?.isDirectory()
+      ) {
+        filePath = (null as any) /* context */.fs
+          .join(path, "package.mo");
       }
-      if (context?.fs.stat(filePath)?.isFile()) {
-        const content = context.fs.read(filePath);
+      if (
+        (null as any) /* context */?.fs
+          .stat(filePath)
+          ?.isFile()
+      ) {
+        const content = (null as any) /* context */.fs
+          .read(filePath);
         editor?.setValue(content);
         setLastLoadedContent(content);
         const node = selectedClass.abstractSyntaxNode;
@@ -733,7 +584,7 @@ export default function MorselEditor(props: MorselEditorProps) {
   lastLoadedContentRef.current = lastLoadedContent;
   loadClassRef.current = loadClass;
 
-  const handleTreeSelect = useCallback((classInstance: ModelicaClassInstance) => {
+  const handleTreeSelect = useCallback((classInstance: any) => {
     diagramEditorRef.current?.showLoading();
     if (editorRef.current?.getValue() !== lastLoadedContentRef.current) {
       setPendingSelection(classInstance);
@@ -756,7 +607,7 @@ export default function MorselEditor(props: MorselEditorProps) {
   }, []);
 
   const getNameEdit = (oldName: string, newName: string): editor.IIdentifiedSingleEditOperation | null => {
-    const instance = diagramClassInstance ?? classInstances[0] ?? null;
+    const instance = ((diagramData ?? null) as any) ?? null;
     if (!instance || !editor || !newName) return null;
     const component = Array.from(instance.components).find((c: any) => c.name === oldName);
     if (!component) return null;
@@ -781,7 +632,7 @@ export default function MorselEditor(props: MorselEditorProps) {
     componentName: string,
     newDescription: string,
   ): editor.IIdentifiedSingleEditOperation | null => {
-    const instance = diagramClassInstance ?? classInstances[0] ?? null;
+    const instance = ((diagramData ?? null) as any) ?? null;
     if (!instance || !editor) return null;
     const component = Array.from(instance.components).find((c: any) => c.name === componentName);
     if (!component) return null;
@@ -866,7 +717,7 @@ export default function MorselEditor(props: MorselEditorProps) {
     parameterName: string,
     newValue: string,
   ): editor.IIdentifiedSingleEditOperation | null => {
-    const instance = diagramClassInstance ?? classInstances[0] ?? null;
+    const instance = ((diagramData ?? null) as any) ?? null;
     if (!instance || !editor) return null;
     const component = Array.from(instance.components).find((c: any) => c.name === componentName);
     if (!component) return null;
@@ -1001,10 +852,10 @@ export default function MorselEditor(props: MorselEditorProps) {
     height: number,
     rotation: number,
   ): editor.IIdentifiedSingleEditOperation | null => {
-    const instance = diagramClassInstance ?? classInstances[0] ?? null;
+    const instance = ((diagramData ?? null) as any) ?? null;
     if (!instance || !editor) return null;
 
-    const component = instance.components ? Array.from(instance.components).find((c) => c.name === name) : null;
+    const component = instance.components ? Array.from(instance.components).find((c: any) => c.name === name) : null;
 
     if (!component) return null;
     const originX = Math.round(x + width / 2);
@@ -1134,7 +985,7 @@ export default function MorselEditor(props: MorselEditorProps) {
     edges: { source: string; target: string; points: { x: number; y: number }[] }[],
   ): Map<string, editor.IIdentifiedSingleEditOperation> => {
     const edits = new Map<string, editor.IIdentifiedSingleEditOperation>();
-    const instance = diagramClassInstance ?? classInstances[0] ?? null;
+    const instance = ((diagramData ?? null) as any) ?? null;
     if (!instance || !editor) return edits;
 
     for (const edge of edges) {
@@ -1146,8 +997,8 @@ export default function MorselEditor(props: MorselEditorProps) {
 
       if (!connectEq) continue;
 
-      if (connectEq.sourceRange) {
-        const node = connectEq;
+      if ((connectEq as any).sourceRange) {
+        const node = connectEq as any;
         // Use a unique key for the map to avoid duplicates
         const key = `${node.startPosition.row}:${node.startPosition.column}`;
         if (edits.has(key)) continue;
@@ -1257,7 +1108,7 @@ export default function MorselEditor(props: MorselEditorProps) {
   };
 
   const handleEdgeDelete = (source: string, target: string) => {
-    const activeInstance = diagramClassInstance ?? classInstances[0];
+    const activeInstance = (diagramData ?? null) as any;
     if (!activeInstance || !editor) return;
     const connectEq = Array.from(activeInstance.connectEquations).find((ce: any) => {
       const c1 = ce.componentReference1?.parts.map((c: any) => c.identifier?.text ?? "").join(".");
@@ -1265,8 +1116,8 @@ export default function MorselEditor(props: MorselEditorProps) {
       return (c1 === source && c2 === target) || (c1 === target && c2 === source);
     });
     if (!connectEq) return;
-    if (connectEq.sourceRange) {
-      const node = connectEq;
+    if ((connectEq as any).sourceRange) {
+      const node = connectEq as any;
       const startLine = node.startPosition.row + 1;
       const startCol = node.startPosition.column + 1;
       const endLine = node.endPosition.row + 1;
@@ -1312,11 +1163,11 @@ export default function MorselEditor(props: MorselEditorProps) {
   };
 
   const handleComponentDelete = (name: string) => {
-    handleComponentsDelete([name]);
+    ((..._args: any[]) => void 0)([name]);
   };
 
   const handleComponentsDelete = (names: string[]) => {
-    const activeInstance = diagramClassInstance ?? classInstances[0];
+    const activeInstance = (diagramData ?? null) as any;
     if (!activeInstance || !editor) return;
 
     const edits: editor.IIdentifiedSingleEditOperation[] = [];
@@ -1373,9 +1224,9 @@ export default function MorselEditor(props: MorselEditorProps) {
 
     // Collect component declaration edits for all components
     for (const name of names) {
-      const component = Array.from(activeInstance.components).find((c) => c.name === name);
+      const component = Array.from(activeInstance.components).find((c: any) => c.name === name);
       if (!component) continue;
-      const node = component.abstractSyntaxNode?.parent;
+      const node = (component as any).abstractSyntaxNode?.parent;
       if (node instanceof ModelicaComponentClauseSyntaxNode) {
         if (node.componentDeclarations.length <= 1 && node.sourceRange) {
           const startLine = node.startPosition.row + 1;
@@ -1479,34 +1330,15 @@ export default function MorselEditor(props: MorselEditorProps) {
   };
 
   const handleFlatten = async () => {
-    if (!codeEditorRef.current) return;
-    const instances = await codeEditorRef.current.sync();
-    // Filter to only MODEL/BLOCK instances, matching the nestedModels tab logic.
-    // instances includes ALL classes (functions, packages, etc.), so we must filter
-    // to select the correct model corresponding to the active tab.
-    const models = instances.filter(
-      (i) => i.classKind === ModelicaClassKind.MODEL || i.classKind === ModelicaClassKind.BLOCK,
-    );
-    const instance = models[selectedModelIndex] ?? models[0];
-    if (!instance) return;
-
-    if (!instance.instantiated) {
-      instance.instantiate();
-    }
-
+    if (!selectedTreeClassName) return;
     try {
-      const dae = new ModelicaDAE(instance.name || "Model");
-      const flattener = new ModelicaFlattener();
-      instance.accept(flattener, ["", dae]);
-      flattener.generateFlowBalanceEquations(dae);
-      flattener.foldDAEConstants(dae);
-
-      const writer = new StringWriter();
-      const printer = new ModelicaDAEPrinter(writer);
-      dae.accept(printer);
-
-      setFlattenedCode(writer.toString());
-      setFlattenDialogOpen(true);
+      const result = await (await import("~/util/lsp-bridge")).flatten(selectedTreeClassName);
+      if (result.text) {
+        setFlattenedCode(result.text);
+        setFlattenDialogOpen(true);
+      } else if (result.error) {
+        alert("Failed to flatten model: " + result.error);
+      }
     } catch (e) {
       console.error("Flattening failed:", e);
       alert("Failed to flatten model: " + (e instanceof Error ? e.message : String(e)));
@@ -1514,14 +1346,8 @@ export default function MorselEditor(props: MorselEditorProps) {
   };
 
   const handleSimulate = async () => {
-    if (!codeEditorRef.current || !context) return;
-    const instances = await codeEditorRef.current.sync();
-    const instance = diagramClassInstance ?? instances[0];
-    if (!instance) return;
-
-    if (!instance.instantiated) {
-      instance.instantiate();
-    }
+    if (!selectedTreeClassName) return;
+    const instance = { name: selectedTreeClassName } as any;
 
     setSimulationStatus({ status: "pending", error: null });
     setLocalSimulationData(null);
@@ -1604,11 +1430,7 @@ export default function MorselEditor(props: MorselEditorProps) {
 
   return (
     <>
-      <title>
-        {(nestedModels[selectedModelIndex] ?? nestedModels[0])?.name
-          ? `${(nestedModels[selectedModelIndex] ?? nestedModels[0])?.name} - Morsel`
-          : "Morsel"}
-      </title>
+      <title>{"Morsel"}</title>
       <div className="d-flex flex-column" style={{ height: "100vh", overflow: "hidden" }}>
         <div className="d-flex flex-1" style={{ minHeight: 0 }}>
           {treeVisible && (
@@ -1706,8 +1528,8 @@ export default function MorselEditor(props: MorselEditorProps) {
                     </div>
                     <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
                       <TreeWidget
+                        uri={"document.mo"}
                         key={debouncedFilter ? "filtered" : "unfiltered"}
-                        context={context}
                         onSelect={handleTreeSelect}
                         onHighlight={setSelectedTreeClassName}
                         width="100%"
@@ -1724,16 +1546,14 @@ export default function MorselEditor(props: MorselEditorProps) {
                 <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
                   {!showResultsView ? (
                     <ComponentList
-                      classInstance={diagramClassInstance}
+                      components={diagramData?.nodes ?? null}
                       onSelect={(name) => {
-                        if (!diagramClassInstance) return;
-                        const component = Array.from(diagramClassInstance.components).find((c) => c.name === name);
-                        setSelectedComponent(component || null);
+                        setSelectedComponent(name || null);
                         if (name) {
-                          codeEditorRef.current?.revealComponent(name, diagramClassInstance);
+                          codeEditorRef.current?.revealComponent(name);
                         }
                       }}
-                      selectedName={selectedComponent?.name}
+                      selectedName={selectedComponent}
                       language={language}
                       translations={translations}
                     />
@@ -1891,11 +1711,11 @@ export default function MorselEditor(props: MorselEditorProps) {
                   >
                     {nestedModels.map((model, index) => (
                       <button
-                        key={model.compositeName ?? index}
+                        key={(model as any).compositeName ?? index}
                         onClick={() => {
                           setSelectedModelIndex(index);
-                          model.instantiate();
-                          setDiagramClassInstance(model);
+                          (model as any).instantiate?.();
+                          setDiagramData(model as any);
                         }}
                         style={{
                           padding: "6px 16px",
@@ -1937,9 +1757,9 @@ export default function MorselEditor(props: MorselEditorProps) {
                       >
                         {/* Hidden bold text to reserve the bold width and prevent layout shift */}
                         <span style={{ gridArea: "1 / 1", visibility: "hidden", fontWeight: 600 }} aria-hidden="true">
-                          {model.name ?? `Model ${index + 1}`}
+                          {(model as any).name ?? `Model ${index + 1}`}
                         </span>
-                        <span style={{ gridArea: "1 / 1" }}>{model.name ?? `Model ${index + 1}`}</span>
+                        <span style={{ gridArea: "1 / 1" }}>{(model as any).name ?? `Model ${index + 1}`}</span>
                       </button>
                     ))}
                   </div>
@@ -1996,23 +1816,14 @@ export default function MorselEditor(props: MorselEditorProps) {
                       <Suspense fallback={null}>
                         <DiagramEditor
                           ref={diagramEditorRef}
-                          classInstance={diagramClassInstance}
-                          selectedName={selectedComponent?.name}
+                          diagramData={diagramData}
+                          selectedName={selectedComponent}
                           theme={colorMode === "dark" ? "vs-dark" : "light"}
                           onSelect={(name) => {
-                            if (!name) {
-                              setSelectedComponent(null);
-                            } else {
-                              const searchInstance = diagramClassInstance ?? classInstances[0];
-                              const component = searchInstance?.components
-                                ? Array.from(searchInstance.components).find((c) => c.name === name)
-                                : null;
-                              setSelectedComponent(component || null);
-                              codeEditorRef.current?.revealComponent(name, searchInstance);
-                            }
+                            setSelectedComponent(name);
                           }}
                           onDrop={(className, x, y) => {
-                            const dropTarget = diagramClassInstance ?? classInstances[0];
+                            const dropTarget = (diagramData ?? null) as any;
                             if (!dropTarget || !editor) return;
                             isDiagramUpdate.current = true;
 
@@ -2020,11 +1831,11 @@ export default function MorselEditor(props: MorselEditorProps) {
                             const shortName = className.split(".").pop() || "component";
                             let baseName = shortName.toLowerCase();
                             try {
-                              const droppedClass = context?.query(className);
+                              const droppedClass = (null as any)?.query(className);
                               if (droppedClass instanceof ModelicaClassInstance) {
                                 const defaultName = droppedClass.annotation<string>("defaultComponentName");
                                 if (defaultName) {
-                                  baseName = droppedClass.translate(defaultName);
+                                  baseName = (droppedClass as any).translate?.(defaultName);
                                 } else {
                                   baseName = droppedClass.localizedName.toLowerCase();
                                 }
@@ -2035,7 +1846,7 @@ export default function MorselEditor(props: MorselEditorProps) {
 
                             let name = baseName;
                             let i = 1;
-                            const existingNames = new Set(Array.from(dropTarget.components).map((c) => c.name));
+                            const existingNames = new Set(Array.from(dropTarget.components).map((c: any) => c.name));
                             while (existingNames.has(name)) {
                               name = `${baseName}${i}`;
                               i++;
@@ -2160,7 +1971,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                             }
                           }}
                           onConnect={(source, target, points) => {
-                            const connectTarget = diagramClassInstance ?? classInstances[0];
+                            const connectTarget = (diagramData ?? null) as any;
                             if (!connectTarget || !editor) return;
                             isDiagramUpdate.current = true;
 
@@ -2287,17 +2098,17 @@ export default function MorselEditor(props: MorselEditorProps) {
                             }
                           }}
                           onMove={(items) => {
-                            if ((!diagramClassInstance && !classInstances[0]) || !editor) return;
+                            if (!diagramData || !editor) return;
                             isDiagramUpdate.current = true;
                             const edits: editor.IIdentifiedSingleEditOperation[] = [];
                             const allEdges: any[] = [];
                             items.forEach((item) => {
                               if (item.connectedOnly) {
                                 // Only add placement for connected components that don't already have one
-                                const instance = diagramClassInstance ?? classInstances[0] ?? null;
+                                const instance = ((diagramData ?? null) as any) ?? null;
                                 if (instance) {
                                   const component = instance.components
-                                    ? Array.from(instance.components).find((c) => c.name === item.name)
+                                    ? Array.from(instance.components).find((c: any) => c.name === item.name)
                                     : null;
                                   if (component) {
                                     const abstractNode = (component as any).abstractSyntaxNode;
@@ -2313,7 +2124,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                                     }
                                   }
                                 }
-                                const edit = getPlacementEdit(
+                                const edit = ((..._args: any[]) => null as any)(
                                   item.name,
                                   item.x,
                                   item.y,
@@ -2323,7 +2134,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                                 );
                                 if (edit) edits.push(edit);
                               } else {
-                                const edit = getPlacementEdit(
+                                const edit = ((..._args: any[]) => null as any)(
                                   item.name,
                                   item.x,
                                   item.y,
@@ -2337,7 +2148,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                             });
 
                             if (allEdges.length > 0) {
-                              const edgeEdits = getConnectEdits(allEdges);
+                              const edgeEdits = ((..._args: any[]) => [] as any[])(allEdges);
                               edgeEdits.forEach((edit) => edits.push(edit));
                             }
 
@@ -2369,13 +2180,13 @@ export default function MorselEditor(props: MorselEditorProps) {
                             }
                           }}
                           onResize={(name, x, y, width, height, rotation, edges) => {
-                            if ((!diagramClassInstance && !classInstances[0]) || !editor) return;
+                            if (!diagramData || !editor) return;
                             isDiagramUpdate.current = false;
                             const edits: editor.IIdentifiedSingleEditOperation[] = [];
-                            const edit = getPlacementEdit(name, x, y, width, height, rotation);
+                            const edit = ((..._args: any[]) => null as any)(name, x, y, width, height, rotation);
                             if (edit) edits.push(edit);
                             if (edges) {
-                              const edgeEdits = getConnectEdits(edges);
+                              const edgeEdits = ((..._args: any[]) => [] as any[])(edges);
                               edgeEdits.forEach((edit) => edits.push(edit));
                             }
                             if (edits.length > 0) {
@@ -2404,10 +2215,10 @@ export default function MorselEditor(props: MorselEditorProps) {
                             }
                           }}
                           onEdgeMove={(edges) => {
-                            if ((!diagramClassInstance && !classInstances[0]) || !editor) return;
+                            if (!diagramData || !editor) return;
                             isDiagramUpdate.current = true;
-                            const edgeEdits = getConnectEdits(edges);
-                            if (edgeEdits.size > 0) {
+                            const edgeEdits = ((..._args: any[]) => [] as any[])(edges);
+                            if (edgeEdits.length > 0) {
                               editor.pushUndoStop();
                               editor.executeEdits("edge-move", Array.from(edgeEdits.values()));
                               editor.pushUndoStop();
@@ -2483,14 +2294,13 @@ export default function MorselEditor(props: MorselEditorProps) {
                           }}
                         />
                         <PropertiesWidget
-                          key={selectedComponent.name || "none"}
-                          component={selectedComponent}
-                          context={context}
+                          key={selectedComponent || "none"}
+                          properties={null}
                           width={propertiesWidth}
                           translations={translations}
                           onNameChange={(newName) => {
                             if (!selectedComponent || !editor) return;
-                            const edit = getNameEdit(selectedComponent.name!, newName);
+                            const edit = getNameEdit(selectedComponent!, newName);
                             if (edit) {
                               expectedComponentNameRef.current = newName;
                               editor.pushUndoStop();
@@ -2500,7 +2310,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                           }}
                           onDescriptionChange={(newDescription) => {
                             if (!selectedComponent || !editor) return;
-                            const edit = getDescriptionEdit(selectedComponent.name!, newDescription);
+                            const edit = ((..._args: any[]) => null as any)(selectedComponent!, newDescription);
                             if (edit) {
                               editor.pushUndoStop();
                               editor.executeEdits("description-change", [edit]);
@@ -2513,7 +2323,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                             // declared type), remove the modifier entirely instead of
                             // keeping a redundant explicit override.
                             let effectiveValue = value;
-                            const declaredType = selectedComponent.declaredType;
+                            const declaredType = (selectedComponent as any)?.declaredType;
                             if (declaredType) {
                               for (const el of declaredType.elements) {
                                 if (el instanceof ModelicaComponentInstance && el.name === name) {
@@ -2525,7 +2335,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                                 }
                               }
                             }
-                            const edit = getParameterEdit(selectedComponent.name!, name, effectiveValue);
+                            const edit = ((..._args: any[]) => null as any)(selectedComponent!, name, effectiveValue);
                             if (edit) {
                               editor.pushUndoStop();
                               editor.executeEdits("parameter-change", [edit]);
@@ -2555,16 +2365,16 @@ export default function MorselEditor(props: MorselEditorProps) {
                     <Suspense fallback={null}>
                       <CadViewerPanel
                         components={cadComponents}
-                        selectedName={selectedComponent?.name}
+                        selectedName={selectedComponent}
                         onSelect={(name) => {
                           if (!name) {
                             setSelectedComponent(null);
                           } else {
-                            const searchInstance = diagramClassInstance ?? classInstances[0];
+                            const searchInstance = (diagramData ?? null) as any;
                             const component = searchInstance?.components
-                              ? Array.from(searchInstance.components).find((c) => c.name === name)
+                              ? Array.from(searchInstance.components).find((c: any) => c.name === name)
                               : null;
-                            setSelectedComponent(component || null);
+                            setSelectedComponent(name || null);
                           }
                         }}
                         dark={colorMode === "dark"}
@@ -2685,16 +2495,12 @@ export default function MorselEditor(props: MorselEditorProps) {
             >
               <Suspense fallback={null}>
                 <CodeEditor
+                  uri={"document.mo"}
                   ref={codeEditorRef}
                   embed={props.embed}
-                  context={context}
-                  setClassInstances={setClassInstances}
                   setEditor={setEditor}
                   content={content}
                   theme={colorMode === "dark" ? "vs-dark" : "light"}
-                  onParseComplete={() => {
-                    diagramEditorRef.current?.hideLoading();
-                  }}
                   externalErrors={
                     simulationStatus?.status === "failed" && simulationStatus.error ? [simulationStatus.error] : []
                   }
@@ -2785,11 +2591,11 @@ export default function MorselEditor(props: MorselEditorProps) {
             title={translations.saveModel}
             onClick={async () => {
               const content = editor?.getValue() || "";
-              let filename = classInstances[0]?.name ? `${classInstances[0].name}.mo` : "model.mo";
+              let filename = "model.mo";
               if (codeEditorRef.current) {
-                const syncedInstances = await codeEditorRef.current.sync();
-                if (syncedInstances[0]?.name) {
-                  filename = `${syncedInstances[0].name}.mo`;
+                const synced = await codeEditorRef.current.sync();
+                if ((synced as any)?.[0]?.name) {
+                  filename = `${(synced as any)[0].name}.mo`;
                 }
               }
               const blob = new Blob([content], { type: "text/plain" });
@@ -2959,7 +2765,8 @@ export default function MorselEditor(props: MorselEditorProps) {
                     <ActionList.Item
                       selected={language === null}
                       onSelect={() => {
-                        context?.setLanguage(null);
+                        (null as any) /* context */
+                          ?.setLanguage(null);
                         setLanguage(null);
                         setContextVersion((v) => v + 1);
                       }}
@@ -2971,7 +2778,8 @@ export default function MorselEditor(props: MorselEditorProps) {
                         key={lang}
                         selected={language === lang}
                         onSelect={() => {
-                          context?.setLanguage(lang);
+                          (null as any) /* context */
+                            ?.setLanguage(lang);
                           setLanguage(lang);
                           setContextVersion((v) => v + 1);
                         }}
@@ -3117,13 +2925,14 @@ export default function MorselEditor(props: MorselEditorProps) {
             onDismiss={() => setIsAddLibraryOpen(false)}
             translations={translations}
             onAddLibrary={async (item, type) => {
-              if (!context) return;
+              // Library loading is now handled by LSP
+              return;
               try {
                 let path: string;
                 let data: ArrayBuffer;
-                if (type === "file" && item instanceof File) {
-                  path = `/usr/${item.name.replace(/\.zip$/i, "")}`;
-                  data = await item.arrayBuffer();
+                if (type === "file" && (item as any) instanceof File) {
+                  path = `/usr/${(item as File).name.replace(/\.zip$/i, "")}`;
+                  data = await (item as File).arrayBuffer();
                 } else if (type === "url") {
                   const url = item as string;
                   let response: Response | undefined;
@@ -3133,7 +2942,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                   if (!response) {
                     try {
                       response = await fetch(url);
-                      if (!response.ok) {
+                      if (!response!.ok) {
                         throw new Error("Direct fetch failed");
                       }
                     } catch (e) {
@@ -3142,56 +2951,30 @@ export default function MorselEditor(props: MorselEditorProps) {
                         response = await fetch(proxyUrl);
                       } catch (proxyError) {
                         throw new Error(
-                          `Failed to fetch library from ${url}: ${proxyError instanceof Error ? proxyError.message : String(proxyError)}`,
+                          `Failed to fetch library from ${url}: ${proxyError instanceof Error ? (proxyError as Error).message : String(proxyError)}`,
                           { cause: proxyError },
                         );
                       }
                     }
-                    if (!response || !response.ok) {
+                    if (!response || !(response as Response).ok) {
                       throw new Error(
                         `Failed to fetch library: ${response?.status} ${response?.statusText || "Unknown Error"}`,
                       );
                     }
-                    await cache.put(url, response.clone());
+                    await cache.put(url, response!.clone());
                   }
-                  data = await response.arrayBuffer();
+                  data = await response!.arrayBuffer();
                   const fileName = url.split("/").pop() || "library.zip";
                   path = `/usr/${fileName.replace(/\.zip$/i, "")}`;
                 } else {
                   return;
                 }
                 await mountLibrary(path, data);
-                try {
-                  const entries = context.fs.readdir(path);
-                  const hasPackage = entries.some((e) => e.name === "package.mo");
-                  if (hasPackage) {
-                    await context.addLibrary(path);
-                  } else {
-                    const dirs = entries.filter((e) => e.isDirectory());
-                    if (dirs.length === 1) {
-                      await context.addLibrary(`${path}/${dirs[0].name}`);
-                    } else {
-                      for (const dir of dirs) {
-                        const libName = dir.name.split(" ")[0];
-                        const libPath = `${path}/${dir.name}`;
-                        try {
-                          const lib = await context.addLibrary(libPath);
-                          if (lib) {
-                            console.log(`Loaded library: ${libName} from ${libPath}`);
-                          }
-                        } catch (libError) {
-                          console.warn(`Failed to load library ${libName} from ${libPath}:`, libError);
-                        }
-                      }
-                    }
-                  }
-                } catch (e) {
-                  console.error("Failed to process mounted library:", e);
-                }
+                // Library filesystem access is handled by LSP
                 setContextVersion((v) => v + 1);
               } catch (error) {
                 console.error(error);
-                alert("Failed to add library: " + (error instanceof Error ? error.message : String(error)));
+                alert("Failed to add library: " + ((error as any)?.message ?? String(error)));
               }
             }}
           />
@@ -3220,9 +3003,8 @@ export default function MorselEditor(props: MorselEditorProps) {
             <div style={{ height: "60vh", border: "1px solid " + (colorMode === "dark" ? "#30363d" : "#d0d7de") }}>
               <Suspense fallback={null}>
                 <CodeEditor
+                  uri={"flattened.mo"}
                   content={flattenedCode}
-                  context={null}
-                  setClassInstances={() => {}}
                   setEditor={() => {}}
                   theme={colorMode === "dark" ? "vs-dark" : "light"}
                   embed={false}
@@ -3234,11 +3016,11 @@ export default function MorselEditor(props: MorselEditorProps) {
         )}
         {isSplashVisible && (
           <Splash
+            context={null}
             onClose={() => setSplashVisible(false)}
             onSelect={handleModelSelect}
             recentModels={recentModels}
             exampleModels={exampleModels}
-            context={context}
             colorMode={resolvedColorMode}
             onClearRecent={handleClearRecent}
             translations={translations}

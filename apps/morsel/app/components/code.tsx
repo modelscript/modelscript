@@ -1,148 +1,33 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import {
-  Context,
-  ModelicaClassInstance,
-  ModelicaComponentClauseSyntaxNode,
-  ModelicaComponentInstance,
-  ModelicaElement,
-  ModelicaEnumerationClassInstance,
-  ModelicaLinter,
-  ModelicaNamedElement,
-  ModelicaStoredDefinitionSyntaxNode,
-  type Range,
-  Scope,
-} from "@modelscript/core";
-import { Editor, loader, type Monaco, type Theme } from "@monaco-editor/react";
+/**
+ * Code editor component that delegates all language intelligence to the
+ * LSP server via the Monaco-LSP adapter.
+ *
+ * The editor no longer:
+ *   - parses via tree-sitter
+ *   - lints via ModelicaLinter
+ *   - registers ad-hoc completion/hover/semantic-token providers
+ *
+ * Instead it:
+ *   - sends didOpen/didChange to the LSP
+ *   - receives diagnostics via publishDiagnostics notification
+ *   - proxies completion/hover/formatting/semantic tokens via the adapter
+ */
+
+import { Editor, loader, type Theme } from "@monaco-editor/react";
 import debounce from "lodash/debounce";
 import * as monaco from "monaco-editor";
-import { editor, languages } from "monaco-editor";
+import { editor, type IDisposable } from "monaco-editor";
 import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import React, { useEffect, useRef } from "react";
-import { Language, Parser, Node as SyntaxNode, type Tree } from "web-tree-sitter";
-import { format } from "~/util/formatter";
+import { didChange, didOpen } from "~/util/lsp-bridge";
+import { getLsp, startLsp } from "~/util/lsp-worker";
+import { setupMonacoLspAdapter } from "~/util/monaco-lsp-adapter";
 
-/**
- * Lightweight scope wrapper that holds sibling root-level class instances,
- * allowing them to reference each other during name resolution.
- */
-class EditorScope extends Scope {
-  #instances: ModelicaClassInstance[];
-
-  constructor(parent: Scope, instances: ModelicaClassInstance[]) {
-    super(parent);
-    this.#instances = instances;
-  }
-
-  get elements(): IterableIterator<ModelicaElement> {
-    const instances = this.#instances;
-    return (function* () {
-      yield* instances;
-    })();
-  }
-
-  get hash(): string {
-    return "editor";
-  }
-}
-
-const modelicaTokensProvider: languages.IMonarchLanguage = {
-  keywords: [
-    "algorithm",
-    "and",
-    "annotation",
-    "block",
-    "break",
-    "class",
-    "connect",
-    "connector",
-    "constant",
-    "constrainedby",
-    "der",
-    "discrete",
-    "each",
-    "else",
-    "elseif",
-    "elsewhen",
-    "encapsulated",
-    "end",
-    "enumeration",
-    "equation",
-    "expandable",
-    "extends",
-    "external",
-    "false",
-    "final",
-    "flow",
-    "for",
-    "function",
-    "if",
-    "import",
-    "impure",
-    "initial",
-    "inner",
-    "input",
-    "loop",
-    "model",
-    "not",
-    "operator",
-    "or",
-    "outer",
-    "output",
-    "package",
-    "parameter",
-    "partial",
-    "protected",
-    "public",
-    "pure",
-    "record",
-    "redeclare",
-    "replaceable",
-    "return",
-    "stream",
-    "then",
-    "true",
-    "type",
-    "when",
-    "while",
-    "within",
-  ],
-  typeKeywords: ["Boolean", "Integer", "Real", "String"],
-  tokenizer: {
-    root: [
-      [
-        /([_a-zA-Z]([_a-zA-Z0-9])*|'([_a-zA-Z0-9!#$%&()*+,-./:;<>=?@^{}|~ "]|\[|\]|\\('|"|\?|\\|a|b|f|n|r|t|v))*')/,
-        {
-          cases: {
-            "@typeKeywords": "keyword",
-            "@keywords": "keyword",
-            "@default": "identifier",
-          },
-        },
-      ],
-      { include: "@whitespace" },
-      [/\d*\.\d+([eE][-+]?\d+)?/, "number.float"],
-      [/\d+/, "number"],
-      [/"/, "string", "@string"],
-    ],
-    string: [
-      [/[^\\"]+/, "string"],
-      [/\\./, "string.escape"],
-      [/"/, "string", "@pop"],
-    ],
-    comment: [
-      [/[^/*]+/, "comment"],
-      [/\/\*/, "comment", "@push"],
-      ["\\*/", "comment", "@pop"],
-      [/[\\/*]/, "comment"],
-    ],
-    whitespace: [
-      [/[ \t\r\n]+/, "white"],
-      [/\/\*/, "comment", "@comment"],
-      [/\/\/.*$/, "comment"],
-    ],
-  },
-};
+// ────────────────────────────────────────────────────────────────────
+// Monaco environment (editor web worker — NOT the LSP worker)
+// ────────────────────────────────────────────────────────────────────
 
 if (!self.MonacoEnvironment) {
   self.MonacoEnvironment = {
@@ -153,13 +38,18 @@ if (!self.MonacoEnvironment) {
   loader.config({ monaco });
 }
 
+// ────────────────────────────────────────────────────────────────────
+// Props & Handle
+// ────────────────────────────────────────────────────────────────────
+
 interface CodeEditorProps {
   content: string;
-  context: Context | null;
-  setClassInstances: (classInstances: ModelicaClassInstance[]) => void;
+  uri: string;
   setEditor: (editor: editor.ICodeEditor) => void;
   onProgress?: (progress: number, message: string) => void;
-  onParseComplete?: () => void;
+  onParsed?: () => void;
+  onDiagnostics?: (markers: editor.IMarkerData[]) => void;
+  onStatusChange?: (state: string, message: string) => void;
   theme: Theme;
   embed: boolean;
   readOnly?: boolean;
@@ -167,780 +57,153 @@ interface CodeEditorProps {
 }
 
 export interface CodeEditorHandle {
-  sync: () => Promise<ModelicaClassInstance[]>;
-  revealComponent: (name: string, searchInstance?: ModelicaClassInstance | null) => void;
+  /** Trigger the LSP to re-validate the current content. */
+  sync: () => Promise<void>;
+  /** Scroll to and select the definition of a component. */
+  revealComponent: (name: string) => void;
+  /** Return the underlying Monaco editor instance. */
+  getEditor: () => editor.ICodeEditor | null;
 }
+
+// ────────────────────────────────────────────────────────────────────
+// Component
+// ────────────────────────────────────────────────────────────────────
 
 export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((props, ref) => {
   const editorRef = useRef<editor.ICodeEditor>(null);
-  const monacoRef = useRef<Monaco>(null);
-  const contextRef = useRef<Context | null>(null);
-  const classInstanceRef = useRef<ModelicaClassInstance | null>(null);
-  const treeRef = useRef<Tree | null>(null);
-  const parserRef = useRef<Parser | null>(null);
-  const disposablesRef = useRef<monaco.IDisposable[]>([]);
-  const lastProcessedValueRef = useRef<string | undefined>(undefined);
-  const lastProcessedInstancesRef = useRef<ModelicaClassInstance[]>([]);
-  const lastProcessedMarkersRef = useRef<editor.IMarkerData[]>([]);
-
-  const resolvePathElement = (node: SyntaxNode, scope: Scope): ModelicaNamedElement | null => {
-    let pathNode: SyntaxNode | null = node;
-    const parameterPath: string[] = [];
-    let baseElement: ModelicaNamedElement | null = null;
-    let foundBase = false;
-
-    while (pathNode) {
-      if (pathNode.type === "ElementModification") {
-        const nameNode = pathNode.children.find((c: SyntaxNode) => c.type === "Name");
-        if (nameNode) {
-          parameterPath.unshift(...nameNode.text.split("."));
-        }
-      } else if (pathNode.type === "NamedArgument") {
-        const identNode = pathNode.childForFieldName("identifier");
-        if (identNode) {
-          parameterPath.unshift(identNode.text);
-        }
-      }
-
-      // If we hit a FunctionCall, it's a base (potential record constructor)
-      if (pathNode.type === "FunctionCall") {
-        const refNode = pathNode.children.find((c: SyntaxNode) => c.type === "ComponentReference");
-        if (refNode) {
-          const funcRef = refNode.text;
-          baseElement = scope.resolveName(funcRef.split("."));
-          if (!baseElement) {
-            const annotationClass = ModelicaElement.annotationClassInstance;
-            if (annotationClass) {
-              baseElement = annotationClass.resolveSimpleName(funcRef);
-              if (!baseElement && funcRef.includes(".")) {
-                baseElement = annotationClass.resolveName(funcRef.split("."));
-              }
-            }
-          }
-          if (baseElement) {
-            foundBase = true;
-            break;
-          }
-        }
-      }
-
-      if (pathNode.type === "AnnotationClause") {
-        baseElement = ModelicaElement.annotationClassInstance;
-        foundBase = true;
-        break;
-      }
-
-      if (
-        pathNode.type === "ComponentClause" ||
-        pathNode.type === "ShortClassSpecifier" ||
-        pathNode.type === "ExtendsClause"
-      ) {
-        const typeSpecNode = pathNode.children.find((c: SyntaxNode) => c.type === "TypeSpecifier");
-        if (typeSpecNode) {
-          baseElement = scope.resolveName(typeSpecNode.text.split("."));
-          foundBase = true;
-          break;
-        }
-      }
-
-      pathNode = pathNode.parent;
-    }
-
-    if (foundBase && baseElement) {
-      return baseElement instanceof ModelicaClassInstance
-        ? baseElement.resolveName(parameterPath)
-        : baseElement instanceof ModelicaComponentInstance
-          ? (baseElement.classInstance?.resolveName(parameterPath) ?? null)
-          : null;
-    }
-    return null;
-  };
-
-  const handleEditorWillMount = async (monaco: Monaco) => {
-    monacoRef.current = monaco;
-
-    disposablesRef.current.forEach((d) => d.dispose());
-    disposablesRef.current = [];
-
-    if (!monaco.languages.getLanguages().some((l: languages.ILanguageExtensionPoint) => l.id === "modelica")) {
-      monaco.languages.register({
-        id: "modelica",
-      });
-    }
-
-    disposablesRef.current.push(monaco.languages.setMonarchTokensProvider("modelica", modelicaTokensProvider));
-    disposablesRef.current.push(
-      monaco.languages.registerCompletionItemProvider("modelica", {
-        triggerCharacters: ["."],
-        provideCompletionItems: (model: editor.ITextModel, position: monaco.Position) => {
-          if (model !== editorRef.current?.getModel()) {
-            return { suggestions: [] };
-          }
-          const textUntilPosition = model.getValueInRange({
-            startLineNumber: position.lineNumber,
-            startColumn: 1,
-            endLineNumber: position.lineNumber,
-            endColumn: position.column,
-          });
-
-          const word = model.getWordUntilPosition(position);
-          const range = {
-            startLineNumber: position.lineNumber,
-            endLineNumber: position.lineNumber,
-            startColumn: word.startColumn,
-            endColumn: word.endColumn,
-          };
-
-          const match = textUntilPosition.match(/([a-zA-Z0-9_]+(\.[a-zA-Z0-9_]+)*)\.$/);
-          if (match) {
-            const path = match[1];
-            const scope = classInstanceRef.current ?? contextRef.current;
-            if (!scope) return { suggestions: [] };
-
-            const element = scope.resolveName(path.split("."));
-            if (element) {
-              const suggestions: monaco.languages.CompletionItem[] = [];
-              for (const child of element.elements) {
-                if (child instanceof ModelicaNamedElement && child.name) {
-                  suggestions.push({
-                    label: child.name,
-                    kind: monaco.languages.CompletionItemKind.Field,
-                    insertText: child.name,
-                    detail: child.description ?? undefined,
-                    range,
-                  });
-                }
-              }
-              return { suggestions };
-            }
-          }
-          return { suggestions: [] };
-        },
-      }),
-    );
-
-    disposablesRef.current.push(
-      monaco.languages.registerDocumentSemanticTokensProvider("modelica", {
-        getLegend: function () {
-          return {
-            tokenTypes: [
-              "keyword",
-              "type",
-              "class",
-              "variable",
-              "parameter",
-              "function",
-              "string",
-              "number",
-              "operator",
-              "comment",
-            ],
-            tokenModifiers: ["declaration", "readonly"],
-          };
-        },
-        provideDocumentSemanticTokens: (model: editor.ITextModel) => {
-          if (model !== editorRef.current?.getModel() || !parserRef.current) {
-            return { data: new Uint32Array(0) };
-          }
-
-          const text = model.getValue();
-          const tree = parserRef.current.parse(text);
-          const rootNode = tree.rootNode;
-          try {
-            const rawTokens: {
-              line: number;
-              char: number;
-              length: number;
-              typeIndex: number;
-              modifier: number;
-            }[] = [];
-
-            const traverseTree = (node: SyntaxNode) => {
-              let tokenType: string | null = null;
-              const modifier = 0;
-
-              const isKeyword =
-                modelicaTokensProvider.keywords.includes(node.type) ||
-                (modelicaTokensProvider.typeKeywords as string[]).includes(node.type);
-
-              if (isKeyword) {
-                tokenType = "keyword";
-              } else if (node.type === "IDENT") {
-                const parent = node.parent;
-                let p: SyntaxNode | null = parent;
-                while (p && p.type === "Name") {
-                  p = p.parent;
-                }
-
-                if (
-                  parent?.type === "LongClassSpecifier" ||
-                  parent?.type === "ShortClassSpecifier" ||
-                  parent?.type === "DerClassSpecifier" ||
-                  p?.type === "WithinDirective" ||
-                  p?.type === "ExtendsClause" ||
-                  p?.type === "TypeSpecifier"
-                ) {
-                  tokenType = "type";
-                } else if (parent?.type === "Declaration") {
-                  tokenType = "variable";
-                } else if ((modelicaTokensProvider.typeKeywords as string[]).includes(node.text)) {
-                  tokenType = "type";
-                } else {
-                  tokenType = "variable";
-                }
-              } else if (node.type === "STRING") {
-                tokenType = "string";
-              } else if (node.type === "UNSIGNED_INTEGER" || node.type === "UNSIGNED_REAL") {
-                tokenType = "number";
-              } else if (node.type === "comment") {
-                tokenType = "comment";
-              } else if (["+", "-", "*", "/", "=", "<", ">", "<=", ">=", "==", "<>"].includes(node.type)) {
-                tokenType = "operator";
-              }
-
-              if (tokenType !== null) {
-                const types = [
-                  "keyword",
-                  "type",
-                  "class",
-                  "variable",
-                  "parameter",
-                  "function",
-                  "string",
-                  "number",
-                  "operator",
-                  "comment",
-                ];
-                const typeIndex = types.indexOf(tokenType);
-
-                if (!rawTokens.some((t) => t.line === node.startPosition.row && t.char === node.startPosition.column)) {
-                  rawTokens.push({
-                    line: node.startPosition.row,
-                    char: node.startPosition.column,
-                    length: node.endPosition.column - node.startPosition.column,
-                    typeIndex,
-                    modifier,
-                  });
-                }
-              }
-
-              for (const child of node.children) {
-                traverseTree(child);
-              }
-            };
-
-            traverseTree(rootNode);
-
-            rawTokens.sort((a, b) => {
-              if (a.line === b.line) {
-                return a.char - b.char;
-              }
-              return a.line - b.line;
-            });
-
-            const data: number[] = [];
-            let prevLine = 0;
-            let prevChar = 0;
-
-            for (const token of rawTokens) {
-              const deltaLine = token.line - prevLine;
-              const deltaChar = deltaLine === 0 ? token.char - prevChar : token.char;
-
-              data.push(deltaLine, deltaChar, token.length, token.typeIndex, token.modifier);
-
-              prevLine = token.line;
-              prevChar = token.char;
-            }
-
-            return { data: new Uint32Array(data) };
-          } finally {
-            tree.delete();
-          }
-        },
-        releaseDocumentSemanticTokens: (_resultId: string | undefined) => {
-          // No operation needed for release
-        },
-      }),
-    );
-
-    disposablesRef.current.push(
-      monaco.languages.registerHoverProvider("modelica", {
-        provideHover: (model: editor.ITextModel, position: monaco.Position) => {
-          if (model !== editorRef.current?.getModel()) {
-            return null;
-          }
-          const wordInfo = model.getWordAtPosition(position);
-          if (!wordInfo) return null;
-
-          const text = model.getValue();
-          const tree = parserRef.current?.parse(text);
-          if (!tree) return null;
-
-          try {
-            const lineContent = model.getLineContent(position.lineNumber);
-            let start = wordInfo.startColumn - 1;
-            while (start > 0 && (lineContent[start - 1] === "." || /[a-zA-Z0-9_]/.test(lineContent[start - 1]))) {
-              start--;
-            }
-            let end = wordInfo.endColumn - 1;
-            while (end < lineContent.length && (lineContent[end] === "." || /[a-zA-Z0-9_]/.test(lineContent[end]))) {
-              end++;
-            }
-            if (lineContent[end - 1] === ".") end--;
-
-            const fullPath = lineContent.substring(start, end);
-            const scope = classInstanceRef.current ?? contextRef.current;
-            if (!scope) return null;
-
-            // Ensure annotation class is initialized if we have a context
-            const ME = ModelicaElement as any;
-            if (!ME.annotationClassInstance && contextRef.current) {
-              ME.initializeAnnotationClass(contextRef.current);
-            }
-
-            let element = null;
-
-            const rootNode = tree.rootNode;
-            const searchRow = position.lineNumber - 1;
-            const searchCol = Math.max(0, wordInfo.startColumn - 1);
-            const searchEndCol = wordInfo.endColumn - 1;
-
-            const current: SyntaxNode | null = rootNode.descendantForPosition(
-              { row: searchRow, column: searchCol },
-              { row: searchRow, column: searchEndCol },
-            );
-
-            // Unified path resolution for modifications and arguments
-            let currentPathNode: SyntaxNode | null = current;
-            let isOverValue = false;
-            let isOverName = false;
-
-            while (currentPathNode) {
-              if (
-                currentPathNode.type === "Name" &&
-                (currentPathNode.parent?.type === "ElementModification" ||
-                  currentPathNode.parent?.type === "ElementRedeclaration")
-              ) {
-                isOverName = true;
-                break;
-              }
-              if (currentPathNode.type === "IDENT" && currentPathNode.parent?.type === "NamedArgument") {
-                isOverName = true;
-                break;
-              }
-              if (
-                currentPathNode.type === "Modification" ||
-                currentPathNode.type === "FunctionCallArguments" ||
-                currentPathNode.type === "ArgumentList"
-              ) {
-                isOverValue = true;
-              }
-              if (
-                currentPathNode.type === "ElementModification" ||
-                currentPathNode.type === "NamedArgument" ||
-                currentPathNode.type === "FunctionCall"
-              ) {
-                break;
-              }
-              currentPathNode = currentPathNode.parent;
-            }
-
-            if ((isOverName || isOverValue) && currentPathNode) {
-              const resolved = resolvePathElement(currentPathNode, scope);
-
-              if (isOverName) {
-                element = resolved;
-              } else if (isOverValue && resolved) {
-                const typeScope =
-                  resolved instanceof ModelicaComponentInstance
-                    ? resolved.classInstance
-                    : resolved instanceof ModelicaClassInstance
-                      ? resolved
-                      : null;
-                if (typeScope) {
-                  element = typeScope.resolveName(fullPath.split("."));
-                  if (!element && fullPath !== wordInfo.word) {
-                    element = typeScope.resolveName(wordInfo.word.split("."));
-                  }
-                }
-              }
-            }
-
-            if (!element) {
-              element = scope.resolveName(fullPath.split("."));
-              if (!element && fullPath !== wordInfo.word) {
-                element = scope.resolveName(wordInfo.word.split("."));
-                if (element) {
-                  start = wordInfo.startColumn - 1;
-                  end = wordInfo.endColumn - 1;
-                }
-              }
-            }
-
-            if (element instanceof ModelicaNamedElement) {
-              const contents = [];
-              if (element instanceof ModelicaEnumerationClassInstance && element.value) {
-                const value = element.value;
-                contents.push({
-                  value: `**enumeration literal** \`${value.stringValue}\` : \`${element.name}\``,
-                });
-                if (value.description) {
-                  contents.push({ value: value.description });
-                }
-              } else if (element instanceof ModelicaClassInstance) {
-                contents.push({ value: `**${element.classKind}** \`${element.compositeName}\`` });
-              } else if (element instanceof ModelicaComponentInstance) {
-                const typeName =
-                  element.declaredType?.compositeName ?? element.classInstance?.compositeName ?? "UnknownType";
-                contents.push({ value: `**component** \`${element.name}\` : \`${typeName}\`` });
-              } else {
-                contents.push({ value: `\`${element.name}\`` });
-              }
-
-              if (element.description && !(element instanceof ModelicaEnumerationClassInstance && element.value)) {
-                contents.push({ value: element.description });
-              }
-
-              return {
-                range: new monaco.Range(position.lineNumber, start + 1, position.lineNumber, end + 1),
-                contents,
-              };
-            }
-
-            return null;
-          } catch (e) {
-            console.error("Syntax tree hover traversal failed", e);
-            return null;
-          } finally {
-            tree.delete();
-          }
-        },
-      }),
-    );
-
-    // Inlay hints disabled for now
-    // disposablesRef.current.push(
-    //   monaco.languages.registerInlayHintsProvider("modelica", { ... }),
-    // );
-
-    disposablesRef.current.push(
-      monaco.languages.setLanguageConfiguration("modelica", {
-        indentationRules: {
-          increaseIndentPattern:
-            /^\s*(model|class|record|block|connector|type|package|function|if|for|while|when|else|elseif|equation|algorithm|public|protected|initial equation|initial algorithm|enumeration)\b/,
-          decreaseIndentPattern:
-            /^\s*(end|else|elseif|equation|algorithm|public|protected|initial equation|initial algorithm)\b/,
-        },
-        onEnterRules: [
-          {
-            beforeText: /^\s*\/\//,
-            action: { indentAction: monaco.languages.IndentAction.None, appendText: "// " },
-          },
-        ],
-      }),
-    );
-    console.log("Modelica language configuration set");
-
-    try {
-      const Modelica = await Language.load("/tree-sitter-modelica.wasm");
-      const parser = new Parser();
-      parser.setLanguage(Modelica);
-      parserRef.current = parser;
-      Context.registerParser(".mo", parser);
-
-      disposablesRef.current.push(
-        monaco.languages.registerDocumentFormattingEditProvider("modelica", {
-          provideDocumentFormattingEdits: (model: editor.ITextModel) => {
-            if (model !== editorRef.current?.getModel()) {
-              return [];
-            }
-            const text = model.getValue();
-            const tree = parser.parse(text);
-            const formatted = format(tree, text);
-            tree.delete();
-            return [
-              {
-                range: model.getFullModelRange(),
-                text: formatted,
-              },
-            ];
-          },
-        }),
-      );
-
-      disposablesRef.current.push(
-        monaco.languages.registerColorProvider("modelica", {
-          provideDocumentColors: (model: editor.ITextModel) => {
-            if (model !== editorRef.current?.getModel()) {
-              return [];
-            }
-            const text = model.getValue();
-            const tree = parser.parse(text);
-            const colors: languages.IColorInformation[] = [];
-            const colorFields = new Set(["color", "lineColor", "fillColor", "textColor"]);
-
-            const traverse = (node: SyntaxNode) => {
-              if (node.type === "ElementModification" || node.type === "NamedArgument") {
-                const nameNode = node.childForFieldName("name") || node.childForFieldName("identifier");
-                const name = nameNode?.text;
-                if (name && colorFields.has(name)) {
-                  let exprNode = null;
-                  if (node.type === "ElementModification") {
-                    const modNode = node.childForFieldName("modification");
-                    exprNode = modNode?.childForFieldName("modificationExpression")?.childForFieldName("expression");
-                  } else {
-                    exprNode = node.childForFieldName("argument")?.childForFieldName("expression");
-                  }
-
-                  if (exprNode?.type === "ArrayConstructor") {
-                    const listNode = exprNode.childForFieldName("expressionList");
-                    if (listNode) {
-                      const exprs = listNode.namedChildren;
-                      if (exprs.length === 3) {
-                        const r = parseInt(exprs[0].text);
-                        const g = parseInt(exprs[1].text);
-                        const b = parseInt(exprs[2].text);
-                        if (!isNaN(r) && !isNaN(g) && !isNaN(b)) {
-                          colors.push({
-                            range: {
-                              startLineNumber: exprNode.startPosition.row + 1,
-                              startColumn: exprNode.startPosition.column + 1,
-                              endLineNumber: exprNode.endPosition.row + 1,
-                              endColumn: exprNode.endPosition.column + 1,
-                            },
-                            color: {
-                              red: Math.max(0, Math.min(255, r)) / 255.0,
-                              green: Math.max(0, Math.min(255, g)) / 255.0,
-                              blue: Math.max(0, Math.min(255, b)) / 255.0,
-                              alpha: 1.0,
-                            },
-                          });
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-              for (let i = 0; i < node.childCount; i++) {
-                const child = node.child(i);
-                if (child) traverse(child);
-              }
-            };
-
-            traverse(tree.rootNode);
-            tree.delete();
-            return colors;
-          },
-          provideColorPresentations: (_model: editor.ITextModel, colorInfo: languages.IColorInformation) => {
-            const c = colorInfo.color;
-            const r = Math.round(c.red * 255);
-            const g = Math.round(c.green * 255);
-            const b = Math.round(c.blue * 255);
-            const label = `{${r}, ${g}, ${b}}`;
-            return [
-              {
-                label: label,
-                textEdit: {
-                  range: colorInfo.range,
-                  text: label,
-                },
-              },
-            ];
-          },
-        }),
-      );
-    } catch (e) {
-      console.error("Failed to setup formatter/parser in CodeEditor", e);
-    }
-
-    props.onProgress?.(100, "Ready");
-  };
-  const handleEditorDidMount = (editor: editor.ICodeEditor) => {
-    editorRef.current = editor;
-    props.setEditor(editor);
-    setTimeout(() => {
-      editor.setValue(editor.getValue());
-    }, 100);
-  };
-
-  const processContent = (value: string | undefined): ModelicaClassInstance[] => {
-    if (!value || !contextRef.current) return [];
-    if (value === lastProcessedValueRef.current && lastProcessedInstancesRef.current.length > 0) {
-      props.onParseComplete?.();
-      return lastProcessedInstancesRef.current;
-    }
-
-    const context = contextRef.current;
-
-    if (!monacoRef.current) return [];
-
-    const markers: editor.IMarkerData[] = [];
-    const model = editorRef.current?.getModel();
-    if (!model) return [];
-
-    const linter = new ModelicaLinter(
-      (
-        type: string,
-        _code: number,
-        message: string,
-        _resource: string | null | undefined,
-        range: Range | null | undefined,
-      ) => {
-        if (!range) return;
-        markers.push({
-          message,
-          startLineNumber: range.startPosition.row + 1,
-          startColumn: range.startPosition.column + 1,
-          endLineNumber: range.endPosition.row + 1,
-          endColumn: range.endPosition.column + 1,
-          severity: type === "warning" ? monaco.MarkerSeverity.Warning : monaco.MarkerSeverity.Error,
-        });
-      },
-    );
-    if (treeRef.current) (treeRef.current as any).delete();
-    const tree = context.parse(".mo", value);
-    treeRef.current = tree as any;
-    linter.lint(tree);
-    const node = ModelicaStoredDefinitionSyntaxNode.new(null, tree.rootNode);
-    const instances: ModelicaClassInstance[] = [];
-    if (node) {
-      linter.lint(node);
-      let parentScope: Scope = context;
-      const withinParts = node.withinDirective?.packageName?.parts;
-      if (withinParts && withinParts.length > 0) {
-        const withinNames = withinParts.map((p) => p.text).filter((t): t is string => t !== null && t !== undefined);
-        const resolved = context.resolveName(withinNames);
-        if (resolved) {
-          parentScope = resolved;
-        }
-      }
-      // Use an EditorScope wrapper so sibling classes can reference each other
-      const editorScope = new EditorScope(parentScope, instances);
-      // Two-pass: first create all instances (so they're visible as siblings)
-      for (const classDef of node.classDefinitions) {
-        const instance = new ModelicaClassInstance(editorScope, classDef);
-        instances.push(instance);
-      }
-      // Then instantiate and lint them
-      for (const instance of instances) {
-        instance.instantiate();
-        linter.lint(instance);
-      }
-      if (instances.length > 0) {
-        props.setClassInstances(instances);
-        classInstanceRef.current = instances[0];
-      }
-    }
-
-    lastProcessedMarkersRef.current = markers;
-    const allMarkers = [...markers];
-    if (props.externalErrors) {
-      props.externalErrors.forEach((err) => {
-        allMarkers.push({
-          message: err,
-          startLineNumber: 1,
-          startColumn: 1,
-          endLineNumber: 1,
-          endColumn: 1,
-          severity: monaco.MarkerSeverity.Error,
-        });
-      });
-    }
-
-    monacoRef.current.editor.setModelMarkers(model, "owner", allMarkers);
-    lastProcessedValueRef.current = value;
-    lastProcessedInstancesRef.current = instances;
-    props.onParseComplete?.();
-    return instances;
-  };
-
-  const handleDidChangeContent = debounce((value: string | undefined) => {
-    processContent(value);
-  }, 500);
-
+  const adapterDisposableRef = useRef<IDisposable | null>(null);
+  const didOpenSentRef = useRef(false);
+  const lastValueRef = useRef<string | undefined>(undefined);
+
+  // ── LSP adapter setup (runs once on mount) ──
   useEffect(() => {
-    contextRef.current = props.context;
-    // Re-lint or re-parse if context changes?
-    // Maybe trigger a change to re-lint.
-    if (editorRef.current && props.context) {
-      handleDidChangeContent(editorRef.current.getValue());
-    }
-  }, [props.context]);
+    let cancelled = false;
 
-  useEffect(() => {
+    (async () => {
+      props.onProgress?.(20, "Starting language server…");
+      const connection = await startLsp();
+      if (cancelled) return;
+
+      props.onProgress?.(40, "Connecting editor to language server…");
+
+      // Register Monaco providers that proxy to the LSP
+      adapterDisposableRef.current = setupMonacoLspAdapter(monaco, connection, props.uri, {
+        onDiagnostics: (_uri, markers) => {
+          if (_uri === props.uri) {
+            props.onDiagnostics?.(markers);
+          }
+        },
+        onStatus: (state, message) => {
+          props.onStatusChange?.(state, message);
+        },
+      });
+
+      props.onProgress?.(100, "Ready");
+    })();
+
     return () => {
-      disposablesRef.current.forEach((d) => d.dispose());
-      disposablesRef.current = [];
+      cancelled = true;
+      adapterDisposableRef.current?.dispose();
     };
   }, []);
 
-  React.useImperativeHandle(ref, () => ({
-    sync: async () => {
-      handleDidChangeContent.cancel();
-      const value = editorRef.current?.getValue();
-      return processContent(value);
-    },
-    revealComponent: (name: string, searchInstance?: ModelicaClassInstance | null) => {
-      if (!editorRef.current) return;
-      const instance = searchInstance ?? classInstanceRef.current;
-      if (!instance) return;
-
-      const component: any = Array.from(instance.components).find((c: any) => c.name === name);
-      if (!component || !component.abstractSyntaxNode) return;
-
-      const astNode = component.abstractSyntaxNode;
-      if (!astNode.sourceRange) return;
-
-      // Check if the parent (component clause) has only one declaration — if so, use that range
-      const parentNode = astNode.parent;
-      let targetNode = astNode;
-      if (
-        parentNode instanceof ModelicaComponentClauseSyntaxNode &&
-        parentNode.componentDeclarations.length <= 1 &&
-        parentNode.sourceRange
-      ) {
-        targetNode = parentNode;
-      }
-
-      const range = {
-        startLineNumber: targetNode.startPosition.row + 1,
-        startColumn: targetNode.startPosition.column + 1,
-        endLineNumber: targetNode.endPosition.row + 1,
-        endColumn: targetNode.endPosition.column + 1,
-      };
-
-      editorRef.current.revealRangeInCenter(range);
-      editorRef.current.setSelection(range);
-    },
-  }));
-
+  // ── Send external errors as additional markers ──
   useEffect(() => {
-    if (!monacoRef.current || !editorRef.current) return;
-    const model = editorRef.current.getModel();
+    const model = editorRef.current?.getModel();
     if (!model) return;
 
-    const allMarkers = [...lastProcessedMarkersRef.current];
-    if (props.externalErrors) {
-      props.externalErrors.forEach((err) => {
-        allMarkers.push({
-          message: err,
-          startLineNumber: 1,
-          startColumn: 1,
-          endLineNumber: 1,
-          endColumn: 1,
-          severity: monaco.MarkerSeverity.Error,
-        });
-      });
+    if (props.externalErrors && props.externalErrors.length > 0) {
+      const existing = monaco.editor.getModelMarkers({ resource: model.uri, owner: "lsp" });
+      const extras: editor.IMarkerData[] = props.externalErrors.map((err) => ({
+        message: err,
+        startLineNumber: 1,
+        startColumn: 1,
+        endLineNumber: 1,
+        endColumn: 1,
+        severity: monaco.MarkerSeverity.Error,
+      }));
+      monaco.editor.setModelMarkers(model, "external", extras);
+    } else {
+      monaco.editor.setModelMarkers(model, "external", []);
     }
-
-    monacoRef.current.editor.setModelMarkers(model, "owner", allMarkers);
   }, [props.externalErrors?.join("||")]);
+
+  // ── Handler: editor mounted ──
+  const handleEditorDidMount = (ed: editor.ICodeEditor) => {
+    editorRef.current = ed;
+    props.setEditor(ed);
+
+    // Send initial didOpen
+    if (!didOpenSentRef.current) {
+      didOpenSentRef.current = true;
+      const value = ed.getValue();
+      lastValueRef.current = value;
+      didOpen(props.uri, value);
+    }
+  };
+
+  // ── Handler: content changed ──
+  const sendDidChange = debounce((value: string) => {
+    didChange(props.uri, value);
+    props.onParsed?.();
+  }, 300);
+
+  const handleDidChangeContent = (value: string | undefined) => {
+    if (value === undefined) return;
+    lastValueRef.current = value;
+    sendDidChange(value);
+  };
+
+  // ── Imperative handle ──
+  React.useImperativeHandle(ref, () => ({
+    sync: async () => {
+      sendDidChange.cancel();
+      const value = editorRef.current?.getValue();
+      if (value !== undefined) {
+        didChange(props.uri, value);
+      }
+    },
+    revealComponent: (name: string) => {
+      // Use document symbols to find the component
+      const ed = editorRef.current;
+      if (!ed) return;
+      const conn = getLsp();
+      if (!conn) return;
+
+      conn
+        .sendRequest("textDocument/documentSymbol", { textDocument: { uri: props.uri } })
+        .then((symbols: any) => {
+          const findSymbol = (items: any[]): any => {
+            for (const sym of items) {
+              if (sym.name === name) return sym;
+              if (sym.children) {
+                const found = findSymbol(sym.children);
+                if (found) return found;
+              }
+            }
+            return null;
+          };
+          const sym = findSymbol(symbols ?? []);
+          if (sym?.selectionRange) {
+            const range = {
+              startLineNumber: sym.selectionRange.start.line + 1,
+              startColumn: sym.selectionRange.start.character + 1,
+              endLineNumber: sym.selectionRange.end.line + 1,
+              endColumn: sym.selectionRange.end.character + 1,
+            };
+            ed.revealRangeInCenter(range);
+            ed.setSelection(range);
+          }
+        })
+        .catch(() => {});
+    },
+    getEditor: () => editorRef.current,
+  }));
 
   return (
     <Editor
       theme={props.theme}
       defaultValue={props.content}
-      beforeMount={handleEditorWillMount}
       defaultLanguage="modelica"
       onChange={handleDidChangeContent}
       onMount={handleEditorDidMount}

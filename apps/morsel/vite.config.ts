@@ -27,13 +27,41 @@ export default defineConfig(({ isSsrBuild }) => {
       !isSsrBuild &&
         viteStaticCopy({
           targets: [
+            // LSP WebWorker bundle + assets (WASM, standard library zips)
+            // The LSP server resolves paths as ${extensionUri}/server/dist/...
+            // With extensionUri = origin + "/lsp", files are served at /lsp/server/dist/...
             {
-              src: "../../node_modules/web-tree-sitter/web-tree-sitter.wasm",
-              dest: "",
+              src: "../../packages/lsp/dist/browserServerMain.js",
+              dest: "lsp/server/dist",
             },
             {
-              src: "../../node_modules/@modelscript/tree-sitter-modelica/tree-sitter-modelica.wasm",
-              dest: "",
+              src: "../../packages/lsp/dist/browserServerMain.js.map",
+              dest: "lsp/server/dist",
+            },
+            {
+              src: "../../packages/lsp/dist/web-tree-sitter.wasm",
+              dest: "lsp/server/dist",
+            },
+            {
+              src: "../../packages/lsp/dist/tree-sitter-modelica.wasm",
+              dest: "lsp/server/dist",
+            },
+            {
+              src: "../../packages/lsp/dist/tree-sitter-sysml2.wasm",
+              dest: "lsp/server/dist",
+            },
+            {
+              src: "../../packages/lsp/dist/ModelicaStandardLibrary_v4.1.0.zip",
+              dest: "lsp/server/dist",
+            },
+            {
+              src: "../../packages/lsp/dist/SysML-v2-Release-2026-03.zip",
+              dest: "lsp/server/dist",
+            },
+            // Also copy the webpack chunk (442.js) used by the LSP worker
+            {
+              src: "../../packages/lsp/dist/442.js*",
+              dest: "lsp/server/dist",
             },
           ],
         }),
