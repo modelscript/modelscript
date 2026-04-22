@@ -192,7 +192,7 @@ export interface QueryDB {
    *
    * Returns null if the tree is not available or the range is invalid.
    */
-  cstText(startByte: number, endByte: number): string | null;
+  cstText(startByte: number, endByte: number, entry?: SymbolEntry): string | null;
 
   /**
    * Get the CST subtree node for a symbol (by its byte range).

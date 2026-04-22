@@ -102,17 +102,128 @@ export class VerificationRunner {
       // evaluation not available or failed — continue
     }
 
-    // 5. Leaf-name CST text fallback
+    // 5. Scope-walking for dotted paths like "req.maxLimit"
+    //    Walk: find "req" in parent scope → resolve its type → find "maxLimit" child → extract default
+    if (segments.length >= 2) {
+      const resolved = this.resolveQualifiedPath(segments, constraint);
+      if (resolved !== undefined) return resolved;
+    }
+
+    // 6. Leaf-name CST text fallback
     const leafName = segments[segments.length - 1];
     let candidates = this.db.byName(leafName);
     if (!candidates || candidates.length === 0) {
       candidates = this.db.allEntries().filter((e) => e.name === leafName);
     }
     for (const entry of candidates) {
-      const text = this.db.cstText(entry.startByte, entry.endByte);
+      const text = this.db.cstText(entry.startByte, entry.endByte, entry);
       if (text) {
         const match = text.match(/=\s*(-?[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)/);
         if (match) return parseFloat(match[1]);
+      }
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Walk a qualified path like ["req", "maxLimit"] by resolving each segment:
+   * 1. Find the first segment as a named symbol in the constraint's parent scope
+   * 2. Resolve its type (via inherits/typing references)
+   * 3. Find the next segment as a child of that type
+   * 4. Extract the numeric default value from CST text
+   */
+  private resolveQualifiedPath(segments: string[], constraint: SymbolEntry): number | undefined {
+    // Find the enclosing scope (parent of the constraint)
+    const parentId = constraint.parentId;
+
+    // Find the first segment as a sibling in the parent scope
+    const firstName = segments[0];
+    let currentEntry: SymbolEntry | undefined;
+
+    // Search children of the constraint's parent (the analysis case)
+    if (parentId !== null) {
+      const siblings = this.db.childrenOf(parentId);
+      currentEntry = siblings.find((s) => s.name === firstName);
+    }
+
+    // Fallback: global name lookup
+    if (!currentEntry) {
+      const globalEntries = this.db.byName(firstName);
+      if (globalEntries.length > 0) currentEntry = globalEntries[0];
+    }
+
+    if (!currentEntry) return undefined;
+
+    // For each remaining segment, resolve through the type hierarchy
+    for (let i = 1; i < segments.length; i++) {
+      const nextName = segments[i];
+
+      // First try: look for the child directly on currentEntry
+      const directChildren = this.db.childrenOf(currentEntry.id);
+      let child = directChildren.find((c) => c.name === nextName);
+      if (child) {
+        currentEntry = child;
+        continue;
+      }
+
+      // Second try: resolve the type of currentEntry, then look for the child there
+      const typeEntry = this.resolveTypeEntry(currentEntry);
+      if (typeEntry) {
+        const typeChildren = this.db.childrenOf(typeEntry.id);
+        child = typeChildren.find((c) => c.name === nextName);
+        if (child) {
+          currentEntry = child;
+          continue;
+        }
+      }
+
+      // Could not resolve this segment
+      return undefined;
+    }
+
+    // We've resolved to the final entry — extract its numeric default value
+    if (!currentEntry) return undefined;
+
+    // Try CST text extraction for default value (e.g., "attribute maxLimit : Real = 8.0;")
+    const text = this.db.cstText(currentEntry.startByte, currentEntry.endByte, currentEntry);
+    if (text) {
+      const match = text.match(/=\s*(-?[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)/);
+      if (match) return parseFloat(match[1]);
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Resolve the type of a symbol entry by checking:
+   * 1. Child Reference/Typing entries (SysML2 OwnedFeatureTyping)
+   * 2. Inherits paths
+   */
+  private resolveTypeEntry(entry: SymbolEntry): SymbolEntry | undefined {
+    // Strategy 1: Look for typing/reference children
+    const children = this.db.childrenOf(entry.id);
+    for (const child of children) {
+      if (
+        child.kind === "Reference" ||
+        child.ruleName.includes("Typing") ||
+        child.ruleName.includes("Specialization")
+      ) {
+        // The child's name is the type name — look it up globally
+        const typeEntries = this.db.byName(child.name);
+        if (typeEntries.length > 0) {
+          // Prefer definitions over usages
+          const def = typeEntries.find((e) => e.kind === "Definition") ?? typeEntries[0];
+          return def;
+        }
+      }
+    }
+
+    // Strategy 2: Check inherits paths
+    if (entry.inherits && entry.inherits.length > 0) {
+      for (const inheritPath of entry.inherits) {
+        const entries = this.db.byName(inheritPath);
+        if (entries.length > 0) return entries[0];
       }
     }
 
@@ -207,12 +318,12 @@ export class VerificationRunner {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const cst = this.db.cstNode(constraint.id) as any;
     if (!cst) {
-      return { isSatisfied: true };
+      return { isSatisfied: false, error: "DEBUG: No CST node found for constraint" };
     }
 
     const comp = this.extractComparison(cst);
     if (!comp) {
-      return { isSatisfied: true };
+      return { isSatisfied: false, error: "DEBUG: Could not extract comparison from CST" };
     }
 
     const { lhs: lhsPath, op, rhs: rhsPath } = comp;
@@ -275,13 +386,32 @@ export class VerificationRunner {
     let failMessage: string | undefined;
     const timeSeriesResult: boolean[] = [];
 
+    let maxLhs = -Infinity;
+    let traceRhs = 0;
+
+    // Attempt to extract for tracing
+    const cst = constraint.id ? (this.db.cstNode(constraint.id) as unknown) : null;
+    const comp = cst ? this.extractComparison(cst) : null;
+
     for (let i = 0; i < simResult.t.length; i++) {
       const res = this.evaluateConstraintAtTime(constraint, simResult, i);
       timeSeriesResult.push(res.isSatisfied);
+
+      if (comp) {
+        const lVal = this.resolveOperand(comp.lhs, constraint, simResult, i);
+        const rVal = this.resolveOperand(comp.rhs, constraint, simResult, i);
+        if (lVal !== undefined && lVal > maxLhs) maxLhs = lVal;
+        if (rVal !== undefined) traceRhs = rVal;
+      }
+
       if (!res.isSatisfied) {
         allMet = false;
         if (!failMessage) failMessage = res.error;
       }
+    }
+
+    if (allMet) {
+      failMessage = `DEBUG TRACE (SATISFIED): Max LHS = ${maxLhs}, RHS = ${traceRhs}`;
     }
 
     return {
@@ -307,23 +437,30 @@ export class VerificationRunner {
 
     // A. Evaluate constraint children directly defined within the case
     const localConstraints = db.childrenOf(verifyCaseId).filter((c) => this.isConstraintEntry(c));
+
     for (const constraint of localConstraints) {
       results.push(this.evaluateConstraintOverTime(constraint, verifyCaseId, simResult));
     }
 
     // B. Find verify-requirement children and evaluate their target requirements
-    const verifyMembers = db.childrenOf(verifyCaseId).filter((c) => this.isVerifyEntry(c));
+    const verifyMembers = db
+      .childrenOf(verifyCaseId)
+      .filter(
+        (c) =>
+          this.isVerifyEntry(c) ||
+          c.ruleName.includes("RequirementUsage") ||
+          c.ruleName.includes("ObjectiveRequirementUsage"),
+      );
 
     for (const vMember of verifyMembers) {
-      if (!vMember.name) continue;
-
-      // Discover target Requirement by name
-      const targets = db.byName(vMember.name);
-      const reqTarget = targets.find((t) => this.isRequirementEntry(t));
-      if (!reqTarget) continue;
+      // Resolve the target Requirement by checking the item's type
+      const reqTarget =
+        this.resolveTypeEntry(vMember) ?? db.byName(vMember.name || "").find((t) => this.isRequirementEntry(t));
+      if (!reqTarget || !this.isRequirementEntry(reqTarget)) continue;
 
       // Find and evaluate the requirement's constraint children
       const reqConstraints = db.childrenOf(reqTarget.id).filter((c) => this.isConstraintEntry(c));
+
       for (const constraint of reqConstraints) {
         results.push(this.evaluateConstraintOverTime(constraint, reqTarget.id, simResult));
       }

@@ -49,8 +49,8 @@ export function createSysML2WorkspaceIndex(): WorkspaceIndex {
 /**
  * Creates a configured QueryEngine for a given SysML2 SymbolIndex.
  */
-export function createSysML2QueryEngine(index: any): QueryEngine {
-  return new QueryEngine(index, queryHooks);
+export function createSysML2QueryEngine(index: any, tree?: any): QueryEngine {
+  return new QueryEngine(index, queryHooks, tree ? { tree } : undefined);
 }
 
 /**

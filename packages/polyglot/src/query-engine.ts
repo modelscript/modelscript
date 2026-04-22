@@ -583,6 +583,14 @@ export class QueryEngine {
       throw new Error(`Unknown symbol ID: ${symbolId}`);
     }
 
+    // In a polyglot unified index, the engine may encounter symbols from a
+    // different language that have no query hooks (e.g., a SysML2 engine
+    // encountering a Modelica ClassDefinition). Return null gracefully.
+    const hooks = this.hooksByRule.get(entry.ruleName);
+    if (!hooks || !hooks[queryName]) {
+      return { value: null, dependencies: [] };
+    }
+
     const { queryFn, recoveryFn } = this.resolveHook(queryName, entry.ruleName);
 
     // Cycle detection

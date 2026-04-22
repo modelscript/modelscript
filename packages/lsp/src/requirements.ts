@@ -104,7 +104,11 @@ function isVerifyEntry(entry: SymbolEntry): boolean {
  * @param uri     The document URI to scope results to (or null for all).
  * @returns       Array of RequirementRow objects.
  */
-export function getRequirements(index: SymbolIndex, uri?: string): RequirementRow[] {
+export function getRequirements(
+  index: SymbolIndex,
+  uri?: string,
+  verificationResults?: { requirementId: number; constraintId?: number; isSatisfied: boolean }[],
+): RequirementRow[] {
   const rows: RequirementRow[] = [];
   let seqId = 1;
 
@@ -135,6 +139,22 @@ export function getRequirements(index: SymbolIndex, uri?: string): RequirementRo
     const reqId =
       (entry.metadata?.id as string) ?? (entry.metadata?.reqId as string) ?? `REQ-${String(seqId++).padStart(3, "0")}`;
 
+    let status: "Passed" | "Failed" | "Pending" = "Pending";
+    if (verificationResults && verificationResults.length > 0) {
+      let hasCheckedConstraint = false;
+      let hasFailure = false;
+      const reqResults = verificationResults.filter(
+        (r) => r.requirementId === entry.id || constraintIds.includes(r.constraintId),
+      );
+      for (const res of reqResults) {
+        hasCheckedConstraint = true;
+        if (!res.isSatisfied) hasFailure = true;
+      }
+      if (hasCheckedConstraint) {
+        status = hasFailure ? "Failed" : "Passed";
+      }
+    }
+
     rows.push({
       id: entry.id,
       reqId,
@@ -146,7 +166,7 @@ export function getRequirements(index: SymbolIndex, uri?: string): RequirementRo
       startByte: entry.startByte,
       endByte: entry.endByte,
       constraintIds,
-      status: "Pending",
+      status,
     });
   }
 

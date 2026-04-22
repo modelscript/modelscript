@@ -1121,6 +1121,7 @@ let revalidationTimer: ReturnType<typeof setTimeout> | null = null;
 let verificationTimer: ReturnType<typeof setTimeout> | null = null;
 let activeVerification: AbortController | null = null;
 const verificationDiagnosticsByUri = new Map<string, Diagnostic[]>();
+const verificationResultsByUri = new Map<string, any[]>();
 const activeValidationTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 function flushValidation(uri: string) {
@@ -1136,6 +1137,7 @@ function flushValidation(uri: string) {
 documents.onDidChangeContent((change) => {
   const uri = change.document.uri;
   verificationDiagnosticsByUri.delete(uri);
+  verificationResultsByUri.delete(uri);
 
   const existingTimer = activeValidationTimers.get(uri);
   if (existingTimer) clearTimeout(existingTimer);
@@ -1219,12 +1221,20 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
         return;
       }
 
+      // Store in documentTrees so verification and other LSP operations can access the tree/text
+      documentTrees.set(textDocument.uri, { text, tree, classCache: new Map() });
+
       // Register/update in SysML2 workspace index
       if (sysml2WorkspaceIndex.has(textDocument.uri)) {
         sysml2WorkspaceIndex.markDirty(textDocument.uri, () => tree.rootNode);
       } else {
         sysml2WorkspaceIndex.register(textDocument.uri, () => tree.rootNode);
       }
+
+      // Force index evaluation for active document AFTER it is registered/marked dirty
+      // so that it actually triggers processing and populates the partial index.
+      // Without this, toUnifiedPartial() skips the file (index stays null).
+      sysml2WorkspaceIndex.getFileIndex(textDocument.uri);
 
       // Create or update query engine, resolver, and LSP bridge for the document
       const unifiedIndex = unifiedWorkspace.toUnifiedPartial();
@@ -5375,7 +5385,12 @@ connection.onRequest(
 connection.onRequest("modelscript/getRequirements", (params: { uri: string }) => {
   try {
     const db = unifiedWorkspace.toUnifiedPartial();
-    return getRequirements(db); // Do not filter by uri to show workspace-level requirements
+    // Gather all verification results across the workspace
+    const allResults = [];
+    for (const res of verificationResultsByUri.values()) {
+      allResults.push(...res);
+    }
+    return getRequirements(db, undefined, allResults); // Do not filter by uri to show workspace-level requirements
   } catch (e) {
     console.error("[requirements] Error:", e);
     return [];
@@ -5414,9 +5429,81 @@ connection.onRequest("modelscript/runVerification", async (params: { uri: string
 
     if (fileNodes.length === 0) return { ok: true };
 
-    const sysmlEngine = createSysML2QueryEngine(db);
+    // Build a CST tree wrapper so that the SysML QueryEngine can access parse trees
+    // for constraint extraction. This mirrors the Modelica path's cstTreeWrapper.
+    const verifyCstTreeWrapper = {
+      getText(startByte: number, endByte: number, entry?: any): string | null {
+        if (!entry || !entry.resourceId) return null;
+        const uri = entry.resourceId;
+        const docTree = documentTrees.get(uri);
+        if (docTree && docTree.text) return docTree.text.substring(startByte, endByte);
+
+        let lazyCache = lazyLibTrees.get(uri);
+        if (!lazyCache && sharedContext) {
+          try {
+            const fsPath = uri.startsWith("file://") ? uri.substring(7) : uri;
+            const text = sharedContext.fs.read(fsPath);
+            if (text) {
+              const tree = sharedContext.parse(uri.endsWith(".sysml") ? ".sysml" : ".mo", text);
+              lazyCache = { tree, text };
+              lazyLibTrees.set(uri, lazyCache);
+            }
+          } catch (e) {}
+        }
+        if (lazyCache) return lazyCache.text.substring(startByte, endByte);
+
+        // Final Fallback: try to read from the document manager
+        const doc = documents.get(uri);
+        if (doc) return doc.getText().substring(startByte, endByte);
+        return null;
+      },
+      getNode(startByte: number, endByte: number, entry?: any): any | null {
+        if (!entry || !entry.resourceId) return null;
+        const uri = entry.resourceId;
+        const docTree = documentTrees.get(uri);
+        if (docTree && docTree.tree) {
+          return docTree.tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte - 1));
+        }
+
+        let lazyCache = lazyLibTrees.get(uri);
+        if (!lazyCache && sharedContext) {
+          try {
+            const fsPath = uri.startsWith("file://") ? uri.substring(7) : uri;
+            const text = sharedContext.fs.read(fsPath);
+            if (text) {
+              const tree = sharedContext.parse(uri.endsWith(".sysml") ? ".sysml" : ".mo", text);
+              lazyCache = { tree, text };
+              lazyLibTrees.set(uri, lazyCache);
+            }
+          } catch (e) {}
+        }
+        if (lazyCache) {
+          return lazyCache.tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte - 1));
+        }
+
+        // Final Fallback: parse on-demand if we have the text
+        const doc = documents.get(uri);
+        if (doc) {
+          const text = doc.getText();
+          let tree: any;
+          if (uri.endsWith(".sysml") && sysml2Parser) {
+            tree = sysml2Parser.parse(text);
+          } else if (sharedContext) {
+            tree = sharedContext.parse(".mo", text);
+          }
+          if (tree) {
+            documentTrees.set(uri, { text, tree, classCache: new Map() });
+            return tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte - 1));
+          }
+        }
+        return null;
+      },
+    };
+
+    const sysmlEngine = createSysML2QueryEngine(db, verifyCstTreeWrapper);
     const sysmlDB = sysmlEngine.toQueryDB();
     const newDiagnostics: Diagnostic[] = [];
+    const allResults: any[] = [];
 
     for (const verifyUsage of fileNodes) {
       if (signal.aborted) return { ok: false };
@@ -5427,7 +5514,34 @@ connection.onRequest("modelscript/runVerification", async (params: { uri: string
       const rootNode = topo.nodes.get(topo.rootIds[0]);
       if (!rootNode?.targetClassId) continue;
 
-      const targetModel = new QueryBackedClassInstance(rootNode.targetClassId, sysmlDB) as any;
+      let simTargetId = rootNode.targetClassId;
+      const targetEntry = db.symbols.get(rootNode.targetClassId);
+
+      if (targetEntry) {
+        for (const entry of db.symbols.values()) {
+          const text = sysmlDB.cstText(entry.startByte, entry.endByte, entry);
+          if (text && (text.includes(`implements="${targetEntry.name}"`) || text.includes(`::${targetEntry.name}"`))) {
+            simTargetId = entry.id;
+            break;
+          }
+        }
+      }
+
+      const finalEntry = db.symbols.get(simTargetId);
+      let targetEngine = undefined;
+      // Normal UI edits populate documentQueryEngines, but global UI files like modelscript-lib://
+      // might be lazily indexed. Let's use documentQueryEngines or fallback to unified.
+      if (finalEntry && finalEntry.resourceId) {
+        targetEngine = documentQueryEngines.get(finalEntry.resourceId);
+        if (!targetEngine && finalEntry.resourceId.endsWith(".mo")) {
+          targetEngine = createModelicaQueryEngine(db, verifyCstTreeWrapper);
+        }
+      }
+
+      const targetDB = targetEngine
+        ? (targetEngine as any).toQueryDB()
+        : (unifiedWorkspace as any).engine?.toQueryDB() || sysmlDB;
+      const targetModel = new QueryBackedClassInstance(simTargetId, targetDB) as any;
       targetModel.instantiate();
 
       const dae = new ModelicaDAE(targetModel.name || "Model");
@@ -5448,28 +5562,34 @@ connection.onRequest("modelscript/runVerification", async (params: { uri: string
       // Create a runner per topology with the explicit variable mapping
       const runner = new VerificationRunner(sysmlDB, topo.variableMap);
       const vResults = runner.verifyCase(verifyUsage.id, simResult);
-
-      console.log(
-        `[Verifier Logging] verifyUsage: ${verifyUsage.name}, sim states: ${simResult.states.join(", ")}, topo.variableMap: ${JSON.stringify(Array.from(topo.variableMap.entries()))}`,
-      );
-      console.log(`[Verifier Logging] vResults: ${JSON.stringify(vResults, null, 2)}`);
+      allResults.push(...vResults);
 
       for (const vr of vResults) {
-        if (!vr.isSatisfied) {
-          const targetNode = db.symbols.get(vr.constraintId);
-          if (!targetNode) continue;
+        if (!vr.constraintId) continue;
 
+        let start = { line: 0, character: 0 };
+        let end = { line: 0, character: 10 };
+
+        const targetId = vr.constraintId;
+        const targetNode = db.symbols.get(targetId);
+
+        if (targetNode) {
           const bridge = documentLSPBridges.get(textDocument.uri);
-          if (!bridge) continue;
+          if (bridge && typeof targetNode.startByte === "number" && typeof targetNode.endByte === "number") {
+            const s = bridge["positions"].offsetToPosition(targetNode.startByte);
+            const e = bridge["positions"].offsetToPosition(targetNode.endByte);
+            if (!isNaN(s.line) && !isNaN(e.line)) {
+              start = s;
+              end = e;
+            }
+          }
+        }
 
-          const start = bridge["positions"].offsetToPosition(targetNode.startByte);
-          const end = bridge["positions"].offsetToPosition(targetNode.endByte);
+        if (!vr.isSatisfied) {
           newDiagnostics.push({
             severity: DiagnosticSeverity.Error,
             range: { start, end },
-            message: vr.message
-              ? `Verification Failed: ${vr.message}`
-              : `Verification Failed: the system simulation trajectory violated this constraint.`,
+            message: vr.message ? vr.message : `Requirement constraint violated over the simulation trajectory.`,
             source: "sysml2-verifier",
           });
         }
@@ -5480,12 +5600,25 @@ connection.onRequest("modelscript/runVerification", async (params: { uri: string
 
     // Store verification diagnostics persistently for this URI until next edit
     verificationDiagnosticsByUri.set(textDocument.uri, newDiagnostics);
+    verificationResultsByUri.set(textDocument.uri, allResults);
 
     // Trigger validation loop to merge and push diagnostics instantly
     validateTextDocument(textDocument);
     return { ok: true };
   } catch (e: any) {
-    connection.console.error(`[sysml2-verifier] Error: ${e.message}`);
-    throw new Error(e.message);
+    connection.console.error(`[sysml2-verifier] Error: ${e.message}\n${e.stack}`);
+
+    // Push the crash as a diagnostic so the user sees it visually instead of it being swallowed
+    const crashDiag: Diagnostic = {
+      severity: DiagnosticSeverity.Error,
+      range: { start: { line: 0, character: 0 }, end: { line: 0, character: 10 } },
+      message: `Verification CRASHED: ${e.message}`,
+      source: "sysml2-verifier",
+    };
+    verificationDiagnosticsByUri.set(params.uri, [crashDiag]);
+    const doc = documents.get(params.uri);
+    if (doc) validateTextDocument(doc);
+
+    return { ok: false };
   }
 });
