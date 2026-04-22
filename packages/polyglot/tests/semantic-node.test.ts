@@ -369,18 +369,18 @@ describe("generateAstClasses", () => {
   const output = generateAstClasses(specs, "modelica");
 
   it("generates import header", () => {
-    expect(output).toContain("import type { QueryDB, SymbolEntry, SymbolId, SpecializationArgs }");
+    expect(output).toContain("import type { QueryDB, SymbolEntry, SpecializationArgs }");
     expect(output).toContain("import { SemanticNode, GenericNode }");
   });
 
   it("generates ClassDefinition class", () => {
     expect(output).toContain("export class ClassDefinition extends SemanticNode");
-    expect(output).toContain('get kind(): string { return "Class"; }');
+    expect(output).toContain('readonly kind = "Class";');
   });
 
   it("generates Component class", () => {
     expect(output).toContain("export class Component extends SemanticNode");
-    expect(output).toContain('get kind(): string { return "Component"; }');
+    expect(output).toContain('readonly kind = "Component";');
   });
 
   it("generates clone method for specializable classes", () => {

@@ -34,12 +34,23 @@ function makeEntry(
 function makeIndex(entries: SymbolEntry[]): SymbolIndex {
   const symbols = new Map(entries.map((e) => [e.id, e]));
   const byName = new Map<string, number[]>();
+  const childrenOf = new Map<number, number[]>();
+
   for (const e of entries) {
     const ex = byName.get(e.name);
     if (ex) ex.push(e.id);
     else byName.set(e.name, [e.id]);
+
+    if (e.parentId !== null) {
+      let siblings = childrenOf.get(e.parentId);
+      if (!siblings) {
+        siblings = [];
+        childrenOf.set(e.parentId, siblings);
+      }
+      siblings.push(e.id);
+    }
   }
-  return { symbols, byName, childrenOf: new Map() };
+  return { symbols, byName, childrenOf };
 }
 
 // ---------------------------------------------------------------------------

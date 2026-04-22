@@ -169,12 +169,12 @@ describe("QueryEngine", () => {
     expect(Array.isArray(result)).toBe(true);
   });
 
-  it("throws for unknown query", () => {
+  it("returns null for unknown query", () => {
     const entries = [makeEntry(1, "Class", "Foo", "class_def")];
     const index = makeIndex(entries);
     const engine = new QueryEngine(index, new Map([["class_def", {}]]));
 
-    expect(() => engine.query("nonexistent", 1)).toThrow(/Unknown query/);
+    expect(engine.query("nonexistent", 1)).toBeNull();
   });
 
   it("throws for unknown symbol", () => {

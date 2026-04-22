@@ -144,7 +144,7 @@ export function getRequirements(
       let hasCheckedConstraint = false;
       let hasFailure = false;
       const reqResults = verificationResults.filter(
-        (r) => r.requirementId === entry.id || constraintIds.includes(r.constraintId),
+        (r) => r.requirementId === entry.id || (r.constraintId !== undefined && constraintIds.includes(r.constraintId)),
       );
       for (const res of reqResults) {
         hasCheckedConstraint = true;
