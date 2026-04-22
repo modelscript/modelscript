@@ -506,6 +506,9 @@ let sysml2Parser: Parser | null = null;
 let sysml2ParserReady = false;
 let sysml2StdlibReady = false;
 
+/* Whether MSL background indexing has completed */
+let mslStdlibReady = false;
+
 /* SysML2 layout data — stores diagram positions in-memory (sidecar to .sysml files) */
 const sysml2Layouts = new Map<string, SysML2Layout>();
 
@@ -664,6 +667,7 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
           }
         })
         .then(async () => {
+          mslStdlibReady = true;
           connection.console.info(`[lsp] Background indexing complete. Re-validating documents.`);
           // Re-validate with full index for cross-file resolution
           for (let pass = 1; pass <= 2; pass++) {
@@ -672,6 +676,9 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
             }
           }
         });
+    } else {
+      // No MSL files to index (or all already indexed) — mark ready immediately
+      mslStdlibReady = true;
     }
   } catch (e: any) {
     connection.console.error(`Failed to initialize tree-sitter: ${e}\n${e.stack}`);
@@ -1491,7 +1498,10 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
     }
 
     // 3. Collect unresolved reference diagnostics from the polyglot resolver
-    const unresolvedRefs = resolver.resolveAllReferences(textDocument.uri);
+    // Skip unresolved-reference diagnostics while MSL background indexing is still
+    // in progress — qualified references like Modelica.Electrical.Analog.Sources.SineVoltage
+    // produce false positives until the standard library files have been parsed and merged.
+    const unresolvedRefs = mslStdlibReady ? resolver.resolveAllReferences(textDocument.uri) : [];
     let dirty = false;
     for (const r of unresolvedRefs) {
       // Force evaluate any missing class files based on their expected FQN
@@ -3345,6 +3355,41 @@ connection.onRequest(
     }
 
     try {
+      // Ensure the full MSL index is available before flattening — the flattener
+      // resolves component types like Modelica.Electrical.Analog.Sources.SineVoltage
+      // which require MSL to be fully indexed.
+      if (!mslStdlibReady && globalWorkspaceIndex.pendingFileCount > 0) {
+        connection.console.info(`[simulate] MSL not fully indexed — forcing full index...`);
+        connection.sendNotification("modelscript/status", {
+          state: "loading",
+          message: "Indexing MSL for simulation...",
+        });
+        await globalWorkspaceIndex.indexRemainingInBackground(50);
+        mslStdlibReady = true;
+        connection.sendNotification("modelscript/status", { state: "ready", message: "ModelScript" });
+
+        // Re-create the query engine with the full unified index
+        const fullIndex = unifiedWorkspace.toUnifiedPartial();
+        injectPredefinedTypes(fullIndex);
+        const engine = documentQueryEngines.get(params.uri) as any;
+        if (engine) {
+          engine.updateIndex(fullIndex);
+          const resolver = engine.__resolverCache;
+          if (resolver) resolver.updateIndex(fullIndex);
+        }
+
+        // Re-validate to rebuild instances with full index
+        const doc = documents.get(params.uri);
+        if (doc) await validateTextDocument(doc);
+        instances = documentInstances.get(params.uri);
+        if (!instances || instances.length === 0) {
+          return { t: [], y: [], states: [], error: "No class instances found after MSL indexing." };
+        }
+        classInstance = params.className
+          ? (instances.find((i) => i.name === params.className) ?? instances[0])
+          : instances[0];
+      }
+
       if (!classInstance.instantiated) {
         classInstance.instantiate();
       }
