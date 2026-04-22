@@ -193,7 +193,18 @@ export class ScopeResolver {
       severity: "error" | "warning" | "info" | "hint";
     }> = [];
 
-    for (const entry of this.index.symbols.values()) {
+    // When filtering by resource, use the symbolsByResource index for O(1) lookup
+    // instead of scanning all symbols.
+    let entriesToCheck: Iterable<SymbolEntry>;
+    if (resourceId && this.index.symbolsByResource) {
+      const resourceIds = this.index.symbolsByResource.get(resourceId);
+      if (!resourceIds) return diagnostics;
+      entriesToCheck = resourceIds.map((id) => this.index.symbols.get(id)).filter(Boolean) as SymbolEntry[];
+    } else {
+      entriesToCheck = this.index.symbols.values();
+    }
+
+    for (const entry of entriesToCheck) {
       const hook = this.refHooksByRule.get(entry.ruleName);
       if (!hook) continue; // Not a reference entry
 

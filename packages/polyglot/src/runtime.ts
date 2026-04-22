@@ -70,6 +70,8 @@ export interface SymbolIndex {
   byName: Map<string, SymbolId[]>;
   /** Parent ID → direct child IDs for O(1) subtree reuse. */
   childrenOf: Map<SymbolId | null, SymbolId[]>;
+  /** Resource URI → symbol IDs for fast per-file iteration. Optional — populated by workspace-level indices. */
+  symbolsByResource?: Map<string, SymbolId[]>;
 }
 
 // ---------------------------------------------------------------------------

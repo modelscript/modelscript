@@ -13,7 +13,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
   const hooks = new Map<string, QueryHooks>();
   if (!langDef.rules) return hooks;
 
-  // ClassDefinition: members, nestedClasses, components, extendsClasses, imports, inputParameters, outputParameters, parameters, constants, connectEquations, allElements, isConnector, resolveModification, resolveSimpleName, resolveName, instantiate, lint__classNamingConvention, lint__emptyClass, lint__identifierMismatch, lint__duplicateElement
+  // ClassDefinition: queries and various lints
   {
     const $ = new Proxy(
       {},
@@ -40,7 +40,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // ExtendsClause: resolvedBaseClass, effectiveModification, lint__extendsCycle
+  // ExtendsClause: queries and lints, effectiveModification, lint__extendsCycle
   {
     const $ = new Proxy(
       {},
@@ -67,7 +67,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // ComponentDeclaration: resolvedType, effectiveModification, isConnectorType, variability, causality, flowPrefix, isFinal, isRedeclare, isInner, isReplaceable, isProtected, isOuter, classInstance, arrayDimensions, lint__componentNamingConvention, lint__unresolvedTypeSpecifier, lint__recursiveDefinition, lint__typeMismatch, lint__bindingTypeMismatch, lint__arrayShapeMismatch, lint__arrayElementTypeMismatch, lint__unresolvedReference, lint__functionCallMismatch, lint__evolutionCheck
+  // ComponentDeclaration: queries and lints
   {
     const $ = new Proxy(
       {},
@@ -94,7 +94,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // ConnectEquation: validateConnect, lint__nonConnectorType
+  // ConnectEquation: queries and lints
   {
     const $ = new Proxy(
       {},

@@ -312,7 +312,20 @@ export class QueryEngine {
    */
   runAllLints(resourceId?: string): LintDiagnostic[] {
     const diagnostics: LintDiagnostic[] = [];
-    for (const [id, entry] of this.index.symbols) {
+
+    // When filtering by resource, use the symbolsByResource index for O(1) lookup
+    let symbolsToCheck: Iterable<[SymbolId, SymbolEntry]>;
+    if (resourceId && this.index.symbolsByResource) {
+      const resourceSymbolIds = this.index.symbolsByResource.get(resourceId);
+      if (!resourceSymbolIds) return diagnostics;
+      symbolsToCheck = resourceSymbolIds
+        .map((id) => [id, this.index.symbols.get(id)] as [SymbolId, SymbolEntry | undefined])
+        .filter((pair): pair is [SymbolId, SymbolEntry] => pair[1] !== undefined);
+    } else {
+      symbolsToCheck = this.index.symbols;
+    }
+
+    for (const [id, entry] of symbolsToCheck) {
       if (resourceId && entry.resourceId !== resourceId) continue;
 
       for (const { lintName, result } of this.runLints(id)) {
@@ -366,20 +379,31 @@ export class QueryEngine {
 
       childrenOf(id: SymbolId): SymbolEntry[] {
         const results: SymbolEntry[] = [];
-        for (const entry of engine.allEntries()) {
-          if (entry.parentId === id) {
-            results.push(entry);
+        const childIds = engine.index.childrenOf.get(id);
+        if (childIds) {
+          for (const cid of childIds) {
+            const entry = engine.resolveEntry(cid);
+            if (entry) results.push(entry);
           }
+        }
+        // Also include virtual (specialized) entries whose parentId matches
+        for (const vEntry of engine.virtualEntries.values()) {
+          if (vEntry.parentId === id) results.push(vEntry);
         }
         return results;
       },
 
       childrenOfField(id: SymbolId, fieldName: string): SymbolEntry[] {
         const results: SymbolEntry[] = [];
-        for (const entry of engine.allEntries()) {
-          if (entry.parentId === id && entry.fieldName === fieldName) {
-            results.push(entry);
+        const childIds = engine.index.childrenOf.get(id);
+        if (childIds) {
+          for (const cid of childIds) {
+            const entry = engine.resolveEntry(cid);
+            if (entry && entry.fieldName === fieldName) results.push(entry);
           }
+        }
+        for (const vEntry of engine.virtualEntries.values()) {
+          if (vEntry.parentId === id && vEntry.fieldName === fieldName) results.push(vEntry);
         }
         return results;
       },
@@ -706,10 +730,16 @@ export class QueryEngine {
       childrenOf(id: SymbolId): SymbolEntry[] {
         tracker?.recordInput(id);
         const results: SymbolEntry[] = [];
-        for (const entry of engine.allEntries()) {
-          if (entry.parentId === id) {
-            results.push(entry);
+        const childIds = engine.index.childrenOf.get(id);
+        if (childIds) {
+          for (const cid of childIds) {
+            const entry = engine.resolveEntry(cid);
+            if (entry) results.push(entry);
           }
+        }
+        // Also include virtual (specialized) entries whose parentId matches
+        for (const vEntry of engine.virtualEntries.values()) {
+          if (vEntry.parentId === id) results.push(vEntry);
         }
         return results;
       },
@@ -717,10 +747,15 @@ export class QueryEngine {
       childrenOfField(id: SymbolId, fieldName: string): SymbolEntry[] {
         tracker?.recordInput(id);
         const results: SymbolEntry[] = [];
-        for (const entry of engine.allEntries()) {
-          if (entry.parentId === id && entry.fieldName === fieldName) {
-            results.push(entry);
+        const childIds = engine.index.childrenOf.get(id);
+        if (childIds) {
+          for (const cid of childIds) {
+            const entry = engine.resolveEntry(cid);
+            if (entry) results.push(entry);
           }
+        }
+        for (const vEntry of engine.virtualEntries.values()) {
+          if (vEntry.parentId === id && vEntry.fieldName === fieldName) results.push(vEntry);
         }
         return results;
       },

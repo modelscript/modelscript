@@ -1152,15 +1152,17 @@ documents.onDidChangeContent((change) => {
   );
 
   // Debounced cross-file revalidation: re-validate OTHER open docs for cross-file resolution.
-  // Use a longer debounce to avoid cascading validations on rapid keystrokes.
+  // Only re-validate documents of the same language — cross-language edits don't affect
+  // each other's diagnostics. Use a longer debounce to avoid cascading validations.
   if (revalidationTimer) clearTimeout(revalidationTimer);
+  const changedExt = uri.substring(uri.lastIndexOf("."));
   revalidationTimer = setTimeout(() => {
     for (const doc of documents.all()) {
-      if (doc.uri !== change.document.uri) {
+      if (doc.uri !== uri && doc.uri.endsWith(changedExt)) {
         validateTextDocument(doc);
       }
     }
-  }, 1500);
+  }, 3000);
 });
 
 // Clean up when a document is closed
@@ -1994,7 +1996,10 @@ connection.onRequest("textDocument/semanticTokens/full", (params) => {
 
 // Completion provider — polyglot-driven scoped completion + keyword fallback
 connection.onCompletion((params): CompletionItem[] => {
-  flushValidation(params.textDocument.uri);
+  // NOTE: We intentionally do NOT call flushValidation() here.
+  // The bridge/resolver already have valid state from the last validation cycle.
+  // Flushing synchronously blocks the completion response while the full
+  // parse → index → resolve → lint pipeline runs, causing "loading..." hangs.
   const document = documents.get(params.textDocument.uri);
   const bridge = documentLSPBridges.get(params.textDocument.uri);
   if (!document || !bridge) return [];
@@ -2133,7 +2138,6 @@ connection.onCompletion((params): CompletionItem[] => {
 });
 
 connection.onHover((params) => {
-  flushValidation(params.textDocument.uri);
   const document = documents.get(params.textDocument.uri);
   const bridge = documentLSPBridges.get(params.textDocument.uri);
   if (!document || !bridge) return null;
@@ -2183,7 +2187,6 @@ function symbolEntryToLocation(entry: any): { uri: string; range: any } | null {
 }
 
 connection.onDefinition((params) => {
-  flushValidation(params.textDocument.uri);
   const document = documents.get(params.textDocument.uri);
   const bridge = documentLSPBridges.get(params.textDocument.uri);
   if (!document || !bridge) return null;

@@ -26,6 +26,9 @@ export class WorkspaceIndex {
   /** Cached unified index — invalidated when any file changes. */
   private unifiedCache: SymbolIndex | null = null;
 
+  /** URIs that have changed since the last partial cache build. */
+  private dirtyUris = new Set<string>();
+
   constructor(hooks: IndexerHook[]) {
     this.hooks = hooks;
   }
@@ -37,7 +40,7 @@ export class WorkspaceIndex {
   register(uri: string, loader: () => CSTNode, parentFQN?: string): void {
     this.files.set(uri, { index: null, loader, parentFQN, dirty: true });
     this.unifiedCache = null;
-    this.partialCache = null;
+    this.dirtyUris.add(uri);
     this.skeletonCache = null;
   }
 
@@ -52,7 +55,7 @@ export class WorkspaceIndex {
       file.index = null; // Clear old index
       if (loader) file.loader = loader;
       this.unifiedCache = null;
-      this.partialCache = null;
+      this.dirtyUris.add(uri);
       this.skeletonCache = null;
     }
   }
@@ -63,7 +66,9 @@ export class WorkspaceIndex {
   remove(uri: string): void {
     this.files.delete(uri);
     this.unifiedCache = null;
+    // Full rebuild needed — we must remove entries from the cached index
     this.partialCache = null;
+    this.dirtyUris.clear();
     this.skeletonCache = null;
   }
 
@@ -249,6 +254,80 @@ export class WorkspaceIndex {
    */
   toUnifiedPartial(): SymbolIndex {
     if (this.unifiedCache) return this.unifiedCache;
+
+    // Fast path: if we have a cached partial index and only specific files changed,
+    // incrementally patch the cache instead of rebuilding from scratch.
+    if (this.partialCache && this.dirtyUris.size > 0) {
+      const { symbols, byName, childrenOf } = this.partialCache;
+      const symbolsByResource = this.partialCache.symbolsByResource ?? new Map<string, SymbolId[]>();
+
+      for (const dirtyUri of this.dirtyUris) {
+        // 1. Remove old entries for this file from the cache
+        const oldResourceIds = symbolsByResource.get(dirtyUri);
+        const toRemove = oldResourceIds ? [...oldResourceIds] : [];
+        symbolsByResource.delete(dirtyUri);
+        for (const id of toRemove) {
+          const entry = symbols.get(id)!;
+          symbols.delete(id);
+
+          // Remove from byName
+          const nameIds = byName.get(entry.name);
+          if (nameIds) {
+            const idx = nameIds.indexOf(id);
+            if (idx !== -1) nameIds.splice(idx, 1);
+            if (nameIds.length === 0) byName.delete(entry.name);
+          }
+
+          // Remove from childrenOf
+          const parentChildren = childrenOf.get(entry.parentId);
+          if (parentChildren) {
+            const idx = parentChildren.indexOf(id);
+            if (idx !== -1) parentChildren.splice(idx, 1);
+            if (parentChildren.length === 0) childrenOf.delete(entry.parentId);
+          }
+        }
+
+        // 2. Merge new entries for this file
+        const file = this.files.get(dirtyUri);
+        if (!file || !file.index) continue;
+
+        for (const [id, entry] of file.index.symbols) {
+          symbols.set(id, entry);
+        }
+        for (const [name, ids] of file.index.byName) {
+          const existing = byName.get(name);
+          if (existing) existing.push(...ids);
+          else byName.set(name, [...ids]);
+        }
+        for (const [parentId, ids] of file.index.childrenOf) {
+          const existing = childrenOf.get(parentId);
+          if (existing) {
+            for (const cid of ids) {
+              if (!existing.includes(cid)) existing.push(cid);
+            }
+          } else {
+            childrenOf.set(parentId, [...ids]);
+          }
+        }
+
+        // Update symbolsByResource
+        const newResourceIds: SymbolId[] = [];
+        for (const id of file.index.symbols.keys()) {
+          newResourceIds.push(id);
+        }
+        if (newResourceIds.length > 0) {
+          symbolsByResource.set(dirtyUri, newResourceIds);
+        }
+      }
+
+      this.partialCache.symbolsByResource = symbolsByResource;
+
+      this.stitchParentFQNs(symbols, byName, childrenOf);
+      this.dirtyUris.clear();
+      return this.partialCache;
+    }
+
+    // No cache at all — full rebuild
     if (this.partialCache) return this.partialCache;
 
     const symbols = new Map<SymbolId, SymbolEntry>();
@@ -281,7 +360,19 @@ export class WorkspaceIndex {
     }
 
     this.stitchParentFQNs(symbols, byName, childrenOf);
-    this.partialCache = { symbols, byName, childrenOf };
+    this.dirtyUris.clear();
+
+    // Build symbolsByResource for per-file iteration
+    const symbolsByResource = new Map<string, SymbolId[]>();
+    for (const [id, entry] of symbols) {
+      if (entry.resourceId) {
+        const ids = symbolsByResource.get(entry.resourceId);
+        if (ids) ids.push(id);
+        else symbolsByResource.set(entry.resourceId, [id]);
+      }
+    }
+
+    this.partialCache = { symbols, byName, childrenOf, symbolsByResource };
     return this.partialCache;
   }
 

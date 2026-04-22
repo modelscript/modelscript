@@ -780,6 +780,401 @@ export default language({
             }
             return null;
           },
+          /** Function components must not be public unless they are input/output */
+          functionPublicVariable: (db: QueryDB, self: SymbolEntry) => {
+            const meta = self.metadata as Record<string, unknown>;
+            if (meta?.classPrefixes !== "function" && meta?.classPrefixes !== "operator function") return null;
+
+            const results = [];
+            for (const el of db.childrenOf(self.id)) {
+              if (el.kind === "Component") {
+                const elMeta = el.metadata as Record<string, unknown>;
+                if (!elMeta?.causality && !elMeta?.isProtected) {
+                  results.push(
+                    error(`Public variable '${el.name}' in function '${self.name}' must be an input or output`, {
+                      field: "classSpecifier",
+                    }),
+                  );
+                }
+              }
+            }
+            return results.length > 0 ? results : null;
+          },
+          /** External functions cannot have an algorithm section */
+          externalWithAlgorithm: (db: QueryDB, self: SymbolEntry) => {
+            const meta = self.metadata as Record<string, unknown>;
+            if (meta?.classPrefixes !== "function" && meta?.classPrefixes !== "operator function") return null;
+
+            const cst = db.cstNode(self.id) as any;
+            if (!cst) return null;
+            const classSpec = cst.childForFieldName("classSpecifier");
+            if (!classSpec) return null;
+
+            const hasExternal = !!classSpec.childForFieldName("externalFunctionClause");
+            if (!hasExternal) return null;
+
+            let hasAlgorithm = false;
+            for (const child of classSpec.children) {
+              if (child.type === "AlgorithmSection") {
+                hasAlgorithm = true;
+                break;
+              }
+            }
+
+            if (hasAlgorithm) {
+              return error(`Function '${self.name}' cannot have both an external clause and an algorithm section`, {
+                field: "classSpecifier",
+              });
+            }
+            return null;
+          },
+          /** Functions can only contain certain types of variables */
+          functionInvalidVarType: (db: QueryDB, self: SymbolEntry) => {
+            const meta = self.metadata as Record<string, unknown>;
+            if (meta?.classPrefixes !== "function" && meta?.classPrefixes !== "operator function") return null;
+
+            const results = [];
+            for (const el of db.childrenOf(self.id)) {
+              if (el.kind === "Component") {
+                const elMeta = el.metadata as Record<string, unknown>;
+                if (elMeta?.causality) {
+                  const typeName = elMeta.typeSpecifier as string;
+                  if (typeName) {
+                    const resolved = db.byName(typeName)?.find((e) => e.kind === "Class" || e.kind === "Package");
+                    if (resolved) {
+                      const resMeta = resolved.metadata as Record<string, unknown>;
+                      const prefix = resMeta?.classPrefixes as string;
+                      if (
+                        prefix === "model" ||
+                        prefix === "block" ||
+                        prefix === "connector" ||
+                        prefix === "expandable connector"
+                      ) {
+                        results.push(
+                          error(
+                            `Function '${self.name}' cannot have an input/output variable '${el.name}' of type '${typeName}'`,
+                            { field: "classSpecifier" },
+                          ),
+                        );
+                      }
+                    }
+                  }
+                }
+              }
+            }
+            return results.length > 0 ? results : null;
+          },
+          /** Function input/output variables cannot be protected */
+          functionProtectedIo: (db: QueryDB, self: SymbolEntry) => {
+            const meta = self.metadata as Record<string, unknown>;
+            if (meta?.classPrefixes !== "function" && meta?.classPrefixes !== "operator function") return null;
+
+            const results = [];
+            for (const el of db.childrenOf(self.id)) {
+              if (el.kind === "Component") {
+                const elMeta = el.metadata as Record<string, unknown>;
+                if (elMeta?.causality && elMeta?.isProtected) {
+                  results.push(
+                    error(`Function input/output variable '${el.name}' cannot be protected`, {
+                      field: "classSpecifier",
+                    }),
+                  );
+                }
+              }
+            }
+            return results.length > 0 ? results : null;
+          },
+          /** Nested when-statements are not allowed */
+          nestedWhen: (db: QueryDB, self: SymbolEntry) => {
+            const cst = db.cstNode(self.id) as any;
+            if (!cst) return null;
+            const classSpec = cst.childForFieldName("classSpecifier");
+            if (!classSpec) return null;
+
+            const results: any[] = [];
+            const walk = (node: any, inWhen: boolean) => {
+              if (node.type === "WhenStatement" || node.type === "WhenEquation") {
+                if (inWhen) {
+                  results.push(error(`Nested when-statements are not allowed`, { field: "classSpecifier" }));
+                } else {
+                  inWhen = true;
+                }
+              }
+              for (const child of node.children) {
+                walk(child, inWhen);
+              }
+            };
+
+            for (const child of classSpec.children) {
+              if (child.type === "AlgorithmSection" || child.type === "EquationSection") {
+                walk(child, false);
+              }
+            }
+            return results.length > 0 ? results : null;
+          },
+          /** Detect literal division by zero */
+          divisionByZero: (db: QueryDB, self: SymbolEntry) => {
+            const cst = db.cstNode(self.id) as any;
+            if (!cst) return null;
+
+            const results: any[] = [];
+            const walk = (node: any) => {
+              if (node.type === "BinaryExpression") {
+                if (node.childForFieldName("operator")?.text === "/") {
+                  const op2 = node.childForFieldName("operand2");
+                  if (op2 && op2.text && op2.text.trim() === "0") {
+                    results.push(error(`Division by zero`, { field: "classSpecifier" }));
+                  } else if (
+                    op2 &&
+                    op2.type === "UnaryExpression" &&
+                    op2.childForFieldName("operator")?.text === "-" &&
+                    op2.childForFieldName("operand")?.text?.trim() === "0"
+                  ) {
+                    results.push(error(`Division by zero`, { field: "classSpecifier" }));
+                  }
+                }
+              }
+              for (const child of node.children) walk(child);
+            };
+
+            if (cst) walk(cst);
+            return results.length > 0 ? results : null;
+          },
+          /** Assignment to constant Variables */
+          assignmentToConstant: (db: QueryDB, self: SymbolEntry) => {
+            const cst = db.cstNode(self.id) as any;
+            if (!cst) return null;
+
+            const resolve = db.query<(name: string) => SymbolEntry | null>("resolveSimpleName", self.id);
+            if (!resolve) return null;
+
+            const results: any[] = [];
+            const walk = (node: any) => {
+              if (node.type === "SimpleAssignmentStatement" || node.type === "ComplexAssignmentStatement") {
+                const targetNode =
+                  node.childForFieldName("target") ||
+                  (node.type === "ComplexAssignmentStatement" ? node.childForFieldName("outputExpressionList") : null);
+
+                // For simple assignments checking the main identifier
+                if (node.type === "SimpleAssignmentStatement" && targetNode?.type === "ComponentReference") {
+                  const refName =
+                    targetNode.children.find((c: any) => c.type === "IDENT")?.text ||
+                    targetNode.text.split("[")[0].trim();
+                  const resolved = resolve(refName);
+                  if (resolved) {
+                    const meta = resolved.metadata as Record<string, unknown>;
+                    if (meta?.variability === "constant") {
+                      results.push(
+                        error(`Cannot assign to constant '${targetNode.text}'`, { field: "classSpecifier" }),
+                      );
+                    }
+                  }
+                }
+              }
+              for (const child of node.children) walk(child);
+            };
+
+            for (const child of cst.childForFieldName("classSpecifier")?.children || []) {
+              if (child.type === "AlgorithmSection") walk(child);
+            }
+            return results.length > 0 ? results : null;
+          },
+          /** For-loop iterator must be 1D */
+          forIteratorNot1D: (db: QueryDB, self: SymbolEntry) => {
+            const cst = db.cstNode(self.id) as any;
+            if (!cst) return null;
+
+            const results: any[] = [];
+            const walk = (node: any) => {
+              if (node.type === "ForIndex") {
+                const expr = node.childForFieldName("expression");
+                if (expr && expr.type === "ArrayConstructor") {
+                  const list = expr.childForFieldName("expressionList");
+                  if (list) {
+                    const elements = list.children.filter(
+                      (c: any) => c.type === "Expression" || c.type === "ArrayConstructor",
+                    );
+                    const hasNested = elements.some((e: any) => e.type === "ArrayConstructor");
+                    if (hasNested) {
+                      const outerLen = elements.length;
+                      const nested = elements.find((e: any) => e.type === "ArrayConstructor");
+                      const innerElements =
+                        nested
+                          ?.childForFieldName("expressionList")
+                          ?.children.filter((c: any) => c.type === "Expression" || c.type === "ArrayConstructor") || [];
+                      const innerLen = innerElements.length;
+                      const shape = `Integer[${outerLen}, ${innerLen}]`;
+                      const varName = node.childForFieldName("identifier")?.text || "?";
+                      results.push(
+                        error(`For loop iterator '${varName}' must be a 1-dimensional array, got shape ${shape}`, {
+                          field: "classSpecifier",
+                        }),
+                      );
+                    }
+                  }
+                }
+              }
+              for (const child of node.children) walk(child);
+            };
+
+            for (const child of cst.childForFieldName("classSpecifier")?.children || []) {
+              if (
+                child.type === "AlgorithmSection" ||
+                child.type === "EquationSection" ||
+                child.type === "ForEquation"
+              ) {
+                walk(child);
+              }
+            }
+            return results.length > 0 ? results : null;
+          },
+          /** Type mismatch checks for equations, assignments, and if-branches */
+          classBodyTypeChecks: (db: QueryDB, self: SymbolEntry) => {
+            const cst = db.cstNode(self.id) as any;
+            if (!cst) return null;
+
+            const resolve = db.query<(name: string) => SymbolEntry | null>("resolveName", self.id);
+            if (!resolve) return null;
+
+            const results: any[] = [];
+
+            const getType = (cstNode: any) => {
+              if (cstNode.type === "ComponentReference") {
+                const text = cstNode.text.split("[")[0].trim();
+                const resolved = resolve(text);
+                if (resolved && resolved.kind === "Component") {
+                  const typeId = db.query<SymbolId | null>("resolvedType", resolved.id);
+                  if (typeId) {
+                    const t = db.symbol(typeId);
+                    return t ? t.name : null;
+                  }
+                }
+              } else if (
+                cstNode.type === "Literal" ||
+                cstNode.type === "IntegerLiteral" ||
+                cstNode.type === "RealLiteral" ||
+                cstNode.type === "StringLiteral" ||
+                cstNode.type === "BooleanLiteral"
+              ) {
+                if (cstNode.type === "StringLiteral" || cstNode.text.startsWith('"')) return "String";
+                if (cstNode.type === "BooleanLiteral" || cstNode.text === "true" || cstNode.text === "false")
+                  return "Boolean";
+                if (cstNode.type === "IntegerLiteral" || (!cstNode.text.includes(".") && !cstNode.text.includes("e")))
+                  return "Integer";
+                return "Real";
+              }
+              return null;
+            };
+
+            const walk = (node: any) => {
+              if (node.type === "SimpleAssignmentStatement" || node.type === "SimpleEquation") {
+                const lhs = node.childForFieldName("target") || node.childForFieldName("expression1");
+                const rhs = node.childForFieldName("source") || node.childForFieldName("expression2");
+                if (lhs && rhs) {
+                  const t1 = getType(lhs);
+                  const t2 = getType(rhs);
+                  if (t1 && t2 && t1 !== t2) {
+                    // Basic compatibility (Integer -> Real is ok)
+                    if (t1 === "Real" && t2 === "Integer") {
+                    } // allowed
+                    else if (t2 === "enumeration" && t1 === "Integer") {
+                    } // sometimes allowed
+                    else {
+                      const kind = node.type === "SimpleEquation" ? "Equation" : "Assignment";
+                      results.push(
+                        error(`${kind} type mismatch: '${lhs.text}' is ${t1}, but '${rhs.text}' is ${t2}`, {
+                          field: "classSpecifier",
+                        }),
+                      );
+                    }
+                  }
+                }
+              } else if (
+                node.type === "IfStatement" ||
+                node.type === "IfEquation" ||
+                node.type === "WhenStatement" ||
+                node.type === "WhenEquation" ||
+                node.type === "ElseIfStatementClause" ||
+                node.type === "ElseIfEquationClause" ||
+                node.type === "ElseWhenStatementClause" ||
+                node.type === "ElseWhenEquationClause"
+              ) {
+                const cond = node.childForFieldName("condition");
+                if (cond) {
+                  const cType = getType(cond);
+                  if (cType && cType !== "Boolean") {
+                    results.push(
+                      error(`Condition expression must be Boolean, got ${cType} for '${cond.text}'`, {
+                        field: "classSpecifier",
+                      }),
+                    );
+                  }
+                }
+              }
+              for (const child of node.children) walk(child);
+            };
+
+            for (const child of cst.childForFieldName("classSpecifier")?.children || []) {
+              if (child.type === "AlgorithmSection" || child.type === "EquationSection") walk(child);
+            }
+            return results.length > 0 ? results : null;
+          },
+          /** Tuple expressions can only be used in assignments/equations */
+          tupleExpressionContext: (db: QueryDB, self: SymbolEntry) => {
+            const cst = db.cstNode(self.id) as any;
+            if (!cst) return null;
+
+            const results: any[] = [];
+            const walk = (node: any, isValidContext: boolean) => {
+              if (node.type === "OutputExpressionList") {
+                let count = 0;
+                for (const child of node.children) {
+                  if (
+                    child.type === "Expression" ||
+                    child.type === "ComponentReference" ||
+                    child.type === "FunctionCall"
+                  )
+                    count++;
+                }
+                if (count > 1 && !isValidContext) {
+                  results.push(
+                    error(`Tuple expression '${node.text}' can only be used in a function call assignment`, {
+                      field: "classSpecifier",
+                    }),
+                  );
+                }
+                return; // Avoid descending into child expressions if we already handled the output list
+              }
+
+              let validForChildren = false;
+              if (node.type === "ComplexAssignmentStatement") validForChildren = true;
+              if (node.type === "SimpleEquation") {
+                const expr2 = node.childForFieldName("expression2");
+                if (expr2 && expr2.type === "FunctionCall") validForChildren = true;
+              }
+
+              for (const child of node.children) {
+                walk(child, validForChildren || isValidContext);
+              }
+            };
+
+            for (const child of cst.childForFieldName("classSpecifier")?.children || []) {
+              if (child.type === "AlgorithmSection" || child.type === "EquationSection") walk(child, false);
+            }
+            return results.length > 0 ? results : null;
+          },
+          /** Stubs for Batch 4 and 5 remaining ClassDefinition lints */
+          connectFlowMismatch: () => null,
+          nonConnectorType: () => null,
+          functionArgVariability: () => null,
+          functionDefaultArgCycle: () => null,
+          unusedInputVariable: () => null,
+          unbalancedModel: () => null,
+          missingInner: () => null,
+          nameNotFound: () => null,
+          binaryOpTypeMismatch: () => null,
+          withinInScript: () => null,
+          arrayDimensionMismatch: () => null,
         },
         adapters: {
           sysml2: {
@@ -1553,8 +1948,6 @@ export default language({
               }
               arraySubNode = current?.childForFieldName("arraySubscripts");
             }
-            if (!arraySubNode) return null;
-
             const subscripts: Array<
               | { kind: "literal"; value: number }
               | { kind: "flexible" }
@@ -1621,6 +2014,103 @@ export default language({
               });
             }
             return null;
+          },
+          /** Validates that applied modifiers match an actual attribute or element in the component's type. */
+          modifierNotFound: (db: QueryDB, self: SymbolEntry) => {
+            const typeClassId = db.query<SymbolId | null>("classInstance", self.id);
+            if (!typeClassId) return null;
+            const typeEntry = db.symbol(typeClassId);
+            if (!typeEntry) return null;
+
+            const mod = db.query<any | null>("effectiveModification", self.id);
+            if (!mod || !mod.args || mod.args.length === 0) return null;
+
+            const declaredNames = new Set<string>();
+            const isBuiltin = typeEntry.metadata?.isPredefined;
+            if (isBuiltin || typeEntry.metadata?.classPrefixes === "enumeration") {
+              for (const k of Object.keys(typeEntry.metadata || {})) {
+                if (
+                  k !== "classKind" &&
+                  k !== "isPredefined" &&
+                  k !== "description" &&
+                  k !== "isEnumeration" &&
+                  k !== "literals" &&
+                  k !== "classPrefixes"
+                ) {
+                  declaredNames.add(k);
+                }
+              }
+              if (typeEntry.metadata?.classPrefixes === "enumeration") {
+                declaredNames.add("min");
+                declaredNames.add("max");
+                declaredNames.add("start");
+                declaredNames.add("fixed");
+              }
+              if (typeEntry.name === "StateSelect") declaredNames.add("default");
+            } else {
+              const elements = db.query<SymbolId[]>("instantiate", typeClassId) || [];
+              for (const eid of elements) {
+                const child = db.symbol(eid);
+                if (child && child.name && child.kind !== "Reference") declaredNames.add(child.name);
+              }
+            }
+
+            const results = [];
+            for (const arg of mod.args) {
+              if (arg.name && arg.name !== "annotation" && !declaredNames.has(arg.name)) {
+                results.push(
+                  error(`Modifier '${arg.name}' not found in type '${typeEntry.name}'`, {
+                    field: "componentDeclaration",
+                  }),
+                );
+              }
+            }
+            return results.length > 0 ? results : null;
+          },
+          /** Error if duplicate element names exist in classModification. */
+          duplicateModification: (db: QueryDB, self: SymbolEntry) => {
+            const cst = db.cstNode(self.id) as any;
+            if (!cst) return null;
+            let current = cst;
+            while (current && current.type !== "ComponentDeclaration") current = current.parent;
+
+            const decl = current?.childForFieldName("declaration");
+            if (!decl) return null;
+            const mod = decl.childForFieldName("modification");
+            if (!mod) return null;
+            const classMod = mod.childForFieldName("classModification");
+            if (!classMod) return null;
+
+            const paths: string[] = [];
+            const results = [];
+
+            const walkMods = (node: any, prefix: string) => {
+              if (node.type === "ElementModification") {
+                const nameNode = node.childForFieldName("name");
+                if (nameNode) {
+                  const path = prefix ? prefix + "." + nameNode.text : nameNode.text;
+                  const modExpr = node.childForFieldName("modification")?.childForFieldName("modificationExpression");
+                  if (modExpr) {
+                    if (paths.includes(path)) {
+                      results.push(
+                        error(`Duplicate modification of element '${path}'`, { field: "componentDeclaration" }),
+                      );
+                    } else {
+                      paths.push(path);
+                    }
+                  }
+
+                  // Check nested classModification
+                  const innerClassMod = node.childForFieldName("modification")?.childForFieldName("classModification");
+                  if (innerClassMod) {
+                    for (const child of innerClassMod.children) walkMods(child, path);
+                  }
+                }
+              }
+            };
+
+            for (const child of classMod.children) walkMods(child, "");
+            return results.length > 0 ? results : null;
           },
           /** Error if the component specifies a SysML implements target that cannot be resolved in the SysML index. */
           implementsTargetUnresolved: (db: QueryDB, self: SymbolEntry) => {
