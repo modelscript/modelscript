@@ -105,44 +105,61 @@ function getPlacementEdit(lines: string[], classInstance: ModelicaClassInstance,
   const newTransformationCore = `origin={${originX},${originY}}, extent={{${ex1},${ey1}},{${ex2},${ey2}}}${rotationPart}`;
   const newPlacement = `Placement(transformation(${newTransformationCore}))`;
 
-  const annotationMatch = text.match(/annotation\s*\(/);
-  if (annotationMatch) {
-    const annStart = annotationMatch.index ?? 0;
-    const annContentStart = annStart + annotationMatch[0].length;
-    const annEndIndex = findMatchingParen(text, annContentStart);
+  const annotationClause = abstractNode.annotationClause;
 
-    if (annEndIndex !== -1) {
-      let annotationContent = text.substring(annContentStart, annEndIndex);
+  if (annotationClause?.sourceRange) {
+    const annRange = Range.create(
+      annotationClause.startPosition.row,
+      annotationClause.startPosition.column,
+      annotationClause.endPosition.row,
+      annotationClause.endPosition.column,
+    );
+    const annText = getTextInRange(
+      lines,
+      annotationClause.startPosition.row,
+      annotationClause.startPosition.column,
+      annotationClause.endPosition.row,
+      annotationClause.endPosition.column,
+    );
 
-      // Remove any existing Placement(...) from annotation content
-      const placementMatch = annotationContent.match(/Placement\s*\(/);
-      if (placementMatch) {
-        const pStart = placementMatch.index ?? 0;
-        const pInner = pStart + placementMatch[0].length;
-        const pEnd = findMatchingParen(annotationContent, pInner);
-        if (pEnd !== -1) {
-          const before = annotationContent.substring(0, pStart);
-          const after = annotationContent.substring(pEnd + 1);
-          if (before.trimEnd().endsWith(",")) {
-            annotationContent = before.trimEnd().slice(0, -1).trimEnd() + after;
-          } else if (after.trimStart().startsWith(",")) {
-            annotationContent = before + after.trimStart().slice(1).trimStart();
-          } else {
-            annotationContent = before + after;
+    const annotationMatch = annText.match(/annotation\s*\(/);
+    if (annotationMatch) {
+      const annStart = annotationMatch.index ?? 0;
+      const annContentStart = annStart + annotationMatch[0].length;
+      const annEndIndex = findMatchingParen(annText, annContentStart);
+
+      if (annEndIndex !== -1) {
+        let annotationContent = annText.substring(annContentStart, annEndIndex);
+
+        const placementMatch = annotationContent.match(/Placement\s*\(/);
+        if (placementMatch) {
+          const pStart = placementMatch.index ?? 0;
+          const pInner = pStart + placementMatch[0].length;
+          const pEnd = findMatchingParen(annotationContent, pInner);
+          if (pEnd !== -1) {
+            const before = annotationContent.substring(0, pStart);
+            const after = annotationContent.substring(pEnd + 1);
+            if (before.trimEnd().endsWith(",")) {
+              annotationContent = before.trimEnd().slice(0, -1).trimEnd() + after;
+            } else if (after.trimStart().startsWith(",")) {
+              annotationContent = before + after.trimStart().slice(1).trimStart();
+            } else {
+              annotationContent = before + after;
+            }
           }
         }
-      }
 
-      // Re-insert Placement with new data
-      const trimmed = annotationContent.trim();
-      const separator = trimmed.length > 0 ? ", " : "";
-      const newText =
-        text.substring(0, annContentStart) + newPlacement + separator + trimmed + text.substring(annEndIndex);
-      if (newText !== text) {
-        return TextEdit.replace(range, newText);
+        const trimmed = annotationContent.trim();
+        const separator = trimmed.length > 0 ? ", " : "";
+        const newText =
+          annText.substring(0, annContentStart) + newPlacement + separator + trimmed + annText.substring(annEndIndex);
+        if (newText !== annText) {
+          return TextEdit.replace(annRange, newText);
+        }
       }
     }
   } else {
+    // No annotation clause exists, insert a new one before the semi-colon
     const semiIndex = text.lastIndexOf(";");
     if (semiIndex !== -1) {
       const insert = ` annotation(${newPlacement})`;
@@ -209,7 +226,44 @@ export function computeConnectInsert(
   const modelStartLine = astNode?.sourceRange ? astNode.startPosition.row : 0;
   const modelEndLine = astNode?.sourceRange ? astNode.endPosition.row : lines.length - 1;
 
-  // Look for "equation" keyword within the model range
+  if (astNode) {
+    const classSpecifier = astNode.classOrInheritanceModification?.classSpecifier || astNode.classSpecifier;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sections: any[] = classSpecifier?.sections ?? [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let lastEquationSection: any = null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let baseEquationSection: any = null;
+
+    for (const section of sections) {
+      // Find the last equation section
+      if (section.equations !== undefined && section.initial !== true) {
+        lastEquationSection = section;
+        // The first equation section without 'initial' is typically the base equation section
+        if (!baseEquationSection) {
+          baseEquationSection = section;
+        }
+      }
+    }
+
+    const targetSection = lastEquationSection || baseEquationSection;
+    if (targetSection && targetSection.sourceRange) {
+      // Insert at the end of the section, just before its end line.
+      // Wait, sourceRange has startPosition and endPosition.
+      // It's safer to just insert at its endPosition (before the next section or end).
+      const endLine = targetSection.endPosition.row;
+      return [TextEdit.insert({ line: endLine, character: 0 }, connectEq)];
+    }
+
+    // No equation section exists. Insert just before the class specifies 'end'.
+    const classEndPos = classSpecifier?.endPosition ?? astNode.endPosition;
+    if (classEndPos) {
+      // Insert before 'end' line
+      return [TextEdit.insert({ line: classEndPos.row, character: 0 }, `equation\n${connectEq}`)];
+    }
+  }
+
+  // Fallback to basic keyword scan if CST is completely unavailable (e.g., highly malformed text)
   let equationLine = -1;
   for (let i = modelStartLine; i <= modelEndLine; i++) {
     if (lines[i].trim() === "equation" || lines[i].trim().startsWith("equation ")) {
@@ -219,7 +273,6 @@ export function computeConnectInsert(
   }
 
   if (equationLine !== -1) {
-    // Find the right insertion point: before end/protected/initial/algorithm/annotation
     const keywords = ["public", "protected", "initial equation", "algorithm", "annotation", "end"];
     let insertLine = -1;
     for (let i = equationLine + 1; i <= modelEndLine; i++) {
@@ -234,10 +287,8 @@ export function computeConnectInsert(
     }
   }
 
-  // Fallback: insert before "end" keyword
   for (let i = modelEndLine; i >= modelStartLine; i--) {
     if (lines[i].trim().startsWith("end")) {
-      // Look backwards for annotation before end
       let insertLine = i;
       for (let j = i - 1; j >= modelStartLine; j--) {
         const line = lines[j].trim();
@@ -388,6 +439,67 @@ export function computeEdgePointEdits(
     const newLineAnnotation = `Line(${newPointsCore}, ${colorCore})`;
 
     let newText = text;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const annotationClause = (connectEq.ast as any).annotationClause;
+
+    if (annotationClause?.sourceRange) {
+      const annRange = Range.create(
+        annotationClause.startPosition.row,
+        annotationClause.startPosition.column,
+        annotationClause.endPosition.row,
+        annotationClause.endPosition.column,
+      );
+      const annText = getTextInRange(
+        lines,
+        annotationClause.startPosition.row,
+        annotationClause.startPosition.column,
+        annotationClause.endPosition.row,
+        annotationClause.endPosition.column,
+      );
+
+      const annotationMatch = annText.match(/annotation\s*\(/);
+      if (annotationMatch) {
+        const annStartIndex = annotationMatch.index ?? 0;
+        const annContentStart = annStartIndex + annotationMatch[0].length;
+        const annEndIndex = findMatchingParen(annText, annContentStart);
+        if (annEndIndex !== -1) {
+          let annotationContent = annText.substring(annContentStart, annEndIndex);
+
+          const lineMatch = annotationContent.match(/Line\s*\(/);
+          if (lineMatch) {
+            const lineStart = lineMatch.index ?? 0;
+            const lineInner = lineStart + lineMatch[0].length;
+            const lineEnd = findMatchingParen(annotationContent, lineInner);
+            if (lineEnd !== -1) {
+              const before = annotationContent.substring(0, lineStart);
+              const after = annotationContent.substring(lineEnd + 1);
+              if (before.trimEnd().endsWith(",")) {
+                annotationContent = before.trimEnd().slice(0, -1).trimEnd() + after;
+              } else if (after.trimStart().startsWith(",")) {
+                annotationContent = before + after.trimStart().slice(1).trimStart();
+              } else {
+                annotationContent = before + after;
+              }
+            }
+          }
+
+          const trimmed = annotationContent.trim();
+          const separator = trimmed.length > 0 ? ", " : "";
+          newText =
+            annText.substring(0, annContentStart) +
+            trimmed +
+            separator +
+            newLineAnnotation +
+            annText.substring(annEndIndex);
+          if (newText !== annText) {
+            edits.push(TextEdit.replace(annRange, newText));
+            continue;
+          }
+        }
+      }
+    }
+
+    // Fallback if annotationClause doesn't exist
     const annotationMatch = text.match(/annotation\s*\(/);
     if (annotationMatch) {
       const annStartIndex = annotationMatch.index ?? 0;
@@ -715,5 +827,86 @@ export function computeParameterEdit(
       return [TextEdit.insert({ line: pos.row, character: pos.column }, `(${parameterName}=${newValue})`)];
     }
   }
+  return [];
+}
+
+// ── Component Insert ──
+
+export function computeComponentInsert(
+  classInstance: ModelicaClassInstance,
+  className: string,
+  componentName: string,
+  x: number,
+  y: number,
+  docText: string,
+): TextEdit[] {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const diagram: any = classInstance.annotation("Diagram");
+  const initialScale = diagram?.coordinateSystem?.initialScale ?? 0.1;
+  const extent = diagram?.coordinateSystem?.extent;
+
+  let width = 200;
+  let height = 200;
+  if (extent && extent.length >= 2) {
+    width = Math.abs(extent[1][0] - extent[0][0]);
+    height = Math.abs(extent[1][1] - extent[0][1]);
+  }
+  const w = width * initialScale;
+  const h = height * initialScale;
+
+  const originX = Math.round(x);
+  const originY = -Math.round(y);
+  const annotation = `annotation(Placement(transformation(origin={${originX},${originY}}, extent={{-${w / 2},-${h / 2}},{${w / 2},${h / 2}}})))`;
+  const componentDecl = `  ${className} ${componentName} ${annotation};\n`;
+
+  const lines = docText.split("\n");
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const astNode = (classInstance as any).abstractSyntaxNode;
+  const modelStartLine = astNode?.sourceRange ? astNode.startPosition.row : 0;
+  const modelEndLine = astNode?.sourceRange ? astNode.endPosition.row : lines.length - 1;
+
+  const keywords = ["protected", "initial equation", "initial algorithm", "equation", "algorithm", "end"];
+  let insertLine = -1;
+  for (let i = modelStartLine; i <= modelEndLine; i++) {
+    const line = lines[i].trim();
+    if (keywords.some((kw) => line.startsWith(kw))) {
+      insertLine = i;
+      break;
+    }
+  }
+
+  if (insertLine !== -1) {
+    if (insertLine > modelStartLine && lines[insertLine - 1].trim() === "") {
+      // Replace the empty line before the section
+      return [TextEdit.replace(Range.create(insertLine - 1, 0, insertLine, 0), componentDecl)];
+    } else {
+      return [TextEdit.insert({ line: insertLine, character: 0 }, componentDecl)];
+    }
+  } else {
+    // Fallback: find the last "end" within this model's range
+    const modelLines = lines.slice(modelStartLine, modelEndLine + 1);
+    const modelText = modelLines.join("\\n");
+    const lastEndIndex = modelText.lastIndexOf("end");
+    if (lastEndIndex !== -1) {
+      const linesBeforeEnd = modelText.substring(0, lastEndIndex).split("\\n").length - 1;
+      const endLineNumber = modelStartLine + linesBeforeEnd;
+      const endLineContent = lines[endLineNumber];
+      const endCol = endLineContent.lastIndexOf("end");
+      const beforeEnd = endLineContent.substring(0, endCol).trimEnd();
+
+      if (beforeEnd !== "") {
+        // Single-line model: insert at the "end" keyword column with newlines
+        return [TextEdit.insert({ line: endLineNumber, character: endCol }, "\\n" + componentDecl)];
+      } else {
+        if (endLineNumber > 0 && lines[endLineNumber - 1].trim() === "") {
+          return [TextEdit.replace(Range.create(endLineNumber - 1, 0, endLineNumber, 0), componentDecl)];
+        } else {
+          return [TextEdit.insert({ line: endLineNumber, character: 0 }, componentDecl)];
+        }
+      }
+    }
+  }
+
   return [];
 }

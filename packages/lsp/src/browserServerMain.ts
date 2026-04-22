@@ -34,6 +34,7 @@ import {
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { buildDiagramData, getClassIconSvg, type DiagramData } from "./diagramData";
 import {
+  computeComponentInsert,
   computeComponentsDelete,
   computeConnectInsert,
   computeConnectRemove,
@@ -53,8 +54,11 @@ import {
 import {
   computeSysML2ConnectionDelete,
   computeSysML2ConnectionInsert,
+  computeSysML2DescriptionEdit,
   computeSysML2ElementDelete,
   computeSysML2ElementInsert,
+  computeSysML2NameEdit,
+  computeSysML2ParameterEdit,
   generateUniqueName,
 } from "./sysml2DiagramEdits";
 
@@ -95,7 +99,6 @@ import {
   performBltTransformation,
   type Dirent,
   type FileSystem,
-  type IDiagram,
   type Stats,
 } from "@modelscript/core";
 import { ModelicaFmuEntity, generateMultiModelWrapper } from "@modelscript/fmi";
@@ -3250,9 +3253,16 @@ connection.onRequest("modelscript/deleteComponents", (params: { uri: string; nam
 });
 
 connection.onRequest("modelscript/updateComponentName", (params: { uri: string; oldName: string; newName: string }) => {
-  // SysML2: not yet supported (would need tree-sitter rename refactoring)
   if (params.uri.endsWith(".sysml")) {
-    return [];
+    const doc = documents.get(params.uri);
+    if (!doc || !sysml2ParserReady || !sysml2Parser) return [];
+    try {
+      const tree = sysml2Parser.parse(doc.getText());
+      return computeSysML2NameEdit(tree, doc.getText(), params.oldName, params.newName);
+    } catch (e) {
+      console.error("[sysml2-diagram] updateComponentName error:", e);
+      return [];
+    }
   }
 
   const instances = documentInstances.get(params.uri);
@@ -3268,8 +3278,17 @@ connection.onRequest("modelscript/updateComponentName", (params: { uri: string; 
 connection.onRequest(
   "modelscript/updateComponentDescription",
   (params: { uri: string; name: string; description: string }) => {
-    // SysML2: not yet supported
-    if (params.uri.endsWith(".sysml")) return [];
+    if (params.uri.endsWith(".sysml")) {
+      const doc = documents.get(params.uri);
+      if (!doc || !sysml2ParserReady || !sysml2Parser) return [];
+      try {
+        const tree = sysml2Parser.parse(doc.getText());
+        return computeSysML2DescriptionEdit(tree, doc.getText(), params.name, params.description);
+      } catch (e) {
+        console.error("[sysml2-diagram] updateComponentDescription error:", e);
+        return [];
+      }
+    }
 
     const instances = documentInstances.get(params.uri);
     const doc = documents.get(params.uri);
@@ -3286,9 +3305,17 @@ connection.onRequest(
 connection.onRequest(
   "modelscript/updateComponentParameter",
   (params: { uri: string; name: string; parameter: string; value: string }) => {
-    // SysML2: not yet supported
-    if (params.uri.endsWith(".sysml")) return [];
-
+    if (params.uri.endsWith(".sysml")) {
+      const doc = documents.get(params.uri);
+      if (!doc || !sysml2ParserReady || !sysml2Parser) return [];
+      try {
+        const tree = sysml2Parser.parse(doc.getText());
+        return computeSysML2ParameterEdit(tree, doc.getText(), params.name, params.parameter, params.value);
+      } catch (e) {
+        console.error("[sysml2-diagram] updateComponentParameter error:", e);
+        return [];
+      }
+    }
     const instances = documentInstances.get(params.uri);
     if (!instances?.[0]) return [];
     try {
@@ -4293,59 +4320,7 @@ connection.onRequest("modelscript/addComponent", (params: { uri: string; classNa
       i++;
     }
 
-    // Get scale from diagram annotation
-    const diagram: IDiagram | null = classInstance.annotation("Diagram");
-    const initialScale = diagram?.coordinateSystem?.initialScale ?? 0.1;
-    const extent = diagram?.coordinateSystem?.extent;
-
-    let width = 200;
-    let height = 200;
-    if (extent && extent.length >= 2) {
-      width = Math.abs(extent[1][0] - extent[0][0]);
-      height = Math.abs(extent[1][1] - extent[0][1]);
-    }
-    const w = width * initialScale;
-    const h = height * initialScale;
-
-    const x = Math.round(params.x);
-    const y = -Math.round(params.y);
-    const annotation = `annotation(Placement(transformation(origin={${x},${y}}, extent={{-${w / 2},-${h / 2}},{${w / 2},${h / 2}}})))`;
-    const componentDecl = `  ${params.className} ${name} ${annotation};\n`;
-
-    // Find insertion point: before the "equation" or "algorithm" section, or before "end ClassName;"
-    const text = doc.getText();
-    const lines = text.split("\n");
-
-    // Scan forward to find the first equation/algorithm section or end of model
-    const modelName = classInstance.name;
-    let insertLine = -1;
-    for (let li = 0; li < lines.length; li++) {
-      const trimmed = lines[li].trim();
-      if (trimmed === "equation" || trimmed.startsWith("equation ") || trimmed.startsWith("equation\t")) {
-        insertLine = li;
-        break;
-      }
-      if (trimmed === "algorithm" || trimmed.startsWith("algorithm ") || trimmed.startsWith("algorithm\t")) {
-        insertLine = li;
-        break;
-      }
-      if (trimmed === `end ${modelName};`) {
-        insertLine = li;
-        break;
-      }
-    }
-
-    if (insertLine < 0) return [];
-
-    return [
-      {
-        range: {
-          start: { line: insertLine, character: 0 },
-          end: { line: insertLine, character: 0 },
-        },
-        newText: componentDecl,
-      },
-    ];
+    return computeComponentInsert(classInstance, params.className, name, params.x, params.y, doc.getText());
   } catch (e) {
     console.error("[diagram] addComponent error:", e);
     return [];

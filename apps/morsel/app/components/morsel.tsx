@@ -5,14 +5,11 @@ import {
   Context,
   decodeDataUrl,
   encodeDataUrl,
-  ModelicaClassInstance,
   ModelicaClassKind,
-  ModelicaComponentClauseSyntaxNode,
   ModelicaComponentInstance,
   ModelicaDAE,
   ModelicaEntity,
   ModelicaFlattener,
-  type IDiagram,
 } from "@modelscript/core";
 import { ModelicaSimulator, type ParameterInfo } from "@modelscript/simulator";
 import {
@@ -57,6 +54,18 @@ import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } fr
 import { Language, Parser } from "web-tree-sitter";
 import { mountLibrary, WebFileSystem } from "~/util/filesystem";
 import { getTranslations, uiLanguages } from "~/util/i18n";
+import {
+  addComponent,
+  addConnect,
+  applyLspEdits,
+  deleteComponents,
+  removeConnect,
+  updateComponentDescription,
+  updateComponentName,
+  updateComponentParameter,
+  updateEdgePoints,
+  updatePlacement,
+} from "~/util/lsp-bridge";
 import type { CodeEditorHandle } from "./code";
 import ComponentList from "./component-list";
 import type { DiagramEditorHandle } from "./diagram";
@@ -75,6 +84,9 @@ const SimulationResults = React.lazy(() =>
   import("./simulation-results").then((m) => ({ default: m.SimulationResults })),
 );
 const CadViewerPanel = React.lazy(() => import("./cad-viewer").then((m) => ({ default: m.CadViewer })));
+
+/** URI used for the open document — must match the URI in CodeEditor and TreeWidget. */
+const DOCUMENT_URI = "document.mo";
 
 const EXAMPLE_PATHS = [
   {
@@ -605,728 +617,29 @@ export default function MorselEditor(props: MorselEditorProps) {
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
   }, []);
+  // ── Diagram edit helpers (delegated to LSP server via lsp-bridge) ──
 
-  const getNameEdit = (oldName: string, newName: string): editor.IIdentifiedSingleEditOperation | null => {
-    const instance = ((diagramData ?? null) as any) ?? null;
-    if (!instance || !editor || !newName) return null;
-    const component = Array.from(instance.components).find((c: any) => c.name === oldName);
-    if (!component) return null;
-
-    const abstractNode = (component as any).abstractSyntaxNode;
-    const identNode = abstractNode?.declaration?.identifier;
-    if (identNode?.sourceRange) {
-      return {
-        range: {
-          startLineNumber: identNode.startPosition.row + 1,
-          startColumn: identNode.startPosition.column + 1,
-          endLineNumber: identNode.endPosition.row + 1,
-          endColumn: identNode.endPosition.column + 1,
-        },
-        text: newName,
-      };
-    }
-    return null;
+  const handleEdgeDelete = async (source: string, target: string) => {
+    if (!editor) return;
+    isDiagramUpdate.current = true;
+    const edits = await removeConnect(DOCUMENT_URI, source, target);
+    applyLspEdits(editor, edits, "delete-connect");
   };
 
-  const getDescriptionEdit = (
-    componentName: string,
-    newDescription: string,
-  ): editor.IIdentifiedSingleEditOperation | null => {
-    const instance = ((diagramData ?? null) as any) ?? null;
-    if (!instance || !editor) return null;
-    const component = Array.from(instance.components).find((c: any) => c.name === componentName);
-    if (!component) return null;
-
-    const abstractNode = (component as any).abstractSyntaxNode;
-    const descriptionNode = abstractNode?.description;
-
-    // Escape quotes for Modelica (double them)
-    const escapedDescription = newDescription.replace(/"/g, '""');
-
-    if (descriptionNode?.sourceRange) {
-      if (newDescription === "") {
-        // Remove the description AND any preceding whitespace
-        const model = editor.getModel();
-        const descStartLine = descriptionNode.startPosition.row + 1;
-        const descStartCol = descriptionNode.startPosition.column + 1;
-        const descEndLine = descriptionNode.endPosition.row + 1;
-        const descEndCol = descriptionNode.endPosition.column + 1;
-        // Look backwards from the description start to consume preceding whitespace
-        let removeStartCol = descStartCol;
-        if (model) {
-          const lineContent = model.getLineContent(descStartLine);
-          let col = descStartCol - 2; // 0-indexed position before description
-          while (col >= 0 && (lineContent[col] === " " || lineContent[col] === "\t")) {
-            col--;
-          }
-          removeStartCol = col + 2; // back to 1-indexed
-        }
-        return {
-          range: {
-            startLineNumber: descStartLine,
-            startColumn: removeStartCol,
-            endLineNumber: descEndLine,
-            endColumn: descEndCol,
-          },
-          text: "",
-        };
-      }
-      return {
-        range: {
-          startLineNumber: descriptionNode.startPosition.row + 1,
-          startColumn: descriptionNode.startPosition.column + 1,
-          endLineNumber: descriptionNode.endPosition.row + 1,
-          endColumn: descriptionNode.endPosition.column + 1,
-        },
-        text: `"${escapedDescription}"`, // No leading space when replacing existing description
-      };
-    } else {
-      // No existing description — nothing to remove
-      if (newDescription === "") return null;
-      // If no description exists, we need to insert it after the identifier/modification
-      const identNode = abstractNode?.declaration?.identifier;
-      const modificationNode = abstractNode?.declaration?.modification;
-      const subscriptsNode = abstractNode?.declaration?.arraySubscripts;
-
-      let pos = null;
-      if (modificationNode?.sourceRange) {
-        pos = modificationNode.endPosition;
-      } else if (subscriptsNode?.sourceRange) {
-        pos = subscriptsNode.endPosition;
-      } else if (identNode?.sourceRange) {
-        pos = identNode.endPosition;
-      }
-
-      if (pos) {
-        return {
-          range: {
-            startLineNumber: pos.row + 1,
-            startColumn: pos.column + 1,
-            endLineNumber: pos.row + 1,
-            endColumn: pos.column + 1,
-          },
-          text: ` "${escapedDescription}"`, // Include leading space only when inserting new description
-        };
-      }
-    }
-    return null;
+  const handleComponentDelete = async (name: string) => {
+    if (!editor) return;
+    isDiagramUpdate.current = true;
+    const edits = await deleteComponents(DOCUMENT_URI, [name]);
+    applyLspEdits(editor, edits, "delete-component");
+    codeEditorRef.current?.sync();
   };
 
-  const getParameterEdit = (
-    componentName: string,
-    parameterName: string,
-    newValue: string,
-  ): editor.IIdentifiedSingleEditOperation | null => {
-    const instance = ((diagramData ?? null) as any) ?? null;
-    if (!instance || !editor) return null;
-    const component = Array.from(instance.components).find((c: any) => c.name === componentName);
-    if (!component) return null;
-
-    const abstractNode = (component as any).abstractSyntaxNode;
-    if (!abstractNode) return null;
-
-    const declNode = abstractNode.declaration;
-    const modification = declNode?.modification;
-
-    const shouldRemove = newValue === "";
-
-    if (modification?.classModification) {
-      const classMod = modification.classModification;
-      const argIndex = classMod.modificationArguments.findIndex((arg: any) => {
-        if (!arg.name) return false;
-        const nameText = arg.name.parts.map((p: any) => p.text).join(".");
-        return nameText === parameterName;
-      });
-
-      if (argIndex !== -1) {
-        const existingArg = classMod.modificationArguments[argIndex];
-        if (shouldRemove) {
-          let startLine = existingArg.startPosition.row + 1;
-          let startCol = existingArg.startPosition.column + 1;
-          let endLine = existingArg.endPosition.row + 1;
-          let endCol = existingArg.endPosition.column + 1;
-
-          const nextArg = classMod.modificationArguments[argIndex + 1];
-          if (nextArg) {
-            endLine = nextArg.startPosition.row + 1;
-            endCol = nextArg.startPosition.column + 1;
-          } else if (argIndex > 0) {
-            const prevArg = classMod.modificationArguments[argIndex - 1];
-            startLine = prevArg.endPosition.row + 1;
-            startCol = prevArg.endPosition.column + 1;
-          } else {
-            // Only argument — remove the entire class modification
-            return {
-              range: {
-                startLineNumber: classMod.startPosition.row + 1,
-                startColumn: classMod.startPosition.column + 1,
-                endLineNumber: classMod.endPosition.row + 1,
-                endColumn: classMod.endPosition.column + 1,
-              },
-              text: "",
-            };
-          }
-
-          return {
-            range: {
-              startLineNumber: startLine,
-              startColumn: startCol,
-              endLineNumber: endLine,
-              endColumn: endCol,
-            },
-            text: "",
-          };
-        }
-
-        // Update existing argument value
-        const existingMod = existingArg.modification;
-        if (existingMod) {
-          return {
-            range: {
-              startLineNumber: existingMod.startPosition.row + 1,
-              startColumn: existingMod.startPosition.column + 1,
-              endLineNumber: existingMod.endPosition.row + 1,
-              endColumn: existingMod.endPosition.column + 1,
-            },
-            text: `=${newValue}`,
-          };
-        } else {
-          return {
-            range: {
-              startLineNumber: existingArg.startPosition.row + 1,
-              startColumn: existingArg.startPosition.column + 1,
-              endLineNumber: existingArg.endPosition.row + 1,
-              endColumn: existingArg.endPosition.column + 1,
-            },
-            text: `${parameterName}=${newValue}`,
-          };
-        }
-      } else {
-        // Add new argument to existing modification
-        if (shouldRemove) return null;
-        const hasArgs = classMod.modificationArguments.length > 0;
-        // Insert before the closing paren — use the classModification's end position
-        const endPos = classMod.endPosition;
-        return {
-          range: {
-            startLineNumber: endPos.row + 1,
-            startColumn: endPos.column, // before the closing paren
-            endLineNumber: endPos.row + 1,
-            endColumn: endPos.column,
-          },
-          text: `${hasArgs ? ", " : ""}${parameterName}=${newValue}`,
-        };
-      }
-    } else {
-      // No existing modification — insert after identifier
-      if (shouldRemove) return null;
-      const identNode = declNode?.identifier;
-      const subscriptsNode = declNode?.arraySubscripts;
-      let pos = null;
-      if (subscriptsNode?.sourceRange) {
-        pos = subscriptsNode.endPosition;
-      } else if (identNode?.sourceRange) {
-        pos = identNode.endPosition;
-      }
-
-      if (pos) {
-        return {
-          range: {
-            startLineNumber: pos.row + 1,
-            startColumn: pos.column + 1,
-            endLineNumber: pos.row + 1,
-            endColumn: pos.column + 1,
-          },
-          text: `(${parameterName}=${newValue})`,
-        };
-      }
-    }
-    return null;
-  };
-
-  const getPlacementEdit = (
-    name: string,
-    x: number,
-    y: number,
-    width: number,
-    height: number,
-    rotation: number,
-  ): editor.IIdentifiedSingleEditOperation | null => {
-    const instance = ((diagramData ?? null) as any) ?? null;
-    if (!instance || !editor) return null;
-
-    const component = instance.components ? Array.from(instance.components).find((c: any) => c.name === name) : null;
-
-    if (!component) return null;
-    const originX = Math.round(x + width / 2);
-    const originY = Math.round(-(y + height / 2));
-    const w = Math.round(width);
-    const h = Math.round(height);
-    const r = Math.round(-(rotation ?? 0));
-    const abstractNode = (component as any).abstractSyntaxNode;
-    if (abstractNode?.sourceRange) {
-      const node = abstractNode;
-      const startLine = node.startPosition.row + 1;
-      const startCol = node.startPosition.column + 1;
-      const endLine = node.endPosition.row + 1;
-      const endCol = node.endPosition.column + 1;
-
-      const range = {
-        startLineNumber: startLine,
-        startColumn: startCol,
-        endLineNumber: endLine,
-        endColumn: endCol,
-      };
-
-      const text = editor.getModel()?.getValueInRange(range) || "";
-
-      // Validate extracted text contains the component name (guards against stale AST positions)
-      if (!text.includes(name)) return null;
-
-      const rotationPart = r !== 0 ? `, rotation=${r}` : "";
-      // Detect flip from the original extent in the source text
-      let flipX = false;
-      let flipY = false;
-      const extentMatch = text.match(
-        /extent\s*=\s*\{\{\s*([^,]+)\s*,\s*([^}]+)\}\s*,\s*\{\s*([^,]+)\s*,\s*([^}]+)\}\}/,
-      );
-      if (extentMatch) {
-        const [, x1s, y1s, x2s, y2s] = extentMatch;
-        const ox1 = parseFloat(x1s);
-        const oy1 = parseFloat(y1s);
-        const ox2 = parseFloat(x2s);
-        const oy2 = parseFloat(y2s);
-        if (!isNaN(ox1) && !isNaN(ox2)) flipX = ox1 > ox2;
-        if (!isNaN(oy1) && !isNaN(oy2)) flipY = oy1 > oy2;
-      }
-      const ex1 = flipX ? w / 2 : -(w / 2);
-      const ex2 = flipX ? -(w / 2) : w / 2;
-      const ey1 = flipY ? h / 2 : -(h / 2);
-      const ey2 = flipY ? -(h / 2) : h / 2;
-      const newTransformationCore = `origin={${originX},${originY}}, extent={{${ex1},${ey1}},{${ex2},${ey2}}}${rotationPart}`;
-      const newPlacement = `Placement(transformation(${newTransformationCore}))`;
-
-      const annotationMatch = text.match(/annotation\s*\(/);
-      if (annotationMatch) {
-        const annStart = annotationMatch.index!;
-        const annContentStart = annStart + annotationMatch[0].length;
-        let nesting = 0;
-        let annEndIndex = -1;
-        for (let i = annContentStart; i < text.length; i++) {
-          if (text[i] === "(") nesting++;
-          else if (text[i] === ")") {
-            if (nesting === 0) {
-              annEndIndex = i;
-              break;
-            }
-            nesting--;
-          }
-        }
-
-        if (annEndIndex !== -1) {
-          let annotationContent = text.substring(annContentStart, annEndIndex);
-
-          // Remove any existing Placement(...) from annotation content
-          const placementMatch = annotationContent.match(/Placement\s*\(/);
-          if (placementMatch) {
-            const pStart = placementMatch.index!;
-            const pInner = pStart + placementMatch[0].length;
-            let pNesting = 0;
-            let pEnd = -1;
-            for (let i = pInner; i < annotationContent.length; i++) {
-              if (annotationContent[i] === "(") pNesting++;
-              else if (annotationContent[i] === ")") {
-                if (pNesting === 0) {
-                  pEnd = i;
-                  break;
-                }
-                pNesting--;
-              }
-            }
-            if (pEnd !== -1) {
-              const before = annotationContent.substring(0, pStart);
-              const after = annotationContent.substring(pEnd + 1);
-              if (before.trimEnd().endsWith(",")) {
-                annotationContent = before.trimEnd().slice(0, -1).trimEnd() + after;
-              } else if (after.trimStart().startsWith(",")) {
-                annotationContent = before + after.trimStart().slice(1).trimStart();
-              } else {
-                annotationContent = before + after;
-              }
-            }
-          }
-
-          // Re-insert Placement with new data
-          const trimmed = annotationContent.trim();
-          const separator = trimmed.length > 0 ? ", " : "";
-          const newText =
-            text.substring(0, annContentStart) + newPlacement + separator + trimmed + text.substring(annEndIndex);
-          if (newText !== text) {
-            return { range, text: newText };
-          }
-        }
-      } else {
-        const semiIndex = text.lastIndexOf(";");
-        if (semiIndex !== -1) {
-          const insert = ` annotation(${newPlacement})`;
-          const newText = text.slice(0, semiIndex) + insert + text.slice(semiIndex);
-          return { range, text: newText };
-        } else {
-          const insert = ` annotation(${newPlacement})`;
-          const newText = text + insert;
-          return { range, text: newText };
-        }
-      }
-    }
-    return null;
-  };
-
-  const getConnectEdits = (
-    edges: { source: string; target: string; points: { x: number; y: number }[] }[],
-  ): Map<string, editor.IIdentifiedSingleEditOperation> => {
-    const edits = new Map<string, editor.IIdentifiedSingleEditOperation>();
-    const instance = ((diagramData ?? null) as any) ?? null;
-    if (!instance || !editor) return edits;
-
-    for (const edge of edges) {
-      const connectEq = Array.from(instance.connectEquations).find((ce: any) => {
-        const c1 = ce.componentReference1?.parts.map((c: any) => c.identifier?.text ?? "").join(".");
-        const c2 = ce.componentReference2?.parts.map((c: any) => c.identifier?.text ?? "").join(".");
-        return (c1 === edge.source && c2 === edge.target) || (c1 === edge.target && c2 === edge.source);
-      });
-
-      if (!connectEq) continue;
-
-      if ((connectEq as any).sourceRange) {
-        const node = connectEq as any;
-        // Use a unique key for the map to avoid duplicates
-        const key = `${node.startPosition.row}:${node.startPosition.column}`;
-        if (edits.has(key)) continue;
-
-        const startLine = node.startPosition.row + 1;
-        const startCol = node.startPosition.column + 1;
-        const endLine = node.endPosition.row + 1;
-        const endCol = node.endPosition.column + 1;
-
-        const range = {
-          startLineNumber: startLine,
-          startColumn: startCol,
-          endLineNumber: endLine,
-          endColumn: endCol,
-        };
-
-        const text = editor.getModel()?.getValueInRange(range) || "";
-
-        // Validate the extracted text is actually a connect equation (guards against stale AST)
-        if (!text.match(/^\s*connect\s*\(/)) continue;
-
-        const pointsStr = `{${edge.points.map((p) => `{${p.x},${p.y}}`).join(", ")}}`;
-        const newPointsCore = `points=${pointsStr}`;
-        const colorCore = "color={0, 0, 255}";
-        const newLineAnnotation = `Line(${newPointsCore}, ${colorCore})`;
-
-        let newText = text;
-        const annotationMatch = text.match(/annotation\s*\(/);
-        if (annotationMatch) {
-          // Find the annotation bounds
-          const annStartIndex = annotationMatch.index!;
-          const annContentStart = annStartIndex + annotationMatch[0].length;
-          let nesting = 0;
-          let annEndIndex = -1;
-          for (let i = annContentStart; i < text.length; i++) {
-            if (text[i] === "(") nesting++;
-            else if (text[i] === ")") {
-              if (nesting === 0) {
-                annEndIndex = i;
-                break;
-              }
-              nesting--;
-            }
-          }
-          if (annEndIndex !== -1) {
-            let annotationContent = text.substring(annContentStart, annEndIndex);
-            // Remove any existing Line(...) from annotation content
-            const lineMatch = annotationContent.match(/Line\s*\(/);
-            if (lineMatch) {
-              const lineStart = lineMatch.index!;
-              const lineInner = lineStart + lineMatch[0].length;
-              let lNesting = 0;
-              let lineEnd = -1;
-              for (let i = lineInner; i < annotationContent.length; i++) {
-                if (annotationContent[i] === "(") lNesting++;
-                else if (annotationContent[i] === ")") {
-                  if (lNesting === 0) {
-                    lineEnd = i;
-                    break;
-                  }
-                  lNesting--;
-                }
-              }
-              if (lineEnd !== -1) {
-                // Remove the Line(...) and any leading/trailing comma+whitespace
-                let removeStart = lineStart;
-                let removeEnd = lineEnd + 1;
-                // Remove leading comma+space
-                const before = annotationContent.substring(0, removeStart);
-                const after = annotationContent.substring(removeEnd);
-                if (before.trimEnd().endsWith(",")) {
-                  annotationContent = before.trimEnd().slice(0, -1).trimEnd() + after;
-                } else if (after.trimStart().startsWith(",")) {
-                  annotationContent = before + after.trimStart().slice(1).trimStart();
-                } else {
-                  annotationContent = before + after;
-                }
-              }
-            }
-            // Re-insert the Line with new data
-            const trimmed = annotationContent.trim();
-            const separator = trimmed.length > 0 ? ", " : "";
-            newText =
-              text.substring(0, annContentStart) +
-              trimmed +
-              separator +
-              newLineAnnotation +
-              text.substring(annEndIndex);
-          }
-        } else {
-          // No annotation at all: insert before the semicolon
-          const semiIndex = text.lastIndexOf(";");
-          const insert = ` annotation(${newLineAnnotation})`;
-          if (semiIndex !== -1) {
-            newText = text.slice(0, semiIndex) + insert + text.slice(semiIndex);
-          } else {
-            newText = text + insert;
-          }
-        }
-
-        if (newText !== text) {
-          edits.set(key, { range, text: newText });
-        }
-      }
-    }
-    return edits;
-  };
-
-  const handleEdgeDelete = (source: string, target: string) => {
-    const activeInstance = (diagramData ?? null) as any;
-    if (!activeInstance || !editor) return;
-    const connectEq = Array.from(activeInstance.connectEquations).find((ce: any) => {
-      const c1 = ce.componentReference1?.parts.map((c: any) => c.identifier?.text ?? "").join(".");
-      const c2 = ce.componentReference2?.parts.map((c: any) => c.identifier?.text ?? "").join(".");
-      return (c1 === source && c2 === target) || (c1 === target && c2 === source);
-    });
-    if (!connectEq) return;
-    if ((connectEq as any).sourceRange) {
-      const node = connectEq as any;
-      const startLine = node.startPosition.row + 1;
-      const startCol = node.startPosition.column + 1;
-      const endLine = node.endPosition.row + 1;
-      const endCol = node.endPosition.column + 1;
-      let range = {
-        startLineNumber: startLine,
-        startColumn: startCol,
-        endLineNumber: endLine,
-        endColumn: endCol,
-      };
-
-      const model = editor.getModel();
-      if (model) {
-        const startLineContent = model.getLineContent(startLine);
-        const prefix = startLineContent.substring(0, startCol - 1).trim();
-        const endLineContent = model.getLineContent(endLine);
-        const suffix = endLineContent.substring(endCol - 1).trim();
-
-        if (prefix === "" && suffix === "") {
-          if (endLine < model.getLineCount()) {
-            range = {
-              startLineNumber: startLine,
-              startColumn: 1,
-              endLineNumber: endLine + 1,
-              endColumn: 1,
-            };
-          } else {
-            range = {
-              startLineNumber: startLine,
-              startColumn: 1,
-              endLineNumber: endLine,
-              endColumn: model.getLineMaxColumn(endLine),
-            };
-          }
-        }
-      }
-
-      isDiagramUpdate.current = true;
-      editor.pushUndoStop();
-      editor.executeEdits("delete-connect", [{ range, text: "" }]);
-      editor.pushUndoStop();
-    }
-  };
-
-  const handleComponentDelete = (name: string) => {
-    ((..._args: any[]) => void 0)([name]);
-  };
-
-  const handleComponentsDelete = (names: string[]) => {
-    const activeInstance = (diagramData ?? null) as any;
-    if (!activeInstance || !editor) return;
-
-    const edits: editor.IIdentifiedSingleEditOperation[] = [];
-    const model = editor.getModel();
-    const nameSet = new Set(names);
-
-    if (model) {
-      // Collect connect equation edits for all components
-      Array.from(activeInstance.connectEquations).forEach((ce: any) => {
-        const c1 = ce.componentReference1?.parts.map((c: any) => c.identifier?.text ?? "").join(".");
-        const c2 = ce.componentReference2?.parts.map((c: any) => c.identifier?.text ?? "").join(".");
-        const involvesComponent = [...nameSet].some(
-          (name) => c1 === name || c1.startsWith(`${name}.`) || c2 === name || c2.startsWith(`${name}.`),
-        );
-        if (involvesComponent) {
-          if (ce.sourceRange) {
-            const node = ce;
-            const startLine = node.startPosition.row + 1;
-            const startCol = node.startPosition.column + 1;
-            const endLine = node.endPosition.row + 1;
-            const endCol = node.endPosition.column + 1;
-            let range = {
-              startLineNumber: startLine,
-              startColumn: startCol,
-              endLineNumber: endLine,
-              endColumn: endCol,
-            };
-            const startLineContent = model.getLineContent(startLine);
-            const prefix = startLineContent.substring(0, startCol - 1).trim();
-            const endLineContent = model.getLineContent(endLine);
-            const suffix = endLineContent.substring(endCol - 1).trim();
-            if (prefix === "" && suffix === "") {
-              if (endLine < model.getLineCount()) {
-                range = {
-                  startLineNumber: startLine,
-                  startColumn: 1,
-                  endLineNumber: endLine + 1,
-                  endColumn: 1,
-                };
-              } else {
-                range = {
-                  startLineNumber: startLine,
-                  startColumn: 1,
-                  endLineNumber: endLine,
-                  endColumn: model.getLineMaxColumn(endLine),
-                };
-              }
-            }
-            edits.push({ range, text: "" });
-          }
-        }
-      });
-    }
-
-    // Collect component declaration edits for all components
-    for (const name of names) {
-      const component = Array.from(activeInstance.components).find((c: any) => c.name === name);
-      if (!component) continue;
-      const node = (component as any).abstractSyntaxNode?.parent;
-      if (node instanceof ModelicaComponentClauseSyntaxNode) {
-        if (node.componentDeclarations.length <= 1 && node.sourceRange) {
-          const startLine = node.startPosition.row + 1;
-          const startCol = node.startPosition.column + 1;
-          const endLine = node.endPosition.row + 1;
-          const endCol = node.endPosition.column + 1;
-          let range = {
-            startLineNumber: startLine,
-            startColumn: startCol,
-            endLineNumber: endLine,
-            endColumn: endCol,
-          };
-          if (model) {
-            const startLineContent = model.getLineContent(startLine);
-            const prefix = startLineContent.substring(0, startCol - 1).trim();
-            const endLineContent = model.getLineContent(endLine);
-            const suffix = endLineContent.substring(endCol - 1).trim();
-            if (prefix === "" && suffix === "") {
-              if (endLine < model.getLineCount()) {
-                range = {
-                  startLineNumber: startLine,
-                  startColumn: 1,
-                  endLineNumber: endLine + 1,
-                  endColumn: 1,
-                };
-              } else {
-                range = {
-                  startLineNumber: startLine,
-                  startColumn: 1,
-                  endLineNumber: endLine,
-                  endColumn: model.getLineMaxColumn(endLine),
-                };
-              }
-            }
-          }
-          edits.push({ range, text: "" });
-        } else if (node.componentDeclarations.length >= 1) {
-          const index = node.componentDeclarations.findIndex((c) => c.declaration?.identifier?.text === name);
-          const componentDeclaration = node.componentDeclarations[index];
-          if (componentDeclaration?.sourceRange) {
-            let startLine = componentDeclaration.startPosition.row + 1;
-            let startCol = componentDeclaration.startPosition.column + 1;
-            let endLine = componentDeclaration.endPosition.row + 1;
-            let endCol = componentDeclaration.endPosition.column + 1;
-
-            if (index > 0) {
-              const prevDecl = node.componentDeclarations[index - 1];
-              if (prevDecl.sourceRange) {
-                startLine = prevDecl.endPosition.row + 1;
-                startCol = prevDecl.endPosition.column + 1;
-              }
-            } else if (node.componentDeclarations.length > 1) {
-              const nextDecl = node.componentDeclarations[1];
-              if (nextDecl.sourceRange) {
-                endLine = nextDecl.startPosition.row + 1;
-                endCol = nextDecl.startPosition.column + 1;
-              }
-            }
-            let range = {
-              startLineNumber: startLine,
-              startColumn: startCol,
-              endLineNumber: endLine,
-              endColumn: endCol,
-            };
-            if (model) {
-              const startLineContent = model.getLineContent(startLine);
-              const prefix = startLineContent.substring(0, startCol - 1).trim();
-              const endLineContent = model.getLineContent(endLine);
-              const suffix = endLineContent.substring(endCol - 1).trim();
-              if (prefix === "" && suffix === "") {
-                if (endLine < model.getLineCount()) {
-                  range = {
-                    startLineNumber: startLine,
-                    startColumn: 1,
-                    endLineNumber: endLine + 1,
-                    endColumn: 1,
-                  };
-                } else {
-                  range = {
-                    startLineNumber: startLine,
-                    startColumn: 1,
-                    endLineNumber: endLine,
-                    endColumn: model.getLineMaxColumn(endLine),
-                  };
-                }
-              }
-            }
-            edits.push({ range, text: "" });
-          }
-        }
-      }
-    }
-    if (edits.length > 0) {
-      isDiagramUpdate.current = true;
-      editor.pushUndoStop();
-      editor.executeEdits("delete-component", edits);
-      editor.pushUndoStop();
-      // Force immediate re-parse to update classInstance and component list
-      codeEditorRef.current?.sync();
-    }
+  const handleComponentsDelete = async (names: string[]) => {
+    if (!editor) return;
+    isDiagramUpdate.current = true;
+    const edits = await deleteComponents(DOCUMENT_URI, names);
+    applyLspEdits(editor, edits, "delete-component");
+    codeEditorRef.current?.sync();
   };
 
   const handleFlatten = async () => {
@@ -1822,407 +1135,56 @@ export default function MorselEditor(props: MorselEditorProps) {
                           onSelect={(name) => {
                             setSelectedComponent(name);
                           }}
-                          onDrop={(className, x, y) => {
-                            const dropTarget = (diagramData ?? null) as any;
-                            if (!dropTarget || !editor) return;
+                          onDrop={async (className, x, y) => {
+                            if (!editor) return;
                             isDiagramUpdate.current = true;
-
-                            // Try to get the defaultComponentName annotation from the dropped class
-                            const shortName = className.split(".").pop() || "component";
-                            let baseName = shortName.toLowerCase();
-                            try {
-                              const droppedClass = (null as any)?.query(className);
-                              if (droppedClass instanceof ModelicaClassInstance) {
-                                const defaultName = droppedClass.annotation<string>("defaultComponentName");
-                                if (defaultName) {
-                                  baseName = (droppedClass as any).translate?.(defaultName);
-                                } else {
-                                  baseName = droppedClass.localizedName.toLowerCase();
-                                }
-                              }
-                            } catch {
-                              // query may throw during lazy instantiation; proceed with default baseName
-                            }
-
-                            let name = baseName;
-                            let i = 1;
-                            const existingNames = new Set(Array.from(dropTarget.components).map((c: any) => c.name));
-                            while (existingNames.has(name)) {
-                              name = `${baseName}${i}`;
-                              i++;
-                            }
-
-                            const diagram: IDiagram | null = dropTarget.annotation("Diagram");
-                            const initialScale = diagram?.coordinateSystem?.initialScale ?? 0.1;
-                            const extent = diagram?.coordinateSystem?.extent;
-
-                            let width = 200;
-                            let height = 200;
-
-                            if (extent && extent.length >= 2) {
-                              width = Math.abs(extent[1][0] - extent[0][0]);
-                              height = Math.abs(extent[1][1] - extent[0][1]);
-                            }
-
-                            const w = width * initialScale;
-                            const h = height * initialScale;
-
-                            const annotation = `annotation(Placement(transformation(origin={${Math.round(x)},${-Math.round(y)}}, extent={{-${w / 2},-${h / 2}},{${w / 2},${h / 2}}})))`;
-                            const componentDecl = `  ${className} ${name} ${annotation};\n`;
-
-                            const model = editor.getModel();
-                            if (model) {
-                              // Scope the search to the target model's syntax range
-                              const astNode = (dropTarget as any).abstractSyntaxNode;
-                              const modelStartLine = astNode?.sourceRange ? astNode.startPosition.row : 0;
-                              const modelEndLine = astNode?.sourceRange
-                                ? astNode.endPosition.row
-                                : model.getLineCount() - 1;
-
-                              const keywords = [
-                                "protected",
-                                "initial equation",
-                                "initial algorithm",
-                                "equation",
-                                "algorithm",
-                                "end",
-                              ];
-                              let insertLine = -1;
-                              const text = model.getValue();
-                              const lines = text.split("\n");
-                              for (let i = modelStartLine; i <= modelEndLine; i++) {
-                                const line = lines[i].trim();
-                                if (keywords.some((kw) => line.startsWith(kw))) {
-                                  insertLine = i;
-                                  break;
-                                }
-                              }
-                              if (insertLine !== -1) {
-                                let range = {
-                                  startLineNumber: insertLine + 1,
-                                  startColumn: 1,
-                                  endLineNumber: insertLine + 1,
-                                  endColumn: 1,
-                                };
-                                if (insertLine > modelStartLine && lines[insertLine - 1].trim() === "") {
-                                  range.startLineNumber = insertLine;
-                                  range.endLineNumber = insertLine + 1;
-                                }
-                                editor.pushUndoStop();
-                                editor.executeEdits("dnd", [
-                                  {
-                                    range: range,
-                                    text: componentDecl,
-                                  },
-                                ]);
-                                editor.pushUndoStop();
-                              } else {
-                                // Find the last "end" within this model's range
-                                const modelText = lines.slice(modelStartLine, modelEndLine + 1).join("\n");
-                                const lastEndIndex = modelText.lastIndexOf("end");
-                                if (lastEndIndex !== -1) {
-                                  // Convert offset within modelText back to global line number
-                                  const linesBeforeEnd = modelText.substring(0, lastEndIndex).split("\n").length - 1;
-                                  const endLineNumber = modelStartLine + linesBeforeEnd + 1; // 1-indexed
-                                  const endLineContent = lines[modelStartLine + linesBeforeEnd];
-                                  const endCol = endLineContent.lastIndexOf("end");
-                                  const beforeEnd = endLineContent.substring(0, endCol).trimEnd();
-
-                                  if (beforeEnd !== "") {
-                                    // Single-line model: insert at the "end" keyword column with newlines
-                                    editor.pushUndoStop();
-                                    editor.executeEdits("dnd", [
-                                      {
-                                        range: {
-                                          startLineNumber: endLineNumber,
-                                          startColumn: endCol + 1,
-                                          endLineNumber: endLineNumber,
-                                          endColumn: endCol + 1,
-                                        },
-                                        text: "\n" + componentDecl,
-                                      },
-                                    ]);
-                                    editor.pushUndoStop();
-                                  } else {
-                                    let range = {
-                                      startLineNumber: endLineNumber,
-                                      startColumn: 1,
-                                      endLineNumber: endLineNumber,
-                                      endColumn: 1,
-                                    };
-                                    if (endLineNumber > 1) {
-                                      const prevLineContent = model.getLineContent(endLineNumber - 1);
-                                      if (prevLineContent.trim() === "") {
-                                        range.startLineNumber = endLineNumber - 1;
-                                        range.endLineNumber = endLineNumber;
-                                      }
-                                    }
-                                    editor.pushUndoStop();
-                                    editor.executeEdits("dnd", [
-                                      {
-                                        range: range,
-                                        text: componentDecl,
-                                      },
-                                    ]);
-                                    editor.pushUndoStop();
-                                  }
-                                }
-                              }
-                            }
+                            const edits = await addComponent(DOCUMENT_URI, className, x, y);
+                            applyLspEdits(editor, edits, "dnd");
+                            codeEditorRef.current?.sync();
                           }}
-                          onConnect={(source, target, points) => {
-                            const connectTarget = (diagramData ?? null) as any;
-                            if (!connectTarget || !editor) return;
+                          onConnect={async (source, target, points) => {
+                            if (!editor) return;
                             isDiagramUpdate.current = true;
-
-                            const annotation = points
-                              ? ` annotation(Line(points={${points.map((p) => `{${p.x},${p.y}}`).join(", ")}}, color={0, 0, 255}))`
-                              : " annotation(Line(color={0, 0, 255}))";
-                            const connectEq = `  connect(${source}, ${target})${annotation};\n`;
-                            const model = editor.getModel();
-                            if (!model) return;
-
-                            // Scope the search to the target model's syntax range
-                            const astNode = (connectTarget as any).abstractSyntaxNode;
-                            const modelStartLine = astNode?.sourceRange ? astNode.startPosition.row + 1 : 1;
-                            const modelEndLine = astNode?.sourceRange
-                              ? astNode.endPosition.row + 1
-                              : model.getLineCount();
-                            const searchRange = {
-                              startLineNumber: modelStartLine,
-                              startColumn: 1,
-                              endLineNumber: modelEndLine,
-                              endColumn: model.getLineMaxColumn(modelEndLine),
-                            };
-
-                            const equationMatches = model.findMatches("equation", searchRange, false, true, null, true);
-                            if (equationMatches.length > 0) {
-                              const startLine = equationMatches[0].range.startLineNumber;
-                              const text = model.getValue();
-                              const lines = text.split("\n");
-                              let insertLine = -1;
-                              for (let i = startLine; i < modelEndLine; i++) {
-                                const line = lines[i].trim();
-                                if (
-                                  line.startsWith("public") ||
-                                  line.startsWith("protected") ||
-                                  line.startsWith("initial equation") ||
-                                  line.startsWith("algorithm") ||
-                                  line.startsWith("annotation") ||
-                                  line.startsWith("end")
-                                ) {
-                                  insertLine = i;
-                                  break;
-                                }
-                              }
-                              if (insertLine !== -1) {
-                                editor.pushUndoStop();
-                                editor.executeEdits("connect", [
-                                  {
-                                    range: {
-                                      startLineNumber: insertLine + 1,
-                                      startColumn: 1,
-                                      endLineNumber: insertLine + 1,
-                                      endColumn: 1,
-                                    },
-                                    text: connectEq,
-                                  },
-                                ]);
-                                editor.pushUndoStop();
-                                return;
-                              }
-                            }
-                            const endMatches = model.findMatches(
-                              "^\\s*end\\s+[^;]+;",
-                              searchRange,
-                              true,
-                              false,
-                              null,
-                              true,
-                            );
-                            if (endMatches.length > 0) {
-                              const lastEnd = endMatches[endMatches.length - 1];
-                              const text = model.getValue();
-                              const lines = text.split("\n");
-                              let insertLine = lastEnd.range.startLineNumber - 1;
-
-                              // Look backwards for annotation before end
-                              for (let i = insertLine - 1; i >= modelStartLine - 1; i--) {
-                                const line = lines[i].trim();
-                                if (line.startsWith("annotation")) {
-                                  insertLine = i;
-                                } else if (line !== "") {
-                                  break;
-                                }
-                              }
-
-                              const insertText = equationMatches.length === 0 ? `equation\n${connectEq}` : connectEq;
-                              editor.pushUndoStop();
-                              editor.executeEdits("connect", [
-                                {
-                                  range: {
-                                    startLineNumber: insertLine + 1,
-                                    startColumn: 1,
-                                    endLineNumber: insertLine + 1,
-                                    endColumn: 1,
-                                  },
-                                  text: insertText,
-                                },
-                              ]);
-                              editor.pushUndoStop();
-                              return;
-                            }
-                            // Fallback: find last "end" within model range
-                            const text = model.getValue();
-                            const lines = text.split("\n");
-                            const modelLines = lines.slice(modelStartLine - 1, modelEndLine);
-                            const modelText = modelLines.join("\n");
-                            const lastEndIndex = modelText.lastIndexOf("end");
-                            if (lastEndIndex !== -1) {
-                              const linesBeforeEnd = modelText.substring(0, lastEndIndex).split("\n").length - 1;
-                              const endLineNumber = modelStartLine + linesBeforeEnd;
-                              const insertText = equationMatches.length === 0 ? `equation\n${connectEq}` : connectEq;
-                              editor.pushUndoStop();
-                              editor.executeEdits("connect", [
-                                {
-                                  range: {
-                                    startLineNumber: endLineNumber,
-                                    startColumn: 1,
-                                    endLineNumber: endLineNumber,
-                                    endColumn: 1,
-                                  },
-                                  text: insertText,
-                                },
-                              ]);
-                              editor.pushUndoStop();
-                            }
+                            const edits = await addConnect(DOCUMENT_URI, source, target, points);
+                            applyLspEdits(editor, edits, "connect");
                           }}
-                          onMove={(items) => {
-                            if (!diagramData || !editor) return;
+                          onMove={async (items) => {
+                            if (!editor) return;
                             isDiagramUpdate.current = true;
-                            const edits: editor.IIdentifiedSingleEditOperation[] = [];
-                            const allEdges: any[] = [];
-                            items.forEach((item) => {
-                              if (item.connectedOnly) {
-                                // Only add placement for connected components that don't already have one
-                                const instance = ((diagramData ?? null) as any) ?? null;
-                                if (instance) {
-                                  const component = instance.components
-                                    ? Array.from(instance.components).find((c: any) => c.name === item.name)
-                                    : null;
-                                  if (component) {
-                                    const abstractNode = (component as any).abstractSyntaxNode;
-                                    if (abstractNode?.sourceRange) {
-                                      const text =
-                                        editor.getModel()?.getValueInRange({
-                                          startLineNumber: abstractNode.startPosition.row + 1,
-                                          startColumn: abstractNode.startPosition.column + 1,
-                                          endLineNumber: abstractNode.endPosition.row + 1,
-                                          endColumn: abstractNode.endPosition.column + 1,
-                                        }) || "";
-                                      if (/Placement\s*\(/.test(text)) return; // already has Placement
-                                    }
-                                  }
-                                }
-                                const edit = ((..._args: any[]) => null as any)(
-                                  item.name,
-                                  item.x,
-                                  item.y,
-                                  item.width,
-                                  item.height,
-                                  item.rotation,
-                                );
-                                if (edit) edits.push(edit);
-                              } else {
-                                const edit = ((..._args: any[]) => null as any)(
-                                  item.name,
-                                  item.x,
-                                  item.y,
-                                  item.width,
-                                  item.height,
-                                  item.rotation,
-                                );
-                                if (edit) edits.push(edit);
-                                if (item.edges) allEdges.push(...item.edges);
-                              }
-                            });
-
-                            if (allEdges.length > 0) {
-                              const edgeEdits = ((..._args: any[]) => [] as any[])(allEdges);
-                              edgeEdits.forEach((edit) => edits.push(edit));
-                            }
-
-                            if (edits.length > 0) {
-                              // Sort edits by position (descending) and remove overlaps
-                              edits.sort((a, b) => {
-                                if (a.range.startLineNumber !== b.range.startLineNumber)
-                                  return a.range.startLineNumber - b.range.startLineNumber;
-                                return a.range.startColumn - b.range.startColumn;
-                              });
-                              const filtered = edits.filter((edit, i) => {
-                                if (i === 0) return true;
-                                const prev = edits[i - 1];
-                                // Skip if this edit starts before the previous one ends
-                                if (
-                                  edit.range.startLineNumber < prev.range.endLineNumber ||
-                                  (edit.range.startLineNumber === prev.range.endLineNumber &&
-                                    edit.range.startColumn < prev.range.endColumn)
-                                ) {
-                                  return false;
-                                }
-                                return true;
-                              });
-                              if (filtered.length > 0) {
-                                editor.pushUndoStop();
-                                editor.executeEdits("move", filtered);
-                                editor.pushUndoStop();
-                              }
-                            }
+                            const placementItems = items.map((item) => ({
+                              name: item.name,
+                              x: item.x,
+                              y: item.y,
+                              width: item.width,
+                              height: item.height,
+                              rotation: item.rotation,
+                              edges: item.edges,
+                            }));
+                            const edits = await updatePlacement(DOCUMENT_URI, placementItems);
+                            applyLspEdits(editor, edits, "move");
                           }}
-                          onResize={(name, x, y, width, height, rotation, edges) => {
-                            if (!diagramData || !editor) return;
-                            isDiagramUpdate.current = false;
-                            const edits: editor.IIdentifiedSingleEditOperation[] = [];
-                            const edit = ((..._args: any[]) => null as any)(name, x, y, width, height, rotation);
-                            if (edit) edits.push(edit);
-                            if (edges) {
-                              const edgeEdits = ((..._args: any[]) => [] as any[])(edges);
-                              edgeEdits.forEach((edit) => edits.push(edit));
-                            }
-                            if (edits.length > 0) {
-                              edits.sort((a, b) => {
-                                if (a.range.startLineNumber !== b.range.startLineNumber)
-                                  return a.range.startLineNumber - b.range.startLineNumber;
-                                return a.range.startColumn - b.range.startColumn;
-                              });
-                              const filtered = edits.filter((edit, i) => {
-                                if (i === 0) return true;
-                                const prev = edits[i - 1];
-                                if (
-                                  edit.range.startLineNumber < prev.range.endLineNumber ||
-                                  (edit.range.startLineNumber === prev.range.endLineNumber &&
-                                    edit.range.startColumn < prev.range.endColumn)
-                                ) {
-                                  return false;
-                                }
-                                return true;
-                              });
-                              if (filtered.length > 0) {
-                                editor.pushUndoStop();
-                                editor.executeEdits("resize", filtered);
-                                editor.pushUndoStop();
-                              }
-                            }
-                          }}
-                          onEdgeMove={(edges) => {
-                            if (!diagramData || !editor) return;
+                          onResize={async (name, x, y, width, height, rotation, edges) => {
+                            if (!editor) return;
                             isDiagramUpdate.current = true;
-                            const edgeEdits = ((..._args: any[]) => [] as any[])(edges);
-                            if (edgeEdits.length > 0) {
-                              editor.pushUndoStop();
-                              editor.executeEdits("edge-move", Array.from(edgeEdits.values()));
-                              editor.pushUndoStop();
-                            }
+                            const placementItems = [
+                              {
+                                name,
+                                x,
+                                y,
+                                width,
+                                height,
+                                rotation,
+                                edges,
+                              },
+                            ];
+                            const edits = await updatePlacement(DOCUMENT_URI, placementItems);
+                            applyLspEdits(editor, edits, "resize");
+                          }}
+                          onEdgeMove={async (edges) => {
+                            if (!editor) return;
+                            isDiagramUpdate.current = true;
+                            const edits = await updateEdgePoints(DOCUMENT_URI, edges);
+                            applyLspEdits(editor, edits, "edge-move");
                           }}
                           onEdgeDelete={handleEdgeDelete}
                           onComponentDelete={handleComponentDelete}
@@ -2298,32 +1260,30 @@ export default function MorselEditor(props: MorselEditorProps) {
                           properties={null}
                           width={propertiesWidth}
                           translations={translations}
-                          onNameChange={(newName) => {
+                          onNameChange={async (newName) => {
                             if (!selectedComponent || !editor) return;
-                            const edit = getNameEdit(selectedComponent!, newName);
-                            if (edit) {
-                              expectedComponentNameRef.current = newName;
-                              editor.pushUndoStop();
-                              editor.executeEdits("name-change", [edit]);
-                              editor.pushUndoStop();
-                            }
+                            expectedComponentNameRef.current = newName;
+                            isDiagramUpdate.current = true;
+                            const edits = await updateComponentName(DOCUMENT_URI, selectedComponent, newName);
+                            applyLspEdits(editor, edits, "name-change");
                           }}
-                          onDescriptionChange={(newDescription) => {
+                          onDescriptionChange={async (newDescription) => {
                             if (!selectedComponent || !editor) return;
-                            const edit = ((..._args: any[]) => null as any)(selectedComponent!, newDescription);
-                            if (edit) {
-                              editor.pushUndoStop();
-                              editor.executeEdits("description-change", [edit]);
-                              editor.pushUndoStop();
-                            }
+                            isDiagramUpdate.current = true;
+                            const edits = await updateComponentDescription(
+                              DOCUMENT_URI,
+                              selectedComponent,
+                              newDescription,
+                            );
+                            applyLspEdits(editor, edits, "description-change");
                           }}
-                          onParameterChange={(name, value) => {
+                          onParameterChange={async (name, value) => {
                             if (!selectedComponent || !editor) return;
                             // If the new value matches the parameter's default (from the
                             // declared type), remove the modifier entirely instead of
                             // keeping a redundant explicit override.
                             let effectiveValue = value;
-                            const declaredType = (selectedComponent as any)?.declaredType;
+                            const declaredType = (selectedComponent as any)?.declaredType; // TODO properly type when properties panel is typed
                             if (declaredType) {
                               for (const el of declaredType.elements) {
                                 if (el instanceof ModelicaComponentInstance && el.name === name) {
@@ -2335,14 +1295,15 @@ export default function MorselEditor(props: MorselEditorProps) {
                                 }
                               }
                             }
-                            const edit = ((..._args: any[]) => null as any)(selectedComponent!, name, effectiveValue);
-                            if (edit) {
-                              editor.pushUndoStop();
-                              editor.executeEdits("parameter-change", [edit]);
-                              editor.pushUndoStop();
-                              // Trigger immediate reparse so AST is fresh for next edit
-                              codeEditorRef.current?.sync();
-                            }
+                            isDiagramUpdate.current = true;
+                            const edits = await updateComponentParameter(
+                              DOCUMENT_URI,
+                              selectedComponent,
+                              name,
+                              effectiveValue,
+                            );
+                            applyLspEdits(editor, edits, "parameter-change");
+                            codeEditorRef.current?.sync();
                           }}
                         />
                       </>

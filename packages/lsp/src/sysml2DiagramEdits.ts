@@ -222,6 +222,164 @@ export function computeSysML2ConnectionDelete(docText: string, source: string, t
   return deduplicateAndSort(edits);
 }
 
+// ── Update Component Name ──
+
+export function computeSysML2NameEdit(tree: unknown, docText: string, oldName: string, newName: string): TextEdit[] {
+  const edits: TextEdit[] = [];
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function findName(node: any) {
+    if (
+      (node.type === "Name" || node.type === "Identifier" || node.type.includes("Identification")) &&
+      node.text === oldName
+    ) {
+      if (
+        node.parent?.type.includes("Usage") ||
+        node.parent?.type.includes("Def") ||
+        node.parent?.type.includes("Declaration")
+      ) {
+        edits.push(
+          TextEdit.replace(
+            Range.create(
+              node.startPosition.row,
+              node.startPosition.column,
+              node.endPosition.row,
+              node.endPosition.column,
+            ),
+            newName,
+          ),
+        );
+      }
+    }
+    for (let i = 0; i < node.namedChildCount; i++) {
+      findName(node.namedChild(i));
+    }
+  }
+
+  if (tree && tree.rootNode) {
+    findName(tree.rootNode);
+  }
+
+  if (edits.length === 0) {
+    // Fallback regex replacement
+    const lines = docText.split("\n");
+    const pattern = new RegExp(`\\b${escapeRegex(oldName)}\\b`, "g");
+    lines.forEach((line, i) => {
+      let match;
+      while ((match = pattern.exec(line)) !== null) {
+        edits.push(TextEdit.replace(Range.create(i, match.index, i, match.index + oldName.length), newName));
+      }
+    });
+  }
+
+  return deduplicateAndSort(edits);
+}
+
+// ── Update Component Description ──
+
+export function computeSysML2DescriptionEdit(
+  tree: unknown,
+  docText: string,
+  elementName: string,
+  newDescription: string,
+): TextEdit[] {
+  const edits: TextEdit[] = [];
+  const lines = docText.split("\n");
+  const { startLine, endLine } = findElementRange(lines, elementName);
+  if (startLine === -1) return [];
+
+  const escapedDesc = newDescription.replace(/\*\//g, "* /");
+  const docString = `doc /* ${escapedDesc} */`;
+
+  // Check if there is an existing doc inside the element body
+  for (let i = startLine; i <= endLine; i++) {
+    if (lines[i].includes("doc /*") || lines[i].match(/^\s*doc\s+/)) {
+      const docStart = lines[i].indexOf("doc");
+      const docEndIdx = lines[i].indexOf("*/");
+      if (docEndIdx !== -1) {
+        edits.push(TextEdit.replace(Range.create(i, docStart, i, docEndIdx + 2), docString));
+        return edits;
+      }
+    }
+  }
+
+  // If no existing doc, if it's a block with `{`, insert after `{`
+  const declLine = lines[startLine];
+  if (declLine.includes("{")) {
+    const braceCol = declLine.indexOf("{");
+    edits.push(
+      TextEdit.insert(
+        { line: startLine, character: braceCol + 1 },
+        `\n${getIndentAt(lines, startLine)}${INDENT}${docString}`,
+      ),
+    );
+  } else {
+    const semiCol = declLine.indexOf(";");
+    if (semiCol !== -1) {
+      edits.push(TextEdit.replace(Range.create(startLine, semiCol, startLine, semiCol + 1), ` { ${docString} }`));
+    }
+  }
+
+  return edits;
+}
+
+// ── Update Component Parameter ──
+
+export function computeSysML2ParameterEdit(
+  tree: unknown,
+  docText: string,
+  elementName: string,
+  parameterName: string,
+  newValue: string,
+): TextEdit[] {
+  const edits: TextEdit[] = [];
+  const lines = docText.split("\n");
+  const { startLine, endLine } = findElementRange(lines, elementName);
+  if (startLine === -1) return [];
+
+  let paramLineIdx = -1;
+  // A common syntax for redefinition in usages is `:>> param = value;`
+  for (let i = startLine; i <= endLine; i++) {
+    if (lines[i].includes(`:>> ${parameterName}`) || lines[i].includes(` ${parameterName} =`)) {
+      paramLineIdx = i;
+      // E.g. `:>> p = 6;`
+      const match = lines[i].match(new RegExp(`(:>>\\s*${escapeRegex(parameterName)}\\s*=\\s*)[^;]+(;)`));
+      if (match) {
+        const repStart = lines[i].indexOf(match[0]);
+        edits.push(
+          TextEdit.replace(
+            Range.create(i, repStart, i, repStart + match[0].length),
+            `${match[1]}${newValue}${match[2]}`,
+          ),
+        );
+        return edits;
+      }
+    }
+  }
+
+  // Insert if missing
+  if (paramLineIdx === -1) {
+    const declLine = lines[startLine];
+    const paramStr = `:>> ${parameterName} = ${newValue};`;
+    if (declLine.includes("{")) {
+      const braceCol = declLine.indexOf("{");
+      edits.push(
+        TextEdit.insert(
+          { line: startLine, character: braceCol + 1 },
+          `\n${getIndentAt(lines, startLine)}${INDENT}${paramStr}`,
+        ),
+      );
+    } else {
+      const semiCol = declLine.indexOf(";");
+      if (semiCol !== -1) {
+        edits.push(TextEdit.replace(Range.create(startLine, semiCol, startLine, semiCol + 1), ` { ${paramStr} }`));
+      }
+    }
+  }
+
+  return edits;
+}
+
 // ── Unique name generation ──
 
 /**
