@@ -2,6 +2,9 @@
 import type { IndexerHook, SymbolEntry, SymbolId, SymbolIndex } from "./runtime.js";
 import { SymbolIndexer, type CSTNode } from "./symbol-indexer.js";
 
+/** Global ID counter — ensures unique IDs across all files. */
+let globalIdCounter: SymbolId = 1;
+
 /**
  * A workspace-level symbol index spanning multiple files.
  * Supports lazy loading: files are indexed on first access.
@@ -19,9 +22,6 @@ export class WorkspaceIndex {
   >();
 
   private hooks: IndexerHook[];
-
-  /** Global ID counter — ensures unique IDs across all files. */
-  private nextGlobalId: SymbolId = 1;
 
   /** Cached unified index — invalidated when any file changes. */
   private unifiedCache: SymbolIndex | null = null;
@@ -89,7 +89,7 @@ export class WorkspaceIndex {
       // Re-map IDs to be globally unique
       const idMap = new Map<SymbolId, SymbolId>();
       for (const id of rawIndex.symbols.keys()) {
-        const globalId = this.nextGlobalId++;
+        const globalId = globalIdCounter++;
         idMap.set(id, globalId);
       }
 

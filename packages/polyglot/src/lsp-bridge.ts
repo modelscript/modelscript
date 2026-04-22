@@ -561,6 +561,7 @@ export class LSPBridge {
     let bestSize = Infinity;
 
     for (const entry of this.index.symbols.values()) {
+      if (entry.resourceId !== this.documentUri) continue;
       if (entry.startByte <= offset && offset < entry.endByte) {
         const size = entry.endByte - entry.startByte;
         if (size < bestSize) {
