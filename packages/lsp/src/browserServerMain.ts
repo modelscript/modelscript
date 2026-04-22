@@ -5375,7 +5375,7 @@ connection.onRequest(
 connection.onRequest("modelscript/getRequirements", (params: { uri: string }) => {
   try {
     const db = unifiedWorkspace.toUnifiedPartial();
-    return getRequirements(db, params.uri);
+    return getRequirements(db); // Do not filter by uri to show workspace-level requirements
   } catch (e) {
     console.error("[requirements] Error:", e);
     return [];
@@ -5385,7 +5385,7 @@ connection.onRequest("modelscript/getRequirements", (params: { uri: string }) =>
 connection.onRequest("modelscript/getTraceabilityMatrix", (params: { uri: string }) => {
   try {
     const db = unifiedWorkspace.toUnifiedPartial();
-    return getTraceabilityMatrix(db, params.uri);
+    return getTraceabilityMatrix(db); // Do not filter by uri to show workspace-level traceability
   } catch (e) {
     console.error("[traceability] Error:", e);
     return { sources: [], targets: [], links: [] };
@@ -5448,6 +5448,12 @@ connection.onRequest("modelscript/runVerification", async (params: { uri: string
       // Create a runner per topology with the explicit variable mapping
       const runner = new VerificationRunner(sysmlDB, topo.variableMap);
       const vResults = runner.verifyCase(verifyUsage.id, simResult);
+
+      console.log(
+        `[Verifier Logging] verifyUsage: ${verifyUsage.name}, sim states: ${simResult.states.join(", ")}, topo.variableMap: ${JSON.stringify(Array.from(topo.variableMap.entries()))}`,
+      );
+      console.log(`[Verifier Logging] vResults: ${JSON.stringify(vResults, null, 2)}`);
+
       for (const vr of vResults) {
         if (!vr.isSatisfied) {
           const targetNode = db.symbols.get(vr.constraintId);

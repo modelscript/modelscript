@@ -104,7 +104,10 @@ export class VerificationRunner {
 
     // 5. Leaf-name CST text fallback
     const leafName = segments[segments.length - 1];
-    const candidates = this.db.byName(leafName);
+    let candidates = this.db.byName(leafName);
+    if (!candidates || candidates.length === 0) {
+      candidates = this.db.allEntries().filter((e) => e.name === leafName);
+    }
     for (const entry of candidates) {
       const text = this.db.cstText(entry.startByte, entry.endByte);
       if (text) {

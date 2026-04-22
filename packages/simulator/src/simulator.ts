@@ -4172,6 +4172,7 @@ export class ModelicaSimulator {
           : undefined;
 
       while (currentT < stopTime - 1e-14) {
+        if (options?.signal?.aborted) throw new Error("Simulation aborted by user");
         const nextT = Math.min(currentT + chunkStep, stopTime);
         const outputTimes = [currentT, nextT];
 
@@ -4217,7 +4218,7 @@ export class ModelicaSimulator {
         if (sleepMs > 0) {
           await new Promise((r) => setTimeout(r, sleepMs));
         } else {
-          await new Promise((r) => (setImmediate ? setImmediate(r) : setTimeout(r, 0)));
+          await new Promise((r) => (typeof setImmediate !== "undefined" ? setImmediate(r) : setTimeout(r, 0)));
         }
       }
     }
