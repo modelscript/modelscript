@@ -721,9 +721,8 @@ function renderTextX6(
     let unitString = "";
     if (namedElement && "classInstance" in namedElement) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const unitExpr = (
-        (namedElement as ModelicaComponentInstance).classInstance?.modification as any
-      )?.getModificationArgument("unit")?.expression;
+      const mod = (namedElement as ModelicaComponentInstance).classInstance?.modification as any;
+      const unitExpr = mod?.getModificationArgument("unit")?.expression;
       const rawUnit = formatPropertyValue(unitExpr)?.replace(/^"|"$/g, "");
       if (rawUnit) unitString = " " + formatUnit(rawUnit);
     }
