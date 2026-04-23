@@ -78,6 +78,7 @@ export abstract class Scope {
     for (let i = 1; i < parts.length; i++) {
       const partIdentifier = parts[i]?.identifier;
       const nameStr = typeof partIdentifier === "string" ? partIdentifier : (partIdentifier?.text ?? "");
+      if (typeof element.resolveSimpleName !== "function") return null;
       element = element.resolveSimpleName(nameStr, false, true) as any;
       if (element == null) return null;
     }
@@ -92,6 +93,7 @@ export abstract class Scope {
     for (let i = 1; i < parts.length; i++) {
       const part = parts[i];
       const nameStr = typeof part === "string" ? part : (part?.text ?? "");
+      if (typeof namedElement.resolveSimpleName !== "function") return null;
       namedElement = namedElement.resolveSimpleName(nameStr, false, true) as any;
       if (!namedElement) return null;
     }
