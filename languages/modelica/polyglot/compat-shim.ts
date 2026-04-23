@@ -147,6 +147,10 @@ export class QueryBackedElement {
 
     return null;
   }
+
+  resolveSimpleName(name: string, ...args: any[]): any {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------

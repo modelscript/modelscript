@@ -227,7 +227,7 @@ export async function loadSysML2StandardLibrary(serverDistBase: string, ctx: Loa
 
       ctx.documentTrees.set(uri, { text, tree: null, classCache: new Map() });
       ctx.sysml2WorkspaceIndex.register(uri, () => {
-        if (!ctx.sysml2Parser) return null;
+        if (!ctx.sysml2Parser) return null as unknown as import("@modelscript/utils").SyntaxNode;
         const tree = ctx.sysml2Parser.parse(text);
         const node = ctx.documentTrees.get(uri);
         if (node && tree) node.tree = tree;
