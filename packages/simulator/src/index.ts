@@ -29,6 +29,7 @@ export {
 } from "./sundials-wasm.js";
 export * from "./system-initializer.js";
 export * from "./tape.js";
+export * from "./wasm-simulation-runner.js";
 
 import { ModelicaInterpreter, type BuiltinScriptingFunction } from "@modelscript/core";
 import { evaluateSimulate } from "./evaluate-simulate.js";

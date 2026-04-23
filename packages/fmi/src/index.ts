@@ -5,6 +5,8 @@ export * from "./fmi.js";
 export * from "./fmi3.js";
 export * from "./fmu-archive.js";
 export * from "./fmu-codegen.js";
+export * from "./fmu-wasm-codegen.js";
+export * from "./fmu-wasm-compile.js";
 export * from "./fmu.js";
 export * from "./fmu3-codegen.js";
 export * from "./ssp-archive.js";

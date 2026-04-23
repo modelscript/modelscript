@@ -23,6 +23,7 @@ import { generateFmu } from "./fmi.js";
 import { generateFmi3 } from "./fmi3.js";
 import { generateFmuCSources } from "./fmu-codegen.js";
 import { generateFmuJsSources } from "./fmu-js-codegen.js";
+import { generateFmuWasmSource } from "./fmu-wasm-codegen.js";
 
 /** Options for FMU archive generation. */
 export interface FmuArchiveOptions extends FmuOptions {
@@ -30,6 +31,12 @@ export interface FmuArchiveOptions extends FmuOptions {
   includeSources?: boolean;
   /** Include serialized model.json (default: true). */
   includeModelJson?: boolean;
+  /** Include WASM-targeted C source in the archive (default: false). */
+  includeWasm?: boolean;
+  /** Pre-compiled WASM binary to bundle (if already compiled externally). */
+  wasmBinary?: Uint8Array;
+  /** Pre-compiled WASM JS glue to bundle. */
+  wasmJsGlue?: string;
   /** Additional resource files to bundle in `resources/` (filename → contents). */
   resourceFiles?: Map<string, Uint8Array>;
 }
@@ -91,6 +98,29 @@ export function buildFmuArchive(
     // Export Javascript alongside the C code
     const jsSource = generateFmuJsSources(dae, fmuResult, options);
     files.set(`resources/model.js`, encoder.encode(jsSource));
+  }
+
+  // ── WASM source and binaries ──
+  if (options.includeWasm) {
+    const wasmResult = generateFmuWasmSource(dae, fmuResult, options);
+    files.set(`sources/${id}_wasm.c`, encoder.encode(wasmResult.wasmC));
+
+    // Include build instructions for the WASM source
+    const wasmBuildInstructions = [
+      `# WebAssembly Build Instructions`,
+      `# Requires Emscripten (https://emscripten.org/)`,
+      ``,
+      `emcc ${id}_wasm.c ${wasmResult.emccFlags.join(" ")} -o ${id}.js`,
+    ].join("\n");
+    files.set(`sources/BUILD_WASM.md`, encoder.encode(wasmBuildInstructions));
+
+    // Bundle pre-compiled WASM binary if provided
+    if (options.wasmBinary) {
+      files.set(`binaries/wasm32/${id}.wasm`, options.wasmBinary);
+    }
+    if (options.wasmJsGlue) {
+      files.set(`binaries/wasm32/${id}.js`, encoder.encode(options.wasmJsGlue));
+    }
   }
 
   // ── model.json (serialized DAE for JS runtime) ──

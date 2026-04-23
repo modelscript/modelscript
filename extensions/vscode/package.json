@@ -75,6 +75,11 @@
         "icon": "$(archive)"
       },
       {
+        "command": "modelscript.compileWasm",
+        "title": "ModelScript: Compile to WebAssembly",
+        "icon": "$(circuit-board)"
+      },
+      {
         "command": "modelscript.runVerification",
         "title": "ModelScript: Run SysML Verification",
         "icon": "$(check-all)"

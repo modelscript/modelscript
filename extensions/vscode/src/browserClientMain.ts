@@ -627,6 +627,79 @@ export async function activate(context: vscode.ExtensionContext) {
         },
       );
     }),
+    commands.registerCommand("modelscript.compileWasm", async () => {
+      if (!client) return;
+      const editor = vscode.window.activeTextEditor;
+      if (!editor || !editor.document.fileName.endsWith(".mo")) {
+        vscode.window.showErrorMessage("Open a Modelica (.mo) file to compile to WebAssembly.");
+        return;
+      }
+      vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: "Compiling to WebAssembly...",
+          cancellable: false,
+        },
+        async () => {
+          if (!client) return;
+          try {
+            const res = await client.sendRequest<{
+              wasmC: string;
+              emccFlags: string[];
+              exportedFunctions: string[];
+              scalarVariables: { name: string; valueReference: number; causality: string }[];
+            }>("modelscript/compileWasm", {
+              uri: editor.document.uri.toString(),
+            });
+
+            // Save the WASM C source to the workspace
+            const folder = vscode.workspace.workspaceFolders?.[0]?.uri || vscode.Uri.file("/");
+            const modelName = editor.document.fileName.replace(/.*[/\\]/, "").replace(/\.mo$/, "");
+            const cUri = vscode.Uri.joinPath(folder, `${modelName}_wasm.c`);
+            await vscode.workspace.fs.writeFile(cUri, new TextEncoder().encode(res.wasmC));
+
+            // Save build instructions
+            const buildCmd = `emcc ${modelName}_wasm.c ${res.emccFlags.join(" ")} -o ${modelName}.js`;
+            const buildUri = vscode.Uri.joinPath(folder, `BUILD_WASM.md`);
+            await vscode.workspace.fs.writeFile(
+              buildUri,
+              new TextEncoder().encode(
+                [
+                  `# WebAssembly Build Instructions`,
+                  ``,
+                  `## Prerequisites`,
+                  `- Install [Emscripten](https://emscripten.org/)`,
+                  `- Activate the Emscripten environment: \`source emsdk_env.sh\``,
+                  ``,
+                  `## Build Command`,
+                  `\`\`\`bash`,
+                  buildCmd,
+                  `\`\`\``,
+                  ``,
+                  `## Output`,
+                  `- \`${modelName}.js\` — Emscripten JS glue code`,
+                  `- \`${modelName}.wasm\` — WebAssembly binary`,
+                  ``,
+                  `## Exported Functions`,
+                  ...res.exportedFunctions.map((f) => `- \`${f}\``),
+                  ``,
+                  `## Scalar Variables`,
+                  `| Name | Value Reference | Causality |`,
+                  `|------|----------------|-----------|`,
+                  ...res.scalarVariables.map((sv) => `| ${sv.name} | ${sv.valueReference} | ${sv.causality} |`),
+                ].join("\n"),
+              ),
+            );
+
+            vscode.window.showInformationMessage(
+              `Generated WASM source: ${modelName}_wasm.c — see BUILD_WASM.md for compilation instructions.`,
+            );
+          } catch (e) {
+            vscode.window.showErrorMessage(`WebAssembly compilation failed: ${e}`);
+          }
+        },
+      );
+    }),
     commands.registerCommand("modelscript.runVerification", async () => {
       if (!client) return;
       const editor = vscode.window.activeTextEditor;
