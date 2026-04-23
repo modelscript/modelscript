@@ -623,7 +623,7 @@ function generateModelDescriptionXml(
     lines.push(
       `    <ScalarVariable name="${escapeXml(sv.name)}" valueReference="${sv.valueReference}" causality="${sv.causality}" variability="${sv.variability}"${descAttr}${aliasAttr}${initialAttr}>`,
     );
-    const startAttr = sv.start !== undefined ? ` start="${sv.start}"` : "";
+    const startAttr = sv.start !== undefined && sv.initial !== "calculated" ? ` start="${sv.start}"` : "";
     const unitAttr = sv.unit ? ` unit="${escapeXml(sv.unit)}"` : "";
     const duAttr = sv.displayUnit ? ` displayUnit="${escapeXml(sv.displayUnit)}"` : "";
     const derivAttr = sv.derivative !== undefined ? ` derivative="${sv.derivative}"` : "";
@@ -844,8 +844,9 @@ export function generateFmi3ModelDescriptionXml(
       `    <${fmi3Type} name="${escapeXml(sv.name)}" valueReference="${sv.valueReference}"${causalityAttr}${variabilityAttr}${initialAttr}${descAttr}`,
     );
 
-    if (sv.start !== undefined || sv.derivative !== undefined || sv.declaredType || dimensions) {
-      const startAttr = sv.start !== undefined ? ` start="${sv.start}"` : "";
+    const hasStartAttr = sv.start !== undefined && sv.initial !== "calculated";
+    if (hasStartAttr || sv.derivative !== undefined || sv.declaredType || dimensions) {
+      const startAttr = hasStartAttr ? ` start="${sv.start}"` : "";
       const derivAttr = sv.derivative !== undefined ? ` derivative="${sv.derivative}"` : "";
       const declTypeAttr = sv.declaredType ? ` declaredType="${escapeXml(sv.declaredType)}"` : "";
 

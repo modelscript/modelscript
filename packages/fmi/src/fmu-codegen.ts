@@ -441,6 +441,8 @@ function generateModelH(
   lines.push(`} ${id}_Instance;`);
   lines.push("");
   lines.push(`void ${id}_initialize(${id}_Instance* inst);`);
+  lines.push(`void ${id}_initializeSolve(${id}_Instance* inst);`);
+  lines.push(`void ${id}_solveAlgebraicLoops(${id}_Instance* inst);`);
   lines.push(`void ${id}_getDerivatives(${id}_Instance* inst);`);
   lines.push(`void ${id}_getEventIndicators(${id}_Instance* inst, double* indicators);`);
   lines.push("");
@@ -463,7 +465,7 @@ function generateAlgebraicLoopSolvers(id: string, dae: ModelicaDAE, result: FmuR
   lines.push(`    if ((inst)->terminate) (inst)->terminate((inst)->fmuInstance); \\`);
   lines.push(`  } while(0)`);
   lines.push("");
-  lines.push("static void solve_linear_sys(void* inst_ptr, int n, double* A, double* b, double* x) {");
+  lines.push("static inline void solve_linear_sys(void* inst_ptr, int n, double* A, double* b, double* x) {");
   lines.push(`  ${id}_Instance* inst = (${id}_Instance*)inst_ptr;`);
   lines.push("  for (int i = 0; i < n; i++) {");
   lines.push("    int pivot = i;");
@@ -837,7 +839,7 @@ function generateModelC(id: string, dae: ModelicaDAE, result: FmuResult): string
     lines.push("  if (buf->count < DELAY_BUF_SIZE) buf->count++;");
     lines.push("}");
     lines.push("");
-    lines.push("static double delay_lookup(DelayBuffer* buf, double tLookup, double currentValue) {");
+    lines.push("static inline double delay_lookup(DelayBuffer* buf, double tLookup, double currentValue) {");
     lines.push("  if (buf->count == 0) return currentValue;");
     lines.push("  /* Find the two nearest entries bracketing tLookup and linearly interpolate */");
     lines.push("  int start = (buf->head - buf->count + DELAY_BUF_SIZE) % DELAY_BUF_SIZE;");
@@ -874,7 +876,7 @@ function generateModelC(id: string, dae: ModelicaDAE, result: FmuResult): string
   lines.push("  double prevX;  /* previous position for delta computation */");
   lines.push("} SpatialDist;");
   lines.push("");
-  lines.push("static double spatial_step(SpatialDist* sd, double in0, double in1, double x, int posVel) {");
+  lines.push("static inline double spatial_step(SpatialDist* sd, double in0, double in1, double x, int posVel) {");
   lines.push("  double dx = x - sd->prevX;");
   lines.push("  sd->prevX = x;");
   lines.push("  /* Advect all sample points by dx */");
@@ -969,8 +971,15 @@ function generateModelC(id: string, dae: ModelicaDAE, result: FmuResult): string
   lines.push("");
 
   // Emit equations that compute derivatives
+  // Map derivative names to their index in the state vector based on scalarVariables order
+  const derVars = result.scalarVariables.filter((sv) => sv.name.startsWith("der("));
+  const derMap = new Map<string, number>();
+  for (let i = 0; i < derVars.length; i++) {
+    const nameMatch = derVars[i]?.name.match(/^der\((.+)\)$/);
+    if (nameMatch) derMap.set(nameMatch[1] ?? "", i);
+  }
+
   // Walk DAE equations looking for der(x) = expr patterns
-  let derIdx = 0;
   for (const eq of dae.equations) {
     if (!("expression1" in eq && "expression2" in eq)) continue;
     const simpleEq = eq as { expression1: ModelicaExpression; expression2: ModelicaExpression };
@@ -978,11 +987,15 @@ function generateModelC(id: string, dae: ModelicaDAE, result: FmuResult): string
     const rhsDer = extractDerName(simpleEq.expression2);
 
     if (lhsDer) {
-      lines.push(`  inst->derivatives[${derIdx}] = ${exprToC(simpleEq.expression2)};  /* der(${lhsDer}) */`);
-      derIdx++;
+      const idx = derMap.get(lhsDer);
+      if (idx !== undefined) {
+        lines.push(`  inst->derivatives[${idx}] = ${exprToC(simpleEq.expression2)};  /* der(${lhsDer}) */`);
+      }
     } else if (rhsDer) {
-      lines.push(`  inst->derivatives[${derIdx}] = ${exprToC(simpleEq.expression1)};  /* der(${rhsDer}) */`);
-      derIdx++;
+      const idx = derMap.get(rhsDer);
+      if (idx !== undefined) {
+        lines.push(`  inst->derivatives[${idx}] = ${exprToC(simpleEq.expression1)};  /* der(${rhsDer}) */`);
+      }
     }
   }
   if (hasDelays) {
@@ -1255,6 +1268,7 @@ function generateFmi2FunctionsC(
   lines.push("");
   lines.push("fmi2Status fmi2SetContinuousStates(fmi2Component c, const fmi2Real x[], size_t nx) {");
   lines.push("  FMUInstance* inst = (FMUInstance*)c;");
+  lines.push("  (void)inst; (void)x; (void)nx;");
   // Map state indices to value references
   const stateVRs = result.scalarVariables
     .filter((sv) =>
@@ -1281,12 +1295,13 @@ function generateFmi2FunctionsC(
   lines.push("fmi2Status fmi2GetDerivatives(fmi2Component c, fmi2Real derivatives[], size_t nx) {");
   lines.push("  FMUInstance* inst = (FMUInstance*)c;");
   lines.push(`  ${id}_getDerivatives(&inst->model);`);
-  lines.push("  for (size_t i = 0; i < nx && i < N_STATES; i++) derivatives[i] = inst->model.derivatives[i];");
+  lines.push("  for (size_t i = 0; i < nx && i < (size_t)N_STATES; i++) derivatives[i] = inst->model.derivatives[i];");
   lines.push("  return fmi2OK;");
   lines.push("}");
   lines.push("");
   lines.push("fmi2Status fmi2GetContinuousStates(fmi2Component c, fmi2Real x[], size_t nx) {");
   lines.push("  FMUInstance* inst = (FMUInstance*)c;");
+  lines.push("  (void)inst; (void)x; (void)nx;");
 
   const derVars2 = result.scalarVariables.filter((sv) => sv.name.startsWith("der("));
   const stateRefs2: number[] = [];
@@ -1312,20 +1327,12 @@ function generateFmi2FunctionsC(
   lines.push("}");
   lines.push("");
 
-  // ── Static worker function for async co-simulation ──
-  lines.push("/* --- Async Co-Simulation worker --- */");
-  lines.push("static void doStep_sync(FMUInstance* inst) {");
-  lines.push("  double t = inst->asyncCurrentT;");
-  lines.push("  double tEnd = inst->asyncTEnd;");
-  lines.push("  double h = inst->stepSize;");
-  lines.push("  if (h <= 0) h = 0.001;");
-  lines.push("");
-
   // ── RK4 helper function ──
   lines.push(
     `static void take_rk4_step(${id}_Instance* m, double t, double h, const double* states0, double* statesOut) {`,
   );
   lines.push("  double k1[N_STATES + 1], k2[N_STATES + 1], k3[N_STATES + 1], k4[N_STATES + 1];");
+  lines.push("  (void)k1; (void)k2; (void)k3; (void)k4; (void)states0; (void)statesOut; (void)h;");
   lines.push(`  m->time = t; ${id}_getDerivatives(m);`);
   lines.push("  for (int i = 0; i < N_STATES; i++) k1[i] = m->derivatives[i];");
   lines.push("  m->time = t + 0.5 * h;");
@@ -1358,6 +1365,9 @@ function generateFmi2FunctionsC(
   lines.push("  /* Dormand-Prince coefficients */");
   lines.push("  double k1[N_STATES+1], k2[N_STATES+1], k3[N_STATES+1], k4[N_STATES+1];");
   lines.push("  double k5[N_STATES+1], k6[N_STATES+1], k7[N_STATES+1];");
+  lines.push(
+    "  (void)k1; (void)k2; (void)k3; (void)k4; (void)k5; (void)k6; (void)k7; (void)s0; (void)s4; (void)s5; (void)h;",
+  );
   lines.push(`  m->time = t; ${id}_getDerivatives(m);`);
   lines.push("  for (int i = 0; i < N_STATES; i++) k1[i] = m->derivatives[i];");
   // k2: t + 1/5 h
@@ -1435,6 +1445,7 @@ function generateFmi2FunctionsC(
   lines.push("  double tEnd = inst->asyncTEnd;");
   lines.push("  double h = inst->stepSize;");
   lines.push("  if (h <= 0) h = 0.001;");
+  lines.push("  (void)t; (void)tEnd;");
   lines.push("");
 
   // Emit state machine transition evaluation at each step
@@ -1512,6 +1523,7 @@ function generateFmi2FunctionsC(
     lines.push("  double z1[N_EVENT_INDICATORS + 1];");
   }
   lines.push("  int eventCount = 0;");
+  lines.push("  (void)eventCount;");
 
   lines.push("  while (t < tEnd - 1e-15 && !inst->cancelRequested) {");
   lines.push("    double step_h = h;");
@@ -1726,6 +1738,7 @@ function generateFmi2FunctionsC(
   // Evaluate when-equation conditions and execute body assignments on rising edge
   lines.push("fmi2Status fmi2NewDiscreteStates(fmi2Component c, fmi2EventInfo* info) {");
   lines.push("  FMUInstance* inst = (FMUInstance*)c;");
+  lines.push("  (void)inst;");
   lines.push("  info->newDiscreteStatesNeeded = fmi2False;");
   lines.push("  info->terminateSimulation = fmi2False;");
   lines.push("  info->nominalsOfContinuousStatesChanged = fmi2False;");
@@ -2045,6 +2058,7 @@ function generateFmi2FunctionsC(
     "fmi2Status fmi2GetDirectionalDerivative(fmi2Component c, const fmi2ValueReference unknown[], size_t nUnknown, const fmi2ValueReference known[], size_t nKnown, const fmi2Real dvKnown[], fmi2Real dvUnknown[]) {",
   );
   lines.push("  FMUInstance* inst = (FMUInstance*)c;");
+  lines.push("  (void)inst; (void)unknown; (void)nUnknown; (void)known; (void)nKnown; (void)dvKnown; (void)dvUnknown;");
 
   // Extract derivative equations: der(x) = f(x, y, t)
   const derEquations: { stateName: string; rhs: ModelicaExpression }[] = [];
@@ -2075,10 +2089,12 @@ function generateFmi2FunctionsC(
   if (derEquations.length > 0 && jacStateVRs.length > 0) {
     // Emit local variable aliases
     lines.push(`  double time = inst->model.time;`);
+    lines.push(`  (void)time;`);
     for (const sv of result.scalarVariables) {
       if (sv.causality === "independent") continue;
       const cName = varToC(sv.name);
       lines.push(`  double ${cName} = inst->model.vars[${sv.valueReference}];`);
+      lines.push(`  (void)${cName};`);
     }
     lines.push("");
     lines.push("  /* Zero output */");
