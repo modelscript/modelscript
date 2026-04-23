@@ -9,7 +9,7 @@ import { ChatViewProvider } from "./chatPanel";
 import { CosimViewProvider } from "./cosimPanel";
 import { ModelScriptDebugSession } from "./debugAdapter";
 import { DiagramEditorProvider } from "./diagramEditorProvider";
-import { FMU_VIEW_SCHEME, FmuContentProvider, FmuEditorProvider } from "./fmuDocumentProvider";
+import { FMU_VIEW_SCHEME, FmuContentProvider, FmuEditorProvider, extractFromZip } from "./fmuDocumentProvider";
 import { LibraryTreeProvider } from "./libraryTreeProvider";
 import { registerLLMProvider } from "./llmProvider";
 import { registerMCPTools } from "./mcpBridge";
@@ -493,9 +493,137 @@ export async function activate(context: vscode.ExtensionContext) {
         } catch (e) {
           outputChannel.appendLine(`Error: ${e}`);
         }
+      } else if (editor?.document.uri.scheme === "fmu-view") {
+        outputChannel.clear();
+        outputChannel.show(true);
+        try {
+          const name = editor.document.uri.path.replace(/^\//, "");
+          const fmuBytes = fmuContentProvider?.getFmuBytes(name);
+          if (!fmuBytes) {
+            vscode.window.showErrorMessage("FMU data not found in cache.");
+            return;
+          }
+          const jsBytes = extractFromZip(fmuBytes, "resources/model.js");
+          if (!jsBytes) {
+            vscode.window.showErrorMessage("No resources/model.js found in FMU. Please re-export the FMU.");
+            return;
+          }
+
+          const jsCode = new TextDecoder().decode(jsBytes);
+
+          // Evaluate the JS inside a safe function
+          const FmuModelConstructor = new Function(
+            jsCode + "\\nreturn typeof FmuModel !== 'undefined' ? FmuModel : FmuModel;",
+          )();
+          const inst = new FmuModelConstructor();
+
+          let t = 0.0;
+          const dt = 0.01;
+          const tStop = 10.0;
+
+          // Collect series data
+          const result: { time: number[]; series: Record<string, number[]> } = { time: [], series: {} };
+          for (let i = 0; i < inst.vars.length; i++) {
+            result.series[`var_${i}`] = [];
+          }
+
+          inst.doStep(0, 0); // initial eval
+          while (t <= tStop) {
+            result.time.push(t);
+            for (let i = 0; i < inst.vars.length; i++) {
+              result.series[`var_${i}`].push(inst.vars[i]);
+            }
+            inst.doStep(t, dt);
+            t += dt;
+          }
+
+          // Remap vars names from scalarVariables via modelDescription inside the text
+          // Currently, the model is generated with specific variables, we can just send the raw vars array
+          // or parse the text of the editor which contains the Modelica variables.
+          // For now, let's parse the virtual document text which has the variables!
+          const text = editor.document.getText();
+          const varLines = text.split("\\n").filter((line) => line.includes("/* VR="));
+
+          const states: string[] = [];
+          const y: number[][] = [];
+          for (const line of varLines) {
+            const match = line.match(/Real (.*?); \/\* VR=(\d+) \*\//);
+            if (match) {
+              const name = match[1].trim();
+              const vr = parseInt(match[2]);
+              states.push(name);
+              y.push(result.series[`var_${vr}`] || []);
+            }
+          }
+
+          // Show Plot
+          SimulationPanel.createOrShowWithData(
+            context.extensionUri,
+            {
+              t: result.time,
+              states,
+              y,
+            },
+            editor.document.uri.toString(),
+          );
+          outputChannel.appendLine("FMU (JS) Simulation complete.");
+        } catch (e) {
+          vscode.window.showErrorMessage(`FMU JavaScript Evaluation Error: ${e}`);
+          outputChannel.appendLine(`Error executing JS FMU: ${e}`);
+        }
       } else {
         SimulationPanel.createOrShow(context.extensionUri, client);
       }
+    }),
+    commands.registerCommand("modelscript.exportFmi2", async () => {
+      if (!client) return;
+      const editor = vscode.window.activeTextEditor;
+      if (!editor || !editor.document.fileName.endsWith(".mo")) {
+        vscode.window.showErrorMessage("Open a Modelica (.mo) file to export an FMU.");
+        return;
+      }
+      vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: "Exporting FMI 2.0...", cancellable: false },
+        async () => {
+          try {
+            const res = await client.sendRequest<{ fmuName: string; base64: string }>("modelscript/exportFmu", {
+              uri: editor.document.uri.toString(),
+              fmiVersion: "2.0",
+            });
+            const folder = vscode.workspace.workspaceFolders?.[0]?.uri || vscode.Uri.file("/");
+            const uri = vscode.Uri.joinPath(folder, res.fmuName + ".fmu");
+            await vscode.workspace.fs.writeFile(uri, decodeBase64ToArray(res.base64));
+            vscode.window.showInformationMessage(`Exported FMI 2.0 to ${res.fmuName}.fmu`);
+          } catch (e) {
+            vscode.window.showErrorMessage(`FMI 2.0 Export failed: ${e}`);
+          }
+        },
+      );
+    }),
+    commands.registerCommand("modelscript.exportFmi3", async () => {
+      if (!client) return;
+      const editor = vscode.window.activeTextEditor;
+      if (!editor || !editor.document.fileName.endsWith(".mo")) {
+        vscode.window.showErrorMessage("Open a Modelica (.mo) file to export an FMU.");
+        return;
+      }
+      vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: "Exporting FMI 3.0...", cancellable: false },
+        async () => {
+          try {
+            const res = await client.sendRequest<{ fmuName: string; base64: string }>("modelscript/exportFmu", {
+              uri: editor.document.uri.toString(),
+              fmiVersion: "3.0",
+            });
+            const folder = vscode.workspace.workspaceFolders?.[0]?.uri || vscode.Uri.file("/");
+            const uri = vscode.Uri.joinPath(folder, res.fmuName + ".fmu");
+            await vscode.workspace.fs.writeFile(uri, decodeBase64ToArray(res.base64));
+            vscode.window.showInformationMessage(`Exported FMI 3.0 to ${res.fmuName}.fmu`);
+          } catch (e) {
+            vscode.window.showErrorMessage(`FMI 3.0 Export failed: ${e}`);
+          }
+        },
+      );
     }),
     commands.registerCommand("modelscript.runVerification", async () => {
       if (!client) return;
@@ -1022,6 +1150,30 @@ function scaffoldTemplateFiles(memFs: MemoryFileSystemProvider, workspaceUri: vs
         "}",
         "",
       ].join("\n"),
+    },
+    fmi2: {
+      "System.mo":
+        [
+          "model System",
+          "  Real x(start=1.0);",
+          "  Real v(start=0.0);",
+          "equation",
+          "  der(x) = v;",
+          "  der(v) = -x;",
+          "end System;",
+        ].join("\n") + "\n",
+    },
+    fmi3: {
+      "System.mo":
+        [
+          "model System",
+          "  Real x(start=1.0);",
+          "  Real v(start=0.0);",
+          "equation",
+          "  der(x) = v;",
+          "  der(v) = -x;",
+          "end System;",
+        ].join("\n") + "\n",
     },
     script: {
       "simulate.mos": `// A simple Modelica script\nloadString("\nmodel HelloWorld\n  Real x(start=1);\nequation\n  der(x) = -x;\nend HelloWorld;\n");\n\nsimulate(HelloWorld, stopTime=5);\n`,

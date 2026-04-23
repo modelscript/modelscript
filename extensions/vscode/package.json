@@ -65,6 +65,16 @@
         "icon": "$(play)"
       },
       {
+        "command": "modelscript.exportFmi2",
+        "title": "ModelScript: Export FMI 2.0",
+        "icon": "$(package)"
+      },
+      {
+        "command": "modelscript.exportFmi3",
+        "title": "ModelScript: Export FMI 3.0",
+        "icon": "$(archive)"
+      },
+      {
         "command": "modelscript.runVerification",
         "title": "ModelScript: Run SysML Verification",
         "icon": "$(check-all)"
@@ -176,6 +186,11 @@
         }
       }
     ],
+    "configurationDefaults": {
+      "workbench.editorAssociations": {
+        "*.fmu": "modelscript.fmuViewer"
+      }
+    },
     "customEditors": [
       {
         "viewType": "modelscript.diagram",
@@ -405,8 +420,8 @@
         ],
         "configuration": "./language-configuration.json",
         "icon": {
-          "light": "./images/icon.png",
-          "dark": "./images/icon.png"
+          "light": "./images/modelica.png",
+          "dark": "./images/modelica.png"
         }
       },
       {
@@ -418,8 +433,8 @@
           ".monb"
         ],
         "icon": {
-          "light": "./images/icon.png",
-          "dark": "./images/icon.png"
+          "light": "./images/modelica.png",
+          "dark": "./images/modelica.png"
         }
       },
       {
@@ -431,14 +446,28 @@
         "extensions": [
           ".sysml"
         ],
-        "configuration": "./sysml-language-configuration.json"
+        "configuration": "./sysml-language-configuration.json",
+        "icon": {
+          "light": "./images/sysml.png",
+          "dark": "./images/sysml.png"
+        }
+      },
+      {
+        "id": "fmu",
+        "extensions": [
+          ".fmu"
+        ],
+        "icon": {
+          "light": "./images/fmu.png",
+          "dark": "./images/fmu.png"
+        }
       }
     ],
     "menus": {
       "editor/title": [
         {
           "command": "modelscript.openDiagram",
-          "when": "(editorLangId == modelica || editorLangId == sysml) && activeCustomEditorId != modelscript.diagram",
+          "when": "(editorLangId == modelica || editorLangId == sysml) && activeCustomEditorId != modelscript.diagram && resourceScheme != 'fmu-view'",
           "group": "navigation"
         },
         {
@@ -449,6 +478,16 @@
         {
           "command": "modelscript.runSimulation",
           "when": "editorLangId == modelica || activeCustomEditorId == modelscript.diagram",
+          "group": "navigation"
+        },
+        {
+          "command": "modelscript.exportFmi2",
+          "when": "(editorLangId == modelica && resourceScheme != 'fmu-view') || activeCustomEditorId == modelscript.diagram",
+          "group": "navigation"
+        },
+        {
+          "command": "modelscript.exportFmi3",
+          "when": "(editorLangId == modelica && resourceScheme != 'fmu-view') || activeCustomEditorId == modelscript.diagram",
           "group": "navigation"
         },
         {

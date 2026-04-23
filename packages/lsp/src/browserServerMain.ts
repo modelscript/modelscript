@@ -101,7 +101,7 @@ import {
   type FileSystem,
   type Stats,
 } from "@modelscript/core";
-import { ModelicaFmuEntity, generateMultiModelWrapper } from "@modelscript/fmi";
+import { ModelicaFmuEntity, buildFmuArchive, generateMultiModelWrapper } from "@modelscript/fmi";
 import { ModelicaOptimizer, registerOptimizeDeps } from "@modelscript/optimizer";
 import { VerificationRunner } from "@modelscript/polyglot";
 import { ModelicaSimulator, registerSimulateDeps } from "@modelscript/simulator";
@@ -4563,6 +4563,41 @@ connection.onRequest("modelscript/listClasses", (): { classes: { name: string; k
   }
 
   return { classes };
+});
+
+// ── FMU generation capability ──────────────────────────────────────
+connection.onRequest("modelscript/exportFmu", async (params: { uri: string; fmiVersion: "2.0" | "3.0" }) => {
+  const ctx = documentContexts.get(params.uri);
+  const doc = documents.get(params.uri);
+  if (!ctx || !doc) throw new Error("Document not found or no context available.");
+
+  // Get the first class defined in the document as the target for FMU generation
+  const instances = documentInstances.get(params.uri);
+  if (!instances || instances.length === 0) throw new Error("No Modelica classes found in the active document.");
+
+  const targetInstance = instances[0];
+  const targetClass = targetInstance.name;
+  if (!targetClass) throw new Error("Could not determine model name.");
+
+  const dae = new ModelicaDAE(targetClass);
+  const flattener = new ModelicaFlattener();
+  (targetInstance as any).accept(flattener, ["", dae]);
+  flattener.generateFlowBalanceEquations(dae);
+  flattener.foldDAEConstants(dae);
+
+  const { archive } = buildFmuArchive(dae, {
+    modelIdentifier: targetClass,
+  });
+
+  // Base64 encode the Uint8Array
+  const chunkSize = 0x8000;
+  const chunks: string[] = [];
+  for (let i = 0; i < archive.length; i += chunkSize) {
+    chunks.push(String.fromCharCode.apply(null, Array.from(archive.subarray(i, i + chunkSize))));
+  }
+  const base64 = btoa(chunks.join(""));
+
+  return { fmuName: targetClass, base64 };
 });
 
 // ── FMU registration (binary data via custom request) ──────────────────

@@ -139,7 +139,7 @@ function generateModelicaBlock(fmu: ReturnType<typeof parseModelDescription>): s
  * Extract a file from a ZIP archive by name.
  * Supports STORED (method 0) and DEFLATED (method 8) entries.
  */
-function extractFromZip(zipData: Uint8Array, targetName: string): Uint8Array | null {
+export function extractFromZip(zipData: Uint8Array, targetName: string): Uint8Array | null {
   // Find End of Central Directory
   let eocdOffset = -1;
   for (let i = zipData.length - 22; i >= 0; i--) {

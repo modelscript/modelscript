@@ -94,6 +94,33 @@ export class SimulationPanel {
   }
 
   /**
+   * Render a plot for externally generated data (like client-side FMU JS evaluations).
+   */
+  static createOrShowWithData(extensionUri: vscode.Uri, result: SimulationResult, uri: string): void {
+    if (SimulationPanel.currentPanel) {
+      SimulationPanel.currentPanel.sourceUri = uri;
+      SimulationPanel.currentPanel.panel.reveal(vscode.ViewColumn.Beside);
+      SimulationPanel.currentPanel.postResults(result);
+      return;
+    }
+
+    const panel = vscode.window.createWebviewPanel(
+      SimulationPanel.viewType,
+      "Simulation Results",
+      vscode.ViewColumn.Beside,
+      {
+        enableScripts: true,
+        retainContextWhenHidden: true,
+        localResourceRoots: [vscode.Uri.joinPath(extensionUri, "dist")],
+      },
+    );
+
+    SimulationPanel.currentPanel = new SimulationPanel(panel, extensionUri, false);
+    SimulationPanel.currentPanel.sourceUri = uri;
+    SimulationPanel.currentPanel.postResults(result);
+  }
+
+  /**
    * Open the simulation webview in live MQTT streaming mode.
    * Connects to the MQTT broker via WebSocket and plots incoming data in real-time.
    */
@@ -229,7 +256,7 @@ export class SimulationPanel {
     );
   }
 
-  private postResults(result: SimulationResult) {
+  public postResults(result: SimulationResult) {
     const isDark =
       vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
       vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast;

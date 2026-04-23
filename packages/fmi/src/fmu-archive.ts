@@ -22,6 +22,7 @@ import type { FmuOptions, FmuResult } from "./fmi.js";
 import { generateFmu } from "./fmi.js";
 import { generateFmi3 } from "./fmi3.js";
 import { generateFmuCSources } from "./fmu-codegen.js";
+import { generateFmuJsSources } from "./fmu-js-codegen.js";
 
 /** Options for FMU archive generation. */
 export interface FmuArchiveOptions extends FmuOptions {
@@ -86,6 +87,10 @@ export function buildFmuArchive(
 
     // CMake build system
     files.set("sources/CMakeLists.txt", encoder.encode(sources.cmakeLists));
+
+    // Export Javascript alongside the C code
+    const jsSource = generateFmuJsSources(dae, fmuResult, options);
+    files.set(`resources/model.js`, encoder.encode(jsSource));
   }
 
   // ── model.json (serialized DAE for JS runtime) ──
