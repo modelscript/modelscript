@@ -3673,8 +3673,16 @@ connection.onRequest("modelscript/getClassIcon", (params: { className: string; u
     if (entryId === undefined) {
       const uri = (globalWorkspaceIndex as any).getFileUriForFQN?.(params.className);
       if (uri) {
-        // Always call getFileIndex — has() returns true for registered-but-unindexed files,
-        // but getFileIndex triggers actual parsing and is idempotent for already-indexed files.
+        // Force-index the entire ancestor chain so stitchParentFQNs can
+        // resolve the full FQN (e.g., "Modelica.Electrical.Analog.Basic.Resistor"
+        // needs Modelica, Electrical, Analog, and Basic packages parsed first).
+        for (let i = 1; i < parts.length; i++) {
+          const ancestorFqn = parts.slice(0, i).join(".");
+          const ancestorUri = (globalWorkspaceIndex as any).getFileUriForFQN?.(ancestorFqn);
+          if (ancestorUri) {
+            globalWorkspaceIndex.getFileIndex(ancestorUri);
+          }
+        }
         globalWorkspaceIndex.getFileIndex(uri);
         const newIndex = unifiedWorkspace.toUnifiedPartial();
         injectPredefinedTypes(newIndex);

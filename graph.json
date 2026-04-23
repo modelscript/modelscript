@@ -1,0 +1,2522 @@
+{
+  "graph": {
+    "nodes": {
+      "@modelscript/tree-sitter-modelica": {
+        "name": "@modelscript/tree-sitter-modelica",
+        "type": "lib",
+        "data": {
+          "root": "languages/modelica/tree-sitter-modelica",
+          "name": "@modelscript/tree-sitter-modelica",
+          "tags": ["npm:public", "npm:incremental", "npm:parsing", "npm:tree-sitter", "npm:modelica"],
+          "metadata": {
+            "targetGroups": {
+              "NPM Scripts": ["build", "clean", "generate", "install", "lint", "prestart", "start", "test"]
+            },
+            "description": "Modelica grammar for tree-sitter",
+            "js": {
+              "packageName": "@modelscript/tree-sitter-modelica",
+              "packageVersion": "0.0.18",
+              "packageMain": "bindings/node",
+              "isInPackageManagerWorkspaces": true
+            }
+          },
+          "targets": {
+            "build": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "build"
+              },
+              "metadata": {
+                "scriptContent": "node-gyp rebuild",
+                "runCommand": "npm run build"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build"],
+              "outputs": [
+                "{projectRoot}/dist",
+                "{projectRoot}/build",
+                "{projectRoot}/public",
+                "{projectRoot}/src/**/*.js",
+                "{projectRoot}/bindings/**/*.o",
+                "{projectRoot}/build/**/*.node",
+                "{projectRoot}/build/**/*.wasm",
+                "{projectRoot}/build/Release/tree_sitter_modelica_binding.node"
+              ]
+            },
+            "clean": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "clean"
+              },
+              "metadata": {
+                "scriptContent": "rimraf build",
+                "runCommand": "npm run clean"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "generate": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "generate"
+              },
+              "metadata": {
+                "scriptContent": "rimraf src && tree-sitter generate --abi=14 && node-gyp rebuild && tree-sitter build --wasm",
+                "runCommand": "npm run generate"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "install": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "install"
+              },
+              "metadata": {
+                "scriptContent": "node-gyp rebuild",
+                "runCommand": "npm run install"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "lint": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "lint"
+              },
+              "metadata": {
+                "scriptContent": "eslint grammar.js",
+                "runCommand": "npm run lint"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build"]
+            },
+            "prestart": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "prestart"
+              },
+              "metadata": {
+                "scriptContent": "tree-sitter build --wasm",
+                "runCommand": "npm run prestart"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "start": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "start"
+              },
+              "metadata": {
+                "scriptContent": "tree-sitter playground",
+                "runCommand": "npm run start"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "test": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "test"
+              },
+              "metadata": {
+                "scriptContent": "node --test bindings/node/*_test.js",
+                "runCommand": "npm run test"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build", "build"],
+              "outputs": ["{projectRoot}/coverage"]
+            },
+            "nx-release-publish": {
+              "executor": "@nx/js:release-publish",
+              "dependsOn": ["^nx-release-publish"],
+              "options": {},
+              "configurations": {},
+              "parallelism": true
+            }
+          },
+          "implicitDependencies": []
+        }
+      },
+      "@modelscript/modelica-polyglot": {
+        "name": "@modelscript/modelica-polyglot",
+        "type": "lib",
+        "data": {
+          "root": "languages/modelica/polyglot",
+          "name": "@modelscript/modelica-polyglot",
+          "tags": ["npm:public"],
+          "metadata": {
+            "targetGroups": {
+              "NPM Scripts": ["build"]
+            },
+            "js": {
+              "packageName": "@modelscript/modelica-polyglot",
+              "packageVersion": "0.0.0",
+              "packageExports": {
+                "./compat-shim": {
+                  "types": "./dist/compat-shim.d.ts",
+                  "default": "./dist/compat-shim.js"
+                },
+                "./query_hooks": {
+                  "types": "./dist/query_hooks.d.ts",
+                  "default": "./dist/query_hooks.js"
+                },
+                "./indexer_config": {
+                  "types": "./dist/indexer_config.d.ts",
+                  "default": "./dist/indexer_config.js"
+                },
+                "./ref_config": {
+                  "types": "./dist/ref_config.d.ts",
+                  "default": "./dist/ref_config.js"
+                },
+                "./types": {
+                  "types": "./dist/types.d.ts",
+                  "default": "./dist/types.js"
+                },
+                "./ast": {
+                  "types": "./dist/ast.d.ts",
+                  "default": "./dist/ast.js"
+                },
+                "./expression-evaluator": {
+                  "types": "./dist/expression-evaluator.d.ts",
+                  "default": "./dist/expression-evaluator.js"
+                },
+                "./predefined-types": {
+                  "types": "./dist/predefined-types.d.ts",
+                  "default": "./dist/predefined-types.js"
+                },
+                "./language": {
+                  "types": "./dist/language.d.ts",
+                  "default": "./dist/language.js"
+                },
+                "./flattener-query": {
+                  "types": "./dist/flattener-query.d.ts",
+                  "default": "./dist/flattener-query.js"
+                }
+              },
+              "isInPackageManagerWorkspaces": true
+            }
+          },
+          "targets": {
+            "build": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "build"
+              },
+              "metadata": {
+                "scriptContent": "tsc",
+                "runCommand": "npm run build"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build"],
+              "outputs": [
+                "{projectRoot}/dist",
+                "{projectRoot}/build",
+                "{projectRoot}/public",
+                "{projectRoot}/src/**/*.js",
+                "{projectRoot}/bindings/**/*.o",
+                "{projectRoot}/build/**/*.node",
+                "{projectRoot}/build/**/*.wasm",
+                "{projectRoot}/build/Release/tree_sitter_modelica_binding.node"
+              ]
+            },
+            "nx-release-publish": {
+              "executor": "@nx/js:release-publish",
+              "dependsOn": ["^nx-release-publish"],
+              "options": {},
+              "configurations": {},
+              "parallelism": true
+            }
+          },
+          "implicitDependencies": []
+        }
+      },
+      "@modelscript/sysml2-polyglot": {
+        "name": "@modelscript/sysml2-polyglot",
+        "type": "lib",
+        "data": {
+          "root": "languages/sysml2/polyglot",
+          "name": "@modelscript/sysml2-polyglot",
+          "tags": ["npm:public"],
+          "metadata": {
+            "targetGroups": {
+              "NPM Scripts": ["build"]
+            },
+            "js": {
+              "packageName": "@modelscript/sysml2-polyglot",
+              "packageVersion": "0.0.0",
+              "packageExports": {
+                "./query_hooks": "./dist/query_hooks.js",
+                "./indexer_config": "./dist/indexer_config.js",
+                "./ref_config": "./dist/ref_config.js",
+                "./graphics_config": "./dist/graphics_config.js",
+                "./language": "./dist/language.js"
+              },
+              "isInPackageManagerWorkspaces": true
+            }
+          },
+          "targets": {
+            "build": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "build"
+              },
+              "metadata": {
+                "scriptContent": "node build.js && prettier --write . --ignore-unknown && tsc",
+                "runCommand": "npm run build"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build"],
+              "outputs": [
+                "{projectRoot}/dist",
+                "{projectRoot}/build",
+                "{projectRoot}/public",
+                "{projectRoot}/src/**/*.js",
+                "{projectRoot}/bindings/**/*.o",
+                "{projectRoot}/build/**/*.node",
+                "{projectRoot}/build/**/*.wasm",
+                "{projectRoot}/build/Release/tree_sitter_modelica_binding.node"
+              ]
+            },
+            "nx-release-publish": {
+              "executor": "@nx/js:release-publish",
+              "dependsOn": ["^nx-release-publish"],
+              "options": {},
+              "configurations": {},
+              "parallelism": true
+            }
+          },
+          "implicitDependencies": []
+        }
+      },
+      "@modelscript/optimizer": {
+        "name": "@modelscript/optimizer",
+        "type": "lib",
+        "data": {
+          "root": "packages/optimizer",
+          "name": "@modelscript/optimizer",
+          "tags": ["npm:public", "npm:modelscript", "npm:optimization", "npm:sqp", "npm:nlp", "npm:optimal-control"],
+          "metadata": {
+            "targetGroups": {
+              "NPM Scripts": ["build", "clean", "lint", "watch"]
+            },
+            "description": "Optimal control and NLP solver for ModelScript — SQP, stochastic optimization, COIN-OR codegen",
+            "js": {
+              "packageName": "@modelscript/optimizer",
+              "packageVersion": "0.0.0",
+              "packageExports": {
+                ".": {
+                  "types": "./dist/index.d.ts",
+                  "import": "./dist/index.js",
+                  "require": "./dist/index.js",
+                  "default": "./dist/index.js"
+                }
+              },
+              "packageMain": "dist/index.js",
+              "isInPackageManagerWorkspaces": true
+            }
+          },
+          "targets": {
+            "build": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "build"
+              },
+              "metadata": {
+                "scriptContent": "npm run clean && tsc",
+                "runCommand": "npm run build"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build"],
+              "outputs": [
+                "{projectRoot}/dist",
+                "{projectRoot}/build",
+                "{projectRoot}/public",
+                "{projectRoot}/src/**/*.js",
+                "{projectRoot}/bindings/**/*.o",
+                "{projectRoot}/build/**/*.node",
+                "{projectRoot}/build/**/*.wasm",
+                "{projectRoot}/build/Release/tree_sitter_modelica_binding.node"
+              ]
+            },
+            "clean": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "clean"
+              },
+              "metadata": {
+                "scriptContent": "rimraf dist",
+                "runCommand": "npm run clean"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "lint": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "lint"
+              },
+              "metadata": {
+                "scriptContent": "eslint src --ext .ts,.tsx",
+                "runCommand": "npm run lint"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build"]
+            },
+            "watch": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "watch"
+              },
+              "metadata": {
+                "scriptContent": "tsc --watch",
+                "runCommand": "npm run watch"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "nx-release-publish": {
+              "executor": "@nx/js:release-publish",
+              "dependsOn": ["^nx-release-publish"],
+              "options": {},
+              "configurations": {},
+              "parallelism": true
+            }
+          },
+          "implicitDependencies": []
+        }
+      },
+      "@modelscript/simulator": {
+        "name": "@modelscript/simulator",
+        "type": "lib",
+        "data": {
+          "root": "packages/simulator",
+          "name": "@modelscript/simulator",
+          "tags": [
+            "npm:public",
+            "npm:modelscript",
+            "npm:simulation",
+            "npm:ode",
+            "npm:dae",
+            "npm:runge-kutta",
+            "npm:bdf"
+          ],
+          "metadata": {
+            "targetGroups": {
+              "NPM Scripts": ["build", "clean", "lint", "watch"]
+            },
+            "description": "ODE/DAE simulation engine for ModelScript — solvers, initialization, AD, uncertainty propagation",
+            "js": {
+              "packageName": "@modelscript/simulator",
+              "packageVersion": "0.0.0",
+              "packageExports": {
+                ".": {
+                  "types": "./dist/index.d.ts",
+                  "import": "./dist/index.js",
+                  "require": "./dist/index.js",
+                  "default": "./dist/index.js"
+                }
+              },
+              "packageMain": "dist/index.js",
+              "isInPackageManagerWorkspaces": true
+            }
+          },
+          "targets": {
+            "build": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "build"
+              },
+              "metadata": {
+                "scriptContent": "npm run clean && tsc",
+                "runCommand": "npm run build"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build"],
+              "outputs": [
+                "{projectRoot}/dist",
+                "{projectRoot}/build",
+                "{projectRoot}/public",
+                "{projectRoot}/src/**/*.js",
+                "{projectRoot}/bindings/**/*.o",
+                "{projectRoot}/build/**/*.node",
+                "{projectRoot}/build/**/*.wasm",
+                "{projectRoot}/build/Release/tree_sitter_modelica_binding.node"
+              ]
+            },
+            "clean": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "clean"
+              },
+              "metadata": {
+                "scriptContent": "rimraf dist",
+                "runCommand": "npm run clean"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "lint": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "lint"
+              },
+              "metadata": {
+                "scriptContent": "eslint src --ext .ts,.tsx",
+                "runCommand": "npm run lint"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build"]
+            },
+            "watch": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "watch"
+              },
+              "metadata": {
+                "scriptContent": "tsc --watch",
+                "runCommand": "npm run watch"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "nx-release-publish": {
+              "executor": "@nx/js:release-publish",
+              "dependsOn": ["^nx-release-publish"],
+              "options": {},
+              "configurations": {},
+              "parallelism": true
+            }
+          },
+          "implicitDependencies": []
+        }
+      },
+      "@modelscript/symbolics": {
+        "name": "@modelscript/symbolics",
+        "type": "lib",
+        "data": {
+          "root": "packages/symbolics",
+          "name": "@modelscript/symbolics",
+          "tags": [
+            "npm:public",
+            "npm:modelscript",
+            "npm:symbolic",
+            "npm:math",
+            "npm:algebra",
+            "npm:calculus",
+            "npm:graph"
+          ],
+          "metadata": {
+            "targetGroups": {
+              "NPM Scripts": ["build", "clean", "lint", "watch"]
+            },
+            "description": "ModelScript Symbolics Engine",
+            "js": {
+              "packageName": "@modelscript/symbolics",
+              "packageVersion": "0.0.18",
+              "packageExports": {
+                ".": {
+                  "types": "./dist/index.d.ts",
+                  "import": "./dist/index.js",
+                  "require": "./dist/index.js",
+                  "default": "./dist/index.js"
+                }
+              },
+              "packageMain": "dist/index.js",
+              "isInPackageManagerWorkspaces": true
+            }
+          },
+          "targets": {
+            "build": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "build"
+              },
+              "metadata": {
+                "scriptContent": "npm run clean && npm run lint && tsc",
+                "runCommand": "npm run build"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build"],
+              "outputs": [
+                "{projectRoot}/dist",
+                "{projectRoot}/build",
+                "{projectRoot}/public",
+                "{projectRoot}/src/**/*.js",
+                "{projectRoot}/bindings/**/*.o",
+                "{projectRoot}/build/**/*.node",
+                "{projectRoot}/build/**/*.wasm",
+                "{projectRoot}/build/Release/tree_sitter_modelica_binding.node"
+              ]
+            },
+            "clean": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "clean"
+              },
+              "metadata": {
+                "scriptContent": "rimraf dist",
+                "runCommand": "npm run clean"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "lint": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "lint"
+              },
+              "metadata": {
+                "scriptContent": "eslint src",
+                "runCommand": "npm run lint"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build"]
+            },
+            "watch": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "watch"
+              },
+              "metadata": {
+                "scriptContent": "tsc --watch",
+                "runCommand": "npm run watch"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "nx-release-publish": {
+              "executor": "@nx/js:release-publish",
+              "dependsOn": ["^nx-release-publish"],
+              "options": {},
+              "configurations": {},
+              "parallelism": true
+            }
+          },
+          "implicitDependencies": []
+        }
+      },
+      "@modelscript/polyglot": {
+        "name": "@modelscript/polyglot",
+        "type": "lib",
+        "data": {
+          "root": "packages/polyglot",
+          "name": "@modelscript/polyglot",
+          "tags": ["npm:public"],
+          "metadata": {
+            "targetGroups": {
+              "NPM Scripts": ["build", "generate", "playground", "test", "test:watch"]
+            },
+            "description": "A language workbench for generating tree-sitter grammars, typed AST wrappers, symbol indexers, and query hooks from a single declarative file.",
+            "js": {
+              "packageName": "@modelscript/polyglot",
+              "packageVersion": "0.0.0",
+              "packageExports": {
+                ".": "./dist/src/index.js",
+                "./runtime": "./dist/src/runtime.js",
+                "./symbol-indexer": "./dist/src/symbol-indexer.js",
+                "./query-engine": "./dist/src/query-engine.js",
+                "./resolver": "./dist/src/resolver.js",
+                "./lsp-bridge": "./dist/src/lsp-bridge.js",
+                "./workspace-index": "./dist/src/workspace-index.js",
+                "./semantic-node": "./dist/src/semantic-node.js",
+                "./generate-ast-classes": "./dist/src/generate-ast-classes.js",
+                "./diagram-builder": "./dist/src/polyglot-diagram-builder.js"
+              },
+              "packageMain": "dist/src/index.js",
+              "isInPackageManagerWorkspaces": true
+            }
+          },
+          "targets": {
+            "build": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "build"
+              },
+              "metadata": {
+                "scriptContent": "tsc",
+                "runCommand": "npm run build"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build"],
+              "outputs": [
+                "{projectRoot}/dist",
+                "{projectRoot}/build",
+                "{projectRoot}/public",
+                "{projectRoot}/src/**/*.js",
+                "{projectRoot}/bindings/**/*.o",
+                "{projectRoot}/build/**/*.node",
+                "{projectRoot}/build/**/*.wasm",
+                "{projectRoot}/build/Release/tree_sitter_modelica_binding.node"
+              ]
+            },
+            "generate": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "generate"
+              },
+              "metadata": {
+                "scriptContent": "tsx src/cli.ts",
+                "runCommand": "npm run generate"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "playground": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "playground"
+              },
+              "metadata": {
+                "scriptContent": "tsx src/cli.ts playground",
+                "runCommand": "npm run playground"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "test": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "test"
+              },
+              "metadata": {
+                "scriptContent": "vitest run",
+                "runCommand": "npm run test"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build", "build"],
+              "outputs": ["{projectRoot}/coverage"]
+            },
+            "test:watch": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "test:watch"
+              },
+              "metadata": {
+                "scriptContent": "vitest",
+                "runCommand": "npm run test:watch"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "nx-release-publish": {
+              "executor": "@nx/js:release-publish",
+              "dependsOn": ["^nx-release-publish"],
+              "options": {},
+              "configurations": {},
+              "parallelism": true
+            }
+          },
+          "implicitDependencies": []
+        }
+      },
+      "modelscript": {
+        "name": "modelscript",
+        "type": "app",
+        "data": {
+          "root": "extensions/vscode",
+          "name": "modelscript",
+          "tags": [
+            "npm:public",
+            "npm:modelica",
+            "npm:simulation",
+            "npm:modeling",
+            "npm:MSL",
+            "npm:systems engineering"
+          ],
+          "metadata": {
+            "targetGroups": {
+              "NPM Scripts": ["build", "compile", "dev", "lint", "package", "test-web", "watch"]
+            },
+            "description": "Complete Modelica development environment — diagram editing, simulation, scripting, notebooks, and bundled MSL. No external tools required.",
+            "js": {
+              "packageName": "modelscript",
+              "packageVersion": "0.0.10",
+              "isInPackageManagerWorkspaces": true
+            }
+          },
+          "targets": {
+            "build": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "build"
+              },
+              "metadata": {
+                "scriptContent": "webpack --mode production --devtool hidden-source-map",
+                "runCommand": "npm run build"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build"],
+              "outputs": [
+                "{projectRoot}/dist",
+                "{projectRoot}/build",
+                "{projectRoot}/public",
+                "{projectRoot}/src/**/*.js",
+                "{projectRoot}/bindings/**/*.o",
+                "{projectRoot}/build/**/*.node",
+                "{projectRoot}/build/**/*.wasm",
+                "{projectRoot}/build/Release/tree_sitter_modelica_binding.node"
+              ]
+            },
+            "compile": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "compile"
+              },
+              "metadata": {
+                "scriptContent": "webpack",
+                "runCommand": "npm run compile"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "dev": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "dev"
+              },
+              "metadata": {
+                "scriptContent": "webpack --watch",
+                "runCommand": "npm run dev"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "lint": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "lint"
+              },
+              "metadata": {
+                "scriptContent": "eslint src",
+                "runCommand": "npm run lint"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build"]
+            },
+            "package": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "package"
+              },
+              "metadata": {
+                "scriptContent": "npx @vscode/vsce package --no-dependencies",
+                "runCommand": "npm run package"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "test-web": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "test-web"
+              },
+              "metadata": {
+                "scriptContent": "npm run compile && vscode-test-web --browserType=chromium --quality stable --commit cfbea10c5ffb233ea9177d34726e6056e89913dc --port 3100 --testRunnerDataDir=$HOME/.vscode-test-web --extensionDevelopmentPath=. ./test-data",
+                "runCommand": "npm run test-web"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "watch": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "watch"
+              },
+              "metadata": {
+                "scriptContent": "webpack --watch",
+                "runCommand": "npm run watch"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "nx-release-publish": {
+              "executor": "@nx/js:release-publish",
+              "dependsOn": ["^nx-release-publish"],
+              "options": {},
+              "configurations": {},
+              "parallelism": true
+            }
+          },
+          "implicitDependencies": []
+        }
+      },
+      "@modelscript/cosim": {
+        "name": "@modelscript/cosim",
+        "type": "lib",
+        "data": {
+          "root": "packages/cosim",
+          "name": "@modelscript/cosim",
+          "tags": ["npm:public", "npm:modelscript", "npm:co-simulation", "npm:mqtt", "npm:fmi", "npm:fmu"],
+          "metadata": {
+            "targetGroups": {
+              "NPM Scripts": ["build", "clean", "lint", "watch"]
+            },
+            "description": "MQTT-linked co-simulation engine for ModelScript",
+            "js": {
+              "packageName": "@modelscript/cosim",
+              "packageVersion": "0.0.0",
+              "packageExports": {
+                ".": {
+                  "types": "./dist/index.d.ts",
+                  "import": "./dist/index.js",
+                  "require": "./dist/index.js",
+                  "default": "./dist/index.js"
+                },
+                "./*": {
+                  "types": "./dist/*.d.ts",
+                  "import": "./dist/*.js",
+                  "require": "./dist/*.js",
+                  "default": "./dist/*.js"
+                }
+              },
+              "packageMain": "dist/index.js",
+              "isInPackageManagerWorkspaces": true
+            }
+          },
+          "targets": {
+            "build": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "build"
+              },
+              "metadata": {
+                "scriptContent": "npm run clean && npm run lint && tsc",
+                "runCommand": "npm run build"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build"],
+              "outputs": [
+                "{projectRoot}/dist",
+                "{projectRoot}/build",
+                "{projectRoot}/public",
+                "{projectRoot}/src/**/*.js",
+                "{projectRoot}/bindings/**/*.o",
+                "{projectRoot}/build/**/*.node",
+                "{projectRoot}/build/**/*.wasm",
+                "{projectRoot}/build/Release/tree_sitter_modelica_binding.node"
+              ]
+            },
+            "clean": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "clean"
+              },
+              "metadata": {
+                "scriptContent": "rimraf dist",
+                "runCommand": "npm run clean"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "lint": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "lint"
+              },
+              "metadata": {
+                "scriptContent": "eslint src",
+                "runCommand": "npm run lint"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build"]
+            },
+            "watch": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "watch"
+              },
+              "metadata": {
+                "scriptContent": "tsc --watch",
+                "runCommand": "npm run watch"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "nx-release-publish": {
+              "executor": "@nx/js:release-publish",
+              "dependsOn": ["^nx-release-publish"],
+              "options": {},
+              "configurations": {},
+              "parallelism": true
+            }
+          },
+          "implicitDependencies": []
+        }
+      },
+      "@modelscript/utils": {
+        "name": "@modelscript/utils",
+        "type": "lib",
+        "data": {
+          "root": "packages/utils",
+          "name": "@modelscript/utils",
+          "tags": ["npm:public"],
+          "metadata": {
+            "targetGroups": {
+              "NPM Scripts": ["build", "clean"]
+            },
+            "js": {
+              "packageName": "@modelscript/utils",
+              "packageVersion": "0.0.18",
+              "packageExports": {
+                ".": {
+                  "types": "./dist/index.d.ts",
+                  "import": "./dist/index.js"
+                }
+              },
+              "packageMain": "dist/index.js",
+              "isInPackageManagerWorkspaces": true
+            }
+          },
+          "targets": {
+            "build": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "build"
+              },
+              "metadata": {
+                "scriptContent": "npm run clean && tsc",
+                "runCommand": "npm run build"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build"],
+              "outputs": [
+                "{projectRoot}/dist",
+                "{projectRoot}/build",
+                "{projectRoot}/public",
+                "{projectRoot}/src/**/*.js",
+                "{projectRoot}/bindings/**/*.o",
+                "{projectRoot}/build/**/*.node",
+                "{projectRoot}/build/**/*.wasm",
+                "{projectRoot}/build/Release/tree_sitter_modelica_binding.node"
+              ]
+            },
+            "clean": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "clean"
+              },
+              "metadata": {
+                "scriptContent": "rimraf dist",
+                "runCommand": "npm run clean"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "nx-release-publish": {
+              "executor": "@nx/js:release-publish",
+              "dependsOn": ["^nx-release-publish"],
+              "options": {},
+              "configurations": {},
+              "parallelism": true
+            }
+          },
+          "implicitDependencies": []
+        }
+      },
+      "@modelscript/core": {
+        "name": "@modelscript/core",
+        "type": "lib",
+        "data": {
+          "root": "packages/core",
+          "name": "@modelscript/core",
+          "tags": ["npm:public", "npm:modelscript"],
+          "implicitDependencies": ["!@modelscript/cli"],
+          "metadata": {
+            "targetGroups": {
+              "NPM Scripts": ["build", "clean", "lint", "test", "watch"]
+            },
+            "description": "ModelScript",
+            "js": {
+              "packageName": "@modelscript/core",
+              "packageVersion": "0.0.18",
+              "packageExports": {
+                ".": {
+                  "types": "./dist/index.d.ts",
+                  "import": "./dist/index.js",
+                  "require": "./dist/index.js",
+                  "default": "./dist/index.js"
+                }
+              },
+              "packageMain": "dist/index.js",
+              "isInPackageManagerWorkspaces": true
+            }
+          },
+          "targets": {
+            "build": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "build"
+              },
+              "metadata": {
+                "scriptContent": "npm run clean && npm run lint && tsc",
+                "runCommand": "npm run build"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build"],
+              "outputs": [
+                "{projectRoot}/dist",
+                "{projectRoot}/build",
+                "{projectRoot}/public",
+                "{projectRoot}/src/**/*.js",
+                "{projectRoot}/bindings/**/*.o",
+                "{projectRoot}/build/**/*.node",
+                "{projectRoot}/build/**/*.wasm",
+                "{projectRoot}/build/Release/tree_sitter_modelica_binding.node"
+              ]
+            },
+            "clean": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "clean"
+              },
+              "metadata": {
+                "scriptContent": "rimraf dist",
+                "runCommand": "npm run clean"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "lint": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "lint"
+              },
+              "metadata": {
+                "scriptContent": "eslint src tests",
+                "runCommand": "npm run lint"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build"]
+            },
+            "test": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "test"
+              },
+              "metadata": {
+                "scriptContent": "NODE_OPTIONS='--max-old-space-size=8192' npx tsx tests/testsuite-runner.ts",
+                "runCommand": "npm run test"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build", "build"],
+              "outputs": ["{projectRoot}/coverage"]
+            },
+            "watch": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "watch"
+              },
+              "metadata": {
+                "scriptContent": "tsc --watch",
+                "runCommand": "npm run watch"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "nx-release-publish": {
+              "executor": "@nx/js:release-publish",
+              "dependsOn": ["^nx-release-publish"],
+              "options": {},
+              "configurations": {},
+              "parallelism": true
+            }
+          }
+        }
+      },
+      "@modelscript/ecad": {
+        "name": "@modelscript/ecad",
+        "type": "lib",
+        "data": {
+          "root": "packages/ecad",
+          "name": "@modelscript/ecad",
+          "tags": ["npm:public", "npm:modelscript", "npm:ecad", "npm:netlist", "npm:gerber"],
+          "metadata": {
+            "targetGroups": {
+              "NPM Scripts": ["build", "clean", "lint", "watch"]
+            },
+            "description": "ECAD structural extraction and Gerber layout generator for ModelScript",
+            "js": {
+              "packageName": "@modelscript/ecad",
+              "packageVersion": "0.0.0",
+              "packageExports": {
+                ".": {
+                  "types": "./dist/index.d.ts",
+                  "import": "./dist/index.js",
+                  "require": "./dist/index.js",
+                  "default": "./dist/index.js"
+                }
+              },
+              "packageMain": "dist/index.js",
+              "isInPackageManagerWorkspaces": true
+            }
+          },
+          "targets": {
+            "build": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "build"
+              },
+              "metadata": {
+                "scriptContent": "npm run clean && tsc",
+                "runCommand": "npm run build"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build"],
+              "outputs": [
+                "{projectRoot}/dist",
+                "{projectRoot}/build",
+                "{projectRoot}/public",
+                "{projectRoot}/src/**/*.js",
+                "{projectRoot}/bindings/**/*.o",
+                "{projectRoot}/build/**/*.node",
+                "{projectRoot}/build/**/*.wasm",
+                "{projectRoot}/build/Release/tree_sitter_modelica_binding.node"
+              ]
+            },
+            "clean": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "clean"
+              },
+              "metadata": {
+                "scriptContent": "rimraf dist",
+                "runCommand": "npm run clean"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "lint": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "lint"
+              },
+              "metadata": {
+                "scriptContent": "eslint src",
+                "runCommand": "npm run lint"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build"]
+            },
+            "watch": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "watch"
+              },
+              "metadata": {
+                "scriptContent": "tsc --watch",
+                "runCommand": "npm run watch"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "nx-release-publish": {
+              "executor": "@nx/js:release-publish",
+              "dependsOn": ["^nx-release-publish"],
+              "options": {},
+              "configurations": {},
+              "parallelism": true
+            }
+          },
+          "implicitDependencies": []
+        }
+      },
+      "@modelscript/fmi": {
+        "name": "@modelscript/fmi",
+        "type": "lib",
+        "data": {
+          "root": "packages/fmi",
+          "name": "@modelscript/fmi",
+          "tags": ["npm:public", "npm:modelscript", "npm:fmi", "npm:fmu", "npm:co-simulation", "npm:model-exchange"],
+          "metadata": {
+            "targetGroups": {
+              "NPM Scripts": ["build", "clean", "lint", "watch"]
+            },
+            "description": "FMI 2.0/3.0 model description, C code generation, and FMU archive builder for ModelScript",
+            "js": {
+              "packageName": "@modelscript/fmi",
+              "packageVersion": "0.0.0",
+              "packageExports": {
+                ".": {
+                  "types": "./dist/index.d.ts",
+                  "import": "./dist/index.js",
+                  "require": "./dist/index.js",
+                  "default": "./dist/index.js"
+                }
+              },
+              "packageMain": "dist/index.js",
+              "isInPackageManagerWorkspaces": true
+            }
+          },
+          "targets": {
+            "build": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "build"
+              },
+              "metadata": {
+                "scriptContent": "npm run clean && tsc",
+                "runCommand": "npm run build"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build"],
+              "outputs": [
+                "{projectRoot}/dist",
+                "{projectRoot}/build",
+                "{projectRoot}/public",
+                "{projectRoot}/src/**/*.js",
+                "{projectRoot}/bindings/**/*.o",
+                "{projectRoot}/build/**/*.node",
+                "{projectRoot}/build/**/*.wasm",
+                "{projectRoot}/build/Release/tree_sitter_modelica_binding.node"
+              ]
+            },
+            "clean": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "clean"
+              },
+              "metadata": {
+                "scriptContent": "rimraf dist",
+                "runCommand": "npm run clean"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "lint": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "lint"
+              },
+              "metadata": {
+                "scriptContent": "eslint src --ext .ts,.tsx",
+                "runCommand": "npm run lint"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build"]
+            },
+            "watch": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "watch"
+              },
+              "metadata": {
+                "scriptContent": "tsc --watch",
+                "runCommand": "npm run watch"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "nx-release-publish": {
+              "executor": "@nx/js:release-publish",
+              "dependsOn": ["^nx-release-publish"],
+              "options": {},
+              "configurations": {},
+              "parallelism": true
+            }
+          },
+          "implicitDependencies": []
+        }
+      },
+      "@modelscript/lsp": {
+        "name": "@modelscript/lsp",
+        "type": "app",
+        "data": {
+          "root": "packages/lsp",
+          "name": "@modelscript/lsp",
+          "tags": ["npm:public"],
+          "metadata": {
+            "targetGroups": {
+              "NPM Scripts": ["prebuild", "build", "compile", "lint", "watch"]
+            },
+            "js": {
+              "packageName": "@modelscript/lsp",
+              "packageVersion": "0.0.0",
+              "isInPackageManagerWorkspaces": true
+            }
+          },
+          "targets": {
+            "prebuild": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "prebuild"
+              },
+              "metadata": {
+                "scriptContent": "node ../../scripts/download-msl.cjs && node ../../scripts/download-sysml2.cjs",
+                "runCommand": "npm run prebuild"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "build": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "build"
+              },
+              "metadata": {
+                "scriptContent": "node ../../scripts/download-msl.cjs && node ../../scripts/download-sysml2.cjs && webpack --mode production --devtool hidden-source-map",
+                "runCommand": "npm run build"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build"],
+              "outputs": [
+                "{projectRoot}/dist",
+                "{projectRoot}/build",
+                "{projectRoot}/public",
+                "{projectRoot}/src/**/*.js",
+                "{projectRoot}/bindings/**/*.o",
+                "{projectRoot}/build/**/*.node",
+                "{projectRoot}/build/**/*.wasm",
+                "{projectRoot}/build/Release/tree_sitter_modelica_binding.node"
+              ]
+            },
+            "compile": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "compile"
+              },
+              "metadata": {
+                "scriptContent": "node ../../scripts/download-msl.cjs && node ../../scripts/download-sysml2.cjs && webpack",
+                "runCommand": "npm run compile"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "lint": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "lint"
+              },
+              "metadata": {
+                "scriptContent": "eslint src",
+                "runCommand": "npm run lint"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build"]
+            },
+            "watch": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "watch"
+              },
+              "metadata": {
+                "scriptContent": "webpack --watch",
+                "runCommand": "npm run watch"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "nx-release-publish": {
+              "executor": "@nx/js:release-publish",
+              "dependsOn": ["^nx-release-publish"],
+              "options": {},
+              "configurations": {},
+              "parallelism": true
+            }
+          },
+          "implicitDependencies": []
+        }
+      },
+      "@modelscript/mcp": {
+        "name": "@modelscript/mcp",
+        "type": "lib",
+        "data": {
+          "root": "packages/mcp",
+          "name": "@modelscript/mcp",
+          "tags": ["npm:public"],
+          "metadata": {
+            "targetGroups": {
+              "NPM Scripts": ["build", "clean", "lint"]
+            },
+            "description": "Modelica MCP server for LLM integration",
+            "js": {
+              "packageName": "@modelscript/mcp",
+              "packageVersion": "0.0.1",
+              "isInPackageManagerWorkspaces": true
+            }
+          },
+          "targets": {
+            "build": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "build"
+              },
+              "metadata": {
+                "scriptContent": "NODE_OPTIONS=--max-old-space-size=8192 tsc",
+                "runCommand": "npm run build"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build"],
+              "outputs": [
+                "{projectRoot}/dist",
+                "{projectRoot}/build",
+                "{projectRoot}/public",
+                "{projectRoot}/src/**/*.js",
+                "{projectRoot}/bindings/**/*.o",
+                "{projectRoot}/build/**/*.node",
+                "{projectRoot}/build/**/*.wasm",
+                "{projectRoot}/build/Release/tree_sitter_modelica_binding.node"
+              ]
+            },
+            "clean": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "clean"
+              },
+              "metadata": {
+                "scriptContent": "rimraf dist",
+                "runCommand": "npm run clean"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "lint": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "lint"
+              },
+              "metadata": {
+                "scriptContent": "eslint src",
+                "runCommand": "npm run lint"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build"]
+            },
+            "nx-release-publish": {
+              "executor": "@nx/js:release-publish",
+              "dependsOn": ["^nx-release-publish"],
+              "options": {},
+              "configurations": {},
+              "parallelism": true
+            }
+          },
+          "implicitDependencies": []
+        }
+      },
+      "@modelscript/morsel": {
+        "name": "@modelscript/morsel",
+        "type": "app",
+        "data": {
+          "root": "apps/morsel",
+          "name": "@modelscript/morsel",
+          "tags": ["npm:private"],
+          "metadata": {
+            "targetGroups": {
+              "NPM Scripts": ["prebuild", "build", "dev", "lint", "start", "typecheck"]
+            },
+            "js": {
+              "packageName": "@modelscript/morsel",
+              "packageVersion": "0.0.0",
+              "isInPackageManagerWorkspaces": true
+            }
+          },
+          "targets": {
+            "prebuild": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "prebuild"
+              },
+              "metadata": {
+                "scriptContent": "node ../../scripts/download-msl.cjs && node ../../scripts/download-sysml2.cjs && cp -n ../../scripts/ModelicaStandardLibrary_v4.1.0.zip public/ModelicaStandardLibrary_v4.1.0.zip 2>/dev/null || true && cp -n ../../scripts/SysML-v2-Release-2026-03.zip public/SysML-v2-Release-2026-03.zip 2>/dev/null || true",
+                "runCommand": "npm run prebuild"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "build": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "build"
+              },
+              "metadata": {
+                "scriptContent": "react-router build",
+                "runCommand": "npm run build"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build"],
+              "outputs": [
+                "{projectRoot}/dist",
+                "{projectRoot}/build",
+                "{projectRoot}/public",
+                "{projectRoot}/src/**/*.js",
+                "{projectRoot}/bindings/**/*.o",
+                "{projectRoot}/build/**/*.node",
+                "{projectRoot}/build/**/*.wasm",
+                "{projectRoot}/build/Release/tree_sitter_modelica_binding.node"
+              ]
+            },
+            "dev": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "dev"
+              },
+              "metadata": {
+                "scriptContent": "react-router dev --port 3002",
+                "runCommand": "npm run dev"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "lint": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "lint"
+              },
+              "metadata": {
+                "scriptContent": "eslint app/",
+                "runCommand": "npm run lint"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build"]
+            },
+            "start": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "start"
+              },
+              "metadata": {
+                "scriptContent": "PORT=3002 react-router-serve ./build/server/index.js",
+                "runCommand": "npm run start"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "typecheck": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "typecheck"
+              },
+              "metadata": {
+                "scriptContent": "react-router typegen && tsc",
+                "runCommand": "npm run typecheck"
+              },
+              "configurations": {},
+              "parallelism": true
+            }
+          },
+          "implicitDependencies": []
+        }
+      },
+      "@modelscript/site": {
+        "name": "@modelscript/site",
+        "type": "app",
+        "data": {
+          "root": "apps/site",
+          "name": "@modelscript/site",
+          "tags": ["npm:private"],
+          "metadata": {
+            "targetGroups": {
+              "NPM Scripts": ["build", "dev", "lint", "start", "typecheck"]
+            },
+            "js": {
+              "packageName": "@modelscript/site",
+              "packageVersion": "0.0.0",
+              "isInPackageManagerWorkspaces": true
+            }
+          },
+          "targets": {
+            "build": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "build"
+              },
+              "metadata": {
+                "scriptContent": "react-router build",
+                "runCommand": "npm run build"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build"],
+              "outputs": [
+                "{projectRoot}/dist",
+                "{projectRoot}/build",
+                "{projectRoot}/public",
+                "{projectRoot}/src/**/*.js",
+                "{projectRoot}/bindings/**/*.o",
+                "{projectRoot}/build/**/*.node",
+                "{projectRoot}/build/**/*.wasm",
+                "{projectRoot}/build/Release/tree_sitter_modelica_binding.node"
+              ]
+            },
+            "dev": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "dev"
+              },
+              "metadata": {
+                "scriptContent": "react-router dev",
+                "runCommand": "npm run dev"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "lint": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "lint"
+              },
+              "metadata": {
+                "scriptContent": "eslint app",
+                "runCommand": "npm run lint"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build"]
+            },
+            "start": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "start"
+              },
+              "metadata": {
+                "scriptContent": "react-router-serve ./build/server/index.js",
+                "runCommand": "npm run start"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "typecheck": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "typecheck"
+              },
+              "metadata": {
+                "scriptContent": "react-router typegen && tsc",
+                "runCommand": "npm run typecheck"
+              },
+              "configurations": {},
+              "parallelism": true
+            }
+          },
+          "implicitDependencies": []
+        }
+      },
+      "@modelscript/api": {
+        "name": "@modelscript/api",
+        "type": "app",
+        "data": {
+          "root": "apps/api",
+          "name": "@modelscript/api",
+          "tags": ["npm:public", "npm:modelscript"],
+          "metadata": {
+            "targetGroups": {
+              "NPM Scripts": ["build", "clean", "dev", "lint", "watch"]
+            },
+            "description": "REST API for ModelScript",
+            "js": {
+              "packageName": "@modelscript/api",
+              "packageVersion": "0.0.0",
+              "isInPackageManagerWorkspaces": true
+            }
+          },
+          "targets": {
+            "build": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "build"
+              },
+              "metadata": {
+                "scriptContent": "npm run clean && npm run lint && tsc",
+                "runCommand": "npm run build"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build"],
+              "outputs": [
+                "{projectRoot}/dist",
+                "{projectRoot}/build",
+                "{projectRoot}/public",
+                "{projectRoot}/src/**/*.js",
+                "{projectRoot}/bindings/**/*.o",
+                "{projectRoot}/build/**/*.node",
+                "{projectRoot}/build/**/*.wasm",
+                "{projectRoot}/build/Release/tree_sitter_modelica_binding.node"
+              ]
+            },
+            "clean": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "clean"
+              },
+              "metadata": {
+                "scriptContent": "rimraf dist",
+                "runCommand": "npm run clean"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "dev": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "dev"
+              },
+              "metadata": {
+                "scriptContent": "PORT=3000 NODE_OPTIONS='--max-old-space-size=8192' tsx src/main.ts",
+                "runCommand": "npm run dev"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "lint": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "lint"
+              },
+              "metadata": {
+                "scriptContent": "eslint src",
+                "runCommand": "npm run lint"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build"]
+            },
+            "watch": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "watch"
+              },
+              "metadata": {
+                "scriptContent": "tsc --watch",
+                "runCommand": "npm run watch"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "nx-release-publish": {
+              "executor": "@nx/js:release-publish",
+              "dependsOn": ["^nx-release-publish"],
+              "options": {},
+              "configurations": {},
+              "parallelism": true
+            }
+          },
+          "implicitDependencies": []
+        }
+      },
+      "@modelscript/cli": {
+        "name": "@modelscript/cli",
+        "type": "lib",
+        "data": {
+          "root": "apps/cli",
+          "name": "@modelscript/cli",
+          "tags": ["npm:public", "npm:modelscript"],
+          "metadata": {
+            "targetGroups": {
+              "NPM Scripts": ["build", "clean", "lint", "watch"]
+            },
+            "description": "CLI for ModelScript",
+            "js": {
+              "packageName": "@modelscript/cli",
+              "packageVersion": "0.0.18",
+              "isInPackageManagerWorkspaces": true
+            }
+          },
+          "targets": {
+            "build": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "build"
+              },
+              "metadata": {
+                "scriptContent": "npm run clean && npm run lint && tsc && chmod +x dist/main.js",
+                "runCommand": "npm run build"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build"],
+              "outputs": [
+                "{projectRoot}/dist",
+                "{projectRoot}/build",
+                "{projectRoot}/public",
+                "{projectRoot}/src/**/*.js",
+                "{projectRoot}/bindings/**/*.o",
+                "{projectRoot}/build/**/*.node",
+                "{projectRoot}/build/**/*.wasm",
+                "{projectRoot}/build/Release/tree_sitter_modelica_binding.node"
+              ]
+            },
+            "clean": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "clean"
+              },
+              "metadata": {
+                "scriptContent": "rimraf dist",
+                "runCommand": "npm run clean"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "lint": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "lint"
+              },
+              "metadata": {
+                "scriptContent": "eslint src",
+                "runCommand": "npm run lint"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build"]
+            },
+            "watch": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "watch"
+              },
+              "metadata": {
+                "scriptContent": "tsc --watch",
+                "runCommand": "npm run watch"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "nx-release-publish": {
+              "executor": "@nx/js:release-publish",
+              "dependsOn": ["^nx-release-publish"],
+              "options": {},
+              "configurations": {},
+              "parallelism": true
+            }
+          },
+          "implicitDependencies": []
+        }
+      },
+      "@modelscript/ide": {
+        "name": "@modelscript/ide",
+        "type": "app",
+        "data": {
+          "root": "apps/ide",
+          "name": "@modelscript/ide",
+          "tags": ["npm:private"],
+          "metadata": {
+            "targetGroups": {
+              "NPM Scripts": [
+                "build",
+                "build-github-fs",
+                "build-server",
+                "build-static",
+                "dev",
+                "download-model",
+                "download-vscode",
+                "lint"
+              ]
+            },
+            "description": "ModelScript VS Code Web IDE with GitHub/GitLab repository integration",
+            "js": {
+              "packageName": "@modelscript/ide",
+              "packageVersion": "0.0.0",
+              "isInPackageManagerWorkspaces": true
+            }
+          },
+          "targets": {
+            "build": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "build"
+              },
+              "metadata": {
+                "scriptContent": "npm run download-vscode && npm run build-github-fs && npm run build-server",
+                "runCommand": "npm run build"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build"],
+              "outputs": [
+                "{projectRoot}/dist",
+                "{projectRoot}/build",
+                "{projectRoot}/public",
+                "{projectRoot}/src/**/*.js",
+                "{projectRoot}/bindings/**/*.o",
+                "{projectRoot}/build/**/*.node",
+                "{projectRoot}/build/**/*.wasm",
+                "{projectRoot}/build/Release/tree_sitter_modelica_binding.node"
+              ]
+            },
+            "build-github-fs": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "build-github-fs"
+              },
+              "metadata": {
+                "scriptContent": "cd github-fs && npx webpack --mode production --devtool hidden-source-map",
+                "runCommand": "npm run build-github-fs"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "build-server": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "build-server"
+              },
+              "metadata": {
+                "scriptContent": "npx esbuild src/server.ts --bundle --platform=node --format=esm --outfile=dist/server.js --external:express --external:http-proxy-middleware",
+                "runCommand": "npm run build-server"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "build-static": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "build-static"
+              },
+              "metadata": {
+                "scriptContent": "npm run download-vscode && npm run build-github-fs && npx tsx src/build-static.ts",
+                "runCommand": "npm run build-static"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "dev": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "dev"
+              },
+              "metadata": {
+                "scriptContent": "npm run download-vscode && PORT=3003 npx tsx src/server.ts",
+                "runCommand": "npm run dev"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "download-model": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "download-model"
+              },
+              "metadata": {
+                "scriptContent": "bash scripts/download-model.sh",
+                "runCommand": "npm run download-model"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "download-vscode": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "download-vscode"
+              },
+              "metadata": {
+                "scriptContent": "npx tsx src/download-vscode.ts",
+                "runCommand": "npm run download-vscode"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "lint": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "lint"
+              },
+              "metadata": {
+                "scriptContent": "eslint src",
+                "runCommand": "npm run lint"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build"]
+            }
+          },
+          "implicitDependencies": []
+        }
+      },
+      "@modelscript/web": {
+        "name": "@modelscript/web",
+        "type": "app",
+        "data": {
+          "root": "apps/web",
+          "name": "@modelscript/web",
+          "tags": ["npm:private"],
+          "metadata": {
+            "targetGroups": {
+              "NPM Scripts": ["build", "dev", "lint", "preview"]
+            },
+            "js": {
+              "packageName": "@modelscript/web",
+              "packageVersion": "0.0.0",
+              "isInPackageManagerWorkspaces": true
+            }
+          },
+          "targets": {
+            "build": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "build"
+              },
+              "metadata": {
+                "scriptContent": "tsc -b && vite build",
+                "runCommand": "npm run build"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build"],
+              "outputs": [
+                "{projectRoot}/dist",
+                "{projectRoot}/build",
+                "{projectRoot}/public",
+                "{projectRoot}/src/**/*.js",
+                "{projectRoot}/bindings/**/*.o",
+                "{projectRoot}/build/**/*.node",
+                "{projectRoot}/build/**/*.wasm",
+                "{projectRoot}/build/Release/tree_sitter_modelica_binding.node"
+              ]
+            },
+            "dev": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "dev"
+              },
+              "metadata": {
+                "scriptContent": "vite --port 3001",
+                "runCommand": "npm run dev"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "lint": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "lint"
+              },
+              "metadata": {
+                "scriptContent": "eslint .",
+                "runCommand": "npm run lint"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build"]
+            },
+            "preview": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "preview"
+              },
+              "metadata": {
+                "scriptContent": "vite preview",
+                "runCommand": "npm run preview"
+              },
+              "configurations": {},
+              "parallelism": true
+            }
+          },
+          "implicitDependencies": []
+        }
+      }
+    },
+    "dependencies": {
+      "@modelscript/tree-sitter-modelica": [],
+      "@modelscript/modelica-polyglot": [
+        {
+          "source": "@modelscript/modelica-polyglot",
+          "target": "@modelscript/utils",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/modelica-polyglot",
+          "target": "@modelscript/polyglot",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/modelica-polyglot",
+          "target": "@modelscript/polyglot",
+          "type": "dynamic"
+        }
+      ],
+      "@modelscript/sysml2-polyglot": [
+        {
+          "source": "@modelscript/sysml2-polyglot",
+          "target": "@modelscript/polyglot",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/sysml2-polyglot",
+          "target": "@modelscript/polyglot",
+          "type": "dynamic"
+        }
+      ],
+      "@modelscript/optimizer": [
+        {
+          "source": "@modelscript/optimizer",
+          "target": "@modelscript/core",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/optimizer",
+          "target": "@modelscript/modelica-polyglot",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/optimizer",
+          "target": "@modelscript/simulator",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/optimizer",
+          "target": "@modelscript/symbolics",
+          "type": "static"
+        }
+      ],
+      "@modelscript/simulator": [
+        {
+          "source": "@modelscript/simulator",
+          "target": "@modelscript/core",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/simulator",
+          "target": "@modelscript/modelica-polyglot",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/simulator",
+          "target": "@modelscript/symbolics",
+          "type": "static"
+        }
+      ],
+      "@modelscript/symbolics": [
+        {
+          "source": "@modelscript/symbolics",
+          "target": "@modelscript/modelica-polyglot",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/symbolics",
+          "target": "@modelscript/utils",
+          "type": "static"
+        }
+      ],
+      "@modelscript/polyglot": [],
+      "modelscript": [
+        {
+          "source": "modelscript",
+          "target": "@modelscript/lsp",
+          "type": "static"
+        }
+      ],
+      "@modelscript/cosim": [
+        {
+          "source": "@modelscript/cosim",
+          "target": "@modelscript/core",
+          "type": "static"
+        }
+      ],
+      "@modelscript/utils": [],
+      "@modelscript/core": [
+        {
+          "source": "@modelscript/core",
+          "target": "@modelscript/modelica-polyglot",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/core",
+          "target": "@modelscript/polyglot",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/core",
+          "target": "@modelscript/symbolics",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/core",
+          "target": "@modelscript/sysml2-polyglot",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/core",
+          "target": "@modelscript/utils",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/core",
+          "target": "@modelscript/tree-sitter-modelica",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/core",
+          "target": "@modelscript/lsp",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/core",
+          "target": "@modelscript/lsp",
+          "type": "dynamic"
+        }
+      ],
+      "@modelscript/ecad": [
+        {
+          "source": "@modelscript/ecad",
+          "target": "@modelscript/core",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/ecad",
+          "target": "@modelscript/symbolics",
+          "type": "static"
+        }
+      ],
+      "@modelscript/fmi": [
+        {
+          "source": "@modelscript/fmi",
+          "target": "@modelscript/core",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/fmi",
+          "target": "@modelscript/modelica-polyglot",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/fmi",
+          "target": "@modelscript/symbolics",
+          "type": "static"
+        }
+      ],
+      "@modelscript/lsp": [
+        {
+          "source": "@modelscript/lsp",
+          "target": "@modelscript/core",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/lsp",
+          "target": "@modelscript/fmi",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/lsp",
+          "target": "@modelscript/fmi",
+          "type": "dynamic"
+        },
+        {
+          "source": "@modelscript/lsp",
+          "target": "@modelscript/optimizer",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/lsp",
+          "target": "@modelscript/simulator",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/lsp",
+          "target": "@modelscript/polyglot",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/lsp",
+          "target": "@modelscript/modelica-polyglot",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/lsp",
+          "target": "@modelscript/sysml2-polyglot",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/lsp",
+          "target": "@modelscript/utils",
+          "type": "static"
+        }
+      ],
+      "@modelscript/mcp": [
+        {
+          "source": "@modelscript/mcp",
+          "target": "@modelscript/core",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/mcp",
+          "target": "@modelscript/fmi",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/mcp",
+          "target": "@modelscript/modelica-polyglot",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/mcp",
+          "target": "@modelscript/optimizer",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/mcp",
+          "target": "@modelscript/polyglot",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/mcp",
+          "target": "@modelscript/simulator",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/mcp",
+          "target": "@modelscript/sysml2-polyglot",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/mcp",
+          "target": "@modelscript/tree-sitter-modelica",
+          "type": "static"
+        }
+      ],
+      "@modelscript/morsel": [
+        {
+          "source": "@modelscript/morsel",
+          "target": "@modelscript/core",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/morsel",
+          "target": "@modelscript/simulator",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/morsel",
+          "target": "@modelscript/lsp",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/morsel",
+          "target": "@modelscript/tree-sitter-modelica",
+          "type": "static"
+        }
+      ],
+      "@modelscript/site": [],
+      "@modelscript/api": [
+        {
+          "source": "@modelscript/api",
+          "target": "@modelscript/core",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/api",
+          "target": "@modelscript/core",
+          "type": "dynamic"
+        },
+        {
+          "source": "@modelscript/api",
+          "target": "@modelscript/cosim",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/api",
+          "target": "@modelscript/tree-sitter-modelica",
+          "type": "static"
+        }
+      ],
+      "@modelscript/cli": [
+        {
+          "source": "@modelscript/cli",
+          "target": "@modelscript/core",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/cli",
+          "target": "@modelscript/fmi",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/cli",
+          "target": "@modelscript/optimizer",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/cli",
+          "target": "@modelscript/simulator",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/cli",
+          "target": "@modelscript/tree-sitter-modelica",
+          "type": "static"
+        }
+      ],
+      "@modelscript/ide": [],
+      "@modelscript/web": [
+        {
+          "source": "@modelscript/web",
+          "target": "@modelscript/core",
+          "type": "static"
+        }
+      ]
+    }
+  }
+}

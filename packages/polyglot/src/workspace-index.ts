@@ -121,6 +121,12 @@ export class WorkspaceIndex {
 
       file.index = { symbols, byName, childrenOf };
       file.dirty = false;
+
+      // Invalidate caches so toUnifiedPartial() / toTreeIndex() pick up the new entries.
+      // Adding to dirtyUris triggers the incremental merge path in toUnifiedPartial().
+      this.dirtyUris.add(uri);
+      this.unifiedCache = null;
+      this.skeletonCache = null;
     }
 
     return file.index;
