@@ -84,7 +84,17 @@ export class SyntheticInterpreterVariable {
 }
 
 function toModArgs(expr: ModelicaExpression | null, args: any[] = []): any {
-  return { bindingExpression: expr, args };
+  return {
+    bindingExpression: expr,
+    args: args.map((a) => ({
+      name: a.name,
+      each: a.each ?? false,
+      final: a.final ?? false,
+      value: a.value,
+      nestedArgs: a.nestedArgs ?? [],
+      isRedeclaration: a.isRedeclaration ?? false,
+    })),
+  };
 }
 
 export type BuiltinScriptingFunction = (

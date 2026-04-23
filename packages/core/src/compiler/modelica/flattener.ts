@@ -5374,8 +5374,15 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
                 firstPartResolved && "abstractSyntaxNode" in firstPartResolved
                   ? (firstPartResolved as { abstractSyntaxNode?: unknown }).abstractSyntaxNode
                   : undefined;
+              const localId = "id" in localResolved ? (localResolved as any).id : undefined;
+              const resolvedId =
+                firstPartResolved && "id" in firstPartResolved ? (firstPartResolved as any).id : undefined;
 
-              if (localResolved === firstPartResolved || (localAST && resolvedAST && localAST === resolvedAST)) {
+              if (
+                localResolved === firstPartResolved ||
+                (localAST && resolvedAST && localAST === resolvedAST) ||
+                (localId !== undefined && resolvedId !== undefined && localId === resolvedId)
+              ) {
                 // verify that stackClass (or its base classes) is the lexical parent of the resolved element.
                 const ownerClass = localResolved.parent;
                 if (localResolved === stackClass) {
@@ -5397,8 +5404,16 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
                       ownerClass && "abstractSyntaxNode" in ownerClass
                         ? (ownerClass as { abstractSyntaxNode?: unknown }).abstractSyntaxNode
                         : undefined;
+                    const clsId = "id" in cls ? (cls as any).id : undefined;
+                    const ownerId = ownerClass && "id" in ownerClass ? (ownerClass as any).id : undefined;
 
-                    if (cls === ownerClass || cls === localResolved || (clsAST && ownerAST && clsAST === ownerAST)) {
+                    if (
+                      cls === ownerClass ||
+                      cls === localResolved ||
+                      (clsAST && ownerAST && clsAST === ownerAST) ||
+                      (clsId !== undefined && ownerId !== undefined && clsId === ownerId) ||
+                      (clsId !== undefined && localId !== undefined && clsId === localId)
+                    ) {
                       isOwned = true;
                       break;
                     }
