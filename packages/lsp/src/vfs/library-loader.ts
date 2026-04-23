@@ -3,7 +3,7 @@ import { unzipSync } from "fflate";
 import type { BrowserFileSystem } from "./browser-file-system";
 import { idbGet, idbPut, MSL_VERSION_KEY, openMSLCache } from "./browser-file-system";
 
-import type { Parser, Tree } from "web-tree-sitter";
+import type { Parser, Tree } from "@modelscript/utils";
 
 export const SYSML_VERSION_KEY = "SysML-v2-Release-2026-03";
 
@@ -145,7 +145,8 @@ export async function loadMSL(serverDistBase: string, ctx: LoaderContext): Promi
                     mslTreeCache.set(fullPath, null);
                   }
                 }
-                return mslTreeCache.get(fullPath)?.rootNode ?? null;
+                return (mslTreeCache.get(fullPath)?.rootNode ??
+                  null) as unknown as import("@modelscript/utils").SyntaxNode;
               },
               parentFQN,
             );
@@ -230,7 +231,7 @@ export async function loadSysML2StandardLibrary(serverDistBase: string, ctx: Loa
         const tree = ctx.sysml2Parser.parse(text);
         const node = ctx.documentTrees.get(uri);
         if (node && tree) node.tree = tree;
-        return tree ? tree.rootNode : null;
+        return (tree ? tree.rootNode : null) as unknown as import("@modelscript/utils").SyntaxNode;
       });
       fileCount++;
     }

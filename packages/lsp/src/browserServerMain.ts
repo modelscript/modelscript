@@ -429,8 +429,8 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
       sharedContext: sharedContext,
       globalWorkspaceIndex,
       sysml2WorkspaceIndex,
-      documentTrees,
-      sysml2Parser,
+      documentTrees: documentTrees as any,
+      sysml2Parser: sysml2Parser as any,
     };
     await loadMSL(serverDistBase, loaderCtx);
 
