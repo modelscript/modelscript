@@ -320,6 +320,15 @@ export class QueryBackedClassInstance extends QueryBackedElement {
       return new QueryBackedExtendsClassInstance(eid, this.db);
     }
     if (entry.kind === "Class") {
+      let arrayDims = null;
+      try {
+        arrayDims = this.db.query("arrayDimensions", eid);
+      } catch {
+        // Ignored
+      }
+      if (arrayDims && (arrayDims as any[]).length > 0)
+        return new QueryBackedArrayClassInstance(eid, this.db, arrayDims as any[]);
+
       const meta = entry.metadata as Record<string, unknown>;
       if (meta?.isPredefined) {
         if (entry.name === "Integer") return new QueryBackedIntegerClassInstance(eid, this.db);
@@ -328,13 +337,6 @@ export class QueryBackedClassInstance extends QueryBackedElement {
         if (entry.name === "Real") return new QueryBackedRealClassInstance(eid, this.db);
       }
       if (meta?.isEnumeration) return new QueryBackedEnumerationClassInstance(eid, this.db);
-      let arrayDims = null;
-      try {
-        arrayDims = this.db.query("arrayDimensions", eid);
-      } catch {
-        // Ignored
-      }
-      if (arrayDims && (arrayDims as number[]).length > 0) return new QueryBackedArrayClassInstance(eid, this.db);
       return new QueryBackedClassInstance(eid, this.db);
     }
     return new QueryBackedElement(eid, this.db);
@@ -583,6 +585,15 @@ export class QueryBackedClassInstance extends QueryBackedElement {
       return new QueryBackedComponentInstance(resolved.id, this.db);
     }
     if (resolved.kind === "Class") {
+      let arrayDims = null;
+      try {
+        arrayDims = this.db.query("arrayDimensions", resolved.id);
+      } catch {
+        // Ignored
+      }
+      if (arrayDims && (arrayDims as any[]).length > 0)
+        return new QueryBackedArrayClassInstance(resolved.id, this.db, arrayDims as any[]);
+
       const meta = resolved.metadata as Record<string, unknown>;
       if (meta?.isPredefined) {
         if (resolved.name === "Integer") return new QueryBackedIntegerClassInstance(resolved.id, this.db);
@@ -591,14 +602,7 @@ export class QueryBackedClassInstance extends QueryBackedElement {
         if (resolved.name === "Real") return new QueryBackedRealClassInstance(resolved.id, this.db);
       }
       if (meta?.isEnumeration) return new QueryBackedEnumerationClassInstance(resolved.id, this.db);
-      let arrayDims = null;
-      try {
-        arrayDims = this.db.query("arrayDimensions", resolved.id);
-      } catch {
-        // Ignored
-      }
-      if (arrayDims && (arrayDims as number[]).length > 0)
-        return new QueryBackedArrayClassInstance(resolved.id, this.db);
+
       return new QueryBackedClassInstance(resolved.id, this.db);
     }
     return new QueryBackedElement(resolved.id, this.db);
@@ -824,6 +828,10 @@ export class QueryBackedComponentInstance extends QueryBackedClassInstance {
     const classEntry = this.db.symbol(classId);
     if (classEntry) {
       const meta = classEntry.metadata as Record<string, unknown>;
+      const arrayDims = this.db.query("arrayDimensions", this.id);
+      if (arrayDims && (arrayDims as any[]).length > 0)
+        return new QueryBackedArrayClassInstance(classId, this.db, arrayDims as any[]);
+
       if (meta?.isPredefined) {
         if (classEntry.name === "Integer") return new QueryBackedIntegerClassInstance(classId, this.db);
         if (classEntry.name === "Boolean") return new QueryBackedBooleanClassInstance(classId, this.db);
@@ -831,8 +839,6 @@ export class QueryBackedComponentInstance extends QueryBackedClassInstance {
         if (classEntry.name === "Real") return new QueryBackedRealClassInstance(classId, this.db);
       }
       if (meta?.isEnumeration) return new QueryBackedEnumerationClassInstance(classId, this.db);
-      const arrayDims = this.db.query("arrayDimensions", this.id);
-      if (arrayDims && (arrayDims as number[]).length > 0) return new QueryBackedArrayClassInstance(classId, this.db);
     }
     return new QueryBackedClassInstance(classId, this.db);
   }
@@ -1122,12 +1128,25 @@ export class QueryBackedRealClassInstance extends QueryBackedPredefinedClassInst
   }
 }
 export class QueryBackedArrayClassInstance extends QueryBackedClassInstance {
+  constructor(
+    id: SymbolId,
+    db: QueryDB,
+    public readonly _arrayDims?: any[],
+  ) {
+    super(id, db);
+  }
+
   get shape(): number[] {
-    // Note: The array instance in compat-shim is bound to the component type's class ID,
-    // but the component itself is where the `arrayDimensions` are evaluated unless it's a type alias.
-    // However, the caller usually accesses `shape` or evaluating `arrayDimensions`.
-    // In legacy, `arraySubscripts` and `enumDimensions` exist.
-    return this.db.query("arrayDimensions", this.id) ?? [];
+    const dims = this._arrayDims ?? this.db.query<any[]>("arrayDimensions", this.id) ?? [];
+    return dims.map((d: any) => d.value ?? 1);
+  }
+
+  get arraySubscripts(): any[] {
+    return this._arrayDims ?? this.db.query<any[]>("arrayDimensions", this.id) ?? [];
+  }
+
+  get enumDimensions(): any[] {
+    return [];
   }
 
   get elementClassInstance(): QueryBackedClassInstance {

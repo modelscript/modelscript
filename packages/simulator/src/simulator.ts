@@ -3,6 +3,7 @@
 import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "@modelscript/modelica-polyglot/ast";
 import {
   ExpressionEvaluator,
+  ModelicaAssignmentStatement,
   ModelicaBinaryExpression,
   ModelicaBooleanLiteral,
   ModelicaBooleanVariable,
@@ -12,6 +13,7 @@ import {
   type ModelicaEquation,
   type ModelicaExpression,
   ModelicaForEquation,
+  ModelicaForStatement,
   ModelicaFunctionCallEquation,
   ModelicaFunctionCallExpression,
   ModelicaIfElseExpression,
@@ -24,6 +26,7 @@ import {
   ModelicaRealLiteral,
   ModelicaRealVariable,
   ModelicaSimpleEquation,
+  ModelicaStatement,
   ModelicaSubscriptedExpression,
   ModelicaTransitionEquation,
   ModelicaUnaryExpression,
@@ -707,6 +710,42 @@ export class ModelicaSimulator {
             condition: call.args[0] as ModelicaExpression,
             message: (call.args[1] as ModelicaExpression) ?? null,
           });
+        }
+        continue;
+      }
+      if (eq instanceof ModelicaForEquation) {
+        // Output native JS loops by translating ForEquation to ForStatement in algorithm blocks.
+        // This is primarily for annotation(PreserveArray=true) paths to avoid scalar unrolling.
+        const eqToStmt = (e: ModelicaEquation): ModelicaStatement | null => {
+          if (e instanceof ModelicaSimpleEquation) {
+            return new ModelicaAssignmentStatement(e.expression1, e.expression2);
+          }
+          if (e instanceof ModelicaForEquation) {
+            return new ModelicaForStatement(
+              e.indexName,
+              e.range,
+              e.equations.map(eqToStmt).filter((s): s is ModelicaStatement => s !== null),
+            );
+          }
+          return null;
+        };
+
+        const stmt = eqToStmt(eq);
+        if (stmt) {
+          this.dae.algorithms.push([stmt]);
+        }
+
+        // Register variables written within the loop to avoid Pantelides marking them as undefined
+        const collector = new DependencyVisitor();
+        for (const inner of eq.equations) {
+          if (inner instanceof ModelicaSimpleEquation) {
+            const deps = new Set<string>();
+            inner.expression1.accept(collector, deps);
+            for (const dep of deps) {
+              const root = extractVarName(new ModelicaNameExpression(dep));
+              if (root) definedVars.add(aliasFind(root));
+            }
+          }
         }
         continue;
       }

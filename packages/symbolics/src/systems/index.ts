@@ -4468,6 +4468,18 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     this.out.write(this.indent() + "end if;\n");
   }
 
+  visitForEquation(node: ModelicaForEquation): void {
+    this.out.write(this.indent() + "for " + node.indexName + " in ");
+    node.range.accept(this);
+    this.out.write(" loop\n");
+    this.#depth++;
+    for (const eq of node.equations) {
+      eq.accept(this);
+    }
+    this.#depth--;
+    this.out.write(this.indent() + "end for;\n");
+  }
+
   visitProcedureCallStatement(node: ModelicaProcedureCallStatement): void {
     this.out.write(this.indent());
     if (node.isReturn) this.out.write("return ");
@@ -4595,13 +4607,18 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     } else {
       throw new Error("invalid variable");
     }
-    // Handle array dimension prefix (encoded as \0[dims]\0name in the variable name)
+    // Handle native array dimensions
+    if (variable.arrayDimensions && variable.arrayDimensions.length > 0) {
+      this.out.write("[" + variable.arrayDimensions.join(", ") + "]");
+    }
+
+    // Fallback: Handle legacy array dimension prefix (encoded as \0[dims]\0name in the variable name)
     let varName = variable.name;
     if (varName.startsWith("\0")) {
       const parts = varName.split("\0");
       // parts = ["", "[dims]", "name"]
       if (parts.length >= 3) {
-        this.out.write(parts[1] ?? ""); // [dims] — no space before
+        if (!variable.arrayDimensions) this.out.write(parts[1] ?? ""); // [dims] — no space before
         varName = parts[2] ?? "";
       }
     }
@@ -4733,18 +4750,6 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
 
   visitExpressionVariable(node: ModelicaExpressionVariable): void {
     this.out.write(node.name);
-  }
-
-  visitForEquation(node: ModelicaForEquation): void {
-    this.out.write(this.indent() + "for " + node.indexName + " in ");
-    node.range.accept(this);
-    this.out.write(" loop\n");
-    this.#depth++;
-    for (const eq of node.equations) {
-      eq.accept(this);
-    }
-    this.#depth--;
-    this.out.write(this.indent() + "end for;\n");
   }
 
   visitFunctionCallEquation(node: ModelicaFunctionCallEquation): void {

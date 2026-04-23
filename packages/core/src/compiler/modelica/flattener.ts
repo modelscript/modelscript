@@ -524,7 +524,7 @@ function getUnderlyingPredefinedClass(
 ): ModelicaPredefinedClassInstance | null {
   // Use proper unique semantic identifier key for cache tracking natively across disparate memory objects
   const cacheKey = (cls as any)?.id ?? cls;
-  if (!cls || visited.has(cacheKey)) return null;
+  if (!cls || visited.has(cacheKey) || cls instanceof ModelicaArrayClassInstance) return null;
   visited.add(cacheKey);
 
   const isQueryBackedPredefined =
@@ -1841,7 +1841,15 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         ? [...arrayBindingExpression.flatElements]
         : null;
 
-    let shape = arrayClassInstance.shape;
+    let shape = [...arrayClassInstance.shape];
+    const polysubs = (arrayClassInstance as any).arraySubscripts;
+    if (polysubs) {
+      shape = polysubs.map((sub: any, i: number) => {
+        if (sub.kind === "literal") return sub.value;
+        if (sub.text) return sub.text;
+        return shape[i] ?? 1;
+      });
+    }
     let declaredElements = [...arrayClassInstance.declaredElements];
 
     // Infer size from binding if this is an unsized array [:]
@@ -1855,8 +1863,10 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           declaredElements[i] = arrayClassInstance.elementClassInstance as ModelicaClassInstance;
       }
     }
+    const preserveArrayAnnotation = node.annotation("PreserveArray");
+    const hasPreserveAnnotation = preserveArrayAnnotation === true;
 
-    if (this.options.arrayMode === "preserve") {
+    if (this.options.arrayMode === "preserve" || hasPreserveAnnotation) {
       const elementClass = arrayClassInstance.elementClassInstance;
       const attributes = new Map<string, ModelicaExpression>();
       if (elementClass instanceof ModelicaRealClassInstance) {
@@ -5720,6 +5730,31 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
   }
 
   visitForEquation(node: ModelicaForEquationSyntaxNode, ctx: FlattenerContext): null {
+    let preserveArrayAnnotation = false;
+    for (const eqNode of node.equations ?? []) {
+      const writer = new StringWriter();
+      eqNode.accept(new ModelicaSyntaxPrinter(writer), null as any);
+      if (writer.toString().includes("annotation") && writer.toString().includes("PreserveArray")) {
+        preserveArrayAnnotation = true;
+        break;
+      }
+    }
+
+    if (this.options?.arrayMode === "preserve" || preserveArrayAnnotation) {
+      const innerEquations = this.flattenEquations(node.equations ?? [], ctx);
+      let eqs = innerEquations;
+      for (let i = node.forIndexes.length - 1; i >= 0; i--) {
+        const fi = node.forIndexes[i];
+        if (!fi) continue;
+        const name = fi.identifier?.text ?? "?";
+        const range = fi.expression?.accept(this, ctx);
+        if (!range) continue;
+        eqs = [new ModelicaForEquation(name, range as ModelicaExpression, eqs)];
+      }
+      for (const eq of eqs) ctx.dae.equations.push(eq);
+      return null;
+    }
+
     // Unroll for-equations: evaluate range, substitute index variable, emit individual equations
     // Process from outermost to innermost index
     this.#unrollForEquation(node.forIndexes, 0, node.equations ?? [], ctx);
@@ -7091,28 +7126,29 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       if (isRealTyped(expression2, ctx.dae) && !isArrayName(expression1))
         expression1 = coerceToReal(expression1, ctx.dae) ?? expression1;
 
-      if (this.options?.arrayMode === "preserve") {
-        const isArrayTarget = (expr: ModelicaExpression): boolean => {
-          if (expr instanceof ModelicaNameExpression) {
-            const foundVar = ctx.dae.variables.get(expr.name);
-            return !!foundVar && foundVar.arrayDimensions != null;
-          }
-          if (expr instanceof ModelicaVariable) {
-            return expr.arrayDimensions != null;
-          }
-          if (expr instanceof ModelicaSubscriptedExpression) {
-            return true;
-          }
-          if (expr instanceof ModelicaArray) {
-            return true;
-          }
-          if (expr instanceof ModelicaFunctionCallExpression && expr.functionName === "der" && expr.args.length === 1) {
-            const arg = expr.args[0];
-            return arg ? isArrayTarget(arg) : false;
-          }
-          return false;
-        };
+      // Array mode checks
+      const isArrayTarget = (expr: ModelicaExpression): boolean => {
+        if (expr instanceof ModelicaNameExpression) {
+          const foundVar = ctx.dae.variables.get(expr.name);
+          return !!foundVar && foundVar.arrayDimensions != null;
+        }
+        if (expr instanceof ModelicaVariable) {
+          return expr.arrayDimensions != null;
+        }
+        if (expr instanceof ModelicaSubscriptedExpression) {
+          return true;
+        }
+        if (expr instanceof ModelicaArray) {
+          return true;
+        }
+        if (expr instanceof ModelicaFunctionCallExpression && expr.functionName === "der" && expr.args.length === 1) {
+          const arg = expr.args[0];
+          return arg ? isArrayTarget(arg) : false;
+        }
+        return false;
+      };
 
+      if (isArrayTarget(expression1) || isArrayTarget(expression2)) {
         if (isArrayTarget(expression1)) {
           ctx.dae.equations.push(
             new ModelicaArrayEquation(
@@ -7121,8 +7157,8 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
               node.description?.strings?.map((d: any) => d.text ?? "")?.join(" "),
             ),
           );
-          return null;
         }
+        return null;
       }
 
       ctx.dae.equations.push(

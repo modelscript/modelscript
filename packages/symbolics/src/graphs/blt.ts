@@ -1,16 +1,19 @@
 import { isolateSymbolically } from "../ir/expressions.js";
 import { egraphSimplify } from "../simplify/egraph.js";
 import {
+  ModelicaArrayEquation,
   ModelicaBooleanVariable,
   ModelicaDAE,
   ModelicaDAEVisitor,
   ModelicaEquation,
   ModelicaExpression,
+  ModelicaForEquation,
   ModelicaFunctionCallEquation,
   ModelicaIntegerVariable,
   ModelicaNameExpression,
   ModelicaRealVariable,
   ModelicaSimpleEquation,
+  ModelicaSubscriptedExpression,
 } from "../systems/index.js";
 
 /**
@@ -36,35 +39,49 @@ class VariableNameCollector extends ModelicaDAEVisitor<Set<string>> {
  * where `v` does not appear on the other side.
  */
 function isExplicitlySolvableFor(eq: ModelicaEquation, v: string): boolean {
-  if (!(eq instanceof ModelicaSimpleEquation)) return false;
-  const simpleEq = eq;
-  if (!simpleEq.expression1 || !simpleEq.expression2) return false;
+  if (eq instanceof ModelicaSimpleEquation || eq instanceof ModelicaArrayEquation) {
+    const simpleEq = eq as ModelicaSimpleEquation | ModelicaArrayEquation;
+    if (!simpleEq.expression1 || !simpleEq.expression2) return false;
 
-  const getNames = (expr: ModelicaExpression) => {
-    const s = new Set<string>();
-    const col = new VariableNameCollector();
-    expr.accept(col, s);
-    return s;
-  };
+    const getNames = (expr: ModelicaExpression) => {
+      const s = new Set<string>();
+      const col = new VariableNameCollector();
+      expr.accept(col, s);
+      return s;
+    };
 
-  const lhsNames = getNames(simpleEq.expression1);
-  const rhsNames = getNames(simpleEq.expression2);
+    const lhsNames = getNames(simpleEq.expression1);
+    const rhsNames = getNames(simpleEq.expression2);
 
-  const isNameOrVar = (expr: ModelicaExpression, target: string) => {
-    return (
-      (expr instanceof ModelicaNameExpression && expr.name === target) ||
-      (expr instanceof ModelicaRealVariable && expr.name === target) ||
-      (expr instanceof ModelicaIntegerVariable && expr.name === target) ||
-      (expr instanceof ModelicaBooleanVariable && expr.name === target)
-    );
-  };
+    const isNameOrVar = (expr: ModelicaExpression, target: string) => {
+      return (
+        (expr instanceof ModelicaNameExpression && expr.name === target) ||
+        (expr instanceof ModelicaRealVariable && expr.name === target) ||
+        (expr instanceof ModelicaIntegerVariable && expr.name === target) ||
+        (expr instanceof ModelicaBooleanVariable && expr.name === target) ||
+        (expr instanceof ModelicaSubscriptedExpression &&
+          expr.base instanceof ModelicaNameExpression &&
+          expr.base.name === target)
+      );
+    };
 
-  if (isNameOrVar(simpleEq.expression1, v)) {
-    return !rhsNames.has(v);
+    if (isNameOrVar(simpleEq.expression1, v)) {
+      return !rhsNames.has(v);
+    }
+    if (isNameOrVar(simpleEq.expression2, v)) {
+      return !lhsNames.has(v);
+    }
+    return false;
   }
-  if (isNameOrVar(simpleEq.expression2, v)) {
-    return !lhsNames.has(v);
+
+  if (eq instanceof ModelicaForEquation) {
+    for (const subEq of eq.equations) {
+      if (isExplicitlySolvableFor(subEq, v)) {
+        return true;
+      }
+    }
   }
+
   return false;
 }
 

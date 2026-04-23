@@ -1938,7 +1938,12 @@ export default language({
 
             // Navigate up to ComponentClause
             let current = cst as any;
-            while (current && current.type !== "ComponentDeclaration" && current.type !== "ComponentClause") {
+            while (
+              current &&
+              current.type !== "ComponentDeclaration" &&
+              current.type !== "ComponentClause" &&
+              current.type !== "Declaration"
+            ) {
               current = current.parent;
             }
             let arraySubNode = current?.childForFieldName("arraySubscripts");
@@ -1948,10 +1953,12 @@ export default language({
               }
               arraySubNode = current?.childForFieldName("arraySubscripts");
             }
+            if (!arraySubNode) return null;
+
             const subscripts: Array<
               | { kind: "literal"; value: number }
               | { kind: "flexible" }
-              | { kind: "expression"; cstBytes: readonly [number, number] }
+              | { kind: "expression"; cstBytes: readonly [number, number]; text?: string }
             > = [];
 
             // Walk Subscript children
@@ -1973,7 +1980,11 @@ export default language({
                   subscripts.push({ kind: "literal", value: parseInt(exprChild.text, 10) });
                 } else {
                   // Store byte range for lazy evaluation
-                  subscripts.push({ kind: "expression", cstBytes: [exprChild.startByte, exprChild.endByte] });
+                  subscripts.push({
+                    kind: "expression",
+                    cstBytes: [exprChild.startByte, exprChild.endByte],
+                    text: exprChild.text,
+                  });
                 }
                 continue;
               }
