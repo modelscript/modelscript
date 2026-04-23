@@ -256,8 +256,8 @@ export function computeSysML2NameEdit(tree: unknown, docText: string, oldName: s
     }
   }
 
-  if (tree && tree.rootNode) {
-    findName(tree.rootNode);
+  if (tree && (tree as Record<string, unknown>).rootNode) {
+    findName((tree as Record<string, unknown>).rootNode);
   }
 
   if (edits.length === 0) {

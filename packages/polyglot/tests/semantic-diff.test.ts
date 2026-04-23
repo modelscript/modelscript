@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { QueryDB, SymbolEntry } from "../src/runtime.js";
-import { computeSemanticDiff } from "../src/semantic-diff.js";
+import { computeSemanticDiff, type SemanticEdit } from "../src/semantic-diff.js";
 import { GenericNode, NodeFactory } from "../src/semantic-node.js";
 
-function mockEntry(id: number, name: string, kind = "Class", metadata: unknown = {}): SymbolEntry {
+function mockEntry(id: number, name: string, kind = "Class", metadata: Record<string, unknown> = {}): SymbolEntry {
   return {
     id,
     name,
@@ -85,15 +85,15 @@ describe("computeSemanticDiff", () => {
       ]),
     );
 
-    const oldNode = factory(parent1, db);
-    const newNode = factory(parent2, db);
+    const parent1Node = factory(parent1, db);
+    const parent2Node = factory(parent2, db);
 
-    const diff = computeSemanticDiff(oldNode, newNode, { nodeFactory: factory });
+    const diff = computeSemanticDiff(parent1Node, parent2Node, { nodeFactory: factory });
     expect(diff.action).toBe("update");
     const children = diff.children as SemanticEdit[];
     expect(children[0].action).toBe("insert");
-    const newNode = children[0].newNode as GenericNode;
-    expect(newNode.entry.name).toBe("Child");
+    const insertedNode = children[0].newNode as GenericNode;
+    expect(insertedNode.entry.name).toBe("Child");
   });
 
   it("handles order-agnostic child changes (swaps are none)", () => {

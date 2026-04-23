@@ -1066,6 +1066,20 @@ function scaffoldTemplateFiles(memFs: MemoryFileSystemProvider, workspaceUri: vs
         "end Circuit;",
         "",
       ].join("\n"),
+      "VerificationReport.md": [
+        "# RC Circuit Verification",
+        "",
+        "This is an automated verification report for the RC Circuit.",
+        "",
+        "## System Requirements",
+        '::requirements{target="SystemVerification"}',
+        "",
+        "## System Architecture",
+        '::diagram{target="Circuit"}',
+        "",
+        "The current maximum limit for the capacitor voltage is: {{ SystemVerification.MaxVoltageReq.maxLimit }} V.",
+        "",
+      ].join("\n"),
     },
   };
 
@@ -1421,6 +1435,25 @@ async function initWorkspaceAndTree(
               ].join("\n"),
             ),
           );
+          await workspace.fs.writeFile(
+            Uri.joinPath(workspaceUri, "VerificationReport.md"),
+            new TextEncoder().encode(
+              [
+                "# RC Circuit Verification",
+                "",
+                "This is an automated verification report for the RC Circuit.",
+                "",
+                "## System Requirements",
+                '::requirements{target="SystemVerification"}',
+                "",
+                "## System Architecture",
+                '::diagram{target="Circuit"}',
+                "",
+                "The current maximum limit for the capacitor voltage is: {{ SystemVerification.MaxVoltageReq.maxLimit }} V.",
+                "",
+              ].join("\n"),
+            ),
+          );
           break;
         case "script":
           filename = "simulate.mos";
@@ -1644,6 +1677,16 @@ async function initWorkspaceAndTree(
           await vscode.window.showTextDocument(doc);
           if (filename.endsWith(".mo")) {
             treeProvider.setDocumentUri(fileUri.toString());
+          }
+        }
+
+        if (template === "mbse-verification") {
+          try {
+            const mdUri = Uri.joinPath(workspaceUri, "VerificationReport.md");
+            const mdDoc = await workspace.openTextDocument(mdUri);
+            await vscode.window.showTextDocument(mdDoc, { viewColumn: 2, preview: false });
+          } catch {
+            console.warn("Could not open VerificationReport.md side-by-side");
           }
         }
       }
