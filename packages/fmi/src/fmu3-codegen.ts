@@ -23,15 +23,14 @@ import {
   ModelicaWhenEquation,
 } from "@modelscript/symbolics";
 import type { Fmi3Options, Fmi3Result, Fmi3Variable } from "./fmi3.js";
-
-/** Sanitize a Modelica name into a valid C identifier. */
-function sanitizeIdentifier(name: string): string {
-  return name
-    .replace(/\./g, "_")
-    .replace(/\[/g, "_")
-    .replace(/\]/g, "")
-    .replace(/[^a-zA-Z0-9_]/g, "_");
-}
+import {
+  binaryOpToC,
+  escapeCString,
+  extractDerName,
+  formatCDouble,
+  mapFunctionName,
+  sanitizeIdentifier,
+} from "./transpiler-utils.js";
 
 /** Generated FMI 3.0 C source files. */
 export interface Fmi3CSourceFiles {
@@ -144,78 +143,7 @@ function varToC(name: string, vars: Fmi3Variable[], loopIdx?: string): string {
   return `inst->vars[${idxStr}]`;
 }
 
-function sanitize(name: string): string {
-  return name
-    .replace(/\./g, "_")
-    .replace(/\[/g, "_")
-    .replace(/]/g, "")
-    .replace(/[^a-zA-Z0-9_]/g, "_");
-}
-
-function binaryOpToC(op: ModelicaBinaryOperator): string {
-  const map = new Map<ModelicaBinaryOperator, string>([
-    [ModelicaBinaryOperator.ADDITION, "+"],
-    [ModelicaBinaryOperator.ELEMENTWISE_ADDITION, "+"],
-    [ModelicaBinaryOperator.SUBTRACTION, "-"],
-    [ModelicaBinaryOperator.ELEMENTWISE_SUBTRACTION, "-"],
-    [ModelicaBinaryOperator.MULTIPLICATION, "*"],
-    [ModelicaBinaryOperator.ELEMENTWISE_MULTIPLICATION, "*"],
-    [ModelicaBinaryOperator.DIVISION, "/"],
-    [ModelicaBinaryOperator.ELEMENTWISE_DIVISION, "/"],
-    [ModelicaBinaryOperator.EXPONENTIATION, "pow"],
-    [ModelicaBinaryOperator.ELEMENTWISE_EXPONENTIATION, "pow"],
-    [ModelicaBinaryOperator.LESS_THAN, "<"],
-    [ModelicaBinaryOperator.LESS_THAN_OR_EQUAL, "<="],
-    [ModelicaBinaryOperator.GREATER_THAN, ">"],
-    [ModelicaBinaryOperator.GREATER_THAN_OR_EQUAL, ">="],
-    [ModelicaBinaryOperator.EQUALITY, "=="],
-    [ModelicaBinaryOperator.INEQUALITY, "!="],
-    [ModelicaBinaryOperator.LOGICAL_AND, "&&"],
-    [ModelicaBinaryOperator.LOGICAL_OR, "||"],
-  ]);
-  return map.get(op) ?? "+";
-}
-
-function mapFunctionName(name: string): string {
-  const m: Record<string, string> = {
-    sin: "sin",
-    cos: "cos",
-    tan: "tan",
-    asin: "asin",
-    acos: "acos",
-    atan: "atan",
-    atan2: "atan2",
-    sinh: "sinh",
-    cosh: "cosh",
-    tanh: "tanh",
-    exp: "exp",
-    log: "log",
-    log10: "log10",
-    sqrt: "sqrt",
-    abs: "fabs",
-    sign: "copysign",
-    floor: "floor",
-    ceil: "ceil",
-    min: "fmin",
-    max: "fmax",
-    mod: "fmod",
-  };
-  return m[name] ?? sanitize(name);
-}
-
-function formatCDouble(v: number): string {
-  if (!isFinite(v)) {
-    if (v === Infinity) return "INFINITY";
-    if (v === -Infinity) return "(-INFINITY)";
-    return "NAN";
-  }
-  const s = v.toString();
-  return !s.includes(".") && !s.includes("e") && !s.includes("E") ? s + ".0" : s;
-}
-
-function escapeCString(s: string): string {
-  return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n");
-}
+const sanitize = sanitizeIdentifier;
 
 function conditionToZC(cond: ModelicaExpression, vars: Fmi3Variable[]): string {
   if (cond instanceof ModelicaBinaryExpression) {
@@ -229,24 +157,6 @@ function conditionToZC(cond: ModelicaExpression, vars: Fmi3Variable[]): string {
       return `(${exprToC(cond.operand1, vars)}) - (${exprToC(cond.operand2, vars)})`;
   }
   return `(${exprToC(cond, vars)} ? 1.0 : -1.0)`;
-}
-
-function extractDerName(expr: unknown): string | null {
-  if (expr && typeof expr === "object" && "functionName" in expr && "args" in expr) {
-    const fe = expr as { functionName: string; args: unknown[] };
-    if (fe.functionName === "der" && fe.args.length === 1) {
-      const a = fe.args[0];
-      if (a && typeof a === "object" && "name" in a) {
-        const n = (a as { name: unknown }).name;
-        if (typeof n === "string") return n;
-      }
-    }
-  }
-  if (expr && typeof expr === "object" && "name" in expr) {
-    const n = (expr as { name: unknown }).name;
-    if (typeof n === "string" && n.startsWith("der(") && n.endsWith(")")) return n.substring(4, n.length - 1);
-  }
-  return null;
 }
 
 // ── File generators ──

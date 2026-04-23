@@ -17,6 +17,7 @@
 import type { ModelicaDAE } from "@modelscript/symbolics";
 import type { FmuResult } from "./fmi.js";
 import type { SolverOptions } from "./solver-options.js";
+import { formatCDouble } from "./transpiler-utils.js";
 
 // ── Public interface ──
 
@@ -325,20 +326,6 @@ function detectSolverChoice(dae: ModelicaDAE): "cvode" | "ida" {
   }
   // Default to CVODE for explicit ODE systems
   return "cvode";
-}
-
-/** Format a number as a C double literal. */
-function formatCDouble(value: number): string {
-  if (!isFinite(value)) {
-    if (value === Infinity) return "INFINITY";
-    if (value === -Infinity) return "(-INFINITY)";
-    return "NAN";
-  }
-  const s = value.toString();
-  if (!s.includes(".") && !s.includes("e") && !s.includes("E")) {
-    return s + ".0";
-  }
-  return s;
 }
 
 /** Sanitize a variable name for use in CSV headers. */

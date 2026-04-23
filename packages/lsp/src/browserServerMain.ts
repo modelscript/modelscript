@@ -64,8 +64,6 @@ import {
 
 import { Language, Parser, Node as SyntaxNode, Tree as TreeSitterTree } from "web-tree-sitter";
 
-import { unzipSync } from "fflate";
-
 import {
   Context,
   LSPBridge,
@@ -97,9 +95,6 @@ import {
   createSysML2WorkspaceIndex,
   injectPredefinedTypes,
   performBltTransformation,
-  type Dirent,
-  type FileSystem,
-  type Stats,
 } from "@modelscript/core";
 import { ModelicaFmuEntity, buildFmuArchive, generateFmuWasmSource, generateMultiModelWrapper } from "@modelscript/fmi";
 import {
@@ -111,7 +106,10 @@ import {
 } from "@modelscript/optimizer";
 import { VerificationRunner } from "@modelscript/polyglot";
 import { ModelicaSimulator, registerSimulateDeps } from "@modelscript/simulator";
+import { formatModelicaTree } from "./formatting/modelica-formatter";
 import { getRequirements, getTraceabilityMatrix } from "./requirements";
+import { BrowserFileSystem } from "./vfs/browser-file-system";
+import { loadMSL, loadSysML2StandardLibrary, type LoaderContext } from "./vfs/library-loader";
 
 // Register flattener/simulator constructors for the scripting simulate() function.
 // This breaks the circular dependency: interpreter → evaluate-simulate → flattener.
@@ -121,241 +119,12 @@ registerCalibrateDeps({ Flattener: ModelicaFlattener, Simulator: ModelicaSimulat
 
 console.log("ModelScript language server starting...");
 
-/* Document formatter — ported from morsel's formatter.ts */
-
-const INDENT_STRING = "  ";
-
-// Nodes that increase indentation for their children/content
-const INDENT_TRIGGER_NODES = new Set([
-  "ClassDefinition",
-  "IfStatement",
-  "ForStatement",
-  "WhileStatement",
-  "WhenStatement",
-  "IfEquation",
-  "ForEquation",
-  "WhenEquation",
-  "enumeration_literal", // Enum values
-]);
-
-// Tokens that start a block but should be dedented to align with the container's start
-const DEDENT_START_TOKENS = new Set([
-  "model",
-  "class",
-  "record",
-  "block",
-  "connector",
-  "type",
-  "package",
-  "function",
-  "encapsulated",
-  "partial",
-  "final",
-  "pure",
-  "impure",
-  "operator",
-  "expandable",
-]);
-
-function format(tree: TreeSitterTree, content: string): string {
-  const lines = content.split("\n");
-  const formattedLines: string[] = [];
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const trimmedLine = line.trim();
-
-    if (trimmedLine.length === 0) {
-      formattedLines.push("");
-      continue;
-    }
-
-    // Find the first non-whitespace character's column
-    const firstCharColumn = line.search(/\S/);
-
-    // Get the node at the start of the line
-    const node = tree.rootNode.descendantForPosition({ row: i, column: firstCharColumn });
-    if (!node) {
-      formattedLines.push(line);
-      continue;
-    }
-
-    // Calculate indentation level
-    let indentLevel = 0;
-    let current: SyntaxNode | null = node.parent;
-
-    while (current) {
-      if (INDENT_TRIGGER_NODES.has(current.type)) {
-        indentLevel++;
-      }
-      current = current.parent;
-    }
-
-    // Adjust for dedent triggers (e.g., 'end', 'else', 'equation' keywords)
-    const firstToken = trimmedLine.split(" ")[0];
-
-    // Dedent start of blocks (model, class, etc)
-    if (DEDENT_START_TOKENS.has(firstToken)) {
-      indentLevel--;
-    }
-
-    // Dedent end of blocks and control structures (else, end, etc)
-    if (trimmedLine.startsWith("end") || trimmedLine.startsWith("else") || trimmedLine.startsWith("elseif")) {
-      indentLevel = Math.max(0, indentLevel - 1);
-    }
-
-    if (
-      trimmedLine.startsWith("equation") ||
-      trimmedLine.startsWith("algorithm") ||
-      trimmedLine.startsWith("public") ||
-      trimmedLine.startsWith("protected") ||
-      trimmedLine.startsWith("initial equation") ||
-      trimmedLine.startsWith("initial algorithm")
-    ) {
-      indentLevel--;
-    }
-
-    const indent = INDENT_STRING.repeat(Math.max(0, indentLevel));
-    formattedLines.push(indent + trimmedLine);
-  }
-
-  return formattedLines.join("\n");
-}
-
 /* Browser-specific connection setup */
 
 const messageReader = new BrowserMessageReader(self);
 const messageWriter = new BrowserMessageWriter(self);
 
 const connection = createConnection(messageReader, messageWriter);
-
-/* In-memory filesystem backed by zip contents */
-
-interface MemFile {
-  content: string;
-  binary: Uint8Array;
-}
-
-interface MemDir {
-  children: Map<string, boolean>; // name → isDirectory
-}
-
-class BrowserFileSystem implements FileSystem {
-  readonly #files = new Map<string, MemFile>();
-  readonly #dirs = new Map<string, MemDir>();
-
-  /** Normalise a path: collapse double-slashes, remove trailing slash */
-  #norm(p: string): string {
-    return p.replace(/\/+/g, "/").replace(/\/$/, "") || "/";
-  }
-
-  /** Add a file from zip decompression */
-  addFile(path: string, data: Uint8Array): void {
-    const p = this.#norm(path);
-    const decoder = new TextDecoder();
-    this.#files.set(p, { content: decoder.decode(data), binary: data });
-    // Ensure parent directories exist
-    const parts = p.split("/");
-    for (let i = 1; i < parts.length; i++) {
-      const dir = parts.slice(0, i).join("/") || "/";
-      const child = parts[i];
-      const isDir = i < parts.length - 1;
-      if (!this.#dirs.has(dir)) {
-        this.#dirs.set(dir, { children: new Map() });
-      }
-      const dirEntry = this.#dirs.get(dir);
-      if (!dirEntry) continue;
-      if (!dirEntry.children.has(child)) {
-        dirEntry.children.set(child, isDir);
-      } else if (isDir) {
-        // Upgrade from file to dir if needed
-        dirEntry.children.set(child, true);
-      }
-    }
-  }
-
-  /** Register a directory (for leaf directories that may have no files) */
-  addDir(path: string): void {
-    const p = this.#norm(path);
-    if (!this.#dirs.has(p)) {
-      this.#dirs.set(p, { children: new Map() });
-    }
-    // Ensure parent chain
-    const parts = p.split("/");
-    for (let i = 1; i < parts.length; i++) {
-      const dir = parts.slice(0, i).join("/") || "/";
-      const child = parts[i];
-      if (!this.#dirs.has(dir)) {
-        this.#dirs.set(dir, { children: new Map() });
-      }
-      const dirEntry = this.#dirs.get(dir);
-      if (dirEntry) dirEntry.children.set(child, true);
-    }
-  }
-
-  basename(path: string): string {
-    return path.split("/").pop() || path;
-  }
-  extname(path: string): string {
-    const dot = path.lastIndexOf(".");
-    return dot >= 0 ? path.substring(dot) : "";
-  }
-  join(...paths: string[]): string {
-    const joined = paths.join("/");
-    return this.#norm(joined);
-  }
-  read(path: string): string {
-    const p = this.#norm(path);
-    const file = this.#files.get(p);
-    if (file) return file.content;
-    return "";
-  }
-  readBinary(path: string): Uint8Array {
-    const p = this.#norm(path);
-    const file = this.#files.get(p);
-    if (file) return file.binary;
-    return new Uint8Array();
-  }
-  readdir(path: string): Dirent[] {
-    const p = this.#norm(path);
-    const dir = this.#dirs.get(p);
-    if (!dir) return [];
-    const entries: Dirent[] = [];
-    for (const [name, isDir] of dir.children) {
-      entries.push({
-        name,
-        parentPath: p,
-        isDirectory: () => isDir,
-        isFile: () => !isDir,
-      });
-    }
-    return entries;
-  }
-  resolve(...paths: string[]): string {
-    return this.#norm(paths.join("/"));
-  }
-  readonly sep = "/";
-  stat(path: string): Stats | null {
-    const p = this.#norm(path);
-    const epoch = new Date(0);
-    if (this.#files.has(p)) {
-      const file = this.#files.get(p);
-      const size = file ? file.binary.length : 0;
-      return {
-        isDirectory: () => false,
-        isFile: () => true,
-        atime: epoch,
-        ctime: epoch,
-        mtime: epoch,
-        size,
-      };
-    }
-    if (this.#dirs.has(p)) {
-      return { isDirectory: () => true, isFile: () => false, atime: epoch, ctime: epoch, mtime: epoch, size: 0 };
-    }
-    return null;
-  }
-}
 
 /* Shared filesystem + context (populated with MSL during init) */
 
@@ -648,11 +417,26 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
     }
 
     // Load the Modelica Standard Library from the bundled zip
-    await loadMSL(serverDistBase);
+    sharedContext = new Context(sharedFs);
+    const loaderCtx: LoaderContext = {
+      connectionState: connection,
+      logger: {
+        log: (msg) => connection.console.info(msg),
+        warn: (msg) => connection.console.warn(msg),
+        error: (msg, e) => connection.console.error(`${msg} ${e}`),
+      },
+      sharedFs,
+      sharedContext: sharedContext,
+      globalWorkspaceIndex,
+      sysml2WorkspaceIndex,
+      documentTrees,
+      sysml2Parser,
+    };
+    await loadMSL(serverDistBase, loaderCtx);
 
     // Load the SysML v2 Standard Library from the bundled zip
     if (sysml2ParserReady) {
-      await loadSysML2StandardLibrary(serverDistBase);
+      await loadSysML2StandardLibrary(serverDistBase, loaderCtx);
     }
 
     // Re-validate strictly AFTER MSL and parser are ready!
@@ -695,303 +479,6 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
     connection.console.error(`Failed to initialize tree-sitter: ${e}\n${e.stack}`);
     parserReady = false;
     connection.sendNotification("modelscript/status", { state: "error", message: "Parser initialization failed" });
-  }
-}
-
-// ---------------------------------------------------------------------------
-//  IndexedDB helpers for MSL cache
-// ---------------------------------------------------------------------------
-
-const MSL_DB_NAME = "modelscript-msl-cache";
-const MSL_DB_VERSION = 1;
-const MSL_STORE = "files";
-const MSL_VERSION_KEY = "ModelicaStandardLibrary_v4.1.0";
-
-function openMSLCache(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(MSL_DB_NAME, MSL_DB_VERSION);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(MSL_STORE)) {
-        db.createObjectStore(MSL_STORE);
-      }
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-function idbGet<T>(db: IDBDatabase, key: string): Promise<T | undefined> {
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(MSL_STORE, "readonly");
-    const req = tx.objectStore(MSL_STORE).get(key);
-    req.onsuccess = () => resolve(req.result as T | undefined);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-function idbPut(db: IDBDatabase, key: string, value: unknown): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(MSL_STORE, "readwrite");
-    tx.objectStore(MSL_STORE).put(value, key);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-}
-
-// ---------------------------------------------------------------------------
-
-/** Fetch and decompress the bundled MSL zip, populate the shared filesystem and context.
- *  Uses IndexedDB to cache the extracted file entries so that on subsequent
- *  loads the network fetch and decompression are skipped entirely. */
-async function loadMSL(serverDistBase: string): Promise<void> {
-  try {
-    connection.sendNotification("modelscript/status", {
-      state: "loading",
-      message: "Loading Modelica Standard Library...",
-    });
-
-    let fileEntries: Record<string, Uint8Array> | null = null;
-
-    // ---- Try IndexedDB cache first ----
-    try {
-      const db = await openMSLCache();
-      const cached = await idbGet<Record<string, ArrayBuffer>>(db, MSL_VERSION_KEY);
-      if (cached) {
-        console.log("[msl-cache] Cache hit — loading from IndexedDB");
-        connection.sendNotification("modelscript/status", {
-          state: "loading",
-          message: "Loading MSL from cache...",
-        });
-        // Convert ArrayBuffers back to Uint8Arrays
-        fileEntries = {};
-        for (const [name, buf] of Object.entries(cached)) {
-          fileEntries[name] = new Uint8Array(buf);
-        }
-      }
-      db.close();
-    } catch (cacheErr) {
-      console.warn("[msl-cache] IndexedDB read failed, falling back to network:", cacheErr);
-    }
-
-    // ---- Network fetch + decompress if not cached ----
-    if (!fileEntries) {
-      const response = await fetch(`${serverDistBase}/ModelicaStandardLibrary_v4.1.0.zip`);
-      if (!response.ok) {
-        console.warn("MSL zip not found — library features will be unavailable");
-        return;
-      }
-      connection.sendNotification("modelscript/status", {
-        state: "loading",
-        message: "Decompressing MSL...",
-      });
-      const buffer = await response.arrayBuffer();
-      const zipData = new Uint8Array(buffer);
-      fileEntries = unzipSync(zipData);
-
-      // Store in IndexedDB for next time (fire-and-forget)
-      try {
-        const db = await openMSLCache();
-        // Convert Uint8Arrays to plain ArrayBuffers for structured-clone compatibility
-        const serializable: Record<string, ArrayBuffer> = {};
-        for (const [name, data] of Object.entries(fileEntries)) {
-          serializable[name] = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
-        }
-        await idbPut(db, MSL_VERSION_KEY, serializable);
-        db.close();
-        console.log("[msl-cache] Cached extracted MSL in IndexedDB");
-      } catch (cacheErr) {
-        console.warn("[msl-cache] IndexedDB write failed:", cacheErr);
-      }
-    }
-
-    // ---- Populate in-memory filesystem ----
-    let fileCount = 0;
-    for (const [name, data] of Object.entries(fileEntries)) {
-      if (name.endsWith("/")) {
-        sharedFs.addDir(`/lib/${name.slice(0, -1)}`);
-        continue;
-      }
-      sharedFs.addFile(`/lib/${name}`, data);
-      fileCount++;
-    }
-    console.log(`MSL loaded: ${fileCount} files`);
-    connection.sendNotification("modelscript/status", { state: "loading", message: "Processing MSL classes..." });
-
-    // Create the shared context and register MSL libraries
-    sharedContext = new Context(sharedFs);
-    const libEntries = sharedFs.readdir("/lib");
-    const hasPackage = libEntries.some((e) => e.name === "package.mo");
-    if (hasPackage) {
-      await sharedContext.addLibrary("/lib", { skipIndex: true });
-    } else {
-      for (const entry of libEntries) {
-        if (entry.isDirectory()) {
-          try {
-            await sharedContext.addLibrary(`/lib/${entry.name}`, { skipIndex: true });
-          } catch (e) {
-            console.warn(`Failed to load library from /lib/${entry.name}:`, e);
-          }
-        }
-      }
-    }
-    // Perform a single indexing pass after all libraries are registered
-    connection.sendNotification("modelscript/status", { state: "loading", message: "Indexing MSL classes..." });
-    await sharedContext.finalizeLibraries();
-    console.log(
-      `MSL libraries registered in shared context. Total elements in context: ${Array.from(sharedContext.elements).length}`,
-    );
-
-    // Register MSL files lazily in the polyglot workspace index so the QueryEngine
-    // can resolve qualified type specifiers (e.g. Modelica.Electrical.Analog.Sources.SineVoltage).
-    // We use lazy tree factories so files are only parsed the first time they're needed.
-    if (parser) {
-      connection.sendNotification("modelscript/status", { state: "loading", message: "Indexing MSL for polyglot..." });
-      let registeredCount = 0;
-      const mslTreeCache = new Map<string, any>();
-      const registerDirLazy = (dirPath: string) => {
-        try {
-          const entries = sharedFs.readdir(dirPath);
-          for (const entry of entries) {
-            const fullPath = `${dirPath}/${entry.name}`;
-            if (entry.isDirectory()) {
-              registerDirLazy(fullPath);
-            } else if (entry.name.endsWith(".mo")) {
-              const uri = `file://${fullPath}`;
-
-              // Compute parentFQN based on directory structure
-              // e.g. /lib/Modelica/Electrical/package.mo -> "Modelica"
-              let parentFQN = "";
-              const relPath = fullPath.substring(5); // strip "/lib/"
-              const parts = relPath.split("/");
-              if (parts[parts.length - 1] === "package.mo") {
-                parts.pop(); // Remove "package.mo"
-                parts.pop(); // Remove the package dir name itself
-              } else {
-                parts.pop(); // Remove "Filename.mo"
-              }
-              // The top-level directory in the MSL zip has a version string (e.g. "Modelica 4.1.0").
-              // This must be stripped to map correctly to the FQN "Modelica".
-              if (parts.length > 0) {
-                parts[0] = parts[0].split(" ")[0];
-              }
-              parentFQN = parts.join(".");
-
-              globalWorkspaceIndex.register(
-                uri,
-                () => {
-                  // Lazy: parse the file only when its tree is first requested
-                  if (!mslTreeCache.has(fullPath)) {
-                    try {
-                      const text = sharedFs.read(fullPath);
-                      if (text) {
-                        const tree = sharedContext!.parse(".mo", text);
-                        mslTreeCache.set(fullPath, tree);
-                      }
-                    } catch {
-                      mslTreeCache.set(fullPath, null);
-                    }
-                  }
-                  return mslTreeCache.get(fullPath)?.rootNode ?? null;
-                },
-                parentFQN,
-              );
-              registeredCount++;
-            }
-          }
-        } catch {
-          // Directory might not exist
-        }
-      };
-      registerDirLazy("/lib");
-      console.log(`[polyglot] Registered ${registeredCount} MSL files lazily in globalWorkspaceIndex`);
-    }
-  } catch (e) {
-    console.error("Failed to load MSL zip:", e);
-  }
-}
-
-// ---------------------------------------------------------------------------
-
-const SYSML_VERSION_KEY = "SysML-v2-Release-2026-03";
-
-async function loadSysML2StandardLibrary(serverDistBase: string): Promise<void> {
-  try {
-    connection.sendNotification("modelscript/status", {
-      state: "loading",
-      message: "Loading SysML v2 Standard Library...",
-    });
-
-    let fileEntries: Record<string, Uint8Array> | null = null;
-    try {
-      const db = await openMSLCache(); // Reuse MSL indexedDB
-      const cached = await idbGet<Record<string, ArrayBuffer>>(db, SYSML_VERSION_KEY);
-      if (cached) {
-        console.log("[sysml-cache] Cache hit — loading sysml stdlib from IndexedDB");
-        fileEntries = {};
-        for (const [name, buf] of Object.entries(cached)) {
-          fileEntries[name] = new Uint8Array(buf);
-        }
-      }
-      db.close();
-    } catch {
-      /* ignore */
-    }
-
-    if (!fileEntries) {
-      const response = await fetch(`${serverDistBase}/SysML-v2-Release-2026-03.zip`);
-      if (!response.ok) {
-        console.warn("SysML v2 standard library zip not found in dist");
-        return;
-      }
-      connection.sendNotification("modelscript/status", {
-        state: "loading",
-        message: "Decompressing SysML v2 library...",
-      });
-      const buffer = await response.arrayBuffer();
-      const zipData = new Uint8Array(buffer);
-      fileEntries = unzipSync(zipData);
-
-      try {
-        const db = await openMSLCache();
-        const serializable: Record<string, ArrayBuffer> = {};
-        for (const [name, data] of Object.entries(fileEntries)) {
-          if (name.endsWith(".sysml")) {
-            serializable[name] = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
-          }
-        }
-        await idbPut(db, SYSML_VERSION_KEY, serializable);
-        db.close();
-      } catch {
-        /* ignore */
-      }
-    }
-
-    let fileCount = 0;
-    const textDecoder = new TextDecoder("utf-8");
-    for (const [name, data] of Object.entries(fileEntries)) {
-      if (!name.endsWith(".sysml")) continue;
-      // Filter out only kerml/ and sysml.library/
-      if (!name.includes("kerml/") && !name.includes("sysml.library/")) continue;
-
-      const text = textDecoder.decode(data);
-      const uri = `sysml2://stdlib/${name}`;
-
-      // Store in documentTrees so LSP operations like Hover and GoToDef can access the text/tree
-      documentTrees.set(uri, { text, tree: null as any, classCache: new Map() });
-      sysml2WorkspaceIndex.register(uri, () => {
-        const tree = sysml2Parser!.parse(text);
-        const node = documentTrees.get(uri);
-        if (node && tree) node.tree = tree;
-        return tree!.rootNode;
-      });
-      fileCount++;
-    }
-
-    sysml2StdlibReady = true;
-    console.log(`SysML2 Standard Library loaded: ${fileCount} files registered in sysml2WorkspaceIndex.`);
-  } catch (e) {
-    console.error("Failed to load SysML2 standard library:", e);
   }
 }
 
@@ -2279,7 +1766,7 @@ connection.onDocumentFormatting((params) => {
   const text = document.getText();
   const tree = getDocumentTree(params.textDocument.uri);
   if (!tree) return [];
-  const formatted = format(tree, text);
+  const formatted = formatModelicaTree(tree, text);
 
   // Return a single edit replacing the entire document
   const lastLine = document.lineCount - 1;

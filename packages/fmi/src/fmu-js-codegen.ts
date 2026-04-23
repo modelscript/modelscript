@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "@modelscript/modelica-polyglot/ast";
+import { ModelicaUnaryOperator } from "@modelscript/modelica-polyglot/ast";
 import type { ModelicaDAE, ModelicaExpression } from "@modelscript/symbolics";
 import {
   ModelicaBinaryExpression,
@@ -15,6 +15,7 @@ import {
   ModelicaUnaryExpression,
 } from "@modelscript/symbolics";
 import type { FmuOptions, FmuResult } from "./fmi.js";
+import { binaryOpToJs, escapeJsString, mapFunctionNameJs, sanitizeIdentifier } from "./transpiler-utils.js";
 
 /**
  * Generate FMI 2.0 compatible Javascript source file from a DAE and FMU result.
@@ -55,7 +56,7 @@ function exprToJs(expr: ModelicaExpression): string {
       return `((${cond}) ? 0.0 : (console.error("${msg}"), this.terminate = true, 0.0))`;
     }
     const args = expr.args.map((a: ModelicaExpression) => exprToJs(a)).join(", ");
-    const fname = mapFunctionName(expr.functionName);
+    const fname = mapFunctionNameJs(expr.functionName);
     return `${fname}(${args})`;
   }
   if (expr instanceof ModelicaIfElseExpression) {
@@ -81,84 +82,6 @@ function exprToJs(expr: ModelicaExpression): string {
 function varToJs(name: string): string {
   if (name === "time") return "this.time";
   return `this.vars[VR_${sanitizeIdentifier(name).toUpperCase()}]`;
-}
-
-function sanitizeIdentifier(name: string): string {
-  return name
-    .replace(/\./g, "_")
-    .replace(/\[/g, "_")
-    .replace(/\]/g, "")
-    .replace(/[^a-zA-Z0-9_]/g, "_");
-}
-
-function binaryOpToJs(op: ModelicaBinaryOperator): string {
-  switch (op) {
-    case ModelicaBinaryOperator.ADDITION:
-    case ModelicaBinaryOperator.ELEMENTWISE_ADDITION:
-      return "+";
-    case ModelicaBinaryOperator.SUBTRACTION:
-    case ModelicaBinaryOperator.ELEMENTWISE_SUBTRACTION:
-      return "-";
-    case ModelicaBinaryOperator.MULTIPLICATION:
-    case ModelicaBinaryOperator.ELEMENTWISE_MULTIPLICATION:
-      return "*";
-    case ModelicaBinaryOperator.DIVISION:
-    case ModelicaBinaryOperator.ELEMENTWISE_DIVISION:
-      return "/";
-    case ModelicaBinaryOperator.EXPONENTIATION:
-    case ModelicaBinaryOperator.ELEMENTWISE_EXPONENTIATION:
-      return "pow";
-    case ModelicaBinaryOperator.LESS_THAN:
-      return "<";
-    case ModelicaBinaryOperator.LESS_THAN_OR_EQUAL:
-      return "<=";
-    case ModelicaBinaryOperator.GREATER_THAN:
-      return ">";
-    case ModelicaBinaryOperator.GREATER_THAN_OR_EQUAL:
-      return ">=";
-    case ModelicaBinaryOperator.EQUALITY:
-      return "===";
-    case ModelicaBinaryOperator.INEQUALITY:
-      return "!==";
-    case ModelicaBinaryOperator.LOGICAL_AND:
-      return "&&";
-    case ModelicaBinaryOperator.LOGICAL_OR:
-      return "||";
-    default:
-      return "+";
-  }
-}
-
-function mapFunctionName(name: string): string {
-  const builtins: Record<string, string> = {
-    sin: "Math.sin",
-    cos: "Math.cos",
-    tan: "Math.tan",
-    asin: "Math.asin",
-    acos: "Math.acos",
-    atan: "Math.atan",
-    atan2: "Math.atan2",
-    exp: "Math.exp",
-    log: "Math.log",
-    log10: "Math.log10",
-    sqrt: "Math.sqrt",
-    abs: "Math.abs",
-    floor: "Math.floor",
-    ceil: "Math.ceil",
-    min: "Math.min",
-    max: "Math.max",
-    "Modelica.Math.sin": "Math.sin",
-    "Modelica.Math.cos": "Math.cos",
-    "Modelica.Math.log": "Math.log",
-    "Modelica.Math.exp": "Math.exp",
-    "Modelica.Math.sqrt": "Math.sqrt",
-    "Modelica.Math.atan2": "Math.atan2",
-  };
-  return builtins[name] ?? `Math.${sanitizeIdentifier(name)}`;
-}
-
-function escapeJsString(s: string): string {
-  return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n");
 }
 
 function generateModelJs(id: string, nVars: number, nStates: number, dae: ModelicaDAE, result: FmuResult): string {

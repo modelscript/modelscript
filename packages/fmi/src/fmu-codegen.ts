@@ -37,6 +37,7 @@ import {
   StaticTapeBuilder,
 } from "@modelscript/symbolics";
 import type { FmuOptions, FmuResult } from "./fmi.js";
+import { binaryOpToC, escapeCString, formatCDouble, mapFunctionName, sanitizeIdentifier } from "./transpiler-utils.js";
 
 /** Generated C source files. */
 export interface FmuCSourceFiles {
@@ -188,108 +189,6 @@ function varToC(name: string): string {
     return `der_${sanitizeIdentifier(derMatch[1] ?? "")}`;
   }
   return `v_${sanitizeIdentifier(name)}`;
-}
-
-/** Sanitize a Modelica name into a valid C identifier. */
-function sanitizeIdentifier(name: string): string {
-  return name
-    .replace(/\./g, "_")
-    .replace(/\[/g, "_")
-    .replace(/\]/g, "")
-    .replace(/[^a-zA-Z0-9_]/g, "_");
-}
-
-/** Map binary operator to C operator. */
-function binaryOpToC(op: ModelicaBinaryOperator): string {
-  switch (op) {
-    case ModelicaBinaryOperator.ADDITION:
-    case ModelicaBinaryOperator.ELEMENTWISE_ADDITION:
-      return "+";
-    case ModelicaBinaryOperator.SUBTRACTION:
-    case ModelicaBinaryOperator.ELEMENTWISE_SUBTRACTION:
-      return "-";
-    case ModelicaBinaryOperator.MULTIPLICATION:
-    case ModelicaBinaryOperator.ELEMENTWISE_MULTIPLICATION:
-      return "*";
-    case ModelicaBinaryOperator.DIVISION:
-    case ModelicaBinaryOperator.ELEMENTWISE_DIVISION:
-      return "/";
-    case ModelicaBinaryOperator.EXPONENTIATION:
-    case ModelicaBinaryOperator.ELEMENTWISE_EXPONENTIATION:
-      return "pow";
-    case ModelicaBinaryOperator.LESS_THAN:
-      return "<";
-    case ModelicaBinaryOperator.LESS_THAN_OR_EQUAL:
-      return "<=";
-    case ModelicaBinaryOperator.GREATER_THAN:
-      return ">";
-    case ModelicaBinaryOperator.GREATER_THAN_OR_EQUAL:
-      return ">=";
-    case ModelicaBinaryOperator.EQUALITY:
-      return "==";
-    case ModelicaBinaryOperator.INEQUALITY:
-      return "!=";
-    case ModelicaBinaryOperator.LOGICAL_AND:
-      return "&&";
-    case ModelicaBinaryOperator.LOGICAL_OR:
-      return "||";
-    default:
-      return "+";
-  }
-}
-
-/** Map Modelica built-in function names to C math library equivalents. */
-function mapFunctionName(name: string): string {
-  const builtins: Record<string, string> = {
-    sin: "sin",
-    cos: "cos",
-    tan: "tan",
-    asin: "asin",
-    acos: "acos",
-    atan: "atan",
-    atan2: "atan2",
-    sinh: "sinh",
-    cosh: "cosh",
-    tanh: "tanh",
-    exp: "exp",
-    log: "log",
-    log10: "log10",
-    sqrt: "sqrt",
-    abs: "fabs",
-    sign: "copysign",
-    floor: "floor",
-    ceil: "ceil",
-    min: "fmin",
-    max: "fmax",
-    mod: "fmod",
-    "Modelica.Math.sin": "sin",
-    "Modelica.Math.cos": "cos",
-    "Modelica.Math.log": "log",
-    "Modelica.Math.exp": "exp",
-    "Modelica.Math.sqrt": "sqrt",
-    "Modelica.Math.atan2": "atan2",
-  };
-  return builtins[name] ?? sanitizeIdentifier(name);
-}
-
-/** Format a double for C source. */
-function formatCDouble(value: number): string {
-  if (!isFinite(value)) {
-    if (value === Infinity) return "INFINITY";
-    if (value === -Infinity) return "(-INFINITY)";
-    return "NAN";
-  }
-  const s = value.toString();
-  // Ensure it has a decimal point or exponent to be a C double literal
-  if (!s.includes(".") && !s.includes("e") && !s.includes("E")) {
-    return s + ".0";
-  }
-  return s;
-}
-
-/** Escape special characters for C string literals. */
-function escapeCString(s: string): string {
-  return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n");
 }
 
 /**

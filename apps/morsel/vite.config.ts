@@ -39,28 +39,23 @@ export default defineConfig(({ isSsrBuild }) => {
               dest: "lsp/server/dist",
             },
             {
-              src: "../../packages/lsp/dist/web-tree-sitter.wasm",
+              src: "../../node_modules/web-tree-sitter/web-tree-sitter.wasm",
               dest: "lsp/server/dist",
             },
             {
-              src: "../../packages/lsp/dist/tree-sitter-modelica.wasm",
+              src: "../../languages/modelica/tree-sitter-modelica/tree-sitter-modelica.wasm",
               dest: "lsp/server/dist",
             },
             {
-              src: "../../packages/lsp/dist/tree-sitter-sysml2.wasm",
+              src: "../../languages/sysml2/polyglot/tree-sitter-sysml2.wasm",
               dest: "lsp/server/dist",
             },
             {
-              src: "../../packages/lsp/dist/ModelicaStandardLibrary_v4.1.0.zip",
+              src: "../../scripts/ModelicaStandardLibrary_v4.1.0.zip",
               dest: "lsp/server/dist",
             },
             {
-              src: "../../packages/lsp/dist/SysML-v2-Release-2026-03.zip",
-              dest: "lsp/server/dist",
-            },
-            // Also copy the webpack chunk (442.js) used by the LSP worker
-            {
-              src: "../../packages/lsp/dist/442.js*",
+              src: "../../scripts/SysML-v2-Release-2026-03.zip",
               dest: "lsp/server/dist",
             },
           ],
