@@ -599,7 +599,7 @@
     "dompurify": "^3.4.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
-    "three": "^0.183.2",
+    "three": "^0.184.0",
     "vscode-languageclient": "^9.0.1"
   },
   "devDependencies": {
@@ -607,7 +607,7 @@
     "@stylistic/eslint-plugin": "^5.10.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "@types/three": "^0.183.1",
+    "@types/three": "^0.184.0",
     "@types/vscode": "^1.100.0",
     "@vscode/test-web": "^0.0.80",
     "@vscode/vsce": "^3.7.1",
