@@ -205,6 +205,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
       theme={props.theme}
       defaultValue={props.content}
       defaultLanguage="modelica"
+      path={props.uri}
       onChange={handleDidChangeContent}
       onMount={handleEditorDidMount}
       options={

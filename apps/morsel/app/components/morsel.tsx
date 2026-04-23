@@ -480,8 +480,6 @@ export default function MorselEditor(props: MorselEditorProps) {
   };
 
   const handleSimulate = async () => {
-    if (!selectedTreeClassName) return;
-
     setSimulationStatus({ status: "pending", error: null });
     setLocalSimulationData(null);
 
@@ -489,9 +487,10 @@ export default function MorselEditor(props: MorselEditorProps) {
       // Prepare parameters mapping
       const overrideObj = Object.fromEntries(parameterOverrides);
 
-      // Call the LSP
+      // Call the LSP — if no class is selected in the tree, the LSP
+      // will use the first class instance from the document.
       const result = await simulate(DOCUMENT_URI, {
-        className: selectedTreeClassName,
+        className: selectedTreeClassName ?? undefined,
         parameterOverrides: overrideObj,
         startTime: experimentOverrides.startTime,
         stopTime: experimentOverrides.stopTime,
