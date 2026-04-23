@@ -162,6 +162,71 @@ interface CachedTree {
 const documentTrees = new Map<string, CachedTree>();
 const lazyLibTrees = new Map<string, { tree: any; text: string }>();
 
+function getSharedCstTreeWrapper() {
+  return {
+    getText(startByte: number, endByte: number, entry?: any): string | null {
+      if (!entry || !entry.resourceId) return null;
+      const uri = entry.resourceId;
+      const docTree = documentTrees.get(uri);
+      if (docTree && docTree.tree && docTree.text) return docTree.text.substring(startByte, endByte);
+
+      let lazyCache = lazyLibTrees.get(uri);
+      if (!lazyCache && sharedContext) {
+        try {
+          const fsPath = uri.startsWith("file://") ? uri.substring(7) : uri.replace(/^modelica:\/?/, "");
+          const text = sharedContext.fs.read(fsPath);
+          if (text) {
+            const tree = sharedContext.parse(uri.endsWith(".sysml") ? ".sysml" : ".mo", text);
+            lazyCache = { tree, text };
+            lazyLibTrees.set(uri, lazyCache);
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+      if (lazyCache) return lazyCache.text.substring(startByte, endByte);
+      return null;
+    },
+    getNode(startByte: number, endByte: number, entry?: any): any | null {
+      if (!entry || !entry.resourceId) return null;
+      const uri = entry.resourceId;
+      const docTree = documentTrees.get(uri);
+      if (docTree && docTree.tree)
+        return docTree.tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte - 1));
+
+      let lazyCache = lazyLibTrees.get(uri);
+      if (!lazyCache && sharedContext) {
+        try {
+          const fsPath = uri.startsWith("file://") ? uri.substring(7) : uri.replace(/^modelica:\/?/, "");
+          const text = sharedContext.fs.read(fsPath);
+          if (text) {
+            const tree = sharedContext.parse(uri.endsWith(".sysml") ? ".sysml" : ".mo", text);
+            lazyCache = { tree, text };
+            lazyLibTrees.set(uri, lazyCache);
+          } else {
+            connection.console.error(`[cstTreeWrapper] failed to read fsPath: ${fsPath}`);
+          }
+        } catch (e) {
+          connection.console.error(`[cstTreeWrapper] exception parsing ${uri}: ${e}`);
+        }
+      }
+      if (lazyCache) {
+        const n = lazyCache.tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte - 1));
+        if (!n)
+          connection.console.error(
+            `[cstTreeWrapper] descendantForIndex returned null for ${uri} [${startByte}-${endByte}]`,
+          );
+        return n;
+      }
+      connection.console.error(`[cstTreeWrapper] lazyCache completely empty for ${uri}`);
+      return null;
+    },
+  };
+}
+
+export function isClassInstance(obj: any): obj is ModelicaClassInstance {
+  return obj && "classKind" in obj;
+}
 /**
  * Compute the position (row, column) at a given byte index in a string.
  */
@@ -367,7 +432,7 @@ function resolvePathElement(node: SyntaxNode, scope: Scope): ModelicaNamedElemen
   }
 
   if (foundBase && baseElement) {
-    return baseElement instanceof ModelicaClassInstance
+    return isClassInstance(baseElement)
       ? baseElement.resolveName(parameterPath)
       : baseElement instanceof ModelicaComponentInstance
         ? (baseElement.classInstance?.resolveName(parameterPath) ?? null)
@@ -886,65 +951,7 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
     // only merges files that have already been indexed.
     let unifiedIndex = unifiedWorkspace.toUnifiedPartial();
 
-    const cstTreeWrapper = {
-      getText(startByte: number, endByte: number, entry?: any): string | null {
-        if (!entry || !entry.resourceId) return null;
-        const uri = entry.resourceId;
-        const docTree = documentTrees.get(uri);
-        if (docTree && docTree.tree && docTree.text) return docTree.text.substring(startByte, endByte);
-
-        let lazyCache = lazyLibTrees.get(uri);
-        if (!lazyCache && sharedContext) {
-          try {
-            const fsPath = uri.startsWith("file://") ? uri.substring(7) : uri.replace(/^modelica:\/?/, "");
-            const text = sharedContext.fs.read(fsPath);
-            if (text) {
-              const tree = sharedContext.parse(uri.endsWith(".sysml") ? ".sysml" : ".mo", text);
-              lazyCache = { tree, text };
-              lazyLibTrees.set(uri, lazyCache);
-            }
-          } catch (e) {
-            // ignore
-          }
-        }
-        if (lazyCache) return lazyCache.text.substring(startByte, endByte);
-        return null;
-      },
-      getNode(startByte: number, endByte: number, entry?: any): any | null {
-        if (!entry || !entry.resourceId) return null;
-        const uri = entry.resourceId;
-        const docTree = documentTrees.get(uri);
-        if (docTree && docTree.tree)
-          return docTree.tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte - 1));
-
-        let lazyCache = lazyLibTrees.get(uri);
-        if (!lazyCache && sharedContext) {
-          try {
-            const fsPath = uri.startsWith("file://") ? uri.substring(7) : uri.replace(/^modelica:\/?/, "");
-            const text = sharedContext.fs.read(fsPath);
-            if (text) {
-              const tree = sharedContext.parse(uri.endsWith(".sysml") ? ".sysml" : ".mo", text);
-              lazyCache = { tree, text };
-              lazyLibTrees.set(uri, lazyCache);
-            } else {
-              connection.console.error(`[cstTreeWrapper] failed to read fsPath: ${fsPath}`);
-            }
-          } catch (e) {
-            connection.console.error(`[cstTreeWrapper] exception parsing ${uri}: ${e}`);
-          }
-        }
-        if (lazyCache) {
-          const n = lazyCache.tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte - 1));
-          if (!n)
-            connection.console.error(
-              `[cstTreeWrapper] descendantForIndex returned null for ${uri} [${startByte}-${endByte}]`,
-            );
-          return n;
-        }
-        connection.console.error(`[cstTreeWrapper] lazyCache completely empty for ${uri}`);
-        return null;
-      },
-    };
+    const cstTreeWrapper = getSharedCstTreeWrapper();
 
     let engine = documentQueryEngines.get(textDocument.uri) as any;
     if (engine) {
@@ -1110,19 +1117,12 @@ function computeSemanticTokens(textDocument: TextDocument): SemanticTokens {
     return computeSysML2SemanticTokens(builder, text);
   }
 
-  // Try to parse with tree-sitter via document context
-  const ctx = documentContexts.get(textDocument.uri);
-  if (!ctx) {
+  const docTree = documentTrees.get(textDocument.uri);
+  if (!docTree || !docTree.tree) {
     return builder.build();
   }
 
-  let tree;
-  try {
-    tree = ctx.parse(".mo", text);
-  } catch {
-    return builder.build();
-  }
-
+  const tree = docTree.tree;
   const rawTokens: {
     line: number;
     char: number;
@@ -2393,7 +2393,7 @@ connection.onWorkspaceSymbol((params) => {
   if (sharedContext && symbols.length < MAX_RESULTS) {
     for (const element of sharedContext.elements) {
       if (symbols.length >= MAX_RESULTS) break;
-      if (element instanceof ModelicaClassInstance) {
+      if (isClassInstance(element)) {
         collectWorkspaceSymbols(element, "", query, symbols, MAX_RESULTS);
       }
     }
@@ -2423,7 +2423,7 @@ function collectWorkspaceSymbols(
     const range = (element as any).abstractSyntaxNode?.sourceRange || (element as any).ast?.sourceRange;
     symbols.push({
       name,
-      kind: element instanceof ModelicaClassInstance ? SymbolKind.Class : SymbolKind.Variable,
+      kind: isClassInstance(element) ? SymbolKind.Class : SymbolKind.Variable,
       location: {
         uri: uri || "file:///lib",
         range: range
@@ -2437,7 +2437,7 @@ function collectWorkspaceSymbols(
   }
 
   // Recurse into class children (limit depth for performance)
-  if (element instanceof ModelicaClassInstance) {
+  if (isClassInstance(element)) {
     try {
       for (const child of element.elements) {
         if (symbols.length >= maxResults) break;
@@ -2511,16 +2511,47 @@ connection.onRequest(
       }
     }
 
+    let classInstance: any = null;
     const instances = documentInstances.get(params.uri);
-    if (!instances || instances.length === 0) {
-      return null;
-    }
 
-    // Find the requested class instance (by name, or first one)
-    let classInstance = instances[0];
-    if (params.className) {
-      const found = instances.find((i) => i.name === params.className);
-      if (found) classInstance = found;
+    if (!instances || instances.length === 0) {
+      // Library class: get from polyglot index directly
+      const unifiedIndex = unifiedWorkspace.toUnifiedPartial();
+      let engine = documentQueryEngines.get(params.uri) as any;
+      if (!engine) {
+        engine = createModelicaQueryEngine(unifiedIndex, getSharedCstTreeWrapper());
+      }
+      const db = engine.toQueryDB();
+
+      if (params.className) {
+        const parts = params.className.split(".");
+        const entries = unifiedIndex.byName.get(parts[parts.length - 1]);
+        const entryId = entries?.find((id) => {
+          const e = unifiedIndex.symbols.get(id);
+          return e && getCompositeName(e, unifiedIndex) === params.className;
+        });
+        if (entryId !== undefined) {
+          classInstance = new QueryBackedClassInstance(entryId, db);
+        }
+      }
+
+      if (!classInstance) {
+        // Fallback to first class in file
+        for (const [id, entry] of unifiedIndex.symbols) {
+          if (entry.resourceId === params.uri && entry.kind === "Class" && entry.parentId === null) {
+            classInstance = new QueryBackedClassInstance(id, db);
+            break;
+          }
+        }
+      }
+
+      if (!classInstance) return null;
+    } else {
+      classInstance = instances[0];
+      if (params.className) {
+        const found = instances.find((i) => i.name === params.className || i.compositeName === params.className);
+        if (found) classInstance = found;
+      }
     }
 
     try {
@@ -3625,27 +3656,64 @@ connection.onRequest("modelscript/getProjectTree", (params: { parentId?: string 
 connection.onRequest("modelscript/getClassIcon", (params: { className: string; uri?: string }): string | null => {
   try {
     const docUri = params.uri ?? documentContexts.keys().next().value;
-    if (!docUri) return null;
-    const context = documentContexts.get(docUri);
-    if (!context) return null;
 
-    let classInstance = context.query(params.className);
+    let classInstance: any = null;
+    const unifiedIndex = unifiedWorkspace.toUnifiedPartial();
+    injectPredefinedTypes(unifiedIndex);
+    let engine = docUri ? (documentQueryEngines.get(docUri) as any) : null;
+
+    const parts = params.className.split(".");
+    let entries = unifiedIndex.byName.get(parts[parts.length - 1]);
+    let entryId = entries?.find((id) => {
+      const e = unifiedIndex.symbols.get(id);
+      return e && getCompositeName(e, unifiedIndex) === params.className;
+    });
 
     // If not found, it might be an unparsed MSL file. Force indexing and retry.
-    if (!classInstance) {
+    if (entryId === undefined) {
       const uri = (globalWorkspaceIndex as any).getFileUriForFQN?.(params.className);
       if (uri) {
+        // Always call getFileIndex — has() returns true for registered-but-unindexed files,
+        // but getFileIndex triggers actual parsing and is idempotent for already-indexed files.
         globalWorkspaceIndex.getFileIndex(uri);
-        // We must update the engine's index so it sees the newly parsed file
         const newIndex = unifiedWorkspace.toUnifiedPartial();
         injectPredefinedTypes(newIndex);
-        const engine = documentQueryEngines.get(docUri) as any;
-        if (engine) engine.updateIndex(newIndex);
-        classInstance = context.query(params.className);
+
+        entries = newIndex.byName.get(parts[parts.length - 1]);
+        entryId = entries?.find((id) => {
+          const e = newIndex.symbols.get(id);
+          return e && getCompositeName(e, newIndex) === params.className;
+        });
+
+        // Rebuild engine with the updated index
+        if (entryId !== undefined) {
+          engine = createModelicaQueryEngine(newIndex, getSharedCstTreeWrapper());
+        }
       }
     }
 
-    if (!(classInstance instanceof ModelicaClassInstance)) return null;
+    if (entryId !== undefined) {
+      if (!engine) {
+        const latestIndex = unifiedWorkspace.toUnifiedPartial();
+        injectPredefinedTypes(latestIndex);
+        engine = createModelicaQueryEngine(latestIndex, getSharedCstTreeWrapper());
+      }
+      classInstance = new QueryBackedClassInstance(entryId, engine.toQueryDB());
+    }
+
+    if (!isClassInstance(classInstance)) {
+      connection.console.error(`[library-tree] classInstance is not valid for ${params.className}`);
+      return null;
+    }
+
+    const icon = classInstance.annotation("Icon");
+    connection.console.info(`[getClassIcon] Evaluated Icon for ${params.className}: ` + (icon ? "SUCCESS" : "NULL"));
+    if (!icon) {
+      connection.console.info(
+        `[getClassIcon] CST nodes for ${params.className}: ${classInstance.annotations.length} annotation clauses found.`,
+      );
+      connection.console.info(`[getClassIcon] Abstract syntax node present? ` + !!classInstance.abstractSyntaxNode);
+    }
 
     return getClassIconSvg(classInstance) ?? null;
   } catch (e) {
@@ -3802,7 +3870,7 @@ connection.onRequest("modelscript/addComponent", (params: { uri: string; classNa
     try {
       if (context) {
         const droppedClass = context.query(params.className);
-        if (droppedClass instanceof ModelicaClassInstance) {
+        if (isClassInstance(droppedClass)) {
           const defaultName = droppedClass.annotation("defaultComponentName") as string | null;
           if (defaultName) {
             baseName = (droppedClass as any).translate?.(defaultName) ?? defaultName;
@@ -3882,7 +3950,7 @@ connection.onRequest(
 
     try {
       const element = ctx.query(params.name);
-      if (!element || !(element instanceof ModelicaClassInstance)) return null;
+      if (!isClassInstance(element)) return null;
 
       const components: { name: string; type: string; description: string }[] = [];
       const childClasses: { name: string; kind: string }[] = [];
@@ -3893,7 +3961,7 @@ connection.onRequest(
             type: child.classInstance?.name ?? "",
             description: child.description ?? "",
           });
-        } else if (child instanceof ModelicaClassInstance) {
+        } else if (isClassInstance(child)) {
           childClasses.push({
             name: child.name ?? "",
             kind: child.classKind ?? "class",
@@ -3949,7 +4017,7 @@ connection.onRequest(
 
     try {
       const cls = ctx.query(params.className);
-      if (!cls || !(cls instanceof ModelicaClassInstance)) return null;
+      if (!isClassInstance(cls)) return null;
 
       const component = Array.from(cls.components).find((c) => c.name === params.componentName);
       if (!component) return null;

@@ -642,4 +642,42 @@ export class WorkspaceIndex {
     this.skeletonCache = { symbols, byName, childrenOf };
     return this.skeletonCache;
   }
+
+  /**
+   * Merges multiple SymbolIndex structures into one without mutating the inputs.
+   * Useful for combining a global workspace index with a local one.
+   */
+  static mergePartialIndexes(...indexes: SymbolIndex[]): SymbolIndex {
+    const symbols = new Map<SymbolId, SymbolEntry>();
+    const byName = new Map<string, SymbolId[]>();
+    const childrenOf = new Map<SymbolId | null, SymbolId[]>();
+
+    for (const index of indexes) {
+      if (!index) continue;
+
+      for (const [id, entry] of index.symbols) {
+        symbols.set(id, entry);
+      }
+
+      for (const [name, ids] of index.byName) {
+        const existing = byName.get(name);
+        if (existing) {
+          existing.push(...ids);
+        } else {
+          byName.set(name, [...ids]);
+        }
+      }
+
+      for (const [parentId, ids] of index.childrenOf) {
+        const existing = childrenOf.get(parentId);
+        if (existing) {
+          existing.push(...ids);
+        } else {
+          childrenOf.set(parentId, [...ids]);
+        }
+      }
+    }
+
+    return { symbols, byName, childrenOf };
+  }
 }
