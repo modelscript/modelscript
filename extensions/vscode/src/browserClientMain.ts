@@ -16,6 +16,7 @@ import { registerMCPTools } from "./mcpBridge";
 import { MqttTreeProvider } from "./mqttTreeProvider";
 import { ModelicaNotebookController } from "./notebookController";
 import { ModelicaNotebookSerializer } from "./notebookSerializer";
+import { registerRegistryView } from "./registryTreeProvider";
 import { RequirementsEditorProvider } from "./requirementsEditorProvider";
 import { SysML2PaletteProvider } from "./sysml2PaletteProvider";
 import { VerificationPanel } from "./verificationPanel";
@@ -380,6 +381,9 @@ export async function activate(context: vscode.ExtensionContext) {
   });
   context.subscriptions.push(mqttTreeView);
   mqttTreeProvider.startPolling();
+
+  // Register ModelScript package registry tree view (Extensions-bar style)
+  registerRegistryView(context);
 
   // Register SysML2 element palette tree view
   const sysml2PaletteProvider = new SysML2PaletteProvider();
@@ -1963,6 +1967,7 @@ async function scanWorkspaceFiles(): Promise<vscode.Uri[]> {
           console.warn(`[workspace-scan] Failed to open ${uri.path}:`, e);
         }
       }
+
       // Also scan for FMU archive files and register them with the LSP
       const fmuFiles = await workspace.findFiles("**/*.fmu");
       for (const uri of fmuFiles) {
@@ -1983,6 +1988,62 @@ async function scanWorkspaceFiles(): Promise<vscode.Uri[]> {
           console.warn(`[workspace-scan] Failed to register FMU ${uri.path}:`, e);
         }
       }
+
+      // Also scan node_modules/ for installed registry packages
+      try {
+        const pkgJsons = await workspace.findFiles("node_modules/**/package.json");
+        const registryPackages = [];
+
+        for (const pkgUri of pkgJsons) {
+          try {
+            const contentBytes = await workspace.fs.readFile(pkgUri);
+            const content = new TextDecoder("utf-8").decode(contentBytes);
+            const pkgData = JSON.parse(content);
+
+            if (pkgData && pkgData.modelscript) {
+              const pkgName = pkgData.name;
+              const pkgVersion = pkgData.version;
+
+              // Read all .mo files in this package directory
+              const pkgDir = Uri.joinPath(pkgUri, "..");
+              const relativePattern = new vscode.RelativePattern(pkgDir, "**/*.mo");
+              const moFiles = await workspace.findFiles(relativePattern);
+
+              const files: Record<string, string> = {};
+              for (const moUri of moFiles) {
+                // Compute relative path
+                const relPath = workspace.asRelativePath(moUri, false);
+                const pkgPrefix = workspace.asRelativePath(pkgDir, false) + "/";
+                const internalPath = relPath.startsWith(pkgPrefix) ? relPath.substring(pkgPrefix.length) : relPath;
+
+                const fileBytes = await workspace.fs.readFile(moUri);
+                files[internalPath] = new TextDecoder("utf-8").decode(fileBytes);
+              }
+
+              if (Object.keys(files).length > 0) {
+                registryPackages.push({
+                  name: pkgName,
+                  version: pkgVersion,
+                  files,
+                  modelscript: pkgData.modelscript,
+                });
+                console.log(
+                  `[workspace-scan] Discovered registry package ${pkgName}@${pkgVersion} (${Object.keys(files).length} files)`,
+                );
+              }
+            }
+          } catch (e) {
+            console.warn(`[workspace-scan] Failed to read ${pkgUri.path}:`, e);
+          }
+        }
+
+        if (registryPackages.length > 0 && client) {
+          await client.sendNotification("modelscript/registryPackages", { packages: registryPackages });
+        }
+      } catch (e) {
+        console.warn(`[workspace-scan] Failed to scan node_modules:`, e);
+      }
+
       return moFiles;
     } catch (e) {
       const msg = String(e);

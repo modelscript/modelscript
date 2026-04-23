@@ -241,3 +241,172 @@ export async function loadSysML2StandardLibrary(serverDistBase: string, ctx: Loa
     ctx.logger.error("Failed to load SysML2 standard library:", e);
   }
 }
+
+// ── Registry package loading ────────────────────────────────────
+// Loads ModelScript packages installed via npm (from node_modules/)
+// into the global workspace index for cross-file resolution.
+
+/**
+ * ModelScript package descriptor sent by the client (VS Code extension)
+ * after scanning node_modules/ for packages with `modelscript` metadata.
+ */
+export interface RegistryPackageInfo {
+  /** Package name (e.g., "@modelscript/motor-library"). */
+  name: string;
+  /** Package version. */
+  version: string;
+  /**
+   * Map of relative paths → file contents for all .mo files.
+   * Keys are relative to the package root (e.g., "Motor/package.mo").
+   */
+  files: Record<string, string>;
+  /** Optional modelscript metadata from package.json. */
+  modelscript?: {
+    languages?: string[];
+    main?: string;
+    modelicaVersion?: string;
+  };
+}
+
+/**
+ * Load a ModelScript registry package into the workspace.
+ *
+ * Called when the client discovers an installed package in node_modules/
+ * that contains `modelscript` metadata in its package.json.
+ *
+ * Files are written to the BrowserFileSystem under /packages/{name}/
+ * and registered lazily in the globalWorkspaceIndex.
+ */
+export async function loadRegistryPackage(pkg: RegistryPackageInfo, ctx: LoaderContext): Promise<void> {
+  try {
+    const safeName = pkg.name.replace(/\//g, "_").replace(/^@/, "");
+    const basePath = `/packages/${safeName}`;
+    const label = `${pkg.name}@${pkg.version}`;
+
+    ctx.logger.log(`[registry] Loading package ${label} (${Object.keys(pkg.files).length} files)`);
+    ctx.connectionState.sendNotification("modelscript/status", {
+      state: "loading",
+      message: `Loading ${label}...`,
+    });
+
+    // Write files to the VFS
+    let fileCount = 0;
+    for (const [relPath, content] of Object.entries(pkg.files)) {
+      const fullPath = `${basePath}/${relPath}`;
+
+      // Ensure parent directories exist
+      const parts = fullPath.split("/");
+      for (let i = 2; i < parts.length; i++) {
+        const dir = parts.slice(0, i).join("/");
+        try {
+          ctx.sharedFs.addDir(dir);
+        } catch {
+          /* dir already exists */
+        }
+      }
+
+      const encoder = new TextEncoder();
+      ctx.sharedFs.addFile(fullPath, encoder.encode(content));
+      fileCount++;
+    }
+
+    // Add as a library to the shared context
+    try {
+      const libEntries = ctx.sharedFs.readdir(basePath);
+      const hasPackage = libEntries.some((e) => e.name === "package.mo");
+      if (hasPackage) {
+        await ctx.sharedContext.addLibrary(basePath, { skipIndex: true });
+      } else {
+        for (const entry of libEntries) {
+          if (entry.isDirectory()) {
+            try {
+              await ctx.sharedContext.addLibrary(`${basePath}/${entry.name}`, { skipIndex: true });
+            } catch (e) {
+              ctx.logger.warn(`[registry] Failed to load sub-library ${basePath}/${entry.name}: ${e}`);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      ctx.logger.warn(`[registry] Failed to add library from ${basePath}: ${e}`);
+    }
+
+    // Register files lazily in the global workspace index
+    const pkgTreeCache = new Map<string, unknown>();
+    let registeredCount = 0;
+
+    const registerDirLazy = (dir: string) => {
+      try {
+        const entries = ctx.sharedFs.readdir(dir);
+        for (const entry of entries) {
+          const fullPath = ctx.sharedFs.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            registerDirLazy(fullPath);
+          } else if (entry.name.endsWith(".mo")) {
+            const uri = `modelica:/${fullPath}`;
+            let parentFQN = "";
+
+            // Compute the parent FQN from the file path
+            const relPath = fullPath.substring(basePath.length + 1); // strip basePath + "/"
+            const pathParts = relPath.split("/");
+            if (pathParts[pathParts.length - 1] === "package.mo") {
+              pathParts.pop(); // Remove "package.mo"
+              pathParts.pop(); // Remove the package dir name
+            } else {
+              pathParts.pop(); // Remove "Filename.mo"
+            }
+            // First part may contain spaces (e.g., "Motor Library v1"), take first word
+            if (pathParts.length > 0) {
+              pathParts[0] = pathParts[0].split(" ")[0];
+            }
+            parentFQN = pathParts.join(".");
+
+            ctx.globalWorkspaceIndex.register(
+              uri,
+              () => {
+                if (!pkgTreeCache.has(fullPath)) {
+                  try {
+                    const text = ctx.sharedFs.read(fullPath);
+                    if (text) {
+                      const tree = ctx.sharedContext.parse(".mo", text);
+                      pkgTreeCache.set(fullPath, tree);
+                    }
+                  } catch {
+                    pkgTreeCache.set(fullPath, null);
+                  }
+                }
+                return (pkgTreeCache.get(fullPath)?.rootNode ??
+                  null) as unknown as import("@modelscript/polyglot/symbol-indexer").CSTNode;
+              },
+              parentFQN,
+            );
+            registeredCount++;
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+    registerDirLazy(basePath);
+
+    ctx.logger.log(`[registry] Loaded ${label}: ${fileCount} files, ${registeredCount} registered in workspace index`);
+  } catch (e) {
+    ctx.logger.error(`[registry] Failed to load package ${pkg.name}:`, e);
+  }
+}
+
+/**
+ * Load all registry packages provided by the client.
+ * Called after MSL loading when the client sends discovered packages.
+ */
+export async function loadRegistryPackages(packages: RegistryPackageInfo[], ctx: LoaderContext): Promise<void> {
+  if (packages.length === 0) return;
+
+  ctx.logger.log(`[registry] Loading ${packages.length} registry package(s)...`);
+
+  for (const pkg of packages) {
+    await loadRegistryPackage(pkg, ctx);
+  }
+
+  ctx.logger.log(`[registry] All registry packages loaded.`);
+}

@@ -109,7 +109,13 @@ import { ModelicaSimulator, registerSimulateDeps } from "@modelscript/simulator"
 import { formatModelicaTree } from "./formatting/modelica-formatter";
 import { getRequirements, getTraceabilityMatrix } from "./requirements";
 import { BrowserFileSystem } from "./vfs/browser-file-system";
-import { loadMSL, loadSysML2StandardLibrary, type LoaderContext } from "./vfs/library-loader";
+import {
+  loadMSL,
+  loadRegistryPackages,
+  loadSysML2StandardLibrary,
+  type LoaderContext,
+  type RegistryPackageInfo,
+} from "./vfs/library-loader";
 
 // Register flattener/simulator constructors for the scripting simulate() function.
 // This breaks the circular dependency: interpreter → evaluate-simulate → flattener.
@@ -130,6 +136,9 @@ const connection = createConnection(messageReader, messageWriter);
 
 const sharedFs = new BrowserFileSystem();
 let sharedContext: Context | null = null;
+
+/* Loader context — saved from initTreeSitter so notification handlers can reuse it */
+let savedLoaderCtx: LoaderContext | null = null;
 
 /* Tree-sitter state */
 
@@ -432,6 +441,7 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
       documentTrees: documentTrees as any,
       sysml2Parser: sysml2Parser as any,
     };
+    savedLoaderCtx = loaderCtx;
     await loadMSL(serverDistBase, loaderCtx);
 
     // Load the SysML v2 Standard Library from the bundled zip
@@ -5254,6 +5264,19 @@ connection.onNotification(
     breakpointsMap.set(params.uri, params.breakpoints);
   },
 );
+
+connection.onNotification("modelscript/registryPackages", async (params: { packages: RegistryPackageInfo[] }) => {
+  if (savedLoaderCtx) {
+    connection.console.info(`[lsp] Received ${params.packages.length} registry packages from client.`);
+    await loadRegistryPackages(params.packages, savedLoaderCtx);
+    // Re-validate all documents to pick up the newly indexed library items
+    for (const doc of documents.all()) {
+      validateTextDocument(doc);
+    }
+  } else {
+    connection.console.warn("[lsp] Received registry packages but loader context is not ready.");
+  }
+});
 
 connection.onRequest("modelscript/debuggerContinue", (params?: any) => {
   stepMode = params?.step || false;

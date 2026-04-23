@@ -7,10 +7,10 @@ import { AuthProvider, useAuth } from "./AuthContext";
 import Box from "./components/Box";
 import ClassDetailPage from "./pages/ClassDetailPage";
 import LandingPage from "./pages/LandingPage";
-import LibraryDetailPage from "./pages/LibraryDetailPage";
 import LibraryListPage from "./pages/LibraryListPage";
 import LibraryVersionPage from "./pages/LibraryVersionPage";
 import LoginPage from "./pages/LoginPage";
+import PackageDetailPage from "./pages/PackageDetailPage";
 import SignupPage from "./pages/SignupPage";
 import { ThemeContextProvider, useTheme } from "./theme";
 
@@ -330,7 +330,7 @@ function App() {
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/signup" element={<SignupPage />} />
                 <Route path="/:name" element={<LibraryVersionPage />} />
-                <Route path="/:name/:version" element={<LibraryDetailPage />} />
+                <Route path="/:name/:version" element={<PackageDetailPage />} />
                 <Route path="/:name/:version/classes/:className" element={<ClassDetailPage />} />
               </Routes>
             </Box>

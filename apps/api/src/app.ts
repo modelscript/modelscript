@@ -5,13 +5,17 @@ import express from "express";
 import rateLimit from "express-rate-limit";
 import type { Pool } from "pg";
 
+import { initializeArtifactSystem } from "./artifacts/index.js";
 import { LibraryDatabase } from "./database.js";
 import { JobQueue } from "./jobs.js";
+import { artifactViewerRouter } from "./routes/artifact-viewer.js";
 import { authRouter } from "./routes/auth.js";
 import { cosimRouter, mqttParticipantsRouter } from "./routes/cosim.js";
 import { fmuRouter } from "./routes/fmu.js";
 import { graphqlRouter } from "./routes/graphql.js";
 import { historianRouter } from "./routes/historian.js";
+import { npmAuthRouter } from "./routes/npm-auth.js";
+import { npmRegistryRouter } from "./routes/npm-registry.js";
 import { packagesRouter } from "./routes/packages.js";
 import { publishRouter } from "./routes/publish.js";
 import { rdfRouter } from "./routes/rdf.js";
@@ -42,7 +46,11 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   const mqttClient = opts.mqttClient ?? null;
   const dbPool = opts.dbPool ?? null;
 
-  app.use(express.json());
+  // Initialize the extensible artifact system (FMU, Dataset, etc.)
+  initializeArtifactSystem();
+
+  // Increased limit for npm publish payloads (base64-encoded tarballs in JSON body)
+  app.use(express.json({ limit: "50mb" }));
 
   // Rate Limiting
   const limiter = rateLimit({
@@ -76,11 +84,18 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   app.use("/api/v1/libraries", sparqlRouter(database));
   app.use("/api/v1", simulateRouter(libraryStorage, jobQueue));
 
+  // Artifact viewer routes (query artifact metadata, viewer configs)
+  app.use("/api/v1", artifactViewerRouter(database));
+
   // Co-simulation routes (with MQTT client injection)
   app.use("/api/v1/cosim", cosimRouter(mqttClient));
   app.use("/api/v1/mqtt/participants", mqttParticipantsRouter(mqttClient));
   app.use("/api/v1/historian", historianRouter(dbPool, mqttClient));
   app.use("/api/v1/fmus", fmuRouter());
+
+  // ── npm-compatible registry (mounted at root for `npm --registry=` compat) ──
+  app.use("/", npmAuthRouter(database));
+  app.use("/", npmRegistryRouter(database));
 
   // Health check
   app.get("/health", (_req, res) => {

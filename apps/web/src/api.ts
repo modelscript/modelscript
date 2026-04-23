@@ -115,4 +115,123 @@ export function rewriteModelicaUris(html: string, version: string): string {
   return result;
 }
 
+// ── npm registry API ────────────────────────────────────────────
+
+export interface NpmPackument {
+  _id: string;
+  name: string;
+  description?: string | null;
+  "dist-tags": Record<string, string>;
+  versions: Record<string, NpmVersionManifest>;
+  time?: Record<string, string>;
+  readme?: string;
+  readmeFilename?: string;
+  license?: string | null;
+  homepage?: string | null;
+  repository?: { type: string; url: string } | null;
+}
+
+export interface NpmVersionManifest {
+  name: string;
+  version: string;
+  description?: string;
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+  modelscript?: {
+    languages?: string[];
+    main?: string;
+    modelicaVersion?: string;
+    artifacts?: NpmArtifact[];
+    verification?: {
+      requirements?: string;
+      results?: string;
+    };
+  };
+  dist?: {
+    shasum: string;
+    integrity?: string;
+    tarball: string;
+  };
+  license?: string;
+  author?: { name?: string; email?: string; url?: string } | string;
+  [key: string]: unknown;
+}
+
+export interface NpmArtifact {
+  type: string;
+  path: string;
+  description?: string;
+  fmiVersion?: string;
+  platforms?: string[];
+  [key: string]: unknown;
+}
+
+export interface NpmSearchResult {
+  objects: {
+    package: {
+      name: string;
+      version: string;
+      description: string | null;
+      date: string;
+      links?: Record<string, string>;
+    };
+  }[];
+  total: number;
+}
+
+/**
+ * Fetch the full npm packument for a package.
+ */
+export const getPackument = async (name: string): Promise<NpmPackument | null> => {
+  try {
+    const { data } = await axios.get<NpmPackument>(`/${encodeURIComponent(name)}`);
+    return data;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Search the npm registry.
+ */
+export const searchRegistry = async (text: string, size = 20): Promise<NpmSearchResult> => {
+  const { data } = await axios.get<NpmSearchResult>("/-/v1/search", {
+    params: { text, size },
+  });
+  return data;
+};
+
+// ── artifact viewer API ─────────────────────────────────────────
+
+export interface ArtifactViewDescriptor {
+  viewer: string; // 'fmu-simulator' | 'dataset-table' | ...
+  label: string;
+  icon: string;
+  config: Record<string, unknown>;
+}
+
+export interface ArtifactViewerInfo {
+  id: number;
+  type: string;
+  path: string;
+  displayName: string;
+  metadata: Record<string, unknown>;
+  viewer: ArtifactViewDescriptor | null;
+}
+
+/**
+ * Fetch enriched artifact metadata for a package version.
+ * Returns artifacts with viewer configurations (if a handler is registered).
+ */
+export const getArtifactViewers = async (name: string, version: string): Promise<ArtifactViewerInfo[]> => {
+  try {
+    const { data } = await axios.get<{ artifacts: ArtifactViewerInfo[] }>(
+      `/api/v1/packages/${encodeURIComponent(name)}/${version}/artifacts`,
+    );
+    return data.artifacts;
+  } catch {
+    return [];
+  }
+};
+
 export default api;

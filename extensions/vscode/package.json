@@ -158,6 +158,26 @@
         "command": "modelscript.openVerificationDashboard",
         "title": "ModelScript: Open V&V Dashboard",
         "icon": "$(shield)"
+      },
+      {
+        "command": "modelscript.registry.search",
+        "title": "ModelScript: Search Registry",
+        "icon": "$(search)"
+      },
+      {
+        "command": "modelscript.registry.refresh",
+        "title": "ModelScript: Refresh Registry",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "modelscript.registry.install",
+        "title": "Install Package",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "modelscript.registry.uninstall",
+        "title": "Uninstall Package",
+        "icon": "$(trash)"
       }
     ],
     "configuration": [
@@ -187,6 +207,12 @@
             "scope": "window",
             "default": "ws://localhost:9001",
             "description": "MQTT broker WebSocket URL for live data streaming."
+          },
+          "modelscript.registryUrl": {
+            "type": "string",
+            "scope": "window",
+            "default": "https://api.modelscript.org",
+            "description": "ModelScript package registry URL. Use http://localhost:3000 for local development."
           }
         }
       }
@@ -531,6 +557,16 @@
           "command": "modelscript.addToDiagram",
           "when": "view == modelscript.mqttTree && viewItem == mqttParticipant",
           "group": "navigation"
+        },
+        {
+          "command": "modelscript.registry.install",
+          "when": "view == modelscript.registryView && viewItem == registry-package",
+          "group": "inline"
+        },
+        {
+          "command": "modelscript.registry.uninstall",
+          "when": "view == modelscript.registryView && viewItem == installed-package",
+          "group": "inline"
         }
       ]
     },
@@ -599,6 +635,13 @@
           "name": "Chat",
           "visibility": "visible"
         }
+      ],
+      "modelscript-registry": [
+        {
+          "id": "modelscript.registryView",
+          "name": "Packages",
+          "visibility": "visible"
+        }
       ]
     },
     "viewsContainers": {
@@ -612,6 +655,11 @@
           "id": "modelscript-ai",
           "title": "ModelScript AI",
           "icon": "$(comment-discussion)"
+        },
+        {
+          "id": "modelscript-registry",
+          "title": "ModelScript Registry",
+          "icon": "$(extensions)"
         }
       ]
     },
@@ -623,6 +671,10 @@
       {
         "view": "modelscript.mqttTree",
         "contents": "No MQTT participants online.\n[Connect to MQTT](command:modelscript.cosimConnect)\n[Start Local Infrastructure](command:modelscript.cosimStartInfra)"
+      },
+      {
+        "view": "modelscript.registryView",
+        "contents": "Browse and install ModelScript packages from the registry.\n[Search Packages](command:modelscript.registry.search)\n[Refresh](command:modelscript.registry.refresh)"
       }
     ]
   },

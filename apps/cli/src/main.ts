@@ -9,6 +9,7 @@ import { Cosim } from "./commands/cosim.js";
 import { ExportFmu } from "./commands/export-fmu.js";
 import { Flatten } from "./commands/flatten.js";
 import { I18n } from "./commands/i18n.js";
+import { Init } from "./commands/init.js";
 import { Instantiate } from "./commands/instantiate.js";
 import { Lint } from "./commands/lint.js";
 import { Login } from "./commands/login.js";
@@ -30,6 +31,7 @@ yargs(process.argv.slice(2))
   .command(Cosim)
   .command(ExportFmu)
   .command(I18n)
+  .command(Init)
   .command(Instantiate)
   .command(Lint)
   .command(Login)
