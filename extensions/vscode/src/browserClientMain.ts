@@ -585,6 +585,7 @@ export async function activate(context: vscode.ExtensionContext) {
       vscode.window.withProgress(
         { location: vscode.ProgressLocation.Notification, title: "Exporting FMI 2.0...", cancellable: false },
         async () => {
+          if (!client) return;
           try {
             const res = await client.sendRequest<{ fmuName: string; base64: string }>("modelscript/exportFmu", {
               uri: editor.document.uri.toString(),
@@ -610,6 +611,7 @@ export async function activate(context: vscode.ExtensionContext) {
       vscode.window.withProgress(
         { location: vscode.ProgressLocation.Notification, title: "Exporting FMI 3.0...", cancellable: false },
         async () => {
+          if (!client) return;
           try {
             const res = await client.sendRequest<{ fmuName: string; base64: string }>("modelscript/exportFmu", {
               uri: editor.document.uri.toString(),

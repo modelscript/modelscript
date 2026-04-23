@@ -34,7 +34,9 @@ export function remarkInterpolation() {
 
       if (newNodes.length > 0 && (newNodes.length !== 1 || newNodes[0].type !== "text")) {
         parent.children.splice(index, 1, ...newNodes);
+        return index + newNodes.length;
       }
+      return undefined;
     });
   };
 }

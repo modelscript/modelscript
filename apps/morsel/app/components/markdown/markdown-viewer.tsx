@@ -10,10 +10,12 @@ import { remarkInterpolation } from "./remark-interpolation-plugin.js";
 // Convert remark-directive and var nodes to HAST elements that react-markdown can map to React components
 function remarkDirectiveToHast() {
   return (tree: any) => {
-    visit(tree, ["textDirective", "leafDirective", "containerDirective"], (node) => {
-      const data = node.data || (node.data = {});
-      data.hName = node.name;
-      data.hProperties = node.attributes || {};
+    visit(tree, (node: any) => {
+      if (node.type === "textDirective" || node.type === "leafDirective" || node.type === "containerDirective") {
+        const data = node.data || (node.data = {});
+        data.hName = node.name;
+        data.hProperties = node.attributes || {};
+      }
     });
   };
 }
