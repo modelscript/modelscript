@@ -896,7 +896,7 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
         let lazyCache = lazyLibTrees.get(uri);
         if (!lazyCache && sharedContext) {
           try {
-            const fsPath = uri.startsWith("file://") ? uri.substring(7) : uri;
+            const fsPath = uri.startsWith("file://") ? uri.substring(7) : uri.replace(/^modelica:\/?/, "");
             const text = sharedContext.fs.read(fsPath);
             if (text) {
               const tree = sharedContext.parse(uri.endsWith(".sysml") ? ".sysml" : ".mo", text);
@@ -920,7 +920,7 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
         let lazyCache = lazyLibTrees.get(uri);
         if (!lazyCache && sharedContext) {
           try {
-            const fsPath = uri.startsWith("file://") ? uri.substring(7) : uri;
+            const fsPath = uri.startsWith("file://") ? uri.substring(7) : uri.replace(/^modelica:\/?/, "");
             const text = sharedContext.fs.read(fsPath);
             if (text) {
               const tree = sharedContext.parse(uri.endsWith(".sysml") ? ".sysml" : ".mo", text);
