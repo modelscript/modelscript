@@ -315,7 +315,10 @@ export default function MorselEditor(props: MorselEditorProps) {
       setLoadingMessage("Starting language server…");
 
       try {
-        await startLsp();
+        const conn = await startLsp();
+        conn.onNotification("modelscript/projectTreeChanged", () => {
+          setContextVersion((v) => v + 1);
+        });
       } catch (e) {
         console.error("Failed to start LSP:", e);
       }
