@@ -102,7 +102,13 @@ import {
   type Stats,
 } from "@modelscript/core";
 import { ModelicaFmuEntity, buildFmuArchive, generateMultiModelWrapper } from "@modelscript/fmi";
-import { ModelicaOptimizer, registerOptimizeDeps } from "@modelscript/optimizer";
+import {
+  ModelicaCalibrator,
+  ModelicaOptimizer,
+  parseCsvMeasurements,
+  registerCalibrateDeps,
+  registerOptimizeDeps,
+} from "@modelscript/optimizer";
 import { VerificationRunner } from "@modelscript/polyglot";
 import { ModelicaSimulator, registerSimulateDeps } from "@modelscript/simulator";
 import { getRequirements, getTraceabilityMatrix } from "./requirements";
@@ -111,6 +117,7 @@ import { getRequirements, getTraceabilityMatrix } from "./requirements";
 // This breaks the circular dependency: interpreter → evaluate-simulate → flattener.
 registerSimulateDeps({ Flattener: ModelicaFlattener, Simulator: ModelicaSimulator });
 registerOptimizeDeps({ Flattener: ModelicaFlattener, Optimizer: ModelicaOptimizer });
+registerCalibrateDeps({ Flattener: ModelicaFlattener, Simulator: ModelicaSimulator, Calibrator: ModelicaCalibrator });
 
 console.log("ModelScript language server starting...");
 
@@ -5199,6 +5206,265 @@ connection.onRequest(
         iterations: 0,
         message: e instanceof Error ? e.message : String(e),
       };
+    }
+  },
+);
+
+// ── Model Calibration RPC ──
+
+/** Get calibration-eligible parameters for a model. */
+connection.onRequest(
+  "modelscript/getCalibrationParameters",
+  async (params: {
+    uri: string;
+    className?: string;
+  }): Promise<{
+    parameters: {
+      name: string;
+      type: "real" | "integer" | "boolean" | "enumeration";
+      defaultValue: number;
+      min?: number;
+      max?: number;
+      unit?: string;
+    }[];
+  } | null> => {
+    let instances = documentInstances.get(params.uri);
+    if (!instances || instances.length === 0) {
+      const doc = documents.get(params.uri);
+      if (doc) {
+        await validateTextDocument(doc);
+        instances = documentInstances.get(params.uri);
+      }
+    }
+    if (!instances || instances.length === 0) return null;
+
+    let target = instances[0];
+    if (params.className) {
+      const found = instances.find((i) => i.name === params.className || i.compositeName === params.className);
+      if (found) target = found;
+    }
+
+    try {
+      if (!target.instantiated) target.instantiate();
+
+      const dae = new ModelicaDAE(target.name || "Model");
+      const flattener = new ModelicaFlattener();
+      target.accept(flattener, ["", dae]);
+      flattener.generateFlowBalanceEquations(dae);
+      flattener.foldDAEConstants(dae);
+
+      const simulator = new ModelicaSimulator(dae);
+      simulator.prepare();
+
+      return { parameters: simulator.getParameterInfo() };
+    } catch (e) {
+      console.error("[getCalibrationParameters] Error:", e);
+      return null;
+    }
+  },
+);
+
+/** Run model calibration against CSV measurement data. */
+connection.onRequest(
+  "modelscript/runCalibration",
+  async (params: {
+    uri: string;
+    className?: string;
+    csvData: string;
+    parameters?: string[];
+    parameterBounds?: Record<string, { min: number; max: number }>;
+    columnMapping?: Record<string, string>;
+    timeColumn?: string;
+    method?: string;
+    gradient?: string;
+    tolerance?: number;
+    maxIterations?: number;
+  }): Promise<{
+    success: boolean;
+    parameters: { name: string; value: number; initial: number }[];
+    residual: number;
+    variableResiduals: { name: string; residual: number }[];
+    iterations: number;
+    simulated: { t: number[]; y: number[][]; states: string[] };
+    measured: { t: number[]; y: number[][]; states: string[] };
+    costHistory: number[];
+    message: string;
+    error?: string;
+  }> => {
+    const errorResult = (error: string) => ({
+      success: false,
+      parameters: [],
+      residual: 0,
+      variableResiduals: [],
+      iterations: 0,
+      simulated: { t: [], y: [], states: [] },
+      measured: { t: [], y: [], states: [] },
+      costHistory: [],
+      message: "",
+      error,
+    });
+
+    // Parse CSV
+    let csv;
+    try {
+      csv = parseCsvMeasurements(params.csvData, {
+        timeColumn: params.timeColumn,
+        columnMapping: params.columnMapping ? new Map(Object.entries(params.columnMapping)) : undefined,
+        skipNaN: true,
+      });
+    } catch (e) {
+      return errorResult(`CSV parse error: ${e instanceof Error ? e.message : String(e)}`);
+    }
+
+    // Resolve class instance
+    let instances = documentInstances.get(params.uri);
+    if (!instances || instances.length === 0) {
+      const doc = documents.get(params.uri);
+      if (doc) {
+        await validateTextDocument(doc);
+        instances = documentInstances.get(params.uri);
+      }
+    }
+    if (!instances || instances.length === 0) {
+      return errorResult("No class instances found for this document.");
+    }
+
+    let target = instances[0];
+    if (params.className) {
+      const found = instances.find((i) => i.name === params.className || i.compositeName === params.className);
+      if (found) target = found;
+    }
+
+    try {
+      if (!target.instantiated) target.instantiate();
+
+      const dae = new ModelicaDAE(target.name || "Model");
+      const flattener = new ModelicaFlattener();
+      target.accept(flattener, ["", dae]);
+      flattener.generateFlowBalanceEquations(dae);
+      flattener.foldDAEConstants(dae);
+
+      const simulator = new ModelicaSimulator(dae);
+      simulator.prepare();
+
+      // Determine parameters to calibrate
+      const paramInfo = simulator.getParameterInfo();
+      let paramNames = params.parameters;
+      if (!paramNames || paramNames.length === 0) {
+        // Auto-detect: all Real parameters
+        paramNames = paramInfo.filter((p) => p.type === "real").map((p) => p.name);
+      }
+      if (paramNames.length === 0) {
+        return errorResult("No calibration parameters found or specified.");
+      }
+
+      // Build parameter bounds
+      const parameterBounds = new Map<string, { min: number; max: number }>();
+      for (const name of paramNames) {
+        const userBounds = params.parameterBounds?.[name];
+        const pInfo = paramInfo.find((p) => p.name === name);
+        parameterBounds.set(name, {
+          min: userBounds?.min ?? pInfo?.min ?? -1e6,
+          max: userBounds?.max ?? pInfo?.max ?? 1e6,
+        });
+      }
+
+      // Build measurements map from CSV
+      const measurements = new Map<string, { t: number[]; y: number[] }>();
+      for (const col of csv.columns) {
+        const values = csv.data.get(col);
+        if (values) {
+          measurements.set(col, { t: csv.time, y: values });
+        }
+      }
+
+      if (measurements.size === 0) {
+        return errorResult("No measurement variables found in CSV columns.");
+      }
+
+      // Extract initial guesses
+      const initialGuess = new Map<string, number>();
+      for (const pi of paramInfo) {
+        if (paramNames.includes(pi.name)) {
+          initialGuess.set(pi.name, pi.defaultValue);
+        }
+      }
+
+      // Run calibration
+      const calibrator = new ModelicaCalibrator(dae, simulator, {
+        parameters: paramNames,
+        parameterBounds,
+        initialGuess,
+        measurements,
+        tolerance: params.tolerance ?? 1e-8,
+        maxIterations: params.maxIterations ?? 100,
+        method: (params.method as "lm" | "sqp") ?? "lm",
+        gradient: (params.gradient as "sensitivity" | "finite-difference") ?? "sensitivity",
+      });
+
+      const result = calibrator.calibrate();
+
+      // Format result for RPC
+      const parametersOut: { name: string; value: number; initial: number }[] = [];
+      for (const name of paramNames) {
+        parametersOut.push({
+          name,
+          value: result.parameters.get(name) ?? 0,
+          initial: initialGuess.get(name) ?? 0,
+        });
+      }
+
+      const variableResidualsOut: { name: string; residual: number }[] = [];
+      for (const [name, res] of result.variableResiduals) {
+        variableResidualsOut.push({ name, residual: res });
+      }
+
+      // Format simulated output: convert Map to arrays
+      const simStates: string[] = [];
+      const simY: number[][] = [];
+      const simT = result.simulated.t;
+      for (const [varName, vals] of result.simulated.y) {
+        simStates.push(varName);
+      }
+      for (let ti = 0; ti < simT.length; ti++) {
+        const row: number[] = [];
+        for (const varName of simStates) {
+          const vals = result.simulated.y.get(varName);
+          row.push(vals?.[ti] ?? 0);
+        }
+        simY.push(row);
+      }
+
+      // Format measured output for overlay
+      const measStates: string[] = [];
+      const measY: number[][] = [];
+      const measT = csv.time;
+      for (const [varName] of measurements) {
+        measStates.push(varName);
+      }
+      for (let ti = 0; ti < measT.length; ti++) {
+        const row: number[] = [];
+        for (const varName of measStates) {
+          const meas = measurements.get(varName);
+          row.push(meas?.y[ti] ?? 0);
+        }
+        measY.push(row);
+      }
+
+      return {
+        success: result.success,
+        parameters: parametersOut,
+        residual: result.residual,
+        variableResiduals: variableResidualsOut,
+        iterations: result.iterations,
+        simulated: { t: simT, y: simY, states: simStates },
+        measured: { t: measT, y: measY, states: measStates },
+        costHistory: result.costHistory,
+        message: result.message,
+      };
+    } catch (e) {
+      console.error("[runCalibration] Error:", e);
+      return errorResult(e instanceof Error ? e.message : String(e));
     }
   },
 );
