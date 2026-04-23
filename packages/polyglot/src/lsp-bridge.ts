@@ -137,7 +137,7 @@ export class LSPBridge {
     // Collect only symbols belonging to this document
     const docSymbols = new Set<SymbolId>();
     for (const entry of this.index.symbols.values()) {
-      if (entry.resourceId && entry.resourceId !== this.documentUri) continue;
+      if (entry.resourceId !== this.documentUri) continue;
       // Skip reference entries — they are internal resolution artifacts,
       // not user-visible declarations (e.g. OwnedFeatureTyping)
       if (entry.kind === "Reference") continue;
