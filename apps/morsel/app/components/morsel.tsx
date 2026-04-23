@@ -1,17 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import {
-  ContentType,
-  Context,
-  decodeDataUrl,
-  encodeDataUrl,
-  ModelicaClassKind,
-  ModelicaComponentInstance,
-  ModelicaDAE,
-  ModelicaEntity,
-  ModelicaFlattener,
-} from "@modelscript/core";
-import { ModelicaSimulator, type ParameterInfo } from "@modelscript/simulator";
+import { decodeDataUrl } from "@modelscript/core";
+import { type ParameterInfo } from "@modelscript/simulator";
 import {
   ColumnsIcon,
   DownloadIcon,
@@ -46,26 +36,25 @@ import {
   TextInput,
   useTheme,
 } from "@primer/react";
-import { Zip } from "@zenfs/archives";
-import { configure, InMemory } from "@zenfs/core";
 import type { editor } from "monaco-editor";
 import { type DataUrl } from "parse-data-url";
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Language, Parser } from "web-tree-sitter";
-import { mountLibrary, WebFileSystem } from "~/util/filesystem";
 import { getTranslations, uiLanguages } from "~/util/i18n";
 import {
   addComponent,
   addConnect,
   applyLspEdits,
   deleteComponents,
+  didOpen,
   removeConnect,
+  simulate,
   updateComponentDescription,
   updateComponentName,
   updateComponentParameter,
   updateEdgePoints,
   updatePlacement,
 } from "~/util/lsp-bridge";
+import { startLsp } from "~/util/lsp-worker";
 import type { CodeEditorHandle } from "./code";
 import ComponentList from "./component-list";
 import type { DiagramEditorHandle } from "./diagram";
@@ -234,29 +223,27 @@ export default function MorselEditor(props: MorselEditorProps) {
     }
   }, [treeVisible, props.embed]);
 
-  // Lightweight re-simulate when only parameter overrides change (skip flattening)
+  // Lightweight re-simulate when parameter overrides change
   useEffect(() => {
-    const simulator = cachedSimulatorRef.current;
-    if (!simulator || !showResultsView) return;
-    // Skip on first render — the main effect handles initial simulation
-    if (parameterOverrides.size === 0) return;
+    if (!showResultsView || parameterOverrides.size === 0 || !selectedTreeClassName) return;
 
-    const abortController = new AbortController();
     const timer = setTimeout(async () => {
       try {
-        simulator.prepare();
-        const exp = simulator.dae.experiment;
-        const startTime = exp.startTime ?? 0;
-        const stopTime = exp.stopTime ?? 10;
-        const step = exp.interval ?? (stopTime - startTime) / 500;
-        const result = await simulator.simulate(startTime, stopTime, step, {
-          signal: abortController.signal,
-          parameterOverrides,
+        const overrideObj = Object.fromEntries(parameterOverrides);
+        const result = await simulate(DOCUMENT_URI, {
+          className: selectedTreeClassName,
+          parameterOverrides: overrideObj,
+          startTime: experimentOverrides.startTime,
+          stopTime: experimentOverrides.stopTime,
+          interval: experimentOverrides.interval,
         });
 
+        if (result.error) throw new Error(result.error);
+
+        const states = result.states ?? [];
         const chartData = result.t.map((t: number, i: number) => {
           const row: Record<string, number | string> = { time: t };
-          result.states?.forEach((state: string, vIndex: number) => {
+          states.forEach((state: string, vIndex: number) => {
             row[state] = result.y[i]?.[vIndex] ?? 0;
           });
           return row;
@@ -264,14 +251,14 @@ export default function MorselEditor(props: MorselEditorProps) {
 
         setLocalSimulationData(chartData);
       } catch (e) {
-        if ((e as Error).message === "Simulation aborted") return;
+        if ((e as Error).name === "AbortError" || (e as Error).message === "Simulation aborted") return;
+        console.error("Re-simulation failed:", e);
       }
     }, 300);
     return () => {
       clearTimeout(timer);
-      abortController.abort();
     };
-  }, [parameterOverrides, showResultsView]);
+  }, [parameterOverrides, showResultsView, experimentOverrides, selectedTreeClassName]);
 
   useEffect(() => {
     const saved = localStorage.getItem("recentModels");
@@ -325,132 +312,28 @@ export default function MorselEditor(props: MorselEditorProps) {
       isInitialized.current = true;
 
       setLoadingProgress(10);
-      setLoadingMessage("Initializing parser…");
-      await new Promise((r) => setTimeout(r, 0));
-      await Parser.init({
-        locateFile: (scriptName: string) => `/${scriptName}`,
-      });
-      setLoadingProgress(25);
-      setLoadingMessage("Loading Modelica grammar…");
-      await new Promise((r) => setTimeout(r, 0));
-      const Modelica = await Language.load("/tree-sitter-modelica.wasm");
-      const parser = new Parser();
-      parser.setLanguage(Modelica);
-      Context.registerParser(".mo", parser as any);
+      setLoadingMessage("Starting language server…");
 
-      setLoadingProgress(40);
-      setLoadingMessage("Fetching Modelica Standard Library…");
-      await new Promise((r) => setTimeout(r, 0));
       try {
-        const cache = await caches.open("modelscript-libraries");
-        let ModelicaLibrary = await cache.match("/ModelicaStandardLibrary_v4.1.0.zip");
-        if (!ModelicaLibrary) {
-          ModelicaLibrary = await fetch("/ModelicaStandardLibrary_v4.1.0.zip");
-          if (!ModelicaLibrary.ok) {
-            ModelicaLibrary = await fetch(
-              "https://github.com/modelica/ModelicaStandardLibrary/releases/download/v4.1.0/ModelicaStandardLibrary_v4.1.0.zip",
-            );
-          }
-          if (ModelicaLibrary.ok) {
-            await cache.put("/ModelicaStandardLibrary_v4.1.0.zip", ModelicaLibrary.clone());
-          }
-        }
-        setLoadingProgress(60);
-        setLoadingMessage("Configuring filesystem…");
-        await new Promise((r) => setTimeout(r, 0));
-        await configure({
-          mounts: {
-            "/lib": { backend: Zip, data: await ModelicaLibrary.arrayBuffer() },
-            "/tmp": InMemory,
-          },
-        });
-      } catch (e: any) {
-        if (e?.message?.includes("Mount point is already in use")) {
-          console.warn("ZenFS already configured, skipping...");
-        } else {
-          console.error("Failed to configure ZenFS:", e);
-        }
+        await startLsp();
+      } catch (e) {
+        console.error("Failed to start LSP:", e);
       }
 
       setLoadingProgress(80);
-      setLoadingMessage("Loading libraries…");
-      await new Promise((r) => setTimeout(r, 0));
-      const ctx = new Context(new WebFileSystem());
-      try {
-        const libEntries = ctx.fs.readdir("/lib");
-        const hasPackage = libEntries.some((e) => e.name === "package.mo");
-        if (hasPackage) {
-          ctx.addLibrary("/lib");
-        } else {
-          for (const entry of libEntries) {
-            if (entry.isDirectory()) {
-              try {
-                ctx.addLibrary(`/lib/${entry.name}`);
-              } catch (e) {
-                console.warn(`Failed to load library from /lib/${entry.name}:`, e);
-              }
-            }
-          }
-        }
-      } catch (e) {
-        console.error("Failed to scan /lib:", e);
-      }
+      setLoadingMessage("Loading workspace…");
 
-      // Refresh libraries explicitly
-      ctx.listLibraries();
-      const langs = [...new Set([...ctx.availableLanguages(), ...uiLanguages])].sort();
-      setAvailableLanguages(langs);
+      // Notify LSP of the initial file content
+      didOpen(DOCUMENT_URI, content);
 
-      // Auto-detect browser language
-      const browserLang = navigator.language?.split("-")[0];
-      if (browserLang && browserLang !== "en" && langs.includes(browserLang)) {
-        ctx.setLanguage(browserLang);
-        setLanguage(browserLang);
-      }
+      // Force tree update by bumping version now that LSP is ready
+      setContextVersion((v) => v + 1);
 
-      /* setContext removed */
+      setAvailableLanguages(uiLanguages);
 
-      // Load example models from the virtual filesystem
-      // Find the Modelica library path dynamically (could be "Modelica 4.1.0" etc.)
-      let modelicaLibPath: string | null = null;
-      for (const lib of ctx.listLibraries()) {
-        if (lib.name === "Modelica") {
-          modelicaLibPath = lib.path;
-          break;
-        }
-      }
+      setExampleModels([]); // Examples could be loaded via LSP, but for now we clear them to avoid fs errors
 
-      if (!modelicaLibPath) {
-        // Fallback for case where library isn't yet in Context list
-        try {
-          const libEntries = ctx.fs.readdir("/lib");
-          const mslEntry = libEntries.find((e) => e.name.startsWith("Modelica ") && e.isDirectory());
-          if (mslEntry) {
-            modelicaLibPath = `/lib/${mslEntry.name}`;
-            ctx.addLibrary(modelicaLibPath);
-          } else if (ctx.fs.stat("/lib/package.mo")?.isFile()) {
-            modelicaLibPath = "/lib";
-          }
-        } catch (e) {
-          console.error("Failed to fallback search MSL:", e);
-        }
-      }
-      const examples: ModelData[] = modelicaLibPath
-        ? (EXAMPLE_PATHS.map((ex) => {
-            try {
-              const fullPath = `${modelicaLibPath}/${ex.path}`;
-              const content = ctx.fs.read(fullPath);
-              return { id: ex.id, name: ex.name, content };
-            } catch (e) {
-              console.error(`Failed to load example ${ex.name}`, e);
-              return null;
-            }
-          }).filter(Boolean) as ModelData[])
-        : [];
-      setExampleModels(examples);
-
-      // Defer hiding the loading screen until the browser is idle,
-      // so the diagram and other heavy UI components finish rendering first.
+      // Defer hiding the loading screen until the browser is idle
       const hideLoading = () => {
         setLoadingProgress(100);
         setLoadingMessage("Ready");
@@ -462,7 +345,7 @@ export default function MorselEditor(props: MorselEditorProps) {
       }
     };
     init();
-  }, []);
+  }, [content]);
 
   useEffect(() => {
     setIsSearching(true);
@@ -512,80 +395,12 @@ export default function MorselEditor(props: MorselEditorProps) {
     }
   }, [view, treeVisible]);
 
-  const loadClass = (selectedClass: any) => {
-    // Store the name so the useEffect can auto-select the right tab
-    if (selectedClass.classKind === ModelicaClassKind.MODEL || selectedClass.classKind === ModelicaClassKind.BLOCK) {
-      pendingModelNameRef.current = selectedClass.compositeName ?? null;
+  const loadClass = (className: string, kind?: string) => {
+    // Store the name so the diagram tab auto-selects if it's a model/block
+    if (kind === "model" || kind === "block") {
+      pendingModelNameRef.current = className;
     } else {
       pendingModelNameRef.current = null;
-    }
-
-    let entity: ModelicaEntity | null = null;
-    if (selectedClass instanceof ModelicaEntity) {
-      entity = selectedClass;
-    } else {
-      let p = selectedClass.parent;
-      while (p) {
-        if (p instanceof ModelicaEntity) {
-          entity = p;
-          break;
-        }
-        p = p.parent;
-      }
-    }
-
-    if (entity) {
-      const path = (entity as any).path;
-      let filePath = path;
-      if (
-        (null as any) /* context */?.fs
-          .stat(path)
-          ?.isDirectory()
-      ) {
-        filePath = (null as any) /* context */.fs
-          .join(path, "package.mo");
-      }
-      if (
-        (null as any) /* context */?.fs
-          .stat(filePath)
-          ?.isFile()
-      ) {
-        const content = (null as any) /* context */.fs
-          .read(filePath);
-        editor?.setValue(content);
-        setLastLoadedContent(content);
-        const node = selectedClass.abstractSyntaxNode;
-        if (node?.sourceRange) {
-          editor?.revealRange({
-            startLineNumber: node.startPosition.row + 1,
-            startColumn: node.startPosition.column + 1,
-            endLineNumber: node.endPosition.row + 1,
-            endColumn: node.endPosition.column + 1,
-          });
-          editor?.setSelection({
-            startLineNumber: node.startPosition.row + 1,
-            startColumn: node.startPosition.column + 1,
-            endLineNumber: node.endPosition.row + 1,
-            endColumn: node.endPosition.column + 1,
-          });
-        }
-      }
-    } else {
-      const node = selectedClass.abstractSyntaxNode;
-      if (node?.sourceRange) {
-        editor?.revealRange({
-          startLineNumber: node.startPosition.row + 1,
-          startColumn: node.startPosition.column + 1,
-          endLineNumber: node.endPosition.row + 1,
-          endColumn: node.endPosition.column + 1,
-        });
-        editor?.setSelection({
-          startLineNumber: node.startPosition.row + 1,
-          startColumn: node.startPosition.column + 1,
-          endLineNumber: node.endPosition.row + 1,
-          endColumn: node.endPosition.column + 1,
-        });
-      }
     }
   };
 
@@ -596,15 +411,18 @@ export default function MorselEditor(props: MorselEditorProps) {
   lastLoadedContentRef.current = lastLoadedContent;
   loadClassRef.current = loadClass;
 
-  const handleTreeSelect = useCallback((classInstance: any) => {
-    diagramEditorRef.current?.showLoading();
-    if (editorRef.current?.getValue() !== lastLoadedContentRef.current) {
-      setPendingSelection(classInstance);
-      setDirtyDialogOpen(true);
-    } else {
-      loadClassRef.current(classInstance);
-    }
-  }, []);
+  const handleTreeSelect = useCallback(
+    (className: string, kind: string) => {
+      diagramEditorRef.current?.showLoading();
+      if (editorRef.current?.getValue() !== lastLoadedContentRef.current && pendingSelection !== className) {
+        setPendingSelection(className);
+        setDirtyDialogOpen(true);
+      } else {
+        loadClassRef.current(className, kind);
+      }
+    },
+    [pendingSelection],
+  );
 
   useEffect(() => {
     setColorMode(window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
@@ -660,68 +478,35 @@ export default function MorselEditor(props: MorselEditorProps) {
 
   const handleSimulate = async () => {
     if (!selectedTreeClassName) return;
-    const instance = { name: selectedTreeClassName } as any;
 
     setSimulationStatus({ status: "pending", error: null });
     setLocalSimulationData(null);
 
-    simulateAbortControllerRef.current?.abort();
-    const abortController = new AbortController();
-    simulateAbortControllerRef.current = abortController;
-
     try {
-      const dae = new ModelicaDAE(instance.name || "Model");
-      const flattener = new ModelicaFlattener();
-      instance.accept(flattener, ["", dae]);
-      flattener.generateFlowBalanceEquations(dae);
-      flattener.foldDAEConstants(dae);
+      // Prepare parameters mapping
+      const overrideObj = Object.fromEntries(parameterOverrides);
 
-      const simulator = new ModelicaSimulator(dae);
-      simulator.prepare();
-      cachedSimulatorRef.current = simulator;
-
-      const paramInfo = simulator.getParameterInfo();
-      const currentParamNames = new Set(paramInfo.map((p) => p.name));
-      setSimulationParameters(paramInfo);
-
-      // Filter out parameter overrides that no longer exist
-      setParameterOverrides((prev) => {
-        const next = new Map(prev);
-        for (const key of prev.keys()) {
-          if (!currentParamNames.has(key)) next.delete(key);
-        }
-        return next;
+      // Call the LSP
+      const result = await simulate(DOCUMENT_URI, {
+        className: selectedTreeClassName,
+        parameterOverrides: overrideObj,
+        startTime: experimentOverrides.startTime,
+        stopTime: experimentOverrides.stopTime,
+        interval: experimentOverrides.interval,
       });
 
-      const states = Array.from(simulator.stateVars);
-      setSimulationVariables(states);
-      // We no longer eagerly filter selectedSimulationVariables against simulator.stateVars because stateVars
-      // only contains continuous states, not algebraic variables or parameters which the user might have checked.
-      // Retaining them as-is ensures checkboxes persist across text edits and re-simulation.
-
-      if (states.length === 0) {
-        throw new Error(
-          "No simulation variables are available to plot for this model. Ensure you have equations defining state variables or parameters.",
-        );
+      if (result.error) {
+        throw new Error(result.error);
       }
 
-      const exp2 = simulator.dae.experiment;
-      const startTime2 = experimentOverrides.startTime ?? exp2.startTime ?? 0;
-      const stopTime2 = experimentOverrides.stopTime ?? exp2.stopTime ?? 10;
-      const step2 = experimentOverrides.interval ?? exp2.interval ?? (stopTime2 - startTime2) / 500;
-      const tolerance2 = experimentOverrides.tolerance ?? exp2.tolerance ?? 1e-6;
+      setSimulationParameters((result.parameters as any) ?? []);
 
-      // Ensure spinner renders before locking thread
-      await new Promise((resolve) => setTimeout(resolve, 10));
-
-      const result = await simulator.simulate(startTime2, stopTime2, step2, {
-        signal: abortController.signal,
-        parameterOverrides,
-      });
+      const states = result.states ?? [];
+      setSimulationVariables(states);
 
       const chartData = result.t.map((t: number, i: number) => {
         const row: Record<string, number | string> = { time: t };
-        result.states?.forEach((state: string, vIndex: number) => {
+        states.forEach((state: string, vIndex: number) => {
           row[state] = result.y[i]?.[vIndex] ?? 0;
         });
         return row;
@@ -730,14 +515,12 @@ export default function MorselEditor(props: MorselEditorProps) {
       setLocalSimulationData(chartData);
       setSimulationStatus({ status: "completed" });
       setShowResultsView(true);
-      return;
     } catch (e: any) {
       if (e.message === "Simulation aborted") {
         return;
       }
       setSimulationStatus({ status: "failed", error: e instanceof Error ? e.message : String(e) });
       setShowResultsView(true);
-      return;
     }
   };
 
