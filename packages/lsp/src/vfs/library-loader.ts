@@ -332,7 +332,7 @@ export async function loadRegistryPackage(pkg: RegistryPackageInfo, ctx: LoaderC
     }
 
     // Register files lazily in the global workspace index
-    const pkgTreeCache = new Map<string, unknown>();
+    const pkgTreeCache = new Map<string, Tree | null>();
     let registeredCount = 0;
 
     const registerDirLazy = (dir: string) => {
