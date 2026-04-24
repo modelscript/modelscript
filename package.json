@@ -46,7 +46,7 @@
   },
   "overrides": {
     "@antv/x6-plugin-selection": {
-      "@antv/x6": "$@antv/x6"
+      "@antv/x6": "^3.1.7"
     },
     "dompurify": "^3.4.0",
     "elliptic": "^6.6.1",
