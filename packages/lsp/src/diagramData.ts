@@ -200,11 +200,17 @@ export function buildDiagramData(classInstance: ModelicaClassInstance): DiagramD
     // Build ports
     const ports: DiagramPort[] = [];
     for (const connector of componentClassInstance.components) {
-      const connectorCondition = evaluateCondition(connector, componentClassInstance);
+      const connectorCondition = evaluateCondition(connector, component);
       if (connectorCondition === false) continue;
 
       const connectorClassInstance = connector.classInstance;
-      if (!connectorClassInstance || connectorClassInstance.classKind !== ModelicaClassKind.CONNECTOR) continue;
+      if (
+        !connectorClassInstance ||
+        (connectorClassInstance.classKind !== ModelicaClassKind.CONNECTOR &&
+          connectorClassInstance.classKind !== ModelicaClassKind.EXPANDABLE_CONNECTOR &&
+          connectorClassInstance.classKind !== undefined)
+      )
+        continue;
       const connectorTransform = computePortPlacement(connector);
       if (!connectorTransform) continue;
 
@@ -533,12 +539,61 @@ export function renderIconX6(
 
   if (ports && group.children) {
     for (const component of classInstance.components) {
+      const condition = evaluateCondition(component, componentInstance);
+      if (condition === false) continue;
+
       const connectorClassInstance = component.classInstance;
-      if (!connectorClassInstance || connectorClassInstance.classKind !== ModelicaClassKind.CONNECTOR) continue;
+      if (
+        !connectorClassInstance ||
+        (connectorClassInstance.classKind !== ModelicaClassKind.CONNECTOR &&
+          connectorClassInstance.classKind !== ModelicaClassKind.EXPANDABLE_CONNECTOR &&
+          connectorClassInstance.classKind !== undefined)
+      )
+        continue;
+
       const connectorSvg = renderIconX6(connectorClassInstance, undefined, false, localDefs);
       if (connectorSvg) {
-        applyPortPlacementX6(connectorSvg, component);
-        group.children.push(connectorSvg);
+        const attrs = connectorSvg.attrs ?? {};
+        connectorSvg.attrs = attrs;
+        if (condition === undefined) attrs["opacity"] = 0.5;
+
+        const transform = computePortPlacement(component);
+        if (!transform) {
+          attrs["visibility"] = "hidden";
+          group.children.push(connectorSvg);
+        } else {
+          // Instead of translate/scale which CSS engines misinterpret on SVGs,
+          // we use absolute viewport positioning (x, y, width, height) which is bulletproof.
+          const w = Math.abs(transform.width);
+          const h = Math.abs(transform.height);
+          attrs["x"] = transform.translateX;
+          attrs["y"] = transform.translateY;
+          attrs["width"] = w;
+          attrs["height"] = h;
+
+          if (transform.rotate !== 0 || transform.scaleX < 0 || transform.scaleY < 0) {
+            const rot =
+              transform.rotate !== 0 ? `rotate(${transform.rotate}, ${transform.originX}, ${transform.originY}) ` : "";
+            // If flipped, scale from the center of the port
+            const cx = transform.translateX + w / 2;
+            const cy = transform.translateY + h / 2;
+            let flip = "";
+            if (transform.scaleX < 0 || transform.scaleY < 0) {
+              const sx = transform.scaleX < 0 ? -1 : 1;
+              const sy = transform.scaleY < 0 ? -1 : 1;
+              flip = `translate(${cx}, ${cy}) scale(${sx}, ${sy}) translate(${-cx}, ${-cy})`;
+            }
+
+            const wrapper: X6Markup = {
+              tagName: "g",
+              attrs: { transform: `${rot}${flip}`.trim() },
+              children: [connectorSvg],
+            };
+            group.children.push(wrapper);
+          } else {
+            group.children.push(connectorSvg);
+          }
+        }
       }
     }
   }
@@ -925,17 +980,6 @@ function applyLineStyleX6(shape: X6Markup, graphicItem: IFilledShape | ILine): v
     (shape.attrs.style as string) +
     `; stroke: ${strokeColor} !important; stroke-width: ${strokeWidth}px !important; stroke-dasharray: ${strokeDasharray} !important;`;
   shape.attrs["vector-effect"] = "non-scaling-stroke";
-}
-
-function applyPortPlacementX6(componentSvg: X6Markup, component: ModelicaComponentInstance): void {
-  if (!componentSvg.attrs) componentSvg.attrs = {};
-  componentSvg.attrs["magnet"] = "true";
-  if (component.name) componentSvg.attrs["port"] = component.name;
-  const transform = computePortPlacement(component);
-  if (!transform) componentSvg.attrs["visibility"] = "hidden";
-  else
-    componentSvg.attrs["transform"] =
-      `rotate(${transform.rotate}, ${transform.originX}, ${transform.originY}) translate(${transform.translateX}, ${transform.translateY}) scale(${transform.scaleX}, ${transform.scaleY})`;
 }
 
 // ── Pattern/gradient helpers ──

@@ -51,8 +51,10 @@ import { AnnotationEvaluator } from "./annotation-evaluator.js";
 // This preserves the @modelscript/modelica-polyglot package's decoupling from modelica-ast.
 registerAbstractSyntaxNodeFactory((cst: any) => ModelicaAST.ModelicaSyntaxNode.new(null, cst));
 
-const annotationEvaluator = new AnnotationEvaluator();
-registerAnnotationEvaluator((ast: any, name: string) => annotationEvaluator.evaluate(ast, name));
+registerAnnotationEvaluator((ast: any, name: string) => {
+  const evaluator = new AnnotationEvaluator();
+  return evaluator.evaluate(ast, name);
+});
 
 // @ts-expect-error — TSC resolves as `modelicaExpressionEvaluator` but actual export name is `modelicaEvaluator`
 import { modelicaEvaluator } from "@modelscript/modelica-polyglot/expression-evaluator";

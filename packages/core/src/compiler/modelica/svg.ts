@@ -117,11 +117,17 @@ export function renderIcon(
     renderGraphicItem(group, graphicItem, classInstance, componentInstance, skipText);
   if (ports) {
     for (const component of classInstance.components) {
-      const condition = evaluateCondition(component);
+      const condition = evaluateCondition(component, componentInstance);
       if (condition === false) continue;
 
       const connectorClassInstance = component.classInstance;
-      if (!connectorClassInstance || connectorClassInstance.classKind !== ModelicaClassKind.CONNECTOR) continue;
+      if (
+        !connectorClassInstance ||
+        (connectorClassInstance.classKind !== ModelicaClassKind.CONNECTOR &&
+          connectorClassInstance.classKind !== ModelicaClassKind.EXPANDABLE_CONNECTOR &&
+          connectorClassInstance.classKind !== undefined)
+      )
+        continue;
 
       const connectorSvg = renderIcon(connectorClassInstance, undefined, false, undefined, skipText);
       if (connectorSvg) {
@@ -659,16 +665,8 @@ export function computeIconPlacement(component: ModelicaComponentInstance): Tran
 export function computePortPlacement(component: ModelicaComponentInstance): TransformData | null {
   const placement: IPlacement | null = component.annotation("Placement");
   if (!placement) return null;
-  const hasIconTransformation =
-    component.abstractSyntaxNode?.annotationClause?.classModification?.hasModificationArgument(
-      "Placement.iconTransformation",
-    ) ?? false;
-  const iconTransformation = hasIconTransformation ? placement.iconTransformation : placement.transformation;
-  const hasIconVisible =
-    component.abstractSyntaxNode?.annotationClause?.classModification?.hasModificationArgument(
-      "Placement.iconVisible",
-    ) ?? false;
-  const iconVisible = hasIconVisible ? placement.iconVisible : placement.visible;
+  const iconTransformation = placement.iconTransformation ?? placement.transformation;
+  const iconVisible = placement.iconVisible ?? placement.visible;
   if (iconVisible === false) return null;
   const icon = component.classInstance?.annotation("Icon") as IIcon;
   return computeTransform(iconTransformation, icon?.coordinateSystem);

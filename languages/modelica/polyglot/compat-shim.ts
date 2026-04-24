@@ -451,8 +451,8 @@ export class QueryBackedClassInstance extends QueryBackedElement {
   /**
    * Get a specific annotation by name.
    */
-  override annotation<T>(name: string): T | null {
-    return super.annotation<T>(name);
+  override annotation<T>(name: string, context?: any): T | null {
+    return super.annotation<T>(name, context);
   }
 
   /** All sections in the class definition. */
@@ -942,6 +942,10 @@ export class QueryBackedExtendsClassInstance extends QueryBackedClassInstance {
 
 export class QueryBackedElementModification {
   constructor(public readonly arg: ModificationArg) {}
+
+  get name() {
+    return this.arg.name;
+  }
 
   get modification() {
     return new QueryBackedModification(this.arg.nestedArgs as any, undefined);

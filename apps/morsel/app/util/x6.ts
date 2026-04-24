@@ -8,6 +8,7 @@ import {
   convertColor,
   convertPoint,
   convertSmoothPath,
+  evaluateCondition,
   ModelicaClassKind,
   ModelicaComponentInstance,
   renderText,
@@ -182,10 +183,22 @@ export function renderIconX6(
 
   if (ports && group.children) {
     for (const component of classInstance.components) {
+      const condition = evaluateCondition(component, componentInstance);
+      if (condition === false) continue;
+
       const connectorClassInstance = component.classInstance;
-      if (!connectorClassInstance || connectorClassInstance.classKind !== ModelicaClassKind.CONNECTOR) continue;
+      if (
+        !connectorClassInstance ||
+        (connectorClassInstance.classKind !== ModelicaClassKind.CONNECTOR &&
+          connectorClassInstance.classKind !== ModelicaClassKind.EXPANDABLE_CONNECTOR &&
+          connectorClassInstance.classKind !== undefined)
+      )
+        continue;
+
       const connectorSvg = renderIconX6(connectorClassInstance, undefined, false, localDefs);
       if (connectorSvg) {
+        if (condition === undefined && !connectorSvg.attrs) connectorSvg.attrs = {};
+        if (condition === undefined) connectorSvg.attrs!["opacity"] = 0.5;
         applyPortPlacementX6(connectorSvg, component);
         group.children.push(connectorSvg);
       }
