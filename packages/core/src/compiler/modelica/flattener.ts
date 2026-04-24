@@ -697,6 +697,42 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
   }
 
   /**
+   * Checks if an element is a conditionally disabled component.
+   */
+  static isConditionallyDisabled(element: any, scope: any): boolean {
+    if (element instanceof ModelicaComponentInstance) {
+      const astNode =
+        element.abstractSyntaxNode instanceof ModelicaSyntaxNode
+          ? element.abstractSyntaxNode
+          : ModelicaSyntaxNode.new(null, element.abstractSyntaxNode);
+      const conditionExpr = (
+        astNode as { conditionAttribute?: { condition?: ModelicaExpressionSyntaxNode | null } } | null
+      )?.conditionAttribute?.condition;
+      if (conditionExpr && scope) {
+        const interp = new ModelicaInterpreter(true);
+        const conditionValue = conditionExpr.accept(interp, scope);
+        if (conditionValue instanceof ModelicaBooleanLiteral && !conditionValue.value) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Retrieves the elements of a class instance, filtering out any conditionally disabled components.
+   */
+  #getMergedElements(node: any): any[] {
+    const activeElements = [];
+    for (const element of node.elements) {
+      if (!ModelicaFlattener.isConditionallyDisabled(element, node)) {
+        activeElements.push(element);
+      }
+    }
+    return activeElements;
+  }
+
+  /**
    * Visits a class instance, flattening its components, equations, algorithm sections, and extended elements.
    *
    * @param node - The class instance to flatten.
@@ -780,7 +816,8 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     // or in if-expression conditions in bindings. These must be marked `final`
     // since they determine class structure.
     const savedStructural = new Set(this.#structuralFinalParams);
-    for (const element of node.elements) {
+    const activeElements = this.#getMergedElements(node);
+    for (const element of activeElements) {
       if (element instanceof ModelicaComponentInstance) {
         // Check conditionAttribute (e.g., `Real x if b`)
         const condAttr = (
@@ -809,7 +846,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     this.activeClassStack.push(node);
     this.activePrefixes.set(node, args[0]);
 
-    for (const element of node.elements) {
+    for (const element of activeElements) {
       if (element instanceof ModelicaComponentInstance) element.accept(this, args);
     }
     for (const declaredElement of node.declaredElements) {
@@ -1201,17 +1238,6 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       }
       if (hasInner) return;
       // No matching `inner` found — keep the outer declaration (will emit warning via linter)
-    }
-
-    // Evaluate conditional components (e.g., `Real x if false;`)
-    const astNode = this.#getAstNode(node);
-    const conditionExpr = (
-      astNode as { conditionAttribute?: { condition?: ModelicaExpressionSyntaxNode | null } } | null
-    )?.conditionAttribute?.condition;
-    if (conditionExpr) {
-      const interp = new ModelicaInterpreter(true);
-      const conditionValue = conditionExpr.accept(interp, node.parent ?? undefined);
-      if (conditionValue instanceof ModelicaBooleanLiteral && !conditionValue.value) return;
     }
 
     const name = args[0] === "" ? (node.name ?? "?") : args[0] + "." + node.name;
@@ -5347,6 +5373,10 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       const resolved = ctx.classInstance.resolveName(node.parts.map((p) => p.identifier?.text ?? ""));
       const firstPartName = node.parts[0]?.identifier?.text ?? "";
       const firstPartResolved = ctx.classInstance.resolveName([firstPartName]);
+
+      if (ModelicaFlattener.isConditionallyDisabled(firstPartResolved, ctx.classInstance)) {
+        return null; // Component is disabled, reference is invalid
+      }
 
       if (
         firstPartResolved instanceof ModelicaComponentInstance ||

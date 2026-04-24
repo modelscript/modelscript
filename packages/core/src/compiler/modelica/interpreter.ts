@@ -540,9 +540,24 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
 
     const namedElement = scope.resolveComponentReference(node);
     if (!namedElement) return null;
+
+    if (namedElement instanceof ModelicaComponentInstance) {
+      const astNode = namedElement.abstractSyntaxNode;
+      const conditionExpr = (
+        astNode as { conditionAttribute?: { condition?: ModelicaExpressionSyntaxNode | null } } | null
+      )?.conditionAttribute?.condition;
+      if (conditionExpr) {
+        // Need to evaluate condition in the parent class instance's scope
+        const evalScope = namedElement.parent ?? scope;
+        const conditionValue = conditionExpr.accept(this, evalScope);
+        if (conditionValue instanceof ModelicaBooleanLiteral && !conditionValue.value) {
+          return null; // Component is disabled
+        }
+      }
+    }
+
     let result: ModelicaExpression | null;
-    if (namedElement instanceof ModelicaClassInstance) result = ModelicaExpression.fromClassInstance(namedElement);
-    else if (namedElement instanceof ModelicaComponentInstance) {
+    if (namedElement instanceof ModelicaComponentInstance) {
       if (!namedElement.instantiated && !namedElement.instantiating) namedElement.instantiate();
       const modExpr = namedElement.modification?.evaluatedExpression ?? namedElement.modification?.expression;
       if (modExpr instanceof ModelicaExpression) {
@@ -552,8 +567,21 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
         else if (typeof modExpr === "boolean") result = new ModelicaBooleanLiteral(modExpr);
         else result = new ModelicaStringLiteral(modExpr);
       } else {
-        result = ModelicaExpression.fromClassInstance(namedElement.classInstance);
+        let bindingExpr: ModelicaExpressionSyntaxNode | null = null;
+        const astNode = namedElement.abstractSyntaxNode;
+        if (astNode) {
+          const decl = "declaration" in astNode ? (astNode as any).declaration : astNode;
+          bindingExpr = decl?.modification?.modificationExpression?.expression ?? null;
+        }
+
+        if (bindingExpr) {
+          result = bindingExpr.accept(this, namedElement.parent ?? scope);
+        } else {
+          result = ModelicaExpression.fromClassInstance(namedElement.classInstance);
+        }
       }
+    } else if (namedElement instanceof ModelicaClassInstance) {
+      result = ModelicaExpression.fromClassInstance(namedElement);
     } else {
       // Duck-type fallback: handle annotation enum stubs and QueryBacked elements
       const duck = namedElement as any;
@@ -566,8 +594,20 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
         else if (typeof modExpr === "boolean") result = new ModelicaBooleanLiteral(modExpr);
         else result = new ModelicaStringLiteral(modExpr);
       } else if (duck.isComponentInstance) {
-        // Fallback for QueryBackedComponentInstance parameters that don't have a literal value yet
-        result = new ModelicaNameExpression(node.parts.map((p) => p.identifier?.text).join("."));
+        // Fallback for QueryBackedComponentInstance parameters that don't have an outer modification
+        let bindingExpr: ModelicaExpressionSyntaxNode | null = null;
+        const astNode = duck.abstractSyntaxNode;
+        if (astNode) {
+          // It could be a ComponentDeclaration or just a Declaration
+          const decl = "declaration" in astNode ? (astNode as any).declaration : astNode;
+          bindingExpr = decl?.modification?.modificationExpression?.expression ?? null;
+        }
+
+        if (bindingExpr) {
+          result = bindingExpr.accept(this, duck.parent ?? scope);
+        } else {
+          result = new ModelicaNameExpression(node.parts.map((p) => p.identifier?.text).join("."));
+        }
       } else {
         result = null;
       }
@@ -617,11 +657,11 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     if (!firstElement) return null;
 
     let result: ModelicaExpression | null;
-    if (firstElement instanceof ModelicaClassInstance) {
-      result = ModelicaExpression.fromClassInstance(firstElement);
-    } else if (firstElement instanceof ModelicaComponentInstance) {
+    if (firstElement instanceof ModelicaComponentInstance) {
       if (!firstElement.instantiated && !firstElement.instantiating) firstElement.instantiate();
       result = ModelicaExpression.fromClassInstance(firstElement.classInstance);
+    } else if (firstElement instanceof ModelicaClassInstance) {
+      result = ModelicaExpression.fromClassInstance(firstElement);
     } else {
       return null;
     }
