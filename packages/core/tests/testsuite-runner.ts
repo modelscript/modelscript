@@ -18,7 +18,7 @@
  */
 
 import { ModelicaClassKind, ModelicaStoredDefinitionSyntaxNode } from "@modelscript/modelica-polyglot/ast";
-import Modelica from "@modelscript/tree-sitter-modelica";
+import Modelica from "@modelscript/modelica-polyglot/parser";
 import fs from "node:fs";
 import path from "node:path";
 import Parser from "tree-sitter";

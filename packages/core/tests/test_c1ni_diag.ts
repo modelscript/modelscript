@@ -1,4 +1,4 @@
-import Modelica from "@modelscript/tree-sitter-modelica";
+import Modelica from "@modelscript/modelica-polyglot/parser";
 import Parser from "tree-sitter";
 import { NodeFileSystem } from "../../../apps/cli/src/util/filesystem.js";
 import { Context } from "../src/compiler/context.js";

@@ -42,13 +42,38 @@
     "./flattener-query": {
       "types": "./dist/flattener-query.d.ts",
       "default": "./dist/flattener-query.js"
+    },
+    "./parser": {
+      "types": "./bindings/node/index.d.ts",
+      "default": "./bindings/node/index.cjs"
     }
   },
   "scripts": {
-    "build": "tsc"
+    "build": "tsc",
+    "clean": "rimraf build",
+    "generate": "tree-sitter generate --abi=14 && node-gyp rebuild && tree-sitter build --wasm",
+    "install": "node-gyp rebuild",
+    "prestart": "tree-sitter build --wasm",
+    "start": "tree-sitter playground",
+    "test": "npm run test:native",
+    "test:native": "node --test bindings/node/*_test.cjs"
   },
   "dependencies": {
     "@modelscript/polyglot": "*",
+    "node-addon-api": "^8.5.0",
+    "node-gyp-build": "^4.8.4"
+  },
+  "devDependencies": {
+    "prebuildify": "^6.0.1",
+    "tree-sitter": "^0.22.4",
     "tree-sitter-cli": "^0.26.8"
+  },
+  "peerDependencies": {
+    "tree-sitter": "^0.22.4"
+  },
+  "peerDependenciesMeta": {
+    "tree-sitter": {
+      "optional": true
+    }
   }
 }

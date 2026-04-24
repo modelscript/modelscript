@@ -29,7 +29,6 @@
     "@modelscript/polyglot": "*",
     "@modelscript/simulator": "*",
     "@modelscript/sysml2-polyglot": "*",
-    "@modelscript/tree-sitter-modelica": "*",
     "tree-sitter": "^0.21.1",
     "zod": "^3.25.67"
   },

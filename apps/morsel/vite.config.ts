@@ -43,7 +43,7 @@ export default defineConfig(({ isSsrBuild }) => {
               dest: "lsp/server/dist",
             },
             {
-              src: "../../languages/modelica/tree-sitter-modelica/tree-sitter-modelica.wasm",
+              src: "../../languages/modelica/polyglot/tree-sitter-modelica.wasm",
               dest: "lsp/server/dist",
             },
             {

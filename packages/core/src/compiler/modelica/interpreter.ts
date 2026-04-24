@@ -542,7 +542,12 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     let overrideExpr: any = null;
 
     // 1. Check if the evaluating scope provides an override for this component
-    if (compName && scope && "modification" in scope && (scope as any).modification?.modificationArguments) {
+    if (
+      compName &&
+      scope &&
+      "modification" in scope &&
+      Array.isArray((scope as any).modification?.modificationArguments)
+    ) {
       for (const arg of (scope as any).modification.modificationArguments) {
         const argName =
           typeof arg.name === "string"

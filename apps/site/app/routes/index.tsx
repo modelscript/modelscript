@@ -166,9 +166,9 @@ export default function Index() {
               install="npm install -g @modelscript/cli"
             />
             <PackageCard
-              name="@modelscript/tree-sitter-modelica"
+              name="@modelscript/modelica-polyglot/parser"
               description="Tree-sitter grammar for Modelica — native Node.js binding and WebAssembly build for browser use."
-              install="npm install @modelscript/tree-sitter-modelica"
+              install="npm install @modelscript/modelica-polyglot/parser"
             />
           </div>
         </div>

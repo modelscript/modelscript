@@ -13,8 +13,8 @@ export default defineConfig([
         projectService: {
           allowDefaultProject: [
             "eslint.config.ts",
-            "languages/modelica/tree-sitter-modelica/grammar.js",
-            "languages/modelica/tree-sitter-modelica/bindings/node/index.d.ts",
+            "languages/modelica/polyglot/grammar.js",
+            "languages/modelica/polyglot/bindings/node/index.d.ts",
             "scripts/generate-ast.ts",
           ],
         },
