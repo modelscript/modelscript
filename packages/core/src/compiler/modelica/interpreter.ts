@@ -538,6 +538,34 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
       return this.#resolveStepByStep(node, scope);
     }
 
+    const compName = node.parts[0]?.identifier?.text;
+    let overrideExpr: any = null;
+
+    // 1. Check if the evaluating scope provides an override for this component
+    if (compName && scope && "modification" in scope && (scope as any).modification?.modificationArguments) {
+      for (const arg of (scope as any).modification.modificationArguments) {
+        const argName =
+          typeof arg.name === "string"
+            ? arg.name
+            : (arg.name?.parts?.[0]?.text ?? arg.name?.parts?.[0]?.identifier?.text ?? arg.identifier?.text);
+
+        if (argName === compName) {
+          overrideExpr = arg.modificationExpression?.expression ?? arg.expression;
+          break;
+        }
+      }
+    }
+
+    if (overrideExpr !== null && overrideExpr !== undefined) {
+      if (typeof overrideExpr === "number" || typeof overrideExpr === "boolean" || typeof overrideExpr === "string") {
+        if (typeof overrideExpr === "number") return new ModelicaRealLiteral(overrideExpr);
+        else if (typeof overrideExpr === "boolean") return new ModelicaBooleanLiteral(overrideExpr);
+        else return new ModelicaStringLiteral(overrideExpr);
+      } else if (typeof overrideExpr.accept === "function") {
+        return overrideExpr.accept(this, scope);
+      }
+    }
+
     const namedElement = scope.resolveComponentReference(node);
     if (!namedElement) return null;
 
@@ -559,19 +587,6 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     let result: ModelicaExpression | null;
     if (namedElement instanceof ModelicaComponentInstance) {
       if (!namedElement.instantiated && !namedElement.instantiating) namedElement.instantiate();
-
-      const compName = node.parts[0]?.identifier?.text;
-      let overrideExpr: any = null;
-
-      // 1. Check if the evaluating scope provides an override for this component
-      if (compName && scope && "modification" in scope && (scope as any).modification?.modificationArguments) {
-        for (const arg of (scope as any).modification.modificationArguments) {
-          if (arg.name === compName) {
-            overrideExpr = arg.modificationExpression?.expression ?? arg.expression;
-            break;
-          }
-        }
-      }
 
       // 2. Fall back to the element's own modification
       const modExpr =
@@ -605,13 +620,41 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
       // Duck-type fallback: handle annotation enum stubs and QueryBacked elements
       const duck = namedElement as any;
 
-      const modExpr = duck.modification?.evaluatedExpression ?? duck.modification?.expression;
+      const compName = node.parts[0]?.identifier?.text;
+      let overrideExpr: any = null;
+
+      if (compName && scope && "modification" in scope && (scope as any).modification) {
+        const mod = (scope as any).modification;
+        const modArgs = mod.modificationArguments ?? mod.modification?.classModification?.modificationArguments;
+
+        if (modArgs) {
+          for (const arg of modArgs) {
+            const argName =
+              typeof arg.name === "string"
+                ? arg.name
+                : (arg.name?.parts?.[0]?.text ?? arg.name?.parts?.[0]?.identifier?.text ?? arg.identifier?.text);
+
+            if (argName === compName) {
+              overrideExpr =
+                arg.modificationExpression?.expression ??
+                arg.expression ??
+                arg.modification?.modificationExpression?.expression;
+              break;
+            }
+          }
+        }
+      }
+
+      const modExpr = overrideExpr ?? duck.modification?.evaluatedExpression ?? duck.modification?.expression;
+
       if (modExpr instanceof ModelicaExpression) {
         result = modExpr;
       } else if (typeof modExpr === "number" || typeof modExpr === "boolean" || typeof modExpr === "string") {
         if (typeof modExpr === "number") result = new ModelicaRealLiteral(modExpr);
         else if (typeof modExpr === "boolean") result = new ModelicaBooleanLiteral(modExpr);
         else result = new ModelicaStringLiteral(modExpr);
+      } else if (modExpr && typeof modExpr.accept === "function") {
+        result = modExpr.accept(this, overrideExpr ? scope : (duck.parent ?? scope));
       } else if (duck.isComponentInstance) {
         // Fallback for QueryBackedComponentInstance parameters that don't have an outer modification
         let bindingExpr: ModelicaExpressionSyntaxNode | null = null;
@@ -2534,6 +2577,5 @@ export function evaluateCondition(
   } catch (e) {
     console.warn(`[evaluateCondition] failed for ${component.name}:`, e);
   }
-  console.log(`[evaluateCondition] result for ${component.name}:`, condition.concreteSyntaxNode?.text, "=>", result);
   return undefined;
 }

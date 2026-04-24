@@ -157,7 +157,7 @@ export function buildDiagramData(classInstance: ModelicaClassInstance): DiagramD
     let componentTransform = computeIconPlacement(component);
     const autoLayout = !componentTransform;
     if (!componentTransform) {
-      const icon = componentClassInstance.annotation("Icon") as IIcon | null;
+      const icon = componentClassInstance.annotation("Icon", component) as IIcon | null;
       const naturalWidth = computeWidth(icon?.coordinateSystem?.extent) || 200;
       const naturalHeight = computeHeight(icon?.coordinateSystem?.extent) || 200;
       const scaleX = 20 / naturalWidth;
@@ -455,7 +455,7 @@ function renderDiagramX6(classInstance: ModelicaClassInstance): X6Markup | null 
         collectGraphics(extendsClassInstance.classInstance);
       }
     }
-    const diagram: IDiagram | null = ci.annotation("Diagram");
+    const diagram: IDiagram | null = ci.annotation("Diagram", ci);
     if (diagram?.graphics) {
       for (const graphicItem of diagram.graphics) {
         graphicItems.push(renderGraphicItemX6(graphicItem, defs, ci));
@@ -466,7 +466,7 @@ function renderDiagramX6(classInstance: ModelicaClassInstance): X6Markup | null 
   collectGraphics(classInstance);
   if (graphicItems.length === 0 && defs.length === 0) return null;
 
-  const diagram: IDiagram | null = classInstance.annotation("Diagram");
+  const diagram: IDiagram | null = classInstance.annotation("Diagram", classInstance);
   const [x1, y1] = convertPoint(diagram?.coordinateSystem?.extent?.[0], [-100, -100]);
   const [x2, y2] = convertPoint(diagram?.coordinateSystem?.extent?.[1], [100, 100]);
   const vbX = Math.min(x1, x2);
@@ -513,7 +513,7 @@ export function renderIconX6(
     }
   }
 
-  const icon: IIcon | null = classInstance.annotation("Icon");
+  const icon: IIcon | null = classInstance.annotation("Icon", componentInstance);
   if (isRoot) {
     applyCoordinateSystemX6(svg, icon?.coordinateSystem, true);
   }
@@ -635,11 +635,13 @@ function renderGraphicItemX6(
       return { tagName: "g", children: [] };
   }
   const [ox, oy] = convertPoint(graphicItem.origin, [0, 0]);
+  const visibility = (graphicItem.visible ?? true) ? "visible" : "hidden";
+
   return {
     tagName: "g",
     children: [shape],
     attrs: {
-      visibility: (graphicItem.visible ?? true) ? "visible" : "hidden",
+      visibility,
       transform: `translate(${ox}, ${oy}) rotate(${-(graphicItem.rotation ?? 0)})`,
     },
   };

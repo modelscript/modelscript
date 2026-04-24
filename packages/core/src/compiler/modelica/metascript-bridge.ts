@@ -51,8 +51,8 @@ import { AnnotationEvaluator } from "./annotation-evaluator.js";
 // This preserves the @modelscript/modelica-polyglot package's decoupling from modelica-ast.
 registerAbstractSyntaxNodeFactory((cst: any) => ModelicaAST.ModelicaSyntaxNode.new(null, cst));
 
-registerAnnotationEvaluator((ast: any, name: string) => {
-  const evaluator = new AnnotationEvaluator();
+registerAnnotationEvaluator((ast: any, name: string, evalScope?: any, overrideModification?: any) => {
+  const evaluator = new AnnotationEvaluator(evalScope, overrideModification);
   return evaluator.evaluate(ast, name);
 });
 

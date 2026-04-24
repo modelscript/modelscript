@@ -51,7 +51,7 @@ export function registerAbstractSyntaxNodeFactory(factory: AbstractSyntaxNodeFac
 /**
  * Evaluator for dynamically parsing CST annotation nodes into JSON objects matching IIcon / IPlacement
  */
-export type AnnotationEvaluator = (ast: any, name: string) => any;
+export type AnnotationEvaluator = (ast: any, name: string, evalScope?: any, overrideModification?: any) => any;
 
 let annotationEvaluator: AnnotationEvaluator = () => null;
 
@@ -134,14 +134,28 @@ export class QueryBackedElement {
     return ast?.annotationClause ? [ast.annotationClause] : [];
   }
 
-  annotation<T>(name: string, _annotations?: any): T | null {
+  annotation<T>(name: string, overrideContext?: any): T | null {
     if (typeof annotationEvaluator !== "function") return null;
 
     const clauses = this.annotations;
     if (!clauses) return null;
 
+    let evalScope: any = null;
+    if ("classKind" in this && typeof (this as any).resolveSimpleName === "function") {
+      evalScope = this;
+    } else if ("classInstance" in this && "parent" in this) {
+      evalScope = (this as any).parent;
+    } else {
+      evalScope = (this as any).parent ?? this;
+    }
+
+    let overrideModification: any = null;
+    if (overrideContext && "modification" in overrideContext) {
+      overrideModification = overrideContext.modification;
+    }
+
     for (const clause of clauses) {
-      const result = annotationEvaluator(clause, name);
+      const result = annotationEvaluator(clause, name, evalScope, overrideModification);
       if (result != null) return result as T;
     }
 
@@ -964,6 +978,11 @@ export class QueryBackedElementModification {
         ...expr,
         accept: (visitor: any, args: any) => {
           const text = (expr as any).text.trim();
+          if (text === "true" || text === "false") {
+            if (typeof visitor.visitBooleanLiteral === "function") {
+              return visitor.visitBooleanLiteral({ value: text === "true" }, args);
+            }
+          }
           if (/^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*$/.test(text)) {
             if (typeof visitor.visitNameExpression === "function") {
               return visitor.visitNameExpression({ name: text }, args);
@@ -976,11 +995,6 @@ export class QueryBackedElementModification {
             }
             if (typeof visitor.visitRealLiteral === "function") {
               return visitor.visitRealLiteral({ value: num }, args);
-            }
-          }
-          if (text === "true" || text === "false") {
-            if (typeof visitor.visitBooleanLiteral === "function") {
-              return visitor.visitBooleanLiteral({ value: text === "true" }, args);
             }
           }
           if (text.startsWith('"') && text.endsWith('"')) {
@@ -1030,15 +1044,19 @@ export class AstBackedModification {
   constructor(public readonly ast: any) {}
 
   get modificationArguments() {
-    const classMod = this.ast.classModification ?? this.ast.annotationClause?.classModification;
+    const classMod =
+      this.ast.classModification ??
+      this.ast.modification?.classModification ??
+      this.ast.annotationClause?.classModification;
     if (!classMod) return [];
     const args = classMod.modificationArguments ?? [];
     return args.map((a: any) => new AstBackedElementModification(a));
   }
 
   get modificationExpression() {
-    if (!this.ast.modificationExpression) return null;
-    return { expression: this.ast.modificationExpression.expression };
+    const modExpr = this.ast.modificationExpression ?? this.ast.modification?.modificationExpression;
+    if (!modExpr) return null;
+    return { expression: modExpr.expression };
   }
 
   get expression() {
@@ -1049,6 +1067,11 @@ export class AstBackedModification {
         ...expr,
         accept: (visitor: any, args: any) => {
           const text = expr.text.trim();
+          if (text === "true" || text === "false") {
+            if (typeof visitor.visitBooleanLiteral === "function") {
+              return visitor.visitBooleanLiteral({ value: text === "true" }, args);
+            }
+          }
           if (/^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*$/.test(text)) {
             if (typeof visitor.visitNameExpression === "function") {
               return visitor.visitNameExpression({ name: text }, args);
@@ -1061,11 +1084,6 @@ export class AstBackedModification {
             }
             if (typeof visitor.visitRealLiteral === "function") {
               return visitor.visitRealLiteral({ value: num }, args);
-            }
-          }
-          if (text === "true" || text === "false") {
-            if (typeof visitor.visitBooleanLiteral === "function") {
-              return visitor.visitBooleanLiteral({ value: text === "true" }, args);
             }
           }
           if (text.startsWith('"') && text.endsWith('"')) {
@@ -1181,6 +1199,11 @@ export class QueryBackedModification {
         ...expr,
         accept: (visitor: any, args: any) => {
           const text = (expr as any).text.trim();
+          if (text === "true" || text === "false") {
+            if (typeof visitor.visitBooleanLiteral === "function") {
+              return visitor.visitBooleanLiteral({ value: text === "true" }, args);
+            }
+          }
           if (/^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*$/.test(text)) {
             if (typeof visitor.visitNameExpression === "function") {
               return visitor.visitNameExpression({ name: text }, args);
@@ -1193,11 +1216,6 @@ export class QueryBackedModification {
             }
             if (typeof visitor.visitRealLiteral === "function") {
               return visitor.visitRealLiteral({ value: num }, args);
-            }
-          }
-          if (text === "true" || text === "false") {
-            if (typeof visitor.visitBooleanLiteral === "function") {
-              return visitor.visitBooleanLiteral({ value: text === "true" }, args);
             }
           }
           if (text.startsWith('"') && text.endsWith('"')) {

@@ -114,14 +114,23 @@ export class AnnotationEvaluator {
 
   private scope: Scope;
 
-  constructor() {
-    const scope = new ModelicaScriptScope(null);
+  constructor(
+    private evalScope?: Scope | null,
+    private overrideModification?: any,
+  ) {
+    const scope = new ModelicaScriptScope(evalScope ?? null);
 
     // Register annotation enum types in the scope so the interpreter can resolve
     // qualified references like FillPattern.Solid, LinePattern.Dash, etc.
     for (const [enumName, members] of Object.entries(ANNOTATION_ENUMS)) {
       const enumClass = new AnnotationEnumClassInstance(enumName, members);
       scope.classDefinitions.set(enumName, enumClass as any);
+    }
+
+    // Safely inject component parameter overrides so the ModelicaInterpreter can resolve dynamic expressions
+    // without polluting the class scope's variable mappings.
+    if (overrideModification) {
+      (scope as any).modification = overrideModification;
     }
 
     this.scope = scope;
@@ -160,6 +169,9 @@ export class AnnotationEvaluator {
           const argName = arg.name?.parts?.[0]?.text;
           if (argName) {
             result[argName] = this.parseValue(arg, argName);
+            if (argName === "visible") {
+              console.log(`[AnnotationEvaluator] Parsed visible for ${name}: `, result[argName]);
+            }
           }
         }
       }

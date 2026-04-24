@@ -255,6 +255,17 @@ export class ModelicaScriptScope extends Scope {
         if (scriptingResult) return scriptingResult;
       }
     }
+
+    // Safely delegate to duck-typed parent scopes (like QueryBackedClassInstance from LSP)
+    // which implement resolveSimpleName directly backed by the global database but lack getNamedElement.
+    if (
+      this.parent &&
+      typeof (this.parent as any).getNamedElement !== "function" &&
+      typeof (this.parent as any).resolveSimpleName === "function"
+    ) {
+      return (this.parent as any).resolveSimpleName(name);
+    }
+
     return super.resolveSimpleName(identifier, global, encapsulated);
   }
 }
