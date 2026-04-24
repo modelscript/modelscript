@@ -41,7 +41,70 @@ import {
   type SymbolEntry,
   type SymbolId,
 } from "@modelscript/polyglot";
-import { isBroken, modelicaMod, subModification, type ModelicaModArgs } from "./modification-args.js";
+import { isBroken, mergeModArgs, modelicaMod, subModification, type ModelicaModArgs } from "./modification-args.js";
+
+function parseModArgsFromCst(node: any): any {
+  const args: any[] = [];
+  if (!node) return { args, bindingExpression: null };
+
+  const walk = (n: any) => {
+    if (!n) return;
+    if (n.type === "ElementModification") {
+      const nameNode = n.childForFieldName("name");
+      const modNode = n.childForFieldName("modification");
+      const finalNode = n.children.find((c: any) => c.type === "final");
+      const eachNode = n.children.find((c: any) => c.type === "each");
+
+      const name = nameNode ? nameNode.text : "";
+      const nested = parseModArgsFromCst(modNode);
+
+      args.push({
+        name,
+        each: !!eachNode,
+        final: !!finalNode,
+        isRedeclaration: false,
+        nestedArgs: nested.args,
+        value: nested.bindingExpression,
+      });
+      return;
+    } else if (n.type === "ElementRedeclaration") {
+      const clause = n.childForFieldName("componentClause");
+      if (clause) {
+        const typeSpec = clause.childForFieldName("typeSpecifier");
+        const decl1 = clause.childForFieldName("componentDeclaration");
+        const decl = decl1?.childForFieldName("declaration");
+        const ident = decl?.childForFieldName("identifier");
+        const modNode = decl?.childForFieldName("modification");
+
+        const name = ident ? ident.text : "";
+        const typeName = typeSpec ? typeSpec.text : "";
+        const nested = parseModArgsFromCst(modNode);
+
+        args.push({
+          name,
+          each: false,
+          final: false,
+          isRedeclaration: true,
+          redeclaredTypeSpecifier: typeName,
+          nestedArgs: nested.args,
+          value: nested.bindingExpression,
+        });
+      }
+      return;
+    }
+    if (n.type === "ModificationExpression") return;
+    for (const child of n.children) walk(child);
+  };
+  walk(node);
+
+  let bindingExpression = null;
+  if (node.type === "Modification" || node.type === "ElementModification") {
+    const expr = node.childForFieldName("modificationExpression");
+    if (expr) bindingExpression = { kind: "expression", cstBytes: [expr.startIndex, expr.endIndex], text: expr.text };
+  }
+
+  return { args, bindingExpression };
+}
 
 const BUILTIN_MODELICA_NAMES = new Set([
   // Independent variable
@@ -180,6 +243,36 @@ function splitTopLevel(text: string): string[] {
   const last = text.slice(start).trim();
   if (last) parts.push(last);
   return parts;
+}
+
+/**
+ * Resolves a dot-separated path from the global scope.
+ * Used for resolving import targets and global fallbacks.
+ */
+function resolveQualified(db: QueryDB, path: string): SymbolEntry | null {
+  const parts = path.split(".");
+  if (parts.length === 0) return null;
+
+  // Try to find the root part (entry with no parent)
+  const rootEntries = db.byName(parts[0]!);
+  let current =
+    rootEntries.find((e) => (e.metadata as any)?.isPredefined) ??
+    rootEntries.find((e) => e.parentId === null) ??
+    rootEntries[0] ??
+    null;
+
+  if (!current) return null;
+
+  for (let i = 1; i < parts.length; i++) {
+    const part = parts[i]!;
+    const children = db.childrenOf(current.id);
+    // Prefer non-reference entries (Class, Component) over Reference entries
+    current =
+      children.find((c) => c.name === part && c.kind !== "Reference") || children.find((c) => c.name === part) || null;
+    if (!current) return null;
+  }
+
+  return current;
 }
 
 // ---------------------------------------------------------------------------
@@ -449,21 +542,43 @@ export default language({
               }
             }
 
-            // Inherited elements for lookup (LAZY to avoid cycles)
+            // Inherited elements for lookup (LAZY and RECURSIVE to reach base chains)
             let inheritedByName: Map<string, SymbolEntry> | null = null;
             const getInherited = () => {
               if (inheritedByName) return inheritedByName;
               inheritedByName = new Map<string, SymbolEntry>();
+
+              const visited = new Set<number>([self.id]);
+              const walk = (targetId: number) => {
+                if (visited.has(targetId)) return;
+                visited.add(targetId);
+
+                const targetChildren = db.childrenOf(targetId);
+                const targetEntry = db.symbol(targetId);
+                console.log(`[RESOLVE_DEBUG] Walking inheritance for ${targetEntry.name} (id=${targetId})`);
+
+                for (const child of targetChildren) {
+                  if (child.kind === "Extends") {
+                    const baseClass = db.query<SymbolEntry | null>("resolvedBaseClass", child.id);
+                    if (baseClass) {
+                      console.log(`[RESOLVE_DEBUG]   ${targetEntry.name} extends ${baseClass.name}`);
+                      walk(baseClass.id);
+                    }
+                  } else if (
+                    child.name &&
+                    child.kind !== "Reference" &&
+                    child.kind !== "Import" &&
+                    !inheritedByName!.has(child.name)
+                  ) {
+                    inheritedByName!.set(child.name, child);
+                  }
+                }
+              };
+
               for (const child of children) {
                 if (child.kind === "Extends") {
                   const baseClass = db.query<SymbolEntry | null>("resolvedBaseClass", child.id);
-                  if (baseClass) {
-                    for (const inherited of db.childrenOf(baseClass.id)) {
-                      if (inherited.name && inherited.kind !== "Reference" && !inheritedByName.has(inherited.name)) {
-                        inheritedByName.set(inherited.name, inherited);
-                      }
-                    }
-                  }
+                  if (baseClass) walk(baseClass.id);
                 }
               }
               return inheritedByName;
@@ -473,6 +588,7 @@ export default language({
 
             // Return the resolver closure
             return (name: string, encapsulated = false, skipInherited = false): SymbolEntry | null => {
+              console.log(`[RESOLVE_DEBUG] Resolving ${name} in ${self.name} (skipInherited=${skipInherited})`);
               // 1. Direct elements
               const direct = directByName.get(name);
               if (direct) return direct;
@@ -486,10 +602,7 @@ export default language({
               // 3. Qualified imports
               const qualPkg = qualifiedImports.get(name);
               if (qualPkg) {
-                const resolved = db.byName(qualPkg);
-                return (
-                  resolved?.find((e) => e.kind === "Class" || e.kind === "Package" || e.kind === "Function") ?? null
-                );
+                return resolveQualified(db, qualPkg);
               }
 
               // 4. Compound imports
@@ -516,7 +629,7 @@ export default language({
               }
 
               // 6. Parent scope walk (unless encapsulated)
-              if (!encapsulated && !isEncapsulated && self.parentId !== null) {
+              if (!encapsulated && !isEncapsulated && self.parentId !== null && self.parentId !== self.id) {
                 const parentEntry = db.symbol(self.parentId);
                 if (parentEntry && (parentEntry.kind === "Class" || parentEntry.kind === "Package")) {
                   const parentResolver = db.query<(n: string, enc?: boolean, skip?: boolean) => SymbolEntry | null>(
@@ -655,11 +768,19 @@ export default language({
                     continue;
                   }
 
-                  // Specialize the base class with the outer modification
+                  // Parse local modification of the extends clause
+                  const childCst = db.cstNode(child.id) as any;
+                  const localModNode = childCst?.childForFieldName("classOrInheritanceModification");
+                  const localMod = localModNode ? (parseModArgsFromCst(localModNode) as ModelicaModArgs) : null;
+
+                  // Merge local modification with outer modification
+                  const mergedMod = mergeModArgs(outerMod, localMod);
+
+                  // Specialize the base class with the merged modification
                   // (extends modifications are propagated to the base)
                   let specializedBaseId: SymbolId;
-                  if (outerMod && outerMod.args.length > 0) {
-                    specializedBaseId = db.specialize(baseClass.id, modelicaMod(outerMod));
+                  if (mergedMod && mergedMod.args.length > 0) {
+                    specializedBaseId = db.specialize(baseClass.id, modelicaMod(mergedMod));
                   } else {
                     specializedBaseId = baseClass.id;
                   }
@@ -1483,6 +1604,10 @@ export default language({
           },
         }),
         queries: {
+          modificationText: (db: QueryDB, self: SymbolEntry) => {
+            const cst = db.cstNode(self.id) as any;
+            return cst?.childForFieldName("classOrInheritanceModification")?.text ?? null;
+          },
           /**
            * Resolve the base class referenced by this extends clause.
            * Returns the SymbolEntry of the resolved class, or null.
@@ -1641,12 +1766,20 @@ export default language({
            * Resolve the type specifier to the class it references.
            */
           resolvedType: (db: QueryDB, self: SymbolEntry) => {
-            const cstNode = db.cstNode(self.id);
-            let current = cstNode as any;
-            while (current && current.type !== "ComponentClause") {
-              current = current.parent;
+            const specArgs = db.argsOf<import("./modification-args.js").ModelicaModArgs>(self.id);
+            let typeName = "";
+
+            if (specArgs?.data?.isRedeclaration && specArgs.data.redeclaredTypeSpecifier) {
+              typeName = specArgs.data.redeclaredTypeSpecifier;
+            } else {
+              const cstNode = db.cstNode(self.id);
+              let current = cstNode as any;
+              while (current && current.type !== "ComponentClause") {
+                current = current.parent;
+              }
+              typeName = current?.childForFieldName("typeSpecifier")?.text ?? "";
             }
-            let typeName = current?.childForFieldName("typeSpecifier")?.text ?? "";
+
             if (!typeName || typeof typeName !== "string") return null;
 
             // Try qualified resolution from parent scope
@@ -1686,67 +1819,14 @@ export default language({
            * Returns null if no modification is present.
            */
           effectiveModification: (db: QueryDB, self: SymbolEntry) => {
-            const meta = self.metadata as Record<string, unknown>;
-            const modText = meta?.modification as string | undefined;
-            if (!modText) return null;
-
-            const trimmed = modText.trimStart();
-
-            // Class modification: starts with '(' → has args
-            // Binding expression: starts with '=' → scalar binding
-            // Both: '(args) = expr'
-            const hasClassMod = trimmed.startsWith("(");
-            const hasBinding = hasClassMod
-              ? /\)\s*=/.test(trimmed) // '(...)  = expr'
-              : trimmed.startsWith("=");
-
-            const bindingExpression: import("./modification-args.js").ModificationValue | null = hasBinding
-              ? { kind: "expression", cstBytes: [self.startByte, self.endByte] }
-              : null;
-
-            // Parse class modification args from text if present
-            const args: import("./modification-args.js").ModificationArg[] = [];
-            if (hasClassMod) {
-              // Extract content between outermost parens
-              let depth = 0;
-              let start = -1;
-              for (let i = 0; i < trimmed.length; i++) {
-                if (trimmed[i] === "(") {
-                  if (depth === 0) start = i + 1;
-                  depth++;
-                } else if (trimmed[i] === ")") {
-                  depth--;
-                  if (depth === 0) {
-                    const inner = trimmed.slice(start, i).trim();
-                    if (inner) {
-                      // Split on top-level commas
-                      for (const part of splitTopLevel(inner)) {
-                        const eqIdx = part.indexOf("=");
-                        if (eqIdx > 0) {
-                          const name = part.slice(0, eqIdx).trim();
-                          const valText = part.slice(eqIdx + 1).trim();
-                          const num = parseFloat(valText);
-                          args.push({
-                            name,
-                            each: false,
-                            final: false,
-                            value:
-                              !isNaN(num) && String(num) === valText
-                                ? { kind: "literal" as const, value: num }
-                                : { kind: "expression" as const, cstBytes: [self.startByte, self.endByte] },
-                            nestedArgs: [],
-                            isRedeclaration: false,
-                          });
-                        }
-                      }
-                    }
-                    break;
-                  }
-                }
-              }
+            const cst = db.cstNode(self.id) as any;
+            let current = cst;
+            while (current && current.type !== "ComponentDeclaration") {
+              current = current.parent;
             }
-
-            return { args, bindingExpression } as ModelicaModArgs;
+            const modNode = current?.childForFieldName("modification");
+            if (!modNode) return null;
+            return parseModArgsFromCst(modNode) as ModelicaModArgs;
           },
           /**
            * Check if this component's type is a connector.
@@ -1862,12 +1942,20 @@ export default language({
            * This replaces ModelicaComponentInstance.classInstance.
            */
           classInstance: (db: QueryDB, self: SymbolEntry) => {
-            const cstNode = db.cstNode(self.id);
-            let current = cstNode as any;
-            while (current && current.type !== "ComponentClause") {
-              current = current.parent;
+            const specArgs = db.argsOf<import("./modification-args.js").ModelicaModArgs>(self.id);
+            let typeName = "";
+
+            if (specArgs?.data?.isRedeclaration && specArgs.data.redeclaredTypeSpecifier) {
+              typeName = specArgs.data.redeclaredTypeSpecifier;
+            } else {
+              const cstNode = db.cstNode(self.id);
+              let current = cstNode as any;
+              while (current && current.type !== "ComponentClause") {
+                current = current.parent;
+              }
+              typeName = current?.childForFieldName("typeSpecifier")?.text ?? "";
             }
-            let typeName = current?.childForFieldName("typeSpecifier")?.text;
+
             if (!typeName) return null;
 
             let typeEntry: SymbolEntry | null = null;
@@ -1893,26 +1981,22 @@ export default language({
             }
             // Fallback: global lookup — try full qualified name first, then simple name
             if (!typeEntry && typeName.includes(".")) {
-              const entries = db.byName(typeName);
-              typeEntry =
-                entries?.find((e) => e.kind === "Class" || e.kind === "Package" || e.kind === "Function") ?? null;
+              typeEntry = resolveQualified(db, typeName);
             }
             if (!typeEntry) {
               const simpleName = typeName.includes(".") ? typeName.split(".").pop()! : typeName;
               const entries = db.byName(simpleName);
-              // Prefer predefined types (Real, Integer, etc.) to avoid
-              // resolving e.g. "Temperature" to a random class instead of
-              // the correct SI type alias.
+              // Prefer predefined types (Real, Integer, etc.) and types over models
+              // to avoid resolving e.g. "Temperature" to a random sensor class.
               typeEntry =
                 entries?.find((e) => (e.metadata as Record<string, unknown>)?.isPredefined && e.kind === "Class") ??
+                entries?.find((e) => (e.metadata as Record<string, unknown>)?.classPrefixes === "type") ??
                 entries?.find((e) => e.kind === "Class" || e.kind === "Package" || e.kind === "Function") ??
                 null;
             }
             if (!typeEntry) return null;
 
-            // Get the component's effective modification
             // Outer modification (from enclosing class's instantiate)
-            const specArgs = db.argsOf<ModelicaModArgs>(self.id);
             const outerMod = specArgs?.data ?? null;
 
             // If there's a modification, specialize the type class

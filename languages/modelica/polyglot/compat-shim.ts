@@ -254,7 +254,6 @@ export class QueryBackedClassInstance extends QueryBackedElement {
    * Returns null if this is not a short class specifier or the type cannot be resolved.
    */
   get shortClassTarget(): QueryBackedClassInstance | null {
-    if (this.classKind !== "type") return null;
     // Predefined types (Real, Integer, etc.) are not short class specifiers
     const meta = this.entry?.metadata as Record<string, unknown>;
     if (meta?.isPredefined) return null;
@@ -262,6 +261,7 @@ export class QueryBackedClassInstance extends QueryBackedElement {
     if (!cst) return null;
     // Navigate to the ShortClassSpecifier's typeSpecifier
     const classSpecifier = cst.childForFieldName?.("classSpecifier");
+    if (classSpecifier?.type !== "ShortClassSpecifier") return null;
     const typeSpec = classSpecifier?.childForFieldName?.("typeSpecifier");
     const typeName = typeSpec?.text;
     if (!typeName) return null;
@@ -949,11 +949,46 @@ export class QueryBackedElementModification {
 
   get modificationExpression() {
     if (!this.arg.value) return null;
-    return { expression: this.arg.value };
+    return { expression: this.expression };
   }
 
   get expression() {
-    return this.modificationExpression?.expression ?? null;
+    const expr = this.arg.value;
+    if (!expr) return null;
+    if ((expr as any).text && !(expr as any).accept) {
+      return {
+        ...expr,
+        accept: (visitor: any, args: any) => {
+          const text = (expr as any).text.trim();
+          if (/^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*$/.test(text)) {
+            if (typeof visitor.visitNameExpression === "function") {
+              return visitor.visitNameExpression({ name: text }, args);
+            }
+          }
+          const num = Number(text);
+          if (!isNaN(num)) {
+            if (Number.isInteger(num) && typeof visitor.visitIntegerLiteral === "function") {
+              return visitor.visitIntegerLiteral({ value: num }, args);
+            }
+            if (typeof visitor.visitRealLiteral === "function") {
+              return visitor.visitRealLiteral({ value: num }, args);
+            }
+          }
+          if (text === "true" || text === "false") {
+            if (typeof visitor.visitBooleanLiteral === "function") {
+              return visitor.visitBooleanLiteral({ value: text === "true" }, args);
+            }
+          }
+          if (text.startsWith('"') && text.endsWith('"')) {
+            if (typeof visitor.visitStringLiteral === "function") {
+              return visitor.visitStringLiteral({ value: text.substring(1, text.length - 1) }, args);
+            }
+          }
+          return null;
+        },
+      };
+    }
+    return expr;
   }
 }
 
@@ -1003,7 +1038,42 @@ export class AstBackedModification {
   }
 
   get expression() {
-    return this.modificationExpression?.expression ?? null;
+    const expr = this.modificationExpression?.expression;
+    if (!expr) return null;
+    if (expr.text && !expr.accept) {
+      return {
+        ...expr,
+        accept: (visitor: any, args: any) => {
+          const text = expr.text.trim();
+          if (/^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*$/.test(text)) {
+            if (typeof visitor.visitNameExpression === "function") {
+              return visitor.visitNameExpression({ name: text }, args);
+            }
+          }
+          const num = Number(text);
+          if (!isNaN(num)) {
+            if (Number.isInteger(num) && typeof visitor.visitIntegerLiteral === "function") {
+              return visitor.visitIntegerLiteral({ value: num }, args);
+            }
+            if (typeof visitor.visitRealLiteral === "function") {
+              return visitor.visitRealLiteral({ value: num }, args);
+            }
+          }
+          if (text === "true" || text === "false") {
+            if (typeof visitor.visitBooleanLiteral === "function") {
+              return visitor.visitBooleanLiteral({ value: text === "true" }, args);
+            }
+          }
+          if (text.startsWith('"') && text.endsWith('"')) {
+            if (typeof visitor.visitStringLiteral === "function") {
+              return visitor.visitStringLiteral({ value: text.substring(1, text.length - 1) }, args);
+            }
+          }
+          return null;
+        },
+      };
+    }
+    return expr;
   }
 
   get evaluatedExpression() {
@@ -1096,11 +1166,46 @@ export class QueryBackedModification {
 
   get modificationExpression() {
     if (!this.modArgs?.bindingExpression) return null;
-    return { expression: this.modArgs.bindingExpression };
+    return { expression: this.expression };
   }
 
   get expression() {
-    return this.modificationExpression?.expression ?? null;
+    const expr = this.modArgs?.bindingExpression;
+    if (!expr) return null;
+    if ((expr as any).text && !(expr as any).accept) {
+      return {
+        ...expr,
+        accept: (visitor: any, args: any) => {
+          const text = (expr as any).text.trim();
+          if (/^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*$/.test(text)) {
+            if (typeof visitor.visitNameExpression === "function") {
+              return visitor.visitNameExpression({ name: text }, args);
+            }
+          }
+          const num = Number(text);
+          if (!isNaN(num)) {
+            if (Number.isInteger(num) && typeof visitor.visitIntegerLiteral === "function") {
+              return visitor.visitIntegerLiteral({ value: num }, args);
+            }
+            if (typeof visitor.visitRealLiteral === "function") {
+              return visitor.visitRealLiteral({ value: num }, args);
+            }
+          }
+          if (text === "true" || text === "false") {
+            if (typeof visitor.visitBooleanLiteral === "function") {
+              return visitor.visitBooleanLiteral({ value: text === "true" }, args);
+            }
+          }
+          if (text.startsWith('"') && text.endsWith('"')) {
+            if (typeof visitor.visitStringLiteral === "function") {
+              return visitor.visitStringLiteral({ value: text.substring(1, text.length - 1) }, args);
+            }
+          }
+          return null;
+        },
+      };
+    }
+    return expr;
   }
 
   get evaluatedExpression() {

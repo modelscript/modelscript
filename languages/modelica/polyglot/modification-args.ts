@@ -33,7 +33,7 @@ import type { SpecializationArgs } from "@modelscript/polyglot";
  * - A pre-evaluated literal (for common cases like `= 100`)
  */
 export type ModificationValue =
-  | { readonly kind: "expression"; readonly cstBytes: readonly [number, number] }
+  | { readonly kind: "expression"; readonly cstBytes: readonly [number, number]; readonly text?: string }
   | { readonly kind: "break" }
   | { readonly kind: "literal"; readonly value: number | string | boolean };
 
@@ -85,6 +85,10 @@ export interface ModelicaModArgs {
   readonly args: readonly ModificationArg[];
   /** Top-level binding expression (the `= expr` part). */
   readonly bindingExpression: ModificationValue | null;
+  /** Whether this component was redeclared. */
+  readonly isRedeclaration?: boolean;
+  /** The new type specifier if redeclared. */
+  readonly redeclaredTypeSpecifier?: string;
 }
 
 /** The empty modification (no args, no binding). */
@@ -275,6 +279,8 @@ export function mergeModArgs(outer: ModelicaModArgs | null, inner: ModelicaModAr
   return {
     args: [...merged.values()],
     bindingExpression: outer.bindingExpression ?? inner.bindingExpression,
+    isRedeclaration: outer.isRedeclaration ?? inner.isRedeclaration,
+    redeclaredTypeSpecifier: outer.redeclaredTypeSpecifier ?? inner.redeclaredTypeSpecifier,
   };
 }
 
@@ -341,5 +347,7 @@ export function subModification(mod: ModelicaModArgs | null, name: string): Mode
   return {
     args: arg.nestedArgs,
     bindingExpression: arg.value,
+    isRedeclaration: arg.isRedeclaration,
+    redeclaredTypeSpecifier: arg.redeclaredTypeSpecifier,
   };
 }

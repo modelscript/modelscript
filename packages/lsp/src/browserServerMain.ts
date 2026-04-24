@@ -173,7 +173,8 @@ function getSharedCstTreeWrapper() {
       let lazyCache = lazyLibTrees.get(uri);
       if (!lazyCache && sharedContext) {
         try {
-          const fsPath = uri.startsWith("file://") ? uri.substring(7) : uri.replace(/^modelica:\/?/, "");
+          let fsPath = uri.startsWith("file://") ? uri.substring(7) : uri.replace(/^modelica:\/?\/?/, "/");
+          if (!fsPath.startsWith("/")) fsPath = "/" + fsPath;
           const text = sharedContext.fs.read(fsPath);
           if (text) {
             const tree = sharedContext.parse(uri.endsWith(".sysml") ? ".sysml" : ".mo", text);
@@ -191,13 +192,13 @@ function getSharedCstTreeWrapper() {
       if (!entry || !entry.resourceId) return null;
       const uri = entry.resourceId;
       const docTree = documentTrees.get(uri);
-      if (docTree && docTree.tree)
-        return docTree.tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte - 1));
+      if (docTree && docTree.tree) return docTree.tree.rootNode.descendantForIndex(startByte, endByte);
 
       let lazyCache = lazyLibTrees.get(uri);
       if (!lazyCache && sharedContext) {
         try {
-          const fsPath = uri.startsWith("file://") ? uri.substring(7) : uri.replace(/^modelica:\/?/, "");
+          let fsPath = uri.startsWith("file://") ? uri.substring(7) : uri.replace(/^modelica:\/?\/?/, "/");
+          if (!fsPath.startsWith("/")) fsPath = "/" + fsPath;
           const text = sharedContext.fs.read(fsPath);
           if (text) {
             const tree = sharedContext.parse(uri.endsWith(".sysml") ? ".sysml" : ".mo", text);
@@ -4302,6 +4303,8 @@ connection.onRequest("textDocument/codeLens", (params): CodeLens[] => {
           (v) =>
             (v as { variability?: unknown }).variability === null || (v as { name: string }).name.startsWith("der("),
         ).length;
+
+        // removed debug fs write
 
         if (nEqs > 0 || nVars > 0) {
           lenses.push({

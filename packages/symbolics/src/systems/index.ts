@@ -2920,6 +2920,13 @@ export class ExpressionEvaluator {
       return 0;
     }
     if (expression instanceof ModelicaNameExpression) {
+      if (expression.name === "Modelica.Constants.pi" || expression.name === "Constants.pi") return Math.PI;
+      if (expression.name === "Modelica.Constants.e" || expression.name === "Constants.e") return Math.E;
+      if (expression.name === "Modelica.Constants.eps" || expression.name === "Constants.eps") return Number.EPSILON;
+      if (expression.name === "Modelica.Constants.small") return 1e-60;
+      if (expression.name === "Modelica.Constants.inf" || expression.name === "Constants.inf") return Infinity;
+      if (expression.name === "Modelica.Constants.gamma") return 0.5772156649015329;
+
       const value = this.env.get(expression.name);
       return value !== undefined ? value : null;
     }
@@ -4605,7 +4612,7 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     } else if (variable instanceof ModelicaEnumerationVariable) {
       this.out.write("enumeration(" + variable.enumerationLiterals.map((e) => e.stringValue).join(", ") + ")");
     } else {
-      throw new Error("invalid variable");
+      throw new Error(`invalid variable: ${variable?.constructor?.name} ${variable?.name}`);
     }
     // Handle native array dimensions
     if (variable.arrayDimensions && variable.arrayDimensions.length > 0) {
