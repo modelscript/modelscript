@@ -15,11 +15,31 @@ export class WorkspaceIndex {
     string,
     {
       index: SymbolIndex | null;
+      /** Retained old index for incremental re-indexing. */
+      oldIndex: SymbolIndex | null;
+      /** Edit byte ranges for incremental re-indexing. */
+      editRanges: Array<{ startByte: number; endByte: number }> | null;
+      /** ID remapping from local→global IDs for the current index. */
+      idMap: Map<SymbolId, SymbolId> | null;
       loader: (() => CSTNode) | null;
       parentFQN?: string;
       dirty: boolean;
     }
   >();
+
+  /** Changed symbol IDs from the last incremental update, keyed by file URI. */
+  private lastChangedIds = new Map<string, Set<SymbolId>>();
+
+  /** Aggregated symbol IDs that changed across the entire workspace since the last takeGlobalChangedIds() call. */
+  private globalChangedIdsBuffer = new Set<SymbolId>();
+
+  /** Monotonic version counter — bumped on every register/markDirty/remove. */
+  private _version = 0;
+
+  /** The current version — increments on any structural change. */
+  get version(): number {
+    return this._version;
+  }
 
   private hooks: IndexerHook[];
 
@@ -38,25 +58,29 @@ export class WorkspaceIndex {
    * The loader will be called only when the file's index is first requested.
    */
   register(uri: string, loader: () => CSTNode, parentFQN?: string): void {
-    this.files.set(uri, { index: null, loader, parentFQN, dirty: true });
+    this.files.set(uri, { index: null, oldIndex: null, editRanges: null, idMap: null, loader, parentFQN, dirty: true });
     this.unifiedCache = null;
     this.dirtyUris.add(uri);
     this.skeletonCache = null;
+    this._version++;
   }
 
   /**
    * Mark a file as dirty (will re-index on next access).
    * Optionally provide a new loader.
    */
-  markDirty(uri: string, loader?: () => CSTNode): void {
+  markDirty(uri: string, loader?: () => CSTNode, editRanges?: Array<{ startByte: number; endByte: number }>): void {
     const file = this.files.get(uri);
     if (file) {
       file.dirty = true;
-      file.index = null; // Clear old index
+      file.oldIndex = file.index; // Retain for incremental update
+      file.editRanges = editRanges ?? null;
+      file.index = null;
       if (loader) file.loader = loader;
       this.unifiedCache = null;
       this.dirtyUris.add(uri);
       this.skeletonCache = null;
+      this._version++;
     }
   }
 
@@ -66,6 +90,7 @@ export class WorkspaceIndex {
   remove(uri: string): void {
     this.files.delete(uri);
     this.unifiedCache = null;
+    this._version++;
     // Full rebuild needed — we must remove entries from the cached index
     this.partialCache = null;
     this.dirtyUris.clear();
@@ -83,8 +108,126 @@ export class WorkspaceIndex {
 
     if (file.dirty || !file.index) {
       if (!file.loader) return null;
+
+      const rootNode = file.loader();
       const indexer = new SymbolIndexer(this.hooks);
-      const rawIndex = indexer.index(file.loader());
+
+      // --- Incremental path: use SymbolIndexer.update() when we have an old index ---
+      if (file.oldIndex && file.editRanges && file.idMap) {
+        // Build a reverse map (global → local) so we can feed the old index
+        // to the indexer in local ID space. The indexer's update() returns
+        // local IDs, so we then re-map them back to global IDs.
+        const reverseMap = new Map<SymbolId, SymbolId>();
+        for (const [localId, globalId] of file.idMap) {
+          reverseMap.set(globalId, localId);
+        }
+
+        // Convert old global index back to local ID space for the indexer
+        const oldLocalSymbols = new Map<SymbolId, SymbolEntry>();
+        const oldLocalByName = new Map<string, SymbolId[]>();
+        const oldLocalChildrenOf = new Map<SymbolId | null, SymbolId[]>();
+
+        for (const [globalId, entry] of file.oldIndex.symbols) {
+          const localId = reverseMap.get(globalId) ?? globalId;
+          const localParentId = entry.parentId !== null ? (reverseMap.get(entry.parentId) ?? entry.parentId) : null;
+          oldLocalSymbols.set(localId, { ...entry, id: localId, parentId: localParentId });
+        }
+        for (const [name, ids] of file.oldIndex.byName) {
+          oldLocalByName.set(
+            name,
+            ids.map((id) => reverseMap.get(id) ?? id),
+          );
+        }
+        for (const [parentId, ids] of file.oldIndex.childrenOf) {
+          const localParent = parentId !== null ? (reverseMap.get(parentId) ?? parentId) : null;
+          oldLocalChildrenOf.set(
+            localParent,
+            ids.map((id) => reverseMap.get(id) ?? id),
+          );
+        }
+
+        const oldLocalIndex: SymbolIndex = {
+          symbols: oldLocalSymbols,
+          byName: oldLocalByName,
+          childrenOf: oldLocalChildrenOf,
+        };
+
+        // Compute total byte delta for position adjustment of post-edit entries
+        let totalDelta = 0;
+        // We don't have exact old vs new lengths, but the edit ranges give us
+        // approximate bounds. The indexer handles imprecise deltas gracefully.
+
+        const { index: rawIndex, changedIds: localChangedIds } = indexer.update(
+          oldLocalIndex,
+          rootNode,
+          file.editRanges,
+          totalDelta,
+        );
+
+        // Re-map to global IDs, reusing old global IDs for unchanged entries
+        const idMap = new Map<SymbolId, SymbolId>();
+        for (const localId of rawIndex.symbols.keys()) {
+          // If this local ID existed in the old index, reuse its global ID
+          const existingGlobal = file.idMap.get(localId);
+          if (existingGlobal !== undefined) {
+            idMap.set(localId, existingGlobal);
+          } else {
+            idMap.set(localId, globalIdCounter++);
+          }
+        }
+
+        const symbols = new Map<SymbolId, SymbolEntry>();
+        const byName = new Map<string, SymbolId[]>();
+
+        for (const [localId, entry] of rawIndex.symbols) {
+          const globalId = idMap.get(localId)!;
+          const remapped: SymbolEntry = {
+            ...entry,
+            id: globalId,
+            parentId: entry.parentId !== null ? (idMap.get(entry.parentId) ?? entry.parentId) : null,
+            resourceId: uri,
+          };
+          symbols.set(globalId, remapped);
+          const existing = byName.get(remapped.name);
+          if (existing) existing.push(globalId);
+          else byName.set(remapped.name, [globalId]);
+        }
+
+        const childrenOf = new Map<SymbolId | null, SymbolId[]>();
+        for (const [parentId, childIds] of rawIndex.childrenOf) {
+          const newParentId = parentId !== null ? (idMap.get(parentId) ?? parentId) : null;
+          const newChildIds = childIds.map((cid) => idMap.get(cid) ?? cid);
+          childrenOf.set(newParentId, newChildIds);
+        }
+
+        file.index = { symbols, byName, childrenOf };
+        file.idMap = idMap;
+
+        // Map changed local IDs to global IDs
+        const globalChangedIds = new Set<SymbolId>();
+        for (const localId of localChangedIds) {
+          const gid = idMap.get(localId) ?? file.idMap.get(localId);
+          if (gid !== undefined) {
+            globalChangedIds.add(gid);
+            this.globalChangedIdsBuffer.add(gid);
+          }
+        }
+        this.lastChangedIds.set(uri, globalChangedIds);
+
+        file.dirty = false;
+        file.oldIndex = null;
+        file.editRanges = null;
+
+        this.dirtyUris.add(uri);
+        this.unifiedCache = null;
+        this.skeletonCache = null;
+        this._version++;
+
+        return file.index;
+      }
+
+      // --- Full index path: new file or no old index available ---
+      const rawIndex = indexer.index(rootNode);
 
       // Re-map IDs to be globally unique
       const idMap = new Map<SymbolId, SymbolId>();
@@ -120,16 +263,46 @@ export class WorkspaceIndex {
       }
 
       file.index = { symbols, byName, childrenOf };
+      file.idMap = idMap;
       file.dirty = false;
+      file.oldIndex = null;
+      file.editRanges = null;
+
+      // Mark all symbols as changed for full-index case
+      const allFileSymbolIds = new Set(symbols.keys());
+      this.lastChangedIds.set(uri, allFileSymbolIds);
+      for (const id of allFileSymbolIds) {
+        this.globalChangedIdsBuffer.add(id);
+      }
 
       // Invalidate caches so toUnifiedPartial() / toTreeIndex() pick up the new entries.
       // Adding to dirtyUris triggers the incremental merge path in toUnifiedPartial().
       this.dirtyUris.add(uri);
       this.unifiedCache = null;
       this.skeletonCache = null;
+      this._version++;
     }
 
     return file.index;
+  }
+
+  /**
+   * Get the set of globally-unique symbol IDs that changed in the last
+   * indexing pass for a given file. Returns null if the file hasn't been
+   * indexed or was fully re-indexed (in which case all symbols changed).
+   */
+  getChangedIds(uri: string): Set<SymbolId> | null {
+    return this.lastChangedIds.get(uri) ?? null;
+  }
+
+  /**
+   * Retrieve and clear the aggregated set of globally-unique symbol IDs
+   * that have changed across the workspace since this method was last called.
+   */
+  takeGlobalChangedIds(): Set<SymbolId> {
+    const ids = new Set(this.globalChangedIdsBuffer);
+    this.globalChangedIdsBuffer.clear();
+    return ids;
   }
 
   /**

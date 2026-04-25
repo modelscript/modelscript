@@ -264,6 +264,22 @@ export class QueryEngine {
     this.index = newIndex;
   }
 
+  /**
+   * Fast-path index replacement: swap the index reference and invalidate
+   * only the specified changed symbols, avoiding the O(all symbols) diff
+   * that `updateIndex()` performs.
+   *
+   * Use this when the caller knows exactly which symbols changed
+   * (e.g., from incremental re-indexing via SymbolIndexer.update()).
+   *
+   * @param newIndex - The new SymbolIndex to use.
+   * @param changedSymbolIds - IDs of symbols that were added, removed, or modified.
+   */
+  swapIndex(newIndex: SymbolIndex, changedSymbolIds: Set<SymbolId>): void {
+    this.index = newIndex;
+    this.invalidate(changedSymbolIds);
+  }
+
   // =========================================================================
   // Lint Execution
   // =========================================================================

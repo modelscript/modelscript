@@ -10,6 +10,11 @@ export class UnifiedWorkspace {
   private indices = new Map<string, WorkspaceIndex>();
   public adapterRegistry: AdapterRegistry;
 
+  /** Cached result of toUnifiedPartial() — reused when underlying partials haven't changed. */
+  private partialCache: SymbolIndex | null = null;
+  /** Version numbers of each workspace at the time the cache was built. */
+  private partialCacheVersions = new Map<string, number>();
+
   constructor() {
     this.adapterRegistry = new AdapterRegistry();
   }
@@ -120,14 +125,30 @@ export class UnifiedWorkspace {
 
   /**
    * Builds a unified index from only already-parsed files, without triggering lazy loaders.
+   * Caches the result and reuses it when the underlying workspace partials haven't changed.
    */
   toUnifiedPartial(): SymbolIndex {
+    // Fast path: check if any underlying workspace has changed
+    // by comparing version numbers. WorkspaceIndex.version increments
+    // on every register/markDirty/remove.
+    if (this.partialCache) {
+      let allSame = true;
+      for (const [language, workspace] of this.indices.entries()) {
+        if (workspace.version !== this.partialCacheVersions.get(language)) {
+          allSame = false;
+          break;
+        }
+      }
+      if (allSame) return this.partialCache;
+    }
+
     const symbols = new Map<number, SymbolEntry>();
     const byName = new Map<string, number[]>();
     const childrenOf = new Map<number | null, number[]>();
 
     for (const [language, workspace] of this.indices.entries()) {
       const index = workspace.toUnifiedPartial();
+      this.partialCacheVersions.set(language, workspace.version);
 
       for (const [id, entry] of index.symbols) {
         const sys: SymbolEntry = { ...entry, language };
@@ -152,7 +173,8 @@ export class UnifiedWorkspace {
       }
     }
 
-    return { symbols, byName, childrenOf };
+    this.partialCache = { symbols, byName, childrenOf };
+    return this.partialCache;
   }
 
   /**

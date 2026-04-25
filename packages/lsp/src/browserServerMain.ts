@@ -353,9 +353,9 @@ unifiedWorkspace.registerWorkspace("sysml2", sysml2WorkspaceIndex, sysml2LangFal
 
 const documentLSPBridges = new Map<string, LSPBridge>();
 
-/** Per-document QueryEngine — used by compat-shim to create QueryBackedClassInstance wrappers */
-const documentQueryEngines = new Map<string, QueryEngine>();
-
+/** Global QueryEngines for cross-file dependency tracking and memoization */
+let globalModelicaQueryEngine: QueryEngine | null = null;
+let globalSysML2QueryEngine: QueryEngine | null = null;
 /* SysML2 parser (separate from Modelica) */
 let sysml2Parser: Parser | null = null;
 let sysml2ParserReady = false;
@@ -819,16 +819,22 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
       // Without this, toUnifiedPartial() skips the file (index stays null).
       sysml2WorkspaceIndex.getFileIndex(textDocument.uri);
 
+      // Get ALL changed symbol IDs across the workspace since last check
+      const changedIds = sysml2WorkspaceIndex.takeGlobalChangedIds();
+
       // Create or update query engine, resolver, and LSP bridge for the document
       const unifiedIndex = unifiedWorkspace.toUnifiedPartial();
 
-      let engine = documentQueryEngines.get(textDocument.uri) as any;
-      if (engine) {
-        engine.updateIndex(unifiedIndex);
+      if (globalSysML2QueryEngine) {
+        if (changedIds && typeof globalSysML2QueryEngine.swapIndex === "function") {
+          globalSysML2QueryEngine.swapIndex(unifiedIndex, changedIds);
+        } else {
+          globalSysML2QueryEngine.updateIndex(unifiedIndex);
+        }
       } else {
-        engine = createSysML2QueryEngine(unifiedIndex);
-        documentQueryEngines.set(textDocument.uri, engine);
+        globalSysML2QueryEngine = createSysML2QueryEngine(unifiedIndex) as any;
       }
+      const engine = globalSysML2QueryEngine;
 
       let resolver = (engine as any).__resolverCache;
       if (!resolver) {
@@ -863,7 +869,7 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
       collectErrors(tree.rootNode);
 
       // Run Polyglot declarative lints (e.g. multiplicity bounds, usage matching)
-      const engineDiags = engine.runAllLints(textDocument.uri);
+      const engineDiags = engine!.runAllLints(textDocument.uri);
       for (const d of engineDiags) {
         const start = bridge["positions"].offsetToPosition(d.startByte);
         const end = bridge["positions"].offsetToPosition(d.endByte);
@@ -920,10 +926,13 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
     const oldCached = documentTrees.get(textDocument.uri);
 
     let tree: any;
+    let editRanges: Array<{ startByte: number; endByte: number }> | undefined;
     if (oldCached && oldCached.text !== text) {
       const edit = computeTreeEdit(oldCached.text, text);
       oldCached.tree.edit(edit as never);
       tree = context.parse(".mo", text, oldCached.tree as never);
+      // Capture edit byte ranges for incremental indexing
+      editRanges = [{ startByte: edit.startIndex, endByte: edit.newEndIndex }];
     } else if (oldCached) {
       tree = oldCached.tree;
     } else {
@@ -938,7 +947,7 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
 
     // --- Polyglot Pipeline ---
     if (globalWorkspaceIndex.has(effectiveUri)) {
-      globalWorkspaceIndex.markDirty(effectiveUri, () => tree.rootNode);
+      globalWorkspaceIndex.markDirty(effectiveUri, () => tree.rootNode, editRanges);
     } else {
       globalWorkspaceIndex.register(effectiveUri, () => tree.rootNode);
     }
@@ -947,22 +956,30 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
     // so that it actually triggers processing and populates the partial index.
     globalWorkspaceIndex.getFileIndex(effectiveUri);
 
-    // Create query engine, resolver, and LSP bridge over the unified workspace index.
+    // Get ALL changed symbol IDs across the workspace since last check
+    const changedIds = globalWorkspaceIndex.takeGlobalChangedIds();
+
+    // Create or update the global query engine and resolver
     // Use toUnifiedPartial() to avoid blocking on parsing ALL MSL files —
     // only merges files that have already been indexed.
     let unifiedIndex = unifiedWorkspace.toUnifiedPartial();
 
     const cstTreeWrapper = getSharedCstTreeWrapper();
 
-    let engine = documentQueryEngines.get(textDocument.uri) as any;
-    if (engine) {
+    if (globalModelicaQueryEngine) {
       injectPredefinedTypes(unifiedIndex);
-      engine.updateIndex(unifiedIndex);
-      if (typeof engine.updateTree === "function") engine.updateTree(cstTreeWrapper);
+      // Fast path: use swapIndex() with precise changed IDs to avoid O(all symbols) diff
+      if (changedIds && typeof globalModelicaQueryEngine.swapIndex === "function") {
+        globalModelicaQueryEngine.swapIndex(unifiedIndex, changedIds);
+      } else {
+        globalModelicaQueryEngine.updateIndex(unifiedIndex);
+      }
+      if (typeof globalModelicaQueryEngine.updateTree === "function")
+        globalModelicaQueryEngine.updateTree(cstTreeWrapper);
     } else {
-      engine = createModelicaQueryEngine(unifiedIndex, cstTreeWrapper);
-      documentQueryEngines.set(textDocument.uri, engine);
+      globalModelicaQueryEngine = createModelicaQueryEngine(unifiedIndex, cstTreeWrapper) as any;
     }
+    const engine = globalModelicaQueryEngine;
 
     let resolver = (engine as any).__resolverCache;
     if (!resolver) {
@@ -997,7 +1014,7 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
     collectErrors(tree.rootNode);
 
     // 2. Run Polyglot declarative lints (Salsa-memoized queries from language.ts)
-    const engineDiags = engine.runAllLints(textDocument.uri);
+    const engineDiags = engine!.runAllLints(textDocument.uri);
     for (const d of engineDiags) {
       const start = (bridge as any).positions.offsetToPosition(d.startByte);
       const end = (bridge as any).positions.offsetToPosition(d.endByte);
@@ -1047,7 +1064,7 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
     if (dirty) {
       unifiedIndex = unifiedWorkspace.toUnifiedPartial();
       injectPredefinedTypes(unifiedIndex);
-      engine.updateIndex(unifiedIndex);
+      engine!.updateIndex(unifiedIndex);
       resolver.updateIndex(unifiedIndex);
       // Let the references resolve on the next edit, or re-run here.
     }
@@ -1057,7 +1074,7 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
     // already declared above, we only need to use it here.
     // effectiveUri is available in this scope.
 
-    const db = engine.toQueryDB();
+    const db = engine!.toQueryDB();
     const thisDocInstances: ModelicaClassInstance[] = [];
 
     // Strip "file://" uniformly for matching.
@@ -2518,11 +2535,17 @@ connection.onRequest(
     if (!instances || instances.length === 0) {
       // Library class: get from polyglot index directly
       const unifiedIndex = unifiedWorkspace.toUnifiedPartial();
-      let engine = documentQueryEngines.get(params.uri) as any;
+      let engine = params.uri.endsWith(".sysml") ? globalSysML2QueryEngine : globalModelicaQueryEngine;
       if (!engine) {
-        engine = createModelicaQueryEngine(unifiedIndex, getSharedCstTreeWrapper());
+        if (params.uri.endsWith(".sysml")) {
+          engine = createSysML2QueryEngine(unifiedIndex) as any;
+          globalSysML2QueryEngine = engine;
+        } else {
+          engine = createModelicaQueryEngine(unifiedIndex, getSharedCstTreeWrapper()) as any;
+          globalModelicaQueryEngine = engine;
+        }
       }
-      const db = engine.toQueryDB();
+      const db = engine!.toQueryDB();
 
       if (params.className) {
         const parts = params.className.split(".");
@@ -2935,10 +2958,10 @@ connection.onRequest(
         // Re-create the query engine with the full unified index
         const fullIndex = unifiedWorkspace.toUnifiedPartial();
         injectPredefinedTypes(fullIndex);
-        const engine = documentQueryEngines.get(params.uri) as any;
+        const engine = params.uri.endsWith(".sysml") ? globalSysML2QueryEngine : globalModelicaQueryEngine;
         if (engine) {
           engine.updateIndex(fullIndex);
-          const resolver = engine.__resolverCache;
+          const resolver = (engine as any).__resolverCache;
           if (resolver) resolver.updateIndex(fullIndex);
         }
 
@@ -3661,7 +3684,11 @@ connection.onRequest("modelscript/getClassIcon", (params: { className: string; u
     let classInstance: any = null;
     const unifiedIndex = unifiedWorkspace.toUnifiedPartial();
     injectPredefinedTypes(unifiedIndex);
-    let engine = docUri ? (documentQueryEngines.get(docUri) as any) : null;
+    let engine = null;
+    if (docUri) {
+      engine = docUri.endsWith(".sysml") ? globalSysML2QueryEngine : globalModelicaQueryEngine;
+    }
+    if (!engine) engine = globalModelicaQueryEngine; // fallback
 
     const parts = params.className.split(".");
     let entries = unifiedIndex.byName.get(parts[parts.length - 1]);
@@ -5612,7 +5639,7 @@ connection.onRequest("modelscript/runVerification", async (params: { uri: string
       // Normal UI edits populate documentQueryEngines, but global UI files like modelscript-lib://
       // might be lazily indexed. Let's use documentQueryEngines or fallback to unified.
       if (finalEntry && finalEntry.resourceId) {
-        targetEngine = documentQueryEngines.get(finalEntry.resourceId);
+        targetEngine = finalEntry.resourceId.endsWith(".sysml") ? globalSysML2QueryEngine : globalModelicaQueryEngine;
         if (!targetEngine && finalEntry.resourceId.endsWith(".mo")) {
           targetEngine = createModelicaQueryEngine(db, verifyCstTreeWrapper);
         }
