@@ -7,7 +7,7 @@ import {
   ModelicaNameSyntaxNode,
   ModelicaTypeSpecifierSyntaxNode,
   type ModelicaComponentReferenceSyntaxNode,
-} from "@modelscript/modelica-polyglot/ast";
+} from "@modelscript/modelica/ast";
 import { makeWeakRef } from "@modelscript/utils";
 import type {
   QueryBackedClassInstance as ModelicaClassInstance,

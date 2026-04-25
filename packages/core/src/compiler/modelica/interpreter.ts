@@ -29,7 +29,7 @@ import {
   ModelicaUnsignedRealLiteralSyntaxNode,
   ModelicaWhenStatementSyntaxNode,
   ModelicaWhileStatementSyntaxNode,
-} from "@modelscript/modelica-polyglot/ast";
+} from "@modelscript/modelica/ast";
 import {
   evaluateCASFunction,
   isCASFunction,

@@ -48,7 +48,7 @@
     "*.{ts,tsx,js,json,md,yml,css}": "prettier --write"
   },
   "dependencies": {
-    "@modelscript/modelica-polyglot": "*",
+    "@modelscript/modelica": "*",
     "@modelscript/polyglot": "*",
     "@modelscript/symbolics": "*",
     "@modelscript/sysml2-polyglot": "*",

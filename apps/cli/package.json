@@ -38,7 +38,7 @@
   "dependencies": {
     "@modelscript/core": "*",
     "@modelscript/fmi": "*",
-    "@modelscript/modelica-polyglot": "*",
+    "@modelscript/modelica": "*",
     "@modelscript/optimizer": "*",
     "@modelscript/simulator": "*",
     "@npmcli/package-json": "^7.0.0",

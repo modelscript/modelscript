@@ -7,7 +7,7 @@
  * propagating derivatives through the computation graph via the chain rule.
  */
 
-import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "@modelscript/modelica-polyglot/ast";
+import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "@modelscript/modelica/ast";
 import {
   ModelicaBinaryExpression,
   ModelicaBooleanLiteral,

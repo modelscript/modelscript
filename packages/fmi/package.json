@@ -47,7 +47,7 @@
   },
   "dependencies": {
     "@modelscript/core": "*",
-    "@modelscript/modelica-polyglot": "*",
+    "@modelscript/modelica": "*",
     "@modelscript/symbolics": "*",
     "pako": "^2.1.0"
   },

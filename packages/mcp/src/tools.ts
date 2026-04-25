@@ -14,8 +14,8 @@ import {
   ModelicaStoredDefinitionSyntaxNode,
   StringWriter,
 } from "@modelscript/core";
-import { QueryBasedFlattener } from "@modelscript/modelica-polyglot/flattener-query";
-import modelicaLangFallback from "@modelscript/modelica-polyglot/language";
+import { QueryBasedFlattener } from "@modelscript/modelica/flattener-query";
+import modelicaLangFallback from "@modelscript/modelica/language";
 import type { TopologyGraph } from "@modelscript/polyglot";
 import { UnifiedWorkspace, WorkspaceIndex } from "@modelscript/polyglot";
 import { ModelicaSimulator } from "@modelscript/simulator";

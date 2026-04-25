@@ -17,7 +17,7 @@
     "@mjackson/node-fetch-server": "^0.6.0",
     "@modelscript/core": "*",
     "@modelscript/lsp": "*",
-    "@modelscript/modelica-polyglot": "*",
+    "@modelscript/modelica": "*",
     "@monaco-editor/react": "^4.7.0",
     "@primer/css": "^22.1.1",
     "@primer/octicons-react": "^19.23.1",

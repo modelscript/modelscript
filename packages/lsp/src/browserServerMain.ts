@@ -343,7 +343,7 @@ const allWorkspaceIndices = new Map<string, any>();
 const globalWorkspaceIndex = createModelicaWorkspaceIndex();
 const sysml2WorkspaceIndex = createSysML2WorkspaceIndex();
 
-import modelicaLangFallback from "@modelscript/modelica-polyglot/language";
+import modelicaLangFallback from "@modelscript/modelica/language";
 import { UnifiedWorkspace } from "@modelscript/polyglot";
 import sysml2LangFallback from "@modelscript/sysml2-polyglot/language";
 

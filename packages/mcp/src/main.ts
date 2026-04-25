@@ -5,7 +5,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { Context } from "@modelscript/core";
-import Modelica from "@modelscript/modelica-polyglot/parser";
+import Modelica from "@modelscript/modelica/parser";
 import Parser from "tree-sitter";
 import { registerResources } from "./resources.js";
 import { registerTools } from "./tools.js";

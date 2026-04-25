@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ModelicaUnaryOperator } from "@modelscript/modelica-polyglot/ast";
+import { ModelicaUnaryOperator } from "@modelscript/modelica/ast";
 import type { ModelicaDAE, ModelicaExpression } from "@modelscript/symbolics";
 import {
   ModelicaBinaryExpression,

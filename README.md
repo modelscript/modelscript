@@ -43,7 +43,7 @@ This project is a monorepo managed with **Lerna**, **Nx**, and **npm workspaces*
 | [`@modelscript/ide`](./apps/ide/)                             | VS Code Web IDE — browser-based Modelica development environment                   |
 | [`@modelscript/vscode`](./extensions/vscode/)                 | VS Code extension — syntax highlighting, LSP client, diagram view                  |
 
-| [`@modelscript/modelica-polyglot`](./languages/modelica/polyglot/) | Polyglot query sets for the Modelica language |
+| [`@modelscript/modelica`](./languages/modelica/polyglot/) | Polyglot query sets for the Modelica language |
 | [`@modelscript/tree-sitter-modelica`](./languages/modelica/tree-sitter-modelica/) | Tree-sitter grammar for Modelica (native + WASM) |
 | `sysml2-polyglot` plugins | Located under `./languages/sysml2/polyglot/` |
 

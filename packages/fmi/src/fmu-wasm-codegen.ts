@@ -16,7 +16,7 @@
  *     optional and handled at compile time via `-DWASM_USE_SUNDIALS`
  */
 
-import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "@modelscript/modelica-polyglot/ast";
+import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "@modelscript/modelica/ast";
 import type { ModelicaDAE, ModelicaExpression } from "@modelscript/symbolics";
 import {
   ModelicaArray,

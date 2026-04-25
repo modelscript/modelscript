@@ -24,7 +24,7 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@modelscript/core": "*",
     "@modelscript/fmi": "*",
-    "@modelscript/modelica-polyglot": "*",
+    "@modelscript/modelica": "*",
     "@modelscript/optimizer": "*",
     "@modelscript/polyglot": "*",
     "@modelscript/simulator": "*",

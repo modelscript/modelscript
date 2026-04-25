@@ -145,19 +145,19 @@
           "implicitDependencies": []
         }
       },
-      "@modelscript/modelica-polyglot": {
-        "name": "@modelscript/modelica-polyglot",
+      "@modelscript/modelica": {
+        "name": "@modelscript/modelica",
         "type": "lib",
         "data": {
           "root": "languages/modelica/polyglot",
-          "name": "@modelscript/modelica-polyglot",
+          "name": "@modelscript/modelica",
           "tags": ["npm:public"],
           "metadata": {
             "targetGroups": {
               "NPM Scripts": ["build"]
             },
             "js": {
-              "packageName": "@modelscript/modelica-polyglot",
+              "packageName": "@modelscript/modelica",
               "packageVersion": "0.0.0",
               "packageExports": {
                 "./compat-shim": {
@@ -2181,19 +2181,19 @@
     },
     "dependencies": {
       "@modelscript/tree-sitter-modelica": [],
-      "@modelscript/modelica-polyglot": [
+      "@modelscript/modelica": [
         {
-          "source": "@modelscript/modelica-polyglot",
+          "source": "@modelscript/modelica",
           "target": "@modelscript/utils",
           "type": "static"
         },
         {
-          "source": "@modelscript/modelica-polyglot",
+          "source": "@modelscript/modelica",
           "target": "@modelscript/polyglot",
           "type": "static"
         },
         {
-          "source": "@modelscript/modelica-polyglot",
+          "source": "@modelscript/modelica",
           "target": "@modelscript/polyglot",
           "type": "dynamic"
         }
@@ -2218,7 +2218,7 @@
         },
         {
           "source": "@modelscript/optimizer",
-          "target": "@modelscript/modelica-polyglot",
+          "target": "@modelscript/modelica",
           "type": "static"
         },
         {
@@ -2240,7 +2240,7 @@
         },
         {
           "source": "@modelscript/simulator",
-          "target": "@modelscript/modelica-polyglot",
+          "target": "@modelscript/modelica",
           "type": "static"
         },
         {
@@ -2252,7 +2252,7 @@
       "@modelscript/symbolics": [
         {
           "source": "@modelscript/symbolics",
-          "target": "@modelscript/modelica-polyglot",
+          "target": "@modelscript/modelica",
           "type": "static"
         },
         {
@@ -2280,7 +2280,7 @@
       "@modelscript/core": [
         {
           "source": "@modelscript/core",
-          "target": "@modelscript/modelica-polyglot",
+          "target": "@modelscript/modelica",
           "type": "static"
         },
         {
@@ -2339,7 +2339,7 @@
         },
         {
           "source": "@modelscript/fmi",
-          "target": "@modelscript/modelica-polyglot",
+          "target": "@modelscript/modelica",
           "type": "static"
         },
         {
@@ -2381,7 +2381,7 @@
         },
         {
           "source": "@modelscript/lsp",
-          "target": "@modelscript/modelica-polyglot",
+          "target": "@modelscript/modelica",
           "type": "static"
         },
         {
@@ -2408,7 +2408,7 @@
         },
         {
           "source": "@modelscript/mcp",
-          "target": "@modelscript/modelica-polyglot",
+          "target": "@modelscript/modelica",
           "type": "static"
         },
         {

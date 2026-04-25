@@ -16,7 +16,7 @@
  * structural check (`isExplicitlySolvableFor`) cannot handle.
  */
 
-import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "@modelscript/modelica-polyglot/ast";
+import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "@modelscript/modelica/ast";
 import {
   add,
   differentiateExpr,

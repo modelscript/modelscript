@@ -19,7 +19,7 @@ import {
   ModelicaComponentReferenceSyntaxNode,
   type ModelicaFunctionCallSyntaxNode,
   type ModelicaSyntaxNode,
-} from "@modelscript/modelica-polyglot/ast";
+} from "@modelscript/modelica/ast";
 import {
   ModelicaArray,
   ModelicaBooleanLiteral,

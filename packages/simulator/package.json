@@ -48,7 +48,7 @@
   },
   "dependencies": {
     "@modelscript/core": "*",
-    "@modelscript/modelica-polyglot": "*",
+    "@modelscript/modelica": "*",
     "@modelscript/symbolics": "*"
   },
   "devDependencies": {

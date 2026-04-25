@@ -15,7 +15,7 @@
  * or implicit algebraic loops — that the init-solver can process sequentially.
  */
 
-import { ModelicaVariability } from "@modelscript/modelica-polyglot/ast";
+import { ModelicaVariability } from "@modelscript/modelica/ast";
 import {
   ModelicaArray,
   ModelicaArrayEquation,

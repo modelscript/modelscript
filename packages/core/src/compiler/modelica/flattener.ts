@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { ModelicaSyntaxNode } from "@modelscript/modelica-polyglot/ast";
+import { ModelicaSyntaxNode } from "@modelscript/modelica/ast";
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { StringWriter } from "@modelscript/utils";
@@ -48,7 +48,7 @@ import {
   ModelicaWhenEquationSyntaxNode,
   ModelicaWhenStatementSyntaxNode,
   ModelicaWhileStatementSyntaxNode,
-} from "@modelscript/modelica-polyglot/ast";
+} from "@modelscript/modelica/ast";
 import {
   QueryBackedArrayClassInstance as ModelicaArrayClassInstance,
   QueryBackedBooleanClassInstance as ModelicaBooleanClassInstance,
@@ -64,7 +64,7 @@ import {
   QueryBackedShortClassInstance as ModelicaShortClassInstance,
   QueryBackedStringClassInstance as ModelicaStringClassInstance,
   QueryBackedElement,
-} from "@modelscript/modelica-polyglot/compat-shim";
+} from "@modelscript/modelica/compat-shim";
 import {
   ModelicaArray,
   ModelicaArrayEquation,

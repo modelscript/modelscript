@@ -16,11 +16,7 @@
 
 import type { Scope } from "@modelscript/core";
 import { ModelicaClassInstance, type ModelicaNamedElement } from "@modelscript/core";
-import {
-  ModelicaCausality,
-  ModelicaClassKind,
-  type ModelicaIdentifierSyntaxNode,
-} from "@modelscript/modelica-polyglot/ast";
+import { ModelicaCausality, ModelicaClassKind, type ModelicaIdentifierSyntaxNode } from "@modelscript/modelica/ast";
 import { inflateRaw } from "pako";
 
 // ── FMU model description types ──

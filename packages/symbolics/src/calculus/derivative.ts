@@ -19,7 +19,7 @@
  *   - Sensitivity analysis in the TypeScript simulator
  */
 
-import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "@modelscript/modelica-polyglot/ast";
+import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "@modelscript/modelica/ast";
 import type { ModelicaExpression } from "../systems/index.js";
 import {
   ModelicaBinaryExpression,

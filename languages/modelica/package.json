@@ -1,5 +1,5 @@
 {
-  "name": "@modelscript/modelica-polyglot",
+  "name": "@modelscript/modelica",
   "version": "0.0.0",
   "type": "module",
   "exports": {

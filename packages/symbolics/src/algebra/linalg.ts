@@ -217,7 +217,7 @@ export function solveLinearSystem(
 // Utilities
 // ─────────────────────────────────────────────────────────────────────
 
-import { ModelicaUnaryOperator } from "@modelscript/modelica-polyglot/ast";
+import { ModelicaUnaryOperator } from "@modelscript/modelica/ast";
 import { ModelicaBinaryExpression, ModelicaFunctionCallExpression, ModelicaUnaryExpression } from "../systems/index.js";
 
 function negate(expr: ModelicaExpression): ModelicaExpression {

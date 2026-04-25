@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { Context, ModelicaLinter } from "@modelscript/core";
-import Modelica from "@modelscript/modelica-polyglot/parser";
+import Modelica from "@modelscript/modelica/parser";
 import path from "node:path";
 import Parser, { type Range } from "tree-sitter";
 import type { CommandModule } from "yargs";

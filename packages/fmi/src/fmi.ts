@@ -11,7 +11,7 @@
  * FMI 2.0 specification: https://fmi-standard.org/
  */
 
-import { ModelicaVariability } from "@modelscript/modelica-polyglot/ast";
+import { ModelicaVariability } from "@modelscript/modelica/ast";
 import type { ModelicaDAE, ModelicaExpression, ModelicaVariable } from "@modelscript/symbolics";
 import {
   ModelicaArray,

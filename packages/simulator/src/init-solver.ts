@@ -16,7 +16,7 @@
  */
 
 import type { InitSolverConfig } from "@modelscript/core";
-import { ModelicaVariability } from "@modelscript/modelica-polyglot/ast";
+import { ModelicaVariability } from "@modelscript/modelica/ast";
 import {
   Interval,
   ModelicaArray,

@@ -49,7 +49,7 @@ declare module "@modelscript/polyglot/workspace-index" {
   }
 }
 
-declare module "@modelscript/modelica-polyglot/compat-shim" {
+declare module "@modelscript/modelica/compat-shim" {
   export type AbstractSyntaxNodeFactory = (cst: any) => any;
   export function registerAbstractSyntaxNodeFactory(factory: AbstractSyntaxNodeFactory): void;
 
@@ -154,18 +154,18 @@ declare module "@modelscript/modelica-polyglot/compat-shim" {
   }
 }
 
-declare module "@modelscript/modelica-polyglot/query_hooks" {
+declare module "@modelscript/modelica/query_hooks" {
   export const queryHooks: any;
 }
 
-declare module "@modelscript/modelica-polyglot/indexer_config" {
+declare module "@modelscript/modelica/indexer_config" {
   export const indexerHooks: any;
 }
 
-declare module "@modelscript/modelica-polyglot/ref_config" {
+declare module "@modelscript/modelica/ref_config" {
   export const refHooks: any;
 }
 
-declare module "@modelscript/modelica-polyglot/expression-evaluator" {
+declare module "@modelscript/modelica/expression-evaluator" {
   export const modelicaExpressionEvaluator: any;
 }

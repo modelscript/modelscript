@@ -7,7 +7,7 @@
  * within a `Tape`, recording operations for backward-pass gradient computation.
  */
 
-import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "@modelscript/modelica-polyglot/ast";
+import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "@modelscript/modelica/ast";
 import {
   ModelicaBinaryExpression,
   ModelicaBooleanLiteral,

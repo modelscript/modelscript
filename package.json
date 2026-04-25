@@ -20,6 +20,7 @@
     "apps/*",
     "extensions/*",
     "packages/*",
+    "languages/*",
     "languages/*/*"
   ],
   "scripts": {

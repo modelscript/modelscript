@@ -38,7 +38,7 @@ import {
   type ModelicaStoredDefinitionSyntaxNode,
   type ModelicaTypeSpecifierSyntaxNode,
   type ModelicaWithinDirectiveSyntaxNode,
-} from "@modelscript/modelica-polyglot/ast";
+} from "@modelscript/modelica/ast";
 import type { Range, Tree } from "@modelscript/utils";
 import type { ErrorCodeDef } from "./errors.js";
 import {

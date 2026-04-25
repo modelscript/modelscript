@@ -11,7 +11,7 @@ import {
   generateFmu,
   generateFmuCSources,
 } from "@modelscript/fmi";
-import Modelica from "@modelscript/modelica-polyglot/parser";
+import Modelica from "@modelscript/modelica/parser";
 import { ModelicaSimulator } from "@modelscript/simulator";
 import { execSync } from "node:child_process";
 import fs from "node:fs";

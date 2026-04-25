@@ -19,11 +19,7 @@
 
 import type { Scope } from "@modelscript/core";
 import { ModelicaClassInstance } from "@modelscript/core";
-import {
-  ModelicaCausality,
-  ModelicaClassKind,
-  type ModelicaIdentifierSyntaxNode,
-} from "@modelscript/modelica-polyglot/ast";
+import { ModelicaCausality, ModelicaClassKind, type ModelicaIdentifierSyntaxNode } from "@modelscript/modelica/ast";
 import { inflateRaw } from "pako";
 
 /** Connector descriptor extracted from an SSP system boundary. */

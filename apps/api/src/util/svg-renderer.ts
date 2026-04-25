@@ -6,7 +6,7 @@ import {
   ModelicaComponentInstance,
   type ModelicaModification,
 } from "@modelscript/core";
-import Modelica from "@modelscript/modelica-polyglot/parser";
+import Modelica from "@modelscript/modelica/parser";
 import { registerWindow } from "@svgdotjs/svg.js";
 import { createSVGWindow } from "svgdom";
 import Parser from "tree-sitter";

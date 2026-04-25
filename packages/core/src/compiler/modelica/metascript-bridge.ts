@@ -4,7 +4,7 @@
 // the existing core compiler API. See implementation_plan.md Phase 2.
 //
 // Note: TSC with `module: nodenext` has a naming mismatch bug when
-// resolving exports from @modelscript/modelica-polyglot through the
+// resolving exports from @modelscript/modelica through the
 // exports map. The .d.ts files export UPPER_CASE names but TSC resolves
 // camelCase aliases. We use @ts-expect-error to work around this.
 
@@ -15,14 +15,14 @@ import { QueryEngine } from "@modelscript/polyglot/query-engine";
 import { ScopeResolver } from "@modelscript/polyglot/resolver";
 import { WorkspaceIndex } from "@modelscript/polyglot/workspace-index";
 
-import * as ModelicaAST from "@modelscript/modelica-polyglot/ast";
+import * as ModelicaAST from "@modelscript/modelica/ast";
 
 // @ts-expect-error — TSC resolves camelCase aliases, but the actual exports are UPPER_CASE
-import { INDEXER_HOOKS } from "@modelscript/modelica-polyglot/indexer_config";
+import { INDEXER_HOOKS } from "@modelscript/modelica/indexer_config";
 // @ts-expect-error — TSC resolves camelCase aliases, but the actual exports are UPPER_CASE
-import { QUERY_HOOKS } from "@modelscript/modelica-polyglot/query_hooks";
+import { QUERY_HOOKS } from "@modelscript/modelica/query_hooks";
 // @ts-expect-error — TSC resolves camelCase aliases, but the actual exports are UPPER_CASE
-import { REF_HOOKS } from "@modelscript/modelica-polyglot/ref_config";
+import { REF_HOOKS } from "@modelscript/modelica/ref_config";
 
 import {
   QueryBackedArrayClassInstance,
@@ -43,12 +43,12 @@ import {
   QueryBackedStringClassInstance,
   registerAbstractSyntaxNodeFactory,
   registerAnnotationEvaluator,
-} from "@modelscript/modelica-polyglot/compat-shim";
+} from "@modelscript/modelica/compat-shim";
 
 import { AnnotationEvaluator } from "./annotation-evaluator.js";
 
 // Bridge the Polyglot CST to the Legacy AST for flattener and simulator compatibility.
-// This preserves the @modelscript/modelica-polyglot package's decoupling from modelica-ast.
+// This preserves the @modelscript/modelica package's decoupling from modelica-ast.
 registerAbstractSyntaxNodeFactory((cst: any) => ModelicaAST.ModelicaSyntaxNode.new(null, cst));
 
 registerAnnotationEvaluator((ast: any, name: string, evalScope?: any, overrideModification?: any) => {
@@ -57,7 +57,7 @@ registerAnnotationEvaluator((ast: any, name: string, evalScope?: any, overrideMo
 });
 
 // @ts-expect-error — TSC resolves as `modelicaExpressionEvaluator` but actual export name is `modelicaEvaluator`
-import { modelicaEvaluator } from "@modelscript/modelica-polyglot/expression-evaluator";
+import { modelicaEvaluator } from "@modelscript/modelica/expression-evaluator";
 
 const indexerHooks = INDEXER_HOOKS ?? (globalThis as any).__indexerHooksFallback;
 const queryHooks = QUERY_HOOKS ?? (globalThis as any).__queryHooksFallback;
@@ -79,7 +79,7 @@ const refAsIndexerHooks = (refHooks ?? [])
   }));
 const allIndexerHooks = [...indexerHooks, ...refAsIndexerHooks];
 
-import { injectPredefinedTypes } from "@modelscript/modelica-polyglot/predefined-types";
+import { injectPredefinedTypes } from "@modelscript/modelica/predefined-types";
 
 /**
  * Creates a configured WorkspaceIndex for Modelica.

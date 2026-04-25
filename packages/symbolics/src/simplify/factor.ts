@@ -7,7 +7,7 @@
  * extraction, quadratic factoring, and rational root theorem search.
  */
 
-import { ModelicaBinaryOperator } from "@modelscript/modelica-polyglot/ast";
+import { ModelicaBinaryOperator } from "@modelscript/modelica/ast";
 import { add, mul, sub, ZERO } from "../calculus/derivative.js";
 import type { ModelicaExpression } from "../systems/index.js";
 import { ModelicaBinaryExpression, ModelicaNameExpression, ModelicaRealLiteral } from "../systems/index.js";

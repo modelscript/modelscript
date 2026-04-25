@@ -10,7 +10,7 @@ import {
   ModelicaElementModificationSyntaxNode,
   ModelicaExpressionSyntaxNode,
   ModelicaFunctionCallSyntaxNode,
-} from "@modelscript/modelica-polyglot/ast";
+} from "@modelscript/modelica/ast";
 import {
   ModelicaArray,
   ModelicaBooleanLiteral,
