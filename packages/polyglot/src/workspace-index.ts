@@ -33,6 +33,9 @@ export class WorkspaceIndex {
   /** Aggregated symbol IDs that changed across the entire workspace since the last takeGlobalChangedIds() call. */
   private globalChangedIdsBuffer = new Set<SymbolId>();
 
+  /** Aggregated names of symbols that changed across the workspace. Used for surgical event-driven validation. */
+  private globalChangedNamesBuffer = new Set<string>();
+
   /** Monotonic version counter — bumped on every register/markDirty/remove. */
   private _version = 0;
 
@@ -210,6 +213,11 @@ export class WorkspaceIndex {
           if (gid !== undefined) {
             globalChangedIds.add(gid);
             this.globalChangedIdsBuffer.add(gid);
+
+            const entry = rawIndex.symbols.get(localId) ?? oldLocalIndex.symbols.get(localId);
+            if (entry && entry.name) {
+              this.globalChangedNamesBuffer.add(entry.name);
+            }
           }
         }
         this.lastChangedIds.set(uri, globalChangedIds);
@@ -273,6 +281,10 @@ export class WorkspaceIndex {
       this.lastChangedIds.set(uri, allFileSymbolIds);
       for (const id of allFileSymbolIds) {
         this.globalChangedIdsBuffer.add(id);
+        const entry = symbols.get(id);
+        if (entry && entry.name) {
+          this.globalChangedNamesBuffer.add(entry.name);
+        }
       }
 
       // Invalidate caches so toUnifiedPartial() / toTreeIndex() pick up the new entries.
@@ -303,6 +315,16 @@ export class WorkspaceIndex {
     const ids = new Set(this.globalChangedIdsBuffer);
     this.globalChangedIdsBuffer.clear();
     return ids;
+  }
+
+  /**
+   * Retrieve and clear the aggregated set of symbol names that have changed
+   * across the workspace since this method was last called.
+   */
+  takeGlobalChangedNames(): Set<string> {
+    const names = new Set(this.globalChangedNamesBuffer);
+    this.globalChangedNamesBuffer.clear();
+    return names;
   }
 
   /**

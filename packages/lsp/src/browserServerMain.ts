@@ -731,19 +731,6 @@ documents.onDidChangeContent((change) => {
       activeValidationTimers.delete(uri);
     }, 200),
   );
-
-  // Debounced cross-file revalidation: re-validate OTHER open docs for cross-file resolution.
-  // Only re-validate documents of the same language — cross-language edits don't affect
-  // each other's diagnostics. Use a longer debounce to avoid cascading validations.
-  if (revalidationTimer) clearTimeout(revalidationTimer);
-  const changedExt = uri.substring(uri.lastIndexOf("."));
-  revalidationTimer = setTimeout(() => {
-    for (const doc of documents.all()) {
-      if (doc.uri !== uri && doc.uri.endsWith(changedExt)) {
-        validateTextDocument(doc);
-      }
-    }
-  }, 3000);
 });
 
 // Clean up when a document is closed
@@ -821,9 +808,35 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
 
       // Get ALL changed symbol IDs across the workspace since last check
       const changedIds = sysml2WorkspaceIndex.takeGlobalChangedIds();
+      const changedNames = sysml2WorkspaceIndex.takeGlobalChangedNames();
 
       // Create or update query engine, resolver, and LSP bridge for the document
       const unifiedIndex = unifiedWorkspace.toUnifiedPartial();
+
+      if (changedNames && changedNames.size > 0) {
+        const affectedUris = new Set<string>();
+        for (const name of changedNames) {
+          const symIds = unifiedIndex.byName.get(name);
+          if (symIds) {
+            for (const id of symIds) {
+              const entry = unifiedIndex.symbols.get(id);
+              if (entry && entry.resourceId && entry.resourceId !== textDocument.uri) {
+                affectedUris.add(entry.resourceId);
+              }
+            }
+          }
+        }
+        if (affectedUris.size > 0) {
+          if (revalidationTimer) clearTimeout(revalidationTimer);
+          revalidationTimer = setTimeout(() => {
+            for (const doc of documents.all()) {
+              if (doc.uri !== textDocument.uri && affectedUris.has(doc.uri)) {
+                validateTextDocument(doc);
+              }
+            }
+          }, 500);
+        }
+      }
 
       if (globalSysML2QueryEngine) {
         if (changedIds && typeof globalSysML2QueryEngine.swapIndex === "function") {
@@ -958,11 +971,40 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
 
     // Get ALL changed symbol IDs across the workspace since last check
     const changedIds = globalWorkspaceIndex.takeGlobalChangedIds();
+    const changedNames = globalWorkspaceIndex.takeGlobalChangedNames();
 
     // Create or update the global query engine and resolver
     // Use toUnifiedPartial() to avoid blocking on parsing ALL MSL files —
     // only merges files that have already been indexed.
     let unifiedIndex = unifiedWorkspace.toUnifiedPartial();
+
+    if (changedNames && changedNames.size > 0) {
+      const affectedUris = new Set<string>();
+      for (const name of changedNames) {
+        const symIds = unifiedIndex.byName.get(name);
+        if (symIds) {
+          for (const id of symIds) {
+            const entry = unifiedIndex.symbols.get(id);
+            if (entry && entry.resourceId && entry.resourceId !== effectiveUri) {
+              affectedUris.add(entry.resourceId);
+            }
+          }
+        }
+      }
+      if (affectedUris.size > 0) {
+        if (revalidationTimer) clearTimeout(revalidationTimer);
+        revalidationTimer = setTimeout(() => {
+          for (const doc of documents.all()) {
+            const effectiveDocUri = doc.uri.startsWith("modelscript-lib://global")
+              ? "file://" + doc.uri.substring("modelscript-lib://global".length)
+              : doc.uri;
+            if (effectiveDocUri !== effectiveUri && affectedUris.has(effectiveDocUri)) {
+              validateTextDocument(doc);
+            }
+          }
+        }, 500);
+      }
+    }
 
     const cstTreeWrapper = getSharedCstTreeWrapper();
 
