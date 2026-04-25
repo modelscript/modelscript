@@ -47,7 +47,7 @@ export default defineConfig(({ isSsrBuild }) => {
               dest: "lsp/server/dist",
             },
             {
-              src: "../../languages/sysml2/polyglot/tree-sitter-sysml2.wasm",
+              src: "../../languages/sysml2/tree-sitter-sysml2.wasm",
               dest: "lsp/server/dist",
             },
             {

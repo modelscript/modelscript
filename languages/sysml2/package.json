@@ -1,5 +1,5 @@
 {
-  "name": "@modelscript/sysml2-polyglot",
+  "name": "@modelscript/sysml2",
   "version": "0.0.0",
   "type": "module",
   "exports": {

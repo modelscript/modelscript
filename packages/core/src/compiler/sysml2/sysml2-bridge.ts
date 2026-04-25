@@ -11,13 +11,13 @@ import { QueryEngine } from "@modelscript/polyglot/query-engine";
 import { ScopeResolver } from "@modelscript/polyglot/resolver";
 import { WorkspaceIndex } from "@modelscript/polyglot/workspace-index";
 
-import { INDEXER_HOOKS } from "@modelscript/sysml2-polyglot/indexer_config";
-import { QUERY_HOOKS } from "@modelscript/sysml2-polyglot/query_hooks";
-import { REF_HOOKS } from "@modelscript/sysml2-polyglot/ref_config";
+import { INDEXER_HOOKS } from "@modelscript/sysml2/indexer_config";
+import { QUERY_HOOKS } from "@modelscript/sysml2/query_hooks";
+import { REF_HOOKS } from "@modelscript/sysml2/ref_config";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore — graphicsConfig is a generated named export
-import { graphicsConfig as sysml2GraphicsConfig } from "@modelscript/sysml2-polyglot/graphics_config";
+import { graphicsConfig as sysml2GraphicsConfig } from "@modelscript/sysml2/graphics_config";
 
 const indexerHooks = INDEXER_HOOKS ?? (globalThis as any).__sysml2IndexerHooksFallback;
 const queryHooks = QUERY_HOOKS ?? (globalThis as any).__sysml2QueryHooksFallback;

@@ -7,4 +7,4 @@ Sub-dependencies extending polyglot features supporting specific tree-sitter bin
 
 ## Purpose
 
-These language plugins ensure our SysML v2 parser correctly interfaces with generic `@modelscript/sysml2-polyglot` wrappers.
+These language plugins ensure our SysML v2 parser correctly interfaces with generic `@modelscript/sysml2` wrappers.

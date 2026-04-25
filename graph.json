@@ -240,19 +240,19 @@
           "implicitDependencies": []
         }
       },
-      "@modelscript/sysml2-polyglot": {
-        "name": "@modelscript/sysml2-polyglot",
+      "@modelscript/sysml2": {
+        "name": "@modelscript/sysml2",
         "type": "lib",
         "data": {
-          "root": "languages/sysml2/polyglot",
-          "name": "@modelscript/sysml2-polyglot",
+          "root": "languages/sysml2",
+          "name": "@modelscript/sysml2",
           "tags": ["npm:public"],
           "metadata": {
             "targetGroups": {
               "NPM Scripts": ["build"]
             },
             "js": {
-              "packageName": "@modelscript/sysml2-polyglot",
+              "packageName": "@modelscript/sysml2",
               "packageVersion": "0.0.0",
               "packageExports": {
                 "./query_hooks": "./dist/query_hooks.js",
@@ -2198,14 +2198,14 @@
           "type": "dynamic"
         }
       ],
-      "@modelscript/sysml2-polyglot": [
+      "@modelscript/sysml2": [
         {
-          "source": "@modelscript/sysml2-polyglot",
+          "source": "@modelscript/sysml2",
           "target": "@modelscript/polyglot",
           "type": "static"
         },
         {
-          "source": "@modelscript/sysml2-polyglot",
+          "source": "@modelscript/sysml2",
           "target": "@modelscript/polyglot",
           "type": "dynamic"
         }
@@ -2295,7 +2295,7 @@
         },
         {
           "source": "@modelscript/core",
-          "target": "@modelscript/sysml2-polyglot",
+          "target": "@modelscript/sysml2",
           "type": "static"
         },
         {
@@ -2386,7 +2386,7 @@
         },
         {
           "source": "@modelscript/lsp",
-          "target": "@modelscript/sysml2-polyglot",
+          "target": "@modelscript/sysml2",
           "type": "static"
         },
         {
@@ -2428,7 +2428,7 @@
         },
         {
           "source": "@modelscript/mcp",
-          "target": "@modelscript/sysml2-polyglot",
+          "target": "@modelscript/sysml2",
           "type": "static"
         },
         {

@@ -21,31 +21,31 @@ ModelScript is a comprehensive Modelica compilation, simulation, optimization, a
 
 This project is a monorepo managed with **Lerna**, **Nx**, and **npm workspaces**.
 
-| Package                                                       | Description                                                                        |
-| ------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| [`@modelscript/core`](./packages/core/)                       | Compiler engine — parsing, semantic analysis, flattening, simulation, linting      |
-| [`@modelscript/cosim`](./packages/cosim/)                     | Co-simulation orchestration and SSP archive generation                             |
-| [`@modelscript/ecad`](./packages/ecad/)                       | ECAD integration utilities for ModelScript                                         |
-| [`@modelscript/fmi`](./packages/fmi/)                         | Functional Mock-up Interface (FMI) support                                         |
-| [`@modelscript/lsp`](./packages/lsp/)                         | Language Server Protocol — completions, hover, diagnostics, formatting, colors     |
-| [`@modelscript/mcp`](./packages/mcp/)                         | Model Context Protocol implementation                                              |
-| [`@modelscript/optimizer`](./packages/optimizer/)             | Direct collocation optimizer for optimal control problems                          |
-| [`@modelscript/polyglot`](./packages/polyglot/)               | AST querying and transformation utilities                                          |
-| [`@modelscript/simulator`](./packages/simulator/)             | ODE/DAE solver engine (Pantelides index reduction, BLT ordering)                   |
-| [`@modelscript/symbolics`](./packages/symbolics/)             | Symbolic manipulation engine for equations                                         |
-| [`@modelscript/sysml2-polyglot`](./packages/sysml2-polyglot/) | SysML v2 AST querying and handling                                                 |
-| [`@modelscript/utils`](./packages/utils/)                     | Common utility functions across the ModelScript monorepo                           |
-| [`@modelscript/cli`](./apps/cli/)                             | `msc` command-line interface — flatten, simulate, optimize, lint, render, and more |
-| [`@modelscript/api`](./apps/api/)                             | REST API server — simulation, publishing, GraphQL, SPARQL, and RDF                 |
-| [`@modelscript/morsel`](./apps/morsel/)                       | Visual Modelica editor — code editing, diagram viewer, simulation, and plotting    |
-| [`@modelscript/site`](./apps/site/)                           | Main modelscript.org website                                                       |
-| [`@modelscript/web`](./apps/web/)                             | Web frontend for browsing and exploring Modelica libraries                         |
-| [`@modelscript/ide`](./apps/ide/)                             | VS Code Web IDE — browser-based Modelica development environment                   |
-| [`@modelscript/vscode`](./extensions/vscode/)                 | VS Code extension — syntax highlighting, LSP client, diagram view                  |
+| Package                                              | Description                                                                        |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| [`@modelscript/core`](./packages/core/)              | Compiler engine — parsing, semantic analysis, flattening, simulation, linting      |
+| [`@modelscript/cosim`](./packages/cosim/)            | Co-simulation orchestration and SSP archive generation                             |
+| [`@modelscript/ecad`](./packages/ecad/)              | ECAD integration utilities for ModelScript                                         |
+| [`@modelscript/fmi`](./packages/fmi/)                | Functional Mock-up Interface (FMI) support                                         |
+| [`@modelscript/lsp`](./packages/lsp/)                | Language Server Protocol — completions, hover, diagnostics, formatting, colors     |
+| [`@modelscript/mcp`](./packages/mcp/)                | Model Context Protocol implementation                                              |
+| [`@modelscript/optimizer`](./packages/optimizer/)    | Direct collocation optimizer for optimal control problems                          |
+| [`@modelscript/polyglot`](./packages/polyglot/)      | AST querying and transformation utilities                                          |
+| [`@modelscript/simulator`](./packages/simulator/)    | ODE/DAE solver engine (Pantelides index reduction, BLT ordering)                   |
+| [`@modelscript/symbolics`](./packages/symbolics/)    | Symbolic manipulation engine for equations                                         |
+| [`@modelscript/sysml2`](./packages/sysml2-polyglot/) | SysML v2 AST querying and handling                                                 |
+| [`@modelscript/utils`](./packages/utils/)            | Common utility functions across the ModelScript monorepo                           |
+| [`@modelscript/cli`](./apps/cli/)                    | `msc` command-line interface — flatten, simulate, optimize, lint, render, and more |
+| [`@modelscript/api`](./apps/api/)                    | REST API server — simulation, publishing, GraphQL, SPARQL, and RDF                 |
+| [`@modelscript/morsel`](./apps/morsel/)              | Visual Modelica editor — code editing, diagram viewer, simulation, and plotting    |
+| [`@modelscript/site`](./apps/site/)                  | Main modelscript.org website                                                       |
+| [`@modelscript/web`](./apps/web/)                    | Web frontend for browsing and exploring Modelica libraries                         |
+| [`@modelscript/ide`](./apps/ide/)                    | VS Code Web IDE — browser-based Modelica development environment                   |
+| [`@modelscript/vscode`](./extensions/vscode/)        | VS Code extension — syntax highlighting, LSP client, diagram view                  |
 
 | [`@modelscript/modelica`](./languages/modelica/polyglot/) | Polyglot query sets for the Modelica language |
 | [`@modelscript/tree-sitter-modelica`](./languages/modelica/tree-sitter-modelica/) | Tree-sitter grammar for Modelica (native + WASM) |
-| `sysml2-polyglot` plugins | Located under `./languages/sysml2/polyglot/` |
+| `sysml2-polyglot` plugins | Located under `./languages/sysml2/` |
 
 ## Core Features
 

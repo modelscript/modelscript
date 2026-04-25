@@ -345,7 +345,7 @@ const sysml2WorkspaceIndex = createSysML2WorkspaceIndex();
 
 import modelicaLangFallback from "@modelscript/modelica/language";
 import { UnifiedWorkspace } from "@modelscript/polyglot";
-import sysml2LangFallback from "@modelscript/sysml2-polyglot/language";
+import sysml2LangFallback from "@modelscript/sysml2/language";
 
 const unifiedWorkspace = new UnifiedWorkspace();
 unifiedWorkspace.registerWorkspace("modelica", globalWorkspaceIndex, modelicaLangFallback);

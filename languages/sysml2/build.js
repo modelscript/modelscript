@@ -8,7 +8,7 @@ const __dirname = path.dirname(__filename);
 
 // Step 0: Regenerate grammar.js (and other artifacts) from language.ts
 const languagePath = path.join(__dirname, "language.ts");
-const cliPath = path.resolve(__dirname, "..", "..", "..", "packages", "polyglot", "src", "cli.ts");
+const cliPath = path.resolve(__dirname, "..", "..", "packages", "polyglot", "src", "cli.ts");
 console.log("[sysml2] Generating artifacts from language.ts...");
 try {
   execSync(`npx tsx ${cliPath} generate ${languagePath}`, { stdio: "inherit", cwd: __dirname });
