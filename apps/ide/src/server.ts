@@ -4,7 +4,6 @@
 // and a GitHub FileSystemProvider for loading GitHub repositories.
 
 import express from "express";
-import rateLimit from "express-rate-limit";
 import { existsSync, readFileSync } from "fs";
 import { createProxyMiddleware } from "http-proxy-middleware";
 import { join, resolve } from "path";
@@ -160,14 +159,6 @@ function renderWorkbench(protocol: string, host: string, folderConfig: Record<st
 // ── Create Express app ──
 
 const app = express();
-
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 300,
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-app.use(limiter);
 
 // CORS headers for VS Code Web — the extension host runs in a blob worker
 // with a different origin, so we need permissive CORS.
