@@ -29,12 +29,15 @@ export const ComponentIcon = React.memo(function ComponentIcon(props: ComponentI
   }
 
   const displaySvg = invertSvgColors(iconSvg, !!darkMode);
+  const sizedSvg = displaySvg
+    .replace(/width=(["']).*?\1/, 'width="100%"')
+    .replace(/height=(["']).*?\1/, 'height="100%"');
 
   return (
     <div
       className="modelica-icon"
-      style={{ width: size, height: size }}
-      dangerouslySetInnerHTML={{ __html: displaySvg }}
+      style={{ width: size, height: size, flexShrink: 0 }}
+      dangerouslySetInnerHTML={{ __html: sizedSvg }}
     />
   );
 });
@@ -52,9 +55,13 @@ const ComponentList = React.memo(function ComponentList(props: ComponentListProp
     );
   }
 
-  const validComponents = components.filter(
-    (c) => c.properties?.classKind === "model" || c.properties?.classKind === "block",
-  );
+  const validComponents = components.filter((c) => {
+    const kind = c.properties?.classKind?.toLowerCase();
+    // Allow models, blocks, classes, and fallback to showing it if kind is missing.
+    // We typically want to exclude "connector" or "expandable connector" from the components list.
+    if (kind && kind.includes("connector")) return false;
+    return kind === "model" || kind === "block" || kind === "class" || !kind;
+  });
 
   if (validComponents.length === 0) {
     return (

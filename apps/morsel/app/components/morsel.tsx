@@ -46,6 +46,7 @@ import {
   applyLspEdits,
   deleteComponents,
   didOpen,
+  getDiagramData,
   removeConnect,
   simulate,
   updateComponentDescription,
@@ -75,7 +76,7 @@ const SimulationResults = React.lazy(() =>
 const CadViewerPanel = React.lazy(() => import("./cad-viewer").then((m) => ({ default: m.CadViewer })));
 
 /** URI used for the open document — must match the URI in CodeEditor and TreeWidget. */
-const DOCUMENT_URI = "document.mo";
+const DOCUMENT_URI = "file:///document.mo";
 
 const EXAMPLE_PATHS = [
   {
@@ -162,7 +163,7 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [selectedSimulationVariables, setSelectedSimulationVariables] = useState<string[]>([]);
   const [simulationParameters, setSimulationParameters] = useState<ParameterInfo[]>([]);
   const [parameterOverrides, setParameterOverrides] = useState<Map<string, number>>(new Map());
-  const cachedSimulatorRef = useRef<ModelicaSimulator | null>(null);
+  const cachedSimulatorRef = useRef<any | null>(null);
   const [lastLoadedContent, setLastLoadedContent] = useState<string>("");
 
   const [experimentOverrides, setExperimentOverrides] = useState<ExperimentOverrides>({});
@@ -438,6 +439,36 @@ export default function MorselEditor(props: MorselEditorProps) {
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
   }, []);
+
+  // Fetch diagram data via LSP when selected component or file changes
+  useEffect(() => {
+    if (!selectedTreeClassName) {
+      setDiagramData(null);
+      diagramEditorRef.current?.hideLoading();
+      return;
+    }
+
+    let cancelled = false;
+    diagramEditorRef.current?.showLoading();
+
+    getDiagramData(DOCUMENT_URI, selectedTreeClassName, "diagram")
+      .then((data) => {
+        if (cancelled) return;
+        setDiagramData(data);
+        diagramEditorRef.current?.hideLoading();
+      })
+      .catch((e) => {
+        console.error("Failed to fetch diagram data:", e);
+        if (cancelled) return;
+        setDiagramData(null);
+        diagramEditorRef.current?.hideLoading();
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedTreeClassName, contextVersion]);
+
   // ── Diagram edit helpers (delegated to LSP server via lsp-bridge) ──
 
   const handleEdgeDelete = async (source: string, target: string) => {
@@ -626,7 +657,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                     </div>
                     <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
                       <TreeWidget
-                        uri={"document.mo"}
+                        uri={DOCUMENT_URI}
                         key={debouncedFilter ? "filtered" : "unfiltered"}
                         onSelect={handleTreeSelect}
                         onHighlight={setSelectedTreeClassName}
@@ -915,6 +946,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                         <DiagramEditor
                           ref={diagramEditorRef}
                           diagramData={diagramData}
+                          diagramClassName={selectedTreeClassName}
                           selectedName={selectedComponent}
                           theme={colorMode === "dark" ? "vs-dark" : "light"}
                           onSelect={(name) => {
@@ -1042,7 +1074,9 @@ export default function MorselEditor(props: MorselEditorProps) {
                         />
                         <PropertiesWidget
                           key={selectedComponent || "none"}
-                          properties={null}
+                          properties={
+                            diagramData?.nodes?.find((n: any) => n.id === selectedComponent)?.properties ?? null
+                          }
                           width={propertiesWidth}
                           translations={translations}
                           onNameChange={async (newName) => {
@@ -1071,7 +1105,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                             const declaredType = (selectedComponent as any)?.declaredType; // TODO properly type when properties panel is typed
                             if (declaredType) {
                               for (const el of declaredType.elements) {
-                                if (el instanceof ModelicaComponentInstance && el.name === name) {
+                                if (el && (el as any).name === name) {
                                   const defaultExpr = (el.modification?.expression as any)?.toJSON?.toString();
                                   if (defaultExpr !== undefined && defaultExpr === value) {
                                     effectiveValue = "";
@@ -1241,7 +1275,7 @@ export default function MorselEditor(props: MorselEditorProps) {
             >
               <Suspense fallback={null}>
                 <CodeEditor
-                  uri={"document.mo"}
+                  uri={DOCUMENT_URI}
                   ref={codeEditorRef}
                   embed={props.embed}
                   setEditor={setEditor}
@@ -1558,7 +1592,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                 content: translations.copyToClipboard,
                 onClick: async () => {
                   await navigator.clipboard.writeText(
-                    `${window.location.protocol}//${window.location.host}/#${encodeDataUrl(editor?.getValue() ?? "", ContentType.MODELICA)}`,
+                    `${window.location.protocol}//${window.location.host}/#modelica=${encodeURIComponent(editor?.getValue() ?? "")}`,
                   );
                   alert(translations.copiedToClipboard);
                   setShareDialogOpen(false);
@@ -1568,7 +1602,7 @@ export default function MorselEditor(props: MorselEditorProps) {
           >
             <div
               style={{ wordBreak: "break-all" }}
-            >{`${window.location.protocol}//${window.location.host}/#${encodeDataUrl(editor?.getValue() ?? "", ContentType.MODELICA)}`}</div>
+            >{`${window.location.protocol}//${window.location.host}/#modelica=${encodeURIComponent(editor?.getValue() ?? "")}`}</div>
           </Dialog>
         )}
         {isDirtyDialogOpen && (
@@ -1715,7 +1749,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                 } else {
                   return;
                 }
-                await mountLibrary(path, data);
+                // await mountLibrary(path, data);
                 // Library filesystem access is handled by LSP
                 setContextVersion((v) => v + 1);
               } catch (error) {

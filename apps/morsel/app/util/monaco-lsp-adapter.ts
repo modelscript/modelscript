@@ -264,7 +264,9 @@ export function setupMonacoLspAdapter(
 
     // Set markers on the matching model
     for (const model of monaco.editor.getModels()) {
-      if (model.uri.toString() === params.uri) {
+      const modelUri = model.uri.toString();
+      const modelPath = model.uri.path;
+      if (modelUri === params.uri || modelPath === params.uri || modelPath === "/" + params.uri) {
         monaco.editor.setModelMarkers(model, "lsp", markers);
         break;
       }

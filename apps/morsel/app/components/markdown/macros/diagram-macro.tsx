@@ -9,7 +9,7 @@ export function DiagramMacro(props: DiagramMacroProps) {
   // Integrate the existing Diagram component, parsing target string
   return (
     <div className="diagram-macro my-4 border rounded shadow-sm overflow-hidden" style={{ minHeight: "300px" }}>
-      <Diagram />
+      <Diagram diagramData={null} theme="light" />
     </div>
   );
 }

@@ -76,7 +76,7 @@ function ParameterRow({
           }}
           title={parameter.localizedName || ""}
         >
-          {parameter.localizedName}
+          {parameter.localizedName || parameter.name}
         </div>
         {isBoolean ? (
           <ToggleSwitch

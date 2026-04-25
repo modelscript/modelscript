@@ -81,6 +81,20 @@ export function invertMarkupColors(markup: X6Markup, isDark: boolean): X6Markup 
   return out;
 }
 
+export function x6MarkupToSvg(markup: X6Markup): string {
+  const attrs = markup.attrs
+    ? Object.entries(markup.attrs)
+        .filter(([, v]) => v !== undefined)
+        .map(([k, v]) => `${k}="${String(v).replace(/"/g, "&quot;")}"`)
+        .join(" ")
+    : "";
+  const open = attrs ? `<${markup.tagName} ${attrs}` : `<${markup.tagName}`;
+  const childrenStr = markup.children?.map(x6MarkupToSvg).join("") ?? "";
+  const text = markup.textContent ?? "";
+  if (!childrenStr && !text) return `${open}/>`;
+  return `${open}>${text}${childrenStr}</${markup.tagName}>`;
+}
+
 export function renderDiagramX6(classInstance: ModelicaClassInstance): X6Markup | null {
   const defs: X6Markup[] = [];
   const graphicItems: X6Markup[] = [];

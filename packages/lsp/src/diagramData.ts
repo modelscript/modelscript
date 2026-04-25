@@ -52,6 +52,7 @@ export interface X6Markup {
 export interface ComponentPropertyData {
   classKind?: string;
   className: string;
+  name: string;
   description: string;
   parameters: {
     name: string;
@@ -328,6 +329,7 @@ export function buildDiagramData(classInstance: ModelicaClassInstance): DiagramD
     const properties: ComponentPropertyData = {
       classKind: componentClassInstance.classKind,
       className: componentClassInstance.name ?? "",
+      name: component.name ?? "",
       description: component.description ?? "",
       parameters,
       docInfo,

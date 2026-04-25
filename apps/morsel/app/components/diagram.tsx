@@ -4,7 +4,6 @@ import { DagreLayout } from "@antv/layout";
 import { Cell, Graph, Keyboard, Selection, Snapline, Transform } from "@antv/x6";
 import type { Theme } from "@monaco-editor/react";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { invertSvgColors } from "../util/x6";
 
 export interface DiagramEditorHandle {
   showLoading: () => void;
@@ -15,6 +14,7 @@ export interface DiagramEditorHandle {
 
 interface DiagramEditorProps {
   diagramData: any | null;
+  diagramClassName?: string | null;
   onSelect?: (componentName: string | null) => void;
   onDrop?: (className: string, x: number, y: number, iconSvg?: string | null) => void;
   onConnect?: (source: string, target: string, points?: { x: number; y: number }[]) => void;
@@ -55,49 +55,119 @@ function renderDiagram(
   theme: Theme,
   lastClassRef: React.MutableRefObject<string | null | undefined>,
   lastZoomRef: React.MutableRefObject<{ zoom: number; tx: number; ty: number } | null>,
+  diagramClassName?: string | null,
 ) {
   // Simplified LSP-driven rendering logic
   if (!diagramData) return;
 
-  g.clearCells();
+  // We do not call g.clearCells() here because g.fromJSON() will replace the content.
+  // This allows isFirstRender to accurately detect the initial load.
+
+  if (diagramData.coordinateSystem) {
+    const cs = diagramData.coordinateSystem;
+
+    // Explicit DOM elements for axes and coordinate system to prevent X6 from including them in bounding box calculations
+    let xAxis = g.view.viewport.querySelector("#x-axis") as SVGLineElement | null;
+    if (!xAxis) {
+      xAxis = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      xAxis.setAttribute("id", "x-axis");
+      xAxis.setAttribute("stroke", "#999");
+      xAxis.setAttribute("stroke-width", "1");
+      xAxis.setAttribute("vector-effect", "non-scaling-stroke");
+      xAxis.setAttribute("z-index", "2");
+      g.view.viewport.insertBefore(xAxis, g.view.viewport.firstChild);
+    }
+    xAxis!.setAttribute("x1", "-100000");
+    xAxis!.setAttribute("y1", "0");
+    xAxis!.setAttribute("x2", "100000");
+    xAxis!.setAttribute("y2", "0");
+
+    let yAxis = g.view.viewport.querySelector("#y-axis") as SVGLineElement | null;
+    if (!yAxis) {
+      yAxis = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      yAxis.setAttribute("id", "y-axis");
+      yAxis.setAttribute("stroke", "#999");
+      yAxis.setAttribute("stroke-width", "1");
+      yAxis.setAttribute("vector-effect", "non-scaling-stroke");
+      yAxis.setAttribute("z-index", "2");
+      g.view.viewport.insertBefore(yAxis, g.view.viewport.firstChild);
+    }
+    yAxis!.setAttribute("x1", "0");
+    yAxis!.setAttribute("y1", "-100000");
+    yAxis!.setAttribute("x2", "0");
+    yAxis!.setAttribute("y2", "100000");
+
+    let coordinateSystem = g.view.viewport.querySelector("#coordinateSystem") as SVGRectElement | null;
+    if (!coordinateSystem) {
+      coordinateSystem = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      coordinateSystem.setAttribute("id", "coordinateSystem");
+      coordinateSystem.setAttribute("fill", "none");
+      coordinateSystem.setAttribute("stroke", "#999");
+      coordinateSystem.setAttribute("stroke-width", "1");
+      coordinateSystem.setAttribute("vector-effect", "non-scaling-stroke");
+      coordinateSystem.setAttribute("z-index", "1");
+      g.view.viewport.insertBefore(coordinateSystem, g.view.viewport.firstChild);
+    }
+    coordinateSystem!.setAttribute("x", String(cs.x));
+    coordinateSystem!.setAttribute("y", String(cs.y));
+    coordinateSystem!.setAttribute("width", String(cs.width));
+    coordinateSystem!.setAttribute("height", String(cs.height));
+  }
+
   const nodes: any[] = [];
   const edges: any[] = [];
 
+  if (diagramData.diagramBackground && diagramData.coordinateSystem) {
+    const cs = diagramData.coordinateSystem;
+    nodes.push({
+      id: "__diagram_background__",
+      x: cs.x,
+      y: cs.y,
+      width: cs.width,
+      height: cs.height,
+      zIndex: -1,
+      movable: false,
+      selectable: false,
+      markup: {
+        tagName: "svg",
+        children: [
+          { tagName: "rect", attrs: { style: "fill: transparent; stroke: none", width: cs.width, height: cs.height } },
+          diagramData.diagramBackground,
+        ],
+        attrs: { preserveAspectRatio: "none", width: cs.width, height: cs.height, style: "overflow: visible" },
+      },
+    });
+  }
+
   // Create nodes from diagramData
   for (const n of diagramData.nodes || []) {
-    const ports = [];
-    if (n.ports && n.ports.items) {
-      for (const p of n.ports.items) {
-        ports.push({ id: p.id, group: p.group || "absolute", args: p.args, markup: p.markup });
-      }
-    }
-
-    let fill = "transparent";
-    let stroke = "#000000"; // fallback
-
-    nodes.push({
+    const nodeData: any = {
       id: n.id,
-      shape: "html",
       x: n.x,
       y: n.y,
       width: n.width,
       height: n.height,
       angle: n.angle || n.rotation || 0,
       zIndex: n.zIndex || 10,
-      html: n.markup
-        ? `<div style="width:100%; height:100%;">${n.markup.children ? n.markup.children[0] : ""}</div>`
-        : `<div style="width:100%; height:100%; border:1px solid ${stroke}; background:${fill};"></div>`,
-      ports: {
-        items: ports,
-        groups: { absolute: { position: "absolute", zIndex: 100 } },
-      },
-    });
+      opacity: n.opacity,
+      markup: n.markup,
+      ports: n.ports,
+      data: { properties: n.properties },
+      autoLayout: n.autoLayout,
+    };
+
+    if (n.attrs) nodeData.attrs = n.attrs;
+    if (n.shape) nodeData.shape = n.shape;
+    if (n.parent) nodeData.parent = n.parent;
+
+    nodes.push(nodeData);
   }
 
   // Create edges from diagramData
   for (const e of diagramData.edges || []) {
     edges.push({
       id: e.id,
+      shape: "edge",
       source: { cell: e.source.cell, port: e.source.port },
       target: { cell: e.target.cell, port: e.target.port },
       vertices: e.vertices || [],
@@ -106,10 +176,236 @@ function renderDiagram(
     });
   }
 
-  g.addNodes(nodes);
-  g.addEdges(edges);
+  const isFirstRender = g.getCells().length === 0;
 
-  lastClassRef.current = "diagram";
+  // ── Layout Strategy ──
+  // The layout runs in 3 phases:
+  //   Phase 1: Sub-Dagre for each container to compute actual child bounding boxes
+  //   Phase 2: Top-level Dagre with expanded container sizes
+  //   Phase 3: Reposition children relative to final parent positions
+
+  const PAD = { top: 60, left: 40, right: 40, bottom: 40 };
+
+  // Build parent → children map from the node data
+  const parentChildMap = new Map<string, typeof nodes>();
+  for (const node of nodes) {
+    if (node.parent) {
+      const list = parentChildMap.get(node.parent) ?? [];
+      list.push(node);
+      parentChildMap.set(node.parent, list);
+    }
+  }
+
+  // ── Phase 1: Sub-Dagre layout for children inside each group container ──
+  const childRelativePositions = new Map<string, { dx: number; dy: number }>();
+
+  for (const [parentId, childNodes] of parentChildMap) {
+    const parentNode = nodes.find((n) => n.id === parentId);
+    if (!parentNode) continue;
+
+    const childIds = new Set(childNodes.map((c) => c.id));
+
+    const subDagre = new DagreLayout({
+      type: "dagre",
+      rankdir: "TB",
+      align: "UL",
+      ranksep: 40,
+      nodesep: 40,
+      begin: [0, 0],
+      controlPoints: true,
+    });
+
+    const subEdges = edges
+      .filter((e) => {
+        const s = typeof e.source === "string" ? e.source : (e.source.cell as string);
+        const t = typeof e.target === "string" ? e.target : (e.target.cell as string);
+        return childIds.has(s) && childIds.has(t);
+      })
+      .map((e) => ({
+        source: typeof e.source === "string" ? e.source : (e.source.cell as string),
+        target: typeof e.target === "string" ? e.target : (e.target.cell as string),
+      }));
+
+    // Inject fake edges to wrap isolated nodes into 2 rows for a compact layout
+    const connectedSub = new Set<string>();
+    subEdges.forEach((e) => {
+      connectedSub.add(e.source);
+      connectedSub.add(e.target);
+    });
+    const isolatedSub = childNodes.filter((n) => !connectedSub.has(n.id)).map((n) => n.id);
+    if (isolatedSub.length > 2) {
+      const cols = Math.ceil(Math.sqrt(isolatedSub.length));
+      for (let i = 0; i < isolatedSub.length - cols; i++) {
+        subEdges.push({ source: isolatedSub[i], target: isolatedSub[i + cols] });
+      }
+    }
+
+    const subModel = {
+      nodes: childNodes.map((c) => ({
+        id: c.id,
+        width: c.width,
+        height: c.height,
+        size: [c.width || 220, c.height || 50],
+      })),
+      edges: subEdges,
+    };
+
+    const subResult = subDagre.layout(subModel as any);
+
+    let minX = Infinity;
+    let minY = Infinity;
+    const layoutCoords = new Map<string, { leftX: number; topY: number }>();
+
+    subResult.nodes?.forEach((laid: any) => {
+      const childNode = childNodes.find((c) => c.id === laid.id);
+      if (childNode) {
+        const leftX = laid.x - childNode.width / 2;
+        const topY = laid.y - childNode.height / 2;
+        minX = Math.min(minX, leftX);
+        minY = Math.min(minY, topY);
+        layoutCoords.set(childNode.id, { leftX, topY });
+      }
+    });
+
+    let maxRight = 0;
+    let maxBottom = 0;
+
+    for (const childNode of childNodes) {
+      const coords = layoutCoords.get(childNode.id);
+      if (coords) {
+        const dx = PAD.left + (coords.leftX - minX);
+        const dy = PAD.top + (coords.topY - minY);
+        childRelativePositions.set(childNode.id, { dx, dy });
+        maxRight = Math.max(maxRight, dx + childNode.width + PAD.right);
+        maxBottom = Math.max(maxBottom, dy + childNode.height + PAD.bottom);
+      }
+    }
+
+    parentNode.width = Math.max(maxRight, 220);
+    parentNode.height = Math.max(maxBottom, 80);
+  }
+
+  // ── Phase 2: Top-level Dagre layout with expanded container sizes ──
+  const nodesToLayout: string[] = [];
+  nodes.forEach((node: any) => {
+    if (node.autoLayout && !node.parent) {
+      nodesToLayout.push(node.id ?? "");
+    }
+  });
+
+  if (nodesToLayout.length > 0) {
+    const dagreLayout = new DagreLayout({
+      type: "dagre",
+      rankdir: "TB",
+      align: "UL",
+      ranksep: 60,
+      nodesep: 60,
+      begin: [20, 20],
+      controlPoints: true,
+    });
+
+    const modelEdges = edges
+      .filter((e) => {
+        const s = typeof e.source === "string" ? e.source : (e.source.cell as string);
+        const t = typeof e.target === "string" ? e.target : (e.target.cell as string);
+        return nodesToLayout.includes(s) && nodesToLayout.includes(t);
+      })
+      .map((e) => ({
+        source: typeof e.source === "string" ? e.source : (e.source.cell as string),
+        target: typeof e.target === "string" ? e.target : (e.target.cell as string),
+      }));
+
+    const connectedTop = new Set<string>();
+    modelEdges.forEach((e) => {
+      connectedTop.add(e.source);
+      connectedTop.add(e.target);
+    });
+    const isolatedTop = nodes
+      .filter((n) => nodesToLayout.includes(n.id ?? ""))
+      .filter((n) => !connectedTop.has(n.id ?? ""))
+      .map((n) => n.id ?? "");
+    if (isolatedTop.length > 2) {
+      const cols = Math.ceil(Math.sqrt(isolatedTop.length));
+      for (let i = 0; i < isolatedTop.length - cols; i++) {
+        modelEdges.push({ source: isolatedTop[i], target: isolatedTop[i + cols] });
+      }
+    }
+
+    const model = {
+      nodes: nodes
+        .filter((n) => nodesToLayout.includes(n.id ?? ""))
+        .map((n) => ({
+          ...n,
+          size: [n.width || 220, n.height || 100],
+        })),
+      edges: modelEdges,
+    };
+
+    const newModel = dagreLayout.layout(model as any);
+    newModel.nodes?.forEach((n: any) => {
+      const node = nodes.find((no: any) => no.id === n.id);
+      if (node) {
+        node.x = n.x - (node.width ?? 0) / 2;
+        node.y = n.y - (node.height ?? 0) / 2;
+      }
+    });
+  }
+
+  // ── Phase 3: Reposition children relative to final parent positions ──
+  for (const [parentId, childNodes] of parentChildMap) {
+    const parentNode = nodes.find((n) => n.id === parentId);
+    if (!parentNode) continue;
+
+    for (const child of childNodes) {
+      const rel = childRelativePositions.get(child.id);
+      if (rel) {
+        child.x = parentNode.x + rel.dx;
+        child.y = parentNode.y + rel.dy;
+      }
+    }
+  }
+
+  // X6's fromJSON has a bug where it only partially wires up parent/child
+  // relationships when fed raw JSON. Stash relationships first.
+  const relations = new Map<string, string>(); // child id -> parent id
+  for (const n of nodes) {
+    if (n.parent) {
+      relations.set(n.id, n.parent);
+      delete n.parent;
+    }
+    if (n.children) {
+      delete n.children;
+    }
+  }
+
+  g.fromJSON({ nodes, edges });
+
+  // Programmatically establish all embedding relationships via standard API
+  for (const [childId, parentId] of relations) {
+    const parentCell = g.getCellById(parentId);
+    const childCell = g.getCellById(childId);
+    if (parentCell && childCell && parentCell.isNode() && childCell.isNode()) {
+      parentCell.addChild(childCell);
+    }
+  }
+
+  const isClassChanged = lastClassRef.current !== diagramClassName;
+
+  // Only auto-zoom if it's the very first render or the user opened a new class.
+  // This prevents it from zooming out aggressively when the diagram dynamically updates.
+  if (diagramData.coordinateSystem && (isFirstRender || isClassChanged)) {
+    const cs = diagramData.coordinateSystem;
+    const expandedRect = {
+      x: cs.x - cs.width * 0.125,
+      y: cs.y - cs.height * 0.125,
+      width: cs.width * 1.25,
+      height: cs.height * 1.25,
+    };
+    g.zoomToRect(expandedRect, {});
+    g.centerContent();
+  }
+
+  lastClassRef.current = diagramClassName || "diagram";
 
   g.on("scale", () => {
     lastZoomRef.current = { zoom: g.zoom(), tx: g.translate().tx, ty: g.translate().ty };
@@ -785,7 +1081,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     // Double-rAF ensures the spinner is actually painted before we block.
     renderRafRef.current = requestAnimationFrame(() => {
       renderRafRef.current = requestAnimationFrame(() => {
-        renderDiagram(g, diagramData, theme, lastClassRef, lastZoomRef);
+        renderDiagram(g, diagramData, theme, lastClassRef, lastZoomRef, props.diagramClassName);
         setLoading(false);
       });
     });
@@ -869,7 +1165,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
                 if (existing) graph.removeCell(existing);
 
                 const isDark = props.theme === "vs-dark";
-                const displaySvg = isDark ? invertSvgColors(iconSvg, true) : iconSvg;
+                const displaySvg = iconSvg || "";
 
                 // Patch the SVG to have explicit width/height so it scales to the placeholder container
                 const fittedSvg = displaySvg.replace(
@@ -915,7 +1211,9 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
               }
 
               if (props.onDrop) {
-                props.onDrop(className, p.x, p.y, iconSvg);
+                setTimeout(() => {
+                  props.onDrop!(className, p.x, p.y, iconSvg);
+                }, 300);
               }
             } catch (e) {
               console.error(e);
