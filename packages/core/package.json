@@ -54,7 +54,7 @@
     "@modelscript/sysml2": "*",
     "@modelscript/utils": "*",
     "@svgdotjs/svg.js": "^3.2.5",
-    "helmlab": "^0.6.4",
+    "helmlab": "^0.11.9",
     "pako": "^2.1.0",
     "pino": "^10.3.1"
   },
