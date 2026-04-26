@@ -146,15 +146,26 @@ export function buildDiagramData(classInstance: ModelicaClassInstance): DiagramD
   const nodes: DiagramNode[] = [];
   const edges: DiagramEdge[] = [];
 
+  const t0 = performance.now();
+  let tIconRender = 0;
+  let tPortRender = 0;
+  let tCondition = 0;
+  let tPlacement = 0;
+  let componentCount = 0;
+
   // Build nodes for each component
   for (const component of classInstance.components) {
     if (!component.name) continue;
+    const tc0 = performance.now();
     const condition = evaluateCondition(component, classInstance);
+    tCondition += performance.now() - tc0;
     if (condition === false) continue;
 
     const componentClassInstance = component.classInstance;
     if (!componentClassInstance) continue;
+    componentCount++;
 
+    const tp0 = performance.now();
     let componentTransform = computeIconPlacement(component);
     const autoLayout = !componentTransform;
     if (!componentTransform) {
@@ -175,6 +186,7 @@ export function buildDiagramData(classInstance: ModelicaClassInstance): DiagramD
         height: naturalHeight * scaleY,
       };
     }
+    tPlacement += performance.now() - tp0;
 
     const absScaleX = Math.abs(componentTransform.scaleX);
     const absScaleY = Math.abs(componentTransform.scaleY);
@@ -183,7 +195,9 @@ export function buildDiagramData(classInstance: ModelicaClassInstance): DiagramD
     const flipX = componentTransform.scaleX < 0;
     const flipY = componentTransform.scaleY < 0;
 
+    const ti0 = performance.now();
     let componentMarkup = renderIconX6(componentClassInstance, component, false);
+    tIconRender += performance.now() - ti0;
 
     if (flipX || flipY) {
       const sx = flipX ? -1 : 1;
@@ -200,6 +214,7 @@ export function buildDiagramData(classInstance: ModelicaClassInstance): DiagramD
 
     // Build ports
     const ports: DiagramPort[] = [];
+    const tpr0 = performance.now();
     for (const connector of componentClassInstance.components) {
       const connectorCondition = evaluateCondition(connector, component);
       if (connectorCondition === false) continue;
@@ -258,83 +273,21 @@ export function buildDiagramData(classInstance: ModelicaClassInstance): DiagramD
         },
       });
     }
+    tPortRender += performance.now() - tpr0;
 
     const a = componentTransform.rotate * (Math.PI / 180);
     const relTranslateX = absWidth / 2 + componentTransform.translateX - componentTransform.originX;
     const relTranslateY = absHeight / 2 + componentTransform.translateY - componentTransform.originY;
 
-    const parameters: ComponentPropertyData["parameters"] = [];
-    for (const element of componentClassInstance.elements) {
-      if (element instanceof ModelicaComponentInstance && element.variability === ModelicaVariability.PARAMETER) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const compArgExpr = (component.modification as any)?.getModificationArgument(element.name ?? "")?.expression;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const elemExpr = (element.modification as any)?.expression;
-        const value = formatPropertyValue(compArgExpr) ?? formatPropertyValue(elemExpr) ?? "-";
-
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const unitExpr = (element.classInstance?.modification as any)?.getModificationArgument("unit")?.expression;
-        const rawUnit = formatPropertyValue(unitExpr)?.replace(/^"|"$/g, "");
-        const unit = rawUnit ? formatUnit(rawUnit) : undefined;
-        const isBoolean = element.classInstance?.name === "Boolean";
-
-        parameters.push({
-          name: element.name ?? "",
-          value,
-          description: element.description ?? undefined,
-          isBoolean,
-          unit,
-        });
-      }
-    }
-
-    const docAnnotation = componentClassInstance.annotation("Documentation") as {
-      info?: string;
-      revisions?: string;
-    } | null;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const context = (classInstance as any).context;
-
-    const processHtml = (html: string | undefined): string | undefined => {
-      if (!html) return html;
-      if (!context) return html;
-
-      return html.replace(/<img\s+[^>]*src=(["'])modelica:\/\/([^"']+)\1[^>]*>/gi, (match, quote, uriPath) => {
-        const uri = `modelica://${uriPath}`;
-        const resolvedPath = context.resolveURI(uri);
-        if (resolvedPath) {
-          try {
-            const binary = context.fs.readBinary(resolvedPath);
-            const chunks: string[] = [];
-            const chunkSize = 8192;
-            for (let i = 0; i < binary.length; i += chunkSize) {
-              chunks.push(String.fromCharCode(...binary.subarray(i, i + chunkSize)));
-            }
-            const base64 = btoa(chunks.join(""));
-            const ext = context.fs.extname(resolvedPath).toLowerCase().substring(1);
-            const mimeType = ext === "svg" ? "image/svg+xml" : `image/${ext}`;
-            return match.replace(`modelica://${uriPath}`, `data:${mimeType};base64,${base64}`);
-          } catch (e) {
-            console.warn(`Failed to read image ${uri}:`, e);
-          }
-        }
-        return match.replace(/src=(["'])modelica:\/\/[^"']+\1/, 'style="display:none"');
-      });
-    };
-
-    const docInfo = processHtml(docAnnotation?.info);
-    const docRevisions = processHtml(docAnnotation?.revisions);
-    const iconSvg = getClassIconSvg(componentClassInstance, 80, true);
-
+    // Lightweight property metadata — expensive fields (parameters, docInfo,
+    // docRevisions, iconSvg) are deferred to buildComponentProperties() and
+    // loaded on-demand when the user clicks a node.
     const properties: ComponentPropertyData = {
       classKind: componentClassInstance.classKind,
       className: componentClassInstance.name ?? "",
       name: component.name ?? "",
       description: component.description ?? "",
-      parameters,
-      docInfo,
-      docRevisions,
-      iconSvg,
+      parameters: [],
     };
 
     nodes.push({
@@ -362,6 +315,13 @@ export function buildDiagramData(classInstance: ModelicaClassInstance): DiagramD
       properties,
     });
   }
+
+  const tComponents = performance.now() - t0;
+  console.log(
+    `[diagram-perf] ${componentCount} components in ${tComponents.toFixed(0)}ms ` +
+      `(condition=${tCondition.toFixed(0)}ms placement=${tPlacement.toFixed(0)}ms ` +
+      `iconRender=${tIconRender.toFixed(0)}ms portRender=${tPortRender.toFixed(0)}ms)`,
+  );
 
   // Build edges from connect equations
   const nodeIds = new Set(nodes.map((n) => n.id));
@@ -495,6 +455,8 @@ function renderDiagramX6(classInstance: ModelicaClassInstance): X6Markup | null 
   };
 }
 
+const iconCache = new Map<string, string>(); // name -> JSON stringified X6Markup
+
 export function renderIconX6(
   classInstance: ModelicaClassInstance,
   componentInstance?: ModelicaComponentInstance,
@@ -503,6 +465,27 @@ export function renderIconX6(
 ): X6Markup {
   const isRoot = !defs;
   const localDefs = defs ?? [];
+  const isTopLevel = !ports;
+  const cacheKey = classInstance.name
+    ? classInstance.name + (componentInstance && componentInstance.name ? `|${componentInstance.name}` : "")
+    : null;
+  const canCache = isTopLevel && cacheKey;
+
+  if (canCache && cacheKey) {
+    const cached = iconCache.get(cacheKey);
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        // We must push any generated defs into the localDefs array if they exist
+        if (parsed.children && parsed.children[0]?.tagName === "defs") {
+          localDefs.push(...parsed.children[0].children);
+        }
+        return parsed;
+      } catch {
+        // Fallback to re-rendering
+      }
+    }
+  }
   const svg: X6Markup = {
     tagName: "svg",
     attrs: { width: "100%", height: "100%", style: "overflow: visible" },
@@ -602,6 +585,15 @@ export function renderIconX6(
 
   if (isRoot && localDefs.length > 0 && svg.children) {
     svg.children.unshift({ tagName: "defs", children: localDefs });
+  }
+
+  if (canCache && cacheKey) {
+    // Only cache pure renders without defs side-effects (or defs fully contained)
+    try {
+      iconCache.set(cacheKey, JSON.stringify(svg));
+    } catch {
+      // Ignore circular reference errors if any
+    }
   }
 
   return svg;
@@ -1224,4 +1216,100 @@ export function getClassIconSvg(cls: ModelicaClassInstance, size = 16, includePo
     // ignore icon rendering errors
   }
   return undefined;
+}
+
+// ── On-demand component property builder ──
+// Called lazily when the user clicks a component in the diagram.
+// This avoids the expensive parameter/doc/icon computation during initial diagram load.
+
+function processHtml(
+  html: string | undefined,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  context: any,
+): string | undefined {
+  if (!html) return html;
+  if (!context) return html;
+
+  return html.replace(/<img\s+[^>]*src=(["'])modelica:\/\/([^"']+)\1[^>]*>/gi, (match, quote, uriPath) => {
+    const uri = `modelica://${uriPath}`;
+    const resolvedPath = context.resolveURI(uri);
+    if (resolvedPath) {
+      try {
+        const binary = context.fs.readBinary(resolvedPath);
+        const chunks: string[] = [];
+        const chunkSize = 8192;
+        for (let i = 0; i < binary.length; i += chunkSize) {
+          chunks.push(String.fromCharCode(...binary.subarray(i, i + chunkSize)));
+        }
+        const base64 = btoa(chunks.join(""));
+        const ext = context.fs.extname(resolvedPath).toLowerCase().substring(1);
+        const mimeType = ext === "svg" ? "image/svg+xml" : `image/${ext}`;
+        return match.replace(`modelica://${uriPath}`, `data:${mimeType};base64,${base64}`);
+      } catch (e) {
+        console.warn(`Failed to read image ${uri}:`, e);
+      }
+    }
+    return match.replace(/src=(["'])modelica:\/\/[^"']+\1/, 'style="display:none"');
+  });
+}
+
+export function buildComponentProperties(
+  classInstance: ModelicaClassInstance,
+  componentName: string,
+): ComponentPropertyData | null {
+  const component = classInstance.components.find((c) => c.name === componentName);
+  if (!component) return null;
+
+  const componentClassInstance = component.classInstance;
+  if (!componentClassInstance) return null;
+
+  // Extract parameters
+  const parameters: ComponentPropertyData["parameters"] = [];
+  for (const element of componentClassInstance.elements) {
+    if (element instanceof ModelicaComponentInstance && element.variability === ModelicaVariability.PARAMETER) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const compArgExpr = (component.modification as any)?.getModificationArgument(element.name ?? "")?.expression;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const elemExpr = (element.modification as any)?.expression;
+      const value = formatPropertyValue(compArgExpr) ?? formatPropertyValue(elemExpr) ?? "-";
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const unitExpr = (element.classInstance?.modification as any)?.getModificationArgument("unit")?.expression;
+      const rawUnit = formatPropertyValue(unitExpr)?.replace(/^"|"$/g, "");
+      const unit = rawUnit ? formatUnit(rawUnit) : undefined;
+      const isBoolean = element.classInstance?.name === "Boolean";
+
+      parameters.push({
+        name: element.name ?? "",
+        value,
+        description: element.description ?? undefined,
+        isBoolean,
+        unit,
+      });
+    }
+  }
+
+  // Extract documentation
+  const docAnnotation = componentClassInstance.annotation("Documentation") as {
+    info?: string;
+    revisions?: string;
+  } | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const context = (classInstance as any).context;
+  const docInfo = processHtml(docAnnotation?.info, context);
+  const docRevisions = processHtml(docAnnotation?.revisions, context);
+
+  // Render icon SVG
+  const iconSvg = getClassIconSvg(componentClassInstance, 80, true);
+
+  return {
+    classKind: componentClassInstance.classKind,
+    className: componentClassInstance.name ?? "",
+    name: component.name ?? "",
+    description: component.description ?? "",
+    parameters,
+    docInfo,
+    docRevisions,
+    iconSvg,
+  };
 }

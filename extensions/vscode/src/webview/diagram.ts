@@ -29,6 +29,10 @@ function postMessageToHost(msg: any) {
 let graph: Graph | null = null;
 let selectedNodeId: string | null = null;
 
+/** Cache for on-demand component properties (cleared on diagram re-render) */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const propertyCache = new Map<string, any>();
+
 /** Get connected edge metadata for a node (for move/resize updates) */
 function getConnectedEdges(
   g: Graph,
@@ -430,7 +434,17 @@ function initGraph(isDark: boolean): Graph {
     if (!graph) return;
     selectedNodeId = node.id;
     const data = node.getData();
-    showProperties({ id: node.id, properties: data?.properties });
+
+    // Show properties panel immediately with lightweight data, then request full properties
+    const cachedProps = propertyCache.get(node.id);
+    if (cachedProps) {
+      showProperties({ id: node.id, properties: cachedProps });
+    } else {
+      // Show panel with lightweight data (className, name, description) + loading indicator
+      showProperties({ id: node.id, properties: data?.properties, isLoading: true });
+      // Request full properties from host on-demand
+      vscode.postMessage({ type: "getProperties", componentName: node.id });
+    }
 
     // Smoothly pan to center the node horizontally in the visible portion
     const bbox = node.getBBox();
@@ -714,6 +728,9 @@ function renderDiagram(data: any, isDark: boolean) {
 
   const isFirstRender = g.getCells().length === 0;
 
+  // Clear property cache on re-render (model state may have changed)
+  propertyCache.clear();
+
   // ── Layout Strategy ──
   // The layout runs in 3 phases:
   //   Phase 1: Sub-Dagre for each container to compute actual child bounding boxes
@@ -959,7 +976,9 @@ function renderDiagram(data: any, isDark: boolean) {
     const restoredNode = g.getCellById(selectedNodeId);
     if (restoredNode && restoredNode.isNode()) {
       const data = restoredNode.getData();
-      showProperties({ id: restoredNode.id, properties: data?.properties });
+      // Show panel with lightweight data and re-request full properties
+      showProperties({ id: restoredNode.id, properties: data?.properties, isLoading: true });
+      vscode.postMessage({ type: "getProperties", componentName: restoredNode.id });
     }
   }
 }
@@ -983,10 +1002,20 @@ document.addEventListener(
     isMouseDown = false;
     setTimeout(() => {
       if (!isMouseDown && pendingDiagramData) {
-        const spinner = document.getElementById("spinner");
-        if (spinner) spinner.style.display = "none";
-        renderDiagram(pendingDiagramData.data, pendingDiagramData.isDark);
+        const pd = pendingDiagramData;
         pendingDiagramData = null;
+        const spinner = document.getElementById("spinner");
+        if (pd.data?.isLoading && spinner) {
+          spinner.style.display = "block";
+        }
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            renderDiagram(pd.data, pd.isDark);
+            if (!pd.data?.isLoading && spinner) {
+              spinner.style.display = "none";
+            }
+          });
+        });
       }
     }, 0);
   },
@@ -1007,13 +1036,27 @@ if (diagramSelect) {
 window.addEventListener("message", (event: MessageEvent) => {
   const message = event.data;
   switch (message.type) {
+    case "loading": {
+      const spinner = document.getElementById("spinner");
+      if (spinner) spinner.style.display = "block";
+      break;
+    }
     case "diagramData": {
       if (isMouseDown) {
         pendingDiagramData = { data: message.data, isDark: message.isDark ?? true };
       } else {
         const spinner = document.getElementById("spinner");
-        if (spinner) spinner.style.display = "none";
-        renderDiagram(message.data, message.isDark ?? true);
+        if (message.data?.isLoading && spinner) {
+          spinner.style.display = "block";
+        }
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            renderDiagram(message.data, message.isDark ?? true);
+            if (!message.data?.isLoading && spinner) {
+              spinner.style.display = "none";
+            }
+          });
+        });
       }
       break;
     }
@@ -1103,6 +1146,19 @@ window.addEventListener("message", (event: MessageEvent) => {
       }
       break;
     }
+
+    case "componentProperties": {
+      // On-demand property response: update the properties panel with full data
+      const { componentName, properties: fullProps } = message;
+      if (fullProps) {
+        propertyCache.set(componentName, fullProps);
+        // Only update if this component is still selected
+        if (selectedNodeId === componentName) {
+          showProperties({ id: componentName, properties: fullProps });
+        }
+      }
+      break;
+    }
   }
 });
 
@@ -1116,7 +1172,19 @@ function showProperties(nodeData: any) {
   if (!panel || !content || !title) return;
 
   const props = nodeData.properties;
+  const isLoading = nodeData.isLoading === true;
   title.textContent = props?.className ? props.className.split(".").pop()?.toUpperCase() : "PROPERTIES";
+
+  const loadingSpinner = `<div style="display: flex; align-items: center; gap: 8px; padding: 12px 0; color: var(--vscode-descriptionForeground, #888); font-size: 12px;">
+    <div style="width: 14px; height: 14px; border: 2px solid var(--vscode-editorGutter-background, rgba(128,128,128,0.2)); border-top-color: var(--vscode-foreground, #ccc); border-radius: 50%; animation: diagram-spin 0.7s linear infinite;"></div>
+    Loading...
+  </div>`;
+
+  const iconContent = isLoading
+    ? `<div style="width: 80px; height: 80px; display: flex; align-items: center; justify-content: center;">
+        <div style="width: 20px; height: 20px; border: 2px solid var(--vscode-editorGutter-background, rgba(128,128,128,0.2)); border-top-color: var(--vscode-foreground, #ccc); border-radius: 50%; animation: diagram-spin 0.7s linear infinite;"></div>
+       </div>`
+    : props?.iconSvg || "";
 
   let html = `
     <details open style="margin-bottom: 8px; border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, #454545); padding-bottom: 16px;">
@@ -1126,7 +1194,7 @@ function showProperties(nodeData: any) {
       <div style="display: flex; flex-direction: column; gap: 12px;">
         <div style="display: flex; flex-direction: row; gap: 24px; align-items: stretch;">
           <div style="flex-shrink: 0; display: flex; align-items: center; justify-content: center; width: 80px;">
-            ${props?.iconSvg || ""}
+            ${iconContent}
           </div>
           <div style="display: flex; flex-direction: column; gap: 8px; flex: 1; justify-content: center;">
             <div style="padding: 4px 0;">
@@ -1152,7 +1220,7 @@ function showProperties(nodeData: any) {
           <textarea class="prop-input" id="prop-input-description" style="width: 100%; border-radius: 4px; resize: vertical; padding: 6px; box-sizing: border-box;" rows="4">${escapedDesc}</textarea>
         </div>
       `;
-    } else {
+    } else if (!isLoading) {
       html += `
         <div id="prop-desc-container" style="display: flex; justify-content: center; padding: 16px 0;">
           <button id="prop-btn-add-desc" style="width: 100%; border-radius: 8px; padding: 8px 24px; background: transparent; color: var(--vscode-descriptionForeground, #888); border: 1px solid var(--vscode-dropdown-border, #d0d7de); cursor: pointer;">Add description</button>
@@ -1166,7 +1234,10 @@ function showProperties(nodeData: any) {
     </details>
   `;
 
-  if (props) {
+  if (isLoading) {
+    // Show loading indicator for parameters and docs sections
+    html += loadingSpinner;
+  } else if (props) {
     if (props.parameters && props.parameters.length > 0) {
       html += `<div style="margin-top:24px; margin-bottom:12px; font-weight:600; text-transform:uppercase; font-size:11px; color:var(--vscode-sideBarTitle-foreground)">Parameters</div>`;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

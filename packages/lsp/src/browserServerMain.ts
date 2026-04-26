@@ -32,7 +32,7 @@ import {
 } from "vscode-languageserver";
 
 import { TextDocument } from "vscode-languageserver-textdocument";
-import { buildDiagramData, getClassIconSvg, type DiagramData } from "./diagramData";
+import { buildComponentProperties, buildDiagramData, getClassIconSvg, type DiagramData } from "./diagramData";
 import {
   computeComponentInsert,
   computeComponentsDelete,
@@ -79,7 +79,6 @@ import {
   ModelicaNamedElement,
   ModelicaScriptScope,
   ModelicaStoredDefinitionSyntaxNode,
-  ModelicaVariability,
   PositionIndex,
   QueryBackedClassInstance,
   QueryEngine,
@@ -479,7 +478,22 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
     parserReady = true;
     connection.console.info("Tree-sitter Modelica parser initialized");
 
-    // Initialize SysML2 parser
+    // === EARLY VALIDATION PASS ===
+    // Validate open documents NOW — before any library loading.
+    // This gives users instant syntax error feedback (~1s after page load)
+    // instead of waiting 10-30s for MSL/SysML2 decompression.
+    connection.console.info(
+      `[lsp] Parser ready. Early-validating ${documents.all().length} open documents for syntax errors.`,
+    );
+    for (const doc of documents.all()) {
+      await validateTextDocument(doc);
+    }
+    connection.sendNotification("modelscript/status", {
+      state: "ready",
+      message: "ModelScript (loading libraries...)",
+    });
+
+    // Initialize SysML2 parser (non-blocking — WASM load is fast)
     try {
       const SysML2 = await Language.load(`${serverDistBase}/tree-sitter-sysml2.wasm`);
       sysml2Parser = new Parser();
@@ -510,16 +524,8 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
     savedLoaderCtx = loaderCtx;
     await loadMSL(serverDistBase, loaderCtx);
 
-    // Load the SysML v2 Standard Library from the bundled zip
-    if (sysml2ParserReady) {
-      await loadSysML2StandardLibrary(serverDistBase, loaderCtx);
-    }
-
-    // Re-validate strictly AFTER MSL and parser are ready!
-    connection.console.info(`[lsp] Initialization complete. Re-validating ${documents.all().length} open documents.`);
-
-    // Initial fast validation pass — uses toUnifiedPartial() which only merges
-    // already-parsed files (just the open documents). No MSL parsing happens here.
+    // Re-validate after MSL is loaded for semantic diagnostics
+    connection.console.info(`[lsp] MSL loaded. Re-validating ${documents.all().length} open documents.`);
     for (const doc of documents.all()) {
       await validateTextDocument(doc);
     }
@@ -550,6 +556,19 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
     } else {
       // No MSL files to index (or all already indexed) — mark ready immediately
       mslStdlibReady = true;
+    }
+
+    // Load the SysML v2 Standard Library in the BACKGROUND — the 61MB zip
+    // decompression is very heavy and must not block Modelica diagnostics.
+    if (sysml2ParserReady) {
+      loadSysML2StandardLibrary(serverDistBase, loaderCtx)
+        .then(() => {
+          sysml2StdlibReady = true;
+          connection.console.info("[lsp] SysML2 stdlib loaded in background.");
+        })
+        .catch((e) => {
+          connection.console.warn(`[lsp] SysML2 stdlib background load failed: ${e}`);
+        });
     }
   } catch (e: any) {
     connection.console.error(`Failed to initialize tree-sitter: ${e}\n${e.stack}`);
@@ -704,6 +723,14 @@ let activeVerification: AbortController | null = null;
 const verificationDiagnosticsByUri = new Map<string, Diagnostic[]>();
 const verificationResultsByUri = new Map<string, any[]>();
 const activeValidationTimers = new Map<string, ReturnType<typeof setTimeout>>();
+// Track deferred semantic work so it can be cancelled when new edits arrive
+const activeSemanticTimers = new Map<string, ReturnType<typeof setTimeout>>();
+// Per-URI revision counter: incremented on every edit, checked before semantic work
+const documentRevisions = new Map<string, number>();
+// Track last-indexed text per URI to avoid re-marking dirty when text hasn't changed
+const lastIndexedText = new Map<string, string>();
+// Track the last semantic diagnostics to avoid flashing when sending early syntax diagnostics
+const lastSemanticDiagnostics = new Map<string, Diagnostic[]>();
 
 function flushValidation(uri: string) {
   const timer = activeValidationTimers.get(uri);
@@ -719,6 +746,17 @@ documents.onDidChangeContent((change) => {
   const uri = change.document.uri;
   verificationDiagnosticsByUri.delete(uri);
   verificationResultsByUri.delete(uri);
+
+  // Bump revision — any in-flight deferred semantic work for an older revision
+  // will check this and bail out before doing expensive linting.
+  documentRevisions.set(uri, (documentRevisions.get(uri) ?? 0) + 1);
+
+  // Cancel any pending semantic analysis for this URI
+  const semanticTimer = activeSemanticTimers.get(uri);
+  if (semanticTimer) {
+    clearTimeout(semanticTimer);
+    activeSemanticTimers.delete(uri);
+  }
 
   const existingTimer = activeValidationTimers.get(uri);
   if (existingTimer) clearTimeout(existingTimer);
@@ -752,6 +790,194 @@ documents.onDidClose((event) => {
 });
 
 /* Diagnostic validation — uses tree-sitter + ModelicaLinter when available */
+
+/**
+ * Run the semantic pipeline: index → unified merge → lint → reference resolution → send diagnostics.
+ * Called synchronously for small files (revisionAtStart=null) and deferred for large files.
+ */
+function runSemanticPipeline(
+  uri: string,
+  text: string,
+  tree: any,
+  editRanges: Array<{ startByte: number; endByte: number }> | undefined,
+  baseDiagnostics: Diagnostic[],
+  revisionAtStart: number | null,
+  context: any,
+): void {
+  const newSemanticDiagnostics: Diagnostic[] = [];
+
+  try {
+    const effectiveUri = uri.startsWith("modelscript-lib://global")
+      ? "file://" + uri.substring("modelscript-lib://global".length)
+      : uri;
+
+    // Only update the workspace index if the text actually changed.
+    // Prevents infinite revalidation loops from revalidation calls.
+    const textChanged = lastIndexedText.get(effectiveUri) !== text;
+    let changedIds: Set<number> | null = null;
+    let changedNames: Set<string> | null = null;
+
+    if (textChanged) {
+      if (globalWorkspaceIndex.has(effectiveUri)) {
+        globalWorkspaceIndex.markDirty(effectiveUri, () => tree.rootNode, editRanges);
+      } else {
+        globalWorkspaceIndex.register(effectiveUri, () => tree.rootNode);
+      }
+      globalWorkspaceIndex.getFileIndex(effectiveUri);
+      lastIndexedText.set(effectiveUri, text);
+      changedIds = globalWorkspaceIndex.takeGlobalChangedIds();
+      changedNames = globalWorkspaceIndex.takeGlobalChangedNames();
+    }
+
+    // Bail out if stale (large-file deferred path only)
+    if (revisionAtStart !== null && (documentRevisions.get(uri) ?? 0) !== revisionAtStart) return;
+
+    let unifiedIndex = unifiedWorkspace.toUnifiedPartial();
+
+    if (changedNames && changedNames.size > 0) {
+      const affectedUris = new Set<string>();
+      for (const name of changedNames) {
+        const symIds = unifiedIndex.byName.get(name);
+        if (symIds) {
+          for (const id of symIds) {
+            const entry = unifiedIndex.symbols.get(id);
+            if (entry && entry.resourceId && entry.resourceId !== effectiveUri) {
+              affectedUris.add(entry.resourceId);
+            }
+          }
+        }
+      }
+      if (affectedUris.size > 0) {
+        if (revalidationTimer) clearTimeout(revalidationTimer);
+        revalidationTimer = setTimeout(() => {
+          for (const doc of documents.all()) {
+            const effectiveDocUri = doc.uri.startsWith("modelscript-lib://global")
+              ? "file://" + doc.uri.substring("modelscript-lib://global".length)
+              : doc.uri;
+            if (effectiveDocUri !== effectiveUri && affectedUris.has(effectiveDocUri)) {
+              validateTextDocument(doc);
+            }
+          }
+        }, 500);
+      }
+    }
+
+    const cstTreeWrapper = getSharedCstTreeWrapper();
+
+    if (globalModelicaQueryEngine) {
+      injectPredefinedTypes(unifiedIndex);
+      if (changedIds && typeof globalModelicaQueryEngine.swapIndex === "function") {
+        globalModelicaQueryEngine.swapIndex(unifiedIndex, changedIds);
+      } else {
+        globalModelicaQueryEngine.updateIndex(unifiedIndex);
+      }
+      if (typeof globalModelicaQueryEngine.updateTree === "function")
+        globalModelicaQueryEngine.updateTree(cstTreeWrapper);
+    } else {
+      globalModelicaQueryEngine = createModelicaQueryEngine(unifiedIndex, cstTreeWrapper) as any;
+    }
+    const engine = globalModelicaQueryEngine;
+
+    let resolver = (engine as any).__resolverCache;
+    if (!resolver) {
+      resolver = createModelicaScopeResolver(unifiedIndex);
+      (engine as any).__resolverCache = resolver;
+    } else {
+      resolver.updateIndex(unifiedIndex);
+    }
+
+    const currentDoc = documents.get(uri);
+    const currentText = currentDoc ? currentDoc.getText() : text;
+    const bridge = createModelicaLSPBridge(unifiedIndex, engine, resolver, currentText, uri);
+    documentLSPBridges.set(uri, bridge);
+
+    // Bail out if stale before running expensive lints
+    if (revisionAtStart !== null && (documentRevisions.get(uri) ?? 0) !== revisionAtStart) return;
+
+    // Run lints — skip for library files with >1000 symbols to avoid O(n²) on MSL.
+    // User-authored files always get full diagnostics regardless of size.
+    // A file is a "workspace file" if it's tracked by the TextDocuments manager
+    // (i.e., currently open in the editor). Library files loaded via loadMSL
+    // or background indexing are not tracked by documents.
+    const resourceSymbolIds = unifiedIndex.symbolsByResource?.get(effectiveUri);
+    const docSymbolCount = resourceSymbolIds ? resourceSymbolIds.length : 0;
+    const isWorkspaceFile = !!documents.get(uri);
+    const skipHeavyLints = !isWorkspaceFile && docSymbolCount > 1000;
+
+    if (!skipHeavyLints) {
+      const engineDiags = engine!.runAllLints(uri);
+      for (const d of engineDiags) {
+        const start = (bridge as any).positions.offsetToPosition(d.startByte);
+        const end = (bridge as any).positions.offsetToPosition(d.endByte);
+        let severity: DiagnosticSeverity = DiagnosticSeverity.Warning;
+        if (d.severity === "error") severity = DiagnosticSeverity.Error;
+        if (d.severity === "info") severity = DiagnosticSeverity.Information;
+        newSemanticDiagnostics.push({ severity, range: { start, end }, message: d.message, source: "modelscript" });
+      }
+    }
+
+    if (!skipHeavyLints) {
+      const unresolvedRefs = mslStdlibReady ? resolver.resolveAllReferences(uri) : [];
+      let dirty = false;
+      for (const r of unresolvedRefs) {
+        if (r.fqn) {
+          const uriToFix = (globalWorkspaceIndex as any).getFileUriForFQN?.(r.fqn);
+          if (uriToFix && !globalWorkspaceIndex.has(uriToFix)) {
+            globalWorkspaceIndex.getFileIndex(uriToFix);
+            dirty = true;
+            continue;
+          }
+        }
+        const start = (bridge as any).positions.offsetToPosition(r.startByte);
+        const end = (bridge as any).positions.offsetToPosition(r.endByte);
+        let severity: DiagnosticSeverity = DiagnosticSeverity.Error;
+        if (r.severity === "warning") severity = DiagnosticSeverity.Warning;
+        if (r.severity === "info") severity = DiagnosticSeverity.Information;
+        newSemanticDiagnostics.push({ severity, range: { start, end }, message: r.message, source: "modelscript" });
+      }
+      if (dirty) {
+        unifiedIndex = unifiedWorkspace.toUnifiedPartial();
+        injectPredefinedTypes(unifiedIndex);
+        engine!.updateIndex(unifiedIndex);
+        resolver.updateIndex(unifiedIndex);
+      }
+    }
+
+    // Create QueryBackedClassInstance wrappers
+    const db = engine!.toQueryDB();
+    const thisDocInstances: ModelicaClassInstance[] = [];
+    const normUri = (u: string) => (u.startsWith("file://") ? u.substring(7) : u);
+    const matchUri = normUri(effectiveUri);
+    for (const [id, entry] of unifiedIndex.symbols) {
+      if (!entry.resourceId || normUri(entry.resourceId) !== matchUri) continue;
+      if (entry.kind !== "Class") continue;
+      if (entry.parentId !== null) {
+        const parentEntry = unifiedIndex.symbols.get(entry.parentId);
+        if (parentEntry && parentEntry.resourceId && normUri(parentEntry.resourceId) === matchUri) continue;
+      }
+      const wrapper = new QueryBackedClassInstance(id, db) as unknown as ModelicaClassInstance;
+      thisDocInstances.push(wrapper);
+    }
+    workspaceInstances.set(uri, thisDocInstances);
+    documentInstances.set(uri, thisDocInstances);
+    documentContexts.set(uri, context);
+
+    // Final stale check
+    if (revisionAtStart !== null && (documentRevisions.get(uri) ?? 0) !== revisionAtStart) return;
+
+    lastSemanticDiagnostics.set(uri, newSemanticDiagnostics);
+    const diagnostics = [...baseDiagnostics, ...newSemanticDiagnostics];
+
+    connection.sendDiagnostics({ uri, diagnostics });
+    connection.sendNotification("modelscript/projectTreeChanged");
+  } catch (e: any) {
+    connection.console.error(`[modelica] Error in semantic pipeline for ${uri}: ${e.message}\n${e.stack}`);
+    if (revisionAtStart === null || (documentRevisions.get(uri) ?? 0) === revisionAtStart) {
+      const diagnostics = [...baseDiagnostics, ...newSemanticDiagnostics];
+      connection.sendDiagnostics({ uri, diagnostics });
+    }
+  }
+}
 
 async function validateTextDocument(textDocument: TextDocument): Promise<void> {
   const diagnostics: Diagnostic[] = [];
@@ -953,99 +1179,20 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
     }
     documentTrees.set(textDocument.uri, { text, tree, classCache: oldCached?.classCache ?? new Map() });
 
-    // Normalize UI virtual URIs back to internal indices so we can match MSL classes correctly
-    const effectiveUri = textDocument.uri.startsWith("modelscript-lib://global")
-      ? "file://" + textDocument.uri.substring("modelscript-lib://global".length)
-      : textDocument.uri;
-
-    // --- Polyglot Pipeline ---
-    if (globalWorkspaceIndex.has(effectiveUri)) {
-      globalWorkspaceIndex.markDirty(effectiveUri, () => tree.rootNode, editRanges);
-    } else {
-      globalWorkspaceIndex.register(effectiveUri, () => tree.rootNode);
-    }
-
-    // Force index evaluation for active document AFTER it is registered/marked dirty
-    // so that it actually triggers processing and populates the partial index.
-    globalWorkspaceIndex.getFileIndex(effectiveUri);
-
-    // Get ALL changed symbol IDs across the workspace since last check
-    const changedIds = globalWorkspaceIndex.takeGlobalChangedIds();
-    const changedNames = globalWorkspaceIndex.takeGlobalChangedNames();
-
-    // Create or update the global query engine and resolver
-    // Use toUnifiedPartial() to avoid blocking on parsing ALL MSL files —
-    // only merges files that have already been indexed.
-    let unifiedIndex = unifiedWorkspace.toUnifiedPartial();
-
-    if (changedNames && changedNames.size > 0) {
-      const affectedUris = new Set<string>();
-      for (const name of changedNames) {
-        const symIds = unifiedIndex.byName.get(name);
-        if (symIds) {
-          for (const id of symIds) {
-            const entry = unifiedIndex.symbols.get(id);
-            if (entry && entry.resourceId && entry.resourceId !== effectiveUri) {
-              affectedUris.add(entry.resourceId);
-            }
-          }
-        }
-      }
-      if (affectedUris.size > 0) {
-        if (revalidationTimer) clearTimeout(revalidationTimer);
-        revalidationTimer = setTimeout(() => {
-          for (const doc of documents.all()) {
-            const effectiveDocUri = doc.uri.startsWith("modelscript-lib://global")
-              ? "file://" + doc.uri.substring("modelscript-lib://global".length)
-              : doc.uri;
-            if (effectiveDocUri !== effectiveUri && affectedUris.has(effectiveDocUri)) {
-              validateTextDocument(doc);
-            }
-          }
-        }, 500);
-      }
-    }
-
-    const cstTreeWrapper = getSharedCstTreeWrapper();
-
-    if (globalModelicaQueryEngine) {
-      injectPredefinedTypes(unifiedIndex);
-      // Fast path: use swapIndex() with precise changed IDs to avoid O(all symbols) diff
-      if (changedIds && typeof globalModelicaQueryEngine.swapIndex === "function") {
-        globalModelicaQueryEngine.swapIndex(unifiedIndex, changedIds);
-      } else {
-        globalModelicaQueryEngine.updateIndex(unifiedIndex);
-      }
-      if (typeof globalModelicaQueryEngine.updateTree === "function")
-        globalModelicaQueryEngine.updateTree(cstTreeWrapper);
-    } else {
-      globalModelicaQueryEngine = createModelicaQueryEngine(unifiedIndex, cstTreeWrapper) as any;
-    }
-    const engine = globalModelicaQueryEngine;
-
-    let resolver = (engine as any).__resolverCache;
-    if (!resolver) {
-      resolver = createModelicaScopeResolver(unifiedIndex);
-      (engine as any).__resolverCache = resolver;
-    } else {
-      resolver.updateIndex(unifiedIndex);
-    }
-
-    const bridge = createModelicaLSPBridge(unifiedIndex, engine, resolver, text, textDocument.uri);
-    documentLSPBridges.set(textDocument.uri, bridge);
-
     // 1. Collect parse errors from the tree (ERROR and MISSING nodes)
+    // We do this BEFORE the semantic pipeline so that syntax errors are
+    // guaranteed to be reported even if indexing throws an exception.
     const collectErrors = (node: any) => {
       if (!node) return;
       if (typeof node.hasError === "function" ? !node.hasError() : node.hasError === false) return;
 
       if (node.isMissing || node.type === "ERROR") {
-        const start = bridge["positions"].offsetToPosition(node.startIndex);
-        const end = bridge["positions"].offsetToPosition(node.endIndex);
+        const start = textDocument.positionAt(node.startIndex);
+        const end = textDocument.positionAt(node.endIndex);
         diagnostics.push({
           severity: DiagnosticSeverity.Error,
           range: { start, end },
-          message: `Syntax error`,
+          message: node.isMissing ? `Missing syntax element` : `Syntax error`,
           source: "modelscript",
         });
       }
@@ -1055,94 +1202,39 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
     };
     collectErrors(tree.rootNode);
 
-    // 2. Run Polyglot declarative lints (Salsa-memoized queries from language.ts)
-    const engineDiags = engine!.runAllLints(textDocument.uri);
-    for (const d of engineDiags) {
-      const start = (bridge as any).positions.offsetToPosition(d.startByte);
-      const end = (bridge as any).positions.offsetToPosition(d.endByte);
-      let severity: DiagnosticSeverity = DiagnosticSeverity.Warning;
-      if (d.severity === "error") severity = DiagnosticSeverity.Error;
-      if (d.severity === "info") severity = DiagnosticSeverity.Information;
+    connection.console.info(
+      `[validate] ${textDocument.uri}: text=${text.length}B, syntaxErrors=${diagnostics.length}, hasError=${typeof tree.rootNode.hasError === "function" ? tree.rootNode.hasError() : tree.rootNode.hasError}`,
+    );
 
-      diagnostics.push({
-        severity,
-        range: { start, end },
-        message: d.message,
-        source: "modelscript",
-      });
+    const isLargeFile = text.length > 200_000;
+
+    if (isLargeFile) {
+      // --- LARGE FILE PATH ---
+      // Send syntax errors immediately so the user gets instant feedback.
+      // Merge with last known semantic diagnostics to prevent flashing/disappearing.
+      const previousSemantic = lastSemanticDiagnostics.get(textDocument.uri) || [];
+      connection.console.info(
+        `[validate] LARGE FILE: sending ${diagnostics.length} syntax + ${previousSemantic.length} cached semantic diagnostics`,
+      );
+      connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: [...diagnostics, ...previousSemantic] });
+
+      const syntaxDiagnostics = [...diagnostics];
+      const revisionAtStart = documentRevisions.get(textDocument.uri) ?? 0;
+      const uri = textDocument.uri;
+
+      const semanticTimer = setTimeout(() => {
+        activeSemanticTimers.delete(uri);
+        if ((documentRevisions.get(uri) ?? 0) !== revisionAtStart) return;
+        runSemanticPipeline(uri, text, tree, editRanges, syntaxDiagnostics, revisionAtStart, context);
+      }, 2000);
+
+      activeSemanticTimers.set(uri, semanticTimer);
+      connection.sendNotification("modelscript/projectTreeChanged");
+    } else {
+      // --- SMALL FILE PATH ---
+      // Run everything synchronously. Single sendDiagnostics call = no flashing.
+      runSemanticPipeline(textDocument.uri, text, tree, editRanges, diagnostics, null, context);
     }
-
-    // 3. Collect unresolved reference diagnostics from the polyglot resolver
-    // Skip unresolved-reference diagnostics while MSL background indexing is still
-    // in progress — qualified references like Modelica.Electrical.Analog.Sources.SineVoltage
-    // produce false positives until the standard library files have been parsed and merged.
-    const unresolvedRefs = mslStdlibReady ? resolver.resolveAllReferences(textDocument.uri) : [];
-    let dirty = false;
-    for (const r of unresolvedRefs) {
-      // Force evaluate any missing class files based on their expected FQN
-      if (r.fqn) {
-        const uriToFix = (globalWorkspaceIndex as any).getFileUriForFQN?.(r.fqn);
-        if (uriToFix && !globalWorkspaceIndex.has(uriToFix)) {
-          globalWorkspaceIndex.getFileIndex(uriToFix);
-          dirty = true;
-          continue; // Wait until next validation pass when it's resolved
-        }
-      }
-
-      const start = (bridge as any).positions.offsetToPosition(r.startByte);
-      const end = (bridge as any).positions.offsetToPosition(r.endByte);
-      let severity: DiagnosticSeverity = DiagnosticSeverity.Error;
-      if (r.severity === "warning") severity = DiagnosticSeverity.Warning;
-      if (r.severity === "info") severity = DiagnosticSeverity.Information;
-
-      diagnostics.push({
-        severity,
-        range: { start, end },
-        message: r.message,
-        source: "modelscript",
-      });
-    }
-
-    if (dirty) {
-      unifiedIndex = unifiedWorkspace.toUnifiedPartial();
-      injectPredefinedTypes(unifiedIndex);
-      engine!.updateIndex(unifiedIndex);
-      resolver.updateIndex(unifiedIndex);
-      // Let the references resolve on the next edit, or re-run here.
-    }
-
-    // 4. Create QueryBackedClassInstance wrappers from the polyglot index
-    //    for backward compatibility with downstream handlers (diagram, simulation, etc.)
-    // already declared above, we only need to use it here.
-    // effectiveUri is available in this scope.
-
-    const db = engine!.toQueryDB();
-    const thisDocInstances: ModelicaClassInstance[] = [];
-
-    // Strip "file://" uniformly for matching.
-    const normUri = (uri: string) => (uri.startsWith("file://") ? uri.substring(7) : uri);
-    const matchUri = normUri(effectiveUri);
-
-    for (const [id, entry] of unifiedIndex.symbols) {
-      if (!entry.resourceId || normUri(entry.resourceId) !== matchUri) continue;
-      if (entry.kind !== "Class") continue; // Top-level classes only
-      // If the parent is in the same file, this is not a top-level class in this file.
-      // E.g., skips nested classes, but keeps file-root classes even if they use the `within` directive
-      // to anchor themselves to an external package (such as MSL).
-      if (entry.parentId !== null) {
-        const parentEntry = unifiedIndex.symbols.get(entry.parentId);
-        if (parentEntry && parentEntry.resourceId && normUri(parentEntry.resourceId) === matchUri) {
-          continue;
-        }
-      }
-
-      const wrapper = new QueryBackedClassInstance(id, db) as unknown as ModelicaClassInstance;
-      thisDocInstances.push(wrapper);
-    }
-    workspaceInstances.set(textDocument.uri, thisDocInstances);
-    documentInstances.set(textDocument.uri, thisDocInstances);
-    connection.console.info(`[validate] stored ${thisDocInstances.length} instances for ${textDocument.uri}`);
-    documentContexts.set(textDocument.uri, context);
   } else {
     // Fallback: basic regex validation when tree-sitter is not available
     const openComments = (text.match(/\/\*/g) || []).length;
@@ -1158,12 +1250,8 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
         source: "modelscript",
       });
     }
+    connection.sendDiagnostics({ uri: textDocument.uri, diagnostics });
   }
-
-  connection.sendDiagnostics({ uri: textDocument.uri, diagnostics });
-
-  // Notify the client that project tree data may have changed
-  connection.sendNotification("modelscript/projectTreeChanged");
 }
 
 /* Semantic tokens provider — tree-sitter AST traversal matching morsel's code.tsx exactly */
@@ -2526,9 +2614,24 @@ connection.onTypeDefinition((params) => {
 });
 
 // Custom request: get diagram data for the webview
+// Cache to avoid rebuilding diagram data when nothing has changed.
+// Key: `${uri}|${className}|${diagramType}|${version}`
+const diagramCache = new Map<string, { version: number | string; data: any }>();
+
 connection.onRequest(
   "modelscript/getDiagramData",
   (params: { uri: string; className?: string; diagramType?: string }) => {
+    // Check cache for Modelica files
+    if (!params.uri.endsWith(".sysml")) {
+      const doc = documents.get(params.uri);
+      const version = doc ? `${doc.version}|${mslStdlibReady}` : mslStdlibReady ? "msl-ready" : "msl-loading";
+      const cacheKey = `${params.uri}|${params.className ?? ""}|${params.diagramType ?? "All"}`;
+      const cached = diagramCache.get(cacheKey);
+      if (cached && cached.version === version) {
+        connection.console.error(`[diagram-perf] cache hit for ${params.uri} (v=${version})`);
+        return cached.data;
+      }
+    }
     // SysML2 files use the polyglot diagram builder
     if (params.uri.endsWith(".sysml")) {
       try {
@@ -2573,6 +2676,7 @@ connection.onRequest(
 
     let classInstance: any = null;
     const instances = documentInstances.get(params.uri);
+    const t0 = performance.now();
 
     if (!instances || instances.length === 0) {
       // Library class: get from polyglot index directly
@@ -2602,16 +2706,41 @@ connection.onRequest(
       }
 
       if (!classInstance) {
-        // Fallback to first class in file
+        // Fallback to first class in file.
+        // Normalize URIs to handle scheme variations (file:// vs file:///)
+        // and modelscript-lib://global prefix differences.
+        const normalizeUri = (u: string) => {
+          if (u.startsWith("modelscript-lib://global")) u = "file://" + u.substring("modelscript-lib://global".length);
+          return u.replace(/^file:\/\/\//, "file://");
+        };
+        const normalizedParamsUri = normalizeUri(params.uri);
+        const expectedSuffix = normalizedParamsUri.replace(/^file:\/\//, "");
         for (const [id, entry] of unifiedIndex.symbols) {
-          if (entry.resourceId === params.uri && entry.kind === "Class" && entry.parentId === null) {
+          if (
+            entry.kind === "Class" &&
+            entry.parentId === null &&
+            entry.resourceId &&
+            (normalizeUri(entry.resourceId) === normalizedParamsUri ||
+              normalizeUri(entry.resourceId).endsWith(expectedSuffix))
+          ) {
             classInstance = new QueryBackedClassInstance(id, db);
             break;
           }
         }
       }
 
-      if (!classInstance) return null;
+      if (!classInstance) {
+        if (!mslStdlibReady) {
+          return {
+            nodes: [],
+            edges: [],
+            coordinateSystem: { x: 0, y: 0, width: 1000, height: 1000 },
+            diagramBackground: null,
+            isLoading: true,
+          };
+        }
+        return null;
+      }
     } else {
       classInstance = instances[0];
       if (params.className) {
@@ -2620,30 +2749,103 @@ connection.onRequest(
       }
     }
 
+    const tResolve = performance.now() - t0;
+
     try {
-      connection.console.error(`[diagram] classInstance name: ${classInstance.name} kind: ${classInstance.classKind}`);
-      connection.console.error(`[diagram] elements: ${classInstance.elements?.length ?? "N/A"}`);
-      connection.console.error(`[diagram] components: ${classInstance.components?.length ?? "N/A"}`);
-      for (const comp of classInstance.components ?? []) {
-        connection.console.error(
-          `[diagram]   component: ${comp.name} classInstance: ${!!comp.classInstance} classKind: ${comp.classInstance?.classKind}`,
-        );
-      }
-      connection.console.error(`[diagram] connectEquations: ${classInstance.connectEquations?.length ?? "N/A"}`);
+      const tBuild0 = performance.now();
       const result = buildDiagramData(classInstance);
-      connection.console.error(`[diagram] result nodes: ${result?.nodes?.length} edges: ${result?.edges?.length}`);
-      for (const node of result?.nodes ?? []) {
-        const portIds = node.ports?.items?.map((p: any) => p.id).join(", ") ?? "";
-        connection.console.error(`[diagram]   node: ${node.id} ports=[${portIds}]`);
+      const tBuild = performance.now() - tBuild0;
+      if (result) {
+        (result as any).isLoading = !mslStdlibReady;
       }
-      for (const edge of result?.edges ?? []) {
-        connection.console.error(
-          `[diagram]   edge: ${edge.id} src=${edge.source.cell}:${edge.source.port} tgt=${edge.target.cell}:${edge.target.port}`,
-        );
+      connection.console.error(
+        `[diagram-perf] ${classInstance.name}: resolve=${tResolve.toFixed(0)}ms build=${tBuild.toFixed(0)}ms nodes=${result?.nodes?.length ?? 0} edges=${result?.edges?.length ?? 0}`,
+      );
+
+      // Cache the result
+      {
+        const doc = documents.get(params.uri);
+        const version = doc ? `${doc.version}|${mslStdlibReady}` : mslStdlibReady ? "msl-ready" : "msl-loading";
+        const cacheKey = `${params.uri}|${params.className ?? ""}|${params.diagramType ?? "All"}`;
+        diagramCache.set(cacheKey, { version, data: result });
       }
+
       return result;
     } catch (e: any) {
       connection.console.error(`[diagram] Error building diagram data: ${e?.message ?? e}\n${e?.stack ?? ""}`);
+      return null;
+    }
+  },
+);
+
+// Custom request: get component properties on-demand (lazy loading for diagram panel)
+connection.onRequest(
+  "modelscript/getComponentProperties",
+  (params: { uri: string; componentName: string; className?: string }) => {
+    let classInstance: any = null;
+    const instances = documentInstances.get(params.uri);
+
+    if (!instances || instances.length === 0) {
+      // Library class: get from polyglot index directly
+      const unifiedIndex = unifiedWorkspace.toUnifiedPartial();
+      let engine = params.uri.endsWith(".sysml") ? globalSysML2QueryEngine : globalModelicaQueryEngine;
+      if (!engine) {
+        if (params.uri.endsWith(".sysml")) {
+          engine = createSysML2QueryEngine(unifiedIndex) as any;
+          globalSysML2QueryEngine = engine;
+        } else {
+          engine = createModelicaQueryEngine(unifiedIndex, getSharedCstTreeWrapper()) as any;
+          globalModelicaQueryEngine = engine;
+        }
+      }
+      const db = engine!.toQueryDB();
+
+      if (params.className) {
+        const parts = params.className.split(".");
+        const entries = unifiedIndex.byName.get(parts[parts.length - 1]);
+        const entryId = entries?.find((id) => {
+          const e = unifiedIndex.symbols.get(id);
+          return e && getCompositeName(e, unifiedIndex) === params.className;
+        });
+        if (entryId !== undefined) {
+          classInstance = new QueryBackedClassInstance(entryId, db);
+        }
+      }
+
+      if (!classInstance) {
+        const normalizeUri = (u: string) => {
+          if (u.startsWith("modelscript-lib://global")) u = "file://" + u.substring("modelscript-lib://global".length);
+          return u.replace(/^file:\/\/\//, "file://");
+        };
+        const normalizedParamsUri = normalizeUri(params.uri);
+        const expectedSuffix = normalizedParamsUri.replace(/^file:\/\//, "");
+        for (const [id, entry] of unifiedIndex.symbols) {
+          if (
+            entry.kind === "Class" &&
+            entry.parentId === null &&
+            entry.resourceId &&
+            (normalizeUri(entry.resourceId) === normalizedParamsUri ||
+              normalizeUri(entry.resourceId).endsWith(expectedSuffix))
+          ) {
+            classInstance = new QueryBackedClassInstance(id, db);
+            break;
+          }
+        }
+      }
+    } else {
+      classInstance = instances[0];
+      if (params.className) {
+        const found = instances.find((i) => i.name === params.className || i.compositeName === params.className);
+        if (found) classInstance = found;
+      }
+    }
+
+    if (!classInstance) return null;
+
+    try {
+      return buildComponentProperties(classInstance, params.componentName);
+    } catch (e: any) {
+      connection.console.error(`[diagram] Error building component properties: ${e?.message ?? e}\n${e?.stack ?? ""}`);
       return null;
     }
   },
@@ -4056,97 +4258,6 @@ connection.onRequest(
       };
     } catch (e) {
       console.error("[mcp-bridge] query error:", e);
-      return null;
-    }
-  },
-);
-
-connection.onRequest(
-  "modelscript/getComponentProperties",
-  (params: {
-    uri: string;
-    className: string;
-    componentName: string;
-  }): {
-    name: string;
-    className: string;
-    localizedClassName: string;
-    description: string;
-    iconSvg?: string | null;
-    parameters: {
-      name: string;
-      localizedName?: string;
-      localizedDescription?: string;
-      value: string;
-      defaultValue: string;
-      unit?: string;
-      isBoolean?: boolean;
-    }[];
-    documentation?: { info?: string; revisions?: string };
-  } | null => {
-    let ctx = documentContexts.get(params.uri);
-    if (!ctx) {
-      for (const c of documentContexts.values()) {
-        ctx = c;
-        break;
-      }
-    }
-    if (!ctx) return null;
-
-    try {
-      const cls = ctx.query(params.className);
-      if (!isClassInstance(cls)) return null;
-
-      const component = Array.from(cls.components).find((c) => c.name === params.componentName);
-      if (!component) return null;
-
-      const parameters: any[] = [];
-      if (component.classInstance) {
-        for (const element of component.classInstance.elements) {
-          if (element instanceof ModelicaComponentInstance && element.variability === ModelicaVariability.PARAMETER) {
-            const value =
-              typeof (component.modification?.getModificationArgument(element.name ?? "")?.expression as any)?.value ===
-              "string"
-                ? (component.modification?.getModificationArgument(element.name ?? "")?.expression as any).value
-                : typeof (element.modification?.expression as any)?.value === "string"
-                  ? (element.modification?.expression as any).value
-                  : "-";
-
-            const unitExpr = element.classInstance?.modification?.getModificationArgument("unit")?.expression;
-            const rawUnit =
-              typeof (unitExpr as any)?.value === "string" ? (unitExpr as any).value.replace(/^"|"$/g, "") : undefined;
-            const unit = rawUnit === "1" || rawUnit === "" ? undefined : rawUnit;
-            const isBoolean = element.classInstance?.name === "Boolean";
-
-            parameters.push({
-              name: element.name ?? "",
-              localizedName: element.localizedName,
-              localizedDescription: (element as any).localizedDescription || element.description,
-              value,
-              defaultValue:
-                typeof (element.modification?.expression as any)?.value === "string"
-                  ? (element.modification?.expression as any).value
-                  : "-",
-              unit,
-              isBoolean,
-            });
-          }
-        }
-      }
-
-      const doc = component.classInstance?.annotation("Documentation") as { info?: string; revisions?: string } | null;
-
-      return {
-        name: component.name ?? "",
-        className: component.classInstance?.name ?? "",
-        localizedClassName: component.classInstance?.localizedName ?? "",
-        description: component.description ?? "",
-        iconSvg: component.classInstance ? getClassIconSvg(component.classInstance as ModelicaClassInstance) : null,
-        parameters,
-        documentation: doc ? { info: doc.info, revisions: doc.revisions } : undefined,
-      };
-    } catch (e) {
-      console.error("[lsp] getComponentProperties error:", e);
       return null;
     }
   },

@@ -238,12 +238,22 @@ export class QueryEngine {
   updateIndex(newIndex: SymbolIndex): void {
     this.currentRevision++;
 
+    let hasNewSymbols = false;
+
     // Determine which symbols are new or changed
     for (const [id, entry] of newIndex.symbols) {
       const oldEntry = this.index.symbols.get(id);
+      if (!oldEntry) hasNewSymbols = true;
       if (!oldEntry || !symbolEntryEqual(oldEntry, entry)) {
         this.inputRevisions.set(id, this.currentRevision);
       }
+    }
+
+    if (hasNewSymbols) {
+      // If new symbols were added (e.g., background MSL loading finished),
+      // we must clear memos because previous failed `byName` lookups
+      // did not record a dependency on the missing symbol.
+      this.memos.clear();
     }
 
     // Prune memos for deleted symbols

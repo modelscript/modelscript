@@ -59,11 +59,23 @@ export class SymbolIndexer {
     editRanges: Array<{ startByte: number; endByte: number }>,
     totalDelta: number = 0,
   ): { index: SymbolIndex; changedIds: Set<SymbolId> } {
-    // Build a lookup from stable key → old entry for reuse
+    // Build a lookup from stable key → old entry for reuse.
+    // We must compute sibling ordinals per parent to disambiguate entries
+    // with the same ruleName+name (e.g., multiple ConnectEquation entries
+    // sharing the same componentReference1).
     const oldByStableKey = new Map<string, SymbolEntry>();
-    for (const entry of oldIndex.symbols.values()) {
-      const key = this.stableKey(entry.ruleName, entry.name, entry.parentId);
-      oldByStableKey.set(key, entry);
+    const ordinalCounters = new Map<string, number>();
+    for (const [parentId, childIds] of oldIndex.childrenOf) {
+      ordinalCounters.clear();
+      for (const childId of childIds) {
+        const entry = oldIndex.symbols.get(childId);
+        if (!entry) continue;
+        const baseKey = `${parentId ?? "root"}:${entry.ruleName}:${entry.name}`;
+        const ordinal = ordinalCounters.get(baseKey) ?? 0;
+        ordinalCounters.set(baseKey, ordinal + 1);
+        const key = this.stableKey(entry.ruleName, entry.name, entry.parentId, ordinal);
+        oldByStableKey.set(key, entry);
+      }
     }
 
     const newSymbols = new Map<SymbolId, SymbolEntry>();
@@ -221,13 +233,18 @@ export class SymbolIndexer {
       const nameNode = this.resolveFieldPath(node, hook.namePath);
       const name = nameNode ? this.getNodeText(nameNode) : "<anonymous>";
 
+      // Compute sibling ordinal for this entry under its parent
+      const siblingBaseKey = `${parentId ?? "root"}:${hook.ruleName}:${name}`;
+      const siblingOrdinal = siblingCounts.get(siblingBaseKey) ?? 0;
+      siblingCounts.set(siblingBaseKey, siblingOrdinal + 1);
+
       // Try to reuse old entry if unchanged
-      const sKey = this.stableKey(hook.ruleName, name, parentId);
+      const sKey = this.stableKey(hook.ruleName, name, parentId, siblingOrdinal);
       let oldEntry = oldByStableKey.get(sKey);
 
       // Fallback: if parent ID changed, try with the old parent ID
       if (!oldEntry && oldParentId !== parentId) {
-        const altKey = this.stableKey(hook.ruleName, name, oldParentId);
+        const altKey = this.stableKey(hook.ruleName, name, oldParentId, siblingOrdinal);
         oldEntry = oldByStableKey.get(altKey);
       }
 
@@ -548,10 +565,15 @@ export class SymbolIndexer {
 
   /**
    * Generate a stable key for a symbol based on its identity-defining fields.
-   * Uses parentId + ruleName + name for uniqueness.
+   * Uses parentId + ruleName + name + sibling ordinal for uniqueness.
+   *
+   * The sibling ordinal disambiguates entries with the same ruleName+name under
+   * the same parent (e.g., multiple ConnectEquation entries sharing the same
+   * componentReference1 like `connect(Vb.p, L.p)` and `connect(Vb.p, C.p)`).
    */
-  private stableKey(ruleName: string, name: string, parentId: SymbolId | null): string {
-    return `${parentId ?? "root"}:${ruleName}:${name}`;
+  private stableKey(ruleName: string, name: string, parentId: SymbolId | null, siblingOrdinal: number = 0): string {
+    if (siblingOrdinal === 0) return `${parentId ?? "root"}:${ruleName}:${name}`;
+    return `${parentId ?? "root"}:${ruleName}:${name}#${siblingOrdinal}`;
   }
 
   /** Check if a CST node's byte range overlaps with any edit range. */

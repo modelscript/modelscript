@@ -6,8 +6,6 @@ import type { Theme } from "@monaco-editor/react";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 
 export interface DiagramEditorHandle {
-  showLoading: () => void;
-  hideLoading: () => void;
   fitContent: () => void;
   layout: () => void;
 }
@@ -47,6 +45,8 @@ interface DiagramEditorProps {
   onRedo?: () => void;
   selectedName?: string | null;
   theme: Theme;
+  isLoading?: boolean;
+  onRenderComplete?: (diagramData: any) => void;
 }
 
 function renderDiagram(
@@ -418,7 +418,6 @@ function renderDiagram(
 const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props, ref) => {
   const refContainer = useRef<HTMLDivElement>(null);
   const [graph, setGraph] = useState<Graph | null>(null);
-  const [loading, setLoading] = useState(false);
   const renderRafRef = useRef<number | null>(null);
   const graphRef = useRef<Graph | null>(null);
   const onSelectRef = useRef(props.onSelect);
@@ -436,8 +435,6 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
   const changedNodesRef = useRef<Set<string>>(new Set());
 
   useImperativeHandle(ref, () => ({
-    showLoading: () => setLoading(true),
-    hideLoading: () => setLoading(false),
     fitContent: () => {
       if (graph) {
         graph.zoomToFit({ padding: 20 });
@@ -1061,7 +1058,6 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
 
     if (!props.diagramData) {
       g.clearCells();
-      setLoading(false);
       return;
     }
 
@@ -1069,10 +1065,6 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     // Code edits re-render the same class and don't need a spinner overlay.
     // In LSP-driven setup, identity might simply come from a diagram prop if we need logic.
     // For now we assume false unless we have a specific trigger.
-    const isNewClass = false;
-    if (isNewClass) {
-      setLoading(true);
-    }
 
     // Capture values needed inside the deferred callback
     const diagramData = props.diagramData;
@@ -1082,7 +1074,9 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     renderRafRef.current = requestAnimationFrame(() => {
       renderRafRef.current = requestAnimationFrame(() => {
         renderDiagram(g, diagramData, theme, lastClassRef, lastZoomRef, props.diagramClassName);
-        setLoading(false);
+        if (props.onRenderComplete) {
+          props.onRenderComplete(diagramData);
+        }
       });
     });
 
@@ -1221,7 +1215,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
           }
         }}
       />
-      {loading && (
+      {props.isLoading && (
         <div
           style={{
             position: "absolute",

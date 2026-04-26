@@ -86,6 +86,7 @@ const browserClientConfig = {
         {
           from: path.resolve(__dirname, "..", "..", "packages", "lsp", "dist"),
           to: path.join(__dirname, "server", "dist"),
+          force: true,
         },
       ],
     }),

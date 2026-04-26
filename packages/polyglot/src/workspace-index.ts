@@ -479,13 +479,16 @@ export class WorkspaceIndex {
             if (nameIds.length === 0) byName.delete(entry.name);
           }
 
-          // Remove from childrenOf
+          // Remove from childrenOf (as a child of its parent)
           const parentChildren = childrenOf.get(entry.parentId);
           if (parentChildren) {
             const idx = parentChildren.indexOf(id);
             if (idx !== -1) parentChildren.splice(idx, 1);
             if (parentChildren.length === 0) childrenOf.delete(entry.parentId);
           }
+
+          // Remove its own children array to prevent orphaned arrays
+          childrenOf.delete(id);
         }
 
         // 2. Merge new entries for this file

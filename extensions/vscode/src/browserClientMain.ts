@@ -149,6 +149,20 @@ class MemoryFileSystemProvider implements vscode.FileSystemProvider {
     this._emitter.fire([{ type: isNew ? vscode.FileChangeType.Created : vscode.FileChangeType.Changed, uri }]);
   }
 
+  writeFiles(entries: [vscode.Uri, Uint8Array][]): void {
+    const events: vscode.FileChangeEvent[] = [];
+    for (const [uri, content] of entries) {
+      const parts = uri.path.split("/");
+      for (let i = 1; i < parts.length - 1; i++) {
+        this._mkdirp(parts.slice(0, i + 1).join("/"));
+      }
+      const isNew = !this.files.has(uri.path);
+      this.files.set(uri.path, content);
+      events.push({ type: isNew ? vscode.FileChangeType.Created : vscode.FileChangeType.Changed, uri });
+    }
+    this._emitter.fire(events);
+  }
+
   delete(uri: vscode.Uri): void {
     this.files.delete(uri.path);
     this.directories.delete(uri.path);
@@ -1314,6 +1328,36 @@ function scaffoldTemplateFiles(memFs: MemoryFileSystemProvider, workspaceUri: vs
     },
   };
 
+  if (template === "stress-test") {
+    const massiveModelRows = [];
+    massiveModelRows.push('model MassiveModel "A massive model with thousands of elements"');
+    for (let i = 0; i < 5000; i++) {
+      massiveModelRows.push(`  Real v${i}(start = ${i});`);
+    }
+    massiveModelRows.push("equation");
+    for (let i = 0; i < 4999; i++) {
+      massiveModelRows.push(`  der(v${i}) = v${i + 1} - v${i};`);
+    }
+    massiveModelRows.push(`  der(v4999) = -v4999;`);
+    massiveModelRows.push("end MassiveModel;\n");
+
+    const entries: [vscode.Uri, Uint8Array][] = [];
+    entries.push([Uri.joinPath(workspaceUri, "MassiveModel.mo"), encoder.encode(massiveModelRows.join("\n"))]);
+
+    for (let i = 0; i < 500; i++) {
+      // Use SysML2 ':>' syntax for inheritance to avoid syntax errors
+      const extendsClause = i > 0 ? `:> Component_${String(i - 1).padStart(3, "0")} ` : "";
+      const content = `package Component_${String(i).padStart(3, "0")} {\n  part def Component_${String(i).padStart(3, "0")} ${extendsClause}{\n    attribute localValue : Real = ${i}.0;\n  }\n}\n`;
+      entries.push([
+        Uri.joinPath(workspaceUri, `Component_${String(i).padStart(3, "0")}.sysml`),
+        encoder.encode(content),
+      ]);
+    }
+    memFs.writeFiles(entries);
+    console.log("[blank-project] Scaffolded stress-test workspace files.");
+    return;
+  }
+
   const files = templates[template];
   if (files) {
     for (const [name, content] of Object.entries(files)) {
@@ -1894,6 +1938,22 @@ async function initWorkspaceAndTree(
           const readmeUri = Uri.joinPath(workspaceUri, "README.md");
           await workspace.fs.writeFile(hmiUri, encoder.encode(hmiHtml));
           await workspace.fs.writeFile(readmeUri, encoder.encode(readmeMd));
+          break;
+        }
+        case "stress-test": {
+          filename = "MassiveModel.mo";
+          const massiveModelRows = [];
+          massiveModelRows.push('model MassiveModel "A massive model with thousands of elements"');
+          for (let i = 0; i < 5000; i++) {
+            massiveModelRows.push(`  Real v${i}(start = ${i});`);
+          }
+          massiveModelRows.push("equation");
+          for (let i = 0; i < 4999; i++) {
+            massiveModelRows.push(`  der(v${i}) = v${i + 1} - v${i};`);
+          }
+          massiveModelRows.push(`  der(v4999) = -v4999;`);
+          massiveModelRows.push("end MassiveModel;\n");
+          content = massiveModelRows.join("\n");
           break;
         }
       }

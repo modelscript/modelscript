@@ -177,6 +177,7 @@ export default function MorselEditor(props: MorselEditorProps) {
   const diagramEditorRef = useRef<DiagramEditorHandle>(null);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [loadingMessage, setLoadingMessage] = useState("Loading…");
+  const [isDiagramLoading, setIsDiagramLoading] = useState(false);
   const [treeVisible, setTreeVisible] = useState(true);
   const [windowWidth, setWindowWidth] = useState(typeof window !== "undefined" ? window.innerWidth : 1200);
   const [splitRatio, setSplitRatio] = useState(0.5);
@@ -444,24 +445,23 @@ export default function MorselEditor(props: MorselEditorProps) {
   useEffect(() => {
     if (!selectedTreeClassName) {
       setDiagramData(null);
-      diagramEditorRef.current?.hideLoading();
+      setIsDiagramLoading(false);
       return;
     }
 
     let cancelled = false;
-    diagramEditorRef.current?.showLoading();
+    setIsDiagramLoading(true);
 
     getDiagramData(DOCUMENT_URI, selectedTreeClassName, "diagram")
       .then((data) => {
         if (cancelled) return;
         setDiagramData(data);
-        diagramEditorRef.current?.hideLoading();
       })
       .catch((e) => {
         console.error("Failed to fetch diagram data:", e);
         if (cancelled) return;
         setDiagramData(null);
-        diagramEditorRef.current?.hideLoading();
+        setIsDiagramLoading(false);
       });
 
     return () => {
@@ -949,6 +949,12 @@ export default function MorselEditor(props: MorselEditorProps) {
                           diagramClassName={selectedTreeClassName}
                           selectedName={selectedComponent}
                           theme={colorMode === "dark" ? "vs-dark" : "light"}
+                          isLoading={isDiagramLoading}
+                          onRenderComplete={(data) => {
+                            if (!data?.isLoading) {
+                              setIsDiagramLoading(false);
+                            }
+                          }}
                           onSelect={(name) => {
                             setSelectedComponent(name);
                           }}

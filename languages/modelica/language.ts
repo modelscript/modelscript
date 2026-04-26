@@ -555,13 +555,12 @@ export default language({
 
                 const targetChildren = db.childrenOf(targetId);
                 const targetEntry = db.symbol(targetId);
-                console.log(`[RESOLVE_DEBUG] Walking inheritance for ${targetEntry.name} (id=${targetId})`);
 
                 for (const child of targetChildren) {
                   if (child.kind === "Extends") {
                     const baseClass = db.query<SymbolEntry | null>("resolvedBaseClass", child.id);
                     if (baseClass) {
-                      console.log(`[RESOLVE_DEBUG]   ${targetEntry.name} extends ${baseClass.name}`);
+                      // (debug log removed)
                       walk(baseClass.id);
                     }
                   } else if (
@@ -588,7 +587,7 @@ export default language({
 
             // Return the resolver closure
             return (name: string, encapsulated = false, skipInherited = false): SymbolEntry | null => {
-              console.log(`[RESOLVE_DEBUG] Resolving ${name} in ${self.name} (skipInherited=${skipInherited})`);
+              // (debug log removed)
               // 1. Direct elements
               const direct = directByName.get(name);
               if (direct) return direct;

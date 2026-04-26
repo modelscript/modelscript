@@ -68,6 +68,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
       updateTimeout = null;
       diagramRequestNonce++;
       const currentNonce = diagramRequestNonce;
+      webviewPanel.webview.postMessage({ type: "loading" });
       this.requestDiagramData(webviewPanel, uriString, currentDiagramType, {
         isCanceled: () => diagramRequestNonce !== currentNonce,
       });
@@ -79,6 +80,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
       updateTimeout = setTimeout(() => {
         diagramRequestNonce++;
         const currentNonce = diagramRequestNonce;
+        webviewPanel.webview.postMessage({ type: "loading" });
         this.requestDiagramData(webviewPanel, uriString, currentDiagramType, {
           isCanceled: () => diagramRequestNonce !== currentNonce,
         });
@@ -176,6 +178,29 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
               immediateUpdate();
               break;
             }
+            case "getProperties": {
+              // On-demand property loading: fetch expensive data (parameters, docs, icon)
+              // only when the user clicks a component node
+              try {
+                const props = await this.client.sendRequest("modelscript/getComponentProperties", {
+                  uri: uriString,
+                  componentName: message.componentName,
+                });
+                webviewPanel.webview.postMessage({
+                  type: "componentProperties",
+                  componentName: message.componentName,
+                  properties: props,
+                });
+              } catch (e) {
+                console.error("[diagram] Error fetching component properties:", e);
+                webviewPanel.webview.postMessage({
+                  type: "componentProperties",
+                  componentName: message.componentName,
+                  properties: null,
+                });
+              }
+              break;
+            }
           }
 
           if (lspMethod) {
@@ -223,9 +248,15 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
       debouncedUpdate();
     });
 
-    // Make sure we get rid of the listener when our editor is closed.
+    // React to semantic pipeline completions from the language server
+    const projectTreeListener = this.client.onNotification("modelscript/projectTreeChanged", () => {
+      debouncedUpdate();
+    });
+
+    // Make sure we get rid of the listeners when our editor is closed.
     webviewPanel.onDidDispose(() => {
       changeDocumentSubscription.dispose();
+      projectTreeListener.dispose();
     });
 
     // Initial load
