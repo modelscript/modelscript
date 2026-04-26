@@ -15,9 +15,9 @@ FROM node:22-alpine AS deps
 RUN apk add --no-cache python3 make g++
 WORKDIR /app
 COPY package.json package-lock.json ./
-COPY languages/modelica/tree-sitter-modelica/package.json languages/modelica/tree-sitter-modelica/grammar.js languages/modelica/tree-sitter-modelica/binding.gyp languages/modelica/tree-sitter-modelica/
-COPY languages/modelica/tree-sitter-modelica/bindings languages/modelica/tree-sitter-modelica/bindings
-COPY languages/modelica/tree-sitter-modelica/src languages/modelica/tree-sitter-modelica/src
+COPY languages/modelica/package.json languages/modelica/grammar.js languages/modelica/binding.gyp languages/modelica/
+COPY languages/modelica/bindings languages/modelica/bindings
+COPY languages/modelica/src languages/modelica/src
 COPY packages/core/package.json packages/core/
 COPY apps/api/package.json apps/api/
 COPY apps/morsel/package.json apps/morsel/
@@ -29,14 +29,14 @@ COPY apps/ide/package.json apps/ide/
 COPY packages/cosim/package.json packages/cosim/
 RUN --mount=type=cache,target=/root/.npm npm ci --ignore-scripts
 # Build native addon from committed parser source
-RUN cd languages/modelica/tree-sitter-modelica && npx node-gyp rebuild
+RUN cd languages/modelica && npx node-gyp rebuild
 
 # ==============================================================================
 # API
 # ==============================================================================
 FROM deps AS build-api-false
 COPY packages/core packages/core
-COPY languages/modelica/tree-sitter-modelica languages/modelica/tree-sitter-modelica
+COPY languages/modelica languages/modelica
 COPY packages/cosim packages/cosim
 COPY apps/api apps/api
 RUN npm run clean -w packages/core && npx tsc -p packages/core \
@@ -55,8 +55,8 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY packages/core/package.json packages/core/
 COPY packages/cosim/package.json packages/cosim/
-COPY languages/modelica/tree-sitter-modelica/package.json languages/modelica/tree-sitter-modelica/grammar.js languages/modelica/tree-sitter-modelica/binding.gyp languages/modelica/tree-sitter-modelica/
-COPY languages/modelica/tree-sitter-modelica/bindings languages/modelica/tree-sitter-modelica/bindings
+COPY languages/modelica/package.json languages/modelica/grammar.js languages/modelica/binding.gyp languages/modelica/
+COPY languages/modelica/bindings languages/modelica/bindings
 COPY apps/api/package.json apps/api/
 COPY apps/morsel/package.json apps/morsel/
 COPY apps/web/package.json apps/web/
@@ -65,8 +65,8 @@ COPY packages/lsp/package.json packages/lsp/
 COPY extensions/vscode/package.json extensions/vscode/
 COPY apps/ide/package.json apps/ide/
 RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev --ignore-scripts
-COPY --from=deps /app/languages/modelica/tree-sitter-modelica/src languages/modelica/tree-sitter-modelica/src
-COPY --from=deps /app/languages/modelica/tree-sitter-modelica/build languages/modelica/tree-sitter-modelica/build
+COPY --from=deps /app/languages/modelica/src languages/modelica/src
+COPY --from=deps /app/languages/modelica/build languages/modelica/build
 COPY --from=deps /app/node_modules/@modelscript/tree-sitter-modelica node_modules/@modelscript/tree-sitter-modelica
 COPY --from=build-api /app/packages/core/dist packages/core/dist
 COPY --from=build-api /app/packages/cosim/dist packages/cosim/dist
@@ -81,7 +81,7 @@ CMD ["node", "apps/api/dist/main.js"]
 FROM deps AS build-morsel-false
 COPY scripts scripts
 COPY packages/core packages/core
-COPY languages/modelica/tree-sitter-modelica languages/modelica/tree-sitter-modelica
+COPY languages/modelica languages/modelica
 COPY apps/morsel apps/morsel
 RUN node scripts/download-msl.cjs && node scripts/download-sysml2.cjs && cp scripts/ModelicaStandardLibrary_v4.1.0.zip apps/morsel/public/ && cp scripts/SysML-v2-Release-2026-03.zip apps/morsel/public/
 RUN npm run clean -w packages/core && npx tsc -p packages/core \
@@ -137,7 +137,7 @@ RUN bash scripts/download-model.sh
 FROM deps AS build-ide-false
 COPY scripts scripts
 COPY packages/core packages/core
-COPY languages/modelica/tree-sitter-modelica languages/modelica/tree-sitter-modelica
+COPY languages/modelica languages/modelica
 COPY packages/lsp packages/lsp
 COPY extensions/vscode extensions/vscode
 COPY apps/ide apps/ide
@@ -169,7 +169,7 @@ COPY apps/web/package.json apps/web/
 COPY apps/cli/package.json apps/cli/
 COPY packages/core/package.json packages/core/
 COPY packages/lsp/package.json packages/lsp/
-COPY languages/modelica/tree-sitter-modelica/package.json languages/modelica/tree-sitter-modelica/grammar.js languages/modelica/tree-sitter-modelica/binding.gyp languages/modelica/tree-sitter-modelica/
+COPY languages/modelica/package.json languages/modelica/grammar.js languages/modelica/binding.gyp languages/modelica/
 RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev --ignore-scripts
 COPY --from=build-ide /app/apps/ide/dist apps/ide/dist
 COPY --from=build-ide /app/apps/ide/vscode-web apps/ide/vscode-web
