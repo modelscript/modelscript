@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc -b && vite build",
+    "clean": "rimraf dist",
     "dev": "vite --port 3001",
     "lint": "eslint .",
     "preview": "vite preview"

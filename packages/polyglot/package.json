@@ -24,6 +24,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "clean": "rimraf dist",
     "generate": "tsx src/cli.ts",
     "playground": "tsx src/cli.ts playground",
     "test": "vitest run",
@@ -36,7 +37,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.5.2",
-    "tree-sitter-cli": "^0.26.8",
+    "tree-sitter-cli": "0.25.10",
     "ts-node": "^10.9.2",
     "tsx": "^4.21.0",
     "typescript": "^6.0.2",

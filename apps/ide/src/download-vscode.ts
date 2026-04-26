@@ -3,9 +3,9 @@
 // Downloads the VS Code Web stable build and extracts it to ./vscode-web/.
 // Uses the same mechanism as @vscode/test-web's download.ts.
 
-import { existsSync, mkdirSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "fs";
 import { get } from "https";
-import { join } from "path";
+import { dirname, join } from "path";
 import { pipeline } from "stream/promises";
 import { createGunzip } from "zlib";
 
@@ -93,8 +93,39 @@ async function main() {
   console.log("Downloading and extracting...");
   await downloadAndExtract(info.url, DEST);
 
-  // Write a version marker
-  writeFileSync(join(DEST, "version"), info.version);
+  // The web-standalone build includes several extensions that are missing their JS code (dist folder).
+  // If left as-is, VS Code throws "Not Found" activation errors.
+  // Because VS Code's web workbench embeds extension metadata directly, patching package.json
+  // does not prevent it from trying to load these missing files.
+  // We fix this by creating stub entry points that export empty activate() functions.
+  const extsDir = join(DEST, "extensions");
+  if (existsSync(extsDir)) {
+    const stub = `"use strict";\nObject.defineProperty(exports, "__esModule", { value: true });\nexports.activate = function() {};\nexports.deactivate = function() {};\n`;
+    const exts = readdirSync(extsDir);
+    for (const ext of exts) {
+      const pkgPath = join(extsDir, ext, "package.json");
+      if (existsSync(pkgPath)) {
+        const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
+
+        const createStubIfNeeded = (entryPoint: string | undefined) => {
+          if (!entryPoint) return;
+          let file = entryPoint;
+          if (file.startsWith("./")) file = file.slice(2);
+          if (!file.endsWith(".js")) file += ".js";
+
+          const fullPath = join(extsDir, ext, file);
+          if (!existsSync(fullPath)) {
+            mkdirSync(dirname(fullPath), { recursive: true });
+            writeFileSync(fullPath, stub);
+          }
+        };
+
+        createStubIfNeeded(pkg.browser);
+        createStubIfNeeded(pkg.main);
+      }
+    }
+  }
+
   console.log("Done!");
 }
 

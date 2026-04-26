@@ -49,8 +49,8 @@
     }
   },
   "scripts": {
-    "build": "tsc",
-    "clean": "rimraf build",
+    "build": "node build.js && tsc",
+    "clean": "rimraf dist build *.wasm",
     "generate": "tree-sitter generate --abi=14 && node-gyp rebuild && tree-sitter build --wasm",
     "install": "node-gyp rebuild",
     "prestart": "tree-sitter build --wasm",
@@ -66,7 +66,7 @@
   "devDependencies": {
     "prebuildify": "^6.0.1",
     "tree-sitter": "^0.22.4",
-    "tree-sitter-cli": "^0.26.8"
+    "tree-sitter-cli": "0.25.10"
   },
   "peerDependencies": {
     "tree-sitter": "^0.22.4"

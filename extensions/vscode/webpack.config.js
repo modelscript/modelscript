@@ -60,19 +60,11 @@ const browserClientConfig = {
           to: path.join(__dirname, "server", "dist", "web-tree-sitter.wasm"),
         },
         {
-          from: path.resolve(
-            __dirname,
-            "..",
-            "..",
-            "languages",
-            "modelica",
-            "tree-sitter-modelica",
-            "tree-sitter-modelica.wasm",
-          ),
+          from: path.resolve(__dirname, "..", "..", "languages", "modelica", "tree-sitter-modelica.wasm"),
           to: path.join(__dirname, "server", "dist", "tree-sitter-modelica.wasm"),
         },
         {
-          from: path.resolve(__dirname, "..", "..", "languages", "sysml2", "polyglot", "tree-sitter-sysml2.wasm"),
+          from: path.resolve(__dirname, "..", "..", "languages", "sysml2", "tree-sitter-sysml2.wasm"),
           to: path.join(__dirname, "server", "dist", "tree-sitter-sysml2.wasm"),
         },
         {

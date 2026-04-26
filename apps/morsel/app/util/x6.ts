@@ -41,7 +41,7 @@ export interface X6Markup {
 
 // ── Color inversion for dark mode (core algorithm from @modelscript/core) ──
 
-import { invertColorHelmlab, invertSvgColors } from "@modelscript/core";
+import { invertColorHelmlab, invertSvgColors } from "@modelscript/utils";
 export { invertColorHelmlab, invertSvgColors };
 
 /** Regex that matches rgb() or hex color values. */

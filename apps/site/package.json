@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "react-router build",
+    "clean": "rimraf build .react-router",
     "dev": "react-router dev",
     "lint": "eslint app",
     "start": "react-router-serve ./build/server/index.js",
@@ -21,6 +22,7 @@
     "isbot": "^5.1.31",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
+    "react-is": "^19.0.0",
     "react-router": "^7.13.1",
     "set-cookie-parser": "^2.6.0"
   },

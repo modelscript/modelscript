@@ -10,7 +10,8 @@
     "./language": "./dist/language.js"
   },
   "scripts": {
-    "build": "node build.js && prettier --write . --ignore-unknown && tsc"
+    "build": "node build.js && prettier --write . --ignore-unknown && tsc",
+    "clean": "rimraf dist *.wasm"
   },
   "dependencies": {
     "@modelscript/polyglot": "*"

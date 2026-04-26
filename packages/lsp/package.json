@@ -5,6 +5,7 @@
   "scripts": {
     "prebuild": "node ../../scripts/download-msl.cjs && node ../../scripts/download-sysml2.cjs",
     "build": "node ../../scripts/download-msl.cjs && node ../../scripts/download-sysml2.cjs && webpack --mode production --devtool hidden-source-map",
+    "clean": "rimraf dist",
     "compile": "node ../../scripts/download-msl.cjs && node ../../scripts/download-sysml2.cjs && webpack",
     "lint": "eslint src",
     "watch": "webpack --watch"

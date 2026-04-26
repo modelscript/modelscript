@@ -10,6 +10,7 @@
         "{projectRoot}/build",
         "{projectRoot}/public",
         "{projectRoot}/src/**/*.js",
+        "{projectRoot}/*.wasm",
         "{projectRoot}/bindings/**/*.o",
         "{projectRoot}/build/**/*.node",
         "{projectRoot}/build/**/*.wasm",
