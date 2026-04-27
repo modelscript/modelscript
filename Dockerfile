@@ -67,7 +67,7 @@ COPY apps/ide/package.json apps/ide/
 RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev --ignore-scripts
 COPY --from=deps /app/languages/modelica/src languages/modelica/src
 COPY --from=deps /app/languages/modelica/build languages/modelica/build
-COPY --from=deps /app/node_modules/@modelscript/tree-sitter-modelica node_modules/@modelscript/tree-sitter-modelica
+COPY --from=deps /app/node_modules/@modelscript/modelica node_modules/@modelscript/modelica
 COPY --from=build-api /app/packages/core/dist packages/core/dist
 COPY --from=build-api /app/packages/cosim/dist packages/cosim/dist
 COPY --from=build-api /app/apps/api/dist apps/api/dist
