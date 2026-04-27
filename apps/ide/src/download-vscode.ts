@@ -78,7 +78,7 @@ async function downloadAndExtract(url: string, dest: string): Promise<void> {
 }
 
 async function main() {
-  if (existsSync(join(DEST, "version"))) {
+  if (existsSync(join(DEST, "package.json"))) {
     console.log("VS Code Web already downloaded at", DEST);
     return;
   }
