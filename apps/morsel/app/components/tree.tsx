@@ -215,7 +215,7 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
               )}
             </span>
           ) : (
-            <span style={{ width: 12 }} />
+            <span style={{ width: 16 }} />
           )}
           <span>
             <ClassIcon className={compositeName} />
