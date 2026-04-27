@@ -1270,7 +1270,15 @@ function computeSemanticTokens(textDocument: TextDocument): SemanticTokens {
     return builder.build();
   }
 
-  const tree = docTree.tree;
+  let tree = docTree.tree;
+  if (docTree.text !== text && sharedContext) {
+    try {
+      tree = sharedContext.parse(textDocument.uri.endsWith(".sysml") ? ".sysml" : ".mo", text) as any;
+    } catch {
+      // fallback to old tree, but it will cause invalid tokens
+    }
+  }
+
   const rawTokens: {
     line: number;
     char: number;
@@ -4049,6 +4057,48 @@ connection.onRequest("modelscript/getClassIcon", (params: { className: string; u
     return null;
   }
 });
+
+// Custom request: get source code of a class
+connection.onRequest(
+  "modelscript/getClassSource",
+  (params: { className: string }): { content: string | null; error?: string } => {
+    try {
+      const unifiedIndex = unifiedWorkspace.toUnifiedPartial();
+      const parts = params.className.split(".");
+      let entries = unifiedIndex.byName.get(parts[parts.length - 1]);
+      let entry = undefined;
+
+      if (entries) {
+        for (const id of entries) {
+          const e = unifiedIndex.symbols.get(id);
+          if (e && getCompositeName(e, unifiedIndex) === params.className) {
+            entry = e;
+            break;
+          }
+        }
+      }
+
+      let uri = entry?.resourceId;
+      if (!uri) {
+        // Fallback: try to resolve file path via index
+        uri =
+          (globalWorkspaceIndex as any).getFileUriForFQN?.(params.className) ||
+          (sysml2WorkspaceIndex as any).getFileUriForFQN?.(params.className);
+      }
+
+      if (uri && sharedContext) {
+        let fsPath = uri.startsWith("file://") ? uri.substring(7) : uri.replace(/^modelica:\/?\/?/, "/");
+        if (!fsPath.startsWith("/")) fsPath = "/" + fsPath;
+        const text = sharedContext.fs.read(fsPath);
+        return { content: text || null };
+      }
+
+      return { content: null, error: `Class not found: ${params.className}` };
+    } catch (e) {
+      return { content: null, error: String(e) };
+    }
+  },
+);
 
 // Custom request: run a .mos script file
 connection.onRequest("modelscript/runScript", async (params: { uri: string }) => {

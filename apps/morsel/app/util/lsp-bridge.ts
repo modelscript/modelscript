@@ -162,7 +162,7 @@ export interface TreeNodeInfo {
   name: string;
   compositeName?: string;
   localizedName?: string;
-  kind?: string;
+  classKind?: string;
   hasChildren: boolean;
   iconSvg?: string | null;
 }
@@ -279,6 +279,10 @@ export async function flatten(name: string, uri?: string): Promise<{ text: strin
 
 export async function getLibraryTree(uri: string, parentId?: string): Promise<TreeNodeInfo[]> {
   return lsp().sendRequest("modelscript/getLibraryTree", { uri, parentId });
+}
+
+export async function getClassSource(className: string): Promise<{ content: string | null; error?: string }> {
+  return lsp().sendRequest("modelscript/getClassSource", { className });
 }
 
 export async function getClassIcon(className: string, uri?: string): Promise<string | null> {

@@ -400,12 +400,31 @@ export default function MorselEditor(props: MorselEditorProps) {
     }
   }, [view, treeVisible]);
 
-  const loadClass = (className: string, kind?: string) => {
+  const loadClass = async (className: string, kind?: string) => {
     // Store the name so the diagram tab auto-selects if it's a model/block
     if (kind === "model" || kind === "block") {
       pendingModelNameRef.current = className;
     } else {
       pendingModelNameRef.current = null;
+    }
+
+    if (view === View.DIAGRAM || isSplit(view)) {
+      setTimeout(() => {
+        diagramEditorRef.current?.fitContent();
+      }, 100);
+    }
+
+    try {
+      const { getClassSource } = await import("~/util/lsp-bridge");
+      const { content, error } = await getClassSource(className);
+      if (content && editorRef.current) {
+        editorRef.current.setValue(content);
+        codeEditorRef.current?.sync();
+      } else if (error) {
+        console.warn(`Failed to fetch source for ${className}:`, error);
+      }
+    } catch (e) {
+      console.error(`Error loading source for ${className}:`, e);
     }
   };
 
@@ -418,7 +437,6 @@ export default function MorselEditor(props: MorselEditorProps) {
 
   const handleTreeSelect = useCallback(
     (className: string, kind: string) => {
-      diagramEditorRef.current?.showLoading();
       if (editorRef.current?.getValue() !== lastLoadedContentRef.current && pendingSelection !== className) {
         setPendingSelection(className);
         setDirtyDialogOpen(true);

@@ -162,7 +162,7 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
         onDoubleClick={(e) => {
           e.stopPropagation();
           onHighlight?.(compositeName);
-          onSelect(compositeName, node.kind ?? "class");
+          onSelect(compositeName, node.classKind ?? "class");
         }}
         draggable
         onDragStart={(e) => {
@@ -170,7 +170,7 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
             "application/json",
             JSON.stringify({
               className: compositeName,
-              classKind: node.kind,
+              classKind: node.classKind,
               iconSvg: node.iconSvg ?? null,
             }),
           );
