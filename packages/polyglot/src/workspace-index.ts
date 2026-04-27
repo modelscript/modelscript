@@ -798,8 +798,10 @@ export class WorkspaceIndex {
         isPackage = true;
       } else if (fileName.endsWith(".mo")) {
         name = fileName.slice(0, -3); // Strip .mo
+      } else if (fileName.endsWith(".sysml")) {
+        name = fileName.slice(0, -6); // Strip .sysml
       } else {
-        continue; // Skip non-Modelica files
+        continue; // Skip unsupported files
       }
 
       if (!name) continue;

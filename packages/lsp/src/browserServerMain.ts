@@ -456,7 +456,7 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
     if (!serverDistBase.startsWith("http://") && !serverDistBase.startsWith("https://")) {
       // Fallback: use the worker's origin with the known static path
       const origin = (globalThis as unknown as { location?: { origin?: string } }).location?.origin;
-      if (origin) {
+      if (origin && (origin.startsWith("http://") || origin.startsWith("https://"))) {
         serverDistBase = `${origin}/static/devextensions/server/dist`;
         connection.console.info(`[tree-sitter] Using fallback serverDistBase: ${serverDistBase}`);
       }
@@ -3630,6 +3630,7 @@ interface TreeNodeInfo {
   classKind: string;
   hasChildren: boolean;
   iconSvg?: string;
+  language?: string;
 }
 
 // ── Fast library tree: works directly from SymbolIndex metadata ──
@@ -3650,19 +3651,64 @@ const CLASS_KIND_KEYWORDS = [
   "optimization",
 ];
 
+/** Map SysML2 grammar rule names to human-readable class kinds for the tree view. */
+const SYSML2_RULE_TO_KIND: Record<string, string> = {
+  Package: "package",
+  LibraryPackage: "package",
+  PartDefinition: "part def",
+  AttributeDefinition: "attribute def",
+  PortDefinition: "port def",
+  ItemDefinition: "item def",
+  OccurrenceDefinition: "occurrence def",
+  ConnectionDefinition: "connection def",
+  InterfaceDefinition: "interface def",
+  AllocationDefinition: "allocation def",
+  FlowDefinition: "flow def",
+  ActionDefinition: "action def",
+  StateDefinition: "state def",
+  CalculationDefinition: "calc def",
+  ConstraintDefinition: "constraint def",
+  RequirementDefinition: "requirement def",
+  ConcernDefinition: "concern def",
+  UseCaseDefinition: "use case def",
+  CaseDefinition: "case def",
+  AnalysisCaseDefinition: "analysis case def",
+  VerificationCaseDefinition: "verification def",
+  ViewDefinition: "view def",
+  ViewpointDefinition: "viewpoint def",
+  RenderingDefinition: "rendering def",
+  MetadataDefinition: "metadata def",
+  EnumerationDefinition: "enumeration",
+};
+
+/** Visible SysML2 symbol kinds in the library tree. */
+const SYSML2_TREE_KINDS = new Set(["Definition", "Package", "Enumeration"]);
+
 /**
- * Extract the class kind from a classPrefixes metadata string.
- * The metadata is the full text of the ClassPrefixes CST node,
- * e.g. "partial model", "expandable connector", "pure function".
+ * Extract the class kind from a symbol entry.
+ * For Modelica, uses the classPrefixes metadata string.
+ * For SysML2, uses the grammar rule name.
  */
-function classKindFromPrefixes(prefixesText: unknown): string {
+function classKindFromEntry(entry: any): string {
+  if (entry.language === "sysml2") {
+    return SYSML2_RULE_TO_KIND[entry.ruleName] ?? entry.kind?.toLowerCase() ?? "definition";
+  }
+  // Modelica path
+  const prefixesText = entry.metadata?.classPrefixes;
   if (typeof prefixesText !== "string" || !prefixesText) return "class";
   const lower = prefixesText.toLowerCase();
-  // Find the last class-kind keyword in the string
   for (let i = CLASS_KIND_KEYWORDS.length - 1; i >= 0; i--) {
     if (lower.includes(CLASS_KIND_KEYWORDS[i])) return CLASS_KIND_KEYWORDS[i];
   }
   return "class";
+}
+
+/** Check if a symbol entry should be shown in the library tree. */
+function isTreeVisible(entry: any): boolean {
+  if (entry.language === "sysml2") {
+    return SYSML2_TREE_KINDS.has(entry.kind);
+  }
+  return entry.kind === "Class";
 }
 
 /** FQN → SymbolId cache — avoids O(n) scans on repeated getTreeChildren calls. */
@@ -3678,9 +3724,8 @@ function getCompositeName(entry: any, index: any): string {
 }
 
 connection.onRequest("modelscript/getLibraryTree", (params: { uri: string; parentId?: string }): TreeNodeInfo[] => {
-  // Use toTreeIndex() — returns the full unified index if cached,
-  // or a lightweight skeleton from file metadata (no parsing needed)
-  const unifiedIndex = globalWorkspaceIndex.toTreeIndex();
+  // Use the unified workspace — merges all language indices
+  const unifiedIndex = unifiedWorkspace.toTreeIndex();
   if (!unifiedIndex) return [];
 
   // Invalidate FQN cache when the index changes
@@ -3700,14 +3745,15 @@ function getTreeChildrenFast(index: any, parentId?: string): TreeNodeInfo[] {
     const rootChildIds = index.childrenOf.get(null) ?? [];
     for (const id of rootChildIds) {
       const entry = index.symbols.get(id);
-      if (!entry || entry.kind !== "Class") continue;
+      if (!entry || !isTreeVisible(entry)) continue;
       const compositeName = entry.name; // Root classes have no parent
       nodes.push({
         id: compositeName,
         name: entry.name,
         compositeName,
-        classKind: classKindFromPrefixes(entry.metadata?.classPrefixes),
+        classKind: classKindFromEntry(entry),
         hasChildren: hasClassChildren(index, id),
+        language: entry.language,
       });
       // Cache FQN → ID
       fqnCache.set(compositeName, id);
@@ -3719,7 +3765,7 @@ function getTreeChildrenFast(index: any, parentId?: string): TreeNodeInfo[] {
     if (parentIdNum === undefined) {
       // Cache miss — search the index (one-time cost per FQN)
       for (const [id, entry] of index.symbols) {
-        if (entry.kind === "Class" && getCompositeName(entry, index) === parentId) {
+        if (isTreeVisible(entry) && getCompositeName(entry, index) === parentId) {
           parentIdNum = id;
           fqnCache.set(parentId, id);
           break;
@@ -3731,14 +3777,15 @@ function getTreeChildrenFast(index: any, parentId?: string): TreeNodeInfo[] {
       const childIds = index.childrenOf.get(parentIdNum) ?? [];
       for (const id of childIds) {
         const entry = index.symbols.get(id);
-        if (!entry || entry.kind !== "Class") continue;
+        if (!entry || !isTreeVisible(entry)) continue;
         const compositeName = parentId + "." + entry.name;
         nodes.push({
           id: compositeName,
           name: entry.name,
           compositeName,
-          classKind: classKindFromPrefixes(entry.metadata?.classPrefixes),
+          classKind: classKindFromEntry(entry),
           hasChildren: hasClassChildren(index, id),
+          language: entry.language,
         });
         // Cache FQN → ID
         fqnCache.set(compositeName, id);
@@ -3751,13 +3798,13 @@ function getTreeChildrenFast(index: any, parentId?: string): TreeNodeInfo[] {
   return nodes;
 }
 
-/** Check if a symbol has any Class children using the childrenOf map. */
+/** Check if a symbol has any visible children using the childrenOf map. */
 function hasClassChildren(index: any, symbolId: number): boolean {
   const childIds = index.childrenOf.get(symbolId);
   if (!childIds) return false;
   for (const id of childIds) {
     const entry = index.symbols.get(id);
-    if (entry?.kind === "Class") return true;
+    if (entry && isTreeVisible(entry)) return true;
   }
   return false;
 }
@@ -3770,21 +3817,22 @@ connection.onRequest(
     if (!query) return { results: [] };
 
     const limit = params.limit ?? 50;
-    const unifiedIndex = globalWorkspaceIndex.toTreeIndex();
+    const unifiedIndex = unifiedWorkspace.toTreeIndex();
     if (!unifiedIndex) return { results: [] };
 
     const results: TreeNodeInfo[] = [];
 
     for (const [id, entry] of unifiedIndex.symbols) {
-      if (entry.kind !== "Class") continue;
+      if (!isTreeVisible(entry)) continue;
       const compositeName = getCompositeName(entry, unifiedIndex);
       if (compositeName.toLowerCase().includes(query)) {
         results.push({
           id: compositeName,
           name: entry.name,
           compositeName,
-          classKind: classKindFromPrefixes(entry.metadata?.classPrefixes),
+          classKind: classKindFromEntry(entry),
           hasChildren: hasClassChildren(unifiedIndex, id),
+          language: entry.language,
         });
         if (results.length >= limit) break;
       }

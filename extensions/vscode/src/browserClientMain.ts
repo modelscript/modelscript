@@ -18,7 +18,7 @@ import { ModelicaNotebookController } from "./notebookController";
 import { ModelicaNotebookSerializer } from "./notebookSerializer";
 import { registerRegistryView } from "./registryTreeProvider";
 import { RequirementsEditorProvider } from "./requirementsEditorProvider";
-import { SysML2PaletteProvider } from "./sysml2PaletteProvider";
+
 import { VerificationPanel } from "./verificationPanel";
 
 import { SimulationPanel } from "./simulationPanel";
@@ -399,18 +399,6 @@ export async function activate(context: vscode.ExtensionContext) {
   // Register ModelScript package registry tree view (Extensions-bar style)
   registerRegistryView(context);
 
-  // Register SysML2 element palette tree view
-  const sysml2PaletteProvider = new SysML2PaletteProvider();
-  sysml2PaletteProvider.onDragStart = (data) => {
-    diagramProvider.postToActiveWebviews({ type: "startPlacement", ...data });
-  };
-  const sysml2PaletteView = vscode.window.createTreeView("modelscript.sysml2Palette", {
-    treeDataProvider: sysml2PaletteProvider,
-    dragAndDropController: sysml2PaletteProvider,
-    canSelectMany: false,
-  });
-  context.subscriptions.push(sysml2PaletteView);
-
   // Register co-simulation panel (sidebar webview)
   const cosimProvider = new CosimViewProvider(context.extensionUri, client);
   context.subscriptions.push(
@@ -738,7 +726,7 @@ export async function activate(context: vscode.ExtensionContext) {
     commands.registerCommand("modelscript.addToDiagram", async (firstArg: unknown, secondArg?: string) => {
       if (!client) return;
 
-      // Support both context menu (LibraryTreeItem / SysML2PaletteItem) and direct call
+      // Support both context menu (LibraryTreeItem) and direct call
       let className: string;
       let classKind: string;
       if (firstArg && typeof firstArg === "object" && "info" in firstArg) {

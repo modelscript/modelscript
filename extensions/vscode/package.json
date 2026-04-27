@@ -605,14 +605,8 @@
       "explorer": [
         {
           "id": "modelscript.libraryTree",
-          "name": "Modelica Libraries",
+          "name": "Libraries",
           "visibility": "visible"
-        },
-        {
-          "id": "modelscript.sysml2Palette",
-          "name": "SysML2 Elements",
-          "visibility": "visible",
-          "when": "resourceExtname == .sysml || modelscript.sysml2Active"
         }
       ],
       "modelscript-cosim": [
@@ -666,7 +660,7 @@
     "viewsWelcome": [
       {
         "view": "modelscript.libraryTree",
-        "contents": "Open a Modelica file to browse libraries."
+        "contents": "Open a Modelica or SysML2 file to browse libraries."
       },
       {
         "view": "modelscript.mqttTree",
