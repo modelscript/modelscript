@@ -3,12 +3,13 @@
 
 # @modelscript/modelica
 
-Polyglot query sets exclusively for the Modelica language parser syntax nodes, allowing pattern matching functionality mapped directly over WASM AST.
+Tree-sitter grammar and Polyglot query sets for Modelica, providing pattern matching and AST transformation functionality mapped directly over the native and WASM parser.
 
 ## Scripts
 
 | Command         | Description                          |
 | --------------- | ------------------------------------ |
 | `npm run build` | Clean and compile TypeScript outputs |
-| `npm run test`  | Run unit tests for this sub-package  |
-| `npm run lint`  | Run ESLint checks                    |
+| `npm run test`  | Run unit tests for this package      |
+| `npm run generate` | Generate and build tree-sitter parser |
+| `npm run clean` | Remove compiled build artifacts      |

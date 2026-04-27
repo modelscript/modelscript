@@ -1,10 +1,13 @@
 <div align="center"><b>&#1576;&#1587;&#1605; &#1575;&#1604;&#1604;&#1607; &#1575;&#1604;&#1585;&#1581;&#1605;&#1606; &#1575;&#1604;&#1585;&#1581;&#1610;&#1605;</b></div>
 <div align="center">In the name of Allah, the Compassionate, the Merciful</div>
 
-# sysml2-polyglot plugins
+# @modelscript/sysml2
 
-Sub-dependencies extending polyglot features supporting specific tree-sitter bindings for SysML v2 syntax patterns.
+Tree-sitter grammar and Polyglot query sets for SysML v2, providing pattern matching and AST transformation functionality mapped over the native and WASM parser.
 
-## Purpose
+## Scripts
 
-These language plugins ensure our SysML v2 parser correctly interfaces with generic `@modelscript/sysml2` wrappers.
+| Command         | Description                          |
+| --------------- | ------------------------------------ |
+| `npm run build` | Clean and compile TypeScript outputs |
+| `npm run clean` | Remove compiled build artifacts      |
