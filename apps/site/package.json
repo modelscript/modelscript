@@ -34,7 +34,7 @@
     "@types/react-dom": "^19.1.9",
     "arg": "^5.0.1",
     "babel-dead-code-elimination": "^1.0.6",
-    "exit-hook": "2.2.1",
+    "exit-hook": "5.1.0",
     "pathe": "^1.1.2",
     "pkg-types": "^2.3.0",
     "react-refresh": "^0.14.0",
