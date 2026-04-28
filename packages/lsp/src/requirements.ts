@@ -107,7 +107,12 @@ function isVerifyEntry(entry: SymbolEntry): boolean {
 export function getRequirements(
   index: SymbolIndex,
   uri?: string,
-  verificationResults?: { requirementId: number; constraintId?: number; isSatisfied: boolean }[],
+  verificationResults?: {
+    requirementId: number;
+    constraintId?: number;
+    isSatisfied: boolean;
+    requirementName?: string;
+  }[],
 ): RequirementRow[] {
   const rows: RequirementRow[] = [];
   let seqId = 1;
@@ -143,9 +148,20 @@ export function getRequirements(
     if (verificationResults && verificationResults.length > 0) {
       let hasCheckedConstraint = false;
       let hasFailure = false;
+
+      console.log(`[DEBUG getRequirements] Checking requirement: ${entry.name} (ID: ${entry.id})`);
+      console.log(`[DEBUG getRequirements] Constraint IDs: ${constraintIds.join(", ")}`);
+      console.log(`[DEBUG getRequirements] Verification results:`, JSON.stringify(verificationResults));
+
       const reqResults = verificationResults.filter(
-        (r) => r.requirementId === entry.id || (r.constraintId !== undefined && constraintIds.includes(r.constraintId)),
+        (r) =>
+          r.requirementId === entry.id ||
+          r.requirementName === entry.name ||
+          (r.constraintId !== undefined && constraintIds.includes(r.constraintId)),
       );
+
+      console.log(`[DEBUG getRequirements] Filtered results for ${entry.name}:`, JSON.stringify(reqResults));
+
       for (const res of reqResults) {
         hasCheckedConstraint = true;
         if (!res.isSatisfied) hasFailure = true;

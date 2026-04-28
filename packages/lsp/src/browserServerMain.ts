@@ -835,31 +835,17 @@ function runSemanticPipeline(
     let unifiedIndex = unifiedWorkspace.toUnifiedPartial();
 
     if (changedNames && changedNames.size > 0) {
-      const affectedUris = new Set<string>();
-      for (const name of changedNames) {
-        const symIds = unifiedIndex.byName.get(name);
-        if (symIds) {
-          for (const id of symIds) {
-            const entry = unifiedIndex.symbols.get(id);
-            if (entry && entry.resourceId && entry.resourceId !== effectiveUri) {
-              affectedUris.add(entry.resourceId);
-            }
+      if (revalidationTimer) clearTimeout(revalidationTimer);
+      revalidationTimer = setTimeout(() => {
+        for (const doc of documents.all()) {
+          const effectiveDocUri = doc.uri.startsWith("modelscript-lib://global")
+            ? "file://" + doc.uri.substring("modelscript-lib://global".length)
+            : doc.uri;
+          if (effectiveDocUri !== effectiveUri) {
+            validateTextDocument(doc);
           }
         }
-      }
-      if (affectedUris.size > 0) {
-        if (revalidationTimer) clearTimeout(revalidationTimer);
-        revalidationTimer = setTimeout(() => {
-          for (const doc of documents.all()) {
-            const effectiveDocUri = doc.uri.startsWith("modelscript-lib://global")
-              ? "file://" + doc.uri.substring("modelscript-lib://global".length)
-              : doc.uri;
-            if (effectiveDocUri !== effectiveUri && affectedUris.has(effectiveDocUri)) {
-              validateTextDocument(doc);
-            }
-          }
-        }, 500);
-      }
+      }, 500);
     }
 
     const cstTreeWrapper = getSharedCstTreeWrapper();
@@ -1040,28 +1026,14 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
       const unifiedIndex = unifiedWorkspace.toUnifiedPartial();
 
       if (changedNames && changedNames.size > 0) {
-        const affectedUris = new Set<string>();
-        for (const name of changedNames) {
-          const symIds = unifiedIndex.byName.get(name);
-          if (symIds) {
-            for (const id of symIds) {
-              const entry = unifiedIndex.symbols.get(id);
-              if (entry && entry.resourceId && entry.resourceId !== textDocument.uri) {
-                affectedUris.add(entry.resourceId);
-              }
+        if (revalidationTimer) clearTimeout(revalidationTimer);
+        revalidationTimer = setTimeout(() => {
+          for (const doc of documents.all()) {
+            if (doc.uri !== textDocument.uri) {
+              validateTextDocument(doc);
             }
           }
-        }
-        if (affectedUris.size > 0) {
-          if (revalidationTimer) clearTimeout(revalidationTimer);
-          revalidationTimer = setTimeout(() => {
-            for (const doc of documents.all()) {
-              if (doc.uri !== textDocument.uri && affectedUris.has(doc.uri)) {
-                validateTextDocument(doc);
-              }
-            }
-          }, 500);
-        }
+        }, 500);
       }
 
       if (globalSysML2QueryEngine) {
@@ -5764,6 +5736,206 @@ connection.onRequest("modelscript/getTraceabilityMatrix", (params: { uri: string
     return { sources: [], targets: [], links: [] };
   }
 });
+
+// ── Markdown Variable Resolution: resolve {{ Pkg.Def.attr }} from the index ──
+
+/**
+ * Rule names that commonly carry initializer values (= expr).
+ * Covers both SysML2 and Modelica entries.
+ */
+const VALUE_CARRYING_RULES = new Set([
+  // SysML2
+  "AttributeUsage",
+  "ReferenceUsage",
+  "DefaultReferenceUsage",
+  "PartUsage",
+  "PortUsage",
+  "ItemUsage",
+  "EnumerationUsage",
+  "ConstraintUsage",
+  // Modelica (PascalCase rule names from the Modelica grammar)
+  "ComponentDeclaration",
+  "ShortClassDefinition",
+]);
+
+connection.onRequest("modelscript/resolveMarkdownVars", (): { values: Record<string, string> } => {
+  try {
+    const db = unifiedWorkspace.toUnifiedPartial();
+    const values: Record<string, string> = {};
+
+    // Debug: log the full state of the unified index and document manager
+    const allDocUris = documents.all().map((d) => d.uri);
+    console.log(
+      `[resolveMarkdownVars] db.symbols.size=${db.symbols.size}, documents.all().length=${allDocUris.length}`,
+    );
+    console.log(`[resolveMarkdownVars] document URIs: ${JSON.stringify(allDocUris)}`);
+
+    let matchCount = 0;
+    for (const entry of db.symbols.values()) {
+      if (!entry.name) continue;
+      if (!VALUE_CARRYING_RULES.has(entry.ruleName)) continue;
+      matchCount++;
+
+      // Build the qualified name by walking up the parent chain
+      const qualifiedName = getCompositeName(entry, db);
+
+      // Extract the value from the source text using byte ranges.
+      if (entry.resourceId) {
+        const fullText = documents.get(entry.resourceId)?.getText() ?? documentTrees.get(entry.resourceId)?.text;
+        console.log(
+          `[resolveMarkdownVars] entry=${entry.name}, qualifiedName=${qualifiedName}, rule=${entry.ruleName}, resourceId=${entry.resourceId}, hasText=${!!fullText}, startByte=${entry.startByte}, endByte=${entry.endByte}`,
+        );
+        if (fullText) {
+          const sourceText = fullText.substring(entry.startByte, entry.endByte);
+          const eqIdx = sourceText.indexOf("=");
+          if (eqIdx !== -1) {
+            // Strip trailing semicolons, braces, whitespace
+            const valueText = sourceText
+              .substring(eqIdx + 1)
+              .replace(/[;}\s]+$/, "")
+              .trim();
+            if (valueText) {
+              values[qualifiedName] = valueText;
+            }
+          }
+        }
+      }
+    }
+
+    console.log(
+      `[resolveMarkdownVars] matchCount=${matchCount}, returning ${Object.keys(values).length} values: ${JSON.stringify(values)}`,
+    );
+    return { values };
+  } catch (e) {
+    console.error("[resolveMarkdownVars] Error:", e);
+    return { values: {} };
+  }
+});
+
+// ── Markdown Content Resolution: render ::requirements and ::diagram blocks ──
+
+connection.onRequest(
+  "modelscript/resolveMarkdownContent",
+  (): {
+    requirements: Record<string, { rows: { reqId: string; name: string; text: string; status: string }[] }>;
+    diagrams: Record<
+      string,
+      { components: { name: string; type: string }[]; connections: { from: string; to: string }[] }
+    >;
+  } => {
+    try {
+      const db = unifiedWorkspace.toUnifiedPartial();
+      const requirementsMap: Record<string, { rows: { reqId: string; name: string; text: string; status: string }[] }> =
+        {};
+      const diagramsMap: Record<
+        string,
+        { components: { name: string; type: string }[]; connections: { from: string; to: string }[] }
+      > = {};
+
+      // --- Requirements ---
+      const allResults: any[] = [];
+      for (const res of verificationResultsByUri.values()) {
+        allResults.push(...res);
+      }
+      const allReqs = getRequirements(db, undefined, allResults);
+      console.log(`[resolveMarkdownContent] allReqs.length=${allReqs.length}`);
+
+      // Group requirements by their parent package name (the "target" in ::requirements{target="X"})
+      for (const req of allReqs) {
+        // Find the parent package name for this requirement
+        let parentName = "";
+        if (req.id !== undefined) {
+          const entry = db.symbols.get(req.id);
+          if (entry?.parentId !== null && entry?.parentId !== undefined) {
+            const parent = db.symbols.get(entry.parentId);
+            if (parent) parentName = parent.name;
+          }
+        }
+
+        if (!parentName) continue;
+        if (!requirementsMap[parentName]) {
+          requirementsMap[parentName] = { rows: [] };
+        }
+        requirementsMap[parentName].rows.push({
+          reqId: req.reqId,
+          name: req.name,
+          text: req.text,
+          status: req.status,
+        });
+      }
+
+      // --- Diagrams (component lists for Modelica/SysML2 classes) ---
+      let diagramCandidates = 0;
+      for (const entry of db.symbols.values()) {
+        if (!entry.name) continue;
+        // Match Modelica ClassDefinition or SysML2 PartDefinition
+        if (entry.ruleName !== "ClassDefinition" && entry.ruleName !== "PartDefinition") continue;
+        diagramCandidates++;
+
+        const components: { name: string; type: string }[] = [];
+        const connections: { from: string; to: string }[] = [];
+        const childIds = db.childrenOf.get(entry.id);
+        if (childIds) {
+          for (const cid of childIds) {
+            const child = db.symbols.get(cid);
+            if (!child || !child.name) continue;
+            // Modelica: ComponentDeclaration (kind=Component)
+            // SysML2: Usage entries (kind=Part, Port, etc. or ruleName=PartUsage)
+            if (child.kind === "Component" || child.kind === "Usage" || child.ruleName?.endsWith("Usage")) {
+              let typeName = (child.metadata?.typeName as string) ?? "";
+              if (!typeName) {
+                try {
+                  const engine = child.resourceId?.endsWith(".sysml")
+                    ? globalSysML2QueryEngine
+                    : globalModelicaQueryEngine;
+                  if (engine) {
+                    const resolved = engine.query<any>("resolvedType", child.id);
+                    if (resolved && resolved.name) typeName = resolved.name;
+                  }
+                } catch (e) {
+                  // ignore
+                }
+              }
+              if (!typeName) {
+                const grandChildIds = db.childrenOf.get(child.id);
+                if (grandChildIds) {
+                  for (const gcid of grandChildIds) {
+                    const gc = db.symbols.get(gcid);
+                    if (gc && gc.ruleName === "TypeSpecifier") {
+                      typeName = gc.name;
+                      break;
+                    }
+                  }
+                }
+              }
+              if (!typeName) typeName = child.ruleName;
+              components.push({ name: child.name, type: typeName });
+            }
+            // Collect connection equations
+            if (child.ruleName === "ConnectEquation" && child.metadata) {
+              const ref1 = child.metadata.ref1 as string;
+              const ref2 = child.metadata.ref2 as string;
+              if (ref1 && ref2) {
+                connections.push({ from: ref1, to: ref2 });
+              }
+            }
+          }
+        }
+        if (components.length > 0) {
+          diagramsMap[entry.name] = { components, connections };
+        }
+      }
+
+      console.log(
+        `[resolveMarkdownContent] diagramCandidates=${diagramCandidates}, diagramsMap keys=${JSON.stringify(Object.keys(diagramsMap))}, requirementsMap keys=${JSON.stringify(Object.keys(requirementsMap))}`,
+      );
+      return { requirements: requirementsMap, diagrams: diagramsMap };
+    } catch (e) {
+      console.error("[resolveMarkdownContent] Error:", e);
+      return { requirements: {}, diagrams: {} };
+    }
+  },
+);
 
 connection.onRequest("modelscript/runVerification", async (params: { uri: string }) => {
   try {

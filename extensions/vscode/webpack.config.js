@@ -13,7 +13,7 @@ const TerserPlugin = require("terser-webpack-plugin");
 /** @type WebpackConfig */
 const browserClientConfig = {
   context: __dirname,
-  mode: "none",
+  mode: "development",
   target: "webworker",
   entry: {
     browserClientMain: "./src/browserClientMain.ts",
@@ -112,6 +112,7 @@ const webviewConfig = {
     chatWorker: "./src/webview/chatWorker.ts",
     cadWebview: "./src/webview/cadWebview.tsx",
     analysisWebview: "./src/webview/analysisWebview.ts",
+    markdownPreview: "./src/webview/markdownPreview.ts",
   },
   output: {
     filename: "[name].js",

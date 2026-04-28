@@ -8,9 +8,9 @@ export interface VerificationResult {
   requirementId: number;
   constraintId: number;
   isSatisfied: boolean;
-  /** Array of boolean values over time, or a single boolean if static */
   timeSeriesResult?: boolean[];
   message?: string;
+  requirementName?: string;
 }
 
 /**
@@ -435,13 +435,6 @@ export class VerificationRunner {
     const results: VerificationResult[] = [];
     const db = this.db;
 
-    // A. Evaluate constraint children directly defined within the case
-    const localConstraints = db.childrenOf(verifyCaseId).filter((c) => this.isConstraintEntry(c));
-
-    for (const constraint of localConstraints) {
-      results.push(this.evaluateConstraintOverTime(constraint, verifyCaseId, simResult));
-    }
-
     // B. Find verify-requirement children and evaluate their target requirements
     const verifyMembers = db
       .childrenOf(verifyCaseId)
@@ -451,6 +444,27 @@ export class VerificationRunner {
           c.ruleName.includes("RequirementUsage") ||
           c.ruleName.includes("ObjectiveRequirementUsage"),
       );
+
+    // A. Evaluate constraint children directly defined within the case
+    const localConstraints = db.childrenOf(verifyCaseId).filter((c) => this.isConstraintEntry(c));
+
+    for (const constraint of localConstraints) {
+      if (verifyMembers.length > 0) {
+        // If the case has objectives, local constraints apply to those objectives
+        for (const vMember of verifyMembers) {
+          const reqTarget =
+            this.resolveTypeEntry(vMember) ?? db.byName(vMember.name || "").find((t) => this.isRequirementEntry(t));
+          if (reqTarget && this.isRequirementEntry(reqTarget)) {
+            const res = this.evaluateConstraintOverTime(constraint, reqTarget.id, simResult);
+            res.requirementName = reqTarget.name;
+            results.push(res);
+          }
+        }
+      } else {
+        // Otherwise, apply them to the case itself
+        results.push(this.evaluateConstraintOverTime(constraint, verifyCaseId, simResult));
+      }
+    }
 
     for (const vMember of verifyMembers) {
       // Resolve the target Requirement by checking the item's type

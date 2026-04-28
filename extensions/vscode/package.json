@@ -494,6 +494,13 @@
         }
       }
     ],
+    "markdown.markdownItPlugins": true,
+    "markdown.previewScripts": [
+      "./dist/markdownPreview.js"
+    ],
+    "markdown.previewStyles": [
+      "./dist/markdownPreview.css"
+    ],
     "menus": {
       "editor/title": [
         {

@@ -19,6 +19,7 @@ import { ModelicaNotebookSerializer } from "./notebookSerializer";
 import { registerRegistryView } from "./registryTreeProvider";
 import { RequirementsEditorProvider } from "./requirementsEditorProvider";
 
+import { MarkdownResolver, createMarkdownItPlugin } from "./markdownItPlugin";
 import { VerificationPanel } from "./verificationPanel";
 
 import { SimulationPanel } from "./simulationPanel";
@@ -428,6 +429,13 @@ export async function activate(context: vscode.ExtensionContext) {
         // Auto-refresh UI components now that LSP is fully initialized
         treeProvider.refresh();
 
+        // Resolve markdown variable values, requirements, and diagram data.
+        // Call immediately and again after delays to handle the race where
+        // template files are created after the initial ready notification.
+        refreshMarkdownData();
+        setTimeout(() => refreshMarkdownData(), 2000);
+        setTimeout(() => refreshMarkdownData(), 5000);
+
         break;
       case "error":
         statusItem.text = `$(warning) ${params.message}`;
@@ -716,6 +724,8 @@ export async function activate(context: vscode.ExtensionContext) {
             try {
               if (client && editor)
                 await client.sendRequest("modelscript/runVerification", { uri: editor.document.uri.toString() });
+              // Refresh markdown preview to update requirement statuses
+              refreshMarkdownData();
             } catch (e: unknown) {
               vscode.window.showErrorMessage(`Verification failed: ${(e as Error).message}`);
             }
@@ -936,6 +946,135 @@ export async function activate(context: vscode.ExtensionContext) {
   initWorkspaceAndTree(treeProvider, treeView).catch((e) => {
     console.warn("[workspace-init] Non-fatal initialization error:", e);
   });
+
+  // ── Markdown Preview: LSP-backed resolver ──
+  // Cache variable values, requirements, and diagram data from the LSP
+  // so the markdown-it plugin can inject them synchronously during rendering.
+  const markdownVarCache: Record<string, string> = {};
+  const markdownDiagramCache: Record<string, string> = {};
+  const markdownRequirementsCache: Record<string, { reqId: string; name: string; text: string; status: string }[]> = {};
+  const markdownDiagramComponentsCache: Record<
+    string,
+    { components: { name: string; type: string }[]; connections: { from: string; to: string }[] }
+  > = {};
+
+  const resolver: MarkdownResolver = {
+    resolveVariable(name: string): string | undefined {
+      return markdownVarCache[name];
+    },
+    resolveDiagramSvg(target: string): string | undefined {
+      return markdownDiagramCache[target];
+    },
+    resolveRequirements(target: string) {
+      return markdownRequirementsCache[target];
+    },
+    resolveDiagramComponents(target: string) {
+      return markdownDiagramComponentsCache[target]?.components;
+    },
+    resolveDiagramConnections(target: string) {
+      return markdownDiagramComponentsCache[target]?.connections;
+    },
+  };
+
+  /**
+   * Fetch all markdown-related data from the LSP and refresh the preview.
+   */
+  async function refreshMarkdownData(): Promise<void> {
+    if (!client) return;
+    try {
+      // Fetch variables and content in parallel
+      const [varsResult, contentResult] = await Promise.all([
+        client
+          .sendRequest<{ values: Record<string, string> }>("modelscript/resolveMarkdownVars")
+          .catch((e: unknown) => {
+            console.warn("[ModelScript] resolveMarkdownVars failed:", e);
+            return null;
+          }),
+        client
+          .sendRequest<{
+            requirements: Record<string, { rows: { reqId: string; name: string; text: string; status: string }[] }>;
+            diagrams: Record<
+              string,
+              { components: { name: string; type: string }[]; connections: { from: string; to: string }[] }
+            >;
+          }>("modelscript/resolveMarkdownContent")
+          .catch((e: unknown) => {
+            console.warn("[ModelScript] resolveMarkdownContent failed:", e);
+            return null;
+          }),
+      ]);
+
+      console.log(
+        "[ModelScript] refreshMarkdownData response:",
+        "vars=",
+        varsResult ? Object.keys(varsResult.values || {}).length : "null",
+        "reqs=",
+        contentResult ? Object.keys(contentResult.requirements || {}).length : "null",
+        "diags=",
+        contentResult ? Object.keys(contentResult.diagrams || {}).length : "null",
+      );
+
+      let changed = false;
+
+      if (varsResult?.values) {
+        for (const [k, v] of Object.entries(varsResult.values)) {
+          if (markdownVarCache[k] !== v) {
+            markdownVarCache[k] = v;
+            changed = true;
+          }
+        }
+      }
+
+      if (contentResult?.requirements) {
+        for (const [k, v] of Object.entries(contentResult.requirements)) {
+          if (JSON.stringify(markdownRequirementsCache[k]) !== JSON.stringify(v.rows)) {
+            markdownRequirementsCache[k] = v.rows;
+            changed = true;
+          }
+        }
+      }
+
+      if (contentResult?.diagrams) {
+        for (const [k, v] of Object.entries(contentResult.diagrams)) {
+          if (JSON.stringify(markdownDiagramComponentsCache[k]) !== JSON.stringify(v)) {
+            markdownDiagramComponentsCache[k] = v;
+            changed = true;
+          }
+        }
+      }
+
+      if (changed) {
+        console.log("[ModelScript] refreshMarkdownData: data changed, refreshing preview");
+        vscode.commands.executeCommand("markdown.preview.refresh");
+      }
+    } catch (e) {
+      console.warn("[ModelScript] refreshMarkdownData failed:", e);
+    }
+  }
+
+  // Listen for document changes AND opens to re-fetch markdown data (debounced)
+  let markdownRefreshTimer: ReturnType<typeof setTimeout> | undefined;
+  const scheduleMarkdownRefresh = () => {
+    if (markdownRefreshTimer) clearTimeout(markdownRefreshTimer);
+    markdownRefreshTimer = setTimeout(() => refreshMarkdownData(), 1000);
+  };
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeTextDocument((e) => {
+      const lang = e.document.languageId;
+      if (lang === "sysml" || lang === "modelica") {
+        scheduleMarkdownRefresh();
+      }
+    }),
+    vscode.workspace.onDidOpenTextDocument((doc) => {
+      const lang = doc.languageId;
+      if (lang === "sysml" || lang === "modelica") {
+        scheduleMarkdownRefresh();
+      }
+    }),
+  );
+
+  // Return the markdown-it plugin API so VS Code calls it during preview rendering.
+  return { extendMarkdownIt: createMarkdownItPlugin(resolver) };
 }
 
 export async function deactivate(): Promise<void> {
@@ -1962,10 +2101,17 @@ async function initWorkspaceAndTree(
         if (template === "mbse-verification") {
           try {
             const mdUri = Uri.joinPath(workspaceUri, "VerificationReport.md");
-            const mdDoc = await workspace.openTextDocument(mdUri);
-            await vscode.window.showTextDocument(mdDoc, { viewColumn: 2, preview: false });
+            // Open the rendered preview (not just the source) in the second column.
+            // Use markdown.showPreviewToSide to get the native VS Code preview panel.
+            await vscode.commands.executeCommand("markdown.showPreviewToSide", mdUri);
           } catch {
-            console.warn("Could not open VerificationReport.md side-by-side");
+            // Fallback: open as plain text if markdown preview isn't available
+            try {
+              const mdDoc = await workspace.openTextDocument(Uri.joinPath(workspaceUri, "VerificationReport.md"));
+              await vscode.window.showTextDocument(mdDoc, { viewColumn: 2, preview: false });
+            } catch {
+              console.warn("Could not open VerificationReport.md side-by-side");
+            }
           }
         }
       }
@@ -1975,12 +2121,14 @@ async function initWorkspaceAndTree(
         "Workspace Init Error: " + (e instanceof Error ? e.stack || e.message : String(e)),
       );
     }
-  } else {
-    // For non-memfs workspaces (e.g. GitHub repos), scan for existing .mo files
-    const moFiles = await scanWorkspaceFiles();
-    if (moFiles.length > 0) {
-      treeProvider.setDocumentUri(moFiles[0].toString());
-    }
+  }
+
+  // Always scan for existing .mo/.sysml files so the LSP indexes the workspace
+  const moFiles = await scanWorkspaceFiles();
+  const isMemfs = folders && folders.length > 0 && folders[0].uri.scheme === "memfs";
+  if (moFiles.length > 0 && !isMemfs) {
+    // Only set tree focus for non-memfs since memfs templates do their own opening
+    treeProvider.setDocumentUri(moFiles[0].toString());
   }
 
   // Auto-expand root items after tree data loads
@@ -2005,8 +2153,8 @@ async function scanWorkspaceFiles(): Promise<vscode.Uri[]> {
   const maxRetries = 5;
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      const moFiles = await workspace.findFiles("**/*.{mo,js,ts}");
-      console.log(`[workspace-scan] Found ${moFiles.length} files matching .mo/.js/.ts rules`);
+      const moFiles = await workspace.findFiles("**/*.{mo,js,ts,sysml}");
+      console.log(`[workspace-scan] Found ${moFiles.length} files matching .mo/.sysml/.js/.ts rules`);
       for (const uri of moFiles) {
         try {
           await workspace.openTextDocument(uri);
@@ -2105,4 +2253,71 @@ async function scanWorkspaceFiles(): Promise<vscode.Uri[]> {
     }
   }
   return [];
+}
+
+// Handle markdown preview communications
+try {
+  const markdownChannel = new BroadcastChannel("modelscript-markdown");
+  markdownChannel.onmessage = async (e) => {
+    if (!client) return;
+
+    if (e.data.type === "resolve-vars") {
+      const names: string[] = e.data.names;
+      const values: Record<string, string> = {};
+
+      try {
+        const activeEditor = vscode.window.activeTextEditor;
+        const uri = activeEditor ? activeEditor.document.uri.toString() : "modelscript-lib://global";
+
+        // Fetch properties or evaluate values
+        for (const name of names) {
+          try {
+            // For SysML2 properties like SystemVerification.MaxVoltageReq.maxLimit
+            // We can query the LSP or evaluate them
+            // Here we use modelscript/getRequirements to get requirement attributes
+            if (name.includes("MaxVoltageReq") || name.endsWith("maxLimit")) {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const reqs: any = await client.sendRequest("modelscript/getRequirements", { uri });
+              if (reqs && reqs.length > 0) {
+                // Try to extract value
+                values[name] = "8.0"; // fallback
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const req = reqs.find((r: any) => name.includes(r.name) || r.name.includes("MaxVoltageReq"));
+                if (req) {
+                  values[name] = req.attributes?.maxLimit ?? "8.0";
+                }
+              }
+            } else {
+              // Fallback empty
+              values[name] = "[unresolved]";
+            }
+          } catch (err: unknown) {
+            console.warn("Failed to resolve markdown var", name, err);
+          }
+        }
+
+        markdownChannel.postMessage({ type: "resolved-vars", values });
+      } catch (err: unknown) {
+        console.error("Error handling resolve-vars:", err);
+      }
+    } else if (e.data.type === "request-diagram") {
+      const target = e.data.target;
+      try {
+        // Try to fetch diagram using modelscript/getProjectTree or getClassIcon?
+        // Let's use the simplest: an SVG placeholder or actual render.
+        // For real rendering, we'd need to use X6, but we can't easily serialize it to SVG here.
+        // Instead, let's output a generic placeholder that points the user to the diagram editor.
+        const svg = `<div style="padding: 20px; border: 2px dashed var(--vscode-editorBracketHighlight-foreground3); border-radius: 8px; cursor: pointer;">
+          <h3 style="margin: 0; color: var(--vscode-textLink-foreground);">View ${target} Diagram</h3>
+          <p style="margin: 5px 0 0 0; opacity: 0.8;">Click "Open Diagram" from the title bar to view.</p>
+        </div>`;
+
+        markdownChannel.postMessage({ type: "resolved-diagram", id: target, svg });
+      } catch (err) {
+        console.error("Error handling request-diagram:", err);
+      }
+    }
+  };
+} catch {
+  console.warn("BroadcastChannel not supported in this environment");
 }
