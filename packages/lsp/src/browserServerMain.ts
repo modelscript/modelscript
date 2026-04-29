@@ -845,7 +845,11 @@ documents.onDidChangeContent((change) => {
   // === TIER 1: Instant parse + syntax errors (0ms) ===
   // Parse and send syntax errors immediately — before any debounce.
   // Tree-sitter incremental parse is ~2ms even for large files.
-  if (parserReady && parser && (uri.endsWith(".mo") || uri.endsWith(".mos"))) {
+  const isModelica = uri.endsWith(".mo") || uri.endsWith(".mos");
+  const isSysml = uri.endsWith(".sysml");
+  const isStep = /\.(step|stp|p21)$/i.test(uri);
+
+  if (isModelica && parserReady && parser) {
     try {
       const text = change.document.getText();
       const tree = updateDocumentTree(uri, text);
@@ -855,6 +859,42 @@ documents.onDidChangeContent((change) => {
       // semantic squigglies stay visible until the next semantic pass replaces them.
       const cachedSemantic = lastSemanticDiagnostics.get(uri) || [];
       connection.sendDiagnostics({ uri, diagnostics: [...syntaxDiags, ...cachedSemantic] });
+    } catch (e: any) {
+      connection.console.warn(`[instant-parse] Error for ${uri}: ${e.message}`);
+    }
+  } else if (isSysml && sysml2ParserReady && sysml2Parser) {
+    try {
+      const text = change.document.getText();
+      const oldCached = documentTrees.get(uri);
+      let tree: any;
+      if (oldCached && oldCached.text !== text) {
+        const edit = computeTreeEdit(oldCached.text, text);
+        oldCached.tree.edit(edit as never);
+        tree = sysml2Parser.parse(text, oldCached.tree);
+      } else if (oldCached) {
+        tree = oldCached.tree;
+      } else {
+        tree = sysml2Parser.parse(text);
+      }
+      if (tree) {
+        documentTrees.set(uri, { text, tree, classCache: new Map() });
+        const syntaxDiags = collectSyntaxErrors(tree.rootNode, change.document);
+        const cachedSemantic = lastSemanticDiagnostics.get(uri) || [];
+        connection.sendDiagnostics({ uri, diagnostics: [...syntaxDiags, ...cachedSemantic] });
+      }
+    } catch (e: any) {
+      connection.console.warn(`[instant-parse] Error for ${uri}: ${e.message}`);
+    }
+  } else if (isStep && stepParserReady && stepParser) {
+    try {
+      const text = change.document.getText();
+      const tree = stepParser.parse(text);
+      if (tree) {
+        documentTrees.set(uri, { text, tree, classCache: new Map() });
+        const syntaxDiags = collectSyntaxErrors(tree.rootNode, change.document);
+        const cachedSemantic = lastSemanticDiagnostics.get(uri) || [];
+        connection.sendDiagnostics({ uri, diagnostics: [...syntaxDiags, ...cachedSemantic] });
+      }
     } catch (e: any) {
       connection.console.warn(`[instant-parse] Error for ${uri}: ${e.message}`);
     }
