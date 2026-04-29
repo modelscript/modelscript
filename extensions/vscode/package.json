@@ -188,6 +188,11 @@
         "command": "modelscript.registry.uninstall",
         "title": "Uninstall Package",
         "icon": "$(trash)"
+      },
+      {
+        "command": "modelscript.scm.generateCommitMessage",
+        "title": "Sparkle: Generate Commit Message",
+        "icon": "$(sparkle)"
       }
     ],
     "configuration": [
@@ -607,6 +612,12 @@
           "command": "modelscript.registry.uninstall",
           "when": "view == modelscript.registryView && viewItem == installed-package",
           "group": "inline"
+        }
+      ],
+      "scm/title": [
+        {
+          "command": "modelscript.scm.generateCommitMessage",
+          "group": "navigation"
         }
       ]
     },

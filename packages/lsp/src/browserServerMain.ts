@@ -63,6 +63,21 @@ import {
   generateUniqueName,
 } from "./sysml2DiagramEdits";
 
+// @ts-ignore
+import { SemanticEdit, computeSemanticDiff } from "@modelscript/polyglot/semantic-diff.js";
+// @ts-ignore
+import { INDEXER_HOOKS as modelicaIndexerHooks } from "@modelscript/modelica/indexer_config.js";
+// @ts-ignore
+import { INDEXER_HOOKS as sysml2IndexerHooks } from "@modelscript/sysml2/indexer_config.js";
+// @ts-ignore
+import { wrapEntry as modelicaWrapEntry } from "@modelscript/modelica/ast_classes.js";
+// @ts-ignore
+import { wrapEntry as sysml2WrapEntry } from "@modelscript/sysml2/ast_classes.js";
+// @ts-ignore
+import { QUERY_HOOKS as modelicaQueryHooks } from "@modelscript/modelica/query_hooks.js";
+// @ts-ignore
+import { QUERY_HOOKS as sysml2QueryHooks } from "@modelscript/sysml2/query_hooks.js";
+
 import { Language, Parser, Node as SyntaxNode, Tree as TreeSitterTree } from "web-tree-sitter";
 
 import {
@@ -6367,6 +6382,100 @@ connection.onRequest(
       console.error("[resolveMarkdownContent] Error:", e);
       return { requirements: {}, diagrams: {} };
     }
+  },
+);
+
+connection.onRequest(
+  "modelscript/generateCommitMessage",
+  async (params: { changes: { uri: string; oldText: string; newText: string }[] }) => {
+    let descriptions: string[] = [];
+    let scopeStr = "";
+
+    for (const change of params.changes) {
+      const isSysml = change.uri.endsWith(".sysml");
+      const isModelica = change.uri.endsWith(".mo");
+      if (!isSysml && !isModelica) continue;
+
+      scopeStr = isSysml ? "sysml" : "modelica";
+
+      const hooks = isSysml ? sysml2IndexerHooks : modelicaIndexerHooks;
+      const qHooks = isSysml ? sysml2QueryHooks : modelicaQueryHooks;
+      const wrapEntry = isSysml ? sysml2WrapEntry : modelicaWrapEntry;
+      const langParser = isSysml ? sysml2Parser : parser;
+
+      if (!langParser) continue;
+
+      try {
+        const oldTree = langParser.parse(change.oldText);
+        const oldIndexer = new SymbolIndexer(hooks);
+        const oldIndex = oldIndexer.index(oldTree.rootNode);
+        const oldDb = new QueryEngine(oldIndex, qHooks);
+        const oldRootEntries = oldIndex.childrenOf.get(null) || [];
+
+        const newTree = langParser.parse(change.newText);
+        const newIndexer = new SymbolIndexer(hooks);
+        const newIndex = newIndexer.index(newTree.rootNode);
+        const newDb = new QueryEngine(newIndex, qHooks);
+        const newRootEntries = newIndex.childrenOf.get(null) || [];
+
+        const maxLen = Math.max(oldRootEntries.length, newRootEntries.length);
+        for (let i = 0; i < maxLen; i++) {
+          let oldNode = null;
+          let newNode = null;
+          if (i < oldRootEntries.length) {
+            const entry = oldIndex.symbols.get(oldRootEntries[i]);
+            if (entry) oldNode = wrapEntry(entry, oldDb);
+          }
+          if (i < newRootEntries.length) {
+            const entry = newIndex.symbols.get(newRootEntries[i]);
+            if (entry) newNode = wrapEntry(entry, newDb);
+          }
+
+          if (!oldNode && !newNode) continue;
+
+          // Special handling if one side is null (deleted or inserted root node)
+          let diff: SemanticEdit;
+          if (!oldNode && newNode) {
+            diff = {
+              action: "insert",
+              newNode,
+              description: `Added ${newNode.entry.kind} '${newNode.entry.name || "unnamed"}'`,
+            };
+          } else if (oldNode && !newNode) {
+            diff = {
+              action: "delete",
+              oldNode,
+              description: `Deleted ${oldNode.entry.kind} '${oldNode.entry.name || "unnamed"}'`,
+            };
+          } else {
+            diff = computeSemanticDiff(oldNode!, newNode!, {
+              nodeFactory: wrapEntry as any,
+              orderAgnostic: true,
+            });
+          }
+
+          const collectDescriptions = (edit: SemanticEdit) => {
+            if (edit.description) descriptions.push(edit.description);
+            if (edit.children) {
+              for (const child of edit.children) collectDescriptions(child);
+            }
+          };
+
+          collectDescriptions(diff);
+        }
+      } catch (e) {
+        console.error("Diff error", e);
+      }
+    }
+
+    if (descriptions.length === 0) {
+      return { commitMessage: `chore(${scopeStr || "core"}): update files` };
+    }
+
+    // Aggregate descriptions
+    const uniqueDescs = Array.from(new Set(descriptions));
+    const commitMsg = `feat(${scopeStr}): ${uniqueDescs.join(", ")}`;
+    return { commitMessage: commitMsg };
   },
 );
 

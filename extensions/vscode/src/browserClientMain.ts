@@ -21,6 +21,7 @@ import { RequirementsEditorProvider } from "./requirementsEditorProvider";
 import { StepViewerPanel } from "./stepViewerPanel";
 
 import { MarkdownResolver, createMarkdownItPlugin } from "./markdownItPlugin";
+import { registerScmIntegration } from "./scmIntegration";
 import { VerificationPanel } from "./verificationPanel";
 
 import { SimulationPanel } from "./simulationPanel";
@@ -434,6 +435,9 @@ export async function activate(context: vscode.ExtensionContext) {
         setTimeout(() => statusItem.hide(), 5000);
         // Auto-refresh UI components now that LSP is fully initialized
         treeProvider.refresh();
+
+        // Register SCM Integration
+        registerScmIntegration(context, client);
 
         // Resolve markdown variable values, requirements, and diagram data.
         // Call immediately and again after delays to handle the race where
