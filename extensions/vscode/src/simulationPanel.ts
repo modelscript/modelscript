@@ -6,6 +6,7 @@
 
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
+import { CadViewerPanel } from "./cadViewerPanel";
 
 interface SimulationResult {
   t: number[];
@@ -184,6 +185,11 @@ export class SimulationPanel {
         value,
       });
     }
+
+    // Forward live values to the 3D CAD viewer for animation
+    if (CadViewerPanel.currentPanel) {
+      CadViewerPanel.currentPanel.sendLiveValues({ [variable]: value }, time);
+    }
   }
 
   private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, liveMode: boolean) {
@@ -261,6 +267,11 @@ export class SimulationPanel {
       vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
       vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast;
     this.panel.webview.postMessage({ type: "simulationData", data: result, isDark });
+
+    // Also forward simulation data to the 3D CAD viewer for animation
+    if (CadViewerPanel.currentPanel && result.t && result.y && result.states) {
+      CadViewerPanel.currentPanel.sendSimulationData(result.t, result.y, result.states);
+    }
   }
 
   private postLiveConfig(mqttWsUrl: string, sessionId?: string, participantId?: string) {

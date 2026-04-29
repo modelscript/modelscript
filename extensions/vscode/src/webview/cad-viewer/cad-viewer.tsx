@@ -14,12 +14,15 @@ import {
   GizmoHelper,
   GizmoViewport,
   Grid,
+  Html,
   OrbitControls,
   useGLTF,
 } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
+import type { AnimationController } from "./animation-controller";
+import { AnimationTimeline } from "./animation-timeline";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -44,6 +47,8 @@ export interface CadComponent {
   cad: CadAnnotation;
   /** Parsed CADPort annotations from sub-components (connectors) */
   ports?: { name: string; port: CadPortAnnotation }[];
+  /** Dynamic animation bindings (from DynamicSelect in CAD annotations) */
+  dynamicBindings?: { property: string; index: number; variable: string }[];
 }
 
 interface CadViewerProps {
@@ -55,10 +60,10 @@ interface CadViewerProps {
   selectedName?: string | null;
   /** Callback when user selects a 3D object */
   onSelect?: (name: string | null) => void;
-  /** Callback when user performs a snap/connect action */
-  onConnect?: (sourceName: string, sourcePort: string, targetName: string, targetPort: string) => void;
   /** Dark mode toggle */
   dark?: boolean;
+  /** Animation controller for simulation-driven animation */
+  animationController?: AnimationController | null;
 }
 
 // ── URI resolver ─────────────────────────────────────────────────────────────
@@ -116,16 +121,39 @@ function CadModel({
   assetBaseUrl,
   selected,
   onSelect,
+  animationController,
 }: {
   component: CadComponent;
   assetBaseUrl: string;
   selected: boolean;
   onSelect?: (name: string | null) => void;
+  animationController?: AnimationController | null;
 }) {
   const url = useMemo(() => resolveModelicaUri(component.cad.uri, assetBaseUrl), [component.cad.uri, assetBaseUrl]);
   const { scene } = useGLTF(url);
   const cloned = useMemo(() => scene.clone(true), [scene]);
   const groupRef = useRef<THREE.Group>(null);
+  const [hovered, setHovered] = useState(false);
+  const [inspectorValues, setInspectorValues] = useState<
+    { variable: string; property: string; index: number; value: number | null }[]
+  >([]);
+
+  // Ghost trail state (bypass React for performance)
+  const maxTrailPoints = 300;
+  const trailGeoRef = useRef<THREE.BufferGeometry | null>(null);
+  const trailPositions = useRef<Float32Array>(new Float32Array(maxTrailPoints * 3));
+  const trailCount = useRef(0);
+
+  const trailLine = useMemo(() => {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(trailPositions.current, 3));
+    geo.setDrawRange(0, 0);
+    const mat = new THREE.LineBasicMaterial({ color: "#ff6b35", transparent: true, opacity: 0.6, linewidth: 2 });
+    const line = new THREE.Line(geo, mat);
+    line.frustumCulled = false;
+    trailGeoRef.current = geo;
+    return line;
+  }, []);
 
   // Outline effect on selection
   useEffect(() => {
@@ -148,28 +176,124 @@ function CadModel({
   const rot = component.cad.rotation ?? [0, 0, 0];
   const scl = component.cad.scale ?? [1, 1, 1];
 
+  // Drive transforms from animation controller when animating
+  useFrame(() => {
+    if (!groupRef.current || !animationController) return;
+    if (animationController.mode === "stopped") return;
+
+    const tf = animationController.getTransform(component.name);
+    groupRef.current.position.set(tf.position[0], tf.position[1], tf.position[2]);
+    groupRef.current.rotation.set(
+      (tf.rotation[0] * Math.PI) / 180,
+      (tf.rotation[1] * Math.PI) / 180,
+      (tf.rotation[2] * Math.PI) / 180,
+    );
+    groupRef.current.scale.set(tf.scale[0], tf.scale[1], tf.scale[2]);
+
+    // Update ghost trail if selected and animating
+    if (selected && (animationController.mode === "playing" || animationController.mode === "live")) {
+      if (trailCount.current >= maxTrailPoints) {
+        trailPositions.current.copyWithin(0, 3);
+        trailCount.current = maxTrailPoints - 1;
+      }
+      const idx = trailCount.current;
+      trailPositions.current[idx * 3] = tf.position[0];
+      trailPositions.current[idx * 3 + 1] = tf.position[1];
+      trailPositions.current[idx * 3 + 2] = tf.position[2];
+      trailCount.current++;
+
+      if (trailGeoRef.current) {
+        trailGeoRef.current.setDrawRange(0, trailCount.current);
+        trailGeoRef.current.attributes.position.needsUpdate = true;
+      }
+    } else if (!selected && trailCount.current > 0) {
+      trailCount.current = 0;
+      if (trailGeoRef.current) trailGeoRef.current.setDrawRange(0, 0);
+    }
+
+    // Update inspector values at 10Hz if hovered or selected
+    if ((hovered || selected) && Math.random() < 0.2) {
+      setInspectorValues(animationController.getComponentValues(component.name));
+    }
+  });
+
+  const showInspector = (hovered || selected) && inspectorValues.length > 0 && animationController?.mode !== "stopped";
+
   return (
-    <group
-      ref={groupRef}
-      name={component.name}
-      position={pos}
-      rotation={rot.map((r) => (r * Math.PI) / 180) as [number, number, number]}
-      scale={scl}
-      onClick={(e) => {
-        e.stopPropagation();
-        onSelect?.(component.name);
-      }}
-    >
-      <primitive object={cloned} />
-      {component.ports?.map((p) => (
-        <PortIndicator
-          key={p.name}
-          name={`${component.name}.${p.name}`}
-          position={p.port.offsetPosition ?? [0, 0, 0]}
-          highlighted={selected}
-        />
-      ))}
-    </group>
+    <>
+      <group
+        ref={groupRef}
+        name={component.name}
+        position={pos}
+        rotation={rot.map((r) => (r * Math.PI) / 180) as [number, number, number]}
+        scale={scl}
+        onClick={(e) => {
+          e.stopPropagation();
+          onSelect?.(component.name);
+        }}
+        onPointerOver={(e) => {
+          e.stopPropagation();
+          setHovered(true);
+        }}
+        onPointerOut={() => setHovered(false)}
+      >
+        <primitive object={cloned} />
+
+        {showInspector && (
+          <Html position={[0, 0, 0]} center style={{ pointerEvents: "none", zIndex: 10 }}>
+            <div
+              style={{
+                background: "rgba(22, 27, 34, 0.85)",
+                backdropFilter: "blur(4px)",
+                color: "#e6edf3",
+                padding: "8px 12px",
+                borderRadius: "8px",
+                border: "1px solid rgba(255, 255, 255, 0.1)",
+                boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
+                fontSize: "11px",
+                fontFamily: "monospace",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <div
+                style={{
+                  fontWeight: "bold",
+                  borderBottom: "1px solid rgba(255,255,255,0.1)",
+                  paddingBottom: 4,
+                  marginBottom: 4,
+                  color: "#58a6ff",
+                }}
+              >
+                {component.name}
+              </div>
+              {inspectorValues.map((v) => (
+                <div
+                  key={`${v.variable}-${v.property}-${v.index}`}
+                  style={{ display: "flex", justifyContent: "space-between", gap: 16 }}
+                >
+                  <span style={{ color: "#8b949e" }}>
+                    {v.property}[{v.index}]
+                  </span>
+                  <span style={{ color: "#3fb950" }}>{v.value !== null ? v.value.toFixed(4) : "—"}</span>
+                </div>
+              ))}
+            </div>
+          </Html>
+        )}
+
+        {component.ports?.map((p) => (
+          <PortIndicator
+            key={p.name}
+            name={`${component.name}.${p.name}`}
+            position={p.port.offsetPosition ?? [0, 0, 0]}
+            highlighted={selected}
+          />
+        ))}
+      </group>
+
+      {/* Ghost trail (world space) */}
+      {selected && <primitive object={trailLine} />}
+    </>
   );
 }
 
@@ -180,14 +304,21 @@ function SceneContents({
   selectedName,
   onSelect,
   dark,
+  animationController,
 }: {
   components: CadComponent[];
   assetBaseUrl: string;
   selectedName?: string | null;
   onSelect?: (name: string | null) => void;
   dark?: boolean;
+  animationController?: AnimationController | null;
 }) {
   const { gl } = useThree();
+
+  // Drive the animation clock from the render loop
+  useFrame((_, delta) => {
+    animationController?.tick(delta);
+  });
 
   // Deselect on background click
   const handlePointerMissed = useCallback(() => {
@@ -229,17 +360,16 @@ function SceneContents({
 
       {/* Models */}
       <group onPointerMissed={handlePointerMissed}>
-        {components
-          .filter((comp) => typeof comp.cad?.uri === "string")
-          .map((comp) => (
-            <CadModel
-              key={comp.name}
-              component={comp}
-              assetBaseUrl={assetBaseUrl}
-              selected={selectedName === comp.name}
-              onSelect={onSelect}
-            />
-          ))}
+        {components.map((comp) => (
+          <CadModel
+            key={comp.name}
+            component={comp}
+            assetBaseUrl={assetBaseUrl}
+            selected={selectedName === comp.name}
+            onSelect={onSelect}
+            animationController={animationController}
+          />
+        ))}
       </group>
 
       {/* Controls */}
@@ -291,6 +421,7 @@ export default function CadViewer({
   selectedName,
   onSelect,
   dark = false,
+  animationController = null,
 }: CadViewerProps) {
   const [error, setError] = useState<string | null>(null);
 
@@ -336,16 +467,18 @@ export default function CadViewer({
         style={{ background: dark ? "#1a1a2e" : "#f0f4f8" }}
         onError={(e) => setError(String(e))}
       >
-        <Suspense fallback={null}>
-          <SceneContents
-            components={components}
-            assetBaseUrl={assetBaseUrl}
-            selectedName={selectedName}
-            onSelect={onSelect}
-            dark={dark}
-          />
-        </Suspense>
+        <SceneContents
+          components={components}
+          assetBaseUrl={assetBaseUrl}
+          selectedName={selectedName}
+          onSelect={onSelect}
+          dark={dark}
+          animationController={animationController}
+        />
       </Canvas>
+
+      {/* Animation timeline overlay */}
+      {animationController && <AnimationTimeline controller={animationController} />}
     </div>
   );
 }

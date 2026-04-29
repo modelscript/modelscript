@@ -58,6 +58,7 @@ import {
   updatePlacement,
 } from "~/util/lsp-bridge";
 import { startLsp } from "~/util/lsp-worker";
+import { useMqttSimulation } from "~/util/use-mqtt-simulation";
 import type { CodeEditorHandle } from "./code";
 import ComponentList from "./component-list";
 import type { DiagramEditorHandle } from "./diagram";
@@ -154,6 +155,7 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [flattenedCode, setFlattenedCode] = useState("");
   const [simulationStatus, setSimulationStatus] = useState<any>(null);
   const [cosimDataSource, setCosimDataSource] = useState<"local" | "mqtt-live" | "historian-replay">("local");
+  const mqtt = useMqttSimulation({ source: cosimDataSource });
   const [localSimulationData, setLocalSimulationData] = useState<Record<string, number | string>[] | null>(null);
   const simulateAbortControllerRef = useRef<AbortController | null>(null);
   const codeEditorRef = useRef<CodeEditorHandle>(null);
@@ -226,9 +228,17 @@ export default function MorselEditor(props: MorselEditorProps) {
         const parsed = extractCadComponents(raw);
         setCadComponents(parsed);
 
+        // Eagerly initialize AnimationController if we have CAD components
+        let ctrl = animationControllerRef.current;
+        if (!ctrl && parsed.length > 0) {
+          ctrl = new AnimationController();
+          ctrl.onStateChange((s) => setAnimationMode(s.mode));
+          animationControllerRef.current = ctrl;
+        }
+
         // If we have an animation controller, update its bindings
-        if (animationControllerRef.current && parsed.length > 0) {
-          animationControllerRef.current.setBindings(
+        if (ctrl && parsed.length > 0) {
+          ctrl.setBindings(
             parsed
               .filter((c) => c.dynamicBindings && c.dynamicBindings.length > 0)
               .map((c) => ({
@@ -242,7 +252,7 @@ export default function MorselEditor(props: MorselEditorProps) {
           );
           // Set defaults from static annotations
           for (const comp of parsed) {
-            animationControllerRef.current.setDefault(comp.name, {
+            ctrl.setDefault(comp.name, {
               position: comp.cad.position ?? [0, 0, 0],
               rotation: comp.cad.rotation ?? [0, 0, 0],
               scale: comp.cad.scale ?? [1, 1, 1],
@@ -257,6 +267,26 @@ export default function MorselEditor(props: MorselEditorProps) {
       cancelled = true;
     };
   }, [selectedTreeClassName, contextVersion]);
+
+  // Live MQTT data bridge
+  useEffect(() => {
+    const ctrl = animationControllerRef.current;
+    if (!ctrl || cosimDataSource !== "mqtt-live") {
+      // Revert from live mode if we switch away
+      if (ctrl && ctrl.mode === "live") {
+        ctrl.stop();
+      }
+      return;
+    }
+
+    if (ctrl.mode !== "live") {
+      ctrl.goLive();
+    }
+
+    if (mqtt.latestValues.size > 0) {
+      ctrl.pushLiveBatch(mqtt.latestValues, Date.now() / 1000);
+    }
+  }, [mqtt.latestValues, cosimDataSource]);
 
   // Collect all displayable models/blocks from root-level class instances
   // Supports multiple root-level models as well as nested models within a single root package
@@ -619,7 +649,12 @@ export default function MorselEditor(props: MorselEditorProps) {
       // ── Animation setup ──
       // Create/update the animation controller with new simulation data
       if (cadComponents.length > 0) {
-        const controller = new AnimationController();
+        let controller = animationControllerRef.current;
+        if (!controller) {
+          controller = new AnimationController();
+          controller.onStateChange((s) => setAnimationMode(s.mode));
+          animationControllerRef.current = controller;
+        }
         controller.setBindings(
           cadComponents
             .filter((c) => c.dynamicBindings && c.dynamicBindings.length > 0)
@@ -641,8 +676,6 @@ export default function MorselEditor(props: MorselEditorProps) {
           });
         }
         controller.loadTimeseries(result.t, result.y, result.states);
-        controller.onStateChange((s) => setAnimationMode(s.mode));
-        animationControllerRef.current = controller;
       }
     } catch (e: any) {
       if (e.message === "Simulation aborted") {

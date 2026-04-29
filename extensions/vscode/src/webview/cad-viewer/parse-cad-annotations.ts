@@ -66,10 +66,8 @@ export function parseCadAnnotationString(cadStr: string): CadAnnotation | CadPor
  * Expects variables in the format `{ name: "x", cad: "CAD(uri=\"...\")" }`
  * as produced by the updated ModelicaVariable.toJSON.
  */
-export function extractCadComponents(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  daeVariables: any[],
-): CadComponent[] {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function extractCadComponents(daeVariables: any[]): CadComponent[] {
   const components: CadComponent[] = [];
   const portsByParent = new Map<string, { name: string; port: CadPortAnnotation }[]>();
 
@@ -84,13 +82,13 @@ export function extractCadComponents(
         name: v.name,
         cad: parsed as CadAnnotation,
         ports: [],
+        dynamicBindings: v.dynamicBindings ?? undefined,
       });
     } else if (cadStr.startsWith("CADPort(")) {
       // CADPort annotations are on leaf variables like "body.port1"
       const parts = (v.name as string).split(".");
       const parentName = parts.slice(0, -1).join(".");
       const portName = parts[parts.length - 1];
-      if (!portsByParent.has(parentName)) portsByParent.set(parentName, []);
       if (!portsByParent.has(parentName)) portsByParent.set(parentName, []);
       const portList = portsByParent.get(parentName);
       if (portList) {

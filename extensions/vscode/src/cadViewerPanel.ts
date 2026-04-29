@@ -123,6 +123,33 @@ export class CadViewerPanel {
     }
   }
 
+  /**
+   * Send simulation results to the webview for animation replay.
+   *
+   * @param t - Array of time points
+   * @param y - 2D array of variable values (y[timeIndex][varIndex])
+   * @param states - Array of variable names (matching y columns)
+   */
+  public sendSimulationData(t: number[], y: number[][], states: string[]): void {
+    this._panel.webview.postMessage({
+      type: "simulationData",
+      data: { t, y, states },
+    });
+  }
+
+  /**
+   * Push live cosimulation variable values to the webview for real-time animation.
+   *
+   * @param values - Map of variable name → value
+   * @param time - Current simulation time
+   */
+  public sendLiveValues(values: Record<string, number>, time: number): void {
+    this._panel.webview.postMessage({
+      type: "liveValues",
+      data: { values, time },
+    });
+  }
+
   public dispose() {
     CadViewerPanel.currentPanel = undefined;
     this._panel.dispose();
