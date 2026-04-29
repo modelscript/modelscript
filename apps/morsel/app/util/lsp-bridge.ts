@@ -6,8 +6,20 @@
  * connection established by `lsp-worker.ts`.
  */
 
+import {
+  DiagramMethods,
+  type ComponentPropertyData,
+  type DiagramApplyEditsResult,
+  type DiagramData,
+  type DiagramEdge,
+  type DiagramEditAction,
+  type DiagramNode,
+  type DiagramPort,
+} from "@modelscript/lsp/src/diagramProtocol";
 import type { ProtocolConnection } from "vscode-languageserver-protocol/browser";
 import { getLsp } from "./lsp-worker";
+
+export type { DiagramApplyEditsResult, DiagramData, DiagramEdge, DiagramEditAction, DiagramNode, DiagramPort };
 
 // ────────────────────────────────────────────────────────────────────
 // Helpers
@@ -67,67 +79,6 @@ export interface LspTextEdit {
   newText: string;
 }
 
-export interface PlacementItem {
-  name: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  rotation: number;
-  edges?: { source: string; target: string; points: { x: number; y: number }[] }[];
-}
-
-export interface EdgeUpdate {
-  source: string;
-  target: string;
-  points: { x: number; y: number }[];
-}
-
-export interface DiagramPort {
-  id: string;
-  group: string;
-  x?: number;
-  y?: number;
-}
-
-export interface DiagramNode {
-  id: string;
-  label?: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  angle?: number;
-  rotation?: number;
-  zIndex?: number;
-  opacity?: number;
-  markup?: any;
-  iconSvg?: string;
-  classKind?: string;
-  className?: string;
-  description?: string;
-  ports?: { items: DiagramPort[] };
-  autoLayout?: boolean;
-  properties?: any;
-}
-
-export interface DiagramEdge {
-  id: string;
-  source: { cell: string; port: string };
-  target: { cell: string; port: string };
-  vertices?: { x: number; y: number }[];
-  zIndex?: number;
-  connector?: any;
-  attrs?: any;
-}
-
-export interface DiagramData {
-  nodes: DiagramNode[];
-  edges: DiagramEdge[];
-  coordinateSystem: { x: number; y: number; width: number; height: number };
-  diagramBackground?: any;
-}
-
 export interface SimulateParams {
   className?: string;
   startTime?: number;
@@ -167,56 +118,12 @@ export interface TreeNodeInfo {
   iconSvg?: string | null;
 }
 
-export interface PropertyData {
-  name: string;
-  localizedName?: string;
-  localizedDescription?: string;
-  value: string;
-  defaultValue: string;
-  unit?: string;
-  isBoolean?: boolean;
-}
-
-export interface ComponentProperties {
-  name: string;
-  className: string;
-  localizedClassName: string;
-  description: string;
-  iconSvg?: string | null;
-  parameters: PropertyData[];
-  documentation?: { info?: string; revisions?: string };
-}
+export type ComponentProperties = ComponentPropertyData;
+export type PropertyData = ComponentPropertyData["parameters"][0];
 
 // ────────────────────────────────────────────────────────────────────
 // Diagram — Unified API
 // ────────────────────────────────────────────────────────────────────
-
-/** Method constants matching the unified Diagram API protocol */
-export const DiagramMethods = {
-  getData: "modelscript/diagram.getData",
-  applyEdits: "modelscript/diagram.applyEdits",
-  getComponentProperties: "modelscript/diagram.getComponentProperties",
-} as const;
-
-/** Union of all diagram edit actions supported by the batch API */
-export type DiagramEditAction =
-  | { type: "move"; items: PlacementItem[] }
-  | { type: "resize"; item: PlacementItem }
-  | { type: "rotate"; item: PlacementItem }
-  | { type: "connect"; source: string; target: string; points?: { x: number; y: number }[] }
-  | { type: "disconnect"; source: string; target: string }
-  | { type: "moveEdge"; edges: EdgeUpdate[] }
-  | { type: "addComponent"; className: string; x: number; y: number }
-  | { type: "deleteComponents"; names: string[] }
-  | { type: "updateName"; oldName: string; newName: string }
-  | { type: "updateDescription"; name: string; description: string }
-  | { type: "updateParameter"; name: string; parameter: string; value: string };
-
-export interface DiagramApplyEditsResult {
-  seq: number;
-  edits: LspTextEdit[];
-  renderHint: "none" | "immediate" | "debounced";
-}
 
 /** Apply a batch of diagram edit actions atomically via the unified API */
 export async function applyDiagramEdits(
@@ -235,67 +142,11 @@ export async function getDiagramData(
   return lsp().sendRequest(DiagramMethods.getData, { uri, className, diagramType });
 }
 
-/** @deprecated Use applyDiagramEdits instead */
-export async function updatePlacement(uri: string, items: PlacementItem[]): Promise<LspTextEdit[]> {
-  return lsp().sendRequest("modelscript/updatePlacement", { uri, items });
-}
-
-/** @deprecated Use applyDiagramEdits instead */
-export async function sendDiagramEdit(request: any): Promise<any> {
-  return lsp().sendRequest(DiagramMethods.applyEdits, request);
-}
-
-export async function addConnect(
-  uri: string,
-  source: string,
-  target: string,
-  points?: { x: number; y: number }[],
-): Promise<LspTextEdit[]> {
-  return lsp().sendRequest("modelscript/addConnect", { uri, source, target, points });
-}
-
-export async function removeConnect(uri: string, source: string, target: string): Promise<LspTextEdit[]> {
-  return lsp().sendRequest("modelscript/removeConnect", { uri, source, target });
-}
-
-export async function updateEdgePoints(uri: string, edges: EdgeUpdate[]): Promise<LspTextEdit[]> {
-  return lsp().sendRequest("modelscript/updateEdgePoints", { uri, edges });
-}
-
-export async function addComponent(uri: string, className: string, x: number, y: number): Promise<LspTextEdit[]> {
-  return lsp().sendRequest("modelscript/addComponent", { uri, className, x, y });
-}
-
-export async function deleteComponents(uri: string, names: string[]): Promise<LspTextEdit[]> {
-  return lsp().sendRequest("modelscript/deleteComponents", { uri, names });
-}
-
-export async function updateComponentName(uri: string, oldName: string, newName: string): Promise<LspTextEdit[]> {
-  return lsp().sendRequest("modelscript/updateComponentName", { uri, oldName, newName });
-}
-
-export async function updateComponentDescription(
-  uri: string,
-  name: string,
-  description: string,
-): Promise<LspTextEdit[]> {
-  return lsp().sendRequest("modelscript/updateComponentDescription", { uri, name, description });
-}
-
-export async function updateComponentParameter(
-  uri: string,
-  name: string,
-  parameter: string,
-  value: string,
-): Promise<LspTextEdit[]> {
-  return lsp().sendRequest("modelscript/updateComponentParameter", { uri, name, parameter, value });
-}
-
 export async function getComponentProperties(
   uri: string,
   className: string,
   componentName: string,
-): Promise<ComponentProperties | null> {
+): Promise<ComponentPropertyData | null> {
   return lsp().sendRequest(DiagramMethods.getComponentProperties, { uri, className, componentName });
 }
 

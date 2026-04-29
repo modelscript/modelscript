@@ -918,12 +918,12 @@ END-ISO-10303-21;`;
 
         try {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const edits: any[] = await client.sendRequest("modelscript/addComponent", {
+          const response: any = await client.sendRequest("modelscript/diagram.applyEdits", {
             uri: docUri,
-            className, // This is the elementType (e.g., "PartDefinition")
-            x: 0,
-            y: 0,
+            seq: 0,
+            actions: [{ type: "addComponent", className, x: 0, y: 0 }],
           });
+          const edits = response?.edits;
           if (edits && edits.length > 0) {
             const workspaceEdit = new vscode.WorkspaceEdit();
             const uri = vscode.Uri.parse(docUri);
@@ -970,12 +970,12 @@ END-ISO-10303-21;`;
 
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const edits: any[] = await client.sendRequest("modelscript/addComponent", {
+        const response: any = await client.sendRequest("modelscript/diagram.applyEdits", {
           uri: docUri,
-          className,
-          x: 0,
-          y: 0,
+          seq: 0,
+          actions: [{ type: "addComponent", className, x: 0, y: 0 }],
         });
+        const edits = response?.edits;
         if (edits && edits.length > 0) {
           const workspaceEdit = new vscode.WorkspaceEdit();
           const uri = vscode.Uri.parse(docUri);

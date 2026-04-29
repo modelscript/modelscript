@@ -57,15 +57,25 @@ export interface X6Markup {
 export interface ComponentPropertyData {
   classKind?: string;
   className: string;
+  localizedClassName?: string;
   name: string;
+  localizedName?: string;
   description: string;
+  localizedDescription?: string;
   parameters: {
     name: string;
+    localizedName?: string;
     value: string;
+    defaultValue?: string;
     description?: string;
+    localizedDescription?: string;
     isBoolean?: boolean;
     unit?: string;
   }[];
+  documentation?: {
+    info?: string;
+    revisions?: string;
+  };
   docInfo?: string;
   docRevisions?: string;
   iconSvg?: string;
@@ -180,12 +190,3 @@ export interface DiagramGetComponentPropertiesParams {
   componentName: string;
   className?: string;
 }
-
-// ── Backward Compatibility Aliases ──
-// These maintain compatibility with code importing DiagramEditRequest/DiagramEditResponse.
-
-/** @deprecated Use DiagramApplyEditsParams */
-export type DiagramEditRequest = DiagramApplyEditsParams;
-
-/** @deprecated Use DiagramApplyEditsResult */
-export type DiagramEditResponse = DiagramApplyEditsResult;

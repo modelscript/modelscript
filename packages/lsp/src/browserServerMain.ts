@@ -3069,108 +3069,73 @@ function resolveModelicaClassInstance(uri: string, className?: string): any {
 // Key: `${uri}|${className}|${diagramType}|${version}`
 const diagramCache = new Map<string, { version: number | string; data: any }>();
 
+/**
+ * Shared getDiagramData implementation used by both legacy and unified handlers.
+ * Wraps dispatch.getData with Modelica-specific caching, isLoading state, and perf logging.
+ * SysML2 requests are delegated directly to the dispatch (which handles layout merging).
+ */
+function handleGetDiagramData(params: { uri: string; className?: string; diagramType?: string }) {
+  // Force flush semantic pass so we don't build diagram from stale AST
+  flushValidation(params.uri);
+
+  // SysML2 — delegate directly to dispatch (no caching needed, layout is in-memory)
+  if (params.uri.endsWith(".sysml")) {
+    return getDiagramDispatch().getData(params);
+  }
+
+  // Modelica — check cache first
+  const doc = documents.get(params.uri);
+  const version = doc ? `${doc.version}|${mslStdlibReady}` : mslStdlibReady ? "msl-ready" : "msl-loading";
+  const cacheKey = `${params.uri}|${params.className ?? ""}|${params.diagramType ?? "All"}`;
+  const cached = diagramCache.get(cacheKey);
+  if (cached && cached.version === version) {
+    connection.console.error(`[diagram-perf] cache hit for ${params.uri} (v=${version})`);
+    return cached.data;
+  }
+
+  const t0 = performance.now();
+  const classInstance = resolveModelicaClassInstance(params.uri, params.className);
+
+  if (!classInstance) {
+    if (!mslStdlibReady) {
+      return {
+        nodes: [],
+        edges: [],
+        coordinateSystem: { x: 0, y: 0, width: 1000, height: 1000 },
+        diagramBackground: null,
+        isLoading: true,
+      };
+    }
+    return null;
+  }
+
+  const tResolve = performance.now() - t0;
+
+  try {
+    const tBuild0 = performance.now();
+    const result = buildDiagramData(classInstance);
+    const tBuild = performance.now() - tBuild0;
+    if (result) {
+      (result as any).isLoading = !mslStdlibReady;
+    }
+    connection.console.error(
+      `[diagram-perf] ${classInstance.name}: resolve=${tResolve.toFixed(0)}ms build=${tBuild.toFixed(0)}ms nodes=${result?.nodes?.length ?? 0} edges=${result?.edges?.length ?? 0}`,
+    );
+
+    // Cache the result
+    diagramCache.set(cacheKey, { version, data: result });
+
+    return result;
+  } catch (e: any) {
+    connection.console.error(`[diagram] Error building diagram data: ${e?.message ?? e}\n${e?.stack ?? ""}`);
+    return null;
+  }
+}
+
+// Legacy handler — delegates to shared implementation
 connection.onRequest(
   "modelscript/getDiagramData",
-  (params: { uri: string; className?: string; diagramType?: string }) => {
-    // Force flush semantic pass so we don't build diagram from stale AST
-    flushValidation(params.uri);
-
-    // Check cache for Modelica files
-    if (!params.uri.endsWith(".sysml")) {
-      const doc = documents.get(params.uri);
-      const version = doc ? `${doc.version}|${mslStdlibReady}` : mslStdlibReady ? "msl-ready" : "msl-loading";
-      const cacheKey = `${params.uri}|${params.className ?? ""}|${params.diagramType ?? "All"}`;
-      const cached = diagramCache.get(cacheKey);
-      if (cached && cached.version === version) {
-        connection.console.error(`[diagram-perf] cache hit for ${params.uri} (v=${version})`);
-        return cached.data;
-      }
-    }
-    // SysML2 files use the polyglot diagram builder
-    if (params.uri.endsWith(".sysml")) {
-      try {
-        const unified = unifiedWorkspace.toUnified();
-        const resolver = createSysML2ScopeResolver(unified);
-
-        const diagramTypeRaw = params.diagramType ?? "All";
-        const validTypes = ["All", "BDD", "IBD", "StateMachine"];
-        const diagramType = validTypes.includes(diagramTypeRaw)
-          ? (diagramTypeRaw as "All" | "BDD" | "IBD" | "StateMachine")
-          : "All";
-
-        const data = buildSysML2DiagramData(unified, params.uri, resolver, diagramType);
-
-        // Merge stored layout positions into diagram data
-        const layout = sysml2Layouts.get(params.uri);
-        if (layout && data) {
-          for (const node of data.nodes) {
-            // Node IDs are prefixed with "n_" + symbolId — try matching by name
-            // Also try the raw node.id in case it was stored without prefix
-            const sym = [...unified.symbols.values()].find(
-              (s) => `n_${s.id}` === node.id && s.resourceId === params.uri,
-            );
-            const name = sym?.name;
-            if (name && layout.elements[name]) {
-              const el = layout.elements[name];
-              node.x = el.x;
-              node.y = el.y;
-              if (el.width) node.width = el.width;
-              if (el.height) node.height = el.height;
-              node.autoLayout = false;
-            }
-          }
-        }
-
-        return data;
-      } catch (e: any) {
-        connection.console.error(`[sysml2-diagram] Error building diagram data: ${e?.message ?? e}\n${e?.stack ?? ""}`);
-        return null;
-      }
-    }
-
-    const t0 = performance.now();
-    const classInstance = resolveModelicaClassInstance(params.uri, params.className);
-
-    if (!classInstance) {
-      if (!mslStdlibReady) {
-        return {
-          nodes: [],
-          edges: [],
-          coordinateSystem: { x: 0, y: 0, width: 1000, height: 1000 },
-          diagramBackground: null,
-          isLoading: true,
-        };
-      }
-      return null;
-    }
-
-    const tResolve = performance.now() - t0;
-
-    try {
-      const tBuild0 = performance.now();
-      const result = buildDiagramData(classInstance);
-      const tBuild = performance.now() - tBuild0;
-      if (result) {
-        (result as any).isLoading = !mslStdlibReady;
-      }
-      connection.console.error(
-        `[diagram-perf] ${classInstance.name}: resolve=${tResolve.toFixed(0)}ms build=${tBuild.toFixed(0)}ms nodes=${result?.nodes?.length ?? 0} edges=${result?.edges?.length ?? 0}`,
-      );
-
-      // Cache the result
-      {
-        const doc = documents.get(params.uri);
-        const version = doc ? `${doc.version}|${mslStdlibReady}` : mslStdlibReady ? "msl-ready" : "msl-loading";
-        const cacheKey = `${params.uri}|${params.className ?? ""}|${params.diagramType ?? "All"}`;
-        diagramCache.set(cacheKey, { version, data: result });
-      }
-
-      return result;
-    } catch (e: any) {
-      connection.console.error(`[diagram] Error building diagram data: ${e?.message ?? e}\n${e?.stack ?? ""}`);
-      return null;
-    }
-  },
+  (params: { uri: string; className?: string; diagramType?: string }) => handleGetDiagramData(params),
 );
 
 // Custom request: get component properties on-demand (lazy loading for diagram panel)
@@ -3307,121 +3272,13 @@ connection.onRequest(DiagramMethods.applyEdits, (params: DiagramEditRequest) => 
 });
 
 connection.onRequest(DiagramMethods.getData, (params: { uri: string; className?: string; diagramType?: string }) => {
-  return getDiagramDispatch().getData(params);
+  return handleGetDiagramData(params);
 });
 
 connection.onRequest(
   DiagramMethods.getComponentProperties,
   (params: { uri: string; componentName: string; className?: string }) => {
     return getDiagramDispatch().getComponentProperties(params);
-  },
-);
-
-// ── Legacy diagram mutation handlers (backward compat) ──
-
-// Legacy batch handler — delegates to unified dispatch
-connection.onRequest("modelscript/diagramEdit", (params: DiagramEditRequest) => {
-  return getDiagramDispatch().applyEdits(params);
-});
-
-// Legacy individual mutation handlers — thin wrappers over the unified dispatch.
-// These exist for backward compat with clients that haven't migrated to diagramEdit yet.
-
-connection.onRequest(
-  "modelscript/updatePlacement",
-  (params: {
-    uri: string;
-    items: {
-      name: string;
-      x: number;
-      y: number;
-      width: number;
-      height: number;
-      rotation: number;
-      edges?: { source: string; target: string; points: { x: number; y: number }[] }[];
-    }[];
-  }) => {
-    const result = getDiagramDispatch().applyEdits({
-      uri: params.uri,
-      seq: 0,
-      actions: [{ type: "move", items: params.items }],
-    });
-    return result.edits;
-  },
-);
-
-connection.onRequest(
-  "modelscript/addConnect",
-  (params: { uri: string; source: string; target: string; points?: { x: number; y: number }[] }) => {
-    const result = getDiagramDispatch().applyEdits({
-      uri: params.uri,
-      seq: 0,
-      actions: [{ type: "connect", source: params.source, target: params.target, points: params.points }],
-    });
-    return result.edits;
-  },
-);
-
-connection.onRequest("modelscript/removeConnect", (params: { uri: string; source: string; target: string }) => {
-  const result = getDiagramDispatch().applyEdits({
-    uri: params.uri,
-    seq: 0,
-    actions: [{ type: "disconnect", source: params.source, target: params.target }],
-  });
-  return result.edits;
-});
-
-connection.onRequest(
-  "modelscript/updateEdgePoints",
-  (params: { uri: string; edges: { source: string; target: string; points: { x: number; y: number }[] }[] }) => {
-    const result = getDiagramDispatch().applyEdits({
-      uri: params.uri,
-      seq: 0,
-      actions: [{ type: "moveEdge", edges: params.edges }],
-    });
-    return result.edits;
-  },
-);
-
-connection.onRequest("modelscript/deleteComponents", (params: { uri: string; names: string[] }) => {
-  const result = getDiagramDispatch().applyEdits({
-    uri: params.uri,
-    seq: 0,
-    actions: [{ type: "deleteComponents", names: params.names }],
-  });
-  return result.edits;
-});
-
-connection.onRequest("modelscript/updateComponentName", (params: { uri: string; oldName: string; newName: string }) => {
-  const result = getDiagramDispatch().applyEdits({
-    uri: params.uri,
-    seq: 0,
-    actions: [{ type: "updateName", oldName: params.oldName, newName: params.newName }],
-  });
-  return result.edits;
-});
-
-connection.onRequest(
-  "modelscript/updateComponentDescription",
-  (params: { uri: string; name: string; description: string }) => {
-    const result = getDiagramDispatch().applyEdits({
-      uri: params.uri,
-      seq: 0,
-      actions: [{ type: "updateDescription", name: params.name, description: params.description }],
-    });
-    return result.edits;
-  },
-);
-
-connection.onRequest(
-  "modelscript/updateComponentParameter",
-  (params: { uri: string; name: string; parameter: string; value: string }) => {
-    const result = getDiagramDispatch().applyEdits({
-      uri: params.uri,
-      seq: 0,
-      actions: [{ type: "updateParameter", name: params.name, parameter: params.parameter, value: params.value }],
-    });
-    return result.edits;
   },
 );
 

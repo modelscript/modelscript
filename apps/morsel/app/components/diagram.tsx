@@ -72,7 +72,7 @@ export function updateSolderDots(g: Graph) {
     const vertices = edge.getVertices() || [];
     const points = [source, ...vertices, target];
 
-    const stroke = edge.attr("line/stroke");
+    const stroke = edge.attr("line/stroke") as string | undefined;
     const color = stroke && stroke !== "none" ? stroke : "blue";
     allPaths.push({ id: edge.id, points, color });
 
@@ -990,12 +990,16 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
           }
         }
       });
-      g.on("edge:removed", () => requestAnimationFrame(() => updateSolderDots(g)));
-      g.on("edge:added", () => requestAnimationFrame(() => updateSolderDots(g)));
+      g.on("edge:removed", () => {
+        if (g) requestAnimationFrame(() => updateSolderDots(g!));
+      });
+      g.on("edge:added", () => {
+        if (g) requestAnimationFrame(() => updateSolderDots(g!));
+      });
 
       let edgeUpdateTimeout: NodeJS.Timeout | null = null;
       g.on("edge:change:vertices", ({ edge }) => {
-        requestAnimationFrame(() => updateSolderDots(g));
+        if (g) requestAnimationFrame(() => updateSolderDots(g!));
         if (edgeUpdateTimeout) {
           clearTimeout(edgeUpdateTimeout);
         }
@@ -1024,7 +1028,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
         }, 500);
       });
       g.on("node:change:position", ({ node }) => {
-        requestAnimationFrame(() => updateSolderDots(g));
+        if (g) requestAnimationFrame(() => updateSolderDots(g!));
         // Deselect edges when moving a node to avoid stale rubberbands
         const selected = g?.getSelectedCells();
         if (selected) {

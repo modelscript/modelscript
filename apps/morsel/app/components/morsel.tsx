@@ -42,13 +42,11 @@ import { type DataUrl } from "parse-data-url";
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getTranslations, uiLanguages } from "~/util/i18n";
 import {
+  applyDiagramEdits,
   applyLspEdits,
-  deleteComponents,
   didOpen,
   getCadComponents,
   getDiagramData,
-  removeConnect,
-  sendDiagramEdit,
   simulate,
 } from "~/util/lsp-bridge";
 import { startLsp } from "~/util/lsp-worker";
@@ -226,8 +224,8 @@ export default function MorselEditor(props: MorselEditorProps) {
       diagramActionTimerRef.current = null;
       if (actions.length > 0) {
         isDiagramUpdate.current = true;
-        const response = await sendDiagramEdit({ uri: DOCUMENT_URI, seq: 1, actions });
-        if (response && response.edits && response.edits.length > 0) {
+        const response = await applyDiagramEdits(DOCUMENT_URI, actions, 1);
+        if (response && response.edits && response.edits.length > 0 && editorRef.current) {
           applyLspEdits(editorRef.current, response.edits, actions[0].type);
         }
       }
@@ -588,26 +586,15 @@ export default function MorselEditor(props: MorselEditorProps) {
   // ── Diagram edit helpers (delegated to LSP server via lsp-bridge) ──
 
   const handleEdgeDelete = async (source: string, target: string) => {
-    if (!editor) return;
-    isDiagramUpdate.current = true;
-    const edits = await removeConnect(DOCUMENT_URI, source, target);
-    applyLspEdits(editor, edits, "delete-connect");
+    enqueueDiagramAction({ type: "disconnect", source, target });
   };
 
   const handleComponentDelete = async (name: string) => {
-    if (!editor) return;
-    isDiagramUpdate.current = true;
-    const edits = await deleteComponents(DOCUMENT_URI, [name]);
-    applyLspEdits(editor, edits, "delete-component");
-    codeEditorRef.current?.sync();
+    enqueueDiagramAction({ type: "deleteComponents", names: [name] });
   };
 
   const handleComponentsDelete = async (names: string[]) => {
-    if (!editor) return;
-    isDiagramUpdate.current = true;
-    const edits = await deleteComponents(DOCUMENT_URI, names);
-    applyLspEdits(editor, edits, "delete-component");
-    codeEditorRef.current?.sync();
+    enqueueDiagramAction({ type: "deleteComponents", names });
   };
 
   const handleFlatten = async () => {
@@ -1181,7 +1168,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                             const prev = editorRef.current?.getValue();
                             editorRef.current?.trigger("diagram", "undo", null);
                             if (prev !== editorRef.current?.getValue()) {
-                              diagramEditorRef.current?.showLoading();
+                              setIsDiagramLoading(true);
                             }
                           }}
                           onRedo={() => {
@@ -1190,7 +1177,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                             const prev = editorRef.current?.getValue();
                             editorRef.current?.trigger("diagram", "redo", null);
                             if (prev !== editorRef.current?.getValue()) {
-                              diagramEditorRef.current?.showLoading();
+                              setIsDiagramLoading(true);
                             }
                           }}
                         />
