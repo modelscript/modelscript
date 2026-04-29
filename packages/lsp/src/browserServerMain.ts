@@ -35,17 +35,7 @@ import {
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { ModelicaDiagramBackend, SysML2DiagramBackend, createDiagramDispatch } from "./diagramApi";
 import { buildComponentProperties, buildDiagramData, getClassIconSvg, type DiagramData } from "./diagramData";
-import {
-  computeComponentInsert,
-  computeComponentsDelete,
-  computeConnectInsert,
-  computeConnectRemove,
-  computeDescriptionEdit,
-  computeEdgePointEdits,
-  computeNameEdit,
-  computeParameterEdit,
-  computePlacementEdits,
-} from "./diagramEdits";
+import { computeComponentInsert } from "./diagramEdits";
 import type { DiagramEditRequest } from "./diagramProtocol";
 import { DiagramMethods } from "./diagramProtocol";
 import {
@@ -3389,6 +3379,9 @@ connection.onRequest("modelscript/diagramEdit", (params: DiagramEditRequest) => 
   return getDiagramDispatch().applyEdits(params);
 });
 
+// Legacy individual mutation handlers — thin wrappers over the unified dispatch.
+// These exist for backward compat with clients that haven't migrated to diagramEdit yet.
+
 connection.onRequest(
   "modelscript/updatePlacement",
   (params: {
@@ -3403,237 +3396,87 @@ connection.onRequest(
       edges?: { source: string; target: string; points: { x: number; y: number }[] }[];
     }[];
   }) => {
-    // SysML2: store placement in the in-memory layout (no source text edits)
-    if (params.uri.endsWith(".sysml")) {
-      try {
-        let layout = sysml2Layouts.get(params.uri) ?? createEmptyLayout();
-        layout = updateElementPositions(layout, params.items);
-        // Also update edge vertices if provided
-        const edgeUpdates: { id: string; vertices: { x: number; y: number }[] }[] = [];
-        for (const item of params.items) {
-          if (item.edges) {
-            for (const edge of item.edges) {
-              edgeUpdates.push({ id: `${edge.source}→${edge.target}`, vertices: edge.points });
-            }
-          }
-        }
-        if (edgeUpdates.length > 0) {
-          layout = updateConnectionVertices(layout, edgeUpdates);
-        }
-        sysml2Layouts.set(params.uri, layout);
-        connection.console.log(`[sysml2] Layout updated for ${params.uri}: ${params.items.length} elements`);
-      } catch (e) {
-        console.error("[sysml2-diagram] updatePlacement error:", e);
-      }
-      return []; // No TextEdits — layout is stored externally
-    }
-
-    const instances = documentInstances.get(params.uri);
-    const doc = documents.get(params.uri);
-    if (!instances?.[0] || !doc) return [];
-    try {
-      return computePlacementEdits(doc.getText(), instances[0], params.items);
-    } catch (e) {
-      console.error("[diagram] updatePlacement error:", e);
-      return [];
-    }
+    const result = getDiagramDispatch().applyEdits({
+      uri: params.uri,
+      seq: 0,
+      actions: [{ type: "move", items: params.items }],
+    });
+    return result.edits;
   },
 );
 
 connection.onRequest(
   "modelscript/addConnect",
   (params: { uri: string; source: string; target: string; points?: { x: number; y: number }[] }) => {
-    // SysML2: insert a connection usage in source text
-    if (params.uri.endsWith(".sysml")) {
-      const doc = documents.get(params.uri);
-      if (!doc) return [];
-      try {
-        const edits = computeSysML2ConnectionInsert(doc.getText(), params.source, params.target);
-        // Store edge vertices in layout
-        if (params.points && params.points.length > 0) {
-          let layout = sysml2Layouts.get(params.uri) ?? createEmptyLayout();
-          layout = updateConnectionVertices(layout, [
-            { id: `${params.source}→${params.target}`, vertices: params.points },
-          ]);
-          sysml2Layouts.set(params.uri, layout);
-        }
-        return edits;
-      } catch (e) {
-        console.error("[sysml2-diagram] addConnect error:", e);
-        return [];
-      }
-    }
-
-    const instances = documentInstances.get(params.uri);
-    const doc = documents.get(params.uri);
-    if (!instances?.[0] || !doc) return [];
-    try {
-      return computeConnectInsert(doc.getText(), instances[0], params.source, params.target, params.points);
-    } catch (e) {
-      console.error("[diagram] addConnect error:", e);
-      return [];
-    }
+    const result = getDiagramDispatch().applyEdits({
+      uri: params.uri,
+      seq: 0,
+      actions: [{ type: "connect", source: params.source, target: params.target, points: params.points }],
+    });
+    return result.edits;
   },
 );
 
 connection.onRequest("modelscript/removeConnect", (params: { uri: string; source: string; target: string }) => {
-  // SysML2: remove a connection usage from source text
-  if (params.uri.endsWith(".sysml")) {
-    const doc = documents.get(params.uri);
-    if (!doc) return [];
-    try {
-      return computeSysML2ConnectionDelete(doc.getText(), params.source, params.target);
-    } catch (e) {
-      console.error("[sysml2-diagram] removeConnect error:", e);
-      return [];
-    }
-  }
-
-  const instances = documentInstances.get(params.uri);
-  const doc = documents.get(params.uri);
-  if (!instances?.[0] || !doc) return [];
-  try {
-    return computeConnectRemove(doc.getText(), instances[0], params.source, params.target);
-  } catch (e) {
-    console.error("[diagram] removeConnect error:", e);
-    return [];
-  }
+  const result = getDiagramDispatch().applyEdits({
+    uri: params.uri,
+    seq: 0,
+    actions: [{ type: "disconnect", source: params.source, target: params.target }],
+  });
+  return result.edits;
 });
 
 connection.onRequest(
   "modelscript/updateEdgePoints",
   (params: { uri: string; edges: { source: string; target: string; points: { x: number; y: number }[] }[] }) => {
-    // SysML2: store edge vertices in the layout (no source text edits)
-    if (params.uri.endsWith(".sysml")) {
-      try {
-        let layout = sysml2Layouts.get(params.uri) ?? createEmptyLayout();
-        const updates = params.edges.map((e) => ({
-          id: `${e.source}→${e.target}`,
-          vertices: e.points,
-        }));
-        layout = updateConnectionVertices(layout, updates);
-        sysml2Layouts.set(params.uri, layout);
-      } catch (e) {
-        console.error("[sysml2-diagram] updateEdgePoints error:", e);
-      }
-      return []; // No TextEdits
-    }
-
-    const instances = documentInstances.get(params.uri);
-    const doc = documents.get(params.uri);
-    if (!instances?.[0] || !doc) return [];
-    try {
-      const lines = doc.getText().split("\n");
-      return computeEdgePointEdits(lines, instances[0], params.edges);
-    } catch (e) {
-      console.error("[diagram] updateEdgePoints error:", e);
-      return [];
-    }
+    const result = getDiagramDispatch().applyEdits({
+      uri: params.uri,
+      seq: 0,
+      actions: [{ type: "moveEdge", edges: params.edges }],
+    });
+    return result.edits;
   },
 );
 
 connection.onRequest("modelscript/deleteComponents", (params: { uri: string; names: string[] }) => {
-  // SysML2: delete elements from source text and layout
-  if (params.uri.endsWith(".sysml")) {
-    const doc = documents.get(params.uri);
-    if (!doc) return [];
-    try {
-      const edits = computeSysML2ElementDelete(doc.getText(), params.names);
-      // Also clean up layout
-      const layout = sysml2Layouts.get(params.uri);
-      if (layout) {
-        sysml2Layouts.set(params.uri, removeElements(layout, params.names));
-      }
-      return edits;
-    } catch (e) {
-      console.error("[sysml2-diagram] deleteComponents error:", e);
-      return [];
-    }
-  }
-
-  const instances = documentInstances.get(params.uri);
-  const doc = documents.get(params.uri);
-  if (!instances?.[0] || !doc) return [];
-  try {
-    return computeComponentsDelete(doc.getText(), instances[0], params.names);
-  } catch (e) {
-    console.error("[diagram] deleteComponents error:", e);
-    return [];
-  }
+  const result = getDiagramDispatch().applyEdits({
+    uri: params.uri,
+    seq: 0,
+    actions: [{ type: "deleteComponents", names: params.names }],
+  });
+  return result.edits;
 });
 
 connection.onRequest("modelscript/updateComponentName", (params: { uri: string; oldName: string; newName: string }) => {
-  if (params.uri.endsWith(".sysml")) {
-    const doc = documents.get(params.uri);
-    if (!doc || !sysml2ParserReady || !sysml2Parser) return [];
-    try {
-      const tree = sysml2Parser.parse(doc.getText());
-      return computeSysML2NameEdit(tree, doc.getText(), params.oldName, params.newName);
-    } catch (e) {
-      console.error("[sysml2-diagram] updateComponentName error:", e);
-      return [];
-    }
-  }
-
-  const instances = documentInstances.get(params.uri);
-  if (!instances?.[0]) return [];
-  try {
-    return computeNameEdit(instances[0], params.oldName, params.newName);
-  } catch (e) {
-    console.error("[diagram] updateComponentName error:", e);
-    return [];
-  }
+  const result = getDiagramDispatch().applyEdits({
+    uri: params.uri,
+    seq: 0,
+    actions: [{ type: "updateName", oldName: params.oldName, newName: params.newName }],
+  });
+  return result.edits;
 });
 
 connection.onRequest(
   "modelscript/updateComponentDescription",
   (params: { uri: string; name: string; description: string }) => {
-    if (params.uri.endsWith(".sysml")) {
-      const doc = documents.get(params.uri);
-      if (!doc || !sysml2ParserReady || !sysml2Parser) return [];
-      try {
-        const tree = sysml2Parser.parse(doc.getText());
-        return computeSysML2DescriptionEdit(tree, doc.getText(), params.name, params.description);
-      } catch (e) {
-        console.error("[sysml2-diagram] updateComponentDescription error:", e);
-        return [];
-      }
-    }
-
-    const instances = documentInstances.get(params.uri);
-    const doc = documents.get(params.uri);
-    if (!instances?.[0] || !doc) return [];
-    try {
-      return computeDescriptionEdit(doc.getText(), instances[0], params.name, params.description);
-    } catch (e) {
-      console.error("[diagram] updateComponentDescription error:", e);
-      return [];
-    }
+    const result = getDiagramDispatch().applyEdits({
+      uri: params.uri,
+      seq: 0,
+      actions: [{ type: "updateDescription", name: params.name, description: params.description }],
+    });
+    return result.edits;
   },
 );
 
 connection.onRequest(
   "modelscript/updateComponentParameter",
   (params: { uri: string; name: string; parameter: string; value: string }) => {
-    if (params.uri.endsWith(".sysml")) {
-      const doc = documents.get(params.uri);
-      if (!doc || !sysml2ParserReady || !sysml2Parser) return [];
-      try {
-        const tree = sysml2Parser.parse(doc.getText());
-        return computeSysML2ParameterEdit(tree, doc.getText(), params.name, params.parameter, params.value);
-      } catch (e) {
-        console.error("[sysml2-diagram] updateComponentParameter error:", e);
-        return [];
-      }
-    }
-    const instances = documentInstances.get(params.uri);
-    if (!instances?.[0]) return [];
-    try {
-      return computeParameterEdit(instances[0], params.name, params.parameter, params.value);
-    } catch (e) {
-      console.error("[diagram] updateComponentParameter error:", e);
-      return [];
-    }
+    const result = getDiagramDispatch().applyEdits({
+      uri: params.uri,
+      seq: 0,
+      actions: [{ type: "updateParameter", name: params.name, parameter: params.parameter, value: params.value }],
+    });
+    return result.edits;
   },
 );
 
