@@ -1005,6 +1005,9 @@ function runSemanticPipeline(
       }
     }
 
+    // Bail out if stale before running expensive reference resolution
+    if (revisionAtStart !== null && (documentRevisions.get(uri) ?? 0) !== revisionAtStart) return;
+
     if (!skipHeavyLints) {
       const unresolvedRefs = mslStdlibReady ? resolver.resolveAllReferences(uri) : [];
       let dirty = false;
@@ -1389,10 +1392,13 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
       `[validate] ${textDocument.uri}: text=${text.length}B, syntaxErrors=${diagnostics.length}, hasError=${typeof tree.rootNode.hasError === "function" ? tree.rootNode.hasError() : tree.rootNode.hasError}`,
     );
 
-    // Always run the semantic pipeline — syntax errors were already sent
-    // instantly by the onDidChangeContent handler, so this pass focuses on
-    // producing the merged (syntax + semantic) diagnostic set.
-    runSemanticPipeline(textDocument.uri, text, tree, editRanges, diagnostics, null, context);
+    // Always run the semantic pipeline with revision tracking — syntax errors
+    // were already sent instantly by the onDidChangeContent handler, so this
+    // pass focuses on producing the merged (syntax + semantic) diagnostic set.
+    // Passing the revision allows the pipeline to bail out early if a new edit
+    // arrives while it's running (staleness check at each expensive step).
+    const revisionAtStart = documentRevisions.get(textDocument.uri) ?? 0;
+    runSemanticPipeline(textDocument.uri, text, tree, editRanges, diagnostics, revisionAtStart, context);
   } else {
     // Fallback: basic regex validation when tree-sitter is not available
     const openComments = (text.match(/\/\*/g) || []).length;

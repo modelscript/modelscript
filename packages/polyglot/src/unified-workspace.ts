@@ -21,6 +21,8 @@ export class UnifiedWorkspace {
   private partialCache: SymbolIndex | null = null;
   /** Version numbers of each workspace at the time the cache was built. */
   private partialCacheVersions = new Map<string, number>();
+  /** Symbol IDs belonging to each language in the partial cache — for incremental patching. */
+  private partialCacheSymbolsByLang = new Map<string, number[]>();
 
   constructor() {
     this.adapterRegistry = new AdapterRegistry();
@@ -135,20 +137,90 @@ export class UnifiedWorkspace {
    * Caches the result and reuses it when the underlying workspace partials haven't changed.
    */
   toUnifiedPartial(): SymbolIndex {
-    // Fast path: check if any underlying workspace has changed
-    // by comparing version numbers. WorkspaceIndex.version increments
-    // on every register/markDirty/remove.
-    if (this.partialCache) {
-      let allSame = true;
-      for (const [language, workspace] of this.indices.entries()) {
-        if (workspace.version !== this.partialCacheVersions.get(language)) {
-          allSame = false;
-          break;
-        }
+    // Determine which workspaces actually changed
+    const changedWorkspaces: string[] = [];
+    for (const [language, workspace] of this.indices.entries()) {
+      if (workspace.version !== this.partialCacheVersions.get(language)) {
+        changedWorkspaces.push(language);
       }
-      if (allSame) return this.partialCache;
     }
 
+    // Fast path: nothing changed anywhere
+    if (changedWorkspaces.length === 0 && this.partialCache) {
+      return this.partialCache;
+    }
+
+    // Incremental path: patch existing cache for only the changed workspaces.
+    // This avoids iterating over symbols from unchanged workspaces (e.g., SysML2
+    // symbols don't need to be re-merged when only a Modelica file changed).
+    if (this.partialCache && changedWorkspaces.length < this.indices.size) {
+      const { symbols, byName, childrenOf } = this.partialCache;
+
+      for (const language of changedWorkspaces) {
+        const workspace = this.indices.get(language);
+        if (!workspace) continue;
+
+        // 1. Remove old entries for this workspace from the merged cache
+        const oldIds = this.partialCacheSymbolsByLang.get(language);
+        if (oldIds) {
+          for (const id of oldIds) {
+            const entry = symbols.get(id);
+            if (entry) {
+              symbols.delete(id);
+              // Clean up byName
+              const nameIds = byName.get(entry.name);
+              if (nameIds) {
+                const idx = nameIds.indexOf(id);
+                if (idx !== -1) nameIds.splice(idx, 1);
+                if (nameIds.length === 0) byName.delete(entry.name);
+              }
+              // Clean up childrenOf (as a child of its parent)
+              const parentChildren = childrenOf.get(entry.parentId);
+              if (parentChildren) {
+                const idx = parentChildren.indexOf(id);
+                if (idx !== -1) parentChildren.splice(idx, 1);
+                if (parentChildren.length === 0) childrenOf.delete(entry.parentId);
+              }
+              // Remove its own children array
+              childrenOf.delete(id);
+            }
+          }
+        }
+
+        // 2. Merge new entries for this workspace
+        const index = workspace.toUnifiedPartial();
+        this.partialCacheVersions.set(language, workspace.version);
+
+        const newIds: number[] = [];
+        for (const [id, entry] of index.symbols) {
+          const sys: SymbolEntry = { ...entry, language };
+          symbols.set(id, sys);
+          newIds.push(id);
+        }
+        this.partialCacheSymbolsByLang.set(language, newIds);
+
+        for (const [name, ids] of index.byName) {
+          const existing = byName.get(name);
+          if (existing) existing.push(...ids);
+          else byName.set(name, [...ids]);
+        }
+
+        for (const [parentId, ids] of index.childrenOf) {
+          const existing = childrenOf.get(parentId);
+          if (existing) {
+            for (const cid of ids) {
+              if (!existing.includes(cid)) existing.push(cid);
+            }
+          } else {
+            childrenOf.set(parentId, [...ids]);
+          }
+        }
+      }
+
+      return this.partialCache;
+    }
+
+    // Full rebuild: no cache or all workspaces changed
     const symbols = new Map<number, SymbolEntry>();
     const byName = new Map<string, number[]>();
     const childrenOf = new Map<number | null, number[]>();
@@ -157,10 +229,13 @@ export class UnifiedWorkspace {
       const index = workspace.toUnifiedPartial();
       this.partialCacheVersions.set(language, workspace.version);
 
+      const langIds: number[] = [];
       for (const [id, entry] of index.symbols) {
         const sys: SymbolEntry = { ...entry, language };
         symbols.set(id, sys);
+        langIds.push(id);
       }
+      this.partialCacheSymbolsByLang.set(language, langIds);
 
       for (const [name, ids] of index.byName) {
         const existing = byName.get(name);
