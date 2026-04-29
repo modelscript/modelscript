@@ -36,7 +36,7 @@ import { TextDocument } from "vscode-languageserver-textdocument";
 import { ModelicaDiagramBackend, SysML2DiagramBackend, createDiagramDispatch } from "./diagramApi";
 import { buildComponentProperties, buildDiagramData, getClassIconSvg, type DiagramData } from "./diagramData";
 import { computeComponentInsert } from "./diagramEdits";
-import type { DiagramEditRequest } from "./diagramProtocol";
+import type { DiagramApplyEditsParams } from "./diagramProtocol";
 import { DiagramMethods } from "./diagramProtocol";
 import {
   createEmptyLayout,
@@ -3267,7 +3267,7 @@ function getDiagramDispatch() {
 }
 
 // New unified methods — clients should migrate to these
-connection.onRequest(DiagramMethods.applyEdits, (params: DiagramEditRequest) => {
+connection.onRequest(DiagramMethods.applyEdits, (params: DiagramApplyEditsParams) => {
   return getDiagramDispatch().applyEdits(params);
 });
 

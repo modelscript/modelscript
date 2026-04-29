@@ -757,6 +757,7 @@
     "@antv/x6": "^3.1.7",
     "@antv/x6-plugin-selection": "^2.2.2",
     "@mlc-ai/web-llm": "*",
+    "@modelscript/diagram-core": "^0.0.0",
     "@modelscript/lsp": "*",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.5.0",

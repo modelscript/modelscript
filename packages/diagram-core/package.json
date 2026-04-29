@@ -1,0 +1,21 @@
+{
+  "name": "@modelscript/diagram-core",
+  "version": "0.0.0",
+  "main": "src/index.ts",
+  "scripts": {
+    "build": "tsc",
+    "lint": "eslint src"
+  },
+  "dependencies": {
+    "@antv/layout": "^0.3.25",
+    "@antv/x6": "^3.1.7",
+    "@antv/x6-plugin-selection": "^2.2.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@stylistic/eslint-plugin": "^5.10.0",
+    "eslint": "^9.13.0",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.39.0"
+  }
+}

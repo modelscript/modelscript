@@ -17,6 +17,7 @@
     "@antv/x6": "^3.0.1",
     "@mjackson/node-fetch-server": "^0.6.0",
     "@modelscript/core": "*",
+    "@modelscript/diagram-core": "^0.0.0",
     "@modelscript/lsp": "*",
     "@modelscript/modelica": "*",
     "@modelscript/utils": "*",
