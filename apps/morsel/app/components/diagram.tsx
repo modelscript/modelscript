@@ -49,6 +49,108 @@ interface DiagramEditorProps {
   onRenderComplete?: (diagramData: any) => void;
 }
 
+function distToSegmentSquared(px: number, py: number, vx: number, vy: number, wx: number, wy: number) {
+  const l2 = (wx - vx) * (wx - vx) + (wy - vy) * (wy - vy);
+  if (l2 === 0) return (px - vx) * (px - vx) + (py - vy) * (py - vy);
+  let t = ((px - vx) * (wx - vx) + (py - vy) * (wy - vy)) / l2;
+  t = Math.max(0, Math.min(1, t));
+  const projX = vx + t * (wx - vx);
+  const projY = vy + t * (wy - vy);
+  return (px - projX) * (px - projX) + (py - projY) * (py - projY);
+}
+
+export function updateSolderDots(g: Graph) {
+  const edges = g.getEdges();
+  const allPaths: { id: string; points: { x: number; y: number }[]; color: string }[] = [];
+  const candidateVertices = new Map<string, { x: number; y: number; pathId: string; color: string }>();
+
+  for (const edge of edges) {
+    const source = edge.getSourcePoint();
+    const target = edge.getTargetPoint();
+    if (!source || !target) continue;
+
+    const vertices = edge.getVertices() || [];
+    const points = [source, ...vertices, target];
+
+    const stroke = edge.attr("line/stroke");
+    const color = stroke && stroke !== "none" ? stroke : "blue";
+    allPaths.push({ id: edge.id, points, color });
+
+    for (const v of points) {
+      const key = `${v.x.toFixed(1)},${v.y.toFixed(1)}`;
+      candidateVertices.set(key, { x: v.x, y: v.y, pathId: edge.id, color });
+    }
+  }
+
+  const solderDots: { x: number; y: number; color: string; path1: string; path2: string }[] = [];
+
+  for (const candidate of candidateVertices.values()) {
+    let isJunction = false;
+    let intersectingPathId = "";
+    for (const path of allPaths) {
+      if (path.id === candidate.pathId) continue;
+      for (let k = 0; k < path.points.length - 1; k++) {
+        const p1 = path.points[k];
+        const p2 = path.points[k + 1];
+        if (distToSegmentSquared(candidate.x, candidate.y, p1.x, p1.y, p2.x, p2.y) < 1.0) {
+          isJunction = true;
+          intersectingPathId = path.id;
+          break;
+        }
+      }
+      if (isJunction) break;
+    }
+    if (isJunction) {
+      solderDots.push({ ...candidate, path1: candidate.pathId, path2: intersectingPathId });
+    }
+  }
+
+  const existingDots = g.getNodes().filter((n) => n.id.startsWith("solder_dot_"));
+  const existingIds = new Set(existingDots.map((n) => n.id));
+
+  const newIds = new Set<string>();
+  for (const dot of solderDots) {
+    const ids = [dot.path1, dot.path2].sort();
+    const id = `solder_dot_${ids[0]}_${ids[1]}`;
+    newIds.add(id);
+
+    const existing = g.getCellById(id);
+    if (existing && existing.isNode()) {
+      if (existing.getPosition().x !== dot.x - 0.75 || existing.getPosition().y !== dot.y - 0.75) {
+        existing.setPosition(dot.x - 0.75, dot.y - 0.75);
+      }
+    } else {
+      g.addNode({
+        id,
+        shape: "circle",
+        x: dot.x - 0.75,
+        y: dot.y - 0.75,
+        width: 1.5,
+        height: 1.5,
+        zIndex: 20,
+        attrs: {
+          body: {
+            fill: dot.color,
+            stroke: "none",
+          },
+        },
+      });
+    }
+  }
+
+  for (const oldId of existingIds) {
+    if (!newIds.has(oldId)) {
+      const cell = g.getCellById(oldId);
+      if (cell) g.removeCell(cell);
+    }
+  }
+
+  if (typeof window !== "undefined") {
+    (window as any).debugSolderDotsInfo =
+      `Edges: ${edges.length}, Paths: ${allPaths.length}, Candidates: ${candidateVertices.size}, Dots: ${solderDots.length}`;
+  }
+}
+
 function renderDiagram(
   g: Graph,
   diagramData: any,
@@ -379,6 +481,12 @@ function renderDiagram(
   }
 
   g.fromJSON({ nodes, edges });
+
+  setTimeout(() => {
+    if (!g.disposed) {
+      updateSolderDots(g);
+    }
+  }, 50);
 
   // Programmatically establish all embedding relationships via standard API
   for (const [childId, parentId] of relations) {
@@ -882,8 +990,12 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
           }
         }
       });
+      g.on("edge:removed", () => requestAnimationFrame(() => updateSolderDots(g)));
+      g.on("edge:added", () => requestAnimationFrame(() => updateSolderDots(g)));
+
       let edgeUpdateTimeout: NodeJS.Timeout | null = null;
       g.on("edge:change:vertices", ({ edge }) => {
+        requestAnimationFrame(() => updateSolderDots(g));
         if (edgeUpdateTimeout) {
           clearTimeout(edgeUpdateTimeout);
         }
@@ -912,6 +1024,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
         }, 500);
       });
       g.on("node:change:position", ({ node }) => {
+        requestAnimationFrame(() => updateSolderDots(g));
         // Deselect edges when moving a node to avoid stale rubberbands
         const selected = g?.getSelectedCells();
         if (selected) {
@@ -1130,6 +1243,20 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
+      <div
+        style={{
+          position: "absolute",
+          top: 10,
+          left: 10,
+          zIndex: 100,
+          background: "rgba(0,0,0,0.5)",
+          color: "white",
+          padding: 5,
+          whiteSpace: "pre-wrap",
+        }}
+      >
+        {typeof window !== "undefined" ? (window as any).debugSolderDotsInfo : ""}
+      </div>
       <div
         ref={refContainer}
         className="height-full width-full"

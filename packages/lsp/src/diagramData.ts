@@ -325,6 +325,8 @@ export function buildDiagramData(classInstance: ModelicaClassInstance): DiagramD
 
   // Build edges from connect equations
   const nodeIds = new Set(nodes.map((n) => n.id));
+  const allConnectionPaths: ({ points: { x: number; y: number }[] } | null)[] = [];
+
   for (const connectEquation of classInstance.connectEquations) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const c1 = connectEquation.componentReference1?.parts.map((c: any) => c.identifier?.text ?? "");
@@ -380,6 +382,13 @@ export function buildDiagramData(classInstance: ModelicaClassInstance): DiagramD
         },
       },
     });
+
+    if (line?.points && line.points.length >= 2) {
+      const convertedPts = line.points.map((p) => convertPoint(p)).map((p) => ({ x: p[0], y: p[1] }));
+      allConnectionPaths.push({ points: convertedPts });
+    } else {
+      allConnectionPaths.push(null);
+    }
   }
 
   // Coordinate system
