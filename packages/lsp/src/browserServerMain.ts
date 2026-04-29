@@ -3004,7 +3004,6 @@ connection.onTypeDefinition((params) => {
  * Searches workspace document instances first, then falls back to library
  * classes via the polyglot index and QueryBackedClassInstance.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function resolveModelicaClassInstance(uri: string, className?: string): any {
   const instances = documentInstances.get(uri);
 
@@ -3286,7 +3285,9 @@ function getDiagramDispatch() {
       getSysML2Parser: () => (sysml2ParserReady && sysml2Parser ? sysml2Parser : null),
       computeConnectionInsert: computeSysML2ConnectionInsert,
       computeConnectionDelete: computeSysML2ConnectionDelete,
+      computeElementInsert: computeSysML2ElementInsert,
       computeElementDelete: computeSysML2ElementDelete,
+      generateUniqueName,
       computeNameEdit: computeSysML2NameEdit,
       computeDescriptionEdit: computeSysML2DescriptionEdit,
       computeParameterEdit: computeSysML2ParameterEdit,
@@ -4485,41 +4486,17 @@ connection.onRequest("modelscript/resetNotebookSession", async (params: { sessio
 
 // Custom request: add a component to a model (drag-drop from library tree)
 connection.onRequest("modelscript/addComponent", (params: { uri: string; className: string; x: number; y: number }) => {
-  // SysML2: insert a new element declaration in source text
+  // SysML2 — dispatch handles element insert + layout storage
   if (params.uri.endsWith(".sysml")) {
-    const doc = documents.get(params.uri);
-    if (!doc) return [];
-    try {
-      const docText = doc.getText();
-      // className is the element type (e.g., "PartDefinition", "ActionUsage")
-      const elementType = params.className;
-      // Generate a base name from the type
-      const baseParts = elementType.replace("Definition", "").replace("Usage", "");
-      const baseName = baseParts.charAt(0).toLowerCase() + baseParts.slice(1);
-      const uniqueName = generateUniqueName(docText, baseName);
-
-      const edits = computeSysML2ElementInsert(docText, elementType, uniqueName);
-
-      // Store position in layout
-      let layout = sysml2Layouts.get(params.uri) ?? createEmptyLayout();
-      layout = updateElementPositions(layout, [
-        {
-          name: uniqueName,
-          x: Math.round(params.x),
-          y: Math.round(params.y),
-          width: 180,
-          height: 60,
-        },
-      ]);
-      sysml2Layouts.set(params.uri, layout);
-
-      return edits;
-    } catch (e) {
-      console.error("[sysml2-diagram] addComponent error:", e);
-      return [];
-    }
+    const result = getDiagramDispatch().applyEdits({
+      uri: params.uri,
+      seq: 0,
+      actions: [{ type: "addComponent", className: params.className, x: params.x, y: params.y }],
+    });
+    return result.edits;
   }
 
+  // Modelica — uses context-aware name generation (defaultComponentName annotation)
   const instances = documentInstances.get(params.uri);
   const doc = documents.get(params.uri);
   if (!instances?.[0] || !doc) return [];

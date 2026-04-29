@@ -119,7 +119,9 @@ export interface SysML2BackendDeps {
   getSysML2Parser: () => { parse: (text: string) => unknown } | null;
   computeConnectionInsert: (text: string, source: string, target: string) => TextEdit[];
   computeConnectionDelete: (text: string, source: string, target: string) => TextEdit[];
+  computeElementInsert: (text: string, elementType: string, name: string) => TextEdit[];
   computeElementDelete: (text: string, names: string[]) => TextEdit[];
+  generateUniqueName: (text: string, baseName: string) => string;
   computeNameEdit: (tree: unknown, text: string, oldName: string, newName: string) => TextEdit[];
   computeDescriptionEdit: (tree: unknown, text: string, name: string, desc: string) => TextEdit[];
   computeParameterEdit: (tree: unknown, text: string, name: string, param: string, value: string) => TextEdit[];
@@ -218,9 +220,25 @@ export class SysML2DiagramBackend implements DiagramBackend {
             needsRender = "debounced";
             break;
           }
-          case "addComponent":
-            // SysML2 addComponent is handled separately via computeSysML2ElementInsert
+          case "addComponent": {
+            const elementType = action.className;
+            const baseParts = elementType.replace("Definition", "").replace("Usage", "");
+            const baseName = baseParts.charAt(0).toLowerCase() + baseParts.slice(1);
+            const uniqueName = this.deps.generateUniqueName(docText, baseName);
+            allEdits.push(...this.deps.computeElementInsert(docText, elementType, uniqueName));
+            // Store position in layout
+            layout = this.deps.updateElementPositions(layout, [
+              {
+                name: uniqueName,
+                x: Math.round(action.x),
+                y: Math.round(action.y),
+                width: 180,
+                height: 60,
+              },
+            ]);
+            needsRender = "immediate";
             break;
+          }
         }
       }
       this.deps.setLayout(params.uri, layout);
