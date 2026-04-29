@@ -285,7 +285,8 @@ export type Revision = number;
  */
 export type DependencyKey =
   | { kind: "input"; symbolId: SymbolId }
-  | { kind: "query"; queryName: string; symbolId: SymbolId; argsHash?: string };
+  | { kind: "query"; queryName: string; symbolId: SymbolId; argsHash?: string }
+  | { kind: "byName"; name: string };
 
 /**
  * A memoized query result with Salsa-style revision metadata.
@@ -305,6 +306,12 @@ export interface Memo {
   changed_at: Revision;
   /** The set of dependencies read during the last execution. */
   dependencies: DependencyKey[];
+  /**
+   * Names looked up via byName() during the last execution.
+   * Used to selectively invalidate memos when new symbols appear,
+   * instead of the nuclear memos.clear() approach.
+   */
+  byNameLookups?: Set<string>;
 }
 
 // ---------------------------------------------------------------------------

@@ -29,6 +29,8 @@ import type {
  */
 class DependencyTracker {
   readonly dependencies: DependencyKey[] = [];
+  /** Names looked up via byName() — used for negative dependency tracking. */
+  readonly byNameLookups = new Set<string>();
 
   recordInput(symbolId: SymbolId): void {
     this.dependencies.push({ kind: "input", symbolId });
@@ -36,6 +38,11 @@ class DependencyTracker {
 
   recordQuery(queryName: string, symbolId: SymbolId): void {
     this.dependencies.push({ kind: "query", queryName, symbolId });
+  }
+
+  recordByName(name: string): void {
+    this.byNameLookups.add(name);
+    this.dependencies.push({ kind: "byName", name });
   }
 }
 
@@ -250,10 +257,28 @@ export class QueryEngine {
     }
 
     if (hasNewSymbols) {
-      // If new symbols were added (e.g., background MSL loading finished),
-      // we must clear memos because previous failed `byName` lookups
-      // did not record a dependency on the missing symbol.
-      this.memos.clear();
+      // Selectively invalidate memos that looked up names which now exist.
+      // This replaces the previous nuclear memos.clear() with targeted
+      // invalidation: only memos that did a byName() lookup for a name
+      // that is now newly present need re-execution.
+      const newNames = new Set<string>();
+      for (const [id, entry] of newIndex.symbols) {
+        if (!this.index.symbols.has(id)) {
+          newNames.add(entry.name);
+        }
+      }
+      if (newNames.size > 0) {
+        for (const [key, memo] of this.memos) {
+          if (memo.byNameLookups) {
+            for (const name of newNames) {
+              if (memo.byNameLookups.has(name)) {
+                this.memos.delete(key);
+                break;
+              }
+            }
+          }
+        }
+      }
     }
 
     // Prune memos for deleted symbols
@@ -550,13 +575,14 @@ export class QueryEngine {
     }
 
     // Must re-execute
-    const { value, dependencies } = this.execute(queryName, symbolId);
+    const { value, dependencies, byNameLookups } = this.execute(queryName, symbolId);
 
     // Backdating: if the result is the same, don't bump changed_at
     if (memo && shallowEqual(memo.value, value)) {
       memo.value = value;
       memo.verified_at = this.currentRevision;
       memo.dependencies = dependencies;
+      memo.byNameLookups = byNameLookups.size > 0 ? byNameLookups : undefined;
       // *** changed_at stays the same — this is the backdating magic ***
       return value;
     }
@@ -567,6 +593,7 @@ export class QueryEngine {
       verified_at: this.currentRevision,
       changed_at: this.currentRevision,
       dependencies,
+      byNameLookups: byNameLookups.size > 0 ? byNameLookups : undefined,
     };
     this.memos.set(key, newMemo);
     return value;
@@ -589,8 +616,7 @@ export class QueryEngine {
         if (inputRev === undefined || inputRev > memo.verified_at) {
           return false; // Input was changed or deleted
         }
-      } else {
-        // dep.kind === "query"
+      } else if (dep.kind === "query") {
         const depKey = this.memoKey(dep.queryName, dep.symbolId);
         let depMemo = this.memos.get(depKey);
 
@@ -610,6 +636,21 @@ export class QueryEngine {
         if (depMemo.changed_at > memo.verified_at) {
           return false; // Dependency's result changed
         }
+      } else if (dep.kind === "byName") {
+        // Negative dependency: the query looked up this name.
+        // If it didn't exist before but now does, the memo is stale.
+        // We check the *current* index (after swap) to see if the name is now present.
+        const currentIds = this.index.byName.get(dep.name);
+        // If the name now resolves to IDs that were added after this memo was verified,
+        // we must re-execute.
+        if (currentIds) {
+          for (const id of currentIds) {
+            const rev = this.inputRevisions.get(id);
+            if (rev !== undefined && rev > memo.verified_at) {
+              return false; // A new symbol with this name appeared
+            }
+          }
+        }
       }
     }
 
@@ -627,7 +668,10 @@ export class QueryEngine {
    * - If the cycle entry point has a `recovery` function, calls it
    * - Otherwise throws an error
    */
-  private execute(queryName: string, symbolId: SymbolId): { value: unknown; dependencies: DependencyKey[] } {
+  private execute(
+    queryName: string,
+    symbolId: SymbolId,
+  ): { value: unknown; dependencies: DependencyKey[]; byNameLookups: Set<string> } {
     const entry = this.resolveEntry(symbolId);
     if (!entry) {
       throw new Error(`Unknown symbol ID: ${symbolId}`);
@@ -638,7 +682,7 @@ export class QueryEngine {
     // encountering a Modelica ClassDefinition). Return null gracefully.
     const hooks = this.hooksByRule.get(entry.ruleName);
     if (!hooks || !hooks[queryName]) {
-      return { value: null, dependencies: [] };
+      return { value: null, dependencies: [], byNameLookups: new Set<string>() };
     }
 
     const { queryFn, recoveryFn } = this.resolveHook(queryName, entry.ruleName);
@@ -660,7 +704,7 @@ export class QueryEngine {
       if (recoverer) {
         const cycleInfo: CycleInfo = { participants };
         const fallback = recoverer.recoveryFn(cycleInfo, entry);
-        return { value: fallback, dependencies: [] };
+        return { value: fallback, dependencies: [], byNameLookups: new Set<string>() };
       }
 
       // No recovery available — throw
@@ -681,7 +725,7 @@ export class QueryEngine {
 
     try {
       const value = queryFn(this.createTrackedDB(), entry);
-      return { value, dependencies: tracker.dependencies };
+      return { value, dependencies: tracker.dependencies, byNameLookups: tracker.byNameLookups };
     } finally {
       this.activeTracker = previousTracker;
       this.executionStack.pop();
@@ -803,6 +847,7 @@ export class QueryEngine {
       },
 
       byName(name: string): SymbolEntry[] {
+        tracker?.recordByName(name);
         const ids = engine.index.byName.get(name);
         if (!ids) return [];
         const results: SymbolEntry[] = [];
