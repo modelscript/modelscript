@@ -15,6 +15,8 @@ export default defineConfig([
             "eslint.config.ts",
             "languages/modelica/grammar.js",
             "languages/modelica/bindings/node/index.d.ts",
+            "languages/step/grammar.js",
+            "languages/step/bindings/node/index.d.ts",
             "scripts/generate-ast.ts",
           ],
         },
