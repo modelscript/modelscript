@@ -1,0 +1,14 @@
+{
+  "name": "@modelscript/docs",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vitepress build docs",
+    "dev": "vitepress dev docs",
+    "preview": "vitepress preview docs"
+  },
+  "devDependencies": {
+    "vitepress": "^1.1.4"
+  }
+}

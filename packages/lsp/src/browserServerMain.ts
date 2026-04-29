@@ -855,6 +855,10 @@ documents.onDidChangeContent((change) => {
       const tree = updateDocumentTree(uri, text);
       const syntaxDiags = collectSyntaxErrors(tree.rootNode, change.document);
 
+      connection.console.info(
+        `[instant] Tier 1 fired for ${uri}. text=${text.length}B, syntaxDiags=${syntaxDiags.length}`,
+      );
+
       // Merge with last known semantic diagnostics to prevent flashing —
       // semantic squigglies stay visible until the next semantic pass replaces them.
       const cachedSemantic = lastSemanticDiagnostics.get(uri) || [];
@@ -3008,6 +3012,9 @@ const diagramCache = new Map<string, { version: number | string; data: any }>();
 connection.onRequest(
   "modelscript/getDiagramData",
   (params: { uri: string; className?: string; diagramType?: string }) => {
+    // Force flush semantic pass so we don't build diagram from stale AST
+    flushValidation(params.uri);
+
     // Check cache for Modelica files
     if (!params.uri.endsWith(".sysml")) {
       const doc = documents.get(params.uri);
@@ -6273,15 +6280,18 @@ connection.onRequest("modelscript/resolveMarkdownVars", (): { values: Record<str
 
     // Debug: log the full state of the unified index and document manager
     const allDocUris = documents.all().map((d) => d.uri);
-    console.log(
-      `[resolveMarkdownVars] db.symbols.size=${db.symbols.size}, documents.all().length=${allDocUris.length}`,
-    );
-    console.log(`[resolveMarkdownVars] document URIs: ${JSON.stringify(allDocUris)}`);
 
     let matchCount = 0;
     for (const entry of db.symbols.values()) {
       if (!entry.name) continue;
       if (!VALUE_CARRYING_RULES.has(entry.ruleName)) continue;
+      if (
+        entry.resourceId &&
+        (entry.resourceId.includes("://lib") ||
+          entry.resourceId.includes("://stdlib") ||
+          entry.resourceId.startsWith("modelscript-lib"))
+      )
+        continue;
       matchCount++;
 
       // Build the qualified name by walking up the parent chain
@@ -6290,9 +6300,6 @@ connection.onRequest("modelscript/resolveMarkdownVars", (): { values: Record<str
       // Extract the value from the source text using byte ranges.
       if (entry.resourceId) {
         const fullText = documents.get(entry.resourceId)?.getText() ?? documentTrees.get(entry.resourceId)?.text;
-        console.log(
-          `[resolveMarkdownVars] entry=${entry.name}, qualifiedName=${qualifiedName}, rule=${entry.ruleName}, resourceId=${entry.resourceId}, hasText=${!!fullText}, startByte=${entry.startByte}, endByte=${entry.endByte}`,
-        );
         if (fullText) {
           const sourceText = fullText.substring(entry.startByte, entry.endByte);
           const eqIdx = sourceText.indexOf("=");
@@ -6376,6 +6383,13 @@ connection.onRequest(
       let diagramCandidates = 0;
       for (const entry of db.symbols.values()) {
         if (!entry.name) continue;
+        if (
+          entry.resourceId &&
+          (entry.resourceId.includes("://lib") ||
+            entry.resourceId.includes("://stdlib") ||
+            entry.resourceId.startsWith("modelscript-lib"))
+        )
+          continue;
         // Match Modelica ClassDefinition or SysML2 PartDefinition
         if (entry.ruleName !== "ClassDefinition" && entry.ruleName !== "PartDefinition") continue;
         diagramCandidates++;

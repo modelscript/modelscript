@@ -7,9 +7,9 @@ Tree-sitter grammar and Polyglot query sets for Modelica, providing pattern matc
 
 ## Scripts
 
-| Command         | Description                          |
-| --------------- | ------------------------------------ |
-| `npm run build` | Clean and compile TypeScript outputs |
-| `npm run test`  | Run unit tests for this package      |
+| Command            | Description                           |
+| ------------------ | ------------------------------------- |
+| `npm run build`    | Clean and compile TypeScript outputs  |
+| `npm run test`     | Run unit tests for this package       |
 | `npm run generate` | Generate and build tree-sitter parser |
-| `npm run clean` | Remove compiled build artifacts      |
+| `npm run clean`    | Remove compiled build artifacts       |

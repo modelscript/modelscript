@@ -84,7 +84,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
         this.requestDiagramData(webviewPanel, uriString, currentDiagramType, {
           isCanceled: () => diagramRequestNonce !== currentNonce,
         });
-      }, 500);
+      }, 200);
     };
 
     const applyTextEdits = async (uri: string, edits: vscode.TextEdit[]) => {

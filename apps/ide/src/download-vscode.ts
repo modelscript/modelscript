@@ -126,6 +126,49 @@ async function main() {
     }
   }
 
+  // Patch the webWorkerExtensionHostIframe.html CSP
+  // Microsoft hardcodes a SHA-256 hash for the extension host worker blob, but because our URLs
+  // are different (e.g. localhost), the blob content changes and the hash fails, causing CSP violations.
+  // We fix this by adding 'unsafe-inline' to the script-src.
+  const iframeHtmlPath = join(
+    DEST,
+    "out",
+    "vs",
+    "workbench",
+    "services",
+    "extensions",
+    "worker",
+    "webWorkerExtensionHostIframe.html",
+  );
+  if (existsSync(iframeHtmlPath)) {
+    let html = readFileSync(iframeHtmlPath, "utf8");
+    html = html.replace(
+      "script-src 'self' 'unsafe-eval' 'unsafe-inline' 'sha256-cl8ijlOzEe+0GRCQNJQu2k6nUQ0fAYNYIuuKEm72JDs='",
+      "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
+    );
+    // Also handle the case where it hasn't been patched with unsafe-inline yet
+    html = html.replace(
+      "script-src 'self' 'unsafe-eval' 'sha256-cl8ijlOzEe+0GRCQNJQu2k6nUQ0fAYNYIuuKEm72JDs='",
+      "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
+    );
+    writeFileSync(iframeHtmlPath, html);
+    console.log("  Patched webWorkerExtensionHostIframe.html CSP");
+  }
+
+  // Patch the webview index.html CSP
+  const webviewHtmlPath = join(DEST, "out", "vs", "workbench", "contrib", "webview", "browser", "pre", "index.html");
+  if (existsSync(webviewHtmlPath)) {
+    let html = readFileSync(webviewHtmlPath, "utf8");
+    html = html.replace(
+      "script-src 'sha256-TaWGDzV7c9rUH2q/5ygOyYUHSyHIqBMYfucPh3lnKvU=' 'self'",
+      "script-src 'unsafe-inline' 'self'",
+    );
+    // Also handle case where it's not exactly that hash but has a generic sha256
+    html = html.replace(/script-src 'sha256-[A-Za-z0-9+/=]+' 'self'/g, "script-src 'unsafe-inline' 'self'");
+    writeFileSync(webviewHtmlPath, html);
+    console.log("  Patched webview index.html CSP");
+  }
+
   console.log("Done!");
 }
 

@@ -168,9 +168,13 @@ export class AnnotationEvaluator {
         if (arg instanceof ModelicaElementModificationSyntaxNode) {
           const argName = arg.name?.parts?.[0]?.text;
           if (argName) {
-            result[argName] = this.parseValue(arg, argName);
+            let mappedName = argName;
+            if (name === "Rectangle" && argName === "cornerRadius") {
+              mappedName = "radius";
+            }
+            result[mappedName] = this.parseValue(arg, argName);
             if (argName === "visible") {
-              console.log(`[AnnotationEvaluator] Parsed visible for ${name}: `, result[argName]);
+              console.log(`[AnnotationEvaluator] Parsed visible for ${name}: `, result[mappedName]);
             }
           }
         }
@@ -212,11 +216,24 @@ export class AnnotationEvaluator {
   private parseFunctionCall(node: ModelicaFunctionCallSyntaxNode): any {
     const funcNameParts = node.functionReference?.parts?.map((p) => p.identifier?.text);
     const funcName = funcNameParts ? funcNameParts[funcNameParts.length - 1] : "Unknown";
+
+    if (funcName === "DynamicSelect") {
+      const posArgs = node.functionCallArguments?.arguments ?? [];
+      if (posArgs.length > 0 && posArgs[0]?.expression) {
+        return this.parseValueForExpr(posArgs[0].expression);
+      }
+      return null;
+    }
+
     const obj: any = { "@type": funcName };
 
     for (const arg of node.functionCallArguments?.namedArguments ?? []) {
       if (arg.identifier?.text && arg.argument?.expression) {
-        obj[arg.identifier.text] = this.parseValueForExpr(arg.argument.expression);
+        let argName = arg.identifier.text;
+        if (funcName === "Rectangle" && argName === "cornerRadius") {
+          argName = "radius";
+        }
+        obj[argName] = this.parseValueForExpr(arg.argument.expression);
       }
     }
 

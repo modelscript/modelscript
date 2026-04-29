@@ -18,6 +18,8 @@ export default defineConfig([
             "languages/step/grammar.js",
             "languages/step/bindings/node/index.d.ts",
             "scripts/generate-ast.ts",
+            "apps/docs/docs/.vitepress/config.ts",
+            "apps/docs/docs/.vitepress/theme/index.ts",
           ],
         },
         tsconfigRootDir: import.meta.dirname,

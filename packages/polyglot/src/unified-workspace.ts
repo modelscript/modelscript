@@ -154,7 +154,9 @@ export class UnifiedWorkspace {
     // This avoids iterating over symbols from unchanged workspaces (e.g., SysML2
     // symbols don't need to be re-merged when only a Modelica file changed).
     if (this.partialCache && changedWorkspaces.length < this.indices.size) {
-      const { symbols, byName, childrenOf } = this.partialCache;
+      const { symbols, byName, childrenOf, symbolsByResource } = this.partialCache;
+      // If symbolsByResource is missing from an older cache, initialize it
+      const actualSymbolsByResource = symbolsByResource || new Map<string, number[]>();
 
       for (const language of changedWorkspaces) {
         const workspace = this.indices.get(language);
@@ -183,6 +185,15 @@ export class UnifiedWorkspace {
               }
               // Remove its own children array
               childrenOf.delete(id);
+              // Clean up symbolsByResource
+              if (entry.resourceId) {
+                const resourceIds = actualSymbolsByResource.get(entry.resourceId);
+                if (resourceIds) {
+                  const idx = resourceIds.indexOf(id);
+                  if (idx !== -1) resourceIds.splice(idx, 1);
+                  if (resourceIds.length === 0) actualSymbolsByResource.delete(entry.resourceId);
+                }
+              }
             }
           }
         }
@@ -215,8 +226,22 @@ export class UnifiedWorkspace {
             childrenOf.set(parentId, [...ids]);
           }
         }
+
+        if (index.symbolsByResource) {
+          for (const [resId, ids] of index.symbolsByResource) {
+            const existing = actualSymbolsByResource.get(resId);
+            if (existing) {
+              for (const cid of ids) {
+                if (!existing.includes(cid)) existing.push(cid);
+              }
+            } else {
+              actualSymbolsByResource.set(resId, [...ids]);
+            }
+          }
+        }
       }
 
+      this.partialCache.symbolsByResource = actualSymbolsByResource;
       return this.partialCache;
     }
 
@@ -224,6 +249,7 @@ export class UnifiedWorkspace {
     const symbols = new Map<number, SymbolEntry>();
     const byName = new Map<string, number[]>();
     const childrenOf = new Map<number | null, number[]>();
+    const symbolsByResource = new Map<string, number[]>();
 
     for (const [language, workspace] of this.indices.entries()) {
       const index = workspace.toUnifiedPartial();
@@ -253,9 +279,17 @@ export class UnifiedWorkspace {
           childrenOf.set(parentId, [...ids]);
         }
       }
+
+      if (index.symbolsByResource) {
+        for (const [resId, ids] of index.symbolsByResource) {
+          const existing = symbolsByResource.get(resId);
+          if (existing) existing.push(...ids);
+          else symbolsByResource.set(resId, [...ids]);
+        }
+      }
     }
 
-    this.partialCache = { symbols, byName, childrenOf };
+    this.partialCache = { symbols, byName, childrenOf, symbolsByResource };
     return this.partialCache;
   }
 

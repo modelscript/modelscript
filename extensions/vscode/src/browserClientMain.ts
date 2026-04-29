@@ -425,6 +425,7 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(statusItem);
 
   // Listen for status notifications from the LSP server
+  let isScmRegistered = false;
   client.onNotification("modelscript/status", (params: { state: string; message: string }) => {
     switch (params.state) {
       case "loading":
@@ -438,14 +439,18 @@ export async function activate(context: vscode.ExtensionContext) {
         // Auto-refresh UI components now that LSP is fully initialized
         treeProvider.refresh();
 
-        // Register SCM Integration
-        registerScmIntegration(context, client);
+        // Register integrations only once
+        if (!isScmRegistered) {
+          isScmRegistered = true;
+          // Register SCM Integration
+          registerScmIntegration(context, client);
 
-        // Register SCM Structural Tree View
-        registerScmTreeView(context, client);
+          // Register SCM Structural Tree View
+          registerScmTreeView(context, client);
 
-        // Register Semantic Diff Comments for diff editors
-        registerSemanticDiffComments(context, client);
+          // Register Semantic Diff Comments for diff editors
+          registerSemanticDiffComments(context, client);
+        }
 
         // Resolve markdown variable values, requirements, and diagram data.
         // Call immediately and again after delays to handle the race where
@@ -1195,7 +1200,7 @@ END-ISO-10303-21;`;
   let markdownRefreshTimer: ReturnType<typeof setTimeout> | undefined;
   const scheduleMarkdownRefresh = () => {
     if (markdownRefreshTimer) clearTimeout(markdownRefreshTimer);
-    markdownRefreshTimer = setTimeout(() => refreshMarkdownData(), 1000);
+    markdownRefreshTimer = setTimeout(() => refreshMarkdownData(), 300);
   };
   context.subscriptions.push(
     vscode.workspace.onDidChangeTextDocument((e) => {

@@ -59,10 +59,9 @@ download(URL, FULL_ZIP)
 
     try {
       // Extract only sysml.library/ .sysml files
-      execSync(
-        `unzip -q -o "${FULL_ZIP}" "SysML-v2-Release-2026-03/sysml.library/*.sysml" -d "${tmpDir}"`,
-        { stdio: "pipe" },
-      );
+      execSync(`unzip -q -o "${FULL_ZIP}" "SysML-v2-Release-2026-03/sysml.library/*.sysml" -d "${tmpDir}"`, {
+        stdio: "pipe",
+      });
 
       // Repackage into the final zip (paths relative to the extract dir)
       execSync(`cd "${tmpDir}" && zip -q -r "${DEST}" .`);
@@ -78,7 +77,15 @@ download(URL, FULL_ZIP)
   })
   .catch((err) => {
     console.error(`[download-sysml2] Failed: ${err.message}`);
-    try { fs.unlinkSync(FULL_ZIP); } catch { /* ignore */ }
-    try { fs.unlinkSync(DEST); } catch { /* ignore */ }
+    try {
+      fs.unlinkSync(FULL_ZIP);
+    } catch {
+      /* ignore */
+    }
+    try {
+      fs.unlinkSync(DEST);
+    } catch {
+      /* ignore */
+    }
     process.exit(1);
   });

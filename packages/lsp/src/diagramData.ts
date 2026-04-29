@@ -889,7 +889,7 @@ function applyFillX6(shape: X6Markup, filledShape: IFilledShape, defs: X6Markup[
 
   switch (pattern) {
     case "solid":
-      fillValue = convertColor(filledShape.fillColor);
+      fillValue = convertColor(filledShape.fillColor, convertColor(filledShape.lineColor, "rgb(0,0,0)"));
       break;
     case "horizontal":
       fillValue = createLinePatternX6(defs, 0, filledShape.lineColor, filledShape.fillColor);
@@ -1061,8 +1061,8 @@ function createLinearGradientX6(
   fillColor?: IColor,
 ): string {
   const id = getStableId("gradient-linear", { direction, lineColor, fillColor });
-  const c = convertColor(fillColor);
-  const h = convertColor(lineColor);
+  const c = convertColor(fillColor, "rgb(255,255,255)");
+  const h = convertColor(lineColor, "rgb(0,0,0)");
   addDefIfMissing(defs, {
     tagName: "linearGradient",
     attrs: { id, x1: 0, y1: 0, x2: direction === "horizontal" ? 1 : 0, y2: direction === "vertical" ? 1 : 0 },
@@ -1077,8 +1077,8 @@ function createLinearGradientX6(
 
 function createRadialGradientX6(defs: X6Markup[], lineColor?: IColor, fillColor?: IColor): string {
   const id = getStableId("gradient-radial", { lineColor, fillColor });
-  const c = convertColor(fillColor);
-  const h = convertColor(lineColor);
+  const c = convertColor(fillColor, "rgb(255,255,255)");
+  const h = convertColor(lineColor, "rgb(0,0,0)");
   addDefIfMissing(defs, {
     tagName: "radialGradient",
     attrs: { id, cx: "30%", cy: "30%", r: "70%" },
@@ -1200,6 +1200,13 @@ export function getClassIconSvg(cls: ModelicaClassInstance, size = 16, includePo
 
           if (vx !== 0 || vy !== 0) {
             markup.attrs["viewBox"] = `0 0 ${vw} ${vh}`;
+
+            const defsIdx = (markup.children ?? []).findIndex((c) => c.tagName === "defs");
+            let defsNode;
+            if (defsIdx >= 0 && markup.children) {
+              defsNode = markup.children.splice(defsIdx, 1)[0];
+            }
+
             markup.children = [
               {
                 tagName: "g",
@@ -1207,6 +1214,10 @@ export function getClassIconSvg(cls: ModelicaClassInstance, size = 16, includePo
                 children: markup.children,
               },
             ];
+
+            if (defsNode) {
+              markup.children.unshift(defsNode);
+            }
           }
         }
       }

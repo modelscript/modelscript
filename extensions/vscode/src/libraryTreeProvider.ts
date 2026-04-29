@@ -98,8 +98,13 @@ function classKindToIcon(kind: string): vscode.ThemeIcon {
 
 // Convert raw SVG string to a data URI that VS Code can use as an icon
 function svgToIconUri(svg: string): vscode.Uri {
-  const encoded = encodeURIComponent(svg);
-  return vscode.Uri.parse(`data:image/svg+xml;utf8,${encoded}`);
+  const bytes = new TextEncoder().encode(svg);
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  const base64 = btoa(binary);
+  return vscode.Uri.parse(`data:image/svg+xml;base64,${base64}`);
 }
 
 export class LibraryTreeItem extends vscode.TreeItem {
@@ -210,8 +215,10 @@ export class LibraryTreeProvider
 
       // Apply cached icons to nodes that have them
       for (const node of nodes) {
-        const cached = this.iconCache.get(node.compositeName);
-        if (cached) node.iconSvg = cached;
+        if (this.iconCache.has(node.compositeName)) {
+          const cached = this.iconCache.get(node.compositeName);
+          if (cached) node.iconSvg = cached;
+        }
       }
 
       const items = nodes.map(
@@ -223,7 +230,9 @@ export class LibraryTreeProvider
       );
 
       // Lazily fetch icons for nodes that don't have them yet.
-      const nodesNeedingIcons = nodes.filter((n) => !n.iconSvg && !this.iconFetchPending.has(n.compositeName));
+      const nodesNeedingIcons = nodes.filter(
+        (n) => !this.iconCache.has(n.compositeName) && !this.iconFetchPending.has(n.compositeName),
+      );
 
       if (nodesNeedingIcons.length > 0) {
         this.fetchIconsInBackground(nodesNeedingIcons);
@@ -248,16 +257,17 @@ export class LibraryTreeProvider
 
     for (const className of toFetch) {
       try {
-        const svg: string | null = await this.client.sendRequest("modelscript/getClassIcon", {
-          className,
-          uri: this.documentUri,
-        });
+        const svg = await this.client
+          .sendRequest<string | null>("modelscript/getClassIcon", {
+            className,
+            uri: this.documentUri,
+          })
+          .catch(() => null);
+
+        this.iconCache.set(className, svg || "");
         if (svg) {
-          this.iconCache.set(className, svg);
           anyFetched = true;
         }
-      } catch {
-        // Icon fetch failed — will use codicon fallback
       } finally {
         this.iconFetchPending.delete(className);
       }
