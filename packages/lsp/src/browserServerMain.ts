@@ -33,6 +33,7 @@ import {
 } from "vscode-languageserver";
 
 import { TextDocument } from "vscode-languageserver-textdocument";
+import { ModelicaDiagramBackend, SysML2DiagramBackend, createDiagramDispatch } from "./diagramApi";
 import { buildComponentProperties, buildDiagramData, getClassIconSvg, type DiagramData } from "./diagramData";
 import {
   computeComponentInsert,
@@ -45,6 +46,8 @@ import {
   computeParameterEdit,
   computePlacementEdits,
 } from "./diagramEdits";
+import type { DiagramEditRequest } from "./diagramProtocol";
+import { DiagramMethods } from "./diagramProtocol";
 import {
   createEmptyLayout,
   removeElements,
@@ -3278,7 +3281,113 @@ connection.onRequest("modelscript/getCadComponents", (params: { uri: string }) =
   }
 });
 
-// ── Diagram mutation handlers ──
+// ── Unified Diagram API (dispatch-based) ──
+
+// Lazy-initialized dispatch — backends require runtime state that isn't available at import time.
+let diagramDispatch: ReturnType<typeof createDiagramDispatch> | null = null;
+
+function getDiagramDispatch() {
+  if (!diagramDispatch) {
+    const modelicaBackend = new ModelicaDiagramBackend({
+      getDocumentInstances: (uri) => documentInstances.get(uri),
+      getDocumentText: (uri) => documents.get(uri)?.getText(),
+      resolveClassInstance: (uri, className) => {
+        const instances = documentInstances.get(uri);
+        if (!instances || instances.length === 0) return null;
+        if (className) {
+          const found = instances.find((i) => i.name === className || i.compositeName === className);
+          if (found) return found;
+        }
+        return instances[0];
+      },
+      flushValidation,
+    });
+
+    const sysml2Backend = new SysML2DiagramBackend({
+      getDocumentText: (uri) => documents.get(uri)?.getText(),
+      getLayout: (uri) => sysml2Layouts.get(uri),
+      setLayout: (uri, layout) => sysml2Layouts.set(uri, layout),
+      createEmptyLayout,
+      updateElementPositions,
+      updateConnectionVertices,
+      removeElements,
+      buildDiagramData: (params) => {
+        // Delegate to the existing SysML2 diagram data builder inline
+        try {
+          const unified = unifiedWorkspace.toUnified();
+          const resolver = createSysML2ScopeResolver(unified);
+          const diagramTypeRaw = params.diagramType ?? "All";
+          const validTypes = ["All", "BDD", "IBD", "StateMachine"];
+          const diagramType = validTypes.includes(diagramTypeRaw)
+            ? (diagramTypeRaw as "All" | "BDD" | "IBD" | "StateMachine")
+            : "All";
+          const data = buildSysML2DiagramData(unified, params.uri, resolver, diagramType);
+
+          // Merge stored layout positions
+          const layout = sysml2Layouts.get(params.uri);
+          if (layout && data) {
+            for (const node of data.nodes) {
+              const sym = [...unified.symbols.values()].find(
+                (s) => `n_${s.id}` === node.id && s.resourceId === params.uri,
+              );
+              const name = sym?.name;
+              if (name && layout.elements[name]) {
+                const el = layout.elements[name];
+                node.x = el.x;
+                node.y = el.y;
+                if (el.width) node.width = el.width;
+                if (el.height) node.height = el.height;
+                node.autoLayout = false;
+              }
+            }
+          }
+          return data;
+        } catch (e: any) {
+          connection.console.error(
+            `[sysml2-diagram] Error building diagram data: ${e?.message ?? e}\n${e?.stack ?? ""}`,
+          );
+          return null;
+        }
+      },
+      getSysML2Parser: () => (sysml2ParserReady && sysml2Parser ? sysml2Parser : null),
+      computeConnectionInsert: computeSysML2ConnectionInsert,
+      computeConnectionDelete: computeSysML2ConnectionDelete,
+      computeElementDelete: computeSysML2ElementDelete,
+      computeNameEdit: computeSysML2NameEdit,
+      computeDescriptionEdit: computeSysML2DescriptionEdit,
+      computeParameterEdit: computeSysML2ParameterEdit,
+    });
+
+    diagramDispatch = createDiagramDispatch({
+      modelica: modelicaBackend,
+      sysml2: sysml2Backend,
+    });
+  }
+  return diagramDispatch;
+}
+
+// New unified methods — clients should migrate to these
+connection.onRequest(DiagramMethods.applyEdits, (params: DiagramEditRequest) => {
+  return getDiagramDispatch().applyEdits(params);
+});
+
+connection.onRequest(DiagramMethods.getData, (params: { uri: string; className?: string; diagramType?: string }) => {
+  return getDiagramDispatch().getData(params);
+});
+
+connection.onRequest(
+  DiagramMethods.getComponentProperties,
+  (params: { uri: string; componentName: string; className?: string }) => {
+    return getDiagramDispatch().getComponentProperties(params);
+  },
+);
+
+// ── Legacy diagram mutation handlers (backward compat) ──
+
+// Legacy batch handler — delegates to unified dispatch
+connection.onRequest("modelscript/diagramEdit", (params: DiagramEditRequest) => {
+  return getDiagramDispatch().applyEdits(params);
+});
 
 connection.onRequest(
   "modelscript/updatePlacement",

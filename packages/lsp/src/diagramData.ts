@@ -36,92 +36,26 @@ import {
   type ModelicaClassInstance,
 } from "@modelscript/core";
 
-// ── X6 Markup type (matching morsel's x6.ts) ──
+// Import canonical types from the protocol module and re-export for
+// backward compatibility with consumers that import from diagramData.
+export type {
+  ComponentPropertyData,
+  CoordinateSystem,
+  DiagramData,
+  DiagramEdge,
+  DiagramNode,
+  DiagramPort,
+  X6Markup,
+} from "./diagramProtocol";
 
-export interface X6Markup {
-  tagName: string;
-  selector?: string;
-  groupSelector?: string;
-  attrs?: Record<string, string | number | undefined>;
-  children?: X6Markup[];
-  textContent?: string;
-}
-
-// ── Diagram data JSON structure ──
-
-export interface ComponentPropertyData {
-  classKind?: string;
-  className: string;
-  name: string;
-  description: string;
-  parameters: {
-    name: string;
-    value: string;
-    description?: string;
-    isBoolean?: boolean;
-    unit?: string;
-  }[];
-  docInfo?: string;
-  docRevisions?: string;
-  iconSvg?: string;
-}
-
-export interface DiagramNode {
-  id: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  angle: number;
-  opacity: number;
-  zIndex: number;
-  markup: X6Markup;
-  ports: {
-    items: DiagramPort[];
-    groups: Record<string, { position: string; zIndex: number }>;
-  };
-  properties?: ComponentPropertyData;
-  autoLayout?: boolean;
-}
-
-export interface DiagramPort {
-  id: string;
-  group: string;
-  args: { x: number; y: number; angle: number };
-  markup: X6Markup;
-}
-
-export interface DiagramEdge {
-  id: string;
-  source: { cell: string; port: string; anchor: string; connectionPoint: { name: string } };
-  target: { cell: string; port: string; anchor: string; connectionPoint: { name: string } };
-  vertices?: { x: number; y: number }[];
-  connector?: string;
-  zIndex: number;
-  attrs: {
-    line: {
-      stroke: string;
-      strokeWidth: number;
-      strokeDasharray?: string;
-      sourceMarker?: unknown;
-      targetMarker?: unknown;
-      "vector-effect": string;
-      "pointer-events": string;
-    };
-  };
-}
-
-export interface DiagramData {
-  nodes: DiagramNode[];
-  edges: DiagramEdge[];
-  coordinateSystem: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  };
-  diagramBackground: X6Markup | null;
-}
+import type {
+  ComponentPropertyData,
+  DiagramData,
+  DiagramEdge,
+  DiagramNode,
+  DiagramPort,
+  X6Markup,
+} from "./diagramProtocol";
 
 // ── Build diagram data from a class instance ──
 

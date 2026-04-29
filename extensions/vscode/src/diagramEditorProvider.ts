@@ -7,6 +7,13 @@
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
 
+// Method constants from the unified Diagram API protocol
+const DiagramMethods = {
+  getData: "modelscript/diagram.getData",
+  applyEdits: "modelscript/diagram.applyEdits",
+  getComponentProperties: "modelscript/diagram.getComponentProperties",
+} as const;
+
 export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
   public static readonly viewType = "modelscript.diagram";
 
@@ -53,10 +60,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview);
 
     // Tracks the kind of edit that was just applied to the document.
-    // - 'spatial': move/resize/edgeMove — suppress re-render (visual state already correct)
-    // - 'semantic': parameter/name/description/connect/delete/drop — immediate re-render
-    // - null: no pending edit — external change, use debounced re-render
-    let pendingEditKind: "spatial" | "semantic" | null = null;
+    let pendingRenderHint: "none" | "immediate" | "debounced" | null = null;
     let updateTimeout: ReturnType<typeof setTimeout> | null = null;
     let diagramRequestNonce = 0;
     const uriString = document.uri.toString();
@@ -97,28 +101,22 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
       await vscode.workspace.applyEdit(workspaceEdit);
     };
 
-    // Spatial operations that don't need a diagram re-render after text edits
-    const spatialOps = new Set(["modelscript/updatePlacement", "modelscript/updateEdgePoints"]);
-
     // Listen for messages from the webview (diagram mutations)
     webviewPanel.webview.onDidReceiveMessage(
       async (message) => {
         try {
-          let lspMethod: string | undefined;
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          let lspParams: any;
+          let actions: any[] | undefined;
 
           switch (message.type) {
             case "move":
-              lspMethod = "modelscript/updatePlacement";
-              lspParams = { uri: uriString, items: message.items };
+              actions = [{ type: "move", items: message.items }];
               break;
             case "resize":
-              lspMethod = "modelscript/updatePlacement";
-              lspParams = {
-                uri: uriString,
-                items: [
-                  {
+              actions = [
+                {
+                  type: "resize",
+                  item: {
                     name: message.name,
                     x: message.x,
                     y: message.y,
@@ -127,40 +125,38 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
                     rotation: message.rotation,
                     edges: message.edges,
                   },
-                ],
-              };
+                },
+              ];
               break;
             case "connect":
-              lspMethod = "modelscript/addConnect";
-              lspParams = { uri: uriString, source: message.source, target: message.target, points: message.points };
+              actions = [{ type: "connect", source: message.source, target: message.target, points: message.points }];
               break;
             case "edgeMove":
-              lspMethod = "modelscript/updateEdgePoints";
-              lspParams = { uri: uriString, edges: message.edges };
+              actions = [{ type: "moveEdge", edges: message.edges }];
               break;
             case "deleteEdge":
-              lspMethod = "modelscript/removeConnect";
-              lspParams = { uri: uriString, source: message.source, target: message.target };
+              actions = [{ type: "disconnect", source: message.source, target: message.target }];
               break;
             case "deleteComponents":
-              lspMethod = "modelscript/deleteComponents";
-              lspParams = { uri: uriString, names: message.names };
+              actions = [{ type: "deleteComponents", names: message.names }];
               break;
             case "drop":
-              lspMethod = "modelscript/addComponent";
-              lspParams = { uri: uriString, className: message.className, x: message.x, y: message.y };
+              actions = [{ type: "addComponent", className: message.className, x: message.x, y: message.y }];
               break;
             case "updateName":
-              lspMethod = "modelscript/updateComponentName";
-              lspParams = { uri: uriString, oldName: message.oldName, newName: message.newName };
+              actions = [{ type: "updateName", oldName: message.oldName, newName: message.newName }];
               break;
             case "updateDescription":
-              lspMethod = "modelscript/updateComponentDescription";
-              lspParams = { uri: uriString, name: message.name, description: message.description };
+              actions = [{ type: "updateDescription", name: message.name, description: message.description }];
               break;
             case "updateParameter":
-              lspMethod = "modelscript/updateComponentParameter";
-              lspParams = { uri: uriString, name: message.name, parameter: message.parameter, value: message.value };
+              actions = [
+                { type: "updateParameter", name: message.name, parameter: message.parameter, value: message.value },
+              ];
+              break;
+            case "diagramEdit":
+              // Direct batch from the webview (already in actions format)
+              actions = message.actions;
               break;
             case "changeDiagramType": {
               currentDiagramType = message.diagramType;
@@ -168,7 +164,6 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
               break;
             }
             case "undo": {
-              // Standard undo command applies to the document representing this custom editor
               await vscode.commands.executeCommand("undo");
               immediateUpdate();
               break;
@@ -182,7 +177,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
               // On-demand property loading: fetch expensive data (parameters, docs, icon)
               // only when the user clicks a component node
               try {
-                const props = await this.client.sendRequest("modelscript/getComponentProperties", {
+                const props = await this.client.sendRequest(DiagramMethods.getComponentProperties, {
                   uri: uriString,
                   componentName: message.componentName,
                 });
@@ -203,45 +198,58 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
             }
           }
 
-          if (lspMethod) {
+          if (actions) {
             diagramRequestNonce++; // Cancel incoming stale diagramData
-            // Tag the pending edit so the document change handler knows how to react
-            pendingEditKind = spatialOps.has(lspMethod) ? "spatial" : "semantic";
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const edits: any[] = await this.client.sendRequest(lspMethod, lspParams);
-            if (edits && edits.length > 0) {
-              await applyTextEdits(uriString, edits);
-            } else {
-              // No edits returned — reset immediately
-              pendingEditKind = null;
+            const response: any = await this.client.sendRequest(DiagramMethods.applyEdits, {
+              uri: uriString,
+              seq: 1,
+              actions,
+            });
+
+            if (response && response.edits && response.edits.length > 0) {
+              pendingRenderHint = response.renderHint;
+              await applyTextEdits(uriString, response.edits);
+              // If the document change event didn't fire (e.g. text didn't change despite edits)
+              if (pendingRenderHint !== null) {
+                const hint = pendingRenderHint;
+                pendingRenderHint = null;
+                if (hint === "immediate") immediateUpdate();
+                else if (hint === "debounced") debouncedUpdate();
+              }
+            } else if (response) {
+              // No edits, but might still need render (SysML layout)
+              if (response.renderHint === "immediate") immediateUpdate();
+              else if (response.renderHint === "debounced") debouncedUpdate();
             }
           }
         } catch (e) {
           console.error("[diagram] Error applying diagram edit:", e);
-          pendingEditKind = null;
+          pendingRenderHint = null;
         }
       },
       undefined,
       this.context.subscriptions,
     );
 
-    // React to text document changes with the appropriate strategy:
-    // - Spatial edit (move/resize): suppress re-render (user already dragged the element)
-    // - Semantic edit (parameter/name/etc.): immediate re-render (model changed)
-    // - External edit (user typing): debounced re-render
+    // React to text document changes
     const changeDocumentSubscription = vscode.workspace.onDidChangeTextDocument((e) => {
       if (e.document.uri.toString() !== document.uri.toString()) return;
 
-      const editKind = pendingEditKind;
-      pendingEditKind = null; // Consume the flag
+      const hint = pendingRenderHint;
+      pendingRenderHint = null; // Consume the flag
 
-      if (editKind === "spatial") {
+      if (hint === "none") {
         // Spatial edit — no re-render needed
         return;
       }
-      if (editKind === "semantic") {
+      if (hint === "immediate") {
         // Semantic edit — immediate refresh
         immediateUpdate();
+        return;
+      }
+      if (hint === "debounced") {
+        debouncedUpdate();
         return;
       }
       // External change — debounced refresh
@@ -270,7 +278,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     cancelToken?: { isCanceled: () => boolean },
   ) {
     try {
-      const data = await this.client.sendRequest("modelscript/getDiagramData", { uri, diagramType });
+      const data = await this.client.sendRequest(DiagramMethods.getData, { uri, diagramType });
       if (cancelToken?.isCanceled()) return;
       if (data) {
         const isDark =

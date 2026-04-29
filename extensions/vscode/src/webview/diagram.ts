@@ -26,6 +26,29 @@ function postMessageToHost(msg: any) {
   vscode.postMessage(msg);
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let pendingDiagramActions: any[] = [];
+let diagramActionTimer: ReturnType<typeof setTimeout> | null = null;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function enqueueDiagramAction(action: any) {
+  pendingDiagramData = null;
+  pendingDiagramActions.push(action);
+  if (diagramActionTimer) clearTimeout(diagramActionTimer);
+
+  const isSpatial = ["move", "resize", "rotate", "moveEdge"].includes(action.type);
+  const delay = isSpatial ? 200 : 0;
+
+  diagramActionTimer = setTimeout(() => {
+    const actions = pendingDiagramActions;
+    pendingDiagramActions = [];
+    diagramActionTimer = null;
+    if (actions.length > 0) {
+      vscode.postMessage({ type: "diagramEdit", actions });
+    }
+  }, delay);
+}
+
 let graph: Graph | null = null;
 let selectedNodeId: string | null = null;
 
@@ -265,7 +288,7 @@ function initGraph(isDark: boolean): Graph {
       });
 
       if (items.length > 0) {
-        postMessageToHost({ type: "move", items });
+        enqueueDiagramAction({ type: "move", items });
       }
       changedNodes.clear();
       moveTimeout = null;
@@ -279,7 +302,7 @@ function initGraph(isDark: boolean): Graph {
     const s = node.getSize();
     const r = node.getAngle();
     const edges = getConnectedEdges(g, node);
-    postMessageToHost({
+    enqueueDiagramAction({
       type: "move",
       items: [{ name: node.id, x: p.x, y: p.y, width: s.width, height: s.height, rotation: r, edges }],
     });
@@ -303,15 +326,17 @@ function initGraph(isDark: boolean): Graph {
     const s = node.getSize();
     const r = node.getAngle();
     const edges = getConnectedEdges(g, node);
-    postMessageToHost({
+    enqueueDiagramAction({
       type: "resize",
-      name: node.id,
-      x: p.x,
-      y: p.y,
-      width: s.width,
-      height: s.height,
-      rotation: r,
-      edges,
+      item: {
+        name: node.id,
+        x: p.x,
+        y: p.y,
+        width: s.width,
+        height: s.height,
+        rotation: r,
+        edges,
+      },
     });
   });
 
@@ -331,7 +356,7 @@ function initGraph(isDark: boolean): Graph {
         x: Math.round(p.x),
         y: Math.round(-p.y),
       }));
-      postMessageToHost({
+      enqueueDiagramAction({
         type: "connect",
         source: `${source.cell}.${source.port}`,
         target: `${target.cell}.${target.port}`,
@@ -357,8 +382,8 @@ function initGraph(isDark: boolean): Graph {
           x: Math.round(p.x),
           y: Math.round(-p.y),
         }));
-        postMessageToHost({
-          type: "edgeMove",
+        enqueueDiagramAction({
+          type: "moveEdge",
           edges: [
             {
               source: `${source.cell}.${source.port}`,
@@ -401,11 +426,11 @@ function initGraph(isDark: boolean): Graph {
 
       if (edgesToDelete.length > 0) {
         for (const edge of edgesToDelete) {
-          postMessageToHost({ type: "deleteEdge", ...edge });
+          enqueueDiagramAction({ type: "disconnect", ...edge });
         }
       }
       if (componentNames.length > 0) {
-        postMessageToHost({ type: "deleteComponents", names: componentNames });
+        enqueueDiagramAction({ type: "deleteComponents", names: componentNames });
       }
       g.removeCells(cells);
     } else {
@@ -551,8 +576,8 @@ function initGraph(isDark: boolean): Graph {
       });
     }
 
-    postMessageToHost({
-      type: "drop",
+    enqueueDiagramAction({
+      type: "addComponent",
       className: data.className,
       x: Math.round(p.x),
       y: Math.round(p.y),
@@ -1288,7 +1313,7 @@ function showProperties(nodeData: any) {
     nameInput.addEventListener("change", (e) => {
       const newName = (e.target as HTMLInputElement).value;
       if (newName && newName !== nodeData.id) {
-        vscode.postMessage({ type: "updateName", oldName: nodeData.id, newName });
+        enqueueDiagramAction({ type: "updateName", oldName: nodeData.id, newName });
         nodeData.id = newName;
         title.textContent = newName;
       }
@@ -1300,7 +1325,7 @@ function showProperties(nodeData: any) {
     input.addEventListener("change", (e) => {
       const newDesc = (e.target as HTMLInputElement).value;
       if (props && newDesc !== props.description) {
-        vscode.postMessage({ type: "updateDescription", name: nodeData.id, description: newDesc });
+        enqueueDiagramAction({ type: "updateDescription", name: nodeData.id, description: newDesc });
         props.description = newDesc;
       }
     });
@@ -1338,7 +1363,7 @@ function showProperties(nodeData: any) {
       const newValue = target.value;
       if (paramName) {
         // Send LSP edit
-        vscode.postMessage({ type: "updateParameter", name: nodeData.id, parameter: paramName, value: newValue });
+        enqueueDiagramAction({ type: "updateParameter", name: nodeData.id, parameter: paramName, value: newValue });
         // Optimistically update prop model
         if (props?.parameters) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any

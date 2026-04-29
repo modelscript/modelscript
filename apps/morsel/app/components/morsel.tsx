@@ -42,20 +42,14 @@ import { type DataUrl } from "parse-data-url";
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getTranslations, uiLanguages } from "~/util/i18n";
 import {
-  addComponent,
-  addConnect,
   applyLspEdits,
   deleteComponents,
   didOpen,
   getCadComponents,
   getDiagramData,
   removeConnect,
+  sendDiagramEdit,
   simulate,
-  updateComponentDescription,
-  updateComponentName,
-  updateComponentParameter,
-  updateEdgePoints,
-  updatePlacement,
 } from "~/util/lsp-bridge";
 import { startLsp } from "~/util/lsp-worker";
 import { useMqttSimulation } from "~/util/use-mqtt-simulation";
@@ -214,6 +208,31 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [language, setLanguage] = useState<string | null>(null);
   const [availableLanguages, setAvailableLanguages] = useState<string[]>([]);
   const translations = useMemo(() => getTranslations(language), [language]);
+
+  const pendingDiagramActionsRef = useRef<any[]>([]);
+  const diagramActionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const enqueueDiagramAction = useCallback((action: any) => {
+    if (!editorRef.current) return;
+    pendingDiagramActionsRef.current.push(action);
+    if (diagramActionTimerRef.current) clearTimeout(diagramActionTimerRef.current);
+
+    const isSpatial = ["move", "resize", "rotate", "moveEdge"].includes(action.type);
+    const delay = isSpatial ? 200 : 0;
+
+    diagramActionTimerRef.current = setTimeout(async () => {
+      const actions = pendingDiagramActionsRef.current;
+      pendingDiagramActionsRef.current = [];
+      diagramActionTimerRef.current = null;
+      if (actions.length > 0) {
+        isDiagramUpdate.current = true;
+        const response = await sendDiagramEdit({ uri: DOCUMENT_URI, seq: 1, actions });
+        if (response && response.edits && response.edits.length > 0) {
+          applyLspEdits(editorRef.current, response.edits, actions[0].type);
+        }
+      }
+    }, delay);
+  }, []);
 
   // Fetch CAD components from the LSP when the selected class changes
   useEffect(() => {
@@ -1126,58 +1145,36 @@ export default function MorselEditor(props: MorselEditorProps) {
                           }}
                           onDrop={async (className, x, y) => {
                             if (!editor) return;
-                            isDiagramUpdate.current = true;
-                            const edits = await addComponent(DOCUMENT_URI, className, x, y);
-                            applyLspEdits(editor, edits, "dnd");
-                            codeEditorRef.current?.sync();
+                            enqueueDiagramAction({ type: "addComponent", className, x, y });
                           }}
                           onConnect={async (source, target, points) => {
                             if (!editor) return;
-                            isDiagramUpdate.current = true;
-                            const edits = await addConnect(DOCUMENT_URI, source, target, points);
-                            applyLspEdits(editor, edits, "connect");
+                            enqueueDiagramAction({ type: "connect", source, target, points });
                           }}
                           onMove={async (items) => {
                             if (!editor) return;
-                            isDiagramUpdate.current = true;
-                            const placementItems = items.map((item) => ({
-                              name: item.name,
-                              x: item.x,
-                              y: item.y,
-                              width: item.width,
-                              height: item.height,
-                              rotation: item.rotation,
-                              edges: item.edges,
-                            }));
-                            const edits = await updatePlacement(DOCUMENT_URI, placementItems);
-                            applyLspEdits(editor, edits, "move");
+                            enqueueDiagramAction({ type: "move", items });
                           }}
                           onResize={async (name, x, y, width, height, rotation, edges) => {
                             if (!editor) return;
-                            isDiagramUpdate.current = true;
-                            const placementItems = [
-                              {
-                                name,
-                                x,
-                                y,
-                                width,
-                                height,
-                                rotation,
-                                edges,
-                              },
-                            ];
-                            const edits = await updatePlacement(DOCUMENT_URI, placementItems);
-                            applyLspEdits(editor, edits, "resize");
+                            enqueueDiagramAction({
+                              type: "resize",
+                              item: { name, x, y, width, height, rotation, edges },
+                            });
                           }}
                           onEdgeMove={async (edges) => {
                             if (!editor) return;
-                            isDiagramUpdate.current = true;
-                            const edits = await updateEdgePoints(DOCUMENT_URI, edges);
-                            applyLspEdits(editor, edits, "edge-move");
+                            enqueueDiagramAction({ type: "moveEdge", edges });
                           }}
-                          onEdgeDelete={handleEdgeDelete}
-                          onComponentDelete={handleComponentDelete}
-                          onComponentsDelete={handleComponentsDelete}
+                          onEdgeDelete={(source, target) => {
+                            enqueueDiagramAction({ type: "disconnect", source, target });
+                          }}
+                          onComponentDelete={(name) => {
+                            enqueueDiagramAction({ type: "deleteComponents", names: [name] });
+                          }}
+                          onComponentsDelete={(names) => {
+                            enqueueDiagramAction({ type: "deleteComponents", names });
+                          }}
                           onUndo={() => {
                             isDiagramUpdate.current = true;
                             editorRef.current?.focus();
@@ -1254,27 +1251,20 @@ export default function MorselEditor(props: MorselEditorProps) {
                           onNameChange={async (newName) => {
                             if (!selectedComponent || !editor) return;
                             expectedComponentNameRef.current = newName;
-                            isDiagramUpdate.current = true;
-                            const edits = await updateComponentName(DOCUMENT_URI, selectedComponent, newName);
-                            applyLspEdits(editor, edits, "name-change");
+                            enqueueDiagramAction({ type: "updateName", oldName: selectedComponent, newName });
                           }}
                           onDescriptionChange={async (newDescription) => {
                             if (!selectedComponent || !editor) return;
-                            isDiagramUpdate.current = true;
-                            const edits = await updateComponentDescription(
-                              DOCUMENT_URI,
-                              selectedComponent,
-                              newDescription,
-                            );
-                            applyLspEdits(editor, edits, "description-change");
+                            enqueueDiagramAction({
+                              type: "updateDescription",
+                              name: selectedComponent,
+                              description: newDescription,
+                            });
                           }}
                           onParameterChange={async (name, value) => {
                             if (!selectedComponent || !editor) return;
-                            // If the new value matches the parameter's default (from the
-                            // declared type), remove the modifier entirely instead of
-                            // keeping a redundant explicit override.
                             let effectiveValue = value;
-                            const declaredType = (selectedComponent as any)?.declaredType; // TODO properly type when properties panel is typed
+                            const declaredType = (selectedComponent as any)?.declaredType;
                             if (declaredType) {
                               for (const el of declaredType.elements) {
                                 if (el && (el as any).name === name) {
@@ -1286,15 +1276,12 @@ export default function MorselEditor(props: MorselEditorProps) {
                                 }
                               }
                             }
-                            isDiagramUpdate.current = true;
-                            const edits = await updateComponentParameter(
-                              DOCUMENT_URI,
-                              selectedComponent,
-                              name,
-                              effectiveValue,
-                            );
-                            applyLspEdits(editor, edits, "parameter-change");
-                            codeEditorRef.current?.sync();
+                            enqueueDiagramAction({
+                              type: "updateParameter",
+                              name: selectedComponent,
+                              parameter: name,
+                              value: effectiveValue,
+                            });
                           }}
                         />
                       </>

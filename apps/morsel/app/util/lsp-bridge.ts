@@ -188,19 +188,61 @@ export interface ComponentProperties {
 }
 
 // ────────────────────────────────────────────────────────────────────
-// Diagram
+// Diagram — Unified API
 // ────────────────────────────────────────────────────────────────────
+
+/** Method constants matching the unified Diagram API protocol */
+export const DiagramMethods = {
+  getData: "modelscript/diagram.getData",
+  applyEdits: "modelscript/diagram.applyEdits",
+  getComponentProperties: "modelscript/diagram.getComponentProperties",
+} as const;
+
+/** Union of all diagram edit actions supported by the batch API */
+export type DiagramEditAction =
+  | { type: "move"; items: PlacementItem[] }
+  | { type: "resize"; item: PlacementItem }
+  | { type: "rotate"; item: PlacementItem }
+  | { type: "connect"; source: string; target: string; points?: { x: number; y: number }[] }
+  | { type: "disconnect"; source: string; target: string }
+  | { type: "moveEdge"; edges: EdgeUpdate[] }
+  | { type: "addComponent"; className: string; x: number; y: number }
+  | { type: "deleteComponents"; names: string[] }
+  | { type: "updateName"; oldName: string; newName: string }
+  | { type: "updateDescription"; name: string; description: string }
+  | { type: "updateParameter"; name: string; parameter: string; value: string };
+
+export interface DiagramApplyEditsResult {
+  seq: number;
+  edits: LspTextEdit[];
+  renderHint: "none" | "immediate" | "debounced";
+}
+
+/** Apply a batch of diagram edit actions atomically via the unified API */
+export async function applyDiagramEdits(
+  uri: string,
+  actions: DiagramEditAction[],
+  seq = 1,
+): Promise<DiagramApplyEditsResult> {
+  return lsp().sendRequest(DiagramMethods.applyEdits, { uri, seq, actions });
+}
 
 export async function getDiagramData(
   uri: string,
   className?: string,
   diagramType?: string,
 ): Promise<DiagramData | null> {
-  return lsp().sendRequest("modelscript/getDiagramData", { uri, className, diagramType });
+  return lsp().sendRequest(DiagramMethods.getData, { uri, className, diagramType });
 }
 
+/** @deprecated Use applyDiagramEdits instead */
 export async function updatePlacement(uri: string, items: PlacementItem[]): Promise<LspTextEdit[]> {
   return lsp().sendRequest("modelscript/updatePlacement", { uri, items });
+}
+
+/** @deprecated Use applyDiagramEdits instead */
+export async function sendDiagramEdit(request: any): Promise<any> {
+  return lsp().sendRequest(DiagramMethods.applyEdits, request);
 }
 
 export async function addConnect(
@@ -254,7 +296,7 @@ export async function getComponentProperties(
   className: string,
   componentName: string,
 ): Promise<ComponentProperties | null> {
-  return lsp().sendRequest("modelscript/getComponentProperties", { uri, className, componentName });
+  return lsp().sendRequest(DiagramMethods.getComponentProperties, { uri, className, componentName });
 }
 
 // ────────────────────────────────────────────────────────────────────

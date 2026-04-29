@@ -7,24 +7,7 @@
 import type { ModelicaClassInstance } from "@modelscript/core";
 import { Range, TextEdit } from "vscode-languageserver";
 
-// ── Interfaces ──
-
-export interface PlacementItem {
-  name: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  rotation: number;
-  edges?: EdgeItem[];
-  connectedOnly?: boolean;
-}
-
-export interface EdgeItem {
-  source: string;
-  target: string;
-  points: { x: number; y: number }[];
-}
+import type { EdgeUpdate as EdgeItem, PlacementItem } from "./diagramProtocol";
 
 // ── Placement edits (move / resize / rotate) ──
 
@@ -87,15 +70,13 @@ function getPlacementEdit(lines: string[], classInstance: ModelicaClassInstance,
   // Detect flip from the original extent in the source text
   let flipX = false;
   let flipY = false;
-  const extentMatch = text.match(/extent\s*=\s*\{\{\s*([^,]+)\s*,\s*([^}]+)\}\s*,\s*\{\s*([^,]+)\s*,\s*([^}]+)\}\}/);
-  if (extentMatch) {
-    const [, x1s, y1s, x2s, y2s] = extentMatch;
-    const ox1 = parseFloat(x1s);
-    const oy1 = parseFloat(y1s);
-    const ox2 = parseFloat(x2s);
-    const oy2 = parseFloat(y2s);
-    if (!isNaN(ox1) && !isNaN(ox2)) flipX = ox1 > ox2;
-    if (!isNaN(oy1) && !isNaN(oy2)) flipY = oy1 > oy2;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const placement: any = component.annotation("Placement");
+  const extent = placement?.transformation?.extent;
+  if (extent && extent.length >= 2) {
+    const [[x1, y1], [x2, y2]] = extent;
+    if (!isNaN(x1) && !isNaN(x2)) flipX = x1 > x2;
+    if (!isNaN(y1) && !isNaN(y2)) flipY = y1 > y2;
   }
 
   const ex1 = flipX ? w / 2 : -(w / 2);
@@ -599,7 +580,30 @@ function makeDeleteRange(
   return TextEdit.del(Range.create(startLine, startCol, endLine, endCol));
 }
 
-function deduplicateAndSort(edits: TextEdit[]): TextEdit[] {
+export function applyEditsToText(text: string, edits: TextEdit[]): string {
+  if (edits.length === 0) return text;
+  // Sort edits in descending order so that applying one doesn't affect offsets of earlier edits
+  const sorted = deduplicateAndSort(edits).reverse();
+  const lines = text.split("\n");
+  for (const edit of sorted) {
+    const sl = edit.range.start.line;
+    const sc = edit.range.start.character;
+    const el = edit.range.end.line;
+    const ec = edit.range.end.character;
+
+    const before = lines[sl].substring(0, sc);
+    const after = lines[el].substring(ec);
+
+    const newLines = edit.newText.split("\n");
+    newLines[0] = before + newLines[0];
+    newLines[newLines.length - 1] += after;
+
+    lines.splice(sl, el - sl + 1, ...newLines);
+  }
+  return lines.join("\n");
+}
+
+export function deduplicateAndSort(edits: TextEdit[]): TextEdit[] {
   // Sort by position (ascending)
   edits.sort((a, b) => {
     if (a.range.start.line !== b.range.start.line) return a.range.start.line - b.range.start.line;
