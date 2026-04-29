@@ -3267,7 +3267,11 @@ connection.onRequest("modelscript/getCadComponents", (params: { uri: string }) =
 
       .filter((v: any) => v.cadAnnotationString)
 
-      .map((v: any) => ({ name: v.name, cad: v.cadAnnotationString }));
+      .map((v: any) => ({
+        name: v.name,
+        cad: v.cadAnnotationString,
+        dynamicBindings: v.cadDynamicBindings ?? [],
+      }));
   } catch (e) {
     console.error("[cad] Error extracting CAD components:", e);
     return [];

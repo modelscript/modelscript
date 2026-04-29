@@ -20,6 +20,8 @@ import {
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
+import type { AnimationController } from "./animation-controller";
+import { AnimationTimeline } from "./animation-timeline";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -44,6 +46,8 @@ export interface CadComponent {
   cad: CadAnnotation;
   /** Parsed CADPort annotations from sub-components (connectors) */
   ports?: { name: string; port: CadPortAnnotation }[];
+  /** Dynamic animation bindings (from DynamicSelect in CAD annotations) */
+  dynamicBindings?: { property: string; index: number; variable: string }[];
 }
 
 interface CadViewerProps {
@@ -59,6 +63,8 @@ interface CadViewerProps {
   onConnect?: (sourceName: string, sourcePort: string, targetName: string, targetPort: string) => void;
   /** Dark mode toggle */
   dark?: boolean;
+  /** Animation controller for simulation-driven animation */
+  animationController?: AnimationController | null;
 }
 
 // ── URI resolver ─────────────────────────────────────────────────────────────
@@ -116,11 +122,13 @@ function CadModel({
   assetBaseUrl,
   selected,
   onSelect,
+  animationController,
 }: {
   component: CadComponent;
   assetBaseUrl: string;
   selected: boolean;
   onSelect?: (name: string | null) => void;
+  animationController?: AnimationController | null;
 }) {
   const url = useMemo(() => resolveModelicaUri(component.cad.uri, assetBaseUrl), [component.cad.uri, assetBaseUrl]);
   const { scene } = useGLTF(url);
@@ -147,6 +155,21 @@ function CadModel({
   const pos = component.cad.position ?? [0, 0, 0];
   const rot = component.cad.rotation ?? [0, 0, 0];
   const scl = component.cad.scale ?? [1, 1, 1];
+
+  // Drive transforms from animation controller when animating
+  useFrame(() => {
+    if (!groupRef.current || !animationController) return;
+    if (animationController.mode === "stopped") return;
+
+    const tf = animationController.getTransform(component.name);
+    groupRef.current.position.set(tf.position[0], tf.position[1], tf.position[2]);
+    groupRef.current.rotation.set(
+      (tf.rotation[0] * Math.PI) / 180,
+      (tf.rotation[1] * Math.PI) / 180,
+      (tf.rotation[2] * Math.PI) / 180,
+    );
+    groupRef.current.scale.set(tf.scale[0], tf.scale[1], tf.scale[2]);
+  });
 
   return (
     <group
@@ -180,14 +203,21 @@ function SceneContents({
   selectedName,
   onSelect,
   dark,
+  animationController,
 }: {
   components: CadComponent[];
   assetBaseUrl: string;
   selectedName?: string | null;
   onSelect?: (name: string | null) => void;
   dark?: boolean;
+  animationController?: AnimationController | null;
 }) {
   const { gl } = useThree();
+
+  // Drive the animation clock from the render loop
+  useFrame((_, delta) => {
+    animationController?.tick(delta);
+  });
 
   // Deselect on background click
   const handlePointerMissed = useCallback(() => {
@@ -236,6 +266,7 @@ function SceneContents({
             assetBaseUrl={assetBaseUrl}
             selected={selectedName === comp.name}
             onSelect={onSelect}
+            animationController={animationController}
           />
         ))}
       </group>
@@ -290,6 +321,7 @@ export default function CadViewer({
   onSelect,
   onConnect: _onConnect,
   dark = false,
+  animationController = null,
 }: CadViewerProps) {
   const [error, setError] = useState<string | null>(null);
 
@@ -341,8 +373,12 @@ export default function CadViewer({
           selectedName={selectedName}
           onSelect={onSelect}
           dark={dark}
+          animationController={animationController}
         />
       </Canvas>
+
+      {/* Animation timeline overlay */}
+      {animationController && <AnimationTimeline controller={animationController} />}
     </div>
   );
 }

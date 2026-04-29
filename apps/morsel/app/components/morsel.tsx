@@ -9,6 +9,7 @@ import {
   FlowchartIcon,
   GlobeIcon,
   MoonIcon,
+  PauseIcon,
   PlayIcon,
   PlusIcon,
   PulseIcon,
@@ -46,6 +47,7 @@ import {
   applyLspEdits,
   deleteComponents,
   didOpen,
+  getCadComponents,
   getDiagramData,
   removeConnect,
   simulate,
@@ -68,6 +70,8 @@ import { VariablesTree } from "./variables-tree";
 
 import AddLibraryModal from "./add-library-modal";
 import { type CadComponent } from "./cad-viewer";
+import { AnimationController } from "./cad-viewer/animation-controller";
+import { extractCadComponents } from "./cad-viewer/parse-cad-annotations";
 const CodeEditor = React.lazy(() => import("./code"));
 const DiagramEditor = React.lazy(() => import("./diagram"));
 const SimulationResults = React.lazy(() =>
@@ -182,9 +186,9 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [windowWidth, setWindowWidth] = useState(typeof window !== "undefined" ? window.innerWidth : 1200);
   const [splitRatio, setSplitRatio] = useState(0.5);
 
-  const cadComponents = useMemo<CadComponent[]>(() => {
-    return [];
-  }, [diagramData]);
+  const [cadComponents, setCadComponents] = useState<CadComponent[]>([]);
+  const animationControllerRef = useRef<AnimationController | null>(null);
+  const [animationMode, setAnimationMode] = useState<"stopped" | "playing" | "paused" | "live">("stopped");
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const isDraggingSplit = useRef(false);
   const [treeWidth, setTreeWidth] = useState(300);
@@ -208,6 +212,51 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [language, setLanguage] = useState<string | null>(null);
   const [availableLanguages, setAvailableLanguages] = useState<string[]>([]);
   const translations = useMemo(() => getTranslations(language), [language]);
+
+  // Fetch CAD components from the LSP when the selected class changes
+  useEffect(() => {
+    if (!selectedTreeClassName) {
+      setCadComponents([]);
+      return;
+    }
+    let cancelled = false;
+    getCadComponents(DOCUMENT_URI)
+      .then((raw) => {
+        if (cancelled) return;
+        const parsed = extractCadComponents(raw);
+        setCadComponents(parsed);
+
+        // If we have an animation controller, update its bindings
+        if (animationControllerRef.current && parsed.length > 0) {
+          animationControllerRef.current.setBindings(
+            parsed
+              .filter((c) => c.dynamicBindings && c.dynamicBindings.length > 0)
+              .map((c) => ({
+                componentName: c.name,
+                bindings: c.dynamicBindings!.map((b) => ({
+                  property: b.property as "position" | "rotation" | "scale",
+                  index: b.index,
+                  variable: b.variable,
+                })),
+              })),
+          );
+          // Set defaults from static annotations
+          for (const comp of parsed) {
+            animationControllerRef.current.setDefault(comp.name, {
+              position: comp.cad.position ?? [0, 0, 0],
+              rotation: comp.cad.rotation ?? [0, 0, 0],
+              scale: comp.cad.scale ?? [1, 1, 1],
+            });
+          }
+        }
+      })
+      .catch((e) => {
+        if (!cancelled) console.error("Failed to fetch CAD components:", e);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedTreeClassName, contextVersion]);
 
   // Collect all displayable models/blocks from root-level class instances
   // Supports multiple root-level models as well as nested models within a single root package
@@ -566,6 +615,35 @@ export default function MorselEditor(props: MorselEditorProps) {
       setLocalSimulationData(chartData);
       setSimulationStatus({ status: "completed" });
       setShowResultsView(true);
+
+      // ── Animation setup ──
+      // Create/update the animation controller with new simulation data
+      if (cadComponents.length > 0) {
+        const controller = new AnimationController();
+        controller.setBindings(
+          cadComponents
+            .filter((c) => c.dynamicBindings && c.dynamicBindings.length > 0)
+            .map((c) => ({
+              componentName: c.name,
+              bindings: c.dynamicBindings!.map((b) => ({
+                property: b.property as "position" | "rotation" | "scale",
+                index: b.index,
+                variable: b.variable,
+              })),
+            })),
+        );
+        // Set defaults from static annotations
+        for (const comp of cadComponents) {
+          controller.setDefault(comp.name, {
+            position: comp.cad.position ?? [0, 0, 0],
+            rotation: comp.cad.rotation ?? [0, 0, 0],
+            scale: comp.cad.scale ?? [1, 1, 1],
+          });
+        }
+        controller.loadTimeseries(result.t, result.y, result.states);
+        controller.onStateChange((s) => setAnimationMode(s.mode));
+        animationControllerRef.current = controller;
+      }
     } catch (e: any) {
       if (e.message === "Simulation aborted") {
         return;
@@ -934,8 +1012,16 @@ export default function MorselEditor(props: MorselEditorProps) {
                   <SegmentedControl
                     aria-label="Center Pane View"
                     onChange={(i) => {
-                      setShowResultsView(i === 1);
-                      setShowCadView(false);
+                      if (i === 0) {
+                        setShowResultsView(false);
+                        setShowCadView(false);
+                      } else if (i === 1) {
+                        setShowResultsView(true);
+                        setShowCadView(false);
+                      } else if (i === 2) {
+                        setShowResultsView(false);
+                        setShowCadView(true);
+                      }
                     }}
                   >
                     <SegmentedControl.Button selected={!showResultsView && !showCadView} leadingVisual={WorkflowIcon}>
@@ -944,7 +1030,36 @@ export default function MorselEditor(props: MorselEditorProps) {
                     <SegmentedControl.Button selected={showResultsView} leadingVisual={PulseIcon}>
                       {translations.simulation}
                     </SegmentedControl.Button>
+                    <SegmentedControl.Button selected={showCadView} leadingVisual={StackIcon}>
+                      3D
+                    </SegmentedControl.Button>
                   </SegmentedControl>
+
+                  {/* Animate button — only visible after simulation completes with CAD components */}
+                  {showCadView && animationControllerRef.current?.hasData && (
+                    <Button
+                      variant="primary"
+                      size="small"
+                      leadingVisual={animationMode === "playing" ? PauseIcon : PlayIcon}
+                      onClick={() => {
+                        const ctrl = animationControllerRef.current;
+                        if (!ctrl) return;
+                        if (ctrl.mode === "playing") {
+                          ctrl.pause();
+                        } else {
+                          ctrl.play();
+                        }
+                      }}
+                      style={{
+                        marginLeft: 8,
+                        borderRadius: 8,
+                        fontWeight: 600,
+                        fontSize: 12,
+                      }}
+                    >
+                      {animationMode === "playing" ? "Pause" : "Animate"}
+                    </Button>
+                  )}
                 </div>
                 <div style={{ position: "relative", flex: 1, flexDirection: "row", overflow: "hidden" }}>
                   <div
@@ -1182,6 +1297,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                           }
                         }}
                         dark={colorMode === "dark"}
+                        animationController={animationControllerRef.current}
                       />
                     </Suspense>
                   </div>

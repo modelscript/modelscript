@@ -81,6 +81,7 @@ export function extractCadComponents(daeVariables: any[]): CadComponent[] {
         name: v.name,
         cad: parsed as CadAnnotation,
         ports: [],
+        dynamicBindings: v.dynamicBindings ?? undefined,
       });
     } else if (cadStr.startsWith("CADPort(")) {
       // CADPort annotations are on leaf variables like "body.port1"

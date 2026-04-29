@@ -297,7 +297,9 @@ export async function searchClasses(query: string, limit = 50): Promise<{ result
 // CAD
 // ────────────────────────────────────────────────────────────────────
 
-export async function getCadComponents(uri: string): Promise<{ name: string; cad: string }[]> {
+export async function getCadComponents(
+  uri: string,
+): Promise<{ name: string; cad: string; dynamicBindings: { property: string; index: number; variable: string }[] }[]> {
   return lsp().sendRequest("modelscript/getCadComponents", { uri });
 }
 

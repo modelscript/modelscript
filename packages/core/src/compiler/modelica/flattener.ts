@@ -1270,6 +1270,92 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     return `${modName}(${parts.join(", ")})`;
   }
 
+  /**
+   * Extract DynamicSelect animation bindings from a CAD annotation modification.
+   *
+   * Walks the modification arguments looking for `position`, `rotation`, or `scale`
+   * properties whose values are `DynamicSelect(staticExpr, dynamicExpr)` calls.
+   * For each such property, extracts component references from the dynamic (second)
+   * argument and returns structured bindings mapping CAD properties to simulation
+   * variable names.
+   *
+   * @param modArg - The CAD annotation's modification node
+   * @param prefix - The current flattening prefix (e.g., "body1")
+   * @returns Array of dynamic bindings, or null if none found
+   */
+  #extractDynamicBindings(modArg: any, prefix: string): { property: string; index: number; variable: string }[] | null {
+    const CAD_TRANSFORM_PROPERTIES = new Set(["position", "rotation", "scale"]);
+    const bindings: { property: string; index: number; variable: string }[] = [];
+
+    const argsArray = modArg?.modificationArguments || modArg?.classModification?.modificationArguments || [];
+
+    for (const arg of argsArray) {
+      if (arg["@type"] !== "ElementModification" || !arg.name) continue;
+      const propName = arg.name.parts?.[0]?.text || arg.name;
+      if (!CAD_TRANSFORM_PROPERTIES.has(propName)) continue;
+
+      const expr =
+        arg.modification?.modificationExpression?.expression || arg.modification?.expression || arg.expression;
+      if (!expr) continue;
+
+      // Check if the expression is a DynamicSelect function call
+      if (expr["@type"] === "FunctionCall") {
+        const funcName =
+          expr.functionReference?.parts?.map((p: any) => p.text).join(".") || expr.functionReferenceName?.text;
+        if (funcName !== "DynamicSelect") continue;
+
+        const posArgs = expr.functionCallArguments?.arguments || expr.functionCallArguments?.expressions || [];
+        // The second argument is the dynamic expression
+        if (posArgs.length < 2) continue;
+        const dynamicArg = posArgs[1]?.expression || posArgs[1];
+        if (!dynamicArg) continue;
+
+        // Extract component references from the dynamic expression
+        // It could be an array like {x, y, z} or a single variable reference
+        const extractRef = (node: any, index: number): void => {
+          if (!node) return;
+          if (node["@type"] === "ComponentReference" || node["@type"] === "Name") {
+            const refParts = node.parts
+              ?.map((p: any) => {
+                let partText = p.identifier?.text || p.text || "";
+                // Include array subscripts like [1], [2]
+                if (p.subscripts && p.subscripts.length > 0) {
+                  const subs = p.subscripts.map((s: any) => s.text ?? s.expression?.text ?? "").join(",");
+                  if (subs) partText += `[${subs}]`;
+                }
+                return partText;
+              })
+              .filter(Boolean)
+              .join(".");
+            if (refParts) {
+              // Prefix with the component's flattened name
+              const fullName = prefix ? `${prefix}.${refParts}` : refParts;
+              bindings.push({ property: propName, index, variable: fullName });
+            }
+          }
+        };
+
+        // If the dynamic arg is an array constructor like {x, y, z}
+        if (dynamicArg["@type"] === "ArrayConstructor" || dynamicArg["@type"] === "ArrayConstruction") {
+          const elements = dynamicArg.expressionList?.expressions || dynamicArg.expressions || [];
+          for (let i = 0; i < elements.length; i++) {
+            extractRef(elements[i], i);
+          }
+        } else if (dynamicArg["@type"] === "ExpressionList") {
+          const elements = dynamicArg.expressions || [];
+          for (let i = 0; i < elements.length; i++) {
+            extractRef(elements[i], i);
+          }
+        } else {
+          // Single expression — treat as index 0
+          extractRef(dynamicArg, 0);
+        }
+      }
+    }
+
+    return bindings.length > 0 ? bindings : null;
+  }
+
   visitComponentInstance(node: any /* ModelicaComponentInstance */, args: [string, ModelicaDAE]): void {
     // Skip pure `outer` components — they reference an `inner` declaration higher up
     // and should not generate their own variables. `inner outer` still generates a variable.
@@ -1333,6 +1419,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
             );
             if (cadAnn) {
               dummyVar.cadAnnotationString = this.#formatCADAnnotationString("CAD", cadAnn.modification);
+              dummyVar.cadDynamicBindings = this.#extractDynamicBindings(cadAnn.modification, name);
             } else if (cadPortAnn) {
               dummyVar.cadAnnotationString = this.#formatCADAnnotationString("CADPort", cadPortAnn.modification);
             }
@@ -1742,6 +1829,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         const cadAnnotation = node.abstractSyntaxNode.annotations.find((a: any) => a.name === "CAD");
         if (cadAnnotation && cadAnnotation.modification) {
           variable.cadAnnotationString = this.#formatCADAnnotationString("CAD", cadAnnotation.modification);
+          variable.cadDynamicBindings = this.#extractDynamicBindings(cadAnnotation.modification, name);
         } else {
           const cadPortAnnotation = node.abstractSyntaxNode.annotations.find((a: any) => a.name === "CADPort");
           if (cadPortAnnotation && cadPortAnnotation.modification) {

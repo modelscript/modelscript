@@ -2441,6 +2441,8 @@ export abstract class ModelicaVariable extends ModelicaPrimaryExpression {
   clockDomain?: number | undefined;
   /** Extracted CAD / 3D annotations (as raw string or JSON), e.g. "CAD(uri=\"...\")" */
   cadAnnotationString: string | null;
+  /** Dynamic animation bindings extracted from DynamicSelect() expressions in CAD annotations. */
+  cadDynamicBindings: { property: string; index: number; variable: string }[] | null;
 
   constructor(
     name: string,
@@ -2469,6 +2471,7 @@ export abstract class ModelicaVariable extends ModelicaPrimaryExpression {
     /** Clock domain index (undefined = continuous time). */
     this.clockDomain = undefined;
     this.cadAnnotationString = null;
+    this.cadDynamicBindings = null;
   }
 
   override get hash(): string {
@@ -2507,7 +2510,12 @@ export class ModelicaBooleanVariable extends ModelicaVariable {
   }
 
   override get toJSON(): JSONValue {
-    if (this.cadAnnotationString) return { name: this.name, cad: this.cadAnnotationString };
+    if (this.cadAnnotationString) {
+      const result: Record<string, unknown> = { name: this.name, cad: this.cadAnnotationString };
+      if (this.cadDynamicBindings && this.cadDynamicBindings.length > 0)
+        result.dynamicBindings = this.cadDynamicBindings;
+      return result as JSONValue;
+    }
     return this.name;
   }
 
@@ -2551,7 +2559,12 @@ export class ModelicaIntegerVariable extends ModelicaVariable {
   }
 
   override get toJSON(): JSONValue {
-    if (this.cadAnnotationString) return { name: this.name, cad: this.cadAnnotationString };
+    if (this.cadAnnotationString) {
+      const result: Record<string, unknown> = { name: this.name, cad: this.cadAnnotationString };
+      if (this.cadDynamicBindings && this.cadDynamicBindings.length > 0)
+        result.dynamicBindings = this.cadDynamicBindings;
+      return result as JSONValue;
+    }
     return this.name;
   }
 
@@ -2607,7 +2620,12 @@ export class ModelicaRealVariable extends ModelicaVariable {
   }
 
   override get toJSON(): JSONValue {
-    if (this.cadAnnotationString) return { name: this.name, cad: this.cadAnnotationString };
+    if (this.cadAnnotationString) {
+      const result: Record<string, unknown> = { name: this.name, cad: this.cadAnnotationString };
+      if (this.cadDynamicBindings && this.cadDynamicBindings.length > 0)
+        result.dynamicBindings = this.cadDynamicBindings;
+      return result as JSONValue;
+    }
     return this.name;
   }
 
@@ -2651,7 +2669,12 @@ export class ModelicaStringVariable extends ModelicaVariable {
   }
 
   override get toJSON(): JSONValue {
-    if (this.cadAnnotationString) return { name: this.name, cad: this.cadAnnotationString };
+    if (this.cadAnnotationString) {
+      const result: Record<string, unknown> = { name: this.name, cad: this.cadAnnotationString };
+      if (this.cadDynamicBindings && this.cadDynamicBindings.length > 0)
+        result.dynamicBindings = this.cadDynamicBindings;
+      return result as JSONValue;
+    }
     return this.name;
   }
 
@@ -2675,7 +2698,12 @@ export class ModelicaExpressionVariable extends ModelicaVariable {
   }
 
   override get toJSON(): JSONValue {
-    if (this.cadAnnotationString) return { name: this.name, cad: this.cadAnnotationString };
+    if (this.cadAnnotationString) {
+      const result: Record<string, unknown> = { name: this.name, cad: this.cadAnnotationString };
+      if (this.cadDynamicBindings && this.cadDynamicBindings.length > 0)
+        result.dynamicBindings = this.cadDynamicBindings;
+      return result as JSONValue;
+    }
     return this.name;
   }
 
@@ -2699,7 +2727,12 @@ export class ModelicaClockVariable extends ModelicaVariable {
   }
 
   override get toJSON(): JSONValue {
-    if (this.cadAnnotationString) return { name: this.name, cad: this.cadAnnotationString };
+    if (this.cadAnnotationString) {
+      const result: Record<string, unknown> = { name: this.name, cad: this.cadAnnotationString };
+      if (this.cadDynamicBindings && this.cadDynamicBindings.length > 0)
+        result.dynamicBindings = this.cadDynamicBindings;
+      return result as JSONValue;
+    }
     return this.name;
   }
 
@@ -2769,7 +2802,12 @@ export class ModelicaEnumerationVariable extends ModelicaVariable {
   }
 
   override get toJSON(): JSONValue {
-    if (this.cadAnnotationString) return { name: this.name, cad: this.cadAnnotationString };
+    if (this.cadAnnotationString) {
+      const result: Record<string, unknown> = { name: this.name, cad: this.cadAnnotationString };
+      if (this.cadDynamicBindings && this.cadDynamicBindings.length > 0)
+        result.dynamicBindings = this.cadDynamicBindings;
+      return result as JSONValue;
+    }
     return this.name;
   }
 
