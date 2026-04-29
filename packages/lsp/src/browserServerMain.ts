@@ -6479,6 +6479,131 @@ connection.onRequest(
   },
 );
 
+export interface FlatSemanticEdit {
+  action: "insert" | "delete" | "update" | "none";
+  description: string;
+  oldRange?: { startLine: number; startCharacter: number; endLine: number; endCharacter: number };
+  newRange?: { startLine: number; startCharacter: number; endLine: number; endCharacter: number };
+  kind?: string;
+}
+
+connection.onRequest(
+  "modelscript/getSemanticDiff",
+  async (params: { uri: string; oldText: string; newText: string }): Promise<{ diffs: FlatSemanticEdit[] }> => {
+    const isSysml = params.uri.endsWith(".sysml");
+    const isModelica = params.uri.endsWith(".mo");
+    if (!isSysml && !isModelica) return { diffs: [] };
+
+    const hooks = isSysml ? sysml2IndexerHooks : modelicaIndexerHooks;
+    const qHooks = isSysml ? sysml2QueryHooks : modelicaQueryHooks;
+    const wrapEntry = isSysml ? sysml2WrapEntry : modelicaWrapEntry;
+    const langParser = isSysml ? sysml2Parser : parser;
+
+    if (!langParser) return { diffs: [] };
+
+    try {
+      const oldDoc = TextDocument.create(params.uri, isSysml ? "sysml2" : "modelica", 1, params.oldText);
+      const newDoc = TextDocument.create(params.uri, isSysml ? "sysml2" : "modelica", 1, params.newText);
+
+      const oldTree = langParser.parse(params.oldText);
+      const oldIndexer = new SymbolIndexer(hooks);
+      const oldIndex = oldIndexer.index(oldTree.rootNode);
+      const oldDb = new QueryEngine(oldIndex, qHooks);
+      const oldRootEntries = oldIndex.childrenOf.get(null) || [];
+
+      const newTree = langParser.parse(params.newText);
+      const newIndexer = new SymbolIndexer(hooks);
+      const newIndex = newIndexer.index(newTree.rootNode);
+      const newDb = new QueryEngine(newIndex, qHooks);
+      const newRootEntries = newIndex.childrenOf.get(null) || [];
+
+      const maxLen = Math.max(oldRootEntries.length, newRootEntries.length);
+      const diffs: FlatSemanticEdit[] = [];
+
+      for (let i = 0; i < maxLen; i++) {
+        let oldNode = null;
+        let newNode = null;
+        if (i < oldRootEntries.length) {
+          const entry = oldIndex.symbols.get(oldRootEntries[i]);
+          if (entry) oldNode = wrapEntry(entry, oldDb);
+        }
+        if (i < newRootEntries.length) {
+          const entry = newIndex.symbols.get(newRootEntries[i]);
+          if (entry) newNode = wrapEntry(entry, newDb);
+        }
+
+        if (!oldNode && !newNode) continue;
+
+        let diff: SemanticEdit;
+        if (!oldNode && newNode) {
+          diff = {
+            action: "insert",
+            newNode,
+            description: `Inserted ${newNode.entry.kind} '${newNode.entry.name || "unnamed"}'`,
+          };
+        } else if (oldNode && !newNode) {
+          diff = {
+            action: "delete",
+            oldNode,
+            description: `Deleted ${oldNode.entry.kind} '${oldNode.entry.name || "unnamed"}'`,
+          };
+        } else {
+          diff = computeSemanticDiff(oldNode!, newNode!, {
+            nodeFactory: wrapEntry as any,
+            orderAgnostic: true,
+          });
+        }
+
+        const flattenDiffs = (edit: SemanticEdit) => {
+          if (edit.action !== "none" && edit.description) {
+            const flatEdit: FlatSemanticEdit = {
+              action: edit.action,
+              description: edit.description,
+            };
+
+            if (edit.oldNode) {
+              const startPos = oldDoc.positionAt(edit.oldNode.entry.startByte);
+              const endPos = oldDoc.positionAt(edit.oldNode.entry.endByte);
+              flatEdit.oldRange = {
+                startLine: startPos.line,
+                startCharacter: startPos.character,
+                endLine: endPos.line,
+                endCharacter: endPos.character,
+              };
+              flatEdit.kind = edit.oldNode.entry.kind;
+            }
+
+            if (edit.newNode) {
+              const startPos = newDoc.positionAt(edit.newNode.entry.startByte);
+              const endPos = newDoc.positionAt(edit.newNode.entry.endByte);
+              flatEdit.newRange = {
+                startLine: startPos.line,
+                startCharacter: startPos.character,
+                endLine: endPos.line,
+                endCharacter: endPos.character,
+              };
+              flatEdit.kind = edit.newNode.entry.kind;
+            }
+
+            diffs.push(flatEdit);
+          }
+
+          if (edit.children) {
+            for (const child of edit.children) flattenDiffs(child);
+          }
+        };
+
+        flattenDiffs(diff);
+      }
+
+      return { diffs };
+    } catch (e) {
+      console.error("getSemanticDiff error", e);
+      return { diffs: [] };
+    }
+  },
+);
+
 connection.onRequest("modelscript/runVerification", async (params: { uri: string }) => {
   try {
     const textDocument = documents.get(params.uri);

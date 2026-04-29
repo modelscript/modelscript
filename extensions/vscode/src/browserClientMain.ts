@@ -22,6 +22,8 @@ import { StepViewerPanel } from "./stepViewerPanel";
 
 import { MarkdownResolver, createMarkdownItPlugin } from "./markdownItPlugin";
 import { registerScmIntegration } from "./scmIntegration";
+import { registerScmTreeView } from "./scmTreeView";
+import { registerSemanticDiffComments } from "./semanticDiffComments";
 import { VerificationPanel } from "./verificationPanel";
 
 import { SimulationPanel } from "./simulationPanel";
@@ -438,6 +440,12 @@ export async function activate(context: vscode.ExtensionContext) {
 
         // Register SCM Integration
         registerScmIntegration(context, client);
+
+        // Register SCM Structural Tree View
+        registerScmTreeView(context, client);
+
+        // Register Semantic Diff Comments for diff editors
+        registerSemanticDiffComments(context, client);
 
         // Resolve markdown variable values, requirements, and diagram data.
         // Call immediately and again after delays to handle the race where

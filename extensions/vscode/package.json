@@ -653,6 +653,13 @@
       }
     ],
     "views": {
+      "scm": [
+        {
+          "id": "modelscript.scmTreeView",
+          "name": "ModelScript Semantic Changes",
+          "visibility": "visible"
+        }
+      ],
       "explorer": [
         {
           "id": "modelscript.libraryTree",
