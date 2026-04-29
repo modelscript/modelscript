@@ -18,6 +18,7 @@ import { ModelicaNotebookController } from "./notebookController";
 import { ModelicaNotebookSerializer } from "./notebookSerializer";
 import { registerRegistryView } from "./registryTreeProvider";
 import { RequirementsEditorProvider } from "./requirementsEditorProvider";
+import { StepViewerPanel } from "./stepViewerPanel";
 
 import { MarkdownResolver, createMarkdownItPlugin } from "./markdownItPlugin";
 import { VerificationPanel } from "./verificationPanel";
@@ -297,7 +298,12 @@ export async function activate(context: vscode.ExtensionContext) {
     }),
   );
 
-  const documentSelector = [{ language: "modelica" }, { language: "sysml" }, { pattern: "**/*.{js,ts}" }];
+  const documentSelector = [
+    { language: "modelica" },
+    { language: "sysml" },
+    { language: "step" },
+    { pattern: "**/*.{js,ts}" },
+  ];
 
   // Options to control the language client
   const lspOutputChannel = vscode.window.createOutputChannel("ModelScript Language Server");
@@ -492,6 +498,127 @@ export async function activate(context: vscode.ExtensionContext) {
     commands.registerCommand("modelscript.openCadViewer", () => {
       if (!client) return;
       CadViewerPanel.createOrShow(context.extensionUri, client);
+    }),
+    commands.registerCommand("modelscript.openStepViewer", () => {
+      if (!client) return;
+      StepViewerPanel.createOrShow(context.extensionUri, client);
+    }),
+    commands.registerCommand("modelscript.openCadExample", async () => {
+      // 1. Get the example file path
+      const folder = vscode.workspace.workspaceFolders?.[0]?.uri;
+      if (!folder) {
+        vscode.window.showErrorMessage("Please open a workspace folder first.");
+        return;
+      }
+      // Assuming the user has copied the example or we use memfs
+      // To ensure it exists, we can scaffold it or find it if we saved it in memfs
+      const sysmlUri = vscode.Uri.joinPath(folder, "drone_architecture.sysml");
+      const stepUri = vscode.Uri.joinPath(folder, "drone.step");
+
+      try {
+        const sysmlContent = `package DroneArchitecture {
+  import DroneCAD::*;
+
+  part def DroneAssembly {
+    part chassis : Chassis;
+    part rotor1 : Rotor;
+    part rotor2 : Rotor;
+    part rotor3 : Rotor;
+    part rotor4 : Rotor;
+
+    // Reference CAD geometry directly from the STEP file!
+    ref chassisGeometry = DroneCAD::ChassisShape;
+  }
+
+  part def Chassis {}
+  part def Rotor {}
+}`;
+        await vscode.workspace.fs.writeFile(sysmlUri, new TextEncoder().encode(sysmlContent));
+
+        const stepContent = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('drone','2023-10-23T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('AUTOMOTIVE_DESIGN { 1 0 10303 214 1 1 1 1 }'));
+ENDSEC;
+DATA;
+#1=APPLICATION_PROTOCOL_DEFINITION('international standard','automotive_design',2001,#2);
+#2=APPLICATION_CONTEXT('core data for automotive mechanical design processes');
+#3=SHAPE_DEFINITION_REPRESENTATION(#4,#10);
+#4=PRODUCT_DEFINITION_SHAPE('','',#5);
+#5=PRODUCT_DEFINITION('design','',#6,#9);
+#6=PRODUCT_DEFINITION_FORMATION('','',#7);
+#7=PRODUCT('DroneCAD','DroneCAD','',(#8));
+#8=PRODUCT_CONTEXT('',#2,'mechanical');
+#9=DESIGN_CONTEXT('',#2,'design');
+#10=SHAPE_REPRESENTATION('',(#11),#15);
+#11=AXIS2_PLACEMENT_3D('',#12,#13,#14);
+#12=CARTESIAN_POINT('',(0.,0.,0.));
+#13=DIRECTION('',(0.,0.,1.));
+#14=DIRECTION('',(1.,0.,0.));
+#15=(GEOMETRIC_REPRESENTATION_CONTEXT(3)GLOBAL_UNCERTAINTY_ASSIGNED_CONTEXT((#16))GLOBAL_UNIT_ASSIGNED_CONTEXT((#17,#18,#19))REPRESENTATION_CONTEXT('Context #1','3D Context with PROGRAM and LENGTH unit'));
+#16=UNCERTAINTY_MEASURE_WITH_UNIT(LENGTH_MEASURE(1.E-07),#17,'distance_accuracy_value','confusion accuracy');
+#17=(LENGTH_UNIT()NAMED_UNIT(*)SI_UNIT(.MILLI.,.METRE.));
+#18=(NAMED_UNIT(*)PLANE_ANGLE_UNIT()SI_UNIT($,.RADIAN.));
+#19=(NAMED_UNIT(*)SI_UNIT($,.STERADIAN.)SOLID_ANGLE_UNIT());
+#20=ADVANCED_BREP_SHAPE_REPRESENTATION('',(#11,#21),#15);
+#21=MANIFOLD_SOLID_BREP('ChassisShape',#22);
+#22=CLOSED_SHELL('',(#23));
+#23=ADVANCED_FACE('',(#24),#29,.T.);
+#24=FACE_BOUND('',#25,.T.);
+#25=EDGE_LOOP('',(#26,#27,#28));
+#26=ORIENTED_EDGE('',*,*,#30,.T.);
+#27=ORIENTED_EDGE('',*,*,#31,.T.);
+#28=ORIENTED_EDGE('',*,*,#32,.T.);
+#29=PLANE('',#33);
+#30=EDGE_CURVE('',#34,#35,#36,.T.);
+#31=EDGE_CURVE('',#35,#37,#38,.T.);
+#32=EDGE_CURVE('',#37,#34,#39,.T.);
+#33=AXIS2_PLACEMENT_3D('',#40,#41,#42);
+#34=VERTEX_POINT('',#43);
+#35=VERTEX_POINT('',#44);
+#36=LINE('',#45,#46);
+#37=VERTEX_POINT('',#47);
+#38=LINE('',#48,#49);
+#39=LINE('',#50,#51);
+#40=CARTESIAN_POINT('',(0.,0.,0.));
+#41=DIRECTION('',(0.,0.,1.));
+#42=DIRECTION('',(1.,0.,0.));
+#43=CARTESIAN_POINT('',(0.,0.,0.));
+#44=CARTESIAN_POINT('',(10.,0.,0.));
+#45=CARTESIAN_POINT('',(0.,0.,0.));
+#46=VECTOR('',#52,1.);
+#47=CARTESIAN_POINT('',(0.,10.,0.));
+#48=CARTESIAN_POINT('',(10.,0.,0.));
+#49=VECTOR('',#53,1.);
+#50=CARTESIAN_POINT('',(0.,10.,0.));
+#51=VECTOR('',#54,1.);
+#52=DIRECTION('',(1.,0.,0.));
+#53=DIRECTION('',(-0.707106781186547,0.707106781186547,0.));
+#54=DIRECTION('',(0.,-1.,0.));
+ENDSEC;
+END-ISO-10303-21;`;
+        await vscode.workspace.fs.writeFile(stepUri, new TextEncoder().encode(stepContent));
+
+        // Open the SysML file in the left pane
+        const doc = await vscode.workspace.openTextDocument(sysmlUri);
+        await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.One });
+
+        // Wait a short bit to allow the LSP to index the step file when it's created
+        setTimeout(() => {
+          // Open the Step viewer in the right pane
+          // We will set the active document to stepUri temporarily so the StepViewerPanel picks it up
+          vscode.workspace.openTextDocument(stepUri).then((stepDoc) => {
+            vscode.window
+              .showTextDocument(stepDoc, { viewColumn: vscode.ViewColumn.Two, preserveFocus: true })
+              .then(() => {
+                if (client) StepViewerPanel.createOrShow(context.extensionUri, client);
+              });
+          });
+        }, 1000);
+      } catch (e) {
+        vscode.window.showErrorMessage(`Failed to open CAD example: ${e}`);
+      }
     }),
     commands.registerCommand("modelscript.runSimulation", async () => {
       if (!client) return;
@@ -943,7 +1070,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
   // Pre-open all .mo files in the workspace so the LSP server can track them.
   // This is fire-and-forget: don't crash the extension if the filesystem isn't ready.
-  initWorkspaceAndTree(treeProvider, treeView).catch((e) => {
+  initWorkspaceAndTree(treeProvider, treeView, context).catch((e) => {
     console.warn("[workspace-init] Non-fatal initialization error:", e);
   });
 
@@ -1453,6 +1580,92 @@ function scaffoldTemplateFiles(memFs: MemoryFileSystemProvider, workspaceUri: vs
         "",
       ].join("\n"),
     },
+    cad: {
+      "drone_architecture.sysml": [
+        "package DroneArchitecture {",
+        "  import DroneCAD::*;",
+        "",
+        "  part def DroneAssembly {",
+        "    part chassis : Chassis;",
+        "    part rotor1 : Rotor;",
+        "    part rotor2 : Rotor;",
+        "    part rotor3 : Rotor;",
+        "    part rotor4 : Rotor;",
+        "",
+        "    // Reference CAD geometry directly from the STEP file!",
+        "    ref chassisGeometry = DroneCAD::ChassisShape;",
+        "  }",
+        "",
+        "  part def Chassis {}",
+        "  part def Rotor {}",
+        "}",
+      ].join("\n"),
+      "drone.step": [
+        "ISO-10303-21;",
+        "HEADER;",
+        "FILE_DESCRIPTION((''),'2;1');",
+        "FILE_NAME('drone','2023-10-25T12:00:00',(''),(''),'','','');",
+        "FILE_SCHEMA(('AUTOMOTIVE_DESIGN { 1 0 10303 214 1 1 1 1 }'));",
+        "ENDSEC;",
+        "DATA;",
+        "#1=APPLICATION_PROTOCOL_DEFINITION('international standard','automotive_design',2000,#2);",
+        "#2=APPLICATION_CONTEXT('core data for automotive mechanical design processes');",
+        "#3=SHAPE_DEFINITION_REPRESENTATION(#4,#10);",
+        "#4=PRODUCT_DEFINITION_SHAPE('','',#5);",
+        "#5=PRODUCT_DEFINITION('design','',#6,#9);",
+        "#6=PRODUCT_DEFINITION_FORMATION('','',#7);",
+        "#7=PRODUCT('DroneCAD','DroneCAD','',(#8));",
+        "#8=PRODUCT_CONTEXT('',#2,'mechanical');",
+        "#9=PRODUCT_DEFINITION_CONTEXT('part definition',#2,'design');",
+        "#10=SHAPE_REPRESENTATION('',(#11),#15);",
+        "#11=AXIS2_PLACEMENT_3D('',#12,#13,#14);",
+        "#12=CARTESIAN_POINT('',(0.,0.,0.));",
+        "#13=DIRECTION('',(0.,0.,1.));",
+        "#14=DIRECTION('',(1.,0.,0.));",
+        "#15=(GEOMETRIC_REPRESENTATION_CONTEXT(3)GLOBAL_UNCERTAINTY_ASSIGNED_CONTEXT((#16))GLOBAL_UNIT_ASSIGNED_CONTEXT((#17,#18,#19))REPRESENTATION_CONTEXT('Context #1','3D Context with PROGRAM and LENGTH unit'));",
+        "#16=UNCERTAINTY_MEASURE_WITH_UNIT(LENGTH_MEASURE(1.E-07),#17,'distance_accuracy_value','confusion accuracy');",
+        "#17=(LENGTH_UNIT()NAMED_UNIT(*)SI_UNIT(.MILLI.,.METRE.));",
+        "#18=(NAMED_UNIT(*)PLANE_ANGLE_UNIT()SI_UNIT($,.RADIAN.));",
+        "#19=(NAMED_UNIT(*)SI_UNIT($,.STERADIAN.)SOLID_ANGLE_UNIT());",
+        "#20=ADVANCED_BREP_SHAPE_REPRESENTATION('',(#11,#21),#15);",
+        "#21=MANIFOLD_SOLID_BREP('ChassisShape',#22);",
+        "#22=CLOSED_SHELL('',(#23));",
+        "#23=ADVANCED_FACE('',(#24),#29,.T.);",
+        "#24=FACE_BOUND('',#25,.T.);",
+        "#25=EDGE_LOOP('',(#26,#27,#28));",
+        "#26=ORIENTED_EDGE('',*,*,#30,.T.);",
+        "#27=ORIENTED_EDGE('',*,*,#31,.T.);",
+        "#28=ORIENTED_EDGE('',*,*,#32,.T.);",
+        "#29=PLANE('',#33);",
+        "#30=EDGE_CURVE('',#34,#35,#36,.T.);",
+        "#31=EDGE_CURVE('',#35,#37,#38,.T.);",
+        "#32=EDGE_CURVE('',#37,#34,#39,.T.);",
+        "#33=AXIS2_PLACEMENT_3D('',#40,#41,#42);",
+        "#34=VERTEX_POINT('',#43);",
+        "#35=VERTEX_POINT('',#44);",
+        "#36=LINE('',#45,#46);",
+        "#37=VERTEX_POINT('',#47);",
+        "#38=LINE('',#48,#49);",
+        "#39=LINE('',#50,#51);",
+        "#40=CARTESIAN_POINT('',(0.,0.,0.));",
+        "#41=DIRECTION('',(0.,0.,1.));",
+        "#42=DIRECTION('',(1.,0.,0.));",
+        "#43=CARTESIAN_POINT('',(0.,0.,0.));",
+        "#44=CARTESIAN_POINT('',(10.,0.,0.));",
+        "#45=CARTESIAN_POINT('',(0.,0.,0.));",
+        "#46=VECTOR('',#52,1.);",
+        "#47=CARTESIAN_POINT('',(0.,10.,0.));",
+        "#48=CARTESIAN_POINT('',(10.,0.,0.));",
+        "#49=VECTOR('',#53,1.);",
+        "#50=CARTESIAN_POINT('',(0.,10.,0.));",
+        "#51=VECTOR('',#54,1.);",
+        "#52=DIRECTION('',(1.,0.,0.));",
+        "#53=DIRECTION('',(-0.707106781186547,0.707106781186547,0.));",
+        "#54=DIRECTION('',(0.,-1.,0.));",
+        "ENDSEC;",
+        "END-ISO-10303-21;",
+      ].join("\n"),
+    },
   };
 
   if (template === "stress-test") {
@@ -1503,6 +1716,7 @@ function scaffoldTemplateFiles(memFs: MemoryFileSystemProvider, workspaceUri: vs
 async function initWorkspaceAndTree(
   treeProvider: LibraryTreeProvider,
   treeView: vscode.TreeView<vscode.TreeItem>,
+  context: vscode.ExtensionContext,
 ): Promise<void> {
   const folders = workspace.workspaceFolders;
 
@@ -2083,6 +2297,20 @@ async function initWorkspaceAndTree(
           content = massiveModelRows.join("\n");
           break;
         }
+        case "cad": {
+          const sysmlUri = Uri.joinPath(workspaceUri, "drone_architecture.sysml");
+          const stepUri = Uri.joinPath(workspaceUri, "drone.step");
+          const doc = await workspace.openTextDocument(sysmlUri);
+          await vscode.window.showTextDocument(doc, { viewColumn: 1 });
+          setTimeout(() => {
+            workspace.openTextDocument(stepUri).then((stepDoc) => {
+              vscode.window.showTextDocument(stepDoc, { viewColumn: 2, preview: false }).then(() => {
+                if (client) StepViewerPanel.createOrShow(context.extensionUri, client);
+              });
+            });
+          }, 1000);
+          break;
+        }
       }
 
       if (filename && content) {
@@ -2153,8 +2381,8 @@ async function scanWorkspaceFiles(): Promise<vscode.Uri[]> {
   const maxRetries = 5;
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      const moFiles = await workspace.findFiles("**/*.{mo,js,ts,sysml}");
-      console.log(`[workspace-scan] Found ${moFiles.length} files matching .mo/.sysml/.js/.ts rules`);
+      const moFiles = await workspace.findFiles("**/*.{mo,js,ts,sysml,step,stp,p21}");
+      console.log(`[workspace-scan] Found ${moFiles.length} files matching .mo/.sysml/.js/.ts/.step rules`);
       for (const uri of moFiles) {
         try {
           await workspace.openTextDocument(uri);

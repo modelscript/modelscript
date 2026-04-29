@@ -448,9 +448,7 @@ export class ScopeResolver {
         const children = this.exportedChildren(entry.id);
         for (const child of children) {
           if (child.name === segment) {
-            if (kindsFilter.length === 0 || kindsFilter.includes(child.kind)) {
-              nextMatches.push(child);
-            }
+            nextMatches.push(child);
           }
         }
       }
@@ -477,27 +475,21 @@ export class ScopeResolver {
       // File-level scope: search all top-level symbols
       for (const entry of this.index.symbols.values()) {
         if (entry.parentId === null && entry.name === name && this.isDeclaration(entry)) {
-          if (targetKinds.length === 0 || targetKinds.includes(entry.kind)) {
-            candidates.push(entry);
-          }
+          candidates.push(entry);
         }
       }
     } else {
       // Named scope: search exported children (declarations only)
       for (const child of this.exportedChildren(scopeId)) {
         if (child.name === name && this.isDeclaration(child)) {
-          if (targetKinds.length === 0 || targetKinds.includes(child.kind)) {
-            candidates.push(child);
-          }
+          candidates.push(child);
         }
       }
 
       // Also search inherited members
       for (const member of this.inheritedMembers(scopeId, new Set())) {
         if (member.name === name) {
-          if (targetKinds.length === 0 || targetKinds.includes(member.kind)) {
-            candidates.push(member);
-          }
+          candidates.push(member);
         }
       }
     }
@@ -511,6 +503,7 @@ export class ScopeResolver {
    * not declarations — they should not appear in scope lookup results.
    */
   isDeclaration(entry: SymbolEntry): boolean {
+    if (entry.kind === "Import") return false;
     return !this.refHooksByRule.has(entry.ruleName);
   }
 

@@ -1,0 +1,122 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "STEP",
+  "scopeName": "source.step",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#section-keywords" },
+    { "include": "#strings" },
+    { "include": "#entity-instances" },
+    { "include": "#entity-types" },
+    { "include": "#enumeration-values" },
+    { "include": "#numbers" },
+    { "include": "#special-values" },
+    { "include": "#operators" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.block.step",
+          "begin": "/\\*",
+          "end": "\\*/"
+        }
+      ]
+    },
+    "section-keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.step",
+          "match": "\\b(ISO-10303-21|END-ISO-10303-21|HEADER|DATA|ENDSEC)\\b"
+        },
+        {
+          "name": "keyword.other.step",
+          "match": "\\b(FILE_DESCRIPTION|FILE_NAME|FILE_SCHEMA|FILE_POPULATION)\\b"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.single.step",
+          "begin": "'",
+          "end": "'",
+          "patterns": [
+            {
+              "name": "constant.character.escape.step",
+              "match": "''"
+            }
+          ]
+        }
+      ]
+    },
+    "entity-instances": {
+      "comment": "Entity instance references like #1, #42, #1000",
+      "patterns": [
+        {
+          "name": "variable.other.entity-instance.step",
+          "match": "#[0-9]+"
+        }
+      ]
+    },
+    "entity-types": {
+      "comment": "STEP entity type names in UPPER_CASE, e.g. CARTESIAN_POINT, PRODUCT",
+      "patterns": [
+        {
+          "name": "entity.name.type.step",
+          "match": "\\b[A-Z][A-Z0-9_]{2,}\\b"
+        }
+      ]
+    },
+    "enumeration-values": {
+      "comment": "Enumeration values like .T., .F., .MILLI., .METRE.",
+      "patterns": [
+        {
+          "name": "constant.language.boolean.step",
+          "match": "\\.(T|F)\\."
+        },
+        {
+          "name": "constant.language.enum.step",
+          "match": "\\.[A-Z][A-Z0-9_]*\\."
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.float.step",
+          "match": "-?[0-9]+\\.[0-9]*([eE][+-]?[0-9]+)?"
+        },
+        {
+          "name": "constant.numeric.integer.step",
+          "match": "-?[0-9]+"
+        }
+      ]
+    },
+    "special-values": {
+      "comment": "Unmapped ($) and derived (*) special tokens",
+      "patterns": [
+        {
+          "name": "constant.language.unmapped.step",
+          "match": "\\$"
+        },
+        {
+          "name": "constant.language.derived.step",
+          "match": "(?<=\\(|,)\\s*\\*\\s*(?=,|\\))"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.assignment.step",
+          "match": "="
+        },
+        {
+          "name": "punctuation.terminator.step",
+          "match": ";"
+        }
+      ]
+    }
+  }
+}

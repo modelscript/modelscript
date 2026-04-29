@@ -51,6 +51,14 @@ export default defineConfig(({ isSsrBuild }) => {
               dest: "lsp/server/dist",
             },
             {
+              src: "../../languages/step/tree-sitter-step.wasm",
+              dest: "lsp/server/dist",
+            },
+            {
+              src: "../../node_modules/occt-import-js/dist/occt-import-js.wasm",
+              dest: "lsp/server/dist",
+            },
+            {
               src: "../../scripts/ModelicaStandardLibrary_v4.1.0.zip",
               dest: "lsp/server/dist",
             },

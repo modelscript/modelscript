@@ -1,0 +1,37 @@
+{
+  "$schema": "https://tree-sitter.github.io/tree-sitter/assets/schemas/config.schema.json",
+  "grammars": [
+    {
+      "name": "step",
+      "camelcase": "Step",
+      "title": "STEP ISO 10303-21",
+      "scope": "source.step",
+      "file-types": ["step", "stp", "p21"],
+      "injection-regex": "^step$",
+      "class-name": "TreeSitterStep"
+    }
+  ],
+  "metadata": {
+    "version": "0.0.0",
+    "license": "AGPL-3.0-or-later",
+    "description": "ISO 10303-21 STEP clear-text encoding grammar for tree-sitter",
+    "authors": [
+      {
+        "name": "Mohamad Omar Nachawati",
+        "email": "mnachawa@gmail.com"
+      }
+    ],
+    "links": {
+      "repository": "https://github.com/modelscript/modelscript.git"
+    }
+  },
+  "bindings": {
+    "c": false,
+    "go": false,
+    "node": true,
+    "python": false,
+    "rust": false,
+    "swift": false,
+    "zig": false
+  }
+}

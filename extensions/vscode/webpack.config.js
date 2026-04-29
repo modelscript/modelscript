@@ -68,6 +68,14 @@ const browserClientConfig = {
           to: path.join(__dirname, "server", "dist", "tree-sitter-sysml2.wasm"),
         },
         {
+          from: path.resolve(__dirname, "..", "..", "languages", "step", "tree-sitter-step.wasm"),
+          to: path.join(__dirname, "server", "dist", "tree-sitter-step.wasm"),
+        },
+        {
+          from: path.resolve(__dirname, "..", "..", "node_modules", "occt-import-js", "dist", "occt-import-js.wasm"),
+          to: path.join(__dirname, "server", "dist", "occt-import-js.wasm"),
+        },
+        {
           from: path.resolve(__dirname, "..", "..", "scripts", "ModelicaStandardLibrary_v4.1.0.zip"),
           to: path.join(__dirname, "server", "dist", "ModelicaStandardLibrary_v4.1.0.zip"),
         },
@@ -111,6 +119,7 @@ const webviewConfig = {
     chatWebview: "./src/webview/chatWebview.ts",
     chatWorker: "./src/webview/chatWorker.ts",
     cadWebview: "./src/webview/cadWebview.tsx",
+    stepWebview: "./src/webview/stepWebview.tsx",
     analysisWebview: "./src/webview/analysisWebview.ts",
     markdownPreview: "./src/webview/markdownPreview.ts",
   },

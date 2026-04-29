@@ -1,0 +1,359 @@
+[
+  {
+    "type": "ComplexRecord",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "SimpleRecord",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "DataSection",
+    "named": true,
+    "fields": {
+      "entity": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "EntityInstance",
+            "named": true
+          }
+        ]
+      },
+      "scopeName": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "STRING",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "EntityInstance",
+    "named": true,
+    "fields": {
+      "id": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ENTITY_INSTANCE_NAME",
+            "named": true
+          }
+        ]
+      },
+      "record": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ComplexRecord",
+            "named": true
+          },
+          {
+            "type": "SimpleRecord",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "EntityReference",
+    "named": true,
+    "fields": {
+      "target": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ENTITY_INSTANCE_NAME",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "HeaderEntity",
+    "named": true,
+    "fields": {
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "KEYWORD",
+            "named": true
+          }
+        ]
+      },
+      "parameters": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ParameterList",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "HeaderSection",
+    "named": true,
+    "fields": {
+      "headerEntity": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "HeaderEntity",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ListValue",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "ParameterList",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "ParameterList",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "DERIVED_PARAMETER",
+          "named": true
+        },
+        {
+          "type": "ENUMERATION",
+          "named": true
+        },
+        {
+          "type": "EntityReference",
+          "named": true
+        },
+        {
+          "type": "INTEGER",
+          "named": true
+        },
+        {
+          "type": "ListValue",
+          "named": true
+        },
+        {
+          "type": "OMITTED_PARAMETER",
+          "named": true
+        },
+        {
+          "type": "REAL",
+          "named": true
+        },
+        {
+          "type": "STRING",
+          "named": true
+        },
+        {
+          "type": "TypedParameter",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "SimpleRecord",
+    "named": true,
+    "fields": {
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "KEYWORD",
+            "named": true
+          }
+        ]
+      },
+      "parameters": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ParameterList",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "StepFile",
+    "named": true,
+    "root": true,
+    "fields": {
+      "dataSection": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "DataSection",
+            "named": true
+          }
+        ]
+      },
+      "header": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "HeaderSection",
+            "named": true
+          }
+        ]
+      },
+      "trailer": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "Trailer",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "TypedParameter",
+    "named": true,
+    "fields": {
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "KEYWORD",
+            "named": true
+          }
+        ]
+      },
+      "parameters": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ParameterList",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "(",
+    "named": false
+  },
+  {
+    "type": ")",
+    "named": false
+  },
+  {
+    "type": ",",
+    "named": false
+  },
+  {
+    "type": ";",
+    "named": false
+  },
+  {
+    "type": "=",
+    "named": false
+  },
+  {
+    "type": "BLOCK_COMMENT",
+    "named": true,
+    "extra": true
+  },
+  {
+    "type": "DATA",
+    "named": false
+  },
+  {
+    "type": "DERIVED_PARAMETER",
+    "named": true
+  },
+  {
+    "type": "ENDSEC;",
+    "named": false
+  },
+  {
+    "type": "ENTITY_INSTANCE_NAME",
+    "named": true
+  },
+  {
+    "type": "ENUMERATION",
+    "named": true
+  },
+  {
+    "type": "HEADER;",
+    "named": false
+  },
+  {
+    "type": "INTEGER",
+    "named": true
+  },
+  {
+    "type": "ISO-10303-21;",
+    "named": false
+  },
+  {
+    "type": "KEYWORD",
+    "named": true
+  },
+  {
+    "type": "OMITTED_PARAMETER",
+    "named": true
+  },
+  {
+    "type": "REAL",
+    "named": true
+  },
+  {
+    "type": "STRING",
+    "named": true
+  },
+  {
+    "type": "Trailer",
+    "named": true
+  }
+]

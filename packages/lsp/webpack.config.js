@@ -15,6 +15,7 @@ const browserServerConfig = {
   target: "webworker",
   entry: {
     browserServerMain: "./src/browserServerMain.ts",
+    stepWorker: "./src/step-worker.ts",
   },
   output: {
     filename: "[name].js",

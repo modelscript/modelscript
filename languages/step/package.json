@@ -1,0 +1,55 @@
+{
+  "name": "@modelscript/step",
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    "./language": {
+      "types": "./dist/language.d.ts",
+      "default": "./dist/language.js"
+    },
+    "./indexer_config": {
+      "types": "./dist/indexer_config.d.ts",
+      "default": "./dist/indexer_config.js"
+    },
+    "./query_hooks": {
+      "types": "./dist/query_hooks.d.ts",
+      "default": "./dist/query_hooks.js"
+    },
+    "./ref_config": {
+      "types": "./dist/ref_config.d.ts",
+      "default": "./dist/ref_config.js"
+    },
+    "./parser": {
+      "types": "./bindings/node/index.d.ts",
+      "default": "./bindings/node/index.cjs"
+    }
+  },
+  "scripts": {
+    "build": "node build.js && tsc",
+    "clean": "rimraf dist build *.wasm",
+    "generate": "tree-sitter generate --abi=14 && node-gyp rebuild && tree-sitter build --wasm",
+    "install": "node-gyp rebuild",
+    "prestart": "tree-sitter build --wasm",
+    "start": "tree-sitter playground",
+    "test": "npm run test:native",
+    "test:native": "node --test bindings/node/*_test.cjs"
+  },
+  "dependencies": {
+    "@modelscript/polyglot": "*",
+    "node-addon-api": "^8.5.0",
+    "node-gyp-build": "^4.8.4"
+  },
+  "devDependencies": {
+    "prebuildify": "^6.0.1",
+    "tree-sitter": "^0.22.4",
+    "tree-sitter-cli": "0.25.10"
+  },
+  "peerDependencies": {
+    "tree-sitter": "^0.22.4"
+  },
+  "peerDependenciesMeta": {
+    "tree-sitter": {
+      "optional": true
+    }
+  }
+}

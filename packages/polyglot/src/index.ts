@@ -16,7 +16,7 @@ import type {
 export { QueryEngine } from "./query-engine.js";
 export * from "./simulation.js";
 export * from "./topology.js";
-export { UnifiedWorkspace } from "./unified-workspace.js";
+export { UnifiedWorkspace, type IWorkspaceIndex } from "./unified-workspace.js";
 export * from "./verifier.js";
 export { WorkspaceIndex } from "./workspace-index.js";
 export type {

@@ -60,6 +60,16 @@
         "icon": "$(play-circle)"
       },
       {
+        "command": "modelscript.openStepViewer",
+        "title": "ModelScript: Open STEP Viewer",
+        "icon": "$(play-circle)"
+      },
+      {
+        "command": "modelscript.openCadExample",
+        "title": "ModelScript: 3D CAD Polyglot Example",
+        "icon": "$(lightbulb)"
+      },
+      {
         "command": "modelscript.runSimulation",
         "title": "ModelScript: Run Simulation",
         "icon": "$(play)"
@@ -316,6 +326,11 @@
         "language": "sysml",
         "scopeName": "source.sysml",
         "path": "./syntaxes/sysml.tmLanguage.json"
+      },
+      {
+        "language": "step",
+        "scopeName": "source.step",
+        "path": "./syntaxes/step.tmLanguage.json"
       }
     ],
     "keybindings": [
@@ -492,6 +507,19 @@
           "light": "./images/fmu.png",
           "dark": "./images/fmu.png"
         }
+      },
+      {
+        "id": "step",
+        "aliases": [
+          "STEP",
+          "ISO 10303-21"
+        ],
+        "extensions": [
+          ".step",
+          ".stp",
+          ".p21"
+        ],
+        "configuration": "./step-language-configuration.json"
       }
     ],
     "markdown.markdownItPlugins": true,
@@ -541,6 +569,11 @@
         {
           "command": "modelscript.openVerificationDashboard",
           "when": "editorLangId == sysml",
+          "group": "navigation"
+        },
+        {
+          "command": "modelscript.openStepViewer",
+          "when": "editorLangId == step",
           "group": "navigation"
         }
       ],
@@ -667,7 +700,7 @@
     "viewsWelcome": [
       {
         "view": "modelscript.libraryTree",
-        "contents": "Open a Modelica or SysML2 file to browse libraries."
+        "contents": "Open a Modelica or SysML2 file to browse libraries.\n\n[Open 3D CAD Polyglot Example](command:modelscript.openCadExample)"
       },
       {
         "view": "modelscript.mqttTree",
@@ -676,6 +709,24 @@
       {
         "view": "modelscript.registryView",
         "contents": "Browse and install ModelScript packages from the registry.\n[Search Packages](command:modelscript.registry.search)\n[Refresh](command:modelscript.registry.refresh)"
+      }
+    ],
+    "walkthroughs": [
+      {
+        "id": "modelscript.walkthrough",
+        "title": "Welcome to ModelScript",
+        "description": "Get started with ModelScript's polyglot CAD and modeling features.",
+        "steps": [
+          {
+            "id": "modelscript.cadExample",
+            "title": "3D CAD Polyglot Workspace",
+            "description": "Experience our new 3D CAD Polyglot features by opening a sample SysML2 file and STEP mesh viewer.\n[Open 3D CAD Example](command:modelscript.openCadExample)",
+            "media": {
+              "image": "images/icon.png",
+              "altText": "3D CAD Polyglot Example"
+            }
+          }
+        ]
       }
     ]
   },

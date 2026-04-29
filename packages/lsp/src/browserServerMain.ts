@@ -28,6 +28,7 @@ import {
   SymbolKind,
   TextDocumentSyncKind,
   TextDocuments,
+  TextEdit,
   WorkspaceEdit,
 } from "vscode-languageserver";
 
@@ -104,7 +105,12 @@ import {
   registerOptimizeDeps,
 } from "@modelscript/optimizer";
 import { VerificationRunner } from "@modelscript/polyglot";
+import { ScopeResolver } from "@modelscript/polyglot/resolver";
+import { SymbolIndexer } from "@modelscript/polyglot/symbol-indexer";
 import { ModelicaSimulator, registerSimulateDeps } from "@modelscript/simulator";
+import { INDEXER_HOOKS as stepIndexerHooks } from "@modelscript/step/indexer_config";
+import { QUERY_HOOKS as stepQueryHooks } from "@modelscript/step/query_hooks";
+import { REF_HOOKS as stepRefHooks } from "@modelscript/step/ref_config";
 import { formatModelicaTree } from "./formatting/modelica-formatter";
 import { getRequirements, getTraceabilityMatrix } from "./requirements";
 import { BrowserFileSystem } from "./vfs/browser-file-system";
@@ -345,20 +351,40 @@ const sysml2WorkspaceIndex = createSysML2WorkspaceIndex();
 import modelicaLangFallback from "@modelscript/modelica/language";
 import { UnifiedWorkspace } from "@modelscript/polyglot";
 import sysml2LangFallback from "@modelscript/sysml2/language";
+import { StepWorkspaceIndex } from "./step-workspace-index";
 
 const unifiedWorkspace = new UnifiedWorkspace();
+const stepWorkspaceIndex = new StepWorkspaceIndex();
 unifiedWorkspace.registerWorkspace("modelica", globalWorkspaceIndex, modelicaLangFallback);
 unifiedWorkspace.registerWorkspace("sysml2", sysml2WorkspaceIndex, sysml2LangFallback);
+unifiedWorkspace.registerWorkspace("step", stepWorkspaceIndex, {
+  name: "step",
+  adapters: {
+    sysml2: {
+      EntityInstance: (_db: any, foreignNode: any) => ({
+        target: "PackageMember",
+        props: {
+          name: foreignNode.name,
+          entityType: (foreignNode.metadata as any)?.entityType,
+        },
+      }),
+    },
+  },
+});
 
 const documentLSPBridges = new Map<string, LSPBridge>();
 
 /** Global QueryEngines for cross-file dependency tracking and memoization */
 let globalModelicaQueryEngine: QueryEngine | null = null;
 let globalSysML2QueryEngine: QueryEngine | null = null;
+let globalStepQueryEngine: QueryEngine | null = null;
 /* SysML2 parser (separate from Modelica) */
 let sysml2Parser: Parser | null = null;
 let sysml2ParserReady = false;
 let sysml2StdlibReady = false;
+
+let stepParser: Parser | null = null;
+let stepParserReady = false;
 
 /* Whether MSL background indexing has completed */
 let mslStdlibReady = false;
@@ -462,6 +488,9 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
       }
     }
 
+    // Set this EARLY so that occt-import-js has the right path during early validation pass
+    stepWorkspaceIndex.serverDistBase = serverDistBase;
+
     connection.sendNotification("modelscript/status", { state: "loading", message: "Initializing parser..." });
 
     await Parser.init({
@@ -503,6 +532,20 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
       connection.console.info("Tree-sitter SysML2 parser initialized");
     } catch (e) {
       connection.console.warn(`[tree-sitter] Failed to load SysML2 language: ${e}`);
+    }
+
+    // Initialize STEP parser
+    try {
+      const StepLang = await Language.load(`${serverDistBase}/tree-sitter-step.wasm`);
+      stepParser = new Parser();
+      stepParser.setLanguage(StepLang);
+      Context.registerParser(".step", stepParser as any);
+      Context.registerParser(".stp", stepParser as any);
+      Context.registerParser(".p21", stepParser as any);
+      stepParserReady = true;
+      connection.console.info("Tree-sitter STEP parser initialized");
+    } catch (e) {
+      connection.console.warn(`[tree-sitter] Failed to load STEP language: ${e}`);
     }
 
     // Load the Modelica Standard Library from the bundled zip
@@ -994,6 +1037,131 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
     return;
   }
 
+  // Handle STEP files
+  if (textDocument.uri.match(/\.(step|stp|p21)$/i)) {
+    const text = textDocument.getText();
+    const buffer = new TextEncoder().encode(text);
+
+    try {
+      connection.console.info(`[step] Validating ${textDocument.uri} (${text.length} chars)`);
+      connection.console.info(`[step] stepParserReady=${stepParserReady}, stepParser=${!!stepParser}`);
+
+      // 1. Tree-sitter parsing for LSP features
+      let astIndex;
+      let tree;
+      if (stepParserReady && stepParser) {
+        tree = stepParser.parse(text);
+        if (tree) {
+          documentTrees.set(textDocument.uri, { text, tree, classCache: new Map() });
+          const indexer = new SymbolIndexer(stepIndexerHooks as any);
+          astIndex = indexer.index(tree.rootNode);
+          connection.console.info(`[step] AST index: ${astIndex.symbols.size} symbols`);
+        }
+      } else {
+        connection.console.info(`[step] Tree-sitter STEP parser not available, using regex-only extraction`);
+      }
+
+      // 2. Structural indexing (Regex + OCCT) + AST index merge
+      const stepIndex = await stepWorkspaceIndex.parseStepFile(textDocument.uri, buffer, astIndex);
+      connection.console.info(
+        `[step] StepWorkspaceIndex: ${stepIndex.symbols.size} symbols, ${stepWorkspaceIndex.getMeshes(textDocument.uri).length} meshes`,
+      );
+      for (const [id, entry] of stepIndex.symbols) {
+        if (entry.ruleName === "step_product" || entry.ruleName === "step_shape") {
+          connection.console.info(`[step]   ${entry.ruleName}: "${entry.name}" (${entry.startByte}-${entry.endByte})`);
+        }
+      }
+
+      // Invalidate the unified partial cache so cross-language resolvers pick up
+      // the new STEP symbols immediately.
+      const unifiedIndex = unifiedWorkspace.toUnifiedPartial();
+      connection.console.info(`[step] Unified index: ${unifiedIndex.symbols.size} symbols total`);
+      if (globalModelicaQueryEngine) globalModelicaQueryEngine.updateIndex(unifiedIndex);
+      if (globalSysML2QueryEngine) {
+        globalSysML2QueryEngine.updateIndex(unifiedIndex);
+        // Invalidate the SysML2 resolver cache so it sees the new STEP symbols
+        const cachedResolver = (globalSysML2QueryEngine as any).__resolverCache;
+        if (cachedResolver) cachedResolver.updateIndex(unifiedIndex);
+      }
+
+      // Create/update STEP query engine + resolver + bridge
+      // Always create a bridge, even without tree-sitter, so hover/completion
+      // work on the structural (regex-derived) symbols.
+      if (!globalStepQueryEngine) {
+        globalStepQueryEngine = new QueryEngine(unifiedIndex, stepQueryHooks as any);
+      } else {
+        globalStepQueryEngine.updateIndex(unifiedIndex);
+      }
+
+      const engine = globalStepQueryEngine;
+      let resolver = (engine as any).__resolverCache;
+      if (!resolver) {
+        resolver = new ScopeResolver(unifiedIndex, stepRefHooks as any, stepIndexerHooks as any);
+        (engine as any).__resolverCache = resolver;
+      } else {
+        resolver.updateIndex(unifiedIndex);
+      }
+
+      const bridge = new LSPBridge(unifiedIndex, engine, resolver, new PositionIndex(text), textDocument.uri);
+      documentLSPBridges.set(textDocument.uri, bridge);
+      connection.console.info(`[step] LSPBridge created for ${textDocument.uri}`);
+
+      const stepDiagnostics: Diagnostic[] = [];
+      if (tree) {
+        const collectErrors = (node: any) => {
+          if (!node) return;
+          if (typeof node.hasError === "function" ? !node.hasError() : node.hasError === false) return;
+
+          if (node.isMissing || node.type === "ERROR") {
+            const start = bridge["positions"].offsetToPosition(node.startIndex);
+            const end = bridge["positions"].offsetToPosition(node.endIndex);
+            stepDiagnostics.push({
+              severity: DiagnosticSeverity.Error,
+              range: { start, end },
+              message: node.isMissing ? `Missing syntax element` : `Syntax error`,
+              source: "step",
+            });
+          }
+          for (let i = 0; i < node.childCount; i++) {
+            collectErrors(node.child(i));
+          }
+        };
+        collectErrors(tree.rootNode);
+
+        // Check for unresolved semantic references
+        const unresolved = resolver.resolveAllReferences(textDocument.uri);
+        for (const unres of unresolved) {
+          const start = bridge["positions"].offsetToPosition(unres.startByte);
+          const end = bridge["positions"].offsetToPosition(unres.endByte);
+          stepDiagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            range: { start, end },
+            message: unres.message,
+            source: "step",
+          });
+        }
+      }
+
+      connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: stepDiagnostics });
+      connection.sendNotification("modelscript/projectTreeChanged");
+
+      // Trigger cross-file revalidation so SysML files referencing this STEP file
+      // will resolve the newly available CAD entities.
+      if (revalidationTimer) clearTimeout(revalidationTimer);
+      revalidationTimer = setTimeout(() => {
+        connection.console.info(`[step] Cross-file revalidation triggered`);
+        for (const doc of documents.all()) {
+          if (doc.uri !== textDocument.uri) {
+            validateTextDocument(doc);
+          }
+        }
+      }, 300);
+    } catch (e: any) {
+      connection.console.error(`[step] Error parsing ${textDocument.uri}: ${e.message}\n${e.stack}`);
+    }
+    return;
+  }
+
   // Handle SysML2 files via the polyglot SysML2 pipeline
   if (textDocument.uri.endsWith(".sysml") && sysml2ParserReady && sysml2Parser) {
     try {
@@ -1226,11 +1394,169 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
   }
 }
 
+/* ─── STEP semantic tokens ────────────────────────────────────────────── */
+
+/**
+ * Compute semantic tokens for STEP (ISO 10303-21) files using regex scanning.
+ * Provides context-aware highlighting for entity references, type keywords,
+ * strings, numbers, and enumeration values.
+ */
+function computeStepSemanticTokens(builder: SemanticTokensBuilder, text: string): SemanticTokens {
+  const rawTokens: {
+    line: number;
+    char: number;
+    length: number;
+    typeIndex: number;
+    modifier: number;
+  }[] = [];
+
+  // Section/sentinel keywords
+  const sectionKeywords = new Set(["ISO-10303-21", "HEADER", "DATA", "ENDSEC", "END-ISO-10303-21"]);
+
+  const lines = text.split("\n");
+  for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+    const line = lines[lineIdx];
+
+    // Match tokens on this line with a multi-pattern regex.
+    // Order matters: longer patterns first to avoid partial matches.
+    const pattern =
+      /(?:\/\*[\s\S]*?\*\/)|(?:'(?:[^']|'')*')|(?:#[0-9]+)|(?:\.[A-Z][A-Z0-9_]*\.)|(?:[A-Z][A-Z0-9_]{2,})|(?:[+-]?[0-9]+\.[0-9]*(?:[eE][+-]?[0-9]+)?)|(?:[+-]?[0-9]+)/g;
+
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(line)) !== null) {
+      const tokenText = match[0];
+      const col = match.index;
+      let typeIndex = -1;
+
+      if (tokenText.startsWith("/*")) {
+        // Block comment
+        typeIndex = tokenTypes.indexOf("comment");
+      } else if (tokenText.startsWith("'")) {
+        // String literal
+        typeIndex = tokenTypes.indexOf("string");
+      } else if (tokenText.startsWith("#")) {
+        // Entity instance reference
+        typeIndex = tokenTypes.indexOf("variable");
+      } else if (tokenText.startsWith(".") && tokenText.endsWith(".")) {
+        // Enumeration value (.T., .F., .MILLI., etc.)
+        typeIndex = tokenTypes.indexOf("enumMember");
+      } else if (/^[A-Z][A-Z0-9_]{2,}$/.test(tokenText)) {
+        if (sectionKeywords.has(tokenText)) {
+          typeIndex = tokenTypes.indexOf("keyword");
+        } else {
+          // Entity type keyword (PRODUCT, CARTESIAN_POINT, etc.)
+          typeIndex = tokenTypes.indexOf("type");
+        }
+      } else {
+        // Number
+        typeIndex = tokenTypes.indexOf("number");
+      }
+
+      if (typeIndex >= 0) {
+        rawTokens.push({
+          line: lineIdx,
+          char: col,
+          length: tokenText.length,
+          typeIndex,
+          modifier: 0,
+        });
+      }
+    }
+  }
+
+  rawTokens.sort((a, b) => (a.line === b.line ? a.char - b.char : a.line - b.line));
+  for (const token of rawTokens) {
+    builder.push(token.line, token.char, token.length, token.typeIndex, token.modifier);
+  }
+
+  return builder.build();
+}
+
+/* ─── STEP document formatting ────────────────────────────────────────── */
+
+/**
+ * Format a STEP (ISO 10303-21) document:
+ * - One entity per line
+ * - Section headers on their own line
+ * - Normalize whitespace inside parameter lists
+ * - Trim trailing whitespace
+ */
+function formatStepDocument(document: TextDocument): TextEdit[] {
+  const text = document.getText();
+
+  // Normalize line endings
+  let normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+  // Split multiple entities on the same line onto separate lines.
+  // Pattern: "; #" → ";\n#" (entity terminator followed by next entity)
+  normalized = normalized.replace(/;\s*(?=#\d)/g, ";\n");
+
+  // Section keywords onto their own lines
+  normalized = normalized.replace(
+    /(ISO-10303-21;|HEADER;|ENDSEC;|END-ISO-10303-21;|DATA(?:\s*\([^)]*\))?\s*;)/g,
+    (match) => "\n" + match.trim() + "\n",
+  );
+
+  // Normalize whitespace inside entity records:
+  //   #1=FOO( 'a' , 'b' ) → #1=FOO('a','b')
+  const resultLines: string[] = [];
+  for (const line of normalized.split("\n")) {
+    let trimmed = line.trim();
+
+    // Skip empty lines in sequence (keep at most one blank line)
+    if (!trimmed) {
+      if (resultLines.length > 0 && resultLines[resultLines.length - 1] === "") {
+        continue;
+      }
+      resultLines.push("");
+      continue;
+    }
+
+    // For entity lines (#N=...), normalize internal spacing
+    if (/^#\d+=/.test(trimmed)) {
+      // Normalize spaces around commas: " , " → ","
+      trimmed = trimmed.replace(/\s*,\s*/g, ",");
+      // Normalize spaces after opening parens: "( " → "("
+      trimmed = trimmed.replace(/\(\s+/g, "(");
+      // Normalize spaces before closing parens: " )" → ")"
+      trimmed = trimmed.replace(/\s+\)/g, ")");
+      // Normalize space around "=": "# 1 = " → "#1="
+      trimmed = trimmed.replace(/\s*=\s*/g, "=");
+    }
+
+    resultLines.push(trimmed);
+  }
+
+  // Trim leading/trailing blank lines
+  while (resultLines.length > 0 && resultLines[0] === "") resultLines.shift();
+  while (resultLines.length > 0 && resultLines[resultLines.length - 1] === "") resultLines.pop();
+
+  const result = resultLines.join("\n") + "\n";
+
+  const lastLine = document.lineCount - 1;
+  const lastChar = document.getText().length - document.offsetAt({ line: lastLine, character: 0 });
+
+  return [
+    {
+      range: {
+        start: { line: 0, character: 0 },
+        end: { line: lastLine, character: lastChar },
+      },
+      newText: result,
+    },
+  ];
+}
+
 /* Semantic tokens provider — tree-sitter AST traversal matching morsel's code.tsx exactly */
 
 function computeSemanticTokens(textDocument: TextDocument): SemanticTokens {
   const builder = new SemanticTokensBuilder();
   const text = textDocument.getText();
+
+  // STEP files use regex-based semantic tokens
+  if (textDocument.uri.match(/\.(step|stp|p21)$/i)) {
+    return computeStepSemanticTokens(builder, text);
+  }
 
   // SysML2 files use a separate parser and node-type classification
   if (textDocument.uri.endsWith(".sysml")) {
@@ -1848,6 +2174,11 @@ connection.onDefinition((params) => {
 connection.onDocumentFormatting((params) => {
   const document = documents.get(params.textDocument.uri);
   if (!document) return [];
+
+  // STEP formatting — one entity per line, consistent spacing
+  if (params.textDocument.uri.match(/\.(step|stp|p21)$/i)) {
+    return formatStepDocument(document);
+  }
 
   // SysML2 formatting — simple brace-based indentation
   if (params.textDocument.uri.endsWith(".sysml")) {
@@ -4435,7 +4766,108 @@ connection.onRequest(
   },
 );
 
-// ── WASM compilation capability ──────────────────────────────────────
+// ── STEP 3D mesh retrieval ──────────────────────────────────────
+connection.onRequest("modelscript/getStepMeshes", async (params: { uri: string }): Promise<any[]> => {
+  try {
+    // If the URI isn't a STEP file, scan all indexed STEP files and return
+    // the first one with meshes — this handles the case where the active
+    // editor is a SysML file referencing STEP geometry.
+    let targetUri = params.uri;
+    if (!/\.(step|stp|p21)$/i.test(targetUri)) {
+      const unifiedIdx = unifiedWorkspace.toUnifiedPartial();
+      for (const [, entry] of unifiedIdx.symbols) {
+        if (entry.ruleName === "step_product" && entry.resourceId && /\.(step|stp|p21)$/i.test(entry.resourceId)) {
+          targetUri = entry.resourceId;
+          break;
+        }
+      }
+    }
+
+    let meshes = [...stepWorkspaceIndex.getMeshes(targetUri)];
+    const unifiedIndex = unifiedWorkspace.toUnifiedPartial();
+
+    // Fallback: If OCCT fails to triangulate (e.g. invalid solid geometry)
+    // but we have extracted shapes from the text, return placeholder cubes.
+    if (meshes.length === 0) {
+      for (const [, entry] of unifiedIndex.symbols) {
+        if (entry.resourceId === targetUri && entry.ruleName === "step_shape") {
+          // Per-face vertices + normals for a unit cube (6 faces × 2 triangles × 3 vertices)
+          const s = 1; // half-extent
+          // prettier-ignore
+          const cubeVerts = new Float32Array([
+              // Front face
+              -s,-s, s,   s,-s, s,   s, s, s,   -s,-s, s,   s, s, s,  -s, s, s,
+              // Back face
+               s,-s,-s,  -s,-s,-s,  -s, s,-s,    s,-s,-s,  -s, s,-s,   s, s,-s,
+              // Top face
+              -s, s, s,   s, s, s,   s, s,-s,   -s, s, s,   s, s,-s,  -s, s,-s,
+              // Bottom face
+              -s,-s,-s,   s,-s,-s,   s,-s, s,   -s,-s,-s,   s,-s, s,  -s,-s, s,
+              // Right face
+               s,-s, s,   s,-s,-s,   s, s,-s,    s,-s, s,   s, s,-s,   s, s, s,
+              // Left face
+              -s,-s,-s,  -s,-s, s,  -s, s, s,   -s,-s,-s,  -s, s, s,  -s, s,-s,
+            ]);
+          // prettier-ignore
+          const cubeNormals = new Float32Array([
+               0, 0, 1,   0, 0, 1,   0, 0, 1,    0, 0, 1,   0, 0, 1,   0, 0, 1,
+               0, 0,-1,   0, 0,-1,   0, 0,-1,    0, 0,-1,   0, 0,-1,   0, 0,-1,
+               0, 1, 0,   0, 1, 0,   0, 1, 0,    0, 1, 0,   0, 1, 0,   0, 1, 0,
+               0,-1, 0,   0,-1, 0,   0,-1, 0,    0,-1, 0,   0,-1, 0,   0,-1, 0,
+               1, 0, 0,   1, 0, 0,   1, 0, 0,    1, 0, 0,   1, 0, 0,   1, 0, 0,
+              -1, 0, 0,  -1, 0, 0,  -1, 0, 0,   -1, 0, 0,  -1, 0, 0,  -1, 0, 0,
+            ]);
+          const cubeIndices = new Uint32Array(36);
+          for (let i = 0; i < 36; i++) cubeIndices[i] = i;
+
+          meshes.push({
+            name: entry.name,
+            color: [0.6, 0.75, 0.9],
+            attributes: { position: { array: cubeVerts }, normal: { array: cubeNormals } },
+            index: { array: cubeIndices },
+          });
+        }
+      }
+    }
+
+    // Convert OCCT mesh data to the StepMeshPayload format for the webview.
+    // OCCT returns plain JS arrays; Three.js needs typed arrays.
+    return meshes.map((mesh: any, idx: number) => {
+      const rawName = mesh.name || `Mesh_${idx}`;
+
+      // Try to find a matching symbol entry for metadata
+      let displayName = rawName;
+      let type = "Face";
+      for (const [, entry] of unifiedIndex.symbols) {
+        if (entry.resourceId === targetUri && entry.name === rawName && entry.ruleName === "step_shape") {
+          displayName = entry.name;
+          type = (entry.metadata as any)?.stepType ?? "NamedShape";
+          break;
+        }
+      }
+
+      // Extract raw arrays from OCCT result structure
+      const posArr = mesh.attributes?.position?.array;
+      const normArr = mesh.attributes?.normal?.array;
+      const idxArr = mesh.index?.array;
+
+      return {
+        id: idx,
+        name: displayName,
+        type,
+        color: mesh.color || [0.8, 0.8, 0.8],
+        // Ensure typed arrays for Three.js BufferAttribute
+        vertices: posArr instanceof Float32Array ? posArr : posArr ? new Float32Array(posArr) : new Float32Array(0),
+        normals: normArr instanceof Float32Array ? normArr : normArr ? new Float32Array(normArr) : new Float32Array(0),
+        indices: idxArr instanceof Uint32Array ? idxArr : idxArr ? new Uint32Array(idxArr) : new Uint32Array(0),
+      };
+    });
+  } catch (e: any) {
+    connection.console.error(`[modelscript/getStepMeshes] Error getting meshes: ${e.message}`);
+    return [];
+  }
+});
+
 connection.onRequest("modelscript/compileWasm", async (params: { uri: string }) => {
   const ctx = documentContexts.get(params.uri);
   const doc = documents.get(params.uri);

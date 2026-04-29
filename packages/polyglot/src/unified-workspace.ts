@@ -1,13 +1,20 @@
 import { AdapterRegistry } from "./adapter-registry.js";
 import { SymbolEntry, SymbolIndex } from "./runtime.js";
-import { WorkspaceIndex } from "./workspace-index.js";
+
+export interface IWorkspaceIndex {
+  version: number;
+  toUnified(): SymbolIndex;
+  toUnifiedAsync(): Promise<SymbolIndex>;
+  toUnifiedPartial(): SymbolIndex;
+  toTreeIndex(): SymbolIndex;
+}
 
 /**
  * Manages multiple language-specific WorkspaceIndex instances and merges them
  * into a single unified SymbolIndex for polyglot authoring.
  */
 export class UnifiedWorkspace {
-  private indices = new Map<string, WorkspaceIndex>();
+  private indices = new Map<string, IWorkspaceIndex>();
   public adapterRegistry: AdapterRegistry;
 
   /** Cached result of toUnifiedPartial() — reused when underlying partials haven't changed. */
@@ -25,7 +32,7 @@ export class UnifiedWorkspace {
    * @param index The WorkspaceIndex for that language
    * @param config The exported language configuration (from language.ts) to register adapters
    */
-  registerWorkspace(language: string, index: WorkspaceIndex, config: unknown): void {
+  registerWorkspace(language: string, index: IWorkspaceIndex, config: unknown): void {
     this.indices.set(language, index);
 
     // Create an empty, dummy SymbolIndex to pass to the adapter registry, since the
@@ -43,7 +50,7 @@ export class UnifiedWorkspace {
   /**
    * Gets a specific language workspace index.
    */
-  getWorkspace(language: string): WorkspaceIndex | undefined {
+  getWorkspace(language: string): IWorkspaceIndex | undefined {
     return this.indices.get(language);
   }
 
