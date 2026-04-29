@@ -575,4 +575,6 @@ export const BUILTIN_MODELICA_NAMES = new Set([
   "enumeration",
   // Scripting API
   "simulate",
+  // Graphical Annotations
+  "DynamicSelect",
 ]);

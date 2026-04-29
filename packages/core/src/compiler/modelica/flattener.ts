@@ -1214,6 +1214,62 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
   // Map from fully qualified component name to its generated subset of DAE variables and equations
   #componentContents = new Map<string, { variables: ModelicaVariable[]; equations: ModelicaEquation[] }>();
 
+  #formatCADAnnotationString(modName: string, modArg: { modificationArguments: unknown[] }): string {
+    const formatExpr = (expr: any): string => {
+      if (!expr) return "0";
+      if (expr["@type"] === "STRING") {
+        const t = expr.text || "";
+        return t.startsWith('"') ? t : `"${t}"`;
+      }
+      if (["REAL", "INTEGER", "BOOLEAN", "UNSIGNED_INTEGER", "UNSIGNED_REAL", "FLOAT"].includes(expr["@type"]))
+        return `${expr.text}`;
+      if (expr["@type"] === "Name" || expr["@type"] === "ComponentReference") {
+        return (
+          expr.parts
+            ?.map((p: any) => p.identifier?.text || p.text)
+            .filter(Boolean)
+            .join(".") || "0"
+        );
+      }
+      if (expr["@type"] === "FunctionCall") {
+        const name =
+          expr.functionReference?.parts?.map((p: any) => p.text).join(".") ||
+          expr.functionReferenceName?.text ||
+          "DynamicSelect";
+        const argsStr = (expr.functionCallArguments?.arguments || expr.functionCallArguments?.expressions || [])
+          .map((a: any) => formatExpr(a.expression || a))
+          .join(", ");
+        return `${name}(${argsStr})`;
+      }
+      if (expr["@type"] === "ExpressionList" || expr["@type"] === "ArrayConstruction") {
+        const vals = (expr.expressions || expr.arguments || []).map((e: any) => formatExpr(e)).join(", ");
+        return `{${vals}}`;
+      }
+      if (expr["@type"] === "ArrayConstructor") {
+        const vals = (expr.expressionList?.expressions || []).map((e: any) => formatExpr(e)).join(", ");
+        return `{${vals}}`;
+      }
+      if (expr["@type"] === "Array") {
+        // if we get evaluated ModelicaArray object
+        const vals = (expr.elements || []).map((e: any) => formatExpr(e)).join(", ");
+        return `{${vals}}`;
+      }
+      return "0";
+    };
+
+    const parts: string[] = [];
+    const argsArray =
+      (modArg as any).modificationArguments || (modArg as any).classModification?.modificationArguments || [];
+    for (const arg of argsArray) {
+      if (arg["@type"] === "ElementModification" && arg.name) {
+        parts.push(
+          `${arg.name.parts?.[0]?.text || arg.name}=${formatExpr(arg.modification?.modificationExpression?.expression || arg.modification?.expression || arg.expression)}`,
+        );
+      }
+    }
+    return `${modName}(${parts.join(", ")})`;
+  }
+
   visitComponentInstance(node: any /* ModelicaComponentInstance */, args: [string, ModelicaDAE]): void {
     // Skip pure `outer` components — they reference an `inner` declaration higher up
     // and should not generate their own variables. `inner outer` still generates a variable.
@@ -1252,6 +1308,42 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     } else if (node.classInstance instanceof ModelicaArrayClassInstance) {
       this.#flattenArrayClass(node, name, args);
     } else {
+      // Extract structural CAD annotation from annotationClause
+      if (node.abstractSyntaxNode && (node.abstractSyntaxNode as any).annotationClause) {
+        const annClause = (node.abstractSyntaxNode as any).annotationClause;
+        if (annClause.classModification?.modificationArguments) {
+          const argsList = annClause.classModification.modificationArguments;
+          const cadAnn = argsList.find(
+            (arg: any) => arg["@type"] === "ElementModification" && arg.name?.parts?.[0]?.text === "CAD",
+          );
+          const cadPortAnn = argsList.find(
+            (arg: any) => arg["@type"] === "ElementModification" && arg.name?.parts?.[0]?.text === "CADPort",
+          );
+
+          if ((cadAnn && cadAnn.modification) || (cadPortAnn && cadPortAnn.modification)) {
+            const dummyVar = new ModelicaExpressionVariable(
+              name,
+              null,
+              new Map() as any,
+              effectiveVariability,
+              node.modification?.description ?? node.description,
+              node.causality,
+              node.isFinal,
+              node.isProtected,
+            );
+            if (cadAnn) {
+              dummyVar.cadAnnotationString = this.#formatCADAnnotationString("CAD", cadAnn.modification);
+            } else if (cadPortAnn) {
+              dummyVar.cadAnnotationString = this.#formatCADAnnotationString("CADPort", cadPortAnn.modification);
+            }
+            if (!this.#emittedVarNames.has(dummyVar.name)) {
+              this.#emittedVarNames.add(dummyVar.name);
+              args[1].variables.push(dummyVar);
+            }
+          }
+        }
+      }
+
       // For compound types (records, models), propagate outer variability, final, and protected to inner components
       const savedVar = this.#outerVariability;
       const savedFinal = this.#outerFinal;
@@ -1646,36 +1738,14 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     }
 
     if (variable) {
-      // Extract CAD and CADPort annotations
-      const formatCADAnnotation = (modName: string, modArg: { modificationArguments: unknown[] }): string => {
-        const parts: string[] = [];
-        for (const arg of modArg.modificationArguments) {
-          if (arg instanceof ModelicaElementModification && (arg as any).name) {
-            const expr = (arg as any).expression;
-            if (expr instanceof ModelicaStringLiteral) parts.push(`\${(arg as any).name}="${expr.value}"`);
-            else if (expr instanceof ModelicaRealLiteral || expr instanceof ModelicaIntegerLiteral)
-              parts.push(`\${(arg as any).name}=${expr.value}`);
-            else if (expr instanceof ModelicaBooleanLiteral)
-              parts.push(`\${(arg as any).name}=${expr.value ? "true" : "false"}`);
-            else if (expr instanceof ModelicaArray) {
-              const vals = expr.elements
-                .map((e) => (e instanceof ModelicaRealLiteral || e instanceof ModelicaIntegerLiteral ? e.value : 0))
-                .join(", ");
-              parts.push(`\${(arg as any).name}={${vals}}`);
-            }
-          }
-        }
-        return `${modName}(${parts.join(", ")})`;
-      };
-
-      if (node.annotations && Array.isArray(node.annotations)) {
-        const cadAnnotation = node.annotations.find((a: any) => a.name === "CAD");
-        if (cadAnnotation instanceof ModelicaClassInstance && cadAnnotation.modification) {
-          variable.cadAnnotationString = formatCADAnnotation("CAD", cadAnnotation.modification);
+      if (node.abstractSyntaxNode?.annotations && Array.isArray(node.abstractSyntaxNode.annotations)) {
+        const cadAnnotation = node.abstractSyntaxNode.annotations.find((a: any) => a.name === "CAD");
+        if (cadAnnotation && cadAnnotation.modification) {
+          variable.cadAnnotationString = this.#formatCADAnnotationString("CAD", cadAnnotation.modification);
         } else {
-          const cadPortAnnotation = node.annotations.find((a: any) => a.name === "CADPort");
-          if (cadPortAnnotation instanceof ModelicaClassInstance && cadPortAnnotation.modification) {
-            variable.cadAnnotationString = formatCADAnnotation("CADPort", cadPortAnnotation.modification);
+          const cadPortAnnotation = node.abstractSyntaxNode.annotations.find((a: any) => a.name === "CADPort");
+          if (cadPortAnnotation && cadPortAnnotation.modification) {
+            variable.cadAnnotationString = this.#formatCADAnnotationString("CADPort", cadPortAnnotation.modification);
           }
         }
       }

@@ -635,6 +635,7 @@ const keywords = [
   "constrainedby",
   "der",
   "discrete",
+  "DynamicSelect",
   "each",
   "else",
   "elseif",
