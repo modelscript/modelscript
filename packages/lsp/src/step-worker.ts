@@ -5,7 +5,8 @@ self.onmessage = async (event) => {
 
   try {
     // Initialize the WebAssembly module
-    const occt = await initOpenCascade();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const occt = await (initOpenCascade as any)();
 
     // occt.ReadStepFile requires a Uint8Array
     const result = occt.ReadStepFile(buffer, null);

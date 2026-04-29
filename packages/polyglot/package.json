@@ -15,6 +15,7 @@
     "./lsp-bridge": "./dist/src/lsp-bridge.js",
     "./workspace-index": "./dist/src/workspace-index.js",
     "./semantic-node": "./dist/src/semantic-node.js",
+    "./semantic-diff": "./dist/src/semantic-diff.js",
     "./generate-ast-classes": "./dist/src/generate-ast-classes.js",
     "./diagram-builder": "./dist/src/polyglot-diagram-builder.js"
   },

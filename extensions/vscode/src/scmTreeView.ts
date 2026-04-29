@@ -44,7 +44,7 @@ class SemanticDiffTreeProvider implements vscode.TreeDataProvider<SemanticDiffTr
   constructor(private client: LanguageClient | undefined) {}
 
   refresh(): void {
-    this._onDidChangeTreeData.fire();
+    this._onDidChangeTreeData.fire(undefined);
   }
 
   getTreeItem(element: SemanticDiffTreeItem): vscode.TreeItem {

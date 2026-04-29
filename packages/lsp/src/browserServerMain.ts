@@ -64,19 +64,19 @@ import {
 } from "./sysml2DiagramEdits";
 
 // @ts-ignore
-import { SemanticEdit, computeSemanticDiff } from "@modelscript/polyglot/semantic-diff.js";
+import { SemanticEdit, computeSemanticDiff } from "@modelscript/polyglot/semantic-diff";
 // @ts-ignore
-import { INDEXER_HOOKS as modelicaIndexerHooks } from "@modelscript/modelica/indexer_config.js";
+import { INDEXER_HOOKS as modelicaIndexerHooks } from "@modelscript/modelica/indexer_config";
 // @ts-ignore
-import { INDEXER_HOOKS as sysml2IndexerHooks } from "@modelscript/sysml2/indexer_config.js";
+import { INDEXER_HOOKS as sysml2IndexerHooks } from "@modelscript/sysml2/indexer_config";
 // @ts-ignore
-import { wrapEntry as modelicaWrapEntry } from "@modelscript/modelica/ast_classes.js";
+import { wrapEntry as modelicaWrapEntry } from "@modelscript/modelica/ast_classes";
 // @ts-ignore
-import { wrapEntry as sysml2WrapEntry } from "@modelscript/sysml2/ast_classes.js";
+import { wrapEntry as sysml2WrapEntry } from "@modelscript/sysml2/ast_classes";
 // @ts-ignore
-import { QUERY_HOOKS as modelicaQueryHooks } from "@modelscript/modelica/query_hooks.js";
+import { QUERY_HOOKS as modelicaQueryHooks } from "@modelscript/modelica/query_hooks";
 // @ts-ignore
-import { QUERY_HOOKS as sysml2QueryHooks } from "@modelscript/sysml2/query_hooks.js";
+import { QUERY_HOOKS as sysml2QueryHooks } from "@modelscript/sysml2/query_hooks";
 
 import { Language, Parser, Node as SyntaxNode, Tree as TreeSitterTree } from "web-tree-sitter";
 
@@ -6424,11 +6424,11 @@ connection.onRequest(
           let newNode = null;
           if (i < oldRootEntries.length) {
             const entry = oldIndex.symbols.get(oldRootEntries[i]);
-            if (entry) oldNode = wrapEntry(entry, oldDb);
+            if (entry) oldNode = wrapEntry(entry, oldDb.toQueryDB());
           }
           if (i < newRootEntries.length) {
             const entry = newIndex.symbols.get(newRootEntries[i]);
-            if (entry) newNode = wrapEntry(entry, newDb);
+            if (entry) newNode = wrapEntry(entry, newDb.toQueryDB());
           }
 
           if (!oldNode && !newNode) continue;
@@ -6480,7 +6480,7 @@ connection.onRequest(
 );
 
 export interface FlatSemanticEdit {
-  action: "insert" | "delete" | "update" | "none";
+  action: "insert" | "delete" | "update" | "none" | "move";
   description: string;
   oldRange?: { startLine: number; startCharacter: number; endLine: number; endCharacter: number };
   newRange?: { startLine: number; startCharacter: number; endLine: number; endCharacter: number };
@@ -6525,11 +6525,11 @@ connection.onRequest(
         let newNode = null;
         if (i < oldRootEntries.length) {
           const entry = oldIndex.symbols.get(oldRootEntries[i]);
-          if (entry) oldNode = wrapEntry(entry, oldDb);
+          if (entry) oldNode = wrapEntry(entry, oldDb.toQueryDB());
         }
         if (i < newRootEntries.length) {
           const entry = newIndex.symbols.get(newRootEntries[i]);
-          if (entry) newNode = wrapEntry(entry, newDb);
+          if (entry) newNode = wrapEntry(entry, newDb.toQueryDB());
         }
 
         if (!oldNode && !newNode) continue;
