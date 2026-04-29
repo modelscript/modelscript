@@ -791,6 +791,31 @@ const lastIndexedText = new Map<string, string>();
 // Track the last semantic diagnostics to avoid flashing when sending early syntax diagnostics
 const lastSemanticDiagnostics = new Map<string, Diagnostic[]>();
 
+/**
+ * Collect syntax errors (ERROR and MISSING nodes) from a tree-sitter CST.
+ * This is a pure function — fast (~1ms) and safe to call on every keystroke.
+ */
+function collectSyntaxErrors(rootNode: any, textDocument: TextDocument): Diagnostic[] {
+  const diagnostics: Diagnostic[] = [];
+  const walk = (node: any) => {
+    if (!node) return;
+    if (typeof node.hasError === "function" ? !node.hasError() : node.hasError === false) return;
+    if (node.isMissing || node.type === "ERROR") {
+      const start = textDocument.positionAt(node.startIndex);
+      const end = textDocument.positionAt(node.endIndex);
+      diagnostics.push({
+        severity: DiagnosticSeverity.Error,
+        range: { start, end },
+        message: node.isMissing ? `Missing syntax element` : `Syntax error`,
+        source: "modelscript",
+      });
+    }
+    for (let i = 0; i < node.childCount; i++) walk(node.child(i));
+  };
+  walk(rootNode);
+  return diagnostics;
+}
+
 function flushValidation(uri: string) {
   const timer = activeValidationTimers.get(uri);
   if (timer) {
@@ -817,6 +842,25 @@ documents.onDidChangeContent((change) => {
     activeSemanticTimers.delete(uri);
   }
 
+  // === TIER 1: Instant parse + syntax errors (0ms) ===
+  // Parse and send syntax errors immediately — before any debounce.
+  // Tree-sitter incremental parse is ~2ms even for large files.
+  if (parserReady && parser && (uri.endsWith(".mo") || uri.endsWith(".mos"))) {
+    try {
+      const text = change.document.getText();
+      const tree = updateDocumentTree(uri, text);
+      const syntaxDiags = collectSyntaxErrors(tree.rootNode, change.document);
+
+      // Merge with last known semantic diagnostics to prevent flashing —
+      // semantic squigglies stay visible until the next semantic pass replaces them.
+      const cachedSemantic = lastSemanticDiagnostics.get(uri) || [];
+      connection.sendDiagnostics({ uri, diagnostics: [...syntaxDiags, ...cachedSemantic] });
+    } catch (e: any) {
+      connection.console.warn(`[instant-parse] Error for ${uri}: ${e.message}`);
+    }
+  }
+
+  // === TIER 2: Debounced semantic analysis (300ms) ===
   const existingTimer = activeValidationTimers.get(uri);
   if (existingTimer) clearTimeout(existingTimer);
 
@@ -826,7 +870,7 @@ documents.onDidChangeContent((change) => {
       const doc = documents.get(uri);
       if (doc) validateTextDocument(doc);
       activeValidationTimers.delete(uri);
-    }, 200),
+    }, 300),
   );
 });
 
@@ -1335,62 +1379,20 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
     }
     documentTrees.set(textDocument.uri, { text, tree, classCache: oldCached?.classCache ?? new Map() });
 
-    // 1. Collect parse errors from the tree (ERROR and MISSING nodes)
-    // We do this BEFORE the semantic pipeline so that syntax errors are
-    // guaranteed to be reported even if indexing throws an exception.
-    const collectErrors = (node: any) => {
-      if (!node) return;
-      if (typeof node.hasError === "function" ? !node.hasError() : node.hasError === false) return;
-
-      if (node.isMissing || node.type === "ERROR") {
-        const start = textDocument.positionAt(node.startIndex);
-        const end = textDocument.positionAt(node.endIndex);
-        diagnostics.push({
-          severity: DiagnosticSeverity.Error,
-          range: { start, end },
-          message: node.isMissing ? `Missing syntax element` : `Syntax error`,
-          source: "modelscript",
-        });
-      }
-      for (let i = 0; i < node.childCount; i++) {
-        collectErrors(node.child(i));
-      }
-    };
-    collectErrors(tree.rootNode);
+    // Collect syntax errors from the tree using the shared pure function.
+    // These were likely already sent instantly by the onDidChangeContent handler,
+    // but we recompute them here to ensure consistency with the current tree.
+    const syntaxDiags = collectSyntaxErrors(tree.rootNode, textDocument);
+    diagnostics.push(...syntaxDiags);
 
     connection.console.info(
       `[validate] ${textDocument.uri}: text=${text.length}B, syntaxErrors=${diagnostics.length}, hasError=${typeof tree.rootNode.hasError === "function" ? tree.rootNode.hasError() : tree.rootNode.hasError}`,
     );
 
-    const isLargeFile = text.length > 200_000;
-
-    if (isLargeFile) {
-      // --- LARGE FILE PATH ---
-      // Send syntax errors immediately so the user gets instant feedback.
-      // Merge with last known semantic diagnostics to prevent flashing/disappearing.
-      const previousSemantic = lastSemanticDiagnostics.get(textDocument.uri) || [];
-      connection.console.info(
-        `[validate] LARGE FILE: sending ${diagnostics.length} syntax + ${previousSemantic.length} cached semantic diagnostics`,
-      );
-      connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: [...diagnostics, ...previousSemantic] });
-
-      const syntaxDiagnostics = [...diagnostics];
-      const revisionAtStart = documentRevisions.get(textDocument.uri) ?? 0;
-      const uri = textDocument.uri;
-
-      const semanticTimer = setTimeout(() => {
-        activeSemanticTimers.delete(uri);
-        if ((documentRevisions.get(uri) ?? 0) !== revisionAtStart) return;
-        runSemanticPipeline(uri, text, tree, editRanges, syntaxDiagnostics, revisionAtStart, context);
-      }, 2000);
-
-      activeSemanticTimers.set(uri, semanticTimer);
-      connection.sendNotification("modelscript/projectTreeChanged");
-    } else {
-      // --- SMALL FILE PATH ---
-      // Run everything synchronously. Single sendDiagnostics call = no flashing.
-      runSemanticPipeline(textDocument.uri, text, tree, editRanges, diagnostics, null, context);
-    }
+    // Always run the semantic pipeline — syntax errors were already sent
+    // instantly by the onDidChangeContent handler, so this pass focuses on
+    // producing the merged (syntax + semantic) diagnostic set.
+    runSemanticPipeline(textDocument.uri, text, tree, editRanges, diagnostics, null, context);
   } else {
     // Fallback: basic regex validation when tree-sitter is not available
     const openComments = (text.match(/\/\*/g) || []).length;
