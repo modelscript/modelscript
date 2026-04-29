@@ -892,13 +892,15 @@ documents.onDidClose((event) => {
   }
 });
 
-/* Diagnostic validation — uses tree-sitter + ModelicaLinter when available */
-
 /**
  * Run the semantic pipeline: index → unified merge → lint → reference resolution → send diagnostics.
- * Called synchronously for small files (revisionAtStart=null) and deferred for large files.
+ *
+ * This is an async function that yields to the event loop between expensive steps,
+ * allowing new edits (via onDidChangeContent) to bump the document revision. After
+ * each yield, the pipeline checks for staleness and bails out if a newer edit has
+ * arrived. This prevents stale semantic work from blocking the main thread.
  */
-function runSemanticPipeline(
+async function runSemanticPipeline(
   uri: string,
   text: string,
   tree: any,
@@ -906,14 +908,20 @@ function runSemanticPipeline(
   baseDiagnostics: Diagnostic[],
   revisionAtStart: number | null,
   context: any,
-): void {
+): Promise<void> {
   const newSemanticDiagnostics: Diagnostic[] = [];
+
+  /** Returns true if a newer edit has arrived, meaning we should abandon this pipeline run. */
+  const isStale = () => revisionAtStart !== null && (documentRevisions.get(uri) ?? 0) !== revisionAtStart;
+  /** Yields to the event loop so new edits can be processed. */
+  const yieldToEventLoop = () => new Promise<void>((r) => setTimeout(r, 0));
 
   try {
     const effectiveUri = uri.startsWith("modelscript-lib://global")
       ? "file://" + uri.substring("modelscript-lib://global".length)
       : uri;
 
+    // ── Step 1: Re-index ─────────────────────────────────────────────────
     // Only update the workspace index if the text actually changed.
     // Prevents infinite revalidation loops from revalidation calls.
     const textChanged = lastIndexedText.get(effectiveUri) !== text;
@@ -932,9 +940,9 @@ function runSemanticPipeline(
       changedNames = globalWorkspaceIndex.takeGlobalChangedNames();
     }
 
-    // Bail out if stale (large-file deferred path only)
-    if (revisionAtStart !== null && (documentRevisions.get(uri) ?? 0) !== revisionAtStart) return;
+    if (isStale()) return;
 
+    // ── Step 2: Unified index merge + QueryEngine update ─────────────────
     let unifiedIndex = unifiedWorkspace.toUnifiedPartial();
 
     if (changedNames && changedNames.size > 0) {
@@ -948,7 +956,7 @@ function runSemanticPipeline(
             validateTextDocument(doc);
           }
         }
-      }, 500);
+      }, 1000);
     }
 
     const cstTreeWrapper = getSharedCstTreeWrapper();
@@ -980,10 +988,12 @@ function runSemanticPipeline(
     const bridge = createModelicaLSPBridge(unifiedIndex, engine, resolver, currentText, uri);
     documentLSPBridges.set(uri, bridge);
 
-    // Bail out if stale before running expensive lints
-    if (revisionAtStart !== null && (documentRevisions.get(uri) ?? 0) !== revisionAtStart) return;
+    // Yield before expensive linting
+    await yieldToEventLoop();
+    if (isStale()) return;
 
-    // Run lints — skip for library files with >1000 symbols to avoid O(n²) on MSL.
+    // ── Step 3: Run lints ────────────────────────────────────────────────
+    // Skip for library files with >1000 symbols to avoid O(n²) on MSL.
     // User-authored files always get full diagnostics regardless of size.
     // A file is a "workspace file" if it's tracked by the TextDocuments manager
     // (i.e., currently open in the editor). Library files loaded via loadMSL
@@ -1005,9 +1015,11 @@ function runSemanticPipeline(
       }
     }
 
-    // Bail out if stale before running expensive reference resolution
-    if (revisionAtStart !== null && (documentRevisions.get(uri) ?? 0) !== revisionAtStart) return;
+    // Yield before expensive reference resolution
+    await yieldToEventLoop();
+    if (isStale()) return;
 
+    // ── Step 4: Resolve references ───────────────────────────────────────
     if (!skipHeavyLints) {
       const unresolvedRefs = mslStdlibReady ? resolver.resolveAllReferences(uri) : [];
       let dirty = false;
@@ -1035,7 +1047,7 @@ function runSemanticPipeline(
       }
     }
 
-    // Create QueryBackedClassInstance wrappers
+    // ── Step 5: Create QueryBackedClassInstance wrappers ──────────────────
     const db = engine!.toQueryDB();
     const thisDocInstances: ModelicaClassInstance[] = [];
     const normUri = (u: string) => (u.startsWith("file://") ? u.substring(7) : u);
@@ -1055,7 +1067,7 @@ function runSemanticPipeline(
     documentContexts.set(uri, context);
 
     // Final stale check
-    if (revisionAtStart !== null && (documentRevisions.get(uri) ?? 0) !== revisionAtStart) return;
+    if (isStale()) return;
 
     lastSemanticDiagnostics.set(uri, newSemanticDiagnostics);
     const diagnostics = [...baseDiagnostics, ...newSemanticDiagnostics];
@@ -1064,7 +1076,7 @@ function runSemanticPipeline(
     connection.sendNotification("modelscript/projectTreeChanged");
   } catch (e: any) {
     connection.console.error(`[modelica] Error in semantic pipeline for ${uri}: ${e.message}\n${e.stack}`);
-    if (revisionAtStart === null || (documentRevisions.get(uri) ?? 0) === revisionAtStart) {
+    if (!isStale()) {
       const diagnostics = [...baseDiagnostics, ...newSemanticDiagnostics];
       connection.sendDiagnostics({ uri, diagnostics });
     }
