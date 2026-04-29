@@ -2998,6 +2998,74 @@ connection.onTypeDefinition((params) => {
 });
 
 // Custom request: get diagram data for the webview
+
+/**
+ * Resolve a Modelica class instance by URI and optional class name.
+ * Searches workspace document instances first, then falls back to library
+ * classes via the polyglot index and QueryBackedClassInstance.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function resolveModelicaClassInstance(uri: string, className?: string): any {
+  const instances = documentInstances.get(uri);
+
+  if (instances && instances.length > 0) {
+    if (className) {
+      const found = instances.find((i) => i.name === className || i.compositeName === className);
+      if (found) return found;
+    }
+    return instances[0];
+  }
+
+  // Library class: get from polyglot index directly
+  const unifiedIndex = unifiedWorkspace.toUnifiedPartial();
+  let engine = uri.endsWith(".sysml") ? globalSysML2QueryEngine : globalModelicaQueryEngine;
+  if (!engine) {
+    if (uri.endsWith(".sysml")) {
+      engine = createSysML2QueryEngine(unifiedIndex) as any;
+      globalSysML2QueryEngine = engine;
+    } else {
+      engine = createModelicaQueryEngine(unifiedIndex, getSharedCstTreeWrapper()) as any;
+      globalModelicaQueryEngine = engine;
+    }
+  }
+  const db = engine!.toQueryDB();
+
+  if (className) {
+    const parts = className.split(".");
+    const entries = unifiedIndex.byName.get(parts[parts.length - 1]);
+    const entryId = entries?.find((id) => {
+      const e = unifiedIndex.symbols.get(id);
+      return e && getCompositeName(e, unifiedIndex) === className;
+    });
+    if (entryId !== undefined) {
+      return new QueryBackedClassInstance(entryId, db);
+    }
+  }
+
+  // Fallback to first class in file.
+  // Normalize URIs to handle scheme variations (file:// vs file:///)
+  // and modelscript-lib://global prefix differences.
+  const normalizeUri = (u: string) => {
+    if (u.startsWith("modelscript-lib://global")) u = "file://" + u.substring("modelscript-lib://global".length);
+    return u.replace(/^file:\/\/\//, "file://");
+  };
+  const normalizedParamsUri = normalizeUri(uri);
+  const expectedSuffix = normalizedParamsUri.replace(/^file:\/\//, "");
+  for (const [id, entry] of unifiedIndex.symbols) {
+    if (
+      entry.kind === "Class" &&
+      entry.parentId === null &&
+      entry.resourceId &&
+      (normalizeUri(entry.resourceId) === normalizedParamsUri ||
+        normalizeUri(entry.resourceId).endsWith(expectedSuffix))
+    ) {
+      return new QueryBackedClassInstance(id, db);
+    }
+  }
+
+  return null;
+}
+
 // Cache to avoid rebuilding diagram data when nothing has changed.
 // Key: `${uri}|${className}|${diagramType}|${version}`
 const diagramCache = new Map<string, { version: number | string; data: any }>();
@@ -3061,79 +3129,20 @@ connection.onRequest(
       }
     }
 
-    let classInstance: any = null;
-    const instances = documentInstances.get(params.uri);
     const t0 = performance.now();
+    const classInstance = resolveModelicaClassInstance(params.uri, params.className);
 
-    if (!instances || instances.length === 0) {
-      // Library class: get from polyglot index directly
-      const unifiedIndex = unifiedWorkspace.toUnifiedPartial();
-      let engine = params.uri.endsWith(".sysml") ? globalSysML2QueryEngine : globalModelicaQueryEngine;
-      if (!engine) {
-        if (params.uri.endsWith(".sysml")) {
-          engine = createSysML2QueryEngine(unifiedIndex) as any;
-          globalSysML2QueryEngine = engine;
-        } else {
-          engine = createModelicaQueryEngine(unifiedIndex, getSharedCstTreeWrapper()) as any;
-          globalModelicaQueryEngine = engine;
-        }
-      }
-      const db = engine!.toQueryDB();
-
-      if (params.className) {
-        const parts = params.className.split(".");
-        const entries = unifiedIndex.byName.get(parts[parts.length - 1]);
-        const entryId = entries?.find((id) => {
-          const e = unifiedIndex.symbols.get(id);
-          return e && getCompositeName(e, unifiedIndex) === params.className;
-        });
-        if (entryId !== undefined) {
-          classInstance = new QueryBackedClassInstance(entryId, db);
-        }
-      }
-
-      if (!classInstance) {
-        // Fallback to first class in file.
-        // Normalize URIs to handle scheme variations (file:// vs file:///)
-        // and modelscript-lib://global prefix differences.
-        const normalizeUri = (u: string) => {
-          if (u.startsWith("modelscript-lib://global")) u = "file://" + u.substring("modelscript-lib://global".length);
-          return u.replace(/^file:\/\/\//, "file://");
+    if (!classInstance) {
+      if (!mslStdlibReady) {
+        return {
+          nodes: [],
+          edges: [],
+          coordinateSystem: { x: 0, y: 0, width: 1000, height: 1000 },
+          diagramBackground: null,
+          isLoading: true,
         };
-        const normalizedParamsUri = normalizeUri(params.uri);
-        const expectedSuffix = normalizedParamsUri.replace(/^file:\/\//, "");
-        for (const [id, entry] of unifiedIndex.symbols) {
-          if (
-            entry.kind === "Class" &&
-            entry.parentId === null &&
-            entry.resourceId &&
-            (normalizeUri(entry.resourceId) === normalizedParamsUri ||
-              normalizeUri(entry.resourceId).endsWith(expectedSuffix))
-          ) {
-            classInstance = new QueryBackedClassInstance(id, db);
-            break;
-          }
-        }
       }
-
-      if (!classInstance) {
-        if (!mslStdlibReady) {
-          return {
-            nodes: [],
-            edges: [],
-            coordinateSystem: { x: 0, y: 0, width: 1000, height: 1000 },
-            diagramBackground: null,
-            isLoading: true,
-          };
-        }
-        return null;
-      }
-    } else {
-      classInstance = instances[0];
-      if (params.className) {
-        const found = instances.find((i) => i.name === params.className || i.compositeName === params.className);
-        if (found) classInstance = found;
-      }
+      return null;
     }
 
     const tResolve = performance.now() - t0;
@@ -3169,64 +3178,7 @@ connection.onRequest(
 connection.onRequest(
   "modelscript/getComponentProperties",
   (params: { uri: string; componentName: string; className?: string }) => {
-    let classInstance: any = null;
-    const instances = documentInstances.get(params.uri);
-
-    if (!instances || instances.length === 0) {
-      // Library class: get from polyglot index directly
-      const unifiedIndex = unifiedWorkspace.toUnifiedPartial();
-      let engine = params.uri.endsWith(".sysml") ? globalSysML2QueryEngine : globalModelicaQueryEngine;
-      if (!engine) {
-        if (params.uri.endsWith(".sysml")) {
-          engine = createSysML2QueryEngine(unifiedIndex) as any;
-          globalSysML2QueryEngine = engine;
-        } else {
-          engine = createModelicaQueryEngine(unifiedIndex, getSharedCstTreeWrapper()) as any;
-          globalModelicaQueryEngine = engine;
-        }
-      }
-      const db = engine!.toQueryDB();
-
-      if (params.className) {
-        const parts = params.className.split(".");
-        const entries = unifiedIndex.byName.get(parts[parts.length - 1]);
-        const entryId = entries?.find((id) => {
-          const e = unifiedIndex.symbols.get(id);
-          return e && getCompositeName(e, unifiedIndex) === params.className;
-        });
-        if (entryId !== undefined) {
-          classInstance = new QueryBackedClassInstance(entryId, db);
-        }
-      }
-
-      if (!classInstance) {
-        const normalizeUri = (u: string) => {
-          if (u.startsWith("modelscript-lib://global")) u = "file://" + u.substring("modelscript-lib://global".length);
-          return u.replace(/^file:\/\/\//, "file://");
-        };
-        const normalizedParamsUri = normalizeUri(params.uri);
-        const expectedSuffix = normalizedParamsUri.replace(/^file:\/\//, "");
-        for (const [id, entry] of unifiedIndex.symbols) {
-          if (
-            entry.kind === "Class" &&
-            entry.parentId === null &&
-            entry.resourceId &&
-            (normalizeUri(entry.resourceId) === normalizedParamsUri ||
-              normalizeUri(entry.resourceId).endsWith(expectedSuffix))
-          ) {
-            classInstance = new QueryBackedClassInstance(id, db);
-            break;
-          }
-        }
-      }
-    } else {
-      classInstance = instances[0];
-      if (params.className) {
-        const found = instances.find((i) => i.name === params.className || i.compositeName === params.className);
-        if (found) classInstance = found;
-      }
-    }
-
+    const classInstance = resolveModelicaClassInstance(params.uri, params.className);
     if (!classInstance) return null;
 
     try {
@@ -3281,15 +3233,7 @@ function getDiagramDispatch() {
     const modelicaBackend = new ModelicaDiagramBackend({
       getDocumentInstances: (uri) => documentInstances.get(uri),
       getDocumentText: (uri) => documents.get(uri)?.getText(),
-      resolveClassInstance: (uri, className) => {
-        const instances = documentInstances.get(uri);
-        if (!instances || instances.length === 0) return null;
-        if (className) {
-          const found = instances.find((i) => i.name === className || i.compositeName === className);
-          if (found) return found;
-        }
-        return instances[0];
-      },
+      resolveClassInstance: resolveModelicaClassInstance,
       flushValidation,
     });
 
