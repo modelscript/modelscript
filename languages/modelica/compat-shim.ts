@@ -27,6 +27,12 @@
 import type { QueryDB, SymbolEntry, SymbolId } from "@modelscript/polyglot";
 import { type ModelicaModArgs, type ModificationArg, modelicaMod } from "./modification-args.js";
 
+const globalAstCache = new WeakMap<SymbolEntry, any>();
+const virtualComponentsCache = new WeakMap<SymbolEntry, Map<string, any>>();
+const diagnosticsCache = new WeakMap<SymbolEntry, any[]>();
+const inputParametersCache = new WeakMap<SymbolEntry, any[]>();
+const outputParametersCache = new WeakMap<SymbolEntry, any[]>();
+
 // ---------------------------------------------------------------------------
 // AST Factory Registry
 // ---------------------------------------------------------------------------
@@ -85,8 +91,16 @@ export class QueryBackedElement {
 
   /** The raw AST node from the CST. */
   get ast(): any {
+    const entry = this.entry;
+    if (entry && globalAstCache.has(entry)) {
+      return globalAstCache.get(entry);
+    }
     const cst = this.db.cstNode(this.id);
-    return cst ? abstractSyntaxNodeFactory(cst) : null;
+    const ast = cst ? abstractSyntaxNodeFactory(cst) : null;
+    if (entry) {
+      globalAstCache.set(entry, ast);
+    }
+    return ast;
   }
 
   /** Gets whether the component is protected */
@@ -360,29 +374,40 @@ export class QueryBackedClassInstance extends QueryBackedElement {
     return new QueryBackedElement(eid, this.db);
   }
 
+  #elementsCache?: QueryBackedElement[];
   /**
    * All instantiated elements (components, nested classes, imports).
    * Replaces the mutable `elements` array.
    */
   get elements(): QueryBackedElement[] {
+    if (this.#elementsCache !== undefined) return this.#elementsCache;
     let ids: SymbolId[] | null = null;
     try {
       ids = this.db.query<SymbolId[]>("instantiate", this.id);
     } catch {
       // Ignored — may fail for predefined types or unresolvable classes
     }
-    if (!ids) return [];
-    return ids.map((eid) => this.wrapElement(eid)).filter((e): e is QueryBackedElement => e !== null);
+    if (!ids) {
+      this.#elementsCache = [];
+      return this.#elementsCache;
+    }
+    this.#elementsCache = ids.map((eid) => this.wrapElement(eid)).filter((e): e is QueryBackedElement => e !== null);
+    return this.#elementsCache;
   }
 
+  #declaredElementsCache?: QueryBackedElement[];
   /**
    * Only the elements that are directly declared inside this class instance.
    * This retrieves direct children from the symbol index avoiding inherited elements.
    */
   get declaredElements(): QueryBackedElement[] {
+    if (this.#declaredElementsCache !== undefined) return this.#declaredElementsCache;
     const children = this.db.childrenOf(this.id);
     // Component elements and nested classes declared within this scope
-    return children.map((entry) => this.wrapElement(entry.id)).filter((e): e is QueryBackedElement => e !== null);
+    this.#declaredElementsCache = children
+      .map((entry) => this.wrapElement(entry.id))
+      .filter((e): e is QueryBackedElement => e !== null);
+    return this.#declaredElementsCache;
   }
 
   /** Component elements within this class instance. */
@@ -394,31 +419,76 @@ export class QueryBackedClassInstance extends QueryBackedElement {
    * Virtual components added by connect equations to expandable connectors.
    * Required by ModelicaFlattener.
    */
-  virtualComponents = new Map<string, any>();
+  get virtualComponents(): Map<string, any> {
+    const entry = this.entry;
+    if (!entry) return new Map();
+    let map = virtualComponentsCache.get(entry);
+    if (!map) {
+      map = new Map<string, any>();
+      virtualComponentsCache.set(entry, map);
+    }
+    return map;
+  }
 
   /**
    * Diagnostics for this class instance.
    * Required by ModelicaFlattener.
    */
-  diagnostics: any[] = [];
+  get diagnostics(): any[] {
+    const entry = this.entry;
+    if (!entry) return [];
+    let arr = diagnosticsCache.get(entry);
+    if (!arr) {
+      arr = [];
+      diagnosticsCache.set(entry, arr);
+    }
+    return arr;
+  }
 
   /**
    * Input parameters of this class (if it's a function).
    */
-  inputParameters: any[] = [];
+  get inputParameters(): any[] {
+    const entry = this.entry;
+    if (!entry) return [];
+    let arr = inputParametersCache.get(entry);
+    if (!arr) {
+      arr = [];
+      inputParametersCache.set(entry, arr);
+    }
+    return arr;
+  }
 
   /**
    * Output parameters of this class (if it's a function).
    */
-  outputParameters: any[] = [];
+  get outputParameters(): any[] {
+    const entry = this.entry;
+    if (!entry) return [];
+    let arr = outputParametersCache.get(entry);
+    if (!arr) {
+      arr = [];
+      outputParametersCache.set(entry, arr);
+    }
+    return arr;
+  }
 
+  #abstractSyntaxNodeCache?: any;
   /**
    * The abstract syntax node for this class instance.
    * Backed by the Polyglot CST node, potentially wrapped via the AST factory.
    */
   get abstractSyntaxNode(): any {
+    const entry = this.entry;
+    if (entry && globalAstCache.has(entry)) {
+      this.#abstractSyntaxNodeCache = globalAstCache.get(entry);
+      return this.#abstractSyntaxNodeCache;
+    }
     let cst: any = this.db.cstNode(this.id);
-    if (!cst) return null;
+    if (!cst) {
+      this.#abstractSyntaxNodeCache = null;
+      return null;
+    }
 
     // Workaround for misaligned symbol index ranges: if cstNode returned the 'Declaration'
     // or 'IDENT' child, walk up to the containing 'ComponentDeclaration' so that
@@ -434,8 +504,11 @@ export class QueryBackedClassInstance extends QueryBackedElement {
         cst = cst.parent;
       }
     }
-
-    return abstractSyntaxNodeFactory(cst);
+    this.#abstractSyntaxNodeCache = abstractSyntaxNodeFactory(cst);
+    if (entry) {
+      globalAstCache.set(entry, this.#abstractSyntaxNodeCache);
+    }
+    return this.#abstractSyntaxNodeCache;
   }
 
   /**
@@ -766,9 +839,23 @@ export class QueryBackedClassInstance extends QueryBackedElement {
     return this.db.query<boolean>("isConnector", this.id) ?? false;
   }
 
+  #protectedElementsCache?: Set<string>;
+
   /** Check if a named element is protected. */
   isProtectedElement(name: string): boolean {
-    return this.elements.find((e) => e.name === name)?.isProtected ?? false;
+    if (this.#protectedElementsCache !== undefined) {
+      return this.#protectedElementsCache.has(name);
+    }
+    const protectedSet = new Set<string>();
+    const ids = this.db.query<SymbolId[]>("elements", this.id) ?? [];
+    for (const id of ids) {
+      const entry = this.db.symbol(id);
+      if (entry && (entry.metadata as any)?.visibility === "protected") {
+        protectedSet.add(entry.name);
+      }
+    }
+    this.#protectedElementsCache = protectedSet;
+    return protectedSet.has(name);
   }
 }
 

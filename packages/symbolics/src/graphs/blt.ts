@@ -168,6 +168,9 @@ export function performBltTransformation(dae: ModelicaDAE): {
   const match = new Map<string, number>(); // variable -> equation index
   const assignedEqs = new Set<number>(); // equation indices already matched
 
+  console.log(`[BLT] Starting DFS matching for ${equations.length} equations and ${unknowns.size} unknowns`);
+  const t_dfs_start = Date.now();
+
   for (let u = 0; u < equations.length; u++) {
     const visited = new Set<string>();
     const dfs = (eqIndex: number): boolean => {
@@ -188,6 +191,9 @@ export function performBltTransformation(dae: ModelicaDAE): {
       assignedEqs.add(u);
     }
   }
+  console.log(`[BLT] DFS matching took ${Date.now() - t_dfs_start}ms`);
+  console.log(`[BLT] Starting Tarjan SCC`);
+  const t_tarjan_start = Date.now();
 
   // Diagnostics: Balanced system?
   if (match.size < unknowns.size) {
@@ -267,6 +273,9 @@ export function performBltTransformation(dae: ModelicaDAE): {
   // NO wait. V1 -> V2 means V1 depends on V2. Tarjan visits V1, then visits V2, pops V2, pops V1.
   // So Tarjan produces [V2, V1]. The first element in `sccs` is the SCC with NO outgoing edges (dependencies).
   // Thus, the `sccs` array is ALREADY in the correct topological order (independent first)!
+  console.log(`[BLT] Tarjan SCC took ${Date.now() - t_tarjan_start}ms`);
+  console.log(`[BLT] Starting equation sorting and explicit solves`);
+  const t_sort_start = Date.now();
 
   const sortedEquations: ModelicaEquation[] = [];
   const algebraicLoops: { variables: string[]; equations: ModelicaEquation[] }[] = [];
@@ -330,6 +339,8 @@ export function performBltTransformation(dae: ModelicaDAE): {
 
   // Add constraint and assertion equations at the very end
   sortedEquations.push(...constraintEquations);
+
+  console.log(`[BLT] Equation sorting took ${Date.now() - t_sort_start}ms`);
 
   return { sortedEquations, algebraicLoops };
 }

@@ -803,7 +803,8 @@ function collectSyntaxErrors(rootNode: any, textDocument: TextDocument): Diagnos
         source: "modelscript",
       });
     }
-    for (let i = 0; i < node.childCount; i++) walk(node.child(i));
+    const children = node.children || [];
+    for (let i = 0; i < children.length; i++) walk(children[i]);
   };
   walk(rootNode);
   return diagnostics;
@@ -966,6 +967,14 @@ async function runSemanticPipeline(
     let changedNames: Set<string> | null = null;
 
     if (textChanged) {
+      if (!editRanges) {
+        const lastText = lastIndexedText.get(effectiveUri);
+        if (lastText) {
+          const edit = computeTreeEdit(lastText, text);
+          editRanges = [{ startByte: edit.startIndex, endByte: edit.newEndIndex }];
+        }
+      }
+
       if (globalWorkspaceIndex.has(effectiveUri)) {
         globalWorkspaceIndex.markDirty(effectiveUri, () => tree.rootNode, editRanges);
       } else {
@@ -1234,8 +1243,9 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
               source: "step",
             });
           }
-          for (let i = 0; i < node.childCount; i++) {
-            collectErrors(node.child(i));
+          const children = node.children || [];
+          for (let i = 0; i < children.length; i++) {
+            collectErrors(children[i]);
           }
         };
         collectErrors(tree.rootNode);
@@ -1277,26 +1287,50 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
   // Handle SysML2 files via the polyglot SysML2 pipeline
   if (textDocument.uri.endsWith(".sysml") && sysml2ParserReady && sysml2Parser) {
     try {
-      const tree = sysml2Parser.parse(text);
+      const oldCached = documentTrees.get(textDocument.uri);
+      let tree: any;
+
+      if (oldCached && oldCached.text !== text) {
+        const edit = computeTreeEdit(oldCached.text, text);
+        oldCached.tree.edit(edit as never);
+        tree = sysml2Parser.parse(text, oldCached.tree as never);
+      } else if (oldCached) {
+        tree = oldCached.tree;
+      } else {
+        tree = sysml2Parser.parse(text);
+      }
+
       if (!tree) {
         connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: [] });
         return;
       }
 
       // Store in documentTrees so verification and other LSP operations can access the tree/text
-      documentTrees.set(textDocument.uri, { text, tree, classCache: new Map() });
+      documentTrees.set(textDocument.uri, { text, tree, classCache: oldCached?.classCache ?? new Map() });
+
+      const textChanged = lastIndexedText.get(textDocument.uri) !== text;
 
       // Register/update in SysML2 workspace index
-      if (sysml2WorkspaceIndex.has(textDocument.uri)) {
-        sysml2WorkspaceIndex.markDirty(textDocument.uri, () => tree.rootNode);
-      } else {
-        sysml2WorkspaceIndex.register(textDocument.uri, () => tree.rootNode);
-      }
+      if (textChanged) {
+        let editRanges: Array<{ startByte: number; endByte: number }> | undefined;
+        const lastText = lastIndexedText.get(textDocument.uri);
+        if (lastText) {
+          const edit = computeTreeEdit(lastText, text);
+          editRanges = [{ startByte: edit.startIndex, endByte: edit.newEndIndex }];
+        }
 
-      // Force index evaluation for active document AFTER it is registered/marked dirty
-      // so that it actually triggers processing and populates the partial index.
-      // Without this, toUnifiedPartial() skips the file (index stays null).
-      sysml2WorkspaceIndex.getFileIndex(textDocument.uri);
+        if (sysml2WorkspaceIndex.has(textDocument.uri)) {
+          sysml2WorkspaceIndex.markDirty(textDocument.uri, () => tree.rootNode, editRanges);
+        } else {
+          sysml2WorkspaceIndex.register(textDocument.uri, () => tree.rootNode);
+        }
+
+        // Force index evaluation for active document AFTER it is registered/marked dirty
+        // so that it actually triggers processing and populates the partial index.
+        // Without this, toUnifiedPartial() skips the file (index stays null).
+        sysml2WorkspaceIndex.getFileIndex(textDocument.uri);
+        lastIndexedText.set(textDocument.uri, text);
+      }
 
       // Get ALL changed symbol IDs across the workspace since last check
       const changedIds = sysml2WorkspaceIndex.takeGlobalChangedIds();
@@ -1353,8 +1387,9 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
             source: "sysml2",
           });
         }
-        for (let i = 0; i < node.childCount; i++) {
-          collectErrors(node.child(i));
+        const children = node.children || [];
+        for (let i = 0; i < children.length; i++) {
+          collectErrors(children[i]);
         }
       };
       collectErrors(tree.rootNode);
@@ -2378,8 +2413,9 @@ connection.onDocumentColor((params) => {
         }
       }
     }
-    for (let i = 0; i < node.childCount; i++) {
-      const child = node.child(i);
+    const children = node.children || [];
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i];
       if (child) traverse(child);
     }
   };
@@ -2446,8 +2482,9 @@ connection.onFoldingRanges((params) => {
           });
         }
       }
-      for (let i = 0; i < node.childCount; i++) {
-        const child = node.child(i);
+      const children = node.children || [];
+      for (let i = 0; i < children.length; i++) {
+        const child = children[i];
         if (child) collectFolds(child);
       }
     };
@@ -2494,8 +2531,9 @@ connection.onFoldingRanges((params) => {
         ranges.push({ startLine, endLine, kind: "comment" });
       }
     }
-    for (let i = 0; i < node.childCount; i++) {
-      const child = node.child(i);
+    const children = node.children || [];
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i];
       if (child) collectFolds(child);
     }
   };
@@ -2587,8 +2625,9 @@ connection.onDocumentHighlight((params) => {
         kind: DocumentHighlightKind.Text,
       });
     }
-    for (let i = 0; i < node.childCount; i++) {
-      const child = node.child(i);
+    const children = node.children || [];
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i];
       if (child) collectHighlights(child);
     }
   };

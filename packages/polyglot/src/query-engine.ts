@@ -674,7 +674,8 @@ export class QueryEngine {
   ): { value: unknown; dependencies: DependencyKey[]; byNameLookups: Set<string> } {
     const entry = this.resolveEntry(symbolId);
     if (!entry) {
-      throw new Error(`Unknown symbol ID: ${symbolId}`);
+      // Tolerate stale symbol IDs gracefully (e.g. from UI requests querying a stale wrapper during re-indexing yields)
+      return { value: null, dependencies: [], byNameLookups: new Set<string>() };
     }
 
     // In a polyglot unified index, the engine may encounter symbols from a

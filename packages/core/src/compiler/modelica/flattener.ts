@@ -732,6 +732,23 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     return activeElements;
   }
 
+  // -------------------------------------------------------------------------
+  // Component Visitors
+  // -------------------------------------------------------------------------
+
+  #evaluateAllParametersCache = new Map<any, boolean>();
+
+  #checkEvaluateAllParameters(activeClass: any): boolean {
+    if (!activeClass) return false;
+    if (this.#evaluateAllParametersCache.has(activeClass)) {
+      return this.#evaluateAllParametersCache.get(activeClass) ?? false;
+    }
+    const opts = activeClass.annotation("__OpenModelica_commandLineOptions") as string | undefined;
+    const hasEval = opts?.includes("evaluateAllParameters") ?? false;
+    this.#evaluateAllParametersCache.set(activeClass, hasEval);
+    return hasEval;
+  }
+
   /**
    * Visits a class instance, flattening its components, equations, algorithm sections, and extended elements.
    *
@@ -846,9 +863,18 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     this.activeClassStack.push(node);
     this.activePrefixes.set(node, args[0]);
 
+    const t_comp_start = Date.now();
     for (const element of activeElements) {
-      if (element instanceof ModelicaComponentInstance) element.accept(this, args);
+      if (element instanceof ModelicaComponentInstance) {
+        element.accept(this, args);
+      }
     }
+    const t_comp_end = Date.now();
+    if (t_comp_end - t_comp_start > 100)
+      console.log(
+        `[Flattener] visitClassInstance components loop took ${t_comp_end - t_comp_start}ms for ${activeElements.length} elements`,
+      );
+
     for (const declaredElement of node.declaredElements) {
       if (declaredElement instanceof ModelicaExtendsClassInstance) declaredElement.accept(this, args);
     }
@@ -861,6 +887,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     const equationSections = localSections.filter(
       (s): s is ModelicaEquationSectionSyntaxNode => s instanceof ModelicaEquationSectionSyntaxNode,
     );
+    const t_eq_start = Date.now();
     for (let i = equationSections.length - 1; i >= 0; i--) {
       const section = equationSections[i];
       if (!section) continue;
@@ -883,6 +910,10 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       }
       args[1].equations = savedEquations;
     }
+    const t_eq_end = Date.now();
+    if (t_eq_end - t_eq_start > 100)
+      console.log(`[Flattener] visitClassInstance equations loop took ${t_eq_end - t_eq_start}ms`);
+
     // Process algorithm sections in declaration order
     for (const section of localSections) {
       if (section instanceof ModelicaAlgorithmSectionSyntaxNode) {
@@ -1357,10 +1388,6 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
   }
 
   visitComponentInstance(node: any /* ModelicaComponentInstance */, args: [string, ModelicaDAE]): void {
-    // Skip pure `outer` components — they reference an `inner` declaration higher up
-    // and should not generate their own variables. `inner outer` still generates a variable.
-    // Exception: when there is no corresponding `inner` in any enclosing scope, keep the
-    // `outer` declaration as-is (OpenModelica behavior) so the variable is still emitted.
     if (node.isOuter && !node.isInner) {
       // Search ancestor class instances for a matching `inner` component.
       // Walk the instance composition hierarchy (activeClassStack) rather than the
@@ -1387,11 +1414,13 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     // Use the more restrictive variability between the outer context and this component's own
     const effectiveVariability = this.#outerVariability ?? node.variability;
 
-    if (getUnderlyingPredefinedClass(node.classInstance)) {
+    const classInstance = node.classInstance;
+
+    if (getUnderlyingPredefinedClass(classInstance)) {
       this.#flattenPredefinedClass(node, name, args, effectiveVariability);
-    } else if (node.classInstance instanceof ModelicaEnumerationClassInstance) {
+    } else if (classInstance instanceof ModelicaEnumerationClassInstance) {
       this.#flattenEnumerationClass(node, name, args);
-    } else if (node.classInstance instanceof ModelicaArrayClassInstance) {
+    } else if (classInstance instanceof ModelicaArrayClassInstance) {
       this.#flattenArrayClass(node, name, args);
     } else {
       // Extract structural CAD annotation from annotationClause
@@ -1450,7 +1479,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       const startVars = args[1].variables.length;
       const startEqs = args[1].equations.length;
 
-      node.classInstance?.accept(this, [name, args[1]]);
+      classInstance?.accept(this, [name, args[1]]);
 
       const endVars = args[1].variables.length;
       const endEqs = args[1].equations.length;
@@ -1524,34 +1553,46 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     effectiveVariability?: ModelicaVariability | null,
   ): void {
     const variability = effectiveVariability ?? node.variability;
-    // For sub-components (prefixed with a dot path), strip input/output causality
-    // since it only applies at the inner model's scope, not the outer model
     const causality = name.includes(".") ? null : node.causality;
     const activeClass = this.activeClassStack[this.activeClassStack.length - 1];
     const isProtected =
       node.isProtected || this.#outerProtected || (activeClass?.isProtectedElement(node.name) ?? false);
 
-    let isFinal = node.isFinal || this.#outerFinal || node.annotation("Evaluate") === true;
+    let isFinal = node.isFinal || this.#outerFinal;
+
+    if (node.annotation("Evaluate") === true) {
+      isFinal = true;
+    }
+
     if (
-      activeClass?.annotation("__OpenModelica_commandLineOptions")?.includes("evaluateAllParameters") &&
-      variability === ModelicaVariability.PARAMETER
+      variability === ModelicaVariability.PARAMETER &&
+      this.#checkEvaluateAllParameters(activeClass as ModelicaClassInstance | undefined)
     ) {
       isFinal = true;
     }
 
     const attributes = new Map<string, ModelicaExpression>();
-    // First collect type-level attributes (e.g., from `type MyReal = Real(start = 1.0)`)
-    if (node.classInstance instanceof ModelicaPredefinedClassInstance) {
-      for (const m of node.classInstance.modification?.modificationArguments ?? []) {
-        if (m.name && m.name !== "annotation" && m.expression) {
-          attributes.set(m.name, m.expression);
+
+    const classInst = node.classInstance;
+
+    if (classInst instanceof ModelicaPredefinedClassInstance) {
+      const classMod = classInst.modification;
+      if (classMod) {
+        for (const m of classMod.modificationArguments ?? []) {
+          if (m.name && m.name !== "annotation" && m.expression) {
+            attributes.set(m.name, m.expression);
+          }
         }
       }
     }
-    // Then overlay component-level attributes (which take priority)
-    for (const m of node.modification?.modificationArguments ?? []) {
-      if (m.name && m.name !== "annotation" && m.expression) {
-        attributes.set(m.name, m.expression);
+
+    const nodeMod = node.modification;
+
+    if (nodeMod) {
+      for (const m of nodeMod.modificationArguments ?? []) {
+        if (m.name && m.name !== "annotation" && m.expression) {
+          attributes.set(m.name, m.expression);
+        }
       }
     }
 
@@ -1806,8 +1847,8 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         isProtected,
       );
     }
-    // Propagate Evaluate=true (isFinal) to the referenced variable if it's a direct assignment
-    if (isFinal) {
+
+    if (variable && isFinal) {
       const modExpr = node.modification?.modificationExpression?.expression;
       if (modExpr instanceof ModelicaComponentReferenceSyntaxNode) {
         const parts = modExpr.parts;
@@ -5436,8 +5477,8 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
                       const text = node.text.substring(1, node.text.length - 1);
                       result.push(text.replace(/""/g, '"').replace(/\\"/g, '"'));
                     }
-                    for (let i = 0; i < node.childCount; i++) {
-                      const child = node.child(i);
+                    const children = node.children || [];
+                    for (const child of children) {
                       if (child) result.push(...extractStrings(child));
                     }
                     return result;
@@ -8516,7 +8557,9 @@ function tryFoldBuiltinFunction(functionName: string, args: ModelicaExpression[]
  * using Tarjan's SCC algorithm.
  */
 export function findAlgebraicLoops(dae: ModelicaDAE): void {
+  const t0 = Date.now();
   const { sortedEquations, algebraicLoops } = performBltTransformation(dae);
+  console.log(`[DAE] BLT transformation took ${Date.now() - t0}ms`);
   dae.sortedEquations = sortedEquations;
 
   if (algebraicLoops.length > 0) {

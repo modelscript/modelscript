@@ -236,7 +236,7 @@ export class VerificationRunner {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private extractComparison(node: any): { lhs: string; op: string; rhs: string } | null {
-    if (!node || typeof node.childCount !== "number") return null;
+    if (!node) return null;
 
     // Strategy 1: Named field access (tree-sitter grammars that use operator/left/right)
     const opNodeRef = node.childForFieldName ? node.childForFieldName("operator") : null;
@@ -259,12 +259,13 @@ export class VerificationRunner {
 
     // Strategy 2: Positional child iteration (for flat CST structures)
     const ops = new Set(["<", "<=", "==", ">=", ">"]);
-    if (node.childCount >= 3) {
-      for (let i = 1; i < node.childCount - 1; i++) {
-        const opNode = node.child(i);
+    const children = node.children || [];
+    if (children.length >= 3) {
+      for (let i = 1; i < children.length - 1; i++) {
+        const opNode = children[i];
         if (opNode && typeof opNode.text === "string" && ops.has(opNode.text.trim())) {
-          const leftNode = node.child(i - 1);
-          const rightNode = node.child(i + 1);
+          const leftNode = children[i - 1];
+          const rightNode = children[i + 1];
           if (leftNode && rightNode && typeof leftNode.text === "string" && typeof rightNode.text === "string") {
             return {
               lhs: leftNode.text.trim(),
@@ -277,8 +278,8 @@ export class VerificationRunner {
     }
 
     // Strategy 3: Recursive descent into children
-    for (let i = 0; i < node.childCount; i++) {
-      const res = this.extractComparison(node.child(i));
+    for (const child of children) {
+      const res = this.extractComparison(child);
       if (res) return res;
     }
     return null;

@@ -343,7 +343,9 @@ export class Context extends Scope {
     this.#trees.set(uri, tree);
 
     this.#workspaceIndex.register(uri, () => tree.rootNode as any);
+    const t0 = Date.now();
     const unified = this.#workspaceIndex.toUnified();
+    console.error(`[Context] toUnified took ${Date.now() - t0}ms for uri ${uri}`);
     injectPredefinedTypes(unified);
     this.#queryEngine.updateIndex(unified);
 

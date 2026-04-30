@@ -186,9 +186,11 @@ export class SymbolIndexer {
 
     // Track sibling counts per child scope for stable keys
     const childSiblingCounts = new Map<string, number>();
-    for (let i = 0; i < node.children.length; i++) {
-      const child = node.children[i];
-      const childFieldName = node.fieldNameForChild ? node.fieldNameForChild(i) : null;
+    const children = node.children || [];
+
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i];
+      const childFieldName = node.fieldNameForChild && children.length < 100 ? node.fieldNameForChild(i) : null;
       this.walkNode(child, currentParentId, symbols, byName, childrenOf, childSiblingCounts, childFieldName);
     }
   }
@@ -301,7 +303,8 @@ export class SymbolIndexer {
       }
     }
 
-    const childCount = node.childCount ?? node.children.length;
+    const children = node.children || [];
+    const childCount = node.childCount ?? children.length;
 
     // For large child lists, use binary search to only process the edit zone
     if (childCount > 32 && editRanges.length > 0) {
@@ -320,10 +323,12 @@ export class SymbolIndexer {
       );
     } else {
       const childSiblingCounts = new Map<string, number>();
+
       for (let i = 0; i < childCount; i++) {
-        const child = node.child ? node.child(i) : node.children[i];
+        const child = children[i];
         if (!child) continue;
-        const childFieldName = node.fieldNameForChild ? node.fieldNameForChild(i) : null;
+        const childFieldName = node.fieldNameForChild && childCount < 100 ? node.fieldNameForChild(i) : null;
+
         this.walkNodeIncremental(
           child,
           currentParentId,
@@ -371,9 +376,10 @@ export class SymbolIndexer {
     // Binary search for first child whose endByte >= editStartByte
     let lo = 0,
       hi = childCount;
+    const children = parent.children || [];
     while (lo < hi) {
       const mid = (lo + hi) >>> 1;
-      const c = parent.child!(mid);
+      const c = children[mid];
       if (c && nodeEndByte(c) < editStartByte) lo = mid + 1;
       else hi = mid;
     }
@@ -384,7 +390,7 @@ export class SymbolIndexer {
     hi = childCount;
     while (lo < hi) {
       const mid = (lo + hi) >>> 1;
-      const c = parent.child!(mid);
+      const c = children[mid];
       if (c && nodeStartByte(c) <= editEndByte) lo = mid + 1;
       else hi = mid;
     }
@@ -417,11 +423,7 @@ export class SymbolIndexer {
 
     // BEFORE edit zone: bulk-copy old entries without tree access
     const editZoneStartByte =
-      firstAffected < childCount
-        ? parent.child!(firstAffected)
-          ? nodeStartByte(parent.child!(firstAffected)!)
-          : 0
-        : Infinity;
+      firstAffected < childCount ? (children[firstAffected] ? nodeStartByte(children[firstAffected]!) : 0) : Infinity;
 
     for (const oldId of oldChildIds) {
       const entry = oldIndex.symbols.get(oldId);
@@ -437,7 +439,7 @@ export class SymbolIndexer {
     // EDIT ZONE: walk normally (only the affected children)
     const siblingCounts = new Map<string, number>();
     for (let i = firstAffected; i <= lastAffected && i < childCount; i++) {
-      const child = parent.child ? parent.child(i) : parent.children[i];
+      const child = children[i];
       if (!child) continue;
       this.walkNodeIncremental(
         child,
@@ -657,7 +659,7 @@ export class SymbolIndexer {
       keyword = fieldName;
     }
 
-    const children = node.children;
+    const children = node.children || [];
     for (let i = 0; i < children.length; i++) {
       const child = children[i];
       const t = child.type;

@@ -201,6 +201,22 @@ class InlineDebugAdapterFactory implements vscode.DebugAdapterDescriptorFactory 
 export async function activate(context: vscode.ExtensionContext) {
   console.log("ModelScript extension activated");
 
+  // Register in-memory filesystem for blank project mode (memfs:// scheme)
+  // Must be registered synchronously before any await to avoid ENOPRO race conditions during workspace validation.
+  const folders = workspace.workspaceFolders;
+  if (folders && folders.length > 0 && folders[0].uri.scheme === "memfs") {
+    const memFs = new MemoryFileSystemProvider();
+    memFs.createDirectory(folders[0].uri);
+    context.subscriptions.push(workspace.registerFileSystemProvider("memfs", memFs, { isCaseSensitive: true }));
+    console.log("[blank-project] Registered memfs:// filesystem provider");
+
+    // Scaffold template files SYNCHRONOUSLY into the memfs store so they exist
+    // before VS Code attempts to restore previously-open editors (including
+    // diagram custom editors) from a prior session. Without this, restored editors
+    // trigger FileNotFound because initWorkspaceAndTree runs asynchronously later.
+    scaffoldTemplateFiles(memFs, folders[0].uri);
+  }
+
   context.subscriptions.push(
     vscode.debug.registerDebugAdapterDescriptorFactory("modelscript", new InlineDebugAdapterFactory()),
   );
@@ -262,21 +278,6 @@ export async function activate(context: vscode.ExtensionContext) {
   }
   if (config.get("editor.tokenColorCustomizations")) {
     await config.update("editor.tokenColorCustomizations", undefined, vscode.ConfigurationTarget.Global);
-  }
-
-  // Register in-memory filesystem for blank project mode (memfs:// scheme)
-  const folders = workspace.workspaceFolders;
-  if (folders && folders.length > 0 && folders[0].uri.scheme === "memfs") {
-    const memFs = new MemoryFileSystemProvider();
-    memFs.createDirectory(folders[0].uri);
-    context.subscriptions.push(workspace.registerFileSystemProvider("memfs", memFs, { isCaseSensitive: true }));
-    console.log("[blank-project] Registered memfs:// filesystem provider");
-
-    // Scaffold template files SYNCHRONOUSLY into the memfs store so they exist
-    // before VS Code attempts to restore previously-open editors (including
-    // diagram custom editors) from a prior session. Without this, restored editors
-    // trigger FileNotFound because initWorkspaceAndTree runs asynchronously later.
-    scaffoldTemplateFiles(memFs, folders[0].uri);
   }
 
   // Register virtual document provider and custom editor for FMU files
@@ -1701,7 +1702,7 @@ function scaffoldTemplateFiles(memFs: MemoryFileSystemProvider, workspaceUri: vs
     const entries: [vscode.Uri, Uint8Array][] = [];
     entries.push([Uri.joinPath(workspaceUri, "MassiveModel.mo"), encoder.encode(massiveModelRows.join("\n"))]);
 
-    for (let i = 0; i < 500; i++) {
+    for (let i = 0; i < 5; i++) {
       // Use SysML2 ':>' syntax for inheritance to avoid syntax errors
       const extendsClause = i > 0 ? `:> Component_${String(i - 1).padStart(3, "0")} ` : "";
       const content = `package Component_${String(i).padStart(3, "0")} {\n  part def Component_${String(i).padStart(3, "0")} ${extendsClause}{\n    attribute localValue : Real = ${i}.0;\n  }\n}\n`;

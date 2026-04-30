@@ -17,6 +17,16 @@
  * If no arguments are given, all subdirectories under testsuite/ are run.
  */
 
+globalThis.WeakRef = class WeakRefMock {
+  target: unknown;
+  constructor(target: unknown) {
+    this.target = target;
+  }
+  deref(): unknown {
+    return this.target;
+  }
+} as unknown as typeof WeakRef;
+
 import { ModelicaClassKind, ModelicaStoredDefinitionSyntaxNode } from "@modelscript/modelica/ast";
 import Modelica from "@modelscript/modelica/parser";
 import fs from "node:fs";
@@ -245,10 +255,12 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode = fal
         lastClassName = lastClass?.name ?? testCase.metadata.name;
       }
     }
+    const t_flatten_start = Date.now();
     const flattenedResult = context.flatten(lastClassName, {
       ...(testCase.metadata.arrayMode ? { arrayMode: testCase.metadata.arrayMode } : {}),
       ...(testCase.metadata.fmiVersion ? { fmiVersion: testCase.metadata.fmiVersion } : {}),
     });
+    console.error(`[Runner] context.flatten took ${Date.now() - t_flatten_start}ms`);
 
     // Run the linter to collect diagnostics
     interface DiagEntry {
@@ -281,6 +293,7 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode = fal
         classesToLint.add(cls);
       }
     }
+    const t_lint_start = Date.now();
     const tree = context.parse(testCase.file.endsWith(".mos") ? ".mos" : ".mo", testCase.source);
     const storedDef = ModelicaStoredDefinitionSyntaxNode.new(null, tree.rootNode);
     if (storedDef) linter.lint(storedDef, testCase.file);
@@ -290,6 +303,7 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode = fal
         linter.lint(cls.abstractSyntaxNode, testCase.file);
       }
     }
+    console.error(`[Runner] Linter took ${Date.now() - t_lint_start}ms`);
 
     // Format collected diagnostics into lines
     const formatDiagLines = () =>
