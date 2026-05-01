@@ -37,13 +37,15 @@ import type {
  */
 export interface DiagramBackend {
   /** Build diagram data for a class/document */
-  getData(params: DiagramGetDataParams): DiagramData | null;
+  getData(params: DiagramGetDataParams): Promise<DiagramData | null> | DiagramData | null;
 
   /** Get component properties on-demand */
-  getComponentProperties(params: DiagramGetComponentPropertiesParams): ComponentPropertyData | null;
+  getComponentProperties(
+    params: DiagramGetComponentPropertiesParams,
+  ): Promise<ComponentPropertyData | null> | ComponentPropertyData | null;
 
   /** Apply a batch of edit actions, returning a unified result */
-  applyEdits(params: DiagramApplyEditsParams): DiagramApplyEditsResult;
+  applyEdits(params: DiagramApplyEditsParams): Promise<DiagramApplyEditsResult> | DiagramApplyEditsResult;
 }
 
 // ── Modelica Backend ──
@@ -52,14 +54,14 @@ export interface ModelicaBackendDeps {
   getDocumentInstances: (uri: string) => ModelicaClassInstance[] | undefined;
   getDocumentText: (uri: string) => string | undefined;
   resolveClassInstance: (uri: string, className?: string) => ModelicaClassInstance | null;
-  flushValidation: (uri: string) => void;
+  flushValidation: (uri: string) => Promise<void>;
 }
 
 export class ModelicaDiagramBackend implements DiagramBackend {
   constructor(private readonly deps: ModelicaBackendDeps) {}
 
-  getData(params: DiagramGetDataParams): DiagramData | null {
-    this.deps.flushValidation(params.uri);
+  async getData(params: DiagramGetDataParams): Promise<DiagramData | null> {
+    await this.deps.flushValidation(params.uri);
     const classInstance = this.deps.resolveClassInstance(params.uri, params.className);
     if (!classInstance) return null;
 
@@ -83,8 +85,8 @@ export class ModelicaDiagramBackend implements DiagramBackend {
     }
   }
 
-  applyEdits(params: DiagramApplyEditsParams): DiagramApplyEditsResult {
-    this.deps.flushValidation(params.uri);
+  async applyEdits(params: DiagramApplyEditsParams): Promise<DiagramApplyEditsResult> {
+    await this.deps.flushValidation(params.uri);
     const instances = this.deps.getDocumentInstances(params.uri);
     const docText = this.deps.getDocumentText(params.uri);
     if (!instances?.[0] || !docText) {
@@ -271,16 +273,16 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
   }
 
   return {
-    getData(params: DiagramGetDataParams): DiagramData | null {
-      return getBackend(params.uri).getData(params);
+    async getData(params: DiagramGetDataParams): Promise<DiagramData | null> {
+      return await getBackend(params.uri).getData(params);
     },
 
-    getComponentProperties(params: DiagramGetComponentPropertiesParams): ComponentPropertyData | null {
-      return getBackend(params.uri).getComponentProperties(params);
+    async getComponentProperties(params: DiagramGetComponentPropertiesParams): Promise<ComponentPropertyData | null> {
+      return await getBackend(params.uri).getComponentProperties(params);
     },
 
-    applyEdits(params: DiagramApplyEditsParams): DiagramApplyEditsResult {
-      return getBackend(params.uri).applyEdits(params);
+    async applyEdits(params: DiagramApplyEditsParams): Promise<DiagramApplyEditsResult> {
+      return await getBackend(params.uri).applyEdits(params);
     },
   };
 }

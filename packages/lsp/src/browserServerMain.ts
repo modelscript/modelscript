@@ -779,6 +779,7 @@ let activeVerification: AbortController | null = null;
 const verificationDiagnosticsByUri = new Map<string, Diagnostic[]>();
 const verificationResultsByUri = new Map<string, any[]>();
 const activeValidationTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const activeValidationPromises = new Map<string, Promise<void>>();
 // Track deferred semantic work so it can be cancelled when new edits arrive
 const activeSemanticTimers = new Map<string, ReturnType<typeof setTimeout>>();
 // Per-URI revision counter: incremented on every edit, checked before semantic work
@@ -814,13 +815,17 @@ function collectSyntaxErrors(rootNode: any, textDocument: TextDocument): Diagnos
   return diagnostics;
 }
 
-function flushValidation(uri: string) {
+async function flushValidation(uri: string): Promise<void> {
   const timer = activeValidationTimers.get(uri);
   if (timer) {
     clearTimeout(timer);
     activeValidationTimers.delete(uri);
     const doc = documents.get(uri);
-    if (doc) validateTextDocument(doc);
+    if (doc) await validateTextDocument(doc);
+  }
+  const pending = activeValidationPromises.get(uri);
+  if (pending) {
+    await pending;
   }
 }
 
@@ -1486,7 +1491,21 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
     // Passing the revision allows the pipeline to bail out early if a new edit
     // arrives while it's running (staleness check at each expensive step).
     const revisionAtStart = documentRevisions.get(textDocument.uri) ?? 0;
-    runSemanticPipeline(textDocument.uri, text, tree, editRanges, diagnostics, revisionAtStart, context);
+    const promise = runSemanticPipeline(
+      textDocument.uri,
+      text,
+      tree,
+      editRanges,
+      diagnostics,
+      revisionAtStart,
+      context,
+    );
+    activeValidationPromises.set(textDocument.uri, promise);
+    promise.finally(() => {
+      if (activeValidationPromises.get(textDocument.uri) === promise) {
+        activeValidationPromises.delete(textDocument.uri);
+      }
+    });
   } else {
     // Fallback: basic regex validation when tree-sitter is not available
     const openComments = (text.match(/\/\*/g) || []).length;
@@ -2730,7 +2749,7 @@ connection.onSignatureHelp((params) => {
 /* Find References — locates all occurrences of a symbol across open documents */
 
 connection.onReferences(async (params) => {
-  flushValidation(params.textDocument.uri);
+  await flushValidation(params.textDocument.uri);
   const document = documents.get(params.textDocument.uri);
   if (!document) return [];
 
@@ -3117,9 +3136,9 @@ const diagramCache = new Map<string, { version: number | string; data: any }>();
  * Wraps dispatch.getData with Modelica-specific caching, isLoading state, and perf logging.
  * SysML2 requests are delegated directly to the dispatch (which handles layout merging).
  */
-function handleGetDiagramData(params: { uri: string; className?: string; diagramType?: string }) {
+async function handleGetDiagramData(params: { uri: string; className?: string; diagramType?: string }) {
   // Force flush semantic pass so we don't build diagram from stale AST
-  flushValidation(params.uri);
+  await flushValidation(params.uri);
 
   // SysML2 — delegate directly to dispatch (no caching needed, layout is in-memory)
   if (params.uri.endsWith(".sysml")) {
@@ -3178,7 +3197,7 @@ function handleGetDiagramData(params: { uri: string; className?: string; diagram
 // Legacy handler — delegates to shared implementation
 connection.onRequest(
   "modelscript/getDiagramData",
-  (params: { uri: string; className?: string; diagramType?: string }) => handleGetDiagramData(params),
+  async (params: { uri: string; className?: string; diagramType?: string }) => await handleGetDiagramData(params),
 );
 
 // Custom request: get component properties on-demand (lazy loading for diagram panel)
@@ -3310,18 +3329,21 @@ function getDiagramDispatch() {
 }
 
 // New unified methods — clients should migrate to these
-connection.onRequest(DiagramMethods.applyEdits, (params: DiagramApplyEditsParams) => {
-  return getDiagramDispatch().applyEdits(params);
-});
-
-connection.onRequest(DiagramMethods.getData, (params: { uri: string; className?: string; diagramType?: string }) => {
-  return handleGetDiagramData(params);
+connection.onRequest(DiagramMethods.applyEdits, async (params: DiagramApplyEditsParams) => {
+  return await getDiagramDispatch().applyEdits(params);
 });
 
 connection.onRequest(
+  DiagramMethods.getData,
+  async (params: { uri: string; className?: string; diagramType?: string }) => {
+    return await handleGetDiagramData(params);
+  },
+);
+
+connection.onRequest(
   DiagramMethods.getComponentProperties,
-  (params: { uri: string; componentName: string; className?: string }) => {
-    return getDiagramDispatch().getComponentProperties(params);
+  async (params: { uri: string; componentName: string; className?: string }) => {
+    return await getDiagramDispatch().getComponentProperties(params);
   },
 );
 
@@ -4385,60 +4407,63 @@ connection.onRequest("modelscript/resetNotebookSession", async (params: { sessio
 });
 
 // Custom request: add a component to a model (drag-drop from library tree)
-connection.onRequest("modelscript/addComponent", (params: { uri: string; className: string; x: number; y: number }) => {
-  // SysML2 — dispatch handles element insert + layout storage
-  if (params.uri.endsWith(".sysml")) {
-    const result = getDiagramDispatch().applyEdits({
-      uri: params.uri,
-      seq: 0,
-      actions: [{ type: "addComponent", className: params.className, x: params.x, y: params.y }],
-    });
-    return result.edits;
-  }
+connection.onRequest(
+  "modelscript/addComponent",
+  async (params: { uri: string; className: string; x: number; y: number }) => {
+    // SysML2 — dispatch handles element insert + layout storage
+    if (params.uri.endsWith(".sysml")) {
+      const result = await getDiagramDispatch().applyEdits({
+        uri: params.uri,
+        seq: 0,
+        actions: [{ type: "addComponent", className: params.className, x: params.x, y: params.y }],
+      });
+      return result.edits;
+    }
 
-  // Modelica — uses context-aware name generation (defaultComponentName annotation)
-  const instances = documentInstances.get(params.uri);
-  const doc = documents.get(params.uri);
-  if (!instances?.[0] || !doc) return [];
+    // Modelica — uses context-aware name generation (defaultComponentName annotation)
+    const instances = documentInstances.get(params.uri);
+    const doc = documents.get(params.uri);
+    if (!instances?.[0] || !doc) return [];
 
-  const classInstance = instances[0];
-  const context = documentContexts.get(params.uri);
+    const classInstance = instances[0];
+    const context = documentContexts.get(params.uri);
 
-  try {
-    // Get base name from defaultComponentName annotation or class name
-    const shortName = params.className.split(".").pop() || "component";
-    let baseName = shortName.toLowerCase();
     try {
-      if (context) {
-        const droppedClass = context.query(params.className);
-        if (isClassInstance(droppedClass)) {
-          const defaultName = droppedClass.annotation("defaultComponentName") as string | null;
-          if (defaultName) {
-            baseName = (droppedClass as any).translate?.(defaultName) ?? defaultName;
-          } else {
-            baseName = (droppedClass.localizedName || shortName).toLowerCase();
+      // Get base name from defaultComponentName annotation or class name
+      const shortName = params.className.split(".").pop() || "component";
+      let baseName = shortName.toLowerCase();
+      try {
+        if (context) {
+          const droppedClass = context.query(params.className);
+          if (isClassInstance(droppedClass)) {
+            const defaultName = droppedClass.annotation("defaultComponentName") as string | null;
+            if (defaultName) {
+              baseName = (droppedClass as any).translate?.(defaultName) ?? defaultName;
+            } else {
+              baseName = (droppedClass.localizedName || shortName).toLowerCase();
+            }
           }
         }
+      } catch {
+        // proceed with default baseName
       }
-    } catch {
-      // proceed with default baseName
-    }
 
-    // Find unique name
-    let name = baseName;
-    let i = 1;
-    const existingNames = new Set(Array.from(classInstance.components).map((c) => c.name));
-    while (existingNames.has(name)) {
-      name = `${baseName}${i}`;
-      i++;
-    }
+      // Find unique name
+      let name = baseName;
+      let i = 1;
+      const existingNames = new Set(Array.from(classInstance.components).map((c) => c.name));
+      while (existingNames.has(name)) {
+        name = `${baseName}${i}`;
+        i++;
+      }
 
-    return computeComponentInsert(classInstance, params.className, name, params.x, params.y, doc.getText());
-  } catch (e) {
-    console.error("[diagram] addComponent error:", e);
-    return [];
-  }
-});
+      return computeComponentInsert(classInstance, params.className, name, params.x, params.y, doc.getText());
+    } catch (e) {
+      console.error("[diagram] addComponent error:", e);
+      return [];
+    }
+  },
+);
 
 // ── MCP Bridge: custom requests for AI chat integration ──
 
