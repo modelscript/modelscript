@@ -379,9 +379,7 @@ export class WorkspaceIndex {
       for (const [parentId, childIds] of fileIndex.childrenOf) {
         const existing = childrenOf.get(parentId);
         if (existing) {
-          for (const cid of childIds) {
-            if (!existing.includes(cid)) existing.push(cid);
-          }
+          existing.push(...childIds);
         } else {
           childrenOf.set(parentId, [...childIds]);
         }
@@ -431,9 +429,7 @@ export class WorkspaceIndex {
       for (const [parentId, childIds] of fileIndex.childrenOf) {
         const existing = childrenOf.get(parentId);
         if (existing) {
-          for (const cid of childIds) {
-            if (!existing.includes(cid)) existing.push(cid);
-          }
+          existing.push(...childIds);
         } else {
           childrenOf.set(parentId, [...childIds]);
         }
@@ -506,9 +502,7 @@ export class WorkspaceIndex {
         for (const [parentId, ids] of file.index.childrenOf) {
           const existing = childrenOf.get(parentId);
           if (existing) {
-            for (const cid of ids) {
-              if (!existing.includes(cid)) existing.push(cid);
-            }
+            existing.push(...ids);
           } else {
             childrenOf.set(parentId, [...ids]);
           }
@@ -554,9 +548,7 @@ export class WorkspaceIndex {
       for (const [parentId, ids] of file.index.childrenOf) {
         const existing = childrenOf.get(parentId);
         if (existing) {
-          for (const cid of ids) {
-            if (!existing.includes(cid)) existing.push(cid);
-          }
+          existing.push(...ids);
         } else {
           childrenOf.set(parentId, [...ids]);
         }
@@ -653,9 +645,7 @@ export class WorkspaceIndex {
                 children = [];
                 childrenOf.set(parentId, children);
               }
-              if (!children.includes(id)) {
-                children.push(id);
-              }
+              children.push(id);
 
               let rootChildren = childrenOf.get(null);
               if (rootChildren) {

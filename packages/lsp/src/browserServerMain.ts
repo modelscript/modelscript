@@ -526,7 +526,7 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
       await validateTextDocument(doc);
     }
     connection.sendNotification("modelscript/status", {
-      state: "ready",
+      state: "loading",
       message: "ModelScript (loading libraries...)",
     });
 
@@ -581,8 +581,6 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
       await validateTextDocument(doc);
     }
 
-    connection.sendNotification("modelscript/status", { state: "ready", message: "ModelScript" });
-
     // Background-index remaining MSL files progressively, then re-validate
     // with the full unified index for cross-file resolution.
     const pending = globalWorkspaceIndex.pendingFileCount;
@@ -590,8 +588,12 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
       connection.console.info(`[lsp] Background-indexing ${pending} remaining files...`);
       globalWorkspaceIndex
         .indexRemainingInBackground(20, (indexed, total) => {
-          if (indexed % 200 === 0) {
+          if (indexed % 100 === 0) {
             connection.console.info(`[lsp] Background indexing: ${indexed}/${total}`);
+            connection.sendNotification("modelscript/status", {
+              state: "loading",
+              message: `Indexing MSL classes (${indexed}/${total})...`,
+            });
           }
         })
         .then(async () => {
@@ -603,10 +605,12 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
               await validateTextDocument(doc);
             }
           }
+          connection.sendNotification("modelscript/status", { state: "ready", message: "ModelScript" });
         });
     } else {
       // No MSL files to index (or all already indexed) — mark ready immediately
       mslStdlibReady = true;
+      connection.sendNotification("modelscript/status", { state: "ready", message: "ModelScript" });
     }
 
     // Load the SysML v2 Standard Library in the BACKGROUND — the 61MB zip
