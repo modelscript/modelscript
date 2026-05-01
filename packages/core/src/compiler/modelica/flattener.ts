@@ -3093,17 +3093,19 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           if (found) return found;
         }
       }
-      if ("expression1" in expr && expr.expression1) {
-        const found = findClockOps(expr.expression1 as ModelicaExpression);
-        if (found) return found;
-      }
-      if ("expression2" in expr && expr.expression2) {
-        const found = findClockOps(expr.expression2 as ModelicaExpression);
-        if (found) return found;
-      }
-      if ("expression" in expr && expr.expression && expr.expression !== expr) {
-        const found = findClockOps(expr.expression as ModelicaExpression);
-        if (found) return found;
+      if (expr && typeof expr === "object") {
+        if ("expression1" in expr && expr.expression1) {
+          const found = findClockOps(expr.expression1 as ModelicaExpression);
+          if (found) return found;
+        }
+        if ("expression2" in expr && expr.expression2) {
+          const found = findClockOps(expr.expression2 as ModelicaExpression);
+          if (found) return found;
+        }
+        if ("expression" in expr && expr.expression && expr.expression !== expr) {
+          const found = findClockOps(expr.expression as ModelicaExpression);
+          if (found) return found;
+        }
       }
       return null;
     };
@@ -3146,17 +3148,19 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
                 if (found) return found;
               }
             }
-            if ("expression1" in expr && expr.expression1) {
-              const f = findSample(expr.expression1 as ModelicaExpression);
-              if (f) return f;
-            }
-            if ("expression2" in expr && expr.expression2) {
-              const f = findSample(expr.expression2 as ModelicaExpression);
-              if (f) return f;
-            }
-            if ("expression" in expr && expr.expression && expr.expression !== expr) {
-              const f = findSample(expr.expression as ModelicaExpression);
-              if (f) return f;
+            if (expr && typeof expr === "object") {
+              if ("expression1" in expr && expr.expression1) {
+                const f = findSample(expr.expression1 as ModelicaExpression);
+                if (f) return f;
+              }
+              if ("expression2" in expr && expr.expression2) {
+                const f = findSample(expr.expression2 as ModelicaExpression);
+                if (f) return f;
+              }
+              if ("expression" in expr && expr.expression && expr.expression !== expr) {
+                const f = findSample(expr.expression as ModelicaExpression);
+                if (f) return f;
+              }
             }
             return null;
           };
