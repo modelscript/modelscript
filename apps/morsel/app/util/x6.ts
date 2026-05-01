@@ -379,20 +379,30 @@ export function renderRectangleX6(graphicItem: IRectangle, defs: X6Markup[]): X6
   const y = Math.min(y1, y2);
   const width = computeWidth(graphicItem.extent);
   const height = computeHeight(graphicItem.extent);
-  const shape: X6Markup = {
-    tagName: "rect",
-    attrs: {
-      x,
-      y,
-      width,
-      height,
-    },
-  };
-  if (!shape.attrs) shape.attrs = {};
-  if (graphicItem.radius) {
-    shape.attrs["rx"] = graphicItem.radius;
-    shape.attrs["ry"] = graphicItem.radius;
+
+  const rawRadius = graphicItem.radius ?? (graphicItem as any).cornerRadius ?? 0;
+  let d = "";
+
+  if (rawRadius > 0) {
+    const r = Math.min(rawRadius, width / 2, height / 2);
+    d = [
+      `M ${x + r} ${y}`,
+      `H ${x + width - r}`,
+      `A ${r} ${r} 0 0 1 ${x + width} ${y + r}`,
+      `V ${y + height - r}`,
+      `A ${r} ${r} 0 0 1 ${x + width - r} ${y + height}`,
+      `H ${x + r}`,
+      `A ${r} ${r} 0 0 1 ${x} ${y + height - r}`,
+      `V ${y + r}`,
+      `A ${r} ${r} 0 0 1 ${x + r} ${y}`,
+      `Z`,
+    ].join(" ");
+  } else {
+    d = `M ${x} ${y} H ${x + width} V ${y + height} H ${x} Z`;
   }
+
+  const shape: X6Markup = { tagName: "path", attrs: { d } };
+
   renderFilledShapeX6(shape, graphicItem, defs);
   return shape;
 }
@@ -527,7 +537,9 @@ export function applyFillX6(shape: X6Markup, filledShape: IFilledShape, defs: X6
   shape.attrs.style = (shape.attrs.style as string) + `; fill: ${fillValue} !important;`;
 }
 
-function getStableId(prefix: string, params: unknown): string {
+let defsCounter = 0;
+
+function getStableId(prefix: string, params: unknown, defs: X6Markup[]): string {
   // A simple way to get a stable ID from params
   const str = JSON.stringify(params);
   let hash = 0;
@@ -536,7 +548,13 @@ function getStableId(prefix: string, params: unknown): string {
     hash = (hash << 5) - hash + char;
     hash |= 0; // Convert to 32bit integer
   }
-  return `${prefix}-${Math.abs(hash).toString(36)}`;
+  let defsId = (defs as any).__defsId;
+  if (!defsId) {
+    defsId = ++defsCounter;
+    Object.defineProperty(defs, "__defsId", { value: defsId, enumerable: false });
+  }
+
+  return `${prefix}-${Math.abs(hash).toString(36)}-${defsId}`;
 }
 
 function addDefIfMissing(defs: X6Markup[], def: X6Markup) {
@@ -551,7 +569,7 @@ function addDefIfMissing(defs: X6Markup[], def: X6Markup) {
 }
 
 function createLinePatternX6(defs: X6Markup[], rotation: number, lineColor?: IColor, fillColor?: IColor): string {
-  const id = getStableId("pattern-line", { rotation, lineColor, fillColor });
+  const id = getStableId("pattern-line", { rotation, lineColor, fillColor }, defs);
   const children: X6Markup[] = [];
   if (fillColor) {
     children.push({
@@ -588,7 +606,7 @@ function createLinePatternX6(defs: X6Markup[], rotation: number, lineColor?: ICo
 }
 
 function createCrossPatternX6(defs: X6Markup[], rotation: number, lineColor?: IColor, fillColor?: IColor): string {
-  const id = getStableId("pattern-cross", { rotation, lineColor, fillColor });
+  const id = getStableId("pattern-cross", { rotation, lineColor, fillColor }, defs);
   const children: X6Markup[] = [];
   if (fillColor) {
     children.push({
@@ -641,7 +659,7 @@ function createLinearGradientX6(
   lineColor?: IColor,
   fillColor?: IColor,
 ): string {
-  const id = getStableId("gradient-linear", { direction, lineColor, fillColor });
+  const id = getStableId("gradient-linear", { direction, lineColor, fillColor }, defs);
   const c = convertColor(fillColor);
   const h = convertColor(lineColor);
   addDefIfMissing(defs, {
@@ -663,7 +681,7 @@ function createLinearGradientX6(
 }
 
 function createRadialGradientX6(defs: X6Markup[], lineColor?: IColor, fillColor?: IColor): string {
-  const id = getStableId("gradient-radial", { lineColor, fillColor });
+  const id = getStableId("gradient-radial", { lineColor, fillColor }, defs);
   const c = convertColor(fillColor);
   const h = convertColor(lineColor);
   addDefIfMissing(defs, {

@@ -398,7 +398,7 @@ function renderDiagramX6(classInstance: ModelicaClassInstance): X6Markup | null 
   };
 }
 
-const iconCache = new Map<string, string>(); // name -> JSON stringified X6Markup
+const iconCache = new Map<string, string>(); // name -> JSON stringified { svg: X6Markup, defs: X6Markup[] }
 
 export function renderIconX6(
   classInstance: ModelicaClassInstance,
@@ -419,16 +419,18 @@ export function renderIconX6(
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
-        // We must push any generated defs into the localDefs array if they exist
-        if (parsed.children && parsed.children[0]?.tagName === "defs") {
-          localDefs.push(...parsed.children[0].children);
+        if (parsed.defs && parsed.defs.length > 0) {
+          localDefs.push(...parsed.defs);
         }
-        return parsed;
+        // Return a clone to avoid mutating the cached SVG if it gets modified later
+        return JSON.parse(JSON.stringify(parsed.svg));
       } catch {
         // Fallback to re-rendering
       }
     }
   }
+
+  const defsStartLength = localDefs.length;
   const svg: X6Markup = {
     tagName: "svg",
     attrs: { width: "100%", height: "100%", style: "overflow: visible" },
@@ -531,9 +533,16 @@ export function renderIconX6(
   }
 
   if (canCache && cacheKey) {
-    // Only cache pure renders without defs side-effects (or defs fully contained)
     try {
-      iconCache.set(cacheKey, JSON.stringify(svg));
+      const defsAdded = localDefs.slice(defsStartLength);
+      // We don't cache the root-injected `<defs>` element, we cache the raw svg + defsAdded
+      // to allow the caller to handle defs injection consistently.
+      if (isRoot && svg.children?.[0]?.tagName === "defs") {
+        const svgWithoutDefs = { ...svg, children: svg.children.slice(1) };
+        iconCache.set(cacheKey, JSON.stringify({ svg: svgWithoutDefs, defs: defsAdded }));
+      } else {
+        iconCache.set(cacheKey, JSON.stringify({ svg, defs: defsAdded }));
+      }
     } catch {
       // Ignore circular reference errors if any
     }
@@ -671,12 +680,30 @@ function renderRectangleX6(graphicItem: IRectangle, defs: X6Markup[]): X6Markup 
   const y = Math.min(y1, y2);
   const width = computeWidth(graphicItem.extent);
   const height = computeHeight(graphicItem.extent);
-  const shape: X6Markup = { tagName: "rect", attrs: { x, y, width, height } };
-  if (!shape.attrs) shape.attrs = {};
-  if (graphicItem.radius) {
-    shape.attrs["rx"] = graphicItem.radius;
-    shape.attrs["ry"] = graphicItem.radius;
+
+  const rawRadius = graphicItem.radius ?? (graphicItem as { cornerRadius?: number }).cornerRadius ?? 0;
+  let d: string;
+
+  if (rawRadius > 0) {
+    const r = Math.min(rawRadius, width / 2, height / 2);
+    d = [
+      `M ${x + r} ${y}`,
+      `H ${x + width - r}`,
+      `A ${r} ${r} 0 0 1 ${x + width} ${y + r}`,
+      `V ${y + height - r}`,
+      `A ${r} ${r} 0 0 1 ${x + width - r} ${y + height}`,
+      `H ${x + r}`,
+      `A ${r} ${r} 0 0 1 ${x} ${y + height - r}`,
+      `V ${y + r}`,
+      `A ${r} ${r} 0 0 1 ${x + r} ${y}`,
+      `Z`,
+    ].join(" ");
+  } else {
+    d = `M ${x} ${y} H ${x + width} V ${y + height} H ${x} Z`;
   }
+
+  const shape: X6Markup = { tagName: "path", attrs: { d } };
+
   renderFilledShapeX6(shape, graphicItem, defs);
   return shape;
 }
@@ -923,7 +950,9 @@ function applyLineStyleX6(shape: X6Markup, graphicItem: IFilledShape | ILine): v
 
 // ── Pattern/gradient helpers ──
 
-function getStableId(prefix: string, params: unknown): string {
+let defsCounter = 0;
+
+function getStableId(prefix: string, params: unknown, defs: X6Markup[]): string {
   const str = JSON.stringify(params);
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
@@ -931,7 +960,15 @@ function getStableId(prefix: string, params: unknown): string {
     hash = (hash << 5) - hash + char;
     hash |= 0;
   }
-  return `${prefix}-${Math.abs(hash).toString(36)}`;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let defsId = (defs as any).__defsId;
+  if (!defsId) {
+    defsId = ++defsCounter;
+    Object.defineProperty(defs, "__defsId", { value: defsId, enumerable: false });
+  }
+
+  return `${prefix}-${Math.abs(hash).toString(36)}-${defsId}`;
 }
 
 function addDefIfMissing(defs: X6Markup[], def: X6Markup) {
@@ -946,7 +983,7 @@ function addDefIfMissing(defs: X6Markup[], def: X6Markup) {
 }
 
 function createLinePatternX6(defs: X6Markup[], rotation: number, lineColor?: IColor, fillColor?: IColor): string {
-  const id = getStableId("pattern-line", { rotation, lineColor, fillColor });
+  const id = getStableId("pattern-line", { rotation, lineColor, fillColor }, defs);
   const children: X6Markup[] = [];
   if (fillColor) children.push({ tagName: "rect", attrs: { width: 4, height: 4, fill: convertColor(fillColor) } });
   children.push({
@@ -970,7 +1007,7 @@ function createLinePatternX6(defs: X6Markup[], rotation: number, lineColor?: ICo
 }
 
 function createCrossPatternX6(defs: X6Markup[], rotation: number, lineColor?: IColor, fillColor?: IColor): string {
-  const id = getStableId("pattern-cross", { rotation, lineColor, fillColor });
+  const id = getStableId("pattern-cross", { rotation, lineColor, fillColor }, defs);
   const children: X6Markup[] = [];
   if (fillColor) children.push({ tagName: "rect", attrs: { width: 4, height: 4, fill: convertColor(fillColor) } });
   children.push({
@@ -1003,7 +1040,7 @@ function createLinearGradientX6(
   lineColor?: IColor,
   fillColor?: IColor,
 ): string {
-  const id = getStableId("gradient-linear", { direction, lineColor, fillColor });
+  const id = getStableId("gradient-linear", { direction, lineColor, fillColor }, defs);
   const c = convertColor(fillColor, "rgb(255,255,255)");
   const h = convertColor(lineColor, "rgb(0,0,0)");
   addDefIfMissing(defs, {
@@ -1019,7 +1056,7 @@ function createLinearGradientX6(
 }
 
 function createRadialGradientX6(defs: X6Markup[], lineColor?: IColor, fillColor?: IColor): string {
-  const id = getStableId("gradient-radial", { lineColor, fillColor });
+  const id = getStableId("gradient-radial", { lineColor, fillColor }, defs);
   const c = convertColor(fillColor, "rgb(255,255,255)");
   const h = convertColor(lineColor, "rgb(0,0,0)");
   addDefIfMissing(defs, {
@@ -1121,6 +1158,43 @@ export function hasGraphicElements(node: X6Markup): boolean {
   return node.children?.some(hasGraphicElements) ?? false;
 }
 
+function bakeVectorEffect(markup: X6Markup, scale: number): void {
+  if (markup.attrs) {
+    if (markup.attrs["vector-effect"] === "non-scaling-stroke") {
+      delete markup.attrs["vector-effect"];
+
+      let sw = 1;
+      if (markup.attrs["stroke-width"] !== undefined) {
+        sw = parseFloat(String(markup.attrs["stroke-width"]));
+      } else if (typeof markup.attrs["style"] === "string") {
+        const match = markup.attrs["style"].match(/stroke-width:\s*([\d.]+)px/);
+        if (match) sw = parseFloat(match[1]);
+      }
+
+      const newSw = sw * scale;
+      markup.attrs["stroke-width"] = newSw;
+
+      if (typeof markup.attrs["style"] === "string") {
+        markup.attrs["style"] = markup.attrs["style"].replace(
+          /stroke-width:\s*[\d.]+px\s*!important;?/,
+          `stroke-width: ${newSw}px !important;`,
+        );
+      }
+    }
+
+    // Clean up style if it's empty
+    if (markup.attrs["style"] === "") {
+      delete markup.attrs["style"];
+    }
+  }
+
+  if (markup.children) {
+    for (const child of markup.children) {
+      bakeVectorEffect(child, scale);
+    }
+  }
+}
+
 export function getClassIconSvg(cls: ModelicaClassInstance, size = 16, includePorts = false): string | undefined {
   try {
     const markup = renderIconX6(cls, undefined, includePorts);
@@ -1129,8 +1203,8 @@ export function getClassIconSvg(cls: ModelicaClassInstance, size = 16, includePo
     // Patch root SVG for standalone icon use: add xmlns, fixed size, viewBox
     if (markup.attrs) {
       markup.attrs["xmlns"] = "http://www.w3.org/2000/svg";
-      markup.attrs["width"] = size;
-      markup.attrs["height"] = size;
+      markup.attrs["width"] = size * 2;
+      markup.attrs["height"] = size * 2;
       delete markup.attrs["style"];
 
       if (typeof markup.attrs["viewBox"] === "string") {
@@ -1141,27 +1215,35 @@ export function getClassIconSvg(cls: ModelicaClassInstance, size = 16, includePo
           const vw = parseFloat(vbMatch[3]);
           const vh = parseFloat(vbMatch[4]);
 
-          if (vx !== 0 || vy !== 0) {
-            markup.attrs["viewBox"] = `0 0 ${vw} ${vh}`;
+          // Pad the viewbox by 2% to ensure Chromium doesn't clip outer stroke bounds
+          const padX = vw * 0.02;
+          const padY = vh * 0.02;
 
-            const defsIdx = (markup.children ?? []).findIndex((c) => c.tagName === "defs");
-            let defsNode;
-            if (defsIdx >= 0 && markup.children) {
-              defsNode = markup.children.splice(defsIdx, 1)[0];
-            }
+          markup.attrs["viewBox"] = `0 0 ${vw + padX * 2} ${vh + padY * 2}`;
 
-            markup.children = [
-              {
-                tagName: "g",
-                attrs: { transform: `translate(${-vx}, ${-vy})` },
-                children: markup.children,
-              },
-            ];
-
-            if (defsNode) {
-              markup.children.unshift(defsNode);
-            }
+          const defsIdx = (markup.children ?? []).findIndex((c) => c.tagName === "defs");
+          let defsNode;
+          if (defsIdx >= 0 && markup.children) {
+            defsNode = markup.children.splice(defsIdx, 1)[0];
           }
+
+          markup.children = [
+            {
+              tagName: "g",
+              attrs: { transform: `translate(${-vx + padX}, ${-vy + padY})` },
+              children: markup.children,
+            },
+          ];
+
+          if (defsNode) {
+            markup.children.unshift(defsNode);
+          }
+
+          // Fix Chromium bug where `vector-effect="non-scaling-stroke"`
+          // causes path arcs to distort or render as straight lines when placed inside an <img> or data URI.
+          // We remove the vector-effect and manually bake the scaled stroke-width.
+          const scale = Math.max(vw / size, vh / size);
+          bakeVectorEffect(markup, scale);
         }
       }
     }
