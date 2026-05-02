@@ -1546,6 +1546,30 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     return { prefix: defaultPrefix, classInstance: defaultCtx };
   }
 
+  #flattenToSymbolic(expr: any, ctxNode: ModelicaComponentInstance, prefix: string, dae: ModelicaDAE): any {
+    if (!expr) return expr;
+    if (typeof expr.accept === "function") {
+      // If it's already a symbolic expression (from a previous flattening pass), don't re-flatten
+      if (expr.hash && expr.elements !== undefined) return expr;
+      // Duck typing for ModelicaExpression
+      if ("hash" in expr || "operator" in expr || "operand1" in expr || "args" in expr) return expr;
+
+      const evalScope = this.#getEvaluationScope(ctxNode, prefix);
+      return (
+        expr.accept(new ModelicaSyntaxFlattener(this.options), {
+          prefix: evalScope.prefix,
+          classInstance: evalScope.classInstance,
+          dae: dae,
+          stmtCollector: [],
+          activeClassStack: this.activeClassStack,
+          activePrefixes: this.activePrefixes,
+          structuralFinalParams: this.#structuralFinalParams,
+        }) ?? expr
+      );
+    }
+    return expr;
+  }
+
   #flattenPredefinedClass(
     node: ModelicaComponentInstance,
     name: string,
@@ -1598,30 +1622,17 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
 
     // Evaluate all collected attributes into symbolic expressions
     for (const [key, val] of attributes.entries()) {
-      let attrExpr = val;
-      if (attrExpr && typeof (attrExpr as any).accept === "function") {
-        const evalScope = this.#getEvaluationScope(node, args[0]);
-        attrExpr =
-          (attrExpr as any).accept(new ModelicaSyntaxFlattener(this.options), {
-            prefix: evalScope.prefix,
-            classInstance: evalScope.classInstance,
-            dae: args[1],
-            stmtCollector: [],
-            activeClassStack: this.activeClassStack,
-            activePrefixes: this.activePrefixes,
-            structuralFinalParams: this.#structuralFinalParams,
-          }) ?? attrExpr;
-      }
-      attributes.set(key, attrExpr);
+      attributes.set(key, this.#flattenToSymbolic(val, node, args[0], args[1]));
     }
 
     let expression: ModelicaExpression | null;
     if (variability === ModelicaVariability.CONSTANT) {
       // Constants should be fully evaluated
-      expression = node.modification?.evaluatedExpression ?? null;
-      if (!expression) {
-        expression = node.modification?.expression ?? null;
+      let rawExpr = node.modification?.evaluatedExpression ?? null;
+      if (!rawExpr) {
+        rawExpr = node.modification?.expression ?? null;
       }
+      expression = this.#flattenToSymbolic(rawExpr, node, args[0], args[1]) ?? null;
       // Look up field value from parent record object expression (e.g., r1 = R(1.0, 2.0, 3.0))
       // Parent object values take priority over type defaults (e.g., constant R r1 = R(4.0, 5.0, 6.0))
       if (this.#parentObjectExpression && node.name) {
@@ -1629,18 +1640,8 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         if (parentVal) expression = parentVal;
       }
       if (!expression && node.modification?.modificationExpression?.expression) {
-        const syntaxFlattener = new ModelicaSyntaxFlattener(this.options);
-        const evalScope = this.#getEvaluationScope(node, args[0]);
-        expression =
-          node.modification.modificationExpression.expression.accept(syntaxFlattener, {
-            prefix: evalScope.prefix,
-            classInstance: evalScope.classInstance,
-            dae: args[1],
-            stmtCollector: [],
-            structuralFinalParams: this.#structuralFinalParams,
-            activeClassStack: this.activeClassStack,
-            activePrefixes: this.activePrefixes,
-          }) ?? null;
+        const rawExpr = node.modification.modificationExpression.expression;
+        expression = this.#flattenToSymbolic(rawExpr, node, args[0], args[1]) ?? null;
       }
       // Even if the constant was evaluated, collect any function definitions
       // referenced in the raw binding expression (e.g., constant Integer s = mySize({1,2,3}))
@@ -1688,7 +1689,8 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       }
       // Only fall back to evaluatedExpression if no symbolic form exists
       if (!expression) {
-        expression = node.modification?.evaluatedExpression ?? null;
+        const rawExpr = node.modification?.evaluatedExpression ?? null;
+        expression = this.#flattenToSymbolic(rawExpr, node, args[0], args[1]) ?? null;
       }
       // Finally, if still no expression, use 'start' as the default for parameters
       if (!expression && variability === ModelicaVariability.PARAMETER) {
@@ -1714,7 +1716,8 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       }
       // Fall back to interpreter-evaluated expression
       if (!expression) {
-        expression = node.modification?.expression ?? null;
+        const rawExpr = node.modification?.expression ?? null;
+        expression = this.#flattenToSymbolic(rawExpr, node, args[0], args[1]) ?? null;
       }
       // Look up field value from parent record object expression
       // Parent object values take priority over type defaults
@@ -1919,25 +1922,11 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
 
     // Evaluate all collected attributes into symbolic expressions
     for (const [key, val] of attributes.entries()) {
-      let attrExpr = val;
-      if (attrExpr && typeof (attrExpr as any).accept === "function") {
-        const evalScope = this.#getEvaluationScope(node, args[0]);
-        attrExpr =
-          (attrExpr as any).accept(new ModelicaSyntaxFlattener(this.options), {
-            prefix: evalScope.prefix,
-            classInstance: evalScope.classInstance,
-            dae: args[1],
-            stmtCollector: [],
-            activeClassStack: this.activeClassStack,
-            activePrefixes: this.activePrefixes,
-            structuralFinalParams: this.#structuralFinalParams,
-          }) ?? attrExpr;
-      }
-      attributes.set(key, attrExpr);
+      attributes.set(key, this.#flattenToSymbolic(val, node, args[0], args[1]));
     }
 
-    const expression = node.modification?.expression ?? null;
-    const varExpression = expression;
+    const rawExpression = node.modification?.expression ?? null;
+    const varExpression = this.#flattenToSymbolic(rawExpression, node, args[0], args[1]);
     const variable = new ModelicaEnumerationVariable(
       name,
       varExpression,
@@ -1962,7 +1951,8 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       node.isProtected || this.#outerProtected || (activeClass?.isProtectedElement(node.name) ?? false);
     const arrayClassInstance = node.classInstance as ModelicaArrayClassInstance;
     const hasFlexibleDim = arrayClassInstance.shape.some((d: any) => d === 0);
-    let arrayBindingExpression = node.modification?.expression ?? null;
+    const rawArrayBinding = node.modification?.expression ?? null;
+    let arrayBindingExpression = this.#flattenToSymbolic(rawArrayBinding, node, args[0], args[1]);
     // If the interpreter returned a ModelicaArray of ModelicaObjects (type structure, not values),
     // discard it so the syntax flattener can produce proper qualified name references.
     if (
@@ -2099,7 +2089,8 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           if (elementClass.modification?.modificationArguments) {
             for (const m of elementClass.modification.modificationArguments) {
               if (m.name === key && m.expression) {
-                const casted = castToReal(m.expression);
+                const flatM = this.#flattenToSymbolic(m.expression, node, args[0], args[1]);
+                const casted = castToReal(flatM);
                 if (casted) attributes.set(key, casted);
               }
             }
@@ -2182,11 +2173,12 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         declaredElement instanceof ModelicaPredefinedClassInstance ||
         declaredElement instanceof ModelicaEnumerationClassInstance
       ) {
-        const attributes = new Map(
-          declaredElement.modification?.modificationArguments.flatMap((m: any) =>
-            m.name && m.expression ? [[m.name, m.expression]] : [],
-          ),
-        );
+        const attributes = new Map();
+        for (const m of declaredElement.modification?.modificationArguments ?? []) {
+          if (m.name && m.expression) {
+            attributes.set(m.name, this.#flattenToSymbolic(m.expression, node, args[0], args[1]));
+          }
+        }
         let expression: ModelicaExpression | null;
         if (flatBindingElements) {
           expression = flatBindingElements[elementIndex] ?? null;
@@ -2197,7 +2189,8 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         } else if (arrayBindingExpression) {
           expression = null;
         } else {
-          expression = declaredElement.modification?.expression ?? null;
+          const rawExpr = declaredElement.modification?.expression ?? null;
+          expression = this.#flattenToSymbolic(rawExpr, node, args[0], args[1]) ?? null;
         }
         const varExpression = expression;
         let variable;
@@ -5143,28 +5136,55 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
           const dims = subs.map((sub: any, i: number) => {
             if (sub.flexible && !sub.expression) return ":";
             if (sub.expression) {
-              // Flatten the subscript expression through the canonicalizing
-              // flattener so that e.g. `size(matr,2)-1` becomes `-1 + size(matr,2)`
-              const syntaxFlattener = new ModelicaSyntaxFlattener(this.options);
-              const flatExpr = sub.expression.accept(syntaxFlattener, {
-                prefix: "",
-                classInstance: resolved,
-                dae: fnDae,
-                stmtCollector: [],
-                activeClassStack: ctx.activeClassStack,
-                activePrefixes: ctx.activePrefixes,
-              });
-              if (flatExpr) {
+              if (typeof sub.expression.accept !== "function") {
+                // If it's a raw evaluated primitive value from the query index
+                if (
+                  typeof sub.expression === "number" ||
+                  typeof sub.expression === "string" ||
+                  typeof sub.expression === "boolean"
+                ) {
+                  return String(sub.expression);
+                }
+                // If it's a serialized ModelicaExpression object
+                if (typeof sub.expression === "object" && sub.expression !== null) {
+                  if (
+                    sub.expression.type === "IntegerLiteral" ||
+                    sub.expression.type === "RealLiteral" ||
+                    sub.expression.type === "BooleanLiteral" ||
+                    sub.expression.type === "StringLiteral"
+                  ) {
+                    return String(sub.expression.value);
+                  }
+                  // Fallback: use its evaluated shape or just return ":"
+                  const shape =
+                    element.classInstance instanceof ModelicaArrayClassInstance ? element.classInstance.shape : [];
+                  const d = shape[i] ?? 0;
+                  return d === 0 ? ":" : String(d);
+                }
+              } else {
+                // Flatten the subscript expression through the canonicalizing
+                // flattener so that e.g. `size(matr,2)-1` becomes `-1 + size(matr,2)`
+                const syntaxFlattener = new ModelicaSyntaxFlattener(this.options);
+                const flatExpr = sub.expression.accept(syntaxFlattener, {
+                  prefix: "",
+                  classInstance: resolved,
+                  dae: fnDae,
+                  stmtCollector: [],
+                  activeClassStack: ctx.activeClassStack,
+                  activePrefixes: ctx.activePrefixes,
+                });
+                if (flatExpr) {
+                  const out = new StringWriter();
+                  const printer = new ModelicaDAEPrinter(out);
+                  flatExpr.accept(printer);
+                  return out.toString().trim() || ":";
+                }
+                // Fall back to syntax printer if flattening fails
                 const out = new StringWriter();
-                const printer = new ModelicaDAEPrinter(out);
-                flatExpr.accept(printer);
+                const printer = new ModelicaSyntaxPrinter(out);
+                sub.expression.accept(printer, 0);
                 return out.toString().trim() || ":";
               }
-              // Fall back to syntax printer if flattening fails
-              const out = new StringWriter();
-              const printer = new ModelicaSyntaxPrinter(out);
-              sub.expression.accept(printer, 0);
-              return out.toString().trim() || ":";
             }
             // Fall back to evaluated shape
             const shape =
@@ -5195,9 +5215,15 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       }
       if (!expression && element.modification?.evaluatedExpression) {
         expression = element.modification.evaluatedExpression;
+        if (typeof (expression as any)?.accept === "function" && !(expression as any).hash) {
+          expression = (expression as any).accept(this, ctx) ?? expression;
+        }
       }
       if (!expression && element.modification?.expression) {
         expression = element.modification.expression;
+        if (typeof (expression as any)?.accept === "function" && !(expression as any).hash) {
+          expression = (expression as any).accept(this, ctx) ?? expression;
+        }
       }
 
       // Encode array dims in the variable name for emission.

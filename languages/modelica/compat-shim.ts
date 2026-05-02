@@ -27,6 +27,114 @@
 import type { QueryDB, SymbolEntry, SymbolId } from "@modelscript/polyglot";
 import { type ModelicaModArgs, type ModificationArg, modelicaMod } from "./modification-args.js";
 
+export function polyfillAccept(expr: any): any {
+  if (expr == null) return null;
+  if (typeof expr === "number") {
+    return {
+      value: expr,
+      accept: (visitor: any, args: any) => {
+        if (Number.isInteger(expr) && typeof visitor.visitIntegerLiteral === "function") {
+          return visitor.visitIntegerLiteral({ value: expr }, args);
+        }
+        if (typeof visitor.visitRealLiteral === "function") {
+          return visitor.visitRealLiteral({ value: expr }, args);
+        }
+        return null;
+      },
+    };
+  }
+  if (typeof expr === "boolean") {
+    return {
+      value: expr,
+      accept: (visitor: any, args: any) => {
+        if (typeof visitor.visitBooleanLiteral === "function") {
+          return visitor.visitBooleanLiteral({ value: expr }, args);
+        }
+        return null;
+      },
+    };
+  }
+  if (typeof expr === "string") {
+    return {
+      value: expr,
+      accept: (visitor: any, args: any) => {
+        if (typeof visitor.visitStringLiteral === "function") {
+          return visitor.visitStringLiteral({ value: expr }, args);
+        }
+        return null;
+      },
+    };
+  }
+  if (typeof expr === "object" && !expr.accept) {
+    if (expr.text) {
+      return {
+        ...expr,
+        accept: (visitor: any, args: any) => {
+          const text = expr.text.trim();
+          if (text === "true" || text === "false") {
+            if (typeof visitor.visitBooleanLiteral === "function") {
+              return visitor.visitBooleanLiteral({ value: text === "true" }, args);
+            }
+          }
+          if (/^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*$/.test(text)) {
+            if (typeof visitor.visitNameExpression === "function") {
+              return visitor.visitNameExpression({ name: text }, args);
+            }
+          }
+          const num = Number(text);
+          if (!isNaN(num)) {
+            if (Number.isInteger(num) && typeof visitor.visitIntegerLiteral === "function") {
+              return visitor.visitIntegerLiteral({ value: num }, args);
+            }
+            if (typeof visitor.visitRealLiteral === "function") {
+              return visitor.visitRealLiteral({ value: num }, args);
+            }
+          }
+          if (text.startsWith('"') && text.endsWith('"')) {
+            if (typeof visitor.visitStringLiteral === "function") {
+              return visitor.visitStringLiteral({ value: text.substring(1, text.length - 1) }, args);
+            }
+          }
+          return null;
+        },
+      };
+    } else {
+      const type = expr.type || expr["@type"];
+      if (type) {
+        return {
+          ...expr,
+          accept: (visitor: any, args: any) => {
+            if (type === "IntegerLiteral" && typeof visitor.visitIntegerLiteral === "function")
+              return visitor.visitIntegerLiteral(expr, args);
+            if (type === "RealLiteral" && typeof visitor.visitRealLiteral === "function")
+              return visitor.visitRealLiteral(expr, args);
+            if (type === "BooleanLiteral" && typeof visitor.visitBooleanLiteral === "function")
+              return visitor.visitBooleanLiteral(expr, args);
+            if (type === "StringLiteral" && typeof visitor.visitStringLiteral === "function")
+              return visitor.visitStringLiteral(expr, args);
+            if (type === "NameExpression" && typeof visitor.visitNameExpression === "function")
+              return visitor.visitNameExpression(expr, args);
+            if (type === "UnaryExpression" && typeof visitor.visitUnaryExpression === "function")
+              return visitor.visitUnaryExpression(expr, args);
+            if (type === "BinaryExpression" && typeof visitor.visitBinaryExpression === "function")
+              return visitor.visitBinaryExpression(expr, args);
+            if (type === "Array" && typeof visitor.visitArrayConstructor === "function")
+              return visitor.visitArrayConstructor(expr, args);
+            return null;
+          },
+        };
+      } else if (expr.kind === "literal" && "value" in expr) {
+        // Handle ModificationValue { kind: "literal", value: ... }
+        return polyfillAccept(expr.value);
+      } else if (expr.kind === "expression" && expr.text) {
+        // Handle ModificationValue { kind: "expression", text: ... }
+        return polyfillAccept({ ...expr, text: expr.text });
+      }
+    }
+  }
+  return expr;
+}
+
 const globalAstCache = new WeakMap<SymbolEntry, any>();
 const virtualComponentsCache = new WeakMap<SymbolEntry, Map<string, any>>();
 const diagnosticsCache = new WeakMap<SymbolEntry, any[]>();
@@ -1058,42 +1166,7 @@ export class QueryBackedElementModification {
   }
 
   get expression() {
-    const expr = this.arg.value;
-    if (!expr) return null;
-    if ((expr as any).text && !(expr as any).accept) {
-      return {
-        ...expr,
-        accept: (visitor: any, args: any) => {
-          const text = (expr as any).text.trim();
-          if (text === "true" || text === "false") {
-            if (typeof visitor.visitBooleanLiteral === "function") {
-              return visitor.visitBooleanLiteral({ value: text === "true" }, args);
-            }
-          }
-          if (/^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*$/.test(text)) {
-            if (typeof visitor.visitNameExpression === "function") {
-              return visitor.visitNameExpression({ name: text }, args);
-            }
-          }
-          const num = Number(text);
-          if (!isNaN(num)) {
-            if (Number.isInteger(num) && typeof visitor.visitIntegerLiteral === "function") {
-              return visitor.visitIntegerLiteral({ value: num }, args);
-            }
-            if (typeof visitor.visitRealLiteral === "function") {
-              return visitor.visitRealLiteral({ value: num }, args);
-            }
-          }
-          if (text.startsWith('"') && text.endsWith('"')) {
-            if (typeof visitor.visitStringLiteral === "function") {
-              return visitor.visitStringLiteral({ value: text.substring(1, text.length - 1) }, args);
-            }
-          }
-          return null;
-        },
-      };
-    }
-    return expr;
+    return polyfillAccept(this.arg.value);
   }
 }
 
@@ -1147,76 +1220,38 @@ export class AstBackedModification {
   }
 
   get expression() {
-    const expr = this.modificationExpression?.expression;
-    if (!expr) return null;
-    if (expr.text && !expr.accept) {
-      return {
-        ...expr,
-        accept: (visitor: any, args: any) => {
-          const text = expr.text.trim();
-          if (text === "true" || text === "false") {
-            if (typeof visitor.visitBooleanLiteral === "function") {
-              return visitor.visitBooleanLiteral({ value: text === "true" }, args);
-            }
-          }
-          if (/^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*$/.test(text)) {
-            if (typeof visitor.visitNameExpression === "function") {
-              return visitor.visitNameExpression({ name: text }, args);
-            }
-          }
-          const num = Number(text);
-          if (!isNaN(num)) {
-            if (Number.isInteger(num) && typeof visitor.visitIntegerLiteral === "function") {
-              return visitor.visitIntegerLiteral({ value: num }, args);
-            }
-            if (typeof visitor.visitRealLiteral === "function") {
-              return visitor.visitRealLiteral({ value: num }, args);
-            }
-          }
-          if (text.startsWith('"') && text.endsWith('"')) {
-            if (typeof visitor.visitStringLiteral === "function") {
-              return visitor.visitStringLiteral({ value: text.substring(1, text.length - 1) }, args);
-            }
-          }
-          return null;
-        },
-      };
-    }
-    return expr;
+    return polyfillAccept(this.modificationExpression?.expression);
   }
 
   get evaluatedExpression() {
     if (!this.expression) return null;
 
-    // Proper non-hacky evaluation using the syntax nodes' robust literal values
+    // Return the syntax node/polyfilled expression itself, NOT the primitive value!
+    // The flattener expects ModelicaExpression AST nodes, not raw primitives.
     if ("value" in this.expression) {
-      return (this.expression as any).value;
+      return this.expression;
     }
 
     const t = this.expression.text;
     if (!t) return null;
 
     const tType = this.expression.type ?? this.expression["@type"];
-    if (tType === "BOOLEAN" || tType === "boolean_literal") {
-      return t === "true";
-    }
-
-    if (tType === "STRING" || tType === "string_literal") {
-      return t.replace(/^"|"$/g, "");
-    }
-
     if (
+      tType === "BOOLEAN" ||
+      tType === "boolean_literal" ||
+      tType === "STRING" ||
+      tType === "string_literal" ||
       tType === "UNSIGNED_INTEGER" ||
       tType === "UNSIGNED_REAL" ||
       tType === "unsigned_integer_literal" ||
       tType === "unsigned_real_literal"
     ) {
-      return Number(t);
+      return this.expression;
     }
 
     // Fallback for strings which use .text instead of .value
     if (t.startsWith('"') && t.endsWith('"')) {
-      return t.substring(1, t.length - 1);
+      return this.expression;
     }
 
     return null;
@@ -1279,47 +1314,13 @@ export class QueryBackedModification {
   }
 
   get expression() {
-    const expr = this.modArgs?.bindingExpression;
-    if (!expr) return null;
-    if ((expr as any).text && !(expr as any).accept) {
-      return {
-        ...expr,
-        accept: (visitor: any, args: any) => {
-          const text = (expr as any).text.trim();
-          if (text === "true" || text === "false") {
-            if (typeof visitor.visitBooleanLiteral === "function") {
-              return visitor.visitBooleanLiteral({ value: text === "true" }, args);
-            }
-          }
-          if (/^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*$/.test(text)) {
-            if (typeof visitor.visitNameExpression === "function") {
-              return visitor.visitNameExpression({ name: text }, args);
-            }
-          }
-          const num = Number(text);
-          if (!isNaN(num)) {
-            if (Number.isInteger(num) && typeof visitor.visitIntegerLiteral === "function") {
-              return visitor.visitIntegerLiteral({ value: num }, args);
-            }
-            if (typeof visitor.visitRealLiteral === "function") {
-              return visitor.visitRealLiteral({ value: num }, args);
-            }
-          }
-          if (text.startsWith('"') && text.endsWith('"')) {
-            if (typeof visitor.visitStringLiteral === "function") {
-              return visitor.visitStringLiteral({ value: text.substring(1, text.length - 1) }, args);
-            }
-          }
-          return null;
-        },
-      };
-    }
-    return expr;
+    return polyfillAccept(this.modArgs?.bindingExpression);
   }
 
   get evaluatedExpression() {
-    // In actual implementation, we might try to evaluate this using QueryDB
-    if (this.expression?.kind === "literal") return this.expression.value;
+    // Return the polyfilled syntax node, not the primitive value, as the
+    // ModelicaFlattener expects ModelicaExpression AST nodes.
+    if (this.expression?.kind === "literal" || this.expression?.type) return this.expression;
     return null;
   }
 
@@ -1360,7 +1361,13 @@ export class QueryBackedArrayClassInstance extends QueryBackedClassInstance {
   }
 
   get arraySubscripts(): any[] {
-    return this._arrayDims ?? this.db.query<any[]>("arrayDimensions", this.id) ?? [];
+    const dims = this._arrayDims ?? this.db.query<any[]>("arrayDimensions", this.id) ?? [];
+    return dims.map((dim: any) => {
+      if (dim && dim.expression) {
+        return { ...dim, expression: polyfillAccept(dim.expression) };
+      }
+      return { expression: polyfillAccept(dim) };
+    });
   }
 
   get enumDimensions(): any[] {

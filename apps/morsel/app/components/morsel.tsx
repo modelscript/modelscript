@@ -617,9 +617,8 @@ export default function MorselEditor(props: MorselEditorProps) {
   };
 
   const handleFlatten = async () => {
-    if (!selectedTreeClassName) return;
     try {
-      const result = await (await import("~/util/lsp-bridge")).flatten(selectedTreeClassName);
+      const result = await (await import("~/util/lsp-bridge")).flatten(selectedTreeClassName ?? "", DOCUMENT_URI);
       if (result.text) {
         setFlattenedCode(result.text);
         setFlattenDialogOpen(true);

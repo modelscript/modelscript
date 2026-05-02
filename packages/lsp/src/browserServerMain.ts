@@ -119,6 +119,8 @@ import { ModelicaSimulator, registerSimulateDeps } from "@modelscript/simulator"
 import { INDEXER_HOOKS as stepIndexerHooks } from "@modelscript/step/indexer_config";
 import { QUERY_HOOKS as stepQueryHooks } from "@modelscript/step/query_hooks";
 import { REF_HOOKS as stepRefHooks } from "@modelscript/step/ref_config";
+import { ModelicaDAEPrinter } from "@modelscript/symbolics";
+import { StringWriter } from "@modelscript/utils";
 import { formatModelicaTree } from "./formatting/modelica-formatter";
 import { getRequirements, getTraceabilityMatrix } from "./requirements";
 import { BrowserFileSystem } from "./vfs/browser-file-system";
@@ -4469,24 +4471,84 @@ connection.onRequest(
 
 connection.onRequest(
   "modelscript/flatten",
-  (params: { name: string; uri?: string }): { text: string | null; error?: string } => {
-    // Find a context — prefer one from a specific document, or fallback to first available
-    let ctx: Context | undefined;
-    if (params.uri) ctx = documentContexts.get(params.uri);
-    if (!ctx) {
-      for (const c of documentContexts.values()) {
-        ctx = c;
-        break;
+  async (params: { name: string; uri?: string }): Promise<{ text: string | null; error?: string }> => {
+    let instances = params.uri ? documentInstances.get(params.uri) : undefined;
+
+    // Fallback to finding instances via context if URI isn't provided or didn't work
+    if (!instances && params.uri) {
+      const doc = documents.get(params.uri);
+      if (doc) {
+        await validateTextDocument(doc);
+        instances = documentInstances.get(params.uri);
       }
     }
-    if (!ctx) return { text: null, error: "No Modelica context available. Open a .mo file first." };
+
+    if (!instances && !params.uri) {
+      for (const insts of documentInstances.values()) {
+        if (insts && insts.length > 0) {
+          instances = insts;
+          break;
+        }
+      }
+    }
+
+    if (!instances || instances.length === 0) {
+      return { text: null, error: "No Modelica class instances found in the active document." };
+    }
+
+    let classInstance = instances[0];
+    if (params.name) {
+      const found = instances.find((i) => i.name === params.name);
+      if (found) classInstance = found;
+    }
 
     try {
-      const result = ctx.flatten(params.name);
-      if (!result) return { text: null, error: `Class '${params.name}' not found.` };
-      return { text: result };
+      // Ensure the full MSL index is available before flattening
+      if (!mslStdlibReady && globalWorkspaceIndex.pendingFileCount > 0) {
+        connection.sendNotification("modelscript/status", {
+          state: "loading",
+          message: "Indexing MSL for flattening...",
+        });
+        await globalWorkspaceIndex.indexRemainingInBackground(50);
+        mslStdlibReady = true;
+        connection.sendNotification("modelscript/status", { state: "ready", message: "ModelScript" });
+
+        const fullIndex = unifiedWorkspace.toUnifiedPartial();
+        injectPredefinedTypes(fullIndex);
+        const engine = params.uri?.endsWith(".sysml") ? globalSysML2QueryEngine : globalModelicaQueryEngine;
+        if (engine) {
+          engine.updateIndex(fullIndex);
+          const resolver = (engine as any).__resolverCache;
+          if (resolver) resolver.updateIndex(fullIndex);
+        }
+
+        if (params.uri) {
+          const doc = documents.get(params.uri);
+          if (doc) await validateTextDocument(doc);
+          instances = documentInstances.get(params.uri);
+          if (instances && instances.length > 0) {
+            classInstance = params.name
+              ? (instances.find((i) => i.name === params.name) ?? instances[0])
+              : instances[0];
+          }
+        }
+      }
+
+      if (!classInstance.instantiated) {
+        classInstance.instantiate();
+      }
+
+      const dae = new ModelicaDAE(classInstance.name || "Model");
+      const flattener = new ModelicaFlattener();
+      classInstance.accept(flattener, ["", dae]);
+      flattener.generateFlowBalanceEquations(dae);
+      flattener.foldDAEConstants(dae);
+
+      const out = new StringWriter();
+      dae.accept(new ModelicaDAEPrinter(out));
+      return { text: out.toString() };
     } catch (e) {
-      return { text: null, error: e instanceof Error ? e.message : String(e) };
+      return { text: null, error: e instanceof Error ? e.stack : String(e) };
     }
   },
 );

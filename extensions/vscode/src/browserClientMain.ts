@@ -734,6 +734,78 @@ END-ISO-10303-21;`;
         SimulationPanel.createOrShow(context.extensionUri, client);
       }
     }),
+    commands.registerCommand("modelscript.flatten", async () => {
+      if (!client) return;
+      const editor = vscode.window.activeTextEditor;
+      let uri = editor?.document.uri.toString();
+      let name = "";
+
+      if (!uri) {
+        const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
+        if (tab?.input instanceof vscode.TabInputCustom && tab.input.viewType === DiagramEditorProvider.viewType) {
+          uri = tab.input.uri.toString();
+        }
+      }
+      if (!uri || !uri.endsWith(".mo")) {
+        vscode.window.showErrorMessage("Open a Modelica (.mo) file to flatten it.");
+        return;
+      }
+
+      // Request classes in the active document to find the target name
+      try {
+        const docClasses = await client.sendRequest<{ classes: { name: string; kind: string; uri: string }[] }>(
+          "modelscript/listClasses",
+        );
+        const match = docClasses.classes.find(
+          (c) => c.uri === uri && (c.kind === "model" || c.kind === "block" || c.kind === "class"),
+        );
+        if (match) {
+          name = match.name;
+        } else {
+          // fallback if listClasses didn't have uri info, just try to get the first one from parse?
+          // Instead, since the user is in the editor, we can just send the URI. Wait, the flatten LSP request needs "name".
+          // We can ask LSP for `listClasses` and filter by URI!
+        }
+      } catch {
+        // ignore
+      }
+
+      // We actually need the name to flatten. Let's send a request to get the name of the active class, or simply try flattening the one returned.
+      // Wait, let's extract the name from the editor's text if needed, or better, we can modify the LSP to accept URI if name is missing?
+      // Actually, modelscript/flatten takes `{ name: string, uri?: string }`.
+      // I'll parse the file name as a fallback.
+      if (!name) {
+        name = uri.split("/").pop()?.replace(".mo", "") ?? "Model";
+      }
+
+      vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: "Flattening model...", cancellable: false },
+        async () => {
+          try {
+            const res = await client?.sendRequest<{ text: string | null; error?: string }>("modelscript/flatten", {
+              name,
+              uri,
+            });
+            if (!res) return;
+
+            outputChannel.clear();
+            outputChannel.show(true);
+            if (res.error) {
+              outputChannel.appendLine(`Flattening Error: ${res.error}`);
+            } else if (res.text) {
+              outputChannel.appendLine(`--- Flattened Output for ${name} ---`);
+              outputChannel.appendLine(res.text);
+            } else {
+              outputChannel.appendLine("No output generated.");
+            }
+          } catch (e) {
+            outputChannel.clear();
+            outputChannel.show(true);
+            outputChannel.appendLine(`Flattening Error: ${e}`);
+          }
+        },
+      );
+    }),
     commands.registerCommand("modelscript.exportFmi2", async () => {
       if (!client) return;
       const editor = vscode.window.activeTextEditor;

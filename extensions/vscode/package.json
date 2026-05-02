@@ -105,6 +105,11 @@
         "icon": "$(wand)"
       },
       {
+        "command": "modelscript.flatten",
+        "title": "ModelScript: Flatten Model",
+        "icon": "$(list-flat)"
+      },
+      {
         "command": "modelscript.openChat",
         "title": "ModelScript: Open AI Chat",
         "icon": "$(comment-discussion)"
@@ -548,6 +553,11 @@
         },
         {
           "command": "modelscript.runSimulation",
+          "when": "editorLangId == modelica || activeCustomEditorId == modelscript.diagram",
+          "group": "navigation"
+        },
+        {
+          "command": "modelscript.flatten",
           "when": "editorLangId == modelica || activeCustomEditorId == modelscript.diagram",
           "group": "navigation"
         },
