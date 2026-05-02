@@ -140,7 +140,19 @@ function showProperties(nodeData: any) {
 
   const props = nodeData.properties;
   const isLoading = nodeData.isLoading === true;
-  title.textContent = props?.className ? props.className.split(".").pop()?.toUpperCase() : "PROPERTIES";
+  const expectedTitle = props?.className ? props.className.split(".").pop()?.toUpperCase() : "PROPERTIES";
+
+  // Prevent overwriting the DOM if the user is currently typing in an input field for the same component
+  if (
+    content.contains(document.activeElement) &&
+    (document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "TEXTAREA") &&
+    title.textContent === expectedTitle &&
+    !isLoading
+  ) {
+    return;
+  }
+
+  title.textContent = expectedTitle as string;
 
   const loadingSpinner = `<div style="display: flex; align-items: center; gap: 8px; padding: 12px 0; color: var(--vscode-descriptionForeground, #888); font-size: 12px;">
     <div style="width: 14px; height: 14px; border: 2px solid var(--vscode-editorGutter-background, rgba(128,128,128,0.2)); border-top-color: var(--vscode-foreground, #ccc); border-radius: 50%; animation: diagram-spin 0.7s linear infinite;"></div>

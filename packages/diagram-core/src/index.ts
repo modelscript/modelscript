@@ -490,6 +490,12 @@ export function initGraph(isDark: boolean): Graph {
   // Delete key: delete selected edges/components
   document.addEventListener("keydown", (e) => {
     if (e.key === "Delete" || e.key === "Backspace") {
+      // Do not trigger deletion if the user is typing in an input or textarea
+      const activeTag = document.activeElement?.tagName;
+      if (activeTag === "INPUT" || activeTag === "TEXTAREA" || activeTag === "SELECT") {
+        return;
+      }
+
       const cells = g.getSelectedCells();
       if (cells.length === 0) return;
 
