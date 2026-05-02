@@ -64,3 +64,28 @@ svg[class*="Spinner"] {
     transform: rotate(360deg);
   }
 }
+
+@keyframes drop-placeholder-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scale(1.05);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+}
+@keyframes drop-placeholder-appear {
+  0% {
+    transform: scale(0.5);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+}

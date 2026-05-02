@@ -217,25 +217,16 @@ export function initGraph(isDark: boolean): Graph {
     if (data.iconSvg) {
       placementGhost = g.addNode({
         id: "placement-ghost",
+        shape: "image",
         x: center.x - 10,
         y: center.y - 10,
         width: 20,
         height: 20,
-        markup: [
-          {
-            tagName: "image",
-            selector: "image",
-            attrs: {
-              width: "100%",
-              height: "100%",
-              preserveAspectRatio: "xMidYMid meet",
-              style: "pointer-events: none;",
-            },
-          },
-        ],
+        imageUrl: `data:image/svg+xml;utf8,${encodeURIComponent(data.iconSvg)}`,
         attrs: {
           image: {
-            "xlink:href": `data:image/svg+xml;utf8,${encodeURIComponent(data.iconSvg)}`,
+            preserveAspectRatio: "xMidYMid meet",
+            style: "pointer-events: none;",
           },
         },
       });
@@ -1336,7 +1327,8 @@ export function dropComponentGhost(
       attrs: {
         image: {
           preserveAspectRatio: "xMidYMid meet",
-          style: "opacity: 0.5; pointer-events: none;",
+          style:
+            "pointer-events: none; animation: drop-placeholder-pulse 1.2s ease-in-out infinite, drop-placeholder-appear 0.2s ease-out;",
         },
       },
     });
@@ -1353,8 +1345,8 @@ export function dropComponentGhost(
           fill: fillColor,
           stroke: strokeColor,
           strokeWidth: 2,
-          opacity: 0.5,
           pointerEvents: "none",
+          style: "animation: drop-placeholder-pulse 1.2s ease-in-out infinite, drop-placeholder-appear 0.2s ease-out;",
         },
         text: {
           text: className.split(".").pop(),
