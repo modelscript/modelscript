@@ -3,7 +3,7 @@
 // Webview-side script: receives diagram data via postMessage and
 // renders it using AntV X6.
 
-import { renderDiagram, setDiagramOptions } from "@modelscript/diagram-core";
+import { dropComponentGhost, initGraph, renderDiagram, setDiagramOptions } from "@modelscript/diagram-core";
 
 // Add global binding for close button
 window.addEventListener("DOMContentLoaded", () => {
@@ -25,6 +25,7 @@ let diagramActionTimer: ReturnType<typeof setTimeout> | null = null;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function enqueueDiagramAction(action: any) {
+  console.log("[diagram.ts] enqueuing diagram action:", action.type, action);
   pendingDiagramActions.push(action);
   if (diagramActionTimer) clearTimeout(diagramActionTimer);
 
@@ -36,6 +37,7 @@ function enqueueDiagramAction(action: any) {
     pendingDiagramActions = [];
     diagramActionTimer = null;
     if (actions.length > 0) {
+      console.log("[diagram.ts] posting diagram edits to host:", actions.length);
       vscode.postMessage({ type: "diagramEdit", actions });
     }
   }, delay);
@@ -49,6 +51,46 @@ window.addEventListener("DOMContentLoaded", () => {
   const isDark =
     document.documentElement.classList.contains("vscode-dark") ||
     document.documentElement.classList.contains("vscode-high-contrast");
+
+  // Hack to handle VS Code Webview drag-and-drop limitations:
+  // 1. Move the ghost during native HTML5 dragover (which suppresses mousemove)
+  // 2. Drop the component on global mouseup (because native drop is swallowed by VS Code sandbox)
+  window.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if ((window as any).__movePlacementGhost) {
+      const g = initGraph(isDark);
+      if (g) {
+        const p = g.clientToLocal(e.clientX, e.clientY);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (window as any).__movePlacementGhost(p.x, p.y);
+      }
+    }
+  });
+
+  window.addEventListener("mousemove", (e) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const getPlacementData = (window as any).__getPlacementData;
+    if (getPlacementData) {
+      const placementData = getPlacementData();
+      if (placementData && placementData.className) {
+        const g = initGraph(isDark);
+        if (g) {
+          const p = g.clientToLocal(e.clientX, e.clientY);
+          dropComponentGhost(g, p.x, p.y, placementData.className, placementData.iconSvg, isDark);
+          enqueueDiagramAction({
+            type: "addComponent",
+            className: placementData.className,
+            x: p.x,
+            y: p.y,
+          });
+          // Dispatch Escape to clear the placement state inside diagram-core
+          window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+        }
+      }
+    }
+  });
 
   setDiagramOptions({
     container,
@@ -82,7 +124,7 @@ window.addEventListener("message", (event) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if ((window as any).__startPlacement) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (window as any).__startPlacement(message.data);
+      (window as any).__startPlacement(message);
     }
   } else if (message.type === "properties") {
     showProperties({ id: message.componentName, properties: message.properties });
@@ -118,7 +160,7 @@ function showProperties(nodeData: any) {
       </summary>
       <div style="display: flex; flex-direction: column; gap: 12px;">
         <div style="display: flex; flex-direction: row; gap: 24px; align-items: stretch;">
-          <div style="flex-shrink: 0; display: flex; align-items: center; justify-content: center; width: 80px;">
+          <div class="prop-icon-wrapper" style="flex-shrink: 0; display: flex; align-items: center; justify-content: center; width: 80px; height: 80px; overflow: hidden;">
             ${iconContent}
           </div>
           <div style="display: flex; flex-direction: column; gap: 8px; flex: 1; justify-content: center;">

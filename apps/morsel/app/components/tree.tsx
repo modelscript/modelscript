@@ -121,8 +121,9 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
   const handleMouseEnter = () => {
     setHovered(true);
     // Prepare drag image
-    if (!dragImageRef.current && node.iconSvg) {
-      const base64 = btoa(unescape(encodeURIComponent(node.iconSvg)));
+    const iconSvg = node.iconSvg || iconCache.get(compositeName);
+    if (!dragImageRef.current && iconSvg) {
+      const base64 = btoa(unescape(encodeURIComponent(iconSvg)));
       const url = "data:image/svg+xml;base64," + base64;
       const img = new Image();
       img.src = url;
@@ -166,14 +167,19 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
         }}
         draggable
         onDragStart={(e) => {
+          const iconSvg = node.iconSvg || iconCache.get(compositeName);
           e.dataTransfer.setData(
             "application/json",
             JSON.stringify({
               className: compositeName,
               classKind: node.classKind,
-              iconSvg: node.iconSvg ?? null,
+              iconSvg: iconSvg ?? null,
             }),
           );
+          e.dataTransfer.setData("application/vnd.modelscript.classname", compositeName);
+          if (iconSvg) {
+            e.dataTransfer.setData("application/vnd.modelscript.iconsvg", iconSvg);
+          }
           e.dataTransfer.effectAllowed = "copy";
 
           if (dragImageRef.current?.complete) {

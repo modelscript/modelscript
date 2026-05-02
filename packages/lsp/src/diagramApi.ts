@@ -323,19 +323,22 @@ export function processDiagramEditBatch(
         allEdits.push(...computeConnectRemove(docText, classInstance, action.source, action.target));
         needsRender = "immediate";
         break;
-      case "addComponent":
+      case "addComponent": {
+        const baseName = action.className.split(".").pop() || "comp";
+        let uniqueName = baseName + "1";
+        let counter = 1;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const existingNames = new Set(Array.from(classInstance.components).map((c: any) => c.name));
+        while (existingNames.has(uniqueName)) {
+          counter++;
+          uniqueName = baseName + counter;
+        }
         allEdits.push(
-          ...computeComponentInsert(
-            classInstance,
-            action.className,
-            action.className.split(".").pop() || "comp",
-            action.x,
-            action.y,
-            docText,
-          ),
+          ...computeComponentInsert(classInstance, action.className, uniqueName, action.x, action.y, docText),
         );
         needsRender = "immediate";
         break;
+      }
       case "deleteComponents":
         allEdits.push(...computeComponentsDelete(docText, classInstance, action.names));
         needsRender = "immediate";

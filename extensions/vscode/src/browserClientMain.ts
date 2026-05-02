@@ -952,7 +952,7 @@ END-ISO-10303-21;`;
         return;
       }
 
-      // Modelica element handling
+      // Modelica element handling (fallback for text editor only)
       // Only allow models, blocks, and connectors
       if (classKind !== "model" && classKind !== "block" && classKind !== "connector") return;
 

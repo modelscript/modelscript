@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { disposeDiagram, initGraph, renderDiagram, setDiagramOptions } from "@modelscript/diagram-core";
+import {
+  disposeDiagram,
+  dropComponentGhost,
+  initGraph,
+  renderDiagram,
+  setDiagramOptions,
+} from "@modelscript/diagram-core";
 import type { Theme } from "@monaco-editor/react";
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 
@@ -147,16 +153,23 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
         ref={containerRef}
         style={{ width: "100%", height: "100%", outline: "none" }}
         tabIndex={0}
-        onDragOver={(e) => e.preventDefault()}
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "copy";
+        }}
         onDrop={(e) => {
           e.preventDefault();
-          const className = e.dataTransfer.getData("application/vnd.modelscript.className");
-          const iconSvg = e.dataTransfer.getData("application/vnd.modelscript.iconSvg");
+          const className = e.dataTransfer.getData("application/vnd.modelscript.classname");
+          const iconSvg = e.dataTransfer.getData("application/vnd.modelscript.iconsvg");
 
           if (className && containerRef.current) {
             const g = initGraph(props.theme === "vs-dark");
             if (!g) return;
             const p = g.clientToLocal(e.clientX, e.clientY);
+
+            // Render the pop animation placeholder while the action queues
+            dropComponentGhost(g, p.x, p.y, className, iconSvg, props.theme === "vs-dark");
+
             if (props.onDrop) {
               props.onDrop(className, p.x, p.y, iconSvg);
             }

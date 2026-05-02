@@ -142,7 +142,11 @@ export class LibraryTreeItem extends vscode.TreeItem {
 export class LibraryTreeProvider
   implements vscode.TreeDataProvider<LibraryTreeItem>, vscode.TreeDragAndDropController<LibraryTreeItem>
 {
-  public readonly dragMimeTypes = ["application/json", "text/plain"];
+  public readonly dragMimeTypes = [
+    "application/vnd.code.tree.modelscript.libraryTree",
+    "application/json",
+    "text/plain",
+  ];
   public readonly dropMimeTypes = [];
   private _onDidChangeTreeData = new vscode.EventEmitter<LibraryTreeItem | undefined | null>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
@@ -150,7 +154,7 @@ export class LibraryTreeProvider
   private documentUri: string | undefined;
 
   /** Cache of already-fetched SVG icons, keyed by compositeName. */
-  private iconCache = new Map<string, string>();
+  public iconCache = new Map<string, string>();
 
   /** Set of compositeNames currently being fetched (to avoid duplicate requests). */
   private iconFetchPending = new Set<string>();
@@ -199,6 +203,7 @@ export class LibraryTreeProvider
     const payload = JSON.stringify(dragData);
     dataTransfer.set("application/json", new vscode.DataTransferItem(payload));
     dataTransfer.set("text/plain", new vscode.DataTransferItem(payload));
+    dataTransfer.set("application/vnd.code.tree.modelscript.libraryTree", new vscode.DataTransferItem(item));
 
     // Notify diagram webviews to enter placement mode
     this.onDragStart?.(dragData);

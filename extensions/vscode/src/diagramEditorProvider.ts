@@ -17,7 +17,7 @@ const DiagramMethods = {
 export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
   public static readonly viewType = "modelscript.diagram";
 
-  private readonly activeWebviews = new Set<vscode.WebviewPanel>();
+  public readonly activeWebviews = new Set<vscode.WebviewPanel>();
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -65,6 +65,8 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     let diagramRequestNonce = 0;
     const uriString = document.uri.toString();
     let currentDiagramType = "All";
+    let diagramEditQueue = Promise.resolve();
+    let isSpatialEditPending = false;
 
     /** Immediately request fresh diagram data (cancels any pending debounced request). */
     const immediateUpdate = () => {
@@ -103,7 +105,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
 
     // Listen for messages from the webview (diagram mutations)
     webviewPanel.webview.onDidReceiveMessage(
-      async (message) => {
+      (message) => {
         try {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           let actions: any[] | undefined;
@@ -157,6 +159,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
             case "diagramEdit":
               // Direct batch from the webview (already in actions format)
               actions = message.actions;
+              webviewPanel.webview.postMessage({ type: "loading" }); // Show spinner immediately
               break;
             case "changeDiagramType": {
               currentDiagramType = message.diagramType;
@@ -164,67 +167,87 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
               break;
             }
             case "undo": {
-              await vscode.commands.executeCommand("undo");
-              immediateUpdate();
+              vscode.commands.executeCommand("undo").then(() => immediateUpdate());
               break;
             }
             case "redo": {
-              await vscode.commands.executeCommand("redo");
-              immediateUpdate();
+              vscode.commands.executeCommand("redo").then(() => immediateUpdate());
               break;
             }
             case "getProperties": {
               // On-demand property loading: fetch expensive data (parameters, docs, icon)
               // only when the user clicks a component node
-              try {
-                const props = await this.client.sendRequest(DiagramMethods.getComponentProperties, {
+              this.client
+                .sendRequest(DiagramMethods.getComponentProperties, {
                   uri: uriString,
                   componentName: message.componentName,
+                })
+                .then((props) => {
+                  webviewPanel.webview.postMessage({
+                    type: "componentProperties",
+                    componentName: message.componentName,
+                    properties: props,
+                  });
+                })
+                .catch((e) => {
+                  console.error("[diagram] Error fetching component properties:", e);
+                  webviewPanel.webview.postMessage({
+                    type: "componentProperties",
+                    componentName: message.componentName,
+                    properties: null,
+                  });
                 });
-                webviewPanel.webview.postMessage({
-                  type: "componentProperties",
-                  componentName: message.componentName,
-                  properties: props,
-                });
-              } catch (e) {
-                console.error("[diagram] Error fetching component properties:", e);
-                webviewPanel.webview.postMessage({
-                  type: "componentProperties",
-                  componentName: message.componentName,
-                  properties: null,
-                });
-              }
               break;
             }
+            case "error":
+              vscode.window.showInformationMessage(message.message);
+              break;
           }
 
           if (actions) {
+            console.log("[diagramEditorProvider] received actions from webview:", actions);
             diagramRequestNonce++; // Cancel incoming stale diagramData
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const response: any = await this.client.sendRequest(DiagramMethods.applyEdits, {
-              uri: uriString,
-              seq: 1,
-              actions,
-            });
+            diagramEditQueue = diagramEditQueue
+              .then(async () => {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const response: any = await this.client.sendRequest(DiagramMethods.applyEdits, {
+                  uri: uriString,
+                  seq: 1,
+                  actions,
+                });
 
-            if (response && response.edits && response.edits.length > 0) {
-              pendingRenderHint = response.renderHint;
-              await applyTextEdits(uriString, response.edits);
-              // If the document change event didn't fire (e.g. text didn't change despite edits)
-              if (pendingRenderHint !== null) {
-                const hint = pendingRenderHint;
+                console.log("[diagramEditorProvider] applyEdits LSP response:", response);
+
+                if (response && response.edits && response.edits.length > 0) {
+                  pendingRenderHint = response.renderHint;
+                  await applyTextEdits(uriString, response.edits);
+                  // Wait briefly to allow the document change event to fire and propagate to LSP
+                  await new Promise((resolve) => setTimeout(resolve, 50));
+
+                  // If the document change event didn't fire (e.g. text didn't change despite edits)
+                  if (pendingRenderHint !== null) {
+                    const hint = pendingRenderHint;
+                    pendingRenderHint = null;
+                    if (hint === "immediate") immediateUpdate();
+                    else if (hint === "debounced") debouncedUpdate();
+                    else webviewPanel.webview.postMessage({ type: "stopLoading" });
+                  }
+                } else {
+                  // No edits generated or response was null.
+                  // We must trigger an update to clear the loading spinner which was shown when the request was canceled.
+                  if (response?.renderHint === "immediate") immediateUpdate();
+                  else if (response?.renderHint === "debounced") debouncedUpdate();
+                  else webviewPanel.webview.postMessage({ type: "stopLoading" });
+                }
+              })
+              .catch((e) => {
+                console.error("[diagram] Error applying diagram edit:", e);
                 pendingRenderHint = null;
-                if (hint === "immediate") immediateUpdate();
-                else if (hint === "debounced") debouncedUpdate();
-              }
-            } else if (response) {
-              // No edits, but might still need render (SysML layout)
-              if (response.renderHint === "immediate") immediateUpdate();
-              else if (response.renderHint === "debounced") debouncedUpdate();
-            }
+                webviewPanel.webview.postMessage({ type: "stopLoading" }); // Always recover
+              });
           }
         } catch (e) {
-          console.error("[diagram] Error applying diagram edit:", e);
+          console.error("[diagram] Message handler error:", e);
           pendingRenderHint = null;
         }
       },
@@ -240,9 +263,15 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
       pendingRenderHint = null; // Consume the flag
 
       if (hint === "none") {
-        // Spatial edit — no re-render needed
+        // Spatial edit — no re-render needed natively.
+        // We set this flag to skip the subsequent projectTreeChanged event
+        // and hide the spinner once the semantic pipeline has completed validating the edit.
+        isSpatialEditPending = true;
         return;
       }
+
+      isSpatialEditPending = false;
+
       if (hint === "immediate") {
         // Semantic edit — immediate refresh
         immediateUpdate();
@@ -258,6 +287,11 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
 
     // React to semantic pipeline completions from the language server
     const projectTreeListener = this.client.onNotification("modelscript/projectTreeChanged", () => {
+      if (isSpatialEditPending) {
+        isSpatialEditPending = false;
+        webviewPanel.webview.postMessage({ type: "stopLoading" }); // Hide spinner when edit finishes
+        return;
+      }
       debouncedUpdate();
     });
 
@@ -400,6 +434,11 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     }
     #properties-panel.open {
       right: 0;
+    }
+    .prop-icon-wrapper svg, .prop-icon-wrapper img, .prop-icon-wrapper image {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
     }
     /* Modern VS Code UI scrolling */
     #properties-panel > .panel-body {

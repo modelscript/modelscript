@@ -6107,10 +6107,12 @@ connection.onRequest("modelscript/resolveMarkdownVars", (): { values: Record<str
           const eqIdx = sourceText.indexOf("=");
           if (eqIdx !== -1) {
             // Strip trailing semicolons, braces, whitespace
-            const valueText = sourceText
+            let valueText = sourceText
               .substring(eqIdx + 1)
               .replace(/[;}\s]+$/, "")
               .trim();
+            // Strip annotation blocks so spatial edits don't trigger markdown refreshes
+            valueText = valueText.replace(/\s*annotation\s*\([\s\S]*\)$/, "").trim();
             if (valueText) {
               values[qualifiedName] = valueText;
             }

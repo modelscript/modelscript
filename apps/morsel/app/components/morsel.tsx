@@ -171,7 +171,7 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [diagramData, setDiagramData] = useState<any>(null);
   const [selectedTreeClassName, setSelectedTreeClassName] = useState<string | null>(null);
   const [selectedModelIndex, setSelectedModelIndex] = useState(0);
-  const isDiagramUpdate = useRef(false);
+  const isSpatialEditPending = useRef(false);
   const diagramEditorRef = useRef<DiagramEditorHandle>(null);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [loadingMessage, setLoadingMessage] = useState("Loading…");
@@ -209,6 +209,7 @@ export default function MorselEditor(props: MorselEditorProps) {
 
   const pendingDiagramActionsRef = useRef<any[]>([]);
   const diagramActionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const diagramEditQueueRef = useRef<Promise<void>>(Promise.resolve());
 
   const enqueueDiagramAction = useCallback((action: any) => {
     if (!editorRef.current) return;
@@ -216,18 +217,31 @@ export default function MorselEditor(props: MorselEditorProps) {
     if (diagramActionTimerRef.current) clearTimeout(diagramActionTimerRef.current);
 
     const isSpatial = ["move", "resize", "rotate", "moveEdge"].includes(action.type);
-    const delay = isSpatial ? 200 : 0;
+    if (isSpatial) setIsDiagramLoading(true);
+    const delay = isSpatial ? 10 : 0; // reduced delay since diagram-core batches correctly now
 
-    diagramActionTimerRef.current = setTimeout(async () => {
+    diagramActionTimerRef.current = setTimeout(() => {
       const actions = pendingDiagramActionsRef.current;
       pendingDiagramActionsRef.current = [];
       diagramActionTimerRef.current = null;
       if (actions.length > 0) {
-        isDiagramUpdate.current = true;
-        const response = await applyDiagramEdits(DOCUMENT_URI, actions, 1);
-        if (response && response.edits && response.edits.length > 0 && editorRef.current) {
-          applyLspEdits(editorRef.current, response.edits, actions[0].type);
-        }
+        diagramEditQueueRef.current = diagramEditQueueRef.current
+          .then(async () => {
+            const response = await applyDiagramEdits(DOCUMENT_URI, actions, 1);
+            if (response && response.edits && response.edits.length > 0 && editorRef.current) {
+              if (response.renderHint === "none") {
+                isSpatialEditPending.current = true;
+              } else {
+                isSpatialEditPending.current = false;
+              }
+              applyLspEdits(editorRef.current, response.edits, actions[0].type);
+              // Yield to event loop to ensure didChange is sent to LSP before next edit is computed
+              await new Promise((resolve) => setTimeout(resolve, 50));
+            }
+          })
+          .catch((err) => {
+            console.error("Failed to apply diagram edit batch:", err);
+          });
       }
     }, delay);
   }, []);
@@ -415,7 +429,12 @@ export default function MorselEditor(props: MorselEditorProps) {
       try {
         const conn = await startLsp();
         conn.onNotification("modelscript/projectTreeChanged", () => {
-          setContextVersion((v) => v + 1);
+          if (isSpatialEditPending.current) {
+            isSpatialEditPending.current = false;
+            setIsDiagramLoading(false);
+          } else {
+            setContextVersion((v) => v + 1);
+          }
         });
       } catch (e) {
         console.error("Failed to start LSP:", e);
@@ -1163,7 +1182,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                             enqueueDiagramAction({ type: "deleteComponents", names });
                           }}
                           onUndo={() => {
-                            isDiagramUpdate.current = true;
+                            isSpatialEditPending.current = false;
                             editorRef.current?.focus();
                             const prev = editorRef.current?.getValue();
                             editorRef.current?.trigger("diagram", "undo", null);
@@ -1172,7 +1191,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                             }
                           }}
                           onRedo={() => {
-                            isDiagramUpdate.current = true;
+                            isSpatialEditPending.current = false;
                             editorRef.current?.focus();
                             const prev = editorRef.current?.getValue();
                             editorRef.current?.trigger("diagram", "redo", null);

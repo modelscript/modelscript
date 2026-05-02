@@ -153,6 +153,7 @@ export function initGraph(isDark: boolean): Graph {
       modifiers: ["ctrl", "meta", "shift"],
       multipleSelectionModifiers: ["ctrl", "meta", "shift"],
       pointerEvents: "none",
+      filter: (cell) => cell.id !== "__diagram_background__",
     }),
   );
 
@@ -202,6 +203,116 @@ export function initGraph(isDark: boolean): Graph {
     });
   });
 
+  // ── Placement Mode (Drag and Drop in VS Code) ──
+  let placementData: { className: string; classKind: string; iconSvg?: string } | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let placementGhost: any = null;
+
+  const startPlacement = (data: { className: string; classKind: string; iconSvg?: string }) => {
+    placementData = data;
+    const center = g.pageToLocal(window.innerWidth / 2, window.innerHeight / 2);
+    const strokeColor = isDark ? "#cccccc" : "#333333";
+    const fillColor = isDark ? "rgba(204, 204, 204, 0.1)" : "rgba(51, 51, 51, 0.1)";
+
+    if (data.iconSvg) {
+      placementGhost = g.addNode({
+        id: "placement-ghost",
+        x: center.x - 10,
+        y: center.y - 10,
+        width: 20,
+        height: 20,
+        markup: [
+          {
+            tagName: "image",
+            selector: "image",
+            attrs: {
+              width: "100%",
+              height: "100%",
+              preserveAspectRatio: "xMidYMid meet",
+              style: "pointer-events: none;",
+            },
+          },
+        ],
+        attrs: {
+          image: {
+            "xlink:href": `data:image/svg+xml;utf8,${encodeURIComponent(data.iconSvg)}`,
+          },
+        },
+      });
+    } else {
+      placementGhost = g.addNode({
+        id: "placement-ghost",
+        shape: "rect",
+        x: center.x - 10,
+        y: center.y - 10,
+        width: 20,
+        height: 20,
+        attrs: {
+          body: {
+            fill: fillColor,
+            stroke: strokeColor,
+            strokeDasharray: "5 5",
+            strokeWidth: 2,
+            opacity: 0.5,
+            pointerEvents: "none",
+          },
+          text: {
+            text: data.className.split(".").pop(),
+            fill: strokeColor,
+            pointerEvents: "none",
+          },
+        },
+      });
+    }
+  };
+
+  const handlePointerMove = (x: number, y: number) => {
+    if (placementGhost) {
+      placementGhost.position(x - 10, y - 10);
+    }
+  };
+  g.on("blank:pointermove", ({ x, y }: { x: number; y: number }) => handlePointerMove(x, y));
+  g.on("cell:pointermove", ({ x, y }: { x: number; y: number }) => handlePointerMove(x, y));
+
+  const handlePlacementClick = (x: number, y: number) => {
+    console.log("[diagram-core] handlePlacementClick", { x, y, placementData });
+    if (placementData) {
+      console.log("[diagram-core] enqueuing diagram action from handlePlacementClick");
+      enqueueDiagramAction({ type: "addComponent", className: placementData.className, x, y });
+      if (placementGhost) {
+        placementGhost.attr("image/style", "opacity: 0.5; pointer-events: none;");
+        if (placementGhost.shape === "rect") {
+          placementGhost.attr("body/strokeDasharray", null);
+          placementGhost.attr("body/opacity", 0.5);
+        }
+        placementGhost = null; // Detach from mouse movement
+      }
+      placementData = null;
+    }
+  };
+  g.on("blank:click", ({ x, y }: { x: number; y: number }) => handlePlacementClick(x, y));
+  g.on("cell:click", ({ x, y }: { x: number; y: number }) => handlePlacementClick(x, y));
+
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && placementData) {
+      if (placementGhost) {
+        placementGhost.remove();
+        placementGhost = null;
+      }
+      placementData = null;
+    }
+  });
+
+  // Expose for webview to invoke
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (window as any).__startPlacement = startPlacement;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (window as any).__movePlacementGhost = handlePointerMove;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (window as any).__handlePlacementClick = handlePlacementClick;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (window as any).__getPlacementData = () => placementData;
+
   // ── Diagram-to-code event handlers (matching morsel's diagram.tsx) ──
 
   // Node move: debounced
@@ -209,7 +320,7 @@ export function initGraph(isDark: boolean): Graph {
   let moveTimeout: ReturnType<typeof setTimeout> | null = null;
   let justResized = false;
 
-  g.on("node:change:position", ({ node }) => {
+  g.on("node:moved", ({ node }) => {
     if (node.id === "__diagram_background__") return;
 
     // Deselect edges when moving a node to avoid stale rubberbands
@@ -280,7 +391,7 @@ export function initGraph(isDark: boolean): Graph {
       }
       changedNodes.clear();
       moveTimeout = null;
-    }, 200);
+    }, 5);
   });
 
   // Node rotated
@@ -558,8 +669,22 @@ export function renderDiagram(data: /* eslint-disable-line @typescript-eslint/no
   }
 
   // Add diagram background if present
-  if (data.diagramBackground && data.coordinateSystem) {
+  if (data.coordinateSystem) {
     const cs = data.coordinateSystem;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const children: any[] = [
+      {
+        tagName: "rect",
+        attrs: {
+          style: "fill: transparent; stroke: #999; stroke-width: 1px; vector-effect: non-scaling-stroke;",
+          width: cs.width,
+          height: cs.height,
+        },
+      },
+    ];
+    if (data.diagramBackground) {
+      children.push(data.diagramBackground);
+    }
     nodes.push({
       id: "__diagram_background__",
       x: cs.x,
@@ -569,17 +694,7 @@ export function renderDiagram(data: /* eslint-disable-line @typescript-eslint/no
       zIndex: -1,
       markup: {
         tagName: "svg",
-        children: [
-          {
-            tagName: "rect",
-            attrs: {
-              style: "fill: transparent; stroke: none",
-              width: cs.width,
-              height: cs.height,
-            },
-          },
-          data.diagramBackground,
-        ],
+        children,
         attrs: {
           preserveAspectRatio: "none",
           width: cs.width,
@@ -590,61 +705,48 @@ export function renderDiagram(data: /* eslint-disable-line @typescript-eslint/no
     });
   }
 
-  // Render to graph
+  // Add axes node
+  if (data.coordinateSystem) {
+    nodes.push({
+      id: "__diagram_axes__",
+      x: 0,
+      y: 0,
+      width: 0,
+      height: 0,
+      zIndex: -2,
+      markup: {
+        tagName: "g",
+        children: [
+          {
+            tagName: "line",
+            attrs: {
+              x1: "-100000",
+              y1: "0",
+              x2: "100000",
+              y2: "0",
+              stroke: "#999",
+              "stroke-width": "1",
+              "vector-effect": "non-scaling-stroke",
+            },
+          },
+          {
+            tagName: "line",
+            attrs: {
+              x1: "0",
+              y1: "-100000",
+              x2: "0",
+              y2: "100000",
+              stroke: "#999",
+              "stroke-width": "1",
+              "vector-effect": "non-scaling-stroke",
+            },
+          },
+        ],
+      },
+    });
+  }
+
   const cs = data.coordinateSystem;
-
-  let xAxis = document.getElementById("x-axis") as unknown as SVGLineElement | null;
-  if (!xAxis) {
-    xAxis = document.createElementNS("http://www.w3.org/2000/svg", "line");
-    xAxis.setAttribute("id", "x-axis");
-    xAxis.setAttribute("stroke", "#999");
-    xAxis.setAttribute("stroke-width", "1");
-    xAxis.setAttribute("vector-effect", "non-scaling-stroke");
-    xAxis.setAttribute("z-index", "2");
-    g.view.viewport.insertBefore(xAxis, g.view.viewport.firstChild);
-  }
-  if (xAxis) {
-    xAxis.setAttribute("x1", "-100000");
-    xAxis.setAttribute("y1", "0");
-    xAxis.setAttribute("x2", "100000");
-    xAxis.setAttribute("y2", "0");
-  }
-
-  let yAxis = document.getElementById("y-axis") as unknown as SVGLineElement | null;
-  if (!yAxis) {
-    yAxis = document.createElementNS("http://www.w3.org/2000/svg", "line");
-    yAxis.setAttribute("id", "y-axis");
-    yAxis.setAttribute("stroke", "#999");
-    yAxis.setAttribute("stroke-width", "1");
-    yAxis.setAttribute("vector-effect", "non-scaling-stroke");
-    yAxis.setAttribute("z-index", "2");
-    g.view.viewport.insertBefore(yAxis, g.view.viewport.firstChild);
-  }
-  if (yAxis) {
-    yAxis.setAttribute("x1", "0");
-    yAxis.setAttribute("y1", "-100000");
-    yAxis.setAttribute("x2", "0");
-    yAxis.setAttribute("y2", "100000");
-  }
-
-  let coordinateSystem = document.getElementById("coordinateSystem") as unknown as SVGRectElement | null;
-  if (!coordinateSystem) {
-    coordinateSystem = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-    coordinateSystem.setAttribute("id", "coordinateSystem");
-    coordinateSystem.setAttribute("fill", "none");
-    coordinateSystem.setAttribute("stroke", "#999");
-    coordinateSystem.setAttribute("stroke-width", "1");
-    coordinateSystem.setAttribute("vector-effect", "non-scaling-stroke");
-    coordinateSystem.setAttribute("z-index", "1");
-    g.view.viewport.insertBefore(coordinateSystem, g.view.viewport.firstChild);
-  }
-  if (cs && coordinateSystem) {
-    coordinateSystem.setAttribute("x", String(cs.x));
-    coordinateSystem.setAttribute("y", String(cs.y));
-    coordinateSystem.setAttribute("width", String(cs.width));
-    coordinateSystem.setAttribute("height", String(cs.height));
-  }
-
   const isFirstRender = g.getCells().length === 0;
 
   // Clear property cache on re-render (model state may have changed)
@@ -962,6 +1064,11 @@ window.addEventListener("message", (event: MessageEvent) => {
       if (spinner) spinner.style.display = "block";
       break;
     }
+    case "stopLoading": {
+      const spinner = document.getElementById("spinner");
+      if (spinner) spinner.style.display = "none";
+      break;
+    }
     case "diagramData": {
       if (isMouseDown) {
         pendingDiagramData = { data: message.data, isDark: message.isDark ?? true };
@@ -1200,4 +1307,61 @@ export function disposeDiagram() {
     graph = null;
   }
   currentOptions = null;
+}
+
+export function dropComponentGhost(
+  g: Graph,
+  x: number,
+  y: number,
+  className: string,
+  iconSvg?: string | null,
+  isDark?: boolean,
+) {
+  const strokeColor = isDark ? "#cccccc" : "#333333";
+  const fillColor = isDark ? "rgba(204, 204, 204, 0.1)" : "rgba(51, 51, 51, 0.1)";
+
+  // Remove any previous placeholder
+  const existing = g.getCellById("__drop_placeholder__");
+  if (existing) g.removeCell(existing);
+
+  if (iconSvg) {
+    g.addNode({
+      id: "__drop_placeholder__",
+      shape: "image",
+      x: x - 10,
+      y: y - 10,
+      width: 20,
+      height: 20,
+      imageUrl: `data:image/svg+xml;utf8,${encodeURIComponent(iconSvg)}`,
+      attrs: {
+        image: {
+          preserveAspectRatio: "xMidYMid meet",
+          style: "opacity: 0.5; pointer-events: none;",
+        },
+      },
+    });
+  } else {
+    g.addNode({
+      id: "__drop_placeholder__",
+      shape: "rect",
+      x: x - 10,
+      y: y - 10,
+      width: 20,
+      height: 20,
+      attrs: {
+        body: {
+          fill: fillColor,
+          stroke: strokeColor,
+          strokeWidth: 2,
+          opacity: 0.5,
+          pointerEvents: "none",
+        },
+        text: {
+          text: className.split(".").pop(),
+          fill: strokeColor,
+          pointerEvents: "none",
+        },
+      },
+    });
+  }
 }

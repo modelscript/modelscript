@@ -595,10 +595,12 @@ function renderGraphicItemX6(
 
 function renderBitmapX6(graphicItem: IBitmap, defs: X6Markup[]): X6Markup {
   const p1 = convertPoint(graphicItem.extent?.[0], [-100, -100]);
+  const href = graphicItem.imageSource ? `data:image/png;base64,${graphicItem.imageSource}` : graphicItem.fileName;
+
   const shape: X6Markup = {
     tagName: "image",
     attrs: {
-      href: graphicItem.fileName,
+      href,
       width: computeWidth(graphicItem.extent),
       height: computeHeight(graphicItem.extent),
       x: p1[0],
@@ -1247,7 +1249,15 @@ export function getClassIconSvg(cls: ModelicaClassInstance, size = 16, includePo
         }
       }
     }
-    return x6MarkupToSvg(markup);
+    let svgString = x6MarkupToSvg(markup);
+
+    // Ensure all defs IDs are uniquely postfixed for this specific standalone icon rendering
+    // to prevent Chromium SVG cache collisions across different image tags
+    const uniqueSuffix = "-" + Math.random().toString(36).substring(2, 8);
+    svgString = svgString.replace(/id="(gradient-[^"]+|pattern-[^"]+)"/g, `id="$1${uniqueSuffix}"`);
+    svgString = svgString.replace(/url\(#(gradient-[^)]+|pattern-[^)]+)\)/g, `url(#$1${uniqueSuffix})`);
+
+    return svgString;
   } catch {
     // ignore icon rendering errors
   }
