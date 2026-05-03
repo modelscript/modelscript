@@ -1825,7 +1825,8 @@ export default language({
             while (current && current.type !== "ComponentDeclaration") {
               current = current.parent;
             }
-            const modNode = current?.childForFieldName("modification");
+            const declNode = current?.childForFieldName("declaration");
+            const modNode = declNode?.childForFieldName("modification");
             if (!modNode) return null;
             return parseModArgsFromCst(modNode) as ModelicaModArgs;
           },
@@ -2000,9 +2001,20 @@ export default language({
             // Outer modification (from enclosing class's instantiate)
             const outerMod = specArgs?.data ?? null;
 
+            // Inline modification from the component's CST declaration
+            // e.g., `SineVoltage Vb(V=10, f=50)` → inline mod is (V=10, f=50)
+            // This is needed because the instantiate query of the parent class
+            // only propagates modifications from the parent's own outer mod,
+            // not from inline declarations in the source code.
+            const inlineMod = db.query<ModelicaModArgs | null>("effectiveModification", self.id);
+
+            // Merge: outer mod (from instantiation site) takes precedence over
+            // inline mod (from declaration site)
+            const effectiveMod = mergeModArgs(outerMod, inlineMod);
+
             // If there's a modification, specialize the type class
-            if (outerMod && (outerMod.args.length > 0 || outerMod.bindingExpression)) {
-              return db.specialize(typeEntry.id, modelicaMod(outerMod));
+            if (effectiveMod && (effectiveMod.args.length > 0 || effectiveMod.bindingExpression)) {
+              return db.specialize(typeEntry.id, modelicaMod(effectiveMod));
             }
 
             return typeEntry.id;

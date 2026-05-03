@@ -33,11 +33,11 @@ export function polyfillAccept(expr: any): any {
     return {
       value: expr,
       accept: (visitor: any, args: any) => {
-        if (Number.isInteger(expr) && typeof visitor.visitIntegerLiteral === "function") {
-          return visitor.visitIntegerLiteral({ value: expr }, args);
+        if (Number.isInteger(expr) && typeof visitor.visitUnsignedIntegerLiteral === "function") {
+          return visitor.visitUnsignedIntegerLiteral({ value: expr }, args);
         }
-        if (typeof visitor.visitRealLiteral === "function") {
-          return visitor.visitRealLiteral({ value: expr }, args);
+        if (typeof visitor.visitUnsignedRealLiteral === "function") {
+          return visitor.visitUnsignedRealLiteral({ value: expr }, args);
         }
         return null;
       },
@@ -83,11 +83,11 @@ export function polyfillAccept(expr: any): any {
           }
           const num = Number(text);
           if (!isNaN(num)) {
-            if (Number.isInteger(num) && typeof visitor.visitIntegerLiteral === "function") {
-              return visitor.visitIntegerLiteral({ value: num }, args);
+            if (Number.isInteger(num) && typeof visitor.visitUnsignedIntegerLiteral === "function") {
+              return visitor.visitUnsignedIntegerLiteral({ value: num }, args);
             }
-            if (typeof visitor.visitRealLiteral === "function") {
-              return visitor.visitRealLiteral({ value: num }, args);
+            if (typeof visitor.visitUnsignedRealLiteral === "function") {
+              return visitor.visitUnsignedRealLiteral({ value: num }, args);
             }
           }
           if (text.startsWith('"') && text.endsWith('"')) {
@@ -104,10 +104,10 @@ export function polyfillAccept(expr: any): any {
         return {
           ...expr,
           accept: (visitor: any, args: any) => {
-            if (type === "IntegerLiteral" && typeof visitor.visitIntegerLiteral === "function")
-              return visitor.visitIntegerLiteral(expr, args);
-            if (type === "RealLiteral" && typeof visitor.visitRealLiteral === "function")
-              return visitor.visitRealLiteral(expr, args);
+            if (type === "IntegerLiteral" && typeof visitor.visitUnsignedIntegerLiteral === "function")
+              return visitor.visitUnsignedIntegerLiteral(expr, args);
+            if (type === "RealLiteral" && typeof visitor.visitUnsignedRealLiteral === "function")
+              return visitor.visitUnsignedRealLiteral(expr, args);
             if (type === "BooleanLiteral" && typeof visitor.visitBooleanLiteral === "function")
               return visitor.visitBooleanLiteral(expr, args);
             if (type === "StringLiteral" && typeof visitor.visitStringLiteral === "function")
