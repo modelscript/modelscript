@@ -12,6 +12,7 @@ interface SimulationData {
   t: number[];
   y: number[][];
   states: string[];
+  sweepResults?: { value: number; y: number[][] }[];
 }
 
 const COLORS = [
@@ -142,7 +143,7 @@ function calculateDefaultBounds(): { tMin: number; tMax: number; yMin: number; y
     const yPad = (yMax - yMin) * 0.05;
     return { tMin, tMax, yMin: yMin - yPad, yMax: yMax + yPad };
   } else if (!isLiveMode && currentData && currentData.t.length > 0) {
-    const { t, y, states } = currentData;
+    const { t, y, states, sweepResults } = currentData;
     const tMin = t[0];
     const tMax = t[t.length - 1];
     let yMin = Infinity;
@@ -150,10 +151,20 @@ function calculateDefaultBounds(): { tMin: number; tMax: number; yMin: number; y
     for (let vi = 0; vi < states.length; vi++) {
       if (hiddenVars.has(states[vi])) continue;
       for (let i = 0; i < t.length; i++) {
-        const v = y[i]?.[vi];
-        if (v !== undefined && isFinite(v)) {
-          if (v < yMin) yMin = v;
-          if (v > yMax) yMax = v;
+        if (sweepResults) {
+          for (const sweepResult of sweepResults) {
+            const v = sweepResult.y[i]?.[vi];
+            if (v !== undefined && isFinite(v)) {
+              if (v < yMin) yMin = v;
+              if (v > yMax) yMax = v;
+            }
+          }
+        } else {
+          const v = y[i]?.[vi];
+          if (v !== undefined && isFinite(v)) {
+            if (v < yMin) yMin = v;
+            if (v > yMax) yMax = v;
+          }
         }
       }
     }
@@ -1116,40 +1127,44 @@ function draw() {
   ctx.clip();
 
   // Draw lines
+  const { sweepResults } = currentData;
+  const sweepCount = sweepResults ? sweepResults.length : 1;
   for (let vi = 0; vi < states.length; vi++) {
     if (hiddenVars.has(states[vi])) continue;
 
-    ctx.strokeStyle = COLORS[vi % COLORS.length];
-    ctx.lineWidth = 1.5;
-    ctx.lineJoin = "round";
-    ctx.beginPath();
+    for (let si = 0; si < sweepCount; si++) {
+      ctx.strokeStyle = COLORS[(vi * sweepCount + si) % COLORS.length];
+      ctx.lineWidth = 1.5;
+      ctx.lineJoin = "round";
+      ctx.beginPath();
 
-    const pts: { x: number; y: number }[] = [];
-    for (let i = 0; i < t.length; i++) {
-      const val = y[i]?.[vi];
-      if (val === undefined || !isFinite(val)) continue;
-      pts.push({ x: xScale(t[i]), y: yScale(val) });
-    }
-
-    if (currentInterpolation === "smooth") {
-      drawSmoothSpline(ctx, pts);
-    } else {
-      let prevPy = 0;
-      let started = false;
-      for (const pt of pts) {
-        if (!started) {
-          ctx.moveTo(pt.x, pt.y);
-          started = true;
-        } else {
-          if (currentInterpolation === "step-after") {
-            ctx.lineTo(pt.x, prevPy);
-          }
-          ctx.lineTo(pt.x, pt.y);
-        }
-        prevPy = pt.y;
+      const pts: { x: number; y: number }[] = [];
+      for (let i = 0; i < t.length; i++) {
+        const val = sweepResults ? sweepResults[si].y[i]?.[vi] : y[i]?.[vi];
+        if (val === undefined || !isFinite(val)) continue;
+        pts.push({ x: xScale(t[i]), y: yScale(val) });
       }
+
+      if (currentInterpolation === "smooth") {
+        drawSmoothSpline(ctx, pts);
+      } else {
+        let prevPy = 0;
+        let started = false;
+        for (const pt of pts) {
+          if (!started) {
+            ctx.moveTo(pt.x, pt.y);
+            started = true;
+          } else {
+            if (currentInterpolation === "step-after") {
+              ctx.lineTo(pt.x, prevPy);
+            }
+            ctx.lineTo(pt.x, pt.y);
+          }
+          prevPy = pt.y;
+        }
+      }
+      ctx.stroke();
     }
-    ctx.stroke();
   }
 
   ctx.restore();
@@ -1225,12 +1240,19 @@ canvas.addEventListener("mousemove", (e) => {
   }
 
   let html = `<div style="margin-bottom:4px;font-weight:600">t = ${t[closest].toFixed(4)}s</div>`;
+  const { sweepResults } = currentData;
+  const sweepCount = sweepResults ? sweepResults.length : 1;
+
   for (let vi = 0; vi < states.length; vi++) {
     if (hiddenVars.has(states[vi])) continue;
-    const val = y[closest]?.[vi];
-    const color = COLORS[vi % COLORS.length];
-    const safeName = escapeHtmlSim(states[vi]);
-    html += `<div><span style="color:${color}">●</span> ${safeName}: ${val !== undefined ? val.toFixed(6) : "N/A"}</div>`;
+
+    for (let si = 0; si < sweepCount; si++) {
+      const val = sweepResults ? sweepResults[si].y[closest]?.[vi] : y[closest]?.[vi];
+      const color = COLORS[(vi * sweepCount + si) % COLORS.length];
+      const baseName = escapeHtmlSim(states[vi]);
+      const safeName = sweepResults ? `${baseName} (${sweepResults[si].value})` : baseName;
+      html += `<div><span style="color:${color}">●</span> ${safeName}: ${val !== undefined ? val.toFixed(6) : "N/A"}</div>`;
+    }
   }
 
   tooltipEl.innerHTML = html;

@@ -88,6 +88,7 @@ export interface SimulateParams {
   solver?: string;
   format?: string;
   parameterOverrides?: Record<string, number>;
+  sweepConfig?: { parameterName: string; start: number; end: number; steps: number };
 }
 
 export interface SimulateResult {
@@ -106,6 +107,7 @@ export interface SimulateResult {
   }[];
   experiment?: { startTime?: number; stopTime?: number; interval?: number; tolerance?: number };
   error?: string;
+  sweepResults?: { value: number; y: number[][] }[];
 }
 
 export interface TreeNodeInfo {

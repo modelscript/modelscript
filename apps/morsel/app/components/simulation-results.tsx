@@ -19,6 +19,8 @@ export const SIMULATION_COLORS = [
 interface SimulationResultsProps {
   jobId?: string | null;
   localData?: Record<string, number | string>[] | null;
+  sweepResults?: { value: number; y: number[][] }[] | null;
+  simulationVariables?: string[];
   error?: string | null;
   selectedVariables: string[];
   onVariablesLoaded: (variables: string[]) => void;
@@ -28,6 +30,8 @@ interface SimulationResultsProps {
 export function SimulationResults({
   jobId,
   localData,
+  sweepResults,
+  simulationVariables,
   error: externalError,
   selectedVariables,
   onVariablesLoaded,
@@ -55,7 +59,7 @@ export function SimulationResults({
           if (localData.length > 0) {
             const headers = Object.keys(localData[0]);
             const timeCol = headers[0]; // Assuming first column is time
-            const vars = headers.filter((h) => h !== timeCol);
+            const vars = simulationVariables ?? headers.filter((h) => h !== timeCol);
 
             onVariablesLoaded(vars);
 
@@ -216,18 +220,39 @@ export function SimulationResults({
                 }}
               />
               {/* <Legend verticalAlign="top" height={36} /> -- Disabled to prevent Recharts infinite update loop crash */}
-              {selectedVariables.map((v, i) => (
-                <Line
-                  key={v}
-                  type="linear"
-                  dataKey={v}
-                  stroke={SIMULATION_COLORS[i % SIMULATION_COLORS.length]}
-                  strokeWidth={1}
-                  dot={false}
-                  activeDot={{ r: 4 }}
-                  isAnimationActive={false}
-                />
-              ))}
+              {selectedVariables.flatMap((v, i) => {
+                if (sweepResults && sweepResults.length > 0) {
+                  return sweepResults.map((sweep, j) => {
+                    const key = `${v} (${sweep.value})`;
+                    const colorIdx = (i * sweepResults.length + j) % SIMULATION_COLORS.length;
+                    return (
+                      <Line
+                        key={key}
+                        type="linear"
+                        dataKey={key}
+                        name={key}
+                        stroke={SIMULATION_COLORS[colorIdx]}
+                        strokeWidth={1}
+                        dot={false}
+                        activeDot={{ r: 4 }}
+                        isAnimationActive={false}
+                      />
+                    );
+                  });
+                }
+                return (
+                  <Line
+                    key={v}
+                    type="linear"
+                    dataKey={v}
+                    stroke={SIMULATION_COLORS[i % SIMULATION_COLORS.length]}
+                    strokeWidth={1}
+                    dot={false}
+                    activeDot={{ r: 4 }}
+                    isAnimationActive={false}
+                  />
+                );
+              })}
             </LineChart>
           </ResponsiveContainer>
         </div>

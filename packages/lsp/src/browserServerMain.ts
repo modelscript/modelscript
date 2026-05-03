@@ -3362,6 +3362,7 @@ connection.onRequest(
     solver?: string;
     format?: string;
     parameterOverrides?: Record<string, number>;
+    sweepConfig?: { parameterName: string; start: number; end: number; steps: number };
   }): Promise<{
     t: number[];
     y: number[][];
@@ -3378,6 +3379,7 @@ connection.onRequest(
     }[];
     experiment?: { startTime?: number; stopTime?: number; interval?: number; tolerance?: number };
     error?: string;
+    sweepResults?: { value: number; y: number[][] }[];
   }> => {
     connection.console.info(`[simulate] Requested simulation for URI: ${params.uri}`);
     connection.console.info(`[simulate] documentInstances has ${documentInstances.size} entries.`);
@@ -3486,6 +3488,41 @@ connection.onRequest(
       const step = params.interval ?? exp.interval ?? (stopTime - startTime) / 500;
 
       connection.console.info(`[simulate] startTime=${startTime}, stopTime=${stopTime}, step=${step}`);
+
+      if (params.sweepConfig) {
+        const { parameterName, start, end, steps } = params.sweepConfig;
+        const sweepResults: { value: number; y: number[][] }[] = [];
+        let baseT: number[] = [];
+
+        for (let i = 0; i < steps; i++) {
+          const val = steps > 1 ? start + i * ((end - start) / (steps - 1)) : start;
+          const overrides = params.parameterOverrides ? new Map(Object.entries(params.parameterOverrides)) : new Map();
+          overrides.set(parameterName, val);
+
+          // Force equidistant output to ensure the time vectors align perfectly
+          const result = simulator.simulate(startTime, stopTime, step, {
+            solver: (params.solver ?? "dopri5") as "rk4" | "dopri5" | "bdf" | "auto",
+            equidistantOutput: true,
+            parameterOverrides: overrides,
+          });
+
+          if (i === 0) {
+            baseT = result.t;
+          }
+          sweepResults.push({ value: val, y: result.y });
+        }
+
+        return {
+          t: baseT,
+          y: sweepResults[0]?.y ?? [],
+          states: simulator.dae.variables
+            .filter((v) => simulator.stateVars.has(v.name) || simulator.algebraicVars.has(v.name))
+            .map((v) => v.name),
+          parameters: simulator.getParameterInfo(),
+          experiment: exp,
+          sweepResults,
+        };
+      }
 
       const result = simulator.simulate(startTime, stopTime, step, {
         solver: (params.solver ?? "dopri5") as "rk4" | "dopri5" | "bdf" | "auto",

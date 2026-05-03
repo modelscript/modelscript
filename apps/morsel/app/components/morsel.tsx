@@ -65,6 +65,7 @@ import AddLibraryModal from "./add-library-modal";
 import { type CadComponent } from "./cad-viewer";
 import { AnimationController } from "./cad-viewer/animation-controller";
 import { extractCadComponents } from "./cad-viewer/parse-cad-annotations";
+import { type SweepState } from "./simulation-parameters";
 const CodeEditor = React.lazy(() => import("./code"));
 const DiagramEditor = React.lazy(() => import("./diagram"));
 const SimulationResults = React.lazy(() =>
@@ -161,6 +162,8 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [selectedSimulationVariables, setSelectedSimulationVariables] = useState<string[]>([]);
   const [simulationParameters, setSimulationParameters] = useState<ParameterInfo[]>([]);
   const [parameterOverrides, setParameterOverrides] = useState<Map<string, number>>(new Map());
+  const [sweepState, setSweepState] = useState<SweepState | null>(null);
+  const [sweepResults, setSweepResults] = useState<{ value: number; y: number[][] }[] | null>(null);
   const cachedSimulatorRef = useRef<any | null>(null);
   const [lastLoadedContent, setLastLoadedContent] = useState<string>("");
 
@@ -345,6 +348,7 @@ export default function MorselEditor(props: MorselEditorProps) {
         const result = await simulate(DOCUMENT_URI, {
           className: selectedTreeClassName,
           parameterOverrides: overrideObj,
+          sweepConfig: sweepState ?? undefined,
           startTime: experimentOverrides.startTime,
           stopTime: experimentOverrides.stopTime,
           interval: experimentOverrides.interval,
@@ -353,15 +357,30 @@ export default function MorselEditor(props: MorselEditorProps) {
         if (result.error) throw new Error(result.error);
 
         const states = result.states ?? [];
-        const chartData = result.t.map((t: number, i: number) => {
-          const row: Record<string, number | string> = { time: t };
-          states.forEach((state: string, vIndex: number) => {
-            row[state] = result.y[i]?.[vIndex] ?? 0;
+        if (result.sweepResults) {
+          setSweepResults(result.sweepResults);
+          setLocalSimulationData(
+            result.t.map((t: number, i: number) => {
+              const rowObj: Record<string, number | string> = { time: t };
+              result.sweepResults!.forEach((sweep) => {
+                states.forEach((state: string, vIndex: number) => {
+                  rowObj[`${state} (${sweep.value})`] = sweep.y[i]?.[vIndex] ?? 0;
+                });
+              });
+              return rowObj;
+            }),
+          );
+        } else {
+          setSweepResults(null);
+          const chartData = result.t.map((t: number, i: number) => {
+            const row: Record<string, number | string> = { time: t };
+            states.forEach((state: string, vIndex: number) => {
+              row[state] = result.y[i]?.[vIndex] ?? 0;
+            });
+            return row;
           });
-          return row;
-        });
-
-        setLocalSimulationData(chartData);
+          setLocalSimulationData(chartData);
+        }
       } catch (e) {
         if ((e as Error).name === "AbortError" || (e as Error).message === "Simulation aborted") return;
         console.error("Re-simulation failed:", e);
@@ -370,7 +389,7 @@ export default function MorselEditor(props: MorselEditorProps) {
     return () => {
       clearTimeout(timer);
     };
-  }, [parameterOverrides, showResultsView, experimentOverrides, selectedTreeClassName]);
+  }, [parameterOverrides, sweepState, showResultsView, experimentOverrides, selectedTreeClassName]);
 
   useEffect(() => {
     const saved = localStorage.getItem("recentModels");
@@ -644,6 +663,7 @@ export default function MorselEditor(props: MorselEditorProps) {
       const result = await simulate(DOCUMENT_URI, {
         className: selectedTreeClassName ?? undefined,
         parameterOverrides: overrideObj,
+        sweepConfig: sweepState ?? undefined,
         startTime: experimentOverrides.startTime,
         stopTime: experimentOverrides.stopTime,
         interval: experimentOverrides.interval,
@@ -658,15 +678,30 @@ export default function MorselEditor(props: MorselEditorProps) {
       const states = result.states ?? [];
       setSimulationVariables(states);
 
-      const chartData = result.t.map((t: number, i: number) => {
-        const row: Record<string, number | string> = { time: t };
-        states.forEach((state: string, vIndex: number) => {
-          row[state] = result.y[i]?.[vIndex] ?? 0;
+      if (result.sweepResults) {
+        setSweepResults(result.sweepResults);
+        setLocalSimulationData(
+          result.t.map((t: number, i: number) => {
+            const rowObj: Record<string, number | string> = { time: t };
+            result.sweepResults!.forEach((sweep) => {
+              states.forEach((state: string, vIndex: number) => {
+                rowObj[`${state} (${sweep.value})`] = sweep.y[i]?.[vIndex] ?? 0;
+              });
+            });
+            return rowObj;
+          }),
+        );
+      } else {
+        setSweepResults(null);
+        const chartData = result.t.map((t: number, i: number) => {
+          const row: Record<string, number | string> = { time: t };
+          states.forEach((state: string, vIndex: number) => {
+            row[state] = result.y[i]?.[vIndex] ?? 0;
+          });
+          return row;
         });
-        return row;
-      });
-
-      setLocalSimulationData(chartData);
+        setLocalSimulationData(chartData);
+      }
       setSimulationStatus({ status: "completed" });
       setShowResultsView(true);
 
@@ -860,6 +895,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                       <SimulationParameters
                         parameters={simulationParameters}
                         overrides={parameterOverrides}
+                        sweepState={sweepState}
                         onChange={(name, value) => {
                           setParameterOverrides((prev) => {
                             const next = new Map(prev);
@@ -874,6 +910,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                             return next;
                           });
                         }}
+                        onSweepChange={setSweepState}
                       />
                     </div>
                   </>
@@ -1343,6 +1380,8 @@ export default function MorselEditor(props: MorselEditorProps) {
                       <Suspense fallback={null}>
                         <SimulationResults
                           localData={localSimulationData}
+                          sweepResults={sweepResults}
+                          simulationVariables={simulationVariables}
                           selectedVariables={selectedSimulationVariables}
                           onVariablesLoaded={handleVariablesLoaded}
                           error={simulationStatus?.status === "failed" ? simulationStatus.error : null}
