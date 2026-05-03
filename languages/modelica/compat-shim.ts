@@ -77,9 +77,19 @@ export function polyfillAccept(expr: any): any {
             }
           }
           if (/^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*$/.test(text)) {
+            console.log(`[DEBUG] polyfillAccept regex matched for text: '${text}'`);
             if (typeof visitor.visitNameExpression === "function") {
+              console.log(`[DEBUG] calling visitNameExpression`);
               return visitor.visitNameExpression({ name: text }, args);
             }
+            if (typeof visitor.visitComponentReference === "function") {
+              console.log(`[DEBUG] calling visitComponentReference`);
+              const parts = text.split(".").map((p: string) => ({ identifier: { text: p } }));
+              return visitor.visitComponentReference({ parts, global: false }, args);
+            }
+            console.log(`[DEBUG] no visitor method found!`);
+          } else {
+            console.log(`[DEBUG] polyfillAccept regex FAILED for text: '${text}'`);
           }
           const num = Number(text);
           if (!isNaN(num)) {
@@ -112,8 +122,15 @@ export function polyfillAccept(expr: any): any {
               return visitor.visitBooleanLiteral(expr, args);
             if (type === "StringLiteral" && typeof visitor.visitStringLiteral === "function")
               return visitor.visitStringLiteral(expr, args);
-            if (type === "NameExpression" && typeof visitor.visitNameExpression === "function")
-              return visitor.visitNameExpression(expr, args);
+            if (type === "NameExpression") {
+              if (typeof visitor.visitNameExpression === "function") return visitor.visitNameExpression(expr, args);
+              if (typeof visitor.visitComponentReference === "function") {
+                const parts = (expr.name || expr.text || "")
+                  .split(".")
+                  .map((p: string) => ({ identifier: { text: p } }));
+                return visitor.visitComponentReference({ parts, global: false }, args);
+              }
+            }
             if (type === "UnaryExpression" && typeof visitor.visitUnaryExpression === "function")
               return visitor.visitUnaryExpression(expr, args);
             if (type === "BinaryExpression" && typeof visitor.visitBinaryExpression === "function")
@@ -521,6 +538,16 @@ export class QueryBackedClassInstance extends QueryBackedElement {
   /** Component elements within this class instance. */
   get components(): any[] {
     return this.elements.filter((e) => e.isComponentInstance);
+  }
+
+  get originalClassInstance(): QueryBackedClassInstance | this {
+    if (typeof (this.db as any).baseOf === "function") {
+      const baseId = (this.db as any).baseOf(this.id);
+      if (baseId !== null && baseId !== undefined) {
+        return new QueryBackedClassInstance(baseId, this.db);
+      }
+    }
+    return this;
   }
 
   /**
@@ -1077,7 +1104,7 @@ export class QueryBackedComponentInstance extends QueryBackedClassInstance {
       ast?.declaration?.modification ??
       ast?.componentDeclarations?.[0]?.modification ??
       ast?.declarations?.[0]?.modification;
-    const astMod = rawAstMod ? new AstBackedModification(rawAstMod) : null;
+    const astMod = rawAstMod ? new AstBackedModification(rawAstMod, this.parent) : null;
 
     if (dbMod && astMod) return new MergedModification(dbMod, astMod);
     return dbMod ?? astMod ?? null;
@@ -1171,7 +1198,10 @@ export class QueryBackedElementModification {
 }
 
 export class AstBackedElementModification {
-  constructor(public readonly ast: any) {}
+  constructor(
+    public readonly ast: any,
+    public readonly scope: any = null,
+  ) {}
 
   get name() {
     return (
@@ -1184,7 +1214,7 @@ export class AstBackedElementModification {
 
   get modification() {
     if (!this.ast.modification) return null;
-    return new AstBackedModification(this.ast.modification);
+    return new AstBackedModification(this.ast.modification, this.scope);
   }
 
   get modificationExpression() {
@@ -1198,10 +1228,12 @@ export class AstBackedElementModification {
 }
 
 export class AstBackedModification {
-  scope: any = null;
   description: string | null = null;
 
-  constructor(public readonly ast: any) {}
+  constructor(
+    public readonly ast: any,
+    public readonly scope: any = null,
+  ) {}
 
   get modificationArguments() {
     const classMod =
@@ -1210,7 +1242,7 @@ export class AstBackedModification {
       this.ast.annotationClause?.classModification;
     if (!classMod) return [];
     const args = classMod.modificationArguments ?? [];
-    return args.map((a: any) => new AstBackedElementModification(a));
+    return args.map((a: any) => new AstBackedElementModification(a, this.scope));
   }
 
   get modificationExpression() {
@@ -1288,6 +1320,10 @@ export class MergedModification {
     return this.dbMod.evaluatedExpression ?? this.astMod.evaluatedExpression;
   }
 
+  get scope() {
+    return this.dbMod?.scope ?? this.astMod?.scope;
+  }
+
   getModificationArgument(name: string) {
     const arg = this.dbMod.getModificationArgument(name);
     if (arg) return arg;
@@ -1296,7 +1332,6 @@ export class MergedModification {
 }
 
 export class QueryBackedModification {
-  scope: any = null;
   description: string | null = null;
 
   constructor(
@@ -1317,6 +1352,13 @@ export class QueryBackedModification {
     return polyfillAccept(this.modArgs?.bindingExpression);
   }
 
+  get scope(): QueryBackedClassInstance | null {
+    if (this.modArgs?.evaluationScopeId !== undefined && this.modArgs.evaluationScopeId !== null) {
+      return new QueryBackedClassInstance(this.modArgs.evaluationScopeId, this.db!);
+    }
+    return null;
+  }
+
   get evaluatedExpression() {
     // Return the polyfilled syntax node, not the primitive value, as the
     // ModelicaFlattener expects ModelicaExpression AST nodes.
@@ -1325,7 +1367,7 @@ export class QueryBackedModification {
   }
 
   getModificationArgument(name: string): QueryBackedElementModification | undefined {
-    return this.modificationArguments.find((a: any) => a.arg.name?.parts?.map((p: any) => p.text).join(".") === name);
+    return this.modificationArguments.find((a: any) => a.arg.name === name);
   }
 }
 

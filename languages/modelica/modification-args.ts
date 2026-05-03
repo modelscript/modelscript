@@ -68,6 +68,8 @@ export interface ModificationArg {
   readonly redeclaredClassPrefixes?: string;
   /** For redeclarations: the new type specifier. */
   readonly redeclaredTypeSpecifier?: string;
+  /** The SymbolId of the class where this modification was defined, for lexical scoping. */
+  readonly evaluationScopeId?: number;
 }
 
 /**
@@ -89,6 +91,8 @@ export interface ModelicaModArgs {
   readonly isRedeclaration?: boolean;
   /** The new type specifier if redeclared. */
   readonly redeclaredTypeSpecifier?: string;
+  /** The SymbolId of the class where this modification was defined, for lexical scoping. */
+  readonly evaluationScopeId?: number | null;
 }
 
 /** The empty modification (no args, no binding). */
@@ -170,6 +174,10 @@ export function hashModArgs(data: ModelicaModArgs): string {
     parts.push(`=` + hashModValue(data.bindingExpression));
   }
 
+  if (data.evaluationScopeId !== undefined && data.evaluationScopeId !== null) {
+    parts.push(`S:${data.evaluationScopeId}`);
+  }
+
   return parts.join("|");
 }
 
@@ -187,6 +195,7 @@ function hashModArg(arg: ModificationArg): string {
     s += `(${nested.join(",")})`;
   }
   if (arg.redeclaredTypeSpecifier) s += `~>${arg.redeclaredTypeSpecifier}`;
+  if (arg.evaluationScopeId !== undefined && arg.evaluationScopeId !== null) s += `[S:${arg.evaluationScopeId}]`;
 
   return s;
 }
@@ -281,6 +290,7 @@ export function mergeModArgs(outer: ModelicaModArgs | null, inner: ModelicaModAr
     bindingExpression: outer.bindingExpression ?? inner.bindingExpression,
     isRedeclaration: outer.isRedeclaration ?? inner.isRedeclaration,
     redeclaredTypeSpecifier: outer.redeclaredTypeSpecifier ?? inner.redeclaredTypeSpecifier,
+    evaluationScopeId: outer.evaluationScopeId ?? inner.evaluationScopeId,
   };
 }
 
@@ -349,5 +359,6 @@ export function subModification(mod: ModelicaModArgs | null, name: string): Mode
     bindingExpression: arg.value,
     isRedeclaration: arg.isRedeclaration,
     redeclaredTypeSpecifier: arg.redeclaredTypeSpecifier,
+    evaluationScopeId: arg.evaluationScopeId,
   };
 }

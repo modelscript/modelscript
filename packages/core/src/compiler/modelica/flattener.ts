@@ -1516,16 +1516,25 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       const ancestorClass = this.activeClassStack[i];
       if (!ancestorClass) continue;
 
+      const isSameScope = (a: any, b: any) => {
+        if (a === b) return true;
+        if (a && b && typeof a.id === "number" && a.id === b.id) return true;
+        return false;
+      };
+
       let match = false;
       if (
-        ancestorClass === modScope ||
-        (ancestorClass as { originalClassInstance?: unknown }).originalClassInstance === modScope
+        isSameScope(ancestorClass, modScope) ||
+        isSameScope((ancestorClass as { originalClassInstance?: unknown }).originalClassInstance, modScope)
       ) {
         match = true;
       } else if (ancestorClass instanceof ModelicaComponentInstance) {
         if (
-          ancestorClass.classInstance === modScope ||
-          (ancestorClass.classInstance as { originalClassInstance?: unknown })?.originalClassInstance === modScope
+          isSameScope(ancestorClass.classInstance, modScope) ||
+          isSameScope(
+            (ancestorClass.classInstance as { originalClassInstance?: unknown })?.originalClassInstance,
+            modScope,
+          )
         ) {
           match = true;
         }
@@ -1736,6 +1745,9 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
             activeClassStack: this.activeClassStack,
             activePrefixes: this.activePrefixes,
           }) ?? null;
+        if (node.name === "amplitude") {
+          console.log(`[DEBUG] amplitude after accept:`, expression);
+        }
       }
       // Distribute array-valued parameter bindings when inside an array element iteration
       // e.g., A a[2](n={1,2}) → a[1].n=1, a[2].n=2
@@ -5677,15 +5689,16 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     let name: string;
     if (!isBuiltinVar && !node.global && ctx.classInstance && typeof ctx.classInstance.resolveName === "function") {
       // Resolve the full identifier to determine if it belongs to the instance hierarchy or is global
-      const resolved = ctx.classInstance.resolveName(node.parts.map((p) => p.identifier?.text ?? ""));
+      let resolved = ctx.classInstance.resolveName(node.parts.map((p) => p.identifier?.text ?? ""));
       const firstPartName = node.parts[0]?.identifier?.text ?? "";
-      const firstPartResolved = ctx.classInstance.resolveName([firstPartName]);
+      let firstPartResolved = ctx.classInstance.resolveName([firstPartName]);
 
       if (ModelicaFlattener.isConditionallyDisabled(firstPartResolved, ctx.classInstance)) {
         return null; // Component is disabled, reference is invalid
       }
 
       if (
+        firstPartResolved === null ||
         firstPartResolved instanceof ModelicaComponentInstance ||
         firstPartResolved instanceof ModelicaClassInstance
       ) {
@@ -5701,6 +5714,12 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
             const localResolved = stackClass.resolveName([firstPartName]);
             if (localResolved) {
               let isOwned = false;
+
+              if (firstPartResolved === null) {
+                // We found it in an outer lexical scope!
+                firstPartResolved = localResolved;
+                resolved = stackClass.resolveName(node.parts.map((p) => p.identifier?.text ?? ""));
+              }
 
               // We compare abstractSyntaxNodes to handle cloned instances sharing the same declaration.
               const localAST =

@@ -43,9 +43,9 @@ import {
 } from "@modelscript/polyglot";
 import { isBroken, mergeModArgs, modelicaMod, subModification, type ModelicaModArgs } from "./modification-args.js";
 
-function parseModArgsFromCst(node: any): any {
+function parseModArgsFromCst(node: any, scopeId: number | null = null): any {
   const args: any[] = [];
-  if (!node) return { args, bindingExpression: null };
+  if (!node) return { args, bindingExpression: null, evaluationScopeId: scopeId };
 
   const walk = (n: any) => {
     if (!n) return;
@@ -56,7 +56,7 @@ function parseModArgsFromCst(node: any): any {
       const eachNode = n.children.find((c: any) => c.type === "each");
 
       const name = nameNode ? nameNode.text : "";
-      const nested = parseModArgsFromCst(modNode);
+      const nested = parseModArgsFromCst(modNode, scopeId);
 
       args.push({
         name,
@@ -65,6 +65,7 @@ function parseModArgsFromCst(node: any): any {
         isRedeclaration: false,
         nestedArgs: nested.args,
         value: nested.bindingExpression,
+        evaluationScopeId: scopeId,
       });
       return;
     } else if (n.type === "ElementRedeclaration") {
@@ -78,7 +79,7 @@ function parseModArgsFromCst(node: any): any {
 
         const name = ident ? ident.text : "";
         const typeName = typeSpec ? typeSpec.text : "";
-        const nested = parseModArgsFromCst(modNode);
+        const nested = parseModArgsFromCst(modNode, scopeId);
 
         args.push({
           name,
@@ -88,6 +89,7 @@ function parseModArgsFromCst(node: any): any {
           redeclaredTypeSpecifier: typeName,
           nestedArgs: nested.args,
           value: nested.bindingExpression,
+          evaluationScopeId: scopeId,
         });
       }
       return;
@@ -103,7 +105,7 @@ function parseModArgsFromCst(node: any): any {
     if (expr) bindingExpression = { kind: "expression", cstBytes: [expr.startIndex, expr.endIndex], text: expr.text };
   }
 
-  return { args, bindingExpression };
+  return { args, bindingExpression, evaluationScopeId: scopeId };
 }
 
 const BUILTIN_MODELICA_NAMES = new Set([
@@ -772,7 +774,9 @@ export default language({
                   // Parse local modification of the extends clause
                   const childCst = db.cstNode(child.id) as any;
                   const localModNode = childCst?.childForFieldName("classOrInheritanceModification");
-                  const localMod = localModNode ? (parseModArgsFromCst(localModNode) as ModelicaModArgs) : null;
+                  const localMod = localModNode
+                    ? (parseModArgsFromCst(localModNode, self.id) as ModelicaModArgs)
+                    : null;
 
                   // Merge local modification with outer modification
                   const mergedMod = mergeModArgs(outerMod, localMod);
@@ -1828,7 +1832,7 @@ export default language({
             const declNode = current?.childForFieldName("declaration");
             const modNode = declNode?.childForFieldName("modification");
             if (!modNode) return null;
-            return parseModArgsFromCst(modNode) as ModelicaModArgs;
+            return parseModArgsFromCst(modNode, self.parentId) as ModelicaModArgs;
           },
           /**
            * Check if this component's type is a connector.

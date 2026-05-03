@@ -161,6 +161,14 @@ export async function simulate(uri: string, params: SimulateParams = {}): Promis
 }
 
 // ────────────────────────────────────────────────────────────────────
+// Calibration
+// ────────────────────────────────────────────────────────────────────
+
+export async function calibrate(uri: string, params: Omit<CalibrateParams, "uri">): Promise<CalibrateResult> {
+  return lsp().sendRequest("modelscript/calibrate", { uri, ...params });
+}
+
+// ────────────────────────────────────────────────────────────────────
 // Flatten
 // ────────────────────────────────────────────────────────────────────
 
@@ -236,4 +244,31 @@ export function applyLspEdits(
   monacoEditor.pushUndoStop();
   monacoEditor.executeEdits(source, monacoEdits);
   monacoEditor.pushUndoStop();
+}
+
+export interface CalibrateParams {
+  uri: string;
+  className?: string; // Target model to calibrate
+  csvData: string; // Raw CSV text
+  timeColumn?: string;
+  columnMapping?: Record<string, string>; // e.g., { "csvVar": "modelVar" }
+  parameters: string[]; // List of parameters to optimize
+  parameterBounds?: Record<string, { min: number; max: number }>;
+  tolerance?: number;
+  maxIterations?: number;
+  method?: "lm" | "sqp";
+}
+
+export interface CalibrateResult {
+  success: boolean;
+  parameters: Record<string, number>; // The optimal values found
+  residual: number;
+  iterations: number;
+  simulated: {
+    t: number[];
+    y: number[][];
+    states: string[];
+  };
+  costHistory: number[];
+  error?: string;
 }
