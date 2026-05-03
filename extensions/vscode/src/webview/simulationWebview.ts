@@ -88,12 +88,20 @@ const vscodeApi = (window as typeof window & { acquireVsCodeApi?: () => { postMe
 // Settings & Parameters DOM elements
 const paramsSection = document.getElementById("params-section")!;
 const settingsSection = document.getElementById("settings-section")!;
+const calibrationSection = document.getElementById("calibration-section")!;
 const parametersView = document.getElementById("parameters-view")!;
 const btnSimulate = document.getElementById("btn-simulate")!;
+const btnCalibrate = document.getElementById("btn-calibrate")!;
 const tStartInput = document.getElementById("st-start") as HTMLInputElement;
 const tStopInput = document.getElementById("st-stop") as HTMLInputElement;
 const intervalInput = document.getElementById("st-interval") as HTMLInputElement;
 const toleranceInput = document.getElementById("st-tolerance") as HTMLInputElement;
+
+// Calibration inputs
+const calCsvInput = document.getElementById("cal-csv") as HTMLTextAreaElement;
+const calParamsInput = document.getElementById("cal-params") as HTMLInputElement;
+const calMethodSelect = document.getElementById("cal-method") as HTMLSelectElement;
+const calItersInput = document.getElementById("cal-iters") as HTMLInputElement;
 
 let currentParameters: Record<string, HTMLInputElement> = {};
 /* eslint-enable @typescript-eslint/no-non-null-assertion */
@@ -268,6 +276,39 @@ window.addEventListener("message", (event) => {
     intervalInput.value = (exp.interval ?? ((exp.stopTime ?? 10) - (exp.startTime ?? 0)) / 500).toString();
     toleranceInput.value = (exp.tolerance ?? 1e-4).toString();
 
+    calibrationSection.style.display = "flex";
+
+    draw();
+  } else if (msg.type === "calibrationData") {
+    // Treat calibration data as batch simulation data for plotting
+    isLiveMode = false;
+    currentData = msg.data.simulated;
+    isDark = msg.isDark;
+
+    msg.data.simulated.states.forEach((state: string) => {
+      if (!seenVars.has(state)) {
+        hiddenVars.add(state);
+        seenVars.add(state);
+      }
+    });
+
+    placeholderEl.style.display = "none";
+    containerEl.style.display = "flex";
+    toolbarEl.classList.add("visible");
+    toolbarEl.classList.remove("live-mode");
+    stopLiveLoop();
+    buildTreeView(msg.data.simulated.states);
+
+    // Update parameters with optimized values
+    if (msg.data.parameters) {
+      for (const [name, val] of Object.entries(msg.data.parameters)) {
+        if (currentParameters[name]) {
+          currentParameters[name].value = (val as number).toString();
+          currentParameters[name].style.borderColor = "var(--vscode-testing-iconPassed)"; // Highlight success
+        }
+      }
+    }
+
     draw();
   } else if (msg.type === "liveMode") {
     // Live MQTT streaming mode
@@ -339,6 +380,26 @@ btnSimulate?.addEventListener("click", () => {
       interval: intervalInput.value ? parseFloat(intervalInput.value) : undefined,
       tolerance: toleranceInput.value ? parseFloat(toleranceInput.value) : undefined,
       parameterOverrides,
+    },
+  });
+});
+
+btnCalibrate?.addEventListener("click", () => {
+  if (!vscodeApi) return;
+  const paramsStr = calParamsInput.value;
+  const parameters = paramsStr
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+
+  vscodeApi.postMessage({
+    type: "calibrateRequest",
+    payload: {
+      csvData: calCsvInput.value,
+      parameters,
+      method: calMethodSelect.value,
+      maxIterations: calItersInput.value ? parseInt(calItersInput.value) : 100,
+      // Default bounds of -infinity to infinity if none specified
     },
   });
 });

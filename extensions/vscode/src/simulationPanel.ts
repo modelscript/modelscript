@@ -255,6 +255,44 @@ export class SimulationPanel {
               this.postResults(result);
             },
           );
+        } else if (msg.type === "calibrateRequest" && this.client) {
+          const uri = this.sourceUri;
+          if (!uri) return;
+
+          await vscode.window.withProgress(
+            {
+              location: vscode.ProgressLocation.Notification,
+              title: "Calibrating model...",
+              cancellable: false,
+            },
+            async () => {
+              if (!this.client) return;
+              const result: CalibrationResult = await this.client.sendRequest("modelscript/calibrate", {
+                uri,
+                csvData: msg.payload.csvData,
+                timeColumn: msg.payload.timeColumn,
+                columnMapping: msg.payload.columnMapping,
+                parameters: msg.payload.parameters,
+                parameterBounds: msg.payload.parameterBounds,
+                tolerance: msg.payload.tolerance,
+                maxIterations: msg.payload.maxIterations,
+                method: msg.payload.method,
+              });
+
+              if (result.error || !result.success) {
+                vscode.window.showErrorMessage(`Calibration failed: ${result.error || result.message}`);
+                return;
+              }
+
+              this.panel.webview.postMessage({
+                type: "calibrationData",
+                data: result,
+                isDark:
+                  vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
+                  vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast,
+              });
+            },
+          );
         }
       },
       null,
@@ -602,6 +640,29 @@ export class SimulationPanel {
           <div class="settings-row"><label>Tolerance</label><input type="number" id="st-tolerance" step="any"></div>
           <div class="simulate-btn-container">
             <button id="btn-simulate" class="simulate-btn">Simulate</button>
+          </div>
+        </div>
+      </div>
+      <div class="sidebar-section" id="calibration-section" style="display: none;">
+        <div class="sidebar-header" onclick="this.parentElement.classList.toggle('collapsed')">Calibration</div>
+        <div class="sidebar-content" id="calibration-view">
+          <div style="padding: 4px 16px; font-size: 11px;">
+            <label style="display:block;margin-bottom:4px">Measurement Data (CSV)</label>
+            <textarea id="cal-csv" rows="4" style="width: 100%; box-sizing: border-box; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); font-family: monospace; font-size: 10px;" placeholder="time,x\n0,1.0\n1,0.37"></textarea>
+          </div>
+          <div style="padding: 4px 16px; font-size: 11px;">
+            <label style="display:block;margin-bottom:4px">Parameters to Optimize (comma separated)</label>
+            <input type="text" id="cal-params" style="width: 100%; box-sizing: border-box; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border);" placeholder="a, b">
+          </div>
+          <div class="settings-row"><label>Method</label>
+            <select id="cal-method" style="width:80px;background:var(--vscode-input-background);color:var(--vscode-input-foreground);border:1px solid var(--vscode-input-border)">
+              <option value="lm">LM</option>
+              <option value="sqp">SQP</option>
+            </select>
+          </div>
+          <div class="settings-row"><label>Max Iterations</label><input type="number" id="cal-iters" step="any" value="100"></div>
+          <div class="simulate-btn-container">
+            <button id="btn-calibrate" class="simulate-btn" style="background: var(--vscode-debugIcon-startForeground, #388a34);">Run Calibration</button>
           </div>
         </div>
       </div>

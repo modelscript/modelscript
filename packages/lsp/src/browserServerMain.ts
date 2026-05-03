@@ -3590,6 +3590,151 @@ connection.onRequest(
   },
 );
 
+// Custom request: calibrate a model against measurement data
+connection.onRequest(
+  "modelscript/calibrate",
+  async (params: {
+    uri: string;
+    className?: string;
+    csvData: string;
+    timeColumn?: string;
+    columnMapping?: Record<string, string>;
+    parameters: string[];
+    parameterBounds?: Record<string, { min: number; max: number }>;
+    tolerance?: number;
+    maxIterations?: number;
+    method?: "lm" | "sqp";
+  }): Promise<{
+    success: boolean;
+    parameters: Record<string, number>;
+    residual: number;
+    iterations: number;
+    simulated: {
+      t: number[];
+      y: number[][];
+      states: string[];
+    };
+    costHistory: number[];
+    error?: string;
+  }> => {
+    connection.console.info(`[calibrate] Requested calibration for URI: ${params.uri}`);
+
+    // Validate document and fetch instances
+    let instances = documentInstances.get(params.uri);
+    if (!instances || instances.length === 0) {
+      const doc = documents.get(params.uri);
+      if (doc) {
+        await validateTextDocument(doc);
+        instances = documentInstances.get(params.uri);
+      }
+    }
+
+    if (!instances || instances.length === 0) {
+      return {
+        success: false,
+        parameters: {},
+        residual: 0,
+        iterations: 0,
+        simulated: { t: [], y: [], states: [] },
+        costHistory: [],
+        error: "No class instances found.",
+      };
+    }
+
+    let classInstance = instances[0];
+    if (params.className) {
+      const found = instances.find((i) => i.name === params.className);
+      if (found) classInstance = found;
+    }
+
+    try {
+      if (!classInstance.instantiated) {
+        classInstance.instantiate();
+      }
+
+      // Flatten
+      const dae = new ModelicaDAE(classInstance.name || "Model");
+      const flattener = new ModelicaFlattener();
+      classInstance.accept(flattener, ["", dae]);
+      flattener.generateFlowBalanceEquations(dae);
+      flattener.foldDAEConstants(dae);
+
+      // Parse CSV
+      const csvOptions: any = { skipNaN: true };
+      if (params.timeColumn) csvOptions.timeColumn = params.timeColumn;
+      if (params.columnMapping) csvOptions.columnMapping = new Map(Object.entries(params.columnMapping));
+
+      const csv = parseCsvMeasurements(params.csvData, csvOptions);
+
+      // Build measurements map
+      const measurements = new Map<string, { t: number[]; y: number[] }>();
+      for (const col of csv.columns) {
+        const values = csv.data.get(col);
+        if (values) measurements.set(col, { t: csv.time, y: values });
+      }
+
+      // Parameter bounds map
+      const parameterBounds = new Map<string, { min: number; max: number }>();
+      if (params.parameterBounds) {
+        for (const [key, bounds] of Object.entries(params.parameterBounds)) {
+          parameterBounds.set(key, bounds);
+        }
+      }
+
+      // Initialize Simulator
+      const simulator = new ModelicaSimulator(dae);
+      simulator.prepare();
+
+      // Run Calibrator
+      const calibrator = new ModelicaCalibrator(dae, simulator, {
+        parameters: params.parameters,
+        parameterBounds,
+        measurements,
+        tolerance: params.tolerance ?? 1e-8,
+        maxIterations: params.maxIterations ?? 100,
+        method: params.method ?? "lm",
+      });
+
+      const result = calibrator.calibrate();
+
+      const states = Array.from(result.simulated.y.keys());
+      const yMatrix: number[][] = [];
+      const numPoints = result.simulated.t.length;
+      for (let i = 0; i < numPoints; i++) {
+        const row: number[] = [];
+        for (const state of states) {
+          row.push(result.simulated.y.get(state)![i]);
+        }
+        yMatrix.push(row);
+      }
+
+      return {
+        success: result.success,
+        parameters: Object.fromEntries(result.parameters),
+        residual: result.residual,
+        iterations: result.iterations,
+        simulated: {
+          t: result.simulated.t,
+          y: yMatrix,
+          states,
+        },
+        costHistory: result.costHistory,
+      };
+    } catch (e) {
+      console.error("[calibrate] Error:", e);
+      return {
+        success: false,
+        parameters: {},
+        residual: 0,
+        iterations: 0,
+        simulated: { t: [], y: [], states: [] },
+        costHistory: [],
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
+  },
+);
+
 // ── Step-by-step co-simulation API ──
 
 /** Stored simulator instances for step-by-step co-simulation. */
