@@ -1599,6 +1599,64 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
 
     const classInst = node.classInstance;
 
+    // Walk the type hierarchy to collect type-level attributes (quantity, unit, displayUnit, min, max, nominal)
+    // from derived types like SI.Voltage = Real(quantity="ElectricPotential", unit="V").
+    // Attributes are collected bottom-up: the base type provides defaults, more specific types override.
+    const typeAttributeNames = new Set([
+      "quantity",
+      "unit",
+      "displayUnit",
+      "min",
+      "max",
+      "nominal",
+      "start",
+      "fixed",
+      "stateSelect",
+    ]);
+    const collectTypeAttributes = (cls: ModelicaClassInstance | null, visited = new Set<unknown>()): void => {
+      if (!cls || visited.has((cls as any).id ?? cls)) return;
+      visited.add((cls as any).id ?? cls);
+
+      // Recurse into extends chain first (base types provide defaults)
+      if ("extendsClassInstances" in cls) {
+        for (const ext of (cls as any).extendsClassInstances) {
+          if (ext.classInstance) collectTypeAttributes(ext.classInstance, visited);
+        }
+      }
+
+      // Check short class target (e.g., type Voltage = Real(unit="V"))
+      if ("shortClassTarget" in cls) {
+        const target = (cls as any).shortClassTarget;
+        if (target) collectTypeAttributes(target, visited);
+      }
+
+      // Collect modification arguments from the type's own modification
+      const mod = cls.modification;
+      if (mod) {
+        for (const m of mod.modificationArguments ?? []) {
+          if (m.name && typeAttributeNames.has(m.name) && m.expression) {
+            attributes.set(m.name, m.expression);
+          }
+        }
+      }
+
+      // Also check AST-level class specifier modification (for short class definitions)
+      const ast = cls.abstractSyntaxNode;
+      if (ast?.classSpecifier?.classModification) {
+        const modArgs = ast.classSpecifier.classModification.modificationArguments;
+        if (modArgs) {
+          for (const arg of modArgs) {
+            const argName = arg.name?.text ?? arg.name?.parts?.map((p: any) => p.text).join(".");
+            if (argName && typeAttributeNames.has(argName)) {
+              const expr = arg.modification?.modificationExpression?.expression;
+              if (expr) attributes.set(argName, expr);
+            }
+          }
+        }
+      }
+    };
+    collectTypeAttributes(classInst);
+
     if (classInst instanceof ModelicaPredefinedClassInstance) {
       const classMod = classInst.modification;
       if (classMod) {
@@ -4210,20 +4268,34 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
             isExternalBuiltinAlias = true;
           }
         }
-        functionName = externalBuiltin;
-        builtinDef = BUILTIN_FUNCTIONS.get(functionName);
+        // Use the builtin definition for constant folding, but keep the original
+        // fully-qualified name in the output (e.g. Modelica.Math.sin, not sin)
+        builtinDef = BUILTIN_FUNCTIONS.get(externalBuiltin);
+        // Only rewrite to the bare builtin name for non-Modelica library functions
+        // (user-defined short aliases like `function f = Modelica.Math.atan2`)
+        if (isExternalBuiltinAlias && !originalName.startsWith("Modelica.")) {
+          functionName = externalBuiltin;
+        }
       }
     }
 
     // Collect function definition (skips builtins automatically; also skip short class aliases to builtins)
-    if (!isExternalBuiltinAlias) {
+    // For Modelica library functions that map to builtins (e.g. Modelica.Math.sin), we keep the
+    // qualified name so we need to collect the function definition.
+    if (!isExternalBuiltinAlias || originalName.startsWith("Modelica.")) {
       this.#collectFunctionDefinition(originalName, ctx, resolvedOverride, componentPrefix);
     }
 
     // Re-attempt constant folding after external builtin resolution
     // (e.g., mylog(100) → log(100) → 4.605...)
     if (builtinDef) {
-      const foldedResult = tryFoldBuiltinFunction(functionName, flatArgs);
+      // Use the bare builtin name for folding (e.g. "sin" not "Modelica.Math.sin")
+      const bareName = builtinDef
+        ? BUILTIN_FUNCTIONS.has(functionName)
+          ? functionName
+          : (functionName.split(".").pop() ?? functionName)
+        : functionName;
+      const foldedResult = tryFoldBuiltinFunction(bareName, flatArgs);
       if (foldedResult) return foldedResult;
     }
 
@@ -5754,11 +5826,21 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
 
         // Fold constants immediately if they have an evaluated value
         if (resolved instanceof ModelicaComponentInstance && resolved.variability === ModelicaVariability.CONSTANT) {
+          // Try direct literal from modification first
           const evaluated =
             resolved.modification?.evaluatedExpression ?? resolved.modification?.modificationExpression?.expression;
           if (evaluated && typeof evaluated.accept === "function") {
             const sym = evaluated.accept(this, ctx);
             if (sym && isLiteral(sym)) return sym;
+          }
+          // Fallback: use interpreter in the constant's own scope to evaluate complex expressions
+          // (e.g. Modelica.Constants.pi = 2*asin(1.0) where asin resolves in Constants' scope)
+          const rawExpr = resolved.modification?.modificationExpression?.expression;
+          if (rawExpr && typeof rawExpr.accept === "function") {
+            const interp = new ModelicaInterpreter(true);
+            const parentScope = resolved.parent ?? ctx.classInstance;
+            const interpResult = rawExpr.accept(interp, parentScope);
+            if (interpResult && isLiteral(interpResult)) return interpResult;
           }
         }
       } else {
