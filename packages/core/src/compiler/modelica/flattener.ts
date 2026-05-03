@@ -5754,9 +5754,11 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
 
         // Fold constants immediately if they have an evaluated value
         if (resolved instanceof ModelicaComponentInstance && resolved.variability === ModelicaVariability.CONSTANT) {
-          const evaluated = resolved.modification?.evaluatedExpression;
-          if (evaluated && isLiteral(evaluated)) {
-            return evaluated;
+          const evaluated =
+            resolved.modification?.evaluatedExpression ?? resolved.modification?.modificationExpression?.expression;
+          if (evaluated && typeof evaluated.accept === "function") {
+            const sym = evaluated.accept(this, ctx);
+            if (sym && isLiteral(sym)) return sym;
           }
         }
       } else {
