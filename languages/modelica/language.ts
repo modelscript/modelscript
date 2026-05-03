@@ -309,6 +309,7 @@ export default language({
     [$.ElementSection],
     [$.InitialElementSection],
     [$.AlgorithmSection],
+    [$.ConstraintSection],
     [$.Name, $.ComponentReferencePart],
   ],
 
@@ -1404,7 +1405,7 @@ export default language({
         opt(field("classModification", $.ClassModification)),
         opt(field("description", $.Description)),
         opt(field("section", $.InitialElementSection)),
-        rep(field("section", choice($.ElementSection, $.EquationSection, $.AlgorithmSection))),
+        rep(field("section", choice($.ElementSection, $.EquationSection, $.AlgorithmSection, $.ConstraintSection))),
         opt(field("externalFunctionClause", $.ExternalFunctionClause)),
         opt(seq(field("annotationClause", $.AnnotationClause), ";")),
         "end",
@@ -2105,7 +2106,7 @@ export default language({
             isConnectorType: "boolean",
             classInstance: "SymbolId | null",
             arrayDimensions:
-              "Array<{ kind: 'literal'; value: number } | { kind: 'flexible' } | { kind: 'expression'; cstBytes: readonly [number, number] }> | null",
+              "({ kind: 'literal'; value: number } | { kind: 'flexible' } | { kind: 'expression'; cstBytes: readonly [number, number] })[] | null",
             variability: "string | null",
             causality: "string | null",
             isFinal: "boolean",
@@ -3086,6 +3087,14 @@ export default language({
         opt(seq(field("annotationClause", $.AnnotationClause), ";")),
       ),
 
+    ConstraintSection: ($) =>
+      seq(
+        opt(field("initial", "initial")),
+        "constraint",
+        rep(field("equation", $._Equation)),
+        opt(seq(field("annotationClause", $.AnnotationClause), ";")),
+      ),
+
     _Equation: ($) =>
       choice($.SimpleEquation, $.SpecialEquation, $.IfEquation, $.ForEquation, $.ConnectEquation, $.WhenEquation),
 
@@ -3135,7 +3144,7 @@ export default language({
     SimpleEquation: ($) =>
       seq(
         field("expression1", $._SimpleExpression),
-        "=",
+        field("operator", choice("=", "<=", ">=", "<", ">")),
         field("expression2", $._Expression),
         opt(field("description", $.Description)),
         opt(field("annotationClause", $.AnnotationClause)),

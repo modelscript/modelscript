@@ -1,4 +1,5 @@
 {
+  "$schema": "https://tree-sitter.github.io/tree-sitter/assets/schemas/grammar.schema.json",
   "name": "modelica",
   "word": "IDENT",
   "rules": {
@@ -538,6 +539,10 @@
                 {
                   "type": "SYMBOL",
                   "name": "AlgorithmSection"
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "ConstraintSection"
                 }
               ]
             }
@@ -2627,6 +2632,67 @@
         }
       ]
     },
+    "ConstraintSection": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "FIELD",
+              "name": "initial",
+              "content": {
+                "type": "STRING",
+                "value": "initial"
+              }
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "STRING",
+          "value": "constraint"
+        },
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "FIELD",
+            "name": "equation",
+            "content": {
+              "type": "SYMBOL",
+              "name": "_Equation"
+            }
+          }
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "FIELD",
+                  "name": "annotationClause",
+                  "content": {
+                    "type": "SYMBOL",
+                    "name": "AnnotationClause"
+                  }
+                },
+                {
+                  "type": "STRING",
+                  "value": ";"
+                }
+              ]
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        }
+      ]
+    },
     "_Equation": {
       "type": "CHOICE",
       "members": [
@@ -2914,8 +2980,33 @@
           }
         },
         {
-          "type": "STRING",
-          "value": "="
+          "type": "FIELD",
+          "name": "operator",
+          "content": {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "STRING",
+                "value": "="
+              },
+              {
+                "type": "STRING",
+                "value": "<="
+              },
+              {
+                "type": "STRING",
+                "value": ">="
+              },
+              {
+                "type": "STRING",
+                "value": "<"
+              },
+              {
+                "type": "STRING",
+                "value": ">"
+              }
+            ]
+          }
         },
         {
           "type": "FIELD",
@@ -6430,10 +6521,12 @@
     ["ElementSection"],
     ["InitialElementSection"],
     ["AlgorithmSection"],
+    ["ConstraintSection"],
     ["Name", "ComponentReferencePart"]
   ],
   "precedences": [],
   "externals": [],
   "inline": [],
-  "supertypes": []
+  "supertypes": [],
+  "reserved": {}
 }

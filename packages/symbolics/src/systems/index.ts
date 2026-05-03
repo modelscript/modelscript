@@ -339,6 +339,8 @@ export class ModelicaDAE {
   whenClauses: ModelicaWhenEquation[] = [];
   /** Optimization objective expression (Cost function). */
   objective: ModelicaExpression | null = null;
+  /** Inequality constraint equations from Optimica `constraint` sections. */
+  constraints: ModelicaSimpleEquation[] = [];
   /** Structural connect(a, b) pairs preserved for ECAD netlist extraction. */
   connectPairs: { a: string; b: string; aComponent: string; bComponent: string }[] = [];
 
@@ -564,12 +566,19 @@ export abstract class ModelicaEquation {
 
 export class ModelicaSimpleEquation extends ModelicaEquation {
   expression1: ModelicaExpression;
+  operator: string;
   expression2: ModelicaExpression;
 
-  constructor(expression1: ModelicaExpression, expression2: ModelicaExpression, description?: string | null) {
+  constructor(
+    expression1: ModelicaExpression,
+    expression2: ModelicaExpression,
+    description?: string | null,
+    operator = "=",
+  ) {
     super(description);
     this.expression1 = expression1;
     this.expression2 = expression2;
+    this.operator = operator;
   }
 
   override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
@@ -579,7 +588,7 @@ export class ModelicaSimpleEquation extends ModelicaEquation {
   override get hash(): string {
     const hash = createHash("sha256");
     hash.update(this.expression1.hash);
-    hash.update("=");
+    hash.update(this.operator);
     hash.update(this.expression2.hash);
     return hash.digest("hex");
   }
@@ -588,6 +597,7 @@ export class ModelicaSimpleEquation extends ModelicaEquation {
     return {
       "@type": "SimpleEquation",
       expression1: this.expression1.toJSON,
+      operator: this.operator,
       expression2: this.expression2.toJSON,
       description: this.description,
     };
@@ -598,6 +608,7 @@ export class ModelicaSimpleEquation extends ModelicaEquation {
     return [
       { s: id, p: "rdf:type", o: "modelica:SimpleEquation" },
       { s: id, p: "modelica:expression1", o: `_:expr_${this.expression1.hash.substring(0, 8)}` },
+      { s: id, p: "modelica:operator", o: this.operator },
       { s: id, p: "modelica:expression2", o: `_:expr_${this.expression2.hash.substring(0, 8)}` },
       ...this.expression1.toRDF,
       ...this.expression2.toRDF,
@@ -607,12 +618,19 @@ export class ModelicaSimpleEquation extends ModelicaEquation {
 
 export class ModelicaArrayEquation extends ModelicaEquation {
   expression1: ModelicaExpression;
+  operator: string;
   expression2: ModelicaExpression;
 
-  constructor(expression1: ModelicaExpression, expression2: ModelicaExpression, description?: string | null) {
+  constructor(
+    expression1: ModelicaExpression,
+    expression2: ModelicaExpression,
+    description?: string | null,
+    operator = "=",
+  ) {
     super(description);
     this.expression1 = expression1;
     this.expression2 = expression2;
+    this.operator = operator;
   }
 
   override accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
@@ -622,7 +640,7 @@ export class ModelicaArrayEquation extends ModelicaEquation {
   override get hash(): string {
     const hash = createHash("sha256");
     hash.update(this.expression1.hash);
-    hash.update("=array=");
+    hash.update(`=array${this.operator}=`);
     hash.update(this.expression2.hash);
     return hash.digest("hex");
   }
@@ -631,6 +649,7 @@ export class ModelicaArrayEquation extends ModelicaEquation {
     return {
       "@type": "ArrayEquation",
       expression1: this.expression1.toJSON,
+      operator: this.operator,
       expression2: this.expression2.toJSON,
       description: this.description,
     };
@@ -641,6 +660,7 @@ export class ModelicaArrayEquation extends ModelicaEquation {
     return [
       { s: id, p: "rdf:type", o: "modelica:ArrayEquation" },
       { s: id, p: "modelica:expression1", o: `_:expr_${this.expression1.hash.substring(0, 8)}` },
+      { s: id, p: "modelica:operator", o: this.operator },
       { s: id, p: "modelica:expression2", o: `_:expr_${this.expression2.hash.substring(0, 8)}` },
       ...this.expression1.toRDF,
       ...this.expression2.toRDF,
@@ -4437,7 +4457,7 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
   visitArrayEquation(node: ModelicaArrayEquation): void {
     this.out.write(this.indent());
     node.expression1.accept(this);
-    this.out.write(" = ");
+    this.out.write(` ${node.operator} `);
     node.expression2.accept(this);
     this.out.write(";\n");
   }
@@ -4740,6 +4760,10 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
       this.out.write("algorithm\n");
       for (const stmt of section) stmt.accept(this);
     }
+    if (node.constraints.length > 0) {
+      this.out.write("constraint\n");
+      for (const constraint of node.constraints) constraint.accept(this);
+    }
     this.out.write("end " + node.name + ";\n");
   }
 
@@ -4948,7 +4972,7 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
   visitSimpleEquation(node: ModelicaSimpleEquation): void {
     this.out.write(this.indent());
     node.expression1.accept(this);
-    this.out.write(" = ");
+    this.out.write(` ${node.operator} `);
     node.expression2.accept(this);
     if (node.description) this.out.write(' "' + node.description + '"');
     this.out.write(";\n");

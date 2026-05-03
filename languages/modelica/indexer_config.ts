@@ -15,6 +15,7 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       outer: "outer",
       replaceable: "replaceable",
       encapsulated: "encapsulated",
+      annotationClause: "classSpecifier.annotationClause",
     },
   },
   {

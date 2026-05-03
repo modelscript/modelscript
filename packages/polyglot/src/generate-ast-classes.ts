@@ -345,7 +345,9 @@ export function generateAstClasses(specs: ClassSpec[], langName: string): string
   lines.push(`// Language: ${langName}`);
   lines.push(`// =============================================================================`);
   lines.push(``);
-  lines.push(`import type { QueryDB, SymbolEntry, SpecializationArgs } from "@modelscript/polyglot/runtime";`);
+  lines.push(
+    `import type { QueryDB, SymbolEntry, SymbolId, SpecializationArgs } from "@modelscript/polyglot/runtime";`,
+  );
   lines.push(`import { SemanticNode, GenericNode } from "@modelscript/polyglot/semantic-node";`);
   lines.push(`import type { SemanticVisitor } from "@modelscript/polyglot/semantic-node";`);
   lines.push(``);

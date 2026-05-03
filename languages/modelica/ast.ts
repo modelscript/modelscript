@@ -1568,6 +1568,8 @@ export abstract class ModelicaSectionSyntaxNode extends ModelicaSyntaxNode {
           ModelicaVisibility.PUBLIC,
         );
       case ModelicaEquationSectionSyntaxNode.type:
+      case "ConstraintSection":
+      case "constraint_section":
         return new ModelicaEquationSectionSyntaxNode(
           parent,
           concreteSyntaxNode,
@@ -2880,6 +2882,7 @@ export interface IModelicaEquationSectionSyntaxNode extends IModelicaSyntaxNode 
   annotationClause: IModelicaAnnotationClauseSyntaxNode | null;
   equations: IModelicaEquationSyntaxNode[];
   initial: boolean;
+  isConstraint: boolean;
 }
 
 export class ModelicaEquationSectionSyntaxNode
@@ -2889,6 +2892,7 @@ export class ModelicaEquationSectionSyntaxNode
   annotationClause: ModelicaAnnotationClauseSyntaxNode | null;
   equations: ModelicaEquationSyntaxNode[];
   initial: boolean;
+  isConstraint: boolean;
 
   constructor(
     parent: ModelicaSyntaxNode | null,
@@ -2897,6 +2901,9 @@ export class ModelicaEquationSectionSyntaxNode
   ) {
     super(parent, concreteSyntaxNode, abstractSyntaxNode);
     this.initial = abstractSyntaxNode?.initial ?? concreteSyntaxNode?.childForFieldName("initial") != null;
+    const cstType = concreteSyntaxNode?.type ?? "";
+    this.isConstraint =
+      abstractSyntaxNode?.isConstraint ?? (cstType === "ConstraintSection" || cstType === "constraint_section");
     this.equations = ModelicaEquationSyntaxNode.newArray(
       this,
       concreteSyntaxNode?.childrenForFieldName("equation"),
@@ -2920,6 +2927,8 @@ export class ModelicaEquationSectionSyntaxNode
   ): ModelicaEquationSectionSyntaxNode | null {
     switch (concreteSyntaxNode?.type ?? abstractSyntaxNode?.["@type"]) {
       case ModelicaEquationSectionSyntaxNode.type:
+      case "ConstraintSection":
+      case "constraint_section":
         return new ModelicaEquationSectionSyntaxNode(parent, concreteSyntaxNode, abstractSyntaxNode);
       default:
         return null;
@@ -3299,6 +3308,7 @@ export class ModelicaComplexAssignmentStatementSyntaxNode
 
 export interface IModelicaSimpleEquationSyntaxNode extends IModelicaEquationSyntaxNode {
   expression1: IModelicaSimpleExpressionSyntaxNode | null;
+  operator: string;
   expression2: IModelicaExpressionSyntaxNode | null;
 }
 
@@ -3307,6 +3317,7 @@ export class ModelicaSimpleEquationSyntaxNode
   implements IModelicaSimpleEquationSyntaxNode
 {
   expression1: ModelicaSimpleExpressionSyntaxNode | null;
+  operator: string;
   expression2: ModelicaExpressionSyntaxNode | null;
 
   constructor(
@@ -3315,6 +3326,7 @@ export class ModelicaSimpleEquationSyntaxNode
     abstractSyntaxNode?: IModelicaSimpleEquationSyntaxNode | null,
   ) {
     super(parent, concreteSyntaxNode, abstractSyntaxNode);
+    this.operator = abstractSyntaxNode?.operator ?? concreteSyntaxNode?.childForFieldName("operator")?.text ?? "=";
     this.expression1 = ModelicaSimpleExpressionSyntaxNode.new(
       this,
       concreteSyntaxNode?.childForFieldName("expression1"),
@@ -6817,7 +6829,7 @@ export class ModelicaSyntaxPrinter extends ModelicaSyntaxVisitor<void, number> {
 
   override visitSimpleEquation(node: ModelicaSimpleEquationSyntaxNode, indent = 0): void {
     node.expression1?.accept(this, indent);
-    this.print(" = ");
+    this.print(` ${node.operator} `);
     node.expression2?.accept(this, indent);
     node.description?.accept(this, indent);
     node.annotationClause?.accept(this, indent);

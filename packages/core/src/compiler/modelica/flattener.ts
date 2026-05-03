@@ -2447,26 +2447,55 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     const localSections = node.classInstance.abstractSyntaxNode?.sections ?? [];
     for (const section of localSections) {
       if (section instanceof ModelicaEquationSectionSyntaxNode) {
-        const target = section.initial ? args[1].initialEquations : args[1].equations;
-        const savedEquations = args[1].equations;
-        args[1].equations = target;
-        for (const eq of section.equations) {
-          eq.accept(new ModelicaSyntaxFlattener(this.options), {
-            prefix: args[0],
-            classInstance: node.classInstance,
-            dae: args[1],
-            stmtCollector: [],
-            structuralFinalParams: this.#structuralFinalParams,
-            connectedFlowVars: this.#connectedFlowVars,
-            activeClassStack: this.activeClassStack,
-            activePrefixes: this.activePrefixes,
-            flowConnectPairs: this.#flowConnectPairs,
-            streamConnections: this.#streamConnectPairs,
-            ...(brokenNames.size > 0 ? { brokenNames } : {}),
-            ...(brokenConnects.size > 0 ? { brokenConnects } : {}),
-          });
+        if (section.isConstraint) {
+          // Optimica constraint section: collect equations into dae.constraints
+          const constraintCollector: ModelicaEquation[] = [];
+          const savedEquations = args[1].equations;
+          args[1].equations = constraintCollector;
+          for (const eq of section.equations) {
+            eq.accept(new ModelicaSyntaxFlattener(this.options), {
+              prefix: args[0],
+              classInstance: node.classInstance,
+              dae: args[1],
+              stmtCollector: [],
+              structuralFinalParams: this.#structuralFinalParams,
+              connectedFlowVars: this.#connectedFlowVars,
+              activeClassStack: this.activeClassStack,
+              activePrefixes: this.activePrefixes,
+              flowConnectPairs: this.#flowConnectPairs,
+              streamConnections: this.#streamConnectPairs,
+              ...(brokenNames.size > 0 ? { brokenNames } : {}),
+              ...(brokenConnects.size > 0 ? { brokenConnects } : {}),
+            });
+          }
+          args[1].equations = savedEquations;
+          for (const c of constraintCollector) {
+            if (c instanceof ModelicaSimpleEquation) {
+              args[1].constraints.push(c);
+            }
+          }
+        } else {
+          const target = section.initial ? args[1].initialEquations : args[1].equations;
+          const savedEquations = args[1].equations;
+          args[1].equations = target;
+          for (const eq of section.equations) {
+            eq.accept(new ModelicaSyntaxFlattener(this.options), {
+              prefix: args[0],
+              classInstance: node.classInstance,
+              dae: args[1],
+              stmtCollector: [],
+              structuralFinalParams: this.#structuralFinalParams,
+              connectedFlowVars: this.#connectedFlowVars,
+              activeClassStack: this.activeClassStack,
+              activePrefixes: this.activePrefixes,
+              flowConnectPairs: this.#flowConnectPairs,
+              streamConnections: this.#streamConnectPairs,
+              ...(brokenNames.size > 0 ? { brokenNames } : {}),
+              ...(brokenConnects.size > 0 ? { brokenConnects } : {}),
+            });
+          }
+          args[1].equations = savedEquations;
         }
-        args[1].equations = savedEquations;
       } else if (section instanceof ModelicaAlgorithmSectionSyntaxNode) {
         const collector: ModelicaStatement[] = [];
         for (const statement of section.statements) {
@@ -7584,6 +7613,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
               expression1,
               expression2,
               node.description?.strings?.map((d: any) => d.text ?? "")?.join(" "),
+              node.operator,
             ),
           );
         }
@@ -7595,6 +7625,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
           expression1,
           expression2,
           node.description?.strings?.map((d: any) => d.text ?? "")?.join(" "),
+          node.operator,
         ),
       );
     }

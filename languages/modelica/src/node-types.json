@@ -1357,6 +1357,62 @@
     }
   },
   {
+    "type": "ConstraintSection",
+    "named": true,
+    "fields": {
+      "annotationClause": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "AnnotationClause",
+            "named": true
+          }
+        ]
+      },
+      "equation": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "ConnectEquation",
+            "named": true
+          },
+          {
+            "type": "ForEquation",
+            "named": true
+          },
+          {
+            "type": "IfEquation",
+            "named": true
+          },
+          {
+            "type": "SimpleEquation",
+            "named": true
+          },
+          {
+            "type": "SpecialEquation",
+            "named": true
+          },
+          {
+            "type": "WhenEquation",
+            "named": true
+          }
+        ]
+      },
+      "initial": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "initial",
+            "named": false
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "Declaration",
     "named": true,
     "fields": {
@@ -3637,6 +3693,10 @@
             "named": true
           },
           {
+            "type": "ConstraintSection",
+            "named": true
+          },
+          {
             "type": "ElementSection",
             "named": true
           },
@@ -4557,6 +4617,32 @@
             "named": true
           }
         ]
+      },
+      "operator": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": "=",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          }
+        ]
       }
     }
   },
@@ -4655,6 +4741,7 @@
   {
     "type": "StoredDefinition",
     "named": true,
+    "root": true,
     "fields": {
       "classDefinition": {
         "multiple": true,
@@ -5494,7 +5581,8 @@
   },
   {
     "type": "BLOCK_COMMENT",
-    "named": true
+    "named": true,
+    "extra": true
   },
   {
     "type": "BOM",
@@ -5506,7 +5594,8 @@
   },
   {
     "type": "LINE_COMMENT",
-    "named": true
+    "named": true,
+    "extra": true
   },
   {
     "type": "STRING",
@@ -5570,6 +5659,10 @@
   },
   {
     "type": "constrainedby",
+    "named": false
+  },
+  {
+    "type": "constraint",
     "named": false
   },
   {
