@@ -430,7 +430,8 @@ export class QueryEngine {
 
       childrenOf(id: SymbolId): SymbolEntry[] {
         const results: SymbolEntry[] = [];
-        const childIds = engine.index.childrenOf.get(id);
+        const lookupId = engine.specializationBases.get(id) ?? id;
+        const childIds = engine.index.childrenOf.get(lookupId);
         if (childIds) {
           for (const cid of childIds) {
             const entry = engine.resolveEntry(cid);
@@ -446,7 +447,8 @@ export class QueryEngine {
 
       childrenOfField(id: SymbolId, fieldName: string): SymbolEntry[] {
         const results: SymbolEntry[] = [];
-        const childIds = engine.index.childrenOf.get(id);
+        const lookupId = engine.specializationBases.get(id) ?? id;
+        const childIds = engine.index.childrenOf.get(lookupId);
         if (childIds) {
           for (const cid of childIds) {
             const entry = engine.resolveEntry(cid);
@@ -801,7 +803,8 @@ export class QueryEngine {
       childrenOf(id: SymbolId): SymbolEntry[] {
         tracker?.recordInput(id);
         const results: SymbolEntry[] = [];
-        const childIds = engine.index.childrenOf.get(id);
+        const lookupId = engine.specializationBases.get(id) ?? id;
+        const childIds = engine.index.childrenOf.get(lookupId);
         if (childIds) {
           for (const cid of childIds) {
             const entry = engine.resolveEntry(cid);
@@ -818,7 +821,8 @@ export class QueryEngine {
       childrenOfField(id: SymbolId, fieldName: string): SymbolEntry[] {
         tracker?.recordInput(id);
         const results: SymbolEntry[] = [];
-        const childIds = engine.index.childrenOf.get(id);
+        const lookupId = engine.specializationBases.get(id) ?? id;
+        const childIds = engine.index.childrenOf.get(lookupId);
         if (childIds) {
           for (const cid of childIds) {
             const entry = engine.resolveEntry(cid);

@@ -4863,8 +4863,14 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       nameSegments.unshift(name);
       current = current.parent?.isClassInstance ? current.parent : null;
     }
-    // If it resolved to a component, using its declare path is WRONG. A local component reference like c1.re should not be prefixed with its class hierarchy!
+    // If it resolved to a component, using its declare path is WRONG for local components.
+    // However, if the component is declared in a package (e.g. Modelica.Constants.pi),
+    // it is a global constant and we SHOULD use its fully qualified path.
+
     if (resolved.isComponentInstance && nameSegments.length > 0) {
+      if (resolved.parent && (resolved.parent.classKind === "package" || nameSegments[0] === "Modelica")) {
+        return nameSegments.join(".");
+      }
       // Return original function name if it resolved to a local component rather than a global class/function
       return functionName;
     }
@@ -5666,15 +5672,61 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
                     const clsId = "id" in cls ? (cls as any).id : undefined;
                     const ownerId = ownerClass && "id" in ownerClass ? (ownerClass as any).id : undefined;
 
+                    // Collect all IDs for cls including specialization bases
+                    const clsIds = new Set<number | undefined>();
+                    clsIds.add(clsId);
+                    if (clsId !== undefined && "db" in cls) {
+                      let base = (cls as any).db.baseOf(clsId);
+                      while (base !== null && base !== undefined) {
+                        clsIds.add(base);
+                        base = (cls as any).db.baseOf(base);
+                      }
+                    }
+                    // Collect all IDs for owner including specialization bases
+                    const ownerIds = new Set<number | undefined>();
+                    ownerIds.add(ownerId);
+                    if (ownerId !== undefined && ownerClass && "db" in ownerClass) {
+                      let base = (ownerClass as any).db.baseOf(ownerId);
+                      while (base !== null && base !== undefined) {
+                        ownerIds.add(base);
+                        base = (ownerClass as any).db.baseOf(base);
+                      }
+                    }
+
+                    // Check if any cls ID matches any owner ID or localId
+                    let idsMatch = false;
+                    for (const cid of clsIds) {
+                      if (cid === undefined) continue;
+                      for (const oid of ownerIds) {
+                        if (oid !== undefined && cid === oid) {
+                          idsMatch = true;
+                          break;
+                        }
+                      }
+                      if (idsMatch) break;
+                      if (localId !== undefined && cid === localId) {
+                        idsMatch = true;
+                        break;
+                      }
+                    }
+
                     if (
                       cls === ownerClass ||
                       cls === localResolved ||
                       (clsAST && ownerAST && clsAST === ownerAST) ||
-                      (clsId !== undefined && ownerId !== undefined && clsId === ownerId) ||
-                      (clsId !== undefined && localId !== undefined && clsId === localId)
+                      idsMatch
                     ) {
                       isOwned = true;
                       break;
+                    }
+
+                    // If cls is a component instance, push its classInstance to search the class hierarchy
+                    if (
+                      "classInstance" in cls &&
+                      typeof (cls as any).classInstance === "object" &&
+                      (cls as any).classInstance !== null
+                    ) {
+                      queue.push((cls as any).classInstance);
                     }
 
                     for (const ext of cls.extendsClassInstances) {

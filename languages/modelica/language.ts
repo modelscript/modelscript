@@ -505,8 +505,10 @@ export default language({
            * returns a closure that callers invoke with specific names.
            */
           resolveSimpleName: (db: QueryDB, self: SymbolEntry) => {
+            const baseId = db.baseOf(self.id);
+            const sourceId = baseId ?? self.id;
             // Pre-compute lookup structures for O(1) name resolution
-            const children = db.childrenOf(self.id);
+            const children = db.childrenOf(sourceId);
             const directByName = new Map<string, SymbolEntry>();
             const qualifiedImports = new Map<string, string>(); // shortName → pkgName
             const unqualifiedImportPkgs: string[] = [];

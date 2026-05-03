@@ -198,9 +198,19 @@ export function performBltTransformation(dae: ModelicaDAE): {
   // Diagnostics: Balanced system?
   if (match.size < unknowns.size) {
     console.warn(`[BLT] Under-determined system: ${match.size} equations matched to ${unknowns.size} unknowns.`);
+    const unmatched = Array.from(unknowns).filter((u) => !match.has(u));
+    console.warn(`[BLT] Unmatched unknowns: ${unmatched.join(", ")}`);
   }
   if (assignedEqs.size < equations.length) {
     console.warn(`[BLT] Over-determined system: ${equations.length - assignedEqs.size} unused equations.`);
+    for (let i = 0; i < equations.length; i++) {
+      if (!assignedEqs.has(i)) {
+        const unusedEq = equations[i];
+        if (unusedEq) {
+          console.warn(`[BLT] Unused eq [${i}]:`, JSON.stringify(unusedEq, null, 2).slice(0, 500));
+        }
+      }
+    }
   }
 
   // 4. Build Directed Graph & Tarjan SCC

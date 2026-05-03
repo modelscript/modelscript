@@ -3450,19 +3450,72 @@ connection.onRequest(
       flattener.generateFlowBalanceEquations(dae);
       flattener.foldDAEConstants(dae);
 
+      connection.console.info(`[simulate] DAE variables: ${dae.variables.length}`);
+      connection.console.info(`[simulate] DAE equations: ${dae.equations.length}`);
+      connection.console.info(`[simulate] DAE initial equations: ${dae.initialEquations.length}`);
+      connection.console.info(`[simulate] DAE algorithms: ${dae.algorithms.length}`);
+      connection.console.info(`[simulate] DAE functions: ${dae.functions.length}`);
+      // Log first 20 variables with their types and expressions
+      let varIdx = 0;
+      for (const v of dae.variables) {
+        if (varIdx < 20) {
+          const startAttr = v.attributes.get("start");
+          connection.console.info(
+            `[simulate]   var[${varIdx}] ${v.variability ?? "continuous"} ${v.name} = ${v.expression?.toString() ?? "null"} (start=${startAttr?.toString() ?? "none"})`,
+          );
+        }
+        varIdx++;
+      }
+      // Log first 10 equations
+      for (let i = 0; i < Math.min(10, dae.equations.length); i++) {
+        const eq = dae.equations[i];
+        if (eq) {
+          connection.console.info(`[simulate]   eq[${i}] ${eq.toString()}`);
+        }
+      }
+
       const simulator = new ModelicaSimulator(dae);
       simulator.prepare();
+
+      connection.console.info(`[simulate] State vars: ${[...simulator.stateVars].join(", ")}`);
+      connection.console.info(`[simulate] Algebraic vars: ${[...simulator.algebraicVars].join(", ")}`);
 
       const exp = simulator.dae.experiment;
       const startTime = params.startTime ?? exp.startTime ?? 0;
       const stopTime = params.stopTime ?? exp.stopTime ?? 10;
       const step = params.interval ?? exp.interval ?? (stopTime - startTime) / 500;
 
+      connection.console.info(`[simulate] startTime=${startTime}, stopTime=${stopTime}, step=${step}`);
+
       const result = simulator.simulate(startTime, stopTime, step, {
         solver: (params.solver ?? "dopri5") as "rk4" | "dopri5" | "bdf" | "auto",
         equidistantOutput: params.equidistant ?? exp.__modelscript_equidistantOutput ?? true,
         parameterOverrides: params.parameterOverrides ? new Map(Object.entries(params.parameterOverrides)) : undefined,
       });
+
+      connection.console.info(`[simulate] Result: ${result.t.length} time points, ${result.states.length} states`);
+      connection.console.info(`[simulate] States: ${result.states.join(", ")}`);
+      if (result.t.length > 0 && result.y.length > 0) {
+        connection.console.info(`[simulate] y[0]: ${result.y[0]?.map((v: number) => v.toFixed(6)).join(", ")}`);
+        const last = result.y[result.y.length - 1];
+        if (last) {
+          connection.console.info(`[simulate] y[last]: ${last.map((v: number) => v.toFixed(6)).join(", ")}`);
+        }
+        // Check if all zeros
+        let allZeros = true;
+        for (const row of result.y) {
+          if (row) {
+            for (const val of row) {
+              if (Math.abs(val) > 1e-15) {
+                allZeros = false;
+                break;
+              }
+            }
+          }
+          if (!allZeros) break;
+        }
+        connection.console.info(`[simulate] All zeros? ${allZeros}`);
+      }
 
       if (params.format === "csv") {
         const lines = [`time,${result.states.join(",")}`];
