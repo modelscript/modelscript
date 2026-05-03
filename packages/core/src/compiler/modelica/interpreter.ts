@@ -14,6 +14,7 @@ import {
   ModelicaExpressionSyntaxNode,
   ModelicaForStatementSyntaxNode,
   ModelicaFunctionCallSyntaxNode,
+  ModelicaIdentifierSyntaxNode,
   ModelicaIfElseExpressionSyntaxNode,
   ModelicaIfStatementSyntaxNode,
   ModelicaOutputExpressionListSyntaxNode,
@@ -48,7 +49,45 @@ import {
   ModelicaUnaryExpression,
 } from "@modelscript/symbolics";
 import { createHash, makeWeakRef } from "@modelscript/utils";
-import { ModelicaLoopScope, ModelicaScriptScope, type Scope } from "../scope.js";
+import { ModelicaLoopScope, ModelicaScriptScope, Scope } from "../scope.js";
+
+export class ModelicaAlgorithmScope extends Scope {
+  variables = new Map<string, SyntheticInterpreterVariable>();
+
+  override get elements(): IterableIterator<any> {
+    return this.variables.values();
+  }
+
+  override get hash(): string {
+    return "";
+  }
+
+  override getNamedElement(name: string): any | null {
+    return this.variables.get(name) ?? null;
+  }
+
+  override resolveSimpleName(
+    identifier: ModelicaIdentifierSyntaxNode | string | null | undefined,
+    global = false,
+    encapsulated = false,
+  ): any | null {
+    const name = typeof identifier === "string" ? identifier : identifier?.text;
+    if (name && this.variables.has(name)) return this.variables.get(name) ?? null;
+
+    if (this.parent) {
+      const original = this.parent.resolveSimpleName(identifier, global, encapsulated);
+      if (original && (original as any).isComponentInstance) {
+        const synthetic = new SyntheticInterpreterVariable(name ?? "unknown", null);
+        synthetic.classInstance = (original as any).classInstance;
+        if (name) this.variables.set(name, synthetic);
+        return synthetic;
+      }
+      return original;
+    }
+    return null;
+  }
+}
+
 import {
   QueryBackedArrayClassInstance as ModelicaArrayClassInstance,
   QueryBackedClassInstance as ModelicaClassInstance,
@@ -1850,11 +1889,13 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
         } catch (e) {
           console.error(`[JS Interop] Error executing function ${clonedFunction.name}:`, e);
         }
-      } else if (this.#evaluateAlgorithms && this.#functionCallDepth < ModelicaInterpreter.MAX_FUNCTION_CALL_DEPTH) {
+      }
+      const algoScope = new ModelicaAlgorithmScope(clonedFunction);
+      if (this.#evaluateAlgorithms && this.#functionCallDepth < ModelicaInterpreter.MAX_FUNCTION_CALL_DEPTH) {
         this.#functionCallDepth++;
         try {
           for (const statement of clonedFunction.algorithms) {
-            statement.accept(this, clonedFunction);
+            statement.accept(this, algoScope);
           }
         } catch (e) {
           if (e !== ReturnSignal) throw e;
@@ -1869,7 +1910,9 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
 
       const outputExpressions: ModelicaExpression[] = [];
       for (const outputParameter of clonedFunction.outputParameters) {
-        const outputExpression = ModelicaExpression.fromClassInstance(outputParameter.classInstance);
+        const resolved = algoScope.resolveSimpleName(outputParameter.name);
+        const classInst = resolved ? (resolved as any).classInstance : outputParameter.classInstance;
+        const outputExpression = ModelicaExpression.fromClassInstance(classInst);
         if (outputExpression) outputExpressions.push(outputExpression);
       }
       if (outputExpressions.length <= 1) {
@@ -2048,11 +2091,12 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
       clonedFunction = functionInstance.clone(modArgs);
     }
 
+    const algoScope = new ModelicaAlgorithmScope(clonedFunction);
     if (this.#evaluateAlgorithms && this.#functionCallDepth < ModelicaInterpreter.MAX_FUNCTION_CALL_DEPTH) {
       this.#functionCallDepth++;
       try {
         for (const statement of clonedFunction.algorithms) {
-          statement.accept(this, clonedFunction);
+          statement.accept(this, algoScope);
         }
       } catch (e) {
         if (e !== ReturnSignal) throw e;
@@ -2063,7 +2107,9 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
 
     const outputExpressions: ModelicaExpression[] = [];
     for (const outputParameter of clonedFunction.outputParameters) {
-      const outputExpression = ModelicaExpression.fromClassInstance(outputParameter.classInstance);
+      const resolved = algoScope.resolveSimpleName(outputParameter.name);
+      const classInst = resolved ? (resolved as any).classInstance : outputParameter.classInstance;
+      const outputExpression = ModelicaExpression.fromClassInstance(classInst);
       if (outputExpression) outputExpressions.push(outputExpression);
     }
     if (outputExpressions.length <= 1) {
