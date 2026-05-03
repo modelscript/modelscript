@@ -2899,11 +2899,12 @@ export class ModelicaEquationSectionSyntaxNode
     concreteSyntaxNode?: SyntaxNode | null,
     abstractSyntaxNode?: IModelicaEquationSectionSyntaxNode | null,
   ) {
-    super(parent, concreteSyntaxNode, abstractSyntaxNode);
-    this.initial = abstractSyntaxNode?.initial ?? concreteSyntaxNode?.childForFieldName("initial") != null;
     const cstType = concreteSyntaxNode?.type ?? "";
-    this.isConstraint =
-      abstractSyntaxNode?.isConstraint ?? (cstType === "ConstraintSection" || cstType === "constraint_section");
+    const isConstraintCST = cstType === "ConstraintSection" || cstType === "constraint_section";
+    // Pass the CST type as an override so the base class validation accepts ConstraintSection nodes
+    super(parent, concreteSyntaxNode, abstractSyntaxNode, isConstraintCST ? cstType : null);
+    this.initial = abstractSyntaxNode?.initial ?? concreteSyntaxNode?.childForFieldName("initial") != null;
+    this.isConstraint = abstractSyntaxNode?.isConstraint ?? isConstraintCST;
     this.equations = ModelicaEquationSyntaxNode.newArray(
       this,
       concreteSyntaxNode?.childrenForFieldName("equation"),

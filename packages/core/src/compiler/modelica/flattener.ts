@@ -772,55 +772,66 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       return;
     }
 
-    // Check for Optimization modifiers (objective)
+    // Check for Optimization modifiers (objective, objectiveIntegrand, startTime, finalTime)
     if (node.classKind === ModelicaClassKind.OPTIMIZATION) {
       // For top-level optimization classes, the modifier (objective = cost, startTime = 0, ...)
       // lives on the LongClassSpecifier's classModification, not on node.modification.
       const astNode = this.#getAstNode(node);
       const classSpec = astNode?.classSpecifier;
       const classMod = classSpec instanceof ModelicaLongClassSpecifierSyntaxNode ? classSpec.classModification : null;
+
+      const optimicaModNames = ["objective", "objectiveIntegrand", "startTime", "finalTime"] as const;
+
+      const flattenModExpr = (expr: ModelicaExpressionSyntaxNode) =>
+        expr.accept(new ModelicaSyntaxFlattener(this.options), {
+          prefix: args[0],
+          classInstance: node,
+          dae: args[1],
+          stmtCollector: [],
+          activeClassStack: this.activeClassStack,
+          activePrefixes: this.activePrefixes,
+          structuralFinalParams: new Set<string>(),
+        }) as ModelicaExpression;
+
       if (classMod) {
         for (const modArg of classMod.modificationArguments) {
+          if (!(modArg instanceof ModelicaElementModificationSyntaxNode)) continue;
+          const modName = modArg.identifier?.text;
           if (
-            modArg instanceof ModelicaElementModificationSyntaxNode &&
-            modArg.identifier?.text === "objective" &&
+            modName &&
+            (optimicaModNames as readonly string[]).includes(modName) &&
             modArg.modification?.modificationExpression?.expression
           ) {
-            args[1].objective = modArg.modification.modificationExpression.expression.accept(
-              new ModelicaSyntaxFlattener(this.options),
-              {
-                prefix: args[0],
-                classInstance: node,
-                dae: args[1],
-                stmtCollector: [],
-                activeClassStack: this.activeClassStack,
-                activePrefixes: this.activePrefixes,
-                structuralFinalParams: new Set<string>(),
-              },
-            ) as ModelicaExpression;
+            let flattened = flattenModExpr(modArg.modification.modificationExpression.expression);
+            if ((modName === "startTime" || modName === "finalTime") && flattened instanceof ModelicaIntegerLiteral) {
+              flattened = new ModelicaRealLiteral(flattened.value);
+            }
+            if (modName === "objective") args[1].objective = flattened;
+            else if (modName === "objectiveIntegrand") args[1].objectiveIntegrand = flattened;
+            else if (modName === "startTime") args[1].startTime = flattened;
+            else if (modName === "finalTime") args[1].finalTime = flattened;
           }
         }
       }
       // Also try the instance-level modification (e.g. when the model is used as a component type)
-      if (!args[1].objective && node.modification) {
+      if (node.modification) {
         for (const modArg of node.modification.modificationArguments) {
+          if (!(modArg instanceof ModelicaElementModification)) continue;
+          const modName = modArg.name;
           if (
-            modArg instanceof ModelicaElementModification &&
-            modArg.name === "objective" &&
+            modName &&
+            (optimicaModNames as readonly string[]).includes(modName) &&
             modArg.modificationExpression?.expression
           ) {
-            args[1].objective = modArg.modificationExpression.expression.accept(
-              new ModelicaSyntaxFlattener(this.options),
-              {
-                prefix: args[0],
-                classInstance: node,
-                dae: args[1],
-                stmtCollector: [],
-                activeClassStack: this.activeClassStack,
-                activePrefixes: this.activePrefixes,
-                structuralFinalParams: new Set<string>(),
-              },
-            ) as ModelicaExpression;
+            let flattened = flattenModExpr(modArg.modificationExpression.expression);
+            if ((modName === "startTime" || modName === "finalTime") && flattened instanceof ModelicaIntegerLiteral) {
+              flattened = new ModelicaRealLiteral(flattened.value);
+            }
+            if (modName === "objective" && !args[1].objective) args[1].objective = flattened;
+            else if (modName === "objectiveIntegrand" && !args[1].objectiveIntegrand)
+              args[1].objectiveIntegrand = flattened;
+            else if (modName === "startTime" && !args[1].startTime) args[1].startTime = flattened;
+            else if (modName === "finalTime" && !args[1].finalTime) args[1].finalTime = flattened;
           }
         }
       }
@@ -891,24 +902,51 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     for (let i = equationSections.length - 1; i >= 0; i--) {
       const section = equationSections[i];
       if (!section) continue;
-      const target = section.initial ? args[1].initialEquations : args[1].equations;
-      const savedEquations = args[1].equations;
-      args[1].equations = target;
-      for (const eq of section.equations) {
-        eq.accept(new ModelicaSyntaxFlattener(this.options), {
-          prefix: args[0],
-          classInstance: node,
-          dae: args[1],
-          stmtCollector: [],
-          structuralFinalParams: this.#structuralFinalParams,
-          connectedFlowVars: this.#connectedFlowVars,
-          activeClassStack: this.activeClassStack,
-          activePrefixes: this.activePrefixes,
-          flowConnectPairs: this.#flowConnectPairs,
-          streamConnections: this.#streamConnectPairs,
-        });
+      if (section.isConstraint) {
+        // Optimica constraint section: collect equations into dae.constraints
+        const constraintCollector: ModelicaEquation[] = [];
+        const savedEquations = args[1].equations;
+        args[1].equations = constraintCollector;
+        for (const eq of section.equations) {
+          eq.accept(new ModelicaSyntaxFlattener(this.options), {
+            prefix: args[0],
+            classInstance: node,
+            dae: args[1],
+            stmtCollector: [],
+            structuralFinalParams: this.#structuralFinalParams,
+            connectedFlowVars: this.#connectedFlowVars,
+            activeClassStack: this.activeClassStack,
+            activePrefixes: this.activePrefixes,
+            flowConnectPairs: this.#flowConnectPairs,
+            streamConnections: this.#streamConnectPairs,
+          });
+        }
+        args[1].equations = savedEquations;
+        for (const c of constraintCollector) {
+          if (c instanceof ModelicaSimpleEquation) {
+            args[1].constraints.push(c);
+          }
+        }
+      } else {
+        const target = section.initial ? args[1].initialEquations : args[1].equations;
+        const savedEquations = args[1].equations;
+        args[1].equations = target;
+        for (const eq of section.equations) {
+          eq.accept(new ModelicaSyntaxFlattener(this.options), {
+            prefix: args[0],
+            classInstance: node,
+            dae: args[1],
+            stmtCollector: [],
+            structuralFinalParams: this.#structuralFinalParams,
+            connectedFlowVars: this.#connectedFlowVars,
+            activeClassStack: this.activeClassStack,
+            activePrefixes: this.activePrefixes,
+            flowConnectPairs: this.#flowConnectPairs,
+            streamConnections: this.#streamConnectPairs,
+          });
+        }
+        args[1].equations = savedEquations;
       }
-      args[1].equations = savedEquations;
     }
     const t_eq_end = Date.now();
     if (t_eq_end - t_eq_start > 100)

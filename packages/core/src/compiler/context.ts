@@ -268,14 +268,22 @@ export class Context extends Scope {
       (instance.entry?.metadata?.description as string) ?? null,
     );
 
-    if (instance.classKind === "function" || instance.classKind === "operator function") {
+    if (
+      instance.classKind === "function" ||
+      instance.classKind === "operator function" ||
+      instance.classKind === "optimization"
+    ) {
       dae.classKind = instance.classKind;
     }
     const flattener = new ModelicaFlattener(options);
     instance.accept(flattener, ["", dae]);
     flattener.generateFlowBalanceEquations(dae);
     flattener.foldDAEConstants(dae);
-    findAlgebraicLoops(dae);
+
+    // Optimization classes use the equations unmodified, do not apply BLT sorting/solving.
+    if (dae.classKind !== "optimization") {
+      findAlgebraicLoops(dae);
+    }
 
     // Check for flattener-level diagnostics (e.g. invalid for-loop iterators, assignment to input/constant)
     const hasDAEErrors = (d: ModelicaDAE): boolean =>

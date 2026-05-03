@@ -337,8 +337,14 @@ export class ModelicaDAE {
   eventIndicators: ModelicaExpression[] = [];
   /** Discrete state updates extracted from `when` clauses. */
   whenClauses: ModelicaWhenEquation[] = [];
-  /** Optimization objective expression (Cost function). */
+  /** Optimization objective expression (Mayer cost function). */
   objective: ModelicaExpression | null = null;
+  /** Optimization integrand expression (Lagrange cost term, integrated over time horizon). */
+  objectiveIntegrand: ModelicaExpression | null = null;
+  /** Optimization time horizon start (overrides experiment.startTime). */
+  startTime: ModelicaExpression | null = null;
+  /** Optimization time horizon end (overrides experiment.stopTime). */
+  finalTime: ModelicaExpression | null = null;
   /** Inequality constraint equations from Optimica `constraint` sections. */
   constraints: ModelicaSimpleEquation[] = [];
   /** Structural connect(a, b) pairs preserved for ECAD netlist extraction. */
@@ -4734,6 +4740,28 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     }
     this.out.write(node.classKind + " " + node.name);
     if (node.description) this.out.write(' "' + node.description + '"');
+    // Emit Optimica modifiers for optimization classes
+    if (node.classKind === "optimization") {
+      const mods: string[] = [];
+      const printExpr = (expr: ModelicaExpression): string => {
+        let buf = "";
+        const w: Writer = {
+          write: (s: string) => {
+            buf += s;
+          },
+        };
+        const p = new ModelicaDAEPrinter(w);
+        expr.accept(p);
+        return buf;
+      };
+      if (node.objective) mods.push("objective = " + printExpr(node.objective));
+      if (node.objectiveIntegrand) mods.push("objectiveIntegrand = " + printExpr(node.objectiveIntegrand));
+      if (node.startTime) mods.push("startTime = " + printExpr(node.startTime));
+      if (node.finalTime) mods.push("finalTime = " + printExpr(node.finalTime));
+      if (mods.length > 0) {
+        this.out.write("(" + mods.join(", ") + ")");
+      }
+    }
     this.out.write("\n");
 
     for (const variable of node.variables) {
