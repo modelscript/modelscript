@@ -226,6 +226,33 @@ export class FmuWasmParticipant implements CoSimParticipant {
     this.initialized = false;
   }
 
+  // ── FMU State save/restore ──
+
+  readonly canGetAndSetState = true;
+
+  async getState(): Promise<unknown> {
+    // Clone the current values map
+    return new Map(this.values);
+  }
+
+  async setState(state: unknown): Promise<void> {
+    if (!(state instanceof Map)) throw new Error("Invalid state object");
+    this.values = new Map(state as Map<string, number>);
+
+    // Push restored state to WASM memory
+    for (const [name, value] of this.values) {
+      const vr = this.varRefs.get(name);
+      if (vr !== undefined && this.wasmExports) {
+        this.wasmExports.setVar(vr, value);
+      }
+    }
+  }
+
+  async freeState(state: unknown): Promise<void> {
+    // No-op for Map-based state
+    void state;
+  }
+
   getModelDescription(): FmiModelDescription {
     return this.modelDesc;
   }

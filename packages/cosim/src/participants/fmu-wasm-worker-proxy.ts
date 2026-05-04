@@ -140,6 +140,28 @@ export class FmuWasmWorkerProxy implements CoSimParticipant {
     this.values.clear();
     this.inputOverrides.clear();
   }
+
+  // ── FMU State save/restore ──
+
+  readonly canGetAndSetState = true;
+
+  async getState(): Promise<unknown> {
+    // Clone the current values map
+    return new Map(this.values);
+  }
+
+  async setState(state: unknown): Promise<void> {
+    if (!(state instanceof Map)) throw new Error("Invalid state object");
+    this.values = new Map(state as Map<string, number>);
+
+    // Push restored state to worker
+    await this.rpc("SET_INPUTS", Array.from(this.values.entries()));
+  }
+
+  async freeState(state: unknown): Promise<void> {
+    // No-op for Map-based state
+    void state;
+  }
 }
 
 function mapFmiCausality(causality: string): "input" | "output" | "parameter" | "local" {

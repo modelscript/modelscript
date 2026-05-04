@@ -19,6 +19,42 @@ let wasmExports: unknown;
 const values = new Map<string, number>();
 const varRefs = new Map<string, number>();
 
+async function getWasmCacheDb(): Promise<IDBDatabase | null> {
+  if (typeof indexedDB === "undefined") return null;
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open("FmuWasmCache", 1);
+    req.onupgradeneeded = () => req.result.createObjectStore("binaries");
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function getCachedBinary(db: IDBDatabase, key: string): Promise<Uint8Array | undefined> {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("binaries", "readonly");
+    const req = tx.objectStore("binaries").get(key);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(tx.error);
+  });
+}
+
+async function setCachedBinary(db: IDBDatabase, key: string, data: Uint8Array): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("binaries", "readwrite");
+    tx.objectStore("binaries").put(data, key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function hashString(str: string): Promise<string> {
+  if (typeof crypto === "undefined" || !crypto.subtle) return str.substring(0, 32);
+  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(hash))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 self.onmessage = async (event: MessageEvent) => {
   const { type, payload, id } = event.data;
 
@@ -27,20 +63,45 @@ self.onmessage = async (event: MessageEvent) => {
       case "INIT": {
         const { asSourceStr, variables } = payload;
 
-        // Compile AssemblyScript
-        const { error, binary } = await asc.compileString(asSourceStr, {
-          optimizeLevel: 3,
-          shrinkLevel: 0,
-          runtime: "stub",
-        });
+        let binary: Uint8Array | undefined;
+        let cacheKey = "";
+        let db: IDBDatabase | null = null;
 
-        if (error || !binary) {
-          throw new Error(`Failed to compile FMU AssemblyScript to WASM:\\n${error?.message}`);
+        try {
+          db = await getWasmCacheDb();
+          cacheKey = await hashString(asSourceStr);
+          if (db) {
+            binary = await getCachedBinary(db, cacheKey);
+          }
+        } catch (e) {
+          console.warn("WASM caching unavailable:", e);
+        }
+
+        if (!binary) {
+          // Compile AssemblyScript
+          const result = await asc.compileString(asSourceStr, {
+            optimizeLevel: 3,
+            shrinkLevel: 0,
+            runtime: "stub",
+          });
+
+          if (result.error || !result.binary) {
+            throw new Error(`Failed to compile FMU AssemblyScript to WASM:\n${result.error?.message}`);
+          }
+          binary = result.binary;
+
+          if (db && cacheKey) {
+            try {
+              await setCachedBinary(db, cacheKey, binary);
+            } catch (e) {
+              console.warn("Failed to cache WASM binary:", e);
+            }
+          }
         }
 
         const env = {
           abort: (msg: number, file: number, line: number, column: number) => {
-            console.error(`WASM abort at ${line}:${column}`);
+            throw new Error(`WASM abort at ${line}:${column}`);
           },
         };
 
