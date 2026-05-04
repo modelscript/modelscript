@@ -17,6 +17,7 @@ import {
   ModelicaComponentReferenceSyntaxNode,
   ModelicaConnectEquationSyntaxNode,
   ModelicaElementModificationSyntaxNode,
+  ModelicaElementSectionSyntaxNode,
   ModelicaEquationSectionSyntaxNode,
   ModelicaExpressionSyntaxNode,
   ModelicaFlow,
@@ -45,6 +46,7 @@ import {
   ModelicaUnsignedIntegerLiteralSyntaxNode,
   ModelicaUnsignedRealLiteralSyntaxNode,
   ModelicaVariability,
+  ModelicaVisibility,
   ModelicaWhenEquationSyntaxNode,
   ModelicaWhenStatementSyntaxNode,
   ModelicaWhileStatementSyntaxNode,
@@ -5275,6 +5277,31 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       }
     }
 
+    // Build protected names set from AST sections (the indexer doesn't always
+    // set isProtected metadata for function-local variables in protected sections)
+    const protectedNames = new Set<string>();
+    const funcAstNode = resolved.abstractSyntaxNode;
+    if (funcAstNode) {
+      const funcSpecifier = funcAstNode.classSpecifier;
+      if (funcSpecifier instanceof ModelicaLongClassSpecifierSyntaxNode) {
+        for (const section of funcSpecifier.sections) {
+          if (
+            section instanceof ModelicaElementSectionSyntaxNode &&
+            section.visibility === ModelicaVisibility.PROTECTED
+          ) {
+            for (const el of section.elements) {
+              const compClause = (el as any)?.componentClause ?? el;
+              const decls = compClause?.componentDeclarations ?? compClause?.declarations ?? [];
+              for (const decl of decls) {
+                const name = decl?.declaration?.identifier?.text ?? decl?.identifier?.text;
+                if (name) protectedNames.add(name);
+              }
+            }
+          }
+        }
+      }
+    }
+
     for (const element of resolved.elements) {
       if (!(element instanceof ModelicaComponentInstance)) continue;
       if (!element.classInstance) continue;
@@ -5283,7 +5310,8 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       const compName = element.name ?? "";
       const causality = element.causality ?? null;
       const variability = element.variability ?? null;
-      const isProtected = element.isProtected ?? false;
+      const isProtected =
+        element.isProtected || protectedNames.has(compName) || (resolved.isProtectedElement?.(compName) ?? false);
 
       // Determine array dimensions (if any)
       let arrayPrefix = "";
@@ -5930,8 +5958,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
           }
         }
       } else {
-        // Fallback for unresolved or other cases: keep original logic but be careful
-        name = (ctx.prefix === "" ? "" : ctx.prefix + ".") + rawName;
+        throw new Error(`Variable ${rawName} not found in scope ${ctx.classInstance.name}`);
       }
     } else if (isBuiltinVar) {
       name = rawName;

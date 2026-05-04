@@ -46,7 +46,9 @@ export interface IModelicaModelVisitor<R, A> {
  */
 export abstract class ModelicaModelVisitor<A> implements IModelicaModelVisitor<void, A> {
   visitArrayClassInstance(node: AnyNode, argument?: A): void {
-    for (const element of node.elements) element.accept(this, argument);
+    for (const element of node.elements) {
+      if (typeof element?.accept === "function") element.accept(this, argument);
+    }
   }
 
   visitBooleanClassInstance(_node: AnyNode, _argument?: A): void {
@@ -58,19 +60,27 @@ export abstract class ModelicaModelVisitor<A> implements IModelicaModelVisitor<v
   }
 
   visitClassInstance(node: AnyNode, argument?: A): void {
-    for (const element of node.elements) element.accept(this, argument);
+    for (const element of node.elements) {
+      if (typeof element?.accept === "function") element.accept(this, argument);
+    }
   }
 
   visitComponentInstance(node: AnyNode, argument?: A): void {
-    for (const element of node.elements) element.accept(this, argument);
+    for (const element of node.elements) {
+      if (typeof element?.accept === "function") element.accept(this, argument);
+    }
   }
 
   visitEntity(node: AnyNode, argument?: A): void {
-    for (const element of node.elements) element.accept(this, argument);
+    for (const element of node.elements) {
+      if (typeof element?.accept === "function") element.accept(this, argument);
+    }
   }
 
   visitExtendsClassInstance(node: AnyNode, argument?: A): void {
-    for (const element of node.elements) element.accept(this, argument);
+    for (const element of node.elements) {
+      if (typeof element?.accept === "function") element.accept(this, argument);
+    }
   }
 
   visitIntegerClassInstance(_node: AnyNode, _argument?: A): void {
@@ -78,7 +88,9 @@ export abstract class ModelicaModelVisitor<A> implements IModelicaModelVisitor<v
   }
 
   visitLibrary(node: AnyNode, argument?: A): void {
-    for (const element of node.elements) element.accept(this, argument);
+    for (const element of node.elements) {
+      if (typeof element?.accept === "function") element.accept(this, argument);
+    }
   }
 
   visitRealClassInstance(_node: AnyNode, _argument?: A): void {

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import {
   ModelicaBinaryExpressionSyntaxNode,
@@ -42,6 +43,7 @@ import {
 import type { Range, Tree } from "@modelscript/utils";
 import type { ErrorCodeDef } from "./errors.js";
 import {
+  QueryBackedArrayClassInstance as ModelicaArrayClassInstance,
   QueryBackedBooleanClassInstance as ModelicaBooleanClassInstance,
   QueryBackedClassInstance as ModelicaClassInstance,
   QueryBackedComponentInstance as ModelicaComponentInstance,
@@ -619,3 +621,239 @@ ModelicaLinter.register(
     },
   },
 );
+
+// ---------------------------------------------------------------------------
+// Type mismatch in bindings: Real → Integer is not allowed (§4.7)
+// ---------------------------------------------------------------------------
+
+/** Get the base type name of a class instance, resolving through arrays. */
+function getBaseTypeName(cls: ModelicaClassInstance | null): string | null {
+  if (!cls) return null;
+  if (cls instanceof ModelicaArrayClassInstance) {
+    cls = (cls as any).elementClassInstance;
+  }
+  if (!cls) return null;
+  if (cls instanceof ModelicaRealClassInstance) return "Real";
+  if (cls instanceof ModelicaIntegerClassInstance) return "Integer";
+  if (cls instanceof ModelicaBooleanClassInstance) return "Boolean";
+  if (cls instanceof ModelicaStringClassInstance) return "String";
+  return cls.name ?? null;
+}
+
+/** Get the array shape of a class instance (empty array for scalars). */
+function getArrayShape(cls: ModelicaClassInstance | null): number[] {
+  if (cls instanceof ModelicaArrayClassInstance) {
+    return (cls as any).shape ?? [];
+  }
+  return [];
+}
+
+ModelicaLinter.register(ModelicaErrorCode.TYPE_MISMATCH_BINDING, {
+  visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+    // Only check model/class/block contexts
+    if (node.classKind === ModelicaClassKind.FUNCTION || node.classKind === ModelicaClassKind.PACKAGE) return;
+
+    for (const element of node.elements) {
+      if (!(element instanceof ModelicaComponentInstance)) continue;
+      if (!element.classInstance) continue;
+
+      const compTypeName = getBaseTypeName(element.classInstance);
+      if (compTypeName !== "Integer") continue;
+
+      // Check if the binding expression is Real-typed
+      const mod = element.modification;
+      if (!mod) continue;
+
+      const bindingExpr = mod.modificationExpression?.expression;
+      if (!bindingExpr) continue;
+
+      // Check if the binding references a Real-typed component
+      const refParts = (bindingExpr as any).parts;
+      if (refParts && refParts.length === 1) {
+        const refName = refParts[0]?.identifier?.text;
+        if (refName) {
+          const refElement = node.resolveSimpleName(refName, false, true);
+          if (refElement instanceof ModelicaComponentInstance && refElement.classInstance) {
+            const refTypeName = getBaseTypeName(refElement.classInstance);
+            if (refTypeName === "Real") {
+              const astNode = element.abstractSyntaxNode;
+              diagnosticsCallback(
+                ModelicaErrorCode.TYPE_MISMATCH_BINDING.severity,
+                ModelicaErrorCode.TYPE_MISMATCH_BINDING.code,
+                ModelicaErrorCode.TYPE_MISMATCH_BINDING.message(element.name ?? "", "Integer", refName, "Real"),
+                astNode,
+              );
+            }
+          }
+        }
+      }
+    }
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Type mismatch in equations: array dimension mismatch
+// ---------------------------------------------------------------------------
+
+ModelicaLinter.register(ModelicaErrorCode.EQUATION_TYPE_MISMATCH, {
+  visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+    if (node.classKind === ModelicaClassKind.FUNCTION || node.classKind === ModelicaClassKind.PACKAGE) return;
+
+    // Check simple equations for array dimension mismatches
+    const astNode = (node as any).abstractSyntaxNode;
+    if (!astNode) return;
+
+    for (const section of astNode.sections ?? []) {
+      if (!(section instanceof ModelicaEquationSectionSyntaxNode)) continue;
+      for (const eq of section.equations) {
+        if (!(eq instanceof ModelicaSimpleEquationSyntaxNode)) continue;
+        if (eq.operator && eq.operator !== "=") continue;
+
+        const lhsRef = (eq.expression1 as any)?.parts;
+        const rhsRef = (eq.expression2 as any)?.parts;
+        if (!lhsRef || !rhsRef) continue;
+        if (lhsRef.length !== 1 || rhsRef.length !== 1) continue;
+
+        const lhsName = lhsRef[0]?.identifier?.text;
+        const rhsName = rhsRef[0]?.identifier?.text;
+        if (!lhsName || !rhsName) continue;
+
+        const lhsComp = node.resolveSimpleName(lhsName, false, true);
+        const rhsComp = node.resolveSimpleName(rhsName, false, true);
+        if (!(lhsComp instanceof ModelicaComponentInstance)) continue;
+        if (!(rhsComp instanceof ModelicaComponentInstance)) continue;
+        if (!lhsComp.classInstance || !rhsComp.classInstance) continue;
+
+        const lhsShape = getArrayShape(lhsComp.classInstance);
+        const rhsShape = getArrayShape(rhsComp.classInstance);
+
+        // If both are arrays but shapes differ, report an error
+        if (
+          lhsShape.length > 0 &&
+          rhsShape.length > 0 &&
+          (lhsShape.length !== rhsShape.length || lhsShape.some((d, i) => d !== rhsShape[i]))
+        ) {
+          const lhsTypeName = getBaseTypeName(lhsComp.classInstance) ?? "Real";
+          diagnosticsCallback(
+            ModelicaErrorCode.EQUATION_TYPE_MISMATCH.severity,
+            ModelicaErrorCode.EQUATION_TYPE_MISMATCH.code,
+            ModelicaErrorCode.EQUATION_TYPE_MISMATCH.message(
+              lhsName,
+              rhsName,
+              `${lhsTypeName}[${lhsShape.join(", ")}]`,
+              `${lhsTypeName}[${rhsShape.join(", ")}]`,
+            ),
+            eq,
+          );
+        }
+      }
+    }
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Type mismatch in algorithm assignments: Real → Integer is not allowed
+// ---------------------------------------------------------------------------
+import {
+  ModelicaAlgorithmSectionSyntaxNode as AlgoSection,
+  ModelicaBinaryExpressionSyntaxNode as BinExpr,
+  ModelicaBinaryOperator as BinOp,
+  ModelicaSimpleAssignmentStatementSyntaxNode as SimpleAssign,
+} from "@modelscript/modelica/ast";
+
+/** Recursively check if an expression involves division, producing a Real result. */
+function exprInvolvesDivision(expr: unknown): boolean {
+  if (!expr) return false;
+  if (expr instanceof BinExpr) {
+    if (expr.operator === BinOp.DIVISION) return true;
+    return exprInvolvesDivision(expr.operand1) || exprInvolvesDivision(expr.operand2);
+  }
+  return false;
+}
+
+ModelicaLinter.register(ModelicaErrorCode.ASSIGNMENT_TYPE_MISMATCH, {
+  visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+    const astNode = (node as any).abstractSyntaxNode;
+    if (!astNode) return;
+
+    for (const section of astNode.sections ?? []) {
+      if (!(section instanceof AlgoSection)) continue;
+      for (const stmt of section.statements ?? []) {
+        if (!(stmt instanceof SimpleAssign)) continue;
+
+        const targetParts = stmt.target?.parts;
+        if (!targetParts || targetParts.length !== 1) continue;
+        const targetName = targetParts[0]?.identifier?.text;
+        if (!targetName) continue;
+
+        const targetComp = node.resolveSimpleName(targetName, false, true);
+        if (!(targetComp instanceof ModelicaComponentInstance)) continue;
+        if (!targetComp.classInstance) continue;
+
+        const targetType = getBaseTypeName(targetComp.classInstance);
+        if (targetType !== "Integer") continue;
+
+        // n1 / 2 always produces Real in Modelica (Integer division is `div()`)
+        if (exprInvolvesDivision(stmt.source)) {
+          diagnosticsCallback(
+            ModelicaErrorCode.ASSIGNMENT_TYPE_MISMATCH.severity,
+            ModelicaErrorCode.ASSIGNMENT_TYPE_MISMATCH.code,
+            ModelicaErrorCode.ASSIGNMENT_TYPE_MISMATCH.message(
+              targetName,
+              "Integer",
+              (stmt.source as any).text ?? "...",
+              "Real",
+            ),
+            stmt,
+          );
+        }
+      }
+    }
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Unresolved references in equations
+// ---------------------------------------------------------------------------
+import { ModelicaComponentReferenceSyntaxNode as CompRef } from "@modelscript/modelica/ast";
+
+ModelicaLinter.register(ModelicaErrorCode.NAME_NOT_FOUND, {
+  visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+    const astNode = (node as any).abstractSyntaxNode;
+    if (!astNode) return;
+
+    for (const section of astNode.sections ?? []) {
+      if (!(section instanceof ModelicaEquationSectionSyntaxNode) && !(section instanceof AlgoSection)) continue;
+
+      // This is a simplified check. A full check requires walking the expression tree.
+      // We will look for simple component references that fail to resolve.
+      // But actually, `Capacitor` fails when its equations are instantiated into `comp1`.
+      // So this check is best done in the DAE printer or flattener.
+      // Let's add a quick check for simple unresolved names.
+      for (const eq of (section as any).equations ?? []) {
+        if (eq instanceof ModelicaSimpleEquationSyntaxNode) {
+          const refs = [eq.expression1, eq.expression2];
+          for (const expr of refs) {
+            if (expr instanceof CompRef) {
+              const parts = expr.parts;
+              if (parts && parts.length > 0) {
+                const firstName = parts[0]?.identifier?.text;
+                if (firstName) {
+                  const resolved = node.resolveSimpleName(firstName, false, true);
+                  if (!resolved) {
+                    diagnosticsCallback(
+                      ModelicaErrorCode.NAME_NOT_FOUND.severity,
+                      ModelicaErrorCode.NAME_NOT_FOUND.code,
+                      ModelicaErrorCode.NAME_NOT_FOUND.message(firstName),
+                      expr,
+                    );
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+});
