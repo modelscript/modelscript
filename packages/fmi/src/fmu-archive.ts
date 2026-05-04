@@ -21,6 +21,7 @@ import { deflateRaw } from "pako";
 import type { FmuOptions, FmuResult } from "./fmi.js";
 import { generateFmu } from "./fmi.js";
 import { generateFmi3 } from "./fmi3.js";
+import { generateFmuAsSources } from "./fmu-as-codegen.js";
 import { generateFmuCSources } from "./fmu-codegen.js";
 import { generateFmuJsSources } from "./fmu-js-codegen.js";
 import { generateFmuWasmSource } from "./fmu-wasm-codegen.js";
@@ -98,6 +99,10 @@ export function buildFmuArchive(
     // Export Javascript alongside the C code
     const jsSource = generateFmuJsSources(dae, fmuResult, options);
     files.set(`resources/model.js`, encoder.encode(jsSource));
+
+    // Export AssemblyScript alongside the Javascript
+    const asSource = generateFmuAsSources(dae, fmuResult, options);
+    files.set(`resources/model.ts`, encoder.encode(asSource));
   }
 
   // ── WASM source and binaries ──

@@ -32,7 +32,7 @@ export interface ParticipantMetadata {
   /** Modelica model name. */
   modelName: string;
   /** Participant type. */
-  type: "js-simulator" | "fmu-js" | "fmu-native" | "external";
+  type: "js-simulator" | "fmu-js" | "fmu-wasm" | "fmu-native" | "external";
   /** Modelica class kind (model, block, connector, etc.). */
   classKind: string;
   /** Human-readable description. */

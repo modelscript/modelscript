@@ -159,6 +159,13 @@ export class FmuStorage {
     return extractFileFromZip(archive, "resources/model.json");
   }
 
+  /** Extract a specific file from the FMU ZIP archive. */
+  getExtractedFile(id: string, filename: string): string | null {
+    const archive = this.getArchive(id);
+    if (!archive) return null;
+    return extractFileFromZip(archive, filename);
+  }
+
   /** Get the terminalsAndIcons.xml content (if it exists). */
   getTerminalsAndIcons(id: string): string | null {
     const xmlPath = join(this.storageDir, id, "terminalsAndIcons.xml");
@@ -184,7 +191,7 @@ export class FmuStorage {
  * then extracts its content. Supports STORED and DEFLATED methods.
  * No external dependency required.
  */
-function extractFileFromZip(zipData: Buffer, targetName: string): string | null {
+export function extractFileFromZip(zipData: Buffer, targetName: string): string | null {
   // Find End of Central Directory record
   let eocdOffset = -1;
   for (let i = zipData.length - 22; i >= 0; i--) {

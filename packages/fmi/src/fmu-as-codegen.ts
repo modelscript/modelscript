@@ -165,6 +165,17 @@ function generateModelAs(id: string, nVars: number, nStates: number, dae: Modeli
   lines.push("  modelTime += dt;");
   lines.push("  getDerivatives();");
   lines.push("}");
+  lines.push("");
+
+  lines.push("export function getVar(vr: i32): f64 {");
+  lines.push("  return vars[vr];");
+  lines.push("}");
+  lines.push("");
+
+  lines.push("export function setVar(vr: i32, value: f64): void {");
+  lines.push("  vars[vr] = value;");
+  lines.push("}");
+  lines.push("");
 
   return lines.join("\n");
 }
