@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { Router } from "express";
-import { getCommits, getProject, getRepositoryFileRaw, getRepositoryTree } from "../util/gitlab.js";
+import { getCommits, getProject, getRepositoryFileRaw, getRepositoryTree, GitlabError } from "../util/gitlab.js";
 
 export function gitlabRouter(): Router {
   const router = Router();
@@ -15,7 +15,11 @@ export function gitlabRouter(): Router {
       const project = await getProject(req.params.id);
       res.json(project);
     } catch (err: unknown) {
-      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+      if (err instanceof GitlabError) {
+        res.status(err.status).json({ error: err.message });
+      } else {
+        res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+      }
     }
   });
 
@@ -30,7 +34,11 @@ export function gitlabRouter(): Router {
       const tree = await getRepositoryTree(req.params.id, ref, path);
       res.json(tree);
     } catch (err: unknown) {
-      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+      if (err instanceof GitlabError) {
+        res.status(err.status).json({ error: err.message });
+      } else {
+        res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+      }
     }
   });
 
@@ -44,7 +52,11 @@ export function gitlabRouter(): Router {
       const rawContent = await getRepositoryFileRaw(req.params.id, req.params.file_path, ref);
       res.type("text/plain").send(rawContent);
     } catch (err: unknown) {
-      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+      if (err instanceof GitlabError) {
+        res.status(err.status).json({ error: err.message });
+      } else {
+        res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+      }
     }
   });
 
@@ -58,7 +70,11 @@ export function gitlabRouter(): Router {
       const commits = await getCommits(req.params.id, refName);
       res.json(commits);
     } catch (err: unknown) {
-      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+      if (err instanceof GitlabError) {
+        res.status(err.status).json({ error: err.message });
+      } else {
+        res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+      }
     }
   });
 
@@ -75,7 +91,11 @@ export function gitlabRouter(): Router {
       const pipelines = await gitlabRequest(url);
       res.json(pipelines);
     } catch (err: unknown) {
-      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+      if (err instanceof GitlabError) {
+        res.status(err.status).json({ error: err.message });
+      } else {
+        res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+      }
     }
   });
 
@@ -91,7 +111,72 @@ export function gitlabRouter(): Router {
       const jobs = await gitlabRequest(url);
       res.json(jobs);
     } catch (err: unknown) {
-      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+      if (err instanceof GitlabError) {
+        res.status(err.status).json({ error: err.message });
+      } else {
+        res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+  });
+
+  /**
+   * Get issues
+   */
+  router.get("/projects/:id/issues", async (req, res) => {
+    try {
+      const encodedId = encodeURIComponent(req.params.id);
+      const url = `/projects/${encodedId}/issues?state=opened`;
+      const { gitlabRequest } = await import("../util/gitlab.js");
+      const issues = await gitlabRequest(url);
+      res.json(issues);
+    } catch (err: unknown) {
+      if (err instanceof GitlabError) {
+        res.status(err.status).json({ error: err.message });
+      } else {
+        res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+  });
+
+  /**
+   * Create an issue
+   */
+  router.post("/projects/:id/issues", async (req, res) => {
+    try {
+      const encodedId = encodeURIComponent(req.params.id);
+      const url = `/projects/${encodedId}/issues`;
+      const { gitlabRequest } = await import("../util/gitlab.js");
+      const issue = await gitlabRequest(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(req.body),
+      });
+      res.json(issue);
+    } catch (err: unknown) {
+      if (err instanceof GitlabError) {
+        res.status(err.status).json({ error: err.message });
+      } else {
+        res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+  });
+
+  /**
+   * Get merge requests
+   */
+  router.get("/projects/:id/merge_requests", async (req, res) => {
+    try {
+      const encodedId = encodeURIComponent(req.params.id);
+      const url = `/projects/${encodedId}/merge_requests?state=opened`;
+      const { gitlabRequest } = await import("../util/gitlab.js");
+      const mrs = await gitlabRequest(url);
+      res.json(mrs);
+    } catch (err: unknown) {
+      if (err instanceof GitlabError) {
+        res.status(err.status).json({ error: err.message });
+      } else {
+        res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+      }
     }
   });
 

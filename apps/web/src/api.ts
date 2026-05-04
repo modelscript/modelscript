@@ -291,6 +291,41 @@ export interface GitlabJob {
   artifacts: { file_type: string; size: number; filename: string }[];
 }
 
+export interface GitlabIssue {
+  id: number;
+  iid: number;
+  project_id: number;
+  title: string;
+  description: string;
+  state: string;
+  created_at: string;
+  updated_at: string;
+  author: {
+    name: string;
+    avatar_url: string;
+    username: string;
+  };
+  labels: string[];
+}
+
+export interface GitlabMergeRequest {
+  id: number;
+  iid: number;
+  project_id: number;
+  title: string;
+  description: string;
+  state: string;
+  created_at: string;
+  updated_at: string;
+  target_branch: string;
+  source_branch: string;
+  author: {
+    name: string;
+    avatar_url: string;
+    username: string;
+  };
+}
+
 export const getGitlabProject = async (projectIdOrPath: string): Promise<GitlabProject> => {
   const { data } = await api.get<GitlabProject>(`/gitlab/projects/${encodeURIComponent(projectIdOrPath)}`);
   return data;
@@ -337,6 +372,30 @@ export const getGitlabPipelines = async (projectIdOrPath: string, refName = "mai
 export const getGitlabPipelineJobs = async (projectIdOrPath: string, pipelineId: number): Promise<GitlabJob[]> => {
   const { data } = await api.get<GitlabJob[]>(
     `/gitlab/projects/${encodeURIComponent(projectIdOrPath)}/pipelines/${pipelineId}/jobs`,
+  );
+  return data;
+};
+
+export const getGitlabIssues = async (projectIdOrPath: string): Promise<GitlabIssue[]> => {
+  const { data } = await api.get<GitlabIssue[]>(`/gitlab/projects/${encodeURIComponent(projectIdOrPath)}/issues`);
+  return data;
+};
+
+export const createGitlabIssue = async (
+  projectIdOrPath: string,
+  title: string,
+  description: string,
+): Promise<GitlabIssue> => {
+  const { data } = await api.post<GitlabIssue>(`/gitlab/projects/${encodeURIComponent(projectIdOrPath)}/issues`, {
+    title,
+    description,
+  });
+  return data;
+};
+
+export const getGitlabMergeRequests = async (projectIdOrPath: string): Promise<GitlabMergeRequest[]> => {
+  const { data } = await api.get<GitlabMergeRequest[]>(
+    `/gitlab/projects/${encodeURIComponent(projectIdOrPath)}/merge_requests`,
   );
   return data;
 };

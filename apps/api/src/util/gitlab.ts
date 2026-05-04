@@ -4,28 +4,66 @@
  * Utility client for integrating with a GitLab CE instance.
  */
 
+import http from "node:http";
+import https from "node:https";
+
 const GITLAB_URL = process.env.GITLAB_URL || "https://gitlab.com";
 const GITLAB_TOKEN = process.env.GITLAB_TOKEN || "";
+
+export class GitlabError extends Error {
+  constructor(
+    public status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "GitlabError";
+  }
+}
 
 /**
  * Make an authenticated request to the GitLab API.
  */
-export async function gitlabRequest<T = unknown>(path: string, options?: RequestInit): Promise<T> {
-  const url = `${GITLAB_URL}/api/v4${path}`;
-  const headers = new Headers(options?.headers);
-  if (GITLAB_TOKEN) {
-    headers.set("Authorization", `Bearer ${GITLAB_TOKEN}`);
-  }
-  headers.set("Content-Type", "application/json");
+export function gitlabRequest<T = unknown>(path: string, options?: RequestInit): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const url = new URL(`${GITLAB_URL}/api/v4${path}`);
+    const client = url.protocol === "http:" ? http : https;
 
-  const response = await fetch(url, { ...options, headers });
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...(GITLAB_TOKEN ? { Authorization: `Bearer ${GITLAB_TOKEN}` } : {}),
+    };
+    if (options?.headers) {
+      Object.assign(headers, options.headers);
+    }
 
-  if (!response.ok) {
-    const errText = await response.text().catch(() => "");
-    throw new Error(`GitLab API error: ${response.status} ${response.statusText} - ${errText}`);
-  }
+    const req = client.request(
+      url,
+      {
+        method: options?.method || "GET",
+        headers,
+        family: 4, // Force IPv4 to bypass dual-stack fetch bugs in restricted networks
+      },
+      (res) => {
+        let data = "";
+        res.on("data", (chunk) => (data += chunk));
+        res.on("end", () => {
+          if (!res.statusCode || res.statusCode >= 400) {
+            reject(new GitlabError(res.statusCode || 500, `GitLab API error: ${res.statusCode} - ${data}`));
+          } else {
+            try {
+              resolve(JSON.parse(data) as T);
+            } catch (e) {
+              reject(e);
+            }
+          }
+        });
+      },
+    );
 
-  return (await response.json()) as T;
+    req.on("error", reject);
+    if (options?.body) req.write(options.body as string);
+    req.end();
+  });
 }
 
 /**
@@ -48,21 +86,41 @@ export async function getRepositoryTree(projectIdOrPath: string, ref = "main", p
 /**
  * Get raw file content from the repository.
  */
-export async function getRepositoryFileRaw(projectIdOrPath: string, filePath: string, ref = "main"): Promise<string> {
-  const encodedId = encodeURIComponent(projectIdOrPath);
-  const encodedFile = encodeURIComponent(filePath);
-  const url = `${GITLAB_URL}/api/v4/projects/${encodedId}/repository/files/${encodedFile}/raw?ref=${ref}`;
+export function getRepositoryFileRaw(projectIdOrPath: string, filePath: string, ref = "main"): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const encodedId = encodeURIComponent(projectIdOrPath);
+    const encodedFile = encodeURIComponent(filePath);
+    const url = new URL(`${GITLAB_URL}/api/v4/projects/${encodedId}/repository/files/${encodedFile}/raw?ref=${ref}`);
+    const client = url.protocol === "http:" ? http : https;
 
-  const headers = new Headers();
-  if (GITLAB_TOKEN) {
-    headers.set("Authorization", `Bearer ${GITLAB_TOKEN}`);
-  }
+    const headers: Record<string, string> = {};
+    if (GITLAB_TOKEN) {
+      headers["Authorization"] = `Bearer ${GITLAB_TOKEN}`;
+    }
 
-  const response = await fetch(url, { headers });
-  if (!response.ok) {
-    throw new Error(`Failed to fetch raw file: ${response.status}`);
-  }
-  return response.text();
+    const req = client.request(
+      url,
+      {
+        method: "GET",
+        headers,
+        family: 4, // Force IPv4
+      },
+      (res) => {
+        let data = "";
+        res.on("data", (chunk) => (data += chunk));
+        res.on("end", () => {
+          if (!res.statusCode || res.statusCode >= 400) {
+            reject(new Error(`Failed to fetch raw file: ${res.statusCode}`));
+          } else {
+            resolve(data);
+          }
+        });
+      },
+    );
+
+    req.on("error", reject);
+    req.end();
+  });
 }
 
 /**

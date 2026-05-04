@@ -254,7 +254,7 @@ const GlobalHeader: React.FC = () => {
           </Header.Link>
         </Header.Item>
         <Header.Item>
-          <Header.Link as={Link} to="/workspace/modelscript/core" style={{ color: "var(--color-text-muted)" }}>
+          <Header.Link as={Link} to="/workspace/gitlab-org/cli" style={{ color: "var(--color-text-muted)" }}>
             Workspaces
           </Header.Link>
         </Header.Item>
@@ -333,7 +333,7 @@ function App() {
               <Routes>
                 <Route path="/" element={<LandingPage />} />
                 <Route path="/libraries" element={<LibraryListPage />} />
-                <Route path="/workspace/:namespace/:project" element={<WorkspacePage />} />
+                <Route path="/workspace/:namespace/:project/*" element={<WorkspacePage />} />
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/signup" element={<SignupPage />} />
                 <Route path="/:name" element={<LibraryVersionPage />} />

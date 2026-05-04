@@ -29,7 +29,7 @@
   "scripts": {
     "build": "npm run clean && npm run lint && tsc",
     "clean": "rimraf dist",
-    "dev": "PORT=3000 NODE_OPTIONS='--max-old-space-size=8192' tsx src/main.ts",
+    "dev": "PORT=3000 NODE_OPTIONS='--max-old-space-size=8192 --dns-result-order=ipv4first' tsx watch src/main.ts",
     "lint": "eslint src",
     "watch": "tsc --watch"
   },

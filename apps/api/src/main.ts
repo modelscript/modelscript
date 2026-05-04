@@ -12,6 +12,8 @@
  * - Graceful shutdown handling
  */
 
+import "./setup.js";
+
 import { CosimMqttClient, HistorianRecorder, attachCosimWebSocket } from "@modelscript/cosim";
 import { createApp } from "./app.js";
 
@@ -78,7 +80,7 @@ if (mqttClient && dbPool) {
 
 // ── Create Express app ──
 
-const app = createApp({ mqttClient, dbPool });
+const app = createApp({ mqttClient, dbPool, storage: undefined });
 
 // ── Start HTTP server ──
 
