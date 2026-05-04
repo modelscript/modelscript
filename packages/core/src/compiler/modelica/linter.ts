@@ -578,3 +578,44 @@ export const BUILTIN_MODELICA_NAMES = new Set([
   // Graphical Annotations
   "DynamicSelect",
 ]);
+
+import { ModelicaClassKind } from "@modelscript/modelica/ast";
+import { ModelicaErrorCode } from "./errors.js";
+
+ModelicaLinter.register(
+  [ModelicaErrorCode.OPTIMIZATION_OBJECTIVE_TYPE, ModelicaErrorCode.OPTIMIZATION_CONSTRAINT_TYPE],
+  {
+    visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+      if (node.classKind !== ModelicaClassKind.OPTIMIZATION) return;
+
+      // Check objective type (heuristically for now, deep type inference in flattener)
+      const objMod = node.modifiers?.get("objective");
+      if (objMod && objMod.expression) {
+        const exprNode = objMod.expression.syntaxNode;
+        // Example basic check: If objective is explicitly defined as an array
+        if (exprNode && exprNode.type === "expression_list") {
+          diagnosticsCallback(
+            ModelicaErrorCode.OPTIMIZATION_OBJECTIVE_TYPE.severity,
+            ModelicaErrorCode.OPTIMIZATION_OBJECTIVE_TYPE.code,
+            ModelicaErrorCode.OPTIMIZATION_OBJECTIVE_TYPE.message("Array"),
+            exprNode,
+          );
+        }
+      }
+
+      // Check constraints type
+      if (node.equations) {
+        for (const eq of node.equations) {
+          if (eq.inConstraintSection && eq.syntaxNode) {
+            // Constraints in Optimica are typically inequalities (<=, >=, <, >) or equations (=)
+            // Or function calls that evaluate to boolean.
+            // We can add more advanced type resolving here when type evaluator is available
+            // For now, this serves as the semantic validation hook for IDE feedback.
+            // Example: if it's an assignment (:=), that's invalid in constraint section
+            // But assignments are statements, not equations, so they wouldn't appear here anyway.
+          }
+        }
+      }
+    },
+  },
+);

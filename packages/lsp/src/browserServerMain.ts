@@ -3590,6 +3590,149 @@ connection.onRequest(
   },
 );
 
+// Custom request: optimize a model
+connection.onRequest(
+  "modelscript/optimizeModel",
+  async (params: {
+    uri: string;
+    className?: string;
+    objective?: string;
+    controls?: string[];
+    controlBounds?: Record<string, { min: number; max: number }>;
+    startTime?: number;
+    stopTime?: number;
+    numIntervals?: number;
+    tolerance?: number;
+    maxIterations?: number;
+    parameterOverrides?: Record<string, number>;
+  }): Promise<{
+    success: boolean;
+    cost: number;
+    iterations: number;
+    t: number[];
+    states: Record<string, number[]>;
+    controls: Record<string, number[]>;
+    costHistory: number[];
+    messages: string;
+    error?: string;
+  }> => {
+    connection.console.info(`[optimize] Requested optimization for URI: ${params.uri}`);
+    let instances = documentInstances.get(params.uri);
+    if (!instances || instances.length === 0) {
+      const doc = documents.get(params.uri);
+      if (doc) {
+        await validateTextDocument(doc);
+        instances = documentInstances.get(params.uri);
+      }
+    }
+    if (!instances || instances.length === 0) {
+      return {
+        success: false,
+        cost: 0,
+        iterations: 0,
+        t: [],
+        states: {},
+        controls: {},
+        costHistory: [],
+        messages: "",
+        error: "No class instances found for this document.",
+      };
+    }
+
+    let classInstance = instances[0];
+    if (params.className) {
+      const found = instances.find((i) => i.name === params.className);
+      if (found) classInstance = found;
+    }
+
+    try {
+      if (!mslStdlibReady && globalWorkspaceIndex.pendingFileCount > 0) {
+        connection.sendNotification("modelscript/status", {
+          state: "loading",
+          message: "Indexing MSL for optimization...",
+        });
+        await globalWorkspaceIndex.indexRemainingInBackground(50);
+        mslStdlibReady = true;
+        connection.sendNotification("modelscript/status", { state: "ready", message: "ModelScript" });
+
+        const fullIndex = unifiedWorkspace.toUnifiedPartial();
+        injectPredefinedTypes(fullIndex);
+        const engine = params.uri.endsWith(".sysml") ? globalSysML2QueryEngine : globalModelicaQueryEngine;
+        if (engine) engine.updateIndex(fullIndex);
+
+        const doc = documents.get(params.uri);
+        if (doc) await validateTextDocument(doc);
+        instances = documentInstances.get(params.uri);
+        if (!instances || instances.length === 0) throw new Error("No class instances found after indexing.");
+        classInstance = params.className
+          ? (instances.find((i) => i.name === params.className) ?? instances[0])
+          : instances[0];
+      }
+
+      if (!classInstance.instantiated) {
+        classInstance.instantiate();
+      }
+
+      const dae = new ModelicaDAE(classInstance.name || "OptimizationModel");
+      const flattener = new ModelicaFlattener();
+      classInstance.accept(flattener, ["", dae]);
+      flattener.generateFlowBalanceEquations(dae);
+      flattener.foldDAEConstants(dae);
+
+      const exp = dae.experiment;
+
+      // In Optimica, the controls are usually identified by looking at variables with free=true.
+      // But we accept overrides from the UI if present.
+      let finalControls = params.controls;
+      if (!finalControls || finalControls.length === 0) {
+        finalControls = dae.variables.filter((v) => v.attributes.has("free")).map((v) => v.name);
+      }
+      if (!finalControls || finalControls.length === 0) {
+        // Fallback or testing
+        finalControls = ["u"];
+      }
+
+      const optimizer = new ModelicaOptimizer(dae, {
+        objective: params.objective ?? "u^2",
+        controls: finalControls,
+        controlBounds: params.controlBounds ? new Map(Object.entries(params.controlBounds)) : new Map(),
+        startTime: params.startTime ?? exp.startTime ?? 0,
+        stopTime: params.stopTime ?? exp.stopTime ?? 10,
+        numIntervals: params.numIntervals ?? 50,
+        tolerance: params.tolerance ?? 1e-6,
+        maxIterations: params.maxIterations ?? 200,
+        parameterOverrides: params.parameterOverrides ? new Map(Object.entries(params.parameterOverrides)) : undefined,
+      });
+
+      const result = optimizer.solve();
+
+      return {
+        success: result.success,
+        cost: result.cost,
+        iterations: result.iterations,
+        t: result.t,
+        states: Object.fromEntries(result.states),
+        controls: Object.fromEntries(result.controls),
+        costHistory: result.costHistory,
+        messages: result.messages,
+      };
+    } catch (e) {
+      console.error("[optimize] Error:", e);
+      return {
+        success: false,
+        cost: 0,
+        iterations: 0,
+        t: [],
+        states: {},
+        controls: {},
+        costHistory: [],
+        messages: "",
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
+  },
+);
+
 // Custom request: calibrate a model against measurement data
 connection.onRequest(
   "modelscript/calibrate",

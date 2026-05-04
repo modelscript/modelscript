@@ -26,6 +26,14 @@ interface SimulationResult {
   error?: string;
 }
 
+interface GenericWorkerResult {
+  success?: boolean;
+  error?: string;
+  message?: string;
+  messages?: string[];
+  [key: string]: unknown;
+}
+
 export class SimulationPanel {
   static currentPanel: SimulationPanel | undefined;
   static readonly viewType = "modelscript.simulation";
@@ -267,7 +275,7 @@ export class SimulationPanel {
             },
             async () => {
               if (!this.client) return;
-              const result: CalibrationResult = await this.client.sendRequest("modelscript/calibrate", {
+              const result: GenericWorkerResult = await this.client.sendRequest("modelscript/calibrate", {
                 uri,
                 csvData: msg.payload.csvData,
                 timeColumn: msg.payload.timeColumn,
@@ -286,6 +294,42 @@ export class SimulationPanel {
 
               this.panel.webview.postMessage({
                 type: "calibrationData",
+                data: result,
+                isDark:
+                  vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
+                  vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast,
+              });
+            },
+          );
+        } else if (msg.type === "optimizeRequest" && this.client) {
+          const uri = this.sourceUri;
+          if (!uri) return;
+
+          await vscode.window.withProgress(
+            {
+              location: vscode.ProgressLocation.Notification,
+              title: "Optimizing model...",
+              cancellable: false,
+            },
+            async () => {
+              if (!this.client) return;
+              const result: GenericWorkerResult = await this.client.sendRequest("modelscript/optimizeModel", {
+                uri,
+                objective: msg.payload.objective,
+                controls: msg.payload.controls,
+                tolerance: msg.payload.tolerance,
+                maxIterations: msg.payload.maxIterations,
+              });
+
+              if (result.error || !result.success) {
+                vscode.window.showErrorMessage(
+                  `Optimization failed: ${result.error || result.messages || result.message}`,
+                );
+                return;
+              }
+
+              this.panel.webview.postMessage({
+                type: "optimizationData",
                 data: result,
                 isDark:
                   vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
@@ -663,6 +707,24 @@ export class SimulationPanel {
           <div class="settings-row"><label>Max Iterations</label><input type="number" id="cal-iters" step="any" value="100"></div>
           <div class="simulate-btn-container">
             <button id="btn-calibrate" class="simulate-btn" style="background: var(--vscode-debugIcon-startForeground, #388a34);">Run Calibration</button>
+          </div>
+        </div>
+      </div>
+      <div class="sidebar-section" id="optimization-section" style="display: none;">
+        <div class="sidebar-header" onclick="this.parentElement.classList.toggle('collapsed')">Optimization</div>
+        <div class="sidebar-content" id="optimization-view">
+          <div style="padding: 4px 16px; font-size: 11px;">
+            <label style="display:block;margin-bottom:4px">Objective</label>
+            <input type="text" id="opt-objective" style="width: 100%; box-sizing: border-box; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border);" placeholder="u^2">
+          </div>
+          <div style="padding: 4px 16px; font-size: 11px;">
+            <label style="display:block;margin-bottom:4px">Controls (comma separated)</label>
+            <input type="text" id="opt-controls" style="width: 100%; box-sizing: border-box; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border);" placeholder="u">
+          </div>
+          <div class="settings-row"><label>Tolerance</label><input type="number" id="opt-tolerance" step="any" value="0.000001"></div>
+          <div class="settings-row"><label>Max Iterations</label><input type="number" id="opt-iters" step="any" value="200"></div>
+          <div class="simulate-btn-container">
+            <button id="btn-optimize" class="simulate-btn" style="background: var(--vscode-debugIcon-startForeground, #388a34);">Run Optimization</button>
           </div>
         </div>
       </div>

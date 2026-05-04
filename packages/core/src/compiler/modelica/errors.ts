@@ -361,6 +361,19 @@ export const ModelicaErrorCode = {
     message: (expr: string, type1: string, type2: string) =>
       `Cannot resolve type of expression ${expr}. The operands have types ${type1}, ${type2} in component <NO COMPONENT>.`,
   },
+  OPTIMIZATION_OBJECTIVE_TYPE: {
+    code: 3012,
+    rule: "optimization-objective-type",
+    severity: "error",
+    message: (typeStr: string) => `Optimization objective must be a scalar Real, but got type '${typeStr}'.`,
+  },
+  OPTIMIZATION_CONSTRAINT_TYPE: {
+    code: 3013,
+    rule: "optimization-constraint-type",
+    severity: "error",
+    message: (typeStr: string) =>
+      `Optimization constraints must evaluate to scalar Real or Boolean expressions, but got type '${typeStr}'.`,
+  },
 } as const satisfies Record<string, ErrorCodeDef>;
 
 // Derive the union type of all error code keys

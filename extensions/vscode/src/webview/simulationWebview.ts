@@ -103,6 +103,14 @@ const calParamsInput = document.getElementById("cal-params") as HTMLInputElement
 const calMethodSelect = document.getElementById("cal-method") as HTMLSelectElement;
 const calItersInput = document.getElementById("cal-iters") as HTMLInputElement;
 
+// Optimization inputs
+const optimizationSection = document.getElementById("optimization-section")!;
+const btnOptimize = document.getElementById("btn-optimize")!;
+const optObjectiveInput = document.getElementById("opt-objective") as HTMLInputElement;
+const optControlsInput = document.getElementById("opt-controls") as HTMLInputElement;
+const optToleranceInput = document.getElementById("opt-tolerance") as HTMLInputElement;
+const optItersInput = document.getElementById("opt-iters") as HTMLInputElement;
+
 let currentParameters: Record<string, HTMLInputElement> = {};
 /* eslint-enable @typescript-eslint/no-non-null-assertion */
 
@@ -277,6 +285,7 @@ window.addEventListener("message", (event) => {
     toleranceInput.value = (exp.tolerance ?? 1e-4).toString();
 
     calibrationSection.style.display = "flex";
+    optimizationSection.style.display = "flex";
 
     draw();
   } else if (msg.type === "calibrationData") {
@@ -308,6 +317,47 @@ window.addEventListener("message", (event) => {
         }
       }
     }
+
+    draw();
+  } else if (msg.type === "optimizationData") {
+    // Treat optimization data as batch simulation data for plotting
+    isLiveMode = false;
+    isDark = msg.isDark;
+    const allStates = [...Object.keys(msg.data.states), ...Object.keys(msg.data.controls)];
+
+    // Create y matrix from states and controls map
+    const numPoints = msg.data.t.length;
+    const yMatrix: number[][] = [];
+    for (let i = 0; i < numPoints; i++) {
+      const row: number[] = [];
+      for (const state of Object.keys(msg.data.states)) {
+        row.push(msg.data.states[state][i]);
+      }
+      for (const control of Object.keys(msg.data.controls)) {
+        row.push(msg.data.controls[control][i]);
+      }
+      yMatrix.push(row);
+    }
+
+    currentData = {
+      t: msg.data.t,
+      y: yMatrix,
+      states: allStates,
+    };
+
+    allStates.forEach((state: string) => {
+      if (!seenVars.has(state)) {
+        hiddenVars.add(state);
+        seenVars.add(state);
+      }
+    });
+
+    placeholderEl.style.display = "none";
+    containerEl.style.display = "flex";
+    toolbarEl.classList.add("visible");
+    toolbarEl.classList.remove("live-mode");
+    stopLiveLoop();
+    buildTreeView(allStates);
 
     draw();
   } else if (msg.type === "liveMode") {
@@ -400,6 +450,25 @@ btnCalibrate?.addEventListener("click", () => {
       method: calMethodSelect.value,
       maxIterations: calItersInput.value ? parseInt(calItersInput.value) : 100,
       // Default bounds of -infinity to infinity if none specified
+    },
+  });
+});
+
+btnOptimize?.addEventListener("click", () => {
+  if (!vscodeApi) return;
+  const controlsStr = optControlsInput.value;
+  const controls = controlsStr
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+
+  vscodeApi.postMessage({
+    type: "optimizeRequest",
+    payload: {
+      objective: optObjectiveInput.value || undefined,
+      controls: controls.length > 0 ? controls : undefined,
+      tolerance: optToleranceInput.value ? parseFloat(optToleranceInput.value) : undefined,
+      maxIterations: optItersInput.value ? parseInt(optItersInput.value) : 200,
     },
   });
 });
