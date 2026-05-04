@@ -1925,7 +1925,7 @@ export default language({
           isProtected: (db: QueryDB, self: SymbolEntry) => {
             let current = db.cstNode(self.id) as any;
             while (current && current.type !== "ElementSection") current = current.parent;
-            return current ? current.childForFieldName("protected") !== null : false;
+            return current ? current.childForFieldName("visibility")?.text === "protected" : false;
           },
 
           isOuter: (db: QueryDB, self: SymbolEntry) => {

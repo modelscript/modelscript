@@ -130,7 +130,7 @@ export class ModelicaLinter {
           range: Range | null | undefined,
         ) => diagnosticsCallback(type, code, message, resource, range);
         // Expose resource to rules that might need it (e.g., checking file extensions)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         (callback as any).resource = resource;
         (rule as Record<string, (...args: unknown[]) => void>)[methodName]?.(node, callback);
       }

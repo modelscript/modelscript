@@ -230,7 +230,7 @@ export class ModelicaElement {
 
   /** Gets whether the component is protected */
   get isProtected(): boolean {
-    return !!(this.entry?.metadata as Record<string, unknown>)?.protected;
+    return !!this.db.query<boolean>("isProtected", this.id);
   }
 
   get entry(): SymbolEntry | undefined {
@@ -243,6 +243,17 @@ export class ModelicaElement {
 
   get kind(): string {
     return this.entry?.kind ?? "";
+  }
+
+  get parent(): ModelicaElement | null {
+    const pid = this.entry?.parentId;
+    if (pid == null) return null;
+    const parentEntry = this.db.symbol(pid);
+    if (!parentEntry) return null;
+    if (parentEntry.kind === "Class" || parentEntry.kind === "Package" || parentEntry.kind === "Function") {
+      return new ModelicaClassInstance(pid, this.db);
+    }
+    return new ModelicaElement(pid, this.db);
   }
 
   get compositeName(): string {
@@ -974,17 +985,14 @@ export class ModelicaClassInstance extends ModelicaElement {
 
   #protectedElementsCache?: Set<string>;
 
-  /** Check if a named element is protected. */
   isProtectedElement(name: string): boolean {
     if (this.#protectedElementsCache !== undefined) {
       return this.#protectedElementsCache.has(name);
     }
     const protectedSet = new Set<string>();
-    const ids = this.db.query<SymbolId[]>("elements", this.id) ?? [];
-    for (const id of ids) {
-      const entry = this.db.symbol(id);
-      if (entry && (entry.metadata as any)?.visibility === "protected") {
-        protectedSet.add(entry.name);
+    for (const element of this.elements) {
+      if (element.name && element.isProtected) {
+        protectedSet.add(element.name);
       }
     }
     this.#protectedElementsCache = protectedSet;
