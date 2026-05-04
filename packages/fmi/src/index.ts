@@ -4,6 +4,7 @@ export * from "./ad-codegen.js";
 export * from "./fmi.js";
 export * from "./fmi3.js";
 export * from "./fmu-archive.js";
+export * from "./fmu-as-codegen.js";
 export * from "./fmu-codegen.js";
 export * from "./fmu-wasm-codegen.js";
 export * from "./fmu-wasm-compile.js";
