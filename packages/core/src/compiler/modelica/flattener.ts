@@ -2270,7 +2270,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     for (const declaredElement of declaredElements) {
       // Build subscript string using enum literal names for enum dimensions
       const subscriptParts = index.map((idx: number, dim: number) => {
-        const enumInfo = (arrayClassInstance.enumDimensions as any).get(dim);
+        const enumInfo = (arrayClassInstance.enumDimensions as any)?.get?.(dim);
         if (enumInfo && idx - 1 < enumInfo.literals.length) {
           const literal = enumInfo.literals[idx - 1];
           // Qualify with full enum type path
@@ -2373,10 +2373,10 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
             args[1].variables.push(variable);
           }
         }
-      } else {
+      } else if (declaredElement && typeof declaredElement.accept === "function") {
         const prevArrayElementIndex = this.#arrayElementIndex;
         this.#arrayElementIndex = elementIndex;
-        declaredElement?.accept(this, [elementName, args[1]]);
+        declaredElement.accept(this, [elementName, args[1]]);
         this.#arrayElementIndex = prevArrayElementIndex;
       }
       elementIndex++;

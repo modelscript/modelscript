@@ -608,6 +608,19 @@ function main(): void {
         continue;
       }
 
+      // Skip .mos (OpenModelica Script) files — ModelScript has no parser for them
+      if (moFile.endsWith(".mos")) {
+        suiteResults.push({
+          name: moFile,
+          file: filePath,
+          status: "skipped",
+          duration: 0,
+          cpuTime: 0,
+          message: "Skipped: .mos (OpenModelica Script) files are not supported",
+        });
+        continue;
+      }
+
       const result = runTestCase(testCase, testsuiteRoot, updateMode);
       suiteResults.push(result);
       printResult(result);
