@@ -10,11 +10,11 @@ import {
 } from "@modelscript/modelica/ast";
 import { makeWeakRef } from "@modelscript/utils";
 import type {
-  QueryBackedClassInstance as ModelicaClassInstance,
-  QueryBackedComponentInstance as ModelicaComponentInstance,
-  QueryBackedElement as ModelicaElement,
-  QueryBackedElement as ModelicaNamedElement,
-} from "./modelica/metascript-bridge.js";
+  ModelicaClassInstance,
+  ModelicaComponentInstance,
+  ModelicaElement,
+  ModelicaElement as ModelicaNamedElement,
+} from "./modelica/factory.js";
 
 // ── Dependency-injected callbacks ───────────────────────────────────────────
 let _resolveBuiltIn: ((name: string) => ModelicaNamedElement | null) | null = null;
@@ -256,7 +256,7 @@ export class ModelicaScriptScope extends Scope {
       }
     }
 
-    // Safely delegate to duck-typed parent scopes (like QueryBackedClassInstance from LSP)
+    // Safely delegate to duck-typed parent scopes (like ModelicaClassInstance from LSP)
     // which implement resolveSimpleName directly backed by the global database but lack getNamedElement.
     if (
       this.parent &&

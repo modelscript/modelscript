@@ -89,7 +89,6 @@ import {
   ModelicaScriptScope,
   ModelicaStoredDefinitionSyntaxNode,
   PositionIndex,
-  QueryBackedClassInstance,
   QueryEngine,
   Scope,
   buildSysML2DiagramData,
@@ -1104,7 +1103,7 @@ async function runSemanticPipeline(
       }
     }
 
-    // ── Step 5: Create QueryBackedClassInstance wrappers ──────────────────
+    // ── Step 5: Create ModelicaClassInstance wrappers ──────────────────
     const db = engine!.toQueryDB();
     const thisDocInstances: ModelicaClassInstance[] = [];
     const normUri = (u: string) => (u.startsWith("file://") ? u.substring(7) : u);
@@ -1116,7 +1115,7 @@ async function runSemanticPipeline(
         const parentEntry = unifiedIndex.symbols.get(entry.parentId);
         if (parentEntry && parentEntry.resourceId && normUri(parentEntry.resourceId) === matchUri) continue;
       }
-      const wrapper = new QueryBackedClassInstance(id, db) as unknown as ModelicaClassInstance;
+      const wrapper = new ModelicaClassInstance(id, db) as unknown as ModelicaClassInstance;
       thisDocInstances.push(wrapper);
     }
     workspaceInstances.set(uri, thisDocInstances);
@@ -3066,7 +3065,7 @@ connection.onTypeDefinition((params) => {
 /**
  * Resolve a Modelica class instance by URI and optional class name.
  * Searches workspace document instances first, then falls back to library
- * classes via the polyglot index and QueryBackedClassInstance.
+ * classes via the polyglot index and ModelicaClassInstance.
  */
 function resolveModelicaClassInstance(uri: string, className?: string): any {
   const instances = documentInstances.get(uri);
@@ -3101,7 +3100,7 @@ function resolveModelicaClassInstance(uri: string, className?: string): any {
       return e && getCompositeName(e, unifiedIndex) === className;
     });
     if (entryId !== undefined) {
-      return new QueryBackedClassInstance(entryId, db);
+      return new ModelicaClassInstance(entryId, db);
     }
   }
 
@@ -3122,7 +3121,7 @@ function resolveModelicaClassInstance(uri: string, className?: string): any {
       (normalizeUri(entry.resourceId) === normalizedParamsUri ||
         normalizeUri(entry.resourceId).endsWith(expectedSuffix))
     ) {
-      return new QueryBackedClassInstance(id, db);
+      return new ModelicaClassInstance(id, db);
     }
   }
 
@@ -4231,7 +4230,7 @@ interface TreeNodeInfo {
 }
 
 // ── Fast library tree: works directly from SymbolIndex metadata ──
-// No QueryBackedClassInstance creation, no instantiation, no icon rendering.
+// No ModelicaClassInstance creation, no instantiation, no icon rendering.
 // Uses childrenOf map for O(1) parent-child lookups.
 
 /** Known Modelica class kind keywords — order matters (last match wins in classPrefixes text). */
@@ -4623,7 +4622,7 @@ connection.onRequest("modelscript/getClassIcon", (params: { className: string; u
         injectPredefinedTypes(latestIndex);
         engine = createModelicaQueryEngine(latestIndex, getSharedCstTreeWrapper());
       }
-      classInstance = new QueryBackedClassInstance(entryId, engine.toQueryDB());
+      classInstance = new ModelicaClassInstance(entryId, engine.toQueryDB());
     }
 
     if (!isClassInstance(classInstance)) {
@@ -7056,7 +7055,7 @@ connection.onRequest("modelscript/runVerification", async (params: { uri: string
       const targetDB = targetEngine
         ? (targetEngine as any).toQueryDB()
         : (unifiedWorkspace as any).engine?.toQueryDB() || sysmlDB;
-      const targetModel = new QueryBackedClassInstance(simTargetId, targetDB) as any;
+      const targetModel = new ModelicaClassInstance(simTargetId, targetDB) as any;
       targetModel.instantiate();
 
       const dae = new ModelicaDAE(targetModel.name || "Model");

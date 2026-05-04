@@ -35,8 +35,8 @@ import Parser from "tree-sitter";
 import { NodeFileSystem } from "../../../apps/cli/src/util/filesystem.js";
 import { Context } from "../src/compiler/context.js";
 
+import { ModelicaClassInstance } from "../src/compiler/modelica/factory.js";
 import { ModelicaLinter } from "../src/compiler/modelica/linter.js";
-import { QueryBackedClassInstance as ModelicaClassInstance } from "../src/compiler/modelica/metascript-bridge.js";
 import { generateHtmlReport } from "./ctrf-to-html.js";
 
 // ── Tree-sitter setup ────────────────────────────────────────────────────────

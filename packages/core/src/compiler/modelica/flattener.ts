@@ -52,21 +52,21 @@ import {
   ModelicaWhileStatementSyntaxNode,
 } from "@modelscript/modelica/ast";
 import {
-  QueryBackedArrayClassInstance as ModelicaArrayClassInstance,
-  QueryBackedBooleanClassInstance as ModelicaBooleanClassInstance,
-  QueryBackedClassInstance as ModelicaClassInstance,
-  QueryBackedComponentInstance as ModelicaComponentInstance,
-  QueryBackedElementModification as ModelicaElementModification,
-  QueryBackedEnumerationClassInstance as ModelicaEnumerationClassInstance,
-  QueryBackedExtendsClassInstance as ModelicaExtendsClassInstance,
-  QueryBackedIntegerClassInstance as ModelicaIntegerClassInstance,
-  QueryBackedModification as ModelicaModification,
-  QueryBackedPredefinedClassInstance as ModelicaPredefinedClassInstance,
-  QueryBackedRealClassInstance as ModelicaRealClassInstance,
-  QueryBackedShortClassInstance as ModelicaShortClassInstance,
-  QueryBackedStringClassInstance as ModelicaStringClassInstance,
-  QueryBackedElement,
-} from "@modelscript/modelica/compat-shim";
+  ModelicaArrayClassInstance,
+  ModelicaBooleanClassInstance,
+  ModelicaClassInstance,
+  ModelicaComponentInstance,
+  ModelicaElement,
+  ModelicaElementModification,
+  ModelicaEnumerationClassInstance,
+  ModelicaExtendsClassInstance,
+  ModelicaIntegerClassInstance,
+  ModelicaModification,
+  ModelicaPredefinedClassInstance,
+  ModelicaRealClassInstance,
+  ModelicaShortClassInstance,
+  ModelicaStringClassInstance,
+} from "@modelscript/modelica/semantic-model";
 import {
   ModelicaArray,
   ModelicaArrayEquation,
@@ -529,18 +529,18 @@ function getUnderlyingPredefinedClass(
   if (!cls || visited.has(cacheKey) || cls instanceof ModelicaArrayClassInstance) return null;
   visited.add(cacheKey);
 
-  const isQueryBackedPredefined =
+  const isModelicaPredefined =
     cls.name &&
     ["Real", "Integer", "Boolean", "String", "Clock", "Expression"].includes(cls.name) &&
     (cls as any).entry?.metadata?.isPredefined === true;
-  if (isQueryBackedPredefined || cls instanceof ModelicaPredefinedClassInstance) return cls as any;
+  if (isModelicaPredefined || cls instanceof ModelicaPredefinedClassInstance) return cls as any;
   if (cls instanceof ModelicaShortClassInstance) return getUnderlyingPredefinedClass(cls.classInstance, visited);
-  // QueryBacked short class specifiers (type Foo = Bar(...)) expose shortClassTarget
+  // Modelica short class specifiers (type Foo = Bar(...)) expose shortClassTarget
   if ("shortClassTarget" in cls) {
     const target = (cls as any).shortClassTarget;
     if (target) return getUnderlyingPredefinedClass(target, visited);
   }
-  // Check extends chain via extendsClassInstances (works for both legacy and QueryBacked)
+  // Check extends chain via extendsClassInstances (works for both legacy and Modelica)
   if ("extendsClassInstances" in cls) {
     for (const ext of (cls as any).extendsClassInstances) {
       if (ext.classInstance) {
@@ -5113,7 +5113,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
 
     // Resolve the function through the component's class instance
     const funcParts = parts.slice(1);
-    let resolved: QueryBackedElement | null = classInst;
+    let resolved: ModelicaElement | null = classInst;
     for (const part of funcParts) {
       if (!resolved) return null;
       resolved = resolved.resolveSimpleName(part, false, true);

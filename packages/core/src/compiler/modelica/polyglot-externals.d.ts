@@ -49,14 +49,14 @@ declare module "@modelscript/polyglot/workspace-index" {
   }
 }
 
-declare module "@modelscript/modelica/compat-shim" {
+declare module "@modelscript/modelica/semantic-model" {
   export type AbstractSyntaxNodeFactory = (cst: any) => any;
   export function registerAbstractSyntaxNodeFactory(factory: AbstractSyntaxNodeFactory): void;
 
   export type AnnotationEvaluator = (ast: any, name: string) => any;
   export function registerAnnotationEvaluator(evaluator: AnnotationEvaluator): void;
 
-  export class QueryBackedElement {
+  export class ModelicaElement {
     name: string;
     compositeName: string;
     description: string | null;
@@ -65,9 +65,9 @@ declare module "@modelscript/modelica/compat-shim" {
     [key: string]: any;
   }
 
-  export class QueryBackedClassInstance extends QueryBackedElement {
+  export class ModelicaClassInstance extends ModelicaElement {
     constructor(symbolId: any, db: any);
-    static new(...args: any[]): QueryBackedClassInstance;
+    static new(...args: any[]): ModelicaClassInstance;
     static merge?(...args: any[]): any;
     readonly classKind: any;
     readonly components: Iterable<any>;
@@ -93,18 +93,18 @@ declare module "@modelscript/modelica/compat-shim" {
     shape: number[];
     variability: any;
     causality: any;
-    classInstance: QueryBackedClassInstance | null;
+    classInstance: ModelicaClassInstance | null;
     isExpandable: boolean;
     isProtectedElement(name: string): boolean;
     instantiate(): void;
-    resolveName(parts: string[]): QueryBackedClassInstance | null;
+    resolveName(parts: string[]): ModelicaClassInstance | null;
     resolveSimpleName(name: string, ...args: any[]): any;
     resolveComponentReference(parts: string[]): any;
     accept(visitor: any, ...args: any[]): any;
     [key: string]: any;
   }
 
-  export class QueryBackedComponentInstance extends QueryBackedClassInstance {
+  export class ModelicaComponentInstance extends ModelicaClassInstance {
     readonly componentName: string;
     readonly declaredType: any;
     flowPrefix: any;
@@ -114,10 +114,10 @@ declare module "@modelscript/modelica/compat-shim" {
     isOuter: boolean;
   }
 
-  export class QueryBackedExtendsClassInstance extends QueryBackedClassInstance {}
+  export class ModelicaExtendsClassInstance extends ModelicaClassInstance {}
 
-  export class QueryBackedModification {
-    static merge(...args: any[]): QueryBackedModification;
+  export class ModelicaModification {
+    static merge(...args: any[]): ModelicaModification;
     readonly modificationArguments: any[];
     readonly expression: any;
     readonly description: string | null;
@@ -125,29 +125,29 @@ declare module "@modelscript/modelica/compat-shim" {
     [key: string]: any;
   }
 
-  export class QueryBackedElementModification {
+  export class ModelicaElementModification {
     readonly name: string;
     readonly expression: any;
-    readonly modification: QueryBackedModification | null;
+    readonly modification: ModelicaModification | null;
     modificationExpression: any;
     [key: string]: any;
   }
 
-  export class QueryBackedPredefinedClassInstance extends QueryBackedClassInstance {}
-  export class QueryBackedShortClassInstance extends QueryBackedClassInstance {}
-  export class QueryBackedClockClassInstance extends QueryBackedClassInstance {}
-  export class QueryBackedExpressionClassInstance extends QueryBackedClassInstance {}
-  export class QueryBackedIntegerClassInstance extends QueryBackedClassInstance {}
-  export class QueryBackedBooleanClassInstance extends QueryBackedClassInstance {}
-  export class QueryBackedStringClassInstance extends QueryBackedClassInstance {}
-  export class QueryBackedRealClassInstance extends QueryBackedClassInstance {}
-  export class QueryBackedEnumerationClassInstance extends QueryBackedClassInstance {
+  export class ModelicaPredefinedClassInstance extends ModelicaClassInstance {}
+  export class ModelicaShortClassInstance extends ModelicaClassInstance {}
+  export class ModelicaClockClassInstance extends ModelicaClassInstance {}
+  export class ModelicaExpressionClassInstance extends ModelicaClassInstance {}
+  export class ModelicaIntegerClassInstance extends ModelicaClassInstance {}
+  export class ModelicaBooleanClassInstance extends ModelicaClassInstance {}
+  export class ModelicaStringClassInstance extends ModelicaClassInstance {}
+  export class ModelicaRealClassInstance extends ModelicaClassInstance {}
+  export class ModelicaEnumerationClassInstance extends ModelicaClassInstance {
     readonly literals: any[];
     readonly enumerationLiterals: any[];
     readonly value: any;
   }
-  export class QueryBackedArrayClassInstance extends QueryBackedClassInstance {
-    readonly elementClassInstance: QueryBackedClassInstance;
+  export class ModelicaArrayClassInstance extends ModelicaClassInstance {
+    readonly elementClassInstance: ModelicaClassInstance;
     readonly arraySubscripts: any[];
     readonly enumDimensions: any[];
     readonly declaredElements: Iterable<any>;

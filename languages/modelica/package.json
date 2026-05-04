@@ -3,9 +3,9 @@
   "version": "0.0.0",
   "type": "module",
   "exports": {
-    "./compat-shim": {
-      "types": "./dist/compat-shim.d.ts",
-      "default": "./dist/compat-shim.js"
+    "./semantic-model": {
+      "types": "./dist/semantic-model.d.ts",
+      "default": "./dist/semantic-model.js"
     },
     "./query_hooks": {
       "types": "./dist/query_hooks.d.ts",

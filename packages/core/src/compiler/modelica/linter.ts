@@ -43,18 +43,18 @@ import {
 import type { Range, Tree } from "@modelscript/utils";
 import type { ErrorCodeDef } from "./errors.js";
 import {
-  QueryBackedArrayClassInstance as ModelicaArrayClassInstance,
-  QueryBackedBooleanClassInstance as ModelicaBooleanClassInstance,
-  QueryBackedClassInstance as ModelicaClassInstance,
-  QueryBackedComponentInstance as ModelicaComponentInstance,
-  QueryBackedElement as ModelicaEntity,
-  QueryBackedExtendsClassInstance as ModelicaExtendsClassInstance,
-  QueryBackedIntegerClassInstance as ModelicaIntegerClassInstance,
-  QueryBackedElement as ModelicaLibrary,
-  QueryBackedElement as ModelicaNode,
-  QueryBackedRealClassInstance as ModelicaRealClassInstance,
-  QueryBackedStringClassInstance as ModelicaStringClassInstance,
-} from "./metascript-bridge.js";
+  ModelicaArrayClassInstance,
+  ModelicaBooleanClassInstance,
+  ModelicaClassInstance,
+  ModelicaComponentInstance,
+  ModelicaElement as ModelicaEntity,
+  ModelicaExtendsClassInstance,
+  ModelicaIntegerClassInstance,
+  ModelicaElement as ModelicaLibrary,
+  ModelicaElement as ModelicaNode,
+  ModelicaRealClassInstance,
+  ModelicaStringClassInstance,
+} from "./factory.js";
 import { ModelicaModelVisitor, type IModelicaModelVisitor } from "./visitor.js";
 
 /**
@@ -801,7 +801,7 @@ ModelicaLinter.register(ModelicaErrorCode.ASSIGNMENT_TYPE_MISMATCH, {
             ModelicaErrorCode.ASSIGNMENT_TYPE_MISMATCH.message(
               targetName,
               "Integer",
-              (stmt.source as any).text ?? "...",
+              (stmt.source as any).sourceText ?? "...",
               "Real",
             ),
             stmt,

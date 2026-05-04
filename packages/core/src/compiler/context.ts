@@ -6,13 +6,13 @@ import type { WorkspaceIndex } from "@modelscript/polyglot/workspace-index";
 import { MODELSCRIPT_CAS_PACKAGE, ModelicaDAE, ModelicaDAEPrinter } from "@modelscript/symbolics";
 import type { FileSystem, Parser, Tree } from "@modelscript/utils";
 import { StringWriter } from "@modelscript/utils";
-import { ModelicaFlattener, findAlgebraicLoops } from "./modelica/flattener.js";
 import {
-  QueryBackedClassInstance,
+  ModelicaClassInstance,
   createModelicaQueryEngine,
   createModelicaWorkspaceIndex,
   injectPredefinedTypes,
-} from "./modelica/metascript-bridge.js";
+} from "./modelica/factory.js";
+import { ModelicaFlattener, findAlgebraicLoops } from "./modelica/flattener.js";
 import { ModelicaPoParser, ModelicaTranslation } from "./modelica/po.js";
 import { Scope } from "./scope.js";
 export type HomotopyMode = "none" | "residual" | "symbolic" | "fixed-point" | "parameter" | "auto";
@@ -56,7 +56,7 @@ export class ModelicaLibrary {
  * The polyglot compiler context managing file system resources and loaded Modelica code.
  */
 export class Context extends Scope {
-  #classes: QueryBackedClassInstance[] = [];
+  #classes: ModelicaClassInstance[] = [];
   #fs: FileSystem;
   #libraries: ModelicaLibrary[] = [];
   #translations = new Map<string, ModelicaTranslation>();
@@ -192,7 +192,7 @@ export class Context extends Scope {
       const entry = this.#queryEngine.index.symbols.get(id);
       if (entry && entry.parentId === null && entry.kind === "Class") {
         if (!this.#classes.some((c) => c.id === id)) {
-          this.#classes.push(new QueryBackedClassInstance(id, this.#queryEngine.toQueryDB()));
+          this.#classes.push(new ModelicaClassInstance(id, this.#queryEngine.toQueryDB()));
         }
       }
     }
@@ -218,7 +218,7 @@ export class Context extends Scope {
       const entry = this.#queryEngine.index.symbols.get(id);
       if (entry && entry.parentId === null && entry.kind === "Class") {
         if (!this.#classes.some((c) => c.id === id)) {
-          this.#classes.push(new QueryBackedClassInstance(id, this.#queryEngine.toQueryDB()));
+          this.#classes.push(new ModelicaClassInstance(id, this.#queryEngine.toQueryDB()));
         }
       }
     }
@@ -236,7 +236,7 @@ export class Context extends Scope {
   /**
    * Returns the array of top-level classes loaded via `load()`.
    */
-  get classes(): readonly QueryBackedClassInstance[] {
+  get classes(): readonly ModelicaClassInstance[] {
     return this.#classes;
   }
 
@@ -256,10 +256,10 @@ export class Context extends Scope {
 
   flattenDAE(name: string, options?: ModelicaCompilerOptions): ModelicaDAE | null {
     const parts = name.split(".");
-    let instance: QueryBackedClassInstance | undefined = this.classes.find((c) => c.name === parts[0]);
+    let instance: ModelicaClassInstance | undefined = this.classes.find((c) => c.name === parts[0]);
     for (let i = 1; i < parts.length && instance; i++) {
       const next = [...instance.declaredElements].find((e: any) => e.name === parts[i] && e.isClassInstance);
-      instance = next as QueryBackedClassInstance | undefined;
+      instance = next as ModelicaClassInstance | undefined;
     }
     if (!instance) return null;
 
@@ -361,7 +361,7 @@ export class Context extends Scope {
     for (const id of this.#queryEngine.index.symbols.keys()) {
       const entry = this.#queryEngine.index.symbols.get(id);
       if (entry && entry.parentId === null && entry.kind === "Class" && entry.resourceId === uri) {
-        this.#classes.push(new QueryBackedClassInstance(id, this.#queryEngine.toQueryDB()));
+        this.#classes.push(new ModelicaClassInstance(id, this.#queryEngine.toQueryDB()));
       }
     }
     return tree;
@@ -372,7 +372,7 @@ export class Context extends Scope {
    *
    * @param classInstance - The root class instance to attach.
    */
-  addClass(classInstance: QueryBackedClassInstance): void {
+  addClass(classInstance: ModelicaClassInstance): void {
     this.#classes.push(classInstance);
   }
 

@@ -25,12 +25,8 @@ import {
   type Shape,
   type Text,
 } from "@svgdotjs/svg.js";
+import { ModelicaClassInstance, ModelicaComponentInstance, ModelicaRealClassInstance } from "./factory.js";
 import { evaluateCondition } from "./interpreter.js";
-import {
-  QueryBackedClassInstance as ModelicaClassInstance,
-  QueryBackedComponentInstance as ModelicaComponentInstance,
-  QueryBackedRealClassInstance as ModelicaRealClassInstance,
-} from "./metascript-bridge.js";
 import {
   Arrow,
   FillPattern,

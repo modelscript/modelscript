@@ -19,7 +19,7 @@
  * classInstance.instantiate();
  *
  * // Use:
- * const classInstance = new QueryBackedClassInstance(symbolId, db);
+ * const classInstance = new ModelicaClassInstance(symbolId, db);
  * // No explicit instantiate() needed — queries are lazy.
  * ```
  */
@@ -187,21 +187,21 @@ export type AnnotationEvaluator = (ast: any, name: string, evalScope?: any, over
 let annotationEvaluator: AnnotationEvaluator = () => null;
 
 /**
- * Register an evaluator for `annotation(name)` calls on QueryBackedClassInstance.
+ * Register an evaluator for `annotation(name)` calls on ModelicaClassInstance.
  */
 export function registerAnnotationEvaluator(evaluator: AnnotationEvaluator): void {
   annotationEvaluator = evaluator;
 }
 
 // ---------------------------------------------------------------------------
-// QueryBackedElement (generic base)
+// ModelicaElement (generic base)
 // ---------------------------------------------------------------------------
 
 /**
  * Generic element wrapper for non-class, non-component elements
  * (extends, imports, equations, etc.).
  */
-export class QueryBackedElement {
+export class ModelicaElement {
   get isClassInstance(): boolean {
     return false;
   }
@@ -307,7 +307,7 @@ export class QueryBackedElement {
 }
 
 // ---------------------------------------------------------------------------
-// QueryBackedClassInstance
+// ModelicaClassInstance
 // ---------------------------------------------------------------------------
 
 /**
@@ -319,7 +319,7 @@ export class QueryBackedElement {
  * - `clone(modification)` → `db.specialize(id, modelicaMod(mod))`
  * - Elements are SymbolIds, not ModelicaNode instances
  */
-export class QueryBackedClassInstance extends QueryBackedElement {
+export class ModelicaClassInstance extends ModelicaElement {
   get isClassInstance(): boolean {
     return true;
   }
@@ -406,7 +406,7 @@ export class QueryBackedClassInstance extends QueryBackedElement {
    * resolve and return the target type class instance.
    * Returns null if this is not a short class specifier or the type cannot be resolved.
    */
-  get shortClassTarget(): QueryBackedClassInstance | null {
+  get shortClassTarget(): ModelicaClassInstance | null {
     // Predefined types (Real, Integer, etc.) are not short class specifiers
     const meta = this.entry?.metadata as Record<string, unknown>;
     if (meta?.isPredefined) return null;
@@ -425,7 +425,7 @@ export class QueryBackedClassInstance extends QueryBackedElement {
       if (resolver) {
         const resolved = resolver(typeName);
         if (resolved?.id) {
-          return this.wrapElement(resolved.id) as QueryBackedClassInstance | null;
+          return this.wrapElement(resolved.id) as ModelicaClassInstance | null;
         }
       }
     }
@@ -451,7 +451,7 @@ export class QueryBackedClassInstance extends QueryBackedElement {
     }
 
     if (current && current.kind === "Class") {
-      return this.wrapElement(current.id) as QueryBackedClassInstance | null;
+      return this.wrapElement(current.id) as ModelicaClassInstance | null;
     }
 
     return null;
@@ -467,14 +467,14 @@ export class QueryBackedClassInstance extends QueryBackedElement {
    * This is implemented below with a Proxy to provide legacy properties.
    */
 
-  private wrapElement(eid: SymbolId): QueryBackedElement | null {
+  private wrapElement(eid: SymbolId): ModelicaElement | null {
     const entry = this.db.symbol(eid);
     if (!entry) return null;
     if (entry.kind === "Component") {
-      return new QueryBackedComponentInstance(eid, this.db);
+      return new ModelicaComponentInstance(eid, this.db);
     }
     if (entry.kind === "Extends") {
-      return new QueryBackedExtendsClassInstance(eid, this.db);
+      return new ModelicaExtendsClassInstance(eid, this.db);
     }
     if (entry.kind === "Class") {
       let arrayDims = null;
@@ -484,27 +484,27 @@ export class QueryBackedClassInstance extends QueryBackedElement {
         // Ignored
       }
       if (arrayDims && (arrayDims as any[]).length > 0)
-        return new QueryBackedArrayClassInstance(eid, this.db, arrayDims as any[]);
+        return new ModelicaArrayClassInstance(eid, this.db, arrayDims as any[]);
 
       const meta = entry.metadata as Record<string, unknown>;
       if (meta?.isPredefined) {
-        if (entry.name === "Integer") return new QueryBackedIntegerClassInstance(eid, this.db);
-        if (entry.name === "Boolean") return new QueryBackedBooleanClassInstance(eid, this.db);
-        if (entry.name === "String") return new QueryBackedStringClassInstance(eid, this.db);
-        if (entry.name === "Real") return new QueryBackedRealClassInstance(eid, this.db);
+        if (entry.name === "Integer") return new ModelicaIntegerClassInstance(eid, this.db);
+        if (entry.name === "Boolean") return new ModelicaBooleanClassInstance(eid, this.db);
+        if (entry.name === "String") return new ModelicaStringClassInstance(eid, this.db);
+        if (entry.name === "Real") return new ModelicaRealClassInstance(eid, this.db);
       }
-      if (meta?.isEnumeration) return new QueryBackedEnumerationClassInstance(eid, this.db);
-      return new QueryBackedClassInstance(eid, this.db);
+      if (meta?.isEnumeration) return new ModelicaEnumerationClassInstance(eid, this.db);
+      return new ModelicaClassInstance(eid, this.db);
     }
-    return new QueryBackedElement(eid, this.db);
+    return new ModelicaElement(eid, this.db);
   }
 
-  #elementsCache?: QueryBackedElement[];
+  #elementsCache?: ModelicaElement[];
   /**
    * All instantiated elements (components, nested classes, imports).
    * Replaces the mutable `elements` array.
    */
-  get elements(): QueryBackedElement[] {
+  get elements(): ModelicaElement[] {
     if (this.#elementsCache !== undefined) return this.#elementsCache;
     let ids: SymbolId[] | null = null;
     try {
@@ -516,22 +516,22 @@ export class QueryBackedClassInstance extends QueryBackedElement {
       this.#elementsCache = [];
       return this.#elementsCache;
     }
-    this.#elementsCache = ids.map((eid) => this.wrapElement(eid)).filter((e): e is QueryBackedElement => e !== null);
+    this.#elementsCache = ids.map((eid) => this.wrapElement(eid)).filter((e): e is ModelicaElement => e !== null);
     return this.#elementsCache;
   }
 
-  #declaredElementsCache?: QueryBackedElement[];
+  #declaredElementsCache?: ModelicaElement[];
   /**
    * Only the elements that are directly declared inside this class instance.
    * This retrieves direct children from the symbol index avoiding inherited elements.
    */
-  get declaredElements(): QueryBackedElement[] {
+  get declaredElements(): ModelicaElement[] {
     if (this.#declaredElementsCache !== undefined) return this.#declaredElementsCache;
     const children = this.db.childrenOf(this.id);
     // Component elements and nested classes declared within this scope
     this.#declaredElementsCache = children
       .map((entry) => this.wrapElement(entry.id))
-      .filter((e): e is QueryBackedElement => e !== null);
+      .filter((e): e is ModelicaElement => e !== null);
     return this.#declaredElementsCache;
   }
 
@@ -540,11 +540,11 @@ export class QueryBackedClassInstance extends QueryBackedElement {
     return this.elements.filter((e) => e.isComponentInstance);
   }
 
-  get originalClassInstance(): QueryBackedClassInstance | this {
+  get originalClassInstance(): ModelicaClassInstance | this {
     if (typeof (this.db as any).baseOf === "function") {
       const baseId = (this.db as any).baseOf(this.id);
       if (baseId !== null && baseId !== undefined) {
-        return new QueryBackedClassInstance(baseId, this.db);
+        return new ModelicaClassInstance(baseId, this.db);
       }
     }
     return this;
@@ -764,7 +764,7 @@ export class QueryBackedClassInstance extends QueryBackedElement {
    * Resolve a name path in this class's scope.
    * Replaces `Scope.resolveName()`.
    */
-  resolveName(name: { parts: string[] } | string[] | null | undefined, global = false): QueryBackedElement | null {
+  resolveName(name: { parts: string[] } | string[] | null | undefined, global = false): ModelicaElement | null {
     const parts = Array.isArray(name) ? name : name?.parts;
     if (!parts || parts.length === 0) return null;
     let namedElement: any = this.resolveSimpleName(parts[0]);
@@ -780,7 +780,7 @@ export class QueryBackedClassInstance extends QueryBackedElement {
   /**
    * Resolve a component reference SyntaxNode.
    */
-  resolveComponentReference(componentReference: any): QueryBackedElement | null {
+  resolveComponentReference(componentReference: any): ModelicaElement | null {
     if (!componentReference || !componentReference.parts) return null;
     const parts = componentReference.parts;
     if (parts.length === 0) return null;
@@ -802,13 +802,13 @@ export class QueryBackedClassInstance extends QueryBackedElement {
    * Resolve a simple name in this class's scope.
    * Replaces `Scope.resolveSimpleName()`.
    */
-  resolveSimpleName(name: string): QueryBackedElement | null {
+  resolveSimpleName(name: string): ModelicaElement | null {
     const resolver = this.db.query<(n: string, enc?: boolean) => SymbolEntry | null>("resolveSimpleName", this.id);
     const resolved = resolver?.(name);
     if (!resolved) return null;
 
     if (resolved.kind === "Component") {
-      return new QueryBackedComponentInstance(resolved.id, this.db);
+      return new ModelicaComponentInstance(resolved.id, this.db);
     }
     if (resolved.kind === "Class") {
       let arrayDims = null;
@@ -818,39 +818,39 @@ export class QueryBackedClassInstance extends QueryBackedElement {
         // Ignored
       }
       if (arrayDims && (arrayDims as any[]).length > 0)
-        return new QueryBackedArrayClassInstance(resolved.id, this.db, arrayDims as any[]);
+        return new ModelicaArrayClassInstance(resolved.id, this.db, arrayDims as any[]);
 
       const meta = resolved.metadata as Record<string, unknown>;
       if (meta?.isPredefined) {
-        if (resolved.name === "Integer") return new QueryBackedIntegerClassInstance(resolved.id, this.db);
-        if (resolved.name === "Boolean") return new QueryBackedBooleanClassInstance(resolved.id, this.db);
-        if (resolved.name === "String") return new QueryBackedStringClassInstance(resolved.id, this.db);
-        if (resolved.name === "Real") return new QueryBackedRealClassInstance(resolved.id, this.db);
+        if (resolved.name === "Integer") return new ModelicaIntegerClassInstance(resolved.id, this.db);
+        if (resolved.name === "Boolean") return new ModelicaBooleanClassInstance(resolved.id, this.db);
+        if (resolved.name === "String") return new ModelicaStringClassInstance(resolved.id, this.db);
+        if (resolved.name === "Real") return new ModelicaRealClassInstance(resolved.id, this.db);
       }
-      if (meta?.isEnumeration) return new QueryBackedEnumerationClassInstance(resolved.id, this.db);
+      if (meta?.isEnumeration) return new ModelicaEnumerationClassInstance(resolved.id, this.db);
 
-      return new QueryBackedClassInstance(resolved.id, this.db);
+      return new ModelicaClassInstance(resolved.id, this.db);
     }
-    return new QueryBackedElement(resolved.id, this.db);
+    return new ModelicaElement(resolved.id, this.db);
   }
 
   /**
    * Clone this class with a different modification.
    * Replaces `ModelicaClassInstance.clone()`.
    */
-  clone(modification: ModelicaModArgs): QueryBackedClassInstance {
+  clone(modification: ModelicaModArgs): ModelicaClassInstance {
     const newId = this.db.specialize(this.id, modelicaMod(modification));
-    return new QueryBackedClassInstance(newId, this.db);
+    return new ModelicaClassInstance(newId, this.db);
   }
 
   /**
    * Get the active modification for this instance.
    * Returns null for non-specialized (base) instances.
    */
-  get modification(): QueryBackedModification | null {
+  get modification(): ModelicaModification | null {
     const modArgs = this.db.argsOf<ModelicaModArgs>(this.id)?.data;
     if (!modArgs) return null;
-    return new QueryBackedModification(modArgs, this.db);
+    return new ModelicaModification(modArgs, this.db);
   }
 
   /**
@@ -890,7 +890,7 @@ export class QueryBackedClassInstance extends QueryBackedElement {
    * Check type compatibility with another class.
    * Implements Modelica §6.4 subtype compatibility.
    */
-  isTypeCompatibleWith(other: QueryBackedClassInstance): boolean {
+  isTypeCompatibleWith(other: ModelicaClassInstance): boolean {
     // Basic structural subtyping: all elements of `other` must exist in `this`
     const myElements = this.db.query<SymbolId[]>("instantiate", this.id) ?? [];
     const otherElements = this.db.query<SymbolId[]>("instantiate", other.id) ?? [];
@@ -924,7 +924,7 @@ export class QueryBackedClassInstance extends QueryBackedElement {
   // -------------------------------------------------------------------------
 
   /** All abstract classes inherited by this class. */
-  get extendsClassInstances(): { classInstance: QueryBackedClassInstance | null }[] {
+  get extendsClassInstances(): { classInstance: ModelicaClassInstance | null }[] {
     let extendsClauses: any[] = [];
     try {
       extendsClauses = this.db.query<any[]>("extendsClasses", this.id) ?? [];
@@ -935,37 +935,35 @@ export class QueryBackedClassInstance extends QueryBackedElement {
     return extendsClauses.map((ext) => {
       // resolvedBaseClass returns a SymbolEntry (not a SymbolId), so extract .id
       const baseEntry = this.db.query<{ id: SymbolId } | null>("resolvedBaseClass", ext.id);
-      return { classInstance: baseEntry?.id ? (this.wrapElement(baseEntry.id) as QueryBackedClassInstance) : null };
+      return { classInstance: baseEntry?.id ? (this.wrapElement(baseEntry.id) as ModelicaClassInstance) : null };
     });
   }
 
   /** Components with variability=parameter. */
-  get parameters(): QueryBackedComponentInstance[] {
+  get parameters(): ModelicaComponentInstance[] {
     return this.elements.filter(
-      (e): e is QueryBackedComponentInstance =>
-        e instanceof QueryBackedComponentInstance && e.variability === "parameter",
+      (e): e is ModelicaComponentInstance => e instanceof ModelicaComponentInstance && e.variability === "parameter",
     );
   }
 
   /** Components with variability=constant. */
-  get constants(): QueryBackedComponentInstance[] {
+  get constants(): ModelicaComponentInstance[] {
     return this.elements.filter(
-      (e): e is QueryBackedComponentInstance =>
-        e instanceof QueryBackedComponentInstance && e.variability === "constant",
+      (e): e is ModelicaComponentInstance => e instanceof ModelicaComponentInstance && e.variability === "constant",
     );
   }
 
   /** Components with causality=input. */
-  get inputComponents(): QueryBackedComponentInstance[] {
+  get inputComponents(): ModelicaComponentInstance[] {
     return this.elements.filter(
-      (e): e is QueryBackedComponentInstance => e instanceof QueryBackedComponentInstance && e.causality === "input",
+      (e): e is ModelicaComponentInstance => e instanceof ModelicaComponentInstance && e.causality === "input",
     );
   }
 
   /** Components with causality=output. */
-  get outputComponents(): QueryBackedComponentInstance[] {
+  get outputComponents(): ModelicaComponentInstance[] {
     return this.elements.filter(
-      (e): e is QueryBackedComponentInstance => e instanceof QueryBackedComponentInstance && e.causality === "output",
+      (e): e is ModelicaComponentInstance => e instanceof ModelicaComponentInstance && e.causality === "output",
     );
   }
 
@@ -995,22 +993,22 @@ export class QueryBackedClassInstance extends QueryBackedElement {
 }
 
 // ---------------------------------------------------------------------------
-// QueryBackedComponentInstance
+// ModelicaComponentInstance
 // ---------------------------------------------------------------------------
 
 /**
  * Adapts the ModelicaComponentInstance API to the QueryEngine.
  */
-export class QueryBackedComponentInstance extends QueryBackedClassInstance {
+export class ModelicaComponentInstance extends ModelicaClassInstance {
   get isComponentInstance(): boolean {
     return true;
   }
 
   /** The enclosing class instance that contains this component. */
-  get parent(): QueryBackedClassInstance | null {
+  get parent(): ModelicaClassInstance | null {
     const parentId = this.entry?.parentId;
     if (parentId === null || parentId === undefined) return null;
-    return new QueryBackedClassInstance(parentId, this.db);
+    return new ModelicaClassInstance(parentId, this.db);
   }
   /** The component's type specifier (e.g., "Real", "Modelica.Electrical.Pin"). */
   get typeSpecifier(): string {
@@ -1038,7 +1036,7 @@ export class QueryBackedComponentInstance extends QueryBackedClassInstance {
   }
 
   /** Resolve names by delegating to the component's class instance. */
-  override resolveSimpleName(name: string): QueryBackedElement | null {
+  override resolveSimpleName(name: string): ModelicaElement | null {
     return this.classInstance?.resolveSimpleName(name) ?? null;
   }
 
@@ -1059,9 +1057,9 @@ export class QueryBackedComponentInstance extends QueryBackedClassInstance {
 
   /**
    * Get the resolved class instance for this component's type.
-   * Returns a QueryBackedClassInstance wrapping the (possibly specialized) class.
+   * Returns a ModelicaClassInstance wrapping the (possibly specialized) class.
    */
-  get classInstance(): QueryBackedClassInstance | null {
+  get classInstance(): ModelicaClassInstance | null {
     const classId = this.db.query<SymbolId | null>("classInstance", this.id);
     if (classId === null) return null;
 
@@ -1070,21 +1068,21 @@ export class QueryBackedComponentInstance extends QueryBackedClassInstance {
       const meta = classEntry.metadata as Record<string, unknown>;
       const arrayDims = this.db.query("arrayDimensions", this.id);
       if (arrayDims && (arrayDims as any[]).length > 0)
-        return new QueryBackedArrayClassInstance(classId, this.db, arrayDims as any[]);
+        return new ModelicaArrayClassInstance(classId, this.db, arrayDims as any[]);
 
       if (meta?.isPredefined) {
-        if (classEntry.name === "Integer") return new QueryBackedIntegerClassInstance(classId, this.db);
-        if (classEntry.name === "Boolean") return new QueryBackedBooleanClassInstance(classId, this.db);
-        if (classEntry.name === "String") return new QueryBackedStringClassInstance(classId, this.db);
-        if (classEntry.name === "Real") return new QueryBackedRealClassInstance(classId, this.db);
+        if (classEntry.name === "Integer") return new ModelicaIntegerClassInstance(classId, this.db);
+        if (classEntry.name === "Boolean") return new ModelicaBooleanClassInstance(classId, this.db);
+        if (classEntry.name === "String") return new ModelicaStringClassInstance(classId, this.db);
+        if (classEntry.name === "Real") return new ModelicaRealClassInstance(classId, this.db);
       }
-      if (meta?.isEnumeration) return new QueryBackedEnumerationClassInstance(classId, this.db);
+      if (meta?.isEnumeration) return new ModelicaEnumerationClassInstance(classId, this.db);
     }
-    return new QueryBackedClassInstance(classId, this.db);
+    return new ModelicaClassInstance(classId, this.db);
   }
 
   /** Alias for classInstance, for legacy compatibility. */
-  get declaredType(): QueryBackedClassInstance | null {
+  get declaredType(): ModelicaClassInstance | null {
     return this.classInstance;
   }
 
@@ -1092,10 +1090,10 @@ export class QueryBackedComponentInstance extends QueryBackedClassInstance {
    * Get the active modification for this instance.
    * Returns a merged modification combining specialized model arguments and inline AST bindings.
    */
-  override get modification(): any /* MergedModification | QueryBackedModification | AstBackedModification | null */ {
+  override get modification(): any /* MergedModification | ModelicaModification | AstBackedModification | null */ {
     // 1. Specialized arguments via polyglot db (e.g. from a cloned instance path)
     const modArgs = this.db.argsOf<ModelicaModArgs>(this.id)?.data;
-    const dbMod = modArgs ? new QueryBackedModification(modArgs, this.db) : null;
+    const dbMod = modArgs ? new ModelicaModification(modArgs, this.db) : null;
 
     // 2. Inline bindings from the AST (e.g., `start=1` or `= 9.81`)
     const ast = this.abstractSyntaxNode;
@@ -1132,7 +1130,7 @@ export class QueryBackedComponentInstance extends QueryBackedClassInstance {
 // Modifications Adapter
 // ---------------------------------------------------------------------------
 
-export class QueryBackedExtendsClassInstance extends QueryBackedClassInstance {
+export class ModelicaExtendsClassInstance extends ModelicaClassInstance {
   override accept<R, A>(visitor: any, argument?: A): R {
     return visitor.visitExtendsClassInstance(this, argument);
   }
@@ -1142,10 +1140,10 @@ export class QueryBackedExtendsClassInstance extends QueryBackedClassInstance {
   get isPartial(): boolean {
     return false;
   }
-  get extendsClassInstances(): { classInstance: QueryBackedClassInstance | null }[] {
+  get extendsClassInstances(): { classInstance: ModelicaClassInstance | null }[] {
     return [];
   }
-  get nestedClasses(): QueryBackedClassInstance[] {
+  get nestedClasses(): ModelicaClassInstance[] {
     return [];
   }
   get connectEquations(): any[] {
@@ -1154,29 +1152,29 @@ export class QueryBackedExtendsClassInstance extends QueryBackedClassInstance {
   get parameters(): any[] {
     return [];
   }
-  get elements(): QueryBackedElement[] {
+  get elements(): ModelicaElement[] {
     return [];
   }
 
   /** Resolve the base class referenced by this extends clause. */
-  get classInstance(): QueryBackedClassInstance | null {
+  get classInstance(): ModelicaClassInstance | null {
     const baseEntry = this.db.query<{ id: SymbolId } | null>("resolvedBaseClass", this.id);
     if (!baseEntry?.id) return null;
     const entry = this.db.symbol(baseEntry.id);
     if (!entry) return null;
     const meta = entry.metadata as Record<string, unknown>;
     if (meta?.isPredefined) {
-      if (entry.name === "Integer") return new QueryBackedIntegerClassInstance(baseEntry.id, this.db);
-      if (entry.name === "Boolean") return new QueryBackedBooleanClassInstance(baseEntry.id, this.db);
-      if (entry.name === "String") return new QueryBackedStringClassInstance(baseEntry.id, this.db);
-      if (entry.name === "Real") return new QueryBackedRealClassInstance(baseEntry.id, this.db);
+      if (entry.name === "Integer") return new ModelicaIntegerClassInstance(baseEntry.id, this.db);
+      if (entry.name === "Boolean") return new ModelicaBooleanClassInstance(baseEntry.id, this.db);
+      if (entry.name === "String") return new ModelicaStringClassInstance(baseEntry.id, this.db);
+      if (entry.name === "Real") return new ModelicaRealClassInstance(baseEntry.id, this.db);
     }
-    if (meta?.isEnumeration) return new QueryBackedEnumerationClassInstance(baseEntry.id, this.db);
-    return new QueryBackedClassInstance(baseEntry.id, this.db);
+    if (meta?.isEnumeration) return new ModelicaEnumerationClassInstance(baseEntry.id, this.db);
+    return new ModelicaClassInstance(baseEntry.id, this.db);
   }
 }
 
-export class QueryBackedElementModification {
+export class ModelicaElementModification {
   constructor(public readonly arg: ModificationArg) {}
 
   get name() {
@@ -1184,7 +1182,7 @@ export class QueryBackedElementModification {
   }
 
   get modification() {
-    return new QueryBackedModification(this.arg.nestedArgs as any, undefined);
+    return new ModelicaModification(this.arg.nestedArgs as any, undefined);
   }
 
   get modificationExpression() {
@@ -1331,7 +1329,7 @@ export class MergedModification {
   }
 }
 
-export class QueryBackedModification {
+export class ModelicaModification {
   description: string | null = null;
 
   constructor(
@@ -1340,7 +1338,7 @@ export class QueryBackedModification {
   ) {}
 
   get modificationArguments() {
-    return this.modArgs?.args.map((a) => new QueryBackedElementModification(a)) ?? [];
+    return this.modArgs?.args.map((a) => new ModelicaElementModification(a)) ?? [];
   }
 
   get modificationExpression() {
@@ -1352,9 +1350,9 @@ export class QueryBackedModification {
     return polyfillAccept(this.modArgs?.bindingExpression);
   }
 
-  get scope(): QueryBackedClassInstance | null {
+  get scope(): ModelicaClassInstance | null {
     if (this.modArgs?.evaluationScopeId !== undefined && this.modArgs.evaluationScopeId !== null) {
-      return new QueryBackedClassInstance(this.modArgs.evaluationScopeId, this.db!);
+      return new ModelicaClassInstance(this.modArgs.evaluationScopeId, this.db!);
     }
     return null;
   }
@@ -1366,18 +1364,18 @@ export class QueryBackedModification {
     return null;
   }
 
-  getModificationArgument(name: string): QueryBackedElementModification | undefined {
+  getModificationArgument(name: string): ModelicaElementModification | undefined {
     return this.modificationArguments.find((a: any) => a.arg.name === name);
   }
 }
 
-export class QueryBackedPredefinedClassInstance extends QueryBackedClassInstance {}
-export class QueryBackedIntegerClassInstance extends QueryBackedPredefinedClassInstance {}
-export class QueryBackedBooleanClassInstance extends QueryBackedPredefinedClassInstance {}
-export class QueryBackedStringClassInstance extends QueryBackedPredefinedClassInstance {}
-export class QueryBackedEnumerationClassInstance extends QueryBackedPredefinedClassInstance {}
+export class ModelicaPredefinedClassInstance extends ModelicaClassInstance {}
+export class ModelicaIntegerClassInstance extends ModelicaPredefinedClassInstance {}
+export class ModelicaBooleanClassInstance extends ModelicaPredefinedClassInstance {}
+export class ModelicaStringClassInstance extends ModelicaPredefinedClassInstance {}
+export class ModelicaEnumerationClassInstance extends ModelicaPredefinedClassInstance {}
 
-export class QueryBackedRealClassInstance extends QueryBackedPredefinedClassInstance {
+export class ModelicaRealClassInstance extends ModelicaPredefinedClassInstance {
   override accept<R, A>(visitor: any, argument?: A): R {
     if (visitor.visitRealClassInstance) {
       return visitor.visitRealClassInstance(this, argument);
@@ -1388,7 +1386,7 @@ export class QueryBackedRealClassInstance extends QueryBackedPredefinedClassInst
     return this.modification?.getModificationArgument("unit")?.expression ?? null;
   }
 }
-export class QueryBackedArrayClassInstance extends QueryBackedClassInstance {
+export class ModelicaArrayClassInstance extends ModelicaClassInstance {
   constructor(
     id: SymbolId,
     db: QueryDB,
@@ -1416,25 +1414,25 @@ export class QueryBackedArrayClassInstance extends QueryBackedClassInstance {
     return [];
   }
 
-  get elementClassInstance(): QueryBackedClassInstance {
+  get elementClassInstance(): ModelicaClassInstance {
     const classEntry = this.db.symbol(this.id);
     if (classEntry) {
       const meta = classEntry.metadata as Record<string, unknown>;
       if (meta?.isPredefined) {
-        if (classEntry.name === "Integer") return new QueryBackedIntegerClassInstance(this.id, this.db);
-        if (classEntry.name === "Boolean") return new QueryBackedBooleanClassInstance(this.id, this.db);
-        if (classEntry.name === "String") return new QueryBackedStringClassInstance(this.id, this.db);
-        if (classEntry.name === "Real") return new QueryBackedRealClassInstance(this.id, this.db);
+        if (classEntry.name === "Integer") return new ModelicaIntegerClassInstance(this.id, this.db);
+        if (classEntry.name === "Boolean") return new ModelicaBooleanClassInstance(this.id, this.db);
+        if (classEntry.name === "String") return new ModelicaStringClassInstance(this.id, this.db);
+        if (classEntry.name === "Real") return new ModelicaRealClassInstance(this.id, this.db);
       }
-      if (meta?.isEnumeration) return new QueryBackedEnumerationClassInstance(this.id, this.db);
+      if (meta?.isEnumeration) return new ModelicaEnumerationClassInstance(this.id, this.db);
     }
-    return new QueryBackedClassInstance(this.id, this.db);
+    return new ModelicaClassInstance(this.id, this.db);
   }
 }
 
-export class QueryBackedShortClassInstance extends QueryBackedClassInstance {}
-export class QueryBackedClockClassInstance extends QueryBackedClassInstance {}
-export class QueryBackedExpressionClassInstance extends QueryBackedClassInstance {
+export class ModelicaShortClassInstance extends ModelicaClassInstance {}
+export class ModelicaClockClassInstance extends ModelicaClassInstance {}
+export class ModelicaExpressionClassInstance extends ModelicaClassInstance {
   override accept<R, A>(visitor: any, argument?: A): R {
     return visitor.visitExpressionClassInstance(this, argument);
   }
