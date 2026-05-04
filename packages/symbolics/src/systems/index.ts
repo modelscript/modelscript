@@ -4414,6 +4414,47 @@ export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void,
   visitTransitionEquation(node: ModelicaTransitionEquation, argument?: A): void {
     node.condition.accept(this, argument);
   }
+
+  // ── Defensive fallbacks for raw AST nodes ──────────────────────────────
+  // When the flattener fails to convert an AST syntax node to a symbolic IR
+  // node, these prevent "visitor.visitXxx is not a function" crashes.
+  // The `node` parameter is typed as `any` because the AST types are in a
+  // different package (@modelscript/modelica) and should not be imported here.
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  visitUnsignedIntegerLiteral(node: any, argument?: A): void {
+    /* no-op */
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  visitUnsignedRealLiteral(node: any, argument?: A): void {
+    /* no-op */
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  visitComponentReference(node: any, argument?: A): void {
+    /* no-op */
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  visitArrayConstructor(node: any, argument?: A): void {
+    /* no-op */
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  visitMemberAccessExpression(node: any, argument?: A): void {
+    /* no-op */
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  visitFunctionCall(node: any, argument?: A): void {
+    /* no-op */
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  visitArrayConcatenation(node: any, argument?: A): void {
+    /* no-op */
+  }
 }
 
 export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
@@ -5128,6 +5169,81 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     this.out.write(this.indent() + "transition(" + node.fromState + ", " + node.toState + ", ");
     node.condition.accept(this);
     this.out.write(", " + node.immediate + ", " + node.reset + ", " + node.synchronize + ", " + node.priority + ");\n");
+  }
+
+  // ── Overrides for AST syntax node fallbacks ────────────────────────────
+  // These provide reasonable printing when raw AST nodes leak through the
+  // flattener into the DAE. Uses duck-typing to avoid importing AST types.
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  override visitUnsignedIntegerLiteral(node: any): void {
+    this.out.write(String(node.value ?? node.text ?? "0"));
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  override visitUnsignedRealLiteral(node: any): void {
+    if (node.value != null) {
+      const v = node.value;
+      if (v === 0) this.out.write("0.0");
+      else if (Number.isInteger(v) && Math.abs(v) < 1e15) this.out.write(v.toFixed(1));
+      else this.out.write(String(v));
+    } else {
+      this.out.write(node.text ?? "0.0");
+    }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  override visitComponentReference(node: any): void {
+    const parts = node.parts;
+    if (parts && parts.length > 0) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const name = parts
+        .map((p: any) => p.identifier?.text ?? p.text ?? "")
+        .filter(Boolean)
+        .join(".");
+      this.out.write(name || "?");
+    } else if (node.text) {
+      this.out.write(node.text);
+    } else {
+      this.out.write("?");
+    }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  override visitArrayConstructor(node: any): void {
+    this.out.write("{");
+    const exprs = node.expressions ?? node.arguments ?? [];
+    for (let i = 0; i < exprs.length; i++) {
+      if (i > 0) this.out.write(", ");
+      const e = exprs[i];
+      if (e && typeof e.accept === "function") e.accept(this);
+      else this.out.write(String(e ?? "?"));
+    }
+    this.out.write("}");
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  override visitMemberAccessExpression(node: any): void {
+    if (node.expression && typeof node.expression.accept === "function") {
+      node.expression.accept(this);
+    }
+    if (node.identifier?.text) {
+      this.out.write("." + node.identifier.text);
+    }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  override visitFunctionCall(node: any): void {
+    const name = node.componentReference?.text ?? node.name ?? "?";
+    this.out.write(name + "(");
+    const args = node.arguments?.arguments ?? node.arguments ?? [];
+    for (let i = 0; i < args.length; i++) {
+      if (i > 0) this.out.write(", ");
+      const a = args[i];
+      if (a && typeof a.accept === "function") a.accept(this);
+      else this.out.write(String(a ?? "?"));
+    }
+    this.out.write(")");
   }
 }
 

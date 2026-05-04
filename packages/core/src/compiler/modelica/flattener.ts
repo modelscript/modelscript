@@ -1604,17 +1604,38 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       if ("hash" in expr || "operator" in expr || "operand1" in expr || "args" in expr) return expr;
 
       const evalScope = this.#getEvaluationScope(ctxNode, prefix);
-      return (
-        expr.accept(new ModelicaSyntaxFlattener(this.options), {
-          prefix: evalScope.prefix,
-          classInstance: evalScope.classInstance,
-          dae: dae,
-          stmtCollector: [],
-          activeClassStack: this.activeClassStack,
-          activePrefixes: this.activePrefixes,
-          structuralFinalParams: this.#structuralFinalParams,
-        }) ?? expr
-      );
+      const result = expr.accept(new ModelicaSyntaxFlattener(this.options), {
+        prefix: evalScope.prefix,
+        classInstance: evalScope.classInstance,
+        dae: dae,
+        stmtCollector: [],
+        activeClassStack: this.activeClassStack,
+        activePrefixes: this.activePrefixes,
+        structuralFinalParams: this.#structuralFinalParams,
+      });
+      if (result != null) return result;
+
+      // The syntax flattener returned null — convert common AST node types to
+      // symbolic IR to prevent raw AST nodes from leaking into the DAE.
+      if (expr instanceof ModelicaUnsignedIntegerLiteralSyntaxNode) {
+        return new ModelicaIntegerLiteral(expr.value);
+      }
+      if (expr instanceof ModelicaUnsignedRealLiteralSyntaxNode) {
+        return new ModelicaRealLiteral(expr.value, expr.text ?? undefined);
+      }
+      if (expr instanceof ModelicaComponentReferenceSyntaxNode) {
+        const parts = expr.parts;
+        if (parts && parts.length > 0) {
+          const name = parts
+            .map((p: any) => p.identifier?.text ?? "")
+            .filter(Boolean)
+            .join(".");
+          if (name) return new ModelicaNameExpression(prefix ? `${prefix}.${name}` : name);
+        }
+      }
+      // For other unhandled AST node types, return null rather than leaking
+      // the raw AST node into the DAE.
+      return null;
     }
     return expr;
   }
