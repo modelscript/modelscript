@@ -21,6 +21,7 @@ export * from "./session.js";
 // ── Participants ──
 export * from "./participants/fmu-js.js";
 export * from "./participants/fmu-native.js";
+export * from "./participants/fmu-wasm-worker-proxy.js";
 export * from "./participants/fmu-wasm.js";
 export * from "./participants/js-simulator.js";
 
