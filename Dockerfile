@@ -184,3 +184,41 @@ EXPOSE 3003
 ENV NODE_ENV=production
 ENV PORT=3003
 CMD ["node", "apps/ide/dist/server.js"]
+
+# ==============================================================================
+# CLI / GitLab CI Runner
+# ==============================================================================
+FROM deps AS build-cli-false
+COPY packages/core packages/core
+COPY packages/cosim packages/cosim
+COPY languages/modelica languages/modelica
+COPY apps/cli apps/cli
+RUN npm run clean -w packages/core && npx tsc -p packages/core \
+    && npm run clean -w packages/cosim && npx tsc -p packages/cosim \
+    && npm run clean -w apps/cli && npx tsc -p apps/cli
+
+FROM deps AS build-cli-true
+COPY packages/core/dist packages/core/dist
+COPY packages/cosim/dist packages/cosim/dist
+COPY apps/cli/dist apps/cli/dist
+
+FROM build-cli-${PREBUILT} AS build-cli
+
+FROM node:22-alpine AS cli
+WORKDIR /app
+COPY package.json package-lock.json ./
+COPY packages/core/package.json packages/core/
+COPY packages/cosim/package.json packages/cosim/
+COPY languages/modelica/package.json languages/modelica/grammar.js languages/modelica/binding.gyp languages/modelica/
+COPY languages/modelica/bindings languages/modelica/bindings
+COPY apps/cli/package.json apps/cli/
+RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev --ignore-scripts
+COPY --from=deps /app/languages/modelica/src languages/modelica/src
+COPY --from=deps /app/languages/modelica/build languages/modelica/build
+COPY --from=deps /app/node_modules/@modelscript/modelica node_modules/@modelscript/modelica
+COPY --from=build-cli /app/packages/core/dist packages/core/dist
+COPY --from=build-cli /app/packages/cosim/dist packages/cosim/dist
+COPY --from=build-cli /app/apps/cli/dist apps/cli/dist
+ENV NODE_ENV=production
+# The container will run as an executable CLI
+ENTRYPOINT ["node", "apps/cli/dist/index.js"]

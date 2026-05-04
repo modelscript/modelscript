@@ -12,6 +12,7 @@ import { artifactViewerRouter } from "./routes/artifact-viewer.js";
 import { authRouter } from "./routes/auth.js";
 import { cosimRouter, mqttParticipantsRouter } from "./routes/cosim.js";
 import { fmuRouter } from "./routes/fmu.js";
+import { gitlabRouter } from "./routes/gitlab.js";
 import { graphqlRouter } from "./routes/graphql.js";
 import { historianRouter } from "./routes/historian.js";
 import { npmAuthRouter } from "./routes/npm-auth.js";
@@ -92,6 +93,7 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   app.use("/api/v1/mqtt/participants", mqttParticipantsRouter(mqttClient));
   app.use("/api/v1/historian", historianRouter(dbPool, mqttClient));
   app.use("/api/v1/fmus", fmuRouter());
+  app.use("/api/v1/gitlab", gitlabRouter());
 
   // ── npm-compatible registry (mounted at root for `npm --registry=` compat) ──
   app.use("/", npmAuthRouter(database));

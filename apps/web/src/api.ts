@@ -234,4 +234,111 @@ export const getArtifactViewers = async (name: string, version: string): Promise
   }
 };
 
+// ── gitlab workspace API ─────────────────────────────────────────
+
+export interface GitlabProject {
+  id: number;
+  description: string | null;
+  name: string;
+  name_with_namespace: string;
+  path: string;
+  path_with_namespace: string;
+  default_branch: string;
+  web_url: string;
+}
+
+export interface GitlabTreeNode {
+  id: string;
+  name: string;
+  type: "tree" | "blob";
+  path: string;
+  mode: string;
+}
+
+export interface GitlabCommit {
+  id: string;
+  short_id: string;
+  title: string;
+  message: string;
+  author_name: string;
+  author_email: string;
+  created_at: string;
+}
+
+export interface GitlabPipeline {
+  id: number;
+  iid: number;
+  project_id: number;
+  status: "running" | "pending" | "success" | "failed" | "canceled" | "skipped";
+  ref: string;
+  sha: string;
+  web_url: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GitlabJob {
+  id: number;
+  status: "running" | "pending" | "success" | "failed" | "canceled" | "skipped";
+  stage: string;
+  name: string;
+  ref: string;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  duration: number | null;
+  web_url: string;
+  artifacts: { file_type: string; size: number; filename: string }[];
+}
+
+export const getGitlabProject = async (projectIdOrPath: string): Promise<GitlabProject> => {
+  const { data } = await api.get<GitlabProject>(`/gitlab/projects/${encodeURIComponent(projectIdOrPath)}`);
+  return data;
+};
+
+export const getGitlabTree = async (projectIdOrPath: string, ref = "main", path = ""): Promise<GitlabTreeNode[]> => {
+  const { data } = await api.get<GitlabTreeNode[]>(
+    `/gitlab/projects/${encodeURIComponent(projectIdOrPath)}/repository/tree`,
+    {
+      params: { ref, path },
+    },
+  );
+  return data;
+};
+
+export const getGitlabFileRaw = async (projectIdOrPath: string, filePath: string, ref = "main"): Promise<string> => {
+  const { data } = await api.get<string>(
+    `/gitlab/projects/${encodeURIComponent(projectIdOrPath)}/repository/files/${encodeURIComponent(filePath)}/raw`,
+    { params: { ref } },
+  );
+  return data;
+};
+
+export const getGitlabCommits = async (projectIdOrPath: string, refName = "main"): Promise<GitlabCommit[]> => {
+  const { data } = await api.get<GitlabCommit[]>(
+    `/gitlab/projects/${encodeURIComponent(projectIdOrPath)}/repository/commits`,
+    {
+      params: { ref_name: refName },
+    },
+  );
+  return data;
+};
+
+export const getGitlabPipelines = async (projectIdOrPath: string, refName = "main"): Promise<GitlabPipeline[]> => {
+  const { data } = await api.get<GitlabPipeline[]>(
+    `/gitlab/projects/${encodeURIComponent(projectIdOrPath)}/pipelines`,
+    {
+      params: { ref: refName },
+    },
+  );
+  return data;
+};
+
+export const getGitlabPipelineJobs = async (projectIdOrPath: string, pipelineId: number): Promise<GitlabJob[]> => {
+  const { data } = await api.get<GitlabJob[]>(
+    `/gitlab/projects/${encodeURIComponent(projectIdOrPath)}/pipelines/${pipelineId}/jobs`,
+  );
+  return data;
+};
+
 export default api;

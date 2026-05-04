@@ -1,0 +1,67 @@
+# ModelScript CI/CD Template for GitLab
+#
+# This pipeline automates the testing, simulation, and publishing of Modelica
+# projects using the ModelScript toolchain.
+#
+# Usage:
+# Include this file in your repository's `.gitlab-ci.yml`:
+# include:
+#   - project: 'modelscript/core'
+#     file: '/config/ci/gitlab-ci-template.yml'
+
+variables:
+  # The Docker image containing the ModelScript CLI and co-simulation engine.
+  MODELSCRIPT_IMAGE: "ghcr.io/modelscript/cli:latest"
+
+stages:
+  - lint
+  - simulate
+  - publish
+
+.modelscript-base:
+  image: $MODELSCRIPT_IMAGE
+  tags:
+    - docker
+
+# ── 1. Static Analysis & Linting ──────────────────────────────────────────────
+lint_modelica:
+  extends: .modelscript-base
+  stage: lint
+  script:
+    - echo "Linting Modelica source files..."
+    - node /app/apps/cli/dist/index.js check .
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# ── 2. Headless Simulation & Parameter Sweeps ─────────────────────────────────
+simulate_models:
+  extends: .modelscript-base
+  stage: simulate
+  script:
+    - echo "Running simulation sweeps..."
+    # The CLI command parses experiment annotations and runs the DAE solver
+    - node /app/apps/cli/dist/index.js simulate --output=artifacts/trajectories/
+  artifacts:
+    name: "simulation-trajectories-$CI_COMMIT_SHORT_SHA"
+    paths:
+      - artifacts/trajectories/
+    expire_in: 30 days
+    reports:
+      metrics: artifacts/trajectories/metrics.txt
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# ── 3. Package Registry Publishing ────────────────────────────────────────────
+publish_registry:
+  extends: .modelscript-base
+  stage: publish
+  script:
+    - echo "Publishing package to GitLab Package Registry..."
+    # Configure npm to use GitLab's registry
+    - echo "@${CI_PROJECT_ROOT_NAMESPACE}:registry=${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/npm/" > .npmrc
+    - echo "//${CI_SERVER_HOST}/api/v4/projects/${CI_PROJECT_ID}/packages/npm/:_authToken=${CI_JOB_TOKEN}" >> .npmrc
+    - node /app/apps/cli/dist/index.js publish
+  rules:
+    - if: $CI_COMMIT_TAG

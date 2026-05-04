@@ -12,6 +12,7 @@ import LibraryVersionPage from "./pages/LibraryVersionPage";
 import LoginPage from "./pages/LoginPage";
 import PackageDetailPage from "./pages/PackageDetailPage";
 import SignupPage from "./pages/SignupPage";
+import WorkspacePage from "./pages/WorkspacePage";
 import { ThemeContextProvider, useTheme } from "./theme";
 
 const HeaderInner = styled.div`
@@ -253,6 +254,11 @@ const GlobalHeader: React.FC = () => {
           </Header.Link>
         </Header.Item>
         <Header.Item>
+          <Header.Link as={Link} to="/workspace/modelscript/core" style={{ color: "var(--color-text-muted)" }}>
+            Workspaces
+          </Header.Link>
+        </Header.Item>
+        <Header.Item>
           <ThemeToggle
             onClick={toggleTheme}
             aria-label="Toggle theme"
@@ -327,6 +333,7 @@ function App() {
               <Routes>
                 <Route path="/" element={<LandingPage />} />
                 <Route path="/libraries" element={<LibraryListPage />} />
+                <Route path="/workspace/:namespace/:project" element={<WorkspacePage />} />
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/signup" element={<SignupPage />} />
                 <Route path="/:name" element={<LibraryVersionPage />} />
