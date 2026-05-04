@@ -374,6 +374,43 @@ export default language({
         queries: {
           /** All direct children of this class. */
           members: (db, self) => db.childrenOf(self.id),
+          /** Extract array dimensions for ShortClassSpecifiers like type ArrayType = Real[3]; */
+          arrayDimensions: (db, self) => {
+            const cst = db.cstNode(self.id) as import("@modelscript/polyglot/symbol-indexer").CSTNode | null;
+            if (!cst) return null;
+            const classSpec = cst.childForFieldName("classSpecifier");
+            if (!classSpec || classSpec.type !== "ShortClassSpecifier") return null;
+            const arraySubNode = classSpec.childForFieldName("arraySubscripts");
+            if (!arraySubNode) return null;
+
+            const subscripts: Array<
+              | { kind: "literal"; value: number }
+              | { kind: "flexible" }
+              | { kind: "expression"; cstBytes: readonly [number, number]; text?: string }
+            > = [];
+
+            for (const child of arraySubNode.children) {
+              if (child.type !== "Subscript") continue;
+              const flexChild = child.childForFieldName("flexible");
+              if (flexChild) {
+                subscripts.push({ kind: "flexible" });
+                continue;
+              }
+              const exprChild = child.childForFieldName("expression");
+              if (exprChild) {
+                if (exprChild.type === "UNSIGNED_INTEGER") {
+                  subscripts.push({ kind: "literal", value: parseInt(exprChild.text, 10) });
+                } else {
+                  subscripts.push({
+                    kind: "expression",
+                    cstBytes: [exprChild.startIndex, exprChild.endIndex],
+                    text: exprChild.text,
+                  });
+                }
+              }
+            }
+            return subscripts;
+          },
           /** Only nested class definitions. */
           nestedClasses: (db, self) => db.childrenOf(self.id).filter((c) => c.kind === "Class"),
           /** Only component declarations. */
@@ -1765,6 +1802,7 @@ export default language({
           name: self.declaration.identifier,
           attributes: {
             modification: self.declaration.modification,
+            description: self.description,
           },
         }),
         queries: {

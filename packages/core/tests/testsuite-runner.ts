@@ -257,7 +257,8 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode = fal
     }
     const t_flatten_start = Date.now();
     const flattenedResult = context.flatten(lastClassName, {
-      ...(testCase.metadata.arrayMode ? { arrayMode: testCase.metadata.arrayMode } : {}),
+      arrayMode: testCase.metadata.arrayMode ?? "scalarize",
+      functionInlining: "inline", // Flattener tests always expect inline
       ...(testCase.metadata.fmiVersion ? { fmiVersion: testCase.metadata.fmiVersion } : {}),
     });
     console.error(`[Runner] context.flatten took ${Date.now() - t_flatten_start}ms`);

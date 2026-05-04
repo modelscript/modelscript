@@ -77,19 +77,13 @@ export function polyfillAccept(expr: any): any {
             }
           }
           if (/^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*$/.test(text)) {
-            console.log(`[DEBUG] polyfillAccept regex matched for text: '${text}'`);
             if (typeof visitor.visitNameExpression === "function") {
-              console.log(`[DEBUG] calling visitNameExpression`);
               return visitor.visitNameExpression({ name: text }, args);
             }
             if (typeof visitor.visitComponentReference === "function") {
-              console.log(`[DEBUG] calling visitComponentReference`);
               const parts = text.split(".").map((p: string) => ({ identifier: { text: p } }));
               return visitor.visitComponentReference({ parts, global: false }, args);
             }
-            console.log(`[DEBUG] no visitor method found!`);
-          } else {
-            console.log(`[DEBUG] polyfillAccept regex FAILED for text: '${text}'`);
           }
           const num = Number(text);
           if (!isNaN(num)) {
@@ -276,7 +270,11 @@ export class ModelicaElement {
 
   get description(): string | null {
     const meta = this.entry?.metadata as Record<string, unknown>;
-    return (meta?.description as string) ?? null;
+    const raw = (meta?.description as string) ?? null;
+    if (!raw) return null;
+    // Strip surrounding quotes from the CST text (e.g., `"Tank level"` → `Tank level`)
+    if (raw.startsWith('"') && raw.endsWith('"')) return raw.slice(1, -1);
+    return raw;
   }
 
   get annotations(): any[] {
@@ -505,6 +503,14 @@ export class ModelicaClassInstance extends ModelicaElement {
         if (entry.name === "Real") return new ModelicaRealClassInstance(eid, this.db);
       }
       if (meta?.isEnumeration) return new ModelicaEnumerationClassInstance(eid, this.db);
+      // Detect enumeration short class specifiers (e.g., type E = enumeration(...))
+      if (meta?.classPrefixes === "type" || !meta?.isPredefined) {
+        const classCst = this.db.cstNode(eid) as any;
+        const classSpec = classCst?.childForFieldName?.("classSpecifier");
+        if (classSpec?.type === "ShortClassSpecifier" && classSpec.childForFieldName?.("enumeration")) {
+          return new ModelicaEnumerationClassInstance(eid, this.db);
+        }
+      }
       return new ModelicaClassInstance(eid, this.db);
     }
     return new ModelicaElement(eid, this.db);
@@ -1074,7 +1080,14 @@ export class ModelicaComponentInstance extends ModelicaClassInstance {
     const classEntry = this.db.symbol(classId);
     if (classEntry) {
       const meta = classEntry.metadata as Record<string, unknown>;
-      const arrayDims = this.db.query("arrayDimensions", this.id);
+      let arrayDims = this.db.query("arrayDimensions", this.id);
+      if (!arrayDims || (arrayDims as any[]).length === 0) {
+        try {
+          arrayDims = this.db.query("arrayDimensions", classId);
+        } catch {
+          /* Ignore */
+        }
+      }
       if (arrayDims && (arrayDims as any[]).length > 0)
         return new ModelicaArrayClassInstance(classId, this.db, arrayDims as any[]);
 
@@ -1085,6 +1098,14 @@ export class ModelicaComponentInstance extends ModelicaClassInstance {
         if (classEntry.name === "Real") return new ModelicaRealClassInstance(classId, this.db);
       }
       if (meta?.isEnumeration) return new ModelicaEnumerationClassInstance(classId, this.db);
+      // Detect enumeration short class specifiers (e.g., type E = enumeration(...))
+      if (meta?.classPrefixes === "type" || !meta?.isPredefined) {
+        const classCst = this.db.cstNode(classId) as any;
+        const classSpec = classCst?.childForFieldName?.("classSpecifier");
+        if (classSpec?.type === "ShortClassSpecifier" && classSpec.childForFieldName?.("enumeration")) {
+          return new ModelicaEnumerationClassInstance(classId, this.db);
+        }
+      }
     }
     return new ModelicaClassInstance(classId, this.db);
   }
@@ -1381,7 +1402,28 @@ export class ModelicaPredefinedClassInstance extends ModelicaClassInstance {}
 export class ModelicaIntegerClassInstance extends ModelicaPredefinedClassInstance {}
 export class ModelicaBooleanClassInstance extends ModelicaPredefinedClassInstance {}
 export class ModelicaStringClassInstance extends ModelicaPredefinedClassInstance {}
-export class ModelicaEnumerationClassInstance extends ModelicaPredefinedClassInstance {}
+export class ModelicaEnumerationClassInstance extends ModelicaPredefinedClassInstance {
+  get enumerationLiterals(): string[] {
+    const classCst = this.db.cstNode(this.id) as any;
+    if (!classCst) return [];
+
+    const literals: string[] = [];
+    const traverse = (node: any) => {
+      if (node.type === "EnumerationLiteral") {
+        const idNode = node.childForFieldName?.("identifier") ?? node.child(0);
+        if (idNode && idNode.text) {
+          literals.push(idNode.text);
+        }
+      } else if (node.childCount) {
+        for (let i = 0; i < node.childCount; i++) {
+          traverse(node.child(i));
+        }
+      }
+    };
+    traverse(classCst);
+    return literals;
+  }
+}
 
 export class ModelicaRealClassInstance extends ModelicaPredefinedClassInstance {
   override accept<R, A>(visitor: any, argument?: A): R {
@@ -1418,6 +1460,14 @@ export class ModelicaArrayClassInstance extends ModelicaClassInstance {
     });
   }
 
+  override get declaredElements(): ModelicaElement[] {
+    const shape = this.shape;
+    if (shape.length === 0 || shape.some((d) => d === 0)) return [];
+    const totalElements = shape.reduce((a, b) => a * b, 1);
+    const elem = this.elementClassInstance;
+    return new Array(totalElements).fill(elem);
+  }
+
   get enumDimensions(): any[] {
     return [];
   }
@@ -1434,6 +1484,9 @@ export class ModelicaArrayClassInstance extends ModelicaClassInstance {
       }
       if (meta?.isEnumeration) return new ModelicaEnumerationClassInstance(this.id, this.db);
     }
+    // We must return a generic ModelicaClassInstance here so it represents the actual type (e.g. Angle)
+    // rather than bypassing it and losing its attributes. The flattener uses getUnderlyingPredefinedClass
+    // to discover the base type later.
     return new ModelicaClassInstance(this.id, this.db);
   }
 }

@@ -26,6 +26,7 @@ export interface InitSolverConfig {
 
 export interface ModelicaCompilerOptions {
   arrayMode?: "scalarize" | "preserve";
+  functionInlining?: "inline" | "preserve";
   fmiVersion?: "2.0" | "3.0";
   solver?: InitSolverConfig;
 }
@@ -275,7 +276,7 @@ export class Context extends Scope {
     ) {
       dae.classKind = instance.classKind;
     }
-    const flattener = new ModelicaFlattener(options);
+    const flattener = new ModelicaFlattener(options, this);
     instance.accept(flattener, ["", dae]);
     flattener.generateFlowBalanceEquations(dae);
     flattener.foldDAEConstants(dae);

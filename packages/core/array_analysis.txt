@@ -1,0 +1,68 @@
+Total Array Failures: 322
+
+=== Emitted NO variables (80 tests) ===
+
+Test: AlgorithmFor2.mo
+Missing (sample): ['Real a[2];', 'Real a[3];', 'Real a[4];']
+Extra (sample): []
+
+Test: AlgorithmFor3.mo
+Missing (sample): ['Real a[2];', 'Real a[3];', 'Real a[4];']
+Extra (sample): []
+
+Test: ForIteratorType.mo
+Missing (sample): ['Integer ints[2];', 'Integer ints[3];']
+Extra (sample): []
+
+Test: ForLoopHideVariable.mo
+Missing (sample): ['Real z[2];', 'Real z[3];', 'Real z[4];']
+Extra (sample): []
+
+Test: SumForLoop.mo
+Missing (sample): ['parameter Real z[2] = 20.0;', 'parameter Real z[3] = 30.0;', 'parameter Real z[4] = 40.0;']
+Extra (sample): []
+
+=== Other mismatch (100 tests) ===
+
+Test: FunctionDefaultArgs.mo
+Missing (sample): ['constant Integer reference_X[2] = 2;', 'constant Integer reference_X[3] = 3;']
+Extra (sample): ['input Integer[1] X = 0;']
+
+Test: FunctionEval10.mo
+Missing (sample): ['Real r[2];', 'Real r[3];', 'Real r[4];']
+Extra (sample): ['output Real[1] m;', 'protected Real[1] tmp;']
+
+Test: FunctionEvalBuiltin.mo
+Missing (sample): ['constant Real r[2] = 0.5000000000000001;', 'constant Real r[3] = 1.7320508075688767;', 'constant Real r[4] = 0.0;']
+Extra (sample): ['constant Real pi = 2 * ?();']
+
+Test: IfExpression1.mo
+Missing (sample): ['Real x[2];']
+Extra (sample): ['output Real[1] x = if n == 1 then {1.0} else {1.0, 2.0};']
+
+Test: TestGravityAcceleration.mo
+Missing (sample): ['input Real[3] r "Position vector from world frame to actual point, resolved in world frame";', 'input Real[3] g = {0.0, -g, 0.0} "Constant gravity acceleration, resolved in world frame, if gravityType=1";', 'output Real[3] gravity "Gravity acceleration at point r, resolved in world frame";']
+Extra (sample): ['parameter Real w.mue(unit = "m3/s2", min = 0.0) = 398600000000000.0 "Gravity field constant (default = field constant of earth)";']
+
+=== Emitted unscalarized array (142 tests) ===
+
+Test: AdvancedDimensions.mo
+Missing (sample): ['protected parameter Real r.m1.p_length[2] = sqrt((r.m1.p[2,1] - r.m1.p[3,1]) ^ 2.0 + (r.m1.p[2,2] - r.m1.p[3,2]) ^ 2.0);', 'protected parameter Real r.m1.p_length[3] = sqrt((r.m1.p[3,1] - r.m1.p[4,1]) ^ 2.0 + (r.m1.p[3,2] - r.m1.p[4,2]) ^ 2.0);', 'protected parameter Real r.m1.p_length[4] = sqrt((r.m1.p[4,1] - r.m1.p[5,1]) ^ 2.0 + (r.m1.p[4,2] - r.m1.p[5,2]) ^ 2.0);']
+Extra (sample): ['input Real[1, 2] road_dat;', 'output Real[:, 2] center_pos;', 'parameter Real ground_context.road[1,1];']
+
+Test: ArrayConstruct1.mo
+Missing (sample): ['Real A[1](unit = "rad");', 'Real A[2](unit = "rad");', 'Real A[3](unit = "rad");']
+Extra (sample): ['Real A[1];', 'Real A[2];', 'Real A[3];']
+
+Test: ArrayFieldSlice.mo
+Missing (sample): ['String pList.persons[1].name = "John";', 'Integer pList.persons[1].age = 35;', 'String pList.persons[1].children[1] = "Carl";']
+Extra (sample): ['String pList.persons[1].name;', 'Integer pList.persons[1].age;', 'String pList.persons[1].children[1];']
+
+Test: ArraySizeFromFunc.mo
+Missing (sample): ['parameter Real x[1] = 1.0;', 'parameter Real x[2] = 1.0;', 'parameter Real x[3] = 1.0;']
+Extra (sample): ['parameter Real x[1] = f(5)[1];']
+
+Test: ArrayTuple.mo
+Missing (sample): ['parameter Real m_flows[2] = 2.0;']
+Extra (sample): ['input Real[1] x;', 'input Real[:] y;', 'protected Integer nx = size(Modelica.Math.Vectors.interpolate.x, 1);']
+
