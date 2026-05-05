@@ -931,61 +931,554 @@ ModelicaLinter.register(ModelicaErrorCode.EQUATION_TYPE_MISMATCH, {
 // ---------------------------------------------------------------------------
 import {
   ModelicaAlgorithmSectionSyntaxNode as AlgoSection,
-  ModelicaBinaryExpressionSyntaxNode as BinExpr,
   ModelicaBinaryOperator as BinOp,
   ModelicaSimpleAssignmentStatementSyntaxNode as SimpleAssign,
 } from "@modelscript/modelica/ast";
 
-/** Recursively check if an expression involves division, producing a Real result. */
-function exprInvolvesDivision(expr: unknown): boolean {
-  if (!expr) return false;
-  if (expr instanceof BinExpr) {
-    if (expr.operator === BinOp.DIVISION) return true;
-    return exprInvolvesDivision(expr.operand1) || exprInvolvesDivision(expr.operand2);
+function getExpressionText(expr: any): string {
+  if (!expr) return "...";
+  // Component reference: reconstruct from parts
+  if (expr.parts) {
+    return expr.parts.map((p: any) => p.identifier?.text || p.name?.text || "?").join(".");
   }
-  return false;
+  // Literal values
+  if (expr.text !== undefined && expr.text !== null) return String(expr.text);
+  if (expr.value !== undefined && expr.value !== null) return String(expr.value);
+  // Function call
+  if (expr.functionReference || expr.functionReferenceName) {
+    return expr.functionReferenceName || getExpressionText(expr.functionReference) + "(...)";
+  }
+  // Binary expression
+  if (expr.operand1 && expr.operand2) {
+    return getExpressionText(expr.operand1) + " " + (expr.operator || "?") + " " + getExpressionText(expr.operand2);
+  }
+  // Unary expression
+  if (expr.operand) {
+    return (expr.operator || "-") + getExpressionText(expr.operand);
+  }
+  return "...";
 }
 
-ModelicaLinter.register(ModelicaErrorCode.ASSIGNMENT_TYPE_MISMATCH, {
+function inferExpressionShape(expr: any): number[] {
+  if (!expr) return [];
+  const typeStr = expr["@type"];
+  if (typeStr === "ArrayConstructor" && expr.expressionList) {
+    const exprs = expr.expressionList.expressions ?? [];
+    if (exprs.length === 0) return [0];
+    const innerShape = inferExpressionShape(exprs[0]);
+    return [exprs.length, ...innerShape];
+  }
+  // Simplified for literals and references that are scalars (empty shape)
+  // More complex shape inference for references would require type resolution
+  return [];
+}
+
+function inferExpressionType(expr: any, contextCls: ModelicaClassInstance): string | null {
+  if (!expr) return null;
+
+  // Literal types
+  const typeStr = expr["@type"];
+  if (typeStr === "unsigned_real") return "Real";
+  if (typeStr === "unsigned_integer") return "Integer";
+  if (typeStr === "boolean_literal") return "Boolean";
+  if (typeStr === "string_literal") return "String";
+
+  // Component references
+  if (typeStr === "component_reference" || (expr.parts && !expr.operand1)) {
+    const parts = expr.parts;
+    if (parts && parts.length > 0) {
+      const name = parts[0]?.identifier?.text;
+      if (name) {
+        if (name === "time") return "Real";
+        const comp = contextCls.resolveSimpleName(name, false, true);
+        if (comp instanceof ModelicaComponentInstance && comp.classInstance) {
+          return getBaseTypeName(comp.classInstance);
+        }
+      }
+    }
+  }
+
+  // Binary expressions
+  if (typeStr === "binary_expression" || expr.operand1) {
+    if (expr.operator === BinOp.DIVISION) return "Real";
+
+    const t1 = inferExpressionType(expr.operand1, contextCls);
+    const t2 = inferExpressionType(expr.operand2, contextCls);
+
+    if (t1 === "Real" || t2 === "Real") return "Real";
+    if (t1 === "Integer" && t2 === "Integer") return "Integer";
+    if (t1 === "Boolean" && t2 === "Boolean") return "Boolean";
+    if (t1 === "String" && t2 === "String") return "String";
+    return t1 || t2;
+  }
+
+  // Unary expressions
+  if (typeStr === "unary_expression" || (expr.operand && !expr.operand1)) {
+    return inferExpressionType(expr.operand, contextCls);
+  }
+
+  // Function calls
+  if (typeStr === "function_call" || expr.functionReference) {
+    const funcName = expr.functionReferenceName || expr.functionReference?.parts?.[0]?.identifier?.text;
+    if (funcName) {
+      if (
+        [
+          "sin",
+          "cos",
+          "tan",
+          "sqrt",
+          "exp",
+          "log",
+          "log10",
+          "asin",
+          "acos",
+          "atan",
+          "atan2",
+          "sinh",
+          "cosh",
+          "tanh",
+          "abs",
+          "sign",
+          "der",
+          "pre",
+          "mod",
+          "rem",
+          "div",
+        ].includes(funcName)
+      )
+        return "Real";
+      if (["integer", "size", "ndims", "Integer"].includes(funcName)) return "Integer";
+      if (["String"].includes(funcName)) return "String";
+
+      const comp = contextCls.resolveSimpleName(funcName, false, true);
+      if (comp instanceof ModelicaComponentInstance && comp.classInstance) {
+        // Functions usually have an output parameter
+        for (const el of comp.classInstance.elements) {
+          if (el instanceof ModelicaComponentInstance && el.causality === "output" && el.classInstance) {
+            return getBaseTypeName(el.classInstance);
+          }
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+ModelicaLinter.register(
+  [
+    ModelicaErrorCode.ASSIGNMENT_TYPE_MISMATCH,
+    ModelicaErrorCode.ASSIGNMENT_TO_CONSTANT,
+    ModelicaErrorCode.ASSIGNMENT_TO_INPUT,
+  ],
+  {
+    visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+      const astNode = (node as any).abstractSyntaxNode;
+      if (!astNode) return;
+
+      for (const section of astNode.sections ?? []) {
+        if (!(section instanceof AlgoSection)) continue;
+        for (const stmt of section.statements ?? []) {
+          if (!(stmt instanceof SimpleAssign)) continue;
+
+          const targetParts = stmt.target?.parts;
+          if (!targetParts || targetParts.length !== 1) continue;
+          const targetName = targetParts[0]?.identifier?.text || (targetParts[0] as any)?.name?.text;
+          if (!targetName) continue;
+
+          const targetComp = node.resolveSimpleName(targetName, false, true);
+          if (!(targetComp instanceof ModelicaComponentInstance)) continue;
+
+          // 1. Check for assignments to constants/parameters
+          if (targetComp.variability === "constant" || targetComp.variability === "parameter") {
+            diagnosticsCallback(
+              ModelicaErrorCode.ASSIGNMENT_TO_CONSTANT.severity,
+              ModelicaErrorCode.ASSIGNMENT_TO_CONSTANT.code,
+              ModelicaErrorCode.ASSIGNMENT_TO_CONSTANT.message(targetName),
+              stmt.target,
+            );
+          }
+
+          // 2. Check for assignments to inputs
+          if (targetComp.causality === "input" && node.classKind !== ModelicaClassKind.FUNCTION) {
+            // Inside functions, assigning to inputs is also typically forbidden, but wait, Modelica says:
+            // "The formal inputs of a function are read-only".
+            diagnosticsCallback(
+              ModelicaErrorCode.ASSIGNMENT_TO_INPUT.severity,
+              ModelicaErrorCode.ASSIGNMENT_TO_INPUT.code,
+              ModelicaErrorCode.ASSIGNMENT_TO_INPUT.message(targetName),
+              stmt.target,
+            );
+          }
+
+          if (!targetComp.classInstance) continue;
+
+          // 3. Check for type mismatch
+          const targetType = getBaseTypeName(targetComp.classInstance);
+          if (!targetType) continue;
+
+          const sourceType = inferExpressionType(stmt.source, node);
+          if (!sourceType) continue;
+
+          // Modelica strictly forbids assigning Real to Integer, Boolean, String, etc.
+          // Or assigning Integer to Boolean.
+          // Assigning Integer to Real IS allowed.
+          let isMismatch = false;
+          if (targetType === "Integer" && sourceType === "Real") isMismatch = true;
+          else if (targetType === "Boolean" && sourceType !== "Boolean") isMismatch = true;
+          else if (targetType === "String" && sourceType !== "String") isMismatch = true;
+          // Integer assigned to Real is OK.
+
+          if (isMismatch) {
+            diagnosticsCallback(
+              ModelicaErrorCode.ASSIGNMENT_TYPE_MISMATCH.severity,
+              ModelicaErrorCode.ASSIGNMENT_TYPE_MISMATCH.code,
+              ModelicaErrorCode.ASSIGNMENT_TYPE_MISMATCH.message(
+                targetName,
+                targetType,
+                getExpressionText(stmt.source),
+                sourceType,
+              ),
+              stmt,
+            );
+          }
+        }
+      }
+    },
+  },
+);
+
+// ---------------------------------------------------------------------------
+// For iterator not 1D
+// ---------------------------------------------------------------------------
+import { ModelicaForEquationSyntaxNode as ForEq } from "@modelscript/modelica/ast";
+
+ModelicaLinter.register(ModelicaErrorCode.FOR_ITERATOR_NOT_1D, {
   visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
     const astNode = (node as any).abstractSyntaxNode;
     if (!astNode) return;
 
-    for (const section of astNode.sections ?? []) {
-      if (!(section instanceof AlgoSection)) continue;
-      for (const stmt of section.statements ?? []) {
-        if (!(stmt instanceof SimpleAssign)) continue;
-
-        const targetParts = stmt.target?.parts;
-        if (!targetParts || targetParts.length !== 1) continue;
-        const targetName = targetParts[0]?.identifier?.text;
-        if (!targetName) continue;
-
-        const targetComp = node.resolveSimpleName(targetName, false, true);
-        if (!(targetComp instanceof ModelicaComponentInstance)) continue;
-        if (!targetComp.classInstance) continue;
-
-        const targetType = getBaseTypeName(targetComp.classInstance);
-        if (targetType !== "Integer") continue;
-
-        // n1 / 2 always produces Real in Modelica (Integer division is `div()`)
-        if (exprInvolvesDivision(stmt.source)) {
+    function checkForIterator(forIndexes: any[]): void {
+      for (const idx of forIndexes) {
+        if (!idx.expression) continue;
+        const shape = inferExpressionShape(idx.expression);
+        if (shape.length > 1) {
+          const typeName = "Integer"; // We'll just assume Integer for simplicity in error msg since shape is what matters
+          const shapeStr = `${typeName}[${shape.join(", ")}]`;
           diagnosticsCallback(
-            ModelicaErrorCode.ASSIGNMENT_TYPE_MISMATCH.severity,
-            ModelicaErrorCode.ASSIGNMENT_TYPE_MISMATCH.code,
-            ModelicaErrorCode.ASSIGNMENT_TYPE_MISMATCH.message(
-              targetName,
-              "Integer",
-              (stmt.source as any).sourceText ?? "...",
-              "Real",
-            ),
-            stmt,
+            ModelicaErrorCode.FOR_ITERATOR_NOT_1D.severity,
+            ModelicaErrorCode.FOR_ITERATOR_NOT_1D.code,
+            ModelicaErrorCode.FOR_ITERATOR_NOT_1D.message(idx.identifier?.text ?? "?", shapeStr),
+            idx,
           );
+        }
+      }
+    }
+
+    function checkStatementsForIterator(stmts: any[]): void {
+      for (const stmt of stmts) {
+        if (stmt instanceof ForStmt) {
+          checkForIterator(stmt.forIndexes ?? []);
+          checkStatementsForIterator(stmt.statements ?? []);
+        } else if (stmt instanceof WhenStmt) {
+          checkStatementsForIterator(stmt.statements ?? []);
+          for (const elseWhen of stmt.elseWhenStatementClauses ?? []) {
+            checkStatementsForIterator(elseWhen.statements ?? []);
+          }
+        } else if (stmt instanceof IfStmt) {
+          checkStatementsForIterator(stmt.statements ?? []);
+          checkStatementsForIterator(stmt.elseStatements ?? []);
+          for (const elseIf of stmt.elseIfStatementClauses ?? []) {
+            checkStatementsForIterator(elseIf.statements ?? []);
+          }
+        } else if (stmt instanceof WhileStmt) {
+          checkStatementsForIterator(stmt.statements ?? []);
+        }
+      }
+    }
+
+    function checkEquationsForIterator(eqs: any[]): void {
+      for (const eq of eqs) {
+        if (eq instanceof ForEq) {
+          checkForIterator(eq.forIndexes ?? []);
+          checkEquationsForIterator(eq.equations ?? []);
+        } else if (eq instanceof WhenEq) {
+          checkEquationsForIterator(eq.equations ?? []);
+          for (const elseWhen of (eq as any).elseWhenEquationClauses ?? []) {
+            checkEquationsForIterator(elseWhen.equations ?? []);
+          }
+        } else if (eq["@type"] === "if_equation" || eq["@type"] === "IfEquation") {
+          checkEquationsForIterator(eq.equations ?? []);
+          checkEquationsForIterator(eq.elseEquations ?? []);
+          for (const elseIf of eq.elseIfEquationClauses ?? []) {
+            checkEquationsForIterator(elseIf.equations ?? []);
+          }
+        }
+      }
+    }
+
+    for (const section of astNode.sections ?? []) {
+      if (section instanceof AlgoSection) {
+        checkStatementsForIterator(section.statements ?? []);
+      } else if (section instanceof ModelicaEquationSectionSyntaxNode) {
+        checkEquationsForIterator(section.equations ?? []);
+      }
+    }
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Nested when statements/equations
+// ---------------------------------------------------------------------------
+import {
+  ModelicaForStatementSyntaxNode as ForStmt,
+  ModelicaIfStatementSyntaxNode as IfStmt,
+  ModelicaWhenEquationSyntaxNode as WhenEq,
+  ModelicaWhenStatementSyntaxNode as WhenStmt,
+  ModelicaWhileStatementSyntaxNode as WhileStmt,
+} from "@modelscript/modelica/ast";
+
+ModelicaLinter.register(ModelicaErrorCode.NESTED_WHEN, {
+  visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+    const astNode = (node as any).abstractSyntaxNode;
+    if (!astNode) return;
+
+    function checkStatementsForNestedWhen(stmts: any[], insideWhen: boolean, insideControl: boolean): void {
+      for (const stmt of stmts) {
+        if (stmt instanceof WhenStmt) {
+          if (insideWhen) {
+            diagnosticsCallback(
+              ModelicaErrorCode.NESTED_WHEN.severity,
+              ModelicaErrorCode.NESTED_WHEN.code,
+              ModelicaErrorCode.NESTED_WHEN.message(),
+              stmt,
+            );
+          } else if (insideControl) {
+            // "A when-statement may not be used inside a function or a while, if, or for-clause"
+            diagnosticsCallback(
+              ModelicaErrorCode.NESTED_WHEN.severity,
+              ModelicaErrorCode.NESTED_WHEN.code,
+              "A when-statement may not be used inside a function or a while, if, or for-clause.",
+              stmt,
+            );
+          }
+          // Check inside the when's own body for further nesting
+          checkStatementsForNestedWhen(stmt.statements ?? [], true, false);
+        } else if (stmt instanceof IfStmt) {
+          checkStatementsForNestedWhen(stmt.statements ?? [], insideWhen, true);
+          checkStatementsForNestedWhen(stmt.elseStatements ?? [], insideWhen, true);
+          for (const elseIf of stmt.elseIfStatementClauses ?? []) {
+            checkStatementsForNestedWhen(elseIf.statements ?? [], insideWhen, true);
+          }
+        } else if (stmt instanceof ForStmt) {
+          checkStatementsForNestedWhen(stmt.statements ?? [], insideWhen, true);
+        } else if (stmt instanceof WhileStmt) {
+          checkStatementsForNestedWhen(stmt.statements ?? [], insideWhen, true);
+        }
+      }
+    }
+
+    function checkEquationsForNestedWhen(eqs: any[], insideWhen: boolean): void {
+      for (const eq of eqs) {
+        if (eq instanceof WhenEq) {
+          if (insideWhen) {
+            diagnosticsCallback(
+              ModelicaErrorCode.NESTED_WHEN.severity,
+              ModelicaErrorCode.NESTED_WHEN.code,
+              ModelicaErrorCode.NESTED_WHEN.message(),
+              eq,
+            );
+          }
+          checkEquationsForNestedWhen(eq.equations ?? [], true);
+        }
+      }
+    }
+
+    for (const section of astNode.sections ?? []) {
+      if (section instanceof AlgoSection) {
+        checkStatementsForNestedWhen(section.statements ?? [], false, false);
+      } else if (section instanceof ModelicaEquationSectionSyntaxNode) {
+        checkEquationsForNestedWhen(section.equations ?? [], false);
+      }
+    }
+
+    // Also check: when inside functions is forbidden
+    if (node.classKind === ModelicaClassKind.FUNCTION) {
+      for (const section of astNode.sections ?? []) {
+        if (section instanceof AlgoSection) {
+          for (const stmt of section.statements ?? []) {
+            if (stmt instanceof WhenStmt) {
+              diagnosticsCallback(
+                ModelicaErrorCode.NESTED_WHEN.severity,
+                ModelicaErrorCode.NESTED_WHEN.code,
+                "A when-statement may not be used inside a function or a while, if, or for-clause.",
+                stmt,
+              );
+            }
+          }
         }
       }
     }
   },
 });
+
+// ---------------------------------------------------------------------------
+// Function structure checks: protected I/O, public non-I/O, invalid var types
+// ---------------------------------------------------------------------------
+
+ModelicaLinter.register(
+  [
+    ModelicaErrorCode.FUNCTION_PUBLIC_VARIABLE,
+    ModelicaErrorCode.FUNCTION_PROTECTED_IO,
+    ModelicaErrorCode.FUNCTION_INVALID_VAR_TYPE,
+    ModelicaErrorCode.EXTERNAL_WITH_ALGORITHM,
+    ModelicaErrorCode.DUPLICATE_ELEMENT,
+  ],
+  {
+    visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+      // Check for duplicate elements in the same scope (declared locally)
+      const declaredElements = node.declaredElements;
+      const seenNames = new Set<string>();
+      for (const element of declaredElements) {
+        if (!element.name) continue;
+        if (seenNames.has(element.name)) {
+          diagnosticsCallback(
+            ModelicaErrorCode.DUPLICATE_ELEMENT.severity,
+            ModelicaErrorCode.DUPLICATE_ELEMENT.code,
+            ModelicaErrorCode.DUPLICATE_ELEMENT.message(element.name),
+            element.abstractSyntaxNode ?? null,
+          );
+        } else {
+          seenNames.add(element.name);
+        }
+      }
+
+      if (node.classKind !== ModelicaClassKind.FUNCTION) return;
+
+      // Check for protected input/output and public non-I/O variables
+      for (const element of node.elements) {
+        if (!(element instanceof ModelicaComponentInstance)) continue;
+
+        const isIO = element.causality === "input" || element.causality === "output";
+        const isProtected = element.isProtected;
+
+        // Protected input/output is invalid
+        if (isIO && isProtected) {
+          diagnosticsCallback(
+            ModelicaErrorCode.FUNCTION_PROTECTED_IO.severity,
+            ModelicaErrorCode.FUNCTION_PROTECTED_IO.code,
+            ModelicaErrorCode.FUNCTION_PROTECTED_IO.message(element.name ?? "?"),
+            element.abstractSyntaxNode ?? null,
+          );
+        }
+
+        // Public non-I/O is a warning (should be protected)
+        if (!isIO && !isProtected && element.variability !== "constant") {
+          diagnosticsCallback(
+            ModelicaErrorCode.FUNCTION_PUBLIC_VARIABLE.severity,
+            ModelicaErrorCode.FUNCTION_PUBLIC_VARIABLE.code,
+            ModelicaErrorCode.FUNCTION_PUBLIC_VARIABLE.message(element.name ?? "?"),
+            element.abstractSyntaxNode ?? null,
+          );
+        }
+
+        // Invalid type for function component (models, blocks, etc.)
+        if (element.classInstance) {
+          const cls =
+            element.classInstance instanceof ModelicaArrayClassInstance
+              ? (element.classInstance as any).elementClassInstance
+              : element.classInstance;
+          if (cls && cls.classKind === ModelicaClassKind.MODEL) {
+            diagnosticsCallback(
+              ModelicaErrorCode.FUNCTION_INVALID_VAR_TYPE.severity,
+              ModelicaErrorCode.FUNCTION_INVALID_VAR_TYPE.code,
+              ModelicaErrorCode.FUNCTION_INVALID_VAR_TYPE.message(cls.name ?? "?", element.name ?? "?"),
+              element.abstractSyntaxNode ?? null,
+            );
+          }
+        }
+      }
+
+      // Check for external + algorithm coexistence
+      let hasExternal = false;
+      let hasAlgorithm = false;
+      let algoNode: any = null;
+
+      function checkClassForAlgorithmsAndExternal(cls: ModelicaClassInstance) {
+        const clsAst = (cls as any).abstractSyntaxNode;
+        if (!clsAst) return;
+
+        for (const section of clsAst.sections ?? []) {
+          if (section instanceof AlgoSection) {
+            hasAlgorithm = true;
+            algoNode = algoNode || section; // Keep first found
+          }
+          if (section["@type"] === "external_clause" || section["@type"] === "ExternalClause") {
+            hasExternal = true;
+          }
+        }
+        if (
+          clsAst.classSpecifier?.externalFunctionClause ||
+          clsAst.externalFunctionClause ||
+          (clsAst.sections &&
+            Array.from(clsAst.sections).some(
+              (s: any) => s["@type"] === "external_clause" || s["@type"] === "ExternalClause",
+            ))
+        ) {
+          hasExternal = true;
+        }
+
+        if (cls.extendsClassInstances) {
+          for (const ext of cls.extendsClassInstances) {
+            if (ext.classInstance) {
+              checkClassForAlgorithmsAndExternal(ext.classInstance);
+            }
+          }
+        }
+      }
+
+      checkClassForAlgorithmsAndExternal(node);
+
+      if (hasExternal && hasAlgorithm) {
+        diagnosticsCallback(
+          ModelicaErrorCode.EXTERNAL_WITH_ALGORITHM.severity,
+          ModelicaErrorCode.EXTERNAL_WITH_ALGORITHM.code,
+          "Element is not allowed in function context: algorithm",
+          (node as any).abstractSyntaxNode ?? null,
+        );
+      }
+    },
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Connector restrictions: no equations, algorithms, or protected sections
+// ---------------------------------------------------------------------------
+
+ModelicaLinter.register(
+  [ModelicaErrorCode.EQUATION_TYPE_MISMATCH], // Reusing existing code for connector violations
+  {
+    visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+      if (node.classKind !== ModelicaClassKind.CONNECTOR) return;
+
+      const astNode = (node as any).abstractSyntaxNode;
+      if (!astNode) return;
+
+      for (const section of astNode.sections ?? []) {
+        if (section instanceof ModelicaEquationSectionSyntaxNode) {
+          diagnosticsCallback("error", 5001, "Equations are not allowed in connector.", section);
+        }
+        if (section instanceof AlgoSection) {
+          diagnosticsCallback("error", 5001, "Algorithm sections are not allowed in connector.", section);
+        }
+        // Protected sections
+        if ((section as any).isProtected) {
+          diagnosticsCallback("error", 5001, "Protected sections are not allowed in connector.", section);
+        }
+      }
+    },
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Unresolved references in equations
