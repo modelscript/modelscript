@@ -94,6 +94,19 @@ export const ModelicaErrorCode = {
     severity: "error",
     message: () => "The identifier at start and end are different.",
   },
+  MODIFIED_ELEMENT_NOT_FOUND: {
+    code: 2006,
+    rule: "modified-element-not-found",
+    severity: "error",
+    message: (modName: string, className: string) => `Modified element ${modName} not found in class ${className}.`,
+  },
+  MODIFIER_CLASS_NOT_FOUND: {
+    code: 2007,
+    rule: "modifier-class-not-found",
+    severity: "error",
+    message: (modText: string, modName: string, className: string) =>
+      `In modifier (${modText}), class or component ${modName} not found in <${className}>.`,
+  },
 
   // ── 3xxx: Type System ─────────────────────────────────────────────────
   TYPE_MISMATCH_BINDING: {
@@ -172,8 +185,8 @@ export const ModelicaErrorCode = {
     code: 4003,
     rule: "array-dimension-mismatch",
     severity: "error",
-    message: (context: string, actualShape: string, expectedShape: string) =>
-      `Array dimension mismatch: ${context} has shape [${actualShape}] but expected [${expectedShape}].`,
+    message: (exprText: string, actualShape: string, expectedShape: string) =>
+      `Array dimension mismatch, expression ${exprText} has type ${actualShape}, expected array dimensions [${expectedShape}].`,
   },
   UNBALANCED_MODEL: {
     code: 4004,

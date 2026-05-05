@@ -2375,7 +2375,41 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
 
         // Evaluate all collected attributes into symbolic expressions
         for (const [key, val] of attributes.entries()) {
-          attributes.set(key, this.#flattenToSymbolic(val, node, args[0], args[1]));
+          let evalVal = this.#flattenToSymbolic(val, node, args[0], args[1]);
+          if (evalVal instanceof ModelicaArray && isCompileTimeEvaluable) {
+            const subscripts = index.map((idx: number) => new ModelicaIntegerLiteral(idx));
+
+            // Fast path: if the attribute is a ModelicaArray and we have integer subscripts,
+            // extract the element directly so the DAE printer doesn't print `{1, 1, 1}[1]`
+            let extracted = false;
+            if (subscripts.length === 1 && evalVal.elements) {
+              const idxVal = subscripts[0]?.value;
+              if (idxVal !== undefined) {
+                const elem = evalVal.elements[idxVal - 1];
+                if (elem) {
+                  evalVal = elem;
+                  extracted = true;
+                }
+              }
+            } else if (subscripts.length === 2 && evalVal.elements) {
+              const idx1 = subscripts[0]?.value;
+              const idx2 = subscripts[1]?.value;
+              if (idx1 !== undefined && idx2 !== undefined) {
+                const row = evalVal.elements[idx1 - 1];
+                if (row instanceof ModelicaArray && row.elements) {
+                  const elem = row.elements[idx2 - 1];
+                  if (elem) {
+                    evalVal = elem;
+                    extracted = true;
+                  }
+                }
+              }
+            }
+            if (!extracted) {
+              evalVal = new ModelicaSubscriptedExpression(evalVal, subscripts);
+            }
+          }
+          attributes.set(key, evalVal);
         }
 
         let expression: ModelicaExpression | null;

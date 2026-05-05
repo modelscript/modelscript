@@ -290,9 +290,7 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode = fal
     const classesToLint = new Set<ModelicaClassInstance>();
     if (targetClass instanceof ModelicaClassInstance) classesToLint.add(targetClass);
     for (const cls of context.classes) {
-      if (cls.classKind === "function" || cls.classKind === "operator function" || cls.classKind === "record") {
-        classesToLint.add(cls);
-      }
+      classesToLint.add(cls);
     }
     const t_lint_start = Date.now();
     const tree = context.parse(testCase.file.endsWith(".mos") ? ".mos" : ".mo", testCase.source);

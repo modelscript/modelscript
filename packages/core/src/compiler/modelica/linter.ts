@@ -795,7 +795,64 @@ ModelicaLinter.register(ModelicaErrorCode.TYPE_MISMATCH_BINDING, {
 });
 
 // ---------------------------------------------------------------------------
-// Type mismatch in equations: array dimension mismatch
+// Type mismatch in arrays
+// ---------------------------------------------------------------------------
+
+ModelicaLinter.register(ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH, {
+  visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+    if (node.classKind === ModelicaClassKind.FUNCTION || node.classKind === ModelicaClassKind.PACKAGE) return;
+
+    function checkExprShape(expr: any, expectedShape: number[]): boolean {
+      if (!expr || expectedShape.length === 0) return true;
+      if (expr["@type"] === "ArrayConstructor" && expr.expressionList) {
+        const exprs = expr.expressionList.expressions ?? [];
+        if (exprs.length !== expectedShape[0]) {
+          const exprText = "{...}";
+          diagnosticsCallback(
+            ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.severity,
+            ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.code,
+            ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.message(
+              exprText,
+              `Integer[${exprs.length}]`, // Simplified type string for error matching
+              `${expectedShape[0]}`,
+            ),
+            expr,
+          );
+          return false;
+        } else if (expectedShape.length > 1) {
+          for (const child of exprs) {
+            if (!checkExprShape(child, expectedShape.slice(1))) return false;
+          }
+        }
+      }
+      return true;
+    }
+
+    function getComponentArrayShape(comp: ModelicaComponentInstance): number[] {
+      const dims = (comp as any).arrayDimensions;
+      if (Array.isArray(dims)) {
+        const shape = dims.map((d: any) => d.value);
+        if (shape.some((v) => typeof v !== "number")) return [];
+        return shape;
+      }
+      return [];
+    }
+
+    for (const element of node.elements) {
+      if (!(element instanceof ModelicaComponentInstance)) continue;
+      const expectedShape = getComponentArrayShape(element);
+      if (expectedShape.length === 0) continue;
+
+      // Check the element's modifications (bindings and attributes)
+      for (const mod of element.modification?.modificationArguments ?? []) {
+        const expr = (mod as any).expression;
+        if (expr) {
+          checkExprShape(expr, expectedShape);
+        }
+      }
+    }
+  },
+});
 // ---------------------------------------------------------------------------
 
 ModelicaLinter.register(ModelicaErrorCode.EQUATION_TYPE_MISMATCH, {
@@ -960,3 +1017,172 @@ ModelicaLinter.register(ModelicaErrorCode.NAME_NOT_FOUND, {
     }
   },
 });
+
+ModelicaLinter.register(ModelicaErrorCode.MODIFIED_ELEMENT_NOT_FOUND, {
+  visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+    // Regular modifications
+    checkModifications(node, node.modification?.modificationArguments, node.name ?? "class", diagnosticsCallback);
+    if (node.extendsClassInstances) {
+      for (const ext of node.extendsClassInstances) {
+        checkModifications(ext, ext.modification?.modificationArguments, ext.name ?? "class", diagnosticsCallback);
+      }
+    }
+    // Short class definition modifications (which aren't stored on the semantic model extends properly)
+    if (node.abstractSyntaxNode?.classSpecifier?.classModification?.modificationArguments) {
+      const baseClass = (node as any).shortClassTarget;
+      if (baseClass) {
+        checkModifications(
+          baseClass,
+          node.abstractSyntaxNode.classSpecifier.classModification.modificationArguments,
+          baseClass.name ?? "class",
+          diagnosticsCallback,
+        );
+      }
+    }
+  },
+  visitComponentInstance(
+    node: ModelicaComponentInstance,
+    diagnosticsCallback: DiagnosticsCallbackWithoutResource,
+  ): void {
+    checkModifications(
+      node,
+      node.modification?.modificationArguments,
+      node.declaredType?.name ?? node.name,
+      diagnosticsCallback,
+    );
+  },
+});
+
+function checkModifications(
+  node: ModelicaClassInstance,
+  args: any[] | undefined,
+  className: string,
+  diagnosticsCallback: DiagnosticsCallbackWithoutResource,
+) {
+  if (!args) return;
+  for (const mod of args) {
+    let isRedeclare = false;
+    let modText = "";
+    let nameStr: string | undefined;
+
+    // Semantic node (ModelicaElementModification)
+    if (typeof mod.name === "string") {
+      nameStr = mod.name;
+      modText = mod.arg?.value?.text ?? nameStr;
+    }
+    // AST node (ModelicaElementModificationSyntaxNode)
+    else if (mod.name && mod.name.parts) {
+      nameStr = mod.name.parts.map((p: any) => p.text).join(".");
+      modText = mod.modificationExpression?.expression?.text
+        ? `${nameStr} = ${mod.modificationExpression.expression.text}`
+        : nameStr || "";
+    }
+    // Redeclare AST node
+    else if (mod.componentDeclaration1?.declaration?.identifier?.text) {
+      nameStr = mod.componentDeclaration1.declaration.identifier.text;
+      isRedeclare = true;
+    } else if (mod.componentClause?.componentDeclaration?.declaration?.identifier?.text) {
+      nameStr = mod.componentClause.componentDeclaration.declaration.identifier.text;
+      isRedeclare = true;
+    } else if (mod.componentClause?.componentList?.components?.[0]?.declaration?.identifier?.text) {
+      nameStr = mod.componentClause.componentList.components[0].declaration.identifier.text;
+      isRedeclare = true;
+    } else if (mod.shortClassDefinition?.name?.text) {
+      nameStr = mod.shortClassDefinition.name.text;
+      isRedeclare = true;
+    } else if (mod.classDefinition?.name?.text) {
+      nameStr = mod.classDefinition.name.text;
+      isRedeclare = true;
+    }
+
+    if (nameStr) {
+      const parts = nameStr.split(".");
+
+      // We must check if the modification name is an EXACT member of `node` or its inherited classes.
+      // We CANNOT use `node.resolveName(parts)` because that performs lexical lookup outward!
+      function resolveMember(curr: ModelicaClassInstance, path: string[]): any {
+        if (path.length === 0) return curr;
+        const name = path[0] as string;
+
+        // If `curr` is a component, modifications apply to its TYPE, not itself.
+        if (curr.isComponentInstance) {
+          const classInst = (curr as ModelicaComponentInstance).classInstance;
+          if (classInst) return resolveMember(classInst, path);
+          return null;
+        }
+
+        // Predefined types have implicit attributes
+        if ((curr as any).entry?.metadata?.isPredefined) {
+          const typeName = curr.name;
+          const common = ["value", "quantity", "start", "fixed"];
+          const realInt = ["min", "max"];
+          const realOnly = ["nominal", "unconstrained", "stateSelect", "unit", "displayUnit"];
+          const allowed = [...common];
+          if (typeName === "Real" || typeName === "Integer" || typeName === "Enumeration") allowed.push(...realInt);
+          if (typeName === "Real") allowed.push(...realOnly);
+          if (allowed.includes(name)) {
+            if (path.length === 1) return true; // resolved
+            return null; // primitive attributes don't have nested members
+          }
+        }
+
+        let found: any = null;
+        for (const el of curr.elements) {
+          if (el.name === name) {
+            found = el;
+            break;
+          }
+        }
+        if (!found && curr.extendsClassInstances) {
+          for (const ext of curr.extendsClassInstances) {
+            if (ext.classInstance) {
+              found = resolveMember(ext.classInstance, [name]);
+              if (found) break;
+            }
+          }
+        }
+        // Short class definitions extends logic (flattener uses shortClassTarget)
+        if (!found && (curr as any).shortClassTarget) {
+          found = resolveMember((curr as any).shortClassTarget, [name]);
+        }
+        if (!found) return null;
+        if (path.length === 1) return found;
+
+        if (found.isComponentInstance) {
+          const classInst = found.classInstance;
+          if (classInst) return resolveMember(classInst, path.slice(1));
+        } else if (found.classKind) {
+          return resolveMember(found, path.slice(1));
+        }
+        return null;
+      }
+
+      const resolved = resolveMember(node, parts);
+      if (!resolved) {
+        if (isRedeclare) {
+          diagnosticsCallback(
+            ModelicaErrorCode.MODIFIED_ELEMENT_NOT_FOUND.severity,
+            ModelicaErrorCode.MODIFIED_ELEMENT_NOT_FOUND.code,
+            ModelicaErrorCode.MODIFIED_ELEMENT_NOT_FOUND.message(nameStr, className),
+            mod.ast ?? mod,
+          );
+        } else {
+          // For non-redeclares, use MODIFIER_CLASS_NOT_FOUND
+          // OpenModelica sometimes uses the base class, sometimes the outer class, we use className.
+          diagnosticsCallback(
+            ModelicaErrorCode.MODIFIER_CLASS_NOT_FOUND.severity,
+            ModelicaErrorCode.MODIFIER_CLASS_NOT_FOUND.code,
+            ModelicaErrorCode.MODIFIER_CLASS_NOT_FOUND.message(modText, nameStr, className),
+            mod.ast ?? mod,
+          );
+        }
+      } else {
+        const subMods =
+          mod.modification?.modificationArguments ?? mod.modification?.classModification?.modificationArguments;
+        if (subMods) {
+          checkModifications(resolved, subMods, resolved.name ?? nameStr, diagnosticsCallback);
+        }
+      }
+    }
+  }
+}
