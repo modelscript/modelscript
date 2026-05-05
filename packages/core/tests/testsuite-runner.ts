@@ -297,6 +297,7 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode = fal
     const classesToLint = new Set<ModelicaClassInstance>();
     if (targetClass instanceof ModelicaClassInstance) classesToLint.add(targetClass);
     for (const cls of context.classes) {
+      if (cls.name === "Modelica" || cls.name === "Complex" || cls.name === "ModelicaServices") continue;
       classesToLint.add(cls);
     }
     const t_lint_start = Date.now();
