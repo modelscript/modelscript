@@ -45,8 +45,10 @@ function isExplicitlySolvableFor(eq: ModelicaEquation, v: string): boolean {
 
     const getNames = (expr: ModelicaExpression) => {
       const s = new Set<string>();
-      const col = new VariableNameCollector();
-      expr.accept(col, s);
+      if (typeof expr?.accept === "function") {
+        const col = new VariableNameCollector();
+        expr.accept(col, s);
+      }
       return s;
     };
 

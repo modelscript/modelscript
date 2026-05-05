@@ -1212,6 +1212,35 @@ export abstract class ModelicaExpression {
     }
     if (!classInstance.instantiated && !classInstance.instantiating) classInstance.instantiate();
 
+    // If there is an explicit modification expression, use it. This handles arrays
+    // that have been assigned an explicit ModelicaArray value in the interpreter.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const modExpr = classInstance.modification?.expression as any;
+    if (modExpr) {
+      if (modExpr instanceof ModelicaExpression) return modExpr;
+      if (modExpr instanceof ModelicaObject) return modExpr;
+
+      // Handle polyfilled JSON objects from the query engine (e.g. ModelicaArray)
+      if (modExpr.type === "Array" && Array.isArray(modExpr.elements)) {
+        let elements = modExpr.elements.map((e: unknown) => {
+          if (e instanceof ModelicaExpression) return e;
+          return new ModelicaRealLiteral((e as { value?: number })?.value ?? 0);
+        });
+        const shape = modExpr.shape ?? [elements.length];
+
+        // Reconstruct nested ModelicaArray structure for multi-dimensional arrays
+        for (let i = shape.length - 1; i >= 1; i--) {
+          const length = shape[i] ?? 0;
+          const chunks: ModelicaExpression[] = [];
+          for (let j = 0; j < elements.length; j += length) {
+            chunks.push(new ModelicaArray(shape.slice(i), elements.slice(j, j + length)));
+          }
+          elements = chunks;
+        }
+        return new ModelicaArray([shape[0] ?? 0], elements);
+      }
+    }
+
     // Duck-type check: array class instances have a `shape` property
     if (isArrayClassInstance(classInstance)) {
       let elements: ModelicaExpression[] = [];
@@ -1241,10 +1270,10 @@ export abstract class ModelicaExpression {
       return classInstance.value;
     } else if (isPredefinedClassInstance(classInstance)) {
       return classInstance.expression;
-    } else if (classInstance.modification?.expression instanceof ModelicaObject) {
-      return classInstance.modification.expression;
-    } else if (!classInstance.abstractSyntaxNode && classInstance.modification?.expression) {
-      return classInstance.modification.expression;
+    } else if (modExpr instanceof ModelicaObject) {
+      return modExpr;
+    } else if (!classInstance.abstractSyntaxNode && modExpr) {
+      return modExpr;
     } else if (classInstance.classKind === "boolean" || classInstance.name === "Boolean") {
       return new ModelicaBooleanLiteral(false);
     } else if (classInstance.classKind === "integer" || classInstance.name === "Integer") {
@@ -4355,13 +4384,13 @@ export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void,
   }
 
   visitSimpleEquation(node: ModelicaSimpleEquation, argument?: A): void {
-    node.expression1.accept(this, argument);
-    node.expression2.accept(this, argument);
+    if (typeof node.expression1?.accept === "function") node.expression1.accept(this, argument);
+    if (typeof node.expression2?.accept === "function") node.expression2.accept(this, argument);
   }
 
   visitArrayEquation(node: ModelicaArrayEquation, argument?: A): void {
-    node.expression1.accept(this, argument);
-    node.expression2.accept(this, argument);
+    if (typeof node.expression1?.accept === "function") node.expression1.accept(this, argument);
+    if (typeof node.expression2?.accept === "function") node.expression2.accept(this, argument);
   }
 
   visitStringLiteral(node: ModelicaStringLiteral, argument?: A): void {
@@ -4697,7 +4726,6 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
 
   #emitVariable(variable: ModelicaVariable): void {
     this.out.write(this.indent());
-    if (variable.isProtected) this.out.write("protected ");
     if (variable.isFinal) this.out.write("final ");
     if (variable.variability) this.out.write(variable.variability + " ");
     if (variable.causality) this.out.write(variable.causality + " ");
@@ -4770,7 +4798,13 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     }
     if (variable.expression) {
       this.out.write(" = ");
-      variable.expression.accept(this);
+      if (typeof variable.expression.accept === "function") {
+        variable.expression.accept(this);
+      } else {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const e = variable.expression as any;
+        this.out.write(String(e.name ?? e.text ?? e));
+      }
     }
     if (variable.description) this.out.write(' "' + variable.description + '"');
     if (variable.cadAnnotationString) this.out.write(" annotation(" + variable.cadAnnotationString + ")");
@@ -4810,8 +4844,30 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     }
     this.out.write("\n");
 
-    for (const variable of node.variables) {
-      this.#emitVariable(variable);
+    const inputVars = node.variables.filter((v) => !v.isProtected && v.causality === "input");
+    const outputVars = node.variables.filter((v) => !v.isProtected && v.causality === "output");
+    const otherPublicVars = node.variables.filter(
+      (v) => !v.isProtected && v.causality !== "input" && v.causality !== "output",
+    );
+    const protectedVars = node.variables.filter((v) => v.isProtected);
+
+    // DEBUG
+    console.log(`[visitDAE] ${node.name} total vars: ${node.variables.length}`);
+    for (const v of node.variables) {
+      console.log(
+        `  Var: ${v.name}, isProtected: ${v.isProtected}, causality: ${v.causality}, variability: ${v.variability}`,
+      );
+    }
+
+    for (const variable of inputVars) this.#emitVariable(variable);
+    for (const variable of outputVars) this.#emitVariable(variable);
+    for (const variable of otherPublicVars) this.#emitVariable(variable);
+
+    if (protectedVars.length > 0) {
+      this.out.write("protected\n");
+      for (const variable of protectedVars) {
+        this.#emitVariable(variable);
+      }
     }
     for (const sm of node.stateMachines || []) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -4846,8 +4902,22 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     if (fn.description) this.out.write(' "' + fn.description + '"');
     this.out.write("\n");
 
-    for (const variable of fn.variables) {
-      this.#emitVariable(variable);
+    const inputVars = fn.variables.filter((v) => !v.isProtected && v.causality === "input");
+    const outputVars = fn.variables.filter((v) => !v.isProtected && v.causality === "output");
+    const otherPublicVars = fn.variables.filter(
+      (v) => !v.isProtected && v.causality !== "input" && v.causality !== "output",
+    );
+    const protectedVars = fn.variables.filter((v) => v.isProtected);
+
+    for (const variable of inputVars) this.#emitVariable(variable);
+    for (const variable of outputVars) this.#emitVariable(variable);
+    for (const variable of otherPublicVars) this.#emitVariable(variable);
+
+    if (protectedVars.length > 0) {
+      this.out.write("protected\n");
+      for (const variable of protectedVars) {
+        this.#emitVariable(variable);
+      }
     }
     if (fn.equations.length > 0 || fn.whenClauses.length > 0) {
       this.out.write("equation\n");
@@ -4905,7 +4975,14 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     this.out.write(node.functionName + "(");
     for (let i = 0; i < node.args.length; i++) {
       if (i > 0) this.out.write(", ");
-      node.args[i]?.accept(this);
+      const arg = node.args[i];
+      if (arg && typeof arg.accept === "function") {
+        arg.accept(this);
+      } else if (arg) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const a = arg as any;
+        this.out.write(String(a.name ?? a.text ?? a));
+      }
     }
     this.out.write(")");
   }
@@ -5045,9 +5122,21 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
 
   visitSimpleEquation(node: ModelicaSimpleEquation): void {
     this.out.write(this.indent());
-    node.expression1.accept(this);
+    if (typeof node.expression1?.accept === "function") {
+      node.expression1.accept(this);
+    } else {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const e1 = node.expression1 as any;
+      this.out.write(String(e1?.name ?? e1?.text ?? "?"));
+    }
     this.out.write(` ${node.operator} `);
-    node.expression2.accept(this);
+    if (typeof node.expression2?.accept === "function") {
+      node.expression2.accept(this);
+    } else {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const e2 = node.expression2 as any;
+      this.out.write(String(e2?.name ?? e2?.text ?? "?"));
+    }
     if (node.description) this.out.write(' "' + node.description + '"');
     this.out.write(";\n");
   }
@@ -5056,6 +5145,10 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     // Handle two parser behaviors:
     // 1. \\n is stored as 2-char escape sequence → unescape to actual newline + indentation
     // 2. \\\" is stored as bare " (parser already unescaped) → re-escape to \\"
+    if (node.value == null) {
+      this.out.write('""');
+      return;
+    }
     const indent = "  ".repeat(this.#depth + 1);
     const result = node.value
       .replace(/\\n/g, "\n" + indent) // unescape \\n → actual newline + indent

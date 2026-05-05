@@ -15,7 +15,6 @@ import {
   ModelicaExpressionSyntaxNode,
   ModelicaForStatementSyntaxNode,
   ModelicaFunctionCallSyntaxNode,
-  ModelicaIdentifierSyntaxNode,
   ModelicaIfElseExpressionSyntaxNode,
   ModelicaIfStatementSyntaxNode,
   ModelicaOutputExpressionListSyntaxNode,
@@ -64,23 +63,18 @@ export class ModelicaAlgorithmScope extends Scope {
   }
 
   override getNamedElement(name: string): any | null {
-    return this.variables.get(name) ?? null;
-  }
-
-  override resolveSimpleName(
-    identifier: ModelicaIdentifierSyntaxNode | string | null | undefined,
-    global = false,
-    encapsulated = false,
-  ): any | null {
-    const name = typeof identifier === "string" ? identifier : identifier?.text;
-    if (name && this.variables.has(name)) return this.variables.get(name) ?? null;
+    if (this.variables.has(name)) return this.variables.get(name) ?? null;
 
     if (this.parent) {
-      const original = this.parent.resolveSimpleName(identifier, global, encapsulated);
+      const original =
+        typeof (this.parent as any).getNamedElement === "function"
+          ? (this.parent as any).getNamedElement(name)
+          : this.parent.resolveSimpleName(name);
+
       if (original && (original as any).isComponentInstance) {
-        const synthetic = new SyntheticInterpreterVariable(name ?? "unknown", null);
+        const synthetic = new SyntheticInterpreterVariable(name, null);
         synthetic.classInstance = (original as any).classInstance;
-        if (name) this.variables.set(name, synthetic);
+        this.variables.set(name, synthetic);
         return synthetic;
       }
       return original;
@@ -398,15 +392,94 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
    * @returns The evaluated ModelicaArray, or null if evaluation fails.
    */
   visitArrayConcatenation(node: ModelicaArrayConcatenationSyntaxNode, scope: Scope): ModelicaExpression | null {
-    const elements: ModelicaExpression[] = [];
-    const shape = [node.expressionLists.length, node.expressionLists[0]?.expressions?.length ?? 0];
+    const rows: ModelicaExpression[][] = [];
     for (const expressionList of node.expressionLists ?? []) {
+      const row: ModelicaExpression[] = [];
       for (const expression of expressionList.expressions ?? []) {
         const element = expression.accept(this, scope);
-        if (element != null) elements.push(element);
+        if (element != null) row.push(element);
+      }
+      rows.push(row);
+    }
+
+    if (rows.length === 0) return new ModelicaArray([0], []);
+
+    // Check if all elements are scalars
+    let allScalars = true;
+    for (const row of rows) {
+      for (const el of row) {
+        if (el instanceof ModelicaArray) {
+          allScalars = false;
+          break;
+        }
       }
     }
-    return new ModelicaArray(shape, elements);
+
+    if (allScalars) {
+      if (rows.length === 1) {
+        const row0 = rows[0] || [];
+        return new ModelicaArray([row0.length], row0);
+      } else {
+        // [e1, e2; e3, e4] -> matrix
+        const flatElements: ModelicaExpression[] = [];
+        for (const row of rows) flatElements.push(...row);
+        return new ModelicaArray([rows.length, rows[0]?.length ?? 0], flatElements);
+      }
+    } else {
+      // Elements are arrays (vectors/matrices). We need to concatenate them.
+      // E.g. [ [1,2], [3,4] ] -> matrix
+      const flatElements: ModelicaExpression[] = [];
+      let numRows: number;
+      let numCols = 0;
+      if (rows.length === 1) {
+        const row0 = rows[0] || [];
+        // [e1, e2] -> if e1, e2 are vectors, this is a matrix [2, n]
+        // But if e1, e2 are matrices, it's horizontal concatenation cat(2, e1, e2)
+        // Let's use simple shape inference for now:
+        const first = row0[0];
+        if (first instanceof ModelicaArray && first.shape.length === 1) {
+          // Vectors -> matrix
+          numRows = row0.length;
+          numCols = first.shape[0] ?? 0;
+          for (const el of row0) {
+            if (el instanceof ModelicaArray) flatElements.push(...el.elements);
+          }
+          return new ModelicaArray([numRows, numCols], flatElements);
+        } else {
+          // Matrices -> horizontal concatenation
+          numRows = (first instanceof ModelicaArray ? first.shape[0] : 1) ?? 1;
+          for (const el of row0) {
+            if (el instanceof ModelicaArray) {
+              numCols += el.shape[1] ?? 1;
+            }
+          }
+          // Basic horizontal concatenation
+          for (let r = 0; r < numRows; r++) {
+            for (const el of row0) {
+              if (el instanceof ModelicaArray) {
+                const cSize = el.shape[1] ?? 1;
+                for (let c = 0; c < cSize; c++) {
+                  const val = el.elements[r * cSize + c];
+                  if (val) flatElements.push(val);
+                }
+              }
+            }
+          }
+          return new ModelicaArray([numRows, numCols], flatElements);
+        }
+      } else {
+        // [e1; e2]
+        numRows = rows.length;
+        for (const row of rows) {
+          const first = row[0];
+          if (first instanceof ModelicaArray) {
+            numCols = first.shape[0] ?? 1;
+            flatElements.push(...first.elements);
+          }
+        }
+        return new ModelicaArray([numRows, numCols], flatElements);
+      }
+    }
   }
 
   /**
@@ -676,6 +749,8 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
         }
       } else if (namedElement instanceof ModelicaClassInstance) {
         result = ModelicaExpression.fromClassInstance(namedElement);
+      } else if (namedElement && (namedElement as any).classInstance instanceof ModelicaClassInstance) {
+        result = ModelicaExpression.fromClassInstance((namedElement as any).classInstance);
       } else {
         // Duck-type fallback: handle annotation enum stubs and Modelica elements
         const duck = namedElement as any;
@@ -1800,9 +1875,12 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
       if (result !== undefined) return result;
     }
 
-    // Handle CAS symbolic functions (e.g., ModelScript.CAS.simplify)
     const functionInstance = scope.resolveComponentReference(node.functionReference);
     if (!(functionInstance instanceof ModelicaClassInstance)) {
+      console.log(
+        "visitFunctionCall failed to resolve functionInstance:",
+        node.functionReference?.parts?.map((p) => p.identifier?.text).join("."),
+      );
       // Fallback: construct an unresolved symbolic function call for algebraic manipulation
       const args = this.evaluateArgs(node, scope).filter((a): a is ModelicaExpression => a !== null);
       if (node.functionReference) {
@@ -1860,6 +1938,13 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
       } else {
         clonedFunction = functionInstance.clone(modArgs);
       }
+
+      console.log(`visitFunctionCall clonedFunction components length: ${clonedFunction.components?.length}`);
+      console.log(
+        `visitFunctionCall clonedFunction component causalities: ${clonedFunction.components.map((c: any) => `${c.name}: ${c.causality}`).join(", ")}`,
+      );
+      console.log(`visitFunctionCall clonedFunction inputParameters:`, clonedFunction.inputParameters?.length);
+      console.log(`visitFunctionCall clonedFunction outputParameters:`, clonedFunction.outputParameters?.length);
 
       // Execute algorithm statements or JS source to compute output values
       let jsExecuted: ModelicaExpression | null = null;
@@ -1938,9 +2023,11 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
       if (outputExpressions.length <= 1) {
         return outputExpressions[0] ?? null;
       } else {
+        return outputExpressions;
         return new ModelicaArray([outputExpressions.length], outputExpressions);
       }
     } else {
+      console.log("visitFunctionCall not a function or missing result:", rawFuncName, functionInstance?.classKind);
       return null;
     }
   }

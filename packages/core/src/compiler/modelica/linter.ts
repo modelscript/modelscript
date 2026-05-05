@@ -804,8 +804,14 @@ ModelicaLinter.register(ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH, {
 
     function checkExprShape(expr: any, expectedShape: number[]): boolean {
       if (!expr || expectedShape.length === 0) return true;
+      if (node.name === "Array_builtin") {
+        console.log("checkExprShape:", expr["@type"], expectedShape, "exprText:", expr.text);
+      }
       if (expr["@type"] === "ArrayConstructor" && expr.expressionList) {
         const exprs = expr.expressionList.expressions ?? [];
+        if (node.name === "Array_builtin") {
+          console.log("exprs.length:", exprs.length);
+        }
         if (exprs.length !== expectedShape[0]) {
           const exprText = "{...}";
           diagnosticsCallback(
@@ -843,12 +849,21 @@ ModelicaLinter.register(ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH, {
       const expectedShape = getComponentArrayShape(element);
       if (expectedShape.length === 0) continue;
 
+      if (node.name === "Array_builtin") {
+        console.log("Checking element:", element.name, "modification:", element.modification);
+      }
+
       // Check the element's modifications (bindings and attributes)
       for (const mod of element.modification?.modificationArguments ?? []) {
         const expr = (mod as any).expression;
         if (expr) {
           checkExprShape(expr, expectedShape);
         }
+      }
+      // Also check if the modification itself has an expression (for direct assignments)
+      const directExpr = (element.modification as any)?.modificationExpression?.expression;
+      if (directExpr) {
+        checkExprShape(directExpr, expectedShape);
       }
     }
   },
@@ -1177,8 +1192,13 @@ function checkModifications(
           );
         }
       } else {
-        const subMods =
-          mod.modification?.modificationArguments ?? mod.modification?.classModification?.modificationArguments;
+        let subMods: any[] | undefined;
+        try {
+          subMods =
+            mod.modification?.modificationArguments ?? mod.modification?.classModification?.modificationArguments;
+        } catch {
+          // Guard: modificationArguments getter may throw if underlying semantic model data is malformed
+        }
         if (subMods) {
           checkModifications(resolved, subMods, resolved.name ?? nameStr, diagnosticsCallback);
         }

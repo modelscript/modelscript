@@ -605,7 +605,11 @@ export class ModelicaClassInstance extends ModelicaElement {
     if (!entry) return [];
     let arr = inputParametersCache.get(entry);
     if (!arr) {
-      arr = [];
+      if (!this.instantiated && !this.instantiating) this.instantiate();
+      arr = Array.from(this.components).filter((c: any) => c.causality?.toString() === "input");
+      console.log(
+        `[semantic-model] inputParameters computed for ${entry.name}. components length: ${this.components.length}, causality inputs: ${arr.length}`,
+      );
       inputParametersCache.set(entry, arr);
     }
     return arr;
@@ -619,7 +623,11 @@ export class ModelicaClassInstance extends ModelicaElement {
     if (!entry) return [];
     let arr = outputParametersCache.get(entry);
     if (!arr) {
-      arr = [];
+      if (!this.instantiated && !this.instantiating) this.instantiate();
+      arr = Array.from(this.components).filter((c: any) => c.causality?.toString() === "output");
+      console.log(
+        `[semantic-model] outputParameters computed for ${entry.name}. components length: ${this.components.length}, causality outputs: ${arr.length}`,
+      );
       outputParametersCache.set(entry, arr);
     }
     return arr;
@@ -813,6 +821,17 @@ export class ModelicaClassInstance extends ModelicaElement {
       if (!namedElement) return null;
     }
     return namedElement;
+  }
+
+  /**
+   * Directly get a named element (like a component or local class) from this exact scope.
+   * Unlike resolveSimpleName, this searches the specialized instance's own components.
+   */
+  getNamedElement(name: string): ModelicaElement | null {
+    for (const comp of this.components) {
+      if (comp.name === name) return comp;
+    }
+    return null;
   }
 
   /**
@@ -1080,16 +1099,18 @@ export class ModelicaComponentInstance extends ModelicaClassInstance {
     const classEntry = this.db.symbol(classId);
     if (classEntry) {
       const meta = classEntry.metadata as Record<string, unknown>;
-      let arrayDims = this.db.query("arrayDimensions", this.id);
-      if (!arrayDims || (arrayDims as any[]).length === 0) {
-        try {
-          arrayDims = this.db.query("arrayDimensions", classId);
-        } catch {
-          /* Ignore */
-        }
+      let arrayDims = (this.db.query("arrayDimensions", this.id) as any[]) || [];
+      let typeArrayDims = [] as any[];
+      try {
+        typeArrayDims = (this.db.query("arrayDimensions", classId) as any[]) || [];
+      } catch (e) {
+        // Ignore
       }
-      if (arrayDims && (arrayDims as any[]).length > 0)
-        return new ModelicaArrayClassInstance(classId, this.db, arrayDims as any[]);
+
+      const combinedDims = [...arrayDims, ...typeArrayDims];
+      if (combinedDims.length > 0) {
+        return new ModelicaArrayClassInstance(classId, this.db, combinedDims);
+      }
 
       if (meta?.isPredefined) {
         if (classEntry.name === "Integer") return new ModelicaIntegerClassInstance(classId, this.db);

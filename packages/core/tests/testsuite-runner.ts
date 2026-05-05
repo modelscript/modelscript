@@ -255,6 +255,13 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode = fal
         lastClassName = lastClass?.name ?? testCase.metadata.name;
       }
     }
+    const resolvedNode = context.resolveName([lastClassName]);
+    console.log(`[Runner] Resolved class for flattening: ${lastClassName}`);
+    if (resolvedNode) {
+      console.log(`[Runner] Type: ${resolvedNode.constructor.name}`);
+      console.log(`[Runner] Is short class: ${"shortClassTarget" in resolvedNode}`);
+    }
+
     const t_flatten_start = Date.now();
     const flattenedResult = context.flatten(lastClassName, {
       arrayMode: testCase.metadata.arrayMode ?? "scalarize",
@@ -311,11 +318,13 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode = fal
         const codeStr = d.code > 0 ? `[M${d.code}] ` : "";
         if (d.range) {
           const r = d.range;
-          const startPos = `${r.startPosition.row + 1}:${r.startPosition.column + 1}`;
-          const endPos = `${r.endPosition.row + 1}:${r.endPosition.column + 1}`;
-          const relPath = d.resource ? path.relative(testsuiteRoot, d.resource) : "";
-          const prefix = relPath ? `${relPath.split(path.sep).slice(1).join("/")}:` : "";
-          return `[${prefix}${startPos}-${endPos}] ${severity}: ${codeStr}${d.message}`;
+          if (r.startPosition && r.endPosition) {
+            const startPos = `${r.startPosition.row + 1}:${r.startPosition.column + 1}`;
+            const endPos = `${r.endPosition.row + 1}:${r.endPosition.column + 1}`;
+            const relPath = d.resource ? path.relative(testsuiteRoot, d.resource) : "";
+            const prefix = relPath ? `${relPath.split(path.sep).slice(1).join("/")}:` : "";
+            return `[${prefix}${startPos}-${endPos}] ${severity}: ${codeStr}${d.message}`;
+          }
         }
         return `${severity}: ${codeStr}${d.message}`;
       });
