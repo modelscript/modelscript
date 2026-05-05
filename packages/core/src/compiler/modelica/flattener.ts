@@ -3696,7 +3696,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       const loopVars = new Map(ctx.loopVariables);
       for (const forIndex of comp.forIndexes) {
         const iterName = forIndex.identifier?.text ?? "";
-        const range = forIndex.expression?.accept(this, ctx);
+        const range = this.#flattenForRange(forIndex, ctx);
         if (iterName && range) {
           iterators.push({ name: iterName, range });
           loopVars.set(iterName, new ModelicaNameExpression(iterName));
@@ -6378,9 +6378,9 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         const fi = node.forIndexes[i];
         if (!fi) continue;
         const name = fi.identifier?.text ?? "?";
-        const range = fi.expression?.accept(this, ctx);
+        const range = this.#flattenForRange(fi, ctx);
         if (!range) continue;
-        eqs = [new ModelicaForEquation(name, range as ModelicaExpression, eqs)];
+        eqs = [new ModelicaForEquation(name, range, eqs)];
       }
       for (const eq of eqs) ctx.dae.equations.push(eq);
       return null;
@@ -6480,9 +6480,9 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         const fi = forIndexes[i];
         if (!fi) continue;
         const name = fi.identifier?.text ?? "?";
-        const range = fi.expression?.accept(this, ctx);
+        const range = this.#flattenForRange(fi, ctx);
         if (!range) continue;
-        eqs = [new ModelicaForEquation(name, range as ModelicaExpression, eqs)];
+        eqs = [new ModelicaForEquation(name, range, eqs)];
       }
       for (const eq of eqs) ctx.dae.equations.push(eq);
       return;
@@ -6493,6 +6493,39 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       loopVars.set(indexName, value);
       this.#unrollForEquation(forIndexes, indexPos + 1, equations, { ...ctx, loopVariables: loopVars });
     }
+  }
+
+  /**
+   * Flatten a for-index expression while keeping ranges as ModelicaRangeExpression
+   * (not expanding to array literals). This is used for preserved for-loop nodes.
+   */
+  #flattenForRange(
+    fi: { expression?: { accept: (v: ModelicaSyntaxFlattener, a: FlattenerContext) => unknown } | null },
+    ctx: FlattenerContext,
+  ): ModelicaExpression | null {
+    const expr = fi.expression?.accept(this, ctx);
+    if (!expr) return null;
+    // If the visitor already expanded the range to an array of integers,
+    // reconstruct a range expression for clean printing.
+    if (expr instanceof ModelicaArray && expr.elements.length > 0) {
+      const first = expr.elements[0];
+      const last = expr.elements[expr.elements.length - 1];
+      if (first instanceof ModelicaIntegerLiteral && last instanceof ModelicaIntegerLiteral) {
+        const step =
+          expr.elements.length > 1
+            ? expr.elements[1] instanceof ModelicaIntegerLiteral
+              ? (expr.elements[1] as ModelicaIntegerLiteral).value - first.value
+              : null
+            : 1;
+        if (step === 1) {
+          return new ModelicaRangeExpression(first, last, null);
+        }
+        if (step !== null && step !== 0) {
+          return new ModelicaRangeExpression(first, last, new ModelicaIntegerLiteral(step));
+        }
+      }
+    }
+    return expr as ModelicaExpression;
   }
 
   /** Evaluate an expression to an array of integer values (for range unrolling). */
@@ -6511,6 +6544,16 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       }
       return result;
     }
+    // Handle arrays of integer literals (from expanded range expressions)
+    if (expr instanceof ModelicaArray) {
+      const result: number[] = [];
+      for (const el of expr.elements) {
+        const val = this.#evaluateIntExpr(el);
+        if (val === null) return null;
+        result.push(val);
+      }
+      return result;
+    }
     return null;
   }
 
@@ -6522,6 +6565,31 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     if (expr instanceof ModelicaVariable && expr.expression) {
       return this.#evaluateIntExpr(expr.expression);
     }
+    if (expr instanceof ModelicaBinaryExpression) {
+      const left = this.#evaluateIntExpr(expr.operand1);
+      const right = this.#evaluateIntExpr(expr.operand2);
+      if (left !== null && right !== null) {
+        switch (expr.operator) {
+          case "+":
+            return left + right;
+          case "-":
+            return left - right;
+          case "*":
+            return left * right;
+          case "/":
+            return Math.trunc(left / right);
+        }
+      }
+    }
+    if (expr instanceof ModelicaUnaryExpression) {
+      const op = this.#evaluateIntExpr(expr.operand);
+      if (op !== null) {
+        if (expr.operator === "-") return -op;
+        if (expr.operator === "+") return op;
+      }
+    }
+    // Also follow NameExpressions if they map to a known scalar in the current scope
+    // This is optional but can help if variable hasn't been fully replaced.
     return null;
   }
 
@@ -6781,7 +6849,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       const forIndex = node.forIndexes[i];
       if (!forIndex) continue;
       const indexName = forIndex.identifier?.text ?? "?";
-      let range = forIndex.expression?.accept(this, ctx) ?? null;
+      let range = this.#flattenForRange(forIndex, ctx);
 
       // Expand enumeration type references: `for e in E` → `for e in {Pkg.E.one, Pkg.E.two, ...}`
       if (range instanceof ModelicaNameExpression && forIndex.expression && "parts" in forIndex.expression) {
@@ -7046,6 +7114,40 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     const stop = node.stopExpression?.accept(this, ctx);
     const step = node.stepExpression?.accept(this, ctx) ?? null;
     if (!start || !stop) return null;
+    // Expand constant integer ranges to array literals (e.g. 1:3 → {1,2,3})
+    const toInt = (e: ModelicaExpression): number | null => (e instanceof ModelicaIntegerLiteral ? e.value : null);
+    const startVal = toInt(start);
+    const stopVal = toInt(stop);
+    const stepVal = step ? toInt(step) : 1;
+    if (startVal !== null && stopVal !== null && stepVal !== null && stepVal !== 0) {
+      const elements: ModelicaExpression[] = [];
+      if (stepVal > 0) {
+        for (let v = startVal; v <= stopVal; v += stepVal) elements.push(new ModelicaIntegerLiteral(v));
+      } else {
+        for (let v = startVal; v >= stopVal; v += stepVal) elements.push(new ModelicaIntegerLiteral(v));
+      }
+      return new ModelicaArray([elements.length], elements);
+    }
+    // Similarly for Real ranges
+    const toReal = (e: ModelicaExpression): number | null =>
+      e instanceof ModelicaRealLiteral ? e.value : e instanceof ModelicaIntegerLiteral ? e.value : null;
+    const startR = toReal(start);
+    const stopR = toReal(stop);
+    const stepR = step ? toReal(step) : null;
+    if (startR !== null && stopR !== null && (step === null || stepR !== null)) {
+      const stp = stepR ?? 1.0;
+      if (stp !== 0) {
+        const elements: ModelicaExpression[] = [];
+        if (stp > 0) {
+          for (let v = startR; v <= stopR + 1e-10; v += stp) elements.push(new ModelicaRealLiteral(v));
+        } else {
+          for (let v = startR; v >= stopR - 1e-10; v += stp) elements.push(new ModelicaRealLiteral(v));
+        }
+        if (elements.length <= 10000) {
+          return new ModelicaArray([elements.length], elements);
+        }
+      }
+    }
     return new ModelicaRangeExpression(start, stop, step);
   }
 
@@ -8405,11 +8507,110 @@ function canonicalizeBinaryExpression(
         return new ModelicaArray([nRows], resultElements);
       }
     }
+    // Vector-vector dot product: v[n] * w[n] → scalar (sum of element-wise products)
+    if (
+      !isElementwiseOp &&
+      operator === ModelicaBinaryOperator.MULTIPLICATION &&
+      operand1.shape.length === 1 &&
+      operand2.shape.length === 1
+    ) {
+      const n = operand1.shape[0] ?? 0;
+      const m = operand2.shape[0] ?? 0;
+      if (n === m && n > 0) {
+        let dotProduct: ModelicaExpression | null = null;
+        for (let i = 0; i < n; i++) {
+          const a = operand1.elements[i];
+          const b = operand2.elements[i];
+          if (!a || !b) continue;
+          const term = canonicalizeBinaryExpression(ModelicaBinaryOperator.MULTIPLICATION, a, b, dae);
+          if (!dotProduct) {
+            dotProduct = term;
+          } else {
+            dotProduct = canonicalizeBinaryExpression(ModelicaBinaryOperator.ADDITION, dotProduct, term, dae);
+          }
+        }
+        return dotProduct ?? new ModelicaIntegerLiteral(0);
+      }
+    }
+    // Vector-matrix multiplication: v[n] * M[n,m] → w[m] where w[j] = sum(v[i] * M[i,j])
+    if (
+      !isElementwiseOp &&
+      operator === ModelicaBinaryOperator.MULTIPLICATION &&
+      operand1.shape.length === 1 &&
+      operand2.shape.length === 2
+    ) {
+      const vecLen = operand1.shape[0] ?? 0;
+      const nRows = operand2.shape[0] ?? 0;
+      const nCols = operand2.shape[1] ?? 0;
+      if (vecLen === nRows && vecLen > 0 && nCols > 0) {
+        const resultElements: ModelicaExpression[] = [];
+        for (let j = 0; j < nCols; j++) {
+          let dotProduct: ModelicaExpression | null = null;
+          for (let i = 0; i < vecLen; i++) {
+            const vi = operand1.elements[i];
+            const row = operand2.elements[i];
+            const mij = row instanceof ModelicaArray ? row.elements[j] : row;
+            if (!vi || !mij) continue;
+            const term = canonicalizeBinaryExpression(ModelicaBinaryOperator.MULTIPLICATION, vi, mij, dae);
+            if (!dotProduct) {
+              dotProduct = term;
+            } else {
+              dotProduct = canonicalizeBinaryExpression(ModelicaBinaryOperator.ADDITION, dotProduct, term, dae);
+            }
+          }
+          resultElements.push(dotProduct ?? new ModelicaIntegerLiteral(0));
+        }
+        return new ModelicaArray([nCols], resultElements);
+      }
+    }
+    // Matrix-matrix multiplication: A[m,n] * B[n,p] → C[m,p]
+    if (
+      !isElementwiseOp &&
+      operator === ModelicaBinaryOperator.MULTIPLICATION &&
+      operand1.shape.length === 2 &&
+      operand2.shape.length === 2
+    ) {
+      const mRows = operand1.shape[0] ?? 0;
+      const mCols = operand1.shape[1] ?? 0;
+      const nCols = operand2.shape[1] ?? 0;
+      const nRows = operand2.shape[0] ?? 0;
+      if (mCols === nRows && mCols > 0 && mRows > 0 && nCols > 0) {
+        const rowArrays: ModelicaExpression[] = [];
+        for (let i = 0; i < mRows; i++) {
+          const rowA = operand1.elements[i];
+          const rowAElements = rowA instanceof ModelicaArray ? rowA.elements : [rowA];
+          const resultRow: ModelicaExpression[] = [];
+          for (let j = 0; j < nCols; j++) {
+            let dotProduct: ModelicaExpression | null = null;
+            for (let k = 0; k < mCols; k++) {
+              const aik = rowAElements[k];
+              const rowB = operand2.elements[k];
+              const bkj = rowB instanceof ModelicaArray ? rowB.elements[j] : rowB;
+              if (!aik || !bkj) continue;
+              const term = canonicalizeBinaryExpression(ModelicaBinaryOperator.MULTIPLICATION, aik, bkj, dae);
+              if (!dotProduct) {
+                dotProduct = term;
+              } else {
+                dotProduct = canonicalizeBinaryExpression(ModelicaBinaryOperator.ADDITION, dotProduct, term, dae);
+              }
+            }
+            resultRow.push(dotProduct ?? new ModelicaIntegerLiteral(0));
+          }
+          rowArrays.push(new ModelicaArray([nCols], resultRow));
+        }
+        return new ModelicaArray([mRows, nCols], rowArrays);
+      }
+    }
     if (scalarOp === "+" || scalarOp === "-" || scalarOp === "*" || scalarOp === "/" || scalarOp === "^") {
       if (operand1.elements.length === operand2.elements.length) {
+        // When decomposing multi-dimensional arrays element-by-element,
+        // use element-wise operators for the recursion to prevent
+        // accidentally triggering matrix/vector multiplication on sub-arrays.
+        const recurseOp =
+          isElementwiseOp || operand1.shape.length >= 2 ? (("." + scalarOp) as ModelicaBinaryOperator) : scalarOp;
         const newElements = operand1.elements.map((e1, i) =>
           canonicalizeBinaryExpression(
-            scalarOp,
+            recurseOp,
             e1,
             (operand2 as ModelicaArray).elements[i] as ModelicaExpression,
             dae,

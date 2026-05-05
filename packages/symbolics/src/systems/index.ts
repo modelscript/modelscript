@@ -4455,6 +4455,11 @@ export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void,
   visitArrayConcatenation(node: any, argument?: A): void {
     /* no-op */
   }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  visitOutputExpressionList(node: any, argument?: A): void {
+    /* no-op */
+  }
 }
 
 export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
@@ -5196,8 +5201,8 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
   override visitComponentReference(node: any): void {
     const parts = node.parts;
     if (parts && parts.length > 0) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const name = parts
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .map((p: any) => p.identifier?.text ?? p.text ?? "")
         .filter(Boolean)
         .join(".");

@@ -104,7 +104,7 @@ export class ModelicaLinter {
   constructor(diagnosticsCallback: DiagnosticsCallback) {
     this.#diagnosticsCallback = diagnosticsCallback;
     this.#modelicaSyntaxLinter = new ModelicaSyntaxLinter(diagnosticsCallback);
-    this.#modelicaModelLinter = new ModelicaModelLinter(diagnosticsCallback, this.#modelicaSyntaxLinter);
+    this.#modelicaModelLinter = new ModelicaModelLinter(diagnosticsCallback);
   }
 
   /**
@@ -200,7 +200,6 @@ export class ModelicaLinter {
  */
 export class ModelicaModelLinter extends ModelicaModelVisitor<string | null | undefined> {
   #diagnosticsCallback: DiagnosticsCallback;
-  #modelicaSyntaxLinter: ModelicaSyntaxLinter;
   #visited = new Set<string>();
   /** Set of component names that have been declared as `inner` during traversal. */
   #knownInners = new Set<string>();
@@ -209,12 +208,10 @@ export class ModelicaModelLinter extends ModelicaModelVisitor<string | null | un
    * Initializes a new ModelicaModelLinter.
    *
    * @param diagnosticsCallback - The diagnostic reporting callback.
-   * @param modelicaSyntaxLinter - A reference to the syntax linter for delegating deeper AST checks.
    */
-  constructor(diagnosticsCallback: DiagnosticsCallback, modelicaSyntaxLinter: ModelicaSyntaxLinter) {
+  constructor(diagnosticsCallback: DiagnosticsCallback) {
     super();
     this.#diagnosticsCallback = diagnosticsCallback;
-    this.#modelicaSyntaxLinter = modelicaSyntaxLinter;
   }
 
   visitBooleanClassInstance(node: ModelicaBooleanClassInstance, resource: string | null | undefined): void {
@@ -247,7 +244,6 @@ export class ModelicaModelLinter extends ModelicaModelVisitor<string | null | un
   }
 
   visitEntity(node: ModelicaEntity): void {
-    node.storedDefinitionSyntaxNode?.accept(this.#modelicaSyntaxLinter, node.path);
     ModelicaLinter.applyRules("visitEntity", node, this.#diagnosticsCallback, node.path);
     // Entity extends ClassInstance — apply class-level rules too so semantic
     // rules (e.g. ASSIGNMENT_TYPE_MISMATCH) fire for standalone .mo files.
@@ -621,6 +617,113 @@ ModelicaLinter.register(
     },
   },
 );
+
+ModelicaLinter.register(ModelicaErrorCode.DUPLICATE_MODIFICATION, {
+  visitClassModification(
+    node: ModelicaClassModificationSyntaxNode,
+    diagnosticsCallback: DiagnosticsCallbackWithoutResource,
+  ): void {
+    if (!node.modificationArguments || node.modificationArguments.length === 0) return;
+
+    const seen = new Set<string>();
+    for (const arg of node.modificationArguments) {
+      let name: string | undefined;
+      const anyArg = arg as any;
+      if (anyArg.identifier) name = anyArg.identifier.text;
+      else if (anyArg.name) name = anyArg.name.parts?.[0]?.text ?? anyArg.name.text;
+      else if (anyArg.elementModificationOrReplaceable) {
+        const inner = anyArg.elementModificationOrReplaceable;
+        if (inner.componentDeclaration1) name = inner.componentDeclaration1.declaration?.identifier?.text;
+        else if (inner.classDefinition)
+          name = inner.classDefinition.name?.parts?.[0]?.text ?? inner.classDefinition.name?.text;
+        else if (inner.shortClassDefinition)
+          name = inner.shortClassDefinition.name?.parts?.[0]?.text ?? inner.shortClassDefinition.name?.text;
+        else if (inner.name) name = inner.name.parts?.[0]?.text ?? inner.name.text;
+        else if (inner.componentClause)
+          name =
+            inner.componentClause.componentDeclaration?.declaration?.identifier?.text ??
+            inner.componentClause.componentList?.components?.[0]?.declaration?.identifier?.text;
+      } else if (anyArg.componentDeclaration) {
+        name = anyArg.componentDeclaration.declaration?.identifier?.text;
+      } else if (anyArg.classDefinition) {
+        name = anyArg.classDefinition.name?.parts?.[0]?.text ?? anyArg.classDefinition.name?.text;
+      } else if (anyArg.shortClassDefinition) {
+        name = anyArg.shortClassDefinition.name?.parts?.[0]?.text ?? anyArg.shortClassDefinition.name?.text;
+      } else if (anyArg.componentClause) {
+        name =
+          anyArg.componentClause.componentDeclaration?.declaration?.identifier?.text ??
+          anyArg.componentClause.componentList?.components?.[0]?.declaration?.identifier?.text;
+      }
+
+      if (name) {
+        if (seen.has(name)) {
+          diagnosticsCallback(
+            ModelicaErrorCode.DUPLICATE_MODIFICATION.severity,
+            ModelicaErrorCode.DUPLICATE_MODIFICATION.code,
+            ModelicaErrorCode.DUPLICATE_MODIFICATION.message(name, "<Unknown>"),
+            anyArg,
+          );
+        } else {
+          seen.add(name);
+        }
+      }
+    }
+  },
+  visitExtendsClause(
+    node: ModelicaExtendsClauseSyntaxNode,
+    diagnosticsCallback: DiagnosticsCallbackWithoutResource,
+  ): void {
+    const classMod = node.classOrInheritanceModification;
+    if (!classMod || !classMod.modificationArgumentOrInheritanceModifications) return;
+
+    const seen = new Set<string>();
+    for (const arg of classMod.modificationArgumentOrInheritanceModifications) {
+      let name: string | undefined;
+      const anyArg = arg as any;
+      if (anyArg.identifier) name = anyArg.identifier.text;
+      else if (anyArg.name) name = anyArg.name.parts?.[0]?.text ?? anyArg.name.text;
+      else if (anyArg.elementModificationOrReplaceable) {
+        const inner = anyArg.elementModificationOrReplaceable;
+        if (inner.componentDeclaration1) name = inner.componentDeclaration1.declaration?.identifier?.text;
+        else if (inner.classDefinition)
+          name = inner.classDefinition.name?.parts?.[0]?.text ?? inner.classDefinition.name?.text;
+        else if (inner.shortClassDefinition)
+          name = inner.shortClassDefinition.name?.parts?.[0]?.text ?? inner.shortClassDefinition.name?.text;
+        else if (inner.name) name = inner.name.parts?.[0]?.text ?? inner.name.text;
+        else if (inner.componentClause)
+          name =
+            inner.componentClause.componentDeclaration?.declaration?.identifier?.text ??
+            inner.componentClause.componentList?.components?.[0]?.declaration?.identifier?.text;
+      } else if (anyArg.componentDeclaration) {
+        name = anyArg.componentDeclaration.declaration?.identifier?.text;
+      } else if (anyArg.classDefinition) {
+        name = anyArg.classDefinition.name?.parts?.[0]?.text ?? anyArg.classDefinition.name?.text;
+      } else if (anyArg.shortClassDefinition) {
+        name = anyArg.shortClassDefinition.name?.parts?.[0]?.text ?? anyArg.shortClassDefinition.name?.text;
+      } else if (anyArg.componentClause) {
+        name =
+          anyArg.componentClause.componentDeclaration?.declaration?.identifier?.text ??
+          anyArg.componentClause.componentList?.components?.[0]?.declaration?.identifier?.text;
+      }
+
+      if (name) {
+        if (seen.has(name)) {
+          diagnosticsCallback(
+            ModelicaErrorCode.DUPLICATE_MODIFICATION.severity,
+            ModelicaErrorCode.DUPLICATE_MODIFICATION.code,
+            ModelicaErrorCode.DUPLICATE_MODIFICATION.message(
+              name,
+              "extends " + (node.typeSpecifier?.name?.parts?.[0]?.text ?? "<Unknown>"),
+            ),
+            anyArg,
+          );
+        } else {
+          seen.add(name);
+        }
+      }
+    }
+  },
+});
 
 // ---------------------------------------------------------------------------
 // Type mismatch in bindings: Real → Integer is not allowed (§4.7)

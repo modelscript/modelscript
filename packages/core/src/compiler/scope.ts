@@ -122,7 +122,10 @@ export abstract class Scope {
     try {
       let scope: Scope | null = global ? this.root : this;
       while (scope) {
-        const namedElement = scope.getNamedElement(simpleName);
+        let namedElement: ModelicaNamedElement | null = null;
+        if (typeof (scope as any).getNamedElement === "function") {
+          namedElement = scope.getNamedElement(simpleName);
+        }
         if (namedElement) return namedElement;
 
         if ("qualifiedImports" in scope && "unqualifiedImports" in scope) {
