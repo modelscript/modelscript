@@ -2061,7 +2061,13 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     currentMods: { nameParts: string[]; valueExpr: any }[] = [],
   ): void {
     const variability = effectiveVariability ?? node.variability;
-    const causality = name.includes(".") ? null : node.causality;
+    // For dotted names (sub-components like c1.x), OMC only preserves input/output
+    // if the component is declared inside a connector class. For model/record sub-components,
+    // causality is stripped.
+    const parentClassKind = node.parent?.classKind;
+    const isInConnector =
+      parentClassKind === ModelicaClassKind.CONNECTOR || parentClassKind === ModelicaClassKind.EXPANDABLE_CONNECTOR;
+    const causality = name.includes(".") && !isInConnector ? null : node.causality;
     const activeClass = this.activeClassStack[this.activeClassStack.length - 1];
     let isProtected = node.isProtected || this.#outerProtected || (activeClass?.isProtectedElement(node.name) ?? false);
 
@@ -2743,7 +2749,83 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       }
 
       if (variable) {
-        variable.arrayDimensions = shape;
+        // For function classes, preserve symbolic dimension expressions (e.g. size(x,1))
+        // instead of using evaluated numeric shape.
+        const isFunctionClass = args[1].classKind === "function" || args[1].classKind === "operator function";
+        if (isFunctionClass && polysubs && polysubs.length > 0) {
+          const dims = polysubs.map((sub: any, i: number) => {
+            if (sub.flexible && !sub.expression) return ":";
+            if (sub.expression) {
+              if (typeof sub.expression === "object" && sub.expression !== null && sub.expression.kind === "flexible") {
+                return ":";
+              }
+              if (typeof sub.expression.accept === "function") {
+                // If we have the raw text (e.g., "size(x, 1)"), use it directly
+                if (sub.expression.kind === "expression" && typeof sub.expression.text === "string") {
+                  return sub.expression.text;
+                }
+                // Try to flatten through the syntax flattener for canonicalization
+                const syntaxFlattener = new ModelicaSyntaxFlattener(this.options);
+                const flatExpr = sub.expression.accept(syntaxFlattener, {
+                  prefix: "",
+                  classInstance: node.parent ?? node,
+                  dae: args[1],
+                  stmtCollector: [],
+                  activeClassStack: [],
+                  activePrefixes: [],
+                });
+                if (flatExpr) {
+                  const out = new StringWriter();
+                  const printer = new ModelicaDAEPrinter(out);
+                  flatExpr.accept(printer);
+                  const result = out.toString().trim();
+                  if (result) return result;
+                }
+                // Fallback: use DAE printer directly on the raw expression
+                const out = new StringWriter();
+                const printer = new ModelicaDAEPrinter(out);
+                sub.expression.accept(printer);
+                const result = out.toString().trim();
+                if (result) return result;
+              } else if (typeof sub.expression === "number" || typeof sub.expression === "string") {
+                return String(sub.expression);
+              } else if (typeof sub.expression === "object" && sub.expression !== null) {
+                // Serialized POJO expression — reconstruct
+                const printPOJO = (e: any): string => {
+                  if (typeof e !== "object" || e === null) return String(e);
+                  if (e.kind === "flexible") return ":";
+                  if (
+                    e.type === "IntegerLiteral" ||
+                    e.type === "RealLiteral" ||
+                    e.type === "BooleanLiteral" ||
+                    e.type === "StringLiteral"
+                  )
+                    return String(e.value);
+                  if (e.type === "NameExpression") return e.name;
+                  if (e.type === "FunctionCallExpression" || e.type === "ModelicaFunctionCallExpression") {
+                    return (e.functionName || e.name) + "(" + (e.args || []).map(printPOJO).join(", ") + ")";
+                  }
+                  if (e.type === "BinaryExpression" || e.type === "ModelicaBinaryExpression") {
+                    return printPOJO(e.operand1) + " " + e.operator + " " + printPOJO(e.operand2);
+                  }
+                  if (e.type === "UnaryExpression" || e.type === "ModelicaUnaryExpression") {
+                    return e.operator + printPOJO(e.operand);
+                  }
+                  return "";
+                };
+                const reconstructed = printPOJO(sub.expression);
+                if (reconstructed) return reconstructed;
+              }
+            }
+            // Fall back to evaluated shape
+            const d = shape[i] ?? 0;
+            return d === 0 ? ":" : String(d);
+          });
+          const arrayPrefix = `[${dims.join(", ")}]`;
+          variable.name = `\0${arrayPrefix}\0${variable.name}`;
+        } else {
+          variable.arrayDimensions = shape;
+        }
         if (!this.#emittedVarNames.has(variable.name)) {
           this.#emittedVarNames.add(variable.name);
           args[1].variables.push(variable);
@@ -6120,6 +6202,10 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
           const dims = subs.map((sub: any, i: number) => {
             if (sub.flexible && !sub.expression) return ":";
             if (sub.expression) {
+              // Check for flexible (colon) subscript marker from the semantic model
+              if (typeof sub.expression === "object" && sub.expression !== null && sub.expression.kind === "flexible") {
+                return ":";
+              }
               if (typeof sub.expression.accept !== "function") {
                 // If it's a raw evaluated primitive value from the query index
                 if (
@@ -6139,6 +6225,32 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
                   ) {
                     return String(sub.expression.value);
                   }
+                  // Attempt to reconstruct the expression string from the POJO
+                  const printPOJO = (e: any): string => {
+                    if (typeof e !== "object" || e === null) return String(e);
+                    if (e.kind === "flexible") return ":";
+                    if (
+                      e.type === "IntegerLiteral" ||
+                      e.type === "RealLiteral" ||
+                      e.type === "BooleanLiteral" ||
+                      e.type === "StringLiteral"
+                    )
+                      return String(e.value);
+                    if (e.type === "NameExpression") return e.name;
+                    if (e.type === "FunctionCallExpression" || e.type === "ModelicaFunctionCallExpression") {
+                      return (e.functionName || e.name) + "(" + (e.args || []).map(printPOJO).join(", ") + ")";
+                    }
+                    if (e.type === "BinaryExpression" || e.type === "ModelicaBinaryExpression") {
+                      return printPOJO(e.operand1) + " " + e.operator + " " + printPOJO(e.operand2);
+                    }
+                    if (e.type === "UnaryExpression" || e.type === "ModelicaUnaryExpression") {
+                      return e.operator + printPOJO(e.operand);
+                    }
+                    return "";
+                  };
+                  const reconstructed = printPOJO(sub.expression);
+                  if (reconstructed) return reconstructed;
+
                   // Fallback: use its evaluated shape or just return ":"
                   const shape =
                     element.classInstance instanceof ModelicaArrayClassInstance ? element.classInstance.shape : [];
@@ -6146,6 +6258,10 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
                   return d === 0 ? ":" : String(d);
                 }
               } else {
+                // If we have the raw text (e.g., "size(x, 1)"), use it directly
+                if (sub.expression.kind === "expression" && typeof sub.expression.text === "string") {
+                  return sub.expression.text;
+                }
                 // Flatten the subscript expression through the canonicalizing
                 // flattener so that e.g. `size(matr,2)-1` becomes `-1 + size(matr,2)`
                 const syntaxFlattener = new ModelicaSyntaxFlattener(this.options);
@@ -6163,10 +6279,11 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
                   flatExpr.accept(printer);
                   return out.toString().trim() || ":";
                 }
-                // Fall back to syntax printer if flattening fails
+
+                // Fall back to DAE printer if flattening fails
                 const out = new StringWriter();
-                const printer = new ModelicaSyntaxPrinter(out);
-                sub.expression.accept(printer, 0);
+                const printer = new ModelicaDAEPrinter(out);
+                sub.expression.accept(printer);
                 return out.toString().trim() || ":";
               }
             }
@@ -6312,7 +6429,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         }
       }
 
-      if (element.classInstance instanceof ModelicaArrayClassInstance) {
+      if (element.classInstance instanceof ModelicaArrayClassInstance && !arrayPrefix) {
         variable.arrayDimensions = element.classInstance.shape;
       }
 
@@ -6322,46 +6439,6 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       }
       fnDae.variables.push(variable);
     }
-
-    // Sort function variables to match OMC ordering:
-    // 1. input variables (source order)
-    // 2. output variables (source order)
-    // 3. protected/local variables: scalars before arrays
-    fnDae.variables.sort((a: any, b: any) => {
-      // Separate non-protected (input/output) from protected.
-      // Preserve source order for inputs/outputs — important for functions
-      // that use extends, where output vars may appear between inputs.
-      const isProtectedVar = (v: ModelicaVariable) => (v.isProtected ? 1 : 0);
-      const pa = isProtectedVar(a);
-      const pb = isProtectedVar(b);
-      if (pa !== pb) return pa - pb;
-      // Within protected group, match OMC ordering:
-      // 0: scalars without size()-dependent initializers
-      // 1: scalars with parametric/size()-dependent initializers
-      // 2: arrays
-      if (pa === 1) {
-        const containsSizeCall = (expr: ModelicaExpression): boolean => {
-          if (expr instanceof ModelicaFunctionCallExpression) {
-            if (expr.functionName === "size") return true;
-            return expr.args.some(containsSizeCall);
-          }
-          if (expr instanceof ModelicaBinaryExpression) {
-            return containsSizeCall(expr.operand1) || containsSizeCall(expr.operand2);
-          }
-          if (expr instanceof ModelicaUnaryExpression) {
-            return containsSizeCall(expr.operand);
-          }
-          return false;
-        };
-        const protectedOrder = (v: ModelicaVariable) => {
-          if (v.name.startsWith("\0")) return 2; // array
-          if (v.expression && containsSizeCall(v.expression)) return 1;
-          return 0;
-        };
-        return protectedOrder(a) - protectedOrder(b);
-      }
-      return 0; // preserve source order for inputs/outputs
-    });
 
     // Register the function definition early to prevent infinite recursion when
     // the function body references itself (directly or via name resolution).

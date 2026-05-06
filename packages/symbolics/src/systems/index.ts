@@ -4725,8 +4725,9 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     this.out.write(node.name);
   }
 
-  #emitVariable(variable: ModelicaVariable): void {
+  #emitVariable(variable: ModelicaVariable, emitProtectedPrefix = false): void {
     this.out.write(this.indent());
+    if (emitProtectedPrefix && variable.isProtected) this.out.write("protected ");
     if (variable.isFinal) this.out.write("final ");
     if (variable.variability) this.out.write(variable.variability + " ");
     if (variable.causality) this.out.write(variable.causality + " ");
@@ -4845,30 +4846,8 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     }
     this.out.write("\n");
 
-    const inputVars = node.variables.filter((v) => !v.isProtected && v.causality === "input");
-    const outputVars = node.variables.filter((v) => !v.isProtected && v.causality === "output");
-    const otherPublicVars = node.variables.filter(
-      (v) => !v.isProtected && v.causality !== "input" && v.causality !== "output",
-    );
-    const protectedVars = node.variables.filter((v) => v.isProtected);
-
-    // DEBUG
-    console.log(`[visitDAE] ${node.name} total vars: ${node.variables.length}`);
-    for (const v of node.variables) {
-      console.log(
-        `  Var: ${v.name}, isProtected: ${v.isProtected}, causality: ${v.causality}, variability: ${v.variability}`,
-      );
-    }
-
-    for (const variable of inputVars) this.#emitVariable(variable);
-    for (const variable of outputVars) this.#emitVariable(variable);
-    for (const variable of otherPublicVars) this.#emitVariable(variable);
-
-    if (protectedVars.length > 0) {
-      this.out.write("protected\n");
-      for (const variable of protectedVars) {
-        this.#emitVariable(variable);
-      }
+    for (const variable of node.variables) {
+      this.#emitVariable(variable, variable.isProtected);
     }
     for (const sm of node.stateMachines || []) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -4903,22 +4882,8 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     if (fn.description) this.out.write(' "' + fn.description + '"');
     this.out.write("\n");
 
-    const inputVars = fn.variables.filter((v) => !v.isProtected && v.causality === "input");
-    const outputVars = fn.variables.filter((v) => !v.isProtected && v.causality === "output");
-    const otherPublicVars = fn.variables.filter(
-      (v) => !v.isProtected && v.causality !== "input" && v.causality !== "output",
-    );
-    const protectedVars = fn.variables.filter((v) => v.isProtected);
-
-    for (const variable of inputVars) this.#emitVariable(variable);
-    for (const variable of outputVars) this.#emitVariable(variable);
-    for (const variable of otherPublicVars) this.#emitVariable(variable);
-
-    if (protectedVars.length > 0) {
-      this.out.write("protected\n");
-      for (const variable of protectedVars) {
-        this.#emitVariable(variable);
-      }
+    for (const variable of fn.variables) {
+      this.#emitVariable(variable, variable.isProtected);
     }
     if (fn.equations.length > 0 || fn.whenClauses.length > 0) {
       this.out.write("equation\n");
