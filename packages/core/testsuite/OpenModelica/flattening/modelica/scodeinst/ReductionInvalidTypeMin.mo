@@ -1,0 +1,20 @@
+// name: ReductionInvalidTypeMin
+// keywords: reduction
+// status: incorrect
+//
+// Tests the builtin reduction operators.
+//
+
+model ReductionInvalidTypeMin
+  Real x = min({1, 2, 3} for i in 1:3);
+end ReductionInvalidTypeMin;
+
+// Result:
+// Error processing file: ReductionInvalidTypeMin.mo
+// [flattening/modelica/scodeinst/ReductionInvalidTypeMin.mo:9:3-9:39:writable] Error: Invalid expression '{1, 2, 3}' of type Integer[3] in min reduction, expected scalar enumeration, Boolean, Integer, or Real.
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
+// endResult

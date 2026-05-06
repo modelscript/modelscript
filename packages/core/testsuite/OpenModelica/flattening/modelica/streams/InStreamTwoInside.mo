@@ -1,50 +1,53 @@
 // name: InStreamTwoInside
-// keywords: stream connector
+// keywords: stream inStream connector inside
 // status: correct
+//
+// Checks that inStream is evaluated correctly on two inside connected stream
+// connectors.
+//
 
-connector FluidPort
-  flow Real m_flow;
-  stream Real h_outflow;
-end FluidPort;
+connector S
+  Real r;
+  flow Real f;
+  stream Real s;
+end S;
 
-model Source
-  FluidPort c;
+model A
+  S s;
+  Real instream_s;
 equation
-  c.m_flow = -1.0;
-  c.h_outflow = 300.0;
-end Source;
-
-model Sink
-  FluidPort c;
-  Real h;
-equation
-  c.m_flow = 1.0;
-  c.h_outflow = 0.0;
-  h = inStream(c.h_outflow);
-end Sink;
+  instream_s = inStream(s.s);
+end A;
 
 model InStreamTwoInside
-  Source source;
-  Sink sink;
+  A a1, a2;
+  Real instream_s_a1;
+  Real instream_s_a2;
 equation
-  connect(source.c, sink.c);
+  connect(a1.s, a2.s);
+  instream_s_a1 = inStream(a1.s.s);
+  instream_s_a2 = inStream(a2.s.s);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end InStreamTwoInside;
 
 // Result:
 // class InStreamTwoInside
-//   Real source.c.m_flow;
-//   Real source.c.h_outflow;
-//   Real sink.c.m_flow;
-//   Real sink.c.h_outflow;
-//   Real sink.h;
+//   Real a1.s.r;
+//   Real a1.s.f;
+//   Real a1.s.s;
+//   Real a1.instream_s;
+//   Real a2.s.r;
+//   Real a2.s.f;
+//   Real a2.s.s;
+//   Real a2.instream_s;
+//   Real instream_s_a1;
+//   Real instream_s_a2;
 // equation
-//   source.c.m_flow = -1.0;
-//   source.c.h_outflow = 300.0;
-//   sink.c.m_flow = 1.0;
-//   sink.c.h_outflow = 0.0;
-//   sink.h = inStream(sink.c.h_outflow);
-//   -(source.c.m_flow + sink.c.m_flow) = 0.0;
-//   source.c.m_flow = 0.0;
-//   sink.c.m_flow = 0.0;
+//   a1.instream_s = a2.s.s;
+//   a2.instream_s = a1.s.s;
+//   instream_s_a1 = a2.s.s;
+//   instream_s_a2 = a1.s.s;
+//   a1.s.f + a2.s.f = 0.0;
+//   a1.s.r = a2.s.r;
 // end InStreamTwoInside;
 // endResult

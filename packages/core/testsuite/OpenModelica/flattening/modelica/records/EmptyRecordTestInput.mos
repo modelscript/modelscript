@@ -1,0 +1,17 @@
+// name:     Empty Record Input
+// keywords: algorithm
+// status:   correct
+// cflags: -d=-newInst
+
+loadFile("RecordTest.mo");
+
+rec:=RecordTest.EMPTY();
+b:=RecordTest.eval_empty(rec);
+
+
+// Result:
+// true
+// record RecordTest.EMPTY
+// end RecordTest.EMPTY;
+// 0.0
+// endResult

@@ -1,0 +1,56 @@
+// name:     Homotopy.mos
+// keywords: ticket #2542
+// status:   correct
+// cflags: -d=newInst
+// 
+// Ticket #2542
+// 
+
+
+loadFile("Homotopy.mo"); getErrrorString();
+
+instantiateModel(HomotopyTest); getErrrorString();
+
+setCommandLineOptions("+replaceHomotopy=actual"); getErrrorString();
+instantiateModel(HomotopyTest); getErrrorString();
+
+setCommandLineOptions("+replaceHomotopy=simplified"); getErrrorString();
+instantiateModel(HomotopyTest); getErrrorString();
+
+setCommandLineOptions("+replaceHomotopy=none"); getErrrorString();
+instantiateModel(HomotopyTest); getErrrorString();
+
+// Result:
+// true
+//
+// "class HomotopyTest
+//   parameter Real a = 20.0;
+//   parameter Real p = homotopy(a + 1.0, a);
+// end HomotopyTest;
+// "
+//
+// true
+//
+// "class HomotopyTest
+//   parameter Real a = 20.0;
+//   parameter Real p = a + 1.0;
+// end HomotopyTest;
+// "
+//
+// true
+//
+// "class HomotopyTest
+//   parameter Real a = 20.0;
+//   parameter Real p = a;
+// end HomotopyTest;
+// "
+//
+// true
+//
+// "class HomotopyTest
+//   parameter Real a = 20.0;
+//   parameter Real p = homotopy(a + 1.0, a);
+// end HomotopyTest;
+// "
+//
+// endResult
