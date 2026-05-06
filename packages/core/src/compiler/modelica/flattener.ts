@@ -5099,6 +5099,13 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       componentPrefix = compScopedResult.componentPrefix;
     } else if (!ModelicaSyntaxFlattener.#isBuiltinFunction(functionName)) {
       // Resolve to fully qualified name for user-defined functions
+      const parts = functionName.split(".");
+      const resolvedFunc = ctx.classInstance.resolveName(parts);
+      if (!resolvedFunc || !(resolvedFunc.isClassInstance || resolvedFunc.isComponentInstance)) {
+        ctx.dae.diagnostics.push(
+          makeDiagnostic(ModelicaErrorCode.CLASS_NOT_FOUND, node, functionName, ctx.classInstance.name ?? "<Unknown>"),
+        );
+      }
       functionName = this.#resolveFullyQualifiedName(functionName, ctx);
     }
 
@@ -7963,17 +7970,35 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     const stop = node.stopExpression?.accept(this, ctx);
     const step = node.stepExpression?.accept(this, ctx) ?? null;
     if (!start || !stop) return null;
+    if (step && start.constructor.name === "ModelicaEnumerationLiteral") {
+      ctx.dae.diagnostics.push(
+        makeDiagnostic(ModelicaErrorCode.ENUM_RANGE_WITH_STEP, node, (start as any).typeName ?? "unknown"),
+      );
+      return new ModelicaArray([0], []);
+    }
     // Expand constant integer ranges to array literals (e.g. 1:3 → {1,2,3})
     const toInt = (e: ModelicaExpression): number | null => (e instanceof ModelicaIntegerLiteral ? e.value : null);
     const startVal = toInt(start);
     const stopVal = toInt(stop);
     const stepVal = step ? toInt(step) : 1;
-    if (startVal !== null && stopVal !== null && stepVal !== null && stepVal !== 0) {
+    if (startVal !== null && stopVal !== null && stepVal !== null) {
+      if (stepVal === 0) {
+        ctx.dae.diagnostics.push(
+          makeDiagnostic(ModelicaErrorCode.RANGE_STEP_TOO_SMALL, node, node.stepExpression?.text ?? "0"),
+        );
+        return new ModelicaArray([0], []);
+      }
       const elements: ModelicaExpression[] = [];
       if (stepVal > 0) {
-        for (let v = startVal; v <= stopVal; v += stepVal) elements.push(new ModelicaIntegerLiteral(v));
+        for (let v = startVal; v <= stopVal; v += stepVal) {
+          if (elements.length >= 10000) break;
+          elements.push(new ModelicaIntegerLiteral(v));
+        }
       } else {
-        for (let v = startVal; v >= stopVal; v += stepVal) elements.push(new ModelicaIntegerLiteral(v));
+        for (let v = startVal; v >= stopVal; v += stepVal) {
+          if (elements.length >= 10000) break;
+          elements.push(new ModelicaIntegerLiteral(v));
+        }
       }
       return new ModelicaArray([elements.length], elements);
     }
@@ -7985,14 +8010,25 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     const stepR = step ? toReal(step) : null;
     if (startR !== null && stopR !== null && (step === null || stepR !== null)) {
       const stp = stepR ?? 1.0;
-      if (stp !== 0) {
+      if (stp === 0 || startR + stp === startR) {
+        ctx.dae.diagnostics.push(
+          makeDiagnostic(ModelicaErrorCode.RANGE_STEP_TOO_SMALL, node, node.stepExpression?.text ?? "0"),
+        );
+        return new ModelicaArray([0], []);
+      } else {
         const elements: ModelicaExpression[] = [];
         if (stp > 0) {
-          for (let v = startR; v <= stopR + 1e-10; v += stp) elements.push(new ModelicaRealLiteral(v));
+          for (let v = startR; v <= stopR + 1e-10; v += stp) {
+            if (elements.length >= 10000) break;
+            elements.push(new ModelicaRealLiteral(v));
+          }
         } else {
-          for (let v = startR; v >= stopR - 1e-10; v += stp) elements.push(new ModelicaRealLiteral(v));
+          for (let v = startR; v >= stopR - 1e-10; v += stp) {
+            if (elements.length >= 10000) break;
+            elements.push(new ModelicaRealLiteral(v));
+          }
         }
-        if (elements.length <= 10000) {
+        if (elements.length < 10000) {
           return new ModelicaArray([elements.length], elements);
         }
       }

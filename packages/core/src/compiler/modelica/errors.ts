@@ -79,7 +79,8 @@ export const ModelicaErrorCode = {
     code: 2003,
     rule: "class-not-found",
     severity: "error",
-    message: (className: string, scope: string) => `Class '${className}' not found in scope '${scope}'.`,
+    message: (className: string, scope: string) =>
+      `Class ${className} not found in scope ${scope} (looking for a function or record).`,
   },
   MODIFIER_NOT_FOUND: {
     code: 2004,
@@ -198,7 +199,7 @@ export const ModelicaErrorCode = {
   FUNCTION_PUBLIC_VARIABLE: {
     code: 4007,
     rule: "function-public-variable",
-    severity: "warning",
+    severity: "error",
     message: (varName: string) =>
       `Invalid public variable ${varName}, function variables that are not input/output must be protected.`,
   },
@@ -253,6 +254,24 @@ export const ModelicaErrorCode = {
     severity: "error",
     message: (elementName: string) =>
       `Trying to redeclare element '${elementName}' but it is not declared as replaceable.`,
+  },
+  RANGE_STEP_TOO_SMALL: {
+    code: 4021,
+    rule: "range-step-too-small",
+    severity: "error",
+    message: (stepSize: string) => `Step size ${stepSize} in range is too small.`,
+  },
+  ENUM_RANGE_WITH_STEP: {
+    code: 4022,
+    rule: "enum-range-with-step",
+    severity: "error",
+    message: (enumType: string) => `Range of type enumeration ${enumType} may not specify a step size.`,
+  },
+  BUILTIN_TIME_INVALID: {
+    code: 4020,
+    rule: "builtin-time-invalid",
+    severity: "error",
+    message: () => `The built-in variable 'time' is only available in models and blocks, not in functions or records.`,
   },
   MISSING_INNER: {
     code: 0,
