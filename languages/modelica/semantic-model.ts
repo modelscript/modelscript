@@ -502,7 +502,8 @@ export class ModelicaClassInstance extends ModelicaElement {
         if (entry.name === "String") return new ModelicaStringClassInstance(eid, this.db);
         if (entry.name === "Real") return new ModelicaRealClassInstance(eid, this.db);
       }
-      if (meta?.isEnumeration) return new ModelicaEnumerationClassInstance(eid, this.db);
+      if (meta?.isEnumeration || meta?.enumeration === "enumeration")
+        return new ModelicaEnumerationClassInstance(eid, this.db);
       // Detect enumeration short class specifiers (e.g., type E = enumeration(...))
       if (meta?.classPrefixes === "type" || !meta?.isPredefined) {
         const classCst = this.db.cstNode(eid) as any;
@@ -544,7 +545,7 @@ export class ModelicaClassInstance extends ModelicaElement {
    */
   get declaredElements(): ModelicaElement[] {
     if (this.#declaredElementsCache !== undefined) return this.#declaredElementsCache;
-    const children = this.db.childrenOf(this.id);
+    const children = this.db.childrenOf(this.id).filter((c) => c.id > 0);
     // Component elements and nested classes declared within this scope
     this.#declaredElementsCache = children
       .map((entry) => this.wrapElement(entry.id))
@@ -811,13 +812,14 @@ export class ModelicaClassInstance extends ModelicaElement {
     if (parts.length === 0) return null;
     const firstId = parts[0]?.identifier;
     const firstName = typeof firstId === "string" ? firstId : (firstId?.text ?? "");
-    let namedElement: any = this.resolveSimpleName(firstName);
+    let namedElement: any = this.resolveSimpleName(firstName, false);
     if (!namedElement) return null;
     for (let i = 1; i < parts.length; i++) {
       const partId = parts[i]?.identifier;
       const partName = typeof partId === "string" ? partId : (partId?.text ?? "");
       if (typeof namedElement.resolveSimpleName !== "function") return null;
-      namedElement = namedElement.resolveSimpleName(partName);
+      const child = namedElement.resolveSimpleName(partName, true);
+      namedElement = child;
       if (!namedElement) return null;
     }
     return namedElement;
@@ -838,10 +840,17 @@ export class ModelicaClassInstance extends ModelicaElement {
    * Resolve a simple name in this class's scope.
    * Replaces `Scope.resolveSimpleName()`.
    */
-  resolveSimpleName(name: string): ModelicaElement | null {
+  resolveSimpleName(name: string, encapsulated: boolean = false): ModelicaElement | null {
     const resolver = this.db.query<(n: string, enc?: boolean) => SymbolEntry | null>("resolveSimpleName", this.id);
-    const resolved = resolver?.(name);
-    if (!resolved) return null;
+    let resolved = resolver?.(name, encapsulated);
+
+    if (!resolved) {
+      const target = this.shortClassTarget;
+      if (target) {
+        return target.resolveSimpleName(name, encapsulated);
+      }
+      return null;
+    }
 
     if (resolved.kind === "Component") {
       return new ModelicaComponentInstance(resolved.id, this.db);
@@ -863,8 +872,16 @@ export class ModelicaClassInstance extends ModelicaElement {
         if (resolved.name === "String") return new ModelicaStringClassInstance(resolved.id, this.db);
         if (resolved.name === "Real") return new ModelicaRealClassInstance(resolved.id, this.db);
       }
-      if (meta?.isEnumeration) return new ModelicaEnumerationClassInstance(resolved.id, this.db);
-
+      if (meta?.isEnumeration || meta?.enumeration === "enumeration")
+        return new ModelicaEnumerationClassInstance(resolved.id, this.db);
+      // Detect enumeration short class specifiers (e.g., type E = enumeration(...))
+      if (meta?.classPrefixes === "type" || !meta?.isPredefined) {
+        const classCst = this.db.cstNode(resolved.id) as any;
+        const classSpec = classCst?.childForFieldName?.("classSpecifier");
+        if (classSpec?.type === "ShortClassSpecifier" && classSpec.childForFieldName?.("enumeration")) {
+          return new ModelicaEnumerationClassInstance(resolved.id, this.db);
+        }
+      }
       return new ModelicaClassInstance(resolved.id, this.db);
     }
     return new ModelicaElement(resolved.id, this.db);
@@ -1069,8 +1086,8 @@ export class ModelicaComponentInstance extends ModelicaClassInstance {
   }
 
   /** Resolve names by delegating to the component's class instance. */
-  override resolveSimpleName(name: string): ModelicaElement | null {
-    return this.classInstance?.resolveSimpleName(name) ?? null;
+  override resolveSimpleName(name: string, encapsulated: boolean = false): ModelicaElement | null {
+    return this.classInstance?.resolveSimpleName(name, encapsulated) ?? null;
   }
 
   /** Whether this component is a redeclaration. */
@@ -1118,7 +1135,8 @@ export class ModelicaComponentInstance extends ModelicaClassInstance {
         if (classEntry.name === "String") return new ModelicaStringClassInstance(classId, this.db);
         if (classEntry.name === "Real") return new ModelicaRealClassInstance(classId, this.db);
       }
-      if (meta?.isEnumeration) return new ModelicaEnumerationClassInstance(classId, this.db);
+      if (meta?.isEnumeration || meta?.enumeration === "enumeration")
+        return new ModelicaEnumerationClassInstance(classId, this.db);
       // Detect enumeration short class specifiers (e.g., type E = enumeration(...))
       if (meta?.classPrefixes === "type" || !meta?.isPredefined) {
         const classCst = this.db.cstNode(classId) as any;
@@ -1219,7 +1237,16 @@ export class ModelicaExtendsClassInstance extends ModelicaClassInstance {
       if (entry.name === "String") return new ModelicaStringClassInstance(baseEntry.id, this.db);
       if (entry.name === "Real") return new ModelicaRealClassInstance(baseEntry.id, this.db);
     }
-    if (meta?.isEnumeration) return new ModelicaEnumerationClassInstance(baseEntry.id, this.db);
+    if (meta?.isEnumeration || meta?.enumeration === "enumeration")
+      return new ModelicaEnumerationClassInstance(baseEntry.id, this.db);
+    // Detect enumeration short class specifiers
+    if (meta?.classPrefixes === "type" || !meta?.isPredefined) {
+      const classCst = this.db.cstNode(baseEntry.id) as any;
+      const classSpec = classCst?.childForFieldName?.("classSpecifier");
+      if (classSpec?.type === "ShortClassSpecifier" && classSpec.childForFieldName?.("enumeration")) {
+        return new ModelicaEnumerationClassInstance(baseEntry.id, this.db);
+      }
+    }
     return new ModelicaClassInstance(baseEntry.id, this.db);
   }
 }
@@ -1288,8 +1315,14 @@ export class AstBackedModification {
       this.ast.classModification ??
       this.ast.modification?.classModification ??
       this.ast.annotationClause?.classModification;
-    if (!classMod) return [];
-    const args = classMod.modificationArguments ?? [];
+
+    let args = [];
+    if (classMod) {
+      args = classMod.modificationArguments ?? [];
+    } else if (this.ast.modificationArgumentOrInheritanceModifications) {
+      args = this.ast.modificationArgumentOrInheritanceModifications;
+    }
+
     return args.map((a: any) => new AstBackedElementModification(a, this.scope));
   }
 
@@ -1424,16 +1457,17 @@ export class ModelicaIntegerClassInstance extends ModelicaPredefinedClassInstanc
 export class ModelicaBooleanClassInstance extends ModelicaPredefinedClassInstance {}
 export class ModelicaStringClassInstance extends ModelicaPredefinedClassInstance {}
 export class ModelicaEnumerationClassInstance extends ModelicaPredefinedClassInstance {
-  get enumerationLiterals(): string[] {
+  get enumerationLiterals(): any[] {
     const classCst = this.db.cstNode(this.id) as any;
     if (!classCst) return [];
 
-    const literals: string[] = [];
+    const literals: any[] = [];
+    let ordinal = 1;
     const traverse = (node: any) => {
       if (node.type === "EnumerationLiteral") {
         const idNode = node.childForFieldName?.("identifier") ?? node.child(0);
         if (idNode && idNode.text) {
-          literals.push(idNode.text);
+          literals.push({ stringValue: idNode.text, ordinalValue: ordinal++ });
         }
       } else if (node.childCount) {
         for (let i = 0; i < node.childCount; i++) {
@@ -1443,6 +1477,27 @@ export class ModelicaEnumerationClassInstance extends ModelicaPredefinedClassIns
     };
     traverse(classCst);
     return literals;
+  }
+
+  /**
+   * Override resolveSimpleName to handle enumeration literal lookups.
+   * When a name matches an enumeration literal (e.g., "green" in Color.green),
+   * return a synthetic element representing that literal.
+   */
+  override resolveSimpleName(name: string, encapsulated: boolean = false): ModelicaElement | null {
+    // First try the normal resolution (for attributes like 'start', 'min', 'max')
+    const normal = super.resolveSimpleName(name, encapsulated);
+    if (normal) return normal;
+
+    // Check if the name is an enumeration literal
+    const literals = this.enumerationLiterals;
+    const idx = literals.findIndex((l: any) => l.stringValue === name);
+    if (idx >= 0) {
+      // Return a synthetic element that represents this enumeration literal
+      // The flattener will handle it via the isEnumerationLiteral flag
+      return new ModelicaEnumerationLiteralElement(this.id, this.db, name, idx + 1, this.compositeName);
+    }
+    return null;
   }
 }
 
@@ -1503,7 +1558,16 @@ export class ModelicaArrayClassInstance extends ModelicaClassInstance {
         if (classEntry.name === "String") return new ModelicaStringClassInstance(this.id, this.db);
         if (classEntry.name === "Real") return new ModelicaRealClassInstance(this.id, this.db);
       }
-      if (meta?.isEnumeration) return new ModelicaEnumerationClassInstance(this.id, this.db);
+      if (meta?.isEnumeration || meta?.enumeration === "enumeration")
+        return new ModelicaEnumerationClassInstance(this.id, this.db);
+      // Detect enumeration short class specifiers
+      if (meta?.classPrefixes === "type" || !meta?.isPredefined) {
+        const classCst = this.db.cstNode(this.id) as any;
+        const classSpec = classCst?.childForFieldName?.("classSpecifier");
+        if (classSpec?.type === "ShortClassSpecifier" && classSpec.childForFieldName?.("enumeration")) {
+          return new ModelicaEnumerationClassInstance(this.id, this.db);
+        }
+      }
     }
     // We must return a generic ModelicaClassInstance here so it represents the actual type (e.g. Angle)
     // rather than bypassing it and losing its attributes. The flattener uses getUnderlyingPredefinedClass
@@ -1517,5 +1581,32 @@ export class ModelicaClockClassInstance extends ModelicaClassInstance {}
 export class ModelicaExpressionClassInstance extends ModelicaClassInstance {
   override accept<R, A>(visitor: any, argument?: A): R {
     return visitor.visitExpressionClassInstance(this, argument);
+  }
+}
+
+/**
+ * Synthetic element representing a resolved enumeration literal.
+ * Created by ModelicaEnumerationClassInstance.resolveSimpleName()
+ * when a name matches one of the enumeration's literal values.
+ */
+export class ModelicaEnumerationLiteralElement extends ModelicaElement {
+  /** Whether this element represents an enumeration literal */
+  readonly isEnumerationLiteral = true;
+  /** The literal name (e.g., "green") */
+  readonly literalName: string;
+  /** 1-based index of the literal in the enumeration */
+  readonly literalIndex: number;
+  /** The fully-qualified enumeration type name (e.g., "Enumeration1.Color") */
+  readonly enumerationTypeName: string;
+
+  constructor(enumId: SymbolId, db: QueryDB, literalName: string, literalIndex: number, enumerationTypeName: string) {
+    super(enumId, db);
+    this.literalName = literalName;
+    this.literalIndex = literalIndex;
+    this.enumerationTypeName = enumerationTypeName;
+  }
+
+  override get name(): string {
+    return this.literalName;
   }
 }

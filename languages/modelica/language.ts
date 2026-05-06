@@ -640,6 +640,37 @@ export default language({
                 if (inherited) return inherited;
               }
 
+              // 2.5. Short class target
+              if (!skipInherited) {
+                const meta = self.metadata as Record<string, unknown>;
+                if (!meta?.isPredefined) {
+                  const cst = db.cstNode(self.id) as any;
+                  const classSpecifier = cst?.childForFieldName?.("classSpecifier");
+                  if (classSpecifier?.type === "ShortClassSpecifier") {
+                    const typeSpec = classSpecifier.childForFieldName?.("typeSpecifier");
+                    const typeName = typeSpec?.text;
+                    if (typeName && self.parentId !== null) {
+                      const parentResolver = db.query<(n: string) => { id: SymbolId } | null>(
+                        "resolveName",
+                        self.parentId,
+                      );
+                      if (parentResolver) {
+                        const resolved = parentResolver(typeName);
+                        if (resolved?.id && resolved.id !== self.id) {
+                          const targetResolver = db.query<
+                            (n: string, enc?: boolean, skip?: boolean) => SymbolEntry | null
+                          >("resolveSimpleName", resolved.id);
+                          if (targetResolver) {
+                            const found = targetResolver(name, encapsulated, skipInherited);
+                            if (found) return found;
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+
               // 3. Qualified imports
               const qualPkg = qualifiedImports.get(name);
               if (qualPkg) {
@@ -924,7 +955,7 @@ export default language({
           /** Error if duplicate element names exist in this class. */
           duplicateElement: (db: QueryDB, self: SymbolEntry) => {
             const names = new Set<string>();
-            const elements = db.childrenOf(self.id);
+            const elements = db.childrenOf(self.id).filter((c: any) => c.id > 0);
             const duplicates = new Set<string>();
             for (const el of elements) {
               if ((el.kind !== "Class" && el.kind !== "Component") || !el.name || BUILTIN_MODELICA_NAMES.has(el.name))
@@ -3096,6 +3127,7 @@ export default language({
           name: self.classSpecifier.identifier,
           attributes: {
             classPrefixes: self.classPrefixes,
+            enumeration: (self.classSpecifier as any).enumeration,
           },
         }),
         model: {

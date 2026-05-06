@@ -207,6 +207,12 @@ export class ClassDefinition extends SemanticNode {
     return this.query<SymbolId[]>("instantiate");
   }
 
+  // --- Query Accessors ---
+  get arrayDimensions(): SemanticNode[] {
+    const entries = this.query<SymbolEntry[]>("arrayDimensions");
+    return entries.map((e) => wrapEntry(e, this.db));
+  }
+
   // --- Graphics ---
   get graphics() {
     return {

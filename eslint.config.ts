@@ -34,6 +34,13 @@ export default defineConfig([
     },
   },
   {
+    files: ["packages/core/tests/debug-*.ts", "packages/core/tests/redeclare_test.ts"],
+    rules: {
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-unused-vars": "off",
+    },
+  },
+  {
     files: ["apps/morsel/**/*.{ts,tsx}"],
     rules: {
       "@typescript-eslint/no-explicit-any": "off",

@@ -510,7 +510,7 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
         const values = this.#evaluateIteratorRange(forIndex.expression, currentScope);
         if (!values) return false;
         for (const val of values) {
-          const instance = new SyntheticInterpreterVariable(varName, new ModelicaIntegerLiteral(val));
+          const instance = new SyntheticInterpreterVariable(varName, val);
           const bindings = new Map<string, any>();
           bindings.set(varName, instance);
           const innerScope = new ModelicaLoopScope(currentScope, bindings);
@@ -701,6 +701,17 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
 
       const namedElement = scope.resolveComponentReference(node);
       if (!namedElement) return null;
+
+      // Handle enumeration literal references (e.g., Color.green, StateSelect.always)
+      if ((namedElement as any).isEnumerationLiteral) {
+        const enumLit = namedElement as any;
+        return new ModelicaEnumerationLiteral(
+          enumLit.literalIndex,
+          enumLit.literalName,
+          null,
+          enumLit.enumerationTypeName,
+        );
+      }
 
       if (namedElement instanceof ModelicaComponentInstance) {
         const astNode = namedElement.abstractSyntaxNode;
@@ -998,7 +1009,7 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
       if (!values) return false;
 
       for (const val of values) {
-        const instance = new SyntheticInterpreterVariable(varName, new ModelicaIntegerLiteral(val));
+        const instance = new SyntheticInterpreterVariable(varName, val);
         const bindings = new Map<string, any>();
         bindings.set(varName, instance);
         const innerScope = new ModelicaLoopScope(currentScope, bindings);
@@ -1011,8 +1022,8 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     return results;
   }
 
-  /** Evaluate a for-index range expression to an array of numeric values. */
-  #evaluateIteratorRange(rangeExpr: ModelicaExpressionSyntaxNode, scope: Scope): number[] | null {
+  /** Evaluate a for-index range expression to an array of expressions. */
+  #evaluateIteratorRange(rangeExpr: ModelicaExpressionSyntaxNode, scope: Scope): ModelicaExpression[] | null {
     if (rangeExpr instanceof ModelicaRangeExpressionSyntaxNode) {
       const startExpr = rangeExpr.startExpression?.accept(this, scope);
       const stopExpr = rangeExpr.stopExpression?.accept(this, scope);
@@ -1021,24 +1032,19 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
       const stop = toNumber(stopExpr ?? null);
       const step = stepExpr ? toNumber(stepExpr) : 1;
       if (start == null || stop == null || step == null || step === 0) return null;
-      const values: number[] = [];
+      const values: ModelicaExpression[] = [];
       if (step > 0) {
-        for (let v = start; v <= stop; v += step) values.push(v);
+        for (let v = start; v <= stop; v += step) values.push(new ModelicaIntegerLiteral(v));
       } else {
-        for (let v = start; v >= stop; v += step) values.push(v);
+        for (let v = start; v >= stop; v += step) values.push(new ModelicaIntegerLiteral(v));
       }
       return values;
     }
-    // Could be an array expression like {1.0, 2, 3, 4}
+    // Could be an array expression like {1.0, 2, 3, 4} or an array of records
     const evaluated = rangeExpr.accept(this, scope);
+    console.log(`[Interpreter] evaluateIteratorRange: rangeExpr evaluated to ${evaluated?.constructor?.name}`);
     if (evaluated instanceof ModelicaArray) {
-      const values: number[] = [];
-      for (const el of evaluated.elements) {
-        const v = toNumber(el);
-        if (v == null) return null;
-        values.push(v);
-      }
-      return values;
+      return [...evaluated.elements];
     }
     return null;
   }

@@ -1340,6 +1340,7 @@ ModelicaLinter.register(
       const declaredElements = node.declaredElements;
       const seenNames = new Set<string>();
       for (const element of declaredElements) {
+        if (!element.isComponentInstance && !element.isClassInstance) continue;
         if (!element.name) continue;
         if (seenNames.has(element.name)) {
           diagnosticsCallback(
@@ -1485,7 +1486,7 @@ ModelicaLinter.register(
 // ---------------------------------------------------------------------------
 import { ModelicaComponentReferenceSyntaxNode as CompRef } from "@modelscript/modelica/ast";
 
-ModelicaLinter.register(ModelicaErrorCode.NAME_NOT_FOUND, {
+ModelicaLinter.register(ModelicaErrorCode.VARIABLE_NOT_FOUND, {
   visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
     const astNode = (node as any).abstractSyntaxNode;
     if (!astNode) return;
@@ -1493,11 +1494,6 @@ ModelicaLinter.register(ModelicaErrorCode.NAME_NOT_FOUND, {
     for (const section of astNode.sections ?? []) {
       if (!(section instanceof ModelicaEquationSectionSyntaxNode) && !(section instanceof AlgoSection)) continue;
 
-      // This is a simplified check. A full check requires walking the expression tree.
-      // We will look for simple component references that fail to resolve.
-      // But actually, `Capacitor` fails when its equations are instantiated into `comp1`.
-      // So this check is best done in the DAE printer or flattener.
-      // Let's add a quick check for simple unresolved names.
       for (const eq of (section as any).equations ?? []) {
         if (eq instanceof ModelicaSimpleEquationSyntaxNode) {
           const refs = [eq.expression1, eq.expression2];
@@ -1505,16 +1501,43 @@ ModelicaLinter.register(ModelicaErrorCode.NAME_NOT_FOUND, {
             if (expr instanceof CompRef) {
               const parts = expr.parts;
               if (parts && parts.length > 0) {
-                const firstName = parts[0]?.identifier?.text;
-                if (firstName) {
-                  const resolved = node.resolveSimpleName(firstName, false, true);
+                const nameParts = parts.map((p) => p.identifier?.text ?? "");
+                if (nameParts[0] && nameParts[0] !== "time") {
+                  // built-in 'time' is always allowed in equations
+                  const resolved = node.resolveName(nameParts);
                   if (!resolved) {
-                    diagnosticsCallback(
-                      ModelicaErrorCode.NAME_NOT_FOUND.severity,
-                      ModelicaErrorCode.NAME_NOT_FOUND.code,
-                      ModelicaErrorCode.NAME_NOT_FOUND.message(firstName),
-                      expr,
-                    );
+                    // Check if any intermediate component has a redeclare modifier
+                    let hasRedeclareModifier = false;
+                    for (let i = 1; i <= nameParts.length; i++) {
+                      const partialResolved = node.resolveName(nameParts.slice(0, i));
+                      if (partialResolved && partialResolved.isComponentInstance) {
+                        const comp = partialResolved as any; // ModelicaComponentInstance
+                        const args = comp.modification?.modificationArguments || [];
+                        for (const arg of args) {
+                          if (
+                            arg.isRedeclare ||
+                            arg.ast?.redeclare ||
+                            arg.arg?.redeclare ||
+                            arg.componentClause?.componentDeclaration?.declaration?.identifier?.text
+                          ) {
+                            hasRedeclareModifier = true;
+                            break;
+                          }
+                        }
+                      }
+                    }
+
+                    if (!hasRedeclareModifier) {
+                      const fullName = getExpressionText(expr);
+                      const scopeName =
+                        node.name || (typeof (node as any).id === "string" ? (node as any).id.split(".").pop() : "?");
+                      diagnosticsCallback(
+                        ModelicaErrorCode.VARIABLE_NOT_FOUND.severity,
+                        ModelicaErrorCode.VARIABLE_NOT_FOUND.code,
+                        ModelicaErrorCode.VARIABLE_NOT_FOUND.message(fullName, scopeName),
+                        expr,
+                      );
+                    }
                   }
                 }
               }
@@ -1552,12 +1575,19 @@ ModelicaLinter.register(ModelicaErrorCode.MODIFIED_ELEMENT_NOT_FOUND, {
     node: ModelicaComponentInstance,
     diagnosticsCallback: DiagnosticsCallbackWithoutResource,
   ): void {
-    checkModifications(
-      node,
-      node.modification?.modificationArguments,
-      node.declaredType?.name ?? node.name,
-      diagnosticsCallback,
-    );
+    const modArgs = node.modification?.modificationArguments;
+    // If a component has db-level modifications (ModelicaModification), it means
+    // the semantic model merged modifications from extends/redeclare chains. Some of
+    // these modifiers may target elements of a previous (pre-redeclaration) type.
+    // Suppress M2007 for such components since we can't distinguish old-type modifiers
+    // from new-type modifiers at this level.
+    const mod = node.modification;
+    const isDbMod = mod && mod.constructor?.name === "ModelicaModification";
+    if (isDbMod) {
+      return;
+    }
+
+    checkModifications(node, modArgs, node.declaredType?.name ?? node.name, diagnosticsCallback);
   },
 });
 
@@ -1675,14 +1705,30 @@ function checkModifications(
             mod.ast ?? mod,
           );
         } else {
-          // For non-redeclares, use MODIFIER_CLASS_NOT_FOUND
-          // OpenModelica sometimes uses the base class, sometimes the outer class, we use className.
-          diagnosticsCallback(
-            ModelicaErrorCode.MODIFIER_CLASS_NOT_FOUND.severity,
-            ModelicaErrorCode.MODIFIER_CLASS_NOT_FOUND.code,
-            ModelicaErrorCode.MODIFIER_CLASS_NOT_FOUND.message(modText, nameStr, className),
-            mod.ast ?? mod,
-          );
+          // Modelica Spec 3.4, section 7.3.2.1: Modifiers for components that are
+          // not present in the new type are dropped during redeclaration.
+          // Suppress M2007 when the component was redeclared (isRedeclare flag) or
+          // when the modification args list contains redeclare entries.
+          let suppressDiagnostic = false;
+          if (node.isComponentInstance && (node as ModelicaComponentInstance).isRedeclare) {
+            suppressDiagnostic = true;
+          }
+          if (!suppressDiagnostic && args) {
+            for (const arg of args) {
+              if (arg.ast?.redeclare || arg.arg?.redeclare || arg.isRedeclare) {
+                suppressDiagnostic = true;
+                break;
+              }
+            }
+          }
+          if (!suppressDiagnostic) {
+            diagnosticsCallback(
+              ModelicaErrorCode.MODIFIER_CLASS_NOT_FOUND.severity,
+              ModelicaErrorCode.MODIFIER_CLASS_NOT_FOUND.code,
+              ModelicaErrorCode.MODIFIER_CLASS_NOT_FOUND.message(modText, nameStr, className),
+              mod.ast ?? mod,
+            );
+          }
         }
       } else {
         let subMods: any[] | undefined;

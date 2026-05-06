@@ -7,6 +7,10 @@
       "types": "./dist/semantic-model.d.ts",
       "default": "./dist/semantic-model.js"
     },
+    "./modification-args": {
+      "types": "./dist/modification-args.d.ts",
+      "default": "./dist/modification-args.js"
+    },
     "./query_hooks": {
       "types": "./dist/query_hooks.d.ts",
       "default": "./dist/query_hooks.js"

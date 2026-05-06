@@ -69,11 +69,11 @@ export const ModelicaErrorCode = {
     severity: "error",
     message: (name: string) => `An element with name '${name}' is already declared in this scope.`,
   },
-  NAME_NOT_FOUND: {
+  VARIABLE_NOT_FOUND: {
     code: 2002,
-    rule: "name-not-found",
+    rule: "variable-not-found",
     severity: "error",
-    message: (name: string) => `Name '${name}' not found in scope.`,
+    message: (name: string, scope: string) => `Variable ${name} not found in scope ${scope}.`,
   },
   CLASS_NOT_FOUND: {
     code: 2003,
