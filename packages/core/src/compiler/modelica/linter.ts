@@ -802,7 +802,7 @@ ModelicaLinter.register(ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH, {
   visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
     if (node.classKind === ModelicaClassKind.FUNCTION || node.classKind === ModelicaClassKind.PACKAGE) return;
 
-    function checkExprShape(expr: any, expectedShape: number[]): boolean {
+    function checkExprShape(componentName: string, expr: any, expectedShape: number[]): boolean {
       if (!expr || expectedShape.length === 0) return true;
       if (node.name === "Array_builtin") {
         console.log("checkExprShape:", expr["@type"], expectedShape, "exprText:", expr.text);
@@ -813,21 +813,22 @@ ModelicaLinter.register(ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH, {
           console.log("exprs.length:", exprs.length);
         }
         if (exprs.length !== expectedShape[0]) {
-          const exprText = "{...}";
+          const exprText = expr.text ?? "{...}";
           diagnosticsCallback(
             ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.severity,
             ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.code,
             ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.message(
+              componentName,
               exprText,
-              `Integer[${exprs.length}]`, // Simplified type string for error matching
               `${expectedShape[0]}`,
+              `${exprs.length}`,
             ),
             expr,
           );
           return false;
         } else if (expectedShape.length > 1) {
           for (const child of exprs) {
-            if (!checkExprShape(child, expectedShape.slice(1))) return false;
+            if (!checkExprShape(componentName, child, expectedShape.slice(1))) return false;
           }
         }
       }
@@ -857,13 +858,13 @@ ModelicaLinter.register(ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH, {
       for (const mod of element.modification?.modificationArguments ?? []) {
         const expr = (mod as any).expression;
         if (expr) {
-          checkExprShape(expr, expectedShape);
+          checkExprShape(element.name ?? "?", expr, expectedShape);
         }
       }
       // Also check if the modification itself has an expression (for direct assignments)
       const directExpr = (element.modification as any)?.modificationExpression?.expression;
       if (directExpr) {
-        checkExprShape(directExpr, expectedShape);
+        checkExprShape(element.name ?? "?", directExpr, expectedShape);
       }
     }
   },
@@ -1094,7 +1095,7 @@ ModelicaLinter.register(
             diagnosticsCallback(
               ModelicaErrorCode.ASSIGNMENT_TO_CONSTANT.severity,
               ModelicaErrorCode.ASSIGNMENT_TO_CONSTANT.code,
-              ModelicaErrorCode.ASSIGNMENT_TO_CONSTANT.message(targetName),
+              ModelicaErrorCode.ASSIGNMENT_TO_CONSTANT.message(targetName, getExpressionText(stmt.source)),
               stmt.target,
             );
           }

@@ -186,8 +186,8 @@ export const ModelicaErrorCode = {
     code: 4003,
     rule: "array-dimension-mismatch",
     severity: "error",
-    message: (exprText: string, actualShape: string, expectedShape: string) =>
-      `Array dimension mismatch, expression ${exprText} has type ${actualShape}, expected array dimensions [${expectedShape}].`,
+    message: (componentName: string, exprText: string, expectedShape: string, actualShape: string) =>
+      `Type mismatch in binding '${componentName} = ${exprText}', expected array dimensions [${expectedShape}], got [${actualShape}].`,
   },
   UNBALANCED_MODEL: {
     code: 4004,
@@ -199,7 +199,7 @@ export const ModelicaErrorCode = {
   FUNCTION_PUBLIC_VARIABLE: {
     code: 4007,
     rule: "function-public-variable",
-    severity: "error",
+    severity: "warning",
     message: (varName: string) =>
       `Invalid public variable ${varName}, function variables that are not input/output must be protected.`,
   },
@@ -220,7 +220,7 @@ export const ModelicaErrorCode = {
     code: 4010,
     rule: "function-invalid-var-type",
     severity: "error",
-    message: (typeName: string, varName: string) => `Invalid type .${typeName} for function component ${varName}.`,
+    message: (typeName: string, varName: string) => `Invalid type ${typeName} for function component ${varName}.`,
   },
   FUNCTION_PROTECTED_IO: {
     code: 4011,
@@ -359,7 +359,10 @@ export const ModelicaErrorCode = {
     code: 5008,
     rule: "assignment-to-constant",
     severity: "error",
-    message: (componentName: string) => `Trying to assign to constant component ${componentName}.`,
+    message: (componentName: string, exprText?: string) =>
+      exprText
+        ? `Trying to assign to constant component in ${componentName} := ${exprText}`
+        : `Trying to assign to constant component ${componentName}`,
   },
   ASSIGNMENT_TO_INPUT: {
     code: 5009,

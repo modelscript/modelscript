@@ -7527,7 +7527,10 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     if (target && source) {
       // Check for assignment to constant component
       if (target instanceof ModelicaVariable && target.variability === ModelicaVariability.CONSTANT) {
-        ctx.dae.diagnostics.push(makeDiagnostic(ModelicaErrorCode.ASSIGNMENT_TO_CONSTANT, node.target, target.name));
+        const rhsText = source ? source.toString() : "?";
+        ctx.dae.diagnostics.push(
+          makeDiagnostic(ModelicaErrorCode.ASSIGNMENT_TO_CONSTANT, node.target, target.name, rhsText),
+        );
         return null;
       }
       // Check for assignment to input component (only disallowed in function bodies)
