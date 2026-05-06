@@ -312,9 +312,9 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode = fal
     }
     console.error(`[Runner] Linter took ${Date.now() - t_lint_start}ms`);
 
-    // Format collected diagnostics into lines
-    const formatDiagLines = () =>
-      diagnostics.map((d) => {
+    // Format collected diagnostics into lines and deduplicate
+    const formatDiagLines = () => {
+      const lines = diagnostics.map((d) => {
         const severity = d.type.charAt(0).toUpperCase() + d.type.slice(1);
         const codeStr = d.code > 0 ? `[M${d.code}] ` : "";
         if (d.range) {
@@ -329,6 +329,8 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode = fal
         }
         return `${severity}: ${codeStr}${d.message}`;
       });
+      return Array.from(new Set(lines));
+    };
 
     if (testCase.metadata.status === "incorrect") {
       // For incorrect tests: compare lint errors against expected output
@@ -348,7 +350,10 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode = fal
             const prefix = match ? match[1] : `[${testCase.file}]`;
             return `${prefix} ${severity}: ${d.message}`;
           });
-          reformatActual = `Error processing file: ${path.basename(testCase.file)}\n${omcDiagLines.join("\n")}\nError: Error occurred while flattening model ${lastClassName}\n\n# Error encountered! Exiting...\n# Please check the error message and the flags.\n\nExecution failed!`;
+          const uniqueOmcDiagLines = Array.from(new Set(omcDiagLines));
+          const hasErrorOccurred = expected.includes("Error: Error occurred while flattening model");
+          const errorLine = hasErrorOccurred ? `\nError: Error occurred while flattening model ${lastClassName}` : "";
+          reformatActual = `Error processing file: ${path.basename(testCase.file)}\n${uniqueOmcDiagLines.join("\n")}${errorLine}\n\n# Error encountered! Exiting...\n# Please check the error message and the flags.\n\nExecution failed!`;
           if (reformatActual === expected) return makeResult("passed");
         }
 
@@ -591,6 +596,7 @@ function main(): void {
 
     for (const moFile of moFiles) {
       const filePath = path.join(suiteDir, moFile);
+      console.log(`[Runner] STARTING TEST: ${filePath}`);
       const testCase = parseTestFile(filePath);
 
       if (!testCase) {

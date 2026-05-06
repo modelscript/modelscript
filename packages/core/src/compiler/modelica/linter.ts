@@ -1453,33 +1453,194 @@ ModelicaLinter.register(
 );
 
 // ---------------------------------------------------------------------------
-// Connector restrictions: no equations, algorithms, or protected sections
+// Class restriction violations: connector, record, type
+// Per Modelica Spec §4.6:
+//   - connector: no equations, algorithms, or protected sections
+//   - record: no equations, algorithms, or protected sections
+//   - type: no equations or algorithms
 // ---------------------------------------------------------------------------
 
-ModelicaLinter.register(
-  [ModelicaErrorCode.EQUATION_TYPE_MISMATCH], // Reusing existing code for connector violations
-  {
-    visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
-      if (node.classKind !== ModelicaClassKind.CONNECTOR) return;
+import { ModelicaElementSectionSyntaxNode as ElementSection } from "@modelscript/modelica/ast";
 
-      const astNode = (node as any).abstractSyntaxNode;
-      if (!astNode) return;
+ModelicaLinter.register([ModelicaErrorCode.RESTRICTION_VIOLATION], {
+  visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+    const classKind = node.classKind;
 
-      for (const section of astNode.sections ?? []) {
-        if (section instanceof ModelicaEquationSectionSyntaxNode) {
-          diagnosticsCallback("error", 5001, "Equations are not allowed in connector.", section);
+    // Define which restrictions apply to which class kinds
+    const noEquations = new Set([
+      ModelicaClassKind.CONNECTOR,
+      ModelicaClassKind.EXPANDABLE_CONNECTOR,
+      ModelicaClassKind.RECORD,
+      ModelicaClassKind.OPERATOR_RECORD,
+      ModelicaClassKind.TYPE,
+    ]);
+    const noAlgorithms = new Set([
+      ModelicaClassKind.CONNECTOR,
+      ModelicaClassKind.EXPANDABLE_CONNECTOR,
+      ModelicaClassKind.RECORD,
+      ModelicaClassKind.OPERATOR_RECORD,
+      ModelicaClassKind.TYPE,
+    ]);
+    const noProtected = new Set([
+      ModelicaClassKind.CONNECTOR,
+      ModelicaClassKind.EXPANDABLE_CONNECTOR,
+      ModelicaClassKind.RECORD,
+      ModelicaClassKind.OPERATOR_RECORD,
+    ]);
+
+    if (
+      !noEquations.has(classKind as ModelicaClassKind) &&
+      !noAlgorithms.has(classKind as ModelicaClassKind) &&
+      !noProtected.has(classKind as ModelicaClassKind)
+    ) {
+      return;
+    }
+
+    const astNode = (node as any).abstractSyntaxNode;
+    if (!astNode) return;
+
+    // Get the human-readable class kind name for the error message
+    const kindName = classKind as string;
+
+    for (const section of astNode.sections ?? []) {
+      if (section instanceof ModelicaEquationSectionSyntaxNode && noEquations.has(classKind as ModelicaClassKind)) {
+        // Check if this is a constraint section (allowed in optimization)
+        if ((section as any).inConstraintSection) continue;
+        diagnosticsCallback(
+          ModelicaErrorCode.RESTRICTION_VIOLATION.severity,
+          ModelicaErrorCode.RESTRICTION_VIOLATION.code,
+          ModelicaErrorCode.RESTRICTION_VIOLATION.message("Equations", kindName),
+          section,
+        );
+      }
+      if (section instanceof AlgoSection && noAlgorithms.has(classKind as ModelicaClassKind)) {
+        // Find the first statement node for better error location
+        const firstStmt = (section as any).statements?.[0];
+        diagnosticsCallback(
+          ModelicaErrorCode.RESTRICTION_VIOLATION.severity,
+          ModelicaErrorCode.RESTRICTION_VIOLATION.code,
+          ModelicaErrorCode.RESTRICTION_VIOLATION.message("Algorithm sections", kindName),
+          firstStmt ?? section,
+        );
+      }
+      // Protected sections (only for connector and record)
+      if (
+        section instanceof ElementSection &&
+        (section as any).visibility === "protected" &&
+        noProtected.has(classKind as ModelicaClassKind)
+      ) {
+        // Point to the first element in the protected section for error location
+        const elements = (section as any).elements;
+        const firstEl = elements?.[0];
+        diagnosticsCallback(
+          ModelicaErrorCode.RESTRICTION_VIOLATION.severity,
+          ModelicaErrorCode.RESTRICTION_VIOLATION.code,
+          ModelicaErrorCode.RESTRICTION_VIOLATION.message("Protected sections", kindName),
+          firstEl ?? section,
+        );
+      }
+    }
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Partial class instantiation check
+// Per Modelica Spec §4.4.2: partial classes may not be instantiated
+// ---------------------------------------------------------------------------
+
+ModelicaLinter.register([ModelicaErrorCode.PARTIAL_INSTANTIATION], {
+  visitComponentInstance(
+    node: ModelicaComponentInstance,
+    diagnosticsCallback: DiagnosticsCallbackWithoutResource,
+  ): void {
+    const classInst = node.classInstance;
+    if (!classInst) return;
+
+    // Check if the type class is partial
+    const isPartial = (classInst as any).isPartial;
+    if (!isPartial) return;
+
+    // Skip if the component itself is a replaceable placeholder
+    if ((node as any).isReplaceable) return;
+
+    // Skip outer components: they are resolved to the inner component
+    if ((node as any).isOuter) return;
+
+    // Skip extends class instances (partial classes are valid base classes)
+    if (node instanceof ModelicaExtendsClassInstance) return;
+
+    const className = classInst.name ?? node.name ?? "?";
+    diagnosticsCallback(
+      ModelicaErrorCode.PARTIAL_INSTANTIATION.severity,
+      ModelicaErrorCode.PARTIAL_INSTANTIATION.code,
+      ModelicaErrorCode.PARTIAL_INSTANTIATION.message(className),
+      (classInst as any).abstractSyntaxNode ?? node.abstractSyntaxNode ?? null,
+    );
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Redeclare of non-replaceable element
+// Per Modelica Spec §7.3: only replaceable elements may be redeclared
+// ---------------------------------------------------------------------------
+
+ModelicaLinter.register([ModelicaErrorCode.REDECLARE_NON_REPLACEABLE], {
+  visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+    // Check extends clauses for redeclarations targeting non-replaceable elements
+    if (!node.extendsClassInstances) return;
+
+    for (const ext of node.extendsClassInstances) {
+      const mod = ext.modification;
+      if (!mod) continue;
+      const args = mod.modificationArguments;
+      if (!args) continue;
+
+      for (const arg of args) {
+        const anyArg = arg as any;
+        // Identify redeclare arguments
+        const isRedeclare = anyArg.isRedeclare || anyArg.ast?.redeclare || anyArg.arg?.redeclare;
+        if (!isRedeclare) continue;
+
+        // Get the name of the redeclared element
+        let redeclName: string | undefined;
+        if (anyArg.componentDeclaration1?.declaration?.identifier?.text) {
+          redeclName = anyArg.componentDeclaration1.declaration.identifier.text;
+        } else if (anyArg.componentClause?.componentDeclaration?.declaration?.identifier?.text) {
+          redeclName = anyArg.componentClause.componentDeclaration.declaration.identifier.text;
+        } else if (anyArg.shortClassDefinition?.name?.text) {
+          redeclName = anyArg.shortClassDefinition.name.text;
+        } else if (anyArg.classDefinition?.name?.text) {
+          redeclName = anyArg.classDefinition.name.text;
+        } else if (anyArg.name) {
+          redeclName = typeof anyArg.name === "string" ? anyArg.name : anyArg.name.text;
         }
-        if (section instanceof AlgoSection) {
-          diagnosticsCallback("error", 5001, "Algorithm sections are not allowed in connector.", section);
+
+        if (!redeclName) continue;
+
+        // Check if the element in the base class is replaceable
+        const baseClass = ext.classInstance;
+        if (!baseClass) continue;
+
+        let found: any = null;
+        for (const el of baseClass.elements) {
+          if (el.name === redeclName) {
+            found = el;
+            break;
+          }
         }
-        // Protected sections
-        if ((section as any).isProtected) {
-          diagnosticsCallback("error", 5001, "Protected sections are not allowed in connector.", section);
+
+        if (found && !(found as any).isReplaceable) {
+          diagnosticsCallback(
+            ModelicaErrorCode.REDECLARE_NON_REPLACEABLE.severity,
+            ModelicaErrorCode.REDECLARE_NON_REPLACEABLE.code,
+            ModelicaErrorCode.REDECLARE_NON_REPLACEABLE.message(redeclName),
+            anyArg.ast ?? anyArg,
+          );
         }
       }
-    },
+    }
   },
-);
+});
 
 // ---------------------------------------------------------------------------
 // Unresolved references in equations
@@ -1528,7 +1689,14 @@ ModelicaLinter.register(ModelicaErrorCode.VARIABLE_NOT_FOUND, {
                     }
 
                     if (!hasRedeclareModifier) {
-                      const fullName = getExpressionText(expr);
+                      let failedPrefix = nameParts;
+                      for (let i = 1; i <= nameParts.length; i++) {
+                        if (!node.resolveName(nameParts.slice(0, i))) {
+                          failedPrefix = nameParts.slice(0, i);
+                          break;
+                        }
+                      }
+                      const fullName = failedPrefix.join(".");
                       const scopeName =
                         node.name || (typeof (node as any).id === "string" ? (node as any).id.split(".").pop() : "?");
                       diagnosticsCallback(

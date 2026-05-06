@@ -1244,8 +1244,9 @@ export abstract class ModelicaExpression {
     // Duck-type check: array class instances have a `shape` property
     if (isArrayClassInstance(classInstance)) {
       let elements: ModelicaExpression[] = [];
-      for (const element of classInstance.elements ?? []) {
-        const expression = ModelicaExpression.fromClassInstance(element, evaluator);
+      for (const element of (classInstance as unknown as { declaredElements?: IClassInstance[] }).declaredElements ??
+        []) {
+        const expression = ModelicaExpression.fromClassInstance(element as unknown as IClassInstance, evaluator);
         if (expression) elements.push(expression);
       }
       // If we couldn't evaluate elements (e.g. disabled function algorithms),

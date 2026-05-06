@@ -1119,7 +1119,28 @@ export class ModelicaComponentInstance extends ModelicaClassInstance {
       let arrayDims = (this.db.query("arrayDimensions", this.id) as any[]) || [];
       let typeArrayDims = [] as any[];
       try {
-        typeArrayDims = (this.db.query("arrayDimensions", classId) as any[]) || [];
+        let currentClassId: SymbolId | null = classId;
+        const visited = new Set<SymbolId>();
+        while (currentClassId && !visited.has(currentClassId)) {
+          visited.add(currentClassId);
+
+          const dims = (this.db.query("arrayDimensions", currentClassId) as any[]) || [];
+          if (dims.length > 0) {
+            typeArrayDims = dims;
+            break;
+          }
+
+          // Check if this class extends another class
+          const extendsIds = this.db.query<any[]>("extendsClasses", currentClassId) ?? [];
+          if (extendsIds.length > 0) {
+            const baseEntry = this.db.query<{ id: SymbolId } | null>("resolvedBaseClass", extendsIds[0].id);
+            currentClassId = baseEntry?.id ?? null;
+          } else {
+            // Check if this is a short class target
+            const classInst = new ModelicaClassInstance(currentClassId, this.db);
+            currentClassId = classInst.shortClassTarget?.id ?? null;
+          }
+        }
       } catch (e) {
         // Ignore
       }

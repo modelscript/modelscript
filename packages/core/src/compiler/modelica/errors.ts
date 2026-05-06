@@ -235,6 +235,25 @@ export const ModelicaErrorCode = {
     message: (paramName: string, argExpr: string, funcName: string, requiredVariability: string) =>
       `Function argument ${paramName}=${argExpr} in call to ${funcName} has variability continuous which is not a ${requiredVariability} expression.`,
   },
+  RESTRICTION_VIOLATION: {
+    code: 4017,
+    rule: "restriction-violation",
+    severity: "error",
+    message: (what: string, classKind: string) => `${what} are not allowed in ${classKind}.`,
+  },
+  PARTIAL_INSTANTIATION: {
+    code: 4018,
+    rule: "partial-instantiation",
+    severity: "error",
+    message: (className: string) => `Illegal to instantiate partial class ${className}.`,
+  },
+  REDECLARE_NON_REPLACEABLE: {
+    code: 4019,
+    rule: "redeclare-non-replaceable",
+    severity: "error",
+    message: (elementName: string) =>
+      `Trying to redeclare element '${elementName}' but it is not declared as replaceable.`,
+  },
   MISSING_INNER: {
     code: 0,
     rule: "missing-inner",

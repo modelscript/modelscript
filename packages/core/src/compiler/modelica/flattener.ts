@@ -2440,7 +2440,15 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       attributes as any,
       node.variability,
       node.modification?.description ?? node.description,
-      literals.map((lit, idx) => new ModelicaEnumerationLiteral(idx + 1, lit, null, node.classInstance?.name)),
+      literals.map(
+        (lit: any, idx: number) =>
+          new ModelicaEnumerationLiteral(
+            lit.ordinalValue ?? idx + 1,
+            lit.stringValue ?? lit,
+            null,
+            node.classInstance?.name,
+          ),
+      ),
       causality,
       isFinal,
       isProtected,
@@ -2904,7 +2912,15 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
             attributes as any,
             node.variability,
             node.modification?.description ?? node.description,
-            declaredElement.enumerationLiterals,
+            (declaredElement.enumerationLiterals ?? []).map(
+              (lit: any, idx: number) =>
+                new ModelicaEnumerationLiteral(
+                  lit.ordinalValue ?? idx + 1,
+                  lit.stringValue ?? lit,
+                  null,
+                  declaredElement.name,
+                ),
+            ),
             causality,
             isFinal,
             isProtected,
@@ -6287,6 +6303,10 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         ) {
           variable.customTypeName = typeInstance.name ?? null;
         }
+      }
+
+      if (element.classInstance instanceof ModelicaArrayClassInstance) {
+        variable.arrayDimensions = element.classInstance.shape;
       }
 
       if (ctx.functionBindings?.has(compName)) {
