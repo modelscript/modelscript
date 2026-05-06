@@ -7983,9 +7983,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     const stepVal = step ? toInt(step) : 1;
     if (startVal !== null && stopVal !== null && stepVal !== null) {
       if (stepVal === 0) {
-        ctx.dae.diagnostics.push(
-          makeDiagnostic(ModelicaErrorCode.RANGE_STEP_TOO_SMALL, node, node.stepExpression?.text ?? "0"),
-        );
+        ctx.dae.diagnostics.push(makeDiagnostic(ModelicaErrorCode.RANGE_STEP_TOO_SMALL, node, String(stepVal)));
         return new ModelicaArray([0], []);
       }
       const elements: ModelicaExpression[] = [];
@@ -8011,9 +8009,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     if (startR !== null && stopR !== null && (step === null || stepR !== null)) {
       const stp = stepR ?? 1.0;
       if (stp === 0 || startR + stp === startR) {
-        ctx.dae.diagnostics.push(
-          makeDiagnostic(ModelicaErrorCode.RANGE_STEP_TOO_SMALL, node, node.stepExpression?.text ?? "0"),
-        );
+        ctx.dae.diagnostics.push(makeDiagnostic(ModelicaErrorCode.RANGE_STEP_TOO_SMALL, node, String(stp)));
         return new ModelicaArray([0], []);
       } else {
         const elements: ModelicaExpression[] = [];
