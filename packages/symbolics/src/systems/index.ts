@@ -5074,10 +5074,8 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
         // Normal fractional values: use decimal notation
         str = node.value.toString();
       }
-      // Modelica uses 'e-4' not 'e+4' — strip the '+' from positive exponents
-      str = str.replace("e+", "e");
-      // Pad single-digit exponents to two digits: e-6 → e-06, e6 → e06
-      str = str.replace(/e(-?)(\d)$/, "e$10$2");
+      // Pad single-digit exponents to two digits: e-6 → e-06, e+6 → e+06
+      str = str.replace(/e([+-]?)(\d)$/, "e$10$2");
       this.out.write(str);
     }
   }
