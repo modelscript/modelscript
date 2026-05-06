@@ -2585,7 +2585,10 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         : null;
 
     let shape = [...arrayClassInstance.shape];
-    const enumDimensions = new Map<number, { typeName: string; literals: string[] }>();
+    const enumDimensions = new Map<
+      number,
+      { typeName: string; literals: { stringValue: string; ordinalValue: number }[] }
+    >();
     const polysubs = (arrayClassInstance as any).arraySubscripts;
     if (polysubs) {
       shape = polysubs.map((sub: any, i: number) => {
@@ -2749,8 +2752,10 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         const enumInfo = enumDimensions.get(dim);
         if (enumInfo && idx - 1 < enumInfo.literals.length) {
           const literal = enumInfo.literals[idx - 1];
-          // Qualify with full enum type path
-          return enumInfo.typeName + "." + literal.stringValue;
+          if (literal) {
+            // Qualify with full enum type path
+            return enumInfo.typeName + "." + literal.stringValue;
+          }
         }
         return String(idx);
       });
@@ -3119,7 +3124,6 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     // f = 0.0. If they are connected, they participate in the sum-to-zero equation.
     for (const flowVar of this.#allFlowVars) {
       if (!this.#connectedFlowVars.has(flowVar)) {
-        console.log(`Generating 0.0 for unconnected flow: ${flowVar}`);
         dae.equations.push(
           new ModelicaSimpleEquation(new ModelicaNameExpression(flowVar), new ModelicaRealLiteral(0.0)),
         );
@@ -7295,7 +7299,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
               resolvedType = ctx.classInstance.resolveSimpleName(typeName, false, true);
             } else {
               resolvedType = ctx.classInstance.resolveComponentReference({
-                parts: parts.map((p) => ({ identifier: { text: p } })),
+                parts: parts.map((p: string) => ({ identifier: { text: p } })),
               } as any);
               if (!resolvedType && parts[0] === ctx.classInstance.name) {
                 const subParts = parts.slice(1);
@@ -7303,7 +7307,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
                   resolvedType = ctx.classInstance.resolveSimpleName(subParts[0], false, true);
                 } else {
                   resolvedType = ctx.classInstance.resolveComponentReference({
-                    parts: subParts.map((p) => ({ identifier: { text: p } })),
+                    parts: subParts.map((p: string) => ({ identifier: { text: p } })),
                   } as any);
                 }
               }
