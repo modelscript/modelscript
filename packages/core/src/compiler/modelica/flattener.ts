@@ -861,6 +861,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     // or in if-expression conditions in bindings. These must be marked `final`
     // since they determine class structure.
     const savedStructural = new Set(this.#structuralFinalParams);
+    const savedCurrentLevel = new Set(this.#currentLevelStructuralParams);
     let activeElements = this.#getMergedElements(node);
     if ("shortClassTarget" in node && (node as any).shortClassTarget) {
       const astNode = (node as any).abstractSyntaxNode;
@@ -990,11 +991,34 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           }
         }
       }
+      // Propagate `final` from extends redeclare modifications (e.g., `extends A(redeclare final Real x = 1.0)`)
+      const extAst = ext.abstractSyntaxNode;
+      const extClassMod = extAst?.classOrInheritanceModification;
+      const extModArgs =
+        extClassMod?.classModification?.modificationArguments ??
+        extClassMod?.modification?.classModification?.modificationArguments ??
+        extClassMod?.modificationArgumentOrInheritanceModifications ??
+        [];
+      for (const modArg of extModArgs) {
+        const isFinalMod = modArg.final || modArg.componentClause?.final;
+        if (isFinalMod) {
+          const compName =
+            modArg.componentClause?.componentDeclaration?.declaration?.identifier?.text ??
+            modArg.name?.parts?.map((p: any) => p.text).join(".") ??
+            modArg.identifier?.text;
+          if (compName) {
+            const fullName = args[0] ? `${args[0]}.${compName}` : compName;
+            this.#structuralFinalParams.add(fullName);
+          }
+        }
+      }
     }
 
-    for (const element of activeElements) {
+    // Phase 1: Scan ALL elements (including conditionally-disabled ones) for condition attributes.
+    // Disabled components (e.g., `Real y if b2` where b2=false) still need their
+    // condition parameters (b2) marked structural/final.
+    for (const element of node.elements) {
       if (element instanceof ModelicaComponentInstance) {
-        // Check conditionAttribute (e.g., `Real x if b`)
         const condAttr = (
           element.abstractSyntaxNode as {
             conditionAttribute?: { condition?: ModelicaExpressionSyntaxNode | null };
@@ -1003,6 +1027,12 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         if (condAttr) {
           this.#collectStructuralParams(condAttr, args[0]);
         }
+      }
+    }
+
+    // Phase 2: Scan only active elements for array bindings and compound-type sub-components.
+    for (const element of activeElements) {
+      if (element instanceof ModelicaComponentInstance) {
         // Check binding expression for if-expressions on array components only.
         if (element.classInstance instanceof ModelicaArrayClassInstance) {
           const bindingExpr = element.abstractSyntaxNode?.declaration?.modification?.modificationExpression?.expression;
@@ -1016,8 +1046,47 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
             if (sub.expression) this.#collectStructuralParams(sub.expression, args[0]);
           }
         }
+        // Trace structural parameters through compound-type modifications.
+        // Only applies when: (1) the inner type has a direct conditional attribute, and
+        // (2) the outer modification binds that condition parameter via a simple component reference.
+        // E.g., model A { parameter Boolean b; Real x if b; } → A a(b = outerB) makes outerB structural.
+        if (
+          element.classInstance &&
+          !(element.classInstance instanceof ModelicaPredefinedClassInstance) &&
+          !(element.classInstance instanceof ModelicaArrayClassInstance) &&
+          element.modification?.modificationArguments
+        ) {
+          try {
+            for (const sub of element.classInstance.elements) {
+              if (!(sub instanceof ModelicaComponentInstance)) continue;
+              const subCond = (
+                sub.abstractSyntaxNode as {
+                  conditionAttribute?: { condition?: ModelicaExpressionSyntaxNode | null };
+                } | null
+              )?.conditionAttribute?.condition;
+              if (!subCond) continue;
+              const condRef = this.#extractComponentRefName(subCond);
+              if (!condRef) continue;
+              // Only trace if the outer modification binds this specific condition parameter
+              for (const modArg of element.modification.modificationArguments) {
+                const modName = modArg.name?.text ?? modArg.name;
+                if (modName !== condRef) continue;
+                const bindExpr = modArg.modificationExpression?.expression ?? modArg.expression;
+                if (bindExpr) {
+                  this.#collectStructuralParams(bindExpr, args[0]);
+                }
+              }
+            }
+          } catch {
+            /* classInstance.elements may throw for unresolved types */
+          }
+        }
       }
     }
+    // Snapshot of structural final params collected for THIS class level only.
+    // Used by #flattenPredefinedClass to mark variables as final.
+    // Must be taken before component flattening, which adds nested class params to the live set.
+    this.#currentLevelStructuralParams = new Set(this.#structuralFinalParams);
     this.activeClassStack.push(node);
     this.activePrefixes.set(node, args[0]);
 
@@ -1231,6 +1300,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
 
     // Restore previous structural params
     this.#structuralFinalParams = savedStructural;
+    this.#currentLevelStructuralParams = savedCurrentLevel;
 
     if (this.activeClassStack.length === 0) {
       this.#assembleStateMachines(args[1]);
@@ -1270,6 +1340,29 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           if (eqOut !== undefined) exp.__modelscript_equidistantOutput = eqOut;
         }
       }
+
+      // Post-processing: transitively propagate isFinal through variable bindings.
+      // When a variable is marked final and its binding is a simple reference to another
+      // variable (e.g., `final parameter Boolean a.b = b`), the referenced variable
+      // must also be marked final (structural parameters are transitive).
+      const varByName = new Map<string, ModelicaVariable>();
+      for (const v of args[1].variables) varByName.set(v.name, v);
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (const v of args[1].variables) {
+          if (!v.isFinal) continue;
+          // Check if the binding expression is a simple variable reference
+          const expr = v.expression;
+          if (expr instanceof ModelicaNameExpression) {
+            const target = varByName.get(expr.name);
+            if (target && !target.isFinal) {
+              target.isFinal = true;
+              changed = true;
+            }
+          }
+        }
+      }
     }
   }
 
@@ -1293,6 +1386,28 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       if (key === "parent") continue;
       this.#collectStructuralParams((expr as Record<string, unknown>)[key], prefix, visited);
     }
+  }
+
+  /**
+   * Extract a simple component reference name from an expression AST node.
+   * Returns the first identifier if the expression is a simple component reference,
+   * or null for complex expressions.
+   */
+  #extractComponentRefName(expr: unknown): string | null {
+    if (!expr || typeof expr !== "object") return null;
+    if (expr instanceof ModelicaComponentReferenceSyntaxNode) {
+      return expr.parts[0]?.identifier?.text ?? null;
+    }
+    // Check for raw AST nodes with parts array
+    const e = expr as any;
+    if (e.parts && Array.isArray(e.parts) && e.parts.length > 0) {
+      return e.parts[0]?.identifier?.text ?? e.parts[0]?.text ?? null;
+    }
+    // Simple identifier node
+    if (e.text && typeof e.text === "string" && /^[a-zA-Z_]\w*$/.test(e.text)) {
+      return e.text;
+    }
+    return null;
   }
 
   /**
@@ -1432,6 +1547,8 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
   #streamConnectPairs: { side1: string; side2: string }[] = [];
   // Track parameter names that are structurally significant (used in conditional component declarations)
   #structuralFinalParams = new Set<string>();
+  // Snapshot of structural params for the current class level only (excludes nested class params)
+  #currentLevelStructuralParams = new Set<string>();
   // Carry outer brokenConnects through nested extends chains
   #outerBrokenConnects = new Set<string>();
   // Track current array element index for distributing array-valued modifiers
@@ -2083,7 +2200,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       isProtected = isProtected || this.#outerProtected;
     }
 
-    let isFinal = node.isFinal || this.#outerFinal;
+    let isFinal = node.isFinal || this.#outerFinal || this.#currentLevelStructuralParams.has(name);
 
     if (node.annotation("Evaluate") === true) {
       isFinal = true;

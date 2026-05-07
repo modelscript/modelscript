@@ -1480,7 +1480,28 @@ export class ModelicaStringClassInstance extends ModelicaPredefinedClassInstance
 export class ModelicaEnumerationClassInstance extends ModelicaPredefinedClassInstance {
   get enumerationLiterals(): any[] {
     const classCst = this.db.cstNode(this.id) as any;
-    if (!classCst) return [];
+    if (!classCst) {
+      // Predefined enumerations (StateSelect, AssertionLevel) have no CST node.
+      // Fall back to metadata.literals or EnumerationLiteral children in the index.
+      const entry = this.db.symbol(this.id);
+      const meta = entry?.metadata as Record<string, unknown> | undefined;
+      if (meta?.literals && Array.isArray(meta.literals)) {
+        return (meta.literals as string[]).map((name, i) => ({
+          stringValue: name,
+          ordinalValue: i + 1,
+        }));
+      }
+      // Try childrenOf for EnumerationLiteral entries
+      const children = this.db.childrenOf(this.id);
+      const litChildren = children.filter((c: any) => c.kind === "EnumerationLiteral");
+      if (litChildren.length > 0) {
+        return litChildren.map((c: any, i: number) => ({
+          stringValue: c.name,
+          ordinalValue: (c.metadata as any)?.ordinal != null ? (c.metadata as any).ordinal + 1 : i + 1,
+        }));
+      }
+      return [];
+    }
 
     const literals: any[] = [];
     let ordinal = 1;
