@@ -34,13 +34,27 @@ equation
 end Top2;
 
 // Result:
-// Error processing file: ConnectInnerOuter3.mo
-// Error: Failed to load package ConnectInnerOuter3 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class ConnectInnerOuter3 not found in scope <top>.
-// Error: Error occurred while flattening model ConnectInnerOuter3
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class Top2
+//   Real world.i;
+//   Real world.v;
+//   Real topPin.i;
+//   Real topPin.v;
+//   Real a1.world.i;
+//   Real a1.world.v;
+//   Real a1.a.aPin.i;
+//   Real a1.a.aPin.v;
+//   Real a1.a2Pin.i;
+//   Real a1.a2Pin.v;
+// equation
+//   a1.world.v = a1.a.aPin.v;
+//   -(a1.world.i + a1.a.aPin.i) = 0.0;
+//   world.v = topPin.v;
+//   world.v = a1.a2Pin.v;
+//   -(world.i + topPin.i + a1.a2Pin.i) = 0.0;
+//   world.i = 0.0;
+//   topPin.i = 0.0;
+//   a1.world.i = 0.0;
+//   a1.a.aPin.i = 0.0;
+//   a1.a2Pin.i = 0.0;
+// end Top2;
 // endResult

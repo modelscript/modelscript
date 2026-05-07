@@ -939,13 +939,75 @@ model Toneco_PEXPipe
 end Toneco_PEXPipe;
 
 // Result:
-// Error processing file: PEXPipeTotal.mo
-// Error: Failed to load package PEXPipe (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class PEXPipe not found in scope <top>.
-// Error: Error occurred while flattening model PEXPipe
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class Toneco_PEXPipe
+//   parameter Real medium.rho(quantity = "Density", unit = "kg/m3", displayUnit = "g/cm3", min = 0.0) = 1.0 "density";
+//   parameter Real medium.cp(quantity = "SpecificHeatCapacity", unit = "J/(kg.K)") = 1.0 "specific heat capacity at constant pressure";
+//   parameter Real medium.cv(quantity = "SpecificHeatCapacity", unit = "J/(kg.K)") = 1.0 "specific heat capacity at constant volume";
+//   parameter Real medium.lamda(quantity = "ThermalConductivity", unit = "W/(m.K)") = 1.0 "thermal conductivity";
+//   parameter Real medium.nue(quantity = "KinematicViscosity", unit = "m2/s", min = 0.0) = 1.0 "kinematic viscosity";
+//   final parameter Real m(quantity = "Mass", unit = "kg", min = 0.0) = 1.0 "mass of medium";
+//   parameter Real T0(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0) = 293.15 "initial temperature of medium";
+//   Real dp(quantity = "Pressure", unit = "Pa", displayUnit = "bar") = flowPort_a.p - flowPort_b.p "pressure drop a->b";
+//   Real V_flow(quantity = "VolumeFlowRate", unit = "m3/s") = flowPort_a.m_flow / medium.rho "Volume flow a->b";
+//   Real Q_flow(quantity = "Power", unit = "W") "heat exchange with ambient";
+//   output Real T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = T0) "outlet temperature of medium";
+//   output Real T_a(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0) = flowPort_a.h / medium.cp "temperature at flowPort_a";
+//   output Real T_b(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0) = flowPort_b.h / medium.cp "temperature at flowPort_b";
+//   output Real dT(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0) = if noEvent(V_flow >= 0.0) then T - T_a else T_b - T "temperature increase of coolant in flow direction";
+//   parameter Real flowPort_a.medium.rho(quantity = "Density", unit = "kg/m3", displayUnit = "g/cm3", min = 0.0) = medium.rho "density";
+//   parameter Real flowPort_a.medium.cp(quantity = "SpecificHeatCapacity", unit = "J/(kg.K)") = medium.cp "specific heat capacity at constant pressure";
+//   parameter Real flowPort_a.medium.cv(quantity = "SpecificHeatCapacity", unit = "J/(kg.K)") = medium.cv "specific heat capacity at constant volume";
+//   parameter Real flowPort_a.medium.lamda(quantity = "ThermalConductivity", unit = "W/(m.K)") = medium.lamda "thermal conductivity";
+//   parameter Real flowPort_a.medium.nue(quantity = "KinematicViscosity", unit = "m2/s", min = 0.0) = medium.nue "kinematic viscosity";
+//   Real flowPort_a.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar");
+//   Real flowPort_a.m_flow(quantity = "MassFlowRate", unit = "kg/s");
+//   Real flowPort_a.h(quantity = "SpecificEnergy", unit = "J/kg");
+//   Real flowPort_a.H_flow(quantity = "EnthalpyFlowRate", unit = "W");
+//   parameter Real flowPort_b.medium.rho(quantity = "Density", unit = "kg/m3", displayUnit = "g/cm3", min = 0.0) = medium.rho "density";
+//   parameter Real flowPort_b.medium.cp(quantity = "SpecificHeatCapacity", unit = "J/(kg.K)") = medium.cp "specific heat capacity at constant pressure";
+//   parameter Real flowPort_b.medium.cv(quantity = "SpecificHeatCapacity", unit = "J/(kg.K)") = medium.cv "specific heat capacity at constant volume";
+//   parameter Real flowPort_b.medium.lamda(quantity = "ThermalConductivity", unit = "W/(m.K)") = medium.lamda "thermal conductivity";
+//   parameter Real flowPort_b.medium.nue(quantity = "KinematicViscosity", unit = "m2/s", min = 0.0) = medium.nue "kinematic viscosity";
+//   Real flowPort_b.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar");
+//   Real flowPort_b.m_flow(quantity = "MassFlowRate", unit = "kg/s");
+//   Real flowPort_b.h(quantity = "SpecificEnergy", unit = "J/kg");
+//   Real flowPort_b.H_flow(quantity = "EnthalpyFlowRate", unit = "W");
+//   protected Real h(quantity = "SpecificEnergy", unit = "J/kg") = medium.cp * T "medium's specific enthalpy";
+//   protected Real T_q(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0) = T "temperature relevant for heat exchange with ambient";
+//   parameter Real V_flowLaminar(quantity = "VolumeFlowRate", unit = "m3/s", min = 1e-60) = 0.1 "|SimpleFriction|laminar volume flow";
+//   parameter Real dpLaminar(quantity = "Pressure", unit = "Pa", displayUnit = "bar") = 0.1 "|SimpleFriction|laminar pressure drop";
+//   parameter Real V_flowNominal(quantity = "VolumeFlowRate", unit = "m3/s") = 1.0 "|SimpleFriction|nominal volume flow";
+//   parameter Real dpNominal(quantity = "Pressure", unit = "Pa", displayUnit = "bar") = 1.0 "|SimpleFriction|nominal pressure drop";
+//   parameter Real frictionLoss(min = 0.0, max = 1.0) = 0.0 "|SimpleFriction|part of friction losses fed to medium";
+//   Real pressureDrop(quantity = "Pressure", unit = "Pa", displayUnit = "bar");
+//   Real VolumeFlow(quantity = "VolumeFlowRate", unit = "m3/s");
+//   Real Q_friction(quantity = "Power", unit = "W");
+//   protected parameter Real k(fixed = false);
+//   parameter Real h_g(quantity = "Length", unit = "m") = 0.0 "geodetic height (heigth difference from flowPort_a to flowPort_b)";
+// initial algorithm
+//   assert(V_flowNominal > V_flowLaminar, "SimpleFriction: V_flowNominal has to be > V_flowLaminar!");
+//   k := dpLaminar / V_flowLaminar * V_flowNominal;
+//   assert(dpNominal >= k, "SimpleFriction: dpNominal has to be > dpLaminar*V_flowNominal/V_flowLaminar!");
+//   k := (dpNominal - k) / (V_flowNominal - V_flowLaminar) ^ 2.0;
+// equation
+//   flowPort_a.m_flow = 0.0;
+//   flowPort_a.H_flow = 0.0;
+//   flowPort_b.m_flow = 0.0;
+//   flowPort_b.H_flow = 0.0;
+//   VolumeFlow = V_flow;
+//   dp = pressureDrop + medium.rho * 9.80665 * h_g;
+//   Q_flow = Q_friction;
+//   if VolumeFlow > V_flowLaminar then
+//     pressureDrop = dpLaminar / V_flowLaminar * VolumeFlow + k * (VolumeFlow - V_flowLaminar) ^ 2.0;
+//   elseif VolumeFlow < (-V_flowLaminar) then
+//     pressureDrop = dpLaminar / V_flowLaminar * VolumeFlow - k * (VolumeFlow + V_flowLaminar) ^ 2.0;
+//   else
+//     pressureDrop = dpLaminar / V_flowLaminar * VolumeFlow;
+//   end if;
+//   Q_friction = frictionLoss * VolumeFlow * pressureDrop;
+//   flowPort_a.m_flow + flowPort_b.m_flow = 0.0;
+//   flowPort_a.H_flow + flowPort_b.H_flow + Q_flow = medium.cv * der(T);
+//   flowPort_a.H_flow = semiLinear(flowPort_a.m_flow, flowPort_a.h, h);
+//   flowPort_b.H_flow = semiLinear(flowPort_b.m_flow, flowPort_b.h, h);
+// end Toneco_PEXPipe;
 // endResult

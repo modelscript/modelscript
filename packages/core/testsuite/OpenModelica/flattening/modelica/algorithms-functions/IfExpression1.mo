@@ -16,13 +16,10 @@ model M
 end M;
 
 // Result:
-// Error processing file: IfExpression1.mo
-// Error: Failed to load package IfExpression1 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class IfExpression1 not found in scope <top>.
-// Error: Error occurred while flattening model IfExpression1
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class M
+//   Real x[1];
+//   Real x[2];
+// equation
+//   x = {1.0, 2.0};
+// end M;
 // endResult

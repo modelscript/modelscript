@@ -23,13 +23,7 @@ model RecordConstant1
 end RecordConstant1;
 
 // Result:
-// Error processing file: RecordConstant2.mo
-// Error: Failed to load package RecordConstant2 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class RecordConstant2 not found in scope <top>.
-// Error: Error occurred while flattening model RecordConstant2
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class RecordConstant1
+//   constant Real r2 = 2.0;
+// end RecordConstant1;
 // endResult

@@ -21,13 +21,18 @@ equation
 end Inverse;
 
 // Result:
-// Error processing file: ModifyFunction1.mo
-// Error: Failed to load package ModifyFunction1 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class ModifyFunction1 not found in scope <top>.
-// Error: Error occurred while flattening model ModifyFunction1
+// function Inverse.flowCharacteristic
+//   input Real V_flow;
+//   input Real V_flow_nominal = 1.0;
+//   output Real head;
+// end Inverse.flowCharacteristic;
 //
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class Inverse
+//   parameter Real V_flow_op = 1.0;
+//   Real head;
+// equation
+//   head = Inverse.flowCharacteristic(1.0, V_flow_op);
+// end Inverse;
+// [<interactive>:16:3-16:74:writable] Notification: From here:
+// [<interactive>:11:3-11:19:writable] Warning: Output parameter head was not assigned a value
 // endResult

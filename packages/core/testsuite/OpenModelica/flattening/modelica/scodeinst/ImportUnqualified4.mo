@@ -19,12 +19,7 @@ end ImportUnqualified4;
 
 
 // Result:
-// Error processing file: ImportUnqualified4.mo
-// Error: Class ImportUnqualified4.mo not found in scope <top>.
-// Error: Error occurred while flattening model ImportUnqualified4.mo
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class ImportUnqualified4
+//   parameter Real am.p = 0.0;
+// end ImportUnqualified4;
 // endResult

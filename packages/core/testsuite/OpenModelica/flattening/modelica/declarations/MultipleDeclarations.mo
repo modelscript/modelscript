@@ -25,13 +25,10 @@ model test
 end test;
 
 // Result:
-// Error processing file: MultipleDeclarations.mo
-// Error: Failed to load package MultipleDeclarations (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class MultipleDeclarations not found in scope <top>.
-// Error: Error occurred while flattening model MultipleDeclarations
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class test
+//   final parameter Integer b.n(min = 1) = 1;
+//   Real b.x[1];
+//   final parameter Integer b2.n(min = 1) = 1;
+//   Real b2.x[1];
+// end test;
 // endResult

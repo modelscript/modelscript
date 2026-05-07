@@ -18,13 +18,16 @@ class Test2
 end Test2;
 
 // Result:
-// Error processing file: AssertTest2.mo
-// Error: Failed to load package AssertTest2 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class AssertTest2 not found in scope <top>.
-// Error: Error occurred while flattening model AssertTest2
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class Test2
+//   parameter Real assertTest.lowlimit = 6.0;
+//   parameter Real assertTest.highlimit = 20.0;
+//   Real assertTest.x = 5.0;
+// equation
+//   assert(assertTest.x >= assertTest.lowlimit and assertTest.x <= assertTest.highlimit, "Variable x out of limit");
+// end Test2;
+// [<interactive>:9:3-9:26:writable] Warning: Components are deprecated in class.
+// [<interactive>:10:3-10:27:writable] Warning: Components are deprecated in class.
+// [<interactive>:11:3-11:13:writable] Warning: Components are deprecated in class.
+// [<interactive>:13:3-13:70:writable] Warning: Equation sections are deprecated in class.
+// [<interactive>:17:3-17:54:writable] Warning: Components are deprecated in class.
 // endResult

@@ -22,13 +22,25 @@ model ExtObjError2
 end ExtObjError2;
 
 // Result:
-// Error processing file: ExtObjError2.mo
-// Error: Failed to load package notConstructor (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class notConstructor not found in scope <top>.
-// Error: Error occurred while flattening model notConstructor
+// impure function ExtObjError2.ExtObj.constructor
+//   output ExtObjError2.ExtObj eo;
 //
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
+//   external "C" eo = constructor();
+// end ExtObjError2.ExtObj.constructor;
 //
-// Execution failed!
+// impure function ExtObjError2.ExtObj.destructor
+//   input ExtObjError2.ExtObj eo;
+//
+//   external "C" destructor(eo);
+// end ExtObjError2.ExtObj.destructor;
+//
+// impure function ExtObjError2.notConstructor
+//   output ExtObjError2.ExtObj eo = ExtObjError2.ExtObj.constructor();
+// algorithm
+// end ExtObjError2.notConstructor;
+//
+// class ExtObjError2
+//   ExtObjError2.ExtObj eo = ExtObjError2.notConstructor();
+// end ExtObjError2;
+// [<interactive>:16:3-19:21:writable] Warning: Pure function 'ExtObjError2.notConstructor' contains a call to impure function 'ExtObjError2.ExtObj.constructor'.
 // endResult

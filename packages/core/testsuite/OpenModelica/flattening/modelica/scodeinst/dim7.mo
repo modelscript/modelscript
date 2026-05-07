@@ -10,13 +10,26 @@ model A
 end A;
 
 // Result:
-// Error processing file: dim7.mo
-// Error: Failed to load package dim7 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class dim7.mo not found in scope <top>.
-// Error: Error occurred while flattening model dim7.mo
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class A
+//   Real x[1,1,1,1];
+//   Real x[1,1,1,2];
+//   Real x[1,1,2,1];
+//   Real x[1,1,2,2];
+//   Real x[1,2,1,1];
+//   Real x[1,2,1,2];
+//   Real x[1,2,2,1];
+//   Real x[1,2,2,2];
+//   Real x[2,1,1,1];
+//   Real x[2,1,1,2];
+//   Real x[2,1,2,1];
+//   Real x[2,1,2,2];
+//   Real x[2,2,1,1];
+//   Real x[2,2,1,2];
+//   Real x[2,2,2,1];
+//   Real x[2,2,2,2];
+//   Real y[1,1];
+//   Real y[1,2];
+//   Real y[2,1];
+//   Real y[2,2];
+// end A;
 // endResult

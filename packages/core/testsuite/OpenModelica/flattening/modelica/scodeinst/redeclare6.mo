@@ -17,13 +17,7 @@ model C
 end C;
 
 // Result:
-// Error processing file: redeclare6.mo
-// Error: Failed to load package redeclare6 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class redeclare6.mo not found in scope <top>.
-// Error: Error occurred while flattening model redeclare6.mo
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class C
+//   Real x = 3.0;
+// end C;
 // endResult

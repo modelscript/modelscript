@@ -2142,13 +2142,499 @@ end Test_total;
 
 
 // Result:
-// Error processing file: Ticket5821.mo
-// Error: Failed to load package Ticket5821 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class Ticket5821.mo not found in scope <top>.
-// Error: Error occurred while flattening model Ticket5821.mo
+// impure function Modelica.Blocks.Tables.Internal.getNextTimeEvent "Return next time event value of 1-dim. table where first column is time"
+//   input Modelica.Blocks.Types.ExternalCombiTimeTable tableID;
+//   input Real timeIn;
+//   output Real nextTimeEvent "Next time event in table";
 //
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
+//   external "C" nextTimeEvent = ModelicaStandardTables_CombiTimeTable_nextTimeEvent(tableID, timeIn);
+// end Modelica.Blocks.Tables.Internal.getNextTimeEvent;
 //
-// Execution failed!
+// impure function Modelica.Blocks.Tables.Internal.getTimeTableTmax "Return maximum abscissa value of 1-dim. table where first column is time"
+//   input Modelica.Blocks.Types.ExternalCombiTimeTable tableID;
+//   output Real timeMax "Maximum abscissa value in table";
+//
+//   external "C" timeMax = ModelicaStandardTables_CombiTimeTable_maximumTime(tableID);
+// end Modelica.Blocks.Tables.Internal.getTimeTableTmax;
+//
+// impure function Modelica.Blocks.Tables.Internal.getTimeTableTmin "Return minimum abscissa value of 1-dim. table where first column is time"
+//   input Modelica.Blocks.Types.ExternalCombiTimeTable tableID;
+//   output Real timeMin "Minimum abscissa value in table";
+//
+//   external "C" timeMin = ModelicaStandardTables_CombiTimeTable_minimumTime(tableID);
+// end Modelica.Blocks.Tables.Internal.getTimeTableTmin;
+//
+// impure function Modelica.Blocks.Tables.Internal.getTimeTableValueNoDer "Interpolate 1-dim. table where first column is time (but do not provide a derivative function)"
+//   input Modelica.Blocks.Types.ExternalCombiTimeTable tableID;
+//   input Integer icol;
+//   input Real timeIn;
+//   input Real nextTimeEvent;
+//   input Real pre_nextTimeEvent;
+//   output Real y;
+//
+//   external "C" y = ModelicaStandardTables_CombiTimeTable_getValue(tableID, icol, timeIn, nextTimeEvent, pre_nextTimeEvent);
+// end Modelica.Blocks.Tables.Internal.getTimeTableValueNoDer;
+//
+// impure function Modelica.Blocks.Types.ExternalCombiTimeTable.constructor "Initialize 1-dim. table where first column is time"
+//   input String tableName "Table name";
+//   input String fileName "File name";
+//   input Real[:, :] table;
+//   input Real startTime(quantity = "Time", unit = "s");
+//   input Integer[:] columns;
+//   input enumeration(LinearSegments, ContinuousDerivative, ConstantSegments, MonotoneContinuousDerivative1, MonotoneContinuousDerivative2) smoothness;
+//   input enumeration(HoldLastPoint, LastTwoPoints, Periodic, NoExtrapolation) extrapolation;
+//   input Real shiftTime(quantity = "Time", unit = "s") = 0.0;
+//   input enumeration(Always, AtDiscontinuities, NoTimeEvents) timeEvents = Modelica.Blocks.Types.TimeEvents.Always;
+//   input Boolean verboseRead = true "= true: Print info message; = false: No info message";
+//   output Modelica.Blocks.Types.ExternalCombiTimeTable externalCombiTimeTable;
+//
+//   external "C" externalCombiTimeTable = ModelicaStandardTables_CombiTimeTable_init2(fileName, tableName, table, size(table, 1), size(table, 2), startTime, columns, size(columns, 1), smoothness, extrapolation, shiftTime, timeEvents, verboseRead);
+// end Modelica.Blocks.Types.ExternalCombiTimeTable.constructor;
+//
+// impure function Modelica.Blocks.Types.ExternalCombiTimeTable.destructor "Terminate 1-dim. table where first column is time"
+//   input Modelica.Blocks.Types.ExternalCombiTimeTable externalCombiTimeTable;
+//
+//   external "C" ModelicaStandardTables_CombiTimeTable_close(externalCombiTimeTable);
+// end Modelica.Blocks.Types.ExternalCombiTimeTable.destructor;
+//
+// function Modelica_StateGraph2.Blocks.BooleanFunctions.anyTrue "Returns true, if at least on element of the Boolean input vector is true ('or')"
+//   input Boolean[:] b;
+//   output Boolean result;
+// algorithm
+//   result := false;
+//   for i in 1:size(b, 1) loop
+//     result := result or b[i];
+//   end for;
+// end Modelica_StateGraph2.Blocks.BooleanFunctions.anyTrue;
+//
+// function Modelica_StateGraph2.Internal.Interfaces.Node "Automatically generated record constructor for Modelica_StateGraph2.Internal.Interfaces.Node"
+//   input Boolean suspend;
+//   input Boolean resume;
+//   output Node res;
+// end Modelica_StateGraph2.Internal.Interfaces.Node;
+//
+// function Modelica_StateGraph2.Internal.Utilities.propagateLoopCheck "Propagate flag to check loop"
+//   input Boolean[:] b;
+//   output Boolean result;
+//   protected Integer dummy;
+// algorithm
+//   dummy := 0;
+//   result := true;
+// end Modelica_StateGraph2.Internal.Utilities.propagateLoopCheck;
+//
+// function Test_total.booleanTable.isValidTable "Check if table is valid"
+//   input Real[:] table "Vector of time instants";
+//   protected Integer n = size(table, 1) "Number of table points";
+// algorithm
+//   if n > 0 then
+//     for i in 2:n loop
+//       assert(table[i] > table[i - 1], "Time values of table not strict monotonically increasing: table[" + String(i - 1, 0, true) + "] = " + String(table[i - 1], 6, 0, true) + ", table[" + String(i, 0, true) + "] = " + String(table[i], 6, 0, true));
+//     end for;
+//   end if;
+// end Test_total.booleanTable.isValidTable;
+//
+// class Test_total
+//   parameter Real booleanTable.table[1](quantity = "Time", unit = "s") = 0.5 "Vector of time points. At every time point, the output y gets its opposite value (e.g., table={0,1})";
+//   parameter Real booleanTable.table[2](quantity = "Time", unit = "s") = 1.0 "Vector of time points. At every time point, the output y gets its opposite value (e.g., table={0,1})";
+//   parameter Real booleanTable.table[3](quantity = "Time", unit = "s") = 1.5 "Vector of time points. At every time point, the output y gets its opposite value (e.g., table={0,1})";
+//   parameter Real booleanTable.table[4](quantity = "Time", unit = "s") = 1.55 "Vector of time points. At every time point, the output y gets its opposite value (e.g., table={0,1})";
+//   parameter Real booleanTable.table[5](quantity = "Time", unit = "s") = 1.6 "Vector of time points. At every time point, the output y gets its opposite value (e.g., table={0,1})";
+//   parameter Real booleanTable.table[6](quantity = "Time", unit = "s") = 2.0 "Vector of time points. At every time point, the output y gets its opposite value (e.g., table={0,1})";
+//   parameter Real booleanTable.table[7](quantity = "Time", unit = "s") = 2.05 "Vector of time points. At every time point, the output y gets its opposite value (e.g., table={0,1})";
+//   parameter Real booleanTable.table[8](quantity = "Time", unit = "s") = 2.1 "Vector of time points. At every time point, the output y gets its opposite value (e.g., table={0,1})";
+//   parameter Boolean booleanTable.startValue = false "Start value of y. At time = table[1], y changes to 'not startValue'";
+//   final parameter enumeration(HoldLastPoint, LastTwoPoints, Periodic, NoExtrapolation) booleanTable.extrapolation = Modelica.Blocks.Types.Extrapolation.HoldLastPoint "Extrapolation of data outside the definition range";
+//   parameter Real booleanTable.startTime(quantity = "Time", unit = "s") = 0.1 "Output = false for time < startTime";
+//   parameter Real booleanTable.shiftTime(quantity = "Time", unit = "s") = 0.0 "Shift time of table";
+//   Boolean booleanTable.y "Connector of Boolean output signal";
+//   final parameter Integer booleanTable.combiTimeTable.nout(min = 1) = 1 "Number of outputs";
+//   Real booleanTable.combiTimeTable.y[1] "Connector of Real output signals";
+//   final parameter Boolean booleanTable.combiTimeTable.tableOnFile = false "= true, if table is defined on file or in function usertab";
+//   final parameter Real booleanTable.combiTimeTable.table[1,1] = if booleanTable.startValue then booleanTable.table[1] else booleanTable.table[1] "Table matrix (time = first column; e.g., table=[0, 0; 1, 1; 2, 4])";
+//   final parameter Real booleanTable.combiTimeTable.table[1,2] = if booleanTable.startValue then 1.0 else 0.0 "Table matrix (time = first column; e.g., table=[0, 0; 1, 1; 2, 4])";
+//   final parameter Real booleanTable.combiTimeTable.table[2,1] = if booleanTable.startValue then booleanTable.table[1] else booleanTable.table[1] "Table matrix (time = first column; e.g., table=[0, 0; 1, 1; 2, 4])";
+//   final parameter Real booleanTable.combiTimeTable.table[2,2] = if booleanTable.startValue then 0.0 else 1.0 "Table matrix (time = first column; e.g., table=[0, 0; 1, 1; 2, 4])";
+//   final parameter Real booleanTable.combiTimeTable.table[3,1] = if booleanTable.startValue then booleanTable.table[2] else booleanTable.table[2] "Table matrix (time = first column; e.g., table=[0, 0; 1, 1; 2, 4])";
+//   final parameter Real booleanTable.combiTimeTable.table[3,2] = if booleanTable.startValue then 1.0 else 0.0 "Table matrix (time = first column; e.g., table=[0, 0; 1, 1; 2, 4])";
+//   final parameter Real booleanTable.combiTimeTable.table[4,1] = if booleanTable.startValue then booleanTable.table[3] else booleanTable.table[3] "Table matrix (time = first column; e.g., table=[0, 0; 1, 1; 2, 4])";
+//   final parameter Real booleanTable.combiTimeTable.table[4,2] = if booleanTable.startValue then 0.0 else 1.0 "Table matrix (time = first column; e.g., table=[0, 0; 1, 1; 2, 4])";
+//   final parameter Real booleanTable.combiTimeTable.table[5,1] = if booleanTable.startValue then booleanTable.table[4] else booleanTable.table[4] "Table matrix (time = first column; e.g., table=[0, 0; 1, 1; 2, 4])";
+//   final parameter Real booleanTable.combiTimeTable.table[5,2] = if booleanTable.startValue then 1.0 else 0.0 "Table matrix (time = first column; e.g., table=[0, 0; 1, 1; 2, 4])";
+//   final parameter Real booleanTable.combiTimeTable.table[6,1] = if booleanTable.startValue then booleanTable.table[5] else booleanTable.table[5] "Table matrix (time = first column; e.g., table=[0, 0; 1, 1; 2, 4])";
+//   final parameter Real booleanTable.combiTimeTable.table[6,2] = if booleanTable.startValue then 0.0 else 1.0 "Table matrix (time = first column; e.g., table=[0, 0; 1, 1; 2, 4])";
+//   final parameter Real booleanTable.combiTimeTable.table[7,1] = if booleanTable.startValue then booleanTable.table[6] else booleanTable.table[6] "Table matrix (time = first column; e.g., table=[0, 0; 1, 1; 2, 4])";
+//   final parameter Real booleanTable.combiTimeTable.table[7,2] = if booleanTable.startValue then 1.0 else 0.0 "Table matrix (time = first column; e.g., table=[0, 0; 1, 1; 2, 4])";
+//   final parameter Real booleanTable.combiTimeTable.table[8,1] = if booleanTable.startValue then booleanTable.table[7] else booleanTable.table[7] "Table matrix (time = first column; e.g., table=[0, 0; 1, 1; 2, 4])";
+//   final parameter Real booleanTable.combiTimeTable.table[8,2] = if booleanTable.startValue then 0.0 else 1.0 "Table matrix (time = first column; e.g., table=[0, 0; 1, 1; 2, 4])";
+//   final parameter Real booleanTable.combiTimeTable.table[9,1] = if booleanTable.startValue then booleanTable.table[8] else booleanTable.table[8] "Table matrix (time = first column; e.g., table=[0, 0; 1, 1; 2, 4])";
+//   final parameter Real booleanTable.combiTimeTable.table[9,2] = if booleanTable.startValue then 1.0 else 0.0 "Table matrix (time = first column; e.g., table=[0, 0; 1, 1; 2, 4])";
+//   parameter String booleanTable.combiTimeTable.tableName = "NoName" "Table name on file or in function usertab (see docu)";
+//   parameter String booleanTable.combiTimeTable.fileName = "NoName" "File where matrix is stored";
+//   parameter Boolean booleanTable.combiTimeTable.verboseRead = true "= true, if info message that file is loading is to be printed";
+//   final parameter Integer booleanTable.combiTimeTable.columns[1] = 2 "Columns of table to be interpolated";
+//   final parameter enumeration(LinearSegments, ContinuousDerivative, ConstantSegments, MonotoneContinuousDerivative1, MonotoneContinuousDerivative2) booleanTable.combiTimeTable.smoothness = Modelica.Blocks.Types.Smoothness.ConstantSegments "Smoothness of table interpolation";
+//   final parameter enumeration(HoldLastPoint, LastTwoPoints, Periodic, NoExtrapolation) booleanTable.combiTimeTable.extrapolation = Modelica.Blocks.Types.Extrapolation.HoldLastPoint "Extrapolation of data outside the definition range";
+//   final parameter Real booleanTable.combiTimeTable.timeScale(quantity = "Time", unit = "s", min = 1e-15) = 1.0 "Time scale of first table column";
+//   parameter Real booleanTable.combiTimeTable.offset[1] = 0.0 "Offsets of output signals";
+//   final parameter Real booleanTable.combiTimeTable.startTime(quantity = "Time", unit = "s") = booleanTable.startTime "Output = offset for time < startTime";
+//   final parameter Real booleanTable.combiTimeTable.shiftTime(quantity = "Time", unit = "s") = booleanTable.shiftTime "Shift time of first table column";
+//   parameter enumeration(Always, AtDiscontinuities, NoTimeEvents) booleanTable.combiTimeTable.timeEvents = Modelica.Blocks.Types.TimeEvents.Always "Time event handling of table interpolation";
+//   final parameter Boolean booleanTable.combiTimeTable.verboseExtrapolation = false "= true, if warning messages are to be printed if time is outside the table definition range";
+//   final parameter Real booleanTable.combiTimeTable.t_min(quantity = "Time", unit = "s") = booleanTable.combiTimeTable.t_minScaled "Minimum abscissa value defined in table";
+//   final parameter Real booleanTable.combiTimeTable.t_max(quantity = "Time", unit = "s") = booleanTable.combiTimeTable.t_maxScaled "Maximum abscissa value defined in table";
+//   final parameter Real booleanTable.combiTimeTable.t_minScaled = Modelica.Blocks.Tables.Internal.getTimeTableTmin(booleanTable.combiTimeTable.tableID) "Minimum (scaled) abscissa value defined in table";
+//   final parameter Real booleanTable.combiTimeTable.t_maxScaled = Modelica.Blocks.Tables.Internal.getTimeTableTmax(booleanTable.combiTimeTable.tableID) "Maximum (scaled) abscissa value defined in table";
+//   protected final parameter Real booleanTable.combiTimeTable.p_offset[1] = booleanTable.combiTimeTable.offset[1] "Offsets of output signals";
+//   protected parameter Modelica.Blocks.Types.ExternalCombiTimeTable booleanTable.combiTimeTable.tableID = Modelica.Blocks.Types.ExternalCombiTimeTable.constructor("NoName", "NoName", booleanTable.combiTimeTable.table, booleanTable.combiTimeTable.startTime, booleanTable.combiTimeTable.columns, Modelica.Blocks.Types.Smoothness.ConstantSegments, Modelica.Blocks.Types.Extrapolation.HoldLastPoint, booleanTable.combiTimeTable.shiftTime, Modelica.Blocks.Types.TimeEvents.Always, false) "External table object";
+//   protected discrete Real booleanTable.combiTimeTable.nextTimeEvent(quantity = "Time", unit = "s", start = 0.0, fixed = true) "Next time event instant";
+//   protected discrete Real booleanTable.combiTimeTable.nextTimeEventScaled(start = 0.0, fixed = true) "Next scaled time event instant";
+//   protected Real booleanTable.combiTimeTable.timeScaled "Scaled time";
+//   Real booleanTable.realToBoolean.u "Connector of Real input signal";
+//   Boolean booleanTable.realToBoolean.y "Connector of Boolean output signal";
+//   parameter Real booleanTable.realToBoolean.threshold = 0.5 "Output signal y is true, if input u >= threshold";
+//   protected final parameter Integer booleanTable.n = 8 "Number of table points";
+//   parameter Real logicalDelayEquations.delayTime(quantity = "Time", unit = "s", min = 0.0) = 0.1 "Time delay";
+//   Boolean logicalDelayEquations.u;
+//   Boolean logicalDelayEquations.y1;
+//   Boolean logicalDelayEquations.y2;
+//   protected discrete Real logicalDelayEquations.tSwitch(quantity = "Time", unit = "s");
+//   parameter Real logicalDelayStateGraph.delayTime(quantity = "Time", unit = "s", min = 0.0) = 0.1 "Time delay";
+//   Boolean logicalDelayStateGraph.u;
+//   Boolean logicalDelayStateGraph.y1;
+//   Boolean logicalDelayStateGraph.y2;
+//   Boolean logicalDelayStateGraph.not1.u "Connector of Boolean input signal";
+//   Boolean logicalDelayStateGraph.not1.y "Connector of Boolean output signal";
+//   Boolean logicalDelayStateGraph.not2.u "Connector of Boolean input signal";
+//   Boolean logicalDelayStateGraph.not2.y "Connector of Boolean output signal";
+//   final parameter Integer logicalDelayStateGraph.Y1D0.nIn(min = 0) = 1 "Number of input connections";
+//   final parameter Integer logicalDelayStateGraph.Y1D0.nOut(min = 0) = 1 "Number of output connections";
+//   final parameter Boolean logicalDelayStateGraph.Y1D0.initialStep = true "=true, if initial step (graph starts at this step)";
+//   final parameter Boolean logicalDelayStateGraph.Y1D0.use_activePort = true "=true, if activePort enabled";
+//   Boolean logicalDelayStateGraph.Y1D0.inPort[1].fire "true, if transition fires and step is activated";
+//   Boolean logicalDelayStateGraph.Y1D0.inPort[1].node.suspend "= true, if the composite step is terminated via a suspend port";
+//   Boolean logicalDelayStateGraph.Y1D0.inPort[1].node.resume "= true, if the composite step is entered via a resume port";
+//   Boolean logicalDelayStateGraph.Y1D0.inPort[1].checkUnaryConnection "Is used to guarantee that only 1:1 connections are possible";
+//   Boolean logicalDelayStateGraph.Y1D0.inPort[1].checkOneDelayedTransitionPerLoop "Is used to check that every connection loop has at least one delayed transition";
+//   Boolean logicalDelayStateGraph.Y1D0.outPort[1].available "= true, if step is active and firing is possible";
+//   Boolean logicalDelayStateGraph.Y1D0.outPort[1].fire "= true, if transition fires and step is deactivated";
+//   Boolean logicalDelayStateGraph.Y1D0.outPort[1].node.suspend "= true, if the composite step is terminated via a suspend port";
+//   Boolean logicalDelayStateGraph.Y1D0.outPort[1].node.resume "= true, if the composite step is entered via a resume port";
+//   Boolean logicalDelayStateGraph.Y1D0.outPort[1].checkOneDelayedTransitionPerLoop "Is used to check that every connection loop has at least one delayed transition";
+//   Boolean logicalDelayStateGraph.Y1D0.activePort = logicalDelayStateGraph.Y1D0.active "= true if step is active, otherwise the step is not active";
+//   Boolean logicalDelayStateGraph.Y1D0.active "= true if step is active, otherwise the step is not active";
+//   protected Boolean logicalDelayStateGraph.Y1D0.newActive(start = true, fixed = true) "Value of active in the next iteration";
+//   protected Boolean logicalDelayStateGraph.Y1D0.oldActive(start = true, fixed = true) "Value of active when CompositeStep was aborted";
+//   protected Boolean logicalDelayStateGraph.Y1D0.node.suspend "= true, if the composite step is terminated via a suspend port";
+//   protected Boolean logicalDelayStateGraph.Y1D0.node.resume "= true, if the composite step is entered via a resume port";
+//   protected Boolean logicalDelayStateGraph.Y1D0.inport_fire;
+//   protected Boolean logicalDelayStateGraph.Y1D0.outport_fire;
+//   final parameter Boolean logicalDelayStateGraph.T1.use_conditionPort = true "= true, if conditionPort enabled";
+//   Boolean logicalDelayStateGraph.T1.condition = true "Fire condition (time varying Boolean expression)";
+//   final parameter Boolean logicalDelayStateGraph.T1.delayedTransition = false "= true, if transition fires after waitTime";
+//   parameter Real logicalDelayStateGraph.T1.waitTime(quantity = "Time", unit = "s") = 0.0 "Wait time before transition fires (> 0 required)";
+//   final parameter Boolean logicalDelayStateGraph.T1.use_firePort = false "= true, if firePort enabled";
+//   final parameter Boolean logicalDelayStateGraph.T1.loopCheck = true "= true, if one delayed transition per loop required";
+//   Boolean logicalDelayStateGraph.T1.inPort.available "= true, if step connected to the transition input is active and firing is possible";
+//   Boolean logicalDelayStateGraph.T1.inPort.fire "= true, if transition fires and the step connected to the transition input is deactivated";
+//   Boolean logicalDelayStateGraph.T1.inPort.node.suspend "= true, if the composite step is terminated via a suspend port";
+//   Boolean logicalDelayStateGraph.T1.inPort.node.resume "= true, if the composite step is entered via a resume port";
+//   Boolean logicalDelayStateGraph.T1.inPort.checkOneDelayedTransitionPerLoop "Is used to check that every connection loop has at least one delayed transition";
+//   Boolean logicalDelayStateGraph.T1.outPort.fire "true, if transition fires and step connected to the transition output becomes active";
+//   Boolean logicalDelayStateGraph.T1.outPort.node.suspend "= true, if the composite step is terminated via a suspend port";
+//   Boolean logicalDelayStateGraph.T1.outPort.node.resume "= true, if the composite step is entered via a resume port";
+//   Boolean logicalDelayStateGraph.T1.outPort.checkUnaryConnection "Is used to guarantee that only 1:1 connections are possible";
+//   Boolean logicalDelayStateGraph.T1.outPort.checkOneDelayedTransitionPerLoop "Is used to check that every connection loop has at least one delayed transition";
+//   Boolean logicalDelayStateGraph.T1.conditionPort "Fire condition as Boolean input.";
+//   Boolean logicalDelayStateGraph.T1.fire "= true, if transition fires";
+//   Boolean logicalDelayStateGraph.T1.enableFire "= true, if firing condition is true";
+//   protected constant Real logicalDelayStateGraph.T1.minimumWaitTime(quantity = "Time", unit = "s") = 1e-13;
+//   protected Real logicalDelayStateGraph.T1.t_start(quantity = "Time", unit = "s") "Time instant at which the transition would fire, if waitTime would be zero";
+//   protected Boolean logicalDelayStateGraph.T1.localCondition;
+//   final parameter Integer logicalDelayStateGraph.Y0D0.nIn(min = 0) = 2 "Number of input connections";
+//   final parameter Integer logicalDelayStateGraph.Y0D0.nOut(min = 0) = 2 "Number of output connections";
+//   final parameter Boolean logicalDelayStateGraph.Y0D0.initialStep = false "=true, if initial step (graph starts at this step)";
+//   final parameter Boolean logicalDelayStateGraph.Y0D0.use_activePort = false "=true, if activePort enabled";
+//   Boolean logicalDelayStateGraph.Y0D0.inPort[1].fire "true, if transition fires and step is activated";
+//   Boolean logicalDelayStateGraph.Y0D0.inPort[1].node.suspend "= true, if the composite step is terminated via a suspend port";
+//   Boolean logicalDelayStateGraph.Y0D0.inPort[1].node.resume "= true, if the composite step is entered via a resume port";
+//   Boolean logicalDelayStateGraph.Y0D0.inPort[1].checkUnaryConnection "Is used to guarantee that only 1:1 connections are possible";
+//   Boolean logicalDelayStateGraph.Y0D0.inPort[1].checkOneDelayedTransitionPerLoop "Is used to check that every connection loop has at least one delayed transition";
+//   Boolean logicalDelayStateGraph.Y0D0.inPort[2].fire "true, if transition fires and step is activated";
+//   Boolean logicalDelayStateGraph.Y0D0.inPort[2].node.suspend "= true, if the composite step is terminated via a suspend port";
+//   Boolean logicalDelayStateGraph.Y0D0.inPort[2].node.resume "= true, if the composite step is entered via a resume port";
+//   Boolean logicalDelayStateGraph.Y0D0.inPort[2].checkUnaryConnection "Is used to guarantee that only 1:1 connections are possible";
+//   Boolean logicalDelayStateGraph.Y0D0.inPort[2].checkOneDelayedTransitionPerLoop "Is used to check that every connection loop has at least one delayed transition";
+//   Boolean logicalDelayStateGraph.Y0D0.outPort[1].available "= true, if step is active and firing is possible";
+//   Boolean logicalDelayStateGraph.Y0D0.outPort[1].fire "= true, if transition fires and step is deactivated";
+//   Boolean logicalDelayStateGraph.Y0D0.outPort[1].node.suspend "= true, if the composite step is terminated via a suspend port";
+//   Boolean logicalDelayStateGraph.Y0D0.outPort[1].node.resume "= true, if the composite step is entered via a resume port";
+//   Boolean logicalDelayStateGraph.Y0D0.outPort[1].checkOneDelayedTransitionPerLoop "Is used to check that every connection loop has at least one delayed transition";
+//   Boolean logicalDelayStateGraph.Y0D0.outPort[2].available "= true, if step is active and firing is possible";
+//   Boolean logicalDelayStateGraph.Y0D0.outPort[2].fire "= true, if transition fires and step is deactivated";
+//   Boolean logicalDelayStateGraph.Y0D0.outPort[2].node.suspend "= true, if the composite step is terminated via a suspend port";
+//   Boolean logicalDelayStateGraph.Y0D0.outPort[2].node.resume "= true, if the composite step is entered via a resume port";
+//   Boolean logicalDelayStateGraph.Y0D0.outPort[2].checkOneDelayedTransitionPerLoop "Is used to check that every connection loop has at least one delayed transition";
+//   Boolean logicalDelayStateGraph.Y0D0.active "= true if step is active, otherwise the step is not active";
+//   protected Boolean logicalDelayStateGraph.Y0D0.newActive(start = false, fixed = true) "Value of active in the next iteration";
+//   protected Boolean logicalDelayStateGraph.Y0D0.oldActive(start = false, fixed = true) "Value of active when CompositeStep was aborted";
+//   protected Boolean logicalDelayStateGraph.Y0D0.node.suspend "= true, if the composite step is terminated via a suspend port";
+//   protected Boolean logicalDelayStateGraph.Y0D0.node.resume "= true, if the composite step is entered via a resume port";
+//   protected Boolean logicalDelayStateGraph.Y0D0.inport_fire;
+//   protected Boolean logicalDelayStateGraph.Y0D0.outport_fire;
+//   final parameter Boolean logicalDelayStateGraph.T2.use_conditionPort = true "= true, if conditionPort enabled";
+//   Boolean logicalDelayStateGraph.T2.condition = true "Fire condition (time varying Boolean expression)";
+//   final parameter Boolean logicalDelayStateGraph.T2.delayedTransition = true "= true, if transition fires after waitTime";
+//   parameter Real logicalDelayStateGraph.T2.waitTime(quantity = "Time", unit = "s") = logicalDelayStateGraph.delayTime "Wait time before transition fires (> 0 required)";
+//   final parameter Boolean logicalDelayStateGraph.T2.use_firePort = false "= true, if firePort enabled";
+//   final parameter Boolean logicalDelayStateGraph.T2.loopCheck = true "= true, if one delayed transition per loop required";
+//   Boolean logicalDelayStateGraph.T2.inPort.available "= true, if step connected to the transition input is active and firing is possible";
+//   Boolean logicalDelayStateGraph.T2.inPort.fire "= true, if transition fires and the step connected to the transition input is deactivated";
+//   Boolean logicalDelayStateGraph.T2.inPort.node.suspend "= true, if the composite step is terminated via a suspend port";
+//   Boolean logicalDelayStateGraph.T2.inPort.node.resume "= true, if the composite step is entered via a resume port";
+//   Boolean logicalDelayStateGraph.T2.inPort.checkOneDelayedTransitionPerLoop "Is used to check that every connection loop has at least one delayed transition";
+//   Boolean logicalDelayStateGraph.T2.outPort.fire "true, if transition fires and step connected to the transition output becomes active";
+//   Boolean logicalDelayStateGraph.T2.outPort.node.suspend "= true, if the composite step is terminated via a suspend port";
+//   Boolean logicalDelayStateGraph.T2.outPort.node.resume "= true, if the composite step is entered via a resume port";
+//   Boolean logicalDelayStateGraph.T2.outPort.checkUnaryConnection "Is used to guarantee that only 1:1 connections are possible";
+//   Boolean logicalDelayStateGraph.T2.outPort.checkOneDelayedTransitionPerLoop "Is used to check that every connection loop has at least one delayed transition";
+//   Boolean logicalDelayStateGraph.T2.conditionPort "Fire condition as Boolean input.";
+//   Boolean logicalDelayStateGraph.T2.fire "= true, if transition fires";
+//   Boolean logicalDelayStateGraph.T2.enableFire "= true, if firing condition is true";
+//   protected constant Real logicalDelayStateGraph.T2.minimumWaitTime(quantity = "Time", unit = "s") = 1e-13;
+//   protected Real logicalDelayStateGraph.T2.t_start(quantity = "Time", unit = "s") "Time instant at which the transition would fire, if waitTime would be zero";
+//   protected Boolean logicalDelayStateGraph.T2.localCondition;
+//   final parameter Integer logicalDelayStateGraph.Y0D1.nIn(min = 0) = 1 "Number of input connections";
+//   final parameter Integer logicalDelayStateGraph.Y0D1.nOut(min = 0) = 1 "Number of output connections";
+//   final parameter Boolean logicalDelayStateGraph.Y0D1.initialStep = false "=true, if initial step (graph starts at this step)";
+//   final parameter Boolean logicalDelayStateGraph.Y0D1.use_activePort = true "=true, if activePort enabled";
+//   Boolean logicalDelayStateGraph.Y0D1.inPort[1].fire "true, if transition fires and step is activated";
+//   Boolean logicalDelayStateGraph.Y0D1.inPort[1].node.suspend "= true, if the composite step is terminated via a suspend port";
+//   Boolean logicalDelayStateGraph.Y0D1.inPort[1].node.resume "= true, if the composite step is entered via a resume port";
+//   Boolean logicalDelayStateGraph.Y0D1.inPort[1].checkUnaryConnection "Is used to guarantee that only 1:1 connections are possible";
+//   Boolean logicalDelayStateGraph.Y0D1.inPort[1].checkOneDelayedTransitionPerLoop "Is used to check that every connection loop has at least one delayed transition";
+//   Boolean logicalDelayStateGraph.Y0D1.outPort[1].available "= true, if step is active and firing is possible";
+//   Boolean logicalDelayStateGraph.Y0D1.outPort[1].fire "= true, if transition fires and step is deactivated";
+//   Boolean logicalDelayStateGraph.Y0D1.outPort[1].node.suspend "= true, if the composite step is terminated via a suspend port";
+//   Boolean logicalDelayStateGraph.Y0D1.outPort[1].node.resume "= true, if the composite step is entered via a resume port";
+//   Boolean logicalDelayStateGraph.Y0D1.outPort[1].checkOneDelayedTransitionPerLoop "Is used to check that every connection loop has at least one delayed transition";
+//   Boolean logicalDelayStateGraph.Y0D1.activePort = logicalDelayStateGraph.Y0D1.active "= true if step is active, otherwise the step is not active";
+//   Boolean logicalDelayStateGraph.Y0D1.active "= true if step is active, otherwise the step is not active";
+//   protected Boolean logicalDelayStateGraph.Y0D1.newActive(start = false, fixed = true) "Value of active in the next iteration";
+//   protected Boolean logicalDelayStateGraph.Y0D1.oldActive(start = false, fixed = true) "Value of active when CompositeStep was aborted";
+//   protected Boolean logicalDelayStateGraph.Y0D1.node.suspend "= true, if the composite step is terminated via a suspend port";
+//   protected Boolean logicalDelayStateGraph.Y0D1.node.resume "= true, if the composite step is entered via a resume port";
+//   protected Boolean logicalDelayStateGraph.Y0D1.inport_fire;
+//   protected Boolean logicalDelayStateGraph.Y0D1.outport_fire;
+//   final parameter Boolean logicalDelayStateGraph.T3.use_conditionPort = true "= true, if conditionPort enabled";
+//   Boolean logicalDelayStateGraph.T3.condition = true "Fire condition (time varying Boolean expression)";
+//   final parameter Boolean logicalDelayStateGraph.T3.delayedTransition = false "= true, if transition fires after waitTime";
+//   parameter Real logicalDelayStateGraph.T3.waitTime(quantity = "Time", unit = "s") = 0.0 "Wait time before transition fires (> 0 required)";
+//   final parameter Boolean logicalDelayStateGraph.T3.use_firePort = false "= true, if firePort enabled";
+//   final parameter Boolean logicalDelayStateGraph.T3.loopCheck = true "= true, if one delayed transition per loop required";
+//   Boolean logicalDelayStateGraph.T3.inPort.available "= true, if step connected to the transition input is active and firing is possible";
+//   Boolean logicalDelayStateGraph.T3.inPort.fire "= true, if transition fires and the step connected to the transition input is deactivated";
+//   Boolean logicalDelayStateGraph.T3.inPort.node.suspend "= true, if the composite step is terminated via a suspend port";
+//   Boolean logicalDelayStateGraph.T3.inPort.node.resume "= true, if the composite step is entered via a resume port";
+//   Boolean logicalDelayStateGraph.T3.inPort.checkOneDelayedTransitionPerLoop "Is used to check that every connection loop has at least one delayed transition";
+//   Boolean logicalDelayStateGraph.T3.outPort.fire "true, if transition fires and step connected to the transition output becomes active";
+//   Boolean logicalDelayStateGraph.T3.outPort.node.suspend "= true, if the composite step is terminated via a suspend port";
+//   Boolean logicalDelayStateGraph.T3.outPort.node.resume "= true, if the composite step is entered via a resume port";
+//   Boolean logicalDelayStateGraph.T3.outPort.checkUnaryConnection "Is used to guarantee that only 1:1 connections are possible";
+//   Boolean logicalDelayStateGraph.T3.outPort.checkOneDelayedTransitionPerLoop "Is used to check that every connection loop has at least one delayed transition";
+//   Boolean logicalDelayStateGraph.T3.conditionPort "Fire condition as Boolean input.";
+//   Boolean logicalDelayStateGraph.T3.fire "= true, if transition fires";
+//   Boolean logicalDelayStateGraph.T3.enableFire "= true, if firing condition is true";
+//   protected constant Real logicalDelayStateGraph.T3.minimumWaitTime(quantity = "Time", unit = "s") = 1e-13;
+//   protected Real logicalDelayStateGraph.T3.t_start(quantity = "Time", unit = "s") "Time instant at which the transition would fire, if waitTime would be zero";
+//   protected Boolean logicalDelayStateGraph.T3.localCondition;
+//   final parameter Boolean logicalDelayStateGraph.T4.use_conditionPort = true "= true, if conditionPort enabled";
+//   Boolean logicalDelayStateGraph.T4.condition = true "Fire condition (time varying Boolean expression)";
+//   final parameter Boolean logicalDelayStateGraph.T4.delayedTransition = true "= true, if transition fires after waitTime";
+//   parameter Real logicalDelayStateGraph.T4.waitTime(quantity = "Time", unit = "s") = logicalDelayStateGraph.delayTime "Wait time before transition fires (> 0 required)";
+//   final parameter Boolean logicalDelayStateGraph.T4.use_firePort = false "= true, if firePort enabled";
+//   final parameter Boolean logicalDelayStateGraph.T4.loopCheck = true "= true, if one delayed transition per loop required";
+//   Boolean logicalDelayStateGraph.T4.inPort.available "= true, if step connected to the transition input is active and firing is possible";
+//   Boolean logicalDelayStateGraph.T4.inPort.fire "= true, if transition fires and the step connected to the transition input is deactivated";
+//   Boolean logicalDelayStateGraph.T4.inPort.node.suspend "= true, if the composite step is terminated via a suspend port";
+//   Boolean logicalDelayStateGraph.T4.inPort.node.resume "= true, if the composite step is entered via a resume port";
+//   Boolean logicalDelayStateGraph.T4.inPort.checkOneDelayedTransitionPerLoop "Is used to check that every connection loop has at least one delayed transition";
+//   Boolean logicalDelayStateGraph.T4.outPort.fire "true, if transition fires and step connected to the transition output becomes active";
+//   Boolean logicalDelayStateGraph.T4.outPort.node.suspend "= true, if the composite step is terminated via a suspend port";
+//   Boolean logicalDelayStateGraph.T4.outPort.node.resume "= true, if the composite step is entered via a resume port";
+//   Boolean logicalDelayStateGraph.T4.outPort.checkUnaryConnection "Is used to guarantee that only 1:1 connections are possible";
+//   Boolean logicalDelayStateGraph.T4.outPort.checkOneDelayedTransitionPerLoop "Is used to check that every connection loop has at least one delayed transition";
+//   Boolean logicalDelayStateGraph.T4.conditionPort "Fire condition as Boolean input.";
+//   Boolean logicalDelayStateGraph.T4.fire "= true, if transition fires";
+//   Boolean logicalDelayStateGraph.T4.enableFire "= true, if firing condition is true";
+//   protected constant Real logicalDelayStateGraph.T4.minimumWaitTime(quantity = "Time", unit = "s") = 1e-13;
+//   protected Real logicalDelayStateGraph.T4.t_start(quantity = "Time", unit = "s") "Time instant at which the transition would fire, if waitTime would be zero";
+//   protected Boolean logicalDelayStateGraph.T4.localCondition;
+// initial equation
+//   logicalDelayEquations.tSwitch = time - 2.0 * logicalDelayEquations.delayTime;
+//   pre(logicalDelayStateGraph.T1.enableFire) = false;
+//   pre(logicalDelayStateGraph.T2.enableFire) = false;
+//   pre(logicalDelayStateGraph.T2.t_start) = 0.0;
+//   pre(logicalDelayStateGraph.T3.enableFire) = false;
+//   pre(logicalDelayStateGraph.T4.enableFire) = false;
+//   pre(logicalDelayStateGraph.T4.t_start) = 0.0;
+// initial algorithm
+//   Test_total.booleanTable.isValidTable(booleanTable.table);
+// equation
+//   booleanTable.combiTimeTable.y[1] = booleanTable.realToBoolean.u;
+//   booleanTable.realToBoolean.y = booleanTable.y;
+//   logicalDelayStateGraph.T1.conditionPort = logicalDelayStateGraph.T1.localCondition;
+//   logicalDelayStateGraph.T2.conditionPort = logicalDelayStateGraph.T2.localCondition;
+//   logicalDelayStateGraph.T3.conditionPort = logicalDelayStateGraph.T3.localCondition;
+//   logicalDelayStateGraph.T4.conditionPort = logicalDelayStateGraph.T4.localCondition;
+//   logicalDelayStateGraph.not2.y = logicalDelayStateGraph.y1;
+//   logicalDelayStateGraph.Y1D0.activePort = logicalDelayStateGraph.not2.u;
+//   logicalDelayStateGraph.Y1D0.outPort[1].available = logicalDelayStateGraph.T1.inPort.available;
+//   logicalDelayStateGraph.Y1D0.outPort[1].checkOneDelayedTransitionPerLoop = logicalDelayStateGraph.T1.inPort.checkOneDelayedTransitionPerLoop;
+//   logicalDelayStateGraph.Y1D0.outPort[1].fire = logicalDelayStateGraph.T1.inPort.fire;
+//   logicalDelayStateGraph.Y0D1.activePort = logicalDelayStateGraph.y2;
+//   logicalDelayStateGraph.T2.outPort.checkOneDelayedTransitionPerLoop = logicalDelayStateGraph.Y0D1.inPort[1].checkOneDelayedTransitionPerLoop;
+//   logicalDelayStateGraph.T2.outPort.checkUnaryConnection = logicalDelayStateGraph.Y0D1.inPort[1].checkUnaryConnection;
+//   logicalDelayStateGraph.T2.outPort.fire = logicalDelayStateGraph.Y0D1.inPort[1].fire;
+//   logicalDelayStateGraph.Y0D1.outPort[1].available = logicalDelayStateGraph.T3.inPort.available;
+//   logicalDelayStateGraph.Y0D1.outPort[1].checkOneDelayedTransitionPerLoop = logicalDelayStateGraph.T3.inPort.checkOneDelayedTransitionPerLoop;
+//   logicalDelayStateGraph.Y0D1.outPort[1].fire = logicalDelayStateGraph.T3.inPort.fire;
+//   logicalDelayStateGraph.Y0D1.outPort[1].node.suspend = logicalDelayStateGraph.T3.inPort.node.suspend;
+//   logicalDelayStateGraph.Y0D1.outPort[1].node.resume = logicalDelayStateGraph.T3.inPort.node.resume;
+//   logicalDelayStateGraph.not1.y = logicalDelayStateGraph.T4.conditionPort;
+//   logicalDelayStateGraph.not1.y = logicalDelayStateGraph.T3.conditionPort;
+//   logicalDelayStateGraph.T4.outPort.checkOneDelayedTransitionPerLoop = logicalDelayStateGraph.Y1D0.inPort[1].checkOneDelayedTransitionPerLoop;
+//   logicalDelayStateGraph.T4.outPort.checkUnaryConnection = logicalDelayStateGraph.Y1D0.inPort[1].checkUnaryConnection;
+//   logicalDelayStateGraph.T4.outPort.fire = logicalDelayStateGraph.Y1D0.inPort[1].fire;
+//   logicalDelayStateGraph.T4.outPort.node.suspend = logicalDelayStateGraph.Y1D0.inPort[1].node.suspend;
+//   logicalDelayStateGraph.T4.outPort.node.resume = logicalDelayStateGraph.Y1D0.inPort[1].node.resume;
+//   logicalDelayStateGraph.u = logicalDelayStateGraph.T2.conditionPort;
+//   logicalDelayStateGraph.u = logicalDelayStateGraph.T1.conditionPort;
+//   logicalDelayStateGraph.u = logicalDelayStateGraph.not1.u;
+//   logicalDelayStateGraph.T3.outPort.checkOneDelayedTransitionPerLoop = logicalDelayStateGraph.Y0D0.inPort[1].checkOneDelayedTransitionPerLoop;
+//   logicalDelayStateGraph.T3.outPort.checkUnaryConnection = logicalDelayStateGraph.Y0D0.inPort[1].checkUnaryConnection;
+//   logicalDelayStateGraph.T3.outPort.fire = logicalDelayStateGraph.Y0D0.inPort[1].fire;
+//   logicalDelayStateGraph.T3.outPort.node.suspend = logicalDelayStateGraph.Y0D0.inPort[1].node.suspend;
+//   logicalDelayStateGraph.T3.outPort.node.resume = logicalDelayStateGraph.Y0D0.inPort[1].node.resume;
+//   logicalDelayStateGraph.Y0D0.inPort[2].checkOneDelayedTransitionPerLoop = logicalDelayStateGraph.T1.outPort.checkOneDelayedTransitionPerLoop;
+//   logicalDelayStateGraph.Y0D0.inPort[2].checkUnaryConnection = logicalDelayStateGraph.T1.outPort.checkUnaryConnection;
+//   logicalDelayStateGraph.Y0D0.inPort[2].fire = logicalDelayStateGraph.T1.outPort.fire;
+//   logicalDelayStateGraph.Y0D0.inPort[2].node.suspend = logicalDelayStateGraph.T1.outPort.node.suspend;
+//   logicalDelayStateGraph.Y0D0.inPort[2].node.resume = logicalDelayStateGraph.T1.outPort.node.resume;
+//   logicalDelayStateGraph.Y0D0.outPort[1].available = logicalDelayStateGraph.T4.inPort.available;
+//   logicalDelayStateGraph.Y0D0.outPort[1].checkOneDelayedTransitionPerLoop = logicalDelayStateGraph.T4.inPort.checkOneDelayedTransitionPerLoop;
+//   logicalDelayStateGraph.Y0D0.outPort[1].fire = logicalDelayStateGraph.T4.inPort.fire;
+//   logicalDelayStateGraph.Y0D0.outPort[1].node.suspend = logicalDelayStateGraph.T4.inPort.node.suspend;
+//   logicalDelayStateGraph.Y0D0.outPort[1].node.resume = logicalDelayStateGraph.T4.inPort.node.resume;
+//   logicalDelayStateGraph.Y0D0.outPort[2].available = logicalDelayStateGraph.T2.inPort.available;
+//   logicalDelayStateGraph.Y0D0.outPort[2].checkOneDelayedTransitionPerLoop = logicalDelayStateGraph.T2.inPort.checkOneDelayedTransitionPerLoop;
+//   logicalDelayStateGraph.Y0D0.outPort[2].fire = logicalDelayStateGraph.T2.inPort.fire;
+//   logicalDelayStateGraph.Y0D0.outPort[2].node.suspend = logicalDelayStateGraph.T2.inPort.node.suspend;
+//   logicalDelayStateGraph.Y0D0.outPort[2].node.resume = logicalDelayStateGraph.T2.inPort.node.resume;
+//   booleanTable.y = logicalDelayStateGraph.u;
+//   booleanTable.y = logicalDelayEquations.u;
+//   booleanTable.combiTimeTable.timeScaled = time;
+//   when {time >= pre(booleanTable.combiTimeTable.nextTimeEvent), initial()} then
+//     booleanTable.combiTimeTable.nextTimeEventScaled = Modelica.Blocks.Tables.Internal.getNextTimeEvent(booleanTable.combiTimeTable.tableID, booleanTable.combiTimeTable.timeScaled);
+//     booleanTable.combiTimeTable.nextTimeEvent = if booleanTable.combiTimeTable.nextTimeEventScaled < 1e60 then booleanTable.combiTimeTable.nextTimeEventScaled else 1e60;
+//   end when;
+//   booleanTable.combiTimeTable.y[1] = booleanTable.combiTimeTable.p_offset[1] + Modelica.Blocks.Tables.Internal.getTimeTableValueNoDer(booleanTable.combiTimeTable.tableID, 1, booleanTable.combiTimeTable.timeScaled, booleanTable.combiTimeTable.nextTimeEventScaled, pre(booleanTable.combiTimeTable.nextTimeEventScaled));
+//   booleanTable.realToBoolean.y = booleanTable.realToBoolean.u >= booleanTable.realToBoolean.threshold;
+//   when {logicalDelayEquations.u, not logicalDelayEquations.u} then
+//     logicalDelayEquations.tSwitch = time;
+//   end when;
+//   logicalDelayEquations.y1 = if logicalDelayEquations.u then true else not time >= logicalDelayEquations.tSwitch + logicalDelayEquations.delayTime;
+//   logicalDelayEquations.y2 = if not logicalDelayEquations.u then false else time >= logicalDelayEquations.tSwitch + logicalDelayEquations.delayTime;
+//   logicalDelayStateGraph.not1.y = not logicalDelayStateGraph.not1.u;
+//   logicalDelayStateGraph.not2.y = not logicalDelayStateGraph.not2.u;
+//   logicalDelayStateGraph.Y1D0.inport_fire = Modelica_StateGraph2.Blocks.BooleanFunctions.anyTrue({logicalDelayStateGraph.Y1D0.inPort[1].fire});
+//   logicalDelayStateGraph.Y1D0.outport_fire = Modelica_StateGraph2.Blocks.BooleanFunctions.anyTrue({logicalDelayStateGraph.Y1D0.outPort[1].fire});
+//   logicalDelayStateGraph.Y1D0.newActive = if logicalDelayStateGraph.Y1D0.node.resume then logicalDelayStateGraph.Y1D0.oldActive else logicalDelayStateGraph.Y1D0.inport_fire or logicalDelayStateGraph.Y1D0.active and not logicalDelayStateGraph.Y1D0.outport_fire and not logicalDelayStateGraph.Y1D0.node.suspend;
+//   logicalDelayStateGraph.Y1D0.active = pre(logicalDelayStateGraph.Y1D0.newActive);
+//   when logicalDelayStateGraph.Y1D0.node.suspend then
+//     logicalDelayStateGraph.Y1D0.oldActive = logicalDelayStateGraph.Y1D0.active;
+//   end when;
+//   logicalDelayStateGraph.Y1D0.outPort[1].available = logicalDelayStateGraph.Y1D0.active and not logicalDelayStateGraph.Y1D0.node.suspend;
+//   logicalDelayStateGraph.Y1D0.inPort[1].checkUnaryConnection = true;
+//   logicalDelayStateGraph.Y1D0.outPort[1].checkOneDelayedTransitionPerLoop = Modelica_StateGraph2.Internal.Utilities.propagateLoopCheck({logicalDelayStateGraph.Y1D0.inPort[1].checkOneDelayedTransitionPerLoop});
+//   logicalDelayStateGraph.Y1D0.inPort[1].node = logicalDelayStateGraph.Y1D0.node;
+//   logicalDelayStateGraph.Y1D0.node.suspend = false;
+//   logicalDelayStateGraph.Y1D0.node.resume = false;
+//   logicalDelayStateGraph.Y1D0.outPort[1].node = logicalDelayStateGraph.Y1D0.node;
+//   logicalDelayStateGraph.T1.enableFire = logicalDelayStateGraph.T1.localCondition and logicalDelayStateGraph.T1.inPort.available;
+//   logicalDelayStateGraph.T1.t_start = 0.0;
+//   logicalDelayStateGraph.T1.fire = logicalDelayStateGraph.T1.enableFire;
+//   logicalDelayStateGraph.T1.outPort.checkOneDelayedTransitionPerLoop = logicalDelayStateGraph.T1.inPort.checkOneDelayedTransitionPerLoop;
+//   logicalDelayStateGraph.T1.inPort.fire = logicalDelayStateGraph.T1.fire;
+//   logicalDelayStateGraph.T1.outPort.fire = logicalDelayStateGraph.T1.fire;
+//   logicalDelayStateGraph.T1.outPort.node = logicalDelayStateGraph.T1.inPort.node;
+//   logicalDelayStateGraph.Y0D0.inport_fire = Modelica_StateGraph2.Blocks.BooleanFunctions.anyTrue({logicalDelayStateGraph.Y0D0.inPort[1].fire, logicalDelayStateGraph.Y0D0.inPort[2].fire});
+//   logicalDelayStateGraph.Y0D0.outport_fire = Modelica_StateGraph2.Blocks.BooleanFunctions.anyTrue({logicalDelayStateGraph.Y0D0.outPort[1].fire, logicalDelayStateGraph.Y0D0.outPort[2].fire});
+//   logicalDelayStateGraph.Y0D0.newActive = if logicalDelayStateGraph.Y0D0.node.resume then logicalDelayStateGraph.Y0D0.oldActive else logicalDelayStateGraph.Y0D0.inport_fire or logicalDelayStateGraph.Y0D0.active and not logicalDelayStateGraph.Y0D0.outport_fire and not logicalDelayStateGraph.Y0D0.node.suspend;
+//   logicalDelayStateGraph.Y0D0.active = pre(logicalDelayStateGraph.Y0D0.newActive);
+//   when logicalDelayStateGraph.Y0D0.node.suspend then
+//     logicalDelayStateGraph.Y0D0.oldActive = logicalDelayStateGraph.Y0D0.active;
+//   end when;
+//   logicalDelayStateGraph.Y0D0.outPort[1].available = logicalDelayStateGraph.Y0D0.active and not logicalDelayStateGraph.Y0D0.node.suspend;
+//   logicalDelayStateGraph.Y0D0.outPort[2].available = logicalDelayStateGraph.Y0D0.outPort[1].available and not logicalDelayStateGraph.Y0D0.outPort[1].fire and not logicalDelayStateGraph.Y0D0.node.suspend;
+//   logicalDelayStateGraph.Y0D0.inPort[1].checkUnaryConnection = true;
+//   logicalDelayStateGraph.Y0D0.inPort[2].checkUnaryConnection = true;
+//   logicalDelayStateGraph.Y0D0.outPort[1].checkOneDelayedTransitionPerLoop = Modelica_StateGraph2.Internal.Utilities.propagateLoopCheck({logicalDelayStateGraph.Y0D0.inPort[1].checkOneDelayedTransitionPerLoop, logicalDelayStateGraph.Y0D0.inPort[2].checkOneDelayedTransitionPerLoop});
+//   logicalDelayStateGraph.Y0D0.outPort[2].checkOneDelayedTransitionPerLoop = Modelica_StateGraph2.Internal.Utilities.propagateLoopCheck({logicalDelayStateGraph.Y0D0.inPort[1].checkOneDelayedTransitionPerLoop, logicalDelayStateGraph.Y0D0.inPort[2].checkOneDelayedTransitionPerLoop});
+//   logicalDelayStateGraph.Y0D0.inPort[1].node = logicalDelayStateGraph.Y0D0.node;
+//   logicalDelayStateGraph.Y0D0.inPort[2].node = logicalDelayStateGraph.Y0D0.node;
+//   logicalDelayStateGraph.Y0D0.outPort[1].node = logicalDelayStateGraph.Y0D0.node;
+//   logicalDelayStateGraph.Y0D0.outPort[2].node = logicalDelayStateGraph.Y0D0.node;
+//   logicalDelayStateGraph.T2.enableFire = logicalDelayStateGraph.T2.localCondition and logicalDelayStateGraph.T2.inPort.available;
+//   when logicalDelayStateGraph.T2.enableFire then
+//     logicalDelayStateGraph.T2.t_start = time;
+//   end when;
+//   logicalDelayStateGraph.T2.fire = logicalDelayStateGraph.T2.enableFire and time >= logicalDelayStateGraph.T2.t_start + logicalDelayStateGraph.T2.waitTime;
+//   logicalDelayStateGraph.T2.outPort.checkOneDelayedTransitionPerLoop = true;
+//   logicalDelayStateGraph.T2.inPort.fire = logicalDelayStateGraph.T2.fire;
+//   logicalDelayStateGraph.T2.outPort.fire = logicalDelayStateGraph.T2.fire;
+//   logicalDelayStateGraph.T2.outPort.node = logicalDelayStateGraph.T2.inPort.node;
+//   assert(logicalDelayStateGraph.T2.waitTime > 1e-13, "Either set delayTransition = false, or set waitTime (= " + String(logicalDelayStateGraph.T2.waitTime, 6, 0, true) + ") > " + String(1e-13, 6, 0, true));
+//   logicalDelayStateGraph.Y0D1.inport_fire = Modelica_StateGraph2.Blocks.BooleanFunctions.anyTrue({logicalDelayStateGraph.Y0D1.inPort[1].fire});
+//   logicalDelayStateGraph.Y0D1.outport_fire = Modelica_StateGraph2.Blocks.BooleanFunctions.anyTrue({logicalDelayStateGraph.Y0D1.outPort[1].fire});
+//   logicalDelayStateGraph.Y0D1.newActive = if logicalDelayStateGraph.Y0D1.node.resume then logicalDelayStateGraph.Y0D1.oldActive else logicalDelayStateGraph.Y0D1.inport_fire or logicalDelayStateGraph.Y0D1.active and not logicalDelayStateGraph.Y0D1.outport_fire and not logicalDelayStateGraph.Y0D1.node.suspend;
+//   logicalDelayStateGraph.Y0D1.active = pre(logicalDelayStateGraph.Y0D1.newActive);
+//   when logicalDelayStateGraph.Y0D1.node.suspend then
+//     logicalDelayStateGraph.Y0D1.oldActive = logicalDelayStateGraph.Y0D1.active;
+//   end when;
+//   logicalDelayStateGraph.Y0D1.outPort[1].available = logicalDelayStateGraph.Y0D1.active and not logicalDelayStateGraph.Y0D1.node.suspend;
+//   logicalDelayStateGraph.Y0D1.inPort[1].checkUnaryConnection = true;
+//   logicalDelayStateGraph.Y0D1.outPort[1].checkOneDelayedTransitionPerLoop = Modelica_StateGraph2.Internal.Utilities.propagateLoopCheck({logicalDelayStateGraph.Y0D1.inPort[1].checkOneDelayedTransitionPerLoop});
+//   logicalDelayStateGraph.Y0D1.inPort[1].node = logicalDelayStateGraph.Y0D1.node;
+//   logicalDelayStateGraph.Y0D1.outPort[1].node = logicalDelayStateGraph.Y0D1.node;
+//   logicalDelayStateGraph.T3.enableFire = logicalDelayStateGraph.T3.localCondition and logicalDelayStateGraph.T3.inPort.available;
+//   logicalDelayStateGraph.T3.t_start = 0.0;
+//   logicalDelayStateGraph.T3.fire = logicalDelayStateGraph.T3.enableFire;
+//   logicalDelayStateGraph.T3.outPort.checkOneDelayedTransitionPerLoop = logicalDelayStateGraph.T3.inPort.checkOneDelayedTransitionPerLoop;
+//   logicalDelayStateGraph.T3.inPort.fire = logicalDelayStateGraph.T3.fire;
+//   logicalDelayStateGraph.T3.outPort.fire = logicalDelayStateGraph.T3.fire;
+//   logicalDelayStateGraph.T3.outPort.node = logicalDelayStateGraph.T3.inPort.node;
+//   logicalDelayStateGraph.T4.enableFire = logicalDelayStateGraph.T4.localCondition and logicalDelayStateGraph.T4.inPort.available;
+//   when logicalDelayStateGraph.T4.enableFire then
+//     logicalDelayStateGraph.T4.t_start = time;
+//   end when;
+//   logicalDelayStateGraph.T4.fire = logicalDelayStateGraph.T4.enableFire and time >= logicalDelayStateGraph.T4.t_start + logicalDelayStateGraph.T4.waitTime;
+//   logicalDelayStateGraph.T4.outPort.checkOneDelayedTransitionPerLoop = true;
+//   logicalDelayStateGraph.T4.inPort.fire = logicalDelayStateGraph.T4.fire;
+//   logicalDelayStateGraph.T4.outPort.fire = logicalDelayStateGraph.T4.fire;
+//   logicalDelayStateGraph.T4.outPort.node = logicalDelayStateGraph.T4.inPort.node;
+//   assert(logicalDelayStateGraph.T4.waitTime > 1e-13, "Either set delayTransition = false, or set waitTime (= " + String(logicalDelayStateGraph.T4.waitTime, 6, 0, true) + ") > " + String(1e-13, 6, 0, true));
+// end Test_total;
+// [<interactive>:1507:7-1541:18:writable] Warning: Pure function 'Modelica.Utilities.Strings.isEmpty' contains a call to impure function 'Modelica.Utilities.Strings.Advanced.skipWhiteSpace'.
+// [<interactive>:38:7-38:47:writable] Warning: The second argument 'logicalDelayStateGraph.Y1D0.node' of Connections.branch must have the form A.R, where A is a connector and R an over-determined type/record.
+// [<interactive>:42:7-48:9:writable] Warning: Usage of non-standard operator (not specified in the Modelica specification): Connections.uniqueRoot. Functionality might be partially supported but is not guaranteed.
+// [<interactive>:42:7-48:9:writable] Warning: The first argument 'logicalDelayStateGraph.Y1D0.node' of Connections.uniqueRoot must have the form A.R, where A is a connector and R an over-determined type/record.
+// [<interactive>:59:7-59:48:writable] Warning: The first argument 'logicalDelayStateGraph.Y1D0.node' of Connections.branch must have the form A.R, where A is a connector and R an over-determined type/record.
+// [<interactive>:38:7-38:47:writable] Warning: The second argument 'logicalDelayStateGraph.Y0D0.node' of Connections.branch must have the form A.R, where A is a connector and R an over-determined type/record.
+// [<interactive>:42:7-48:9:writable] Warning: Usage of non-standard operator (not specified in the Modelica specification): Connections.uniqueRoot. Functionality might be partially supported but is not guaranteed.
+// [<interactive>:42:7-48:9:writable] Warning: The first argument 'logicalDelayStateGraph.Y0D0.node' of Connections.uniqueRoot must have the form A.R, where A is a connector and R an over-determined type/record.
+// [<interactive>:59:7-59:48:writable] Warning: The first argument 'logicalDelayStateGraph.Y0D0.node' of Connections.branch must have the form A.R, where A is a connector and R an over-determined type/record.
+// [<interactive>:38:7-38:47:writable] Warning: The second argument 'logicalDelayStateGraph.Y0D1.node' of Connections.branch must have the form A.R, where A is a connector and R an over-determined type/record.
+// [<interactive>:42:7-48:9:writable] Warning: Usage of non-standard operator (not specified in the Modelica specification): Connections.uniqueRoot. Functionality might be partially supported but is not guaranteed.
+// [<interactive>:42:7-48:9:writable] Warning: The first argument 'logicalDelayStateGraph.Y0D1.node' of Connections.uniqueRoot must have the form A.R, where A is a connector and R an over-determined type/record.
+// [<interactive>:59:7-59:48:writable] Warning: The first argument 'logicalDelayStateGraph.Y0D1.node' of Connections.branch must have the form A.R, where A is a connector and R an over-determined type/record.
 // endResult

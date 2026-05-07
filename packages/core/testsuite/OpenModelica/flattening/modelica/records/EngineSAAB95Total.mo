@@ -31,13 +31,17 @@ model EngineSAAB95
 end EngineSAAB95;
 
 // Result:
-// Error processing file: EngineSAAB95Total.mo
-// Error: Failed to load package EngineSAAB95Total (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class EngineSAAB95Total not found in scope <top>.
-// Error: Error occurred while flattening model EngineSAAB95Total
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class EngineSAAB95
+//   parameter Real engine.data.bore = 0.09;
+//   parameter Real engine.data.stroke = 0.09;
+//   Real engine.displacement;
+//   constant Real engine.pi = 3.1415956;
+//   parameter Real engine2.data.bore = 3.0;
+//   parameter Real engine2.data.stroke = 5.0;
+//   Real engine2.displacement;
+//   constant Real engine2.pi = 3.1415956;
+// equation
+//   engine.displacement = 0.7853989 * engine.data.bore ^ 2.0 * engine.data.stroke;
+//   engine2.displacement = 0.7853989 * engine2.data.bore ^ 2.0 * engine2.data.stroke;
+// end EngineSAAB95;
 // endResult

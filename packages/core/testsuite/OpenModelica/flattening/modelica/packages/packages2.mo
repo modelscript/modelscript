@@ -27,13 +27,7 @@ end test;
 
 
 // Result:
-// Error processing file: packages2.mo
-// Error: Failed to load package packages2 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class packages2 not found in scope <top>.
-// Error: Error occurred while flattening model packages2
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class test
+//   Real x = 3.14;
+// end test;
 // endResult

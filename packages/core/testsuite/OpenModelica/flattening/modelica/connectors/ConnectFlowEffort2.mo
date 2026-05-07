@@ -21,13 +21,16 @@ equation
 end ConnectFlowEffort2;
 
 // Result:
-// Error processing file: ConnectFlowEffort2.mo
-// Error: Failed to load package ConnectFlowEffort (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class ConnectFlowEffort not found in scope <top>.
-// Error: Error occurred while flattening model ConnectFlowEffort
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class ConnectFlowEffort2
+//   Real c1.e;
+//   Real c2.e;
+// equation
+//   -(c2.e + c1.e) = 0.0;
+//   c2.e = 0.0;
+// end ConnectFlowEffort2;
+// [<interactive>:17:3-17:16:writable] Warning: Components are deprecated in class.
+// [<interactive>:18:3-18:16:writable] Warning: Components are deprecated in class.
+// [<interactive>:20:3-20:18:writable] Warning: Equation sections are deprecated in class.
+// [<interactive>:17:3-17:16:writable] Warning: Connector c1 is not balanced: The number of potential variables (1) is not equal to the number of flow variables (0).
+// [<interactive>:18:3-18:16:writable] Warning: Connector c2 is not balanced: The number of potential variables (0) is not equal to the number of flow variables (1).
 // endResult

@@ -23,13 +23,18 @@ class A
   T5 b5;
 end A;
 // Result:
-// Error processing file: Type9.mo
-// Error: Failed to load package Type9 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class Type9 not found in scope <top>.
-// Error: Error occurred while flattening model Type9
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class A
+//   Real a(unit = "m/s");
+//   Real b(unit = "m/s");
+//   Real b2(unit = "m/s", displayUnit = "ms");
+//   Integer b3(quantity = "pcs");
+//   String b4(quantity = "name");
+//   Boolean b5(quantity = "foo");
+// end A;
+// [<interactive>:18:3-18:23:writable] Warning: Components are deprecated in class.
+// [<interactive>:19:3-19:6:writable] Warning: Components are deprecated in class.
+// [<interactive>:20:3-20:8:writable] Warning: Components are deprecated in class.
+// [<interactive>:21:3-21:8:writable] Warning: Components are deprecated in class.
+// [<interactive>:22:3-22:8:writable] Warning: Components are deprecated in class.
+// [<interactive>:23:3-23:8:writable] Warning: Components are deprecated in class.
 // endResult

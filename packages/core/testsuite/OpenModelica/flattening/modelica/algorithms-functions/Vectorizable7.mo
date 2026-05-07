@@ -16,13 +16,16 @@ model Vectorizable7
 end Vectorizable7;
 
 // Result:
-// Error processing file: Vectorizable7.mo
-// Error: Failed to load package f (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class f not found in scope <top>.
-// Error: Error occurred while flattening model f
+// function Vectorizable7.f
+//   input Integer m;
+//   output Real y;
+//   protected parameter Real[m] phi = array(/*Real*/(i - 1) / /*Real*/(m - 1) for i in 1:m);
+//   protected parameter Real[m] t = array(cos(phi[$i0]) for $i0 in 1:m);
+// algorithm
+//   y := sum(t);
+// end Vectorizable7.f;
 //
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class Vectorizable7
+//   Real r = Vectorizable7.f(integer(time));
+// end Vectorizable7;
 // endResult

@@ -24,13 +24,8 @@ model D
 end D;
 
 // Result:
-// Error processing file: redeclare13.mo
-// Error: Failed to load package redeclare13 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class redeclare13.mo not found in scope <top>.
-// Error: Error occurred while flattening model redeclare13.mo
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class D
+//   Real c.x = 3.0;
+//   Real c.y;
+// end D;
 // endResult

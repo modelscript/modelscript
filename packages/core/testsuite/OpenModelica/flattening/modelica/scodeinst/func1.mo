@@ -25,13 +25,12 @@ model B
 end B;
 
 // Result:
-// Error processing file: func1.mo
-// Error: Failed to load package func1 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class func1.mo not found in scope <top>.
-// Error: Error occurred while flattening model func1.mo
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class B
+//   constant Real a1.z = 2.0;
+//   constant Real a1.w = 4.0;
+//   constant Real a2.z = 3.0;
+//   constant Real a2.w = 9.0;
+//   Real x = 4.0;
+//   Real y = 9.0;
+// end B;
 // endResult

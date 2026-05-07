@@ -19,13 +19,21 @@ equation
 end WhenSet;
 
 // Result:
-// Error processing file: WhenVectorPredicateEquation.mo
-// Error: Failed to load package WhenVectorPredicateEquation (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class WhenVectorPredicateEquation not found in scope <top>.
-// Error: Error occurred while flattening model WhenVectorPredicateEquation
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class WhenSet
+//   Real x;
+//   parameter Real y2 = 3.0;
+//   discrete Real y1;
+//   discrete Real y3;
+// equation
+//   x = time - y2;
+//   when {x > 2.0, sample(0.0, 2.0), x < 5.0} then
+//     y1 = sin(x);
+//     y3 = 2.0 * x + y1 + y2;
+//   end when;
+// end WhenSet;
+// [<interactive>:9:3-9:9:writable] Warning: Components are deprecated in class.
+// [<interactive>:10:3-10:24:writable] Warning: Components are deprecated in class.
+// [<interactive>:11:3-11:19:writable] Warning: Components are deprecated in class.
+// [<interactive>:12:3-12:19:writable] Warning: Components are deprecated in class.
+// [<interactive>:14:3-14:16:writable] Warning: Equation sections are deprecated in class.
 // endResult

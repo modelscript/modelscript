@@ -18,9 +18,9 @@ end M;
 
 // Result:
 // Error processing file: DoubleClassDeclaration2.mo
-// Error: Failed to load package DoubleClassDeclaration2 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class DoubleClassDeclaration2.mo not found in scope <top>.
-// Error: Error occurred while flattening model DoubleClassDeclaration2.mo
+// [<interactive>:8:3-10:8:writable] Notification: From here:
+// [<interactive>:12:3-14:8:writable] Error: An element with name A is already declared in this scope.
+// Error: Error occurred while flattening model M
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

@@ -16,9 +16,8 @@ end ForEquationNonParam;
 
 // Result:
 // Error processing file: ForEquationNonParam.mo
-// Error: Failed to load package ForEquationNonPAram (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class ForEquationNonPAram.mo not found in scope <top>.
-// Error: Error occurred while flattening model ForEquationNonPAram.mo
+// [<interactive>:12:3-14:10:writable] Error: The iteration range 1.0:y is not a constant or parameter expression.
+// Error: Error occurred while flattening model ForEquationNonParam
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

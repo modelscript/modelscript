@@ -30,13 +30,12 @@ algorithm
 end PackageConstant2;
 
 // Result:
-// Error processing file: PackageConstant1.mo
-// Error: Failed to load package PackageConstant1 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class PackageConstant1 not found in scope <top>.
-// Error: Error occurred while flattening model PackageConstant1
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class PackageConstant2
+//   Real y = 1.0;
+//   Real z;
+// equation
+//   z = 2.0;
+// algorithm
+//   z := 3.0;
+// end PackageConstant2;
 // endResult

@@ -14,12 +14,16 @@ equation
 end ForEquation4;
 
 // Result:
-// Error processing file: ForEquation4.mo
-// Error: Class ForEquation4.mo not found in scope <top>.
-// Error: Error occurred while flattening model ForEquation4.mo
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class ForEquation4
+//   constant Integer N = 4;
+//   Real x[1];
+//   Real x[2];
+//   Real x[3];
+//   Real x[4];
+// equation
+//   x[1] = 1.0;
+//   x[2] = 2.0;
+//   x[3] = 3.0;
+//   x[4] = 4.0;
+// end ForEquation4;
 // endResult

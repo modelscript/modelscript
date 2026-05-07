@@ -35,13 +35,8 @@ model ClassExtends2
 end ClassExtends2;
 
 // Result:
-// Error processing file: ClassExtends2.mo
-// [OpenModelica/flattening/modelica/scodeinst/ClassExtends2.mo:25:3-27:9:writable] Warning: Missing redeclare prefix on class extends M1, treating like redeclare anyway.
-// Error: Class ClassExtends2.mo not found in scope <top>.
-// Error: Error occurred while flattening model ClassExtends2.mo
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class CevalProduct1
+//   constant Real r1 = 40320.0;
+//   constant Integer i1 = 40320;
+// end CevalProduct1;
 // endResult

@@ -15,9 +15,8 @@ end A;
 
 // Result:
 // Error processing file: ModifierTypeError.mo
-// Error: Failed to load package ModifierTypeError (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class ModifierTypeError not found in scope <top>.
-// Error: Error occurred while flattening model ModifierTypeError
+// [<interactive>:9:3-9:27:writable] Error: Type mismatch in binding x = 1.0, expected subtype of Integer, got type Real.
+// Error: Error occurred while flattening model A
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

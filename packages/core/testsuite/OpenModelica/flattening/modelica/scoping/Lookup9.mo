@@ -21,13 +21,9 @@ model C
 end C;
 
 // Result:
-// Error processing file: Lookup9.mo
-// Error: Failed to load package Lookup9 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class Lookup9 not found in scope <top>.
-// Error: Error occurred while flattening model Lookup9
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class C
+//   constant Real h.k = 1.0;
+//   parameter Real h.R0 = h.R_0;
+//   parameter Real h.R_0 = 0.7;
+// end C;
 // endResult

@@ -150,13 +150,29 @@ model M1_solutions_E03_Faculty_FacultyCall
   extends M1_solutions.E03.Faculty.FacultyCall;
 end M1_solutions_E03_Faculty_FacultyCall;
 // Result:
-// Error processing file: Faculty5.mo
-// Error: Failed to load package Faculty5 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class Faculty5 not found in scope <top>.
-// Error: Error occurred while flattening model Faculty5
+// function M1_solutions.E03.Faculty.faculty
+//   input Integer n;
+//   output Integer k = 1;
+// algorithm
+//   assert(n >= 0, "n must be larger than 0");
+//   if n <> 0 then
+//     for i in 1:n loop
+//       k := k * i;
+//     end for;
+//   end if;
+// end M1_solutions.E03.Faculty.faculty;
 //
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
+// function M1_solutions.E03.Faculty.faculty_rec
+//   input Integer n;
+//   output Integer k = 1;
+// algorithm
+//   assert(n >= 0, "n must be larger than 0");
+//   k := if n == 0 then 1 else n * M1_solutions.E03.Faculty.faculty_rec(n - 1);
+// end M1_solutions.E03.Faculty.faculty_rec;
 //
-// Execution failed!
+// class M1_solutions_E03_Faculty_FacultyCall
+//   parameter Integer n = 15;
+//   Integer fac = M1_solutions.E03.Faculty.faculty(n);
+//   Integer fac_rec = M1_solutions.E03.Faculty.faculty_rec(n);
+// end M1_solutions_E03_Faculty_FacultyCall;
 // endResult

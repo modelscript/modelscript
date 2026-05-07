@@ -33,13 +33,27 @@ equation
 end InStreamTwoInside;
 
 // Result:
-// Error processing file: InStreamTwoOutside.mo
-// Error: Failed to load package InStreamTwoOutside (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class InStreamTwoOutside not found in scope <top>.
-// Error: Error occurred while flattening model InStreamTwoOutside
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class InStreamTwoInside
+//   Real a.s1.r;
+//   Real a.s1.f;
+//   Real a.s1.s;
+//   Real a.s2.r;
+//   Real a.s2.f;
+//   Real a.s2.s;
+//   Real a.instream_s1;
+//   Real a.instream_s2;
+//   Real instream_a_s1;
+//   Real instream_a_s2;
+// equation
+//   a.s1.r = a.s2.r;
+//   -(a.s1.f + a.s2.f) = 0.0;
+//   a.s1.s = a.s2.s;
+//   a.s2.s = a.s1.s;
+//   a.s1.f = 0.0;
+//   a.s2.f = 0.0;
+//   a.instream_s1 = a.s1.s;
+//   a.instream_s2 = a.s2.s;
+//   instream_a_s1 = a.s1.s;
+//   instream_a_s2 = a.s2.s;
+// end InStreamTwoInside;
 // endResult

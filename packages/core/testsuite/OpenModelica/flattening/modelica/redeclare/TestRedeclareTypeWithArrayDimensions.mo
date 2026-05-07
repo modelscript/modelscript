@@ -26,13 +26,15 @@ model TestRedeclareTypeWithArrayDimensions
 end TestRedeclareTypeWithArrayDimensions;
 
 // Result:
-// Error processing file: TestRedeclareTypeWithArrayDimensions.mo
-// Error: Failed to load package RedeclareNoCC1 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class RedeclareNoCC1 not found in scope <top>.
-// Error: Error occurred while flattening model TestRedeclareTypeWithArrayDimensions.mo [BUG: #2418]
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class TestRedeclareTypeWithArrayDimensions
+//   parameter Real x[1,1] = 0.0;
+//   parameter Real x[1,2] = 1.0;
+//   Real bletch.u[1,1];
+//   Real bletch.u[1,2];
+//   Real bletch.y[1,1];
+//   Real bletch.y[1,2];
+// equation
+//   bletch.u = x;
+//   bletch.y = array(array(sin(bletch.u[$i0,$i1]) for $i1 in 1:2) for $i0 in 1:1);
+// end TestRedeclareTypeWithArrayDimensions;
 // endResult

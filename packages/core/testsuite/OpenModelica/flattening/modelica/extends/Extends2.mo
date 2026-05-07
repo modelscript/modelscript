@@ -24,13 +24,7 @@ model test2
 end test2;
 
 // Result:
-// Error processing file: Extends2.mo
-// Error: Failed to load package Extends2 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class Extends2 not found in scope <top>.
-// Error: Error occurred while flattening model Extends2
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class test2
+//   Real adapter.x;
+// end test2;
 // endResult

@@ -21,13 +21,22 @@ model M
 end M;
 
 // Result:
-// Error processing file: FunctionRecordArg1.mo
-// Error: Failed to load package FunctionRecordArg1 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class FunctionRecordArg1 not found in scope <top>.
-// Error: Error occurred while flattening model FunctionRecordArg1
+// function R "Automatically generated record constructor for R"
+//   input Real x;
+//   input Real y;
+//   output R res;
+// end R;
 //
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
+// function f
+//   input R r;
+//   output Real x;
+// algorithm
+//   x := r.x;
+// end f;
 //
-// Execution failed!
+// class M
+//   Real r.x = 2.0;
+//   Real r.y = 4.0;
+//   Real x = f(r);
+// end M;
 // endResult

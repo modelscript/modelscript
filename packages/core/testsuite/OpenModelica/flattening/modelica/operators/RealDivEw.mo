@@ -18,13 +18,11 @@ model RealMulEw
 end RealMulEw;
 
 // Result:
-// Error processing file: RealDivEw.mo
-// Error: Failed to load package RealDivEw (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class RealDivEw not found in scope <top>.
-// Error: Error occurred while flattening model RealDivEw
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class RealMulEw
+//   Real x[1];
+//   Real x[2];
+//   Real x[3];
+// equation
+//   x = {0.25, 0.4, 0.5};
+// end RealMulEw;
 // endResult

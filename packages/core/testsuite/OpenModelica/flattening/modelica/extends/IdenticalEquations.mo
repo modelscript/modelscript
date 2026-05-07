@@ -20,13 +20,13 @@ equation
 end Color2;
 
 // Result:
-// Error processing file: IdenticalEquations.mo
-// Error: Failed to load package IdenticalEquations (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class IdenticalEquations not found in scope <top>.
-// Error: Error occurred while flattening model IdenticalEquations
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class Color2
+//   parameter Real red = 0.2;
+//   parameter Real blue = 0.6;
+//   Real green;
+// equation
+//   red + blue + green = 1.0;
+//   red + blue + green = 1.0;
+// end Color2;
+// [<interactive>:19:3-19:25:writable] Warning: Equation sections are deprecated in class.
 // endResult

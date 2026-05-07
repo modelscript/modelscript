@@ -18,13 +18,13 @@ model B
 end B;
 
 // Result:
-// Error processing file: eq6.mo
-// Error: Failed to load package eq6 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class eq6.mo not found in scope <top>.
-// Error: Error occurred while flattening model eq6.mo
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class B
+//   Real a[1].x;
+//   Real a[2].x;
+//   Real a[3].x;
+// equation
+//   a[1].x = 2.0;
+//   a[2].x = 2.0;
+//   a[3].x = 2.0;
+// end B;
 // endResult

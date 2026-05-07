@@ -20,13 +20,8 @@ model A
 end A;
 
 // Result:
-// Error processing file: ExtendsDerived.mo
-// Error: Failed to load package ExtendsDerived (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class ExtendsDerived.mo not found in scope <top>.
-// Error: Error occurred while flattening model ExtendsDerived.mo
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class A
+//   parameter Real k = 2.0;
+//   parameter Real z = 15.0;
+// end A;
 // endResult

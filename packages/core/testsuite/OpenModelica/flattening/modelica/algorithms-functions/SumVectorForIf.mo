@@ -22,13 +22,28 @@ algorithm
 end SumVector;
 
 // Result:
-// Error processing file: SumVectorForIf.mo
-// Error: Failed to load package SumVectorForIf (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class SumVectorForIf not found in scope <top>.
-// Error: Error occurred while flattening model SumVectorForIf
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class SumVector
+//   Real sum;
+//   parameter Real v[1] = 100.0;
+//   parameter Real v[2] = 200.0;
+//   parameter Real v[3] = -300.0;
+//   parameter Real v[4] = 400.0;
+//   parameter Real v[5] = 500.0;
+//   final parameter Integer n = 5;
+// algorithm
+//   sum := 0.0;
+//   for i in 1:5 loop
+//     if v[i] > 0.0 then
+//       sum := sum + v[i];
+//     elseif v[i] > -1.0 then
+//       sum := sum + v[i] - 1.0;
+//     else
+//       sum := sum - v[i];
+//     end if;
+//   end for;
+// end SumVector;
+// [<interactive>:8:3-8:11:writable] Warning: Components are deprecated in class.
+// [<interactive>:9:3-9:51:writable] Warning: Components are deprecated in class.
+// [<interactive>:10:3-10:35:writable] Warning: Components are deprecated in class.
+// [<interactive>:12:3-12:11:writable] Warning: Algorithm sections are deprecated in class.
 // endResult

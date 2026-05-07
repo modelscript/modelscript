@@ -10,13 +10,11 @@ class SimplifyRangeInClass
 end SimplifyRangeInClass;
 
 // Result:
-// Error processing file: SimplifyRangeInCall.mo
-// Error: Failed to load package SimplifyRangeInCall (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class SimplifyRangeInCall not found in scope <top>.
-// Error: Error occurred while flattening model SimplifyRangeInCall
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class SimplifyRangeInClass
+//   Real r[1];
+//   Real r[2];
+// equation
+//   r = array(sin((1.0:2.0)[$i0]) for $i0 in 1:2);
+// end SimplifyRangeInClass;
+// [<interactive>:9:3-9:23:writable] Warning: Components are deprecated in class.
 // endResult

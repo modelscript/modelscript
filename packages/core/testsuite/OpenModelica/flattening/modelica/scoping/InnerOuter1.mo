@@ -16,13 +16,10 @@ class B
 end B;
 
 // Result:
-// Error processing file: InnerOuter1.mo
-// Error: Failed to load package InnerOuter1 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class InnerOuter1 not found in scope <top>.
-// Error: Error occurred while flattening model InnerOuter1
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class B
+//   Real T0 = 100.0;
+// end B;
+// [<interactive>:10:3-10:16:writable] Warning: Components are deprecated in class.
+// [<interactive>:14:3-14:20:writable] Warning: Components are deprecated in class.
+// [<interactive>:15:3-15:11:writable] Warning: Components are deprecated in class.
 // endResult

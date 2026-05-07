@@ -26,13 +26,12 @@ equation
 end Booltest;
 
 // Result:
-// Error processing file: InOutBool.mo
-// Error: Failed to load package InOutBool (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class InOutBool not found in scope <top>.
-// Error: Error occurred while flattening model InOutBool
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class Booltest
+//   Boolean t;
+// equation
+//   t = false;
+//   t = true;
+//   t = true;
+//   t = false;
+// end Booltest;
 // endResult

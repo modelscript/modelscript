@@ -84,9 +84,9 @@ end X;
 
 // Result:
 // Error processing file: Enum7.mo
-// Error: Failed to load package Enumeration7 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class Enumeration7 not found in scope <top>.
-// Error: Error occurred while flattening model Enumeration7
+// [<interactive>:16:69-16:80:writable] Error: Variable one not found in scope EnumTest.
+// [<interactive>:17:22-17:48:writable] Error: Variable DigitalCurrent.one not found in scope EnumTest.
+// Error: Error occurred while flattening model X
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

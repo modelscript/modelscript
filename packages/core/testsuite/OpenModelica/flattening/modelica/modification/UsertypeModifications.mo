@@ -22,13 +22,25 @@ equation
 end AliasType;
 
 // Result:
-// Error processing file: UsertypeModifications.mo
-// Error: Failed to load package UsertypeModifications (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class UsertypeModifications not found in scope <top>.
-// Error: Error occurred while flattening model UsertypeModifications
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class AliasType
+//   Real b[1](start = 2.0);
+//   Real b[2](start = 2.0);
+//   Real b[3](start = 2.0);
+//   Real b[4](start = 2.0);
+//   parameter Real a[1] = 0.0;
+//   parameter Real a[2] = 0.0;
+//   parameter Real a[3] = 0.0;
+//   parameter Real a[4] = 0.0;
+//   Real a2[1](start = 3.0);
+//   Real a2[2](start = 3.0);
+//   Real a2[3](start = 3.0);
+// equation
+//   b[1] = a[1];
+//   b[2] = a[2];
+//   b[3] = a[3];
+//   b[4] = a[4];
+//   a2[1] = 1.0;
+//   a2[2] = 1.0;
+//   a2[3] = 1.0;
+// end AliasType;
 // endResult

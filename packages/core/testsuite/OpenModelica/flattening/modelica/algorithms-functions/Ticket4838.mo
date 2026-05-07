@@ -16,13 +16,7 @@ end s;
 end Sum;
 
 // Result:
-// Error processing file: Ticket4838.mo
-// Error: Failed to load package s (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class s not found in scope <top>.
-// Error: Error occurred while flattening model s
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class Sum
+//   constant Integer x = 4;
+// end Sum;
 // endResult

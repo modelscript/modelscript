@@ -28,13 +28,17 @@ equation
 end Function10;
 
 // Result:
-// Error processing file: modelica_1_1_Function10.mo
-// Error: Failed to load package modelica_1_1_Function10 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class modelica_1_1_Function10 not found in scope <top>.
-// Error: Error occurred while flattening model modelica_1_1_Function10
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class Function10
+//   Real x;
+//   Real y;
+//   Real z;
+// equation
+//   x = 1.0;
+//   y = 2.0;
+//   z = 3.0;
+// end Function10;
+// [<interactive>:23:3-23:9:writable] Warning: Components are deprecated in class.
+// [<interactive>:24:3-24:9:writable] Warning: Components are deprecated in class.
+// [<interactive>:25:3-25:9:writable] Warning: Components are deprecated in class.
+// [<interactive>:27:3-27:19:writable] Warning: Equation sections are deprecated in class.
 // endResult

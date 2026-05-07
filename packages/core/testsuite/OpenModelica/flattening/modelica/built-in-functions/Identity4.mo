@@ -15,13 +15,27 @@ algorithm
 end Identity4;
 
 // Result:
-// Error processing file: Identity4.mo
-// Error: Failed to load package f (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class f not found in scope <top>.
-// Error: Error occurred while flattening model f
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class Identity4
+//   Integer o1[1,1];
+//   Integer o1[1,2];
+//   Integer o1[1,3];
+//   Integer o1[2,1];
+//   Integer o1[2,2];
+//   Integer o1[2,3];
+//   Integer o1[3,1];
+//   Integer o1[3,2];
+//   Integer o1[3,3];
+//   Integer o2[1,1];
+//   Integer o2[1,2];
+//   Integer o2[1,3];
+//   Integer o2[2,1];
+//   Integer o2[2,2];
+//   Integer o2[2,3];
+//   Integer o2[3,1];
+//   Integer o2[3,2];
+//   Integer o2[3,3];
+// algorithm
+//   o1 := {{1, 0, 0}, {0, 2, 0}, {0, 0, 3}};
+//   o2 := {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
+// end Identity4;
 // endResult

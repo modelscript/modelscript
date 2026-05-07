@@ -10,13 +10,10 @@ model A
 end A;
 
 // Result:
-// Error processing file: dim18.mo
-// Error: Failed to load package dim18 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class dim18 not found in scope <top>.
-// Error: Error occurred while flattening model dim18
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class A
+//   final parameter Integer m = 2;
+//   final parameter Integer n = 2;
+//   Real x[1];
+//   Real x[2];
+// end A;
 // endResult

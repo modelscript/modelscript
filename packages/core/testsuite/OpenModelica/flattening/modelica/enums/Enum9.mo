@@ -15,13 +15,9 @@ end EnumTest;
 
 
 // Result:
-// Error processing file: Enum9.mo
-// Error: Failed to load package Enumeration9 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class Enumeration9 not found in scope <top>.
-// Error: Error occurred while flattening model Enumeration9
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class EnumTest
+//   Integer a;
+// equation
+//   a = 2;
+// end EnumTest;
 // endResult

@@ -37,13 +37,12 @@ end Modification6;
 // Instantiating element: m3.Foo
 // Instantiating element: myFoo
 // Result:
-// Error processing file: Modification14.mo
-// Error: Failed to load package Modification14 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class Modification14 not found in scope <top>.
-// Error: Error occurred while flattening model Modification14
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class Modification6
+//   parameter Real m1.f.q = 4.0;
+//   parameter Real m1.f.z = 3.0;
+//   parameter Real m2.f.q = 4.0;
+//   parameter Real m2.f.z = 1.0;
+//   parameter Real m3.f.q = 2.0;
+//   parameter Real m3.f.z = 1.0;
+// end Modification6;
 // endResult

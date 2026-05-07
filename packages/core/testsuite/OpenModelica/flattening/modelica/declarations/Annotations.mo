@@ -22,13 +22,18 @@ equation
 end c;
 
 // Result:
-// Error processing file: Annotations.mo
-// Error: Failed to load package Annotations (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class Annotations not found in scope <top>.
-// Error: Error occurred while flattening model Annotations
+// function f "Some comment"
+//   input Real x "comment";
+//   output Real y;
+// algorithm
+//   y := x;
+// end f;
 //
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class c
+//   Real x "x";
+// equation
+//   x = f(time);
+// end c;
+// [<interactive>:18:3-18:37:writable] Warning: Components are deprecated in class.
+// [<interactive>:20:3-20:14:writable] Warning: Equation sections are deprecated in class.
 // endResult

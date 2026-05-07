@@ -50,13 +50,19 @@ end fCall;
 //   (x[1],x[2],x[3]) = (3.0,4.0,12.0);
 // end fCall;
 // Result:
-// Error processing file: FuncMultResults.mo
-// Error: Failed to load package FuncMultResults (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class FuncMultResults not found in scope <top>.
-// Error: Error occurred while flattening model FuncMultResults
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class fCall
+//   Real x[1];
+//   Real x[2];
+//   Real x[3];
+//   Real a;
+//   Real b;
+//   Real c;
+// equation
+//   a = 1.0;
+//   b = 2.0;
+//   c = 2.0;
+//   x[1] = 3.0;
+//   x[2] = 4.0;
+//   x[3] = 12.0;
+// end fCall;
 // endResult

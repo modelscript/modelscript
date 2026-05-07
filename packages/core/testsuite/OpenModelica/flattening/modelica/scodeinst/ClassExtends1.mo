@@ -24,12 +24,10 @@ model ClassExtends1
 end ClassExtends1;
 
 // Result:
-// Error processing file: ClassExtends1.mo
-// Error: Class ClassExtends1.mo not found in scope <top>.
-// Error: Error occurred while flattening model ClassExtends1.mo
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class ClassExtends1
+//   Real b.x = 1.0;
+//   Real b.y = 2.0;
+//   Real b2.x = 1.0;
+//   Real b2.y = 2.0;
+// end ClassExtends1;
 // endResult

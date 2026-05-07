@@ -11,13 +11,14 @@ model A
 end A;
 
 // Result:
-// Error processing file: loop3.mo
-// Error: Failed to load package loop3 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class loop3.mo not found in scope <top>.
-// Error: Error occurred while flattening model loop3.mo
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class A
+//   parameter Integer n = 2;
+//   parameter Real x[1,1] = 0.0;
+//   parameter Real x[1,2] = 0.0;
+//   parameter Real x[1,3] = 0.0;
+//   parameter Real x[2,1] = 0.0;
+//   parameter Real x[2,2] = 0.0;
+//   parameter Real x[2,3] = 0.0;
+//   parameter Integer i = size(x, n);
+// end A;
 // endResult

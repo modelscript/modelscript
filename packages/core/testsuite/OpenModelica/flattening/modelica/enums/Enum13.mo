@@ -16,13 +16,7 @@ model topModel
 end topModel;
 
 // Result:
-// Error processing file: Enum13.mo
-// Error: Failed to load package Enum13 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class Enum13 not found in scope <top>.
-// Error: Error occurred while flattening model Enum13
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class topModel
+//   parameter enumeration(e1, e2, e3) m.param1 = modelInner.typeA.e2;
+// end topModel;
 // endResult

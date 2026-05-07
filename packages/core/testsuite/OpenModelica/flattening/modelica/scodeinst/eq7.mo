@@ -13,13 +13,16 @@ model B
   A a[3](x = {1, 2, 3});
 end B;
 // Result:
-// Error processing file: eq7.mo
-// Error: Failed to load package eq7 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class eq7.mo not found in scope <top>.
-// Error: Error occurred while flattening model eq7.mo
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class B
+//   Real a[1].x = 1.0;
+//   Real a[1].y;
+//   Real a[2].x = 2.0;
+//   Real a[2].y;
+//   Real a[3].x = 3.0;
+//   Real a[3].y;
+// equation
+//   a[1].y = a[1].x;
+//   a[2].y = a[2].x;
+//   a[3].y = a[3].x;
+// end B;
 // endResult

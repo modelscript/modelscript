@@ -34,13 +34,9 @@ equation
 value = getData(0);
 end MissingCast;
 // Result:
-// Error processing file: IntegerRealCast.mo
-// Error: Failed to load package getData (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class getData not found in scope <top>.
-// Error: Error occurred while flattening model getData
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class MissingCast
+//   Real value;
+// equation
+//   value = 10.0;
+// end MissingCast;
 // endResult

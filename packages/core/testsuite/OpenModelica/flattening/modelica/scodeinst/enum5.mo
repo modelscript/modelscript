@@ -26,13 +26,12 @@ model M
 end M;
 
 // Result:
-// Error processing file: enum5.mo
-// Error: Failed to load package enum5 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class enum5.mo not found in scope <top>.
-// Error: Error occurred while flattening model enum5.mo
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class M
+//   enumeration(one, two, three) e = E.one;
+//   enumeration(one, two, three) me = E.two;
+//   enumeration(one, two, three) pe = E.three;
+//   enumeration(one, two, three) m2.m2e(start = E.two) = E.one;
+//   enumeration(one, two, three) m2.m2e2(start = E.two) = E.two;
+//   enumeration(one, two, three) m2.e = m2.m2e;
+// end M;
 // endResult

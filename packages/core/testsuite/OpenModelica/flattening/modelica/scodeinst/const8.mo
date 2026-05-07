@@ -17,13 +17,14 @@ model M2
 end M2;
 
 // Result:
-// Error processing file: const8.mo
-// Error: Failed to load package const8 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class const8.mo not found in scope <top>.
-// Error: Error occurred while flattening model const8.mo
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class M2
+//   parameter Real A[1,1] = 1.0;
+//   parameter Real A[1,2] = 1.0;
+//   parameter Real A[1,3] = 1.0;
+//   parameter Real A[2,1] = 1.0;
+//   parameter Real A[2,2] = 1.0;
+//   parameter Real A[2,3] = 1.0;
+//   parameter Integer j = size(A, i);
+//   parameter Integer i = 2;
+// end M2;
 // endResult

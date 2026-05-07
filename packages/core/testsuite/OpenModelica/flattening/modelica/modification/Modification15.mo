@@ -24,9 +24,10 @@ end C3;
 
 // Result:
 // Error processing file: Modification15.mo
-// Error: Failed to load package Modification15 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class Modification15 not found in scope <top>.
-// Error: Error occurred while flattening model Modification15
+// [<interactive>:14:5-14:11:writable] Warning: Components are deprecated in class.
+// [<interactive>:22:40-22:48:writable] Notification: From here:
+// [<interactive>:22:10-22:20:writable] Error: Duplicate modification of element unit on component c.
+// Error: Error occurred while flattening model C3
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

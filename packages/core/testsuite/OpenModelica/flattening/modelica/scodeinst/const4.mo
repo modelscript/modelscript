@@ -14,13 +14,12 @@ model A
 end A;
 
 // Result:
-// Error processing file: const4.mo
-// Error: Failed to load package const4 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class const4.mo not found in scope <top>.
-// Error: Error occurred while flattening model const4.mo
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class A
+//   constant Real p[1].i = 1.0;
+//   constant Real p[2].i = 2.0;
+//   Real x[1];
+//   Real x[2];
+// equation
+//   x = {1.0, 2.0};
+// end A;
 // endResult

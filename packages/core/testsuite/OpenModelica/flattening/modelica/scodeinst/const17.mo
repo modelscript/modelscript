@@ -21,13 +21,7 @@ model M
 end M;
 
 // Result:
-// Error processing file: const17.mo
-// Error: Failed to load package const17 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class const17.mo not found in scope <top>.
-// Error: Error occurred while flattening model const17.mo
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class M
+//   Real x = 2.0;
+// end M;
 // endResult

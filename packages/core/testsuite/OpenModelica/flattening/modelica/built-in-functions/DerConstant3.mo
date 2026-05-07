@@ -11,9 +11,10 @@ class A
 end A;
 // Result:
 // Error processing file: DerConstant3.mo
-// Error: Failed to load package DerConstant3 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class DerConstant3 not found in scope <top>.
-// Error: Error occurred while flattening model DerConstant3
+// [<interactive>:9:3-9:26:writable] Warning: Components are deprecated in class.
+// [<interactive>:10:3-10:19:writable] Warning: Components are deprecated in class.
+// [<interactive>:10:3-10:19:writable] Error: Argument 'pa' of der is not differentiable.
+// Error: Error occurred while flattening model A
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

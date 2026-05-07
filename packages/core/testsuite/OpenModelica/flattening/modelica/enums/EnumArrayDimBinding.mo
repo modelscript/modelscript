@@ -13,13 +13,11 @@ model EnumerationArrayDimBinding
 end EnumerationArrayDimBinding;
 
 // Result:
-// Error processing file: EnumArrayDimBinding.mo
-// Error: Failed to load package Enumeration1 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class Enumeration1 not found in scope <top>.
-// Error: Error occurred while flattening model Enumeration1
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class EnumerationArrayDimBinding
+//   Real x[E.A];
+//   Real x[E.B];
+//   Real x[E.C];
+// equation
+//   x = {1.0, 2.0, 3.0};
+// end EnumerationArrayDimBinding;
 // endResult

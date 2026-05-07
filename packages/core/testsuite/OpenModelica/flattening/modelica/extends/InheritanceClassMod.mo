@@ -14,13 +14,7 @@ class B
 end B;
 
 // Result:
-// Error processing file: InheritanceClassMod.mo
-// Error: Failed to load package InheritanceClassMod (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class InheritanceClassMod not found in scope <top>.
-// Error: Error occurred while flattening model InheritanceClassMod
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class B
+//   parameter Real a = 2.0;
+// end B;
 // endResult

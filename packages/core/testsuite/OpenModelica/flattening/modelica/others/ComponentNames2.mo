@@ -16,13 +16,7 @@ model ComponentNames
 end ComponentNames;
 
 // Result:
-// Error processing file: ComponentNames2.mo
-// Error: Failed to load package ComponentNames2 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class ComponentNames2 not found in scope <top>.
-// Error: Error occurred while flattening model ComponentNames2
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class ComponentNames
+//   Real R.x;
+// end ComponentNames;
 // endResult

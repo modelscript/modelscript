@@ -23,13 +23,9 @@ model C
 end C;
 
 // Result:
-// Error processing file: mod4.mo
-// Error: Failed to load package mod4 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class mod4.mo not found in scope <top>.
-// Error: Error occurred while flattening model mod4.mo
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class C
+//   Real b.y = 2.0;
+//   Real b.a.x = 1.0;
+//   Real b.a.m.z = 3.0;
+// end C;
 // endResult

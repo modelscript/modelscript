@@ -33,13 +33,30 @@ equation
 end Test;
 
 // Result:
-// Error processing file: Simplify2.mo
-// Error: Failed to load package Simplify2 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class Simplify2 not found in scope <top>.
-// Error: Error occurred while flattening model Simplify2
+// function dfoo
+//   input Real[3] x;
+//   output Real[3] y;
+// algorithm
+//   y := x;
+// end dfoo;
 //
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
+// function foo
+//   input Real[3] x;
+//   output Real[3] y;
+// algorithm
+//   y := x;
+// end foo;
 //
-// Execution failed!
+// class Test
+//   Real x(start = 0.0);
+//   parameter Real x_end = 5.0;
+//   Real m[1];
+//   Real m[2];
+//   Real m[3];
+// equation
+//   m[1] = x + 1.0;
+//   m[3] = x + 2.0;
+//   4.0 = der(foo(m) * {0.0, 1.0, 0.0} + x);
+//   der(x) + x = x_end;
+// end Test;
 // endResult

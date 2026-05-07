@@ -21,9 +21,12 @@ end AddSub;
 
 // Result:
 // Error processing file: ArrayAddSub.mo
-// Error: Failed to load package ArrayAddSub (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class ArrayAddSub not found in scope <top>.
-// Error: Error occurred while flattening model ArrayAddSub
+// [<interactive>:9:3-9:28:writable] Warning: Components are deprecated in class.
+// [<interactive>:10:3-10:33:writable] Warning: Components are deprecated in class.
+// [<interactive>:12:3-12:56:writable] Warning: Components are deprecated in class.
+// [<interactive>:15:3-15:39:writable] Warning: Components are deprecated in class.
+// [<interactive>:9:3-9:28:writable] Error: Cannot resolve type of expression {1, 2, 3} + 1. The operands have types Integer[3], Integer in component <NO_COMPONENT>.
+// Error: Error occurred while flattening model AddSub
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

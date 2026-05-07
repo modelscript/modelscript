@@ -46,13 +46,7 @@ model C
 end C;
 
 // Result:
-// Error processing file: ClassExtends6.mo
-// Error: Failed to load package ClassExtends6 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class ClassExtends6 not found in scope <top>.
-// Error: Error occurred while flattening model ClassExtends6
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class C
+//   Integer b = 102;
+// end C;
 // endResult

@@ -20,12 +20,17 @@ algorithm
 end f;
 
 // Result:
-// Error processing file: DocString.mo
-// Error: Class DocString.mo not found in scope <top>.
-// Error: Error occurred while flattening model DocString.mo
+// function f "Function f"
+//   input Real x "input Real named x";
+//   output Real y "output Real named y";
+// algorithm
+//   y := x + 2.0 "the result is 2 added to x";
+// end f;
 //
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class DocString "DocString"
+//   Real x = 2.0 "Real named x";
+//   Real y "Real named y";
+// equation
+//   y = f(x) "y is the value of the function f of x";
+// end DocString;
 // endResult

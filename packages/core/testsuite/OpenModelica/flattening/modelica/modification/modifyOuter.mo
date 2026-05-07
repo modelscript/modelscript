@@ -37,9 +37,8 @@ end inn;
 
 // Result:
 // Error processing file: modifyOuter.mo
-// Error: Failed to load package modifyOuter (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class modifyOuter not found in scope <top>.
-// Error: Error occurred while flattening model modifyOuter
+// [<interactive>:15:2-15:19:writable] Error: Modifier '(i = 3)' found on outer element ip.
+// Error: Error occurred while flattening model inn
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

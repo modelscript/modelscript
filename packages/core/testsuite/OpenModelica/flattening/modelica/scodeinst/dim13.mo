@@ -14,13 +14,10 @@ model B
 end B;
 
 // Result:
-// Error processing file: dim13.mo
-// Error: Failed to load package dim13 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class dim13 not found in scope <top>.
-// Error: Error occurred while flattening model dim13
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class B
+//   final parameter Integer n = 3;
+//   parameter Real x[1] = 1.0;
+//   parameter Real x[2] = 1.0;
+//   parameter Real x[3] = 1.0;
+// end B;
 // endResult

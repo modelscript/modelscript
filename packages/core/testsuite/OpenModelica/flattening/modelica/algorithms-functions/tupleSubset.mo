@@ -26,13 +26,25 @@ equation
  y = fooTuple(der(xvar));
 end mo;
 // Result:
-// Error processing file: tupleSubset.mo
-// Error: Failed to load package tupleSubset (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class tupleSubset not found in scope <top>.
-// Error: Error occurred while flattening model tupleSubset
+// function fooTuple
+//   input Real x;
+//   output Real y;
+//   output Real y2;
+//   output Real y3;
+// algorithm
+//   y := x * 2.0;
+//   y2 := y * 2.0;
+//   y3 := y2 * 2.0;
+// end fooTuple;
 //
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class mo
+//   Real x;
+//   Real y;
+//   Real z;
+//   Real xvar(start = 100.0);
+// equation
+//   xvar = der(xvar);
+//   (x, z) = fooTuple(xvar);
+//   y = fooTuple(der(xvar))[1];
+// end mo;
 // endResult

@@ -27,9 +27,12 @@ end M;
 
 // Result:
 // Error processing file: Ticket4786.mo
-// Error: Failed to load package wrongType (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class wrongType not found in scope <top>.
-// Error: Error occurred while flattening model wrongType
+// [<interactive>:16:1-22:14:writable] Warning: Pure function 'M.wrongType' contains a call to impure function 'print'.
+// [<interactive>:25:3-25:29:writable] Error: Type mismatch for positional argument 2 in M.f(func=M.wrongType). The argument has type:
+//   M.wrongType<function>(Integer i, Integer i2) => ()
+// expected type:
+//   func<function>(String s) => ()
+// Error: Error occurred while flattening model M
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

@@ -52,13 +52,39 @@ end WatchDogSystem2;
 
 
 // Result:
-// Error processing file: WatchDog2EquationWhen.mo
-// Error: Failed to load package WatchDog2EquationWhen (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class WatchDog2EquationWhen not found in scope <top>.
-// Error: Error occurred while flattening model WatchDog2EquationWhen
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class WatchDogSystem2
+//   parameter Real turnOn.eventTime = 1.0;
+//   discrete Boolean turnOn.dOutput.signal;
+//   parameter Real turnOff.eventTime = 0.25;
+//   discrete Boolean turnOff.dOutput.signal;
+//   parameter Real deadlineEmitter.eventTime = 1.5;
+//   discrete Boolean deadlineEmitter.dOutput.signal;
+//   discrete Boolean watchdog.dOn.signal;
+//   discrete Boolean watchdog.dOff.signal;
+//   discrete Boolean watchdog.dDeadline.signal;
+//   discrete Boolean watchdog.dAlarm.signal;
+//   Real watchdog.internalTime1;
+//   Real watchdog.internalTime2;
+// equation
+//   turnOn.dOutput.signal = watchdog.dOn.signal;
+//   turnOff.dOutput.signal = watchdog.dOff.signal;
+//   deadlineEmitter.dOutput.signal = watchdog.dDeadline.signal;
+//   turnOn.dOutput.signal = time > turnOn.eventTime;
+//   turnOff.dOutput.signal = time > turnOff.eventTime;
+//   deadlineEmitter.dOutput.signal = time > deadlineEmitter.eventTime;
+//   when change(watchdog.dOn.signal) then
+//     watchdog.internalTime1 = time;
+//   end when;
+//   when change(watchdog.dOff.signal) then
+//     watchdog.internalTime2 = time;
+//   end when;
+//   when change(watchdog.dDeadline.signal) and time > watchdog.internalTime1 and watchdog.internalTime1 > watchdog.internalTime2 then
+//     watchdog.dAlarm.signal = true;
+//   end when;
+// end WatchDogSystem2;
+// [<interactive>:15:3-15:20:writable] Warning: Connector dOutput is not balanced: The number of potential variables (1) is not equal to the number of flow variables (0).
+// [<interactive>:21:4-21:17:writable] Warning: Connector dOn is not balanced: The number of potential variables (1) is not equal to the number of flow variables (0).
+// [<interactive>:22:4-22:18:writable] Warning: Connector dOff is not balanced: The number of potential variables (1) is not equal to the number of flow variables (0).
+// [<interactive>:23:4-23:23:writable] Warning: Connector dDeadline is not balanced: The number of potential variables (1) is not equal to the number of flow variables (0).
+// [<interactive>:24:4-24:20:writable] Warning: Connector dAlarm is not balanced: The number of potential variables (1) is not equal to the number of flow variables (0).
 // endResult

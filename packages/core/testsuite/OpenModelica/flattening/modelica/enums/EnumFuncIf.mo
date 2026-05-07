@@ -22,13 +22,21 @@ equation
 end EnumFuncIf;
 
 // Result:
-// Error processing file: EnumFuncIf.mo
-// Error: Failed to load package EnumRange (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class EnumRange not found in scope <top>.
-// Error: Error occurred while flattening model EnumRange
+// function f
+//   input Real x;
+//   output Boolean out;
+// algorithm
+// end f;
 //
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class EnumFuncIf
+//   Real x[E.A];
+//   Real x[E.B];
+//   Real x[E.C];
+//   Real y;
+// equation
+//   x[E.A] = if f(y) then 0.0 else x[E.A] / y;
+//   x[E.B] = if f(y) then 0.0 else x[E.B] / y;
+//   x[E.C] = if f(y) then 0.0 else x[E.C] / y;
+// end EnumFuncIf;
+// [<interactive>:11:3-11:21:writable] Warning: Output parameter out was not assigned a value
 // endResult

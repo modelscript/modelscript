@@ -14,9 +14,11 @@ end Abs;
 
 // Result:
 // Error processing file: Abs2.mo
-// Error: Failed to load package Abs2 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class Abs2 not found in scope <top>.
-// Error: Error occurred while flattening model Abs2
+// [<interactive>:12:3-12:11:writable] Error: No matching function found for abs(/*Boolean*/ b).
+// Candidates are:
+//   abs(Integer v) => Integer
+//   abs(Real v) => Real
+// Error: Error occurred while flattening model Abs
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

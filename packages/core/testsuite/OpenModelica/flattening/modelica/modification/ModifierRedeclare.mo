@@ -22,13 +22,10 @@ class D
 end D;
 
 // Result:
-// Error processing file: ModifierRedeclare.mo
-// Error: Failed to load package ModifierRedeclare (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class ModifierRedeclare not found in scope <top>.
-// Error: Error occurred while flattening model ModifierRedeclare
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class D
+//   parameter Real a.x = 1.0;
+//   parameter Real a.y = 2.0;
+// end D;
+// [<interactive>:9:3-9:19:writable] Warning: Components are deprecated in class.
+// [<interactive>:13:3-13:29:writable] Warning: Components are deprecated in class.
 // endResult

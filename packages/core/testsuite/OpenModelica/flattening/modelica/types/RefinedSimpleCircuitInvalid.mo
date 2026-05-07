@@ -93,9 +93,8 @@
 
 // Result:
 // Error processing file: RefinedSimpleCircuitInvalid.mo
-// Error: Failed to load package RefinedSimpleCircuitInvalid (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class RefinedSimpleCircuitInvalid not found in scope <top>.
-// Error: Error occurred while flattening model RefinedSimpleCircuitInvalid
+// [<interactive>:64:5-64:17:writable] Error: Variable i not found in scope Capacitor.
+// Error: Error occurred while flattening model RefinedSimpleCircuit
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

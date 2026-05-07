@@ -15,13 +15,9 @@ class C2
 end C2;
 
 // Result:
-// Error processing file: SimpleInheritance.mo
-// Error: Failed to load package SimpleInheritance (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class SimpleInheritance not found in scope <top>.
-// Error: Error occurred while flattening model SimpleInheritance
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class C2
+//   Integer i1;
+//   Integer i2;
+// end C2;
+// [<interactive>:14:3-14:13:writable] Warning: Components are deprecated in class.
 // endResult

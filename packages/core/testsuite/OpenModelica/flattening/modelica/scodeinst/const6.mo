@@ -13,9 +13,8 @@ end M;
 
 // Result:
 // Error processing file: const6.mo
-// Error: Failed to load package const6 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class const6.mo not found in scope <top>.
-// Error: Error occurred while flattening model const6.mo
+// [<interactive>:10:3-10:25:writable] Error: Component j of variability constant has binding 'x' of higher variability parameter.
+// Error: Error occurred while flattening model M
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

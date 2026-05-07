@@ -30,13 +30,27 @@ end WhenStat3;
 
 
 // Result:
-// Error processing file: WhenStatement3.mo
-// Error: Failed to load package WhenStatement3 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class WhenStatement3 not found in scope <top>.
-// Error: Error occurred while flattening model WhenStatement3
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class WhenStat3
+//   Real x(start = 1.0);
+//   Real y1;
+//   Real y2;
+//   Real y3;
+// equation
+//   der(x) = 2.0 * x;
+//   y2 = sin(y1);
+// algorithm
+//   when x > 2.0 then
+//     y1 := sin(x);
+//   end when;
+// algorithm
+//   when x > 2.0 then
+//     y3 := 2.0 * x + pre(y1) + y2;
+//   end when;
+// end WhenStat3;
+// [<interactive>:9:3-9:20:writable] Warning: Components are deprecated in class.
+// [<interactive>:10:3-10:10:writable] Warning: Components are deprecated in class.
+// [<interactive>:11:3-11:10:writable] Warning: Components are deprecated in class.
+// [<interactive>:12:3-12:10:writable] Warning: Components are deprecated in class.
+// [<interactive>:28:3-28:15:writable] Warning: Equation sections are deprecated in class.
+// [<interactive>:15:3-17:11:writable] Warning: Algorithm sections are deprecated in class.
 // endResult

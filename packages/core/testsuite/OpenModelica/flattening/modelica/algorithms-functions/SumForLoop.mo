@@ -18,13 +18,18 @@ algorithm
 end SumZ;
 
 // Result:
-// Error processing file: SumForLoop.mo
-// Error: Failed to load package SumForLoop (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class SumForLoop not found in scope <top>.
-// Error: Error occurred while flattening model SumForLoop
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class SumZ
+//   final parameter Integer n = 5;
+//   parameter Real z[1] = 10.0;
+//   parameter Real z[2] = 20.0;
+//   parameter Real z[3] = 30.0;
+//   parameter Real z[4] = 40.0;
+//   parameter Real z[5] = 50.0;
+//   Real sum(start = 0.0);
+// algorithm
+//   sum := 0.0;
+//   for i in 1:5 loop
+//     sum := sum + z[i];
+//   end for;
+// end SumZ;
 // endResult

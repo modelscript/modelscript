@@ -15,9 +15,11 @@ end SeveralArguments;
 
 // Result:
 // Error processing file: VectorizeSeveralArguments.mo
-// Error: Failed to load package VectorizeSeveralArguments (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class VectorizeSeveralArguments not found in scope <top>.
-// Error: Error occurred while flattening model VectorizeSeveralArguments
+// [<interactive>:9:3-9:48:writable] Warning: Components are deprecated in class.
+// [<interactive>:10:3-10:43:writable] Warning: Components are deprecated in class.
+// [<interactive>:12:3-12:46:writable] Warning: Components are deprecated in class.
+// [<interactive>:12:3-12:46:writable] Error: Function atan2Add not found in scope SeveralArguments.
+// Error: Error occurred while flattening model SeveralArguments
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

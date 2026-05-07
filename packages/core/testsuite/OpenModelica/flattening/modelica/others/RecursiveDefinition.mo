@@ -16,9 +16,10 @@ end A;
 
 // Result:
 // Error processing file: RecursiveDefinition.mo
-// Error: Failed to load package RecursiveDefinition (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class RecursiveDefinition not found in scope <top>.
-// Error: Error occurred while flattening model RecursiveDefinition
+// [<interactive>:6:3-6:30:writable] Warning: Components are deprecated in class.
+// [<interactive>:7:3-7:38:writable] Warning: Components are deprecated in class.
+// [<interactive>:7:3-7:38:writable] Error: Function q not found in scope IfExpCombiTable1.
+// Error: Error occurred while flattening model A
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

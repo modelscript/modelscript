@@ -2555,13 +2555,1617 @@ model BoreholeSegment
 end BoreholeSegment;
 
 // Result:
-// Error processing file: AttributesPropagation.mo
-// Error: Failed to load package AttributesPropagation (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class AttributesPropagation.mo not found in scope <top>.
-// Error: Error occurred while flattening model AttributesPropagation.mo
+// function BoreholeSegment.seg.Medium1.ThermodynamicState "Automatically generated record constructor for BoreholeSegment.seg.Medium1.ThermodynamicState"
+//   input Real p;
+//   input Real T;
+//   output ThermodynamicState res;
+// end BoreholeSegment.seg.Medium1.ThermodynamicState;
 //
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
+// function BoreholeSegment.seg.Medium1.setState_phX
+//   input Real p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 1e5, nominal = 1e5);
+//   input Real h(quantity = "SpecificEnergy", unit = "J/kg", min = -1e10, max = 1e10, nominal = 1e6);
+//   input Real[:] X(quantity = fill("MassFraction", size(X, 1)), unit = fill("kg/kg", size(X, 1)), min = fill(0.0, size(X, 1)), max = fill(1.0, size(X, 1)), nominal = fill(0.1, size(X, 1))) = {1.0};
+//   output BoreholeSegment.seg.Medium1.ThermodynamicState state;
+// algorithm
+//   state := BoreholeSegment.seg.Medium1.ThermodynamicState(p, BoreholeSegment.seg.Medium1.temperature_phX(p, h, X));
+// end BoreholeSegment.seg.Medium1.setState_phX;
 //
-// Execution failed!
+// function BoreholeSegment.seg.Medium1.temperature_phX
+//   input Real p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 1e5, nominal = 1e5);
+//   input Real h(quantity = "SpecificEnergy", unit = "J/kg", min = -1e10, max = 1e10, nominal = 1e6);
+//   input Real[1] X(quantity = {"MassFraction"}, unit = {"kg/kg"}, min = {0.0}, max = {1.0}, nominal = {0.1});
+//   output Real T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 300.0, nominal = 300.0);
+// algorithm
+//   T := 273.15 + h / 4184.0;
+// end BoreholeSegment.seg.Medium1.temperature_phX;
+//
+// function BoreholeSegment.seg.Medium2.ThermodynamicState "Automatically generated record constructor for BoreholeSegment.seg.Medium2.ThermodynamicState"
+//   input Real p;
+//   input Real T;
+//   output ThermodynamicState res;
+// end BoreholeSegment.seg.Medium2.ThermodynamicState;
+//
+// function BoreholeSegment.seg.Medium2.setState_phX
+//   input Real p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 1e5, nominal = 1e5);
+//   input Real h(quantity = "SpecificEnergy", unit = "J/kg", min = -1e10, max = 1e10, nominal = 1e6);
+//   input Real[:] X(quantity = fill("MassFraction", size(X, 1)), unit = fill("kg/kg", size(X, 1)), min = fill(0.0, size(X, 1)), max = fill(1.0, size(X, 1)), nominal = fill(0.1, size(X, 1))) = {1.0};
+//   output BoreholeSegment.seg.Medium2.ThermodynamicState state;
+// algorithm
+//   state := BoreholeSegment.seg.Medium2.ThermodynamicState(p, BoreholeSegment.seg.Medium2.temperature_phX(p, h, X));
+// end BoreholeSegment.seg.Medium2.setState_phX;
+//
+// function BoreholeSegment.seg.Medium2.temperature_phX
+//   input Real p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 1e5, nominal = 1e5);
+//   input Real h(quantity = "SpecificEnergy", unit = "J/kg", min = -1e10, max = 1e10, nominal = 1e6);
+//   input Real[1] X(quantity = {"MassFraction"}, unit = {"kg/kg"}, min = {0.0}, max = {1.0}, nominal = {0.1});
+//   output Real T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 300.0, nominal = 300.0);
+// algorithm
+//   T := 273.15 + h / 4184.0;
+// end BoreholeSegment.seg.Medium2.temperature_phX;
+//
+// function BoreholeSegment.seg.pipFil.Medium1.ThermodynamicState "Automatically generated record constructor for BoreholeSegment.seg.pipFil.Medium1.ThermodynamicState"
+//   input Real p;
+//   input Real T;
+//   output ThermodynamicState res;
+// end BoreholeSegment.seg.pipFil.Medium1.ThermodynamicState;
+//
+// function BoreholeSegment.seg.pipFil.Medium1.density
+//   input BoreholeSegment.seg.pipFil.Medium1.ThermodynamicState state;
+//   output Real d(quantity = "Density", unit = "kg/m3", displayUnit = "g/cm3", min = 0.0, max = 1e5, start = 1.0, nominal = 1.0);
+// algorithm
+//   d := 995.586;
+// end BoreholeSegment.seg.pipFil.Medium1.density;
+//
+// function BoreholeSegment.seg.pipFil.Medium1.setState_pTX
+//   input Real p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 1e5, nominal = 1e5);
+//   input Real T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 300.0, nominal = 300.0);
+//   input Real[:] X(quantity = fill("MassFraction", size(X, 1)), unit = fill("kg/kg", size(X, 1)), min = fill(0.0, size(X, 1)), max = fill(1.0, size(X, 1)), nominal = fill(0.1, size(X, 1))) = {1.0};
+//   output BoreholeSegment.seg.pipFil.Medium1.ThermodynamicState state;
+// algorithm
+//   state := BoreholeSegment.seg.pipFil.Medium1.ThermodynamicState(p, T);
+// end BoreholeSegment.seg.pipFil.Medium1.setState_pTX;
+//
+// function BoreholeSegment.seg.pipFil.Medium1.setState_phX
+//   input Real p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 1e5, nominal = 1e5);
+//   input Real h(quantity = "SpecificEnergy", unit = "J/kg", min = -1e10, max = 1e10, nominal = 1e6);
+//   input Real[:] X(quantity = fill("MassFraction", size(X, 1)), unit = fill("kg/kg", size(X, 1)), min = fill(0.0, size(X, 1)), max = fill(1.0, size(X, 1)), nominal = fill(0.1, size(X, 1))) = {1.0};
+//   output BoreholeSegment.seg.pipFil.Medium1.ThermodynamicState state;
+// algorithm
+//   state := BoreholeSegment.seg.pipFil.Medium1.ThermodynamicState(p, BoreholeSegment.seg.pipFil.Medium1.temperature_phX(p, h, X));
+// end BoreholeSegment.seg.pipFil.Medium1.setState_phX;
+//
+// function BoreholeSegment.seg.pipFil.Medium1.specificEnthalpy
+//   input BoreholeSegment.seg.pipFil.Medium1.ThermodynamicState state;
+//   output Real h(quantity = "SpecificEnergy", unit = "J/kg", min = -1e10, max = 1e10, nominal = 1e6);
+// algorithm
+//   h := 4184.0 * (state.T - 273.15);
+// end BoreholeSegment.seg.pipFil.Medium1.specificEnthalpy;
+//
+// function BoreholeSegment.seg.pipFil.Medium1.temperature_phX
+//   input Real p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 1e5, nominal = 1e5);
+//   input Real h(quantity = "SpecificEnergy", unit = "J/kg", min = -1e10, max = 1e10, nominal = 1e6);
+//   input Real[1] X(quantity = {"MassFraction"}, unit = {"kg/kg"}, min = {0.0}, max = {1.0}, nominal = {0.1});
+//   output Real T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 300.0, nominal = 300.0);
+// algorithm
+//   T := 273.15 + h / 4184.0;
+// end BoreholeSegment.seg.pipFil.Medium1.temperature_phX;
+//
+// function BoreholeSegment.seg.pipFil.Medium2.ThermodynamicState "Automatically generated record constructor for BoreholeSegment.seg.pipFil.Medium2.ThermodynamicState"
+//   input Real p;
+//   input Real T;
+//   output ThermodynamicState res;
+// end BoreholeSegment.seg.pipFil.Medium2.ThermodynamicState;
+//
+// function BoreholeSegment.seg.pipFil.Medium2.density
+//   input BoreholeSegment.seg.pipFil.Medium2.ThermodynamicState state;
+//   output Real d(quantity = "Density", unit = "kg/m3", displayUnit = "g/cm3", min = 0.0, max = 1e5, start = 1.0, nominal = 1.0);
+// algorithm
+//   d := 995.586;
+// end BoreholeSegment.seg.pipFil.Medium2.density;
+//
+// function BoreholeSegment.seg.pipFil.Medium2.setState_pTX
+//   input Real p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 1e5, nominal = 1e5);
+//   input Real T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 300.0, nominal = 300.0);
+//   input Real[:] X(quantity = fill("MassFraction", size(X, 1)), unit = fill("kg/kg", size(X, 1)), min = fill(0.0, size(X, 1)), max = fill(1.0, size(X, 1)), nominal = fill(0.1, size(X, 1))) = {1.0};
+//   output BoreholeSegment.seg.pipFil.Medium2.ThermodynamicState state;
+// algorithm
+//   state := BoreholeSegment.seg.pipFil.Medium2.ThermodynamicState(p, T);
+// end BoreholeSegment.seg.pipFil.Medium2.setState_pTX;
+//
+// function BoreholeSegment.seg.pipFil.Medium2.setState_phX
+//   input Real p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 1e5, nominal = 1e5);
+//   input Real h(quantity = "SpecificEnergy", unit = "J/kg", min = -1e10, max = 1e10, nominal = 1e6);
+//   input Real[:] X(quantity = fill("MassFraction", size(X, 1)), unit = fill("kg/kg", size(X, 1)), min = fill(0.0, size(X, 1)), max = fill(1.0, size(X, 1)), nominal = fill(0.1, size(X, 1))) = {1.0};
+//   output BoreholeSegment.seg.pipFil.Medium2.ThermodynamicState state;
+// algorithm
+//   state := BoreholeSegment.seg.pipFil.Medium2.ThermodynamicState(p, BoreholeSegment.seg.pipFil.Medium2.temperature_phX(p, h, X));
+// end BoreholeSegment.seg.pipFil.Medium2.setState_phX;
+//
+// function BoreholeSegment.seg.pipFil.Medium2.specificEnthalpy
+//   input BoreholeSegment.seg.pipFil.Medium2.ThermodynamicState state;
+//   output Real h(quantity = "SpecificEnergy", unit = "J/kg", min = -1e10, max = 1e10, nominal = 1e6);
+// algorithm
+//   h := 4184.0 * (state.T - 273.15);
+// end BoreholeSegment.seg.pipFil.Medium2.specificEnthalpy;
+//
+// function BoreholeSegment.seg.pipFil.Medium2.temperature_phX
+//   input Real p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 1e5, nominal = 1e5);
+//   input Real h(quantity = "SpecificEnergy", unit = "J/kg", min = -1e10, max = 1e10, nominal = 1e6);
+//   input Real[1] X(quantity = {"MassFraction"}, unit = {"kg/kg"}, min = {0.0}, max = {1.0}, nominal = {0.1});
+//   output Real T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 300.0, nominal = 300.0);
+// algorithm
+//   T := 273.15 + h / 4184.0;
+// end BoreholeSegment.seg.pipFil.Medium2.temperature_phX;
+//
+// function BoreholeSegment.seg.pipFil.vol1.Medium.ThermodynamicState "Automatically generated record constructor for BoreholeSegment.seg.pipFil.vol1.Medium.ThermodynamicState"
+//   input Real p;
+//   input Real T;
+//   output ThermodynamicState res;
+// end BoreholeSegment.seg.pipFil.vol1.Medium.ThermodynamicState;
+//
+// function BoreholeSegment.seg.pipFil.vol1.Medium.density
+//   input BoreholeSegment.seg.pipFil.vol1.Medium.ThermodynamicState state;
+//   output Real d(quantity = "Density", unit = "kg/m3", displayUnit = "g/cm3", min = 0.0, max = 1e5, start = 1.0, nominal = 1.0);
+// algorithm
+//   d := 995.586;
+// end BoreholeSegment.seg.pipFil.vol1.Medium.density;
+//
+// function BoreholeSegment.seg.pipFil.vol1.Medium.specificInternalEnergy
+//   input BoreholeSegment.seg.pipFil.vol1.Medium.ThermodynamicState state;
+//   output Real u(quantity = "SpecificEnergy", unit = "J/kg", min = -1e8, max = 1e8, nominal = 1e6);
+// algorithm
+//   u := 4184.0 * (state.T - 273.15);
+// end BoreholeSegment.seg.pipFil.vol1.Medium.specificInternalEnergy;
+//
+// function BoreholeSegment.seg.pipFil.vol1.Medium.temperature_phX
+//   input Real p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 1e5, nominal = 1e5);
+//   input Real h(quantity = "SpecificEnergy", unit = "J/kg", min = -1e10, max = 1e10, nominal = 1e6);
+//   input Real[1] X(quantity = {"MassFraction"}, unit = {"kg/kg"}, min = {0.0}, max = {1.0}, nominal = {0.1});
+//   output Real T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 300.0, nominal = 300.0);
+// algorithm
+//   T := 273.15 + h / 4184.0;
+// end BoreholeSegment.seg.pipFil.vol1.Medium.temperature_phX;
+//
+// function BoreholeSegment.seg.pipFil.vol1.dynBal.Medium.ThermodynamicState "Automatically generated record constructor for BoreholeSegment.seg.pipFil.vol1.dynBal.Medium.ThermodynamicState"
+//   input Real p;
+//   input Real T;
+//   output ThermodynamicState res;
+// end BoreholeSegment.seg.pipFil.vol1.dynBal.Medium.ThermodynamicState;
+//
+// function BoreholeSegment.seg.pipFil.vol1.dynBal.Medium.density
+//   input BoreholeSegment.seg.pipFil.vol1.dynBal.Medium.ThermodynamicState state;
+//   output Real d(quantity = "Density", unit = "kg/m3", displayUnit = "g/cm3", min = 0.0, max = 1e5, start = 1.0, nominal = 1.0);
+// algorithm
+//   d := 995.586;
+// end BoreholeSegment.seg.pipFil.vol1.dynBal.Medium.density;
+//
+// function BoreholeSegment.seg.pipFil.vol1.dynBal.Medium.setState_pTX
+//   input Real p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 1e5, nominal = 1e5);
+//   input Real T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 300.0, nominal = 300.0);
+//   input Real[:] X(quantity = fill("MassFraction", size(X, 1)), unit = fill("kg/kg", size(X, 1)), min = fill(0.0, size(X, 1)), max = fill(1.0, size(X, 1)), nominal = fill(0.1, size(X, 1))) = {1.0};
+//   output BoreholeSegment.seg.pipFil.vol1.dynBal.Medium.ThermodynamicState state;
+// algorithm
+//   state := BoreholeSegment.seg.pipFil.vol1.dynBal.Medium.ThermodynamicState(p, T);
+// end BoreholeSegment.seg.pipFil.vol1.dynBal.Medium.setState_pTX;
+//
+// function BoreholeSegment.seg.pipFil.vol1.dynBal.Medium.specificEnthalpy_pTX
+//   input Real p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 1e5, nominal = 1e5);
+//   input Real T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 300.0, nominal = 300.0);
+//   input Real[1] X(quantity = {"MassFraction"}, unit = {"kg/kg"}, min = {0.0}, max = {1.0}, nominal = {0.1});
+//   output Real h(quantity = "SpecificEnergy", unit = "J/kg", min = -1e10, max = 1e10, nominal = 1e6);
+// algorithm
+//   h := 4184.0 * (T - 273.15);
+// end BoreholeSegment.seg.pipFil.vol1.dynBal.Medium.specificEnthalpy_pTX;
+//
+// function BoreholeSegment.seg.pipFil.vol2.Medium.ThermodynamicState "Automatically generated record constructor for BoreholeSegment.seg.pipFil.vol2.Medium.ThermodynamicState"
+//   input Real p;
+//   input Real T;
+//   output ThermodynamicState res;
+// end BoreholeSegment.seg.pipFil.vol2.Medium.ThermodynamicState;
+//
+// function BoreholeSegment.seg.pipFil.vol2.Medium.density
+//   input BoreholeSegment.seg.pipFil.vol2.Medium.ThermodynamicState state;
+//   output Real d(quantity = "Density", unit = "kg/m3", displayUnit = "g/cm3", min = 0.0, max = 1e5, start = 1.0, nominal = 1.0);
+// algorithm
+//   d := 995.586;
+// end BoreholeSegment.seg.pipFil.vol2.Medium.density;
+//
+// function BoreholeSegment.seg.pipFil.vol2.Medium.specificInternalEnergy
+//   input BoreholeSegment.seg.pipFil.vol2.Medium.ThermodynamicState state;
+//   output Real u(quantity = "SpecificEnergy", unit = "J/kg", min = -1e8, max = 1e8, nominal = 1e6);
+// algorithm
+//   u := 4184.0 * (state.T - 273.15);
+// end BoreholeSegment.seg.pipFil.vol2.Medium.specificInternalEnergy;
+//
+// function BoreholeSegment.seg.pipFil.vol2.Medium.temperature_phX
+//   input Real p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 1e5, nominal = 1e5);
+//   input Real h(quantity = "SpecificEnergy", unit = "J/kg", min = -1e10, max = 1e10, nominal = 1e6);
+//   input Real[1] X(quantity = {"MassFraction"}, unit = {"kg/kg"}, min = {0.0}, max = {1.0}, nominal = {0.1});
+//   output Real T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 300.0, nominal = 300.0);
+// algorithm
+//   T := 273.15 + h / 4184.0;
+// end BoreholeSegment.seg.pipFil.vol2.Medium.temperature_phX;
+//
+// function BoreholeSegment.seg.pipFil.vol2.dynBal.Medium.ThermodynamicState "Automatically generated record constructor for BoreholeSegment.seg.pipFil.vol2.dynBal.Medium.ThermodynamicState"
+//   input Real p;
+//   input Real T;
+//   output ThermodynamicState res;
+// end BoreholeSegment.seg.pipFil.vol2.dynBal.Medium.ThermodynamicState;
+//
+// function BoreholeSegment.seg.pipFil.vol2.dynBal.Medium.density
+//   input BoreholeSegment.seg.pipFil.vol2.dynBal.Medium.ThermodynamicState state;
+//   output Real d(quantity = "Density", unit = "kg/m3", displayUnit = "g/cm3", min = 0.0, max = 1e5, start = 1.0, nominal = 1.0);
+// algorithm
+//   d := 995.586;
+// end BoreholeSegment.seg.pipFil.vol2.dynBal.Medium.density;
+//
+// function BoreholeSegment.seg.pipFil.vol2.dynBal.Medium.setState_pTX
+//   input Real p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 1e5, nominal = 1e5);
+//   input Real T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 300.0, nominal = 300.0);
+//   input Real[:] X(quantity = fill("MassFraction", size(X, 1)), unit = fill("kg/kg", size(X, 1)), min = fill(0.0, size(X, 1)), max = fill(1.0, size(X, 1)), nominal = fill(0.1, size(X, 1))) = {1.0};
+//   output BoreholeSegment.seg.pipFil.vol2.dynBal.Medium.ThermodynamicState state;
+// algorithm
+//   state := BoreholeSegment.seg.pipFil.vol2.dynBal.Medium.ThermodynamicState(p, T);
+// end BoreholeSegment.seg.pipFil.vol2.dynBal.Medium.setState_pTX;
+//
+// function BoreholeSegment.seg.pipFil.vol2.dynBal.Medium.specificEnthalpy_pTX
+//   input Real p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 1e5, nominal = 1e5);
+//   input Real T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 300.0, nominal = 300.0);
+//   input Real[1] X(quantity = {"MassFraction"}, unit = {"kg/kg"}, min = {0.0}, max = {1.0}, nominal = {0.1});
+//   output Real h(quantity = "SpecificEnergy", unit = "J/kg", min = -1e10, max = 1e10, nominal = 1e6);
+// algorithm
+//   h := 4184.0 * (T - 273.15);
+// end BoreholeSegment.seg.pipFil.vol2.dynBal.Medium.specificEnthalpy_pTX;
+//
+// function BoreholeSegment.sin_2.Medium.specificEnthalpy_pTX
+//   input Real p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 1e5, nominal = 1e5);
+//   input Real T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 300.0, nominal = 300.0);
+//   input Real[1] X(quantity = {"MassFraction"}, unit = {"kg/kg"}, min = {0.0}, max = {1.0}, nominal = {0.1});
+//   output Real h(quantity = "SpecificEnergy", unit = "J/kg", min = -1e10, max = 1e10, nominal = 1e6);
+// algorithm
+//   h := 4184.0 * (T - 273.15);
+// end BoreholeSegment.sin_2.Medium.specificEnthalpy_pTX;
+//
+// function BoreholeSegment.sou_1.Medium.specificEnthalpy_pTX
+//   input Real p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 1e5, nominal = 1e5);
+//   input Real T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 300.0, nominal = 300.0);
+//   input Real[1] X(quantity = {"MassFraction"}, unit = {"kg/kg"}, min = {0.0}, max = {1.0}, nominal = {0.1});
+//   output Real h(quantity = "SpecificEnergy", unit = "J/kg", min = -1e10, max = 1e10, nominal = 1e6);
+// algorithm
+//   h := 4184.0 * (T - 273.15);
+// end BoreholeSegment.sou_1.Medium.specificEnthalpy_pTX;
+//
+// function Buildings.Fluid.BaseClasses.FlowModels.basicFlowFunction_m_flow
+//   input Real m_flow(quantity = "MassFlowRate", unit = "kg/s");
+//   input Real k(unit = "");
+//   input Real m_flow_turbulent(quantity = "MassFlowRate", unit = "kg/s", min = 0.0);
+//   output Real dp(quantity = "Pressure", unit = "Pa", displayUnit = "Pa");
+//   protected Real kSquInv(unit = "1/(kg.m)");
+// algorithm
+//   kSquInv := 1.0 / k ^ 2.0;
+//   dp := Modelica.Fluid.Utilities.regSquare2(m_flow, m_flow_turbulent, kSquInv, kSquInv, false, 1.0);
+// end Buildings.Fluid.BaseClasses.FlowModels.basicFlowFunction_m_flow;
+//
+// impure function Buildings.Fluid.HeatExchangers.Boreholes.BaseClasses.ExtendableArray.constructor
+//   output Buildings.Fluid.HeatExchangers.Boreholes.BaseClasses.ExtendableArray table;
+//
+//   external "C" table = initArray();
+// end Buildings.Fluid.HeatExchangers.Boreholes.BaseClasses.ExtendableArray.constructor;
+//
+// impure function Buildings.Fluid.HeatExchangers.Boreholes.BaseClasses.ExtendableArray.destructor
+//   input Buildings.Fluid.HeatExchangers.Boreholes.BaseClasses.ExtendableArray table;
+//
+//   external "C" freeArray(table);
+// end Buildings.Fluid.HeatExchangers.Boreholes.BaseClasses.ExtendableArray.destructor;
+//
+// function Buildings.Fluid.HeatExchangers.Boreholes.BaseClasses.convectionResistance
+//   input Real hSeg(quantity = "Length", unit = "m", min = 0.0);
+//   input Real rTub(quantity = "Length", unit = "m", min = 0.0);
+//   input Real kMed(quantity = "ThermalConductivity", unit = "W/(m.K)");
+//   input Real mueMed(quantity = "DynamicViscosity", unit = "Pa.s", min = 0.0);
+//   input Real cpMed(quantity = "SpecificHeatCapacity", unit = "J/(kg.K)");
+//   input Real m_flow(quantity = "MassFlowRate", unit = "kg/s");
+//   input Real m_flow_nominal(quantity = "MassFlowRate", unit = "kg/s");
+//   output Real R(quantity = "ThermalResistance", unit = "K/W");
+//   protected Real h(quantity = "CoefficientOfHeatTransfer", unit = "W/(m2.K)");
+//   protected Real k(unit = "s/kg");
+// algorithm
+//   k := 2.0 / (mueMed * 3.141592653589793 * rTub);
+//   h := 0.023 * kMed * (cpMed * mueMed / kMed) ^ 0.35 / (2.0 * rTub) * Buildings.Utilities.Math.Functions.regNonZeroPower(m_flow * k, 0.8, 0.01 * m_flow_nominal * k);
+//   R := 1.0 / (6.283185307179586 * rTub * hSeg * h);
+// end Buildings.Fluid.HeatExchangers.Boreholes.BaseClasses.convectionResistance;
+//
+// impure function Buildings.Fluid.HeatExchangers.Boreholes.BaseClasses.exchangeValues
+//   input Buildings.Fluid.HeatExchangers.Boreholes.BaseClasses.ExtendableArray table;
+//   input Integer iX;
+//   input Real x;
+//   input Integer iY;
+//   output Real y;
+//
+//   external "C" y = exchangeValues(table, iX, x, iY);
+// end Buildings.Fluid.HeatExchangers.Boreholes.BaseClasses.exchangeValues;
+//
+// function Buildings.Fluid.HeatExchangers.Boreholes.BaseClasses.factorial
+//   input Integer j;
+//   output Integer f;
+// algorithm
+//   f := 1;
+//   for i in 1:j loop
+//     f := f * i;
+//   end for;
+// end Buildings.Fluid.HeatExchangers.Boreholes.BaseClasses.factorial;
+//
+// function Buildings.Fluid.HeatExchangers.Boreholes.BaseClasses.powerSeries
+//   input Real u;
+//   input Integer N;
+//   output Real W;
+// algorithm
+//   W := sum((-1.0) ^ /*Real*/(j + 1) * u ^ /*Real*/(j) / /*Real*/(j * Buildings.Fluid.HeatExchangers.Boreholes.BaseClasses.factorial(j)) for j in 1:N) - (0.5772 + log(u));
+// end Buildings.Fluid.HeatExchangers.Boreholes.BaseClasses.powerSeries;
+//
+// function Buildings.Fluid.HeatExchangers.Boreholes.BaseClasses.singleUTubeResistances
+//   input Real hSeg(quantity = "Length", unit = "m", min = 0.0);
+//   input Real rBor(quantity = "Length", unit = "m", min = 0.0);
+//   input Real rTub(quantity = "Length", unit = "m", min = 0.0);
+//   input Real eTub(quantity = "Length", unit = "m");
+//   input Real xC(quantity = "Length", unit = "m");
+//   input Real kSoi(quantity = "ThermalConductivity", unit = "W/(m.K)");
+//   input Real kFil(quantity = "ThermalConductivity", unit = "W/(m.K)");
+//   input Real kTub(quantity = "ThermalConductivity", unit = "W/(m.K)");
+//   output Real Rgb(quantity = "ThermalResistance", unit = "K/W");
+//   output Real Rgg(quantity = "ThermalResistance", unit = "K/W");
+//   output Real RCondGro(quantity = "ThermalResistance", unit = "K/W");
+//   output Real x;
+//   protected Boolean test = false;
+//   protected Real Rg(quantity = "ThermalResistance", unit = "K/W");
+//   protected Real Rar(quantity = "ThermalResistance", unit = "K/W");
+//   protected Real RCondPipe(quantity = "ThermalResistance", unit = "K/W");
+//   protected Real Rb;
+//   protected Real Ra;
+//   protected Real sigma;
+//   protected Real beta;
+//   protected Real R_1delta_LS;
+//   protected Real R_1delta_MP;
+//   protected Real Ra_LS;
+//   protected Integer i = 1;
+// algorithm
+//   RCondPipe := log((rTub + eTub) / rTub) / (6.283185307179586 * hSeg * kTub);
+//   sigma := (kFil - kSoi) / (kFil + kSoi);
+//   R_1delta_LS := 1.0 / (6.283185307179586 * kFil) * (log(rBor / (rTub + eTub)) + log(rBor / (2.0 * xC)) + sigma * log(rBor ^ 4.0 / (rBor ^ 4.0 - xC ^ 4.0)));
+//   R_1delta_MP := R_1delta_LS - 1.0 / (6.283185307179586 * kFil) * (rTub + eTub) ^ 2.0 / (4.0 * xC ^ 2.0) * (1.0 - sigma * 4.0 * xC ^ 4.0 / (rBor ^ 4.0 - xC ^ 4.0)) ^ 2.0 / ((1.0 + beta) / (1.0 - beta) + (rTub + eTub) ^ 2.0 / (4.0 * xC ^ 2.0) * (1.0 + sigma * 16.0 * xC ^ 4.0 * rBor ^ 4.0 / (rBor ^ 4.0 - xC ^ 4.0) ^ 2.0));
+//   Ra_LS := 1.0 / (3.141592653589793 * kFil) * (log(2.0 * xC / rTub) + sigma * log((rBor ^ 2.0 + xC ^ 2.0) / (rBor ^ 2.0 - xC ^ 2.0)));
+//   beta := 6.283185307179586 * kFil * RCondPipe;
+//   Rb := R_1delta_MP / 2.0;
+//   Ra := Ra_LS - 1.0 / (3.141592653589793 * kFil) * rTub ^ 2.0 / (4.0 * xC ^ 2.0) * (1.0 + sigma * 4.0 * rBor ^ 4.0 * xC ^ 2.0 / (rBor ^ 4.0 - xC ^ 4.0)) / ((1.0 + beta) / (1.0 - beta) - rTub ^ 2.0 / (4.0 * xC ^ 2.0) + sigma * 2.0 * rTub ^ 2.0 * rBor ^ 2.0 * (rBor ^ 4.0 + xC ^ 4.0) / (rBor ^ 4.0 - xC ^ 4.0) ^ 2.0);
+//   Rg := 2.0 * Rb / hSeg;
+//   Rar := Ra / hSeg;
+//   while test == false and i <= 15 loop
+//     x := log(sqrt(rBor ^ 2.0 + 2.0 * (rTub + eTub) ^ 2.0) / (2.0 * (rTub + eTub))) / log(rBor / (1.4142135623730951 * (rTub + eTub))) * /*Real*/(15 - i + 1) / 15.0;
+//     Rgb := (1.0 - x) * Rg;
+//     Rgg := 2.0 * Rgb * (Rar - 2.0 * x * Rg) / (2.0 * Rgb - Rar + 2.0 * x * Rg);
+//     test := 1.0 / Rgg + 0.5 / Rgb > 0.0;
+//     i := i + 1;
+//   end while;
+//   assert(test, "Maximum number of iterations exceeded. Check the borehole geometry.
+//                 The tubes may be too close to the borehole wall.
+//                 Input to the function
+//                 Buildings.Fluid.HeatExchangers.Boreholes.BaseClasses.singleUTubeResistances
+//                 is
+//                          hSeg = " + String(hSeg, 6, 0, true) + " m
+//                          rBor = " + String(rBor, 6, 0, true) + " m
+//                          rTub = " + String(rTub, 6, 0, true) + " m
+//                          eTub = " + String(eTub, 6, 0, true) + " m
+//                          xC   = " + String(xC, 6, 0, true) + " m
+//                          kSoi = " + String(kSoi, 6, 0, true) + " W/m/K
+//                          kFil = " + String(kFil, 6, 0, true) + " W/m/K
+//                          kTub = " + String(kTub, 6, 0, true) + " W/m/K
+//                 Computed x    = " + String(x, 6, 0, true) + " K/W
+//                          Rgb  = " + String(Rgb, 6, 0, true) + " K/W
+//                          Rgg  = " + String(Rgg, 6, 0, true) + " K/W");
+//   RCondGro := x * Rg + RCondPipe;
+// end Buildings.Fluid.HeatExchangers.Boreholes.BaseClasses.singleUTubeResistances;
+//
+// impure function Buildings.Fluid.HeatExchangers.Boreholes.BaseClasses.temperatureDrop
+//   input Buildings.Fluid.HeatExchangers.Boreholes.BaseClasses.ExtendableArray table;
+//   input Integer iSam(min = 1);
+//   input Real Q_flow(quantity = "Power", unit = "W");
+//   input Real samplePeriod(quantity = "Time", unit = "s");
+//   input Real rExt(quantity = "Length", unit = "m", min = 0.0);
+//   input Real hSeg(quantity = "Length", unit = "m", min = 0.0);
+//   input Real k(quantity = "ThermalConductivity", unit = "W/(m.K)");
+//   input Real d(quantity = "Density", unit = "kg/m3", displayUnit = "g/cm3", min = 0.0);
+//   input Real c(quantity = "SpecificHeatCapacity", unit = "J/(kg.K)");
+//   output Real dT(quantity = "ThermodynamicTemperature", unit = "K");
+//   protected Real minSamplePeriod(quantity = "Time", unit = "s") = rExt ^ 2.0 / (4.0 * k / c / d * 3.8);
+//   protected Real QL_flow(quantity = "Power", unit = "W");
+//   protected Real QU_flow(quantity = "Power", unit = "W");
+// algorithm
+//   assert(rExt * rExt / (4.0 * k / c / d * samplePeriod) <= 3.8, "The samplePeriod has to be bigger than " + String(minSamplePeriod, 6, 0, true) + " for convergence purpose.
+//                 samplePeriod = " + String(samplePeriod, 6, 0, true));
+//   if iSam == 1 then
+//     dT := 0.0;
+//     QL_flow := Buildings.Fluid.HeatExchangers.Boreholes.BaseClasses.exchangeValues(table, iSam, Q_flow, iSam);
+//   else
+//     dT := 0.0;
+//     for i in 1:iSam - 1 loop
+//       QL_flow := Buildings.Fluid.HeatExchangers.Boreholes.BaseClasses.exchangeValues(table, iSam, Q_flow, iSam + 1 - i);
+//       QU_flow := Buildings.Fluid.HeatExchangers.Boreholes.BaseClasses.exchangeValues(table, iSam, Q_flow, iSam - i);
+//       dT := dT + 1.0 / (12.566370614359172 * k) * Buildings.Fluid.HeatExchangers.Boreholes.BaseClasses.powerSeries(c * d / (4.0 * k * /*Real*/(i) * samplePeriod) * rExt ^ 2.0, 10) * (QL_flow - QU_flow) / hSeg;
+//     end for;
+//   end if;
+// end Buildings.Fluid.HeatExchangers.Boreholes.BaseClasses.temperatureDrop;
+//
+// function Buildings.Utilities.Math.Functions.regNonZeroPower
+//   input Real x;
+//   input Real n;
+//   input Real delta = 0.01;
+//   output Real y;
+//   protected Real a1;
+//   protected Real a3;
+//   protected Real a5;
+//   protected Real delta2;
+//   protected Real x2;
+//   protected Real y_d;
+//   protected Real yP_d;
+//   protected Real yPP_d;
+// algorithm
+//   if abs(x) > delta then
+//     y := abs(x) ^ n;
+//   else
+//     delta2 := delta * delta;
+//     x2 := x * x;
+//     y_d := delta ^ n;
+//     yP_d := n * delta ^ (n - 1.0);
+//     yPP_d := n * (n - 1.0) * delta ^ (n - 2.0);
+//     a1 := -(yP_d / delta - yPP_d) / delta2 / 8.0;
+//     a3 := (yPP_d - 12.0 * a1 * delta2) / 2.0;
+//     a5 := y_d - delta2 * (a3 + delta2 * a1);
+//     y := a5 + x2 * (a3 + x2 * a1);
+//     assert(a5 > 0.0, "Delta is too small for this exponent.");
+//   end if;
+// end Buildings.Utilities.Math.Functions.regNonZeroPower;
+//
+// function Modelica.Fluid.Utilities.checkBoundary
+//   input String mediumName;
+//   input String[:] substanceNames;
+//   input Boolean singleState;
+//   input Boolean define_p;
+//   input Real[:] X_boundary;
+//   input String modelName = "??? boundary ???";
+//   protected Integer nX = size(X_boundary, 1);
+//   protected String X_str;
+// algorithm
+//   assert(not singleState or singleState and define_p, "
+//           Wrong value of parameter define_p (= false) in model \"" + modelName + "\":
+//           The selected medium \"" + mediumName + "\" has Medium.singleState=true.
+//           Therefore, an boundary density cannot be defined and
+//           define_p = true is required.
+//           ");
+//   for i in 1:nX loop
+//     assert(X_boundary[i] >= 0.0, "
+//               Wrong boundary mass fractions in medium \"" + mediumName + "\" in model \"" + modelName + "\":
+//               The boundary value X_boundary(" + String(i, 0, true) + ") = " + String(X_boundary[i], 6, 0, true) + "
+//               is negative. It must be positive.
+//               ");
+//   end for;
+//   if nX > 0 and abs(sum(X_boundary) - 1.0) > 1e-10 then
+//     X_str := "";
+//     for i in 1:nX loop
+//       X_str := X_str + "   X_boundary[" + String(i, 0, true) + "] = " + String(X_boundary[i], 6, 0, true) + " \"" + substanceNames[i] + "\"
+//       ";
+//     end for;
+//     Modelica.Utilities.Streams.error("The boundary mass fractions in medium \"" + mediumName + "\" in model \"" + modelName + "\"
+//     " + "do not sum up to 1. Instead, sum(X_boundary) = " + String(sum(X_boundary), 6, 0, true) + ":
+//     " + X_str);
+//   end if;
+// end Modelica.Fluid.Utilities.checkBoundary;
+//
+// function Modelica.Fluid.Utilities.evaluatePoly3_derivativeAtZero
+//   input Real x;
+//   input Real x1;
+//   input Real y1;
+//   input Real y1d;
+//   input Real y0d;
+//   output Real y;
+//   protected Real a1;
+//   protected Real a2;
+//   protected Real a3;
+//   protected Real xx;
+// algorithm
+//   a1 := x1 * y0d;
+//   a2 := 3.0 * y1 - x1 * y1d - 2.0 * a1;
+//   a3 := y1 - a2 - a1;
+//   xx := x / x1;
+//   y := xx * (a1 + xx * (a2 + xx * a3));
+// end Modelica.Fluid.Utilities.evaluatePoly3_derivativeAtZero;
+//
+// function Modelica.Fluid.Utilities.regSquare2
+//   input Real x;
+//   input Real x_small(min = 0.0) = 0.01;
+//   input Real k1(min = 0.0) = 1.0;
+//   input Real k2(min = 0.0) = 1.0;
+//   input Boolean use_yd0 = false;
+//   input Real yd0(min = 0.0) = 1.0;
+//   output Real y;
+// algorithm
+//   y := smooth(2, if x >= x_small then k1 * x ^ 2.0 else if x <= (-x_small) then -k2 * x ^ 2.0 else if k1 >= k2 then Modelica.Fluid.Utilities.regSquare2.regSquare2_utility(x, x_small, k1, k2, use_yd0, yd0) else -Modelica.Fluid.Utilities.regSquare2.regSquare2_utility(-x, x_small, k2, k1, use_yd0, yd0));
+// end Modelica.Fluid.Utilities.regSquare2;
+//
+// function Modelica.Fluid.Utilities.regSquare2.regSquare2_utility
+//   input Real x;
+//   input Real x1;
+//   input Real k1;
+//   input Real k2;
+//   input Boolean use_yd0 = false;
+//   input Real yd0(min = 0.0) = 1.0;
+//   output Real y;
+//   protected Real x2;
+//   protected Real y1;
+//   protected Real y2;
+//   protected Real y1d;
+//   protected Real y2d;
+//   protected Real w;
+//   protected Real w1;
+//   protected Real w2;
+//   protected Real y0d;
+//   protected Real ww;
+// algorithm
+//   x2 := -x1;
+//   if x <= x2 then
+//     y := -k2 * x ^ 2.0;
+//   else
+//     y1 := k1 * x1 ^ 2.0;
+//     y2 := -k2 * x2 ^ 2.0;
+//     y1d := k1 * 2.0 * x1;
+//     y2d := -k2 * 2.0 * x2;
+//     if use_yd0 then
+//       y0d := yd0;
+//     else
+//       w := x2 / x1;
+//       y0d := ((3.0 * y2 - x2 * y2d) / w - (3.0 * y1 - x1 * y1d) * w) / (2.0 * x1 * (1.0 - w));
+//     end if;
+//     w1 := 2.23606797749979 * k1 * x1;
+//     w2 := 2.23606797749979 * k2 * abs(x2);
+//     ww := 0.9 * (if w1 < w2 then w1 else w2);
+//     if ww < y0d then
+//       y0d := ww;
+//     end if;
+//     y := if x >= 0.0 then Modelica.Fluid.Utilities.evaluatePoly3_derivativeAtZero(x, x1, y1, y1d, y0d) else Modelica.Fluid.Utilities.evaluatePoly3_derivativeAtZero(x, x2, y2, y2d, y0d);
+//   end if;
+// end Modelica.Fluid.Utilities.regSquare2.regSquare2_utility;
+//
+// function Modelica.SIunits.Conversions.to_bar
+//   input Real Pa(quantity = "Pressure", unit = "Pa", displayUnit = "bar");
+//   output Real bar(quantity = "Pressure", unit = "bar");
+// algorithm
+//   bar := Pa / 1e5;
+// end Modelica.SIunits.Conversions.to_bar;
+//
+// function Modelica.SIunits.Conversions.to_degC
+//   input Real Kelvin(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = 288.15, nominal = 300.0);
+//   output Real Celsius(quantity = "ThermodynamicTemperature", unit = "degC");
+// algorithm
+//   Celsius := Kelvin - 273.15;
+// end Modelica.SIunits.Conversions.to_degC;
+//
+// function Modelica.Utilities.Streams.error
+//   input String string;
+//
+//   external "C" ModelicaError(string);
+// end Modelica.Utilities.Streams.error;
+//
+// class BoreholeSegment
+//   parameter Real system.p_ambient(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, nominal = 1e5) = 101325.0;
+//   parameter Real system.T_ambient(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = 288.15, nominal = 300.0) = 293.15;
+//   parameter Real system.g(quantity = "Acceleration", unit = "m/s2") = 9.80665;
+//   final parameter Boolean system.allowFlowReversal = true;
+//   final parameter enumeration(DynamicFreeInitial, FixedInitial, SteadyStateInitial, SteadyState) system.energyDynamics = Modelica.Fluid.Types.Dynamics.DynamicFreeInitial;
+//   final parameter enumeration(DynamicFreeInitial, FixedInitial, SteadyStateInitial, SteadyState) system.massDynamics = Modelica.Fluid.Types.Dynamics.DynamicFreeInitial;
+//   final parameter enumeration(DynamicFreeInitial, FixedInitial, SteadyStateInitial, SteadyState) system.substanceDynamics = Modelica.Fluid.Types.Dynamics.DynamicFreeInitial;
+//   final parameter enumeration(DynamicFreeInitial, FixedInitial, SteadyStateInitial, SteadyState) system.traceDynamics = Modelica.Fluid.Types.Dynamics.DynamicFreeInitial;
+//   final parameter enumeration(DynamicFreeInitial, FixedInitial, SteadyStateInitial, SteadyState) system.momentumDynamics = Modelica.Fluid.Types.Dynamics.SteadyState;
+//   parameter Real system.m_flow_start(quantity = "MassFlowRate", unit = "kg/s") = 0.0;
+//   parameter Real system.p_start(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, nominal = 1e5) = system.p_ambient;
+//   parameter Real system.T_start(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = 288.15, nominal = 300.0) = system.T_ambient;
+//   final parameter Boolean system.use_eps_Re = false;
+//   parameter Real system.m_flow_nominal(quantity = "MassFlowRate", unit = "kg/s") = 100.0 * system.m_flow_small;
+//   parameter Real system.eps_m_flow(min = 0.0) = 1e-4;
+//   parameter Real system.dp_small(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, nominal = 1e5) = 1.0;
+//   parameter Real system.m_flow_small(quantity = "MassFlowRate", unit = "kg/s", min = 0.0) = 0.01;
+//   parameter Real bento.k(quantity = "ThermalConductivity", unit = "W/(m.K)") = 1.15;
+//   final parameter Real bento.c(quantity = "SpecificHeatCapacity", unit = "J/(kg.K)") = 800.0;
+//   final parameter Real bento.d(quantity = "Density", unit = "kg/m3", displayUnit = "g/cm3", min = 0.0) = 1600.0;
+//   final parameter Boolean bento.steadyState = false;
+//   final parameter Boolean seg.allowFlowReversal1 = true;
+//   final parameter Boolean seg.allowFlowReversal2 = true;
+//   parameter Real seg.h_outflow_a1_start(quantity = "SpecificEnergy", unit = "J/kg") = 83680.0;
+//   parameter Real seg.h_outflow_b1_start(quantity = "SpecificEnergy", unit = "J/kg") = 83680.0;
+//   parameter Real seg.h_outflow_a2_start(quantity = "SpecificEnergy", unit = "J/kg") = 83680.0;
+//   parameter Real seg.h_outflow_b2_start(quantity = "SpecificEnergy", unit = "J/kg") = 83680.0;
+//   Real seg.port_a1.m_flow(quantity = "MassFlowRate.SimpleLiquidWater", unit = "kg/s", min = -1e60, max = 1e5);
+//   Real seg.port_a1.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 1e5, nominal = 1e5);
+//   Real seg.port_a1.h_outflow(quantity = "SpecificEnergy", unit = "J/kg", min = -1e10, max = 1e10, start = seg.h_outflow_a1_start, nominal = 1e5);
+//   Real seg.port_b1.m_flow(quantity = "MassFlowRate.SimpleLiquidWater", unit = "kg/s", min = -1e5, max = 1e60);
+//   Real seg.port_b1.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 1e5, nominal = 1e5);
+//   Real seg.port_b1.h_outflow(quantity = "SpecificEnergy", unit = "J/kg", min = -1e10, max = 1e10, start = seg.h_outflow_b1_start, nominal = 1e5);
+//   Real seg.port_a2.m_flow(quantity = "MassFlowRate.SimpleLiquidWater", unit = "kg/s", min = -1e60, max = 1e5);
+//   Real seg.port_a2.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 1e5, nominal = 1e5);
+//   Real seg.port_a2.h_outflow(quantity = "SpecificEnergy", unit = "J/kg", min = -1e10, max = 1e10, start = seg.h_outflow_a2_start, nominal = 1e5);
+//   Real seg.port_b2.m_flow(quantity = "MassFlowRate.SimpleLiquidWater", unit = "kg/s", min = -1e5, max = 1e60);
+//   Real seg.port_b2.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 1e5, nominal = 1e5);
+//   Real seg.port_b2.h_outflow(quantity = "SpecificEnergy", unit = "J/kg", min = -1e10, max = 1e10, start = seg.h_outflow_b2_start, nominal = 1e5);
+//   final parameter Real seg.m1_flow_nominal(quantity = "MassFlowRate", unit = "kg/s", min = 0.0) = 0.2;
+//   final parameter Real seg.m2_flow_nominal(quantity = "MassFlowRate", unit = "kg/s", min = 0.0) = 0.2;
+//   final parameter Real seg.m1_flow_small(quantity = "MassFlowRate.SimpleLiquidWater", unit = "kg/s", min = 0.0, max = 1e5) = seg.m_flow_small;
+//   final parameter Real seg.m2_flow_small(quantity = "MassFlowRate.SimpleLiquidWater", unit = "kg/s", min = 0.0, max = 1e5) = seg.m_flow_small;
+//   final parameter Boolean seg.show_T = false;
+//   Real seg.m1_flow(quantity = "MassFlowRate.SimpleLiquidWater", unit = "kg/s", min = -1e5, max = 1e5, start = 0.0) = seg.port_a1.m_flow;
+//   Real seg.dp1(quantity = "Pressure", unit = "Pa", displayUnit = "Pa", start = 0.0);
+//   Real seg.m2_flow(quantity = "MassFlowRate.SimpleLiquidWater", unit = "kg/s", min = -1e5, max = 1e5, start = 0.0) = seg.port_a2.m_flow;
+//   Real seg.dp2(quantity = "Pressure", unit = "Pa", displayUnit = "Pa", start = 0.0);
+//   protected Real seg.state_a1_inflow.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 3e5, nominal = 1e5);
+//   protected Real seg.state_a1_inflow.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 293.15, nominal = 300.0);
+//   protected Real seg.state_b1_inflow.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 3e5, nominal = 1e5);
+//   protected Real seg.state_b1_inflow.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 293.15, nominal = 300.0);
+//   protected Real seg.state_a2_inflow.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 3e5, nominal = 1e5);
+//   protected Real seg.state_a2_inflow.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 293.15, nominal = 300.0);
+//   protected Real seg.state_b2_inflow.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 3e5, nominal = 1e5);
+//   protected Real seg.state_b2_inflow.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 293.15, nominal = 300.0);
+//   final parameter Boolean seg.computeFlowResistance = true;
+//   final parameter Boolean seg.from_dp = false;
+//   final parameter Real seg.dp_nominal(quantity = "Pressure", unit = "Pa", displayUnit = "Pa", min = 0.0) = 5.0;
+//   final parameter Boolean seg.linearizeFlowResistance = false;
+//   final parameter Real seg.deltaM = 0.1;
+//   final parameter enumeration(DynamicFreeInitial, FixedInitial, SteadyStateInitial, SteadyState) seg.energyDynamics = Modelica.Fluid.Types.Dynamics.SteadyStateInitial;
+//   final parameter enumeration(DynamicFreeInitial, FixedInitial, SteadyStateInitial, SteadyState) seg.massDynamics = Modelica.Fluid.Types.Dynamics.SteadyStateInitial;
+//   final parameter enumeration(DynamicFreeInitial, FixedInitial, SteadyStateInitial, SteadyState) seg.substanceDynamics = Modelica.Fluid.Types.Dynamics.SteadyStateInitial;
+//   final parameter enumeration(DynamicFreeInitial, FixedInitial, SteadyStateInitial, SteadyState) seg.traceDynamics = Modelica.Fluid.Types.Dynamics.SteadyStateInitial;
+//   parameter Real seg.p_start(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 1e5, nominal = 1e5) = 3e5;
+//   parameter Real seg.T_start(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 300.0, nominal = 300.0) = seg.TFil_start;
+//   parameter Real seg.X_start[1](quantity = "MassFraction", unit = "kg/kg", min = 0.0, max = 1.0, nominal = 0.1) = 1.0;
+//   parameter Real seg.matSoi.k(quantity = "ThermalConductivity", unit = "W/(m.K)") = 3.1;
+//   final parameter Real seg.matSoi.c(quantity = "SpecificHeatCapacity", unit = "J/(kg.K)") = 840.0;
+//   final parameter Real seg.matSoi.d(quantity = "Density", unit = "kg/m3", displayUnit = "g/cm3", min = 0.0) = 2000.0;
+//   final parameter Boolean seg.matSoi.steadyState = false;
+//   parameter Real seg.matFil.k(quantity = "ThermalConductivity", unit = "W/(m.K)") = bento.k;
+//   parameter Real seg.matFil.c(quantity = "SpecificHeatCapacity", unit = "J/(kg.K)") = 800.0;
+//   parameter Real seg.matFil.d(quantity = "Density", unit = "kg/m3", displayUnit = "g/cm3", min = 0.0) = 1600.0;
+//   parameter Boolean seg.matFil.steadyState = false;
+//   final parameter Real seg.m_flow_nominal(quantity = "MassFlowRate", unit = "kg/s") = 0.2;
+//   parameter Real seg.m_flow_small(quantity = "MassFlowRate", unit = "kg/s", min = 0.0) = 2e-5;
+//   final parameter Boolean seg.homotopyInitialization = true;
+//   parameter Real seg.rTub(quantity = "Length", unit = "m", min = 0.0) = 0.02;
+//   parameter Real seg.kTub(quantity = "ThermalConductivity", unit = "W/(m.K)") = 0.5;
+//   parameter Real seg.eTub(quantity = "Length", unit = "m") = 0.002;
+//   parameter Real seg.TFil_start(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = 288.15, nominal = 300.0) = 283.15;
+//   parameter Real seg.rExt(quantity = "Length", unit = "m", min = 0.0) = 3.0;
+//   parameter Real seg.TExt_start(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = 288.15, nominal = 300.0) = 283.15;
+//   final parameter Integer seg.nSta(min = 1) = 9;
+//   parameter Real seg.samplePeriod(quantity = "Time", unit = "s") = 604800.0;
+//   parameter Real seg.rBor(quantity = "Length", unit = "m", min = 0.0) = 0.1;
+//   parameter Real seg.hSeg(quantity = "Length", unit = "m", min = 0.0) = 10.0;
+//   parameter Real seg.xC(quantity = "Length", unit = "m") = 0.05;
+//   final parameter Boolean seg.allowFlowReversal = true;
+//   final parameter Boolean seg.pipFil.allowFlowReversal1 = true;
+//   final parameter Boolean seg.pipFil.allowFlowReversal2 = true;
+//   final parameter Real seg.pipFil.h_outflow_a1_start(quantity = "SpecificEnergy", unit = "J/kg") = seg.pipFil.h1_outflow_start;
+//   final parameter Real seg.pipFil.h_outflow_b1_start(quantity = "SpecificEnergy", unit = "J/kg") = seg.pipFil.h1_outflow_start;
+//   final parameter Real seg.pipFil.h_outflow_a2_start(quantity = "SpecificEnergy", unit = "J/kg") = seg.pipFil.h2_outflow_start;
+//   final parameter Real seg.pipFil.h_outflow_b2_start(quantity = "SpecificEnergy", unit = "J/kg") = seg.pipFil.h2_outflow_start;
+//   Real seg.pipFil.port_a1.m_flow(quantity = "MassFlowRate.SimpleLiquidWater", unit = "kg/s", min = -1e60, max = 1e5);
+//   Real seg.pipFil.port_a1.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 1e5, nominal = 1e5);
+//   Real seg.pipFil.port_a1.h_outflow(quantity = "SpecificEnergy", unit = "J/kg", min = -1e10, max = 1e10, start = seg.pipFil.h_outflow_a1_start, nominal = 1e5);
+//   Real seg.pipFil.port_b1.m_flow(quantity = "MassFlowRate.SimpleLiquidWater", unit = "kg/s", min = -1e5, max = 1e60);
+//   Real seg.pipFil.port_b1.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 1e5, nominal = 1e5);
+//   Real seg.pipFil.port_b1.h_outflow(quantity = "SpecificEnergy", unit = "J/kg", min = -1e10, max = 1e10, start = seg.pipFil.h_outflow_b1_start, nominal = 1e5);
+//   Real seg.pipFil.port_a2.m_flow(quantity = "MassFlowRate.SimpleLiquidWater", unit = "kg/s", min = -1e60, max = 1e5);
+//   Real seg.pipFil.port_a2.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 1e5, nominal = 1e5);
+//   Real seg.pipFil.port_a2.h_outflow(quantity = "SpecificEnergy", unit = "J/kg", min = -1e10, max = 1e10, start = seg.pipFil.h_outflow_a2_start, nominal = 1e5);
+//   Real seg.pipFil.port_b2.m_flow(quantity = "MassFlowRate.SimpleLiquidWater", unit = "kg/s", min = -1e5, max = 1e60);
+//   Real seg.pipFil.port_b2.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 1e5, nominal = 1e5);
+//   Real seg.pipFil.port_b2.h_outflow(quantity = "SpecificEnergy", unit = "J/kg", min = -1e10, max = 1e10, start = seg.pipFil.h_outflow_b2_start, nominal = 1e5);
+//   final parameter Real seg.pipFil.m1_flow_nominal(quantity = "MassFlowRate", unit = "kg/s", min = 0.0) = 0.2;
+//   final parameter Real seg.pipFil.m2_flow_nominal(quantity = "MassFlowRate", unit = "kg/s", min = 0.0) = 0.2;
+//   final parameter Real seg.pipFil.m1_flow_small(quantity = "MassFlowRate.SimpleLiquidWater", unit = "kg/s", min = 0.0, max = 1e5) = seg.m_flow_small;
+//   final parameter Real seg.pipFil.m2_flow_small(quantity = "MassFlowRate.SimpleLiquidWater", unit = "kg/s", min = 0.0, max = 1e5) = seg.m_flow_small;
+//   final parameter Boolean seg.pipFil.show_T = false;
+//   Real seg.pipFil.m1_flow(quantity = "MassFlowRate.SimpleLiquidWater", unit = "kg/s", min = -1e5, max = 1e5, start = 0.0) = seg.pipFil.port_a1.m_flow;
+//   Real seg.pipFil.dp1(quantity = "Pressure", unit = "Pa", displayUnit = "Pa", start = 0.0);
+//   Real seg.pipFil.m2_flow(quantity = "MassFlowRate.SimpleLiquidWater", unit = "kg/s", min = -1e5, max = 1e5, start = 0.0) = seg.pipFil.port_a2.m_flow;
+//   Real seg.pipFil.dp2(quantity = "Pressure", unit = "Pa", displayUnit = "Pa", start = 0.0);
+//   protected Real seg.pipFil.state_a1_inflow.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 3e5, nominal = 1e5);
+//   protected Real seg.pipFil.state_a1_inflow.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 293.15, nominal = 300.0);
+//   protected Real seg.pipFil.state_b1_inflow.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 3e5, nominal = 1e5);
+//   protected Real seg.pipFil.state_b1_inflow.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 293.15, nominal = 300.0);
+//   protected Real seg.pipFil.state_a2_inflow.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 3e5, nominal = 1e5);
+//   protected Real seg.pipFil.state_a2_inflow.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 293.15, nominal = 300.0);
+//   protected Real seg.pipFil.state_b2_inflow.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 3e5, nominal = 1e5);
+//   protected Real seg.pipFil.state_b2_inflow.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 293.15, nominal = 300.0);
+//   final parameter Boolean seg.pipFil.computeFlowResistance1 = true;
+//   final parameter Boolean seg.pipFil.from_dp1 = false;
+//   final parameter Real seg.pipFil.dp1_nominal(quantity = "Pressure", unit = "Pa", displayUnit = "Pa", min = 0.0) = 5.0;
+//   final parameter Boolean seg.pipFil.linearizeFlowResistance1 = false;
+//   final parameter Real seg.pipFil.deltaM1 = 0.1;
+//   final parameter Boolean seg.pipFil.computeFlowResistance2 = true;
+//   final parameter Boolean seg.pipFil.from_dp2 = false;
+//   final parameter Real seg.pipFil.dp2_nominal(quantity = "Pressure", unit = "Pa", displayUnit = "Pa", min = 0.0) = 0.0;
+//   final parameter Boolean seg.pipFil.linearizeFlowResistance2 = false;
+//   final parameter Real seg.pipFil.deltaM2 = 0.1;
+//   final parameter Real seg.pipFil.tau1(quantity = "Time", unit = "s") = 3.141592653589793 * seg.pipFil.rTub ^ 2.0 * seg.pipFil.hSeg * seg.pipFil.rho1_nominal / 0.2;
+//   final parameter Real seg.pipFil.tau2(quantity = "Time", unit = "s") = 3.141592653589793 * seg.pipFil.rTub ^ 2.0 * seg.pipFil.hSeg * seg.pipFil.rho2_nominal / 0.2;
+//   final parameter Boolean seg.pipFil.homotopyInitialization = true;
+//   final parameter enumeration(DynamicFreeInitial, FixedInitial, SteadyStateInitial, SteadyState) seg.pipFil.energyDynamics = Modelica.Fluid.Types.Dynamics.SteadyStateInitial;
+//   final parameter enumeration(DynamicFreeInitial, FixedInitial, SteadyStateInitial, SteadyState) seg.pipFil.massDynamics = Modelica.Fluid.Types.Dynamics.SteadyStateInitial;
+//   final parameter Real seg.pipFil.p1_start(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 1e5, nominal = 1e5) = seg.p_start;
+//   parameter Real seg.pipFil.T1_start(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 300.0, nominal = 300.0) = seg.T_start;
+//   parameter Real seg.pipFil.X1_start[1](quantity = "MassFraction", unit = "kg/kg", min = 0.0, max = 1.0, nominal = 0.1) = seg.X_start[1];
+//   final parameter Real seg.pipFil.p2_start(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 1e5, nominal = 1e5) = seg.p_start;
+//   parameter Real seg.pipFil.T2_start(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 300.0, nominal = 300.0) = seg.T_start;
+//   parameter Real seg.pipFil.X2_start[1](quantity = "MassFraction", unit = "kg/kg", min = 0.0, max = 1.0, nominal = 0.1) = seg.X_start[1];
+//   final parameter enumeration(DynamicFreeInitial, FixedInitial, SteadyStateInitial, SteadyState) seg.pipFil.vol1.energyDynamics = Modelica.Fluid.Types.Dynamics.SteadyStateInitial;
+//   final parameter enumeration(DynamicFreeInitial, FixedInitial, SteadyStateInitial, SteadyState) seg.pipFil.vol1.massDynamics = Modelica.Fluid.Types.Dynamics.SteadyStateInitial;
+//   final parameter enumeration(DynamicFreeInitial, FixedInitial, SteadyStateInitial, SteadyState) seg.pipFil.vol1.substanceDynamics = Modelica.Fluid.Types.Dynamics.SteadyStateInitial;
+//   final parameter enumeration(DynamicFreeInitial, FixedInitial, SteadyStateInitial, SteadyState) seg.pipFil.vol1.traceDynamics = Modelica.Fluid.Types.Dynamics.SteadyStateInitial;
+//   final parameter Real seg.pipFil.vol1.p_start(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 1e5, nominal = 1e5) = seg.pipFil.p1_start;
+//   final parameter Real seg.pipFil.vol1.T_start(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 300.0, nominal = 300.0) = seg.pipFil.T1_start;
+//   final parameter Real seg.pipFil.vol1.X_start[1](quantity = "MassFraction", unit = "kg/kg", min = 0.0, max = 1.0, nominal = 0.1) = seg.pipFil.X1_start[1];
+//   final parameter Real seg.pipFil.vol1.m_flow_nominal(quantity = "MassFlowRate", unit = "kg/s", min = 0.0) = 0.2;
+//   final parameter Integer seg.pipFil.vol1.nPorts = 2;
+//   final parameter Real seg.pipFil.vol1.m_flow_small(quantity = "MassFlowRate", unit = "kg/s", min = 0.0) = seg.pipFil.m1_flow_small;
+//   final parameter Boolean seg.pipFil.vol1.allowFlowReversal = true;
+//   final parameter Real seg.pipFil.vol1.V(quantity = "Volume", unit = "m3") = 0.2 * seg.pipFil.tau2 / seg.pipFil.rho2_nominal;
+//   final parameter Boolean seg.pipFil.vol1.prescribedHeatFlowRate = false;
+//   final parameter Boolean seg.pipFil.vol1.initialize_p = false;
+//   Real seg.pipFil.vol1.ports[1].m_flow(quantity = "MassFlowRate.SimpleLiquidWater", unit = "kg/s", min = -1e5, max = 1e5);
+//   Real seg.pipFil.vol1.ports[1].p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 1e5, nominal = 1e5);
+//   Real seg.pipFil.vol1.ports[1].h_outflow(quantity = "SpecificEnergy", unit = "J/kg", min = -1e10, max = 1e10, nominal = 1e6);
+//   Real seg.pipFil.vol1.ports[2].m_flow(quantity = "MassFlowRate.SimpleLiquidWater", unit = "kg/s", min = -1e5, max = 1e5);
+//   Real seg.pipFil.vol1.ports[2].p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 1e5, nominal = 1e5);
+//   Real seg.pipFil.vol1.ports[2].h_outflow(quantity = "SpecificEnergy", unit = "J/kg", min = -1e10, max = 1e10, nominal = 1e6);
+//   Real seg.pipFil.vol1.heatPort.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = 288.15, nominal = 300.0);
+//   Real seg.pipFil.vol1.heatPort.Q_flow(quantity = "Power", unit = "W");
+//   Real seg.pipFil.vol1.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = 288.15, nominal = 300.0);
+//   Real seg.pipFil.vol1.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar");
+//   protected final parameter enumeration(DynamicFreeInitial, FixedInitial, SteadyStateInitial, SteadyState) seg.pipFil.vol1.dynBal.energyDynamics = Modelica.Fluid.Types.Dynamics.SteadyStateInitial;
+//   protected final parameter enumeration(DynamicFreeInitial, FixedInitial, SteadyStateInitial, SteadyState) seg.pipFil.vol1.dynBal.massDynamics = Modelica.Fluid.Types.Dynamics.SteadyStateInitial;
+//   protected final parameter enumeration(DynamicFreeInitial, FixedInitial, SteadyStateInitial, SteadyState) seg.pipFil.vol1.dynBal.substanceDynamics = Modelica.Fluid.Types.Dynamics.SteadyStateInitial;
+//   protected final parameter enumeration(DynamicFreeInitial, FixedInitial, SteadyStateInitial, SteadyState) seg.pipFil.vol1.dynBal.traceDynamics = Modelica.Fluid.Types.Dynamics.SteadyStateInitial;
+//   protected final parameter Real seg.pipFil.vol1.dynBal.p_start(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 1e5, nominal = 1e5) = seg.pipFil.vol1.p_start;
+//   protected final parameter Real seg.pipFil.vol1.dynBal.T_start(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 300.0, nominal = 300.0) = seg.pipFil.vol1.T_start;
+//   protected final parameter Real seg.pipFil.vol1.dynBal.X_start[1](quantity = "MassFraction", unit = "kg/kg", min = 0.0, max = 1.0, nominal = 0.1) = seg.pipFil.vol1.X_start[1];
+//   protected final parameter Integer seg.pipFil.vol1.dynBal.nPorts = 2;
+//   protected final parameter Boolean seg.pipFil.vol1.dynBal.initialize_p = false;
+//   protected Real seg.pipFil.vol1.dynBal.ports[1].m_flow(quantity = "MassFlowRate.SimpleLiquidWater", unit = "kg/s", min = -1e5, max = 1e5);
+//   protected Real seg.pipFil.vol1.dynBal.ports[1].p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 1e5, nominal = 1e5);
+//   protected Real seg.pipFil.vol1.dynBal.ports[1].h_outflow(quantity = "SpecificEnergy", unit = "J/kg", min = -1e10, max = 1e10, nominal = 1e6);
+//   protected Real seg.pipFil.vol1.dynBal.ports[2].m_flow(quantity = "MassFlowRate.SimpleLiquidWater", unit = "kg/s", min = -1e5, max = 1e5);
+//   protected Real seg.pipFil.vol1.dynBal.ports[2].p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 1e5, nominal = 1e5);
+//   protected Real seg.pipFil.vol1.dynBal.ports[2].h_outflow(quantity = "SpecificEnergy", unit = "J/kg", min = -1e10, max = 1e10, nominal = 1e6);
+//   protected Real seg.pipFil.vol1.dynBal.medium.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, start = seg.pipFil.vol1.dynBal.p_start, nominal = 3e5, stateSelect = StateSelect.prefer);
+//   protected Real seg.pipFil.vol1.dynBal.medium.h(quantity = "SpecificEnergy", unit = "J/kg", start = seg.pipFil.vol1.dynBal.hStart);
+//   protected Real seg.pipFil.vol1.dynBal.medium.d(quantity = "Density", unit = "kg/m3", displayUnit = "g/cm3", min = 0.0, max = 1e5, start = seg.pipFil.vol1.dynBal.rho_nominal, nominal = 1.0);
+//   protected Real seg.pipFil.vol1.dynBal.medium.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = seg.pipFil.vol1.dynBal.T_start, nominal = 293.15, stateSelect = StateSelect.prefer);
+//   protected Real seg.pipFil.vol1.dynBal.medium.X[1](quantity = "MassFraction", unit = "kg/kg", min = 0.0, max = 1.0, start = 1.0, nominal = 0.1);
+//   protected Real seg.pipFil.vol1.dynBal.medium.u(quantity = "SpecificEnergy", unit = "J/kg", min = -1e8, max = 1e8, nominal = 1e6);
+//   protected Real seg.pipFil.vol1.dynBal.medium.R(quantity = "SpecificHeatCapacity", unit = "J/(kg.K)", min = 0.0, max = 1e7, start = 1000.0, nominal = 1000.0);
+//   protected Real seg.pipFil.vol1.dynBal.medium.MM(quantity = "MolarMass", unit = "kg/mol", min = 0.001, max = 0.25, nominal = 0.032);
+//   protected Real seg.pipFil.vol1.dynBal.medium.state.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 3e5, nominal = 1e5);
+//   protected Real seg.pipFil.vol1.dynBal.medium.state.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 293.15, nominal = 300.0);
+//   protected final parameter Boolean seg.pipFil.vol1.dynBal.medium.preferredMediumStates = true;
+//   protected final parameter Boolean seg.pipFil.vol1.dynBal.medium.standardOrderComponents = true;
+//   protected Real seg.pipFil.vol1.dynBal.medium.T_degC(quantity = "ThermodynamicTemperature", unit = "degC") = Modelica.SIunits.Conversions.to_degC(seg.pipFil.vol1.dynBal.medium.T);
+//   protected Real seg.pipFil.vol1.dynBal.medium.p_bar(quantity = "Pressure", unit = "bar") = Modelica.SIunits.Conversions.to_bar(seg.pipFil.vol1.dynBal.medium.p);
+//   protected Real seg.pipFil.vol1.dynBal.U(quantity = "Energy", unit = "J", start = seg.pipFil.vol1.V * seg.pipFil.vol1.rho_start * BoreholeSegment.seg.pipFil.vol1.Medium.specificInternalEnergy(seg.pipFil.vol1.state_start));
+//   protected Real seg.pipFil.vol1.dynBal.m(quantity = "Mass", unit = "kg", min = 0.0, start = seg.pipFil.vol1.V * seg.pipFil.vol1.rho_start);
+//   protected Real seg.pipFil.vol1.dynBal.mb_flow(quantity = "MassFlowRate", unit = "kg/s");
+//   protected Real seg.pipFil.vol1.dynBal.Hb_flow(quantity = "EnthalpyFlowRate", unit = "W");
+//   protected final Real seg.pipFil.vol1.dynBal.fluidVolume(quantity = "Volume", unit = "m3") = seg.pipFil.vol1.V;
+//   protected Real seg.pipFil.vol1.dynBal.Q_flow(unit = "W");
+//   protected Real seg.pipFil.vol1.dynBal.mWat_flow(unit = "kg/s");
+//   protected Real seg.pipFil.vol1.dynBal.hOut(unit = "J/kg", start = seg.pipFil.vol1.dynBal.hStart);
+//   protected Real seg.pipFil.vol1.dynBal.ports_H_flow[1](quantity = "EnthalpyFlowRate", unit = "W", min = -1e8, max = 1e8, nominal = 1000.0);
+//   protected Real seg.pipFil.vol1.dynBal.ports_H_flow[2](quantity = "EnthalpyFlowRate", unit = "W", min = -1e8, max = 1e8, nominal = 1000.0);
+//   protected parameter Real seg.pipFil.vol1.dynBal.rho_nominal(quantity = "Density", unit = "kg/m3", displayUnit = "g/cm3", min = 0.0) = BoreholeSegment.seg.pipFil.vol1.dynBal.Medium.density(BoreholeSegment.seg.pipFil.vol1.dynBal.Medium.setState_pTX(seg.pipFil.vol1.dynBal.p_start, seg.pipFil.vol1.dynBal.T_start, {}));
+//   protected parameter Real seg.pipFil.vol1.dynBal.hStart(quantity = "SpecificEnergy", unit = "J/kg") = BoreholeSegment.seg.pipFil.vol1.dynBal.Medium.specificEnthalpy_pTX(seg.pipFil.vol1.dynBal.p_start, seg.pipFil.vol1.dynBal.T_start, seg.pipFil.vol1.dynBal.X_start);
+//   protected parameter Real seg.pipFil.vol1.rho_default(quantity = "Density", unit = "kg/m3", displayUnit = "g/cm3", min = 0.0) = BoreholeSegment.seg.pipFil.vol1.Medium.density(seg.pipFil.vol1.state_default);
+//   protected parameter Real seg.pipFil.vol1.rho_start(quantity = "Density", unit = "kg/m3", displayUnit = "g/cm3", min = 0.0) = BoreholeSegment.seg.pipFil.vol1.Medium.density(seg.pipFil.vol1.state_start);
+//   protected final parameter Real seg.pipFil.vol1.state_default.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 3e5, nominal = 1e5) = 3e5;
+//   protected final parameter Real seg.pipFil.vol1.state_default.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 293.15, nominal = 300.0) = 293.15;
+//   protected final parameter Real seg.pipFil.vol1.state_start.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 3e5, nominal = 1e5) = seg.pipFil.vol1.p_start;
+//   protected final parameter Real seg.pipFil.vol1.state_start.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 293.15, nominal = 300.0) = seg.pipFil.vol1.T_start;
+//   protected final parameter Boolean seg.pipFil.vol1.useSteadyStateTwoPort = false;
+//   protected Real seg.pipFil.vol1.hOut_internal(unit = "J/kg");
+//   protected Real seg.pipFil.vol1.QSen_flow.y = seg.pipFil.vol1.heatPort.Q_flow;
+//   protected parameter Real seg.pipFil.vol1.masExc.k(start = 1.0) = 0.0;
+//   protected Real seg.pipFil.vol1.masExc.y;
+//   final parameter enumeration(DynamicFreeInitial, FixedInitial, SteadyStateInitial, SteadyState) seg.pipFil.vol2.energyDynamics = Modelica.Fluid.Types.Dynamics.SteadyStateInitial;
+//   final parameter enumeration(DynamicFreeInitial, FixedInitial, SteadyStateInitial, SteadyState) seg.pipFil.vol2.massDynamics = Modelica.Fluid.Types.Dynamics.SteadyStateInitial;
+//   final parameter enumeration(DynamicFreeInitial, FixedInitial, SteadyStateInitial, SteadyState) seg.pipFil.vol2.substanceDynamics = Modelica.Fluid.Types.Dynamics.SteadyStateInitial;
+//   final parameter enumeration(DynamicFreeInitial, FixedInitial, SteadyStateInitial, SteadyState) seg.pipFil.vol2.traceDynamics = Modelica.Fluid.Types.Dynamics.SteadyStateInitial;
+//   final parameter Real seg.pipFil.vol2.p_start(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 1e5, nominal = 1e5) = seg.pipFil.p2_start;
+//   final parameter Real seg.pipFil.vol2.T_start(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 300.0, nominal = 300.0) = seg.pipFil.T2_start;
+//   final parameter Real seg.pipFil.vol2.X_start[1](quantity = "MassFraction", unit = "kg/kg", min = 0.0, max = 1.0, nominal = 0.1) = seg.pipFil.X2_start[1];
+//   final parameter Real seg.pipFil.vol2.m_flow_nominal(quantity = "MassFlowRate", unit = "kg/s", min = 0.0) = 0.2;
+//   final parameter Integer seg.pipFil.vol2.nPorts = 2;
+//   final parameter Real seg.pipFil.vol2.m_flow_small(quantity = "MassFlowRate", unit = "kg/s", min = 0.0) = seg.pipFil.m2_flow_small;
+//   final parameter Boolean seg.pipFil.vol2.allowFlowReversal = true;
+//   final parameter Real seg.pipFil.vol2.V(quantity = "Volume", unit = "m3") = 0.2 * seg.pipFil.tau1 / seg.pipFil.rho1_nominal;
+//   final parameter Boolean seg.pipFil.vol2.prescribedHeatFlowRate = false;
+//   final parameter Boolean seg.pipFil.vol2.initialize_p = false;
+//   Real seg.pipFil.vol2.ports[1].m_flow(quantity = "MassFlowRate.SimpleLiquidWater", unit = "kg/s", min = -1e5, max = 1e5);
+//   Real seg.pipFil.vol2.ports[1].p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 1e5, nominal = 1e5);
+//   Real seg.pipFil.vol2.ports[1].h_outflow(quantity = "SpecificEnergy", unit = "J/kg", min = -1e10, max = 1e10, nominal = 1e6);
+//   Real seg.pipFil.vol2.ports[2].m_flow(quantity = "MassFlowRate.SimpleLiquidWater", unit = "kg/s", min = -1e5, max = 1e5);
+//   Real seg.pipFil.vol2.ports[2].p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 1e5, nominal = 1e5);
+//   Real seg.pipFil.vol2.ports[2].h_outflow(quantity = "SpecificEnergy", unit = "J/kg", min = -1e10, max = 1e10, nominal = 1e6);
+//   Real seg.pipFil.vol2.heatPort.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = 288.15, nominal = 300.0);
+//   Real seg.pipFil.vol2.heatPort.Q_flow(quantity = "Power", unit = "W");
+//   final Real seg.pipFil.vol2.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = 288.15, nominal = 300.0);
+//   final Real seg.pipFil.vol2.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar");
+//   protected final parameter enumeration(DynamicFreeInitial, FixedInitial, SteadyStateInitial, SteadyState) seg.pipFil.vol2.dynBal.energyDynamics = Modelica.Fluid.Types.Dynamics.SteadyStateInitial;
+//   protected final parameter enumeration(DynamicFreeInitial, FixedInitial, SteadyStateInitial, SteadyState) seg.pipFil.vol2.dynBal.massDynamics = Modelica.Fluid.Types.Dynamics.SteadyStateInitial;
+//   protected final parameter enumeration(DynamicFreeInitial, FixedInitial, SteadyStateInitial, SteadyState) seg.pipFil.vol2.dynBal.substanceDynamics = Modelica.Fluid.Types.Dynamics.SteadyStateInitial;
+//   protected final parameter enumeration(DynamicFreeInitial, FixedInitial, SteadyStateInitial, SteadyState) seg.pipFil.vol2.dynBal.traceDynamics = Modelica.Fluid.Types.Dynamics.SteadyStateInitial;
+//   protected final parameter Real seg.pipFil.vol2.dynBal.p_start(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 1e5, nominal = 1e5) = seg.pipFil.vol2.p_start;
+//   protected final parameter Real seg.pipFil.vol2.dynBal.T_start(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 300.0, nominal = 300.0) = seg.pipFil.vol2.T_start;
+//   protected final parameter Real seg.pipFil.vol2.dynBal.X_start[1](quantity = "MassFraction", unit = "kg/kg", min = 0.0, max = 1.0, nominal = 0.1) = seg.pipFil.vol2.X_start[1];
+//   protected final parameter Integer seg.pipFil.vol2.dynBal.nPorts = 2;
+//   protected final parameter Boolean seg.pipFil.vol2.dynBal.initialize_p = false;
+//   protected Real seg.pipFil.vol2.dynBal.ports[1].m_flow(quantity = "MassFlowRate.SimpleLiquidWater", unit = "kg/s", min = -1e5, max = 1e5);
+//   protected Real seg.pipFil.vol2.dynBal.ports[1].p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 1e5, nominal = 1e5);
+//   protected Real seg.pipFil.vol2.dynBal.ports[1].h_outflow(quantity = "SpecificEnergy", unit = "J/kg", min = -1e10, max = 1e10, nominal = 1e6);
+//   protected Real seg.pipFil.vol2.dynBal.ports[2].m_flow(quantity = "MassFlowRate.SimpleLiquidWater", unit = "kg/s", min = -1e5, max = 1e5);
+//   protected Real seg.pipFil.vol2.dynBal.ports[2].p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 1e5, nominal = 1e5);
+//   protected Real seg.pipFil.vol2.dynBal.ports[2].h_outflow(quantity = "SpecificEnergy", unit = "J/kg", min = -1e10, max = 1e10, nominal = 1e6);
+//   protected Real seg.pipFil.vol2.dynBal.medium.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, start = seg.pipFil.vol2.dynBal.p_start, nominal = 3e5, stateSelect = StateSelect.prefer);
+//   protected Real seg.pipFil.vol2.dynBal.medium.h(quantity = "SpecificEnergy", unit = "J/kg", start = seg.pipFil.vol2.dynBal.hStart);
+//   protected final Real seg.pipFil.vol2.dynBal.medium.d(quantity = "Density", unit = "kg/m3", displayUnit = "g/cm3", min = 0.0, max = 1e5, start = seg.pipFil.vol2.dynBal.rho_nominal, nominal = 1.0);
+//   protected final Real seg.pipFil.vol2.dynBal.medium.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = seg.pipFil.vol2.dynBal.T_start, nominal = 293.15, stateSelect = StateSelect.prefer);
+//   protected final Real seg.pipFil.vol2.dynBal.medium.X[1](quantity = "MassFraction", unit = "kg/kg", min = 0.0, max = 1.0, start = 1.0, nominal = 0.1);
+//   protected final Real seg.pipFil.vol2.dynBal.medium.u(quantity = "SpecificEnergy", unit = "J/kg", min = -1e8, max = 1e8, nominal = 1e6);
+//   protected final Real seg.pipFil.vol2.dynBal.medium.R(quantity = "SpecificHeatCapacity", unit = "J/(kg.K)", min = 0.0, max = 1e7, start = 1000.0, nominal = 1000.0);
+//   protected final Real seg.pipFil.vol2.dynBal.medium.MM(quantity = "MolarMass", unit = "kg/mol", min = 0.001, max = 0.25, nominal = 0.032);
+//   protected final Real seg.pipFil.vol2.dynBal.medium.state.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 3e5, nominal = 1e5);
+//   protected final Real seg.pipFil.vol2.dynBal.medium.state.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 293.15, nominal = 300.0);
+//   protected final parameter Boolean seg.pipFil.vol2.dynBal.medium.preferredMediumStates = true;
+//   protected final parameter Boolean seg.pipFil.vol2.dynBal.medium.standardOrderComponents = true;
+//   protected final Real seg.pipFil.vol2.dynBal.medium.T_degC(quantity = "ThermodynamicTemperature", unit = "degC") = Modelica.SIunits.Conversions.to_degC(seg.pipFil.vol2.dynBal.medium.T);
+//   protected final Real seg.pipFil.vol2.dynBal.medium.p_bar(quantity = "Pressure", unit = "bar") = Modelica.SIunits.Conversions.to_bar(seg.pipFil.vol2.dynBal.medium.p);
+//   protected final Real seg.pipFil.vol2.dynBal.U(quantity = "Energy", unit = "J", start = seg.pipFil.vol2.V * seg.pipFil.vol2.rho_start * BoreholeSegment.seg.pipFil.vol2.Medium.specificInternalEnergy(seg.pipFil.vol2.state_start));
+//   protected final Real seg.pipFil.vol2.dynBal.m(quantity = "Mass", unit = "kg", min = 0.0, start = seg.pipFil.vol2.V * seg.pipFil.vol2.rho_start);
+//   protected final Real seg.pipFil.vol2.dynBal.mb_flow(quantity = "MassFlowRate", unit = "kg/s");
+//   protected final Real seg.pipFil.vol2.dynBal.Hb_flow(quantity = "EnthalpyFlowRate", unit = "W");
+//   protected final Real seg.pipFil.vol2.dynBal.fluidVolume(quantity = "Volume", unit = "m3") = seg.pipFil.vol2.V;
+//   protected Real seg.pipFil.vol2.dynBal.Q_flow(unit = "W");
+//   protected Real seg.pipFil.vol2.dynBal.mWat_flow(unit = "kg/s");
+//   protected Real seg.pipFil.vol2.dynBal.hOut(unit = "J/kg", start = seg.pipFil.vol2.dynBal.hStart);
+//   protected final Real seg.pipFil.vol2.dynBal.ports_H_flow[1](quantity = "EnthalpyFlowRate", unit = "W", min = -1e8, max = 1e8, nominal = 1000.0);
+//   protected final Real seg.pipFil.vol2.dynBal.ports_H_flow[2](quantity = "EnthalpyFlowRate", unit = "W", min = -1e8, max = 1e8, nominal = 1000.0);
+//   protected final parameter Real seg.pipFil.vol2.dynBal.rho_nominal(quantity = "Density", unit = "kg/m3", displayUnit = "g/cm3", min = 0.0) = BoreholeSegment.seg.pipFil.vol2.dynBal.Medium.density(BoreholeSegment.seg.pipFil.vol2.dynBal.Medium.setState_pTX(seg.pipFil.vol2.dynBal.p_start, seg.pipFil.vol2.dynBal.T_start, {}));
+//   protected final parameter Real seg.pipFil.vol2.dynBal.hStart(quantity = "SpecificEnergy", unit = "J/kg") = BoreholeSegment.seg.pipFil.vol2.dynBal.Medium.specificEnthalpy_pTX(seg.pipFil.vol2.dynBal.p_start, seg.pipFil.vol2.dynBal.T_start, seg.pipFil.vol2.dynBal.X_start);
+//   protected final parameter Real seg.pipFil.vol2.rho_default(quantity = "Density", unit = "kg/m3", displayUnit = "g/cm3", min = 0.0) = BoreholeSegment.seg.pipFil.vol2.Medium.density(seg.pipFil.vol2.state_default);
+//   protected final parameter Real seg.pipFil.vol2.rho_start(quantity = "Density", unit = "kg/m3", displayUnit = "g/cm3", min = 0.0) = BoreholeSegment.seg.pipFil.vol2.Medium.density(seg.pipFil.vol2.state_start);
+//   protected final parameter Real seg.pipFil.vol2.state_default.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 3e5, nominal = 1e5) = 3e5;
+//   protected final parameter Real seg.pipFil.vol2.state_default.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 293.15, nominal = 300.0) = 293.15;
+//   protected final parameter Real seg.pipFil.vol2.state_start.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 3e5, nominal = 1e5) = seg.pipFil.vol2.p_start;
+//   protected final parameter Real seg.pipFil.vol2.state_start.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 293.15, nominal = 300.0) = seg.pipFil.vol2.T_start;
+//   protected final parameter Boolean seg.pipFil.vol2.useSteadyStateTwoPort = false;
+//   protected Real seg.pipFil.vol2.hOut_internal(unit = "J/kg");
+//   protected Real seg.pipFil.vol2.QSen_flow.y = seg.pipFil.vol2.heatPort.Q_flow;
+//   protected final parameter Real seg.pipFil.vol2.masExc.k(start = 1.0) = 0.0;
+//   protected Real seg.pipFil.vol2.masExc.y;
+//   Real seg.pipFil.Q1_flow(quantity = "Power", unit = "W") = seg.pipFil.vol1.heatPort.Q_flow;
+//   Real seg.pipFil.Q2_flow(quantity = "Power", unit = "W") = seg.pipFil.vol2.heatPort.Q_flow;
+//   final parameter Boolean seg.pipFil.preDro1.allowFlowReversal = true;
+//   Real seg.pipFil.preDro1.port_a.m_flow(quantity = "MassFlowRate.SimpleLiquidWater", unit = "kg/s", min = -1e60, max = 1e5);
+//   Real seg.pipFil.preDro1.port_a.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 3e5, nominal = 3e5);
+//   Real seg.pipFil.preDro1.port_a.h_outflow(quantity = "SpecificEnergy", unit = "J/kg", min = -1e10, max = 1e10, nominal = 1e6);
+//   Real seg.pipFil.preDro1.port_b.m_flow(quantity = "MassFlowRate.SimpleLiquidWater", unit = "kg/s", min = -1e5, max = 1e60);
+//   Real seg.pipFil.preDro1.port_b.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 3e5, nominal = 3e5);
+//   Real seg.pipFil.preDro1.port_b.h_outflow(quantity = "SpecificEnergy", unit = "J/kg", min = -1e10, max = 1e10, nominal = 1e6);
+//   protected parameter Boolean seg.pipFil.preDro1.port_a_exposesState = false;
+//   protected parameter Boolean seg.pipFil.preDro1.port_b_exposesState = false;
+//   protected parameter Boolean seg.pipFil.preDro1.showDesignFlowDirection = true;
+//   final parameter Real seg.pipFil.preDro1.m_flow_nominal(quantity = "MassFlowRate", unit = "kg/s") = 0.2;
+//   final parameter Real seg.pipFil.preDro1.m_flow_small(quantity = "MassFlowRate", unit = "kg/s", min = 0.0) = 2e-5;
+//   final parameter Boolean seg.pipFil.preDro1.show_T = false;
+//   Real seg.pipFil.preDro1.m_flow(quantity = "MassFlowRate", unit = "kg/s", start = 0.0, nominal = 0.2) = seg.pipFil.preDro1.port_a.m_flow;
+//   Real seg.pipFil.preDro1.dp(quantity = "Pressure", unit = "Pa", displayUnit = "Pa", start = 0.0, nominal = 5.0);
+//   final parameter Boolean seg.pipFil.preDro1.from_dp = false;
+//   final parameter Real seg.pipFil.preDro1.dp_nominal(quantity = "Pressure", unit = "Pa", displayUnit = "Pa") = 5.0;
+//   final parameter Boolean seg.pipFil.preDro1.homotopyInitialization = true;
+//   final parameter Boolean seg.pipFil.preDro1.linearized = false;
+//   final parameter Real seg.pipFil.preDro1.m_flow_turbulent(quantity = "MassFlowRate", unit = "kg/s", min = 0.0) = 0.020000000000000004;
+//   protected parameter Real seg.pipFil.preDro1.sta_default.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 3e5, nominal = 1e5) = 3e5;
+//   protected parameter Real seg.pipFil.preDro1.sta_default.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 293.15, nominal = 300.0) = 293.15;
+//   protected final parameter Real seg.pipFil.preDro1.eta_default(quantity = "DynamicViscosity", unit = "Pa.s", min = 0.0) = 0.001;
+//   protected final parameter Real seg.pipFil.preDro1.m_flow_nominal_pos(quantity = "MassFlowRate", unit = "kg/s") = 0.2;
+//   protected final parameter Real seg.pipFil.preDro1.dp_nominal_pos(quantity = "Pressure", unit = "Pa", displayUnit = "bar") = 5.0;
+//   final parameter Boolean seg.pipFil.preDro1.use_dh = false;
+//   final parameter Real seg.pipFil.preDro1.dh(quantity = "Length", unit = "m") = 1.0;
+//   final parameter Real seg.pipFil.preDro1.ReC(min = 0.0) = 4000.0;
+//   final parameter Real seg.pipFil.preDro1.deltaM(min = 0.01) = 0.1;
+//   final parameter Real seg.pipFil.preDro1.k(unit = "") = 0.08944271909999159;
+//   protected final parameter Boolean seg.pipFil.preDro1.computeFlowResistance = true;
+//   final parameter Boolean seg.pipFil.preDro2.allowFlowReversal = true;
+//   Real seg.pipFil.preDro2.port_a.m_flow(quantity = "MassFlowRate.SimpleLiquidWater", unit = "kg/s", min = -1e60, max = 1e5);
+//   Real seg.pipFil.preDro2.port_a.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 3e5, nominal = 3e5);
+//   Real seg.pipFil.preDro2.port_a.h_outflow(quantity = "SpecificEnergy", unit = "J/kg", min = -1e10, max = 1e10, nominal = 1e6);
+//   Real seg.pipFil.preDro2.port_b.m_flow(quantity = "MassFlowRate.SimpleLiquidWater", unit = "kg/s", min = -1e5, max = 1e60);
+//   Real seg.pipFil.preDro2.port_b.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 3e5, nominal = 3e5);
+//   Real seg.pipFil.preDro2.port_b.h_outflow(quantity = "SpecificEnergy", unit = "J/kg", min = -1e10, max = 1e10, nominal = 1e6);
+//   protected parameter Boolean seg.pipFil.preDro2.port_a_exposesState = false;
+//   protected parameter Boolean seg.pipFil.preDro2.port_b_exposesState = false;
+//   protected parameter Boolean seg.pipFil.preDro2.showDesignFlowDirection = true;
+//   final parameter Real seg.pipFil.preDro2.m_flow_nominal(quantity = "MassFlowRate", unit = "kg/s") = 0.2;
+//   final parameter Real seg.pipFil.preDro2.m_flow_small(quantity = "MassFlowRate", unit = "kg/s", min = 0.0) = 2e-5;
+//   final parameter Boolean seg.pipFil.preDro2.show_T = false;
+//   Real seg.pipFil.preDro2.m_flow(quantity = "MassFlowRate", unit = "kg/s", start = 0.0, nominal = 0.2) = seg.pipFil.preDro2.port_a.m_flow;
+//   Real seg.pipFil.preDro2.dp(quantity = "Pressure", unit = "Pa", displayUnit = "Pa", start = 0.0, nominal = 0.0);
+//   final parameter Boolean seg.pipFil.preDro2.from_dp = false;
+//   final parameter Real seg.pipFil.preDro2.dp_nominal(quantity = "Pressure", unit = "Pa", displayUnit = "Pa") = 0.0;
+//   final parameter Boolean seg.pipFil.preDro2.homotopyInitialization = true;
+//   final parameter Boolean seg.pipFil.preDro2.linearized = false;
+//   final parameter Real seg.pipFil.preDro2.m_flow_turbulent(quantity = "MassFlowRate", unit = "kg/s", min = 0.0) = 0.0;
+//   protected parameter Real seg.pipFil.preDro2.sta_default.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 3e5, nominal = 1e5) = 3e5;
+//   protected parameter Real seg.pipFil.preDro2.sta_default.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 293.15, nominal = 300.0) = 293.15;
+//   protected final parameter Real seg.pipFil.preDro2.eta_default(quantity = "DynamicViscosity", unit = "Pa.s", min = 0.0) = 0.001;
+//   protected final parameter Real seg.pipFil.preDro2.m_flow_nominal_pos(quantity = "MassFlowRate", unit = "kg/s") = 0.2;
+//   protected final parameter Real seg.pipFil.preDro2.dp_nominal_pos(quantity = "Pressure", unit = "Pa", displayUnit = "bar") = 0.0;
+//   final parameter Boolean seg.pipFil.preDro2.use_dh = false;
+//   final parameter Real seg.pipFil.preDro2.dh(quantity = "Length", unit = "m") = 1.0;
+//   final parameter Real seg.pipFil.preDro2.ReC(min = 0.0) = 4000.0;
+//   final parameter Real seg.pipFil.preDro2.deltaM(min = 0.01) = 0.1;
+//   final parameter Real seg.pipFil.preDro2.k(unit = "") = 0.0;
+//   protected final parameter Boolean seg.pipFil.preDro2.computeFlowResistance = false;
+//   protected parameter Real seg.pipFil.sta1_nominal.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 3e5, nominal = 1e5) = 3e5;
+//   protected parameter Real seg.pipFil.sta1_nominal.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 293.15, nominal = 300.0) = 293.15;
+//   protected parameter Real seg.pipFil.rho1_nominal(quantity = "Density", unit = "kg/m3", displayUnit = "g/cm3", min = 0.0) = BoreholeSegment.seg.pipFil.Medium1.density(seg.pipFil.sta1_nominal);
+//   protected parameter Real seg.pipFil.sta2_nominal.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 3e5, nominal = 1e5) = 3e5;
+//   protected parameter Real seg.pipFil.sta2_nominal.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 293.15, nominal = 300.0) = 293.15;
+//   protected parameter Real seg.pipFil.rho2_nominal(quantity = "Density", unit = "kg/m3", displayUnit = "g/cm3", min = 0.0) = BoreholeSegment.seg.pipFil.Medium2.density(seg.pipFil.sta2_nominal);
+//   protected parameter Real seg.pipFil.sta1_start.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 3e5, fixed = false, nominal = 1e5);
+//   protected parameter Real seg.pipFil.sta1_start.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 293.15, fixed = false, nominal = 300.0);
+//   protected parameter Real seg.pipFil.h1_outflow_start(quantity = "SpecificEnergy", unit = "J/kg") = BoreholeSegment.seg.pipFil.Medium1.specificEnthalpy(seg.pipFil.sta1_start);
+//   protected parameter Real seg.pipFil.sta2_start.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 3e5, fixed = false, nominal = 1e5);
+//   protected parameter Real seg.pipFil.sta2_start.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 293.15, fixed = false, nominal = 300.0);
+//   protected parameter Real seg.pipFil.h2_outflow_start(quantity = "SpecificEnergy", unit = "J/kg") = BoreholeSegment.seg.pipFil.Medium2.specificEnthalpy(seg.pipFil.sta2_start);
+//   final parameter Real seg.pipFil.matFil.k(quantity = "ThermalConductivity", unit = "W/(m.K)") = seg.matFil.k;
+//   final parameter Real seg.pipFil.matFil.c(quantity = "SpecificHeatCapacity", unit = "J/(kg.K)") = seg.matFil.c;
+//   final parameter Real seg.pipFil.matFil.d(quantity = "Density", unit = "kg/m3", displayUnit = "g/cm3", min = 0.0) = seg.matFil.d;
+//   final parameter Boolean seg.pipFil.matFil.steadyState = seg.matFil.steadyState;
+//   final parameter Real seg.pipFil.matSoi.k(quantity = "ThermalConductivity", unit = "W/(m.K)") = seg.matSoi.k;
+//   final parameter Real seg.pipFil.matSoi.c(quantity = "SpecificHeatCapacity", unit = "J/(kg.K)") = 840.0;
+//   final parameter Real seg.pipFil.matSoi.d(quantity = "Density", unit = "kg/m3", displayUnit = "g/cm3", min = 0.0) = 2000.0;
+//   final parameter Boolean seg.pipFil.matSoi.steadyState = false;
+//   final parameter Real seg.pipFil.rTub(quantity = "Length", unit = "m", min = 0.0) = seg.rTub;
+//   final parameter Real seg.pipFil.kTub(quantity = "ThermalConductivity", unit = "W/(m.K)") = seg.kTub;
+//   final parameter Real seg.pipFil.eTub(quantity = "Length", unit = "m") = seg.eTub;
+//   final parameter Real seg.pipFil.kSoi(quantity = "ThermalConductivity", unit = "W/(m.K)") = seg.matSoi.k;
+//   final parameter Real seg.pipFil.TFil_start(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = 288.15, nominal = 300.0) = seg.TFil_start;
+//   final parameter Real seg.pipFil.hSeg(quantity = "Length", unit = "m", min = 0.0) = seg.hSeg;
+//   final parameter Real seg.pipFil.rBor(quantity = "Length", unit = "m", min = 0.0) = seg.rBor;
+//   final parameter Real seg.pipFil.xC(quantity = "Length", unit = "m") = seg.xC;
+//   Real seg.pipFil.port.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = 288.15, nominal = 300.0);
+//   Real seg.pipFil.port.Q_flow(quantity = "Power", unit = "W");
+//   final parameter Real seg.pipFil.capFil1.C(quantity = "HeatCapacity", unit = "J/K") = seg.pipFil.Co_fil / 2.0;
+//   Real seg.pipFil.capFil1.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = seg.pipFil.TFil_start, fixed = false, nominal = 300.0);
+//   Real seg.pipFil.capFil1.der_T(quantity = "TemperatureSlope", unit = "K/s", start = 0.0, fixed = true);
+//   Real seg.pipFil.capFil1.port.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = 288.15, nominal = 300.0);
+//   Real seg.pipFil.capFil1.port.Q_flow(quantity = "Power", unit = "W");
+//   final parameter Real seg.pipFil.capFil2.C(quantity = "HeatCapacity", unit = "J/K") = seg.pipFil.Co_fil / 2.0;
+//   Real seg.pipFil.capFil2.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = seg.pipFil.TFil_start, fixed = false, nominal = 300.0);
+//   Real seg.pipFil.capFil2.der_T(quantity = "TemperatureSlope", unit = "K/s", start = 0.0, fixed = true);
+//   Real seg.pipFil.capFil2.port.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = 288.15, nominal = 300.0);
+//   Real seg.pipFil.capFil2.port.Q_flow(quantity = "Power", unit = "W");
+//   protected final parameter Real seg.pipFil.cpFil(quantity = "SpecificHeatCapacity", unit = "J/(kg.K)") = seg.pipFil.matFil.c;
+//   protected final parameter Real seg.pipFil.kFil(quantity = "ThermalConductivity", unit = "W/(m.K)") = seg.pipFil.matFil.k;
+//   protected final parameter Real seg.pipFil.dFil(quantity = "Density", unit = "kg/m3", displayUnit = "g/cm3", min = 0.0) = seg.pipFil.matFil.d;
+//   protected parameter Real seg.pipFil.Co_fil(quantity = "HeatCapacity", unit = "J/K") = seg.pipFil.dFil * seg.pipFil.cpFil * seg.pipFil.hSeg * 3.141592653589793 * (seg.pipFil.rBor ^ 2.0 - 2.0 * (seg.pipFil.rTub + seg.pipFil.eTub) ^ 2.0);
+//   protected parameter Real seg.pipFil.cpMed(quantity = "SpecificHeatCapacity", unit = "J/(kg.K)") = 4184.0;
+//   protected parameter Real seg.pipFil.kMed(quantity = "ThermalConductivity", unit = "W/(m.K)") = 0.598;
+//   protected parameter Real seg.pipFil.mueMed(quantity = "DynamicViscosity", unit = "Pa.s", min = 0.0) = 0.001;
+//   protected parameter Real seg.pipFil.Rgb_val(quantity = "ThermalResistance", unit = "K/W", fixed = false);
+//   protected parameter Real seg.pipFil.Rgg_val(quantity = "ThermalResistance", unit = "K/W", fixed = false);
+//   protected parameter Real seg.pipFil.RCondGro_val(quantity = "ThermalResistance", unit = "K/W", fixed = false);
+//   protected parameter Real seg.pipFil.x(fixed = false);
+//   protected Real seg.pipFil.RConv1.Q_flow(quantity = "Power", unit = "W");
+//   protected Real seg.pipFil.RConv1.dT(quantity = "ThermodynamicTemperature", unit = "K");
+//   protected Real seg.pipFil.RConv1.Rc(unit = "K/W");
+//   protected Real seg.pipFil.RConv1.solid.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = 288.15, nominal = 300.0);
+//   protected Real seg.pipFil.RConv1.solid.Q_flow(quantity = "Power", unit = "W");
+//   protected Real seg.pipFil.RConv1.fluid.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = 288.15, nominal = 300.0);
+//   protected Real seg.pipFil.RConv1.fluid.Q_flow(quantity = "Power", unit = "W");
+//   protected Real seg.pipFil.RConv2.Q_flow(quantity = "Power", unit = "W");
+//   protected Real seg.pipFil.RConv2.dT(quantity = "ThermodynamicTemperature", unit = "K");
+//   protected Real seg.pipFil.RConv2.Rc(unit = "K/W");
+//   protected Real seg.pipFil.RConv2.solid.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = 288.15, nominal = 300.0);
+//   protected Real seg.pipFil.RConv2.solid.Q_flow(quantity = "Power", unit = "W");
+//   protected Real seg.pipFil.RConv2.fluid.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = 288.15, nominal = 300.0);
+//   protected Real seg.pipFil.RConv2.fluid.Q_flow(quantity = "Power", unit = "W");
+//   protected Real seg.pipFil.Rpg1.Q_flow(quantity = "Power", unit = "W");
+//   protected Real seg.pipFil.Rpg1.dT(quantity = "ThermodynamicTemperature", unit = "K");
+//   protected Real seg.pipFil.Rpg1.port_a.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = 288.15, nominal = 300.0);
+//   protected Real seg.pipFil.Rpg1.port_a.Q_flow(quantity = "Power", unit = "W");
+//   protected Real seg.pipFil.Rpg1.port_b.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = 288.15, nominal = 300.0);
+//   protected Real seg.pipFil.Rpg1.port_b.Q_flow(quantity = "Power", unit = "W");
+//   protected final parameter Real seg.pipFil.Rpg1.R(quantity = "ThermalResistance", unit = "K/W") = seg.pipFil.RCondGro_val;
+//   protected Real seg.pipFil.Rpg2.Q_flow(quantity = "Power", unit = "W");
+//   protected Real seg.pipFil.Rpg2.dT(quantity = "ThermodynamicTemperature", unit = "K");
+//   protected Real seg.pipFil.Rpg2.port_a.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = 288.15, nominal = 300.0);
+//   protected Real seg.pipFil.Rpg2.port_a.Q_flow(quantity = "Power", unit = "W");
+//   protected Real seg.pipFil.Rpg2.port_b.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = 288.15, nominal = 300.0);
+//   protected Real seg.pipFil.Rpg2.port_b.Q_flow(quantity = "Power", unit = "W");
+//   protected final parameter Real seg.pipFil.Rpg2.R(quantity = "ThermalResistance", unit = "K/W") = seg.pipFil.RCondGro_val;
+//   protected Real seg.pipFil.Rgb1.Q_flow(quantity = "Power", unit = "W");
+//   protected Real seg.pipFil.Rgb1.dT(quantity = "ThermodynamicTemperature", unit = "K");
+//   protected Real seg.pipFil.Rgb1.port_a.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = 288.15, nominal = 300.0);
+//   protected Real seg.pipFil.Rgb1.port_a.Q_flow(quantity = "Power", unit = "W");
+//   protected Real seg.pipFil.Rgb1.port_b.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = 288.15, nominal = 300.0);
+//   protected Real seg.pipFil.Rgb1.port_b.Q_flow(quantity = "Power", unit = "W");
+//   protected final parameter Real seg.pipFil.Rgb1.R(quantity = "ThermalResistance", unit = "K/W") = seg.pipFil.Rgb_val;
+//   protected Real seg.pipFil.Rgb2.Q_flow(quantity = "Power", unit = "W");
+//   protected Real seg.pipFil.Rgb2.dT(quantity = "ThermodynamicTemperature", unit = "K");
+//   protected Real seg.pipFil.Rgb2.port_a.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = 288.15, nominal = 300.0);
+//   protected Real seg.pipFil.Rgb2.port_a.Q_flow(quantity = "Power", unit = "W");
+//   protected Real seg.pipFil.Rgb2.port_b.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = 288.15, nominal = 300.0);
+//   protected Real seg.pipFil.Rgb2.port_b.Q_flow(quantity = "Power", unit = "W");
+//   protected final parameter Real seg.pipFil.Rgb2.R(quantity = "ThermalResistance", unit = "K/W") = seg.pipFil.Rgb_val;
+//   protected Real seg.pipFil.Rgg.Q_flow(quantity = "Power", unit = "W");
+//   protected Real seg.pipFil.Rgg.dT(quantity = "ThermodynamicTemperature", unit = "K");
+//   protected Real seg.pipFil.Rgg.port_a.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = 288.15, nominal = 300.0);
+//   protected Real seg.pipFil.Rgg.port_a.Q_flow(quantity = "Power", unit = "W");
+//   protected Real seg.pipFil.Rgg.port_b.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = 288.15, nominal = 300.0);
+//   protected Real seg.pipFil.Rgg.port_b.Q_flow(quantity = "Power", unit = "W");
+//   protected final parameter Real seg.pipFil.Rgg.R(quantity = "ThermalResistance", unit = "K/W") = seg.pipFil.Rgg_val;
+//   protected Real seg.pipFil.RVol1.y = Buildings.Fluid.HeatExchangers.Boreholes.BaseClasses.convectionResistance(seg.pipFil.hSeg, seg.pipFil.rTub, seg.pipFil.kMed, seg.pipFil.mueMed, seg.pipFil.cpMed, seg.pipFil.m1_flow, 0.2);
+//   protected Real seg.pipFil.RVol2.y = Buildings.Fluid.HeatExchangers.Boreholes.BaseClasses.convectionResistance(seg.pipFil.hSeg, seg.pipFil.rTub, seg.pipFil.kMed, seg.pipFil.mueMed, seg.pipFil.cpMed, seg.pipFil.m2_flow, 0.2);
+//   final parameter Real seg.soi.material.k(quantity = "ThermalConductivity", unit = "W/(m.K)") = seg.matSoi.k;
+//   final parameter Real seg.soi.material.c(quantity = "SpecificHeatCapacity", unit = "J/(kg.K)") = 840.0;
+//   final parameter Real seg.soi.material.d(quantity = "Density", unit = "kg/m3", displayUnit = "g/cm3", min = 0.0) = 2000.0;
+//   final parameter Boolean seg.soi.material.steadyState = false;
+//   final parameter Real seg.soi.h(quantity = "Length", unit = "m", min = 0.0) = seg.hSeg;
+//   final parameter Real seg.soi.r_a(quantity = "Length", unit = "m", min = 0.0) = seg.rBor;
+//   final parameter Real seg.soi.r_b(quantity = "Length", unit = "m", min = 0.0) = seg.rExt;
+//   final parameter Integer seg.soi.nSta(min = 1) = 9;
+//   final parameter Real seg.soi.TInt_start(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = 288.15, nominal = 300.0) = seg.TFil_start;
+//   final parameter Real seg.soi.TExt_start(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = 288.15, nominal = 300.0) = seg.TExt_start;
+//   final parameter Boolean seg.soi.steadyStateInitial = false;
+//   parameter Real seg.soi.griFac(min = 1.0) = 2.0;
+//   Real seg.soi.dT(quantity = "ThermodynamicTemperature", unit = "K");
+//   Real seg.soi.port_a.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = 288.15, nominal = 300.0);
+//   Real seg.soi.port_a.Q_flow(quantity = "Power", unit = "W");
+//   Real seg.soi.port_b.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = 288.15, nominal = 300.0);
+//   Real seg.soi.port_b.Q_flow(quantity = "Power", unit = "W");
+//   Real seg.soi.T[1](quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = seg.soi.TInt_start + (seg.soi.TExt_start - seg.soi.TInt_start) / log(seg.soi.r_b / seg.soi.r_a) * log((seg.soi.r_a + (seg.soi.r_b - seg.soi.r_a) / 9.0 * 0.5) / seg.soi.r_a), nominal = 300.0);
+//   Real seg.soi.T[2](quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = seg.soi.TInt_start + (seg.soi.TExt_start - seg.soi.TInt_start) / log(seg.soi.r_b / seg.soi.r_a) * log((seg.soi.r_a + (seg.soi.r_b - seg.soi.r_a) / 9.0 * 1.5) / seg.soi.r_a), nominal = 300.0);
+//   Real seg.soi.T[3](quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = seg.soi.TInt_start + (seg.soi.TExt_start - seg.soi.TInt_start) / log(seg.soi.r_b / seg.soi.r_a) * log((seg.soi.r_a + (seg.soi.r_b - seg.soi.r_a) / 9.0 * 2.5) / seg.soi.r_a), nominal = 300.0);
+//   Real seg.soi.T[4](quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = seg.soi.TInt_start + (seg.soi.TExt_start - seg.soi.TInt_start) / log(seg.soi.r_b / seg.soi.r_a) * log((seg.soi.r_a + (seg.soi.r_b - seg.soi.r_a) / 9.0 * 3.5) / seg.soi.r_a), nominal = 300.0);
+//   Real seg.soi.T[5](quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = seg.soi.TInt_start + (seg.soi.TExt_start - seg.soi.TInt_start) / log(seg.soi.r_b / seg.soi.r_a) * log((seg.soi.r_a + (seg.soi.r_b - seg.soi.r_a) / 9.0 * 4.5) / seg.soi.r_a), nominal = 300.0);
+//   Real seg.soi.T[6](quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = seg.soi.TInt_start + (seg.soi.TExt_start - seg.soi.TInt_start) / log(seg.soi.r_b / seg.soi.r_a) * log((seg.soi.r_a + (seg.soi.r_b - seg.soi.r_a) / 9.0 * 5.5) / seg.soi.r_a), nominal = 300.0);
+//   Real seg.soi.T[7](quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = seg.soi.TInt_start + (seg.soi.TExt_start - seg.soi.TInt_start) / log(seg.soi.r_b / seg.soi.r_a) * log((seg.soi.r_a + (seg.soi.r_b - seg.soi.r_a) / 9.0 * 6.5) / seg.soi.r_a), nominal = 300.0);
+//   Real seg.soi.T[8](quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = seg.soi.TInt_start + (seg.soi.TExt_start - seg.soi.TInt_start) / log(seg.soi.r_b / seg.soi.r_a) * log((seg.soi.r_a + (seg.soi.r_b - seg.soi.r_a) / 9.0 * 7.5) / seg.soi.r_a), nominal = 300.0);
+//   Real seg.soi.T[9](quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = seg.soi.TInt_start + (seg.soi.TExt_start - seg.soi.TInt_start) / log(seg.soi.r_b / seg.soi.r_a) * log((seg.soi.r_a + (seg.soi.r_b - seg.soi.r_a) / 9.0 * 8.5) / seg.soi.r_a), nominal = 300.0);
+//   Real seg.soi.Q_flow[1](quantity = "Power", unit = "W");
+//   Real seg.soi.Q_flow[2](quantity = "Power", unit = "W");
+//   Real seg.soi.Q_flow[3](quantity = "Power", unit = "W");
+//   Real seg.soi.Q_flow[4](quantity = "Power", unit = "W");
+//   Real seg.soi.Q_flow[5](quantity = "Power", unit = "W");
+//   Real seg.soi.Q_flow[6](quantity = "Power", unit = "W");
+//   Real seg.soi.Q_flow[7](quantity = "Power", unit = "W");
+//   Real seg.soi.Q_flow[8](quantity = "Power", unit = "W");
+//   Real seg.soi.Q_flow[9](quantity = "Power", unit = "W");
+//   Real seg.soi.Q_flow[10](quantity = "Power", unit = "W");
+//   protected parameter Real seg.soi.r[1](quantity = "Length", unit = "m", min = 0.0, fixed = false);
+//   protected parameter Real seg.soi.r[2](quantity = "Length", unit = "m", min = 0.0, fixed = false);
+//   protected parameter Real seg.soi.r[3](quantity = "Length", unit = "m", min = 0.0, fixed = false);
+//   protected parameter Real seg.soi.r[4](quantity = "Length", unit = "m", min = 0.0, fixed = false);
+//   protected parameter Real seg.soi.r[5](quantity = "Length", unit = "m", min = 0.0, fixed = false);
+//   protected parameter Real seg.soi.r[6](quantity = "Length", unit = "m", min = 0.0, fixed = false);
+//   protected parameter Real seg.soi.r[7](quantity = "Length", unit = "m", min = 0.0, fixed = false);
+//   protected parameter Real seg.soi.r[8](quantity = "Length", unit = "m", min = 0.0, fixed = false);
+//   protected parameter Real seg.soi.r[9](quantity = "Length", unit = "m", min = 0.0, fixed = false);
+//   protected parameter Real seg.soi.r[10](quantity = "Length", unit = "m", min = 0.0, fixed = false);
+//   protected parameter Real seg.soi.rC[1](quantity = "Length", unit = "m", min = 0.0, fixed = false);
+//   protected parameter Real seg.soi.rC[2](quantity = "Length", unit = "m", min = 0.0, fixed = false);
+//   protected parameter Real seg.soi.rC[3](quantity = "Length", unit = "m", min = 0.0, fixed = false);
+//   protected parameter Real seg.soi.rC[4](quantity = "Length", unit = "m", min = 0.0, fixed = false);
+//   protected parameter Real seg.soi.rC[5](quantity = "Length", unit = "m", min = 0.0, fixed = false);
+//   protected parameter Real seg.soi.rC[6](quantity = "Length", unit = "m", min = 0.0, fixed = false);
+//   protected parameter Real seg.soi.rC[7](quantity = "Length", unit = "m", min = 0.0, fixed = false);
+//   protected parameter Real seg.soi.rC[8](quantity = "Length", unit = "m", min = 0.0, fixed = false);
+//   protected parameter Real seg.soi.rC[9](quantity = "Length", unit = "m", min = 0.0, fixed = false);
+//   protected final parameter Real seg.soi.c(quantity = "SpecificHeatCapacity", unit = "J/(kg.K)") = seg.soi.material.c;
+//   protected final parameter Real seg.soi.k(quantity = "ThermalConductivity", unit = "W/(m.K)") = seg.soi.material.k;
+//   protected final parameter Real seg.soi.d(quantity = "Density", unit = "kg/m3", displayUnit = "g/cm3", min = 0.0) = seg.soi.material.d;
+//   protected parameter Real seg.soi.G[1](quantity = "ThermalConductance", unit = "W/K", fixed = false);
+//   protected parameter Real seg.soi.G[2](quantity = "ThermalConductance", unit = "W/K", fixed = false);
+//   protected parameter Real seg.soi.G[3](quantity = "ThermalConductance", unit = "W/K", fixed = false);
+//   protected parameter Real seg.soi.G[4](quantity = "ThermalConductance", unit = "W/K", fixed = false);
+//   protected parameter Real seg.soi.G[5](quantity = "ThermalConductance", unit = "W/K", fixed = false);
+//   protected parameter Real seg.soi.G[6](quantity = "ThermalConductance", unit = "W/K", fixed = false);
+//   protected parameter Real seg.soi.G[7](quantity = "ThermalConductance", unit = "W/K", fixed = false);
+//   protected parameter Real seg.soi.G[8](quantity = "ThermalConductance", unit = "W/K", fixed = false);
+//   protected parameter Real seg.soi.G[9](quantity = "ThermalConductance", unit = "W/K", fixed = false);
+//   protected parameter Real seg.soi.G[10](quantity = "ThermalConductance", unit = "W/K", fixed = false);
+//   protected parameter Real seg.soi.C[1](quantity = "HeatCapacity", unit = "J/K", fixed = false);
+//   protected parameter Real seg.soi.C[2](quantity = "HeatCapacity", unit = "J/K", fixed = false);
+//   protected parameter Real seg.soi.C[3](quantity = "HeatCapacity", unit = "J/K", fixed = false);
+//   protected parameter Real seg.soi.C[4](quantity = "HeatCapacity", unit = "J/K", fixed = false);
+//   protected parameter Real seg.soi.C[5](quantity = "HeatCapacity", unit = "J/K", fixed = false);
+//   protected parameter Real seg.soi.C[6](quantity = "HeatCapacity", unit = "J/K", fixed = false);
+//   protected parameter Real seg.soi.C[7](quantity = "HeatCapacity", unit = "J/K", fixed = false);
+//   protected parameter Real seg.soi.C[8](quantity = "HeatCapacity", unit = "J/K", fixed = false);
+//   protected parameter Real seg.soi.C[9](quantity = "HeatCapacity", unit = "J/K", fixed = false);
+//   final parameter Real seg.TBouCon.matSoi.k(quantity = "ThermalConductivity", unit = "W/(m.K)") = seg.matSoi.k;
+//   final parameter Real seg.TBouCon.matSoi.c(quantity = "SpecificHeatCapacity", unit = "J/(kg.K)") = 840.0;
+//   final parameter Real seg.TBouCon.matSoi.d(quantity = "Density", unit = "kg/m3", displayUnit = "g/cm3", min = 0.0) = 2000.0;
+//   final parameter Boolean seg.TBouCon.matSoi.steadyState = false;
+//   final parameter Real seg.TBouCon.rExt(quantity = "Length", unit = "m", min = 0.0) = seg.rExt;
+//   final parameter Real seg.TBouCon.hSeg(quantity = "Length", unit = "m", min = 0.0) = seg.hSeg;
+//   final parameter Real seg.TBouCon.TExt_start(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = 288.15, nominal = 300.0) = seg.TExt_start;
+//   final parameter Real seg.TBouCon.samplePeriod(quantity = "Time", unit = "s") = seg.samplePeriod;
+//   Buildings.Fluid.HeatExchangers.Boreholes.BaseClasses.ExtendableArray seg.TBouCon.table = Buildings.Fluid.HeatExchangers.Boreholes.BaseClasses.ExtendableArray.constructor();
+//   Real seg.TBouCon.QAve_flow(quantity = "Power", unit = "W");
+//   Real seg.TBouCon.Q_flow(unit = "W");
+//   Real seg.TBouCon.port.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = 288.15, nominal = 300.0);
+//   Real seg.TBouCon.port.Q_flow(quantity = "Power", unit = "W");
+//   protected final parameter Real seg.TBouCon.c(quantity = "SpecificHeatCapacity", unit = "J/(kg.K)") = seg.TBouCon.matSoi.c;
+//   protected final parameter Real seg.TBouCon.k(quantity = "ThermalConductivity", unit = "W/(m.K)") = seg.TBouCon.matSoi.k;
+//   protected final parameter Real seg.TBouCon.d(quantity = "Density", unit = "kg/m3", displayUnit = "g/cm3", min = 0.0) = seg.TBouCon.matSoi.d;
+//   protected Real seg.TBouCon.UOld(quantity = "Energy", unit = "J");
+//   protected Real seg.TBouCon.U(quantity = "Energy", unit = "J");
+//   protected final parameter Real seg.TBouCon.startTime(quantity = "Time", unit = "s", fixed = false);
+//   protected Integer seg.TBouCon.iSam(min = 1);
+//   protected Real seg.heaFlo.Q_flow(unit = "W");
+//   protected Real seg.heaFlo.port_a.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = 288.15, nominal = 300.0);
+//   protected Real seg.heaFlo.port_a.Q_flow(quantity = "Power", unit = "W");
+//   protected Real seg.heaFlo.port_b.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0, start = 288.15, nominal = 300.0);
+//   protected Real seg.heaFlo.port_b.Q_flow(quantity = "Power", unit = "W");
+//   final parameter Integer sou_1.nPorts = 1;
+//   Real sou_1.medium.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, nominal = 1e5);
+//   Real sou_1.medium.h(quantity = "SpecificEnergy", unit = "J/kg");
+//   Real sou_1.medium.d(quantity = "Density", unit = "kg/m3", displayUnit = "g/cm3", min = 0.0, max = 1e5, start = 1.0, nominal = 1.0);
+//   Real sou_1.medium.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 300.0, nominal = 300.0);
+//   Real sou_1.medium.X[1](quantity = "MassFraction", unit = "kg/kg", min = 0.0, max = 1.0, start = 1.0, nominal = 0.1);
+//   Real sou_1.medium.u(quantity = "SpecificEnergy", unit = "J/kg", min = -1e8, max = 1e8, nominal = 1e6);
+//   Real sou_1.medium.R(quantity = "SpecificHeatCapacity", unit = "J/(kg.K)", min = 0.0, max = 1e7, start = 1000.0, nominal = 1000.0);
+//   Real sou_1.medium.MM(quantity = "MolarMass", unit = "kg/mol", min = 0.001, max = 0.25, nominal = 0.032);
+//   Real sou_1.medium.state.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 3e5, nominal = 1e5);
+//   Real sou_1.medium.state.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 293.15, nominal = 300.0);
+//   final parameter Boolean sou_1.medium.preferredMediumStates = false;
+//   final parameter Boolean sou_1.medium.standardOrderComponents = true;
+//   Real sou_1.medium.T_degC(quantity = "ThermodynamicTemperature", unit = "degC") = Modelica.SIunits.Conversions.to_degC(sou_1.medium.T);
+//   Real sou_1.medium.p_bar(quantity = "Pressure", unit = "bar") = Modelica.SIunits.Conversions.to_bar(sou_1.medium.p);
+//   Real sou_1.ports[1].m_flow(quantity = "MassFlowRate.SimpleLiquidWater", unit = "kg/s", min = -1e60, max = 1e60);
+//   Real sou_1.ports[1].p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 1e5, nominal = 1e5);
+//   Real sou_1.ports[1].h_outflow(quantity = "SpecificEnergy", unit = "J/kg", min = -1e10, max = 1e10, nominal = 1e6);
+//   protected final parameter enumeration(Entering, Leaving, Bidirectional) sou_1.flowDirection = Modelica.Fluid.Types.PortFlowDirection.Bidirectional;
+//   final parameter Boolean sou_1.use_p_in = false;
+//   final parameter Boolean sou_1.use_T_in = false;
+//   final parameter Boolean sou_1.use_X_in = false;
+//   final parameter Boolean sou_1.use_C_in = false;
+//   parameter Real sou_1.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 1e5, nominal = 1e5) = 101340.0;
+//   parameter Real sou_1.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 300.0, nominal = 300.0) = 303.15;
+//   parameter Real sou_1.X[1](quantity = "MassFraction", unit = "kg/kg", min = 0.0, max = 1.0, nominal = 0.1) = 1.0;
+//   protected Real sou_1.p_in_internal;
+//   protected Real sou_1.T_in_internal;
+//   protected Real sou_1.X_in_internal[1];
+//   final parameter Integer sin_2.nPorts = 1;
+//   Real sin_2.medium.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, nominal = 1e5);
+//   Real sin_2.medium.h(quantity = "SpecificEnergy", unit = "J/kg");
+//   Real sin_2.medium.d(quantity = "Density", unit = "kg/m3", displayUnit = "g/cm3", min = 0.0, max = 1e5, start = 1.0, nominal = 1.0);
+//   Real sin_2.medium.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 300.0, nominal = 300.0);
+//   Real sin_2.medium.X[1](quantity = "MassFraction", unit = "kg/kg", min = 0.0, max = 1.0, start = 1.0, nominal = 0.1);
+//   Real sin_2.medium.u(quantity = "SpecificEnergy", unit = "J/kg", min = -1e8, max = 1e8, nominal = 1e6);
+//   Real sin_2.medium.R(quantity = "SpecificHeatCapacity", unit = "J/(kg.K)", min = 0.0, max = 1e7, start = 1000.0, nominal = 1000.0);
+//   Real sin_2.medium.MM(quantity = "MolarMass", unit = "kg/mol", min = 0.001, max = 0.25, nominal = 0.032);
+//   Real sin_2.medium.state.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 3e5, nominal = 1e5);
+//   Real sin_2.medium.state.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 293.15, nominal = 300.0);
+//   final parameter Boolean sin_2.medium.preferredMediumStates = false;
+//   final parameter Boolean sin_2.medium.standardOrderComponents = true;
+//   Real sin_2.medium.T_degC(quantity = "ThermodynamicTemperature", unit = "degC") = Modelica.SIunits.Conversions.to_degC(sin_2.medium.T);
+//   Real sin_2.medium.p_bar(quantity = "Pressure", unit = "bar") = Modelica.SIunits.Conversions.to_bar(sin_2.medium.p);
+//   Real sin_2.ports[1].m_flow(quantity = "MassFlowRate.SimpleLiquidWater", unit = "kg/s", min = -1e60, max = 1e60);
+//   Real sin_2.ports[1].p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 1e5, nominal = 1e5);
+//   Real sin_2.ports[1].h_outflow(quantity = "SpecificEnergy", unit = "J/kg", min = -1e10, max = 1e10, nominal = 1e6);
+//   protected final parameter enumeration(Entering, Leaving, Bidirectional) sin_2.flowDirection = Modelica.Fluid.Types.PortFlowDirection.Bidirectional;
+//   final parameter Boolean sin_2.use_p_in = false;
+//   final parameter Boolean sin_2.use_T_in = false;
+//   final parameter Boolean sin_2.use_X_in = false;
+//   final parameter Boolean sin_2.use_C_in = false;
+//   parameter Real sin_2.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0, max = 1e8, start = 1e5, nominal = 1e5) = 101330.0;
+//   parameter Real sin_2.T(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 1.0, max = 1e4, start = 300.0, nominal = 300.0) = 283.15;
+//   parameter Real sin_2.X[1](quantity = "MassFraction", unit = "kg/kg", min = 0.0, max = 1.0, nominal = 0.1) = 1.0;
+//   protected Real sin_2.p_in_internal;
+//   protected Real sin_2.T_in_internal;
+//   protected Real sin_2.X_in_internal[1];
+// initial equation
+//   der(seg.pipFil.vol1.dynBal.medium.T) = 0.0;
+//   der(seg.pipFil.vol2.dynBal.medium.T) = 0.0;
+//   seg.pipFil.sta1_start = BoreholeSegment.seg.pipFil.Medium1.setState_pTX(seg.pipFil.p1_start, seg.pipFil.T1_start, seg.pipFil.X1_start);
+//   seg.pipFil.sta2_start = BoreholeSegment.seg.pipFil.Medium2.setState_pTX(seg.pipFil.p2_start, seg.pipFil.T2_start, seg.pipFil.X2_start);
+//   (seg.pipFil.Rgb_val, seg.pipFil.Rgg_val, seg.pipFil.RCondGro_val, seg.pipFil.x) = Buildings.Fluid.HeatExchangers.Boreholes.BaseClasses.singleUTubeResistances(seg.pipFil.hSeg, seg.pipFil.rBor, seg.pipFil.rTub, seg.pipFil.eTub, seg.pipFil.xC, seg.pipFil.matSoi.k, seg.pipFil.matFil.k, seg.pipFil.kTub);
+//   assert(seg.soi.r_a < seg.soi.r_b, "Error: Model requires r_a < r_b.");
+//   assert(0.0 < seg.soi.r_a, "Error: Model requires 0 < r_a.");
+//   seg.soi.r[1] = seg.soi.r_a;
+//   seg.soi.r[2] = seg.soi.r[1] + (seg.soi.r_b - seg.soi.r_a) * (1.0 - seg.soi.griFac) / (1.0 - seg.soi.griFac ^ 9.0);
+//   seg.soi.r[3] = seg.soi.r[2] + (seg.soi.r_b - seg.soi.r_a) * (1.0 - seg.soi.griFac) / (1.0 - seg.soi.griFac ^ 9.0) * seg.soi.griFac;
+//   seg.soi.r[4] = seg.soi.r[3] + (seg.soi.r_b - seg.soi.r_a) * (1.0 - seg.soi.griFac) / (1.0 - seg.soi.griFac ^ 9.0) * seg.soi.griFac ^ 2.0;
+//   seg.soi.r[5] = seg.soi.r[4] + (seg.soi.r_b - seg.soi.r_a) * (1.0 - seg.soi.griFac) / (1.0 - seg.soi.griFac ^ 9.0) * seg.soi.griFac ^ 3.0;
+//   seg.soi.r[6] = seg.soi.r[5] + (seg.soi.r_b - seg.soi.r_a) * (1.0 - seg.soi.griFac) / (1.0 - seg.soi.griFac ^ 9.0) * seg.soi.griFac ^ 4.0;
+//   seg.soi.r[7] = seg.soi.r[6] + (seg.soi.r_b - seg.soi.r_a) * (1.0 - seg.soi.griFac) / (1.0 - seg.soi.griFac ^ 9.0) * seg.soi.griFac ^ 5.0;
+//   seg.soi.r[8] = seg.soi.r[7] + (seg.soi.r_b - seg.soi.r_a) * (1.0 - seg.soi.griFac) / (1.0 - seg.soi.griFac ^ 9.0) * seg.soi.griFac ^ 6.0;
+//   seg.soi.r[9] = seg.soi.r[8] + (seg.soi.r_b - seg.soi.r_a) * (1.0 - seg.soi.griFac) / (1.0 - seg.soi.griFac ^ 9.0) * seg.soi.griFac ^ 7.0;
+//   seg.soi.r[10] = seg.soi.r[9] + (seg.soi.r_b - seg.soi.r_a) * (1.0 - seg.soi.griFac) / (1.0 - seg.soi.griFac ^ 9.0) * seg.soi.griFac ^ 8.0;
+//   assert(abs(seg.soi.r[10] - seg.soi.r_b) < 1e-10, "Error: Wrong computation of radius. r[nSta+1]=" + String(seg.soi.r[9 + 1], 6, 0, true));
+//   seg.soi.rC[1] = (seg.soi.r[1] + seg.soi.r[2]) / 2.0;
+//   seg.soi.rC[2] = (seg.soi.r[2] + seg.soi.r[3]) / 2.0;
+//   seg.soi.rC[3] = (seg.soi.r[3] + seg.soi.r[4]) / 2.0;
+//   seg.soi.rC[4] = (seg.soi.r[4] + seg.soi.r[5]) / 2.0;
+//   seg.soi.rC[5] = (seg.soi.r[5] + seg.soi.r[6]) / 2.0;
+//   seg.soi.rC[6] = (seg.soi.r[6] + seg.soi.r[7]) / 2.0;
+//   seg.soi.rC[7] = (seg.soi.r[7] + seg.soi.r[8]) / 2.0;
+//   seg.soi.rC[8] = (seg.soi.r[8] + seg.soi.r[9]) / 2.0;
+//   seg.soi.rC[9] = (seg.soi.r[9] + seg.soi.r[10]) / 2.0;
+//   seg.soi.G[1] = 6.283185307179586 * seg.soi.k * seg.soi.h / log(seg.soi.rC[1] / seg.soi.r_a);
+//   seg.soi.G[10] = 6.283185307179586 * seg.soi.k * seg.soi.h / log(seg.soi.r_b / seg.soi.rC[9]);
+//   seg.soi.G[2] = 6.283185307179586 * seg.soi.k * seg.soi.h / log(seg.soi.rC[2] / seg.soi.rC[1]);
+//   seg.soi.G[3] = 6.283185307179586 * seg.soi.k * seg.soi.h / log(seg.soi.rC[3] / seg.soi.rC[2]);
+//   seg.soi.G[4] = 6.283185307179586 * seg.soi.k * seg.soi.h / log(seg.soi.rC[4] / seg.soi.rC[3]);
+//   seg.soi.G[5] = 6.283185307179586 * seg.soi.k * seg.soi.h / log(seg.soi.rC[5] / seg.soi.rC[4]);
+//   seg.soi.G[6] = 6.283185307179586 * seg.soi.k * seg.soi.h / log(seg.soi.rC[6] / seg.soi.rC[5]);
+//   seg.soi.G[7] = 6.283185307179586 * seg.soi.k * seg.soi.h / log(seg.soi.rC[7] / seg.soi.rC[6]);
+//   seg.soi.G[8] = 6.283185307179586 * seg.soi.k * seg.soi.h / log(seg.soi.rC[8] / seg.soi.rC[7]);
+//   seg.soi.G[9] = 6.283185307179586 * seg.soi.k * seg.soi.h / log(seg.soi.rC[9] / seg.soi.rC[8]);
+//   seg.soi.C[1] = seg.soi.d * 3.141592653589793 * seg.soi.c * seg.soi.h * (seg.soi.r[2] ^ 2.0 - seg.soi.r[1] ^ 2.0);
+//   seg.soi.C[2] = seg.soi.d * 3.141592653589793 * seg.soi.c * seg.soi.h * (seg.soi.r[3] ^ 2.0 - seg.soi.r[2] ^ 2.0);
+//   seg.soi.C[3] = seg.soi.d * 3.141592653589793 * seg.soi.c * seg.soi.h * (seg.soi.r[4] ^ 2.0 - seg.soi.r[3] ^ 2.0);
+//   seg.soi.C[4] = seg.soi.d * 3.141592653589793 * seg.soi.c * seg.soi.h * (seg.soi.r[5] ^ 2.0 - seg.soi.r[4] ^ 2.0);
+//   seg.soi.C[5] = seg.soi.d * 3.141592653589793 * seg.soi.c * seg.soi.h * (seg.soi.r[6] ^ 2.0 - seg.soi.r[5] ^ 2.0);
+//   seg.soi.C[6] = seg.soi.d * 3.141592653589793 * seg.soi.c * seg.soi.h * (seg.soi.r[7] ^ 2.0 - seg.soi.r[6] ^ 2.0);
+//   seg.soi.C[7] = seg.soi.d * 3.141592653589793 * seg.soi.c * seg.soi.h * (seg.soi.r[8] ^ 2.0 - seg.soi.r[7] ^ 2.0);
+//   seg.soi.C[8] = seg.soi.d * 3.141592653589793 * seg.soi.c * seg.soi.h * (seg.soi.r[9] ^ 2.0 - seg.soi.r[8] ^ 2.0);
+//   seg.soi.C[9] = seg.soi.d * 3.141592653589793 * seg.soi.c * seg.soi.h * (seg.soi.r[10] ^ 2.0 - seg.soi.r[9] ^ 2.0);
+//   if not seg.soi.material.steadyState then
+//     seg.soi.T[1] = seg.soi.TInt_start + (seg.soi.TExt_start - seg.soi.TInt_start) / log(seg.soi.r_b / seg.soi.r_a) * log(seg.soi.rC[1] / seg.soi.r_a);
+//     seg.soi.T[2] = seg.soi.TInt_start + (seg.soi.TExt_start - seg.soi.TInt_start) / log(seg.soi.r_b / seg.soi.r_a) * log(seg.soi.rC[2] / seg.soi.r_a);
+//     seg.soi.T[3] = seg.soi.TInt_start + (seg.soi.TExt_start - seg.soi.TInt_start) / log(seg.soi.r_b / seg.soi.r_a) * log(seg.soi.rC[3] / seg.soi.r_a);
+//     seg.soi.T[4] = seg.soi.TInt_start + (seg.soi.TExt_start - seg.soi.TInt_start) / log(seg.soi.r_b / seg.soi.r_a) * log(seg.soi.rC[4] / seg.soi.r_a);
+//     seg.soi.T[5] = seg.soi.TInt_start + (seg.soi.TExt_start - seg.soi.TInt_start) / log(seg.soi.r_b / seg.soi.r_a) * log(seg.soi.rC[5] / seg.soi.r_a);
+//     seg.soi.T[6] = seg.soi.TInt_start + (seg.soi.TExt_start - seg.soi.TInt_start) / log(seg.soi.r_b / seg.soi.r_a) * log(seg.soi.rC[6] / seg.soi.r_a);
+//     seg.soi.T[7] = seg.soi.TInt_start + (seg.soi.TExt_start - seg.soi.TInt_start) / log(seg.soi.r_b / seg.soi.r_a) * log(seg.soi.rC[7] / seg.soi.r_a);
+//     seg.soi.T[8] = seg.soi.TInt_start + (seg.soi.TExt_start - seg.soi.TInt_start) / log(seg.soi.r_b / seg.soi.r_a) * log(seg.soi.rC[8] / seg.soi.r_a);
+//     seg.soi.T[9] = seg.soi.TInt_start + (seg.soi.TExt_start - seg.soi.TInt_start) / log(seg.soi.r_b / seg.soi.r_a) * log(seg.soi.rC[9] / seg.soi.r_a);
+//   end if;
+// initial algorithm
+//   assert(seg.pipFil.tau1 > 1e-15, "The parameter tau1, or the volume of the model from which tau may be derived, is unreasonably small.
+//            You need to set energyDynamics == Modelica.Fluid.Types.Dynamics.SteadyState to model steady-state.
+//            Received tau1 = " + String(seg.pipFil.tau1, 6, 0, true) + "
+//   ");
+//   assert(seg.pipFil.tau1 > 1e-15, "The parameter tau1, or the volume of the model from which tau may be derived, is unreasonably small.
+//            You need to set massDynamics == Modelica.Fluid.Types.Dynamics.SteadyState to model steady-state.
+//            Received tau1 = " + String(seg.pipFil.tau1, 6, 0, true) + "
+//   ");
+//   assert(seg.pipFil.tau2 > 1e-15, "The parameter tau2, or the volume of the model from which tau may be derived, is unreasonably small.
+//            You need to set energyDynamics == Modelica.Fluid.Types.Dynamics.SteadyState to model steady-state.
+//            Received tau2 = " + String(seg.pipFil.tau2, 6, 0, true) + "
+//   ");
+//   assert(seg.pipFil.tau2 > 1e-15, "The parameter tau2, or the volume of the model from which tau may be derived, is unreasonably small.
+//            You need to set massDynamics == Modelica.Fluid.Types.Dynamics.SteadyState to model steady-state.
+//            Received tau2 = " + String(seg.pipFil.tau2, 6, 0, true) + "
+//   ");
+// initial algorithm
+//   seg.TBouCon.U := 0.0;
+//   seg.TBouCon.UOld := 0.0;
+//   seg.TBouCon.startTime := time;
+//   seg.TBouCon.iSam := 1;
+// equation
+//   seg.pipFil.vol1.masExc.y = seg.pipFil.vol1.dynBal.mWat_flow;
+//   seg.pipFil.vol1.QSen_flow.y = seg.pipFil.vol1.dynBal.Q_flow;
+//   seg.pipFil.vol1.dynBal.ports[1].p = seg.pipFil.vol1.ports[1].p;
+//   seg.pipFil.vol1.dynBal.ports[1].h_outflow = seg.pipFil.vol1.ports[1].h_outflow;
+//   seg.pipFil.vol1.dynBal.ports[2].p = seg.pipFil.vol1.ports[2].p;
+//   seg.pipFil.vol1.dynBal.ports[2].h_outflow = seg.pipFil.vol1.ports[2].h_outflow;
+//   seg.pipFil.vol1.hOut_internal = seg.pipFil.vol1.dynBal.hOut;
+//   seg.pipFil.vol2.masExc.y = seg.pipFil.vol2.dynBal.mWat_flow;
+//   seg.pipFil.vol2.QSen_flow.y = seg.pipFil.vol2.dynBal.Q_flow;
+//   seg.pipFil.vol2.dynBal.ports[1].p = seg.pipFil.vol2.ports[1].p;
+//   seg.pipFil.vol2.dynBal.ports[1].h_outflow = seg.pipFil.vol2.ports[1].h_outflow;
+//   seg.pipFil.vol2.dynBal.ports[2].p = seg.pipFil.vol2.ports[2].p;
+//   seg.pipFil.vol2.dynBal.ports[2].h_outflow = seg.pipFil.vol2.ports[2].h_outflow;
+//   seg.pipFil.vol2.hOut_internal = seg.pipFil.vol2.dynBal.hOut;
+//   seg.pipFil.vol1.heatPort.T = seg.pipFil.RConv1.fluid.T;
+//   seg.pipFil.RConv1.solid.T = seg.pipFil.Rpg1.port_a.T;
+//   seg.pipFil.capFil1.port.T = seg.pipFil.Rgg.port_a.T;
+//   seg.pipFil.capFil1.port.T = seg.pipFil.Rgb1.port_a.T;
+//   seg.pipFil.capFil1.port.T = seg.pipFil.Rpg1.port_b.T;
+//   seg.pipFil.Rgb2.port_b.T = seg.pipFil.port.T;
+//   seg.pipFil.Rgb2.port_b.T = seg.pipFil.Rgb1.port_b.T;
+//   seg.pipFil.RConv2.solid.T = seg.pipFil.Rpg2.port_a.T;
+//   seg.pipFil.Rgg.port_b.T = seg.pipFil.capFil2.port.T;
+//   seg.pipFil.Rgg.port_b.T = seg.pipFil.Rgb2.port_a.T;
+//   seg.pipFil.Rgg.port_b.T = seg.pipFil.Rpg2.port_b.T;
+//   seg.pipFil.RConv2.fluid.T = seg.pipFil.vol2.heatPort.T;
+//   seg.pipFil.RVol1.y = seg.pipFil.RConv1.Rc;
+//   seg.pipFil.RVol2.y = seg.pipFil.RConv2.Rc;
+//   seg.pipFil.vol1.ports[2].p = seg.pipFil.port_b1.p;
+//   seg.pipFil.vol1.ports[2].h_outflow = seg.pipFil.port_b1.h_outflow;
+//   seg.pipFil.vol2.ports[2].p = seg.pipFil.port_b2.p;
+//   seg.pipFil.vol2.ports[2].h_outflow = seg.pipFil.port_b2.h_outflow;
+//   seg.pipFil.port_a1.p = seg.pipFil.preDro1.port_a.p;
+//   seg.pipFil.preDro1.port_a.m_flow - seg.pipFil.port_a1.m_flow = 0.0;
+//   seg.pipFil.preDro1.port_a.h_outflow = seg.pipFil.port_a1.h_outflow;
+//   seg.pipFil.preDro1.port_b.p = seg.pipFil.vol1.ports[1].p;
+//   seg.pipFil.port_a2.p = seg.pipFil.preDro2.port_a.p;
+//   seg.pipFil.preDro2.port_a.m_flow - seg.pipFil.port_a2.m_flow = 0.0;
+//   seg.pipFil.preDro2.port_a.h_outflow = seg.pipFil.port_a2.h_outflow;
+//   seg.pipFil.preDro2.port_b.p = seg.pipFil.vol2.ports[1].p;
+//   seg.pipFil.port_b1.p = seg.port_b1.p;
+//   seg.pipFil.port_b1.h_outflow = seg.port_b1.h_outflow;
+//   seg.pipFil.port_a2.p = seg.port_a2.p;
+//   seg.pipFil.port_a2.h_outflow = seg.port_a2.h_outflow;
+//   seg.pipFil.port_b2.p = seg.port_b2.p;
+//   seg.pipFil.port_b2.h_outflow = seg.port_b2.h_outflow;
+//   seg.pipFil.port.T = seg.heaFlo.port_a.T;
+//   seg.heaFlo.port_b.T = seg.soi.port_a.T;
+//   seg.soi.port_b.T = seg.TBouCon.port.T;
+//   seg.port_a1.p = seg.pipFil.port_a1.p;
+//   seg.pipFil.port_a1.m_flow - seg.port_a1.m_flow = 0.0;
+//   seg.pipFil.port_a1.h_outflow = seg.port_a1.h_outflow;
+//   seg.heaFlo.Q_flow = seg.TBouCon.Q_flow;
+//   sou_1.ports[1].p = seg.port_a1.p;
+//   seg.port_b1.p = seg.port_a2.p;
+//   seg.port_b2.p = sin_2.ports[1].p;
+//   seg.port_a2.m_flow + seg.port_b1.m_flow = 0.0;
+//   sin_2.ports[1].m_flow + seg.port_b2.m_flow = 0.0;
+//   seg.pipFil.port_b1.m_flow - seg.port_b1.m_flow = 0.0;
+//   seg.pipFil.port_a2.m_flow - seg.port_a2.m_flow = 0.0;
+//   seg.pipFil.port_b2.m_flow - seg.port_b2.m_flow = 0.0;
+//   seg.pipFil.vol1.ports[2].m_flow - seg.pipFil.port_b1.m_flow = 0.0;
+//   seg.pipFil.RConv1.fluid.Q_flow + seg.pipFil.vol1.heatPort.Q_flow = 0.0;
+//   seg.pipFil.vol1.dynBal.ports[1].m_flow - seg.pipFil.vol1.ports[1].m_flow = 0.0;
+//   seg.pipFil.vol1.dynBal.ports[2].m_flow - seg.pipFil.vol1.ports[2].m_flow = 0.0;
+//   seg.pipFil.vol2.ports[2].m_flow - seg.pipFil.port_b2.m_flow = 0.0;
+//   seg.pipFil.vol2.dynBal.ports[1].m_flow - seg.pipFil.vol2.ports[1].m_flow = 0.0;
+//   seg.pipFil.vol2.dynBal.ports[2].m_flow - seg.pipFil.vol2.ports[2].m_flow = 0.0;
+//   seg.pipFil.preDro1.port_b.m_flow + seg.pipFil.vol1.ports[1].m_flow = 0.0;
+//   seg.pipFil.preDro2.port_b.m_flow + seg.pipFil.vol2.ports[1].m_flow = 0.0;
+//   seg.heaFlo.port_a.Q_flow + seg.pipFil.port.Q_flow = 0.0;
+//   seg.pipFil.Rpg1.port_a.Q_flow + seg.pipFil.RConv1.solid.Q_flow = 0.0;
+//   seg.pipFil.Rpg2.port_a.Q_flow + seg.pipFil.RConv2.solid.Q_flow = 0.0;
+//   seg.pipFil.RConv2.fluid.Q_flow + seg.pipFil.vol2.heatPort.Q_flow = 0.0;
+//   seg.pipFil.Rgg.port_a.Q_flow + seg.pipFil.Rgb1.port_a.Q_flow + seg.pipFil.Rpg1.port_b.Q_flow + seg.pipFil.capFil1.port.Q_flow = 0.0;
+//   seg.pipFil.Rgg.port_b.Q_flow + seg.pipFil.Rgb2.port_a.Q_flow + seg.pipFil.Rpg2.port_b.Q_flow + seg.pipFil.capFil2.port.Q_flow = 0.0;
+//   seg.pipFil.Rgb2.port_b.Q_flow + seg.pipFil.Rgb1.port_b.Q_flow - seg.pipFil.port.Q_flow = 0.0;
+//   seg.TBouCon.port.Q_flow + seg.soi.port_b.Q_flow = 0.0;
+//   seg.heaFlo.port_b.Q_flow + seg.soi.port_a.Q_flow = 0.0;
+//   sou_1.ports[1].m_flow + seg.port_a1.m_flow = 0.0;
+//   seg.state_a1_inflow = BoreholeSegment.seg.Medium1.setState_phX(seg.port_a1.p, sou_1.ports[1].h_outflow, {});
+//   seg.state_b1_inflow = BoreholeSegment.seg.Medium1.setState_phX(seg.port_b1.p, seg.port_a2.h_outflow, {});
+//   seg.state_a2_inflow = BoreholeSegment.seg.Medium2.setState_phX(seg.port_a2.p, seg.port_b1.h_outflow, {});
+//   seg.state_b2_inflow = BoreholeSegment.seg.Medium2.setState_phX(seg.port_b2.p, sin_2.ports[1].h_outflow, {});
+//   seg.pipFil.state_a1_inflow = BoreholeSegment.seg.pipFil.Medium1.setState_phX(seg.pipFil.port_a1.p, sou_1.ports[1].h_outflow, {});
+//   seg.pipFil.state_b1_inflow = BoreholeSegment.seg.pipFil.Medium1.setState_phX(seg.pipFil.port_b1.p, seg.port_a2.h_outflow, {});
+//   seg.pipFil.state_a2_inflow = BoreholeSegment.seg.pipFil.Medium2.setState_phX(seg.pipFil.port_a2.p, seg.port_b1.h_outflow, {});
+//   seg.pipFil.state_b2_inflow = BoreholeSegment.seg.pipFil.Medium2.setState_phX(seg.pipFil.port_b2.p, sin_2.ports[1].h_outflow, {});
+//   assert(seg.pipFil.vol1.dynBal.medium.T >= 272.15 and seg.pipFil.vol1.dynBal.medium.T <= 403.15, "
+//             Temperature T (= " + String(seg.pipFil.vol1.dynBal.medium.T, 6, 0, true) + " K) is not
+//             in the allowed range (" + String(272.15, 6, 0, true) + " K <= T <= " + String(403.15, 6, 0, true) + " K)
+//             required from medium model \"" + "SimpleLiquidWater" + "\".
+//             ");
+//   seg.pipFil.vol1.dynBal.medium.h = BoreholeSegment.seg.pipFil.vol1.dynBal.Medium.specificEnthalpy_pTX(seg.pipFil.vol1.dynBal.medium.p, seg.pipFil.vol1.dynBal.medium.T, seg.pipFil.vol1.dynBal.medium.X);
+//   seg.pipFil.vol1.dynBal.medium.u = 4184.0 * (seg.pipFil.vol1.dynBal.medium.T - 273.15);
+//   seg.pipFil.vol1.dynBal.medium.d = 995.586;
+//   seg.pipFil.vol1.dynBal.medium.R = 0.0;
+//   seg.pipFil.vol1.dynBal.medium.MM = 0.018015268;
+//   seg.pipFil.vol1.dynBal.medium.state.T = seg.pipFil.vol1.dynBal.medium.T;
+//   seg.pipFil.vol1.dynBal.medium.state.p = seg.pipFil.vol1.dynBal.medium.p;
+//   seg.pipFil.vol1.dynBal.medium.X[1] = 1.0;
+//   assert(seg.pipFil.vol1.dynBal.medium.X[1] >= -1e-5 and seg.pipFil.vol1.dynBal.medium.X[1] <= 1.00001, "Mass fraction X[" + String(1, 0, true) + "] = " + String(seg.pipFil.vol1.dynBal.medium.X[1], 6, 0, true) + "of substance " + "SimpleLiquidWater" + "
+//   of medium " + "SimpleLiquidWater" + " is not in the range 0..1");
+//   assert(seg.pipFil.vol1.dynBal.medium.p >= 0.0, "Pressure (= " + String(seg.pipFil.vol1.dynBal.medium.p, 6, 0, true) + " Pa) of medium \"" + "SimpleLiquidWater" + "\" is negative
+//   (Temperature = " + String(seg.pipFil.vol1.dynBal.medium.T, 6, 0, true) + " K)");
+//   seg.pipFil.vol1.dynBal.m = seg.pipFil.vol1.dynBal.fluidVolume * seg.pipFil.vol1.dynBal.medium.d;
+//   seg.pipFil.vol1.dynBal.U = seg.pipFil.vol1.dynBal.m * seg.pipFil.vol1.dynBal.medium.u;
+//   seg.pipFil.vol1.dynBal.hOut = seg.pipFil.vol1.dynBal.medium.h;
+//   seg.pipFil.vol1.dynBal.ports_H_flow[1] = smooth(0, seg.pipFil.vol1.dynBal.ports[1].m_flow * (if seg.pipFil.vol1.dynBal.ports[1].m_flow > 0.0 then seg.pipFil.preDro1.port_b.h_outflow else seg.pipFil.vol1.dynBal.ports[1].h_outflow));
+//   seg.pipFil.vol1.dynBal.ports_H_flow[2] = smooth(0, seg.pipFil.vol1.dynBal.ports[2].m_flow * (if seg.pipFil.vol1.dynBal.ports[2].m_flow > 0.0 then seg.port_a2.h_outflow else seg.pipFil.vol1.dynBal.ports[2].h_outflow));
+//   seg.pipFil.vol1.dynBal.mb_flow = seg.pipFil.vol1.dynBal.ports[1].m_flow + seg.pipFil.vol1.dynBal.ports[2].m_flow;
+//   seg.pipFil.vol1.dynBal.Hb_flow = seg.pipFil.vol1.dynBal.ports_H_flow[1] + seg.pipFil.vol1.dynBal.ports_H_flow[2];
+//   der(seg.pipFil.vol1.dynBal.U) = seg.pipFil.vol1.dynBal.Hb_flow + seg.pipFil.vol1.dynBal.Q_flow;
+//   der(seg.pipFil.vol1.dynBal.m) = seg.pipFil.vol1.dynBal.mb_flow + seg.pipFil.vol1.dynBal.mWat_flow;
+//   seg.pipFil.vol1.dynBal.ports[1].p = seg.pipFil.vol1.dynBal.medium.p;
+//   seg.pipFil.vol1.dynBal.ports[1].h_outflow = seg.pipFil.vol1.dynBal.medium.h;
+//   seg.pipFil.vol1.dynBal.ports[2].p = seg.pipFil.vol1.dynBal.medium.p;
+//   seg.pipFil.vol1.dynBal.ports[2].h_outflow = seg.pipFil.vol1.dynBal.medium.h;
+//   seg.pipFil.vol1.masExc.y = seg.pipFil.vol1.masExc.k;
+//   seg.pipFil.vol1.p = seg.pipFil.vol1.ports[1].p;
+//   seg.pipFil.vol1.T = BoreholeSegment.seg.pipFil.vol1.Medium.temperature_phX(seg.pipFil.vol1.p, seg.pipFil.vol1.hOut_internal, {1.0});
+//   seg.pipFil.vol1.heatPort.T = seg.pipFil.vol1.T;
+//   assert(seg.pipFil.vol2.dynBal.medium.T >= 272.15 and seg.pipFil.vol2.dynBal.medium.T <= 403.15, "
+//             Temperature T (= " + String(seg.pipFil.vol2.dynBal.medium.T, 6, 0, true) + " K) is not
+//             in the allowed range (" + String(272.15, 6, 0, true) + " K <= T <= " + String(403.15, 6, 0, true) + " K)
+//             required from medium model \"" + "SimpleLiquidWater" + "\".
+//             ");
+//   seg.pipFil.vol2.dynBal.medium.h = BoreholeSegment.seg.pipFil.vol2.dynBal.Medium.specificEnthalpy_pTX(seg.pipFil.vol2.dynBal.medium.p, seg.pipFil.vol2.dynBal.medium.T, seg.pipFil.vol2.dynBal.medium.X);
+//   seg.pipFil.vol2.dynBal.medium.u = 4184.0 * (seg.pipFil.vol2.dynBal.medium.T - 273.15);
+//   seg.pipFil.vol2.dynBal.medium.d = 995.586;
+//   seg.pipFil.vol2.dynBal.medium.R = 0.0;
+//   seg.pipFil.vol2.dynBal.medium.MM = 0.018015268;
+//   seg.pipFil.vol2.dynBal.medium.state.T = seg.pipFil.vol2.dynBal.medium.T;
+//   seg.pipFil.vol2.dynBal.medium.state.p = seg.pipFil.vol2.dynBal.medium.p;
+//   seg.pipFil.vol2.dynBal.medium.X[1] = 1.0;
+//   assert(seg.pipFil.vol2.dynBal.medium.X[1] >= -1e-5 and seg.pipFil.vol2.dynBal.medium.X[1] <= 1.00001, "Mass fraction X[" + String(1, 0, true) + "] = " + String(seg.pipFil.vol2.dynBal.medium.X[1], 6, 0, true) + "of substance " + "SimpleLiquidWater" + "
+//   of medium " + "SimpleLiquidWater" + " is not in the range 0..1");
+//   assert(seg.pipFil.vol2.dynBal.medium.p >= 0.0, "Pressure (= " + String(seg.pipFil.vol2.dynBal.medium.p, 6, 0, true) + " Pa) of medium \"" + "SimpleLiquidWater" + "\" is negative
+//   (Temperature = " + String(seg.pipFil.vol2.dynBal.medium.T, 6, 0, true) + " K)");
+//   seg.pipFil.vol2.dynBal.m = seg.pipFil.vol2.dynBal.fluidVolume * seg.pipFil.vol2.dynBal.medium.d;
+//   seg.pipFil.vol2.dynBal.U = seg.pipFil.vol2.dynBal.m * seg.pipFil.vol2.dynBal.medium.u;
+//   seg.pipFil.vol2.dynBal.hOut = seg.pipFil.vol2.dynBal.medium.h;
+//   seg.pipFil.vol2.dynBal.ports_H_flow[1] = smooth(0, seg.pipFil.vol2.dynBal.ports[1].m_flow * (if seg.pipFil.vol2.dynBal.ports[1].m_flow > 0.0 then seg.pipFil.preDro2.port_b.h_outflow else seg.pipFil.vol2.dynBal.ports[1].h_outflow));
+//   seg.pipFil.vol2.dynBal.ports_H_flow[2] = smooth(0, seg.pipFil.vol2.dynBal.ports[2].m_flow * (if seg.pipFil.vol2.dynBal.ports[2].m_flow > 0.0 then sin_2.ports[1].h_outflow else seg.pipFil.vol2.dynBal.ports[2].h_outflow));
+//   seg.pipFil.vol2.dynBal.mb_flow = seg.pipFil.vol2.dynBal.ports[1].m_flow + seg.pipFil.vol2.dynBal.ports[2].m_flow;
+//   seg.pipFil.vol2.dynBal.Hb_flow = seg.pipFil.vol2.dynBal.ports_H_flow[1] + seg.pipFil.vol2.dynBal.ports_H_flow[2];
+//   der(seg.pipFil.vol2.dynBal.U) = seg.pipFil.vol2.dynBal.Hb_flow + seg.pipFil.vol2.dynBal.Q_flow;
+//   der(seg.pipFil.vol2.dynBal.m) = seg.pipFil.vol2.dynBal.mb_flow + seg.pipFil.vol2.dynBal.mWat_flow;
+//   seg.pipFil.vol2.dynBal.ports[1].p = seg.pipFil.vol2.dynBal.medium.p;
+//   seg.pipFil.vol2.dynBal.ports[1].h_outflow = seg.pipFil.vol2.dynBal.medium.h;
+//   seg.pipFil.vol2.dynBal.ports[2].p = seg.pipFil.vol2.dynBal.medium.p;
+//   seg.pipFil.vol2.dynBal.ports[2].h_outflow = seg.pipFil.vol2.dynBal.medium.h;
+//   seg.pipFil.vol2.masExc.y = seg.pipFil.vol2.masExc.k;
+//   seg.pipFil.vol2.p = seg.pipFil.vol2.ports[1].p;
+//   seg.pipFil.vol2.T = BoreholeSegment.seg.pipFil.vol2.Medium.temperature_phX(seg.pipFil.vol2.p, seg.pipFil.vol2.hOut_internal, {1.0});
+//   seg.pipFil.vol2.heatPort.T = seg.pipFil.vol2.T;
+//   seg.pipFil.preDro1.dp = homotopy(Buildings.Fluid.BaseClasses.FlowModels.basicFlowFunction_m_flow(seg.pipFil.preDro1.m_flow, seg.pipFil.preDro1.k, 0.020000000000000004), 5.0 * seg.pipFil.preDro1.m_flow / 0.2);
+//   seg.pipFil.preDro1.port_a.h_outflow = seg.pipFil.vol1.ports[1].h_outflow;
+//   seg.pipFil.preDro1.port_b.h_outflow = sou_1.ports[1].h_outflow;
+//   seg.pipFil.preDro1.port_a.m_flow + seg.pipFil.preDro1.port_b.m_flow = 0.0;
+//   seg.pipFil.preDro1.dp = seg.pipFil.preDro1.port_a.p - seg.pipFil.preDro1.port_b.p;
+//   seg.pipFil.preDro2.dp = 0.0;
+//   seg.pipFil.preDro2.port_a.h_outflow = seg.pipFil.vol2.ports[1].h_outflow;
+//   seg.pipFil.preDro2.port_b.h_outflow = seg.port_b1.h_outflow;
+//   seg.pipFil.preDro2.port_a.m_flow + seg.pipFil.preDro2.port_b.m_flow = 0.0;
+//   seg.pipFil.preDro2.dp = seg.pipFil.preDro2.port_a.p - seg.pipFil.preDro2.port_b.p;
+//   seg.pipFil.capFil1.T = seg.pipFil.capFil1.port.T;
+//   seg.pipFil.capFil1.der_T = der(seg.pipFil.capFil1.T);
+//   seg.pipFil.capFil1.C * der(seg.pipFil.capFil1.T) = seg.pipFil.capFil1.port.Q_flow;
+//   seg.pipFil.capFil2.T = seg.pipFil.capFil2.port.T;
+//   seg.pipFil.capFil2.der_T = der(seg.pipFil.capFil2.T);
+//   seg.pipFil.capFil2.C * der(seg.pipFil.capFil2.T) = seg.pipFil.capFil2.port.Q_flow;
+//   seg.pipFil.RConv1.dT = seg.pipFil.RConv1.solid.T - seg.pipFil.RConv1.fluid.T;
+//   seg.pipFil.RConv1.solid.Q_flow = seg.pipFil.RConv1.Q_flow;
+//   seg.pipFil.RConv1.fluid.Q_flow = -seg.pipFil.RConv1.Q_flow;
+//   seg.pipFil.RConv1.dT = seg.pipFil.RConv1.Rc * seg.pipFil.RConv1.Q_flow;
+//   seg.pipFil.RConv2.dT = seg.pipFil.RConv2.solid.T - seg.pipFil.RConv2.fluid.T;
+//   seg.pipFil.RConv2.solid.Q_flow = seg.pipFil.RConv2.Q_flow;
+//   seg.pipFil.RConv2.fluid.Q_flow = -seg.pipFil.RConv2.Q_flow;
+//   seg.pipFil.RConv2.dT = seg.pipFil.RConv2.Rc * seg.pipFil.RConv2.Q_flow;
+//   seg.pipFil.Rpg1.dT = seg.pipFil.Rpg1.R * seg.pipFil.Rpg1.Q_flow;
+//   seg.pipFil.Rpg1.dT = seg.pipFil.Rpg1.port_a.T - seg.pipFil.Rpg1.port_b.T;
+//   seg.pipFil.Rpg1.port_a.Q_flow = seg.pipFil.Rpg1.Q_flow;
+//   seg.pipFil.Rpg1.port_b.Q_flow = -seg.pipFil.Rpg1.Q_flow;
+//   seg.pipFil.Rpg2.dT = seg.pipFil.Rpg2.R * seg.pipFil.Rpg2.Q_flow;
+//   seg.pipFil.Rpg2.dT = seg.pipFil.Rpg2.port_a.T - seg.pipFil.Rpg2.port_b.T;
+//   seg.pipFil.Rpg2.port_a.Q_flow = seg.pipFil.Rpg2.Q_flow;
+//   seg.pipFil.Rpg2.port_b.Q_flow = -seg.pipFil.Rpg2.Q_flow;
+//   seg.pipFil.Rgb1.dT = seg.pipFil.Rgb1.R * seg.pipFil.Rgb1.Q_flow;
+//   seg.pipFil.Rgb1.dT = seg.pipFil.Rgb1.port_a.T - seg.pipFil.Rgb1.port_b.T;
+//   seg.pipFil.Rgb1.port_a.Q_flow = seg.pipFil.Rgb1.Q_flow;
+//   seg.pipFil.Rgb1.port_b.Q_flow = -seg.pipFil.Rgb1.Q_flow;
+//   seg.pipFil.Rgb2.dT = seg.pipFil.Rgb2.R * seg.pipFil.Rgb2.Q_flow;
+//   seg.pipFil.Rgb2.dT = seg.pipFil.Rgb2.port_a.T - seg.pipFil.Rgb2.port_b.T;
+//   seg.pipFil.Rgb2.port_a.Q_flow = seg.pipFil.Rgb2.Q_flow;
+//   seg.pipFil.Rgb2.port_b.Q_flow = -seg.pipFil.Rgb2.Q_flow;
+//   seg.pipFil.Rgg.dT = seg.pipFil.Rgg.R * seg.pipFil.Rgg.Q_flow;
+//   seg.pipFil.Rgg.dT = seg.pipFil.Rgg.port_a.T - seg.pipFil.Rgg.port_b.T;
+//   seg.pipFil.Rgg.port_a.Q_flow = seg.pipFil.Rgg.Q_flow;
+//   seg.pipFil.Rgg.port_b.Q_flow = -seg.pipFil.Rgg.Q_flow;
+//   seg.pipFil.dp1 = seg.pipFil.port_a1.p - seg.pipFil.port_b1.p;
+//   seg.pipFil.dp2 = seg.pipFil.port_a2.p - seg.pipFil.port_b2.p;
+//   seg.soi.dT = seg.soi.port_a.T - seg.soi.port_b.T;
+//   seg.soi.port_a.Q_flow = seg.soi.Q_flow[1];
+//   seg.soi.port_b.Q_flow = -seg.soi.Q_flow[10];
+//   seg.soi.Q_flow[1] = seg.soi.G[1] * (seg.soi.port_a.T - seg.soi.T[1]);
+//   seg.soi.Q_flow[10] = seg.soi.G[10] * (seg.soi.T[9] - seg.soi.port_b.T);
+//   seg.soi.Q_flow[2] = seg.soi.G[2] * (seg.soi.T[1] - seg.soi.T[2]);
+//   seg.soi.Q_flow[3] = seg.soi.G[3] * (seg.soi.T[2] - seg.soi.T[3]);
+//   seg.soi.Q_flow[4] = seg.soi.G[4] * (seg.soi.T[3] - seg.soi.T[4]);
+//   seg.soi.Q_flow[5] = seg.soi.G[5] * (seg.soi.T[4] - seg.soi.T[5]);
+//   seg.soi.Q_flow[6] = seg.soi.G[6] * (seg.soi.T[5] - seg.soi.T[6]);
+//   seg.soi.Q_flow[7] = seg.soi.G[7] * (seg.soi.T[6] - seg.soi.T[7]);
+//   seg.soi.Q_flow[8] = seg.soi.G[8] * (seg.soi.T[7] - seg.soi.T[8]);
+//   seg.soi.Q_flow[9] = seg.soi.G[9] * (seg.soi.T[8] - seg.soi.T[9]);
+//   if seg.soi.material.steadyState then
+//     seg.soi.Q_flow[2] = seg.soi.Q_flow[1];
+//     seg.soi.Q_flow[3] = seg.soi.Q_flow[1];
+//     seg.soi.Q_flow[4] = seg.soi.Q_flow[1];
+//     seg.soi.Q_flow[5] = seg.soi.Q_flow[1];
+//     seg.soi.Q_flow[6] = seg.soi.Q_flow[1];
+//     seg.soi.Q_flow[7] = seg.soi.Q_flow[1];
+//     seg.soi.Q_flow[8] = seg.soi.Q_flow[1];
+//     seg.soi.Q_flow[9] = seg.soi.Q_flow[1];
+//     seg.soi.Q_flow[10] = seg.soi.Q_flow[1];
+//   else
+//     der(seg.soi.T[1]) = (seg.soi.Q_flow[1] - seg.soi.Q_flow[2]) / seg.soi.C[1];
+//     der(seg.soi.T[2]) = (seg.soi.Q_flow[2] - seg.soi.Q_flow[3]) / seg.soi.C[2];
+//     der(seg.soi.T[3]) = (seg.soi.Q_flow[3] - seg.soi.Q_flow[4]) / seg.soi.C[3];
+//     der(seg.soi.T[4]) = (seg.soi.Q_flow[4] - seg.soi.Q_flow[5]) / seg.soi.C[4];
+//     der(seg.soi.T[5]) = (seg.soi.Q_flow[5] - seg.soi.Q_flow[6]) / seg.soi.C[5];
+//     der(seg.soi.T[6]) = (seg.soi.Q_flow[6] - seg.soi.Q_flow[7]) / seg.soi.C[6];
+//     der(seg.soi.T[7]) = (seg.soi.Q_flow[7] - seg.soi.Q_flow[8]) / seg.soi.C[7];
+//     der(seg.soi.T[8]) = (seg.soi.Q_flow[8] - seg.soi.Q_flow[9]) / seg.soi.C[8];
+//     der(seg.soi.T[9]) = (seg.soi.Q_flow[9] - seg.soi.Q_flow[10]) / seg.soi.C[9];
+//   end if;
+//   der(seg.TBouCon.U) = seg.TBouCon.Q_flow;
+//   seg.heaFlo.port_a.T = seg.heaFlo.port_b.T;
+//   seg.heaFlo.port_a.Q_flow + seg.heaFlo.port_b.Q_flow = 0.0;
+//   seg.heaFlo.Q_flow = seg.heaFlo.port_a.Q_flow;
+//   seg.dp1 = seg.port_a1.p - seg.port_b1.p;
+//   seg.dp2 = seg.port_a2.p - seg.port_b2.p;
+//   assert(sou_1.medium.T >= 272.15 and sou_1.medium.T <= 403.15, "
+//             Temperature T (= " + String(sou_1.medium.T, 6, 0, true) + " K) is not
+//             in the allowed range (" + String(272.15, 6, 0, true) + " K <= T <= " + String(403.15, 6, 0, true) + " K)
+//             required from medium model \"" + "SimpleLiquidWater" + "\".
+//             ");
+//   sou_1.medium.h = BoreholeSegment.sou_1.Medium.specificEnthalpy_pTX(sou_1.medium.p, sou_1.medium.T, sou_1.medium.X);
+//   sou_1.medium.u = 4184.0 * (sou_1.medium.T - 273.15);
+//   sou_1.medium.d = 995.586;
+//   sou_1.medium.R = 0.0;
+//   sou_1.medium.MM = 0.018015268;
+//   sou_1.medium.state.T = sou_1.medium.T;
+//   sou_1.medium.state.p = sou_1.medium.p;
+//   sou_1.medium.X[1] = 1.0;
+//   assert(sou_1.medium.X[1] >= -1e-5 and sou_1.medium.X[1] <= 1.00001, "Mass fraction X[" + String(1, 0, true) + "] = " + String(sou_1.medium.X[1], 6, 0, true) + "of substance " + "SimpleLiquidWater" + "
+//   of medium " + "SimpleLiquidWater" + " is not in the range 0..1");
+//   assert(sou_1.medium.p >= 0.0, "Pressure (= " + String(sou_1.medium.p, 6, 0, true) + " Pa) of medium \"" + "SimpleLiquidWater" + "\" is negative
+//   (Temperature = " + String(sou_1.medium.T, 6, 0, true) + " K)");
+//   Modelica.Fluid.Utilities.checkBoundary("SimpleLiquidWater", {"SimpleLiquidWater"}, true, true, sou_1.X_in_internal, "Boundary_pT");
+//   sou_1.p_in_internal = sou_1.p;
+//   sou_1.T_in_internal = sou_1.T;
+//   sou_1.X_in_internal[1] = sou_1.X[1];
+//   sou_1.medium.p = sou_1.p_in_internal;
+//   sou_1.medium.T = sou_1.T_in_internal;
+//   sou_1.ports[1].p = sou_1.medium.p;
+//   sou_1.ports[1].h_outflow = sou_1.medium.h;
+//   assert(sin_2.medium.T >= 272.15 and sin_2.medium.T <= 403.15, "
+//             Temperature T (= " + String(sin_2.medium.T, 6, 0, true) + " K) is not
+//             in the allowed range (" + String(272.15, 6, 0, true) + " K <= T <= " + String(403.15, 6, 0, true) + " K)
+//             required from medium model \"" + "SimpleLiquidWater" + "\".
+//             ");
+//   sin_2.medium.h = BoreholeSegment.sin_2.Medium.specificEnthalpy_pTX(sin_2.medium.p, sin_2.medium.T, sin_2.medium.X);
+//   sin_2.medium.u = 4184.0 * (sin_2.medium.T - 273.15);
+//   sin_2.medium.d = 995.586;
+//   sin_2.medium.R = 0.0;
+//   sin_2.medium.MM = 0.018015268;
+//   sin_2.medium.state.T = sin_2.medium.T;
+//   sin_2.medium.state.p = sin_2.medium.p;
+//   sin_2.medium.X[1] = 1.0;
+//   assert(sin_2.medium.X[1] >= -1e-5 and sin_2.medium.X[1] <= 1.00001, "Mass fraction X[" + String(1, 0, true) + "] = " + String(sin_2.medium.X[1], 6, 0, true) + "of substance " + "SimpleLiquidWater" + "
+//   of medium " + "SimpleLiquidWater" + " is not in the range 0..1");
+//   assert(sin_2.medium.p >= 0.0, "Pressure (= " + String(sin_2.medium.p, 6, 0, true) + " Pa) of medium \"" + "SimpleLiquidWater" + "\" is negative
+//   (Temperature = " + String(sin_2.medium.T, 6, 0, true) + " K)");
+//   Modelica.Fluid.Utilities.checkBoundary("SimpleLiquidWater", {"SimpleLiquidWater"}, true, true, sin_2.X_in_internal, "Boundary_pT");
+//   sin_2.p_in_internal = sin_2.p;
+//   sin_2.T_in_internal = sin_2.T;
+//   sin_2.X_in_internal[1] = sin_2.X[1];
+//   sin_2.medium.p = sin_2.p_in_internal;
+//   sin_2.medium.T = sin_2.T_in_internal;
+//   sin_2.ports[1].p = sin_2.medium.p;
+//   sin_2.ports[1].h_outflow = sin_2.medium.h;
+// algorithm
+//   when initial() or sample(seg.TBouCon.startTime, seg.TBouCon.samplePeriod) then
+//     seg.TBouCon.QAve_flow := (seg.TBouCon.U - seg.TBouCon.UOld) / seg.TBouCon.samplePeriod;
+//     seg.TBouCon.UOld := seg.TBouCon.U;
+//     seg.TBouCon.port.T := seg.TBouCon.TExt_start + Buildings.Fluid.HeatExchangers.Boreholes.BaseClasses.temperatureDrop(seg.TBouCon.table, seg.TBouCon.iSam, seg.TBouCon.QAve_flow, seg.TBouCon.samplePeriod, seg.TBouCon.rExt, seg.TBouCon.hSeg, seg.TBouCon.k, seg.TBouCon.d, seg.TBouCon.c);
+//     seg.TBouCon.iSam := seg.TBouCon.iSam + 1;
+//   end when;
+// end BoreholeSegment;
+// [<interactive>:978:11-978:87:writable] Warning: In relation bento.c == 0.0, == on Real numbers is only allowed inside functions.
+// [<interactive>:978:11-978:87:writable] Warning: In relation bento.d == 0.0, == on Real numbers is only allowed inside functions.
+// [<interactive>:978:11-978:87:writable] Warning: In relation seg.matSoi.c == 0.0, == on Real numbers is only allowed inside functions.
+// [<interactive>:978:11-978:87:writable] Warning: In relation seg.matSoi.d == 0.0, == on Real numbers is only allowed inside functions.
+// [<interactive>:314:13-314:298:writable] Warning: beta was used before it was defined (given a value). Additional such uses may exist for the variable, but some messages were suppressed.
+// [<interactive>:186:13-191:21:writable] Warning: initial() may only be used as a when condition (when initial() or when {..., initial(), ...}), but got condition 'initial() or sample(seg.TBouCon.startTime, seg.TBouCon.samplePeriod)'.
+// [<interactive>:253:11-282:30:writable] Warning: Pure function 'Buildings.Fluid.HeatExchangers.Boreholes.BaseClasses.temperatureDrop' contains a call to impure function 'Buildings.Fluid.HeatExchangers.Boreholes.BaseClasses.exchangeValues'.
 // endResult

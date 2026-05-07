@@ -24,13 +24,20 @@ equation
 end S;
 
 // Result:
-// Error processing file: ArrayConnect4.mo
-// Error: Failed to load package ArrayConnect4 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class ArrayConnect4 not found in scope <top>.
-// Error: Error occurred while flattening model ArrayConnect4
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class S
+//   final parameter Integer N = 3;
+//   Real m[1].port.v;
+//   Real m[1].port.i;
+//   Real m[2].port.v;
+//   Real m[2].port.i;
+//   Real m[3].port.v;
+//   Real m[3].port.i;
+// equation
+//   m[2].port.v = m[3].port.v;
+//   m[2].port.v = m[1].port.v;
+//   m[3].port.i + m[2].port.i + m[1].port.i = 0.0;
+//   m[1].port.v = 10.0 * m[1].port.i;
+//   m[2].port.v = 10.0 * m[2].port.i;
+//   m[3].port.v = 10.0 * m[3].port.i;
+// end S;
 // endResult

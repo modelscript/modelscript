@@ -24,13 +24,17 @@ class P3
 end P3;
 
 // Result:
-// Error processing file: ClassExtends5.mo
-// Error: Failed to load package ClassExtends4 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class ClassExtends4 not found in scope <top>.
-// Error: Error occurred while flattening model ClassExtends4
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class P3
+//   Real c1.r1;
+//   Real c1.r2;
+//   Real c1.r3;
+//   Real c2.r1;
+//   Real c2.r2;
+//   Real c2.r3;
+//   Real c3.r1;
+//   Real c3.r2;
+//   Real c3.r3;
+// end P3;
+// [<interactive>:21:29-21:36:writable] Warning: Components are deprecated in class.
+// [<interactive>:23:3-23:7:writable] Warning: Components are deprecated in class.
 // endResult

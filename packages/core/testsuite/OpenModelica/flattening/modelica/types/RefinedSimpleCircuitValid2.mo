@@ -92,13 +92,43 @@ equation
 end RefinedResistorCircuit2Expanded;
 
 // Result:
-// Error processing file: RefinedSimpleCircuitValid2.mo
-// Error: Failed to load package RefinedSimpleCircuitValid2 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class RefinedSimpleCircuitValid2 not found in scope <top>.
-// Error: Error occurred while flattening model RefinedSimpleCircuitValid2
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class RefinedResistorCircuit2Expanded
+//   Real R1.p.v(quantity = "ElectricPotential", unit = "V");
+//   Real R1.p.i(quantity = "ElectricCurrent", unit = "A");
+//   Real R1.n.v(quantity = "ElectricPotential", unit = "V");
+//   Real R1.n.i(quantity = "ElectricCurrent", unit = "A");
+//   Real R1.v(quantity = "ElectricPotential", unit = "V");
+//   Real R1.i(quantity = "ElectricCurrent", unit = "A");
+//   parameter Real R1.R(unit = "Ohm") = 100.0 "Resistance";
+//   Real R1.Temp;
+//   Real R1.RT;
+//   Real R2.p.v(quantity = "ElectricPotential", unit = "V");
+//   Real R2.p.i(quantity = "ElectricCurrent", unit = "A");
+//   Real R2.n.v(quantity = "ElectricPotential", unit = "V");
+//   Real R2.n.i(quantity = "ElectricCurrent", unit = "A");
+//   Real R2.v(quantity = "ElectricPotential", unit = "V");
+//   Real R2.i(quantity = "ElectricCurrent", unit = "A");
+//   parameter Real R2.R(unit = "Ohm") = 200.0 "Resistance";
+//   Real R2.Temp;
+//   Real R2.RT;
+//   Real R3.p.v(quantity = "ElectricPotential", unit = "V");
+//   Real R3.p.i(quantity = "ElectricCurrent", unit = "A");
+//   Real R3.n.v(quantity = "ElectricPotential", unit = "V");
+//   Real R3.n.i(quantity = "ElectricCurrent", unit = "A");
+//   Real R3.v(quantity = "ElectricPotential", unit = "V");
+//   Real R3.i(quantity = "ElectricCurrent", unit = "A");
+//   parameter Real R3.R(unit = "Ohm") = 300.0 "Resistance";
+//   Real R3.Temp;
+//   Real R3.RT;
+// equation
+//   R1.p.v = R3.p.v;
+//   R1.p.v = R2.p.v;
+//   R1.n.i = 0.0;
+//   R3.p.i + R2.p.i + R1.p.i = 0.0;
+//   R2.n.i = 0.0;
+//   R3.n.i = 0.0;
+//   R1.v = R1.i * R1.R;
+//   R2.v = R2.i * R2.R;
+//   R3.v = R3.i * R3.R;
+// end RefinedResistorCircuit2Expanded;
 // endResult

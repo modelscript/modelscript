@@ -16,9 +16,11 @@ equation
 end Delay;
 // Result:
 // Error processing file: Delay7.mo
-// Error: Failed to load package Delay7 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class Delay7 not found in scope <top>.
-// Error: Error occurred while flattening model Delay7
+// [<interactive>:15:3-15:21:writable] Error: No matching function found for delay(/*Real*/ x, /*Real*/ a, /*Real*/ b).
+// Candidates are:
+//   OpenModelica.Internal.delay2(Real expr, parameter Real delayTime) => Real
+//   delay(Real expr, Real delayTime, parameter Real delayMax) => Real
+// Error: Error occurred while flattening model Delay
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

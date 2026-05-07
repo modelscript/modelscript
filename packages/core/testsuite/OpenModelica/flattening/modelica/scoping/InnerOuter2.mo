@@ -44,13 +44,38 @@ class I
 end I;
 
 // Result:
-// Error processing file: InnerOuter2.mo
-// Error: Failed to load package InnerOuter2 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class InnerOuter2 not found in scope <top>.
-// Error: Error occurred while flattening model InnerOuter2
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class I
+//   Real TI;
+//   Real e.TI;
+//   Real e.f.TI;
+//   Real e.f.g.TI;
+//   Real e.f.g.h.a.b.TI;
+//   Real e.f.g.h.a.b.c.TI;
+//   Real a.b.TI;
+//   Real a.b.c.TI;
+// end I;
+// [<interactive>:15:3-15:16:writable] Warning: Components are deprecated in class.
+// [<interactive>:13:7-13:14:writable] Warning: Components are deprecated in class.
+// [<interactive>:17:7-17:10:writable] Warning: Components are deprecated in class.
+// [<interactive>:11:5-11:12:writable] Warning: Components are deprecated in class.
+// [<interactive>:19:5-19:8:writable] Warning: Components are deprecated in class.
+// [<interactive>:9:3-9:16:writable] Warning: Components are deprecated in class.
+// [<interactive>:21:3-21:6:writable] Warning: Components are deprecated in class.
+// [<interactive>:30:3-30:6:writable] Warning: Components are deprecated in class.
+// [<interactive>:28:7-28:14:writable] Warning: Components are deprecated in class.
+// [<interactive>:32:7-32:10:writable] Warning: Components are deprecated in class.
+// [<interactive>:26:5-26:18:writable] Warning: Components are deprecated in class.
+// [<interactive>:34:5-34:8:writable] Warning: Components are deprecated in class.
+// [<interactive>:24:3-24:16:writable] Warning: Components are deprecated in class.
+// [<interactive>:36:3-36:6:writable] Warning: Components are deprecated in class.
+// [<interactive>:15:3-15:16:writable] Warning: Components are deprecated in class.
+// [<interactive>:13:7-13:14:writable] Warning: Components are deprecated in class.
+// [<interactive>:17:7-17:10:writable] Warning: Components are deprecated in class.
+// [<interactive>:11:5-11:12:writable] Warning: Components are deprecated in class.
+// [<interactive>:19:5-19:8:writable] Warning: Components are deprecated in class.
+// [<interactive>:9:3-9:16:writable] Warning: Components are deprecated in class.
+// [<interactive>:21:3-21:6:writable] Warning: Components are deprecated in class.
+// [<interactive>:39:3-39:16:writable] Warning: Components are deprecated in class.
+// [<interactive>:40:3-40:6:writable] Warning: Components are deprecated in class.
+// [<interactive>:43:3-43:6:writable] Warning: Components are deprecated in class.
 // endResult

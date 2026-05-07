@@ -15,9 +15,9 @@ end RedeclareEnum1;
 
 // Result:
 // Error processing file: RedeclareEnum4.mo
-// Error: Failed to load package RedeclareEnum4 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class RedeclareEnum4 not found in scope <top>.
-// Error: Error occurred while flattening model RedeclareEnum4
+// [<interactive>:12:23-12:36:writable] Notification: From here:
+// [<interactive>:7:15-7:38:writable] Error: Redeclaration of enumeration 'E' is not a subtype of the redeclared element.
+// Error: Error occurred while flattening model RedeclareEnum1
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

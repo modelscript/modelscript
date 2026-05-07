@@ -13,13 +13,16 @@ equation
 end bug1210;
 
 // Result:
-// Error processing file: Transpose2.mo
-// Error: Failed to load package Transpose2 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class Transpose2 not found in scope <top>.
-// Error: Error occurred while flattening model Transpose2
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class bug1210
+//   constant Real i[1,1] = 1.1;
+//   constant Real i[1,2] = 3.3;
+//   constant Real i[2,1] = 2.2;
+//   constant Real i[2,2] = 4.4;
+//   Real r;
+// equation
+//   r = 4.4;
+// end bug1210;
+// [<interactive>:9:3-9:58:writable] Warning: Components are deprecated in class.
+// [<interactive>:10:3-10:9:writable] Warning: Components are deprecated in class.
+// [<interactive>:12:3-12:13:writable] Warning: Equation sections are deprecated in class.
 // endResult

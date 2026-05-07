@@ -26,9 +26,9 @@ end SS;
 
 // Result:
 // Error processing file: Extends3.mo
-// Error: Failed to load package Extends3 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class Extends3 not found in scope <top>.
-// Error: Error occurred while flattening model Extends3
+// [<interactive>:8:15-8:37:writable] Notification: From here:
+// [<interactive>:9:3-9:21:writable] Error: Class 'SignalType' in 'extends SignalType' is replaceable, the base class name must be transitively non-replaceable.
+// Error: Error occurred while flattening model SS
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

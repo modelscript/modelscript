@@ -15,13 +15,15 @@ equation
              time < 4 then time^4 else time^5);
 end ifThenElseIfElse;
 // Result:
-// Error processing file: if_then_elseif_else.mo
-// Error: Failed to load package if_then_elseif_else (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class if_then_elseif_else not found in scope <top>.
-// Error: Error occurred while flattening model if_then_elseif_else
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class ifThenElseIfElse
+//   Real out1;
+//   Real out2;
+//   Real out3;
+//   Real out4;
+// equation
+//   out1 = time;
+//   out2 = if time < 1.0 then time else time ^ 3.0;
+//   out3 = if time < 1.0 then time else if time < 2.0 then time ^ 2.0 else time ^ 3.0;
+//   out4 = if time < 1.0 then time else if time < 2.0 then time ^ 2.0 else if time < 3.0 then time ^ 3.0 else if time < 4.0 then time ^ 4.0 else time ^ 5.0;
+// end ifThenElseIfElse;
 // endResult

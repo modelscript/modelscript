@@ -28,13 +28,23 @@ equation
 end SpliceUnknownDest;
 
 // Result:
-// Error processing file: SpliceUnknownDest.mo
-// Error: Failed to load package modelInExpressionBase (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class modelInExpressionBase not found in scope <top>.
-// Error: Error occurred while flattening model modelInExpressionBase
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class SpliceUnknownDest
+//   String tab[1];
+//   String tab[2];
+//   String tab[3];
+//   String tab[4];
+//   String tab[5];
+//   String tab[6];
+//   String tab[7];
+//   String tab[8];
+// equation
+//   tab[1] = "a";
+//   tab[2] = "b";
+//   tab[3] = "c";
+//   tab[4] = "d";
+//   tab[5] = "e";
+//   tab[6] = "f";
+//   tab[7] = "g";
+//   tab[8] = "i";
+// end SpliceUnknownDest;
 // endResult

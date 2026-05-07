@@ -30,13 +30,11 @@ equation
 end NamedCall;
 
 // Result:
-// Error processing file: PolynomialEvaluator3.mo
-// Error: Failed to load package PolynomialEvaluator (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class PolynomialEvaluator not found in scope <top>.
-// Error: Error occurred while flattening model PolynomialEvaluator
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class NamedCall
+//   Real p;
+// equation
+//   p = 38410.0;
+// end NamedCall;
+// [<interactive>:27:3-27:9:writable] Warning: Components are deprecated in class.
+// [<interactive>:29:3-29:53:writable] Warning: Equation sections are deprecated in class.
 // endResult

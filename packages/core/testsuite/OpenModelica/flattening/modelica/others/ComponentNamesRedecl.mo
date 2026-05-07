@@ -25,9 +25,9 @@ end IllegalRedeclaredComponentName;
 
 // Result:
 // Error processing file: ComponentNamesRedecl.mo
-// Error: Failed to load package RedeclarationComponentNames (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class RedeclarationComponentNames not found in scope <top>.
-// Error: Error occurred while flattening model RedeclarationComponentNames
+// [<interactive>:10:3-10:9:writable] Warning: Components are deprecated in class.
+// [<interactive>:23:17-23:30:writable] Error: Expected B to be a class, but found component instead.
+// Error: Error occurred while flattening model IllegalRedeclaredComponentName
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

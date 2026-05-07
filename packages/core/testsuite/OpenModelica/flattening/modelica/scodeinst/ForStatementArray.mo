@@ -13,12 +13,15 @@ algorithm
 end ForStatementArray;
 
 // Result:
-// Error processing file: ForStatementArray.mo
-// Error: Class ForStatementArray.mo not found in scope <top>.
-// Error: Error occurred while flattening model ForStatementArray.mo
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class ForStatementArray
+//   Real x[1];
+//   Real x[2];
+//   Real x[3];
+//   Real x[4];
+//   Real x[5];
+// algorithm
+//   for i in {1, 2, 3, 4, 5} loop
+//     x[i] := /*Real*/(i);
+//   end for;
+// end ForStatementArray;
 // endResult

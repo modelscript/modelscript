@@ -23,13 +23,27 @@ end C;
 
 
 // Result:
-// Error processing file: FuncMap1.mo
-// Error: Failed to load package FuncMap1 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class FuncMap1 not found in scope <top>.
-// Error: Error occurred while flattening model FuncMap1
+// function C.F
+//   input Integer a;
+//   input Integer b;
+//   output Integer c = a;
+// end C.F;
 //
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class C
+//   Integer b[1];
+//   Integer b[2];
+//   Integer b[3];
+//   Integer c[1];
+//   Integer c[2];
+//   Integer c[3];
+//   Integer d[1];
+//   Integer d[2];
+//   Integer d[3];
+// equation
+//   b[1] = 1;
+//   b[2] = 2;
+//   b[3] = 3;
+//   c = array(C.F(b[i], b[i]) for i in 1:3);
+//   d = array(C.F(b[i], i) for i in 1:3);
+// end C;
 // endResult

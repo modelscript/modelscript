@@ -16,13 +16,8 @@ model B
 end B;
 
 // Result:
-// Error processing file: inst3.mo
-// Error: Failed to load package inst3 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class inst3.mo not found in scope <top>.
-// Error: Error occurred while flattening model inst3.mo
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class B
+//   Real a[1];
+//   Real a[2];
+// end B;
 // endResult

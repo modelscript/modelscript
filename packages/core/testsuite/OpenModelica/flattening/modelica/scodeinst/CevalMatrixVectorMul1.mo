@@ -11,13 +11,21 @@ model CevalMatrixVectorMul1
 end CevalMatrixVectorMul1;
 
 // Result:
-// Error processing file: CevalMatrixVectorMul1.mo
-// Error: Failed to load package CevalVectorMatrixMul1 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class CevalVectorMatrixMul1 not found in scope <top>.
-// Error: Error occurred while flattening model CevalVectorMatrixMul1
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class CevalMatrixVectorMul1
+//   constant Real m1[1,1] = 1.0;
+//   constant Real m1[1,2] = 2.0;
+//   constant Real m1[1,3] = 3.0;
+//   constant Real m1[2,1] = 4.0;
+//   constant Real m1[2,2] = 5.0;
+//   constant Real m1[2,3] = 6.0;
+//   constant Real m1[3,1] = 7.0;
+//   constant Real m1[3,2] = 8.0;
+//   constant Real m1[3,3] = 9.0;
+//   constant Real v1[1] = 3.0;
+//   constant Real v1[2] = 6.0;
+//   constant Real v1[3] = 9.0;
+//   constant Real m2[1] = 42.0;
+//   constant Real m2[2] = 96.0;
+//   constant Real m2[3] = 150.0;
+// end CevalMatrixVectorMul1;
 // endResult

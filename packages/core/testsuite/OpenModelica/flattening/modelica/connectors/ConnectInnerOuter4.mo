@@ -33,9 +33,8 @@ end Top;
 
 // Result:
 // Error processing file: ConnectInnerOuter4.mo
-// Error: Failed to load package ConnectInnerOuter4 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class ConnectInnerOuter4 not found in scope <top>.
-// Error: Error occurred while flattening model ConnectInnerOuter4
+// [<interactive>:31:3-31:38:writable] Error: world.subWorld.pin is not a valid form for a connector, connectors must be either c1.c2...cn or m.c (where c is a connector and m is a non-connector).
+// Error: Error occurred while flattening model Top
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

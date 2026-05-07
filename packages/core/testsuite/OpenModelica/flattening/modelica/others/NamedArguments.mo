@@ -23,13 +23,20 @@ end test;
 
 
 // Result:
-// Error processing file: NamedArguments.mo
-// Error: Failed to load package NamedArguments (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class NamedArguments not found in scope <top>.
-// Error: Error occurred while flattening model NamedArguments
+// function foo
+//   input Real x;
+//   input Real y;
+//   output Real z;
+// algorithm
+//   z := x + y;
+// end foo;
 //
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class test
+//   Real w;
+//   Real v;
+//   Real x = foo(2.0, w);
+//   Real y = foo(v, w);
+//   Real z = foo(w, v);
+//   Real z2 = foo(w, v);
+// end test;
 // endResult

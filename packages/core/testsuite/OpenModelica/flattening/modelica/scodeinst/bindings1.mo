@@ -11,13 +11,9 @@ model A
 end A;
 
 // Result:
-// Error processing file: bindings1.mo
-// Error: Failed to load package bindings1 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class bindings1.mo not found in scope <top>.
-// Error: Error occurred while flattening model bindings1.mo
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class A
+//   constant Real x = 16.0;
+//   constant Real z = 5.0;
+//   constant Real y = 8.0;
+// end A;
 // endResult

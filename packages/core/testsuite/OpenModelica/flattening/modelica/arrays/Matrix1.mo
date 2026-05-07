@@ -13,13 +13,15 @@ model test
   parameter Real L=4;
 end test;
 // Result:
-// Error processing file: Matrix1.mo
-// Error: Failed to load package Matrix1 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class Matrix1 not found in scope <top>.
-// Error: Error occurred while flattening model Matrix1
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class test
+//   parameter Real K[1,1] = Em;
+//   parameter Real K[1,2] = Em * (-1.0);
+//   parameter Real K[2,1] = Em * (-1.0);
+//   parameter Real K[2,2] = Em;
+//   parameter Real X[1] = Em;
+//   parameter Real X[2] = Em * 2.0;
+//   parameter Real Em = 1.0;
+//   parameter Real A = 0.1;
+//   parameter Real L = 4.0;
+// end test;
 // endResult

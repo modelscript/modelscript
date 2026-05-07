@@ -14,9 +14,8 @@ end M;
 
 // Result:
 // Error processing file: usertype6.mo
-// Error: Failed to load package usertype6 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class usertype6.mo not found in scope <top>.
-// Error: Error occurred while flattening model usertype6.mo
+// [<interactive>:6:1-9:11:writable] Error: A class extending from builtin type Real may not have other elements.
+// Error: Error occurred while flattening model M
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

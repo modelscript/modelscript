@@ -23,13 +23,10 @@ end D;
 
 
 // Result:
-// Error processing file: Redeclare5.mo
-// Error: Failed to load package Redeclare5 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class Redeclare5 not found in scope <top>.
-// Error: Error occurred while flattening model Redeclare5
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class D
+//   parameter Real c.d.b = 5.0;
+//   Real c.d.x;
+// equation
+//   der(c.d.x) = c.d.b;
+// end D;
 // endResult

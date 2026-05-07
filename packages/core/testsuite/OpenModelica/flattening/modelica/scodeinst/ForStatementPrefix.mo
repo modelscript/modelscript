@@ -18,12 +18,15 @@ model ForStatementPrefix
 end ForStatementPrefix;
 
 // Result:
-// Error processing file: ForStatementPrefix.mo
-// Error: Class ForStatementPrefix.mo not found in scope <top>.
-// Error: Error occurred while flattening model ForStatementPrefix.mo
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class ForStatementPrefix
+//   Real a.x[1];
+//   Real a.x[2];
+//   Real a.x[3];
+//   Real a.x[4];
+//   Real a.x[5];
+// algorithm
+//   for i in 1:5 loop
+//     a.x[i] := /*Real*/(i);
+//   end for;
+// end ForStatementPrefix;
 // endResult

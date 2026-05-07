@@ -33,13 +33,8 @@ end Circuit3;
 
 
 // Result:
-// Error processing file: ConstrainedByMods.mo
-// Error: Failed to load package ConstrainedByMods (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class ConstrainedByMods.mo not found in scope <top>.
-// Error: Error occurred while flattening model ConstrainedByMods.mo
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class Circuit3
+//   parameter Real r.R = 100.0;
+//   parameter Real r.U = 10.0;
+// end Circuit3;
 // endResult

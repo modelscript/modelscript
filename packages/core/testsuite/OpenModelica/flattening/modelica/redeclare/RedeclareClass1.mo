@@ -26,13 +26,9 @@ equation
 end RedeclareClass1;
 
 // Result:
-// Error processing file: RedeclareClass1.mo
-// Error: Failed to load package RedeclareClass2 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class RedeclareClass2 not found in scope <top>.
-// Error: Error occurred while flattening model RedeclareClass2
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class RedeclareClass1
+//   Real m2.r;
+// equation
+//   m2.r = 1.0;
+// end RedeclareClass1;
 // endResult

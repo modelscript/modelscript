@@ -21,13 +21,23 @@ end WhenStat;
 
 
 // Result:
-// Error processing file: WhenStatement1.mo
-// Error: Failed to load package WhenStatement1 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class WhenStatement1 not found in scope <top>.
-// Error: Error occurred while flattening model WhenStatement1
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class WhenStat
+//   Real x(start = 1.0);
+//   Real y1;
+//   parameter Real y2 = 5.0;
+//   Real y3;
+// equation
+//   der(x) = 2.0 * x;
+// algorithm
+//   when x > 2.0 then
+//     y1 := sin(x);
+//     y3 := 2.0 * x + pre(y1) + y2;
+//   end when;
+// end WhenStat;
+// [<interactive>:9:3-9:18:writable] Warning: Components are deprecated in class.
+// [<interactive>:10:3-10:10:writable] Warning: Components are deprecated in class.
+// [<interactive>:11:3-11:24:writable] Warning: Components are deprecated in class.
+// [<interactive>:12:3-12:10:writable] Warning: Components are deprecated in class.
+// [<interactive>:19:3-19:15:writable] Warning: Equation sections are deprecated in class.
+// [<interactive>:14:3-17:11:writable] Warning: Algorithm sections are deprecated in class.
 // endResult

@@ -20,9 +20,8 @@ end Model2;
 
 // Result:
 // Error processing file: EnumInnerOuterDim.mo
-// Error: Failed to load package EnumInnerOuterDim (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class EnumInnerOuterDim not found in scope <top>.
-// Error: Error occurred while flattening model EnumInnerOuterDim
+// [<interactive>:17:3-17:29:writable] Error: Parameter p1 has neither value nor start value, and is fixed during initialization (fixed=true).
+// Error: Error occurred while flattening model Model2
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

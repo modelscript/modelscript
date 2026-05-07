@@ -29,9 +29,8 @@ end PolyEvaluate1;
 
 // Result:
 // Error processing file: PolynomialEvaluatorA.mo
-// Error: Failed to load package PolynomialEvaluatorA (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class PolynomialEvaluatorA not found in scope <top>.
-// Error: Error occurred while flattening model PolynomialEvaluatorA
+// [<interactive>:8:3-8:22:writable] Error: Failed to deduce dimension 1 of c due to missing binding equation.
+// Error: Error occurred while flattening model PolynomialEvaluator
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

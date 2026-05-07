@@ -20,13 +20,8 @@ model MyTestModel
 end MyTestModel;
 
 // Result:
-// Error processing file: redeclare12.mo
-// Error: Failed to load package redeclare12 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class redeclare12.mo not found in scope <top>.
-// Error: Error occurred while flattening model redeclare12.mo
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class MyTestModel
+//   parameter Real localPar = 1.0;
+//   final parameter Real intModel.internalModel.par = localPar;
+// end MyTestModel;
 // endResult

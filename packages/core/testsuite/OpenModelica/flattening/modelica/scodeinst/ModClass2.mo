@@ -25,13 +25,9 @@ model ModClass1
 end ModClass1;
 
 // Result:
-// Error processing file: ModClass2.mo
-// Error: Failed to load package ModClass2 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class ModClass2 not found in scope <top>.
-// Error: Error occurred while flattening model ModClass2
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class ModClass1
+//   Real c1.b.x;
+//   Real c2.b.x = 1.0;
+//   Real c3.b.x = 1.0;
+// end ModClass1;
 // endResult

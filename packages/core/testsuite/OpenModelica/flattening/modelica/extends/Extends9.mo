@@ -38,13 +38,19 @@ end Main;
 
 
 // Result:
-// Error processing file: Extends9.mo
-// Error: Failed to load package Extends9 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class Extends9 not found in scope <top>.
-// Error: Error occurred while flattening model Extends9
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class Main
+//   Real phi_rel(quantity = "Angle", unit = "rad", displayUnit = "deg", start = 0.0) "Relative rotation angle (= flange_b.phi - flange_a.phi)";
+//   Real tau(quantity = "Torque", unit = "N.m") "Torque between flanges (= flange_b.tau)";
+//   Real flange_a.phi(quantity = "Angle", unit = "rad", displayUnit = "deg") "Absolute rotation angle of flange";
+//   Real flange_a.tau(quantity = "Torque", unit = "N.m") "Cut torque in the flange";
+//   Real flange_b.phi(quantity = "Angle", unit = "rad", displayUnit = "deg") "Absolute rotation angle of flange";
+//   Real flange_b.tau(quantity = "Torque", unit = "N.m") "Cut torque in the flange";
+//   Real x = flange_b.phi;
+// equation
+//   flange_a.tau = 0.0;
+//   flange_b.tau = 0.0;
+//   phi_rel = flange_b.phi - flange_a.phi;
+//   flange_b.tau = tau;
+//   flange_a.tau = -tau;
+// end Main;
 // endResult

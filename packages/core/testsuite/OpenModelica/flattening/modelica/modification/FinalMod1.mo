@@ -16,9 +16,9 @@ end B;
 
 // Result:
 // Error processing file: FinalMod1.mo
-// Error: Failed to load package FinalMod1 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class FinalMod1 not found in scope <top>.
-// Error: Error occurred while flattening model FinalMod1
+// [<interactive>:14:15-14:21:writable] Notification: From here:
+// [<interactive>:10:3-10:20:writable] Error: Trying to override final element y with modifier '= 30'.
+// Error: Error occurred while flattening model B
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

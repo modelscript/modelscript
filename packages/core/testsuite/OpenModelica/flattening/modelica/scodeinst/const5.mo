@@ -14,13 +14,8 @@ model A
 end A;
 
 // Result:
-// Error processing file: const5.mo
-// Error: Failed to load package const5 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class const5.mo not found in scope <top>.
-// Error: Error occurred while flattening model const5.mo
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class A
+//   Real x[1];
+//   Real x[2];
+// end A;
 // endResult

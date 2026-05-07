@@ -17,13 +17,8 @@ model C
 end C;
 
 // Result:
-// Error processing file: const10.mo
-// Error: Failed to load package const10 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class const10.mo not found in scope <top>.
-// Error: Error occurred while flattening model const10.mo
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class C
+//   constant Integer b.j = 3;
+//   Real b.x = 3.0;
+// end C;
 // endResult

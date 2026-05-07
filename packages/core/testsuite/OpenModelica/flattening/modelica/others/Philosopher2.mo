@@ -312,9 +312,8 @@ end Philosopher_DiningTable;
 //
 // Result:
 // Error processing file: Philosopher2.mo
-// Error: Failed to load package Philosopher2 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class Philosopher2 not found in scope <top>.
-// Error: Error occurred while flattening model Philosopher2
+// [<interactive>:177:7-186:15:writable] Error: A when-statement may not be used inside a function or a while, if, or for-clause.
+// Error: Error occurred while flattening model Philosopher_DiningTable
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

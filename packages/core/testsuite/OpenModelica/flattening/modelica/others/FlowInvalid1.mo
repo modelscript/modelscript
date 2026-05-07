@@ -23,9 +23,8 @@ end FlowInvalid1;
 
 // Result:
 // Error processing file: FlowInvalid1.mo
-// Error: Failed to load package FlowDeclRecord (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class FlowDeclRecord not found in scope <top>.
-// Error: Error occurred while flattening model FlowDeclRecord
+// [<interactive>:11:3-11:14:writable] Error: Prefix 'flow' on component 'y' not allowed in class specialization 'record'.
+// Error: Error occurred while flattening model FlowInvalid1
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

@@ -18,9 +18,9 @@ end C;
 
 // Result:
 // Error processing file: mod11.mo
-// Error: Failed to load package mod11 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class mod11.mo not found in scope <top>.
-// Error: Error occurred while flattening model mod11.mo
+// [<interactive>:16:7-16:12:writable] Notification: From here:
+// [<interactive>:12:19-12:20:writable] Error: Trying to override final element x with modifier '= 3'.
+// Error: Error occurred while flattening model C
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

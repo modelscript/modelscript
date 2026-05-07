@@ -26,13 +26,11 @@ equation
 end CondAssignFuncCall;
 
 // Result:
-// Error processing file: AlgorithmCondAssign2.mo
-// Error: Failed to load package AlgorithmCondAssign (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class AlgorithmCondAssign not found in scope <top>.
-// Error: Error occurred while flattening model AlgorithmCondAssign
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class CondAssignFuncCall
+//   Real a;
+//   Real b;
+// equation
+//   a = 400.0;
+//   b = 45.0;
+// end CondAssignFuncCall;
 // endResult

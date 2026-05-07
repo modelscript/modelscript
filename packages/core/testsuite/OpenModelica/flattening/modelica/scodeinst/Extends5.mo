@@ -19,12 +19,7 @@ model Extends5
 end Extends5;
 
 // Result:
-// Error processing file: Extends5.mo
-// Error: Class Extends5.mo not found in scope <top>.
-// Error: Error occurred while flattening model Extends5.mo
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class Extends5
+//   Real A.x;
+// end Extends5;
 // endResult

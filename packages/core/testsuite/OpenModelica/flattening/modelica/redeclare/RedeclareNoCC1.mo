@@ -32,13 +32,7 @@ model F
 end F;
 
 // Result:
-// Error processing file: RedeclareNoCC1.mo
-// Error: Failed to load package RedeclareNoCC1 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class RedeclareNoCC1 not found in scope <top>.
-// Error: Error occurred while flattening model RedeclareNoCC1
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class F
+//   Real a.x = 4.0;
+// end F;
 // endResult

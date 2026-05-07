@@ -17,9 +17,8 @@ end Test;
 
 // Result:
 // Error processing file: Lookup8.mo
-// Error: Failed to load package Lookup8 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class Lookup8 not found in scope <top>.
-// Error: Error occurred while flattening model Lookup8
+// [<interactive>:15:3-15:18:writable] Error: Expected Cytosol to be a class, but found component instead.
+// Error: Error occurred while flattening model Test
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

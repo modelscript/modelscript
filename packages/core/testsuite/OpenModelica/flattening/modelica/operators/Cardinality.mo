@@ -33,9 +33,8 @@ end circuit;
 
 // Result:
 // Error processing file: Cardinality.mo
-// Error: Failed to load package Cardinality (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class Cardinality not found in scope <top>.
-// Error: Error occurred while flattening model Cardinality
+// [<interactive>:18:3-18:44:writable] Error: cardinality may only be used in the condition of an if-statement/equation or an assert.
+// Error: Error occurred while flattening model circuit
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

@@ -13,13 +13,16 @@ class ArraysInit
 end ArraysInit;
 
 // Result:
-// Error processing file: ArraysInitLegal.mo
-// Error: Failed to load package ArraysInitLegal (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class ArraysInitLegal not found in scope <top>.
-// Error: Error occurred while flattening model ArraysInitLegal
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class ArraysInit
+//   Real A3[1,1];
+//   Real A3[1,2];
+//   Real A3[2,1];
+//   Real A3[2,2];
+//   Real A4[1,1](start = 1.0);
+//   Real A4[1,2](start = 0.0);
+//   Real A4[2,1](start = 0.0);
+//   Real A4[2,2](start = 1.0);
+// end ArraysInit;
+// [<interactive>:9:3-9:16:writable] Warning: Components are deprecated in class.
+// [<interactive>:11:3-11:42:writable] Warning: Components are deprecated in class.
 // endResult

@@ -31,13 +31,14 @@ end test;
 
 
 // Result:
-// Error processing file: RecordClassModOutput.mo
-// Error: Failed to load package RecordClassModOutput (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class RecordClassModOutput.mo not found in scope <top>.
-// Error: Error occurred while flattening model RecordClassModOutput.mo
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class test
+//   Integer m2.i1 = 9;
+//   Integer m2.r1 = 9;
+//   Integer m3.i1 = m2.i1;
+//   Integer m3.r1 = m2.r1;
+//   Integer m4.i1 = 2;
+//   Integer m4.r1 = 2;
+//   Integer m5.i1 = 1;
+//   Integer m5.r1 = 1;
+// end test;
 // endResult

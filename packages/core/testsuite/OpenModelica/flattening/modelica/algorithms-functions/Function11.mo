@@ -23,13 +23,25 @@ b = equal(x,y);
 end test;
 
 // Result:
-// Error processing file: Function11.mo
-// Error: Failed to load package Function11 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class Function11 not found in scope <top>.
-// Error: Error occurred while flattening model Function11
+// function equal
+//   input Real[:] x;
+//   input Real[:] y;
+//   input Real eps = 1e-6;
+//   output Boolean equal;
+// algorithm
+//   equal := false;
+// end equal;
 //
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class test
+//   Real x[1];
+//   Real x[2];
+//   Real y[1];
+//   Real y[2];
+//   Boolean b;
+// equation
+//   y = {1.0, 2.0};
+//   x[1] = y[1];
+//   x[2] = y[2];
+//   b = equal(x, y, 1e-6);
+// end test;
 // endResult

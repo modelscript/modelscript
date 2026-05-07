@@ -17,13 +17,9 @@ model B
 end B;
 
 // Result:
-// Error processing file: inst5.mo
-// Error: Failed to load package inst5 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class inst5.mo not found in scope <top>.
-// Error: Error occurred while flattening model inst5.mo
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class B
+//   Real a1.x = 3.0;
+//   Real a2.x;
+//   Real a3.x = 5.0;
+// end B;
 // endResult

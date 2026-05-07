@@ -21,12 +21,8 @@ model ModClass1
 end ModClass1;
 
 // Result:
-// Error processing file: ModClass1.mo
-// Error: Class ModClass1.mo not found in scope <top>.
-// Error: Error occurred while flattening model ModClass1.mo
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class ModClass1
+//   Real a1.b.x = 1.0;
+//   Real a2.b.x;
+// end ModClass1;
 // endResult

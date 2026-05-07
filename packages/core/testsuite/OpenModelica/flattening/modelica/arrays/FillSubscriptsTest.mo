@@ -3852,9 +3852,8 @@ end Manifold;
 
 // Result:
 // Error processing file: FillSubscriptsTest.mo
-// Error: Failed to load package FillSubscriptsTest (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class FillSubscriptsTest.mo not found in scope <top>.
-// Error: Error occurred while flattening model FillSubscriptsTest.mo
+// [/var/lib/jenkins/ws/LINUX_BUILDS/tmp.build/openmodelica-1.26.3~1-g7583224/OMCompiler/Compiler/NFFrontEnd/NFExpression.mo:1739:7-1740:100:writable] Error: Internal error NFExpression.makeSubscriptedExp: too few dimensions in mfr_2[1, 1].port_a.Xi_outflow[1] + mfr_2[2, 1].port_a.Xi_outflow[1] + mfr_2[3, 1].port_a.Xi_outflow[1] to apply subscripts [1]
+// Error: Error occurred while flattening model Manifold
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

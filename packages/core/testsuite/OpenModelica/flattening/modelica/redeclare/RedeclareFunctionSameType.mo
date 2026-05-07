@@ -49,13 +49,8 @@ model RedeclareFunctionSameType
 end RedeclareFunctionSameType;
 
 // Result:
-// Error processing file: RedeclareFunctionSameType.mo
-// Error: Failed to load package ClassExtends4 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class ClassExtends4 not found in scope <top>.
-// Error: Error occurred while flattening model RedeclareFunctionSameType.mo [BUG: #2739]
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class RedeclareFunctionSameType
+//   Real b.c1.x = 7.0;
+//   Real b.c2.x = 12.0;
+// end RedeclareFunctionSameType;
 // endResult

@@ -15,9 +15,9 @@ model test
 end test;
 // Result:
 // Error processing file: Constant9.mo
-// Error: Failed to load package Constant9 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class Constant9 not found in scope <top>.
-// Error: Error occurred while flattening model Constant9
+// [<interactive>:10:3-10:21:writable] Error: Variable x in package A is not constant.
+// [<interactive>:14:3-14:13:writable] Error: Variable A.x not found in scope test.
+// Error: Error occurred while flattening model test
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

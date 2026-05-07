@@ -19,13 +19,14 @@ model DimCyclic5
 end DimCyclic5;
 
 // Result:
-// Error processing file: DimSize5.mo
-// Error: Failed to load package DimSize5 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class DimSize5 not found in scope <top>.
-// Error: Error occurred while flattening model DimSize5
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class DimCyclic5
+//   final parameter Integer a.b.n = 3;
+//   parameter Real a.b.x[1] = x[1];
+//   parameter Real a.b.x[2] = x[2];
+//   parameter Real a.b.x[3] = x[3];
+//   final parameter Integer n = 3;
+//   final parameter Real x[1] = 1.0;
+//   final parameter Real x[2] = 2.0;
+//   final parameter Real x[3] = 3.0;
+// end DimCyclic5;
 // endResult

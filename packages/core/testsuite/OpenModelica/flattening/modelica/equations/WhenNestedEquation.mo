@@ -18,9 +18,8 @@ end ErrorNestedWhen;
 
 // Result:
 // Error processing file: WhenNestedEquation.mo
-// Error: Failed to load package WhenNestedEquation (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class WhenNestedEquation not found in scope <top>.
-// Error: Error occurred while flattening model WhenNestedEquation
+// [<interactive>:13:5-15:13:writable] Error: Nested when statements are not allowed.
+// Error: Error occurred while flattening model ErrorNestedWhen
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

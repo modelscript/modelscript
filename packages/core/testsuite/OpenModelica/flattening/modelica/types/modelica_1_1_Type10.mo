@@ -16,9 +16,12 @@ equation
 end Type10;
 // Result:
 // Error processing file: modelica_1_1_Type10.mo
-// Error: Failed to load package modelica_1_1_Type10 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class modelica_1_1_Type10 not found in scope <top>.
-// Error: Error occurred while flattening model modelica_1_1_Type10
+// [<interactive>:10:3-10:15:writable] Warning: Components are deprecated in class.
+// [<interactive>:11:3-11:14:writable] Warning: Components are deprecated in class.
+// [<interactive>:12:3-12:13:writable] Warning: Components are deprecated in class.
+// [<interactive>:14:3-14:8:writable] Warning: Equation sections are deprecated in class.
+// [<interactive>:14:3-14:8:writable] Error: Type mismatch in equation x = y of type Real[2, 3] = Real[3, 3].
+// Error: Error occurred while flattening model Type10
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

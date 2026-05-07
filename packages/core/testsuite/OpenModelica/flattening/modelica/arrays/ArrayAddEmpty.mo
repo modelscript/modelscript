@@ -13,13 +13,9 @@ class AddEmpty
 end AddEmpty;
 
 // Result:
-// Error processing file: ArrayAddEmpty.mo
-// Error: Failed to load package ArrayAddEmpty (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class ArrayAddEmpty not found in scope <top>.
-// Error: Error occurred while flattening model ArrayAddEmpty
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class AddEmpty
+// end AddEmpty;
+// [<interactive>:9:3-9:18:writable] Warning: Components are deprecated in class.
+// [<interactive>:10:3-10:15:writable] Warning: Components are deprecated in class.
+// [<interactive>:11:3-11:24:writable] Warning: Components are deprecated in class.
 // endResult

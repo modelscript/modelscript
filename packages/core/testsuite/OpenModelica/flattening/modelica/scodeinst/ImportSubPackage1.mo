@@ -20,9 +20,8 @@ end M;
 
 // Result:
 // Error processing file: ImportSubPackage1.mo
-// Error: Failed to load package ImportSubPackage1 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class ImportSubPackage1 not found in scope <top>.
-// Error: Error occurred while flattening model ImportSubPackage1
+// [<interactive>:18:3-18:9:writable] Error: Found imported name 'A' while looking up composite name 'P1.A'.
+// Error: Error occurred while flattening model M
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

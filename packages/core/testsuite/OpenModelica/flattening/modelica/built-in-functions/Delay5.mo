@@ -17,9 +17,11 @@ end Delay;
 
 // Result:
 // Error processing file: Delay5.mo
-// Error: Failed to load package Delay5 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class Delay5 not found in scope <top>.
-// Error: Error occurred while flattening model Delay5
+// [<interactive>:14:3-14:18:writable] Error: No matching function found for delay(/*Real*/ x, /*Real*/ a).
+// Candidates are:
+//   OpenModelica.Internal.delay2(Real expr, parameter Real delayTime) => Real
+//   delay(Real expr, Real delayTime, parameter Real delayMax) => Real
+// Error: Error occurred while flattening model Delay
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

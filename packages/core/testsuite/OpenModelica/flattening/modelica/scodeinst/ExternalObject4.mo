@@ -24,13 +24,20 @@ model ExternalObject3
 end ExternalObject3;
 
 // Result:
-// Error processing file: ExternalObject4.mo
-// Error: Failed to load package ExternalObject4 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class ExternalObject4 not found in scope <top>.
-// Error: Error occurred while flattening model ExternalObject4
+// impure function ExternalObject3.ExtObj.constructor
+//   input Integer i;
+//   output ExternalObject3.ExtObj obj;
 //
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
+//   external "C" obj = initObject();
+// end ExternalObject3.ExtObj.constructor;
 //
-// Execution failed!
+// impure function ExternalObject3.ExtObj.destructor
+//   input ExternalObject3.ExtObj obj;
+//
+//   external "C" destroyObject(obj);
+// end ExternalObject3.ExtObj.destructor;
+//
+// class ExternalObject3
+//   ExternalObject3.ExtObj eo1 = ExternalObject3.ExtObj.constructor(10);
+// end ExternalObject3;
 // endResult

@@ -30,13 +30,10 @@ model F
 end F;
 
 // Result:
-// Error processing file: PropagateExtends.mo
-// Error: Failed to load package PropagateExtends (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class PropagateExtends.mo not found in scope <top>.
-// Error: Error occurred while flattening model PropagateExtends.mo
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class F
+//   Real e.x(unit = "kg", start = 1.0);
+//   Real e.y(start = 1.0);
+//   Real d.x(unit = "kg");
+//   Real d.y;
+// end F;
 // endResult

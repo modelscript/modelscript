@@ -16,13 +16,7 @@ model Model1
 end Model1;
 
 // Result:
-// Error processing file: Extends12.mo
-// Error: Failed to load package Extends12 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class Extends12 not found in scope <top>.
-// Error: Error occurred while flattening model Extends12
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class Model1
+//   Real x;
+// end Model1;
 // endResult

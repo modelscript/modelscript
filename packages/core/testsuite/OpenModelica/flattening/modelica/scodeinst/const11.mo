@@ -33,13 +33,14 @@ model M
 end M;
 
 // Result:
-// Error processing file: const11.mo
-// Error: Failed to load package const11 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class const11.mo not found in scope <top>.
-// Error: Error occurred while flattening model const11.mo
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class M
+//   Integer x = 2;
+//   constant Integer a.j = 3;
+//   Integer y = 3;
+//   constant Integer b.i = 2;
+//   Integer z = 2;
+//   constant Integer j = 2;
+//   Integer w = 2;
+//   Integer v = 2;
+// end M;
 // endResult

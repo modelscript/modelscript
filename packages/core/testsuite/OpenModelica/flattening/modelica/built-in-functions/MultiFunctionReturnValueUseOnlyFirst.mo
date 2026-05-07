@@ -57,13 +57,8 @@ equation
 end MultiFunctionReturnValueUseOnlyFirst;
 
 // Result:
-// Error processing file: MultiFunctionReturnValueUseOnlyFirst.mo
-// Error: Failed to load package f (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class f not found in scope <top>.
-// Error: Error occurred while flattening model MultiFunctionReturnValueUseOnlyFirst [BUG: https://trac.openmodelica.org/OpenModelica/ticket/1969]
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class MultiFunctionReturnValueUseOnlyFirst
+// equation
+//   assert(false, "Only a Test");
+// end MultiFunctionReturnValueUseOnlyFirst;
 // endResult
