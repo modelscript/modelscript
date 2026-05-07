@@ -2118,19 +2118,6 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     if (!cls || visited.has((cls as any).id ?? cls)) return;
     visited.add((cls as any).id ?? cls);
 
-    // Recurse into extends chain first (base types provide defaults)
-    if ("extendsClassInstances" in cls) {
-      for (const ext of (cls as any).extendsClassInstances) {
-        if (ext.classInstance) this.#collectTypeAttributes(ext.classInstance, attributes, visited);
-      }
-    }
-
-    // Check short class target (e.g., type Voltage = Real(unit="V"))
-    if ("shortClassTarget" in cls) {
-      const target = (cls as any).shortClassTarget;
-      if (target) this.#collectTypeAttributes(target, attributes, visited);
-    }
-
     const typeAttributeNames = new Set([
       "quantity",
       "unit",
@@ -2142,6 +2129,28 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       "fixed",
       "stateSelect",
     ]);
+
+    // Recurse into extends chain first (base types provide defaults)
+    if ("extendsClassInstances" in cls) {
+      for (const ext of (cls as any).extendsClassInstances) {
+        if (ext.classInstance) this.#collectTypeAttributes(ext.classInstance, attributes, visited);
+        // Also collect modifications from the extends clause itself (semantic model)
+        const extMod = ext.modification;
+        if (extMod) {
+          for (const m of extMod.modificationArguments ?? []) {
+            if (m.name && typeAttributeNames.has(m.name) && m.expression) {
+              attributes.set(m.name, m.expression);
+            }
+          }
+        }
+      }
+    }
+
+    // Check short class target (e.g., type Voltage = Real(unit="V"))
+    if ("shortClassTarget" in cls) {
+      const target = (cls as any).shortClassTarget;
+      if (target) this.#collectTypeAttributes(target, attributes, visited);
+    }
 
     // Collect modification arguments from the type's own modification
     const mod = cls.modification;
@@ -2164,6 +2173,29 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           const exprNode = arg.modification?.modificationExpression?.expression;
           if (argName && typeAttributeNames.has(argName)) {
             if (exprNode) attributes.set(argName, exprNode as any);
+          }
+        }
+      }
+    }
+
+    // Check AST-level extends clause modifications
+    // For `type TypeInteger extends Integer(min=0, max=10);`, the (min=0, max=10)
+    // modification is on the ExtendsClause AST node, not on the semantic model.
+    if (ast?.classSpecifier?.sections) {
+      for (const section of ast.classSpecifier.sections) {
+        for (const el of section.elements ?? []) {
+          if (el["@type"] === "ExtendsClause" && el.classOrInheritanceModification) {
+            const modArgs =
+              el.classOrInheritanceModification.modificationArgumentOrInheritanceModifications ??
+              el.classOrInheritanceModification.modificationArguments ??
+              [];
+            for (const arg of modArgs) {
+              const argName = arg.name?.text ?? arg.name?.parts?.map((p: any) => p.text).join(".");
+              const exprNode = arg.modification?.modificationExpression?.expression;
+              if (argName && typeAttributeNames.has(argName) && exprNode) {
+                attributes.set(argName, exprNode as any);
+              }
+            }
           }
         }
       }
