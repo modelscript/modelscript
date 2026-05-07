@@ -10,7 +10,8 @@ end DimCyclic1;
 
 // Result:
 // Error processing file: DimCyclic1.mo
-// [flattening/modelica/scodeinst/DimCyclic1.mo:7:3-7:58:writable] Error: Dimension 1 of x, 'size(x, 2)', could not be evaluated due to a cyclic dependency.
+// [OpenModelica/flattening/modelica/scodeinst/DimCyclic1.mo:7:3-7:58:writable] Error: Dimension 1 of x, 'size(x, 2)', could not be evaluated due to a cyclic dependency.
+// Error: Error occurred while flattening model DimCyclic1
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

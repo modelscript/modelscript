@@ -16,5 +16,4 @@ end LookupLibrary1;
 // Notification: Automatically loaded package Complex 4.1.0 due to uses annotation from Modelica.
 // Notification: Automatically loaded package ModelicaServices 4.1.0 due to uses annotation from Modelica.
 // Notification: Automatically loaded package Modelica 4.1.0 due to usage.
-//
 // endResult

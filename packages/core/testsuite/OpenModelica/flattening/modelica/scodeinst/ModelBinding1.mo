@@ -14,7 +14,8 @@ end ModelBinding1;
 
 // Result:
 // Error processing file: ModelBinding1.mo
-// [flattening/modelica/scodeinst/ModelBinding1.mo:12:3-12:12:writable] Error: Component 'a2' may not have a binding equation due to class specialization 'model'.
+// [OpenModelica/flattening/modelica/scodeinst/ModelBinding1.mo:12:3-12:12:writable] Error: Component 'a2' may not have a binding equation due to class specialization 'model'.
+// Error: Error occurred while flattening model ModelBinding1
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

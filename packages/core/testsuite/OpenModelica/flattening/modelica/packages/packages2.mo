@@ -23,12 +23,17 @@ end Modelica;
 
 model test
   Real x=Modelica.Constants.PI;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end test;
 
 
 // Result:
-// class test
-//   Real x = 3.14;
-// end test;
+// Error processing file: packages2.mo
+// Error: Failed to load package packages2 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class packages2 not found in scope <top>.
+// Error: Error occurred while flattening model packages2
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

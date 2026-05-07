@@ -10,7 +10,8 @@ end RangeTypeError3;
 
 // Result:
 // Error processing file: RangeTypeError3.mo
-// [flattening/modelica/scodeinst/RangeTypeError3.mo:8:3-8:22:writable] Error: Range has invalid type String.
+// Error: Class RangeTypeError3.mo not found in scope <top>.
+// Error: Error occurred while flattening model RangeTypeError3.mo
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

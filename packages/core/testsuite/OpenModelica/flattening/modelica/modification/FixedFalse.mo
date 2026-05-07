@@ -12,18 +12,15 @@ model FixedFalse
   parameter Real b[n](each fixed = true);
 initial equation
   a = b;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end FixedFalse;
 
 // Result:
-// class FixedFalse
-//   parameter Integer n = 2;
-//   parameter Real a[1](fixed = false);
-//   parameter Real a[2](fixed = false);
-//   parameter Real b[1](fixed = true);
-//   parameter Real b[2](fixed = true);
-// initial equation
-//   a[1] = b[1];
-//   a[2] = b[2];
-// end FixedFalse;
+// class Modification3
+//   parameter Real b.a.p = 2.0;
+//   parameter Real b.a2.p = 4.0;
+// end Modification3;
+// [OpenModelica/flattening/modelica/modification/Modification3.mo:7:5-7:25:writable] Warning: Components are deprecated in class.
+// [OpenModelica/flattening/modelica/modification/Modification3.mo:13:3-13:6:writable] Warning: Components are deprecated in class.
+// [OpenModelica/flattening/modelica/modification/Modification3.mo:14:3-14:7:writable] Warning: Components are deprecated in class.
+// [OpenModelica/flattening/modelica/modification/Modification3.mo:18:3-18:43:writable] Warning: Components are deprecated in class.
 // endResult

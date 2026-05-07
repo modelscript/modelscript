@@ -21,24 +21,15 @@ algorithm
   when time > 0 then
     reinit(x, u); // if x is u since der(x) = (u - x)/T
   end when;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end FilterBlock1;
 
 // Result:
-// class FilterBlock1
-//   parameter Real T = 1.0 "Time constant";
-//   parameter Real k = 1.0 "Gain";
-//   input Real u = 1.0;
-//   output Real y;
-//   protected Real x;
-// initial algorithm
-//   x := u;
-// equation
-//   der(x) = (u - x) / T;
-//   y = k * x;
-// algorithm
-//   when time > 0.0 then
-//     reinit(x, u);
-//   end when;
-// end FilterBlock1;
+// Error processing file: reinit.mo
+// [/usr/lib/omc/NFModelicaBuiltin.mo:521:1-528:11:readonly] Error: Cannot instantiate reinit due to class specialization function.
+// Error: Error occurred while flattening model reinit
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

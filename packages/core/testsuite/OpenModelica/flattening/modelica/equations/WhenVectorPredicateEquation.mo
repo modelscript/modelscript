@@ -16,20 +16,16 @@ equation
     y1 = sin(x);
     y3 = 2*x + y1 + y2;
   end when;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end WhenSet;
 
 // Result:
-// class WhenSet
-//   Real x;
-//   parameter Real y2 = 3.0;
-//   discrete Real y1;
-//   discrete Real y3;
-// equation
-//   x = time - y2;
-//   when {x > 2.0, sample(0.0, 2.0), x < 5.0} then
-//   y1 = sin(x);
-//   y3 = 2.0 * x + y1 + y2;
-//   end when;
-// end WhenSet;
+// Error processing file: WhenVectorPredicateEquation.mo
+// Error: Failed to load package WhenVectorPredicateEquation (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class WhenVectorPredicateEquation not found in scope <top>.
+// Error: Error occurred while flattening model WhenVectorPredicateEquation
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

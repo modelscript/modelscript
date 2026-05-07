@@ -9,13 +9,12 @@ model Cosh
   Real r;
 equation
   r = cosh(45);
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Cosh;
 
 // Result:
 // class Cosh
 //   Real r;
 // equation
-//   r = 1.7467135528742547e+19;
+//   r = 1.7467135528742547e19;
 // end Cosh;
 // endResult

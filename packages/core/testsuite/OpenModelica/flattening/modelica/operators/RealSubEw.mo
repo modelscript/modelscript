@@ -15,23 +15,16 @@ end f;
 
 model RealAddEw
   Real x[:] = f(3, {4, 5, 6});
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end RealAddEw;
 
 // Result:
-// function f
-//   input Real r1;
-//   input Real[:] r2;
-//   output Real[size(r2, 1)] o;
-// algorithm
-//   o := r1 .- r2;
-// end f;
+// Error processing file: RealSubEw.mo
+// Error: Failed to load package RealSubEw (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class RealSubEw not found in scope <top>.
+// Error: Error occurred while flattening model RealSubEw
 //
-// class RealAddEw
-//   Real x[1];
-//   Real x[2];
-//   Real x[3];
-// equation
-//   x = {-1.0, -2.0, -3.0};
-// end RealAddEw;
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

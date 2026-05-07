@@ -13,7 +13,8 @@ end BuiltinLookup1;
 
 // Result:
 // Error processing file: BuiltinLookup1.mo
-// [flattening/modelica/scodeinst/BuiltinLookup1.mo:11:3-11:21:writable] Error: Variable Boolean.x not found in scope BuiltinLookup1.
+// [OpenModelica/flattening/modelica/scodeinst/BuiltinLookup1.mo:11:3-11:21:writable] Error: Variable Boolean.x not found in scope BuiltinLookup1.
+// Error: Error occurred while flattening model BuiltinLookup1
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

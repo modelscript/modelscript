@@ -26,7 +26,13 @@ model M
 end M;
 
 // Result:
-// class M
-//   Integer x = 2;
-// end M;
+// Error processing file: const14.mo
+// Error: Failed to load package const14 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class const14.mo not found in scope <top>.
+// Error: Error occurred while flattening model const14.mo
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

@@ -16,18 +16,16 @@ model ExtObjError2
   function notConstructor
     output ExtObj eo = ExtObj(); // Invalid; non-constructors may not return external objects
   algorithm
-
   end notConstructor;
 
   ExtObj eo = notConstructor();
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ExtObjError2;
 
 // Result:
 // Error processing file: ExtObjError2.mo
-// [flattening/modelica/others/ExtObjError2.mo:16:3-20:21:writable] Error: Function ExtObjError2.notConstructor returns an external object, but the only function allowed to return this object is ExtObjError2.ExtObj.constructor.
-// [flattening/modelica/others/ExtObjError2.mo:22:3-22:31:writable] Error: Class notConstructor not found in scope ExtObjError2 (looking for a function or record).
-// Error: Error occurred while flattening model ExtObjError2
+// Error: Failed to load package notConstructor (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class notConstructor not found in scope <top>.
+// Error: Error occurred while flattening model notConstructor
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

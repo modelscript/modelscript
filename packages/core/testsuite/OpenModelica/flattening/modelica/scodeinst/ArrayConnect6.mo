@@ -16,13 +16,14 @@ model ArrayConnect6
   A a;
 equation
   connect(a.c1[1], a.c2);
-  annotation(__OpenModelica_commandLineOptions="-d=-nfScalarize");
 end ArrayConnect6;
 
 // Result:
 // class ArrayConnect6
-//   Real[2] a.c1.e;
-//   Real[2] a.c1.f;
+//   Real a.c1[1].e;
+//   Real a.c1[1].f;
+//   Real a.c1[2].e;
+//   Real a.c1[2].f;
 //   Real a.c2.e;
 //   Real a.c2.f;
 // equation

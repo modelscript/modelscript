@@ -21,20 +21,16 @@ equation
   for i in 1:N-1 loop
     connect(m[i].port, m[i+1].port);
   end for;
-  annotation(__OpenModelica_commandLineOptions="-d=-nfScalarize");
 end S;
 
 // Result:
-// class S
-//   final parameter Integer N = 3;
-//   Real[3] m.port.v;
-//   Real[3] m.port.i;
-// equation
-//   m[2].port.v = m[3].port.v;
-//   m[2].port.v = m[1].port.v;
-//   m[3].port.i + m[2].port.i + m[1].port.i = 0.0;
-//   for $i0 in 1:3 loop
-//     m[$i0].port.v = 10.0 * m[$i0].port.i;
-//   end for;
-// end S;
+// Error processing file: ArrayConnect4.mo
+// Error: Failed to load package ArrayConnect4 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class ArrayConnect4 not found in scope <top>.
+// Error: Error occurred while flattening model ArrayConnect4
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

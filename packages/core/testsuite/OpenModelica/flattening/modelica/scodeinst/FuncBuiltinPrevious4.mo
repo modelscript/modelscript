@@ -16,10 +16,11 @@ end FuncBuiltinPrevious4;
 
 // Result:
 // Error processing file: FuncBuiltinPrevious4.mo
-// [flattening/modelica/scodeinst/FuncBuiltinPrevious4.mo:14:3-14:18:writable] Error: Type mismatch for positional argument 1 in previous(u=f). The argument has type:
+// [OpenModelica/flattening/modelica/scodeinst/FuncBuiltinPrevious4.mo:14:3-14:18:writable] Error: Type mismatch for positional argument 1 in previous(u=f). The argument has type:
 //   f<function>() => ()
 // expected type:
 //   ComponentExpression
+// Error: Error occurred while flattening model FuncBuiltinPrevious4
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

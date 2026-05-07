@@ -15,7 +15,8 @@ end WhenVariableMismatch1;
 
 // Result:
 // Error processing file: WhenVariableMismatch1.mo
-// [flattening/modelica/scodeinst/WhenVariableMismatch1.mo:9:3-13:11:writable] Error: The same variables must be solved in elsewhen clause as in the when clause.
+// [OpenModelica/flattening/modelica/scodeinst/WhenVariableMismatch1.mo:9:3-13:11:writable] Error: The same variables must be solved in elsewhen clause as in the when clause.
+// Error: Error occurred while flattening model WhenVariableMismatch1
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

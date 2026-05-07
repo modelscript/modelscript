@@ -11,11 +11,16 @@ end A;
 
 class B
   extends A;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end B;
 
 // Result:
-// class B
-//   parameter Real a;
-// end B;
+// Error processing file: InheritanceSimple.mo
+// Error: Failed to load package InheritanceSimple (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class InheritanceSimple not found in scope <top>.
+// Error: Error occurred while flattening model InheritanceSimple
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

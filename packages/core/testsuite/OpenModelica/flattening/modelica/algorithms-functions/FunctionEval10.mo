@@ -18,19 +18,9 @@ end fun;
 
 model FunctionEval10
   Real r[:] = fun(5);
-  annotation(__OpenModelica_commandLineOptions="+d=nogen -d=-newInst");
 end FunctionEval10;
 
 // Result:
-// function fun
-//   input Integer n;
-//   output Real[:] m;
-//   protected Real[:] tmp;
-// algorithm
-//   tmp := fill(1.0, n);
-//   m := tmp;
-// end fun;
-//
 // class FunctionEval10
 //   Real r[1];
 //   Real r[2];

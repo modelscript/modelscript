@@ -13,7 +13,6 @@ end Pin;
 model Resistor
   Pin p,n;
 equation
-
 end Resistor;
 
 model ConditionalComponent
@@ -29,21 +28,23 @@ end ConditionalComponent;
 model Array1
   Integer x[5] = {1,2,3,4,5};
   Integer y[3] = 1:3;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Array1;
 
 // Result:
-// class Array1
-//   Integer x[1];
-//   Integer x[2];
-//   Integer x[3];
-//   Integer x[4];
-//   Integer x[5];
-//   Integer y[1];
-//   Integer y[2];
-//   Integer y[3];
+// class ConditionalComponent
+//   final parameter Boolean b = true;
+//   Real R1.p.v;
+//   Real R1.p.i;
+//   Real R1.n.v;
+//   Real R1.n.i;
+//   Real R2.p.v;
+//   Real R2.p.i;
+//   Real R2.n.v;
+//   Real R2.n.i;
 // equation
-//   x = {1, 2, 3, 4, 5};
-//   y = {1, 2, 3};
-// end Array1;
+//   R1.n.v = R2.p.v;
+//   R1.p.i = 0.0;
+//   R2.p.i + R1.n.i = 0.0;
+//   R2.n.i = 0.0;
+// end ConditionalComponent;
 // endResult

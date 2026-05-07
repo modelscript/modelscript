@@ -19,13 +19,12 @@ equation
   else
     y = sin(time)*cos(1 - time);
   end if;
-  annotation(__OpenModelica_commandLineOptions="--evaluateStructuralParameters=strictlyNecessary");
 end IfEquationEval5;
 
 // Result:
 // class IfEquationEval5
 //   final parameter Integer N = 2;
-//   parameter Boolean simplified = false;
+//   final parameter Boolean simplified = false;
 //   final parameter Boolean optional = false;
 //   Real x[1];
 //   Real x[2];
@@ -33,10 +32,6 @@ end IfEquationEval5;
 // equation
 //   x[1] = time;
 //   x[2] = time * 2.0;
-//   if simplified then
-//     y = time;
-//   else
-//     y = sin(time) * cos(1.0 - time);
-//   end if;
+//   y = sin(time) * cos(1.0 - time);
 // end IfEquationEval5;
 // endResult

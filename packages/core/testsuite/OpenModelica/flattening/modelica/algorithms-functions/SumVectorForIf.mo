@@ -19,28 +19,16 @@ algorithm
       sum := sum - v[i];
     end if;
   end for;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end SumVector;
 
 // Result:
-// class SumVector
-//   Real sum;
-//   parameter Real v[1] = 100.0;
-//   parameter Real v[2] = 200.0;
-//   parameter Real v[3] = -300.0;
-//   parameter Real v[4] = 400.0;
-//   parameter Real v[5] = 500.0;
-//   parameter Integer n = 5;
-// algorithm
-//   sum := 0.0;
-//   for i in 1:n loop
-//     if v[i] > 0.0 then
-//       sum := sum + v[i];
-//     elseif v[i] > -1.0 then
-//       sum := -1.0 + sum + v[i];
-//     else
-//       sum := sum - v[i];
-//     end if;
-//   end for;
-// end SumVector;
+// Error processing file: SumVectorForIf.mo
+// Error: Failed to load package SumVectorForIf (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class SumVectorForIf not found in scope <top>.
+// Error: Error occurred while flattening model SumVectorForIf
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

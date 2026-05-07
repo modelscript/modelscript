@@ -99,38 +99,9 @@ model VectorizeBindings3
   constant Integer m = 3;
   parameter Integer effectiveStatorTurns = 1;
   IM_SquirrelCage aimc(effectiveStatorTurns = effectiveStatorTurns);
-  annotation(__OpenModelica_commandLineOptions="--newBackend");
 end VectorizeBindings3;
 
 // Result:
-// function Complex "Automatically generated record constructor for Complex"
-//   input Real re;
-//   input Real im;
-//   output Complex res;
-// end Complex;
-//
-// function Complex.'*'.multiply
-//   input Complex c1;
-//   input Complex c2;
-//   output Complex c3;
-// algorithm
-//   c3 := Complex.'constructor'.fromReal(c1.re * c2.re - c1.im * c2.im, c1.re * c2.im + c1.im * c2.re);
-// end Complex.'*'.multiply;
-//
-// function Complex.'constructor'.fromReal
-//   input Real re;
-//   input Real im = 0.0;
-//   output Complex result;
-// algorithm
-// end Complex.'constructor'.fromReal;
-//
-// function ComplexMath.exp
-//   input Complex c1;
-//   output Complex c2;
-// algorithm
-//   c2 := Complex.'constructor'.fromReal(exp(c1.re) * cos(c1.im), exp(c1.re) * sin(c1.im));
-// end ComplexMath.exp;
-//
 // class VectorizeBindings3
 //   constant Integer m = 3;
 //   parameter Integer effectiveStatorTurns = 1;
@@ -139,10 +110,23 @@ end VectorizeBindings3;
 //   final parameter Integer aimc.stator.m = 3;
 //   final parameter Real aimc.stator.effectiveTurns = aimc.effectiveStatorTurns;
 //   final parameter Integer aimc.stator.electroMagneticConverter.m = 3;
-//   final parameter Real[3] aimc.stator.electroMagneticConverter.effectiveTurns = array(aimc.stator.effectiveTurns for $f1 in 1:3);
-//   final parameter Real[3] aimc.stator.electroMagneticConverter.orientation = {0.0, 2.0, 4.0};
-//   final parameter Real[3] aimc.stator.electroMagneticConverter.singlePhaseElectroMagneticConverter.effectiveTurns = array(aimc.stator.electroMagneticConverter.effectiveTurns[$singlePhaseElectroMagneticConverter1] for $singlePhaseElectroMagneticConverter1 in 1:3);
-//   final parameter Real[3] aimc.stator.electroMagneticConverter.singlePhaseElectroMagneticConverter.orientation = {0.0, 2.0, 4.0};
-//   parameter Complex[3] aimc.stator.electroMagneticConverter.singlePhaseElectroMagneticConverter.N = array(Complex.'*'.multiply(Complex.'constructor'.fromReal(aimc.stator.electroMagneticConverter.singlePhaseElectroMagneticConverter[$singlePhaseElectroMagneticConverter1].effectiveTurns, 0.0), ComplexMath.exp(Complex.'constructor'.fromReal(0.0, {0.0, 2.0, 4.0}[$singlePhaseElectroMagneticConverter1]))) for $singlePhaseElectroMagneticConverter1 in 1:3);
+//   final parameter Real aimc.stator.electroMagneticConverter.effectiveTurns[1] = aimc.stator.effectiveTurns;
+//   final parameter Real aimc.stator.electroMagneticConverter.effectiveTurns[2] = aimc.stator.effectiveTurns;
+//   final parameter Real aimc.stator.electroMagneticConverter.effectiveTurns[3] = aimc.stator.effectiveTurns;
+//   final parameter Real aimc.stator.electroMagneticConverter.orientation[1] = 0.0;
+//   final parameter Real aimc.stator.electroMagneticConverter.orientation[2] = 2.0;
+//   final parameter Real aimc.stator.electroMagneticConverter.orientation[3] = 4.0;
+//   final parameter Real aimc.stator.electroMagneticConverter.singlePhaseElectroMagneticConverter[1].effectiveTurns = aimc.stator.electroMagneticConverter.effectiveTurns[1];
+//   final parameter Real aimc.stator.electroMagneticConverter.singlePhaseElectroMagneticConverter[1].orientation = 0.0;
+//   final parameter Real aimc.stator.electroMagneticConverter.singlePhaseElectroMagneticConverter[1].N.re = aimc.stator.electroMagneticConverter.singlePhaseElectroMagneticConverter[1].effectiveTurns;
+//   final parameter Real aimc.stator.electroMagneticConverter.singlePhaseElectroMagneticConverter[1].N.im = 0.0;
+//   final parameter Real aimc.stator.electroMagneticConverter.singlePhaseElectroMagneticConverter[2].effectiveTurns = aimc.stator.electroMagneticConverter.effectiveTurns[2];
+//   final parameter Real aimc.stator.electroMagneticConverter.singlePhaseElectroMagneticConverter[2].orientation = 2.0;
+//   final parameter Real aimc.stator.electroMagneticConverter.singlePhaseElectroMagneticConverter[2].N.re = aimc.stator.electroMagneticConverter.singlePhaseElectroMagneticConverter[2].effectiveTurns * (-0.4161468365471424);
+//   final parameter Real aimc.stator.electroMagneticConverter.singlePhaseElectroMagneticConverter[2].N.im = aimc.stator.electroMagneticConverter.singlePhaseElectroMagneticConverter[2].effectiveTurns * 0.9092974268256817;
+//   final parameter Real aimc.stator.electroMagneticConverter.singlePhaseElectroMagneticConverter[3].effectiveTurns = aimc.stator.electroMagneticConverter.effectiveTurns[3];
+//   final parameter Real aimc.stator.electroMagneticConverter.singlePhaseElectroMagneticConverter[3].orientation = 4.0;
+//   final parameter Real aimc.stator.electroMagneticConverter.singlePhaseElectroMagneticConverter[3].N.re = aimc.stator.electroMagneticConverter.singlePhaseElectroMagneticConverter[3].effectiveTurns * (-0.6536436208636119);
+//   final parameter Real aimc.stator.electroMagneticConverter.singlePhaseElectroMagneticConverter[3].N.im = aimc.stator.electroMagneticConverter.singlePhaseElectroMagneticConverter[3].effectiveTurns * (-0.7568024953079282);
 // end VectorizeBindings3;
 // endResult

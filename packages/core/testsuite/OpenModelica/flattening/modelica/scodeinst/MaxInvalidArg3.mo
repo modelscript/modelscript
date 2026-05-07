@@ -9,7 +9,7 @@ end MaxInvalidArg3;
 
 // Result:
 // Error processing file: MaxInvalidArg3.mo
-// [flattening/modelica/scodeinst/MaxInvalidArg3.mo:7:3-7:24:writable] Error: No matching function found for max(1, 2, 3).
+// [OpenModelica/flattening/modelica/scodeinst/MaxInvalidArg3.mo:7:3-7:24:writable] Error: No matching function found for max(1, 2, 3).
 // Candidates are:
 //   max(Real, Real) => Real
 //   max(Integer, Integer) => Integer
@@ -19,6 +19,7 @@ end MaxInvalidArg3;
 //   max(Integer[:, ...]) => Integer
 //   max(Boolean[:, ...]) => Boolean
 //   max(enumeration(:)[:, ...]) => enumeration(:)
+// Error: Error occurred while flattening model MaxInvalidArg3
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

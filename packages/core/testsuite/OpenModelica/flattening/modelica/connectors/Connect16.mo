@@ -28,21 +28,15 @@ model Connect16
 equation
   connect(c, b.a1.c);
   connect(c, b.a2.c);
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Connect16;
 
 // Result:
-// class Connect16
-//   Real b.a1.c.v;
-//   Real b.a1.c.i;
-//   Real b.a2.c.v;
-//   Real b.a2.c.i;
-//   Real c.v;
-//   Real c.i;
-// equation
-//   b.a1.c.i + b.a2.c.i + (-c.i) = 0.0;
-//   b.a1.c.v = b.a2.c.v;
-//   b.a1.c.v = c.v;
-//   c.i = 0.0;
-// end Connect16;
+// Error processing file: Connect16.mo
+// [OpenModelica/flattening/modelica/connectors/Connect16.mo:29:3-29:21:writable] Error: b.a1.c is not a valid form for a connector, connectors must be either c1.c2...cn or m.c (where c is a connector and m is a non-connector).
+// Error: Error occurred while flattening model Connect16
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

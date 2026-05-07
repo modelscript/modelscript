@@ -51,24 +51,17 @@ equation
     outPort.signal[i] = p_offset[i] +
               (if time < p_startTime[i] then 0 else p_height[i]);
   end for;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Step;                        // From Modelica.Blocks.Sources
 
 
 // Result:
-// class Step "Generate step signals of type Real"
-//   parameter Integer nout = 1 "Number of outputs";
-//   parameter Integer outPort.n = nout "Dimension of signal vector";
-//   output Real outPort.signal[1] "Real output signals";
-//   protected Real n[1];
-//   parameter Real height[1] = 1.0 "Heights of steps";
-//   parameter Real offset[1] = 0.0 "Offset of output signals";
-//   parameter Real startTime[1](quantity = "Time", unit = "s") = 0.0 "Output = offset for time < startTime";
-//   protected parameter Real p_height[1] = height[1];
-//   protected parameter Real p_offset[1] = offset[1];
-//   protected parameter Real p_startTime[1](quantity = "Time", unit = "s") = startTime[1];
-// equation
-//   n = {outPort.signal[1]};
-//   outPort.signal[1] = p_offset[1] + (if time < p_startTime[1] then 0.0 else p_height[1]);
-// end Step;
+// Error processing file: StepAdvanced.mo
+// Error: Failed to load package StepAdvanced (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class StepAdvanced not found in scope <top>.
+// Error: Error occurred while flattening model StepAdvanced
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

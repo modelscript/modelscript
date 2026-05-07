@@ -1062,7 +1062,6 @@ model BM22
 
 equation
   connect(sinh1.inPort,constant1.outPort) annotation(Line(visible=true,points={{-19.57,29.6},{-48.16,31.73}}));
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end BM22;
 // function Modelica.Math.sinh
 // input Real u;
@@ -1093,33 +1092,16 @@ end BM22;
 // sinh1.inPort.signal[1] = constant1.outPort.signal[1];
 // end BM22;
 // Result:
-// function Modelica.Math.sinh "hyperbolic sine"
-//   input Real u;
-//   output Real y;
-//
-//   external "C" y = sinh(u);
-// end Modelica.Math.sinh;
-//
-// class BM22
-//   parameter Integer sinh1.n = 1 "Number of inputs (= number of outputs)";
-//   parameter Integer sinh1.inPort.n = sinh1.n "Dimension of signal vector";
-//   Real sinh1.inPort.signal[1] "Real input signals";
-//   parameter Integer sinh1.outPort.n = sinh1.n "Dimension of signal vector";
-//   Real sinh1.outPort.signal[1] "Real output signals";
-//   Real sinh1.y[1] "Output signals";
-//   protected Real sinh1.u[1] "Input signals";
-//   parameter Integer constant1.nout(min = 1) = 1 "Number of outputs";
-//   parameter Integer constant1.outPort.n = constant1.nout "Dimension of signal vector";
-//   Real constant1.outPort.signal[1] "Real output signals";
-//   Real constant1.y[1];
-//   parameter Real constant1.k[1] = 1.0 "Constant output values";
+// class SampleTest
+//   Clock c;
+//   Boolean cb = sample(0.1, 0.1);
+//   Real x1;
+//   Real x2;
+//   Real y;
 // equation
-//   sinh1.u = {sinh1.inPort.signal[1]};
-//   sinh1.y[1] = sinh(sinh1.u[1]);
-//   sinh1.y[1] = sinh1.outPort.signal[1];
-//   constant1.outPort.signal[1] = constant1.k[1];
-//   constant1.y[1] = constant1.outPort.signal[1];
-//   assert(sinh1.inPort.n == constant1.outPort.n, "automatically generated from connect");
-//   constant1.outPort.signal[1] = sinh1.inPort.signal[1];
-// end BM22;
+//   c = Clock(0.1);
+//   x1 = sample(1.0, Clock());
+//   x2 = sample(1.1, c);
+//   y = x1 + x2;
+// end SampleTest;
 // endResult

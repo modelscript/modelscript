@@ -16,41 +16,15 @@ model ArrayMatrixSimplifier
 equation
   z[{1,2},{3,4}]=q;
   x1=(u - a[2:size(a, 1)]*pre(x))/a[1];
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ArrayMatrixSimplifier;
 
 // Result:
-// class ArrayMatrixSimplifier
-//   parameter Real a[1] = 1.0;
-//   parameter Real a[2] = 1.0;
-//   output Real x[1];
-//   parameter Real u = 3.0;
-//   protected Real x1;
-//   protected Real z[1,1];
-//   protected Real z[1,2];
-//   protected Real z[1,3];
-//   protected Real z[1,4];
-//   protected Real z[2,1];
-//   protected Real z[2,2];
-//   protected Real z[2,3];
-//   protected Real z[2,4];
-//   protected Real z[3,1];
-//   protected Real z[3,2];
-//   protected Real z[3,3];
-//   protected Real z[3,4];
-//   protected Real z[4,1];
-//   protected Real z[4,2];
-//   protected Real z[4,3];
-//   protected Real z[4,4];
-//   protected Real q[1,1];
-//   protected Real q[1,2];
-//   protected Real q[2,1];
-//   protected Real q[2,2];
-// equation
-//   z[1,3] = q[1,1];
-//   z[1,4] = q[1,2];
-//   z[2,3] = q[2,1];
-//   z[2,4] = q[2,2];
-//   x1 = (u - a[2] * pre(x[1])) / a[1];
-// end ArrayMatrixSimplifier;
+// Error processing file: ArrayMatrixSimplifier.mo
+// [OpenModelica/flattening/modelica/arrays/ArrayMatrixSimplifier.mo:18:3-18:39:writable] Error: Argument 1 of pre must be a discrete expression, but x is continuous.
+// Error: Error occurred while flattening model ArrayMatrixSimplifier
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

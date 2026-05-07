@@ -24,9 +24,13 @@ model A
 end A;
 
 // Result:
-// class A
-//   parameter Real b.c.d.widthDirection[1] = 0.0;
-//   parameter Real b.c.d.widthDirection[2] = 1.0;
-//   parameter Real b.c.d.widthDirection[3] = 0.0;
-// end A;
+// Error processing file: dim16.mo
+// Error: Failed to load package dim16 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class dim16 not found in scope <top>.
+// Error: Error occurred while flattening model dim16
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

@@ -48,39 +48,17 @@ equation
     connect(turnOn.dOutput,watchdog.dOn);
     connect(turnOff.dOutput,watchdog.dOff);
     connect(deadlineEmitter.dOutput, watchdog.dDeadline);
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end WatchDogSystem2;
 
 
 // Result:
-// class WatchDogSystem2
-//   parameter Real turnOn.eventTime = 1.0;
-//   discrete Boolean turnOn.dOutput.signal;
-//   parameter Real turnOff.eventTime = 0.25;
-//   discrete Boolean turnOff.dOutput.signal;
-//   parameter Real deadlineEmitter.eventTime = 1.5;
-//   discrete Boolean deadlineEmitter.dOutput.signal;
-//   discrete Boolean watchdog.dOn.signal;
-//   discrete Boolean watchdog.dOff.signal;
-//   discrete Boolean watchdog.dDeadline.signal;
-//   discrete Boolean watchdog.dAlarm.signal;
-//   Real watchdog.internalTime1;
-//   Real watchdog.internalTime2;
-// equation
-//   turnOn.dOutput.signal = time > turnOn.eventTime;
-//   turnOff.dOutput.signal = time > turnOff.eventTime;
-//   deadlineEmitter.dOutput.signal = time > deadlineEmitter.eventTime;
-//   when change(watchdog.dOn.signal) then
-//   watchdog.internalTime1 = time;
-//   end when;
-//   when change(watchdog.dOff.signal) then
-//   watchdog.internalTime2 = time;
-//   end when;
-//   when change(watchdog.dDeadline.signal) and time > watchdog.internalTime1 and watchdog.internalTime1 > watchdog.internalTime2 then
-//   watchdog.dAlarm.signal = true;
-//   end when;
-//   turnOn.dOutput.signal = watchdog.dOn.signal;
-//   turnOff.dOutput.signal = watchdog.dOff.signal;
-//   deadlineEmitter.dOutput.signal = watchdog.dDeadline.signal;
-// end WatchDogSystem2;
+// Error processing file: WatchDog2EquationWhen.mo
+// Error: Failed to load package WatchDog2EquationWhen (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class WatchDog2EquationWhen not found in scope <top>.
+// Error: Error occurred while flattening model WatchDog2EquationWhen
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

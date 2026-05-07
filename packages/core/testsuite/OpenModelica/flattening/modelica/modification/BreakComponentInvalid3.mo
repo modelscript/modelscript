@@ -17,7 +17,8 @@ end BreakComponentInvalid3;
 
 // Result:
 // Error processing file: BreakComponentInvalid3.mo
-// [flattening/modelica/modification/BreakComponentInvalid3.mo:15:13-15:20:writable] Error: Modified element x not found in class A.
+// [OpenModelica/flattening/modelica/modification/BreakComponentInvalid3.mo:15:13-15:20:writable] Error: Modified element x not found in class A.
+// Error: Error occurred while flattening model BreakComponentInvalid3
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

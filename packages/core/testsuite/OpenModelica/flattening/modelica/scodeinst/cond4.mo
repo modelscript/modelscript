@@ -14,9 +14,13 @@ model B
 end B;
 
 // Result:
-// class B
-//   final parameter Boolean b = true;
-//   final parameter Boolean a.b = true;
-//   Real a.x;
-// end B;
+// Error processing file: cond4.mo
+// Error: Failed to load package cond4 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class cond4.mo not found in scope <top>.
+// Error: Error occurred while flattening model cond4.mo
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

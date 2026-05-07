@@ -27,10 +27,11 @@ end FunctionalArgInvalidType1;
 
 // Result:
 // Error processing file: FunctionalArgInvalidType1.mo
-// [flattening/modelica/scodeinst/FunctionalArgInvalidType1.mo:25:3-25:21:writable] Error: Type mismatch for positional argument 1 in f1(f=f2). The argument has type:
+// [OpenModelica/flattening/modelica/scodeinst/FunctionalArgInvalidType1.mo:25:3-25:21:writable] Error: Type mismatch for positional argument 1 in f1(f=f2). The argument has type:
 //   f2<function>(Integer x) => Integer y
 // expected type:
 //   f<function>(Real x) => Real y
+// Error: Error occurred while flattening model FunctionalArgInvalidType1
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

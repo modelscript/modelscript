@@ -13,7 +13,8 @@ end RecordRestriction1;
 
 // Result:
 // Error processing file: RecordRestriction1.mo
-// [flattening/modelica/declarations/RecordRestriction1.mo:7:13-7:19:writable] Error: Protected sections are not allowed in record.
+// [OpenModelica/flattening/modelica/declarations/RecordRestriction1.mo:7:13-7:19:writable] Error: Protected sections are not allowed in record.
+// Error: Error occurred while flattening model RecordRestriction1
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

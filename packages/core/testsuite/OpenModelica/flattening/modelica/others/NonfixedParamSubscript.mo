@@ -12,16 +12,16 @@ initial equation
   p = 1;
 equation
   r[p] = 2.0;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end M;
 
 // Result:
-// class M
-//   parameter Integer p(min = 1, max = 1, fixed = false);
-//   Real r[1];
-// initial equation
-//   p = 1;
-// equation
-//   r[p] = 2.0;
-// end M;
+// Error processing file: NonfixedParamSubscript.mo
+// Error: Failed to load package NonfixedParamSubscript (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class NonfixedParamSubscript not found in scope <top>.
+// Error: Error occurred while flattening model NonfixedParamSubscript
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

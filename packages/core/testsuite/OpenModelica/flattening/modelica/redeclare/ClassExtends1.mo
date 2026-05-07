@@ -20,7 +20,6 @@ class ClassExtends1
  X component;
 initial equation
  component.y = 5;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ClassExtends1;
 
 // Result:
@@ -30,4 +29,6 @@ end ClassExtends1;
 // initial equation
 //   component.y = 5;
 // end ClassExtends1;
+// [OpenModelica/flattening/modelica/redeclare/ClassExtends1.mo:20:2-20:13:writable] Warning: Components are deprecated in class.
+// [OpenModelica/flattening/modelica/redeclare/ClassExtends1.mo:22:2-22:17:writable] Warning: Equation sections are deprecated in class.
 // endResult

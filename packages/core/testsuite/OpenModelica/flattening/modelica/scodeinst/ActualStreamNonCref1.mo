@@ -9,7 +9,8 @@ end ActualStreamNonCref1;
 
 // Result:
 // Error processing file: ActualStreamNonCref1.mo
-// [flattening/modelica/scodeinst/ActualStreamNonCref1.mo:7:3-7:28:writable] Error: Operand '1' to operator 'actualStream' is not a stream variable.
+// [OpenModelica/flattening/modelica/scodeinst/ActualStreamNonCref1.mo:7:3-7:28:writable] Error: Operand '1' to operator 'actualStream' is not a stream variable.
+// Error: Error occurred while flattening model ActualStreamNonCref1
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

@@ -41,34 +41,13 @@ model CevalRelation1
 end CevalRelation1;
 
 // Result:
-// class CevalRelation1
-//   constant Boolean br1 = false;
-//   constant Boolean br2 = false;
-//   constant Boolean br3 = true;
-//   constant Boolean br4 = true;
-//   constant Boolean bi1 = false;
-//   constant Boolean bi2 = false;
-//   constant Boolean bi3 = true;
-//   constant Boolean bi4 = true;
-//   constant Boolean bi5 = false;
-//   constant Boolean bi6 = true;
-//   constant Boolean be1 = true;
-//   constant Boolean be2 = true;
-//   constant Boolean be3 = false;
-//   constant Boolean be4 = false;
-//   constant Boolean be5 = false;
-//   constant Boolean be6 = true;
-//   constant Boolean bb1 = false;
-//   constant Boolean bb2 = false;
-//   constant Boolean bb3 = true;
-//   constant Boolean bb4 = true;
-//   constant Boolean bb5 = false;
-//   constant Boolean bb6 = true;
-//   constant Boolean bs1 = true;
-//   constant Boolean bs2 = true;
-//   constant Boolean bs3 = false;
-//   constant Boolean bs4 = false;
-//   constant Boolean bs5 = false;
-//   constant Boolean bs6 = true;
-// end CevalRelation1;
+// Error processing file: CevalRelation1.mo
+// Error: Failed to load package CevalMatrixPow1 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class CevalMatrixPow1 not found in scope <top>.
+// Error: Error occurred while flattening model CevalMatrixPow1
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

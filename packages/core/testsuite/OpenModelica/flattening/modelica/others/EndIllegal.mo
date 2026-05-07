@@ -3,13 +3,13 @@
 
 model M
   Real r = end;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end M;
 
 // Result:
 // Error processing file: EndIllegal.mo
-// [flattening/modelica/others/EndIllegal.mo:5:3-5:15:writable] Error: 'end' can not be used outside array subscripts.
-// Error: Error occurred while flattening model M
+// Error: Failed to load package EndIllegal (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class EndIllegal not found in scope <top>.
+// Error: Error occurred while flattening model EndIllegal
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

@@ -20,16 +20,12 @@ class InvalidInheritedExtends2
   extends A;
   extends C;
   extends B;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end InvalidInheritedExtends2;
 
 // Result:
 // Error processing file: InvalidInheritedExtends2.mo
-// [flattening/modelica/extends/InvalidInheritedExtends2.mo:22:3-22:12:writable] Error: The base class name B was found in one or more base classes:
-// [flattening/modelica/extends/InvalidInheritedExtends2.mo:10:3-10:16:writable] Notification: From here:
-// [flattening/modelica/extends/InvalidInheritedExtends2.mo:20:3-20:12:writable] Error: B was found in base class A.
-// [flattening/modelica/extends/InvalidInheritedExtends2.mo:14:3-14:16:writable] Notification: From here:
-// [flattening/modelica/extends/InvalidInheritedExtends2.mo:21:3-21:12:writable] Error: B was found in base class C.
+// [OpenModelica/flattening/modelica/extends/InvalidInheritedExtends2.mo:22:3-22:12:writable] Notification: From here:
+// [OpenModelica/flattening/modelica/extends/InvalidInheritedExtends2.mo:10:3-10:16:writable] Error: Found other base class for extends B after instantiating extends.
 // Error: Error occurred while flattening model InvalidInheritedExtends2
 //
 // # Error encountered! Exiting...

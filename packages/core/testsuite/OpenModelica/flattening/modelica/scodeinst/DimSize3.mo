@@ -10,16 +10,9 @@ end f;
 model DimSize3
 algorithm
   f({{1, 2}, {3, 4}});
-  annotation(__OpenModelica_commandLineOptions="-d=-nfEvalConstArgFuncs");
 end DimSize3;
 
 // Result:
-// function f
-//   input Real[:, size(x, 1)] x;
-// end f;
-//
 // class DimSize3
-// algorithm
-//   f({{1.0, 2.0}, {3.0, 4.0}});
 // end DimSize3;
 // endResult

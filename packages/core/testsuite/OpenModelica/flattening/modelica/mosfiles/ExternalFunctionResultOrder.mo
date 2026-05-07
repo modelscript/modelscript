@@ -63,5 +63,4 @@ function f4321
   output Integer targ4;
 external "FORTRAN 77" targ1 = f1234(targ4,targ3,targ2) annotation(Include = "#include \"ext_ExternalFunctionResultOrder.c\"");
 end f4321;
-
 end ExternalFunctionResultOrder;

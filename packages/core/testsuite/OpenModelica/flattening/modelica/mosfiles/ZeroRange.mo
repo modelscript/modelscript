@@ -11,5 +11,4 @@ algorithm
     o := o + 1;
   end for;
 end testRangeLoop;
-
 end ZeroRange;

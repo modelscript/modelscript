@@ -18,65 +18,17 @@ model A
   Boolean b4[3,1,2,2];
   equation
     b4 = C[1,:,:].g.setdg;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end A;
 
 // Result:
-// class A
-//   Boolean C[1,1,1].g[1].setdg[1];
-//   Boolean C[1,1,1].g[1].setdg[2];
-//   Boolean C[1,1,1].g[2].setdg[1];
-//   Boolean C[1,1,1].g[2].setdg[2];
-//   Boolean C[1,1,1].set;
-//   Boolean C[1,2,1].g[1].setdg[1];
-//   Boolean C[1,2,1].g[1].setdg[2];
-//   Boolean C[1,2,1].g[2].setdg[1];
-//   Boolean C[1,2,1].g[2].setdg[2];
-//   Boolean C[1,2,1].set;
-//   Boolean C[1,3,1].g[1].setdg[1];
-//   Boolean C[1,3,1].g[1].setdg[2];
-//   Boolean C[1,3,1].g[2].setdg[1];
-//   Boolean C[1,3,1].g[2].setdg[2];
-//   Boolean C[1,3,1].set;
-//   Boolean C[2,1,1].g[1].setdg[1];
-//   Boolean C[2,1,1].g[1].setdg[2];
-//   Boolean C[2,1,1].g[2].setdg[1];
-//   Boolean C[2,1,1].g[2].setdg[2];
-//   Boolean C[2,1,1].set;
-//   Boolean C[2,2,1].g[1].setdg[1];
-//   Boolean C[2,2,1].g[1].setdg[2];
-//   Boolean C[2,2,1].g[2].setdg[1];
-//   Boolean C[2,2,1].g[2].setdg[2];
-//   Boolean C[2,2,1].set;
-//   Boolean C[2,3,1].g[1].setdg[1];
-//   Boolean C[2,3,1].g[1].setdg[2];
-//   Boolean C[2,3,1].g[2].setdg[1];
-//   Boolean C[2,3,1].g[2].setdg[2];
-//   Boolean C[2,3,1].set;
-//   Boolean b4[1,1,1,1];
-//   Boolean b4[1,1,1,2];
-//   Boolean b4[1,1,2,1];
-//   Boolean b4[1,1,2,2];
-//   Boolean b4[2,1,1,1];
-//   Boolean b4[2,1,1,2];
-//   Boolean b4[2,1,2,1];
-//   Boolean b4[2,1,2,2];
-//   Boolean b4[3,1,1,1];
-//   Boolean b4[3,1,1,2];
-//   Boolean b4[3,1,2,1];
-//   Boolean b4[3,1,2,2];
+// class InnerOuterSystem
+//   Boolean subSystem.enableMe = time <= 1.0;
+//   Boolean subSystem.isEnabled = isEnabled and subSystem.enableMe;
+//   Real subSystem.conditionalIntegrator.x(start = 1.0);
+//   Real subSystem.conditionalIntegrator2.x(start = 1.0);
+//   Boolean isEnabled = time >= 0.5;
 // equation
-//   b4[1,1,1,1] = C[1,1,1].g[1].setdg[1];
-//   b4[1,1,1,2] = C[1,1,1].g[1].setdg[2];
-//   b4[1,1,2,1] = C[1,1,1].g[2].setdg[1];
-//   b4[1,1,2,2] = C[1,1,1].g[2].setdg[2];
-//   b4[2,1,1,1] = C[1,2,1].g[1].setdg[1];
-//   b4[2,1,1,2] = C[1,2,1].g[1].setdg[2];
-//   b4[2,1,2,1] = C[1,2,1].g[2].setdg[1];
-//   b4[2,1,2,2] = C[1,2,1].g[2].setdg[2];
-//   b4[3,1,1,1] = C[1,3,1].g[1].setdg[1];
-//   b4[3,1,1,2] = C[1,3,1].g[1].setdg[2];
-//   b4[3,1,2,1] = C[1,3,1].g[2].setdg[1];
-//   b4[3,1,2,2] = C[1,3,1].g[2].setdg[2];
-// end A;
+//   der(subSystem.conditionalIntegrator.x) = if subSystem.isEnabled then -subSystem.conditionalIntegrator.x else 0.0;
+//   der(subSystem.conditionalIntegrator2.x) = if subSystem.isEnabled then -subSystem.conditionalIntegrator2.x else 0.0;
+// end InnerOuterSystem;
 // endResult

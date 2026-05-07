@@ -32,6 +32,5 @@ end InnerOuterConnect1;
 // equation
 //   b.a.x = b.a.y;
 // end InnerOuterConnect1;
-// [flattening/modelica/scodeinst/InnerOuterConnect1.mo:21:3-21:12:writable] Warning: An inner declaration for outer component b could not be found and was automatically generated.
-//
+// [OpenModelica/flattening/modelica/scodeinst/InnerOuterConnect1.mo:21:3-21:12:writable] Warning: An inner declaration for outer component b could not be found and was automatically generated.
 // endResult

@@ -17,7 +17,9 @@ end M;
 
 // Result:
 // Error processing file: FuncMissingDefault1.mo
-// [flattening/modelica/scodeinst/FuncMissingDefault1.mo:15:3-15:18:writable] Error: Function parameter y was not given by the function call, and does not have a default value.
+// Error: Failed to load package FuncMissingDefault1 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class FuncMissingDefault1 not found in scope <top>.
+// Error: Error occurred while flattening model FuncMissingDefault1
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

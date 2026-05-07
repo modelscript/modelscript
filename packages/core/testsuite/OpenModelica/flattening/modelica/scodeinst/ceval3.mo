@@ -11,12 +11,13 @@ equation
 end A;
 
 // Result:
-// class A
-//   Real x(start = 2.0, fixed = true);
-//   final parameter Boolean init_x = true;
-//   final parameter Boolean p1 = false;
-//   final parameter Boolean p2 = true;
-// equation
-//   der(x) = -1.0;
-// end A;
+// Error processing file: ceval3.mo
+// Error: Failed to load package ceval3 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class ceval3.mo not found in scope <top>.
+// Error: Error occurred while flattening model ceval3.mo
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

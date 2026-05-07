@@ -975,7 +975,6 @@ model BM20
 
 equation
   connect(constant1.outPort,sign1.inPort) annotation(Line(visible=true,points={{-45.11,18.05},{-18.35,18.05}}));
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end BM20;
 // class BM20
 // parameter Integer sign1.n = 1 "Number of inputs (= number of outputs)";
@@ -999,26 +998,16 @@ end BM20;
 // constant1.outPort.signal[1] = sign1.inPort.signal[1];
 // end BM20;
 // Result:
-// class BM20
-//   parameter Integer sign1.n = 1 "Number of inputs (= number of outputs)";
-//   parameter Integer sign1.inPort.n = sign1.n "Dimension of signal vector";
-//   Real sign1.inPort.signal[1] "Real input signals";
-//   parameter Integer sign1.outPort.n = sign1.n "Dimension of signal vector";
-//   Real sign1.outPort.signal[1] "Real output signals";
-//   Real sign1.y[1] "Output signals";
-//   protected Real sign1.u[1] "Input signals";
-//   parameter Integer constant1.nout(min = 1) = 1 "Number of outputs";
-//   parameter Integer constant1.outPort.n = constant1.nout "Dimension of signal vector";
-//   Real constant1.outPort.signal[1] "Real output signals";
-//   Real constant1.y[1];
-//   parameter Real constant1.k[1] = 1.0 "Constant output values";
+// class SampleTest
+//   Clock c;
+//   Boolean cb = sample(0.1, 0.1);
+//   Real x1;
+//   Real x2;
+//   Real y;
 // equation
-//   sign1.u = {sign1.inPort.signal[1]};
-//   sign1.y[1] = /*Real*/(sign(sign1.u[1]));
-//   sign1.y[1] = sign1.outPort.signal[1];
-//   constant1.outPort.signal[1] = constant1.k[1];
-//   constant1.y[1] = constant1.outPort.signal[1];
-//   assert(constant1.outPort.n == sign1.inPort.n, "automatically generated from connect");
-//   constant1.outPort.signal[1] = sign1.inPort.signal[1];
-// end BM20;
+//   c = Clock(0.1);
+//   x1 = sample(1.0, Clock());
+//   x2 = sample(1.1, c);
+//   y = x1 + x2;
+// end SampleTest;
 // endResult

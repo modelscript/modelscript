@@ -7,11 +7,10 @@
 
 type Type1
   Real x;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Type1;
 // Result:
 // Error processing file: Type1.mo
-// Error: In class .Type1, class specialization 'type' can only be derived from predefined types.
+// [OpenModelica/flattening/modelica/types/Type1.mo:8:1-11:10:writable] Error: Type 'Type1' does not extend a basic type.
 // Error: Error occurred while flattening model Type1
 //
 // # Error encountered! Exiting...

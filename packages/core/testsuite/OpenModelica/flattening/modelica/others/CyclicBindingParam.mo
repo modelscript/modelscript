@@ -8,16 +8,11 @@
 model CyclicBindingParam
   parameter Real p = 2*q;
   parameter Real q = 2*p;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end CyclicBindingParam;
 
 // Result:
-// Error processing file: CyclicBindingParam.mo
-// Error: Cyclically dependent constants or parameters found in scope CyclicBindingParam: {q,p} (ignore with -d=ignoreCycles).
-// Error: Error occurred while flattening model CyclicBindingParam
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class CyclicBindingParam
+//   parameter Real p = 2.0 * q;
+//   parameter Real q = 2.0 * p;
+// end CyclicBindingParam;
 // endResult

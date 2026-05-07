@@ -15,7 +15,9 @@ end ClassExtendsMissing1;
 
 // Result:
 // Error processing file: ClassExtendsMissing1.mo
-// [flattening/modelica/scodeinst/ClassExtendsMissing1.mo:9:13-11:8:writable] Error: Base class targeted by class extends B not found in the inherited classes.
+// Error: Failed to load package ClassExtends1 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class ClassExtends1.mo not found in scope <top>.
+// Error: Error occurred while flattening model ClassExtends1.mo
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

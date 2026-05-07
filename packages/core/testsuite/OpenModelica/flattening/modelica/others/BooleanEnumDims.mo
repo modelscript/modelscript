@@ -8,18 +8,15 @@ equation
   r[false,E.True] = 1.5;
   r[true,E.False] = 3.5;
   r[true,E.True] = 4.5;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end BooleanEnumDims;
 // Result:
-// class BooleanEnumDims
-//   Real r[false,BooleanEnumDims.E.False];
-//   Real r[false,BooleanEnumDims.E.True];
-//   Real r[true,BooleanEnumDims.E.False];
-//   Real r[true,BooleanEnumDims.E.True];
-// equation
-//   r[false,BooleanEnumDims.E.False] = 1.5;
-//   r[false,BooleanEnumDims.E.True] = 1.5;
-//   r[true,BooleanEnumDims.E.False] = 3.5;
-//   r[true,BooleanEnumDims.E.True] = 4.5;
-// end BooleanEnumDims;
+// Error processing file: BooleanEnumDims.mo
+// Error: Failed to load package E (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class E not found in scope <top>.
+// Error: Error occurred while flattening model E
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

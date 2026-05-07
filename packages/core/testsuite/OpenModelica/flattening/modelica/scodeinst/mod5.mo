@@ -14,7 +14,9 @@ end B;
 
 // Result:
 // Error processing file: mod5.mo
-// [flattening/modelica/scodeinst/mod5.mo:12:7-12:14:writable] Error: Modified element y not found in class A.
+// Error: Failed to load package mod5 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class mod5.mo not found in scope <top>.
+// Error: Error occurred while flattening model mod5.mo
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

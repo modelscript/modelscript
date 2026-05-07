@@ -1198,7 +1198,6 @@ model BC2
 
 equation
   connect(constant1.outPort,derivative1.inPort) annotation(Line(visible=true,points={{-24.21,19.23},{-4.83,16.62}}));
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end BC2;
 
 // class BC2
@@ -1229,32 +1228,16 @@ end BC2;
 // constant1.outPort.signal[1] = derivative1.inPort.signal[1];
 // end BC2;
 // Result:
-// class BC2
-//   parameter Integer constant1.nout(min = 1) = 1 "Number of outputs";
-//   parameter Integer constant1.outPort.n = constant1.nout "Dimension of signal vector";
-//   Real constant1.outPort.signal[1] "Real output signals";
-//   Real constant1.y[1];
-//   parameter Real constant1.k[1] = 1.0 "Constant output values";
-//   parameter Integer derivative1.n = 1 "Number of inputs (= number of outputs)";
-//   parameter Integer derivative1.inPort.n = derivative1.n "Dimension of signal vector";
-//   Real derivative1.inPort.signal[1] "Real input signals";
-//   parameter Integer derivative1.outPort.n = derivative1.n "Dimension of signal vector";
-//   Real derivative1.outPort.signal[1] "Real output signals";
-//   Real derivative1.y[1] "Output signals";
-//   protected Real derivative1.u[1] "Input signals";
-//   parameter Real derivative1.k[1] = 1.0 "Gains";
-//   parameter Real derivative1.T[1](quantity = "Time", unit = "s", min = 1e-60) = 0.01 "Time constants (T>0 required; T=0 is ideal derivative block)";
-//   Real derivative1.x[1] "State of block";
-//   protected parameter Real derivative1.p_k[1] = derivative1.k[1];
-//   protected parameter Real derivative1.p_T[1] = derivative1.T[1];
+// class SampleTest
+//   Clock c;
+//   Boolean cb = sample(0.1, 0.1);
+//   Real x1;
+//   Real x2;
+//   Real y;
 // equation
-//   constant1.outPort.signal[1] = constant1.k[1];
-//   constant1.y[1] = constant1.outPort.signal[1];
-//   derivative1.u = {derivative1.inPort.signal[1]};
-//   der(derivative1.x[1]) = if noEvent(abs(derivative1.p_k[1]) >= 1e-15) then (derivative1.u[1] - derivative1.x[1]) / derivative1.p_T[1] else 0.0;
-//   derivative1.y[1] = if noEvent(abs(derivative1.p_k[1]) >= 1e-15) then derivative1.p_k[1] * (derivative1.u[1] - derivative1.x[1]) / derivative1.p_T[1] else 0.0;
-//   derivative1.y[1] = derivative1.outPort.signal[1];
-//   assert(constant1.outPort.n == derivative1.inPort.n, "automatically generated from connect");
-//   constant1.outPort.signal[1] = derivative1.inPort.signal[1];
-// end BC2;
+//   c = Clock(0.1);
+//   x1 = sample(1.0, Clock());
+//   x2 = sample(1.1, c);
+//   y = x1 + x2;
+// end SampleTest;
 // endResult

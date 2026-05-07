@@ -9,7 +9,8 @@ end BuiltinAttribute4;
 
 // Result:
 // Error processing file: BuiltinAttribute4.mo
-// [flattening/modelica/scodeinst/BuiltinAttribute4.mo:7:10-7:15:writable] Error: Modified element x not found in class Real.
+// [OpenModelica/flattening/modelica/scodeinst/BuiltinAttribute4.mo:7:10-7:15:writable] Error: Modified element x not found in class Real.
+// Error: Error occurred while flattening model BuiltinAttribute4
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

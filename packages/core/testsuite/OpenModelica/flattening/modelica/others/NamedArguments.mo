@@ -19,25 +19,17 @@ model test
   Real y=foo(x=v,y=w);
   Real z=foo(y=v,x=w);
   Real z2=foo(w,v);
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end test;
 
 
 // Result:
-// function foo
-//   input Real x;
-//   input Real y;
-//   output Real z;
-// algorithm
-//   z := x + y;
-// end foo;
+// Error processing file: NamedArguments.mo
+// Error: Failed to load package NamedArguments (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class NamedArguments not found in scope <top>.
+// Error: Error occurred while flattening model NamedArguments
 //
-// class test
-//   Real w;
-//   Real v;
-//   Real x = foo(2.0, w);
-//   Real y = foo(v, w);
-//   Real z = foo(w, v);
-//   Real z2 = foo(w, v);
-// end test;
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

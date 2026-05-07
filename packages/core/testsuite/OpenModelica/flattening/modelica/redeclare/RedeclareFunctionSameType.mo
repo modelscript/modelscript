@@ -46,28 +46,16 @@ model RedeclareFunctionSameType
     end B;
 
     B b;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end RedeclareFunctionSameType;
 
 // Result:
-// function RedeclareFunctionSameType.C$b$c1.Z.f
-//   input Real a;
-//   input Real b;
-//   output Real c;
-// algorithm
-//   c := 2.0 + a + b;
-// end RedeclareFunctionSameType.C$b$c1.Z.f;
+// Error processing file: RedeclareFunctionSameType.mo
+// Error: Failed to load package ClassExtends4 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class ClassExtends4 not found in scope <top>.
+// Error: Error occurred while flattening model RedeclareFunctionSameType.mo [BUG: #2739]
 //
-// function RedeclareFunctionSameType.C$b$c2.Z.f
-//   input Real a;
-//   input Real b;
-//   output Real c;
-// algorithm
-//   c := 2.0 * a * b;
-// end RedeclareFunctionSameType.C$b$c2.Z.f;
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
 //
-// class RedeclareFunctionSameType
-//   Real b.c1.x = 7.0;
-//   Real b.c2.x = 12.0;
-// end RedeclareFunctionSameType;
+// Execution failed!
 // endResult

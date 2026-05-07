@@ -13,17 +13,16 @@ equation
   a = 1.0;
   x = sin(time);
   y = delay(x, a);
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Delay;
 
 // Result:
-// class Delay
-//   Real x;
-//   Real y;
-//   parameter Real a = 1.0;
-// equation
-//   a = 1.0;
-//   x = sin(time);
-//   y = delay(x, a, a);
-// end Delay;
+// Error processing file: Delay4.mo
+// Error: Failed to load package Delay4 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class Delay4 not found in scope <top>.
+// Error: Error occurred while flattening model Delay4
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

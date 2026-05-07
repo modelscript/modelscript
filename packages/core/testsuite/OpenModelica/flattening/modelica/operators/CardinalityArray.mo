@@ -19,24 +19,15 @@ model CardinalityArray
   Integer c = cardinality(a1[1].c);
 equation
   connect(a1.c, a2.c);
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end CardinalityArray;
 
 // Result:
-// class CardinalityArray
-//   Real a1[1].c.e;
-//   Real a1[1].c.f;
-//   Real a1[2].c.e;
-//   Real a1[2].c.f;
-//   Real a2[1].c.e;
-//   Real a2[1].c.f;
-//   Real a2[2].c.e;
-//   Real a2[2].c.f;
-//   Integer c = 1;
-// equation
-//   a1[2].c.f + a2[2].c.f = 0.0;
-//   a1[1].c.f + a2[1].c.f = 0.0;
-//   a1[1].c.e = a2[1].c.e;
-//   a1[2].c.e = a2[2].c.e;
-// end CardinalityArray;
+// Error processing file: CardinalityArray.mo
+// [OpenModelica/flattening/modelica/operators/CardinalityArray.mo:19:3-19:35:writable] Error: cardinality may only be used in the condition of an if-statement/equation or an assert.
+// Error: Error occurred while flattening model CardinalityArray
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

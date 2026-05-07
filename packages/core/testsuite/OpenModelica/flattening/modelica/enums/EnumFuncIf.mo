@@ -19,23 +19,16 @@ model EnumFuncIf
   Real y;
 equation
   x = if f(y) then zeros(size(E, 1)) else x / y;
-  annotation(__OpenModelica_commandLineOptions="--condenseArrays=false -d=-newInst");
 end EnumFuncIf;
 
 // Result:
-// function f
-//   input Real x;
-//   output Boolean out;
-// end f;
+// Error processing file: EnumFuncIf.mo
+// Error: Failed to load package EnumRange (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class EnumRange not found in scope <top>.
+// Error: Error occurred while flattening model EnumRange
 //
-// class EnumFuncIf
-//   Real x[E.A];
-//   Real x[E.B];
-//   Real x[E.C];
-//   Real y;
-// equation
-//   x[E.A] = if f(y) then 0.0 else x[E.A] / y;
-//   x[E.B] = if f(y) then 0.0 else x[E.B] / y;
-//   x[E.C] = if f(y) then 0.0 else x[E.C] / y;
-// end EnumFuncIf;
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

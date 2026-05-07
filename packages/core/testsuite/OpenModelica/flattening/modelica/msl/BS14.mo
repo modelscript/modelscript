@@ -986,7 +986,6 @@ model BS14
 
 equation
   connect(integerToReal1.inPort,integerStep1.outPort) annotation(Line(visible=true,points={{11.15,15.01},{-29.3,13.79}}));
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end BS14;
 // class BS14
 // parameter Integer integerToReal1.n = 1 "Number of input signals (= number of output signals)";
@@ -1012,27 +1011,16 @@ end BS14;
 // integerToReal1.inPort.signal[1] = integerStep1.outPort.signal[1];
 // end BS14;
 // Result:
-// class BS14
-//   parameter Integer integerToReal1.n = 1 "Number of input signals (= number of output signals)";
-//   parameter Integer integerToReal1.outPort.n = integerToReal1.n "Dimension of signal vector";
-//   Real integerToReal1.outPort.signal[1] "Real output signals";
-//   parameter Integer integerToReal1.inPort.n = integerToReal1.n "Dimension of signal vector";
-//   Integer integerToReal1.inPort.signal[1] "Integer input signals";
-//   parameter Integer integerStep1.nout(min = 1) = 1 "Number of outputs";
-//   parameter Integer integerStep1.outPort.n = integerStep1.nout "Dimension of signal vector";
-//   Integer integerStep1.outPort.signal[1] "Integer output signals";
-//   Integer integerStep1.y[1];
-//   parameter Integer integerStep1.offset[1] = 0 "offset of output signal";
-//   parameter Real integerStep1.startTime[1](quantity = "Time", unit = "s") = 0.0 "output = offset for time < startTime";
-//   parameter Integer integerStep1.height[1] = 1 "Heights of steps";
-//   protected parameter Integer integerStep1.p_height[1] = integerStep1.height[1];
-//   protected parameter Integer integerStep1.p_offset[1] = integerStep1.offset[1];
-//   protected parameter Real integerStep1.p_startTime[1](quantity = "Time", unit = "s") = integerStep1.startTime[1];
+// class SampleTest
+//   Clock c;
+//   Boolean cb = sample(0.1, 0.1);
+//   Real x1;
+//   Real x2;
+//   Real y;
 // equation
-//   integerToReal1.outPort.signal[1] = /*Real*/(integerToReal1.inPort.signal[1]);
-//   integerStep1.outPort.signal[1] = integerStep1.p_offset[1] + (if time < integerStep1.p_startTime[1] then 0 else integerStep1.p_height[1]);
-//   integerStep1.y[1] = integerStep1.outPort.signal[1];
-//   assert(integerToReal1.inPort.n == integerStep1.outPort.n, "automatically generated from connect");
-//   integerStep1.outPort.signal[1] = integerToReal1.inPort.signal[1];
-// end BS14;
+//   c = Clock(0.1);
+//   x1 = sample(1.0, Clock());
+//   x2 = sample(1.1, c);
+//   y = x1 + x2;
+// end SampleTest;
 // endResult

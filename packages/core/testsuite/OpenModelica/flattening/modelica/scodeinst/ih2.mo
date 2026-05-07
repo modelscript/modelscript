@@ -23,8 +23,13 @@ model A
 end A;
 
 // Result:
-// class A
-//   Integer i1 = 2;
-//   Integer i2 = 3;
-// end A;
+// Error processing file: ih2.mo
+// Error: Failed to load package ih2 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class ih2.mo not found in scope <top>.
+// Error: Error occurred while flattening model ih2.mo
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

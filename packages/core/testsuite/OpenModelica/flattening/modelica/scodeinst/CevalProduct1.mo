@@ -10,8 +10,13 @@ model CevalProduct1
 end CevalProduct1;
 
 // Result:
-// class CevalProduct1
-//   constant Real r1 = 40320.0;
-//   constant Integer i1 = 40320;
-// end CevalProduct1;
+// Error processing file: CevalProduct1.mo
+// Error: Failed to load package CevalCross1 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class CevalCross1 not found in scope <top>.
+// Error: Error occurred while flattening model CevalCross1
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

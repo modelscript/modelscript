@@ -20,7 +20,8 @@ end IfConnect3;
 
 // Result:
 // Error processing file: IfConnect3.mo
-// [flattening/modelica/scodeinst/IfConnect3.mo:17:5-17:20:writable] Error: connect may not be used inside if-equations with non-parametric conditions (found connect(c1, c2)).
+// [OpenModelica/flattening/modelica/scodeinst/IfConnect3.mo:17:5-17:20:writable] Error: connect may not be used inside if-equations with non-parametric conditions (found connect(c1, c2)).
+// Error: Error occurred while flattening model IfConnect3
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

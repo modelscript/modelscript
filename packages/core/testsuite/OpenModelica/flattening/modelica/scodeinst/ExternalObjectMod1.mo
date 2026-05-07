@@ -24,7 +24,8 @@ end ExternalObjectMod1;
 
 // Result:
 // Error processing file: ExternalObjectMod1.mo
-// [flattening/modelica/scodeinst/ExternalObjectMod1.mo:22:14-22:19:writable] Error: Modified element x not found in class ExtObj.
+// [OpenModelica/flattening/modelica/scodeinst/ExternalObjectMod1.mo:22:14-22:19:writable] Error: Modified element x not found in class ExtObj.
+// Error: Error occurred while flattening model ExternalObjectMod1
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

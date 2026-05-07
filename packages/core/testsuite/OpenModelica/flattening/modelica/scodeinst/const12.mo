@@ -18,8 +18,13 @@ model B
 end B;
 
 // Result:
-// class B
-//   constant Integer j = 2;
-//   Real x = 2.0;
-// end B;
+// Error processing file: const12.mo
+// Error: Failed to load package const12 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class const12 not found in scope <top>.
+// Error: Error occurred while flattening model const12
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

@@ -12,7 +12,8 @@ end ComponentAsTypeError;
 
 // Result:
 // Error processing file: ComponentAsTypeError.mo
-// [flattening/modelica/scodeinst/ComponentAsTypeError.mo:10:3-10:6:writable] Error: Expected x to be a class, but found component instead.
+// [OpenModelica/flattening/modelica/scodeinst/ComponentAsTypeError.mo:10:3-10:6:writable] Error: Expected x to be a class, but found component instead.
+// Error: Error occurred while flattening model ComponentAsTypeError
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

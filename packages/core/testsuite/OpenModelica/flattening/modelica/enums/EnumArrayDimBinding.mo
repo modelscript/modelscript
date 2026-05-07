@@ -10,15 +10,16 @@ type E = enumeration(A, B, C);
 
 model EnumerationArrayDimBinding
   Real x[E] = {1, 2, 3};
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end EnumerationArrayDimBinding;
 
 // Result:
-// class EnumerationArrayDimBinding
-//   Real x[E.A];
-//   Real x[E.B];
-//   Real x[E.C];
-// equation
-//   x = {1.0, 2.0, 3.0};
-// end EnumerationArrayDimBinding;
+// Error processing file: EnumArrayDimBinding.mo
+// Error: Failed to load package Enumeration1 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class Enumeration1 not found in scope <top>.
+// Error: Error occurred while flattening model Enumeration1
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

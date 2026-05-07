@@ -27,7 +27,8 @@ end ExternalObjectInvalidElement1;
 
 // Result:
 // Error processing file: ExternalObjectInvalidElement1.mo
-// [flattening/modelica/scodeinst/ExternalObjectInvalidElement1.mo:20:3-21:8:writable] Error: External object ExtObj contains invalid element 'f'.
+// [OpenModelica/flattening/modelica/scodeinst/ExternalObjectInvalidElement1.mo:20:3-21:8:writable] Error: External object ExtObj contains invalid element 'f'.
+// Error: Error occurred while flattening model ExternalObjectInvalidElement1
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

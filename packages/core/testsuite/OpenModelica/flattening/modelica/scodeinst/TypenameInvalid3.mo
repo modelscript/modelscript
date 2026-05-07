@@ -10,7 +10,8 @@ end TypenameInvalid3;
 
 // Result:
 // Error processing file: TypenameInvalid3.mo
-// [flattening/modelica/scodeinst/TypenameInvalid3.mo:8:3-8:16:writable] Error: Type name 'E' is not allowed in this context.
+// [OpenModelica/flattening/modelica/scodeinst/TypenameInvalid3.mo:8:3-8:16:writable] Error: Type name 'E' is not allowed in this context.
+// Error: Error occurred while flattening model TypenameInvalid3
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

@@ -16,8 +16,9 @@ end RedeclareEnum6;
 
 // Result:
 // Error processing file: RedeclareEnum6.mo
-// [flattening/modelica/scodeinst/RedeclareEnum6.mo:12:23-12:34:writable] Notification: From here:
-// [flattening/modelica/scodeinst/RedeclareEnum6.mo:7:15-7:38:writable] Error: Redeclaration of enumeration 'E' is not a subtype of the redeclared element.
+// [OpenModelica/flattening/modelica/scodeinst/RedeclareEnum6.mo:12:23-12:34:writable] Notification: From here:
+// [OpenModelica/flattening/modelica/scodeinst/RedeclareEnum6.mo:7:15-7:38:writable] Error: Redeclaration of enumeration 'E' is not a subtype of the redeclared element.
+// Error: Error occurred while flattening model RedeclareEnum6
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

@@ -129,45 +129,13 @@
 //   comp2.n.i = 0.0;
 // end RefinedSimpleCircuit;
 // Result:
-// class RefinedSimpleCircuit
-//   Real comp1.p.v(quantity = "ElectricPotential", unit = "V");
-//   Real comp1.p.i(quantity = "ElectricCurrent", unit = "A");
-//   Real comp1.n.v(quantity = "ElectricPotential", unit = "V");
-//   Real comp1.n.i(quantity = "ElectricCurrent", unit = "A");
-//   Real comp1.v(quantity = "ElectricPotential", unit = "V");
-//   Real comp1.i(quantity = "ElectricCurrent", unit = "A");
-//   parameter Real comp1.C(quantity = "Capacitance", unit = "F", min = 0.0) = 0.003 "Capacitance";
-//   Real comp2.p.v(quantity = "ElectricPotential", unit = "V");
-//   Real comp2.p.i(quantity = "ElectricCurrent", unit = "A");
-//   Real comp2.n.v(quantity = "ElectricPotential", unit = "V");
-//   Real comp2.n.i(quantity = "ElectricCurrent", unit = "A");
-//   Real comp2.v(quantity = "ElectricPotential", unit = "V");
-//   Real comp2.i(quantity = "ElectricCurrent", unit = "A");
-//   parameter Real comp2.L(quantity = "Inductance", unit = "H", min = 0.0) = 0.0002 "Inductance";
-//   Real R3.p.v(quantity = "ElectricPotential", unit = "V");
-//   Real R3.p.i(quantity = "ElectricCurrent", unit = "A");
-//   Real R3.n.v(quantity = "ElectricPotential", unit = "V");
-//   Real R3.n.i(quantity = "ElectricCurrent", unit = "A");
-//   Real R3.v(quantity = "ElectricPotential", unit = "V");
-//   Real R3.i(quantity = "ElectricCurrent", unit = "A");
-//   parameter Real R3.R(unit = "Ohm") = 300.0 "Resistance";
-//   Real R3.Temp;
-//   Real R3.RT;
-// equation
-//   comp1.i = comp1.C * der(comp1.v);
-//   comp1.v = comp1.p.v - comp1.n.v;
-//   comp1.p.i + comp1.n.i = 0.0;
-//   comp1.i = comp1.p.i;
-//   comp2.L * der(comp2.i) = comp2.v;
-//   comp2.v = comp2.p.v - comp2.n.v;
-//   comp2.p.i + comp2.n.i = 0.0;
-//   comp2.i = comp2.p.i;
-//   R3.v = R3.i * R3.R;
-//   comp1.p.i + comp2.p.i + R3.p.i = 0.0;
-//   comp1.n.i = 0.0;
-//   comp2.n.i = 0.0;
-//   R3.n.i = 0.0;
-//   R3.p.v = comp1.p.v;
-//   R3.p.v = comp2.p.v;
-// end RefinedSimpleCircuit;
+// Error processing file: RefinedSimpleCircuitValid.mo
+// Error: Failed to load package RefinedSimpleCircuitValid (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class RefinedSimpleCircuitValid not found in scope <top>.
+// Error: Error occurred while flattening model RefinedSimpleCircuitValid
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

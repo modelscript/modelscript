@@ -24,7 +24,6 @@ class MyPointsInst2
   Real x=pts.point1.x;
   Real y=pts.point1.y;
   Real z=pts.point1.z;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end MyPointsInst2;
 
 
@@ -33,18 +32,28 @@ end MyPointsInst2;
 // ./omc XXX.mo >> XXX.mo and then comment the inserted class.
 //
 // Result:
-// class MyPointsInst2
-//   parameter Real pts.point1.x = 1.0;
-//   parameter Real pts.point1.y = 2.0;
-//   parameter Real pts.point1.z = 3.0;
-//   parameter Real pts.point2.x;
-//   parameter Real pts.point2.y;
-//   parameter Real pts.point2.z;
-//   parameter Real pts.point3.x;
-//   parameter Real pts.point3.y;
-//   parameter Real pts.point3.z;
-//   Real x = pts.point1.x;
-//   Real y = pts.point1.y;
-//   Real z = pts.point1.z;
-// end MyPointsInst2;
+// Error processing file: MyPointsInst2.mo
+// [OpenModelica/flattening/modelica/declarations/MyPointsInst2.mo:11:5-11:21:writable] Warning: Components are deprecated in class.
+// [OpenModelica/flattening/modelica/declarations/MyPointsInst2.mo:12:5-12:21:writable] Warning: Components are deprecated in class.
+// [OpenModelica/flattening/modelica/declarations/MyPointsInst2.mo:13:5-13:21:writable] Warning: Components are deprecated in class.
+// [OpenModelica/flattening/modelica/declarations/MyPointsInst2.mo:11:5-11:21:writable] Warning: Components are deprecated in class.
+// [OpenModelica/flattening/modelica/declarations/MyPointsInst2.mo:12:5-12:21:writable] Warning: Components are deprecated in class.
+// [OpenModelica/flattening/modelica/declarations/MyPointsInst2.mo:13:5-13:21:writable] Warning: Components are deprecated in class.
+// [OpenModelica/flattening/modelica/declarations/MyPointsInst2.mo:11:5-11:21:writable] Warning: Components are deprecated in class.
+// [OpenModelica/flattening/modelica/declarations/MyPointsInst2.mo:12:5-12:21:writable] Warning: Components are deprecated in class.
+// [OpenModelica/flattening/modelica/declarations/MyPointsInst2.mo:13:5-13:21:writable] Warning: Components are deprecated in class.
+// [OpenModelica/flattening/modelica/declarations/MyPointsInst2.mo:17:3-17:36:writable] Warning: Components are deprecated in class.
+// [OpenModelica/flattening/modelica/declarations/MyPointsInst2.mo:18:3-18:15:writable] Warning: Components are deprecated in class.
+// [OpenModelica/flattening/modelica/declarations/MyPointsInst2.mo:19:3-19:15:writable] Warning: Components are deprecated in class.
+// [OpenModelica/flattening/modelica/declarations/MyPointsInst2.mo:23:3-23:57:writable] Warning: Components are deprecated in class.
+// [OpenModelica/flattening/modelica/declarations/MyPointsInst2.mo:24:3-24:22:writable] Warning: Components are deprecated in class.
+// [OpenModelica/flattening/modelica/declarations/MyPointsInst2.mo:25:3-25:22:writable] Warning: Components are deprecated in class.
+// [OpenModelica/flattening/modelica/declarations/MyPointsInst2.mo:26:3-26:22:writable] Warning: Components are deprecated in class.
+// [OpenModelica/flattening/modelica/declarations/MyPointsInst2.mo:11:5-11:21:writable] Error: Parameter pts.point2.x has neither value nor start value, and is fixed during initialization (fixed=true).
+// Error: Error occurred while flattening model MyPointsInst2
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

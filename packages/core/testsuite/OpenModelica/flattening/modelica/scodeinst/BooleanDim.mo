@@ -8,8 +8,12 @@ model BooleanDim
 end BooleanDim;
 
 // Result:
-// class BooleanDim
-//   Real x[false];
-//   Real x[true];
-// end BooleanDim;
+// Error processing file: BooleanDim.mo
+// Error: Class BooleanDim.mo not found in scope <top>.
+// Error: Error occurred while flattening model BooleanDim.mo
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

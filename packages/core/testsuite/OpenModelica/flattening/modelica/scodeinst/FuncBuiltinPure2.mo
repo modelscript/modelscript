@@ -10,7 +10,8 @@ end FuncBuiltinPure2;
 
 // Result:
 // Error processing file: FuncBuiltinPure2.mo
-// [flattening/modelica/scodeinst/FuncBuiltinPure2.mo:8:3-8:21:writable] Error: The argument to 'pure' must be a function call expression.
+// [OpenModelica/flattening/modelica/scodeinst/FuncBuiltinPure2.mo:8:3-8:21:writable] Error: The argument to 'pure' must be a function call expression.
+// Error: Error occurred while flattening model FuncBuiltinPure2
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

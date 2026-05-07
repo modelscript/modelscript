@@ -40,10 +40,11 @@ end OperatorOverloadBinaryAmbiguous;
 
 // Result:
 // Error processing file: OperatorOverloadBinaryAmbiguous.mo
-// [flattening/modelica/scodeinst/OperatorOverloadBinaryAmbiguous.mo:37:3-37:14:writable] Error: Ambiguous matching overloaded operator functions found for c1 + 1.
+// [OpenModelica/flattening/modelica/scodeinst/OperatorOverloadBinaryAmbiguous.mo:37:3-37:14:writable] Error: Ambiguous matching overloaded operator functions found for c1 + 1.
 // Candidates are:
 //   C.'+'.rightInt(C i, Integer j) => C
 //   C.'+'.anotherRightInt(C i, Integer j) => C
+// Error: Error occurred while flattening model OperatorOverloadBinaryAmbiguous
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

@@ -15,6 +15,5 @@ end FunctionStreamPrefix;
 // Result:
 // class FunctionStreamPrefix
 // end FunctionStreamPrefix;
-// [flattening/modelica/scodeinst/FunctionStreamPrefix.mo:7:3-7:22:writable] Warning: Prefix 'stream' used outside connector declaration.
-//
+// [OpenModelica/flattening/modelica/scodeinst/FunctionStreamPrefix.mo:7:3-7:22:writable] Warning: Prefix 'stream' used outside connector declaration.
 // endResult

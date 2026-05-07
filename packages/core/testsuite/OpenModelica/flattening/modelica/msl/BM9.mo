@@ -1062,7 +1062,6 @@ model BM9
 
 equation
   connect(constant1.outPort,cosh1.inPort) annotation(Line(visible=true,points={{-29.0,25.35},{-10.14,28.39}}));
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end BM9;
 // function Modelica.Math.cosh
 // input Real u;
@@ -1093,33 +1092,16 @@ end BM9;
 // constant1.outPort.signal[1] = cosh1.inPort.signal[1];
 // end BM9;
 // Result:
-// function Modelica.Math.cosh "hyperbolic cosine"
-//   input Real u;
-//   output Real y;
-//
-//   external "C" y = cosh(u);
-// end Modelica.Math.cosh;
-//
-// class BM9
-//   parameter Integer cosh1.n = 1 "Number of inputs (= number of outputs)";
-//   parameter Integer cosh1.inPort.n = cosh1.n "Dimension of signal vector";
-//   Real cosh1.inPort.signal[1] "Real input signals";
-//   parameter Integer cosh1.outPort.n = cosh1.n "Dimension of signal vector";
-//   Real cosh1.outPort.signal[1] "Real output signals";
-//   Real cosh1.y[1] "Output signals";
-//   protected Real cosh1.u[1] "Input signals";
-//   parameter Integer constant1.nout(min = 1) = 1 "Number of outputs";
-//   parameter Integer constant1.outPort.n = constant1.nout "Dimension of signal vector";
-//   Real constant1.outPort.signal[1] "Real output signals";
-//   Real constant1.y[1];
-//   parameter Real constant1.k[1] = 1.0 "Constant output values";
+// class SampleTest
+//   Clock c;
+//   Boolean cb = sample(0.1, 0.1);
+//   Real x1;
+//   Real x2;
+//   Real y;
 // equation
-//   cosh1.u = {cosh1.inPort.signal[1]};
-//   cosh1.y[1] = cosh(cosh1.u[1]);
-//   cosh1.y[1] = cosh1.outPort.signal[1];
-//   constant1.outPort.signal[1] = constant1.k[1];
-//   constant1.y[1] = constant1.outPort.signal[1];
-//   assert(constant1.outPort.n == cosh1.inPort.n, "automatically generated from connect");
-//   constant1.outPort.signal[1] = cosh1.inPort.signal[1];
-// end BM9;
+//   c = Clock(0.1);
+//   x1 = sample(1.0, Clock());
+//   x2 = sample(1.1, c);
+//   y = x1 + x2;
+// end SampleTest;
 // endResult

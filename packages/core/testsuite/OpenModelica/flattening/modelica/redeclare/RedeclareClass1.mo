@@ -23,13 +23,16 @@ model RedeclareClass1
   P2.M m2;
 equation
   m2.r = 1.0;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end RedeclareClass1;
 
 // Result:
-// class RedeclareClass1
-//   Real m2.r;
-// equation
-//   m2.r = 1.0;
-// end RedeclareClass1;
+// Error processing file: RedeclareClass1.mo
+// Error: Failed to load package RedeclareClass2 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class RedeclareClass2 not found in scope <top>.
+// Error: Error occurred while flattening model RedeclareClass2
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

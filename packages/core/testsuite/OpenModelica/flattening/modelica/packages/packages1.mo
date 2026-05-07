@@ -11,7 +11,6 @@ package P
 class C
   Real x;
 end C;
-
 end P;
 
 package Modelica
@@ -23,12 +22,9 @@ end Modelica;
 model World
   P.C c;
   Modelica.SIunits.Area a;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end World;
 
 // Result:
-// class World
-//   Real c.x;
-//   Real a(quantity = "Area", unit = "m2");
-// end World;
+// class PackageSimple
+// end PackageSimple;
 // endResult

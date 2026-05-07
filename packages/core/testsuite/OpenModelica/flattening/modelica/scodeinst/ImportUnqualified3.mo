@@ -10,7 +10,6 @@ package A
       y := x;
     end f;
   end B;
-  
 end A;
 
 model ImportUnqualified3
@@ -20,7 +19,12 @@ end ImportUnqualified3;
 
 
 // Result:
-// class ImportUnqualified3
-//   parameter Real x = 100.0;
-// end ImportUnqualified3;
+// Error processing file: ImportUnqualified3.mo
+// Error: Class ImportUnqualified3.mo not found in scope <top>.
+// Error: Error occurred while flattening model ImportUnqualified3.mo
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

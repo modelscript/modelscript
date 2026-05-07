@@ -20,15 +20,14 @@ model ExtObjError
   B b = B(0);
   Real r1 = f(a);
   Real r2 = f(b);
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ExtObjError;
 
 // Result:
 // Error processing file: ExtObjError.mo
-// [flattening/modelica/others/ExtObjError.mo:22:3-22:17:writable] Error: Type mismatch for positional argument 1 in ExtObjError.f(a=b). The argument has type:
-//   ExternalObject ExtObjError.B
+// [OpenModelica/flattening/modelica/others/ExtObjError.mo:22:3-22:17:writable] Error: Type mismatch for positional argument 1 in ExtObjError.f(a=b). The argument has type:
+//   B
 // expected type:
-//   ExternalObject ExtObjError.A
+//   A
 // Error: Error occurred while flattening model ExtObjError
 //
 // # Error encountered! Exiting...

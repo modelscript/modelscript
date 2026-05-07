@@ -17,7 +17,8 @@ end WhenClockedElse2;
 
 // Result:
 // Error processing file: WhenClockedElse2.mo
-// [flattening/modelica/scodeinst/WhenClockedElse2.mo:9:3-15:11:writable] Error: Clocked when branch in when equation.
+// [OpenModelica/flattening/modelica/scodeinst/WhenClockedElse2.mo:9:3-15:11:writable] Error: Clocked when branch in when equation.
+// Error: Error occurred while flattening model WhenClockedElse2
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

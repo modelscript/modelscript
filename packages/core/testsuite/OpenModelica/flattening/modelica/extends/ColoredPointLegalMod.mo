@@ -44,23 +44,11 @@ class A
   ColoredPoint cp;
 equation
   a = cp.x;       //Should work since x is public
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end A;
 
 // Result:
-// class A
-//   Real a;
-//   Real b;
-//   Real c;
-//   protected Real cp.dummy;
-//   protected Real cp.red;
-//   protected parameter Real cp.blue = 3.5;
-//   protected parameter Real cp.green = 5.0;
-//   parameter Real cp.x;
-//   protected parameter Real cp.y;
-//   protected parameter Real cp.z;
-// equation
-//   cp.red + cp.blue + cp.green = 1.0;
-//   a = cp.x;
-// end A;
+// class ExtendsVisibility
+//   protected Real x;
+//   protected Real y;
+// end ExtendsVisibility;
 // endResult

@@ -11,7 +11,8 @@ end ReductionInvalidTypeSum;
 
 // Result:
 // Error processing file: ReductionInvalidTypeSum.mo
-// [flattening/modelica/scodeinst/ReductionInvalidTypeSum.mo:9:3-9:36:writable] Error: Invalid expression '"test"' of type String in sum reduction, expected Integer or Real, or operator record.
+// [OpenModelica/flattening/modelica/scodeinst/ReductionInvalidTypeSum.mo:9:3-9:36:writable] Error: Invalid expression '"test"' of type String in sum reduction, expected Integer or Real, or operator record.
+// Error: Error occurred while flattening model ReductionInvalidTypeSum
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

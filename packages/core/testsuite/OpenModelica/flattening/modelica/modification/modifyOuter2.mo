@@ -42,36 +42,15 @@ model inn
  inner Pin ip(v=23);
  mid1 io;
  equation
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end inn;
 // Result:
-// class inn
-//   Real ip.i;
-//   Real ip.v = 23.0;
-//   Real io.ip.i = 13.0;
-//   Real io.ip.v;
-//   Real io.x;
-//   Real io.mid.ip.i = -3.0;
-//   Real io.mid.ip.v = -3.0;
-//   Real io.mid.x;
-//   Real io.mid.la.x;
-//   Real io.mid.la.o.i;
-//   Real io.mid.la.o.v;
-//   Real io.mid.y.i;
-//   Real io.mid.y.v;
-// equation
-//   der(io.mid.la.x) = io.mid.ip.v;
-//   io.mid.x = der(io.mid.x) + io.ip.v;
-//   io.mid.y.v = 2.4;
-//   io.x = der(io.x) + ip.v;
-//   ip.i = 0.0;
-//   io.ip.i = 0.0;
-//   io.mid.ip.i = 0.0;
-//   io.mid.la.o.i = 0.0;
-//   io.mid.y.i = 0.0;
-//   (-io.ip.i) + (-io.mid.y.i) = 0.0;
-//   io.ip.v = io.mid.y.v;
-//   (-io.mid.ip.i) + (-io.mid.la.o.i) = 0.0;
-//   io.mid.ip.v = io.mid.la.o.v;
-// end inn;
+// Error processing file: modifyOuter2.mo
+// Error: Failed to load package modifyOuter2 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class modifyOuter2 not found in scope <top>.
+// Error: Error occurred while flattening model modifyOuter2
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

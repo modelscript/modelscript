@@ -12,7 +12,6 @@ model FunctionPartialDerivative1
   function df = der(f, x);
 
   Real y = df(0);
-  annotation(__OpenModelica_commandLineOptions="--newBackend");
 end FunctionPartialDerivative1;
 
 // Result:

@@ -12,13 +12,13 @@ class A
   end B;
 
   B b;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end A;
 
 // Result:
 // Error processing file: RecursiveDefinition.mo
-// [flattening/modelica/others/RecursiveDefinition.mo:11:5-11:8:writable] Error: Declaration of element x causes recursive definition of class A.
-// Error: Error occurred while flattening model A
+// Error: Failed to load package RecursiveDefinition (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class RecursiveDefinition not found in scope <top>.
+// Error: Error occurred while flattening model RecursiveDefinition
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

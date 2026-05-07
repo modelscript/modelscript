@@ -9,7 +9,7 @@ end MinInvalidArg3;
 
 // Result:
 // Error processing file: MinInvalidArg3.mo
-// [flattening/modelica/scodeinst/MinInvalidArg3.mo:7:3-7:24:writable] Error: No matching function found for min(1, 2, 3).
+// [OpenModelica/flattening/modelica/scodeinst/MinInvalidArg3.mo:7:3-7:24:writable] Error: No matching function found for min(1, 2, 3).
 // Candidates are:
 //   min(Real, Real) => Real
 //   min(Integer, Integer) => Integer
@@ -19,6 +19,7 @@ end MinInvalidArg3;
 //   min(Integer[:, ...]) => Integer
 //   min(Boolean[:, ...]) => Boolean
 //   min(enumeration(:)[:, ...]) => enumeration(:)
+// Error: Error occurred while flattening model MinInvalidArg3
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

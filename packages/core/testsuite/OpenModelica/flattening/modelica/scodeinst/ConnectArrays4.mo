@@ -15,28 +15,15 @@ model ConnectArrays4
 equation
   connect(c[E.a], c2[E.a]);
   connect(c[1], c2[2]);
-  annotation(__OpenModelica_commandLineOptions="--allowNonStandardModelica=nonStdEnumerationAsIntegers");
 end ConnectArrays4;
 
 // Result:
-// class ConnectArrays4
-//   Real c[1].e;
-//   Real c[1].f;
-//   Real c[2].e;
-//   Real c[2].f;
-//   Real c2[1].e;
-//   Real c2[1].f;
-//   Real c2[2].e;
-//   Real c2[2].f;
-// equation
-//   c[1].e = c2[2].e;
-//   c[1].e = c2[1].e;
-//   -(c[1].f + c2[2].f + c2[1].f) = 0.0;
-//   c[1].f = 0.0;
-//   c[2].f = 0.0;
-//   c2[1].f = 0.0;
-//   c2[2].f = 0.0;
-// end ConnectArrays4;
-// Warning: Allowing usage of enumeration expression: E.a as Integer: 1. This is non-standard Modelica, use Integer(E.a) instead!
+// Error processing file: ConnectArrays4.mo
+// [OpenModelica/flattening/modelica/scodeinst/ConnectArrays4.mo:16:3-16:27:writable] Error: Subscript 'E.a' has type enumeration E(a, b, c), expected type Integer.
+// Error: Error occurred while flattening model ConnectArrays4
 //
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

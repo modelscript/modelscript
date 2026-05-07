@@ -31,7 +31,8 @@ end PartialApplicationInvalidArg2;
 
 // Result:
 // Error processing file: PartialApplicationInvalidArg2.mo
-// [flattening/modelica/scodeinst/PartialApplicationInvalidArg2.mo:29:3-29:42:writable] Error: Function f1 has no input parameter named z.
+// [OpenModelica/flattening/modelica/scodeinst/PartialApplicationInvalidArg2.mo:29:3-29:42:writable] Error: Function f1 has no input parameter named z.
+// Error: Error occurred while flattening model PartialApplicationInvalidArg2
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

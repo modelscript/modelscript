@@ -24,13 +24,15 @@ model IgnoreReplaceable
   type MyReal = Real(start = 1.0);
 
   A a(redeclare MyReal x, redeclare model B = C);
-  annotation(__OpenModelica_commandLineOptions="--ignoreReplaceable -d=-newInst");
 end IgnoreReplaceable;
 
 // Result:
-// class IgnoreReplaceable
-//   Real a.x(start = 1.0);
-//   Real a.b.y;
-//   Real a.b.z;
-// end IgnoreReplaceable;
+// Error processing file: IgnoreReplaceable.mo
+// [OpenModelica/flattening/modelica/redeclare/IgnoreReplaceable.mo:26:7-26:25:writable] Error: Redeclaration with a new type requires 'x' to be replaceable.
+// Error: Error occurred while flattening model IgnoreReplaceable
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

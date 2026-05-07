@@ -19,15 +19,17 @@ end C;
 
 model D
   C c(redeclare BB d);
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end D;
 
 
 // Result:
-// class D
-//   parameter Real c.d.b = 5.0;
-//   Real c.d.x;
-// equation
-//   der(c.d.x) = c.d.b;
-// end D;
+// Error processing file: Redeclare5.mo
+// Error: Failed to load package Redeclare5 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class Redeclare5 not found in scope <top>.
+// Error: Error occurred while flattening model Redeclare5
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

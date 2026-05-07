@@ -20,14 +20,13 @@ class C3
   C4 b(x(unit = "V", displayUnit="mV") = 5.0);
   // Not OK, modifying the same attribute unit
   C4 c(x(unit = "V", displayUnit="mV", unit="J") = 5.0, x(unit = "K"));
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end C3;
 
 // Result:
 // Error processing file: Modification15.mo
-// [flattening/modelica/modification/Modification15.mo:22:10-22:20:writable] Notification: From here:
-// [flattening/modelica/modification/Modification15.mo:22:59-22:69:writable] Error: Duplicate modification of element x.unit on component c.
-// Error: Error occurred while flattening model C3
+// Error: Failed to load package Modification15 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class Modification15 not found in scope <top>.
+// Error: Error occurred while flattening model Modification15
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

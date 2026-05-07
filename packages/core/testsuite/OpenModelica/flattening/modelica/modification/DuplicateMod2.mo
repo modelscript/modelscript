@@ -9,15 +9,14 @@ end A;
 
 model DuplicateMod2
   extends A(x = 1, x = 2);
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end DuplicateMod2;
 
 // Result:
-// - elab_untyped_mod (x = 1, x = 2) failed
 // Error processing file: DuplicateMod2.mo
-// [flattening/modelica/modification/DuplicateMod2.mo:11:20-11:25:writable] Notification: From here:
-// [flattening/modelica/modification/DuplicateMod2.mo:11:13-11:18:writable] Error: Duplicate modification of element x on extends A.
-// Error: Error occurred while flattening model DuplicateMod2
+// [OpenModelica/flattening/modelica/modification/DuplicateMod2.mo:11:20-11:25:writable] Notification: From here:
+// [OpenModelica/flattening/modelica/modification/DuplicateMod2.mo:11:13-11:18:writable] Error: Duplicate modification of element x on extends A.
+// Error: Class DuplicateMod2.mo not found in scope <top>.
+// Error: Error occurred while flattening model DuplicateMod2.mo
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

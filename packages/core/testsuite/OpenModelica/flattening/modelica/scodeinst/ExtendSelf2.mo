@@ -15,7 +15,9 @@ end ExtendSelf2;
 
 // Result:
 // Error processing file: ExtendSelf2.mo
-// [flattening/modelica/scodeinst/ExtendSelf2.mo:9:3-9:22:writable] Error: extends ExtendSelf2 causes an instantiation loop.
+// [OpenModelica/flattening/modelica/scodeinst/ExtendSelf2.mo:9:3-9:22:writable] Error: extends ExtendSelf2 causes an instantiation loop.
+// Error: Class ExtendSelf2.mo not found in scope <top>.
+// Error: Error occurred while flattening model ExtendSelf2.mo
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

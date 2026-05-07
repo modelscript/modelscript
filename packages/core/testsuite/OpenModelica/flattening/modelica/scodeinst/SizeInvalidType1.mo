@@ -12,10 +12,11 @@ end SizeInvalidType1;
 
 // Result:
 // Error processing file: SizeInvalidType1.mo
-// [flattening/modelica/scodeinst/SizeInvalidType1.mo:10:3-10:27:writable] Error: Type mismatch for positional argument 2 in size (dim="1"). The argument has type:
+// [OpenModelica/flattening/modelica/scodeinst/SizeInvalidType1.mo:10:3-10:27:writable] Error: Type mismatch for positional argument 2 in size (dim="1"). The argument has type:
 //   String
 // expected type:
 //   Integer
+// Error: Error occurred while flattening model SizeInvalidType1
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

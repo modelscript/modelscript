@@ -12,17 +12,16 @@ model Delay
 equation
   x = sin(time);
   y = delay(x, a, b);
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Delay;
 
 // Result:
-// class Delay
-//   Real x;
-//   Real y;
-//   Real a = 1.0;
-//   constant Real b = 2.0;
-// equation
-//   x = sin(time);
-//   y = delay(x, a, 2.0);
-// end Delay;
+// Error processing file: Delay6.mo
+// Error: Failed to load package Delay6 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class Delay6 not found in scope <top>.
+// Error: Error occurred while flattening model Delay6
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

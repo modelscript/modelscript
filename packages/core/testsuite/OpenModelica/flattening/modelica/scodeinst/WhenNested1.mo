@@ -15,7 +15,8 @@ end WhenNested1;
 
 // Result:
 // Error processing file: WhenNested1.mo
-// [flattening/modelica/scodeinst/WhenNested1.mo:10:5-12:13:writable] Error: Nested when statements are not allowed.
+// [OpenModelica/flattening/modelica/scodeinst/WhenNested1.mo:10:5-12:13:writable] Error: Nested when statements are not allowed.
+// Error: Error occurred while flattening model WhenNested1
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

@@ -27,8 +27,8 @@ end CevalRecord8;
 
 // Result:
 // Error processing file: CevalRecord8.mo
-// [flattening/modelica/scodeinst/CevalRecord8.mo:24:17-24:34:writable] Notification: From here:
-// [flattening/modelica/scodeinst/CevalRecord8.mo:20:3-20:40:writable] Error: Division by zero in 1.0 / 0.0
+// [/var/lib/jenkins/ws/LINUX_BUILDS/tmp.build/openmodelica-1.26.3~1-g7583224/OMCompiler/Compiler/NFFrontEnd/NFCeval.mo:2580:20-2580:78:writable] Error: Internal error NFCeval.evalBuiltinMax got invalid arguments (#EMPTY#)
+// Error: Error occurred while flattening model CevalRecord8
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

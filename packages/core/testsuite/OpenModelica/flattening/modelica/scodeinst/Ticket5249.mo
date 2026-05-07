@@ -21,15 +21,13 @@ model M
 end M;
 
 // Result:
-// class M
-//   constant Integer n = 2;
-//   Real x[1].a = 1.0;
-//   Real x[1].b = 2.0;
-//   Real x[2].a = 2.0;
-//   Real x[2].b = 3.0;
-//   Real h[1].x.a = x[1].a;
-//   Real h[1].x.b = x[1].b;
-//   Real h[2].x.a = x[2].a;
-//   Real h[2].x.b = x[2].b;
-// end M;
+// Error processing file: Ticket5249.mo
+// Error: Failed to load package Ticket5249 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class Ticket5249.mo not found in scope <top>.
+// Error: Error occurred while flattening model Ticket5249.mo
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

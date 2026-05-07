@@ -20,7 +20,8 @@ end BreakConnectInvalid3;
 
 // Result:
 // Error processing file: BreakConnectInvalid3.mo
-// [flattening/modelica/modification/BreakConnectInvalid3.mo:18:23-18:44:writable] Error: No matching element found for 'break connect(c1, c2)'.
+// [OpenModelica/flattening/modelica/modification/BreakConnectInvalid3.mo:18:23-18:44:writable] Error: No matching element found for 'break connect(c1, c2)'.
+// Error: Error occurred while flattening model BreakConnectInvalid3
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

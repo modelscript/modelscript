@@ -21,7 +21,9 @@ end C;
 
 // Result:
 // Error processing file: const13.mo
-// [flattening/modelica/scodeinst/const13.mo:19:3-19:17:writable] Error: Found component 'y' in composite name 'a.B.y', expected class.
+// Error: Failed to load package const13 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class const13.mo not found in scope <top>.
+// Error: Error occurred while flattening model const13.mo
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

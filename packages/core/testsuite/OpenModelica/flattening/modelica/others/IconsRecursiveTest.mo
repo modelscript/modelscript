@@ -18,7 +18,13 @@
   end BaseClasses;
 
 // Result:
-// class BaseClasses
-//   parameter Real p = 1.0;
-// end BaseClasses;
+// Error processing file: IconsRecursiveTest.mo
+// Error: Failed to load package RecursiveSelfReference (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class RecursiveSelfReference not found in scope <top>.
+// Error: Error occurred while flattening model RecursiveSelfReference
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

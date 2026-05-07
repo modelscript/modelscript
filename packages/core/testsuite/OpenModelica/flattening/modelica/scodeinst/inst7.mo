@@ -12,7 +12,9 @@ end M;
 
 // Result:
 // Error processing file: inst7.mo
-// [flattening/modelica/scodeinst/inst7.mo:10:3-10:19:writable] Error: Variable start not found in scope x.
+// Error: Failed to load package inst7 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class inst7.mo not found in scope <top>.
+// Error: Error occurred while flattening model inst7.mo
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

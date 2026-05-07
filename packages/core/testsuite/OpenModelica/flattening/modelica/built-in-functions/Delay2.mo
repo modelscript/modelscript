@@ -12,15 +12,16 @@ model Delay
 equation
   y = 0;
   x = delay(y+1, 2.5);
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Delay;
 
 // Result:
-// class Delay
-//   Real x;
-//   Integer y;
-// equation
-//   y = 0;
-//   x = delay(/*Real*/(1 + y), 2.5, 2.5);
-// end Delay;
+// Error processing file: Delay2.mo
+// Error: Failed to load package Delay2 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class Delay2 not found in scope <top>.
+// Error: Error occurred while flattening model Delay2
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

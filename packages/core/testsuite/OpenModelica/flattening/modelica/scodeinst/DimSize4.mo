@@ -11,7 +11,8 @@ end DimSize4;
 
 // Result:
 // Error processing file: DimSize4.mo
-// [flattening/modelica/scodeinst/DimSize4.mo:9:3-9:21:writable] Error: Dimensions must be parameter or constant expression (in size(x, n)).
+// [OpenModelica/flattening/modelica/scodeinst/DimSize4.mo:9:3-9:21:writable] Error: Dimensions must be parameter or constant expression (in size(x, n)).
+// Error: Error occurred while flattening model DimSize4
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

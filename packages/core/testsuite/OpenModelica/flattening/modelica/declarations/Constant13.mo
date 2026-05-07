@@ -10,13 +10,15 @@ model Constant13
   end DataRecord;
 
   constant DataRecord r;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Constant13;
 
 // Result:
-// class Constant13
-//   constant Real r.R;
-//   constant Real r.cp;
-//   constant Real r.cv = r.cp - r.R;
-// end Constant13;
+// Error processing file: Constant13.mo
+// [OpenModelica/flattening/modelica/declarations/Constant13.mo:7:5-7:11:writable] Error: Constant 'r.R' has no value.
+// Error: Error occurred while flattening model Constant13
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

@@ -10,10 +10,11 @@ end AssertInvalid1;
 
 // Result:
 // Error processing file: AssertInvalid1.mo
-// [flattening/modelica/scodeinst/AssertInvalid1.mo:8:3-8:28:writable] Error: Type mismatch for positional argument 1 in assert(condition="true"). The argument has type:
+// [OpenModelica/flattening/modelica/scodeinst/AssertInvalid1.mo:8:3-8:28:writable] Error: Type mismatch for positional argument 1 in assert(condition="true"). The argument has type:
 //   String
 // expected type:
 //   Boolean
+// Error: Error occurred while flattening model AssertInvalid1
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

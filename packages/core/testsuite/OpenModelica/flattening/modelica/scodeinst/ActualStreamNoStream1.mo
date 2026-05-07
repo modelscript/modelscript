@@ -16,7 +16,8 @@ end ActualStreamNoStream1;
 
 // Result:
 // Error processing file: ActualStreamNoStream1.mo
-// [flattening/modelica/scodeinst/ActualStreamNoStream1.mo:14:3-14:30:writable] Error: Operand 'c.f' to operator 'actualStream' is not a stream variable.
+// [OpenModelica/flattening/modelica/scodeinst/ActualStreamNoStream1.mo:14:3-14:30:writable] Error: Operand 'c.f' to operator 'actualStream' is not a stream variable.
+// Error: Error occurred while flattening model ActualStreamNoStream1
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

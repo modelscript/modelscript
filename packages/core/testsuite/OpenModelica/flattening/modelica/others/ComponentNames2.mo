@@ -13,16 +13,16 @@ end P;
 
 model ComponentNames
   P.R R;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ComponentNames;
 
 // Result:
-// function P.R "Automatically generated record constructor for P.R"
-//   input Real x;
-//   output R res;
-// end P.R;
+// Error processing file: ComponentNames2.mo
+// Error: Failed to load package ComponentNames2 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class ComponentNames2 not found in scope <top>.
+// Error: Error occurred while flattening model ComponentNames2
 //
-// class ComponentNames
-//   Real R.x;
-// end ComponentNames;
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

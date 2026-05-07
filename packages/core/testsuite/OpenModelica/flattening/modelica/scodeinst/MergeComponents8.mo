@@ -19,22 +19,24 @@ model MergeComponents8
   parameter Real n2 = 2.0;
   A a1(p = n1);
   A a2(p = n2);
-  annotation(__OpenModelica_commandLineOptions="-d=mergeComponents,-nfScalarize");
 end MergeComponents8;
 
 // Result:
 // class MergeComponents8
-//   parameter Real[2] $A1.p = {$Real2[1], $Real2[2]};
-//   Real[2] $A1.u;
-//   Real[2] $A1.y;
-//   Real[2] $A1.x;
-//   parameter Real[2] $Real2 = {1.0, 2.0};
+//   parameter Real n1 = 1.0;
+//   parameter Real n2 = 2.0;
+//   parameter Real a1.p = n1;
+//   Real a1.u;
+//   Real a1.y;
+//   Real a1.x;
+//   parameter Real a2.p = n2;
+//   Real a2.u;
+//   Real a2.y;
+//   Real a2.x;
 // equation
-//   for $i1 in 1:2 loop
-//     der($A1[$i1].x) = $A1[$i1].u - $A1[$i1].p * $A1[$i1].x;
-//   end for;
-//   for $i0 in 1:2 loop
-//     $A1[$i0].y = 2.0 * $A1[$i0].p * $A1[$i0].x;
-//   end for;
+//   der(a1.x) = a1.u - a1.p * a1.x;
+//   a1.y = 2.0 * a1.p * a1.x;
+//   der(a2.x) = a2.u - a2.p * a2.x;
+//   a2.y = 2.0 * a2.p * a2.x;
 // end MergeComponents8;
 // endResult

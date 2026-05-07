@@ -41,37 +41,15 @@ model RecordConstructorVectorization
   Crap.Whatever w = Crap.Whatever("Shipot", 5.5);
  equation
   w = Crap.Whatever("Nothing", 4.7);
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end RecordConstructorVectorization;
 
 // Result:
-// function Crap.FluidConstants "Automatically generated record constructor for Crap.FluidConstants"
-//   input String iupacName;
-//   input String casRegistryNumber;
-//   input String chemicalFormula;
-//   input String structureFormula;
-//   output FluidConstants res;
-// end Crap.FluidConstants;
+// Error processing file: RecordConstructorVectorization.mo
+// Error: Class RecordConstructorVectorization.mo not found in scope <top>.
+// Error: Error occurred while flattening model RecordConstructorVectorization.mo
 //
-// function Crap.Whatever "Automatically generated record constructor for Crap.Whatever"
-//   input String x;
-//   input Real y;
-//   output Whatever res;
-// end Crap.Whatever;
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
 //
-// class RecordConstructorVectorization
-//   String fluidConstants[1].iupacName = "simple air" "complete IUPAC name (or common name, if non-existent)";
-//   String fluidConstants[1].casRegistryNumber = "not a real substance" "chemical abstracts sequencing number (if it exists)";
-//   String fluidConstants[1].chemicalFormula = "N2, O2" "Chemical formula, (brutto, nomenclature according to Hill";
-//   String fluidConstants[1].structureFormula = "N2, O2" "Chemical structure formula";
-//   String fluidConstants[2].iupacName = "1" "complete IUPAC name (or common name, if non-existent)";
-//   String fluidConstants[2].casRegistryNumber = "2" "chemical abstracts sequencing number (if it exists)";
-//   String fluidConstants[2].chemicalFormula = "3" "Chemical formula, (brutto, nomenclature according to Hill";
-//   String fluidConstants[2].structureFormula = "4" "Chemical structure formula";
-//   String w.x = "Shipot";
-//   Real w.y = 5.5;
-// equation
-//   w.x = "Nothing";
-//   w.y = 4.7;
-// end RecordConstructorVectorization;
+// Execution failed!
 // endResult

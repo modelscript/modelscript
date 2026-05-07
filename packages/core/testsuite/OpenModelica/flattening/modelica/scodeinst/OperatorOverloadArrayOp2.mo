@@ -64,7 +64,6 @@ operator record Complex "Complex number with overloaded operators"
       c3:=Complex(0);
       for i in 1:size(c1, 1) loop
               c3:=c3 + c1[i] * c2[i];
-
       end for;
     end scalarProduct;
   end '*';

@@ -17,10 +17,15 @@ function f "Function f"
   output Real y "output Real named y";
 algorithm
   y := x + 2 "the result is 2 added to x";
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end f;
 
 // Result:
-// class f "Function f"
-// end f;
+// Error processing file: DocString.mo
+// Error: Class DocString.mo not found in scope <top>.
+// Error: Error occurred while flattening model DocString.mo
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

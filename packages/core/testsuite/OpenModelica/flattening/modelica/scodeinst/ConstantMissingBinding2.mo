@@ -15,8 +15,9 @@ end ConstantMissingBinding2;
 
 // Result:
 // Error processing file: ConstantMissingBinding2.mo
-// [flattening/modelica/scodeinst/ConstantMissingBinding2.mo:7:3-7:18:writable] Notification: From here:
-// [flattening/modelica/scodeinst/ConstantMissingBinding2.mo:13:3-13:17:writable] Error: Constant P.x is used without having been given a value.
+// [OpenModelica/flattening/modelica/scodeinst/ConstantMissingBinding2.mo:7:3-7:18:writable] Notification: From here:
+// [OpenModelica/flattening/modelica/scodeinst/ConstantMissingBinding2.mo:13:3-13:17:writable] Error: Constant P.x is used without having been given a value.
+// Error: Error occurred while flattening model ConstantMissingBinding2
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

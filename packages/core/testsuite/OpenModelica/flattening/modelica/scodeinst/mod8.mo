@@ -14,8 +14,13 @@ model B
 end B;
 
 // Result:
-// class B
-//   Real y;
-//   Real a.x = y;
-// end B;
+// Error processing file: mod8.mo
+// Error: Failed to load package mod8 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class mod8.mo not found in scope <top>.
+// Error: Error occurred while flattening model mod8.mo
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

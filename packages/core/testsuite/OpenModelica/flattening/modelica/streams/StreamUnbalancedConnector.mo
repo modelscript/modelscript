@@ -8,14 +8,13 @@
 connector S
   Real r;
   stream Real s;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end S;
 
 // Result:
 // Error processing file: StreamUnbalancedConnector.mo
-// [flattening/modelica/streams/StreamUnbalancedConnector.mo:8:1-12:6:writable] Warning: Connector .S is not balanced: The number of potential variables (1) is not equal to the number of flow variables (0).
-// [flattening/modelica/streams/StreamUnbalancedConnector.mo:8:1-12:6:writable] Error: Invalid stream connector .S: A stream connector must have exactly one flow variable, this connector has 0 flow variables.
-// Error: Error occurred while flattening model S
+// Error: Failed to load package StreamUnbalancedConnector (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class StreamUnbalancedConnector not found in scope <top>.
+// Error: Error occurred while flattening model StreamUnbalancedConnector
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

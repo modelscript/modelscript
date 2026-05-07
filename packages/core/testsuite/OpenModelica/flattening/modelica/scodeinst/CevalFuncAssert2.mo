@@ -18,7 +18,8 @@ end CevalFuncAssert2;
 
 // Result:
 // Error processing file: CevalFuncAssert2.mo
-// [flattening/modelica/scodeinst/CevalFuncAssert2.mo:11:3-11:64:writable] Error: assert triggered: f got n larger than 2
+// [OpenModelica/flattening/modelica/scodeinst/CevalFuncAssert2.mo:11:3-11:64:writable] Error: assert triggered: f got n larger than 2
+// Error: Error occurred while flattening model CevalFuncAssert2
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

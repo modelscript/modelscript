@@ -22,43 +22,15 @@ model joinThreeVectors
   Real x[9];
 algorithm
   x:=joinThreeVectors2(a,b,c);
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end joinThreeVectors;
 
 // Result:
-// function joinThreeVectors2
-//   input Real[:] v1;
-//   input Real[:] v2;
-//   input Real[:] v3;
-//   output Real[size(v1, 1) + size(v2, 1) + size(v3, 1)] vres;
+// Error processing file: JoinThreeVectors2.mo
+// [OpenModelica/flattening/modelica/algorithms-functions/JoinThreeVectors2.mo:10:1-16:22:writable] Error: Cannot instantiate joinThreeVectors2 due to class specialization function.
+// Error: Error occurred while flattening model joinThreeVectors2
 //
-//   external "C" join3vec(v1, v2, v3, vres, size(v1, 1), size(v2, 1), size(v3, 1));
-// end joinThreeVectors2;
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
 //
-// class joinThreeVectors
-//   Real a[1];
-//   Real a[2];
-//   Real b[1];
-//   Real b[2];
-//   Real b[3];
-//   Real c[1];
-//   Real c[2];
-//   Real c[3];
-//   Real c[4];
-//   Real x[1];
-//   Real x[2];
-//   Real x[3];
-//   Real x[4];
-//   Real x[5];
-//   Real x[6];
-//   Real x[7];
-//   Real x[8];
-//   Real x[9];
-// equation
-//   a = {1.0, 2.0};
-//   b = {3.0, 4.0, 5.0};
-//   c = {6.0, 7.0, 8.0, 9.0};
-// algorithm
-//   x := joinThreeVectors2({a[1], a[2]}, {b[1], b[2], b[3]}, {c[1], c[2], c[3], c[4]});
-// end joinThreeVectors;
+// Execution failed!
 // endResult

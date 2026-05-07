@@ -50,14 +50,13 @@ model I
 end I;
 
 // Result:
-// class I
-//   Real TI;
-//   Real e.TI;
-//   Real e.f.TI;
-//   Real e.f.g.TI;
-//   Real e.f.g.h.a.b.TI;
-//   Real e.f.g.h.a.b.c.TI;
-//   Real a.b.TI;
-//   Real a.b.c.TI;
-// end I;
+// Error processing file: InnerOuter2.mo
+// Error: Failed to load package InnerOuter2 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class InnerOuter2 not found in scope <top>.
+// Error: Error occurred while flattening model InnerOuter2
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

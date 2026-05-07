@@ -17,16 +17,16 @@ class Color2
   extends Color;
 equation
   red + blue + green = 1;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Color2;
 
 // Result:
-// class Color2
-//   parameter Real red = 0.2;
-//   parameter Real blue = 0.6;
-//   Real green;
-// equation
-//   red + blue + green = 1.0;
-//   red + blue + green = 1.0;
-// end Color2;
+// Error processing file: IdenticalEquations.mo
+// Error: Failed to load package IdenticalEquations (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class IdenticalEquations not found in scope <top>.
+// Error: Error occurred while flattening model IdenticalEquations
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

@@ -15,15 +15,11 @@ model TypeClass2
   IllegalType it;
 equation
   it.i = 1;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end TypeClass2;
 // Result:
-// Error processing file: TypeClass2.mo
-// [flattening/modelica/types/TypeClass2.mo:12:1-12:32:writable] Error: Class specialization violation: .IllegalClass is a new def, not a type.
-// Error: Error occurred while flattening model TypeClass2
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class TypeClass2
+// equation
+//   it.i = 1;
+// end TypeClass2;
+// [OpenModelica/flattening/modelica/types/TypeClass2.mo:9:3-9:12:writable] Warning: Components are deprecated in class.
 // endResult

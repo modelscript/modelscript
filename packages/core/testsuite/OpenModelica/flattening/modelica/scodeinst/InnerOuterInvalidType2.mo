@@ -19,8 +19,9 @@ end InnerOuterInvalidType2;
 
 // Result:
 // Error processing file: InnerOuterInvalidType2.mo
-// [flattening/modelica/scodeinst/InnerOuterInvalidType2.mo:7:9-7:20:writable] Notification: From here:
-// [flattening/modelica/scodeinst/InnerOuterInvalidType2.mo:16:3-16:15:writable] Error: Found inner component M instead of expected class.
+// [OpenModelica/flattening/modelica/scodeinst/InnerOuterInvalidType2.mo:7:9-7:20:writable] Notification: From here:
+// [OpenModelica/flattening/modelica/scodeinst/InnerOuterInvalidType2.mo:16:3-16:15:writable] Error: Found inner component M instead of expected class.
+// Error: Error occurred while flattening model InnerOuterInvalidType2
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

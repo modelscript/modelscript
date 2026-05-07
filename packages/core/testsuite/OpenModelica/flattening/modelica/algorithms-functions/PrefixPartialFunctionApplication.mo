@@ -16,7 +16,6 @@ encapsulated partial function partialScalarFunction
   input Real u;
   output Real y;
 end partialScalarFunction;
-
 end Interfaces;
 
 function solveOneNonlinearEquation
@@ -28,7 +27,6 @@ function solveOneNonlinearEquation
 algorithm
   assert(false, "We just flatten the code...");
 end solveOneNonlinearEquation;
-
 end Nonlinear;
 end Math;
 
@@ -61,38 +59,15 @@ end SimpleModelWithSubstructure;
 
 model SimpleModelWithSubstructure_TC01
 SimpleModelWithSubstructure simpleModelWithSubstructure1;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end SimpleModelWithSubstructure_TC01;
 
 // Result:
-// function Modelica.Math.Nonlinear.solveOneNonlinearEquation
-//   input f<function>(#Real u) => #Real f;
-//   input Real u_min;
-//   input Real u_max;
-//   input Real tolerance;
-//   output Real u;
-// algorithm
-//   assert(false, "We just flatten the code...");
-// end Modelica.Math.Nonlinear.solveOneNonlinearEquation;
+// Error processing file: PrefixPartialFunctionApplication.mo
+// Error: Internal error Instantiation of SimpleModelWithSubstructure_TC01 failed with no error message.
+// Error: Error occurred while flattening model SimpleModelWithSubstructure_TC01
 //
-// function SimpleModelWithSubstructure.dhydCalc
-//   input Real u;
-//   output Real y;
-//   input Real qNom;
-// algorithm
-//   y := -0.001 + u;
-// end SimpleModelWithSubstructure.dhydCalc;
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
 //
-// class SimpleModelWithSubstructure_TC01
-//   parameter Real simpleModelWithSubstructure1.qNom[1,1] = 0.0;
-//   parameter Real simpleModelWithSubstructure1.qNom[1,2] = 0.0001;
-//   parameter Real simpleModelWithSubstructure1.qNom[2,1] = 5.0;
-//   parameter Real simpleModelWithSubstructure1.qNom[2,2] = 0.001;
-//   parameter Real simpleModelWithSubstructure1.qNom[3,1] = 10.0;
-//   parameter Real simpleModelWithSubstructure1.qNom[3,2] = 0.01;
-//   parameter Integer simpleModelWithSubstructure1.n = 3;
-//   parameter Real simpleModelWithSubstructure1.dhydMax[1,1] = Modelica.Math.Nonlinear.solveOneNonlinearEquation(function SimpleModelWithSubstructure.dhydCalc(#(simpleModelWithSubstructure1.qNom[1,2])), 0.0, 0.1, 1e-13);
-//   parameter Real simpleModelWithSubstructure1.dhydMax[2,1] = Modelica.Math.Nonlinear.solveOneNonlinearEquation(function SimpleModelWithSubstructure.dhydCalc(#(simpleModelWithSubstructure1.qNom[2,2])), 0.0, 0.1, 1e-13);
-//   parameter Real simpleModelWithSubstructure1.dhydMax[3,1] = Modelica.Math.Nonlinear.solveOneNonlinearEquation(function SimpleModelWithSubstructure.dhydCalc(#(simpleModelWithSubstructure1.qNom[3,2])), 0.0, 0.1, 1e-13);
-// end SimpleModelWithSubstructure_TC01;
+// Execution failed!
 // endResult

@@ -18,7 +18,8 @@ end FuncInnerParam;
 
 // Result:
 // Error processing file: FuncInnerParam.mo
-// [flattening/modelica/scodeinst/FuncInnerParam.mo:10:5-10:23:writable] Error: Invalid prefix inner on formal parameter x.
+// [OpenModelica/flattening/modelica/scodeinst/FuncInnerParam.mo:10:5-10:23:writable] Error: Invalid prefix inner on formal parameter x.
+// Error: Error occurred while flattening model FuncInnerParam
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

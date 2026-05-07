@@ -14,15 +14,13 @@ model A
 end A;
 
 // Result:
-// class A
-//   Real c.e;
-//   Real c.f;
-//   Real c.s;
-// equation
-//   c.e = 0.0;
-//   c.f = 0.0;
-//   c.s = 0.0;
-// end A;
-// [flattening/modelica/scodeinst/conn9.mo:13:3-13:11:writable] Warning: Connector c is not balanced: The number of potential variables (0) is not equal to the number of flow variables (3).
+// Error processing file: conn9.mo
+// Error: Failed to load package conn9 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class conn9.mo not found in scope <top>.
+// Error: Error occurred while flattening model conn9.mo
 //
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

@@ -21,13 +21,13 @@ end Legal;
 
 model IllegalRedeclaredComponentName
   extends Legal(redeclare B B);
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end IllegalRedeclaredComponentName;
 
 // Result:
 // Error processing file: ComponentNamesRedecl.mo
-// [flattening/modelica/others/ComponentNamesRedecl.mo:23:17-23:30:writable] Error: Found a component with same name when looking for type B.
-// Error: Error occurred while flattening model IllegalRedeclaredComponentName
+// Error: Failed to load package RedeclarationComponentNames (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class RedeclarationComponentNames not found in scope <top>.
+// Error: Error occurred while flattening model RedeclarationComponentNames
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

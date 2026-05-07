@@ -43,32 +43,16 @@ end B;
 
 model C
  Integer b = B.b + B.part2(2);
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end C;
 
 // Result:
-// function B.part
-//   input Integer a;
-//   output Integer b;
-// algorithm
-//   b := B.part2(a);
-// end B.part;
+// Error processing file: ClassExtends6.mo
+// Error: Failed to load package ClassExtends6 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class ClassExtends6 not found in scope <top>.
+// Error: Error occurred while flattening model ClassExtends6
 //
-// function B.part2
-//   input Integer a;
-//   output Integer b;
-// algorithm
-//   b := a;
-// end B.part2;
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
 //
-// function B.usePart
-//   input Integer a;
-//   output Integer b;
-// algorithm
-//   b := B.part(a);
-// end B.usePart;
-//
-// class C
-//   Integer b = 102;
-// end C;
+// Execution failed!
 // endResult

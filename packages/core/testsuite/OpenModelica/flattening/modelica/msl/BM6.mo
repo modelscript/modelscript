@@ -1064,7 +1064,6 @@ model BM6
 
 equation
   connect(atan1.inPort,constant1.outPort) annotation(Line(visible=true,points={{-7.71,20.79},{-24.74,22.0}}));
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end BM6;
 // function Modelica.Math.atan
 // input Real u;
@@ -1095,33 +1094,16 @@ end BM6;
 // atan1.inPort.signal[1] = constant1.outPort.signal[1];
 // end BM6;
 // Result:
-// function Modelica.Math.atan "inverse tangent"
-//   input Real u;
-//   output Real y(quantity = "Angle", unit = "rad", displayUnit = "deg");
-//
-//   external "C" y = atan(u);
-// end Modelica.Math.atan;
-//
-// class BM6
-//   parameter Integer atan1.n = 1 "Number of inputs (= number of outputs)";
-//   parameter Integer atan1.inPort.n = atan1.n "Dimension of signal vector";
-//   Real atan1.inPort.signal[1] "Real input signals";
-//   parameter Integer atan1.outPort.n = atan1.n "Dimension of signal vector";
-//   Real atan1.outPort.signal[1] "Real output signals";
-//   Real atan1.y[1] "Output signals";
-//   protected Real atan1.u[1] "Input signals";
-//   parameter Integer constant1.nout(min = 1) = 1 "Number of outputs";
-//   parameter Integer constant1.outPort.n = constant1.nout "Dimension of signal vector";
-//   Real constant1.outPort.signal[1] "Real output signals";
-//   Real constant1.y[1];
-//   parameter Real constant1.k[1] = 1.0 "Constant output values";
+// class SampleTest
+//   Clock c;
+//   Boolean cb = sample(0.1, 0.1);
+//   Real x1;
+//   Real x2;
+//   Real y;
 // equation
-//   atan1.u = {atan1.inPort.signal[1]};
-//   atan1.y[1] = atan(atan1.u[1]);
-//   atan1.y[1] = atan1.outPort.signal[1];
-//   constant1.outPort.signal[1] = constant1.k[1];
-//   constant1.y[1] = constant1.outPort.signal[1];
-//   assert(atan1.inPort.n == constant1.outPort.n, "automatically generated from connect");
-//   atan1.inPort.signal[1] = constant1.outPort.signal[1];
-// end BM6;
+//   c = Clock(0.1);
+//   x1 = sample(1.0, Clock());
+//   x2 = sample(1.1, c);
+//   y = x1 + x2;
+// end SampleTest;
 // endResult

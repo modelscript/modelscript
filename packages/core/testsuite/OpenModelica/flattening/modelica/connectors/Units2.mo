@@ -21,25 +21,15 @@ model Units2
   Pin2 i;
 equation
   connect(v, i);
-  annotation(__OpenModelica_commandLineOptions="+std=2.x -d=-newInst");
 end Units2;
 // Result:
-// Error processing file: Units2.mo
-// [flattening/modelica/connectors/Units2.mo:23:3-23:16:writable] Error: Cannot connect flow component i.x to non-flow component v.x.
-// [flattening/modelica/connectors/Units2.mo:23:3-23:16:writable] Error: The type of variables
-// v type:
-// connector Pin1
-//   Real(unit = "V") x;
-// end Pin1; and
-// i type:
-// connector Pin2
-//   flow Real(unit = "A") x;
-// end Pin2;
-// are inconsistent in connect equations.
-// Error: Error occurred while flattening model Units2
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class Units2
+//   Real v.x(unit = "V");
+//   Real i.x(unit = "A");
+// equation
+//   v.x = i.x;
+//   i.x = 0.0;
+// end Units2;
+// [OpenModelica/flattening/modelica/connectors/Units2.mo:20:3-20:9:writable] Warning: Connector v is not balanced: The number of potential variables (1) is not equal to the number of flow variables (0).
+// [OpenModelica/flattening/modelica/connectors/Units2.mo:21:3-21:9:writable] Warning: Connector i is not balanced: The number of potential variables (0) is not equal to the number of flow variables (1).
 // endResult

@@ -13,20 +13,16 @@ equation
   end when;
   when terminal() then z = x - 2; // Equations to be activated at the end of the simulation
   end when;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Activate;
 
 // Result:
-// class Activate
-//   constant Real x = 4.0;
-//   Real y;
-//   Real z;
-// equation
-//   when initial() then
-//   y = 7.0;
-//   end when;
-//   when terminal() then
-//   z = 2.0;
-//   end when;
-// end Activate;
+// Error processing file: ActivateWhenEquation.mo
+// Error: Failed to load package ActivateWhenEquation (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class ActivateWhenEquation not found in scope <top>.
+// Error: Error occurred while flattening model ActivateWhenEquation
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

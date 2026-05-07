@@ -14,7 +14,8 @@ end RedeclareInvalidConnectorType1;
 
 // Result:
 // Error processing file: RedeclareInvalidConnectorType1.mo
-// [flattening/modelica/scodeinst/RedeclareInvalidConnectorType1.mo:12:7-12:30:writable] Error: Invalid redeclaration 'stream f', original element is declared 'flow'.
+// [OpenModelica/flattening/modelica/scodeinst/RedeclareInvalidConnectorType1.mo:12:7-12:30:writable] Error: Invalid redeclaration 'stream f', original element is declared 'flow'.
+// Error: Error occurred while flattening model RedeclareInvalidConnectorType1
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

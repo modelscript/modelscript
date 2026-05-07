@@ -27,24 +27,16 @@ equation
 algorithm
   z := P.x3;
   f(1.0);
-  annotation(__OpenModelica_commandLineOptions="-d=-nfEvalConstArgFuncs");
 end PackageConstant2;
 
 // Result:
-// function f
-//   input Real x = 5.0;
-//   output Real y;
-// algorithm
-//   y := x * 6.0;
-// end f;
+// Error processing file: PackageConstant1.mo
+// Error: Failed to load package PackageConstant1 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class PackageConstant1 not found in scope <top>.
+// Error: Error occurred while flattening model PackageConstant1
 //
-// class PackageConstant2
-//   Real y = 1.0;
-//   Real z;
-// equation
-//   z = 2.0;
-// algorithm
-//   z := 3.0;
-//   f(1.0);
-// end PackageConstant2;
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

@@ -21,15 +21,15 @@ class A
   T3 b3;
   T4 b4;
   T5 b5;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end A;
 // Result:
-// class A
-//   Real a(unit = "m/s");
-//   Real b(unit = "m/s");
-//   Real b2(unit = "m/s", displayUnit = "ms");
-//   Integer b3(quantity = "pcs");
-//   String b4(quantity = "name");
-//   Boolean b5(quantity = "foo");
-// end A;
+// Error processing file: Type9.mo
+// Error: Failed to load package Type9 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class Type9 not found in scope <top>.
+// Error: Error occurred while flattening model Type9
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

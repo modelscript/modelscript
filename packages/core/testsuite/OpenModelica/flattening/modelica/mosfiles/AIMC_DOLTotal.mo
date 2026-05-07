@@ -226,7 +226,6 @@ Partial model of torque dependent on speed that accelerates the flange.
             bearing.tau=-flange.tau;
           end if;
         end PartialSpeedDependentTorque;
-
       end Interfaces;
 
       model Inertia "1D-rotational component with inertia"
@@ -354,11 +353,8 @@ quantities.
 
 </html>"), Icon(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10})), Diagram(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10})));
         end Init;
-
       end Types;
-
     end Rotational;
-
   end Mechanics;
 
   package Math "Mathematical functions (e.g., sin, cos) and operations on matrices (e.g., norm, solve, eig, exp)"
@@ -415,7 +411,6 @@ and the accompanying <b>disclaimer</b>
 </html>"));
 
       external "C" y=sin(u) ;
-
     end sin;
 
     function asin "inverse sine (-1 <= u <= 1)"
@@ -427,7 +422,6 @@ and the accompanying <b>disclaimer</b>
 </html>"));
 
       external "C" y=asin(u) ;
-
     end asin;
 
     function atan2 "four quadrant inverse tangent"
@@ -443,7 +437,6 @@ u1 is not zero.
 "));
 
       external "C" y=atan2(u1,u2) ;
-
     end atan2;
 
     function exp "exponential, base e"
@@ -453,7 +446,6 @@ u1 is not zero.
       annotation(Icon(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10}), graphics={Line(visible=true, points={{-90,-80.3976},{68,-80.3976}}, color={192,192,192}),Polygon(visible=true, lineColor={192,192,192}, fillColor={192,192,192}, fillPattern=FillPattern.Solid, points={{90,-80.3976},{68,-72.3976},{68,-88.3976},{90,-80.3976}}),Line(visible=true, points={{-80,-80},{-31,-77.9},{-6.03,-74},{10.9,-68.4},{23.7,-61},{34.2,-51.6},{43,-40.3},{50.3,-27.8},{56.7,-13.5},{62.3,2.23},{67.1,18.6},{72,38.2},{76,57.6},{80,80}}, smooth=Smooth.Bezier),Text(visible=true, fillColor={192,192,192}, extent={{-86,2},{-14,50}}, textString="exp", fontName="Arial")}), Diagram(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10}), graphics={Line(visible=true, points={{-100,-80.3976},{84,-80.3976}}, color={192,192,192}),Polygon(visible=true, lineColor={192,192,192}, fillColor={192,192,192}, fillPattern=FillPattern.Solid, points={{100,-80.3976},{84,-74.3976},{84,-86.3976},{100,-80.3976}}),Line(visible=true, points={{-80,-80},{-31,-77.9},{-6.03,-74},{10.9,-68.4},{23.7,-61},{34.2,-51.6},{43,-40.3},{50.3,-27.8},{56.7,-13.5},{62.3,2.23},{67.1,18.6},{72,38.2},{76,57.6},{80,80}}, smooth=Smooth.Bezier),Text(visible=true, extent={{-31,72},{-11,88}}, textString="20", fontName="Arial"),Text(visible=true, extent={{-92,-103},{-72,-83}}, textString="-3", fontName="Arial"),Text(visible=true, extent={{70,-103},{90,-83}}, textString="3", fontName="Arial"),Text(visible=true, extent={{-18,-73},{2,-53}}, textString="1", fontName="Arial"),Text(visible=true, fillColor={160,160,160}, extent={{96,-102},{116,-82}}, textString="u", fontName="Arial")}));
 
       external "C" y=exp(u) ;
-
     end exp;
 
     partial function baseIcon1 "Basic icon for mathematical function with y-axis on left side"
@@ -463,7 +455,6 @@ u1 is not zero.
     partial function baseIcon2 "Basic icon for mathematical function with y-axis in middle"
       annotation(Diagram(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10}), graphics={Line(visible=true, points={{0,80},{-8,80}}, color={192,192,192}),Line(visible=true, points={{0,-80},{-8,-80}}, color={192,192,192}),Line(visible=true, points={{0,-90},{0,84}}, color={192,192,192}),Text(visible=true, fillColor={160,160,160}, extent={{5,90},{25,110}}, textString="y", fontName="Arial"),Polygon(visible=true, lineColor={192,192,192}, fillColor={192,192,192}, fillPattern=FillPattern.Solid, points={{0,100},{-6,84},{6,84},{0,100}})}), Icon(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10}), graphics={Rectangle(visible=true, fillColor={255,255,255}, fillPattern=FillPattern.Solid, extent={{-100,-100},{100,100}}),Line(visible=true, points={{0,-80},{0,68}}, color={192,192,192}),Polygon(visible=true, lineColor={192,192,192}, fillColor={192,192,192}, fillPattern=FillPattern.Solid, points={{0,90},{-8,68},{8,68},{0,90}}),Text(visible=true, fillColor={0,0,255}, fillPattern=FillPattern.Solid, extent={{-150,110},{150,150}}, textString="%name", fontName="Arial")}));
     end baseIcon2;
-
   end Math;
 
   package Electrical "Library for electrical models (analog, digital, machines, multi-phase)"
@@ -566,7 +557,6 @@ Modelica in file \"Modelica/package.mo\".</i><br>
 </ul>
 </html>"), Diagram(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10}), graphics={Line(visible=true, points={{-80,-90},{-80,84}}, color={192,192,192}),Polygon(visible=true, lineColor={192,192,192}, fillColor={192,192,192}, fillPattern=FillPattern.Solid, points={{-80,100},{-86,84},{-74,84},{-80,100}}),Line(visible=true, points={{-99,-40},{85,-40}}, color={192,192,192}),Polygon(visible=true, lineColor={192,192,192}, fillColor={192,192,192}, fillPattern=FillPattern.Solid, points={{101,-40},{85,-34},{85,-46},{101,-40}}),Line(visible=true, points={{-40,0},{-31.6,34.2},{-26.1,53.1},{-21.3,66.4},{-17.1,74.6},{-12.9,79.1},{-8.64,79.8},{-4.42,76.6},{-0.2,69.7},{4.02,59.4},{8.84,44.1},{14.9,21.2},{27.5,-30.8},{33,-50.2},{37.8,-64.2},{42,-73.1},{46.2,-78.4},{50.5,-80},{54.7,-77.6},{58.9,-71.5},{63.1,-61.9},{67.9,-47.2},{74,-24.8},{80,0}}, thickness=0.5, smooth=Smooth.Bezier),Line(visible=true, points={{-40.5,-2.22e-16},{-79.5,-2.22e-16}}, thickness=0.5),Text(visible=true, lineColor={0,0,255}, fillColor={160,160,160}, extent={{-106,-29},{-60,-11}}, textString="offset", fontName="Arial"),Line(visible=true, points={{-41,-2},{-41,-40}}, color={192,192,192}, pattern=LinePattern.Dot),Text(visible=true, lineColor={0,0,255}, fillColor={160,160,160}, extent={{-60,-61},{-14,-43}}, textString="startTime", fontName="Arial"),Text(visible=true, lineColor={0,0,255}, fillColor={160,160,160}, extent={{84,-72},{108,-52}}, textString="time", fontName="Arial"),Line(visible=true, points={{-9,79},{43,79}}, color={192,192,192}, pattern=LinePattern.Dot),Line(visible=true, points={{-42,-1},{50,0}}, color={192,192,192}, pattern=LinePattern.Dot),Polygon(visible=true, lineColor={192,192,192}, fillColor={192,192,192}, fillPattern=FillPattern.Solid, points={{33,80},{30,67},{37,67},{33,80}}),Text(visible=true, lineColor={0,0,255}, fillColor={160,160,160}, extent={{37,39},{83,57}}, textString="V", fontName="Arial"),Polygon(visible=true, lineColor={192,192,192}, fillColor={192,192,192}, fillPattern=FillPattern.Solid, points={{33,1},{30,14},{36,14},{33,1},{33,1}}),Line(visible=true, points={{33,79},{33,0}}, color={192,192,192}),Text(visible=true, lineColor={0,0,255}, fillColor={160,160,160}, extent={{-70,82.5},{-5,108.5}}, textString="v = p.v - n.v", fontName="Arial")}), Icon(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10}), graphics={Line(visible=true, points={{-66,0},{-56.2,29.9},{-49.8,46.5},{-44.2,58.1},{-39.3,65.2},{-34.3,69.2},{-29.4,69.8},{-24.5,67},{-19.6,61},{-14.6,52},{-9,38.6},{-1.98,18.6},{12.79,-26.9},{19.1,-44},{24.8,-56.2},{29.7,-64},{34.6,-68.6},{39.5,-70},{44.5,-67.9},{49.4,-62.5},{54.3,-54.1},{59.9,-41.3},{67,-21.7},{74,0}}, color={192,192,192}, smooth=Smooth.Bezier)}));
         end SineVoltage;
-
       end Sources;
 
       package Sensors "Potential, voltage, current, and power sensors"
@@ -621,7 +611,6 @@ Modelica in file \"Modelica/package.mo\".</i><br>
           p.i=i;
           n.i=-i;
         end CurrentSensor;
-
       end Sensors;
 
       package Interfaces "Connectors and partial models for Analog electrical components"
@@ -765,7 +754,6 @@ This current is provided explicitly as current i.
         equation
           v=signalSource.y;
         end VoltageSource;
-
       end Interfaces;
 
       package Ideal "Ideal electrical elements such as switches, diode, transformer, operational amplifier"
@@ -842,7 +830,6 @@ where a description with zero Ron or zero Goff is not possible.
           v=s*unitCurrent*(if control then Ron else 1);
           i=s*unitVoltage*(if control then 1 else Goff);
         end IdealClosingSwitch;
-
       end Ideal;
 
       package Basic "Basic electrical components such as resistor, capacitor, transformer"
@@ -936,9 +923,7 @@ The Inductance <i>L</i> is allowed to be positive, zero, or negative.
         equation
           L*der(i)=v;
         end Inductor;
-
       end Basic;
-
     end Analog;
 
     package MultiPhase "Library for electrical components with 2, 3 or more phases"
@@ -1090,7 +1075,6 @@ Contains m inductors (Modelica.Electrical.Analog.Basic.Inductor)
           connect(inductor.n,plug_n.pin) annotation(Line(visible=true, origin={55,0}, points={{-45,0},{45,0}}, color={0,0,255}));
           connect(inductor.p,plug_p.pin) annotation(Line(visible=true, origin={-55,0}, points={{45,0},{-45,0}}, color={0,0,255}));
         end Inductor;
-
       end Basic;
 
       package Ideal "Multiphase components with idealized behaviour"
@@ -1145,7 +1129,6 @@ Contains m ideal closing switches (Modelica.Electrical.Analog.Ideal.IdealClosing
           connect(plug_p.pin,idealClosingSwitch.p) annotation(Line(visible=true, origin={-55,0}, points={{-45,0},{45,0}}, color={0,0,255}));
           connect(control,idealClosingSwitch.control) annotation(Line(visible=true, points={{0,70},{0,7}}, color={255,0,255}));
         end IdealClosingSwitch;
-
       end Ideal;
 
       package Interfaces "Interfaces for electrical multiphase models"
@@ -1244,7 +1227,6 @@ The currents flowing into plug_p are provided explicitly as currents i[m].
           v=plug_p.pin.v - plug_n.pin.v;
           i=plug_p.pin.i;
         end TwoPlug;
-
       end Interfaces;
 
       package Sensors "Multiphase potential, voltage and current Sensors"
@@ -1302,7 +1284,6 @@ thus measuring the m currents <i>i[m]</i> flowing from the m pins of plug_p to t
           connect(plug_p.pin,currentSensor.p) annotation(Line(visible=true, points={{-100,0},{-10,0}}, color={0,0,255}));
           connect(currentSensor.i,i) annotation(Line(visible=true, points={{0,-10},{0,-110}}, color={0,0,255}));
         end CurrentSensor;
-
       end Sensors;
 
       package Sources "Multiphase voltage and current sources"
@@ -1364,9 +1345,7 @@ with a default phase shift of -(j-1)/m * 2*pi for j in 1:m.
           connect(sineVoltage.n,plug_n.pin) annotation(Line(visible=true, points={{10,0},{100,0}}, color={0,0,255}));
           connect(sineVoltage.p,plug_p.pin) annotation(Line(visible=true, points={{-10,0},{-100,0}}, color={0,0,255}));
         end SineVoltage;
-
       end Sources;
-
     end MultiPhase;
 
     package Machines "Library for electric machines"
@@ -1633,9 +1612,7 @@ choosing Y-connection (StarDelta=Y) or D-connection (StarDelta=D).
             connect(negativeMachinePlug,delta.plug_n) annotation(Line(visible=true, points={{-60.0,-100.0},{-40.0,-100.0},{-40.0,-60.0}}, color={0,0,255}));
             connect(negativeMachinePlug,star.plug_p) annotation(Line(visible=true, points={{-60.0,-100.0},{-60.0,-80.0}}, color={0,0,255}));
           end TerminalBox;
-
         end Utilities;
-
       end Examples;
 
       package BasicMachines "Basic machine models"
@@ -1873,7 +1850,6 @@ Resistance and stray inductance of stator is modeled directly in stator phases, 
             connect(spacePhasorS.spacePhasor,airGapS.spacePhasor_s) annotation(Line(visible=true, points={{10.0,20.0},{10.0,10.0}}, color={0,0,255}));
             connect(airGapS.spacePhasor_r,squirrelCageR.spacePhasor_r) annotation(Line(visible=true, points={{10.0,-10.0},{10.0,-20.0}}, color={0,0,255}));
           end AIM_SquirrelCage;
-
         end AsynchronousInductionMachines;
 
         package Components "Machine components like AirGaps"
@@ -1979,9 +1955,7 @@ Model of a squirrel cage / damper cage in two axis.
           equation
             spacePhasor_r.v_=Rr*spacePhasor_r.i_ + Lrsigma*der(spacePhasor_r.i_);
           end SquirrelCage;
-
         end Components;
-
       end BasicMachines;
 
       package Sensors "Sensors for machine modelling"
@@ -2044,7 +2018,6 @@ output is length of the space phasor divided by sqrt(2), thus giving in sinusoid
           connect(plug_p,CurrentSensor1.plug_p) annotation(Line(visible=true, points={{-100.0,0.0},{-100.0,50.0},{-10.0,50.0}}, color={0,0,255}));
           connect(Gain1.y,I) annotation(Line(visible=true, points={{-0.0,-81.0},{0.0,-91.5},{0.0,-91.5},{0.0,-110.0}}, color={0,0,255}));
         end CurrentRMSsensor;
-
       end Sensors;
 
       package SpacePhasors "Library with space phasor-models"
@@ -2163,7 +2136,6 @@ were x designates three phase values, X[Re,Im] designates the space phasor and X
             -zero.i=1/m*sum(i);
             -spacePhasor.i_=TransformationMatrix*i;
           end SpacePhasor;
-
         end Components;
 
         package Blocks "Blocks for space phasor transformation"
@@ -2238,9 +2210,7 @@ Converts a space phasor from rectangular coordinates to polar coordinates.
             y[1]=sqrt(u[1]^2 + u[2]^2);
             y[2]=if noEvent(y[1] <= small) then 0 else Modelica.Math.atan2(u[2], u[1]);
           end ToPolar;
-
         end Blocks;
-
       end SpacePhasors;
 
       package Interfaces "SpacePhasor connector and PartialMachines"
@@ -2351,11 +2321,8 @@ Partial model for induction machine models, containing:
 </p>
 </HTML>"), Diagram(coordinateSystem(extent={{-100.0,-100.0},{100.0,100.0}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10})), Icon(coordinateSystem(extent={{-100.0,-100.0},{100.0,100.0}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10}), graphics={Line(visible=true, points={{-50.0,100.0},{-20.0,100.0},{-20.0,70.0}}, color={0,0,255}),Line(visible=true, points={{50.0,100.0},{20.0,100.0},{20.0,70.0}}, color={0,0,255})}));
         end PartialBasicInductionMachine;
-
       end Interfaces;
-
     end Machines;
-
   end Electrical;
 
   package Blocks "Library for basic input/output control blocks (continuous, discrete, logical, table blocks)"
@@ -2453,9 +2420,7 @@ user interface when the type is used as parameter in a declaration.
           extends Modelica.Icons.TypeInteger(min=1, max=5);
           annotation(Evaluate=true, choices(choice=Modelica.Blocks.Types.StateSelection.Never "Never (never use as state)", choice=Modelica.Blocks.Types.StateSelection.Avoid "Avoid (avoid to use as state)", choice=Modelica.Blocks.Types.StateSelection.Default "Default (default behaviour)", choice=Modelica.Blocks.Types.StateSelection.Prefer "Prefer (use as state if possible)", choice=Modelica.Blocks.Types.StateSelection.Always "Always (always use as state)"), Icon(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10})), Diagram(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10})));
         end Temp;
-
       end StateSelection;
-
     end Types;
 
     package Sources "Signal source blocks generating Real and Boolean signals"
@@ -2544,7 +2509,6 @@ usually requires a trimming calculation.
       equation
         y=if time >= startTime then not startValue else startValue;
       end BooleanStep;
-
     end Sources;
 
     package Math "Mathematical functions as input/output blocks"
@@ -2594,7 +2558,6 @@ input <i>u</i>:
       equation
         y=k*u;
       end Gain;
-
     end Math;
 
     package Interfaces "Connectors and partial models for input/output blocks"
@@ -2751,9 +2714,7 @@ and a 3D icon (e.g. used in Blocks.Logical library).
 </html>"));
         Blocks.Interfaces.BooleanOutput y "Connector of Boolean output signal" annotation(Placement(visible=true, transformation(origin={110,0}, extent={{-10,-10},{10,10}}, rotation=0), iconTransformation(origin={110,0}, extent={{-10,-10},{10,10}}, rotation=0)));
       end partialBooleanSource;
-
     end Interfaces;
-
   end Blocks;
 
   package SIunits "Type and unit definitions based on SI units according to ISO 31-1992"
@@ -2910,7 +2871,6 @@ still kept in Modelica.SIunits.</p>
       partial function ConversionIcon "Base icon for conversion functions"
         annotation(Icon(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10}), graphics={Rectangle(visible=true, lineColor={191,0,0}, fillColor={255,255,255}, fillPattern=FillPattern.Solid, extent={{-100,-100},{100,100}}),Line(visible=true, points={{-90,0},{30,0}}, color={191,0,0}),Polygon(visible=true, lineColor={191,0,0}, fillColor={191,0,0}, fillPattern=FillPattern.Solid, points={{90,0},{30,20},{30,-20},{90,0}}),Text(visible=true, extent={{-115,105},{115,155}}, textString="%name", fontName="Arial")}), Diagram(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10})));
       end ConversionIcon;
-
     end Conversions;
 
     type Angle= Real(final quantity="Angle", final unit="rad", displayUnit="deg") annotation(Icon(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10})), Diagram(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10})));
@@ -3013,7 +2973,6 @@ and the accompanying <b>disclaimer</b>
     partial model RotationalSensor "Icon representing rotational measurement device"
       annotation(Icon(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10}), graphics={Ellipse(visible=true, fillColor={255,255,255}, fillPattern=FillPattern.Solid, extent={{-70,-70},{70,70}}),Line(visible=true, points={{0,70},{0,40}}),Line(visible=true, points={{22.9,32.8},{40.2,57.3}}),Line(visible=true, points={{-22.9,32.8},{-40.2,57.3}}),Line(visible=true, points={{37.6,13.7},{65.8,23.9}}),Line(visible=true, points={{-37.6,13.7},{-65.8,23.9}}),Line(visible=true, points={{0,0},{9.02,28.6}}),Polygon(visible=true, fillPattern=FillPattern.Solid, points={{-0.48,31.6},{18,26},{18,57.2},{-0.48,31.6}}),Ellipse(visible=true, fillPattern=FillPattern.Solid, extent={{-5,-5},{5,5}})}), Diagram(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10}), graphics={Ellipse(visible=true, fillColor={255,255,255}, fillPattern=FillPattern.Solid, extent={{-70,-70},{70,70}}),Line(visible=true, points={{0,70},{0,40}}),Line(visible=true, points={{22.9,32.8},{40.2,57.3}}),Line(visible=true, points={{-22.9,32.8},{-40.2,57.3}}),Line(visible=true, points={{37.6,13.7},{65.8,23.9}}),Line(visible=true, points={{-37.6,13.7},{-65.8,23.9}}),Line(visible=true, points={{0,0},{9.02,28.6}}),Polygon(visible=true, fillPattern=FillPattern.Solid, points={{-0.48,31.6},{18,26},{18,57.2},{-0.48,31.6}}),Ellipse(visible=true, fillPattern=FillPattern.Solid, extent={{-5,-5},{5,5}})}));
     end RotationalSensor;
-
   end Icons;
 
   package Constants "Mathematical constants and constants of nature (e.g., pi, eps, R, sigma)"
@@ -3096,7 +3055,6 @@ and the accompanying <b>disclaimer</b>
 </ul>
 </html>"), Icon(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10}), graphics={Line(visible=true, points={{-34,-38},{12,-38}}, thickness=0.5),Line(visible=true, points={{-20,-38},{-24,-48},{-28,-56},{-34,-64}}, thickness=0.5),Line(visible=true, points={{-2,-38},{2,-46},{8,-56},{14,-64}}, thickness=0.5)}), Diagram(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10})));
   end Constants;
-
 end Modelica;
 model Modelica_Electrical_Machines_Examples_AIMC_DOL
   extends Modelica.Electrical.Machines.Examples.AIMC_DOL;

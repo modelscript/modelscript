@@ -25,21 +25,15 @@ model Cardinality3
 equation
   connect(u, and1.u1);
   connect(u, and1.u2);
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Cardinality3;
 
 // Result:
-// class Cardinality3
-//   input Boolean u;
-//   Boolean and1.u1;
-//   Boolean and1.u2;
-//   Boolean and1.y;
-//   parameter Integer c = 2;
-//   parameter Integer c1 = 1;
-//   parameter Integer c2 = 1;
-// equation
-//   and1.y = and1.u1 and and1.u2;
-//   and1.u1 = and1.u2;
-//   and1.u1 = u;
-// end Cardinality3;
+// Error processing file: Cardinality3.mo
+// [OpenModelica/flattening/modelica/operators/Cardinality3.mo:22:3-22:39:writable] Error: cardinality may only be used in the condition of an if-statement/equation or an assert.
+// Error: Error occurred while flattening model Cardinality3
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

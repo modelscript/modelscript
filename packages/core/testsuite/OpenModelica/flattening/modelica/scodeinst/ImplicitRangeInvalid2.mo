@@ -15,7 +15,8 @@ end ImplicitRangeInvalid2;
 
 // Result:
 // Error processing file: ImplicitRangeInvalid2.mo
-// [flattening/modelica/scodeinst/ImplicitRangeInvalid2.mo:11:3-13:10:writable] Error: Dimension 1 of y and 1 of x differs when trying to deduce implicit iteration range.
+// [OpenModelica/flattening/modelica/scodeinst/ImplicitRangeInvalid2.mo:11:3-13:10:writable] Error: Dimension 1 of y and 1 of x differs when trying to deduce implicit iteration range.
+// Error: Error occurred while flattening model ImplicitRangeInvalid2
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

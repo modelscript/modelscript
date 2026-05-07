@@ -17,13 +17,11 @@ model FunctionInvalidVar1
   M m;
 algorithm
   F(m);
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end FunctionInvalidVar1;
 
 // Result:
 // Error processing file: FunctionInvalidVar1.mo
-// [flattening/modelica/algorithms-functions/FunctionInvalidVar1.mo:13:3-13:12:writable] Error: Invalid type .M for function component m.
-// [flattening/modelica/algorithms-functions/FunctionInvalidVar1.mo:19:3-19:7:writable] Error: Class F not found in scope FunctionInvalidVar1 (looking for a function or record).
+// [OpenModelica/flattening/modelica/algorithms-functions/FunctionInvalidVar1.mo:13:3-13:12:writable] Error: Invalid type M for function component m.
 // Error: Error occurred while flattening model FunctionInvalidVar1
 //
 // # Error encountered! Exiting...

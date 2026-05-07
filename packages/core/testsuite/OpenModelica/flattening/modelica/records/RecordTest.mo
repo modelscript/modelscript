@@ -181,5 +181,4 @@ function TestWithoutParameters
 algorithm
   out2 := WithParameters();
 end TestWithoutParameters;
-
 end RecordTest;

@@ -17,18 +17,16 @@ package P
       Real x = f(time);
     end Prefix3;
   end P2;
-  annotation(__OpenModelica_commandLineOptions="-i=P.P2.Prefix3");
 end P;
 
 // Result:
-// function P.P2.Prefix3.f
-//   input Real x;
-//   output Real y;
-// algorithm
-//   y := x;
-// end P.P2.Prefix3.f;
+// Error processing file: Prefix3.mo
+// Error: Failed to load package Prefix3 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class Prefix3 not found in scope <top>.
+// Error: Error occurred while flattening model Prefix3
 //
-// class P.P2.Prefix3
-//   Real x = P.P2.Prefix3.f(time);
-// end P.P2.Prefix3;
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

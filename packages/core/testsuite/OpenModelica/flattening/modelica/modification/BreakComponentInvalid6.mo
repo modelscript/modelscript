@@ -19,7 +19,8 @@ end BreakComponentInvalid6;
 
 // Result:
 // Error processing file: BreakComponentInvalid6.mo
-// [flattening/modelica/modification/BreakComponentInvalid6.mo:13:3-13:12:writable] Error: Variable a.x not found in scope B.
+// [OpenModelica/flattening/modelica/modification/BreakComponentInvalid6.mo:13:3-13:12:writable] Error: Variable a.x not found in scope B.
+// Error: Error occurred while flattening model BreakComponentInvalid6
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

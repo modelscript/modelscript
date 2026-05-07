@@ -33,6 +33,4 @@ equation
   i[3] = 3;
   x = f(i[3]);
 end TestIntegerAsEnum;
-
-
 end TestNonStandardExtensions;

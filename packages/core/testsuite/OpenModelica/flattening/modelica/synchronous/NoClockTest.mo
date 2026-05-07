@@ -11,7 +11,6 @@ equation
   x = noClock(3);
   y = noClock(z);
   yy = noClock(vector([3;4]));
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end NoClockTest;
 
 // Result:
@@ -25,9 +24,8 @@ end NoClockTest;
 //   output Integer yy[2];
 // equation
 //   x = /*Real*/(noClock(3));
-//   y[1] = noClock(z[1]);
-//   y[2] = noClock(z[2]);
-//   yy[1] = noClock(3);
-//   yy[2] = noClock(4);
+//   y = noClock(z);
+//   yy = noClock({3, 4});
 // end NoClockTest;
+// [/var/lib/jenkins/ws/LINUX_BUILDS/tmp.build/openmodelica-1.26.3~1-g7583224/OMCompiler/Compiler/NFFrontEnd/NFCeval.mo:2102:9-2103:55:writable] Error: Internal error NFCeval.evalBuiltinCall: unimplemented case for noClock
 // endResult

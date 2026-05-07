@@ -20,8 +20,9 @@ end RedeclareClassComponent;
 
 // Result:
 // Error processing file: RedeclareClassComponent.mo
-// [flattening/modelica/scodeinst/RedeclareClassComponent.mo:18:13-18:29:writable] Notification: From here:
-// [flattening/modelica/scodeinst/RedeclareClassComponent.mo:13:15-13:26:writable] Error: Invalid redeclaration of class M as component.
+// [OpenModelica/flattening/modelica/scodeinst/RedeclareClassComponent.mo:18:13-18:29:writable] Notification: From here:
+// [OpenModelica/flattening/modelica/scodeinst/RedeclareClassComponent.mo:13:15-13:26:writable] Error: Invalid redeclaration of class M as component.
+// Error: Error occurred while flattening model RedeclareClassComponent
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

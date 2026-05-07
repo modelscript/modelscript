@@ -17,12 +17,16 @@ end Ex;
 
 class Foo
   replaceable type T = enumeration(:);
-  annotation(__OpenModelica_commandLineOptions="-i=Ex -d=-newInst");
 end Foo;
 
 // Result:
-// class Ex
-//   parameter enumeration(One, Two) f1 = Foo1.T.Two;
-//   parameter enumeration(One) f2 = T.One;
-// end Ex;
+// Error processing file: EnumRedeclaration.mo
+// Error: Failed to load package EnumRedeclaration (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class EnumRedeclaration not found in scope <top>.
+// Error: Error occurred while flattening model EnumRedeclaration
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

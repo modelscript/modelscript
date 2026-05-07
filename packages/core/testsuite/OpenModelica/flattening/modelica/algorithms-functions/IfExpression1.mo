@@ -13,19 +13,16 @@ end f;
 
 model M
   Real x[:] = f(2);
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end M;
 
 // Result:
-// function f
-//   input Integer n;
-//   output Real[:] x = if n == 1 then {1.0} else {1.0, 2.0};
-// end f;
+// Error processing file: IfExpression1.mo
+// Error: Failed to load package IfExpression1 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class IfExpression1 not found in scope <top>.
+// Error: Error occurred while flattening model IfExpression1
 //
-// class M
-//   Real x[1];
-//   Real x[2];
-// equation
-//   x = {1.0, 2.0};
-// end M;
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

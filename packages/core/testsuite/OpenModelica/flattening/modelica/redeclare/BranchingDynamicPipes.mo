@@ -35,16 +35,15 @@ end MoistAir;
 model BranchingDynamicPipes
   replaceable package Medium = MoistAir;
   PartialSource source(redeclare package Medium = Medium);
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end BranchingDynamicPipes;
 
 // Result:
-// class BranchingDynamicPipes
-//   Real source.medium.Xi[1];
-//   Real source.port.Xi_outflow[1];
-//   Real source.port.f[1];
-// equation
-//   source.port.Xi_outflow[1] = source.medium.Xi[1];
-//   source.port.f[1] = 0.0;
-// end BranchingDynamicPipes;
+// Error processing file: BranchingDynamicPipes.mo
+// Error: Class BranchingDynamicPipes.mo not found in scope <top>.
+// Error: Error occurred while flattening model BranchingDynamicPipes.mo
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

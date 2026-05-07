@@ -15,15 +15,16 @@ end AssertTest;
 
 class Test2
   AssertTest assertTest(lowlimit = 6, highlimit = 20);
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Test2;
 
 // Result:
-// class Test2
-//   parameter Real assertTest.lowlimit = 6.0;
-//   parameter Real assertTest.highlimit = 20.0;
-//   Real assertTest.x = 5.0;
-// equation
-//   assert(assertTest.x >= assertTest.lowlimit and assertTest.x <= assertTest.highlimit, "Variable x out of limit");
-// end Test2;
+// Error processing file: AssertTest2.mo
+// Error: Failed to load package AssertTest2 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class AssertTest2 not found in scope <top>.
+// Error: Error occurred while flattening model AssertTest2
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

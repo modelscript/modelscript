@@ -20,5 +20,4 @@ package Ticket4157
 	  equation
 	    Complex(E.re - V.re, E.im - V.im) = if model_type then Complex(0, 0) else Complex(Z.re, Z.im);
 	  end if_complex_if_expression;
-
 end Ticket4157;

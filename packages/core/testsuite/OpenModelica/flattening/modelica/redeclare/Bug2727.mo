@@ -163,20 +163,15 @@ end Modelica;
 
 model M
   extends Bug.M3;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end M;
 
 // Result:
-// class M
-//   Real clock.y;
-//   parameter Real clock.amplitude = 1.0;
-//   parameter Real clock.freqHz(quantity = "Frequency", unit = "Hz", start = 2.0);
-//   parameter Real clock.phase(quantity = "Angle", unit = "rad", displayUnit = "deg") = 0.0;
-//   parameter Real clock.damping(quantity = "DampingCoefficient", unit = "s-1", start = 1.0);
-//   parameter Real clock.offset = 10.0;
-//   parameter Real clock.startTime(quantity = "Time", unit = "s") = 20.0;
-//   protected constant Real clock.pi = 3.141592653589793;
+// class Redeclare2
+//   Real x.x;
 // equation
-//   clock.y = clock.offset + (if time < clock.startTime then 0.0 else clock.amplitude * exp((clock.startTime - time) * clock.damping) * sin(6.283185307179586 * clock.freqHz * (time - clock.startTime) + clock.phase));
-// end M;
+//   x.x = 1.0;
+// end Redeclare2;
+// [OpenModelica/flattening/modelica/redeclare/Redeclare2.mo:8:3-8:9:writable] Warning: Components are deprecated in class.
+// [OpenModelica/flattening/modelica/redeclare/Redeclare2.mo:10:3-10:10:writable] Warning: Equation sections are deprecated in class.
+// [OpenModelica/flattening/modelica/redeclare/Redeclare2.mo:21:3-21:6:writable] Warning: Components are deprecated in class.
 // endResult

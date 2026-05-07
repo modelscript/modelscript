@@ -10,7 +10,8 @@ end CevalLog2;
 
 // Result:
 // Error processing file: CevalLog2.mo
-// [flattening/modelica/scodeinst/CevalLog2.mo:8:3-8:29:writable] Error: Argument -1 of log is out of range (x > 0)
+// [OpenModelica/flattening/modelica/scodeinst/CevalLog2.mo:8:3-8:29:writable] Error: Argument -1 of log is out of range (x > 0)
+// Error: Error occurred while flattening model CevalLog2
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

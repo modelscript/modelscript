@@ -37,18 +37,16 @@ equation
   assert(b.a2.T0 == P.E.five, "b.a2.T0 was not set to the correct value");
   assert(b.T0 == P.E.five, "b.T0 was not set to the correct value");
   assert(b.c.T0 == P.E.five, "b.c.T0 was not set to the correct value");
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end InnerEnumeration;
 
 // Result:
-// class InnerEnumeration
-//   enumeration(four, one, two, three, five) b.T0 = InnerEnumeration.P.E.five;
-// equation
-//   assert(b.T0 == InnerEnumeration.P.E.five, "b.a1.T0 was not set to the correct value");
-//   assert(b.T0 == InnerEnumeration.P.E.five, "b.a2.T0 was not set to the correct value");
-//   assert(b.T0 == InnerEnumeration.P.E.five, "b.T0 was not set to the correct value");
-//   assert(b.T0 == InnerEnumeration.P.E.five, "b.c.T0 was not set to the correct value");
-// end InnerEnumeration;
-// [flattening/modelica/scoping/InnerEnumeration.mo:23:7-23:25:writable] Warning: Ignoring the modification on outer element: b.c.T0  = InnerEnumeration.P.E.one.
+// Error processing file: InnerEnumeration.mo
+// [OpenModelica/flattening/modelica/scoping/InnerEnumeration.mo:19:7-19:17:writable] Warning: Components are deprecated in class.
+// [OpenModelica/flattening/modelica/scoping/InnerEnumeration.mo:23:7-23:25:writable] Error: Modifier ' = E.one' found on outer element T0.
+// Error: Error occurred while flattening model InnerEnumeration
 //
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

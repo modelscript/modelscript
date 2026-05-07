@@ -13,7 +13,8 @@ end FuncBuiltinSmoothNonParam;
 
 // Result:
 // Error processing file: FuncBuiltinSmoothNonParam.mo
-// [flattening/modelica/scodeinst/FuncBuiltinSmoothNonParam.mo:11:3-11:24:writable] Error: Argument 1 of smooth must be a parameter expression, but k is continuous.
+// [OpenModelica/flattening/modelica/scodeinst/FuncBuiltinSmoothNonParam.mo:11:3-11:24:writable] Error: Argument 1 of smooth must be a parameter expression, but k is continuous.
+// Error: Error occurred while flattening model FuncBuiltinSmoothNonParam
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

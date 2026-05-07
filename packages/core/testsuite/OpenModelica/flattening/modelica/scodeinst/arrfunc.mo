@@ -24,7 +24,9 @@ end B;
 
 // Result:
 // Error processing file: arrfunc.mo
-// [flattening/modelica/scodeinst/arrfunc.mo:21:3-21:22:writable] Error: Function call a[1].f contains subscripts.
+// Error: Failed to load package arrfunc (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class arrfunc.mo not found in scope <top>.
+// Error: Error occurred while flattening model arrfunc.mo
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

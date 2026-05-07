@@ -9,15 +9,15 @@ algorithm
   when time > 1 then
     reinit(x, 2);
   end when;
-  annotation(__OpenModelica_commandLineOptions="--allowNonStandardModelica=reinitInAlgorithms");
 end Reinit3;
 
 // Result:
-// class Reinit3
-//   Real x;
-// algorithm
-//   when time > 1.0 then
-//     reinit(x, 2.0);
-//   end when;
-// end Reinit3;
+// Error processing file: Reinit3.mo
+// [OpenModelica/flattening/modelica/scodeinst/Reinit3.mo:10:5-10:17:writable] Error: Operator reinit may not be used in an algorithm section (use translation flag --allowNonStandardModelica=reinitInAlgorithms to ignore).
+// Error: Error occurred while flattening model Reinit3
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

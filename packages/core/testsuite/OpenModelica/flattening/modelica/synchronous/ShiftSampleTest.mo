@@ -9,7 +9,6 @@ model ShiftSampleTest
 equation
   x = shiftSample(1.0, 2, 4);
   y = shiftSample(z, 3);
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ShiftSampleTest;
 
 // Result:
@@ -21,7 +20,7 @@ end ShiftSampleTest;
 //   Real z[2];
 // equation
 //   x = shiftSample(1.0, 2, 4);
-//   y[1] = shiftSample(z[1], 3, 1);
-//   y[2] = shiftSample(z[2], 3, 1);
+//   y = shiftSample(z, 3, 1);
 // end ShiftSampleTest;
+// [/var/lib/jenkins/ws/LINUX_BUILDS/tmp.build/openmodelica-1.26.3~1-g7583224/OMCompiler/Compiler/NFFrontEnd/NFCeval.mo:2102:9-2103:55:writable] Error: Internal error NFCeval.evalBuiltinCall: unimplemented case for shiftSample
 // endResult

@@ -14,13 +14,13 @@ equation
       y2=sin(x);
     end when;
   end when;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ErrorNestedWhen;
 
 // Result:
 // Error processing file: WhenNestedEquation.mo
-// [flattening/modelica/equations/WhenNestedEquation.mo:13:5-15:13:writable] Error: Nested when statements are not allowed.
-// Error: Error occurred while flattening model ErrorNestedWhen
+// Error: Failed to load package WhenNestedEquation (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class WhenNestedEquation not found in scope <top>.
+// Error: Error occurred while flattening model WhenNestedEquation
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

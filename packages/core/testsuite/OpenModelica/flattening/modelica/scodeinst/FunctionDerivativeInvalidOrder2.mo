@@ -24,7 +24,8 @@ end FunctionDerivativeInvalidOrder2;
 
 // Result:
 // Error processing file: FunctionDerivativeInvalidOrder2.mo
-// [flattening/modelica/scodeinst/FunctionDerivativeInvalidOrder2.mo:6:1-12:7:writable] Error: Component order of variability constant has binding z of higher variability discrete.
+// [OpenModelica/flattening/modelica/scodeinst/FunctionDerivativeInvalidOrder2.mo:6:1-12:7:writable] Error: Component order of variability constant has binding z of higher variability discrete.
+// Error: Error occurred while flattening model FunctionDerivativeInvalidOrder2
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

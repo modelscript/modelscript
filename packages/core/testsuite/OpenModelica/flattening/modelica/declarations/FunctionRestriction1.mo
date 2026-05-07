@@ -16,7 +16,8 @@ end FunctionRestriction1;
 
 // Result:
 // Error processing file: FunctionRestriction1.mo
-// [flattening/modelica/declarations/FunctionRestriction1.mo:10:3-10:8:writable] Error: Equations are not allowed in function.
+// [OpenModelica/flattening/modelica/declarations/FunctionRestriction1.mo:10:3-10:8:writable] Error: Equations are not allowed in function.
+// Error: Error occurred while flattening model FunctionRestriction1
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

@@ -16,10 +16,11 @@ end DuplicateElements5;
 
 // Result:
 // Error processing file: DuplicateElements5.mo
-// [flattening/modelica/scodeinst/DuplicateElements5.mo:9:3-9:9:writable] Notification: From here:
-// [flattening/modelica/scodeinst/DuplicateElements5.mo:14:3-14:12:writable] Error: Duplicate elements (due to inherited elements) not identical:
+// [OpenModelica/flattening/modelica/scodeinst/DuplicateElements5.mo:9:3-9:9:writable] Notification: From here:
+// [OpenModelica/flattening/modelica/scodeinst/DuplicateElements5.mo:14:3-14:12:writable] Error: Duplicate elements (due to inherited elements) not identical:
 //   first element is:  Real x
 //   second element is: Integer x
+// Error: Error occurred while flattening model DuplicateElements5
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

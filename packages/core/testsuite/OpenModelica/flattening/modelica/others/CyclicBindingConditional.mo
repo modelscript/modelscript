@@ -10,16 +10,15 @@ model CyclicBindingConditional
   Boolean a = true if b;
   parameter
   Boolean b = true if a;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end CyclicBindingConditional;
 
 // Result:
-// Error processing file: CyclicBindingConditional.mo
-// Error: Cyclically dependent constants or parameters found in scope CyclicBindingConditional: {b,a} (ignore with -d=ignoreCycles).
-// Error: Error occurred while flattening model CyclicBindingConditional
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class SampleError
+//   Real r = 1.5;
+//   Integer i;
+// equation
+//   when sample(r, 0.1) then
+//     i = pre(i) + 1;
+//   end when;
+// end SampleError;
 // endResult

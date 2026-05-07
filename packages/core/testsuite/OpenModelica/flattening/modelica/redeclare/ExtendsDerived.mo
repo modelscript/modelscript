@@ -17,12 +17,16 @@ end B;
 
 model A
  extends B.X(z = 15);
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end A;
 
 // Result:
-// class A
-//   parameter Real k = 10.0;
-//   parameter Real z = 15.0;
-// end A;
+// Error processing file: ExtendsDerived.mo
+// Error: Failed to load package ExtendsDerived (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class ExtendsDerived.mo not found in scope <top>.
+// Error: Error occurred while flattening model ExtendsDerived.mo
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

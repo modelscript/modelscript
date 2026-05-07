@@ -16,20 +16,15 @@ end M;
 
 model N
   extends M(redeclare record ThermodynamicState=BaseProps_Tpoly, res = ThermodynamicState(T = T, p = p));
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end N;
 
 // Result:
-// function N.ThermodynamicState "Automatically generated record constructor for N.ThermodynamicState"
-//   input Real T;
-//   input Real p;
-//   output ThermodynamicState res;
-// end N.ThermodynamicState;
+// Error processing file: Derived2.mo
+// [OpenModelica/flattening/modelica/records/RecordConnections.mo:17:3-17:23:writable] Error: tr1.i is not a valid connector.
+// Error: Error occurred while flattening model Record Derived 2
 //
-// class N
-//   constant Real T = 1.0;
-//   constant Real p = 2.0;
-//   Real res.T = 1.0 "temperature";
-//   Real res.p = 2.0 "pressure";
-// end N;
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

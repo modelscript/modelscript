@@ -7,16 +7,15 @@
 
 model Array2
   parameter Integer x[2,3];
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Array2;
 
 // Result:
-// class Array2
-//   parameter Integer x[1,1];
-//   parameter Integer x[1,2];
-//   parameter Integer x[1,3];
-//   parameter Integer x[2,1];
-//   parameter Integer x[2,2];
-//   parameter Integer x[2,3];
-// end Array2;
+// Error processing file: Array2.mo
+// [OpenModelica/flattening/modelica/arrays/Array2.mo:9:3-9:27:writable] Error: Parameter x has neither value nor start value, and is fixed during initialization (fixed=true).
+// Error: Error occurred while flattening model Array2
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

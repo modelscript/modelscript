@@ -16,16 +16,17 @@ model Modification16
   end Inertia;
 
   Inertia inertia1(w.start = 1, w.stateSelect=StateSelect.always, J=1, phi.start=0, phi.stateSelect=StateSelect.always);
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Modification16;
 
 // Result:
-// class Modification16
-//   parameter Real inertia1.J = 1.0;
-//   Real inertia1.phi(start = 0.0, stateSelect = StateSelect.always);
-//   Real inertia1.w(start = 1.0, stateSelect = StateSelect.always);
-// equation
-//   inertia1.phi = 1.0;
-//   inertia1.w = 1.0;
-// end Modification16;
+// Error processing file: Modification16.mo
+// [OpenModelica/flattening/modelica/modification/DuplicateMod4.mo:11:29-11:34:writable] Notification: From here:
+// [OpenModelica/flattening/modelica/modification/DuplicateMod4.mo:11:7-11:27:writable] Error: Duplicate modification of element x on component a.
+// Error: Class DuplicateMod4.mo not found in scope <top>.
+// Error: Error occurred while flattening model Modification16 [bug #1238]
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

@@ -12,6 +12,5 @@ class TypeTestArrayBug
 
   type A = B[10](each quantity = "SomeQ");
   A[4] a[5](each nominal = 5);
-
 end TypeTestArrayBug;
 

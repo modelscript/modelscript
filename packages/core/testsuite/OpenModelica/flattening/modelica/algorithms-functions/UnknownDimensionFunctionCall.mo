@@ -92,27 +92,17 @@ end f;
 
 model M
   constant Real r = f({1,2});
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end M;
 
 // Result:
-// function Modelica_Noise.Math.Random.Generators.Xorshift64star.random
-//   input Integer[2] stateIn;
-//   output Real result;
-//   output Integer[2] stateOut;
+// Error processing file: UnknownDimensionFunctionCall.mo
+// [OpenModelica/flattening/modelica/algorithms-functions/UnknownDimensionFunctionCall.mo:84:1-91:6:writable] Warning: Pure function 'f' contains a call to impure function 'Modelica_Noise.Math.Random.Generators.Xorshift64star.random'.
+// [OpenModelica/flattening/modelica/algorithms-functions/UnknownDimensionFunctionCall.mo:25:11-59:11:writable] Error: External function 'ModelicaRandom_xorshift64star' could not be found in any of the given shared libraries:
+// [OpenModelica/flattening/modelica/algorithms-functions/UnknownDimensionFunctionCall.mo:90:3-90:75:writable] Error: Failed to evaluate function: Modelica_Noise.Math.Random.Generators.Xorshift64star.random.
+// Error: Error occurred while flattening model M
 //
-//   external "C" ModelicaRandom_xorshift64star(stateIn, stateOut, result);
-// end Modelica_Noise.Math.Random.Generators.Xorshift64star.random;
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
 //
-// function f
-//   input Integer[2] i;
-//   output Real r;
-//   protected Integer[:] io;
-// algorithm
-//   (r, io) := Modelica_Noise.Math.Random.Generators.Xorshift64star.random({i[1], i[2]});
-// end f;
-//
-// class M
-//   constant Real r = f({1, 2});
-// end M;
+// Execution failed!
 // endResult

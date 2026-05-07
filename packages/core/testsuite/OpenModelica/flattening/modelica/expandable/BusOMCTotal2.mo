@@ -461,7 +461,6 @@ of package Modelica.Blocks inherit directly or indirectly
 from this block.
 </p>
 </html>"));
-
         end BlockIcon;
 
         partial block SISO
@@ -946,7 +945,6 @@ package QHP
 This icon is designed for a <b>signal bus</b> connector.
 </p>
 </html>"));
-
       end SignalBusBlue;
 
       connector RealOutput_ =output Real "'output Real' as connector"
@@ -996,7 +994,6 @@ Note, this connector is \"empty\". When using it, the actual content is
 constructed by the signals connected to this bus.
 </p>
 </html>"));
-
         end BusConnector;
     end Interfaces;
 

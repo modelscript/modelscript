@@ -10,18 +10,17 @@ class ExternalFunction6
   end fn;
 
   constant Integer i = fn(2);
-  annotation(__OpenModelica_commandLineOptions="-d=gen -d=-newInst");
 end ExternalFunction6;
 
 // Result:
-// function ExternalFunction6.fn
-//   input Integer i1;
-//   output Integer i;
+// Error processing file: ExternalFunction6.mo
+// [OpenModelica/flattening/modelica/external-functions/ExternalFunction6.mo:12:3-12:29:writable] Warning: Components are deprecated in class.
+// [OpenModelica/flattening/modelica/external-functions/ExternalFunction6.mo:6:3-10:9:writable] Error: External function 'myFn' could not be found in any of the given shared libraries:
+// [OpenModelica/flattening/modelica/external-functions/ExternalFunction6.mo:12:3-12:29:writable] Error: Failed to evaluate function: ExternalFunction6.fn.
+// Error: Error occurred while flattening model ExternalFunction6
 //
-//   external "C" i = myFn(i1);
-// end ExternalFunction6.fn;
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
 //
-// class ExternalFunction6
-//   constant Integer i = 4;
-// end ExternalFunction6;
+// Execution failed!
 // endResult

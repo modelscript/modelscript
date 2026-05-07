@@ -19,8 +19,9 @@ end ProtectedMod6;
 
 // Result:
 // Error processing file: ProtectedMod6.mo
-// [flattening/modelica/scodeinst/ProtectedMod6.mo:17:7-17:14:writable] Notification: From here:
-// [flattening/modelica/scodeinst/ProtectedMod6.mo:8:3-8:15:writable] Error: Protected element 'x' may not be modified, got 'x = 2.0'.
+// [OpenModelica/flattening/modelica/scodeinst/ProtectedMod6.mo:17:7-17:14:writable] Notification: From here:
+// [OpenModelica/flattening/modelica/scodeinst/ProtectedMod6.mo:8:3-8:15:writable] Error: Protected element 'x' may not be modified, got 'x = 2.0'.
+// Error: Error occurred while flattening model ProtectedMod6
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

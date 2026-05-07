@@ -11,5 +11,4 @@ function id
   output String o = identity(str);
 algorithm
 end id;
-
 end LookupBuiltin;

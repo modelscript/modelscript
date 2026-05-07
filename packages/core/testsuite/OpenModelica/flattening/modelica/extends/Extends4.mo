@@ -24,23 +24,16 @@ block Multiplex3 "Multiplexer block for three input connectors"
 
 equation
   [y]=[u1;u2;u3];
-  annotation(__OpenModelica_commandLineOptions="+std=2.x -d=-newInst");
 end Multiplex3;
 
 // Result:
-// class Multiplex3 "Multiplexer block for three input connectors"
-//   parameter Integer n1 = 1 "dimension of input signal connector 1";
-//   parameter Integer n2 = 1 "dimension of input signal connector 2";
-//   parameter Integer n3 = 1 "dimension of input signal connector 3";
-//   input Real u1[1];
-//   input Real u2[1];
-//   input Real u3[1];
-//   output Real y[1];
-//   output Real y[2];
-//   output Real y[3];
-// equation
-//   y[1] = u1[1];
-//   y[2] = u2[1];
-//   y[3] = u3[1];
-// end Multiplex3;
+// Error processing file: Extends4.mo
+// Error: Failed to load package Extends4 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class Extends4 not found in scope <top>.
+// Error: Error occurred while flattening model Extends4
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

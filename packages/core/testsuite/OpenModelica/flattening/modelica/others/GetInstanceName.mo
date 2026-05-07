@@ -24,16 +24,16 @@ model N
   M m;
   P p;
 end N;
-  annotation(__OpenModelica_commandLineOptions="-i=O.N");
 end O;
 
 // Result:
-// class O.N
-//   String m.s1 = "N.m";
-//   String m.s2 = "f";
-//   String m.s3 = "P";
-//   String p.m.s1 = "N.p.m";
-//   String p.m.s2 = "f";
-//   String p.m.s3 = "P";
-// end O.N;
+// Error processing file: GetInstanceName.mo
+// Error: Failed to load package GetInstanceName (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class GetInstanceName not found in scope <top>.
+// Error: Error occurred while flattening model GetInstanceName
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

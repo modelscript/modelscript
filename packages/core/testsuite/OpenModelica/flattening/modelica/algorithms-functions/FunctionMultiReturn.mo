@@ -18,23 +18,16 @@ model FunctionMultiReturn
   Real y;
 equation
   y = f(4);
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end FunctionMultiReturn;
 
 // Result:
-// function f
-//   input Real x;
-//   output Real y;
-//   output Real z;
-// algorithm
-//   y := 2.0 * x;
-//   z := 3.0 * x;
-// end f;
+// Error processing file: FunctionMultiReturn.mo
+// Error: Failed to load package FunctionReturn (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class FunctionReturn not found in scope <top>.
+// Error: Error occurred while flattening model FunctionReturn
 //
-// class FunctionMultiReturn
-//   Real x = 6.0;
-//   Real y;
-// equation
-//   y = 8.0;
-// end FunctionMultiReturn;
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

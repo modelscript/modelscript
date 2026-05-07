@@ -14,7 +14,8 @@ end WhenClockedStatement1;
 
 // Result:
 // Error processing file: WhenClockedStatement1.mo
-// [flattening/modelica/scodeinst/WhenClockedStatement1.mo:9:3-12:11:writable] Error: Type error in when conditional 'Clock(1, 1)'. Expected Boolean scalar or vector, got Clock.
+// [OpenModelica/flattening/modelica/scodeinst/WhenClockedStatement1.mo:9:3-12:11:writable] Error: Type error in when conditional 'Clock(1, 1)'. Expected Boolean scalar or vector, got Clock.
+// Error: Error occurred while flattening model WhenClockedStatement1
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

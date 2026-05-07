@@ -20,7 +20,9 @@ end M;
 
 // Result:
 // Error processing file: lookup2.mo
-// [flattening/modelica/scodeinst/lookup2.mo:18:3-18:10:writable] Error: Class name 'A.b.C' was found via a component (only component and function call names may be accessed in this way).
+// Error: Failed to load package lookup2 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class lookup2.mo not found in scope <top>.
+// Error: Error occurred while flattening model lookup2.mo
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

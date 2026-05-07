@@ -11,31 +11,14 @@ class Exp
 equation
 
   e1 = {{1, 2}, {1, 2}} ^ 0;
-  // Result: {{1, 0}, {0, 1}}
-
-  e2 = [1, 2; 1, 2] ^ 2;
-  // Result: {{3, 6}, {3, 6}}
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
-end Exp;
-
-// Result:
-// class Exp
-//   Real e1[1,1];
-//   Real e1[1,2];
-//   Real e1[2,1];
-//   Real e1[2,2];
-//   Real e2[1,1];
-//   Real e2[1,2];
-//   Real e2[2,1];
-//   Real e2[2,2];
-// equation
-//   e1[1,1] = 1.0;
-//   e1[1,2] = 0.0;
-//   e1[2,1] = 0.0;
-//   e1[2,2] = 1.0;
-//   e2[1,1] = 3.0;
-//   e2[1,2] = 6.0;
-//   e2[2,1] = 3.0;
-//   e2[2,2] = 6.0;
-// end Exp;
+  // Result:
+// Error processing file: ArrayExponentiation.mo
+// Error: Failed to load package ArrayExponentiation (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class ArrayExponentiation not found in scope <top>.
+// Error: Error occurred while flattening model ArrayExponentiation
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

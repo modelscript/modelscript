@@ -173,7 +173,6 @@ still kept in Modelica.SIunits.</p>
 </HTML>
 "), Icon(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10}), graphics={Text(visible=true, extent={{-66,-67},{52,-13}}, textString="[rev/min]", fontName="Arial")}), Diagram(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10})));
       end NonSIunits;
-
     end Conversions;
   end SIunits;
 
@@ -240,9 +239,7 @@ and the accompanying <b>disclaimer</b>
     partial package Library2 "Icon for library where additional icon elements shall be added"
       annotation(Icon(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10}), graphics={Rectangle(visible=true, fillColor={235,235,235}, fillPattern=FillPattern.Solid, extent={{-100,-100},{80,50}}),Polygon(visible=true, fillColor={210,210,210}, fillPattern=FillPattern.Solid, points={{-100,50},{-80,70},{100,70},{80,50},{-100,50}}),Polygon(visible=true, fillColor={210,210,210}, fillPattern=FillPattern.Solid, points={{100,70},{100,-80},{80,-100},{80,50},{100,70}}),Text(visible=true, fillColor={255,0,0}, extent={{-120,70},{120,125}}, textString="%name", fontName="Arial"),Text(visible=true, fillColor={160,160,160}, fillPattern=FillPattern.Solid, extent={{-90,10},{70,40}}, textString="Library", fontName="Arial")}), Diagram(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10})));
     end Library2;
-
   end Icons;
-
 end Modelica;
 package BioChem
   extends Icons.Library;
@@ -427,7 +424,6 @@ When the concentration is not determined by reactions, the
     equation
       der(n)=rNet;
     end Substance;
-
   end Substances;
 
   package Reactions "Reaction edges"
@@ -479,9 +475,7 @@ Michaelis-Menten kinetics describes the kinetics of many enzymes. It is named af
       equation
         rr=(vF*s1.c/KmS - vR*p1.c/KmP)/(1 + s1.c/KmS + p1.c/KmP);
       end Uur;
-
     end MichaelisMenten;
-
   end Reactions;
 
   package Interfaces "Connection points and icons used in the BioChem package"
@@ -576,9 +570,7 @@ All reactions need at least one substrate and at least one product. This package
           annotation(Icon(coordinateSystem(extent={{-100,-100},{100,100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10}), graphics={Line(visible=true, points={{-50,0},{50,0}}, color={170,0,0}),Text(visible=true, origin={-4.44089e-15,1.42109e-14}, fillColor={77,77,77}, fillPattern=FillPattern.Solid, extent={{-100,-150},{97.9,-100}}, textString="%name", fontName="Arial")}), Diagram(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10})));
           BioChem.Units.ReactionRate rr "Rate of the reaction" annotation(__MathCore_reactionrate=true);
         end Reaction;
-
       end Basics;
-
     end Reactions;
 
     package Nodes "Connector interfaces used in the package"
@@ -631,7 +623,6 @@ The variables available in each connection point are described below:
         flow BioChem.Units.MolarFlowRate r;
         input BioChem.Units.Volume V;
       end ProductConnector;
-
     end Nodes;
 
     package Compartments "Properties for compartments"
@@ -660,9 +651,7 @@ The variables available in each connection point are described below:
  "), defaultComponentName="compartment", Icon(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10}), graphics={Text(visible=true, fillColor={0,85,0}, fillPattern=FillPattern.Solid, extent={{-100,-170},{100,-120}}, textString="%name", fontName="Arial"),Rectangle(visible=true, lineColor={0,0,127}, fillColor={0,170,255}, fillPattern=FillPattern.Solid, lineThickness=10, extent={{-110,-110},{110,110}}, radius=20)}), Diagram(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10})));
         inner BioChem.Units.Volume V(start=1) "Compartment volume";
       end Compartment;
-
     end Compartments;
-
   end Interfaces;
 
   package Examples "Some examples of BioChem models"
@@ -694,7 +683,6 @@ The variables available in each connection point are described below:
       connect(uur.p1,F6P.n1) annotation(Line(visible=true, points={{1.25,10},{10,10}}));
       connect(G6P.n1,uur.s1) annotation(Line(visible=true, points={{-30,10},{-21.25,10}}));
     end EnzMM;
-
   end Examples;
 
   package Compartments "Different types of compartments used in the package"
@@ -730,9 +718,7 @@ The classes in the package so far are illustrated in
     equation
       der(V)=0 "Compartment volume is constant";
     end Compartment;
-
   end Compartments;
-
 end BioChem;
 model BioChem_Examples_EnzMM
   BioChem.Examples.EnzMM t;

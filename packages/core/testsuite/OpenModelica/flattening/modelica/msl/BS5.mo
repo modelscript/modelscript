@@ -1253,7 +1253,6 @@ model BS5
 
 equation
   connect(kinematicPTP1.outPort,der1.inPort) annotation(Line(visible=true,points={{-4.67,11.36},{16.62,8.32}}));
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end BS5;
 // class BS5
 // parameter Integer der1.n = 1 "Number of inputs (= number of outputs)";
@@ -1303,55 +1302,16 @@ end BS5;
 // kinematicPTP1.outPort.signal[1] = der1.inPort.signal[1];
 // end BS5;
 // Result:
-// class BS5
-//   parameter Integer der1.n = 1 "Number of inputs (= number of outputs)";
-//   parameter Integer der1.inPort.n = der1.n "Dimension of signal vector";
-//   Real der1.inPort.signal[1] "Real input signals";
-//   parameter Integer der1.outPort.n = der1.n "Dimension of signal vector";
-//   Real der1.outPort.signal[1] "Real output signals";
-//   Real der1.y[1] "Output signals";
-//   protected Real der1.u[1] "Input signals";
-//   parameter Integer kinematicPTP1.nout(min = 1) = 1 "Number of outputs";
-//   parameter Integer kinematicPTP1.outPort.n = kinematicPTP1.nout "Dimension of signal vector";
-//   Real kinematicPTP1.outPort.signal[1] "Real output signals";
-//   Real kinematicPTP1.y[1];
-//   parameter Real kinematicPTP1.deltaq[1] = 1.0 "Distance to move";
-//   parameter Real kinematicPTP1.qd_max[1](min = 1e-60) = 1.0 "Maximum velocities der(q)";
-//   parameter Real kinematicPTP1.qdd_max[1](min = 1e-60) = 1.0 "Maximum accelerations der(qd)";
-//   parameter Real kinematicPTP1.startTime(quantity = "Time", unit = "s") = 0.0 "Time instant at which movement starts";
-//   protected parameter Real kinematicPTP1.p_deltaq[1] = kinematicPTP1.deltaq[1];
-//   protected parameter Real kinematicPTP1.p_qd_max[1] = kinematicPTP1.qd_max[1];
-//   protected parameter Real kinematicPTP1.p_qdd_max[1] = kinematicPTP1.qdd_max[1];
-//   protected Real kinematicPTP1.sd_max;
-//   protected Real kinematicPTP1.sdd_max;
-//   protected Real kinematicPTP1.sdd;
-//   protected Real kinematicPTP1.aux1[1];
-//   protected Real kinematicPTP1.aux2[1];
-//   protected Real kinematicPTP1.Ta1(quantity = "Time", unit = "s");
-//   protected Real kinematicPTP1.Ta2(quantity = "Time", unit = "s");
-//   protected Real kinematicPTP1.Tv(quantity = "Time", unit = "s");
-//   protected Real kinematicPTP1.Te(quantity = "Time", unit = "s");
-//   protected Boolean kinematicPTP1.noWphase;
+// class SampleTest
+//   Clock c;
+//   Boolean cb = sample(0.1, 0.1);
+//   Real x1;
+//   Real x2;
+//   Real y;
 // equation
-//   der1.u = {der1.inPort.signal[1]};
-//   der1.y[1] = der(der1.u[1]);
-//   der1.y[1] = der1.outPort.signal[1];
-//   kinematicPTP1.aux1[1] = kinematicPTP1.p_deltaq[1] / kinematicPTP1.p_qd_max[1];
-//   kinematicPTP1.aux2[1] = kinematicPTP1.p_deltaq[1] / kinematicPTP1.p_qdd_max[1];
-//   kinematicPTP1.sd_max = 1.0 / abs(kinematicPTP1.aux1[1]);
-//   kinematicPTP1.sdd_max = 1.0 / abs(kinematicPTP1.aux2[1]);
-//   kinematicPTP1.Ta1 = sqrt(1.0 / kinematicPTP1.sdd_max);
-//   kinematicPTP1.Ta2 = kinematicPTP1.sd_max / kinematicPTP1.sdd_max;
-//   kinematicPTP1.noWphase = kinematicPTP1.Ta2 >= kinematicPTP1.Ta1;
-//   kinematicPTP1.Tv = if kinematicPTP1.noWphase then kinematicPTP1.Ta1 else 1.0 / kinematicPTP1.sd_max;
-//   kinematicPTP1.Te = if kinematicPTP1.noWphase then 2.0 * kinematicPTP1.Ta1 else kinematicPTP1.Tv + kinematicPTP1.Ta2;
-//   kinematicPTP1.sdd = if time < kinematicPTP1.startTime then 0.0 else if kinematicPTP1.noWphase then if time < kinematicPTP1.Ta1 + kinematicPTP1.startTime then kinematicPTP1.sdd_max else if time < kinematicPTP1.Te + kinematicPTP1.startTime then -kinematicPTP1.sdd_max else 0.0 else if time < kinematicPTP1.Ta2 + kinematicPTP1.startTime then kinematicPTP1.sdd_max else if time < kinematicPTP1.Tv + kinematicPTP1.startTime then 0.0 else if time < kinematicPTP1.Te + kinematicPTP1.startTime then -kinematicPTP1.sdd_max else 0.0;
-//   kinematicPTP1.outPort.signal[1] = kinematicPTP1.p_deltaq[1] * kinematicPTP1.sdd;
-//   kinematicPTP1.y[1] = kinematicPTP1.outPort.signal[1];
-//   assert(kinematicPTP1.outPort.n == der1.inPort.n, "automatically generated from connect");
-//   der1.inPort.signal[1] = kinematicPTP1.outPort.signal[1];
-// end BS5;
-// [flattening/modelica/msl/BS5.mo:686:42-686:70:writable] Warning: Non-array modification '1e-60' for array component, possibly due to missing 'each'.
-// [flattening/modelica/msl/BS5.mo:688:43-688:71:writable] Warning: Non-array modification '1e-60' for array component, possibly due to missing 'each'.
-//
+//   c = Clock(0.1);
+//   x1 = sample(1.0, Clock());
+//   x2 = sample(1.1, c);
+//   y = x1 + x2;
+// end SampleTest;
 // endResult

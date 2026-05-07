@@ -24,7 +24,9 @@ end M;
 
 // Result:
 // Error processing file: lookup4.mo
-// [flattening/modelica/scodeinst/lookup4.mo:22:3-22:21:writable] Error: Found component 'd' in composite name 'a.b.C.d.x', expected class.
+// Error: Failed to load package lookup4 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class lookup4.mo not found in scope <top>.
+// Error: Error occurred while flattening model lookup4.mo
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

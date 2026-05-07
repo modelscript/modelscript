@@ -14,7 +14,6 @@ equation
   when {sample(0.1,0.1),time>=0.15,time>=0.25} then
     z=time;
   end when;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end WhenSemantics1;
 
 // Result:
@@ -25,10 +24,10 @@ end WhenSemantics1;
 // equation
 //   y = sin(time) + x + z;
 //   when sample(0.1, 0.1) then
-//   x = pre(y);
+//     x = pre(y);
 //   end when;
 //   when {sample(0.1, 0.1), time >= 0.15, time >= 0.25} then
-//   z = time;
+//     z = time;
 //   end when;
 // end WhenSemantics1;
 // endResult

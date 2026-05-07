@@ -463,7 +463,6 @@ of package Modelica.Blocks inherit directly or indirectly
 from this block.
 </p>
 </html>"));
-
         end BlockIcon;
 
         partial block SISO
@@ -508,7 +507,6 @@ continuous Real output signal y.
               preserveAspectRatio=true,
               extent={{-100,-100},{100,100}},
               grid={2,2}), graphics));
-
         end SI2SO;
 
         partial block MISO
@@ -1113,7 +1111,6 @@ user interface when the type is used as parameter in a declaration.
           annotation (Evaluate=true, Documentation(info="<html>
 
 </html>"));
-
     end Types;
   end Blocks;
 
@@ -1491,7 +1488,6 @@ package QHP
               rotation=270,
               origin={0,-60}),
               iconTransformation(extent={{-10,-30},{10,-10}}, rotation=-90)));
-
       end BaseFactorIcon;
 
       partial model BaseFactorIcon3
@@ -1520,7 +1516,6 @@ package QHP
               rotation=270,
               origin={0,-60}),
               iconTransformation(extent={{-10,-30},{10,-10}}, rotation=-90)));
-
       end BaseFactorIcon3;
 
       partial model BaseFactorIcon4
@@ -1549,7 +1544,6 @@ package QHP
               rotation=270,
               origin={0,-60}),
               iconTransformation(extent={{-10,-30},{10,-10}}, rotation=-90)));
-
       end BaseFactorIcon4;
 
       partial model BaseFactorIcon5
@@ -1578,7 +1572,6 @@ package QHP
               rotation=270,
               origin={0,-60}),
               iconTransformation(extent={{-10,-30},{10,-10}}, rotation=-90)));
-
       end BaseFactorIcon5;
 
       partial connector SignalBusBlue "Icon for signal bus"
@@ -1669,7 +1662,6 @@ package QHP
 This icon is designed for a <b>signal bus</b> connector.
 </p>
 </html>"));
-
       end SignalBusBlue;
 
       connector RealInput = input Real "'input Real' as connector"
@@ -1772,7 +1764,6 @@ Note, this connector is \"empty\". When using it, the actual content is
 constructed by the signals connected to this bus.
 </p>
 </html>"));
-
         end BusConnector;
     end Interfaces;
 
@@ -1831,7 +1822,6 @@ constructed by the signals connected to this bus.
               a4:=(-slope1*x2^3*x1+y1*x2^3-slope2*x1^2*x2^2+slope1*x1^2*x2^2-3*y1*x2^2*x1+3*y2*x1^2*x2+slope2*x1^3*x2-y2*x1^3)/(x2-x1)^3;
 
               yVal :=a1*(xVal)^3 + a2*(xVal)^2 + a3*(xVal) + a4;
-
             end if;
 
             annotation (Documentation(revisions="<html>
@@ -1859,9 +1849,7 @@ constructed by the signals connected to this bus.
                y,
                slope,
                u);
-
            end Curve;
-
     end Curves;
 
     package Factors "Multiplication Effect Types"
@@ -2349,7 +2337,6 @@ Connector with one flow signal of type Real.
 <p><i>2009-2010</i></p>
 <p>Marek Matejak, Charles University, Prague, Czech Republic </p>
 </html>"));
-
       end PositiveConcentrationFlow;
 
       connector NegativeConcentrationFlow
@@ -2384,7 +2371,6 @@ Connector with one flow signal of type Real.
 <p><i>2009-2010</i></p>
 <p>Marek Matejak, Charles University, Prague, Czech Republic </p>
 </html>"));
-
       end NegativeConcentrationFlow;
 
       model FlowMeasure
@@ -2422,7 +2408,6 @@ Connector with one flow signal of type Real.
         q_out.conc = q_in.conc;
 
         actualFlow = q_in.q;
-
       end FlowMeasure;
 
       model ConcentrationMeasure
@@ -2892,7 +2877,6 @@ Connector with one flow signal of type Real.
 <p><i>2009-2010</i></p>
 <p>Marek Matejak, Charles University, Prague, Czech Republic </p>
 </html>"));
-
       end ConcentrationCompartment;
     end ConcentrationFlow;
 
@@ -4993,7 +4977,6 @@ Connector with one flow signal of type Real.
             color={200,0,0},
             thickness=1,
             smooth=Smooth.None));
-
       end Phosphate2;
     end Phosphate;
 
@@ -5243,7 +5226,6 @@ Connector with one flow signal of type Real.
        string="%second",
        index=1,
        extent={{3,1},{3,1}}));
-
       end Sulphate2;
     end Sulphate;
 

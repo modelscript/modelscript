@@ -13,7 +13,8 @@ end SubscriptIterator1;
 
 // Result:
 // Error processing file: SubscriptIterator1.mo
-// [flattening/modelica/scodeinst/SubscriptIterator1.mo:10:5-10:16:writable] Error: Wrong number of subscripts in i[1] (1 subscripts for 0 dimensions).
+// [OpenModelica/flattening/modelica/scodeinst/SubscriptIterator1.mo:10:5-10:16:writable] Error: Wrong number of subscripts in i[1] (1 subscripts for 0 dimensions).
+// Error: Error occurred while flattening model SubscriptIterator1
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

@@ -29,7 +29,6 @@ end InnerOuterMissing4;
 //   Real c.z = a.x;
 //   Real a.x;
 // end InnerOuterMissing4;
-// [flattening/modelica/scodeinst/InnerOuterMissing4.mo:12:3-12:12:writable] Warning: An inner declaration for outer component a could not be found and was automatically generated.
-// [flattening/modelica/scodeinst/InnerOuterMissing4.mo:12:3-12:12:writable] Notification: The diagnostics message for the missing inner is: Missing outer A
-//
+// [OpenModelica/flattening/modelica/scodeinst/InnerOuterMissing4.mo:12:3-12:12:writable] Warning: An inner declaration for outer component a could not be found and was automatically generated.
+// [OpenModelica/flattening/modelica/scodeinst/InnerOuterMissing4.mo:12:3-12:12:writable] Notification: The diagnostics message for the missing inner is: Missing outer A
 // endResult

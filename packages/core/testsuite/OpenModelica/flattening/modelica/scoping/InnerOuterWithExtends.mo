@@ -25,18 +25,21 @@ package InnerOuterWithExtends
   partial model SBase
     outer Real V;
   end SBase;
-
 end InnerOuterWithExtends;
 
 model InnerOuterWithExtendsTest
   import InnerOuterWithExtends.*;
   extends C1;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end InnerOuterWithExtendsTest;
 
 
 // Result:
-// class InnerOuterWithExtendsTest
-//   Real V = 1.0;
-// end InnerOuterWithExtendsTest;
+// Error processing file: InnerOuterWithExtends.mo
+// [OpenModelica/flattening/modelica/scoping/InnerOuterWithExtends.mo:10:1-29:26:writable] Error: Cannot instantiate InnerOuterWithExtends due to class specialization package.
+// Error: Error occurred while flattening model InnerOuterWithExtends
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

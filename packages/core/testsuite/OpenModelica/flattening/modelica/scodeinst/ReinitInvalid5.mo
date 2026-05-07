@@ -12,7 +12,8 @@ end ReinitInvalid5;
 
 // Result:
 // Error processing file: ReinitInvalid5.mo
-// [flattening/modelica/scodeinst/ReinitInvalid5.mo:9:5-9:17:writable] Error: The first argument to reinit must be a variable of type Real or an array of such variables.
+// [OpenModelica/flattening/modelica/scodeinst/ReinitInvalid5.mo:9:5-9:17:writable] Error: The first argument to reinit must be a variable of type Real or an array of such variables.
+// Error: Error occurred while flattening model ReinitInvalid5
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

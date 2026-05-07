@@ -14,7 +14,8 @@ end PackageBinding1;
 
 // Result:
 // Error processing file: PackageBinding1.mo
-// [flattening/modelica/scodeinst/PackageBinding1.mo:12:3-12:12:writable] Error: Component 'a2' may not have a binding equation due to class specialization 'package'.
+// [OpenModelica/flattening/modelica/scodeinst/PackageBinding1.mo:12:3-12:12:writable] Error: Component 'a2' may not have a binding equation due to class specialization 'package'.
+// Error: Error occurred while flattening model PackageBinding1
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

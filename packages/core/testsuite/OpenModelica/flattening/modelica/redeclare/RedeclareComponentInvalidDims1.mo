@@ -16,13 +16,13 @@ end RedeclareComponentInvalidDims1;
 
 // Result:
 // Error processing file: RedeclareComponentInvalidDims1.mo
-// Failed to parse file: RedeclareComponentInvalidDims1.mo!
-//
-// [flattening/modelica/redeclare/RedeclareComponentInvalidDims1.mo:14:24-14:24:writable] Error: No viable alternative near token: [
+// [OpenModelica/flattening/modelica/redeclare/RedeclareComponentInvalidDims1.mo:14:24-14:24:writable] Error: No viable alternative near token: [
+// Error: Failed to load package RedeclareComponentInvalidDims1 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class RedeclareComponentInvalidDims1 not found in scope <top>.
+// Error: Error occurred while flattening model RedeclareComponentInvalidDims1
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
-// Failed to parse file: RedeclareComponentInvalidDims1.mo!
 //
 // Execution failed!
 // endResult

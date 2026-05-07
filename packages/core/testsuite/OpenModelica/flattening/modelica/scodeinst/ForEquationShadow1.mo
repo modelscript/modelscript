@@ -14,15 +14,14 @@ equation
 end ForEquationShadow1;
 
 // Result:
-// class ForEquationShadow1
-//   Real x;
-// equation
-//   x = 2.0;
-//   x = 4.0;
-//   x = 2.0;
-//   x = 4.0;
-// end ForEquationShadow1;
-// [flattening/modelica/scodeinst/ForEquationShadow1.mo:9:3-13:10:writable] Notification: From here:
-// [flattening/modelica/scodeinst/ForEquationShadow1.mo:10:5-12:12:writable] Warning: An iterator named 'i' is already declared in this scope.
+// Error processing file: ForEquationShadow1.mo
+// [OpenModelica/flattening/modelica/scodeinst/ForEquationShadow1.mo:9:3-13:10:writable] Notification: From here:
+// [OpenModelica/flattening/modelica/scodeinst/ForEquationShadow1.mo:10:5-12:12:writable] Warning: An iterator named 'i' is already declared in this scope.
+// Error: Class ForEquationShadow1.mo not found in scope <top>.
+// Error: Error occurred while flattening model ForEquationShadow1.mo
 //
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

@@ -22,30 +22,17 @@ end PolynomialEvaluator;
 class PolyEvaluate2
   Real p;
   PolynomialEvaluator polyeval(c = {1, 2, 3, 4}, x = time, y = p);
-
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end PolyEvaluate2;
 
 
 // Result:
-// class PolyEvaluate2
-//   Real p;
-//   parameter Real polyeval.c[1] = 1.0;
-//   parameter Real polyeval.c[2] = 2.0;
-//   parameter Real polyeval.c[3] = 3.0;
-//   parameter Real polyeval.c[4] = 4.0;
-//   Real polyeval.x = time;
-//   Real polyeval.y = p;
-//   protected parameter Integer polyeval.n = 3;
-//   protected Real polyeval.xpowers[1];
-//   protected Real polyeval.xpowers[2];
-//   protected Real polyeval.xpowers[3];
-//   protected Real polyeval.xpowers[4];
-// equation
-//   polyeval.xpowers[1] = 1.0;
-//   polyeval.xpowers[2] = polyeval.xpowers[1] * polyeval.x;
-//   polyeval.xpowers[3] = polyeval.xpowers[2] * polyeval.x;
-//   polyeval.xpowers[4] = polyeval.xpowers[3] * polyeval.x;
-//   polyeval.y = polyeval.c[1] * polyeval.xpowers[4];
-// end PolyEvaluate2;
+// Error processing file: PolynomialEvaluatorB.mo
+// Error: Failed to load package PolynomialEvaluatorB (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class PolynomialEvaluatorB not found in scope <top>.
+// Error: Error occurred while flattening model PolynomialEvaluatorB
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

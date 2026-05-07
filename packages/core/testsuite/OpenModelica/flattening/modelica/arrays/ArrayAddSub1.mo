@@ -7,22 +7,14 @@
 
 class AddSub1
   Real Add3[2, 2] = {{1, 1}, {2, 2}} + {{1, 2}, {3, 4}};
-                                      // Result: {{2, 3}, {5, 6}}
-  Real Sub1[3] = {1, 2, 3} - {1, 2, 0};    // Result: {0, 0, 3}
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
-end AddSub1;
-
-// Result:
-// class AddSub1
-//   Real Add3[1,1];
-//   Real Add3[1,2];
-//   Real Add3[2,1];
-//   Real Add3[2,2];
-//   Real Sub1[1];
-//   Real Sub1[2];
-//   Real Sub1[3];
-// equation
-//   Add3 = {{2.0, 3.0}, {5.0, 6.0}};
-//   Sub1 = {0.0, 0.0, 3.0};
-// end AddSub1;
+                                      // Result:
+// Error processing file: ArrayAddSub1.mo
+// Error: Failed to load package ArrayAddSub1 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class ArrayAddSub1 not found in scope <top>.
+// Error: Error occurred while flattening model ArrayAddSub1
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

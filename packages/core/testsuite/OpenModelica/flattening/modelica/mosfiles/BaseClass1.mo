@@ -8,7 +8,6 @@ partial package PartialMedium
     parameter Integer nXi;
     parameter Boolean b = nX == 4;
   end BaseProperties;
-
 end PartialMedium;
 
 package TableBased

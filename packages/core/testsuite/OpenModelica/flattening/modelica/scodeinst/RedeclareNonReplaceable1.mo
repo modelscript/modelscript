@@ -22,7 +22,8 @@ end RedeclareNonReplaceable1;
 
 // Result:
 // Error processing file: RedeclareNonReplaceable1.mo
-// [flattening/modelica/scodeinst/RedeclareNonReplaceable1.mo:20:13-20:26:writable] Error: Redeclaration with a new type requires 'a' to be replaceable.
+// [OpenModelica/flattening/modelica/scodeinst/RedeclareNonReplaceable1.mo:20:13-20:26:writable] Error: Redeclaration with a new type requires 'a' to be replaceable.
+// Error: Error occurred while flattening model RedeclareNonReplaceable1
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

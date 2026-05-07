@@ -1183,7 +1183,6 @@ model BS6
 
 equation
   connect(pulse1.outPort,der1.inPort) annotation(Line(visible=true,points={{-40.86,17.74},{-23.83,16.83}}));
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end BS6;
 // class BS6
 // parameter Integer pulse1.nout(min = 1) = 1 "Number of outputs";
@@ -1220,43 +1219,16 @@ end BS6;
 // pulse1.outPort.signal[1] = der1.inPort.signal[1];
 // end BS6;
 // Result:
-// class BS6
-//   parameter Integer pulse1.nout(min = 1) = 1 "Number of outputs";
-//   parameter Integer pulse1.outPort.n = pulse1.nout "Dimension of signal vector";
-//   Real pulse1.outPort.signal[1] "Real output signals";
-//   Real pulse1.y[1];
-//   parameter Real pulse1.amplitude[1] = 1.0 "Amplitudes of pulses";
-//   parameter Real pulse1.width[1](min = 1e-60, max = 100.0) = 50.0 "Widths of pulses in % of periods";
-//   parameter Real pulse1.period[1](quantity = "Time", unit = "s", min = 1e-60) = 1.0 "Times for one period";
-//   parameter Real pulse1.offset[1] = 0.0 "Offsets of output signals";
-//   parameter Real pulse1.startTime[1](quantity = "Time", unit = "s") = 0.0 "Output = offset for time < startTime";
-//   protected parameter Real pulse1.p_amplitude[1] = pulse1.amplitude[1];
-//   protected parameter Real pulse1.p_period[1](quantity = "Time", unit = "s") = pulse1.period[1];
-//   protected parameter Real pulse1.p_width[1](quantity = "Time", unit = "s") = 0.01 * pulse1.width[1] "Width of one pulse";
-//   protected parameter Real pulse1.p_offset[1] = pulse1.offset[1];
-//   protected parameter Real pulse1.p_startTime[1](quantity = "Time", unit = "s") = pulse1.startTime[1];
-//   protected Real pulse1.T0[1](quantity = "Time", unit = "s", start = pulse1.p_startTime[1]) "Start time of current period";
-//   parameter Integer der1.n = 1 "Number of inputs (= number of outputs)";
-//   parameter Integer der1.inPort.n = der1.n "Dimension of signal vector";
-//   Real der1.inPort.signal[1] "Real input signals";
-//   parameter Integer der1.outPort.n = der1.n "Dimension of signal vector";
-//   Real der1.outPort.signal[1] "Real output signals";
-//   Real der1.y[1] "Output signals";
-//   protected Real der1.u[1] "Input signals";
+// class SampleTest
+//   Clock c;
+//   Boolean cb = sample(0.1, 0.1);
+//   Real x1;
+//   Real x2;
+//   Real y;
 // equation
-//   when sample(pulse1.p_startTime[1], pulse1.p_period[1]) then
-//     pulse1.T0[1] = time;
-//   end when;
-//   pulse1.outPort.signal[1] = pulse1.p_offset[1] + (if time < pulse1.p_startTime[1] or time >= pulse1.T0[1] + pulse1.p_width[1] then 0.0 else pulse1.p_amplitude[1]);
-//   pulse1.y[1] = pulse1.outPort.signal[1];
-//   der1.u = {der1.inPort.signal[1]};
-//   der1.y[1] = der(der1.u[1]);
-//   der1.y[1] = der1.outPort.signal[1];
-//   assert(pulse1.outPort.n == der1.inPort.n, "automatically generated from connect");
-//   der1.inPort.signal[1] = pulse1.outPort.signal[1];
-// end BS6;
-// [flattening/modelica/msl/BS6.mo:685:41-685:69:writable] Warning: Non-array modification '1e-60' for array component, possibly due to missing 'each'.
-// [flattening/modelica/msl/BS6.mo:685:76-685:83:writable] Warning: Non-array modification '100' for array component, possibly due to missing 'each'.
-// [flattening/modelica/msl/BS6.mo:687:45-687:73:writable] Warning: Non-array modification '1e-60' for array component, possibly due to missing 'each'.
-//
+//   c = Clock(0.1);
+//   x1 = sample(1.0, Clock());
+//   x2 = sample(1.1, c);
+//   y = x1 + x2;
+// end SampleTest;
 // endResult

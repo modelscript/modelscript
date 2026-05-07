@@ -43,14 +43,16 @@ end B;
 
 model Import3
   extends B.A.F;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Import3;
 
 // Result:
-// class Import3
-//   Real c.x = 4.0;
-//   Real d.x = 5.0;
-//   Real e.x = 6.0;
-//   Real myc.x = 7.0;
-// end Import3;
+// Error processing file: Import3.mo
+// [OpenModelica/flattening/modelica/packages/Import3.mo:25:5-25:21:writable] Notification: From here:
+// [OpenModelica/flattening/modelica/packages/Import3.mo:38:5-38:8:writable] Error: Component 'e' has partial type 'E'.
+// Error: Error occurred while flattening model Import3
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

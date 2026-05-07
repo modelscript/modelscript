@@ -14,7 +14,8 @@ end RecursiveInst3;
 
 // Result:
 // Error processing file: RecursiveInst3.mo
-// [flattening/modelica/scodeinst/RecursiveInst3.mo:8:3-8:6:writable] Error: Declaration of element a causes recursive definition of class A.
+// [OpenModelica/flattening/modelica/scodeinst/RecursiveInst3.mo:8:3-8:6:writable] Error: Declaration of element a causes recursive definition of class A.
+// Error: Error occurred while flattening model RecursiveInst3
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

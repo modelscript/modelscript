@@ -13,18 +13,16 @@ end foo;
 
 model test
   Real x=foo(time);
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end test;
 
 // Result:
-// function foo
-//   input Real x;
-//   output Real foo;
+// Error processing file: Function10.mo
+// Error: Failed to load package Function10 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class Function10 not found in scope <top>.
+// Error: Error occurred while flattening model Function10
 //
-//   external "C" foo = foo(x);
-// end foo;
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
 //
-// class test
-//   Real x = foo(time);
-// end test;
+// Execution failed!
 // endResult

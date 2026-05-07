@@ -29,28 +29,16 @@ model RedeclareFunction
     end B;
 
     B b;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end RedeclareFunction;
 
 // Result:
-// function RedeclareFunction.B.A2.f
-//   input Real[2] a;
-//   output Real b;
-// algorithm
-//   b := {a[1], a[2]} * (1.0:2.0);
-// end RedeclareFunction.B.A2.f;
+// Error processing file: RedeclareFunction.mo
+// [OpenModelica/flattening/modelica/redeclare/ClassExtends3.mo:42:3-42:37:writable] Error: Variable b in package B is not constant.
+// [OpenModelica/flattening/modelica/redeclare/ClassExtends3.mo:46:3-46:39:writable] Error: Function B.usePart not found in scope ClassExtends3.
+// Error: Error occurred while flattening model RedeclareFunction (Bug1432)
 //
-// function RedeclareFunction.B.A3.f
-//   input Real[3] a;
-//   output Real b;
-// algorithm
-//   b := {a[1], a[2], a[3]} * (1.0:3.0);
-// end RedeclareFunction.B.A3.f;
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
 //
-// class RedeclareFunction
-//   Real b.nA2 = 2.0;
-//   Real b.nA3 = 3.0;
-//   Real b.x = RedeclareFunction.B.A2.f(1.0:b.nA2);
-//   Real b.y = RedeclareFunction.B.A3.f(1.0:b.nA3);
-// end RedeclareFunction;
+// Execution failed!
 // endResult

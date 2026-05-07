@@ -14,12 +14,16 @@ end Prismatic;
 
 model ModifierProblem
   Prismatic p1(s(start=0.1));
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ModifierProblem;
 
 // Result:
-// class ModifierProblem
-//   Real p1.s(start = 0.1);
-//   protected Real p1.length = p1.s;
-// end ModifierProblem;
+// Error processing file: ModifierProblem.mo
+// Error: Failed to load package ModifiersProblem (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class ModifiersProblem not found in scope <top>.
+// Error: Error occurred while flattening model ModifiersProblem
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

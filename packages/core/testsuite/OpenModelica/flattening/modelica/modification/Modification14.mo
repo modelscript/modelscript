@@ -18,7 +18,6 @@ model Modification6
   M m1(redeclare model Foo=myFoo(q=3.0), f(q=4.0,z=3));
   M m2(f(q=4.0), redeclare model Foo=myFoo(q=3.0));
   M m3(redeclare model Foo=myFoo(q=333));
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Modification6;
 
 // Instantiating element: m1
@@ -38,12 +37,13 @@ end Modification6;
 // Instantiating element: m3.Foo
 // Instantiating element: myFoo
 // Result:
-// class Modification6
-//   parameter Real m1.f.q = 4.0;
-//   parameter Real m1.f.z = 3.0;
-//   parameter Real m2.f.q = 4.0;
-//   parameter Real m2.f.z = 1.0;
-//   parameter Real m3.f.q = 2.0;
-//   parameter Real m3.f.z = 1.0;
-// end Modification6;
+// Error processing file: Modification14.mo
+// Error: Failed to load package Modification14 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class Modification14 not found in scope <top>.
+// Error: Error occurred while flattening model Modification14
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

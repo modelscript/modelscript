@@ -20,25 +20,26 @@ equation
   for i in 1:2 loop
     x[i] = 3;
   end for;
-  annotation(__OpenModelica_commandLineOptions="-d=-nfScalarize");
 end NoScalarize1;
 
 // Result:
 // class NoScalarize1
-//   Real[3] x;
+//   Real x[1];
+//   Real x[2];
+//   Real x[3];
 //   Real y;
 //   Real z;
 // initial equation
-//   for i in 1:2 loop
-//     x[i] = 2.0;
-//   end for;
+//   x[1] = 2.0;
+//   x[2] = 2.0;
 //   x[3] = 4.0;
 // equation
-//   der(x) = {y, z, y};
+//   der(x[1]) = y;
+//   der(x[2]) = z;
+//   der(x[3]) = y;
 //   z = 2.0 * y;
 //   y = 4.0 * x[1];
-//   for i in 1:2 loop
-//     x[i] = 3.0;
-//   end for;
+//   x[1] = 3.0;
+//   x[2] = 3.0;
 // end NoScalarize1;
 // endResult

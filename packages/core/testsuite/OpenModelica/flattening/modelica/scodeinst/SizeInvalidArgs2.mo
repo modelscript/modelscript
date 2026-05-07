@@ -12,7 +12,8 @@ end SizeInvalidArgs2;
 
 // Result:
 // Error processing file: SizeInvalidArgs2.mo
-// [flattening/modelica/scodeinst/SizeInvalidArgs2.mo:10:3-10:31:writable] Error: Function size has no input parameter named dim.
+// [OpenModelica/flattening/modelica/scodeinst/SizeInvalidArgs2.mo:10:3-10:31:writable] Error: Function size has no input parameter named dim.
+// Error: Error occurred while flattening model SizeInvalidArgs2
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

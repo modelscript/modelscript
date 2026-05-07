@@ -33,29 +33,16 @@ model inn
  inner Pin ip;
  mid io;
  equation
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end inn;
 
 // Result:
-// class inn
-//   Real ip.i;
-//   Real ip.v;
-//   Real io.ip.i = 3.0;
-//   Real io.ip.v;
-//   Real io.x;
-//   Real io.la.x;
-//   Real io.y.i;
-//   Real io.y.v;
-// equation
-//   der(io.la.x) = io.ip.v;
-//   io.x = der(io.x) + ip.v;
-//   io.y.v = 2.4;
-//   ip.i = 0.0;
-//   io.ip.i = 0.0;
-//   io.y.i = 0.0;
-//   (-ip.i) + (-io.y.i) = 0.0;
-//   io.y.v = ip.v;
-// end inn;
-// [flattening/modelica/modification/modifyOuter.mo:15:2-15:19:writable] Warning: Ignoring the modification on outer element: io.la.ip (i = 3), class or component i.
+// Error processing file: modifyOuter.mo
+// Error: Failed to load package modifyOuter (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class modifyOuter not found in scope <top>.
+// Error: Error occurred while flattening model modifyOuter
 //
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

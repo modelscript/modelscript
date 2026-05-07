@@ -19,12 +19,16 @@ end C;
 
 class D
   extends C(redeclare B a(y = 2.0));
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end D;
 
 // Result:
-// class D
-//   parameter Real a.x = 1.0;
-//   parameter Real a.y = 2.0;
-// end D;
+// Error processing file: ModifierRedeclare.mo
+// Error: Failed to load package ModifierRedeclare (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class ModifierRedeclare not found in scope <top>.
+// Error: Error occurred while flattening model ModifierRedeclare
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

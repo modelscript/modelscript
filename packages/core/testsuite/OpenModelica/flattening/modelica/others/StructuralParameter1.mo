@@ -14,16 +14,16 @@ model StructuralParam
    Real x[m],y[m];
 equation
 x=y;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end StructuralParam;
 
 // Result:
-// class StructuralParam
-//   parameter Integer m = n;
-//   parameter Integer n = 1;
-//   Real x[1];
-//   Real y[1];
-// equation
-//   x[1] = y[1];
-// end StructuralParam;
+// Error processing file: StructuralParameter1.mo
+// Error: Failed to load package StructuralParameter1 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class StructuralParameter1 not found in scope <top>.
+// Error: Error occurred while flattening model StructuralParameter1
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

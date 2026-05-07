@@ -27,36 +27,15 @@ equation
   c1 = Complex(re=2.0,im=3.0);
   c2 = Complex(re=7.0,im=3.14);
   c3 = c1 * c2;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end OperatorSimple;
 
 // Result:
-// function Complex "Automatically generated record constructor for Complex"
-//   input Real re;
-//   input Real im;
-//   output Complex res;
-// end Complex;
+// Error processing file: OperatorSimple.mo
+// [OpenModelica/flattening/modelica/operators/OperatorSimple.mo:12:3-21:10:writable] Error: Operator Complex.'*' is not encapsulated.
+// Error: Error occurred while flattening model OperatorSimple
 //
-// function Complex.'*'.mul
-//   input Complex c1;
-//   input Complex c2;
-//   output Complex result;
-// algorithm
-//   result := Complex(c1.re * c2.re - c1.im * c2.im, c1.re * c2.im + c1.im * c2.re);
-// end Complex.'*'.mul;
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
 //
-// class OperatorSimple
-//   Real c1.re;
-//   Real c1.im;
-//   Real c2.re;
-//   Real c2.im;
-//   Real c3.re;
-//   Real c3.im;
-// equation
-//   c1.re = 2.0;
-//   c1.im = 3.0;
-//   c2.re = 7.0;
-//   c2.im = 3.14;
-//   c3 = Complex.'*'.mul(c1, c2);
-// end OperatorSimple;
+// Execution failed!
 // endResult

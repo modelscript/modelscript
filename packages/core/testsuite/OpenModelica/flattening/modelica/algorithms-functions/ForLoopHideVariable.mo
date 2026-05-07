@@ -13,20 +13,16 @@ algorithm
   for k in 1:k+1 loop // The iteration variable k gets values 1, 2, 3, 4, 5
     z[k] := k;
   end for;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end HideVariable;
 
 // Result:
-// class HideVariable
-//   constant Integer k = 4;
-//   Real z[1];
-//   Real z[2];
-//   Real z[3];
-//   Real z[4];
-//   Real z[5];
-// algorithm
-//   for k in 1:5 loop
-//     z[k] := /*Real*/(k);
-//   end for;
-// end HideVariable;
+// Error processing file: ForLoopHideVariable.mo
+// Error: Failed to load package ForLoopHideVariable (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class ForLoopHideVariable not found in scope <top>.
+// Error: Error occurred while flattening model ForLoopHideVariable
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

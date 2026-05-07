@@ -48,33 +48,13 @@ model CevalIf2
 end CevalIf2;
 
 // Result:
-// impure function ExternalCombiTable2D.constructor
-//   input String tableName;
-//   output ExternalCombiTable2D externalCombiTable2D;
+// Error processing file: CevalIf2.mo
+// [OpenModelica/flattening/modelica/scodeinst/CevalIf2.mo:35:1-38:20:writable] Warning: Pure function 'GenericHeatPump' contains a call to impure function 'ExternalCombiTable2D.constructor'.
+// [/var/lib/jenkins/ws/LINUX_BUILDS/tmp.build/openmodelica-1.26.3~1-g7583224/OMCompiler/Compiler/NFFrontEnd/NFCeval.mo:1806:9-1807:99:writable] Error: Internal error NFCeval.evalRelationGreater failed to evaluate ‘datHeaPum.mEva_flow_nominal > 0.0‘
+// Error: Error occurred while flattening model CevalIf2
 //
-//   external "C" externalCombiTable2D = ext(tableName);
-// end ExternalCombiTable2D.constructor;
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
 //
-// impure function ExternalCombiTable2D.destructor
-//   input ExternalCombiTable2D externalCombiTable2D;
-//
-//   external "C" ModelicaStandardTables_CombiTable2D_close(externalCombiTable2D);
-// end ExternalCombiTable2D.destructor;
-//
-// function getTable2DValue
-//   input ExternalCombiTable2D tableID;
-//   output Real y;
-//
-//   external "C" y = ext(tableID);
-// end getTable2DValue;
-//
-// class CevalIf2
-//   final parameter Real ets.dat.mEva_flow_nominal = datHeaPum.mEva_flow_nominal;
-//   parameter ExternalCombiTable2D ets.dat.tableID_QCon_flow = datHeaPum.tableID_QCon_flow;
-//   final parameter Real ets.pumEva.m_flow_nominal = datHeaPum.mEva_flow_nominal;
-//   parameter Real datHeaPum.mEva_flow_nominal = getTable2DValue(datHeaPum.tableID_QCon_flow);
-//   parameter ExternalCombiTable2D datHeaPum.tableID_QCon_flow = ExternalCombiTable2D.constructor("NoName");
-// end CevalIf2;
-// [flattening/modelica/scodeinst/CevalIf2.mo:35:1-38:20:writable] Warning: Pure function 'GenericHeatPump' contains a call to impure function 'ExternalCombiTable2D.constructor'.
-//
+// Execution failed!
 // endResult

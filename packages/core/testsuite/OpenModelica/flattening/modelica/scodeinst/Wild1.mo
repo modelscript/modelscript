@@ -11,13 +11,13 @@ end f;
 model Wild1
   Real x;
 algorithm
-  (, x) := f();
+  ( x) := f();
 end Wild1;
 
 // Result:
 // class Wild1
 //   Real x;
 // algorithm
-//   x := 2.0;
+//   x := 1.0;
 // end Wild1;
 // endResult

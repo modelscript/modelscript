@@ -26,6 +26,5 @@ end ConnectorBalance5;
 // equation
 //   c.f = 0.0;
 // end ConnectorBalance5;
-// [flattening/modelica/connectors/ConnectorBalance5.mo:18:3-18:6:writable] Warning: Connector c is not balanced: The number of potential variables (2) is not equal to the number of flow variables (1).
-//
+// [OpenModelica/flattening/modelica/connectors/ConnectorBalance5.mo:18:3-18:6:writable] Warning: Connector c is not balanced: The number of potential variables (2) is not equal to the number of flow variables (1).
 // endResult

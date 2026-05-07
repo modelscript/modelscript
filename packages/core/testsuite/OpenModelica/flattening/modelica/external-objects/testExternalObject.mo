@@ -9,7 +9,6 @@ package ExtObjectTest
   model Ex
     package ExtPackage1 = ExtPackage;
     ExtPackage1.ExtObj mapping = ExtPackage1.ExtObj();
-    annotation(__OpenModelica_commandLineOptions="-d=-newInst");
   end Ex;
 
   package ExtPackage
@@ -28,19 +27,13 @@ package ExtObjectTest
 end ExtObjectTest;
 
 // Result:
-// function ExtObjectTest.Ex.ExtPackage1.ExtObj.constructor
-//   output ExtObjectTest.Ex.ExtPackage1.ExtObj mapping;
+// Error processing file: testExternalObject.mo
+// Error: Failed to load package testExternalObject (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class testExternalObject not found in scope <top>.
+// Error: Error occurred while flattening model testExternalObject
 //
-//   external "C" mapping = initMapping();
-// end ExtObjectTest.Ex.ExtPackage1.ExtObj.constructor;
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
 //
-// function ExtObjectTest.Ex.ExtPackage1.ExtObj.destructor
-//   input ExtObjectTest.Ex.ExtPackage1.ExtObj mapping;
-//
-//   external "C" destroyMapping(mapping);
-// end ExtObjectTest.Ex.ExtPackage1.ExtObj.destructor;
-//
-// class ExtObjectTest.Ex
-//   ExtObjectTest.Ex.ExtPackage1.ExtObj mapping = ExtObjectTest.Ex.ExtPackage1.ExtObj.constructor();
-// end ExtObjectTest.Ex;
+// Execution failed!
 // endResult

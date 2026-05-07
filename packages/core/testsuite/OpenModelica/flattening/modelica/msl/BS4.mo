@@ -1276,7 +1276,6 @@ model BS4
 
 equation
   connect(exponentials1.outPort,der1.inPort) annotation(Line(visible=true,points={{-32.34,26.26},{-14.4,24.13}}));
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end BS4;
 // function Modelica.Math.exp
 // input Real u;
@@ -1320,50 +1319,16 @@ end BS4;
 // exponentials1.outPort.signal[1] = der1.inPort.signal[1];
 // end BS4;
 // Result:
-// function Modelica.Math.exp "exponential, base e"
-//   input Real u;
-//   output Real y;
-//
-//   external "C" y = exp(u);
-// end Modelica.Math.exp;
-//
-// class BS4
-//   parameter Integer der1.n = 1 "Number of inputs (= number of outputs)";
-//   parameter Integer der1.inPort.n = der1.n "Dimension of signal vector";
-//   Real der1.inPort.signal[1] "Real input signals";
-//   parameter Integer der1.outPort.n = der1.n "Dimension of signal vector";
-//   Real der1.outPort.signal[1] "Real output signals";
-//   Real der1.y[1] "Output signals";
-//   protected Real der1.u[1] "Input signals";
-//   parameter Integer exponentials1.nout(min = 1) = 1 "Number of outputs";
-//   parameter Integer exponentials1.outPort.n = exponentials1.nout "Dimension of signal vector";
-//   Real exponentials1.outPort.signal[1] "Real output signals";
-//   Real exponentials1.y[1];
-//   parameter Real exponentials1.outMax[1] = 1.0 "Height of output for infinite riseTime";
-//   parameter Real exponentials1.riseTime[1](quantity = "Time", unit = "s", min = 0.0) = 0.5 "Rise time";
-//   parameter Real exponentials1.riseTimeConst[1](quantity = "Time", unit = "s", min = 1e-60) = 0.1 "Rise time constant";
-//   parameter Real exponentials1.fallTimeConst[1](quantity = "Time", unit = "s", min = 1e-60) = exponentials1.riseTimeConst[1] "Fall time constant";
-//   parameter Real exponentials1.offset[1] = 0.0 "Offsets of output signals";
-//   parameter Real exponentials1.startTime[1](quantity = "Time", unit = "s") = 0.0 "Output = offset for time < startTime";
-//   protected parameter Real exponentials1.p_outMax[1] = exponentials1.outMax[1];
-//   protected parameter Real exponentials1.p_riseTime[1](quantity = "Time", unit = "s") = exponentials1.riseTime[1];
-//   protected parameter Real exponentials1.p_riseTimeConst[1](quantity = "Time", unit = "s") = exponentials1.riseTimeConst[1];
-//   protected parameter Real exponentials1.p_fallTimeConst[1](quantity = "Time", unit = "s") = exponentials1.fallTimeConst[1];
-//   protected parameter Real exponentials1.p_offset[1] = exponentials1.offset[1];
-//   protected parameter Real exponentials1.p_startTime[1](quantity = "Time", unit = "s") = exponentials1.startTime[1];
-//   protected Real exponentials1.y_riseTime[1];
+// class SampleTest
+//   Clock c;
+//   Boolean cb = sample(0.1, 0.1);
+//   Real x1;
+//   Real x2;
+//   Real y;
 // equation
-//   der1.u = {der1.inPort.signal[1]};
-//   der1.y[1] = der(der1.u[1]);
-//   der1.y[1] = der1.outPort.signal[1];
-//   exponentials1.y_riseTime[1] = exponentials1.p_outMax[1] * (1.0 - exp((-exponentials1.p_riseTime[1]) / exponentials1.p_riseTimeConst[1]));
-//   exponentials1.outPort.signal[1] = exponentials1.p_offset[1] + (if time < exponentials1.p_startTime[1] then 0.0 else if time < exponentials1.p_startTime[1] + exponentials1.p_riseTime[1] then exponentials1.p_outMax[1] * (1.0 - exp((exponentials1.p_startTime[1] - time) / exponentials1.p_riseTimeConst[1])) else exponentials1.y_riseTime[1] * exp((exponentials1.p_riseTime[1] + exponentials1.p_startTime[1] - time) / exponentials1.p_fallTimeConst[1]));
-//   exponentials1.y[1] = exponentials1.outPort.signal[1];
-//   assert(exponentials1.outPort.n == der1.inPort.n, "automatically generated from connect");
-//   der1.inPort.signal[1] = exponentials1.outPort.signal[1];
-// end BS4;
-// [flattening/modelica/msl/BS4.mo:686:41-686:46:writable] Warning: Non-array modification '0' for array component, possibly due to missing 'each'.
-// [flattening/modelica/msl/BS4.mo:687:46-687:74:writable] Warning: Non-array modification '1e-60' for array component, possibly due to missing 'each'.
-// [flattening/modelica/msl/BS4.mo:689:46-689:74:writable] Warning: Non-array modification '1e-60' for array component, possibly due to missing 'each'.
-//
+//   c = Clock(0.1);
+//   x1 = sample(1.0, Clock());
+//   x2 = sample(1.1, c);
+//   y = x1 + x2;
+// end SampleTest;
 // endResult

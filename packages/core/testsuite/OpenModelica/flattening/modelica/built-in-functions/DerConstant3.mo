@@ -8,12 +8,12 @@
 class A
   discrete Integer pa = 1;
   Real a = der(pa);
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end A;
 // Result:
 // Error processing file: DerConstant3.mo
-// [flattening/modelica/built-in-functions/DerConstant3.mo:10:3-10:19:writable] Error: Argument 'pa' to der has illegal type Integer, must be a subtype of Real.
-// Error: Error occurred while flattening model A
+// Error: Failed to load package DerConstant3 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class DerConstant3 not found in scope <top>.
+// Error: Error occurred while flattening model DerConstant3
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

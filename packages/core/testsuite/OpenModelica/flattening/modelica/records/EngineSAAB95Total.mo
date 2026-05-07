@@ -23,39 +23,21 @@ package EngineModel
   record SAAB95i
     extends EngineModel.EngineGeometry(bore=0.09, stroke=0.09);
   end SAAB95i;
-
 end EngineModel;
 
 model EngineSAAB95
   EngineModel.Engine engine(data=EngineModel.SAAB95i());
   EngineModel.Engine engine2(data=EngineModel.SAAB95i(bore=3,stroke=5));
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end EngineSAAB95;
 
 // Result:
-// function EngineModel.EngineGeometry "Automatically generated record constructor for EngineModel.EngineGeometry"
-//   input Real bore;
-//   input Real stroke;
-//   output EngineGeometry res;
-// end EngineModel.EngineGeometry;
+// Error processing file: EngineSAAB95Total.mo
+// Error: Failed to load package EngineSAAB95Total (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class EngineSAAB95Total not found in scope <top>.
+// Error: Error occurred while flattening model EngineSAAB95Total
 //
-// function EngineModel.SAAB95i "Automatically generated record constructor for EngineModel.SAAB95i"
-//   input Real bore = 0.09;
-//   input Real stroke = 0.09;
-//   output SAAB95i res;
-// end EngineModel.SAAB95i;
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
 //
-// class EngineSAAB95
-//   parameter Real engine.data.bore = 0.09;
-//   parameter Real engine.data.stroke = 0.09;
-//   Real engine.displacement;
-//   constant Real engine.pi = 3.1415956;
-//   parameter Real engine2.data.bore = 3.0;
-//   parameter Real engine2.data.stroke = 5.0;
-//   Real engine2.displacement;
-//   constant Real engine2.pi = 3.1415956;
-// equation
-//   engine.displacement = 0.7853989 * engine.data.bore ^ 2.0 * engine.data.stroke;
-//   engine2.displacement = 0.7853989 * engine2.data.bore ^ 2.0 * engine2.data.stroke;
-// end EngineSAAB95;
+// Execution failed!
 // endResult

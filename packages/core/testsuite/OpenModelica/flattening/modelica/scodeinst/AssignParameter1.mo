@@ -11,7 +11,8 @@ end AssignParameter1;
 
 // Result:
 // Error processing file: AssignParameter1.mo
-// [flattening/modelica/scodeinst/AssignParameter1.mo:9:3-9:9:writable] Error: Trying to assign to parameter component in x := 3.0
+// [OpenModelica/flattening/modelica/scodeinst/AssignParameter1.mo:9:3-9:9:writable] Error: Trying to assign to parameter component in x := 3.0
+// Error: Error occurred while flattening model AssignParameter1
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

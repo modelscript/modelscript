@@ -16,7 +16,8 @@ end FuncBuiltinDerInvalid1;
 
 // Result:
 // Error processing file: FuncBuiltinDerInvalid1.mo
-// [flattening/modelica/scodeinst/FuncBuiltinDerInvalid1.mo:10:3-10:18:writable] Error: Argument 'x' of der is not differentiable.
+// [OpenModelica/flattening/modelica/scodeinst/FuncBuiltinDerInvalid1.mo:10:3-10:18:writable] Error: Argument 'x' of der is not differentiable.
+// Error: Error occurred while flattening model FuncBuiltinDerInvalid1
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

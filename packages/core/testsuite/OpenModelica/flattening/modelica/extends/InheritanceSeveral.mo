@@ -16,12 +16,16 @@ end B;
 
 class C
   extends B;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end C;
 
 // Result:
-// class C
-//   parameter Real a;
-//   parameter Real b;
-// end C;
+// Error processing file: InheritanceSeveral.mo
+// Error: Failed to load package InheritanceSeveral (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class InheritanceSeveral not found in scope <top>.
+// Error: Error occurred while flattening model InheritanceSeveral
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

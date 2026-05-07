@@ -7,12 +7,11 @@
 
 model NonexistentElementRedeclare1
   redeclare Real x;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end NonexistentElementRedeclare1;
 
 // Result:
 // Error processing file: NonexistentElementRedeclare1.mo
-// [flattening/modelica/redeclare/NonexistentElementRedeclare1.mo:9:3-9:19:writable] Error: Illegal redeclare of element x, no inherited element with that name exists.
+// [OpenModelica/flattening/modelica/redeclare/NonexistentElementRedeclare1.mo:9:3-9:19:writable] Error: Illegal redeclare of element x, no inherited element with that name exists.
 // Error: Error occurred while flattening model NonexistentElementRedeclare1
 //
 // # Error encountered! Exiting...

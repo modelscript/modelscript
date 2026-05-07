@@ -19,25 +19,20 @@ package RedeclareTypeWithArrayDimensions
     parameter Real x[:,2] = [0, 1];
     foo bletch(u=x, redeclare type paramType = Real[size(x,1),2]);
   end bar;
-
 end RedeclareTypeWithArrayDimensions;
 
 model TestRedeclareTypeWithArrayDimensions
   extends RedeclareTypeWithArrayDimensions.bar;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end TestRedeclareTypeWithArrayDimensions;
 
 // Result:
-// class TestRedeclareTypeWithArrayDimensions
-//   parameter Real x[1,1] = 0.0;
-//   parameter Real x[1,2] = 1.0;
-//   input Real bletch.u[1,1];
-//   input Real bletch.u[1,2];
-//   output Real bletch.y[1,1];
-//   output Real bletch.y[1,2];
-// equation
-//   bletch.u = {{x[1,1], x[1,2]}};
-//   bletch.y[1,1] = sin(bletch.u[1,1]);
-//   bletch.y[1,2] = sin(bletch.u[1,2]);
-// end TestRedeclareTypeWithArrayDimensions;
+// Error processing file: TestRedeclareTypeWithArrayDimensions.mo
+// Error: Failed to load package RedeclareNoCC1 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class RedeclareNoCC1 not found in scope <top>.
+// Error: Error occurred while flattening model TestRedeclareTypeWithArrayDimensions.mo [BUG: #2418]
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

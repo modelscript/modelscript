@@ -90,7 +90,6 @@ of package Modelica.Blocks inherit directly or indirectly
 from this block.
 </p>
 </html>"));
-
         end BlockIcon;
 
         partial block SO "Single Output continuous control block"
@@ -109,7 +108,6 @@ from this block.
 Block has one continuous Real output signal.
 </p>
 </html>"));
-
         end SO;
         annotation (
           Documentation(info="<HTML>
@@ -2152,156 +2150,16 @@ model SiemensPower_Components_Valves_Tests_valve_fixeddensity_test
     NumberOfIntervals=500,
     Tolerance=0.0001,
     Algorithm="dassl"),uses(SiemensPower(version="1.6")));
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end SiemensPower_Components_Valves_Tests_valve_fixeddensity_test;
 
 // Result:
-// function Modelica.Math.asin "Inverse sine (-1 <= u <= 1)"
-//   input Real u;
-//   output Real y(quantity = "Angle", unit = "rad", displayUnit = "deg");
+// Error processing file: StreamConcept_NoMedium_Total.mo
+// Error: Failed to load package StreamConcept_NoMedium_Total (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class StreamConcept_NoMedium_Total.mo not found in scope <top>.
+// Error: Error occurred while flattening model StreamConcept_NoMedium_Total.mo
 //
-//   external "C" y = asin(u);
-// end Modelica.Math.asin;
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
 //
-// function Modelica.Math.sin "Sine"
-//   input Real u(quantity = "Angle", unit = "rad", displayUnit = "deg");
-//   output Real y;
-//
-//   external "C" y = sin(u);
-// end Modelica.Math.sin;
-//
-// function SiemensPower.Utilities.Functions.der_sqrtReg "Time derivative of sqrtReg"
-//   input Real x;
-//   input Real delta = 0.01 "Range of significant deviation from sqrt(x)";
-//   input Real dx "Derivative of x";
-//   output Real dy;
-// algorithm
-//   dy := 0.5 * dx * (x ^ 2.0 + 2.0 * delta ^ 2.0) / (x ^ 2.0 + delta ^ 2.0) ^ 1.25;
-// end SiemensPower.Utilities.Functions.der_sqrtReg;
-//
-// function SiemensPower.Utilities.Functions.sqrtReg "Symmetric square root approximation with finite derivative in zero"
-//   input Real x;
-//   input Real delta = 0.01 "Range of significant deviation from sqrt(x)";
-//   output Real y;
-// algorithm
-//   y := x / (x ^ 2.0 + delta ^ 2.0) ^ 0.25;
-// end SiemensPower.Utilities.Functions.sqrtReg;
-//
-// class SiemensPower_Components_Valves_Tests_valve_fixeddensity_test
-//   parameter Boolean valve_fixeddensity1.preferredStates = true "Try to select preferred medium states";
-//   parameter Real valve_fixeddensity1.m_start(quantity = "MassFlowRate", unit = "kg/s") = 1.0 "Guess value for mass flow rate";
-//   parameter Real valve_fixeddensity1.p_start_in(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0) = 110000.0 "Start value of inlet pressure";
-//   parameter Real valve_fixeddensity1.p_start_out(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0) = 100000.0 "Start value of outlet pressure";
-//   parameter Boolean valve_fixeddensity1.use_T_start = false "Use T_start if true, otherwise h_start";
-//   parameter Real valve_fixeddensity1.h_start_in(quantity = "SpecificEnergy", unit = "J/kg") = 300000.0 "Start value of specific enthalpy";
-//   parameter Real valve_fixeddensity1.h_start_out(quantity = "SpecificEnergy", unit = "J/kg") = valve_fixeddensity1.h_start_in "Start value of specific enthalpy";
-//   Real valve_fixeddensity1.port_a.m_flow(quantity = "MassFlowRate", unit = "kg/s") "Mass flow rate from the connection point into the component";
-//   Real valve_fixeddensity1.port_a.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0) "Thermodynamic pressure in the connection point";
-//   Real valve_fixeddensity1.port_a.h_outflow(quantity = "SpecificEnergy", unit = "J/kg") "Specific thermodynamic enthalpy close to the connection point if m_flow < 0";
-//   Real valve_fixeddensity1.port_b.m_flow(quantity = "MassFlowRate", unit = "kg/s") "Mass flow rate from the connection point into the component";
-//   Real valve_fixeddensity1.port_b.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0) "Thermodynamic pressure in the connection point";
-//   Real valve_fixeddensity1.port_b.h_outflow(quantity = "SpecificEnergy", unit = "J/kg") "Specific thermodynamic enthalpy close to the connection point if m_flow < 0";
-//   Real valve_fixeddensity1.dp(quantity = "Pressure", unit = "Pa", displayUnit = "bar", start = valve_fixeddensity1.p_start_in - valve_fixeddensity1.p_start_out);
-//   parameter Boolean valve_fixeddensity1.allowFlowReversal = true "Allow flow reversal";
-//   parameter Real valve_fixeddensity1.m_flow_small(quantity = "MassFlowRate", unit = "kg/s") = 0.01 * valve_fixeddensity1.m_start "Small mass flow rate for regularization of zero flow";
-//   Real valve_fixeddensity1.m_flow(quantity = "MassFlowRate", unit = "kg/s", start = valve_fixeddensity1.m_start) "Mass flow rate from port_a to port_b (m_flow > 0 is design flow direction)";
-//   protected Real valve_fixeddensity1.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0);
-//   protected Real valve_fixeddensity1.h(quantity = "SpecificEnergy", unit = "J/kg");
-//   protected Real valve_fixeddensity1.fromleft;
-//   constant Real valve_fixeddensity1.pi = 3.141592653589793;
-//   parameter Real valve_fixeddensity1.d(quantity = "Length", unit = "m") = 0.2 "Diameter";
-//   parameter Real valve_fixeddensity1.Kv = 0.001 "Hydraulic conductance at full opening for simple linear valve: mflow = Kv Y dp";
-//   parameter Real valve_fixeddensity1.Y0 = 1.0 "Opening Y (if not set from outide)";
-//   parameter Boolean valve_fixeddensity1.OMC = false "Reverse flow stopped";
-//   parameter Real valve_fixeddensity1.h_a_nom(quantity = "SpecificEnergy", unit = "J/kg") = valve_fixeddensity1.h_start_in "Enthalpy at port_a";
-//   parameter Real valve_fixeddensity1.p_a_nom(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0) = valve_fixeddensity1.p_start_in "Pressure at port_a";
-//   parameter Real valve_fixeddensity1.p_b_nom(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0) = valve_fixeddensity1.p_start_out "Pressure at port_b";
-//   parameter Real valve_fixeddensity1.m_flow_nom(quantity = "MassFlowRate", unit = "kg/s") = valve_fixeddensity1.m_start "Mass flow rate";
-//   parameter Real valve_fixeddensity1.Y_nom = valve_fixeddensity1.Y0 "Valve opening";
-//   parameter Real valve_fixeddensity1.chi = 8.0 "Spray coefficient for water valve, m ~ sqrt(1/chi)";
-//   parameter Real valve_fixeddensity1.delta = 0.001 "Regularisation factor for sqrtReg(x,deltareg)";
-//   final parameter Real valve_fixeddensity1.diameter(quantity = "Length", unit = "m") = valve_fixeddensity1.d "actual diameter";
-//   final parameter Real valve_fixeddensity1.A(quantity = "Area", unit = "m2") = 0.7853981633974483 * valve_fixeddensity1.diameter ^ 2.0 "inner cross sectional area";
-//   Real valve_fixeddensity1.Y(start = valve_fixeddensity1.Y0) "Opening (if desired)";
-//   Real valve_fixeddensity1.rho(quantity = "Density", unit = "kg/m3", displayUnit = "g/cm3", min = 0.0);
-//   Real valve_fixeddensity1.x;
-//   Real valve_fixeddensity1.flowdirection;
-//   parameter Real watersink_ph_StreamConcept.p0(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0) = 100000.0 "Pressure";
-//   parameter Real watersink_ph_StreamConcept.h0(quantity = "SpecificEnergy", unit = "J/kg") = 100000.0 "Specific enthalpy for reverse flow";
-//   Real watersink_ph_StreamConcept.port.m_flow(quantity = "MassFlowRate", unit = "kg/s") "Mass flow rate from the connection point into the component";
-//   Real watersink_ph_StreamConcept.port.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0) "Thermodynamic pressure in the connection point";
-//   Real watersink_ph_StreamConcept.port.h_outflow(quantity = "SpecificEnergy", unit = "J/kg") "Specific thermodynamic enthalpy close to the connection point if m_flow < 0";
-//   Real watersink_ph_StreamConcept.p_in;
-//   Real sine.y "Connector of Real output signal";
-//   parameter Real sine.amplitude = 50000.0 "Amplitude of sine wave";
-//   parameter Real sine.freqHz(quantity = "Frequency", unit = "Hz", start = 1.0) = 0.01 "Frequency of sine wave";
-//   parameter Real sine.phase(quantity = "Angle", unit = "rad", displayUnit = "deg") = 0.0 "Phase of sine wave";
-//   parameter Real sine.offset = 100000.0 "Offset of output signal";
-//   parameter Real sine.startTime(quantity = "Time", unit = "s") = 5.0 "Output = offset for time < startTime";
-//   protected constant Real sine.pi = 3.141592653589793;
-//   Real ramp2.y "Connector of Real output signal";
-//   parameter Real ramp2.height = 0.0 "Height of ramps";
-//   parameter Real ramp2.duration(quantity = "Time", unit = "s", min = 1e-60, start = 2.0) = 30.0 "Durations of ramp";
-//   parameter Real ramp2.offset = 100000.0 "Offset of output signal";
-//   parameter Real ramp2.startTime(quantity = "Time", unit = "s") = 500.0 "Output = offset for time < startTime";
-//   Real ramp3.y "Connector of Real output signal";
-//   parameter Real ramp3.height = 0.0 "Height of ramps";
-//   parameter Real ramp3.duration(quantity = "Time", unit = "s", min = 1e-60, start = 2.0) = 300.0 "Durations of ramp";
-//   parameter Real ramp3.offset = 1.0 "Offset of output signal";
-//   parameter Real ramp3.startTime(quantity = "Time", unit = "s") = 30.0 "Output = offset for time < startTime";
-//   parameter Real watersink_ph_StreamConcept1.p0(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0) = 100000.0 "Pressure";
-//   parameter Real watersink_ph_StreamConcept1.h0(quantity = "SpecificEnergy", unit = "J/kg") = 200000.0 "Specific enthalpy for reverse flow";
-//   Real watersink_ph_StreamConcept1.port.m_flow(quantity = "MassFlowRate", unit = "kg/s") "Mass flow rate from the connection point into the component";
-//   Real watersink_ph_StreamConcept1.port.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0) "Thermodynamic pressure in the connection point";
-//   Real watersink_ph_StreamConcept1.port.h_outflow(quantity = "SpecificEnergy", unit = "J/kg") "Specific thermodynamic enthalpy close to the connection point if m_flow < 0";
-//   Real watersink_ph_StreamConcept1.p_in;
-//   Real InStreamEnthalpy.h_out(quantity = "SpecificEnergy", unit = "J/kg") "Specific enthalpy in port medium";
-//   Real InStreamEnthalpy.port.m_flow(quantity = "MassFlowRate", unit = "kg/s") "Mass flow rate from the connection point into the component";
-//   Real InStreamEnthalpy.port.p(quantity = "Pressure", unit = "Pa", displayUnit = "bar", min = 0.0) "Thermodynamic pressure in the connection point";
-//   Real InStreamEnthalpy.port.h_outflow(quantity = "SpecificEnergy", unit = "J/kg") "Specific thermodynamic enthalpy close to the connection point if m_flow < 0";
-// equation
-//   if valve_fixeddensity1.dp >= 0.0 then
-//     valve_fixeddensity1.x = valve_fixeddensity1.port_b.p / valve_fixeddensity1.port_a.p;
-//     valve_fixeddensity1.flowdirection = 1.0;
-//   else
-//     valve_fixeddensity1.x = valve_fixeddensity1.port_a.p / valve_fixeddensity1.port_b.p;
-//     valve_fixeddensity1.flowdirection = -1.0;
-//   end if;
-//   valve_fixeddensity1.rho = 900.0;
-//   valve_fixeddensity1.m_flow = valve_fixeddensity1.flowdirection * valve_fixeddensity1.A * valve_fixeddensity1.Y * SiemensPower.Utilities.Functions.sqrtReg(2.0 * abs(valve_fixeddensity1.dp) * valve_fixeddensity1.rho / valve_fixeddensity1.chi, valve_fixeddensity1.delta * valve_fixeddensity1.p_a_nom);
-//   valve_fixeddensity1.m_flow = valve_fixeddensity1.port_a.m_flow;
-//   valve_fixeddensity1.port_a.m_flow + valve_fixeddensity1.port_b.m_flow = 0.0;
-//   valve_fixeddensity1.port_a.h_outflow = watersink_ph_StreamConcept.port.h_outflow;
-//   valve_fixeddensity1.port_b.h_outflow = $OMC$inStreamDiv(($OMC$PositiveMax(-watersink_ph_StreamConcept1.port.m_flow, 1e-07) * watersink_ph_StreamConcept1.port.h_outflow + $OMC$PositiveMax(-InStreamEnthalpy.port.m_flow, 1e-07) * InStreamEnthalpy.port.h_outflow) / ($OMC$PositiveMax(-watersink_ph_StreamConcept1.port.m_flow, 1e-07) + $OMC$PositiveMax(-InStreamEnthalpy.port.m_flow, 1e-07)), watersink_ph_StreamConcept1.port.h_outflow);
-//   if noEvent(valve_fixeddensity1.m_flow > valve_fixeddensity1.m_flow_small) then
-//     valve_fixeddensity1.fromleft = 1.0;
-//   elseif noEvent(valve_fixeddensity1.m_flow < (-valve_fixeddensity1.m_flow_small)) then
-//     valve_fixeddensity1.fromleft = 0.0;
-//   else
-//     valve_fixeddensity1.fromleft = 0.5 * (1.0 + (-0.5) * valve_fixeddensity1.m_flow * (-3.0 + (valve_fixeddensity1.m_flow / valve_fixeddensity1.m_flow_small) ^ 2.0) / valve_fixeddensity1.m_flow_small);
-//   end if;
-//   valve_fixeddensity1.p = valve_fixeddensity1.fromleft * valve_fixeddensity1.port_a.p + (1.0 - valve_fixeddensity1.fromleft) * valve_fixeddensity1.port_b.p;
-//   valve_fixeddensity1.h = valve_fixeddensity1.fromleft * $OMC$inStreamDiv(($OMC$PositiveMax(-watersink_ph_StreamConcept1.port.m_flow, 1e-07) * watersink_ph_StreamConcept1.port.h_outflow + $OMC$PositiveMax(-InStreamEnthalpy.port.m_flow, 1e-07) * InStreamEnthalpy.port.h_outflow) / ($OMC$PositiveMax(-watersink_ph_StreamConcept1.port.m_flow, 1e-07) + $OMC$PositiveMax(-InStreamEnthalpy.port.m_flow, 1e-07)), watersink_ph_StreamConcept1.port.h_outflow) + (1.0 - valve_fixeddensity1.fromleft) * watersink_ph_StreamConcept.port.h_outflow;
-//   valve_fixeddensity1.dp = valve_fixeddensity1.port_a.p - valve_fixeddensity1.port_b.p;
-//   watersink_ph_StreamConcept.port.p = watersink_ph_StreamConcept.p_in;
-//   watersink_ph_StreamConcept.port.h_outflow = watersink_ph_StreamConcept.h0;
-//   sine.y = sine.offset + (if time < sine.startTime then 0.0 else sine.amplitude * sin(6.283185307179586 * sine.freqHz * (time - sine.startTime) + sine.phase));
-//   ramp2.y = ramp2.offset + (if time < ramp2.startTime then 0.0 else if time < ramp2.startTime + ramp2.duration then (time - ramp2.startTime) * ramp2.height / ramp2.duration else ramp2.height);
-//   ramp3.y = ramp3.offset + (if time < ramp3.startTime then 0.0 else if time < ramp3.startTime + ramp3.duration then (time - ramp3.startTime) * ramp3.height / ramp3.duration else ramp3.height);
-//   watersink_ph_StreamConcept1.port.p = watersink_ph_StreamConcept1.p_in;
-//   watersink_ph_StreamConcept1.port.h_outflow = watersink_ph_StreamConcept1.h0;
-//   InStreamEnthalpy.port.m_flow = 0.0;
-//   InStreamEnthalpy.port.h_outflow = 0.0;
-//   InStreamEnthalpy.h_out = $OMC$inStreamDiv(($OMC$PositiveMax(-valve_fixeddensity1.port_a.m_flow, 1e-07) * valve_fixeddensity1.port_a.h_outflow + $OMC$PositiveMax(-watersink_ph_StreamConcept1.port.m_flow, 1e-07) * watersink_ph_StreamConcept1.port.h_outflow) / ($OMC$PositiveMax(-valve_fixeddensity1.port_a.m_flow, 1e-07) + $OMC$PositiveMax(-watersink_ph_StreamConcept1.port.m_flow, 1e-07)), valve_fixeddensity1.port_a.h_outflow);
-//   valve_fixeddensity1.port_a.m_flow + watersink_ph_StreamConcept1.port.m_flow + InStreamEnthalpy.port.m_flow = 0.0;
-//   valve_fixeddensity1.port_b.m_flow + watersink_ph_StreamConcept.port.m_flow = 0.0;
-//   valve_fixeddensity1.port_b.p = watersink_ph_StreamConcept.port.p;
-//   ramp2.y = watersink_ph_StreamConcept.p_in;
-//   ramp3.y = valve_fixeddensity1.Y;
-//   InStreamEnthalpy.port.p = valve_fixeddensity1.port_a.p;
-//   InStreamEnthalpy.port.p = watersink_ph_StreamConcept1.port.p;
-//   sine.y = watersink_ph_StreamConcept1.p_in;
-// end SiemensPower_Components_Valves_Tests_valve_fixeddensity_test;
-// Warning: Ignoring unknown experiment annotation option: Algorithm = "dassl"
-//
+// Execution failed!
 // endResult

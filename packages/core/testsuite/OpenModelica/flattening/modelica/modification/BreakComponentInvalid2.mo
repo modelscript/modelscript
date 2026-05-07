@@ -13,7 +13,8 @@ end BreakComponentInvalid2;
 
 // Result:
 // Error processing file: BreakComponentInvalid2.mo
-// [flattening/modelica/modification/BreakComponentInvalid2.mo:11:13-11:20:writable] Error: Invalid use of break on non-component 'x'.
+// [OpenModelica/flattening/modelica/modification/BreakComponentInvalid2.mo:11:13-11:20:writable] Error: Invalid use of break on non-component 'x'.
+// Error: Error occurred while flattening model BreakComponentInvalid2
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

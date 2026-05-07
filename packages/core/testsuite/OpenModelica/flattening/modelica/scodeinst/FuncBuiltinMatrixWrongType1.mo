@@ -11,7 +11,8 @@ end FuncBuiltinMatrixWrongType1;
 
 // Result:
 // Error processing file: FuncBuiltinMatrixWrongType1.mo
-// [flattening/modelica/scodeinst/FuncBuiltinMatrixWrongType1.mo:9:3-9:103:writable] Error: Invalid dimension 3 of argument to matrix, expected dimension size 1 but got 2.
+// [OpenModelica/flattening/modelica/scodeinst/FuncBuiltinMatrixWrongType1.mo:9:3-9:103:writable] Error: Invalid dimension 3 of argument to matrix, expected dimension size 1 but got 2.
+// Error: Error occurred while flattening model FuncBuiltinMatrixWrongType1
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

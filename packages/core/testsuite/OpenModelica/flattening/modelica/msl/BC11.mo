@@ -963,7 +963,6 @@ model BC11
 
 equation
   connect(transferFunction1.inPort,constant1.outPort) annotation(Line(visible=true,points={{-14.4,26.56},{-37.51,26.87}}));
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end BC11;
 
 // class BC11
@@ -999,36 +998,16 @@ end BC11;
 // transferFunction1.inPort.signal[1] = constant1.outPort.signal[1];
 // end BC11;
 // Result:
-// class BC11
-//   parameter Integer transferFunction1.inPort.n = 1 "Dimension of signal vector";
-//   Real transferFunction1.inPort.signal[1] "Real input signals";
-//   parameter Integer transferFunction1.outPort.n = 1 "Dimension of signal vector";
-//   Real transferFunction1.outPort.signal[1] "Real output signals";
-//   Real transferFunction1.y;
-//   protected Real transferFunction1.u = transferFunction1.inPort.signal[1];
-//   parameter Real transferFunction1.b[1] = 1.0 "Numerator coefficients of transfer function.";
-//   parameter Real transferFunction1.a[1] = 1.0 "Denominator coefficients of transfer function.";
-//   parameter Real transferFunction1.a[2] = 1.0 "Denominator coefficients of transfer function.";
-//   Real transferFunction1.x[1] "State of transfer function from controller canonical form";
-//   protected parameter Integer transferFunction1.na = 2 "Size of Denominator of transfer function.";
-//   protected parameter Integer transferFunction1.nb(max = transferFunction1.na) = 1 "Size of Numerator of transfer function.";
-//   protected parameter Integer transferFunction1.nx = 1;
-//   protected Real transferFunction1.x1dot "Derivative of first state of TransferFcn";
-//   protected Real transferFunction1.xn "Highest order state of TransferFcn";
-//   parameter Integer constant1.nout(min = 1) = 1 "Number of outputs";
-//   parameter Integer constant1.outPort.n = constant1.nout "Dimension of signal vector";
-//   Real constant1.outPort.signal[1] "Real output signals";
-//   Real constant1.y[1];
-//   parameter Real constant1.k[1] = 1.0 "Constant output values";
+// class SampleTest
+//   Clock c;
+//   Boolean cb = sample(0.1, 0.1);
+//   Real x1;
+//   Real x2;
+//   Real y;
 // equation
-//   der(transferFunction1.x[1]) = transferFunction1.x1dot;
-//   transferFunction1.xn = transferFunction1.x[1];
-//   transferFunction1.u = transferFunction1.a[1] * transferFunction1.x1dot + transferFunction1.a[2] * transferFunction1.x[1];
-//   transferFunction1.y = transferFunction1.b[1] * transferFunction1.x[1];
-//   transferFunction1.y = transferFunction1.outPort.signal[1];
-//   constant1.outPort.signal[1] = constant1.k[1];
-//   constant1.y[1] = constant1.outPort.signal[1];
-//   assert(transferFunction1.inPort.n == constant1.outPort.n, "automatically generated from connect");
-//   constant1.outPort.signal[1] = transferFunction1.inPort.signal[1];
-// end BC11;
+//   c = Clock(0.1);
+//   x1 = sample(1.0, Clock());
+//   x2 = sample(1.1, c);
+//   y = x1 + x2;
+// end SampleTest;
 // endResult

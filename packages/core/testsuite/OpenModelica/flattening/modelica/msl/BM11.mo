@@ -1062,7 +1062,6 @@ model BM11
 
 equation
   connect(exp1.inPort,constant1.outPort) annotation(Line(visible=true,points={{-14.09,8.32},{-32.34,4.06}}));
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end BM11;
 // function Modelica.Math.exp
 // input Real u;
@@ -1093,33 +1092,16 @@ end BM11;
 // exp1.inPort.signal[1] = constant1.outPort.signal[1];
 // end BM11;
 // Result:
-// function Modelica.Math.exp "exponential, base e"
-//   input Real u;
-//   output Real y;
-//
-//   external "C" y = exp(u);
-// end Modelica.Math.exp;
-//
-// class BM11
-//   parameter Integer exp1.n = 1 "Number of inputs (= number of outputs)";
-//   parameter Integer exp1.inPort.n = exp1.n "Dimension of signal vector";
-//   Real exp1.inPort.signal[1] "Real input signals";
-//   parameter Integer exp1.outPort.n = exp1.n "Dimension of signal vector";
-//   Real exp1.outPort.signal[1] "Real output signals";
-//   Real exp1.y[1] "Output signals";
-//   protected Real exp1.u[1] "Input signals";
-//   parameter Integer constant1.nout(min = 1) = 1 "Number of outputs";
-//   parameter Integer constant1.outPort.n = constant1.nout "Dimension of signal vector";
-//   Real constant1.outPort.signal[1] "Real output signals";
-//   Real constant1.y[1];
-//   parameter Real constant1.k[1] = 1.0 "Constant output values";
+// class SampleTest
+//   Clock c;
+//   Boolean cb = sample(0.1, 0.1);
+//   Real x1;
+//   Real x2;
+//   Real y;
 // equation
-//   exp1.u = {exp1.inPort.signal[1]};
-//   exp1.y[1] = exp(exp1.u[1]);
-//   exp1.y[1] = exp1.outPort.signal[1];
-//   constant1.outPort.signal[1] = constant1.k[1];
-//   constant1.y[1] = constant1.outPort.signal[1];
-//   assert(exp1.inPort.n == constant1.outPort.n, "automatically generated from connect");
-//   constant1.outPort.signal[1] = exp1.inPort.signal[1];
-// end BM11;
+//   c = Clock(0.1);
+//   x1 = sample(1.0, Clock());
+//   x2 = sample(1.1, c);
+//   y = x1 + x2;
+// end SampleTest;
 // endResult

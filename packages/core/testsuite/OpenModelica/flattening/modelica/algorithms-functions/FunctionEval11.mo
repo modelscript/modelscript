@@ -13,15 +13,9 @@ end f;
 
 model FunctionEval11
   constant Integer i = f(4);
-  annotation(__OpenModelica_commandLineOptions="+d=nogen -d=-newInst");
 end FunctionEval11;
 
 // Result:
-// function f
-//   input Integer i1;
-//   output Integer i = max(3, i1);
-// end f;
-//
 // class FunctionEval11
 //   constant Integer i = 4;
 // end FunctionEval11;

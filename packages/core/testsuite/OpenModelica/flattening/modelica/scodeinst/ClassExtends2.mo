@@ -35,16 +35,13 @@ model ClassExtends2
 end ClassExtends2;
 
 // Result:
-// class ClassExtends2
-//   Real m1_a.x;
-//   Real m1_a.y;
-//   Real m2_a.x;
-//   Real m2_a.y;
-//   Real m1_b.x;
-//   Real m1_b.y;
-//   Real m2_b.x;
-//   Real m2_b.y;
-// end ClassExtends2;
-// [flattening/modelica/scodeinst/ClassExtends2.mo:25:3-27:9:writable] Warning: Missing redeclare prefix on class extends M1, treating like redeclare anyway.
+// Error processing file: ClassExtends2.mo
+// [OpenModelica/flattening/modelica/scodeinst/ClassExtends2.mo:25:3-27:9:writable] Warning: Missing redeclare prefix on class extends M1, treating like redeclare anyway.
+// Error: Class ClassExtends2.mo not found in scope <top>.
+// Error: Error occurred while flattening model ClassExtends2.mo
 //
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

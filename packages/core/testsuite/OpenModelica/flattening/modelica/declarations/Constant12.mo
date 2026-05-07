@@ -11,18 +11,23 @@ end A;
 
 class Constant12
   A[2] a(y = {1,2});
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Constant12;
 
 // Result:
-// class Constant12
-//   constant Real a[1].y = 1.0;
-//   Real a[1].b[1].z = A.y;
-//   Real a[1].b[2].z = A.y;
-//   Real a[1].b[3].z = A.y;
-//   constant Real a[2].y = 2.0;
-//   Real a[2].b[1].z = A.y;
-//   Real a[2].b[2].z = A.y;
-//   Real a[2].b[3].z = A.y;
-// end Constant12;
+// Error processing file: Constant12.mo
+// [OpenModelica/flattening/modelica/declarations/Constant12.mo:6:3-6:15:writable] Warning: Components are deprecated in class.
+// [OpenModelica/flattening/modelica/declarations/Constant12.mo:8:3-8:18:writable] Warning: Components are deprecated in class.
+// [OpenModelica/flattening/modelica/declarations/Constant12.mo:9:3-9:9:writable] Warning: Components are deprecated in class.
+// [OpenModelica/flattening/modelica/declarations/Constant12.mo:13:3-13:20:writable] Warning: Components are deprecated in class.
+// [OpenModelica/flattening/modelica/declarations/Constant12.mo:6:3-6:15:writable] Warning: Components are deprecated in class.
+// [OpenModelica/flattening/modelica/declarations/Constant12.mo:8:3-8:18:writable] Warning: Components are deprecated in class.
+// [OpenModelica/flattening/modelica/declarations/Constant12.mo:9:3-9:9:writable] Warning: Components are deprecated in class.
+// [OpenModelica/flattening/modelica/declarations/Constant12.mo:8:3-8:18:writable] Notification: From here:
+// [OpenModelica/flattening/modelica/declarations/Constant12.mo:6:3-6:15:writable] Error: Constant A.y is used without having been given a value.
+// Error: Error occurred while flattening model Constant12
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

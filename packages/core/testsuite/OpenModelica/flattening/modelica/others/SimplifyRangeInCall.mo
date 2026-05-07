@@ -7,14 +7,16 @@
 
 class SimplifyRangeInClass
   Real r[2] = sin(1:2);
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end SimplifyRangeInClass;
 
 // Result:
-// class SimplifyRangeInClass
-//   Real r[1];
-//   Real r[2];
-// equation
-//   r = {0.8414709848078965, 0.9092974268256817};
-// end SimplifyRangeInClass;
+// Error processing file: SimplifyRangeInCall.mo
+// Error: Failed to load package SimplifyRangeInCall (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class SimplifyRangeInCall not found in scope <top>.
+// Error: Error occurred while flattening model SimplifyRangeInCall
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

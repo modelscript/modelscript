@@ -15,8 +15,9 @@ end A;
 
 // Result:
 // Error processing file: loop1.mo
-// [flattening/modelica/scodeinst/loop1.mo:11:3-11:25:writable] Notification: From here:
-// [flattening/modelica/scodeinst/loop1.mo:12:3-12:24:writable] Error: Dimension 1 of x, 'i', could not be evaluated due to a cyclic dependency.
+// Error: Failed to load package loop1 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class loop1.mo not found in scope <top>.
+// Error: Error occurred while flattening model loop1.mo
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

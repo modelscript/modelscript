@@ -13,7 +13,9 @@ end CompAsFunc;
 
 // Result:
 // Error processing file: CompAsFunc.mo
-// [flattening/modelica/scodeinst/CompAsFunc.mo:11:3-11:16:writable] Error: Expected x to be a function, but found component instead.
+// [OpenModelica/flattening/modelica/scodeinst/CompAsFunc.mo:11:3-11:16:writable] Error: Expected x to be a function, but found component instead.
+// Error: Class CompAsFunc.mo not found in scope <top>.
+// Error: Error occurred while flattening model CompAsFunc.mo
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

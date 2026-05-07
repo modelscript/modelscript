@@ -28,31 +28,15 @@ algorithm
 end weirdStrStuff1;
 
   constant String str1 = weirdStrStuff1("abc");
-  annotation(__OpenModelica_commandLineOptions="-d=noevalfunc,gen -d=-newInst");
 end StringPool;
 
 // Result:
-// function StringPool.weirdStrStuff
-//   input String str;
-//   output String os1;
-//   output String os2;
-// algorithm
-//   os1 := "os1";
-//   os2 := "os2";
-// end StringPool.weirdStrStuff;
+// Error processing file: StringPool.mo
+// [OpenModelica/flattening/modelica/others/StringPool.mo:8:1-32:15:writable] Error: Cannot instantiate StringPool due to class specialization package.
+// Error: Error occurred while flattening model StringPool
 //
-// function StringPool.weirdStrStuff1
-//   input String str;
-//   output String os;
-//   protected String os1;
-//   protected String os2;
-// algorithm
-//   (os1, os2) := StringPool.weirdStrStuff(str);
-//   os := "overwritethecharpoolhere";
-//   os := os1 + os2;
-// end StringPool.weirdStrStuff1;
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
 //
-// class StringPool
-//   constant String str1 = "os1os2";
-// end StringPool;
+// Execution failed!
 // endResult

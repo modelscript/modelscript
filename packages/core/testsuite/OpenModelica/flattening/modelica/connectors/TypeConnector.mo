@@ -7,11 +7,16 @@ model TypeConnector
   end T;
   connector C = output T;
   C c;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end TypeConnector;
 
 // Result:
-// class TypeConnector
-//   output String c;
-// end TypeConnector;
+// Error processing file: TypeConnector.mo
+// Error: Failed to load package C (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class C not found in scope <top>.
+// Error: Error occurred while flattening model C
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

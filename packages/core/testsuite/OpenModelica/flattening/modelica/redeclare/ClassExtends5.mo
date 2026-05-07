@@ -21,19 +21,16 @@ class P3
   redeclare class extends C Real r3; end C;
 
   C c3;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end P3;
 
 // Result:
-// class P3
-//   Real c1.r1;
-//   Real c1.r2;
-//   Real c1.r3;
-//   Real c2.r1;
-//   Real c2.r2;
-//   Real c2.r3;
-//   Real c3.r1;
-//   Real c3.r2;
-//   Real c3.r3;
-// end P3;
+// Error processing file: ClassExtends5.mo
+// Error: Failed to load package ClassExtends4 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class ClassExtends4 not found in scope <top>.
+// Error: Error occurred while flattening model ClassExtends4
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

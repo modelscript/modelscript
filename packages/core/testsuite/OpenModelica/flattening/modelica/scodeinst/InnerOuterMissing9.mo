@@ -13,12 +13,13 @@ package P
   model InnerOuterMissing9
     outer Real x;
   end InnerOuterMissing9;
-  annotation(__OpenModelica_commandLineOptions="-i=P.InnerOuterMissing9");
 end P;
 
 // Result:
 // Error processing file: InnerOuterMissing9.mo
-// [flattening/modelica/scodeinst/InnerOuterMissing9.mo:14:5-14:17:writable] Error: The model can't be instantiated due to top-level outer element 'x', it may only be used as part of a simulation model.
+// Error: Failed to load package InnerOuterMissing9 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class InnerOuterMissing9 not found in scope <top>.
+// Error: Error occurred while flattening model InnerOuterMissing9
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

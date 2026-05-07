@@ -9,7 +9,8 @@ end ConditionInvalidBinding1;
 
 // Result:
 // Error processing file: ConditionInvalidBinding1.mo
-// [flattening/modelica/scodeinst/ConditionInvalidBinding1.mo:7:3-7:28:writable] Error: Type mismatch in binding x = "string", expected subtype of Real, got type String.
+// [OpenModelica/flattening/modelica/scodeinst/ConditionInvalidBinding1.mo:7:3-7:28:writable] Error: Type mismatch in binding x = "string", expected subtype of Real, got type String.
+// Error: Error occurred while flattening model ConditionInvalidBinding1
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

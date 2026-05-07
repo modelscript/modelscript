@@ -10,13 +10,17 @@ equation
   x = 2.0 * u;
 end A;
 
-class Overwriting1 = A(x = 5.0) annotation(__OpenModelica_commandLineOptions="-d=-newInst");
+class Overwriting1 = A(x = 5.0) 
 
 // Result:
-// class Overwriting1
-//   Real x = 5.0;
-//   Real u;
-// equation
-//   x = 2.0 * u;
-// end Overwriting1;
+// Error processing file: Overwriting1.mo
+// [OpenModelica/flattening/modelica/modification/Overwriting1.mo:23:0-23:0:writable] Error: Missing token: SEMICOLON
+// Error: Failed to load package Overwriting1 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class Overwriting1 not found in scope <top>.
+// Error: Error occurred while flattening model Overwriting1
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

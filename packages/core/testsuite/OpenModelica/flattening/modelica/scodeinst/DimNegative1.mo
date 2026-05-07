@@ -10,7 +10,8 @@ end DimNegative1;
 
 // Result:
 // Error processing file: DimNegative1.mo
-// [flattening/modelica/scodeinst/DimNegative1.mo:7:3-7:13:writable] Error: Negative dimension index (-1) for component x.
+// [OpenModelica/flattening/modelica/scodeinst/DimNegative1.mo:7:3-7:13:writable] Error: Negative dimension index (-1) for component x.
+// Error: Error occurred while flattening model DimNegative1
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

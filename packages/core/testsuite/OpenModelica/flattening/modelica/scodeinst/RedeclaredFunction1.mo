@@ -21,14 +21,12 @@ model RedeclareFunction1
 end RedeclareFunction1;
 
 // Result:
-// function P.f
-//   input Real x;
-//   output Real y;
-// algorithm
-//   x := y;
-// end P.f;
+// Error processing file: RedeclaredFunction1.mo
+// [OpenModelica/flattening/modelica/scodeinst/RedeclaredFunction1.mo:15:3-15:9:writable] Error: Trying to assign to input component x.
+// Error: Error occurred while flattening model RedeclareFunction1
 //
-// class M
-//   Real x = P.f(4);
-// end M;
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

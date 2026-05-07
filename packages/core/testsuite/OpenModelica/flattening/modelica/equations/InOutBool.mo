@@ -23,30 +23,16 @@ equation
   t = testBool(1,1,true);
   t = testBool(1,2,false);
   t = testBool(1,2,true);
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Booltest;
 
 // Result:
-// function testBool
-//   input Integer x;
-//   input Integer y;
-//   input Boolean should_be_equal;
-//   output Boolean t;
-// algorithm
-//   t := false;
-//   if x == y and should_be_equal then
-//     t := true;
-//   elseif x <> y and not should_be_equal then
-//     t := true;
-//   end if;
-// end testBool;
+// Error processing file: InOutBool.mo
+// Error: Failed to load package InOutBool (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class InOutBool not found in scope <top>.
+// Error: Error occurred while flattening model InOutBool
 //
-// class Booltest
-//   Boolean t;
-// equation
-//   t = false;
-//   t = true;
-//   t = true;
-//   t = false;
-// end Booltest;
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

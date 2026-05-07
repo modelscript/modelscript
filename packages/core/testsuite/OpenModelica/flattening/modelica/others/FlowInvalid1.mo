@@ -19,13 +19,13 @@ model FlowInvalid1
   C c1, c2;
 equation
   connect(c1, c2);
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end FlowInvalid1;
 
 // Result:
 // Error processing file: FlowInvalid1.mo
-// [flattening/modelica/others/FlowInvalid1.mo:15:3-15:11:writable] Error: Invalid type prefix 'flow' on variable c1.r.y, due to existing type prefix 'flow'.
-// Error: Error occurred while flattening model FlowInvalid1
+// Error: Failed to load package FlowDeclRecord (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class FlowDeclRecord not found in scope <top>.
+// Error: Error occurred while flattening model FlowDeclRecord
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

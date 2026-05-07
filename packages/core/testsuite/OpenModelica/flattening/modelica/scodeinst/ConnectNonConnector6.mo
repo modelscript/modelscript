@@ -23,9 +23,10 @@ end ConnectNonConnector6;
 
 // Result:
 // Error processing file: ConnectNonConnector6.mo
-// [flattening/modelica/scodeinst/ConnectNonConnector6.mo:19:3-19:12:writable] Warning: Connector c1 is not balanced: The number of potential variables (0) is not equal to the number of flow variables (1).
-// [flattening/modelica/scodeinst/ConnectNonConnector6.mo:19:3-19:12:writable] Warning: Connector c2 is not balanced: The number of potential variables (0) is not equal to the number of flow variables (1).
-// [flattening/modelica/scodeinst/ConnectNonConnector6.mo:21:3-21:22:writable] Error: c1.f is not a valid connector.
+// [OpenModelica/flattening/modelica/scodeinst/ConnectNonConnector6.mo:19:3-19:12:writable] Warning: Connector c1 is not balanced: The number of potential variables (0) is not equal to the number of flow variables (1).
+// [OpenModelica/flattening/modelica/scodeinst/ConnectNonConnector6.mo:19:3-19:12:writable] Warning: Connector c2 is not balanced: The number of potential variables (0) is not equal to the number of flow variables (1).
+// [OpenModelica/flattening/modelica/scodeinst/ConnectNonConnector6.mo:21:3-21:22:writable] Error: c1.f is not a valid connector.
+// Error: Error occurred while flattening model ConnectNonConnector6
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

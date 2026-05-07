@@ -14,7 +14,6 @@ class AddSub
 
   Real Sub1[3] = {1, 2, 3} - {1, 2, 0};
   // Result {0, 0, 3}
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end AddSub;
 
 
@@ -22,8 +21,9 @@ end AddSub;
 
 // Result:
 // Error processing file: ArrayAddSub.mo
-// [flattening/modelica/arrays/ArrayAddSub.mo:9:3-9:28:writable] Error: Cannot resolve type of expression {1, 2, 3} + 1. The operands have types Integer[3], Integer in component <NO COMPONENT>.
-// Error: Error occurred while flattening model AddSub
+// Error: Failed to load package ArrayAddSub (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class ArrayAddSub not found in scope <top>.
+// Error: Error occurred while flattening model ArrayAddSub
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

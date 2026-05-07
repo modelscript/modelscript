@@ -28,20 +28,15 @@ class myTanCall
   Real t;
 equation
   t = myTan(1.0);
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end myTanCall;
 
 // Result:
-// function myTan
-//   input Real x;
-//   output Real result;
-// algorithm
-//   result := tan(x);
-// end myTan;
+// Error processing file: OneArgBaseFunction.mo
+// [OpenModelica/flattening/modelica/extends/OneArgBaseFunction.mo:10:1-13:23:writable] Error: Cannot instantiate OneArgBaseFunction due to class specialization function.
+// Error: Error occurred while flattening model OneArgBaseFunction
 //
-// class myTanCall
-//   Real t;
-// equation
-//   t = 1.557407724654902;
-// end myTanCall;
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

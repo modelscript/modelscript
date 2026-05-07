@@ -58,8 +58,6 @@ algorithm
   else
     r := 2.1;
   end if;
-
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end AlgorithmElseOpt;
 
 // Result:
@@ -81,4 +79,6 @@ end AlgorithmElseOpt;
 //     r := 2.1;
 //   end if;
 // end AlgorithmElseOpt;
+// [OpenModelica/flattening/modelica/algorithms-functions/AlgorithmElseOpt.mo:9:3-9:9:writable] Warning: Components are deprecated in class.
+// [OpenModelica/flattening/modelica/algorithms-functions/AlgorithmElseOpt.mo:11:3-13:9:writable] Warning: Algorithm sections are deprecated in class.
 // endResult

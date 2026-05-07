@@ -16,7 +16,8 @@ end TerminateInvalid2;
 
 // Result:
 // Error processing file: TerminateInvalid2.mo
-// [flattening/modelica/scodeinst/TerminateInvalid2.mo:10:3-10:27:writable] Error: terminate is not allowed in a function.
+// [OpenModelica/flattening/modelica/scodeinst/TerminateInvalid2.mo:10:3-10:27:writable] Error: terminate is not allowed in a function.
+// Error: Error occurred while flattening model TerminateInvalid2
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

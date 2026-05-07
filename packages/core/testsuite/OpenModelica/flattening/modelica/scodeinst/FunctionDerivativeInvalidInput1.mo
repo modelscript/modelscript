@@ -24,7 +24,8 @@ end FunctionDerivativeInvalidInput1;
 
 // Result:
 // Error processing file: FunctionDerivativeInvalidInput1.mo
-// [flattening/modelica/scodeinst/FunctionDerivativeInvalidInput1.mo:11:14-11:49:writable] Error: 'z' is not an input of function 'f1'.
+// [OpenModelica/flattening/modelica/scodeinst/FunctionDerivativeInvalidInput1.mo:11:14-11:49:writable] Error: 'z' is not an input of function 'f1'.
+// Error: Error occurred while flattening model FunctionDerivativeInvalidInput1
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

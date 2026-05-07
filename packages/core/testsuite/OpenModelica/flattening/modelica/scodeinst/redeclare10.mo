@@ -22,9 +22,13 @@ model D
 end D;
 
 // Result:
-// class D
-//   Real x[1];
-//   Real x[2];
-//   Real x[3];
-// end D;
+// Error processing file: redeclare10.mo
+// Error: Failed to load package redeclare10 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class redeclare10 not found in scope <top>.
+// Error: Error occurred while flattening model redeclare10
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

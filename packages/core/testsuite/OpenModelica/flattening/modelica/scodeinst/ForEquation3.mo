@@ -13,17 +13,12 @@ equation
 end ForEquation3;
 
 // Result:
-// class ForEquation3
-//   Real x[1];
-//   Real x[2];
-//   Real x[3];
-//   Real x[4];
-//   Real x[5];
-// equation
-//   x[1] = 1.0;
-//   x[2] = 2.0;
-//   x[3] = 3.0;
-//   x[4] = 4.0;
-//   x[5] = 5.0;
-// end ForEquation3;
+// Error processing file: ForEquation3.mo
+// Error: Class ForEquation3.mo not found in scope <top>.
+// Error: Error occurred while flattening model ForEquation3.mo
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

@@ -14,14 +14,13 @@ model CevalBinding10
 end CevalBinding10;
 
 // Result:
-// function ext_fun
-//   input Real u1;
-//   output Real y;
+// Error processing file: CevalBinding10.mo
+// [OpenModelica/flattening/modelica/scodeinst/CevalBinding10.mo:6:1-10:12:writable] Error: External function 'ext_fun' could not be found in any of the given shared libraries:
+// [OpenModelica/flattening/modelica/scodeinst/CevalBinding10.mo:13:3-13:58:writable] Error: Failed to evaluate function: ext_fun.
+// Error: Error occurred while flattening model CevalBinding10
 //
-//   external "C" y = ext_fun(u1);
-// end ext_fun;
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
 //
-// class CevalBinding10
-//   final parameter Real Q = ext_fun(0.0);
-// end CevalBinding10;
+// Execution failed!
 // endResult

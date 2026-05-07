@@ -14,11 +14,16 @@ end A;
 
 model test
   Real x=A.y;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end test;
 
 // Result:
-// class test
-//   Real x = 1.0;
-// end test;
+// Error processing file: Constant10.mo
+// Error: Failed to load package Constant10 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class Constant10 not found in scope <top>.
+// Error: Error occurred while flattening model Constant10
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

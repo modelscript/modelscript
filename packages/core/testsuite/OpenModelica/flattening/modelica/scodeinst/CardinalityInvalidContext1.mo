@@ -18,7 +18,8 @@ end CardinalityInvalidContext1;
 
 // Result:
 // Error processing file: CardinalityInvalidContext1.mo
-// [flattening/modelica/scodeinst/CardinalityInvalidContext1.mo:16:3-16:29:writable] Error: cardinality may only be used in the condition of an if-statement/equation or an assert.
+// [OpenModelica/flattening/modelica/scodeinst/CardinalityInvalidContext1.mo:16:3-16:29:writable] Error: cardinality may only be used in the condition of an if-statement/equation or an assert.
+// Error: Error occurred while flattening model CardinalityInvalidContext1
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

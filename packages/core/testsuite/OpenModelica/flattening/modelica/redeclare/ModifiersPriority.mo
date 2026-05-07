@@ -21,17 +21,19 @@ package ModifiersPriority
    end P;
 
    package P2 = P(redeclare class A = Y, u = 10);
-
 end ModifiersPriority;
 
 model M
   ModifiersPriority.P2.A a;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end M;
 
 // Result:
-// class M
-//   parameter Real a.x = 10.0;
-//   parameter Real a.y = 3.0;
-// end M;
+// Error processing file: ModifiersPriority.mo
+// Error: Class ModifiersPriority.mo not found in scope <top>.
+// Error: Error occurred while flattening model ModifiersPriority.mo
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

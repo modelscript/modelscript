@@ -15,7 +15,8 @@ end RecordRestriction3;
 
 // Result:
 // Error processing file: RecordRestriction3.mo
-// [flattening/modelica/declarations/RecordRestriction3.mo:9:3-9:9:writable] Error: Algorithm sections are not allowed in record.
+// [OpenModelica/flattening/modelica/declarations/RecordRestriction3.mo:9:3-9:9:writable] Error: Algorithm sections are not allowed in record.
+// Error: Error occurred while flattening model RecordRestriction3
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

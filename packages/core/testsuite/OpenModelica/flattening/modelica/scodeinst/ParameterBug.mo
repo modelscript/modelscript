@@ -4,7 +4,6 @@ package ParameterBug
     parameter Real Vdc = 1;
     extends B(redeclare D c, offset = Vdc);
   equation
-
   end A;
 
   model B
@@ -23,6 +22,5 @@ package ParameterBug
     extends C;
     Real y = x;
   equation
-
   end D;
 end ParameterBug;

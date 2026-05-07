@@ -12,7 +12,8 @@ end RangeInvalidStep4;
 
 // Result:
 // Error processing file: RangeInvalidStep4.mo
-// [flattening/modelica/scodeinst/RangeInvalidStep4.mo:10:3-10:27:writable] Error: Step size 1e-300 in range is too small.
+// Error: Class RangeInvalidStep4.mo not found in scope <top>.
+// Error: Error occurred while flattening model RangeInvalidStep4.mo
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

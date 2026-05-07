@@ -22,7 +22,8 @@ end ClassExtendsBuiltin1;
 
 // Result:
 // Error processing file: ClassExtendsBuiltin1.mo
-// [flattening/modelica/scodeinst/ClassExtendsBuiltin1.mo:15:13-18:8:writable] Error: A class extending from builtin type Real may not have other elements.
+// [OpenModelica/flattening/modelica/scodeinst/ClassExtendsBuiltin1.mo:15:13-18:8:writable] Error: A class extending from builtin type Real may not have other elements.
+// Error: Error occurred while flattening model ClassExtendsBuiltin1
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

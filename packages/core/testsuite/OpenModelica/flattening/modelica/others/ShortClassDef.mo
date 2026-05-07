@@ -9,10 +9,17 @@ class TestClass
   Integer i1;
 end TestClass;
 
-class ShortClassDef = TestClass annotation(__OpenModelica_commandLineOptions="-d=-newInst");
+class ShortClassDef = TestClass 
 
 // Result:
-// class ShortClassDef
-//   Integer i1;
-// end ShortClassDef;
+// Error processing file: ShortClassDef.mo
+// [OpenModelica/flattening/modelica/others/ShortClassDef.mo:19:0-19:0:writable] Error: Missing token: SEMICOLON
+// Error: Failed to load package ShortClassDef (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class ShortClassDef not found in scope <top>.
+// Error: Error occurred while flattening model ShortClassDef
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

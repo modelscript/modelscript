@@ -18,12 +18,11 @@ algorithm
       y := 2;
     end when;
   end when;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end WhenElseNested;
 
 // Result:
 // Error processing file: WhenElseNested.mo
-// [flattening/modelica/algorithms-functions/WhenElseNested.mo:14:3-20:11:writable] Error: Nested when statements are not allowed.
+// [OpenModelica/flattening/modelica/algorithms-functions/WhenElseNested.mo:17:5-19:13:writable] Error: Nested when statements are not allowed.
 // Error: Error occurred while flattening model WhenElseNested
 //
 // # Error encountered! Exiting...

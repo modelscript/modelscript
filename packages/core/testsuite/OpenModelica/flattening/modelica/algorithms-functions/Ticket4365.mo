@@ -20,5 +20,4 @@ package Ticket4365
       a := 2;
     end when;
   end Sub1;
-
 end Ticket4365;

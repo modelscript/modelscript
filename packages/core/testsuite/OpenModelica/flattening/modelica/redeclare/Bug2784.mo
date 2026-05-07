@@ -11,11 +11,15 @@ end C1;
 
 model C2
   replaceable parameter C1 x1(redeclare replaceable Real r=3);
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end C2;
 
 // Result:
-// class C2
-//   parameter Real x1.r = 3.0;
-// end C2;
+// Error processing file: Bug2784.mo
+// [OpenModelica/flattening/modelica/redeclare/DuplicateRedeclares2.mo:13:3-14:48:writable] Error: Base class N not found in scope DuplicateRedeclares2.
+// Error: Error occurred while flattening model Bug2784.mo [BUG: #2784]
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

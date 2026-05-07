@@ -20,27 +20,15 @@ model DotOperator
 
   constant Real r1 = y(1.5);
   constant Real r2 = x(1.5);
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end DotOperator;
 // Result:
-// function DotOperator.f
-//   input Real r;
-//   output Real x = 1.0;
-//   output Real y = 2.0;
-// end DotOperator.f;
+// Error processing file: DotOperator.mo
+// Error: Failed to load package x (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class x not found in scope <top>.
+// Error: Error occurred while flattening model x
 //
-// function DotOperator.x
-//   input Real i;
-//   output Real o = DotOperator.f(i)[1];
-// end DotOperator.x;
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
 //
-// function DotOperator.y
-//   input Real i;
-//   output Real o = DotOperator.f(i)[2];
-// end DotOperator.y;
-//
-// class DotOperator
-//   constant Real r1 = 2.0;
-//   constant Real r2 = 1.0;
-// end DotOperator;
+// Execution failed!
 // endResult

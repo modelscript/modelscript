@@ -17,8 +17,10 @@ end DuplicateMod3;
 
 // Result:
 // Error processing file: DuplicateMod3.mo
-// [flattening/modelica/scodeinst/DuplicateMod3.mo:15:9-15:14:writable] Notification: From here:
-// [flattening/modelica/scodeinst/DuplicateMod3.mo:15:19-15:24:writable] Error: Duplicate modification of element a.x on component b.
+// [OpenModelica/flattening/modelica/scodeinst/DuplicateMod3.mo:15:9-15:14:writable] Notification: From here:
+// [OpenModelica/flattening/modelica/scodeinst/DuplicateMod3.mo:15:19-15:24:writable] Error: Duplicate modification of element a.x on component b.
+// Error: Class DuplicateMod3.mo not found in scope <top>.
+// Error: Error occurred while flattening model DuplicateMod3.mo
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

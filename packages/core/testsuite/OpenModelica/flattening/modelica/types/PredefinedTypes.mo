@@ -9,8 +9,6 @@ model PredefinedTypes
   Boolean boolean(quantity="quant_str_boolean",start=false,fixed=true);
   String string(quantity="quant_str_string",start="start");
   enum f(quantity="quant_str_enumeration",min = enum.a,max = enum.b,fixed = true,start = enum.c);
-
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end PredefinedTypes;
 
 // Result:

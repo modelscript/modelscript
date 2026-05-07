@@ -18,7 +18,8 @@ end ImportInCompositeName1;
 
 // Result:
 // Error processing file: ImportInCompositeName1.mo
-// [flattening/modelica/scodeinst/ImportInCompositeName1.mo:16:3-16:13:writable] Error: Found imported name 'MyType' while looking up composite name 'B.MyType'.
+// [OpenModelica/flattening/modelica/scodeinst/ImportInCompositeName1.mo:16:3-16:13:writable] Error: Found imported name 'MyType' while looking up composite name 'B.MyType'.
+// Error: Error occurred while flattening model ImportInCompositeName1
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

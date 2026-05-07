@@ -27,15 +27,13 @@ model ExtendsShort3
 end ExtendsShort3;
 
 // Result:
-// function P1.P3.f
-//   input Real x;
-// end P1.P3.f;
+// Error processing file: ExtendsShort3.mo
+// Error: Failed to load package ExtendsShort2 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class ExtendsShort2 not found in scope <top>.
+// Error: Error occurred while flattening model ExtendsShort2
 //
-// class ExtendsShort3
-//   Real a1.x;
-//   Real a2.x;
-// equation
-//   P1.P3.f(a1.x);
-//   P1.P3.f(a2.x);
-// end ExtendsShort3;
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

@@ -16,19 +16,15 @@ end A;
 model ArrayOuterParamExpand
   inner parameter Real[3] p1;
   A a;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ArrayOuterParamExpand;
 
 // Result:
-// class ArrayOuterParamExpand
-//   parameter Real p1[1];
-//   parameter Real p1[2];
-//   parameter Real p1[3];
-//   parameter Real a.p2[1];
-//   parameter Real a.p2[2];
-//   parameter Real a.p2[3];
-//   Real a.v;
-// equation
-//   a.v = p1[1] * a.p2[1] + p1[2] * a.p2[2] + p1[3] * a.p2[3];
-// end ArrayOuterParamExpand;
+// Error processing file: ArrayOuterParamExpand.mo
+// [OpenModelica/flattening/modelica/arrays/ArrayOuterParamExpand.mo:17:3-17:29:writable] Error: Parameter p1 has neither value nor start value, and is fixed during initialization (fixed=true).
+// Error: Error occurred while flattening model ArrayOuterParamExpand
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

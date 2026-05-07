@@ -10,13 +10,12 @@ model StringLiterals
 ";
 equation
   str = "test";
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end StringLiterals;
 
 // Result:
 // class StringLiterals
 //   constant String s = "'\"?\\\a\b\f
-//   \v";
+//   	\v";
 //   String str;
 //   Boolean eq = true;
 // equation

@@ -18,7 +18,8 @@ end ConnectNonConnector5;
 
 // Result:
 // Error processing file: ConnectNonConnector5.mo
-// [flattening/modelica/scodeinst/ConnectNonConnector5.mo:16:3-16:17:writable] Error: Expected C to be a component, but found class instead.
+// [OpenModelica/flattening/modelica/scodeinst/ConnectNonConnector5.mo:16:3-16:17:writable] Error: Expected C to be a component, but found class instead.
+// Error: Error occurred while flattening model ConnectNonConnector5
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

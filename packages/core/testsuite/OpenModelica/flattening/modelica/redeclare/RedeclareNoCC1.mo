@@ -29,11 +29,16 @@ end E;
 
 model F
   extends E(redeclare replaceable C a(x = 4.0));
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end F;
 
 // Result:
-// class F
-//   Real a.x = 4.0;
-// end F;
+// Error processing file: RedeclareNoCC1.mo
+// Error: Failed to load package RedeclareNoCC1 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class RedeclareNoCC1 not found in scope <top>.
+// Error: Error occurred while flattening model RedeclareNoCC1
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

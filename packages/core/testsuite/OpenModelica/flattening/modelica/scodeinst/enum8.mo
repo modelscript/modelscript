@@ -8,11 +8,13 @@ model M
 end M;
 
 // Result:
-// class M
-//   Real x[StateSelect.never];
-//   Real x[StateSelect.avoid];
-//   Real x[StateSelect.default];
-//   Real x[StateSelect.prefer];
-//   Real x[StateSelect.always];
-// end M;
+// Error processing file: enum8.mo
+// Error: Failed to load package enum8 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class enum8.mo not found in scope <top>.
+// Error: Error occurred while flattening model enum8.mo
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

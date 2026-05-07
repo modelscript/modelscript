@@ -8,5 +8,4 @@ model TestTopLevelOuter
   outer InnerDefinition o;
   parameter Real y = 2;
 end TestTopLevelOuter;
-
 end TestNonStandardExtensions;

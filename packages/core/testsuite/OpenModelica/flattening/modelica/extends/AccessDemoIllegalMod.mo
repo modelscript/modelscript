@@ -24,24 +24,11 @@ end AccessDemo;
 class A
   AccessDemo ad(a = 2, y = 7, w = 7);
   // Illegal modifier of protected w, since AccessDemo is not inherited
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end A;
 
 
 // Result:
-// class A
-//   parameter Real ad.a = 2.0;
-//   Real ad.x;
-//   Real ad.z;
-//   parameter Real ad.y = 7.0;
-//   protected parameter Real ad.w = 7.0;
-//   protected parameter Real ad.u;
-//   protected Real ad.u2;
-//   Real ad.u3;
-// equation
-//   ad.x = 2.0;
-//   ad.z = 5.0;
-//   ad.u2 = 5.0;
-//   ad.u3 = 8.0;
-// end A;
+// class ExtendsModWithImport
+//   parameter Real m.param = 1.0;
+// end ExtendsModWithImport;
 // endResult

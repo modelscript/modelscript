@@ -15,13 +15,16 @@ model ProtectedAccess2
   TestModel tm;
 equation
   tm.x = 3;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ProtectedAccess2;
 
 // Result:
-// class ProtectedAccess2
-//   protected Integer tm.x = 2;
-// equation
-//   tm.x = 3;
-// end ProtectedAccess2;
+// Error processing file: ProtectedAccess2.mo
+// [OpenModelica/flattening/modelica/others/ProtectedAccess2.mo:11:3-11:16:writable] Error: Illegal access of protected element x.
+// [OpenModelica/flattening/modelica/others/ProtectedAccess2.mo:17:3-17:11:writable] Error: Variable tm.x not found in scope ProtectedAccess2.
+// Error: Error occurred while flattening model ProtectedAccess2
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

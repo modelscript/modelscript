@@ -11,12 +11,15 @@ model PartialLookup1
   end P;
 
   P.A a;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end PartialLookup1;
 
 // Result:
-// class PartialLookup1
-// end PartialLookup1;
-// [flattening/modelica/scoping/PartialLookup1.mo:13:3-13:8:writable] Error: P is partial, name lookup is not allowed in partial classes.
+// Error processing file: PartialLookup1.mo
+// [OpenModelica/flattening/modelica/scoping/PartialLookup1.mo:13:3-13:8:writable] Error: P is partial, name lookup is not allowed in partial classes.
+// Error: Error occurred while flattening model PartialLookup1
 //
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

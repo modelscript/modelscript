@@ -9,7 +9,8 @@ end BuiltinAttribute3;
 
 // Result:
 // Error processing file: BuiltinAttribute3.mo
-// [flattening/modelica/scodeinst/BuiltinAttribute3.mo:7:10-7:22:writable] Error: Modified element start.y not found in class Real.
+// [OpenModelica/flattening/modelica/scodeinst/BuiltinAttribute3.mo:7:10-7:22:writable] Error: Modified element start.y not found in class Real.
+// Error: Error occurred while flattening model BuiltinAttribute3
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

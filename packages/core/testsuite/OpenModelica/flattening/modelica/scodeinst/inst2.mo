@@ -21,7 +21,13 @@ model C
 end C;
 
 // Result:
-// class C
-//   Real b.y;
-// end C;
+// Error processing file: inst2.mo
+// Error: Failed to load package inst2 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class inst2.mo not found in scope <top>.
+// Error: Error occurred while flattening model inst2.mo
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

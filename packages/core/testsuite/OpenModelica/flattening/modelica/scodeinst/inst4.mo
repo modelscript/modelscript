@@ -20,7 +20,9 @@ end A;
 
 // Result:
 // Error processing file: inst4.mo
-// [flattening/modelica/scodeinst/inst4.mo:12:1-15:11:writable] Error: A class extending from builtin type Real may not have other elements.
+// Error: Failed to load package inst4 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class inst4.mo not found in scope <top>.
+// Error: Error occurred while flattening model inst4.mo
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

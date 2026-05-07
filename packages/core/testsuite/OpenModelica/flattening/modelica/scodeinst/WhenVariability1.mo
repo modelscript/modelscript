@@ -12,7 +12,9 @@ end WhenVariability1;
 
 // Result:
 // Error processing file: WhenVariability1.mo
-// [flattening/modelica/scodeinst/WhenVariability1.mo:9:3-10:11:writable] Error: Argument 1 of pre must be a discrete expression, but x is continuous.
+// Error: Failed to load package WhenVariablity1 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class WhenVariablity1 not found in scope <top>.
+// Error: Error occurred while flattening model WhenVariablity1
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

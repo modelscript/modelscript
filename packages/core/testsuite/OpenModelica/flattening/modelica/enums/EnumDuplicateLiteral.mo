@@ -8,13 +8,12 @@
 model EnumDuplicateLiteral
   type E = enumeration(one, two, three, two);
   E e;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end EnumDuplicateLiteral;
 
 
 // Result:
 // Error processing file: EnumDuplicateLiteral.mo
-// [flattening/modelica/enums/EnumDuplicateLiteral.mo:9:3-9:45:writable] Error: Enumeration has duplicate names: two in list of names one,two,three,two.
+// [OpenModelica/flattening/modelica/enums/EnumDuplicateLiteral.mo:9:3-9:45:writable] Error: An element with name two is already declared in this scope.
 // Error: Error occurred while flattening model EnumDuplicateLiteral
 //
 // # Error encountered! Exiting...

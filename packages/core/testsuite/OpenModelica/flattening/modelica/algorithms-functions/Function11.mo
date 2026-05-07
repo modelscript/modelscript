@@ -20,29 +20,16 @@ model test
 equation
 x=y;
 b = equal(x,y);
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end test;
 
 // Result:
-// function equal
-//   input Real[:] x;
-//   input Real[:] y;
-//   input Real eps = 0.000001;
-//   output Boolean equal;
-// algorithm
-//   equal := false;
-// end equal;
+// Error processing file: Function11.mo
+// Error: Failed to load package Function11 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class Function11 not found in scope <top>.
+// Error: Error occurred while flattening model Function11
 //
-// class test
-//   Real x[1];
-//   Real x[2];
-//   Real y[1];
-//   Real y[2];
-//   Boolean b;
-// equation
-//   y = {1.0, 2.0};
-//   x[1] = y[1];
-//   x[2] = y[2];
-//   b = equal({x[1], x[2]}, {y[1], y[2]}, 0.000001);
-// end test;
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

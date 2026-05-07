@@ -25,6 +25,5 @@ end RecordConstructor4;
 // equation
 //   r = R(time);
 // end RecordConstructor4;
-// [flattening/modelica/scodeinst/RecordConstructor4.mo:8:3-8:32:writable] Warning: Parameter r.x has no value, and is fixed during initialization (fixed=true), using available start value (start=1.0) as default value.
-//
+// [OpenModelica/flattening/modelica/scodeinst/RecordConstructor4.mo:8:3-8:32:writable] Warning: Parameter r.x has no value, and is fixed during initialization (fixed=true), using available start value (start=1.0) as default value.
 // endResult

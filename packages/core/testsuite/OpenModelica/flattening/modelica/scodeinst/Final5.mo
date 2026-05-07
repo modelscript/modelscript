@@ -17,8 +17,9 @@ end Final4;
 
 // Result:
 // Error processing file: Final5.mo
-// [flattening/modelica/scodeinst/Final5.mo:15:9-15:16:writable] Notification: From here:
-// [flattening/modelica/scodeinst/Final5.mo:11:13-11:20:writable] Error: Trying to override final element x with modifier '= 2.0'.
+// Error: Failed to load package Final5 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class Final5 not found in scope <top>.
+// Error: Error occurred while flattening model Final5
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

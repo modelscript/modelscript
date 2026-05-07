@@ -19,7 +19,8 @@ end ConnectorRestriction7;
 
 // Result:
 // Error processing file: ConnectorRestriction7.mo
-// [flattening/modelica/declarations/ConnectorRestriction7.mo:13:3-13:13:writable] Error: Protected sections are not allowed in connector.
+// [OpenModelica/flattening/modelica/declarations/ConnectorRestriction7.mo:13:3-13:13:writable] Error: Protected sections are not allowed in connector.
+// Error: Error occurred while flattening model ConnectorRestriction7
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

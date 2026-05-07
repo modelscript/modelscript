@@ -11,7 +11,6 @@ class Real2Integer3
 algorithm
   n1 := integer(6.6);
   n2 := div(n1,2);
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Real2Integer3;
 
 // Result:
@@ -22,4 +21,6 @@ end Real2Integer3;
 //   n1 := 6;
 //   n2 := div(n1, 2);
 // end Real2Integer3;
+// [OpenModelica/flattening/modelica/types/Real2Integer3.mo:10:3-10:17:writable] Warning: Components are deprecated in class.
+// [OpenModelica/flattening/modelica/types/Real2Integer3.mo:12:3-12:21:writable] Warning: Algorithm sections are deprecated in class.
 // endResult

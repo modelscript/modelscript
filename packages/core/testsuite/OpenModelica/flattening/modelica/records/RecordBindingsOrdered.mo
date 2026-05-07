@@ -37,47 +37,16 @@ model PassesRecordArrayAsParameter
   Integer variable;
 equation
   variable = parameterReceiver[1].variable;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end PassesRecordArrayAsParameter;
 
 // Result:
-// function DataSetOne "Automatically generated record constructor for DataSetOne"
-//   input Integer dataOne = 5;
-//   input Integer dataTwo = 10;
-//   output DataSetOne res;
-// end DataSetOne;
+// Error processing file: RecordBindingsOrdered.mo
+// Error: Failed to load package RecordBindingsOrdered (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class RecordBindingsOrdered not found in scope <top>.
+// Error: Error occurred while flattening model RecordBindingsOrdered
 //
-// function DataSetTwo "Automatically generated record constructor for DataSetTwo"
-//   input Integer dataOne = 15;
-//   input Integer dataTwo = 20;
-//   output DataSetTwo res;
-// end DataSetTwo;
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
 //
-// function GenericData "Automatically generated record constructor for GenericData"
-//   input Integer dataOne = 1;
-//   input Integer dataTwo = 1;
-//   output GenericData res;
-// end GenericData;
-//
-// class PassesRecordArrayAsParameter
-//   parameter Integer data1.dataOne = 5;
-//   parameter Integer data1.dataTwo = 10;
-//   parameter Integer data2.dataOne = 15;
-//   parameter Integer data2.dataTwo = 20;
-//   parameter Integer data[1].dataOne = data1.dataOne;
-//   parameter Integer data[1].dataTwo = data1.dataTwo;
-//   parameter Integer data[2].dataOne = data2.dataOne;
-//   parameter Integer data[2].dataTwo = data2.dataTwo;
-//   parameter Integer parameterReceiver[1].data.dataOne = data[1].dataOne;
-//   parameter Integer parameterReceiver[1].data.dataTwo = data[1].dataTwo;
-//   Integer parameterReceiver[1].variable;
-//   parameter Integer parameterReceiver[2].data.dataOne = data[2].dataOne;
-//   parameter Integer parameterReceiver[2].data.dataTwo = data[2].dataTwo;
-//   Integer parameterReceiver[2].variable;
-//   Integer variable;
-// equation
-//   parameterReceiver[1].variable = parameterReceiver[1].data.dataOne;
-//   parameterReceiver[2].variable = parameterReceiver[2].data.dataOne;
-//   variable = parameterReceiver[1].variable;
-// end PassesRecordArrayAsParameter;
+// Execution failed!
 // endResult

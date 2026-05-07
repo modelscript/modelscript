@@ -13,7 +13,6 @@ equation
   when sample(0, 2) then
     y = 7; // - 2*x;              // Correct, y is a result variable from the when
   end when;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end WhenValidResult;
 
 // Result:
@@ -23,7 +22,7 @@ end WhenValidResult;
 // equation
 //   x + y = 5.0;
 //   when sample(0.0, 2.0) then
-//   y = 7.0;
+//     y = 7.0;
 //   end when;
 // end WhenValidResult;
 // endResult

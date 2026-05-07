@@ -22,13 +22,16 @@ model PackageIllegal
   IllegalPackage.LegalClass lc;
 equation
   lc.i = 1;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end PackageIllegal;
 
 // Result:
-// class PackageIllegal
-//   Integer lc.i;
-// equation
-//   lc.i = 1;
-// end PackageIllegal;
+// Error processing file: PackageIllegal.mo
+// [OpenModelica/flattening/modelica/packages/PackageIllegal.mo:15:1-15:10:writable] Error: Variable i in package IllegalPackage is not constant.
+// [OpenModelica/flattening/modelica/packages/PackageIllegal.mo:22:3-22:31:writable] Error: Class IllegalPackage.LegalClass not found in scope PackageIllegal.
+// Error: Error occurred while flattening model PackageIllegal
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

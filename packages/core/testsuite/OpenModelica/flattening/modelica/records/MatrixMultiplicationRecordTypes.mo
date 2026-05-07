@@ -61,52 +61,16 @@ model ComplexTest
   Complex c2[3, 3] = {{c1, c1, c1}, {c1, c1, c1}, {c1, c1, c1}};
   Complex c3[3, 1] = {{c1}, {c1}, {c1}};
   Complex c4[3, 1] = c2 * c3;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ComplexTest;
 
 // Result:
-// function Complex "Automatically generated record constructor for Complex"
-//   input Real re;
-//   input Real im;
-//   output Complex res;
-// end Complex;
+// Error processing file: MatrixMultiplicationRecordTypes.mo
+// Error: Failed to load package MatrixMultiplicationRecordTypes (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class MatrixMultiplicationRecordTypes not found in scope <top>.
+// Error: Error occurred while flattening model MatrixMultiplicationRecordTypes
 //
-// class ComplexTest
-//   Real c1.re = 1.0;
-//   Real c1.im = 0.0;
-//   Real c2[1,1].re = c1.re;
-//   Real c2[1,1].im = c1.im;
-//   Real c2[1,2].re = c1.re;
-//   Real c2[1,2].im = c1.im;
-//   Real c2[1,3].re = c1.re;
-//   Real c2[1,3].im = c1.im;
-//   Real c2[2,1].re = c1.re;
-//   Real c2[2,1].im = c1.im;
-//   Real c2[2,2].re = c1.re;
-//   Real c2[2,2].im = c1.im;
-//   Real c2[2,3].re = c1.re;
-//   Real c2[2,3].im = c1.im;
-//   Real c2[3,1].re = c1.re;
-//   Real c2[3,1].im = c1.im;
-//   Real c2[3,2].re = c1.re;
-//   Real c2[3,2].im = c1.im;
-//   Real c2[3,3].re = c1.re;
-//   Real c2[3,3].im = c1.im;
-//   Real c3[1,1].re = c1.re;
-//   Real c3[1,1].im = c1.im;
-//   Real c3[2,1].re = c1.re;
-//   Real c3[2,1].im = c1.im;
-//   Real c3[3,1].re = c1.re;
-//   Real c3[3,1].im = c1.im;
-//   Real c4[1,1].re;
-//   Real c4[1,1].im;
-//   Real c4[2,1].re;
-//   Real c4[2,1].im;
-//   Real c4[3,1].re;
-//   Real c4[3,1].im;
-// equation
-//   c4[1,1] = Complex.'+'(Complex.'+'(Complex.'*'.multiply(c2[1,1], c3[1,1]), Complex.'*'.multiply(c2[1,2], c3[2,1])), Complex.'*'.multiply(c2[1,3], c3[3,1]));
-//   c4[2,1] = Complex.'+'(Complex.'+'(Complex.'*'.multiply(c2[2,1], c3[1,1]), Complex.'*'.multiply(c2[2,2], c3[2,1])), Complex.'*'.multiply(c2[2,3], c3[3,1]));
-//   c4[3,1] = Complex.'+'(Complex.'+'(Complex.'*'.multiply(c2[3,1], c3[1,1]), Complex.'*'.multiply(c2[3,2], c3[2,1])), Complex.'*'.multiply(c2[3,3], c3[3,1]));
-// end ComplexTest;
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

@@ -87,7 +87,6 @@ end OperationRelational1;
 //   b1 = e1 == e2;
 //   b1 = e1 <> e2;
 // end OperationRelational1;
-// [flattening/modelica/scodeinst/OperationRelational1.mo:18:3-18:16:writable] Warning: In relation r1 == r2, == on Real numbers is only allowed inside functions.
-// [flattening/modelica/scodeinst/OperationRelational1.mo:19:3-19:16:writable] Warning: In relation r1 <> r2, <> on Real numbers is only allowed inside functions.
-//
+// [OpenModelica/flattening/modelica/scodeinst/OperationRelational1.mo:18:3-18:16:writable] Warning: In relation r1 == r2, == on Real numbers is only allowed inside functions.
+// [OpenModelica/flattening/modelica/scodeinst/OperationRelational1.mo:19:3-19:16:writable] Warning: In relation r1 <> r2, <> on Real numbers is only allowed inside functions.
 // endResult

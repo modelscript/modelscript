@@ -17,7 +17,13 @@ model M
 end M;
 
 // Result:
-// class M
-//   Real x = 1.0;
-// end M;
+// Error processing file: FuncExtends.mo
+// Error: Failed to load package FuncExtends (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class FuncExtends not found in scope <top>.
+// Error: Error occurred while flattening model FuncExtends
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

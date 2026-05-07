@@ -10,29 +10,15 @@ model C
 end C;
 model B
   C c[5](each a={1,2,3},d={1,2,3,4,5});
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end B;
 // Result:
-// class B
-//   parameter Real c[1].a[1] = 1.0;
-//   parameter Real c[1].a[2] = 2.0;
-//   parameter Real c[1].a[3] = 3.0;
-//   parameter Real c[1].d = 1.0;
-//   parameter Real c[2].a[1] = 1.0;
-//   parameter Real c[2].a[2] = 2.0;
-//   parameter Real c[2].a[3] = 3.0;
-//   parameter Real c[2].d = 2.0;
-//   parameter Real c[3].a[1] = 1.0;
-//   parameter Real c[3].a[2] = 2.0;
-//   parameter Real c[3].a[3] = 3.0;
-//   parameter Real c[3].d = 3.0;
-//   parameter Real c[4].a[1] = 1.0;
-//   parameter Real c[4].a[2] = 2.0;
-//   parameter Real c[4].a[3] = 3.0;
-//   parameter Real c[4].d = 4.0;
-//   parameter Real c[5].a[1] = 1.0;
-//   parameter Real c[5].a[2] = 2.0;
-//   parameter Real c[5].a[3] = 3.0;
-//   parameter Real c[5].d = 5.0;
-// end B;
+// Error processing file: Each1.mo
+// Error: Failed to load package Each1 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class Each1 not found in scope <top>.
+// Error: Error occurred while flattening model Each1
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

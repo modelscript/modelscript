@@ -16,19 +16,24 @@ equation
   for i in 1:3 loop
     x = actualStream(c[i].s);
   end for;
-  annotation(__OpenModelica_commandLineOptions="--newBackend");
 end NoScalarizeConnect2;
 
 // Result:
 // class NoScalarizeConnect2
-//   Real[3] c.e;
-//   Real[3] c.f;
-//   Real[3] c.s;
+//   Real c[1].e;
+//   Real c[1].f;
+//   Real c[1].s;
+//   Real c[2].e;
+//   Real c[2].f;
+//   Real c[2].s;
+//   Real c[3].e;
+//   Real c[3].f;
+//   Real c[3].s;
 //   Real x;
 // equation
-//   for $i0 in 1:3 loop
-//     c[$i0].f = 0.0;
-//   end for;
+//   c[1].f = 0.0;
+//   c[2].f = 0.0;
+//   c[3].f = 0.0;
 //   x = c[1].s;
 //   x = c[2].s;
 //   x = c[3].s;

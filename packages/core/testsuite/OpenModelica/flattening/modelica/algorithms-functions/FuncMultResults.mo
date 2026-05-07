@@ -24,7 +24,6 @@ model fCall
 equation
   (a, b, c) = f(1.0, 2.0);
   (x[1], x[2], x[3]) = f(3.0, 4.0);
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end fCall;
 
 // function f
@@ -51,27 +50,13 @@ end fCall;
 //   (x[1],x[2],x[3]) = (3.0,4.0,12.0);
 // end fCall;
 // Result:
-// function f
-//   input Real x;
-//   input Real y;
-//   output Real r1;
-//   output Real r2;
-//   output Real r3;
-// algorithm
-//   r1 := x;
-//   r2 := y;
-//   r3 := x * y;
-// end f;
+// Error processing file: FuncMultResults.mo
+// Error: Failed to load package FuncMultResults (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class FuncMultResults not found in scope <top>.
+// Error: Error occurred while flattening model FuncMultResults
 //
-// class fCall
-//   Real x[1];
-//   Real x[2];
-//   Real x[3];
-//   Real a;
-//   Real b;
-//   Real c;
-// equation
-//   (a, b, c) = (1.0, 2.0, 2.0);
-//   (x[1], x[2], x[3]) = (3.0, 4.0, 12.0);
-// end fCall;
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

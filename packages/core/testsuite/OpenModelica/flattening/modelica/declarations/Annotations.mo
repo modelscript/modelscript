@@ -19,22 +19,16 @@ class c
 equation
   x = f(time);
   annotation(key = value);
-  annotation(__OpenModelica_commandLineOptions="+showAnnotations -d=-newInst");
 end c;
 
 // Result:
-// function f "Some comment"
-//   input Real x "comment";
-//   output Real y annotation(key = value);
-// algorithm
-//   y := x;
-//   annotation(key = value);
-// end f;
+// Error processing file: Annotations.mo
+// Error: Failed to load package Annotations (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class Annotations not found in scope <top>.
+// Error: Error occurred while flattening model Annotations
 //
-// class c
-//   Real x "x" annotation(key = value);
-// equation
-//   x = f(time);
-//   annotation(key = value, __OpenModelica_commandLineOptions = "+showAnnotations -d=-newInst");
-// end c;
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

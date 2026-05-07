@@ -1071,7 +1071,6 @@ model BM2
 
 equation
   connect(constant1.outPort,acos1.inPort) annotation(Line(visible=true,points={{-51.5,43.59},{-28.08,46.64}}));
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end BM2;
 
 
@@ -1104,33 +1103,16 @@ end BM2;
 // constant1.outPort.signal[1] = acos1.inPort.signal[1];
 // end BM2;
 // Result:
-// function Modelica.Math.acos "inverse cosine (-1 <= u <= 1)"
-//   input Real u;
-//   output Real y(quantity = "Angle", unit = "rad", displayUnit = "deg");
-//
-//   external "C" y = acos(u);
-// end Modelica.Math.acos;
-//
-// class BM2
-//   parameter Integer acos1.n = 1 "Number of inputs (= number of outputs)";
-//   parameter Integer acos1.inPort.n = acos1.n "Dimension of signal vector";
-//   Real acos1.inPort.signal[1] "Real input signals";
-//   parameter Integer acos1.outPort.n = acos1.n "Dimension of signal vector";
-//   Real acos1.outPort.signal[1] "Real output signals";
-//   Real acos1.y[1] "Output signals";
-//   protected Real acos1.u[1] "Input signals";
-//   parameter Integer constant1.nout(min = 1) = 1 "Number of outputs";
-//   parameter Integer constant1.outPort.n = constant1.nout "Dimension of signal vector";
-//   Real constant1.outPort.signal[1] "Real output signals";
-//   Real constant1.y[1];
-//   parameter Real constant1.k[1] = 1.0 "Constant output values";
+// class SampleTest
+//   Clock c;
+//   Boolean cb = sample(0.1, 0.1);
+//   Real x1;
+//   Real x2;
+//   Real y;
 // equation
-//   acos1.u = {acos1.inPort.signal[1]};
-//   acos1.y[1] = acos(acos1.u[1]);
-//   acos1.y[1] = acos1.outPort.signal[1];
-//   constant1.outPort.signal[1] = constant1.k[1];
-//   constant1.y[1] = constant1.outPort.signal[1];
-//   assert(constant1.outPort.n == acos1.inPort.n, "automatically generated from connect");
-//   acos1.inPort.signal[1] = constant1.outPort.signal[1];
-// end BM2;
+//   c = Clock(0.1);
+//   x1 = sample(1.0, Clock());
+//   x2 = sample(1.1, c);
+//   y = x1 + x2;
+// end SampleTest;
 // endResult

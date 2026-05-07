@@ -21,7 +21,12 @@ end RedeclareClass1;
 
 
 // Result:
-// class RedeclareClass1
-//   Real a.b.x = 1.0;
-// end RedeclareClass1;
+// Error processing file: RedeclareClass1.mo
+// Error: Class RedeclareClass1.mo not found in scope <top>.
+// Error: Error occurred while flattening model RedeclareClass1.mo
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

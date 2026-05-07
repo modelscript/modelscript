@@ -11,7 +11,8 @@ end ReductionInvalidTypeMin;
 
 // Result:
 // Error processing file: ReductionInvalidTypeMin.mo
-// [flattening/modelica/scodeinst/ReductionInvalidTypeMin.mo:9:3-9:39:writable] Error: Invalid expression '{1, 2, 3}' of type Integer[3] in min reduction, expected scalar enumeration, Boolean, Integer, or Real.
+// [OpenModelica/flattening/modelica/scodeinst/ReductionInvalidTypeMin.mo:9:3-9:39:writable] Error: Invalid expression '{1, 2, 3}' of type Integer[3] in min reduction, expected scalar enumeration, Boolean, Integer, or Real.
+// Error: Error occurred while flattening model ReductionInvalidTypeMin
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

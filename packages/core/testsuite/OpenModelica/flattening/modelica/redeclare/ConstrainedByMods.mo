@@ -29,13 +29,17 @@ model Circuit3
   // The T0 modification is not applied because it did not appear in the original declaration
   extends Circuit2(redeclare replaceable model NonlinearResistor = Resistor(U=10));
   NonlinearResistor r;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Circuit3;
 
 
 // Result:
-// class Circuit3
-//   parameter Real r.R = 100.0;
-//   parameter Real r.U = 10.0;
-// end Circuit3;
+// Error processing file: ConstrainedByMods.mo
+// Error: Failed to load package ConstrainedByMods (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class ConstrainedByMods.mo not found in scope <top>.
+// Error: Error occurred while flattening model ConstrainedByMods.mo
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

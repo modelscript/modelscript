@@ -10,7 +10,8 @@ end ArrayBoundsBinding1;
 
 // Result:
 // Error processing file: ArrayBoundsBinding1.mo
-// [flattening/modelica/scodeinst/ArrayBoundsBinding1.mo:8:3-8:19:writable] Error: Subscript '4' for dimension 2 (size = 3) of x is out of bounds.
+// [OpenModelica/flattening/modelica/scodeinst/ArrayBoundsBinding1.mo:8:3-8:19:writable] Error: Subscript '4' for dimension 2 (size = 3) of x is out of bounds.
+// Error: Error occurred while flattening model ArrayBoundsBinding1
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

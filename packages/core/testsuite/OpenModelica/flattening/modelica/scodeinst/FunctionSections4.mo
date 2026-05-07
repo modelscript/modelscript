@@ -21,8 +21,9 @@ end FunctionSections3;
 
 // Result:
 // Error processing file: FunctionSections4.mo
-// [flattening/modelica/scodeinst/FunctionSections4.mo:14:3-14:17:writable] Notification: From here:
-// [flattening/modelica/scodeinst/FunctionSections4.mo:13:1-16:6:writable] Error: Function f has more than one algorithm section or external declaration.
+// Error: Failed to load package FunctionSections4 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class FunctionSections4 not found in scope <top>.
+// Error: Error occurred while flattening model FunctionSections4
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

@@ -27,9 +27,10 @@ end ImportConflict3;
 
 // Result:
 // Error processing file: ImportConflict3.mo
-// [flattening/modelica/scodeinst/ImportConflict3.mo:23:3-23:16:writable] Notification: From here:
-// [flattening/modelica/scodeinst/ImportConflict3.mo:24:3-24:16:writable] Error: M found in several unqualified import statements.
-// [flattening/modelica/scodeinst/ImportConflict3.mo:25:3-25:6:writable] Error: Class M not found in scope ImportConflict3.
+// [OpenModelica/flattening/modelica/scodeinst/ImportConflict3.mo:23:3-23:16:writable] Notification: From here:
+// [OpenModelica/flattening/modelica/scodeinst/ImportConflict3.mo:24:3-24:16:writable] Error: M found in several unqualified import statements.
+// [OpenModelica/flattening/modelica/scodeinst/ImportConflict3.mo:25:3-25:6:writable] Error: Class M not found in scope ImportConflict3.
+// Error: Error occurred while flattening model ImportConflict3
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

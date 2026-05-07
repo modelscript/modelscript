@@ -19,7 +19,8 @@ end CevalFuncWhile2;
 
 // Result:
 // Error processing file: CevalFuncWhile2.mo
-// [flattening/modelica/scodeinst/CevalFuncWhile2.mo:11:3-13:12:writable] Error: The loop iteration limit (--evalLoopLimit=100000) was exceeded during evaluation.
+// [OpenModelica/flattening/modelica/scodeinst/CevalFuncWhile2.mo:11:3-13:12:writable] Error: The loop iteration limit (--evalLoopLimit=100000) was exceeded during evaluation.
+// Error: Error occurred while flattening model CevalFuncWhile2
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

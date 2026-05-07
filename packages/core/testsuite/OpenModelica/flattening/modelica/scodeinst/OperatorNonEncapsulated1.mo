@@ -20,7 +20,8 @@ end OperatorNonEncapsulated1;
 
 // Result:
 // Error processing file: OperatorNonEncapsulated1.mo
-// [flattening/modelica/scodeinst/OperatorNonEncapsulated1.mo:11:3-14:20:writable] Error: Operator C.'constructor' is not encapsulated.
+// [OpenModelica/flattening/modelica/scodeinst/OperatorNonEncapsulated1.mo:11:3-14:20:writable] Error: Operator C.'constructor' is not encapsulated.
+// Error: Error occurred while flattening model OperatorNonEncapsulated1
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

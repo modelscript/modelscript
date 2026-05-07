@@ -12,7 +12,8 @@ end SizeInvalidType2;
 
 // Result:
 // Error processing file: SizeInvalidType2.mo
-// [flattening/modelica/scodeinst/SizeInvalidType2.mo:10:3-10:31:writable] Error: The first argument of size must be an array expression.
+// [OpenModelica/flattening/modelica/scodeinst/SizeInvalidType2.mo:10:3-10:31:writable] Error: The first argument of size must be an array expression.
+// Error: Error occurred while flattening model SizeInvalidType2
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

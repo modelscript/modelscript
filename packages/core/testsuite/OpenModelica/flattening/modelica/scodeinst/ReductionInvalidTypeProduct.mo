@@ -11,7 +11,8 @@ end ReductionInvalidTypeProduct;
 
 // Result:
 // Error processing file: ReductionInvalidTypeProduct.mo
-// [flattening/modelica/scodeinst/ReductionInvalidTypeProduct.mo:9:3-9:43:writable] Error: Invalid expression '{1, 2, 3}' of type Integer[3] in product reduction, expected scalar Integer or Real.
+// [OpenModelica/flattening/modelica/scodeinst/ReductionInvalidTypeProduct.mo:9:3-9:43:writable] Error: Invalid expression '{1, 2, 3}' of type Integer[3] in product reduction, expected scalar Integer or Real.
+// Error: Error occurred while flattening model ReductionInvalidTypeProduct
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

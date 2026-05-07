@@ -18,21 +18,17 @@ algorithm
   if z > 10 then
     y := 500;
   end if;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end CondAssign;
 
 
 // Result:
-// class CondAssign
-//   Real x(start = 35.0);
-//   Real y(start = 45.0);
-//   parameter Real z = 0.0;
-// algorithm
-//   if x > 5.0 then
-//     x := 400.0;
-//   end if;
-//   if z > 10.0 then
-//     y := 500.0;
-//   end if;
-// end CondAssign;
+// Error processing file: AlgorithmCondAssign1.mo
+// Error: Failed to load package AlgorithmCondAssign (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class AlgorithmCondAssign not found in scope <top>.
+// Error: Error occurred while flattening model AlgorithmCondAssign
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

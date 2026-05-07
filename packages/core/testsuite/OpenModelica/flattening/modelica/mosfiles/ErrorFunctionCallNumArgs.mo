@@ -21,5 +21,4 @@ function f2
 algorithm
   s := fn(1,2);
 end f2;
-
 end ErrorFunctionCallNumArgs;

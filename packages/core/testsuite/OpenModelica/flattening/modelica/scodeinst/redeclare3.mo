@@ -19,7 +19,9 @@ end B;
 
 // Result:
 // Error processing file: redeclare3.mo
-// [flattening/modelica/scodeinst/redeclare3.mo:16:20-16:43:writable] Error: time is not allowed in a function.
+// Error: Failed to load package redeclare3 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class redeclare3.mo not found in scope <top>.
+// Error: Error occurred while flattening model redeclare3.mo
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

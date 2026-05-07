@@ -31,10 +31,11 @@ end PartialApplicationInvalidArg1;
 
 // Result:
 // Error processing file: PartialApplicationInvalidArg1.mo
-// [flattening/modelica/scodeinst/PartialApplicationInvalidArg1.mo:29:3-29:45:writable] Error: Type mismatch for named argument in f1(y="fish"). The argument has type:
+// [OpenModelica/flattening/modelica/scodeinst/PartialApplicationInvalidArg1.mo:29:3-29:45:writable] Error: Type mismatch for named argument in f1(y="fish"). The argument has type:
 //   String
 // expected type:
 //   Real
+// Error: Error occurred while flattening model PartialApplicationInvalidArg1
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

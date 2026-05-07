@@ -80,38 +80,16 @@ model X
   equation
    x = if frame_r_out == frame_r_in then 0 else 1;
    f=enum.a;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end X;
 
 // Result:
-// class X
-//   parameter enumeration(world, frame_a, frame_resolve) frame_r_in = Types.ResolveInFrameA.frame_a;
-//   parameter enumeration(world, frame_a, frame_resolve) frame_r_out = frame_r_in;
-//   Real x;
-//   enumeration(a, b, c) f(quantity = "quant_str_enumeration", min = enum.a, max = enum.b, start = enum.c, fixed = true);
-//   enumeration(small, medium, large, xlarge) enumtest.t_shirt_size = Types.EnumTest.Size.medium;
-//   enumeration(zero, one) enumtest.c(quantity = "Current", start = Types.EnumTest.DigitalCurrentChoices.one, fixed = true);
-//   enumeration(zero, one) enumtest.choice(start = Types.EnumTest.DigitalCurrentChoices.one, fixed = true);
-//   Real enumtest.x[Types.EnumTest.DigitalCurrentChoices.zero];
-//   Real enumtest.x[Types.EnumTest.DigitalCurrentChoices.one];
-//   Real enumtest.xx[Types.EnumTest.DigitalCurrentChoices.zero];
-//   Real enumtest.xx[Types.EnumTest.DigitalCurrentChoices.one];
-//   Real enumtest.xxx[Types.EnumTest.DigitalCurrentChoices.zero];
-//   Real enumtest.xxx[Types.EnumTest.DigitalCurrentChoices.one];
-// equation
-//   enumtest.c = Types.EnumTest.DigitalCurrentChoices.one;
-//   enumtest.choice = Types.EnumTest.DigitalCurrentChoices.one;
-//   x = if frame_r_out == frame_r_in then 0.0 else 1.0;
-//   f = enum.a;
-// algorithm
-//   for e in {Types.EnumTest.DigitalCurrentChoices.zero, Types.EnumTest.DigitalCurrentChoices.one} loop
-//     enumtest.x[e] := 0.0;
-//   end for;
-//   for e in Types.EnumTest.DigitalCurrentChoices.zero:Types.EnumTest.DigitalCurrentChoices.one loop
-//     enumtest.xx[e] := 0.0;
-//   end for;
-//   for e in Types.EnumTest.DigitalCurrentChoices.zero:Types.EnumTest.DigitalCurrentChoices.one loop
-//     enumtest.xxx[e] := 0.0;
-//   end for;
-// end X;
+// Error processing file: Enum7.mo
+// Error: Failed to load package Enumeration7 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class Enumeration7 not found in scope <top>.
+// Error: Error occurred while flattening model Enumeration7
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

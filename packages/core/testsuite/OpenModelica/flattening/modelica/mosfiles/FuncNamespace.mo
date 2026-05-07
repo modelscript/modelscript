@@ -22,9 +22,7 @@ package TestPkg
     algorithm
       y := 3.0 ^ x;
     end TestFunc;
-
   end TestClass;
-
 end TestPkg;
 
 function TestPkg_TestFunc

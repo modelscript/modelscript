@@ -13,7 +13,8 @@ end ForStatementAssign1;
 
 // Result:
 // Error processing file: ForStatementAssign1.mo
-// [flattening/modelica/scodeinst/ForStatementAssign1.mo:10:5-10:11:writable] Error: Assignment to iterator 'i'.
+// [OpenModelica/flattening/modelica/scodeinst/ForStatementAssign1.mo:10:5-10:11:writable] Error: Assignment to iterator 'i'.
+// Error: Error occurred while flattening model ForStatementAssign1
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

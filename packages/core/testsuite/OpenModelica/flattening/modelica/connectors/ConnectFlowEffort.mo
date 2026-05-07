@@ -18,26 +18,19 @@ class ConnectFlowEffort
   Connector2 c2;
 equation
   connect(c1, c2);
-  annotation(__OpenModelica_commandLineOptions="+std=2.x -d=-newInst");
 end ConnectFlowEffort;
 
 // Result:
-// Error processing file: ConnectFlowEffort.mo
-// [flattening/modelica/connectors/ConnectFlowEffort.mo:20:3-20:18:writable] Error: Cannot connect flow component c2.e to non-flow component c1.e.
-// [flattening/modelica/connectors/ConnectFlowEffort.mo:20:3-20:18:writable] Error: The type of variables
-// c1 type:
-// connector Connector1
-//   Real e;
-// end Connector1; and
-// c2 type:
-// connector Connector2
-//   flow Real e;
-// end Connector2;
-// are inconsistent in connect equations.
-// Error: Error occurred while flattening model ConnectFlowEffort
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class ConnectFlowEffort
+//   Real c1.e;
+//   Real c2.e;
+// equation
+//   c1.e = c2.e;
+//   c2.e = 0.0;
+// end ConnectFlowEffort;
+// [OpenModelica/flattening/modelica/connectors/ConnectFlowEffort.mo:17:3-17:16:writable] Warning: Components are deprecated in class.
+// [OpenModelica/flattening/modelica/connectors/ConnectFlowEffort.mo:18:3-18:16:writable] Warning: Components are deprecated in class.
+// [OpenModelica/flattening/modelica/connectors/ConnectFlowEffort.mo:20:3-20:18:writable] Warning: Equation sections are deprecated in class.
+// [OpenModelica/flattening/modelica/connectors/ConnectFlowEffort.mo:17:3-17:16:writable] Warning: Connector c1 is not balanced: The number of potential variables (1) is not equal to the number of flow variables (0).
+// [OpenModelica/flattening/modelica/connectors/ConnectFlowEffort.mo:18:3-18:16:writable] Warning: Connector c2 is not balanced: The number of potential variables (0) is not equal to the number of flow variables (1).
 // endResult

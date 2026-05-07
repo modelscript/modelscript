@@ -11,7 +11,8 @@ end TypenameInvalid1;
 
 // Result:
 // Error processing file: TypenameInvalid1.mo
-// [flattening/modelica/scodeinst/TypenameInvalid1.mo:9:3-9:14:writable] Error: Type name 'Boolean' is not allowed in this context.
+// [OpenModelica/flattening/modelica/scodeinst/TypenameInvalid1.mo:9:3-9:14:writable] Error: Type name 'Boolean' is not allowed in this context.
+// Error: Error occurred while flattening model TypenameInvalid1
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

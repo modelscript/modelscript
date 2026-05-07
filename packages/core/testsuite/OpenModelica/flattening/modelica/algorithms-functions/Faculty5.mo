@@ -108,9 +108,7 @@ and the accompanying <b>disclaimer</b>
     partial package Library "Icon for library"
       annotation(Icon(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10}), graphics={Rectangle(visible=true, fillColor={235,235,235}, fillPattern=FillPattern.Solid, extent={{-100,-100},{80,50}}),Polygon(visible=true, fillColor={210,210,210}, fillPattern=FillPattern.Solid, points={{-100,50},{-80,70},{100,70},{80,50},{-100,50}}),Polygon(visible=true, fillColor={210,210,210}, fillPattern=FillPattern.Solid, points={{100,70},{100,-80},{80,-100},{80,50},{100,70}}),Text(visible=true, fillColor={0,0,255}, extent={{-85,-85},{65,35}}, textString="Library", fontName="Arial"),Text(visible=true, fillColor={255,0,0}, extent={{-120,73},{120,122}}, textString="%name", fontName="Arial")}), Diagram(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10})));
     end Library;
-
   end Icons;
-
 end Modelica;
 package M1_solutions "Solutions to exercises for training M1"
   extends Modelica.Icons.Library;
@@ -145,40 +143,20 @@ package M1_solutions "Solutions to exercises for training M1"
         Integer fac=faculty(n);
         Integer fac_rec=faculty_rec(n);
       end FacultyCall;
-
     end Faculty;
-
   end E03;
-
 end M1_solutions;
 model M1_solutions_E03_Faculty_FacultyCall
   extends M1_solutions.E03.Faculty.FacultyCall;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end M1_solutions_E03_Faculty_FacultyCall;
 // Result:
-// function M1_solutions.E03.Faculty.faculty
-//   input Integer n;
-//   output Integer k = 1;
-// algorithm
-//   assert(n >= 0, "n must be larger than 0");
-//   if n <> 0 then
-//     for i in 1:n loop
-//       k := k * i;
-//     end for;
-//   end if;
-// end M1_solutions.E03.Faculty.faculty;
+// Error processing file: Faculty5.mo
+// Error: Failed to load package Faculty5 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class Faculty5 not found in scope <top>.
+// Error: Error occurred while flattening model Faculty5
 //
-// function M1_solutions.E03.Faculty.faculty_rec
-//   input Integer n;
-//   output Integer k = 1;
-// algorithm
-//   assert(n >= 0, "n must be larger than 0");
-//   k := if n == 0 then 1 else n * M1_solutions.E03.Faculty.faculty_rec(-1 + n);
-// end M1_solutions.E03.Faculty.faculty_rec;
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
 //
-// class M1_solutions_E03_Faculty_FacultyCall
-//   parameter Integer n = 15;
-//   Integer fac = M1_solutions.E03.Faculty.faculty(n);
-//   Integer fac_rec = M1_solutions.E03.Faculty.faculty_rec(n);
-// end M1_solutions_E03_Faculty_FacultyCall;
+// Execution failed!
 // endResult

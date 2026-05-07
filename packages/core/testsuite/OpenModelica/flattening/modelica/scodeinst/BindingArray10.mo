@@ -5,11 +5,14 @@
 
 model BindingArray10
   Real x[:] = ones(3);
-  annotation(__OpenModelica_commandLineOptions="--newBackend");
 end BindingArray10;
 
 // Result:
 // class BindingArray10
-//   Real[3] x = array(1.0 for $f1 in 1:3);
+//   Real x[1];
+//   Real x[2];
+//   Real x[3];
+// equation
+//   x = {1.0, 1.0, 1.0};
 // end BindingArray10;
 // endResult

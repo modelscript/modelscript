@@ -11,10 +11,11 @@ end FuncIntegerWrongType;
 
 // Result:
 // Error processing file: FuncIntegerWrongType.mo
-// [flattening/modelica/scodeinst/FuncIntegerWrongType.mo:9:3-9:27:writable] Error: Type mismatch for positional argument 1 in Integer(e=1.0). The argument has type:
+// [OpenModelica/flattening/modelica/scodeinst/FuncIntegerWrongType.mo:9:3-9:27:writable] Error: Type mismatch for positional argument 1 in Integer(e=1.0). The argument has type:
 //   Real
 // expected type:
 //   enumeration(:)
+// Error: Error occurred while flattening model FuncIntegerWrongType
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

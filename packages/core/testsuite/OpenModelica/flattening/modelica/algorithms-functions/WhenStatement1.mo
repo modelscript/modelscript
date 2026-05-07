@@ -17,22 +17,17 @@ algorithm
   end when;
 equation
   der(x) = 2*x;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end WhenStat;
 
 
 // Result:
-// class WhenStat
-//   Real x(start = 1.0);
-//   Real y1;
-//   parameter Real y2 = 5.0;
-//   Real y3;
-// equation
-//   der(x) = 2.0 * x;
-// algorithm
-//   when x > 2.0 then
-//     y1 := sin(x);
-//     y3 := 2.0 * x + pre(y1) + y2;
-//   end when;
-// end WhenStat;
+// Error processing file: WhenStatement1.mo
+// Error: Failed to load package WhenStatement1 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class WhenStatement1 not found in scope <top>.
+// Error: Error occurred while flattening model WhenStatement1
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

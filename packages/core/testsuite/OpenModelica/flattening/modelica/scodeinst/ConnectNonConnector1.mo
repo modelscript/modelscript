@@ -10,7 +10,8 @@ end ConnectNonConnector1;
 
 // Result:
 // Error processing file: ConnectNonConnector1.mo
-// [flattening/modelica/scodeinst/ConnectNonConnector1.mo:8:3-8:28:writable] Error: Boolean is not a valid connector.
+// [OpenModelica/flattening/modelica/scodeinst/ConnectNonConnector1.mo:8:3-8:28:writable] Error: Boolean is not a valid connector.
+// Error: Error occurred while flattening model ConnectNonConnector1
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

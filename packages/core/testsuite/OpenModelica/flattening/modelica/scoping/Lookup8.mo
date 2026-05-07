@@ -13,13 +13,13 @@ end Cytosol;
 model Test
   Real Cytosol_V=Cytosol.V;
   Cytosol Cytosol;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Test;
 
 // Result:
 // Error processing file: Lookup8.mo
-// [flattening/modelica/scoping/Lookup8.mo:15:3-15:18:writable] Error: Found a component with same name when looking for type Cytosol.
-// Error: Error occurred while flattening model Test
+// Error: Failed to load package Lookup8 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class Lookup8 not found in scope <top>.
+// Error: Error occurred while flattening model Lookup8
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

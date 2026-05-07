@@ -12,7 +12,8 @@ end RangeInvalidStep3;
 
 // Result:
 // Error processing file: RangeInvalidStep3.mo
-// [flattening/modelica/scodeinst/RangeInvalidStep3.mo:10:3-10:31:writable] Error: Range of type enumeration E(one, two, three) may not specify a step size.
+// Error: Class RangeInvalidStep3.mo not found in scope <top>.
+// Error: Error occurred while flattening model RangeInvalidStep3.mo
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

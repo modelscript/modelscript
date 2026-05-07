@@ -27,27 +27,16 @@ class NamedCall
   Real p;
 equation
   p = PolynomialEvaluator2(A = {1, 2, 3, 4}, x = 21);
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end NamedCall;
 
 // Result:
-// function PolynomialEvaluator2
-//   input Real[:] A;
-//   input Real x = 1.0;
-//   output Real sum;
-//   protected Real xpower;
-// algorithm
-//   sum := 0.0;
-//   xpower := 1.0;
-//   for i in 1:size(A, 1) loop
-//     sum := sum + A[i] * xpower;
-//     xpower := xpower * x;
-//   end for;
-// end PolynomialEvaluator2;
+// Error processing file: PolynomialEvaluator3.mo
+// Error: Failed to load package PolynomialEvaluator (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class PolynomialEvaluator not found in scope <top>.
+// Error: Error occurred while flattening model PolynomialEvaluator
 //
-// class NamedCall
-//   Real p;
-// equation
-//   p = 38410.0;
-// end NamedCall;
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

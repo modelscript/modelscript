@@ -41,65 +41,16 @@ equation
   children   = pList.persons.children;  // Returns: {{"Carl", "Eva"},
                 //     {"Anders", "Dan"},
                 //     {"John", "Daniel"}}
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end getPerson;
 
 // Result:
-// function Person "Automatically generated record constructor for Person"
-//   input String name;
-//   input Integer age;
-//   input String[2] children;
-//   output Person res;
-// end Person;
+// Error processing file: ArrayFieldSlice.mo
+// Error: Failed to load package ArrayFieldSlice (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class ArrayFieldSlice not found in scope <top>.
+// Error: Error occurred while flattening model ArrayFieldSlice
 //
-// function mkperson
-//   input String name;
-//   input Integer age;
-//   input String[2] children;
-//   output Person p;
-// algorithm
-//   p.name := name;
-//   p.age := age;
-//   p.children := {children[1], children[2]};
-// end mkperson;
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
 //
-// class getPerson
-//   String pList.persons[1].name = "John";
-//   Integer pList.persons[1].age = 35;
-//   String pList.persons[1].children[1] = "Carl";
-//   String pList.persons[1].children[2] = "Eva";
-//   String pList.persons[2].name = "Karin";
-//   Integer pList.persons[2].age = 40;
-//   String pList.persons[2].children[1] = "Anders";
-//   String pList.persons[2].children[2] = "Dan";
-//   String pList.persons[3].name = "Lisa";
-//   Integer pList.persons[3].age = 37;
-//   String pList.persons[3].children[1] = "John";
-//   String pList.persons[3].children[2] = "Daniel";
-//   String name[1];
-//   String name[2];
-//   String name[3];
-//   Integer age[1];
-//   Integer age[2];
-//   Integer age[3];
-//   String children[1,1];
-//   String children[1,2];
-//   String children[2,1];
-//   String children[2,2];
-//   String children[3,1];
-//   String children[3,2];
-// equation
-//   name[1] = pList.persons[1].name;
-//   name[2] = pList.persons[2].name;
-//   name[3] = pList.persons[3].name;
-//   age[1] = pList.persons[1].age;
-//   age[2] = pList.persons[2].age;
-//   age[3] = pList.persons[3].age;
-//   children[1,1] = pList.persons[1].children[1];
-//   children[1,2] = pList.persons[1].children[2];
-//   children[2,1] = pList.persons[2].children[1];
-//   children[2,2] = pList.persons[2].children[2];
-//   children[3,1] = pList.persons[3].children[1];
-//   children[3,2] = pList.persons[3].children[2];
-// end getPerson;
+// Execution failed!
 // endResult

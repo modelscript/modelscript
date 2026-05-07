@@ -11,7 +11,8 @@ end ConnectNonConnector2;
 
 // Result:
 // Error processing file: ConnectNonConnector2.mo
-// [flattening/modelica/scodeinst/ConnectNonConnector2.mo:9:3-9:16:writable] Error: E is not a valid connector.
+// [OpenModelica/flattening/modelica/scodeinst/ConnectNonConnector2.mo:9:3-9:16:writable] Error: E is not a valid connector.
+// Error: Error occurred while flattening model ConnectNonConnector2
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

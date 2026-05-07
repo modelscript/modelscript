@@ -9,11 +9,13 @@ class A
   Real a;
 end A;
 
-class ModifyUnknown1 = A(b = 5) annotation(__OpenModelica_commandLineOptions="-d=-newInst");
+class ModifyUnknown1 = A(b = 5) 
 
 // Result:
 // Error processing file: ModifyUnknown1.mo
-// Error: In modifier (b = 5), class or component b not found in <ModifyUnknown1>.
+// [OpenModelica/flattening/modelica/modification/ModifyUnknown1.mo:24:0-24:0:writable] Error: Missing token: SEMICOLON
+// Error: Failed to load package ModifyUnknown1 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class ModifyUnknown1 not found in scope <top>.
 // Error: Error occurred while flattening model ModifyUnknown1
 //
 // # Error encountered! Exiting...

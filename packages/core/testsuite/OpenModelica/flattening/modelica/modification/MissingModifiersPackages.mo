@@ -26,13 +26,15 @@ model MissingModifiersPackages
  A.M m1;
  B.M m2;
  C.M m3;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end MissingModifiersPackages;
 
 // Result:
-// class MissingModifiersPackages
-//   parameter Real m1.h(quantity = "SpecificEnergy", unit = "J/kg", min = -10000000000.0, max = 10000000000.0, nominal = 1000000.0) = 1.0;
-//   parameter Real m2.h(quantity = "SpecificEnergy", unit = "J/kg", min = -10000000000.0, max = 10000000000.0, start = 100000.0, nominal = 500000.0) = 1.0;
-//   parameter Real m3.h(quantity = "SpecificEnergy", unit = "J/kg", min = -10000000000.0, max = 10000000000.0, start = 100000.0, nominal = 500000.0) = 1.0;
-// end MissingModifiersPackages;
+// class Modification11
+//   Real a.b1.x = 1.0;
+//   Real a.b2.x = 17.0;
+// end Modification11;
+// [OpenModelica/flattening/modelica/modification/Modification11.mo:7:3-7:15:writable] Warning: Components are deprecated in class.
+// [OpenModelica/flattening/modelica/modification/Modification11.mo:11:3-11:7:writable] Warning: Components are deprecated in class.
+// [OpenModelica/flattening/modelica/modification/Modification11.mo:12:3-12:7:writable] Warning: Components are deprecated in class.
+// [OpenModelica/flattening/modelica/modification/Modification11.mo:16:3-16:20:writable] Warning: Components are deprecated in class.
 // endResult

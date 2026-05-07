@@ -20,6 +20,5 @@ end FunctionInverseInvalid1;
 // class FunctionInverseInvalid1
 //   Real x = 3.0;
 // end FunctionInverseInvalid1;
-// [flattening/modelica/scodeinst/FunctionInverseInvalid1.mo:12:14-12:28:writable] Warning: 'y = z' is not a valid function inverse attribute.
-//
+// [OpenModelica/flattening/modelica/scodeinst/FunctionInverseInvalid1.mo:12:14-12:28:writable] Warning: 'y = z' is not a valid function inverse attribute.
 // endResult

@@ -357,7 +357,6 @@ when the package Block is revised exploiting new Modelica features.</p>
       replaceable type SignalType = Real;
 
       extends SignalType;
-
     end RealSignal;
 
     connector RealInput = input RealSignal "'input Real' as connector"
@@ -416,7 +415,6 @@ when the package Block is revised exploiting new Modelica features.</p>
                                    Text(extent=[-150, 150; 150, 110], string=
                     "%name")));
         equation
-
         end BlockIcon;
 
         partial block SO "Single Output continuous control block"
@@ -1129,10 +1127,8 @@ and the accompanying <b>disclaimer</b>
 
         while i < n and u >= table[i, 1] loop
           i := i + 1;
-
         end while;
         i := i - 1;
-
       end if;
 
       // Get interpolation data
@@ -1144,7 +1140,6 @@ and the accompanying <b>disclaimer</b>
       assert(u2 > u1, "Table index must be increasing");
       // Interpolate
       y := y1 + (y2 - y1)*(u - u1)/(u2 - u1);
-
     end if;
   end tempInterpol1;
   end Math;
@@ -1978,7 +1973,6 @@ It is a superclass for the two components TwoFlangesAndBearing and TwoFlangesAnd
 </ul>
 </HTML>
 "));
-
         end Bearing;
 
         partial model TwoFlangesAndBearing
@@ -3617,7 +3611,6 @@ equation
   connect(inertia2.flange_b,springDamper2.flange_a) annotation(Line(visible=true,points={{-55.39,-9.84},{-48.57,-9.84}}));
   connect(inertia1.flange_b,springDamper1.flange_a) annotation(Line(visible=true,points={{25.3,-9.84},{33.16,-9.84}}));
   connect(springDamper1.flange_b,fixed1.flange_b) annotation(Line(visible=true,points={{53.59,-10.37},{69.05,-10.37}}));
-  annotation(__OpenModelica_commandLineOptions="+std=2.x -d=-newInst");
 end Gear;
 // function Modelica.Math.sin
 // input Real u(quantity = "Angle", unit = "rad", displayUnit = "deg");
@@ -3901,298 +3894,16 @@ end Gear;
 //   torque1.bearing.tau = 0.0;
 // end Gear;
 // Result:
-// function Modelica.Math.asin "inverse sine (-1 <= u <= 1)"
-//   input Real u;
-//   output Real y(quantity = "Angle", unit = "rad", displayUnit = "deg");
-//
-//   external "C" y = asin(u);
-// end Modelica.Math.asin;
-//
-// function Modelica.Math.sin "sine"
-//   input Real u(quantity = "Angle", unit = "rad", displayUnit = "deg");
-//   output Real y;
-//
-//   external "C" y = sin(u);
-// end Modelica.Math.sin;
-//
-// function Modelica.Math.tempInterpol1 "temporary routine for linear interpolation (will be removed)"
-//   input Real u "input value (first column of table)";
-//   input Real[:, :] table "table to be interpolated";
-//   input Integer icol "column of table to be interpolated";
-//   output Real y "interpolated input value (icol column of table)";
-//   protected Integer i;
-//   protected Integer n "number of rows of table";
-//   protected Real u1;
-//   protected Real u2;
-//   protected Real y1;
-//   protected Real y2;
-// algorithm
-//   n := size(table, 1);
-//   if n <= 1 then
-//     y := table[1,icol];
-//   else
-//     if u <= table[1,1] then
-//       i := 1;
-//     else
-//       i := 2;
-//       while i < n and u >= table[i,1] loop
-//         i := 1 + i;
-//       end while;
-//       i := -1 + i;
-//     end if;
-//     u1 := table[i,1];
-//     u2 := table[1 + i,1];
-//     y1 := table[i,icol];
-//     y2 := table[1 + i,icol];
-//     assert(u2 > u1, "Table index must be increasing");
-//     y := y1 + (y2 - y1) * (u - u1) / (u2 - u1);
-//   end if;
-// end Modelica.Math.tempInterpol1;
-//
-// class Gear
-//   parameter Real fixed1.phi0(quantity = "Angle", unit = "rad", displayUnit = "deg") = 0.0 "Fixed offset angle of housing";
-//   Real fixed1.flange_b.phi(quantity = "Angle", unit = "rad", displayUnit = "deg") "Absolute rotation angle of flange";
-//   Real fixed1.flange_b.tau(quantity = "Torque", unit = "N.m") "Cut torque in the flange";
-//   Real springDamper1.phi_rel(quantity = "Angle", unit = "rad", displayUnit = "deg", start = 0.0) "Relative rotation angle (= flange_b.phi - flange_a.phi)";
-//   Real springDamper1.tau(quantity = "Torque", unit = "N.m") "Torque between flanges (= flange_b.tau)";
-//   Real springDamper1.flange_a.phi(quantity = "Angle", unit = "rad", displayUnit = "deg") "Absolute rotation angle of flange";
-//   Real springDamper1.flange_a.tau(quantity = "Torque", unit = "N.m") "Cut torque in the flange";
-//   Real springDamper1.flange_b.phi(quantity = "Angle", unit = "rad", displayUnit = "deg") "Absolute rotation angle of flange";
-//   Real springDamper1.flange_b.tau(quantity = "Torque", unit = "N.m") "Cut torque in the flange";
-//   parameter Real springDamper1.c(unit = "N.m/rad", min = 0.0) = 10.0 "Spring constant";
-//   parameter Real springDamper1.phi_rel0(quantity = "Angle", unit = "rad", displayUnit = "deg") = 0.0 "Unstretched spring angle";
-//   parameter Real springDamper1.d(unit = "N.m.s/rad", min = 0.0) = 1.0 "Damping constant";
-//   Real springDamper1.w_rel(quantity = "AngularVelocity", unit = "rad/s", displayUnit = "rev/min") "Relative angular velocity between flange_b and flange_a";
-//   Real inertia1.phi(quantity = "Angle", unit = "rad", displayUnit = "deg") "Absolute rotation angle of component (= flange_a.phi = flange_b.phi)";
-//   Real inertia1.flange_a.phi(quantity = "Angle", unit = "rad", displayUnit = "deg") "Absolute rotation angle of flange";
-//   Real inertia1.flange_a.tau(quantity = "Torque", unit = "N.m") "Cut torque in the flange";
-//   Real inertia1.flange_b.phi(quantity = "Angle", unit = "rad", displayUnit = "deg") "Absolute rotation angle of flange";
-//   Real inertia1.flange_b.tau(quantity = "Torque", unit = "N.m") "Cut torque in the flange";
-//   parameter Real inertia1.J(quantity = "MomentOfInertia", unit = "kg.m2") = 1.0 "Moment of inertia";
-//   Real inertia1.w(quantity = "AngularVelocity", unit = "rad/s", displayUnit = "rev/min") "Absolute angular velocity of component";
-//   Real inertia1.a(quantity = "AngularAcceleration", unit = "rad/s2") "Absolute angular acceleration of component";
-//   Real springDamper2.phi_rel(quantity = "Angle", unit = "rad", displayUnit = "deg", start = 0.0) "Relative rotation angle (= flange_b.phi - flange_a.phi)";
-//   Real springDamper2.tau(quantity = "Torque", unit = "N.m") "Torque between flanges (= flange_b.tau)";
-//   Real springDamper2.flange_a.phi(quantity = "Angle", unit = "rad", displayUnit = "deg") "Absolute rotation angle of flange";
-//   Real springDamper2.flange_a.tau(quantity = "Torque", unit = "N.m") "Cut torque in the flange";
-//   Real springDamper2.flange_b.phi(quantity = "Angle", unit = "rad", displayUnit = "deg") "Absolute rotation angle of flange";
-//   Real springDamper2.flange_b.tau(quantity = "Torque", unit = "N.m") "Cut torque in the flange";
-//   parameter Real springDamper2.c(unit = "N.m/rad", min = 0.0) = 1000.0 "Spring constant";
-//   parameter Real springDamper2.phi_rel0(quantity = "Angle", unit = "rad", displayUnit = "deg") = 0.0 "Unstretched spring angle";
-//   parameter Real springDamper2.d(unit = "N.m.s/rad", min = 0.0) = 10.0 "Damping constant";
-//   Real springDamper2.w_rel(quantity = "AngularVelocity", unit = "rad/s", displayUnit = "rev/min") "Relative angular velocity between flange_b and flange_a";
-//   Real inertia2.phi(quantity = "Angle", unit = "rad", displayUnit = "deg") "Absolute rotation angle of component (= flange_a.phi = flange_b.phi)";
-//   Real inertia2.flange_a.phi(quantity = "Angle", unit = "rad", displayUnit = "deg") "Absolute rotation angle of flange";
-//   Real inertia2.flange_a.tau(quantity = "Torque", unit = "N.m") "Cut torque in the flange";
-//   Real inertia2.flange_b.phi(quantity = "Angle", unit = "rad", displayUnit = "deg") "Absolute rotation angle of flange";
-//   Real inertia2.flange_b.tau(quantity = "Torque", unit = "N.m") "Cut torque in the flange";
-//   parameter Real inertia2.J(quantity = "MomentOfInertia", unit = "kg.m2") = 1.0 "Moment of inertia";
-//   Real inertia2.w(quantity = "AngularVelocity", unit = "rad/s", displayUnit = "rev/min") "Absolute angular velocity of component";
-//   Real inertia2.a(quantity = "AngularAcceleration", unit = "rad/s2") "Absolute angular acceleration of component";
-//   Real torque1.tau(quantity = "Torque", unit = "N.m") "Torque driving the flange (a positive value accelerates the flange)";
-//   Real torque1.flange_b.phi(quantity = "Angle", unit = "rad", displayUnit = "deg") "Absolute rotation angle of flange";
-//   Real torque1.flange_b.tau(quantity = "Torque", unit = "N.m") "Cut torque in the flange";
-//   Real torque1.bearing.phi(quantity = "Angle", unit = "rad", displayUnit = "deg") "Absolute rotation angle of flange";
-//   Real torque1.bearing.tau(quantity = "Torque", unit = "N.m") "Cut torque in the flange";
-//   Real sine1.y "Connector of Real output signal";
-//   parameter Real sine1.amplitude = 1.0 "Amplitude of sine wave";
-//   parameter Real sine1.freqHz(quantity = "Frequency", unit = "Hz") = 1.0 "Frequency of sine wave";
-//   parameter Real sine1.phase(quantity = "Angle", unit = "rad", displayUnit = "deg") = 0.0 "Phase of sine wave";
-//   parameter Real sine1.offset = 0.0 "Offset of output signal";
-//   parameter Real sine1.startTime(quantity = "Time", unit = "s") = 0.0 "Output = offset for time < startTime";
-//   protected constant Real sine1.pi = 3.141592653589793;
-//   Real gear1.flange_a.phi(quantity = "Angle", unit = "rad", displayUnit = "deg") "Absolute rotation angle of flange";
-//   Real gear1.flange_a.tau(quantity = "Torque", unit = "N.m") "Cut torque in the flange";
-//   Real gear1.flange_b.phi(quantity = "Angle", unit = "rad", displayUnit = "deg") "Absolute rotation angle of flange";
-//   Real gear1.flange_b.tau(quantity = "Torque", unit = "N.m") "Cut torque in the flange";
-//   Real gear1.tau_support(quantity = "Torque", unit = "N.m");
-//   Real gear1.bearing.phi(quantity = "Angle", unit = "rad", displayUnit = "deg") "Absolute rotation angle of flange";
-//   Real gear1.bearing.tau(quantity = "Torque", unit = "N.m") "Cut torque in the flange";
-//   Real gear1.adapter.flange_a.phi(quantity = "Angle", unit = "rad", displayUnit = "deg") "Absolute rotation angle of flange";
-//   Real gear1.adapter.flange_a.tau(quantity = "Torque", unit = "N.m") "Cut torque in the flange";
-//   Real gear1.adapter.flange_b.phi(quantity = "Angle", unit = "rad", displayUnit = "deg") "Absolute rotation angle of flange";
-//   Real gear1.adapter.flange_b.tau(quantity = "Torque", unit = "N.m") "Cut torque in the flange";
-//   parameter Boolean gear1.adapter.bearingConnected = false;
-//   parameter Real gear1.ratio = 2.0 "transmission ratio (flange_a.phi/flange_b.phi)";
-//   parameter Real gear1.eta(min = 1e-60, max = 1.0) = 1.0 "Gear efficiency";
-//   parameter Real gear1.friction_pos[1,1] = 0.0 "[w,tau] positive sliding friction characteristic (w>=0)";
-//   parameter Real gear1.friction_pos[1,2] = 1.0 "[w,tau] positive sliding friction characteristic (w>=0)";
-//   parameter Real gear1.peak(min = 1.0) = 1.0 "peak*friction_pos[1,2] = maximum friction torque at zero velocity";
-//   parameter Real gear1.c(unit = "N.m/rad", min = 1e-60) = 100000.0 "Gear elasticity (spring constant)";
-//   parameter Real gear1.d(unit = "N.m.s/rad", min = 0.0) = 0.0 "(relative) gear damping";
-//   parameter Real gear1.b(quantity = "Angle", unit = "rad", displayUnit = "deg", min = 0.0) = 0.0 "Total backlash";
-//   Real gear1.gearRatio.flange_a.phi(quantity = "Angle", unit = "rad", displayUnit = "deg") "Absolute rotation angle of flange";
-//   Real gear1.gearRatio.flange_a.tau(quantity = "Torque", unit = "N.m") "Cut torque in the flange";
-//   Real gear1.gearRatio.flange_b.phi(quantity = "Angle", unit = "rad", displayUnit = "deg") "Absolute rotation angle of flange";
-//   Real gear1.gearRatio.flange_b.tau(quantity = "Torque", unit = "N.m") "Cut torque in the flange";
-//   Real gear1.gearRatio.tau_support(quantity = "Torque", unit = "N.m");
-//   Real gear1.gearRatio.bearing.phi(quantity = "Angle", unit = "rad", displayUnit = "deg") "Absolute rotation angle of flange";
-//   Real gear1.gearRatio.bearing.tau(quantity = "Torque", unit = "N.m") "Cut torque in the flange";
-//   Real gear1.gearRatio.phi_a(quantity = "Angle", unit = "rad", displayUnit = "deg");
-//   Real gear1.gearRatio.phi_b(quantity = "Angle", unit = "rad", displayUnit = "deg");
-//   parameter Real gear1.gearRatio.ratio = gear1.ratio "Transmission ratio (flange_a.phi/flange_b.phi)";
-//   Real gear1.gearEfficiency.flange_a.phi(quantity = "Angle", unit = "rad", displayUnit = "deg") "Absolute rotation angle of flange";
-//   Real gear1.gearEfficiency.flange_a.tau(quantity = "Torque", unit = "N.m") "Cut torque in the flange";
-//   Real gear1.gearEfficiency.flange_b.phi(quantity = "Angle", unit = "rad", displayUnit = "deg") "Absolute rotation angle of flange";
-//   Real gear1.gearEfficiency.flange_b.tau(quantity = "Torque", unit = "N.m") "Cut torque in the flange";
-//   Real gear1.gearEfficiency.tau_support(quantity = "Torque", unit = "N.m");
-//   Real gear1.gearEfficiency.bearing.phi(quantity = "Angle", unit = "rad", displayUnit = "deg") "Absolute rotation angle of flange";
-//   Real gear1.gearEfficiency.bearing.tau(quantity = "Torque", unit = "N.m") "Cut torque in the flange";
-//   Real gear1.gearEfficiency.phi_a(quantity = "Angle", unit = "rad", displayUnit = "deg");
-//   Real gear1.gearEfficiency.phi_b(quantity = "Angle", unit = "rad", displayUnit = "deg");
-//   parameter Real gear1.gearEfficiency.eta(min = 1e-60, max = 1.0) = gear1.eta "Efficiency";
-//   Real gear1.gearEfficiency.phi(quantity = "Angle", unit = "rad", displayUnit = "deg");
-//   Real gear1.gearEfficiency.power_a(quantity = "Power", unit = "W") "Energy flowing into flange_a (= power)";
-//   Boolean gear1.gearEfficiency.driving_a "True, if energy is flowing INTO and not out of flange flange_a";
-//   Real gear1.elastoBacklash.phi_rel(quantity = "Angle", unit = "rad", displayUnit = "deg", start = 0.0) "Relative rotation angle (= flange_b.phi - flange_a.phi)";
-//   Real gear1.elastoBacklash.tau(quantity = "Torque", unit = "N.m") "Torque between flanges (= flange_b.tau)";
-//   Real gear1.elastoBacklash.flange_a.phi(quantity = "Angle", unit = "rad", displayUnit = "deg") "Absolute rotation angle of flange";
-//   Real gear1.elastoBacklash.flange_a.tau(quantity = "Torque", unit = "N.m") "Cut torque in the flange";
-//   Real gear1.elastoBacklash.flange_b.phi(quantity = "Angle", unit = "rad", displayUnit = "deg") "Absolute rotation angle of flange";
-//   Real gear1.elastoBacklash.flange_b.tau(quantity = "Torque", unit = "N.m") "Cut torque in the flange";
-//   parameter Real gear1.elastoBacklash.b(quantity = "Angle", unit = "rad", displayUnit = "deg", min = 0.0) = gear1.b "Total backlash";
-//   parameter Real gear1.elastoBacklash.c(unit = "N.m/rad", min = 1e-60) = gear1.c "Spring constant (c > 0 required)";
-//   parameter Real gear1.elastoBacklash.phi_rel0(quantity = "Angle", unit = "rad", displayUnit = "deg") = 0.0 "Unstretched spring angle";
-//   parameter Real gear1.elastoBacklash.d(unit = "N.m.s/rad", min = 0.0) = gear1.d "Damping constant";
-//   Real gear1.elastoBacklash.w_rel(quantity = "AngularVelocity", unit = "rad/s", displayUnit = "rev/min") "Relative angular velocity between flange_b and flange_a";
-//   protected Real gear1.elastoBacklash.b2(quantity = "Angle", unit = "rad", displayUnit = "deg") = 0.5 * gear1.elastoBacklash.b;
-//   protected constant Real gear1.elastoBacklash.b_min(quantity = "Angle", unit = "rad", displayUnit = "deg") = 1e-10 "minimum backlash";
-//   Real gear1.bearingFriction.flange_a.phi(quantity = "Angle", unit = "rad", displayUnit = "deg") "Absolute rotation angle of flange";
-//   Real gear1.bearingFriction.flange_a.tau(quantity = "Torque", unit = "N.m") "Cut torque in the flange";
-//   Real gear1.bearingFriction.flange_b.phi(quantity = "Angle", unit = "rad", displayUnit = "deg") "Absolute rotation angle of flange";
-//   Real gear1.bearingFriction.flange_b.tau(quantity = "Torque", unit = "N.m") "Cut torque in the flange";
-//   Real gear1.bearingFriction.tau_support(quantity = "Torque", unit = "N.m");
-//   Real gear1.bearingFriction.bearing.phi(quantity = "Angle", unit = "rad", displayUnit = "deg") "Absolute rotation angle of flange";
-//   Real gear1.bearingFriction.bearing.tau(quantity = "Torque", unit = "N.m") "Cut torque in the flange";
-//   Real gear1.bearingFriction.phi_a(quantity = "Angle", unit = "rad", displayUnit = "deg");
-//   Real gear1.bearingFriction.phi_b(quantity = "Angle", unit = "rad", displayUnit = "deg");
-//   parameter Real gear1.bearingFriction.w_small(quantity = "AngularVelocity", unit = "rad/s", displayUnit = "rev/min") = 10000000000.0 "Relative angular velocity near to zero if jumps due to a reinit(..) of the velocity can occur (set to low value only if such impulses can occur)";
-//   Real gear1.bearingFriction.w_relfric(quantity = "AngularVelocity", unit = "rad/s", displayUnit = "rev/min") "Relative angular velocity between frictional surfaces";
-//   Real gear1.bearingFriction.a_relfric(quantity = "AngularAcceleration", unit = "rad/s2") "Relative angular acceleration between frictional surfaces";
-//   Real gear1.bearingFriction.tau(quantity = "Torque", unit = "N.m") "Friction torque (positive, if directed in opposite direction of w_rel)";
-//   Real gear1.bearingFriction.tau0(quantity = "Torque", unit = "N.m") "Friction torque for w=0 and forward sliding";
-//   Real gear1.bearingFriction.tau0_max(quantity = "Torque", unit = "N.m") "Maximum friction torque for w=0 and locked";
-//   Boolean gear1.bearingFriction.free "true, if frictional element is not active";
-//   Real gear1.bearingFriction.sa "Path parameter of friction characteristic tau = f(a_relfric)";
-//   Boolean gear1.bearingFriction.startForward(start = false, fixed = true) "true, if w_rel=0 and start of forward sliding or w_rel > w_small";
-//   Boolean gear1.bearingFriction.startBackward(start = false, fixed = true) "true, if w_rel=0 and start of backward sliding or w_rel < -w_small";
-//   Boolean gear1.bearingFriction.locked "true, if w_rel=0 and not sliding";
-//   constant Integer gear1.bearingFriction.Unknown = 3 "Value of mode is not known";
-//   constant Integer gear1.bearingFriction.Free = 2 "Element is not active";
-//   constant Integer gear1.bearingFriction.Forward = 1 "w_rel > 0 (forward sliding)";
-//   constant Integer gear1.bearingFriction.Stuck = 0 "w_rel = 0 (forward sliding, locked or backward sliding)";
-//   constant Integer gear1.bearingFriction.Backward = -1 "w_rel < 0 (backward sliding)";
-//   Integer gear1.bearingFriction.mode(min = -1, max = 3, start = 3, fixed = true);
-//   parameter Real gear1.bearingFriction.tau_pos[1,1] = gear1.friction_pos[1,1] "[w,tau] Positive sliding friction characteristic (w>=0)";
-//   parameter Real gear1.bearingFriction.tau_pos[1,2] = gear1.friction_pos[1,2] "[w,tau] Positive sliding friction characteristic (w>=0)";
-//   parameter Real gear1.bearingFriction.peak(min = 1.0) = gear1.peak "peak*tau_pos[1,2] = Maximum friction torque for w==0";
-//   Real gear1.bearingFriction.phi(quantity = "Angle", unit = "rad", displayUnit = "deg");
-//   Real gear1.bearingFriction.w(quantity = "AngularVelocity", unit = "rad/s", displayUnit = "rev/min") "Absolute angular velocity of flange_a and flange_b";
-//   Real gear1.bearingFriction.a(quantity = "AngularAcceleration", unit = "rad/s2") "Absolute angular acceleration of flange_a and flange_b";
+// class SampleTest
+//   Clock c;
+//   Boolean cb = sample(0.1, 0.1);
+//   Real x1;
+//   Real x2;
+//   Real y;
 // equation
-//   fixed1.flange_b.phi = fixed1.phi0;
-//   springDamper1.w_rel = der(springDamper1.phi_rel);
-//   springDamper1.tau = springDamper1.c * (springDamper1.phi_rel - springDamper1.phi_rel0) + springDamper1.d * springDamper1.w_rel;
-//   springDamper1.phi_rel = springDamper1.flange_b.phi - springDamper1.flange_a.phi;
-//   springDamper1.flange_b.tau = springDamper1.tau;
-//   springDamper1.flange_a.tau = -springDamper1.tau;
-//   inertia1.w = der(inertia1.phi);
-//   inertia1.a = der(inertia1.w);
-//   inertia1.J * inertia1.a = inertia1.flange_a.tau + inertia1.flange_b.tau;
-//   inertia1.flange_a.phi = inertia1.phi;
-//   inertia1.flange_b.phi = inertia1.phi;
-//   springDamper2.w_rel = der(springDamper2.phi_rel);
-//   springDamper2.tau = springDamper2.c * (springDamper2.phi_rel - springDamper2.phi_rel0) + springDamper2.d * springDamper2.w_rel;
-//   springDamper2.phi_rel = springDamper2.flange_b.phi - springDamper2.flange_a.phi;
-//   springDamper2.flange_b.tau = springDamper2.tau;
-//   springDamper2.flange_a.tau = -springDamper2.tau;
-//   inertia2.w = der(inertia2.phi);
-//   inertia2.a = der(inertia2.w);
-//   inertia2.J * inertia2.a = inertia2.flange_a.tau + inertia2.flange_b.tau;
-//   inertia2.flange_a.phi = inertia2.phi;
-//   inertia2.flange_b.phi = inertia2.phi;
-//   torque1.flange_b.tau = -torque1.tau;
-//   torque1.bearing.phi = 0.0;
-//   sine1.y = sine1.offset + (if time < sine1.startTime then 0.0 else sine1.amplitude * sin(6.283185307179586 * sine1.freqHz * (time - sine1.startTime) + sine1.phase));
-//   gear1.adapter.flange_a.phi = gear1.adapter.flange_b.phi;
-//   if gear1.adapter.bearingConnected then
-//     0.0 = gear1.adapter.flange_a.tau + gear1.adapter.flange_b.tau;
-//   else
-//     0.0 = gear1.adapter.flange_a.phi;
-//   end if;
-//   gear1.gearRatio.phi_a = gear1.gearRatio.ratio * gear1.gearRatio.phi_b;
-//   0.0 = gear1.gearRatio.ratio * gear1.gearRatio.flange_a.tau + gear1.gearRatio.flange_b.tau;
-//   gear1.gearRatio.bearing.tau = gear1.gearRatio.tau_support;
-//   0.0 = gear1.gearRatio.flange_a.tau + gear1.gearRatio.flange_b.tau + gear1.gearRatio.tau_support;
-//   gear1.gearRatio.phi_a = gear1.gearRatio.flange_a.phi - gear1.gearRatio.bearing.phi;
-//   gear1.gearRatio.phi_b = gear1.gearRatio.flange_b.phi - gear1.gearRatio.bearing.phi;
-//   gear1.gearEfficiency.phi = gear1.gearEfficiency.phi_a;
-//   gear1.gearEfficiency.phi = gear1.gearEfficiency.phi_b;
-//   gear1.gearEfficiency.power_a = gear1.gearEfficiency.flange_a.tau * der(gear1.gearEfficiency.phi);
-//   gear1.gearEfficiency.driving_a = gear1.gearEfficiency.power_a >= 0.0;
-//   gear1.gearEfficiency.flange_b.tau = -(if gear1.gearEfficiency.driving_a then gear1.gearEfficiency.eta * gear1.gearEfficiency.flange_a.tau else gear1.gearEfficiency.flange_a.tau / gear1.gearEfficiency.eta);
-//   gear1.gearEfficiency.bearing.tau = gear1.gearEfficiency.tau_support;
-//   0.0 = gear1.gearEfficiency.flange_a.tau + gear1.gearEfficiency.flange_b.tau + gear1.gearEfficiency.tau_support;
-//   gear1.gearEfficiency.phi_a = gear1.gearEfficiency.flange_a.phi - gear1.gearEfficiency.bearing.phi;
-//   gear1.gearEfficiency.phi_b = gear1.gearEfficiency.flange_b.phi - gear1.gearEfficiency.bearing.phi;
-//   gear1.elastoBacklash.w_rel = der(gear1.elastoBacklash.phi_rel);
-//   gear1.elastoBacklash.tau = if gear1.elastoBacklash.b2 > 1e-10 then if gear1.elastoBacklash.phi_rel > gear1.elastoBacklash.b2 then gear1.elastoBacklash.c * (gear1.elastoBacklash.phi_rel + (-gear1.elastoBacklash.phi_rel0) - gear1.elastoBacklash.b2) + gear1.elastoBacklash.d * gear1.elastoBacklash.w_rel else if gear1.elastoBacklash.phi_rel < (-gear1.elastoBacklash.b2) then gear1.elastoBacklash.c * (gear1.elastoBacklash.phi_rel + gear1.elastoBacklash.b2 - gear1.elastoBacklash.phi_rel0) + gear1.elastoBacklash.d * gear1.elastoBacklash.w_rel else 0.0 else gear1.elastoBacklash.c * (gear1.elastoBacklash.phi_rel - gear1.elastoBacklash.phi_rel0) + gear1.elastoBacklash.d * gear1.elastoBacklash.w_rel;
-//   gear1.elastoBacklash.phi_rel = gear1.elastoBacklash.flange_b.phi - gear1.elastoBacklash.flange_a.phi;
-//   gear1.elastoBacklash.flange_b.tau = gear1.elastoBacklash.tau;
-//   gear1.elastoBacklash.flange_a.tau = -gear1.elastoBacklash.tau;
-//   gear1.bearingFriction.tau0 = Modelica.Math.tempInterpol1(0.0, {{gear1.bearingFriction.tau_pos[1,1], gear1.bearingFriction.tau_pos[1,2]}}, 2);
-//   gear1.bearingFriction.tau0_max = gear1.bearingFriction.peak * gear1.bearingFriction.tau0;
-//   gear1.bearingFriction.free = false;
-//   gear1.bearingFriction.phi = gear1.bearingFriction.phi_a;
-//   gear1.bearingFriction.phi = gear1.bearingFriction.phi_b;
-//   gear1.bearingFriction.w = der(gear1.bearingFriction.phi);
-//   gear1.bearingFriction.a = der(gear1.bearingFriction.w);
-//   gear1.bearingFriction.w_relfric = gear1.bearingFriction.w;
-//   gear1.bearingFriction.a_relfric = gear1.bearingFriction.a;
-//   0.0 = gear1.bearingFriction.flange_a.tau + gear1.bearingFriction.flange_b.tau - gear1.bearingFriction.tau;
-//   gear1.bearingFriction.tau = if gear1.bearingFriction.locked then gear1.bearingFriction.sa else if gear1.bearingFriction.startForward then Modelica.Math.tempInterpol1(gear1.bearingFriction.w, {{gear1.bearingFriction.tau_pos[1,1], gear1.bearingFriction.tau_pos[1,2]}}, 2) else if gear1.bearingFriction.startBackward then -Modelica.Math.tempInterpol1(-gear1.bearingFriction.w, {{gear1.bearingFriction.tau_pos[1,1], gear1.bearingFriction.tau_pos[1,2]}}, 2) else if pre(gear1.bearingFriction.mode) == 1 then Modelica.Math.tempInterpol1(gear1.bearingFriction.w, {{gear1.bearingFriction.tau_pos[1,1], gear1.bearingFriction.tau_pos[1,2]}}, 2) else -Modelica.Math.tempInterpol1(-gear1.bearingFriction.w, {{gear1.bearingFriction.tau_pos[1,1], gear1.bearingFriction.tau_pos[1,2]}}, 2);
-//   gear1.bearingFriction.bearing.tau = gear1.bearingFriction.tau_support;
-//   0.0 = gear1.bearingFriction.flange_a.tau + gear1.bearingFriction.flange_b.tau + gear1.bearingFriction.tau_support;
-//   gear1.bearingFriction.phi_a = gear1.bearingFriction.flange_a.phi - gear1.bearingFriction.bearing.phi;
-//   gear1.bearingFriction.phi_b = gear1.bearingFriction.flange_b.phi - gear1.bearingFriction.bearing.phi;
-//   gear1.bearingFriction.startForward = pre(gear1.bearingFriction.mode) == 0 and (gear1.bearingFriction.sa > gear1.bearingFriction.tau0_max or pre(gear1.bearingFriction.startForward) and gear1.bearingFriction.sa > gear1.bearingFriction.tau0) or pre(gear1.bearingFriction.mode) == -1 and gear1.bearingFriction.w_relfric > gear1.bearingFriction.w_small or initial() and gear1.bearingFriction.w_relfric > 0.0;
-//   gear1.bearingFriction.startBackward = pre(gear1.bearingFriction.mode) == 0 and (gear1.bearingFriction.sa < (-gear1.bearingFriction.tau0_max) or pre(gear1.bearingFriction.startBackward) and gear1.bearingFriction.sa < (-gear1.bearingFriction.tau0)) or pre(gear1.bearingFriction.mode) == 1 and gear1.bearingFriction.w_relfric < (-gear1.bearingFriction.w_small) or initial() and gear1.bearingFriction.w_relfric < 0.0;
-//   gear1.bearingFriction.locked = not gear1.bearingFriction.free and not (pre(gear1.bearingFriction.mode) == 1 or gear1.bearingFriction.startForward or pre(gear1.bearingFriction.mode) == -1 or gear1.bearingFriction.startBackward);
-//   gear1.bearingFriction.a_relfric = if gear1.bearingFriction.locked then 0.0 else if gear1.bearingFriction.free then gear1.bearingFriction.sa else if gear1.bearingFriction.startForward then gear1.bearingFriction.sa - gear1.bearingFriction.tau0 else if gear1.bearingFriction.startBackward then gear1.bearingFriction.sa + gear1.bearingFriction.tau0 else if pre(gear1.bearingFriction.mode) == 1 then gear1.bearingFriction.sa - gear1.bearingFriction.tau0 else gear1.bearingFriction.sa + gear1.bearingFriction.tau0;
-//   gear1.bearingFriction.mode = if gear1.bearingFriction.free then 2 else if (pre(gear1.bearingFriction.mode) == 1 or pre(gear1.bearingFriction.mode) == 2 or gear1.bearingFriction.startForward) and gear1.bearingFriction.w_relfric > 0.0 then 1 else if (pre(gear1.bearingFriction.mode) == -1 or pre(gear1.bearingFriction.mode) == 2 or gear1.bearingFriction.startBackward) and gear1.bearingFriction.w_relfric < 0.0 then -1 else 0;
-//   gear1.tau_support = -gear1.adapter.flange_b.tau;
-//   fixed1.flange_b.tau + springDamper1.flange_b.tau = 0.0;
-//   springDamper1.flange_a.tau + inertia1.flange_b.tau = 0.0;
-//   inertia1.flange_a.tau + gear1.flange_b.tau = 0.0;
-//   springDamper2.flange_a.tau + inertia2.flange_b.tau = 0.0;
-//   springDamper2.flange_b.tau + gear1.flange_a.tau = 0.0;
-//   inertia2.flange_a.tau + torque1.flange_b.tau = 0.0;
-//   torque1.bearing.tau = 0.0;
-//   gear1.bearing.tau = 0.0;
-//   (-gear1.bearing.tau) + gear1.adapter.flange_a.tau = 0.0;
-//   gear1.adapter.flange_b.tau + gear1.gearRatio.bearing.tau + gear1.gearEfficiency.bearing.tau + gear1.bearingFriction.bearing.tau = 0.0;
-//   (-gear1.flange_a.tau) + gear1.gearRatio.flange_a.tau = 0.0;
-//   gear1.gearRatio.flange_b.tau + gear1.gearEfficiency.flange_a.tau = 0.0;
-//   gear1.gearEfficiency.flange_b.tau + gear1.bearingFriction.flange_a.tau = 0.0;
-//   gear1.bearingFriction.flange_b.tau + gear1.elastoBacklash.flange_a.tau = 0.0;
-//   (-gear1.flange_b.tau) + gear1.elastoBacklash.flange_b.tau = 0.0;
-//   gear1.flange_a.phi = gear1.gearRatio.flange_a.phi;
-//   gear1.gearEfficiency.flange_a.phi = gear1.gearRatio.flange_b.phi;
-//   gear1.bearingFriction.flange_a.phi = gear1.gearEfficiency.flange_b.phi;
-//   gear1.bearingFriction.flange_b.phi = gear1.elastoBacklash.flange_a.phi;
-//   gear1.elastoBacklash.flange_b.phi = gear1.flange_b.phi;
-//   gear1.adapter.flange_b.phi = gear1.bearingFriction.bearing.phi;
-//   gear1.adapter.flange_b.phi = gear1.gearEfficiency.bearing.phi;
-//   gear1.adapter.flange_b.phi = gear1.gearRatio.bearing.phi;
-//   gear1.adapter.flange_a.phi = gear1.bearing.phi;
-//   gear1.flange_a.phi = springDamper2.flange_b.phi;
-//   gear1.flange_b.phi = inertia1.flange_a.phi;
-//   inertia2.flange_a.phi = torque1.flange_b.phi;
-//   sine1.y = torque1.tau;
-//   inertia2.flange_b.phi = springDamper2.flange_a.phi;
-//   inertia1.flange_b.phi = springDamper1.flange_a.phi;
-//   fixed1.flange_b.phi = springDamper1.flange_b.phi;
-// end Gear;
-// Error: Variable bearing in package Modelica.Mechanics.Rotational.Gear$gear1 is not constant.
-//
+//   c = Clock(0.1);
+//   x1 = sample(1.0, Clock());
+//   x2 = sample(1.1, c);
+//   y = x1 + x2;
+// end SampleTest;
 // endResult

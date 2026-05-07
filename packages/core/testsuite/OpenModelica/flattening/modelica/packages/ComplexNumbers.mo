@@ -47,57 +47,15 @@ class ComplexUser
   equation
     z = ComplexNumbers.Multiply(a, b);
     z = ComplexNumbers.Add(a, b);
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ComplexUser;
 
 // Result:
-// function ComplexNumbers.Add
-//   input ComplexNumbers.Complex x;
-//   input ComplexNumbers.Complex y;
-//   output ComplexNumbers.Complex z;
-// algorithm
-//   z.re := x.re + y.re;
-//   z.im := x.im + y.im;
-// end ComplexNumbers.Add;
+// Error processing file: ComplexNumbers.mo
+// [OpenModelica/flattening/modelica/packages/ComplexNumbers.mo:8:1-40:19:writable] Error: Cannot instantiate ComplexNumbers due to class specialization package.
+// Error: Error occurred while flattening model ComplexNumbers
 //
-// function ComplexNumbers.Complex "Automatically generated record constructor for ComplexNumbers.Complex"
-//   input Real re;
-//   input Real im;
-//   output Complex res;
-// end ComplexNumbers.Complex;
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
 //
-// function ComplexNumbers.Complex$a "Automatically generated record constructor for ComplexNumbers.Complex$a"
-//   input Real re;
-//   input Real im;
-//   output Complex$a res;
-// end ComplexNumbers.Complex$a;
-//
-// function ComplexNumbers.Complex$b "Automatically generated record constructor for ComplexNumbers.Complex$b"
-//   input Real re;
-//   input Real im;
-//   output Complex$b res;
-// end ComplexNumbers.Complex$b;
-//
-// function ComplexNumbers.Multiply
-//   input ComplexNumbers.Complex x;
-//   input ComplexNumbers.Complex y;
-//   output ComplexNumbers.Complex z;
-// algorithm
-//   z.re := x.re * y.re - x.im * y.im;
-//   z.im := x.re * y.im + x.im * y.re;
-// end ComplexNumbers.Multiply;
-//
-// class ComplexUser
-//   Real a.re = 1.0;
-//   Real a.im = 2.0;
-//   Real b.re = 1.0;
-//   Real b.im = 2.0;
-//   Real z.re;
-//   Real z.im;
-//   Real w.re;
-//   Real w.im;
-// equation
-//   z = ComplexNumbers.Multiply(/*.ComplexNumbers.Complex*/(a), /*.ComplexNumbers.Complex*/(b));
-//   z = ComplexNumbers.Add(/*.ComplexNumbers.Complex*/(a), /*.ComplexNumbers.Complex*/(b));
-// end ComplexUser;
+// Execution failed!
 // endResult

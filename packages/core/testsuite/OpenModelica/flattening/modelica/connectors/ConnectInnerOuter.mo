@@ -23,27 +23,16 @@ model Top
   A a1,a2;
 equation
   connect(world,topPin);
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Top;
 
 // Result:
-// class Top
-//   Real world.i;
-//   Real world.v;
-//   Real topPin.i;
-//   Real topPin.v;
-//   Real a1.aPin.i;
-//   Real a1.aPin.v;
-//   Real a2.aPin.i;
-//   Real a2.aPin.v;
-// equation
-//   world.i = 0.0;
-//   topPin.i = 0.0;
-//   a1.aPin.i = 0.0;
-//   a2.aPin.i = 0.0;
-//   (-world.i) + (-topPin.i) + (-a1.aPin.i) + (-a2.aPin.i) = 0.0;
-//   a1.aPin.v = a2.aPin.v;
-//   a1.aPin.v = topPin.v;
-//   a1.aPin.v = world.v;
-// end Top;
+// Error processing file: ConnectInnerOuter.mo
+// Error: Failed to load package ConnectInnerOuter (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class ConnectInnerOuter not found in scope <top>.
+// Error: Error occurred while flattening model ConnectInnerOuter
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

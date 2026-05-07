@@ -10,10 +10,11 @@ end TerminateInvalid1;
 
 // Result:
 // Error processing file: TerminateInvalid1.mo
-// [flattening/modelica/scodeinst/TerminateInvalid1.mo:8:3-8:17:writable] Error: Type mismatch for positional argument 1 in terminate(message=1.0). The argument has type:
+// [OpenModelica/flattening/modelica/scodeinst/TerminateInvalid1.mo:8:3-8:17:writable] Error: Type mismatch for positional argument 1 in terminate(message=1.0). The argument has type:
 //   Real
 // expected type:
 //   String
+// Error: Error occurred while flattening model TerminateInvalid1
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

@@ -12,7 +12,8 @@ end NoEvent1;
 
 // Result:
 // Error processing file: NoEvent1.mo
-// [flattening/modelica/scodeinst/NoEvent1.mo:10:3-10:29:writable] Error: Component b of variability discrete has binding 'noEvent(x > 1)' of higher variability continuous.
+// [OpenModelica/flattening/modelica/scodeinst/NoEvent1.mo:10:3-10:29:writable] Error: Component b of variability discrete has binding 'noEvent(x > 1)' of higher variability continuous.
+// Error: Error occurred while flattening model NoEvent1
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

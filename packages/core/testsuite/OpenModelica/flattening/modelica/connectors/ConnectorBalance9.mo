@@ -14,7 +14,6 @@ model ConnectorBalance9
   C c1, c2;
 equation
   connect(c1, c2);
-  annotation(__OpenModelica_commandLineOptions="-d=newInst, --allowNonStandardModelica=unbalancedModel");
 end ConnectorBalance9;
 
 // Result:
@@ -32,4 +31,6 @@ end ConnectorBalance9;
 //   c1.f1 = 0.0;
 //   c2.f1 = 0.0;
 // end ConnectorBalance9;
+// [OpenModelica/flattening/modelica/connectors/ConnectorBalance9.mo:14:3-14:11:writable] Warning: Connector c1 is not balanced: The number of potential variables (2) is not equal to the number of flow variables (1).
+// [OpenModelica/flattening/modelica/connectors/ConnectorBalance9.mo:14:3-14:11:writable] Warning: Connector c2 is not balanced: The number of potential variables (2) is not equal to the number of flow variables (1).
 // endResult

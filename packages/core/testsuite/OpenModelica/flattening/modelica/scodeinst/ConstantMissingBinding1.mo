@@ -12,7 +12,8 @@ end ConstantMissingBinding1;
 
 // Result:
 // Error processing file: ConstantMissingBinding1.mo
-// [flattening/modelica/scodeinst/ConstantMissingBinding1.mo:7:3-7:18:writable] Error: Constant 'x' has no value.
+// [OpenModelica/flattening/modelica/scodeinst/ConstantMissingBinding1.mo:7:3-7:18:writable] Error: Constant 'x' has no value.
+// Error: Error occurred while flattening model ConstantMissingBinding1
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

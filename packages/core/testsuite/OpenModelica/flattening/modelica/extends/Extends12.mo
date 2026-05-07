@@ -13,11 +13,16 @@ end Package1;
 model Model1
   package Package2 = Package1;
   extends Package2.Model2;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Model1;
 
 // Result:
-// class Model1
-//   Real x;
-// end Model1;
+// Error processing file: Extends12.mo
+// Error: Failed to load package Extends12 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class Extends12 not found in scope <top>.
+// Error: Error occurred while flattening model Extends12
+//
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Execution failed!
 // endResult

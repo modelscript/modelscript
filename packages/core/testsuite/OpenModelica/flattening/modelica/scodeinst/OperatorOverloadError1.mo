@@ -34,7 +34,9 @@ end T;
 
 // Result:
 // Error processing file: OperatorOverloadError1.mo
-// [flattening/modelica/scodeinst/OperatorOverloadError1.mo:32:3-32:14:writable] Error: Cannot resolve type of expression c1 + i. The operands have types C, Integer in component <NO_COMPONENT>.
+// Error: Failed to load package OperatorOverloadError1 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
+// Error: Class OperatorOverloadError1 not found in scope <top>.
+// Error: Error occurred while flattening model OperatorOverloadError1
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

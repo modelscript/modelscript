@@ -17,7 +17,8 @@ end InStreamVariability1;
 
 // Result:
 // Error processing file: InStreamVariability1.mo
-// [flattening/modelica/scodeinst/InStreamVariability1.mo:15:3-15:29:writable] Error: Connector 'c[n].s' has non-parameter subscript 'n'.
+// [OpenModelica/flattening/modelica/scodeinst/InStreamVariability1.mo:15:3-15:29:writable] Error: Connector 'c[n].s' has non-parameter subscript 'n'.
+// Error: Error occurred while flattening model InStreamVariability1
 //
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.

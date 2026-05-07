@@ -9,13 +9,12 @@ model Exp
   Real r;
 equation
   r = exp(45);
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Exp;
 
 // Result:
 // class Exp
 //   Real r;
 // equation
-//   r = 3.4934271057485095e+19;
+//   r = 3.4934271057485095e19;
 // end Exp;
 // endResult
