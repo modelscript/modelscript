@@ -1918,3 +1918,287 @@ function checkModifications(
 // ---------------------------------------------------------------------------
 // Builtin time usage
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Connect restrictions: connect may not be used in when, initial, or non-parametric if
+// Per Modelica Spec §9.1 and §8.3.5
+// ---------------------------------------------------------------------------
+import {
+  ModelicaConnectEquationSyntaxNode as ConnectEq,
+  ModelicaIfEquationSyntaxNode as IfEq,
+} from "@modelscript/modelica/ast";
+
+/** Recursively scan equations for connect inside when equations */
+function findConnectInWhen(eqs: any[], diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+  for (const eq of eqs) {
+    if (eq instanceof WhenEq) {
+      // Any connect inside this when is illegal
+      scanForConnects(eq.equations ?? [], diagnosticsCallback, "when");
+      for (const elseWhen of (eq as any).elseWhenEquationClauses ?? []) {
+        scanForConnects(elseWhen.equations ?? [], diagnosticsCallback, "when");
+      }
+    }
+    // Recurse into for equations, if equations, etc.
+    if (eq instanceof ForEq) {
+      findConnectInWhen(eq.equations ?? [], diagnosticsCallback);
+    }
+    if (eq instanceof IfEq) {
+      findConnectInWhen(eq.equations ?? [], diagnosticsCallback);
+      findConnectInWhen(eq.elseEquations ?? [], diagnosticsCallback);
+      for (const elseIf of eq.elseIfEquationClauses ?? []) {
+        findConnectInWhen(elseIf.equations ?? [], diagnosticsCallback);
+      }
+    }
+  }
+}
+
+function scanForConnects(
+  eqs: any[],
+  diagnosticsCallback: DiagnosticsCallbackWithoutResource,
+  context: "when" | "initial",
+): void {
+  for (const eq of eqs) {
+    if (eq instanceof ConnectEq) {
+      const ref1 = eq.componentReference1?.parts?.map((p: any) => p.identifier?.text ?? "?").join(".") ?? "?";
+      const ref2 = eq.componentReference2?.parts?.map((p: any) => p.identifier?.text ?? "?").join(".") ?? "?";
+      const connectExpr = `connect(${ref1}, ${ref2})`;
+      if (context === "when") {
+        diagnosticsCallback(
+          ModelicaErrorCode.CONNECT_IN_WHEN.severity,
+          ModelicaErrorCode.CONNECT_IN_WHEN.code,
+          ModelicaErrorCode.CONNECT_IN_WHEN.message(connectExpr),
+          eq,
+        );
+      } else {
+        diagnosticsCallback(
+          ModelicaErrorCode.CONNECT_IN_INITIAL.severity,
+          ModelicaErrorCode.CONNECT_IN_INITIAL.code,
+          ModelicaErrorCode.CONNECT_IN_INITIAL.message(),
+          eq,
+        );
+      }
+    }
+    // Recurse
+    if (eq instanceof ForEq) scanForConnects(eq.equations ?? [], diagnosticsCallback, context);
+    if (eq instanceof IfEq) {
+      scanForConnects(eq.equations ?? [], diagnosticsCallback, context);
+      scanForConnects(eq.elseEquations ?? [], diagnosticsCallback, context);
+      for (const elseIf of eq.elseIfEquationClauses ?? []) {
+        scanForConnects(elseIf.equations ?? [], diagnosticsCallback, context);
+      }
+    }
+    if (eq instanceof WhenEq) {
+      scanForConnects(eq.equations ?? [], diagnosticsCallback, context);
+    }
+  }
+}
+
+ModelicaLinter.register([ModelicaErrorCode.CONNECT_IN_WHEN, ModelicaErrorCode.CONNECT_IN_INITIAL], {
+  visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+    const astNode = (node as any).abstractSyntaxNode;
+    if (!astNode) return;
+
+    for (const section of astNode.sections ?? []) {
+      if (!(section instanceof ModelicaEquationSectionSyntaxNode)) continue;
+
+      // Check for connect in initial equation sections
+      if (section.initial) {
+        scanForConnects(section.equations ?? [], diagnosticsCallback, "initial");
+      }
+
+      // Check for connect in when equations
+      findConnectInWhen(section.equations ?? [], diagnosticsCallback);
+    }
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Final override check
+// Per Modelica Spec §7.2.6: final elements may not be modified
+// ---------------------------------------------------------------------------
+
+ModelicaLinter.register(ModelicaErrorCode.FINAL_OVERRIDE, {
+  visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+    // Check component modifications that override final elements
+    for (const element of node.elements) {
+      if (!(element instanceof ModelicaComponentInstance)) continue;
+      if (!element.modification?.modificationArguments) continue;
+      if (!element.classInstance) continue;
+
+      for (const modArg of element.modification.modificationArguments) {
+        const modName = (modArg as any).name?.text ?? (modArg as any).name;
+        if (!modName) continue;
+
+        // Check if the target element in the component's type is final
+        try {
+          for (const subEl of element.classInstance.elements) {
+            if (subEl.name === modName && (subEl as any).isFinal) {
+              const modText = (modArg as any).modificationExpression?.expression?.text ?? modName;
+              diagnosticsCallback(
+                ModelicaErrorCode.FINAL_OVERRIDE.severity,
+                ModelicaErrorCode.FINAL_OVERRIDE.code,
+                ModelicaErrorCode.FINAL_OVERRIDE.message(modName, modText),
+                (modArg as any).ast ?? modArg,
+              );
+              break;
+            }
+          }
+        } catch {
+          // classInstance.elements may throw for unresolved types
+        }
+      }
+    }
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Outer modifier check
+// Per Modelica Spec §5.4: outer components may not have modifiers
+// ---------------------------------------------------------------------------
+
+ModelicaLinter.register(ModelicaErrorCode.OUTER_MODIFIER, {
+  visitComponentInstance(
+    node: ModelicaComponentInstance,
+    diagnosticsCallback: DiagnosticsCallbackWithoutResource,
+  ): void {
+    if (!(node as any).isOuter) return;
+    if ((node as any).isInner) return; // inner outer is okay
+
+    const mod = node.modification;
+    if (!mod) return;
+
+    const modArgs = mod.modificationArguments;
+    if (modArgs && modArgs.length > 0) {
+      const modText = modArgs.map((a: any) => a.name?.text ?? a.name ?? "?").join(", ");
+      diagnosticsCallback(
+        ModelicaErrorCode.OUTER_MODIFIER.severity,
+        ModelicaErrorCode.OUTER_MODIFIER.code,
+        ModelicaErrorCode.OUTER_MODIFIER.message(modText, node.name ?? "?"),
+        node.abstractSyntaxNode ?? null,
+      );
+    }
+
+    // Also check the modification expression (direct binding)
+    const modExpr = mod.modificationExpression;
+    if (modExpr) {
+      const exprText = (modExpr as any).expression?.text ?? "...";
+      diagnosticsCallback(
+        ModelicaErrorCode.OUTER_MODIFIER.severity,
+        ModelicaErrorCode.OUTER_MODIFIER.code,
+        ModelicaErrorCode.OUTER_MODIFIER.message(exprText, node.name ?? "?"),
+        node.abstractSyntaxNode ?? null,
+      );
+    }
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Component binding restriction
+// Per Modelica Spec §4.6: models, blocks, and packages may not have binding
+// equations on components of certain class kinds
+// ---------------------------------------------------------------------------
+
+ModelicaLinter.register(ModelicaErrorCode.COMPONENT_BINDING_RESTRICTION, {
+  visitComponentInstance(
+    node: ModelicaComponentInstance,
+    diagnosticsCallback: DiagnosticsCallbackWithoutResource,
+  ): void {
+    const classInst = node.classInstance;
+    if (!classInst) return;
+
+    // Check if component's type is a model, block, or package — those cannot have bindings
+    const classKind = classInst.classKind;
+    if (
+      classKind !== ModelicaClassKind.MODEL &&
+      classKind !== ModelicaClassKind.BLOCK &&
+      classKind !== ModelicaClassKind.PACKAGE
+    )
+      return;
+
+    // Check if there is a binding expression
+    const mod = node.modification;
+    if (!mod) return;
+    const modExpr = mod.modificationExpression;
+    if (!modExpr) return;
+
+    diagnosticsCallback(
+      ModelicaErrorCode.COMPONENT_BINDING_RESTRICTION.severity,
+      ModelicaErrorCode.COMPONENT_BINDING_RESTRICTION.code,
+      ModelicaErrorCode.COMPONENT_BINDING_RESTRICTION.message(node.name ?? "?", classKind as string),
+      node.abstractSyntaxNode ?? null,
+    );
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Elsewhen variable mismatch
+// Per Modelica Spec §8.3.5.3: when/elsewhen must solve the same variables
+// ---------------------------------------------------------------------------
+
+ModelicaLinter.register(ModelicaErrorCode.ELSEWHEN_VARIABLE_MISMATCH, {
+  visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+    const astNode = (node as any).abstractSyntaxNode;
+    if (!astNode) return;
+
+    function getAssignedVars(eqs: any[]): Set<string> {
+      const vars = new Set<string>();
+      for (const eq of eqs) {
+        if (eq instanceof ModelicaSimpleEquationSyntaxNode) {
+          const lhs = eq.expression1;
+          if (lhs && (lhs as any).parts) {
+            const name = (lhs as any).parts.map((p: any) => p.identifier?.text ?? "?").join(".");
+            vars.add(name);
+          }
+        }
+      }
+      return vars;
+    }
+
+    function checkWhenEquations(eqs: any[]): void {
+      for (const eq of eqs) {
+        if (eq instanceof WhenEq) {
+          const whenVars = getAssignedVars(eq.equations ?? []);
+          for (const elseWhen of (eq as any).elseWhenEquationClauses ?? []) {
+            const elseVars = getAssignedVars(elseWhen.equations ?? []);
+            // Check that they solve the same set of variables
+            let mismatch = false;
+            for (const v of whenVars) {
+              if (!elseVars.has(v)) {
+                mismatch = true;
+                break;
+              }
+            }
+            if (!mismatch) {
+              for (const v of elseVars) {
+                if (!whenVars.has(v)) {
+                  mismatch = true;
+                  break;
+                }
+              }
+            }
+            if (mismatch) {
+              diagnosticsCallback(
+                ModelicaErrorCode.ELSEWHEN_VARIABLE_MISMATCH.severity,
+                ModelicaErrorCode.ELSEWHEN_VARIABLE_MISMATCH.code,
+                ModelicaErrorCode.ELSEWHEN_VARIABLE_MISMATCH.message(),
+                elseWhen,
+              );
+            }
+          }
+        }
+        // Recurse
+        if (eq instanceof ForEq) checkWhenEquations(eq.equations ?? []);
+        if (eq instanceof IfEq) {
+          checkWhenEquations(eq.equations ?? []);
+          checkWhenEquations(eq.elseEquations ?? []);
+        }
+      }
+    }
+
+    for (const section of astNode.sections ?? []) {
+      if (section instanceof ModelicaEquationSectionSyntaxNode) {
+        checkWhenEquations(section.equations ?? []);
+      }
+    }
+  },
+});

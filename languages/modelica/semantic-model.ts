@@ -1442,7 +1442,7 @@ export class ModelicaModification {
   ) {}
 
   get modificationArguments() {
-    return this.modArgs?.args.map((a) => new ModelicaElementModification(a)) ?? [];
+    return this.modArgs?.args?.map((a) => new ModelicaElementModification(a)) ?? [];
   }
 
   get modificationExpression() {

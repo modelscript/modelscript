@@ -428,6 +428,88 @@ export const ModelicaErrorCode = {
     message: (typeStr: string) =>
       `Optimization constraints must evaluate to scalar Real or Boolean expressions, but got type '${typeStr}'.`,
   },
+
+  // ── Connect restrictions ─────────────────────────────────────────────
+  CONNECT_IN_WHEN: {
+    code: 4023,
+    rule: "connect-in-when",
+    severity: "error",
+    message: (connectExpr: string) => `connect may not be used inside when-equations (found ${connectExpr}).`,
+  },
+  CONNECT_IN_INITIAL: {
+    code: 4024,
+    rule: "connect-in-initial",
+    severity: "error",
+    message: () => "Connect equations are not allowed in initial equation sections.",
+  },
+  CONNECT_IN_NON_PARAM_IF: {
+    code: 4025,
+    rule: "connect-in-non-param-if",
+    severity: "error",
+    message: (connectExpr: string) =>
+      `connect may not be used inside if-equations with non-parametric conditions (found ${connectExpr}).`,
+  },
+
+  // ── Final override ───────────────────────────────────────────────────
+  FINAL_OVERRIDE: {
+    code: 4026,
+    rule: "final-override",
+    severity: "error",
+    message: (elementName: string, modText: string) =>
+      `Trying to override final element ${elementName} with modifier '${modText}'.`,
+  },
+
+  // ── Variability binding mismatch ─────────────────────────────────────
+  VARIABILITY_BINDING_MISMATCH: {
+    code: 4027,
+    rule: "variability-binding-mismatch",
+    severity: "error",
+    message: (componentName: string, compVariability: string, bindingExpr: string, bindingVariability: string) =>
+      `Component ${componentName} of variability ${compVariability} has binding '${bindingExpr}' of higher variability ${bindingVariability}.`,
+  },
+
+  // ── Partial type component ───────────────────────────────────────────
+  PARTIAL_TYPE_COMPONENT: {
+    code: 4028,
+    rule: "partial-type-component",
+    severity: "error",
+    message: (componentName: string, typeName: string) =>
+      `Component '${componentName}' has partial type '${typeName}'.`,
+  },
+
+  // ── Component binding restriction ────────────────────────────────────
+  COMPONENT_BINDING_RESTRICTION: {
+    code: 4029,
+    rule: "component-binding-restriction",
+    severity: "error",
+    message: (componentName: string, classKind: string) =>
+      `Component '${componentName}' may not have a binding equation due to class specialization '${classKind}'.`,
+  },
+
+  // ── Outer modifier ───────────────────────────────────────────────────
+  OUTER_MODIFIER: {
+    code: 4030,
+    rule: "outer-modifier",
+    severity: "error",
+    message: (modText: string, elementName: string) => `Modifier '${modText}' found on outer element ${elementName}.`,
+  },
+
+  // ── Array Bounds ─────────────────────────────────────────────────────
+  ARRAY_INDEX_OUT_OF_BOUNDS: {
+    code: 4031,
+    rule: "array-index-out-of-bounds",
+    severity: "error",
+    message: (index: string, dimensionIndex: string, dimensionSize: string, arrayName: string) =>
+      `Subscript '${index}' for dimension ${dimensionIndex} (size = ${dimensionSize}) of ${arrayName} is out of bounds.`,
+  },
+
+  // ── Elsewhen variable mismatch ───────────────────────────────────────
+  ELSEWHEN_VARIABLE_MISMATCH: {
+    code: 5010,
+    rule: "elsewhen-variable-mismatch",
+    severity: "error",
+    message: () => "The same variables must be solved in elsewhen clause as in the when clause.",
+  },
 } as const satisfies Record<string, ErrorCodeDef>;
 
 // Derive the union type of all error code keys

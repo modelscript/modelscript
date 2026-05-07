@@ -29,6 +29,8 @@ globalThis.WeakRef = class WeakRefMock {
 
 import { ModelicaClassKind, ModelicaStoredDefinitionSyntaxNode } from "@modelscript/modelica/ast";
 import Modelica from "@modelscript/modelica/parser";
+import { ModelicaDAEPrinter } from "@modelscript/symbolics";
+import { StringWriter } from "@modelscript/utils";
 import fs from "node:fs";
 import path from "node:path";
 import Parser from "tree-sitter";
@@ -263,11 +265,32 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode = fal
     }
 
     const t_flatten_start = Date.now();
-    const flattenedResult = context.flatten(lastClassName, {
+    const dae = context.flattenDAE(lastClassName, {
       arrayMode: testCase.metadata.arrayMode ?? "scalarize",
       functionInlining: "inline", // Flattener tests always expect inline
       ...(testCase.metadata.fmiVersion ? { fmiVersion: testCase.metadata.fmiVersion } : {}),
     });
+
+    let flattenedResult: string | null = null;
+    interface DAEOutput {
+      diagnostics: {
+        severity: string;
+        code: number;
+        message: string;
+        range?: import("../src/util/tree-sitter.js").Range | null;
+      }[];
+      functions: DAEOutput[];
+    }
+    const hasDAEErrors = (d: DAEOutput): boolean =>
+      d.diagnostics.some((diag) => diag.severity === "error") || d.functions.some(hasDAEErrors);
+
+    if (dae) {
+      if (!hasDAEErrors(dae as unknown as DAEOutput)) {
+        const out = new StringWriter();
+        dae.accept(new ModelicaDAEPrinter(out));
+        flattenedResult = out.toString();
+      }
+    }
     console.error(`[Runner] context.flatten took ${Date.now() - t_flatten_start}ms`);
 
     // Run the linter to collect diagnostics
@@ -293,6 +316,21 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode = fal
         }
       },
     );
+
+    const extractDAEDiagnostics = (d: DAEOutput) => {
+      for (const diag of d.diagnostics) {
+        diagnostics.push({
+          type: diag.severity,
+          code: diag.code,
+          message: diag.message,
+          resource: null,
+          range: diag.range ?? null,
+        });
+      }
+      for (const fn of d.functions) extractDAEDiagnostics(fn);
+    };
+    if (dae) extractDAEDiagnostics(dae as unknown as DAEOutput);
+
     const targetClass = context.query(lastClassName);
     const classesToLint = new Set<ModelicaClassInstance>();
     if (targetClass instanceof ModelicaClassInstance) classesToLint.add(targetClass);

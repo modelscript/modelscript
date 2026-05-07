@@ -72,7 +72,26 @@ export class ModelicaAlgorithmScope extends Scope {
           : this.parent.resolveSimpleName(name);
 
       if (original && (original as any).isComponentInstance) {
-        const synthetic = new SyntheticInterpreterVariable(name, null);
+        // Extract the initial value from the component's binding expression.
+        // The modification expression may be a raw AST syntax node (e.g., ModelicaUnsignedIntegerLiteralSyntaxNode)
+        // that needs to be evaluated, or a pre-evaluated ModelicaExpression literal.
+        let initialExpr: ModelicaExpression | null = null;
+        const mod = (original as any).modification;
+        if (mod) {
+          const expr = mod.evaluatedExpression ?? mod.expression;
+          if (expr instanceof ModelicaExpression) {
+            initialExpr = expr;
+          } else if (expr && typeof expr.accept === "function") {
+            // Raw AST syntax node — evaluate it via a temporary interpreter to get a literal
+            try {
+              const evalInterp = new ModelicaInterpreter(false);
+              initialExpr = expr.accept(evalInterp, (original as any).parent ?? this.parent);
+            } catch {
+              // Evaluation failed — leave as null
+            }
+          }
+        }
+        const synthetic = new SyntheticInterpreterVariable(name, initialExpr);
         synthetic.classInstance = (original as any).classInstance;
         this.variables.set(name, synthetic);
         return synthetic;
@@ -761,7 +780,15 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
       } else if (namedElement instanceof ModelicaClassInstance) {
         result = ModelicaExpression.fromClassInstance(namedElement);
       } else if (namedElement && (namedElement as any).classInstance instanceof ModelicaClassInstance) {
-        result = ModelicaExpression.fromClassInstance((namedElement as any).classInstance);
+        // For SyntheticInterpreterVariable (and similar), prefer the evaluatedExpression
+        // which contains the actual computed value from algorithm execution.
+        const evalExpr =
+          (namedElement as any).modification?.evaluatedExpression ?? (namedElement as any).evaluatedExpression;
+        if (evalExpr instanceof ModelicaExpression) {
+          result = evalExpr;
+        } else {
+          result = ModelicaExpression.fromClassInstance((namedElement as any).classInstance);
+        }
       } else {
         // Duck-type fallback: handle annotation enum stubs and Modelica elements
         const duck = namedElement as any;
@@ -1042,7 +1069,7 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     }
     // Could be an array expression like {1.0, 2, 3, 4} or an array of records
     const evaluated = rangeExpr.accept(this, scope);
-    console.log(`[Interpreter] evaluateIteratorRange: rangeExpr evaluated to ${evaluated?.constructor?.name}`);
+
     if (evaluated instanceof ModelicaArray) {
       return [...evaluated.elements];
     }
@@ -1883,10 +1910,6 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
 
     const functionInstance = scope.resolveComponentReference(node.functionReference);
     if (!(functionInstance instanceof ModelicaClassInstance)) {
-      console.log(
-        "visitFunctionCall failed to resolve functionInstance:",
-        node.functionReference?.parts?.map((p) => p.identifier?.text).join("."),
-      );
       // Fallback: construct an unresolved symbolic function call for algebraic manipulation
       const args = this.evaluateArgs(node, scope).filter((a): a is ModelicaExpression => a !== null);
       if (node.functionReference) {
@@ -1944,13 +1967,6 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
       } else {
         clonedFunction = functionInstance.clone(modArgs);
       }
-
-      console.log(`visitFunctionCall clonedFunction components length: ${clonedFunction.components?.length}`);
-      console.log(
-        `visitFunctionCall clonedFunction component causalities: ${clonedFunction.components.map((c: any) => `${c.name}: ${c.causality}`).join(", ")}`,
-      );
-      console.log(`visitFunctionCall clonedFunction inputParameters:`, clonedFunction.inputParameters?.length);
-      console.log(`visitFunctionCall clonedFunction outputParameters:`, clonedFunction.outputParameters?.length);
 
       // Execute algorithm statements or JS source to compute output values
       let jsExecuted: ModelicaExpression | null = null;
@@ -2022,18 +2038,24 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
       const outputExpressions: ModelicaExpression[] = [];
       for (const outputParameter of clonedFunction.outputParameters) {
         const resolved = algoScope.resolveSimpleName(outputParameter.name);
-        const classInst = resolved ? (resolved as any).classInstance : outputParameter.classInstance;
-        const outputExpression = ModelicaExpression.fromClassInstance(classInst);
+        // Prefer the evaluatedExpression from the SyntheticInterpreterVariable, which was
+        // updated by algorithm assignments (e.g., x := 400). Fall back to fromClassInstance
+        // only if evaluatedExpression is not available.
+        let outputExpression: ModelicaExpression | null;
+        if (resolved && (resolved as any).evaluatedExpression instanceof ModelicaExpression) {
+          outputExpression = (resolved as any).evaluatedExpression;
+        } else {
+          const classInst = resolved ? (resolved as any).classInstance : outputParameter.classInstance;
+          outputExpression = ModelicaExpression.fromClassInstance(classInst);
+        }
         if (outputExpression) outputExpressions.push(outputExpression);
       }
       if (outputExpressions.length <= 1) {
         return outputExpressions[0] ?? null;
       } else {
-        return outputExpressions;
         return new ModelicaArray([outputExpressions.length], outputExpressions);
       }
     } else {
-      console.log("visitFunctionCall not a function or missing result:", rawFuncName, functionInstance?.classKind);
       return null;
     }
   }
@@ -2164,6 +2186,12 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
             componentTarget.classInstance = typeDefinition.clone(toModArgs(value));
           }
         }
+      }
+      // Keep evaluatedExpression in sync for SyntheticInterpreterVariable so that
+      // subsequent reads in algorithm statements (e.g., `if x > 5`) can use the
+      // assigned value directly without relying on fromClassInstance.
+      if (componentTarget instanceof SyntheticInterpreterVariable) {
+        componentTarget.evaluatedExpression = value;
       }
     }
 

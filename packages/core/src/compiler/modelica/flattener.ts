@@ -1083,6 +1083,24 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         }
       }
     }
+    // Phase 3: Scan all active elements and local sections for array dimensions and for loops
+    for (const element of activeElements) {
+      if (element instanceof ModelicaComponentInstance && element.abstractSyntaxNode) {
+        this.#scanNodeForStructural(element.abstractSyntaxNode, args[0]);
+      }
+    }
+    const astNode = this.#getAstNode(node);
+    const localSections = [...(astNode?.sections ?? [])];
+    if ("shortClassTarget" in node && (node as any).shortClassTarget) {
+      const targetAst = this.#getAstNode((node as any).shortClassTarget);
+      if (targetAst?.sections) {
+        localSections.push(...targetAst.sections);
+      }
+    }
+    for (const section of localSections) {
+      this.#scanNodeForStructural(section, args[0]);
+    }
+
     // Snapshot of structural final params collected for THIS class level only.
     // Used by #flattenPredefinedClass to mark variables as final.
     // Must be taken before component flattening, which adds nested class params to the live set.
@@ -1105,16 +1123,8 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     for (const declaredElement of node.declaredElements) {
       if (declaredElement instanceof ModelicaExtendsClassInstance) declaredElement.accept(this, args);
     }
-    const astNode = this.#getAstNode(node);
     // Process only locally-declared equation/algorithm sections (not inherited ones).
     // Inherited equations are handled by visitExtendsClassInstance with proper break context.
-    const localSections = [...(astNode?.sections ?? [])];
-    if ("shortClassTarget" in node && (node as any).shortClassTarget) {
-      const targetAst = this.#getAstNode((node as any).shortClassTarget);
-      if (targetAst?.sections) {
-        localSections.push(...targetAst.sections);
-      }
-    }
 
     // Process equation sections in reverse order to match OpenModelica's flattening behavior
     // (later equation sections appear before earlier ones in the output)
@@ -1385,6 +1395,32 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     for (const key of Object.keys(expr as Record<string, unknown>)) {
       if (key === "parent") continue;
       this.#collectStructuralParams((expr as Record<string, unknown>)[key], prefix, visited);
+    }
+  }
+
+  /**
+   * Scans a node to find ArraySubscripts or ForIndex nodes, and collects
+   * structural parameters from their expressions.
+   */
+  #scanNodeForStructural(node: unknown, prefix: string, visited = new Set()): void {
+    if (!node || typeof node !== "object" || visited.has(node)) return;
+    visited.add(node);
+
+    const isArraySubscripts = node.constructor?.name?.includes("ArraySubscripts");
+    const isForIndex = node.constructor?.name?.includes("ForIndex");
+
+    if (isArraySubscripts) {
+      for (const sub of (node as any).subscripts ?? []) {
+        if (sub.expression) this.#collectStructuralParams(sub.expression, prefix);
+      }
+    } else if (isForIndex) {
+      if ((node as any).expression) this.#collectStructuralParams((node as any).expression, prefix);
+    } else {
+      // Recurse looking for them
+      for (const key of Object.keys(node)) {
+        if (key === "parent") continue;
+        this.#scanNodeForStructural((node as Record<string, unknown>)[key], prefix, visited);
+      }
     }
   }
 
@@ -5947,6 +5983,12 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         const interp = new ModelicaInterpreter(true);
         const evalResult = node.accept(interp, ctx.classInstance as any);
         if (evalResult) {
+          // Function was fully inlined — remove its definition from the DAE
+          // so it doesn't appear in the output (matches OMC behavior).
+          const funcIdx = (ctx.rootDae ?? ctx.dae).functions.findIndex((f) => f.name === originalName);
+          if (funcIdx >= 0) {
+            (ctx.rootDae ?? ctx.dae).functions.splice(funcIdx, 1);
+          }
           return evalResult;
         }
         // Fallback: the interpreter failed on the original AST (e.g., because the original
@@ -6810,6 +6852,10 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     // Built-in variables like 'time' should never be prefixed
     const isBuiltinVar = rawName === "time";
 
+    if (isBuiltinVar && ctx.classInstance?.classKind === "function") {
+      throw new Error("time is not allowed in a function.");
+    }
+
     let name: string;
     if (!isBuiltinVar && !node.global && ctx.classInstance && typeof ctx.classInstance.resolveName === "function") {
       // Resolve the full identifier to determine if it belongs to the instance hierarchy or is global
@@ -7091,7 +7137,8 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       if (subscriptNodes.length > 0) {
         // Type checking and dimension validation on the array subscript inputs
         if (ctx.classInstance) {
-          const typeRef = ctx.classInstance.resolveSimpleName(node.parts[0]?.identifier as any);
+          const typeRefName = node.parts[0]?.identifier?.text ?? (node.parts[0]?.identifier as any);
+          const typeRef = ctx.classInstance.resolveSimpleName(typeRefName);
           if (typeRef instanceof ModelicaComponentInstance) {
             if (!typeRef.instantiated && !typeRef.instantiating) typeRef.instantiate();
             const classInst = typeRef.classInstance;
@@ -7118,12 +7165,49 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
 
         // Build subscript expressions
         const subscripts: ModelicaExpression[] = [];
+        let shape: (number | null)[] = [];
+        if (ctx.classInstance) {
+          const typeRefName = node.parts[0]?.identifier?.text ?? (node.parts[0]?.identifier as any);
+          const typeRef = ctx.classInstance.resolveSimpleName(typeRefName);
+          if (typeRef instanceof ModelicaComponentInstance) {
+            if (!typeRef.instantiated && !typeRef.instantiating) typeRef.instantiate();
+            const dims = typeRef.arrayDimensions;
+            if (dims && dims.length > 0) {
+              shape = dims.map((d: any) => (typeof d === "number" ? d : (d?.value ?? null)));
+            } else {
+              const classInst = typeRef.classInstance;
+              if (classInst instanceof ModelicaArrayClassInstance) {
+                shape = classInst.shape;
+              }
+            }
+          }
+        }
 
-        for (const sub of subscriptNodes) {
+        for (let i = 0; i < subscriptNodes.length; i++) {
+          const sub = subscriptNodes[i];
+          if (!sub) continue;
           if (sub.flexible) {
             subscripts.push(new ModelicaColonExpression());
           } else if (sub.expression) {
             let subExpr = sub.expression.accept(this, ctx);
+            if (!subExpr) continue;
+
+            if (subExpr instanceof ModelicaIntegerLiteral && i < shape.length) {
+              const dimSize = shape[i];
+              if (dimSize !== null && dimSize !== undefined) {
+                if (subExpr.value < 1 || subExpr.value > dimSize) {
+                  const diag = makeDiagnostic(
+                    ModelicaErrorCode.ARRAY_INDEX_OUT_OF_BOUNDS,
+                    sub.expression,
+                    String(subExpr.value),
+                    String(i + 1),
+                    String(dimSize),
+                    node.parts[0]?.identifier?.text ?? "?",
+                  );
+                  ctx.dae.diagnostics.push(diag);
+                }
+              }
+            }
 
             // Validate Subscript type validity
             if (subExpr instanceof ModelicaRealLiteral) {
@@ -8679,10 +8763,26 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         }
       }
 
-      // When the LHS is a tuple (output expression list), wrap the RHS as a
-      // matching tuple instead of splitting into per-element scalar equations.
+      // When the LHS is a tuple (output expression list) and the RHS is an array,
+      // check if we can split into individual scalar equations (when all RHS values are literals).
       if (expression1 instanceof ModelicaTupleExpression && expression2 instanceof ModelicaArray) {
         const flat2 = [...expression2.flatElements];
+
+        // If all RHS values are literals, split into individual scalar equations
+        // e.g., (a, b) = {400.0, 45.0} → a = 400.0; b = 45.0;
+        if (flat2.every((e) => isLiteral(e))) {
+          for (let i = 0; i < Math.min(expression1.elements.length, flat2.length); i++) {
+            const lhsElem = expression1.elements[i];
+            let rhsElem = flat2[i];
+            if (!lhsElem || !rhsElem) continue;
+            if (isRealTyped(lhsElem, ctx.dae)) rhsElem = castToReal(rhsElem) ?? rhsElem;
+            ctx.dae.equations.push(new ModelicaSimpleEquation(lhsElem, rhsElem));
+          }
+          return null;
+        }
+
+        // Otherwise, wrap the RHS as a matching tuple instead of splitting
+        // into per-element scalar equations.
         // Build RHS tuple elements respecting the structure of the LHS tuple.
         // If a LHS element is an array (e.g., {b[1],...,b[30]}), group the
         // corresponding RHS values into a ModelicaArray sub-expression.
@@ -9954,10 +10054,11 @@ function canonicalizeBinaryExpression(
       return operand1;
     }
   }
+  // Division by integer literal: promote operand1 to Real and keep as division
   if (operator === ModelicaBinaryOperator.DIVISION && operand2 instanceof ModelicaIntegerLiteral) {
-    const reciprocal = new ModelicaRealLiteral(1.0 / operand2.value);
     const castOp1 = wrapIntegerAsReal(operand1, dae);
-    return new ModelicaBinaryExpression(ModelicaBinaryOperator.MULTIPLICATION, reciprocal, castOp1);
+    const castOp2 = new ModelicaRealLiteral(operand2.value);
+    return new ModelicaBinaryExpression(ModelicaBinaryOperator.DIVISION, castOp1, castOp2);
   }
   // Promote integer operands to Real when the other operand is Real-typed
   // Try wrapIntegerAsReal first (produces /*Real*/ casts); only fall back to castToReal
@@ -9970,10 +10071,7 @@ function canonicalizeBinaryExpression(
     const wrapped = wrapIntegerAsReal(operand1, dae);
     operand1 = wrapped !== operand1 ? wrapped : (castToReal(operand1) ?? operand1);
   }
-  if (operator === ModelicaBinaryOperator.SUBTRACTION && isLiteral(operand2)) {
-    const negated = new ModelicaUnaryExpression(ModelicaUnaryOperator.UNARY_MINUS, operand2);
-    return new ModelicaBinaryExpression(ModelicaBinaryOperator.ADDITION, negated, operand1);
-  }
+  // Preserve subtraction as-is (OMC does not convert x - c to (-c) + x)
   // Subtraction partial cancellation: (a + x) - x → a, (x + a) - x → a
   if (
     operator === ModelicaBinaryOperator.SUBTRACTION &&
@@ -9987,21 +10085,7 @@ function canonicalizeBinaryExpression(
       return operand1.operand2;
     }
   }
-  // Canonicalize a - c * expr → a + (-c) * expr when c is a numeric literal
-  if (
-    operator === ModelicaBinaryOperator.SUBTRACTION &&
-    operand2 instanceof ModelicaBinaryExpression &&
-    operand2.operator === ModelicaBinaryOperator.MULTIPLICATION &&
-    isLiteral(operand2.operand1)
-  ) {
-    const negatedCoeff = new ModelicaUnaryExpression(ModelicaUnaryOperator.UNARY_MINUS, operand2.operand1);
-    const negatedMul = new ModelicaBinaryExpression(
-      ModelicaBinaryOperator.MULTIPLICATION,
-      negatedCoeff,
-      operand2.operand2,
-    );
-    return new ModelicaBinaryExpression(ModelicaBinaryOperator.ADDITION, operand1, negatedMul);
-  }
+  // Preserve a - c * expr as-is (OMC does not convert subtraction to addition of negated product)
   // Algebraic simplification: x + c * x → (1 + c) * x (and symmetric forms)
   // e.g., x[j] + x[j] * 0.01 → 0.01 * x[j] + x[j] (after lit-left) → 1.01 * x[j]
   if (operator === ModelicaBinaryOperator.ADDITION) {
@@ -10030,17 +10114,7 @@ function canonicalizeBinaryExpression(
     const folded = tryFold(operand1, operand2) ?? tryFold(operand2, operand1);
     if (folded) return folded;
   }
-  // Canonicalize commutative operations: put literals on the left
-  // (but NOT for string concatenation, which is not commutative)
-  // Recurse through canonicalize so subsequent rules (e.g., additive constant collection) trigger.
-  if (
-    (operator === ModelicaBinaryOperator.ADDITION || operator === ModelicaBinaryOperator.MULTIPLICATION) &&
-    !isLiteral(operand1) &&
-    isLiteral(operand2) &&
-    !(operand2 instanceof ModelicaStringLiteral)
-  ) {
-    return canonicalizeBinaryExpression(operator, operand2, operand1, dae);
-  }
+  // Preserve operand order for commutative operations (OMC does not reorder)
   // Additive constant collection: c1 + (c2 + x) → (c1 + c2) + x
   // Collects numeric constants in addition chains for constant folding.
   if (operator === ModelicaBinaryOperator.ADDITION && isLiteral(operand1)) {
