@@ -7078,8 +7078,13 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
           }
         }
 
-        // Fold constants immediately if they have an evaluated value
-        if (resolved instanceof ModelicaComponentInstance && resolved.variability === ModelicaVariability.CONSTANT) {
+        // Fold constants and structural/final parameters immediately if they have an evaluated value
+        const isStructural = ctx.structuralFinalParams?.has(name) ?? false;
+        if (
+          resolved instanceof ModelicaComponentInstance &&
+          (resolved.variability === ModelicaVariability.CONSTANT ||
+            (resolved.variability === ModelicaVariability.PARAMETER && (resolved.isFinal || isStructural)))
+        ) {
           // Try direct literal from modification first
           const evaluated =
             resolved.modification?.evaluatedExpression ?? resolved.modification?.modificationExpression?.expression;
