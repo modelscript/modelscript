@@ -653,17 +653,24 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     const rootName = parts[0]?.identifier?.text;
     if (!rootName) return;
     const rootElement = scope.resolveSimpleName(rootName, false, true);
-    if (!(rootElement instanceof ModelicaComponentInstance)) return;
+    if (!(rootElement instanceof ModelicaComponentInstance)) {
+      console.log(`[DEBUG] rootElement is not a component instance: ${rootName}`);
+      return;
+    }
     if (!rootElement.instantiated && !rootElement.instantiating) rootElement.instantiate();
 
     const rootClass = rootElement.classInstance;
-    if (!rootClass?.isExpandable) return;
+    if (rootClass?.classKind !== ModelicaClassKind.EXPANDABLE_CONNECTOR && !rootClass?.isExpandable) {
+      return;
+    }
 
     // Check if the referenced member already exists
     const memberName = parts[1]?.identifier?.text;
     if (!memberName) return;
     const existing = rootClass.resolveSimpleName(memberName, false, true);
-    if (existing) return;
+    if (existing) {
+      return;
+    }
 
     // Resolve the other side to determine the type
     const otherRootName = otherRef.parts[0]?.identifier?.text;
@@ -700,15 +707,56 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
 
     // Create a virtual component on the expandable connector
     const virtualComp = new ModelicaComponentInstance(rootClass, null);
-    virtualComp.name = memberName;
+    Object.defineProperty(virtualComp, "name", { value: memberName, writable: true, configurable: true });
     // Copy type from the other side
     if (otherComp.classInstance) {
-      virtualComp.classInstance = otherComp.classInstance;
+      Object.defineProperty(virtualComp, "classInstance", {
+        value: otherComp.classInstance,
+        writable: true,
+        configurable: true,
+      });
     }
-    virtualComp.flowPrefix = otherComp.flowPrefix;
-    virtualComp.causality = otherComp.causality;
-    virtualComp.variability = otherComp.variability;
-    (rootClass.virtualComponents as any).set(memberName, virtualComp);
+    Object.defineProperty(virtualComp, "flowPrefix", {
+      value: otherComp.flowPrefix,
+      writable: true,
+      configurable: true,
+    });
+    Object.defineProperty(virtualComp, "causality", { value: otherComp.causality, writable: true, configurable: true });
+    Object.defineProperty(virtualComp, "variability", {
+      value: otherComp.variability,
+      writable: true,
+      configurable: true,
+    });
+    Object.defineProperty(virtualComp, "modification", { value: null, writable: true, configurable: true });
+    Object.defineProperty(virtualComp, "abstractSyntaxNode", { value: null, writable: true, configurable: true });
+    Object.defineProperty(virtualComp, "isOuter", { value: false, writable: true, configurable: true });
+    Object.defineProperty(virtualComp, "isInner", { value: false, writable: true, configurable: true });
+    Object.defineProperty(virtualComp, "isFinal", { value: false, writable: true, configurable: true });
+    Object.defineProperty(virtualComp, "isReplaceable", { value: false, writable: true, configurable: true });
+    Object.defineProperty(virtualComp, "isProtected", { value: false, writable: true, configurable: true });
+    Object.defineProperty(virtualComp, "isRedeclare", { value: false, writable: true, configurable: true });
+    Object.defineProperty(virtualComp, "dimensions", { value: [], writable: true, configurable: true });
+    Object.defineProperty(virtualComp, "isComponentInstance", { value: true, writable: true, configurable: true });
+    Object.defineProperty(virtualComp, "description", {
+      value: "virtual variable in expandable connector",
+      writable: true,
+      configurable: true,
+    });
+    Object.defineProperty(virtualComp, "typePrefix", {
+      value: otherComp.typePrefix || null,
+      writable: true,
+      configurable: true,
+    });
+    Object.defineProperty(virtualComp, "declaredType", {
+      value: otherComp.declaredType || null,
+      writable: true,
+      configurable: true,
+    });
+    Object.defineProperty(virtualComp, "conditionAttribute", { value: null, writable: true, configurable: true });
+    Object.defineProperty(virtualComp, "parent", { value: rootClass, writable: true, configurable: true });
+    if (typeof (rootClass as any).virtualComponents?.set === "function") {
+      (rootClass as any).virtualComponents.set(memberName, virtualComp);
+    }
   }
 
   /**
@@ -716,10 +764,15 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
    */
   static isConditionallyDisabled(element: any, scope: any): boolean {
     if (element instanceof ModelicaComponentInstance) {
-      const astNode =
-        element.abstractSyntaxNode instanceof ModelicaSyntaxNode
-          ? element.abstractSyntaxNode
-          : ModelicaSyntaxNode.new(null, element.abstractSyntaxNode);
+      let astNode: any = null;
+      try {
+        astNode =
+          element.abstractSyntaxNode instanceof ModelicaSyntaxNode
+            ? element.abstractSyntaxNode
+            : ModelicaSyntaxNode.new(null, element.abstractSyntaxNode);
+      } catch {
+        // Virtual components might not have an abstractSyntaxNode
+      }
       const conditionExpr = (
         astNode as { conditionAttribute?: { condition?: ModelicaExpressionSyntaxNode | null } } | null
       )?.conditionAttribute?.condition;
@@ -742,6 +795,13 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     for (const element of node.elements) {
       if (!ModelicaFlattener.isConditionallyDisabled(element, node)) {
         activeElements.push(element);
+      }
+    }
+    if (node.virtualComponents && typeof node.virtualComponents.values === "function") {
+      for (const virtualComp of node.virtualComponents.values()) {
+        if (!ModelicaFlattener.isConditionallyDisabled(virtualComp, node)) {
+          activeElements.push(virtualComp);
+        }
       }
     }
     return activeElements;
@@ -8566,7 +8626,10 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
   ): ModelicaComponentInstance | null {
     const firstName = ref.parts[0]?.identifier?.text;
     if (!firstName) return null;
-    const firstResolved = ctx.classInstance.resolveSimpleName?.(firstName, false, true);
+    let firstResolved = ctx.classInstance.resolveSimpleName?.(firstName, false, true);
+    if (!firstResolved && typeof (ctx.classInstance as any).virtualComponents?.get === "function") {
+      firstResolved = (ctx.classInstance as any).virtualComponents.get(firstName);
+    }
     if (!firstResolved?.isComponentInstance) return null;
     let resolved: any = firstResolved;
 
@@ -8582,7 +8645,10 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         lookupClass = classInst.elementClassInstance;
       }
       if (!lookupClass) return null;
-      const inner = lookupClass.resolveSimpleName?.(partName, false, true);
+      let inner = lookupClass.resolveSimpleName?.(partName, false, true);
+      if (!inner && typeof (lookupClass as any).virtualComponents?.get === "function") {
+        inner = (lookupClass as any).virtualComponents.get(partName);
+      }
       if (!inner?.isComponentInstance) return null;
       resolved = inner;
     }
