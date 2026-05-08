@@ -5257,6 +5257,21 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         }
       }
     }
+
+    if (functionName === "delay" && flatArgs.length >= 2) {
+      const delayTime = flatArgs[1];
+      if (
+        (delayTime instanceof ModelicaRealLiteral && delayTime.value === 0.0) ||
+        (delayTime instanceof ModelicaIntegerLiteral && delayTime.value === 0)
+      ) {
+        return flatArgs[0];
+      }
+      if (flatArgs.length === 2) {
+        // If delayMax is not supplied, it defaults to delayTime.
+        flatArgs.push(delayTime);
+      }
+    }
+
     // Evaluate built-in math/arithmetic functions at flatten time when all args are literals
     const foldedResult = tryFoldBuiltinFunction(functionName, flatArgs);
     if (foldedResult) return foldedResult;

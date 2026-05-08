@@ -827,7 +827,9 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
           else if (typeof modExpr === "boolean") result = new ModelicaBooleanLiteral(modExpr);
           else result = new ModelicaStringLiteral(modExpr);
         } else if (modExpr && typeof modExpr.accept === "function") {
+          console.log("EVALUATING", node.parts[0]?.identifier?.text, modExpr?.constructor?.name);
           result = modExpr.accept(this, overrideExpr ? scope : (duck.parent ?? scope));
+          console.log("RESULT", result);
         } else if (duck.isComponentInstance) {
           // Fallback for ModelicaComponentInstance parameters that don't have an outer modification
           let bindingExpr: ModelicaExpressionSyntaxNode | null = null;
