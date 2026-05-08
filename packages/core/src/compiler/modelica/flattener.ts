@@ -5901,6 +5901,51 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       }
     }
 
+    // actualStream(v) expansion: if sum(v_flow) > 0 then $inStream(v) else v
+    if (finalFunctionName === "actualStream" && finalArgs.length === 1) {
+      const v = finalArgs[0];
+      const vName = v instanceof ModelicaNameExpression ? v.name : v instanceof ModelicaVariable ? v.name : null;
+      if (vName) {
+        const dotIdx = vName.lastIndexOf(".");
+        if (dotIdx >= 0) {
+          const connectorPrefix = vName.substring(0, dotIdx);
+          const parts = vName.split(".");
+          const connectorParts = parts.slice(0, parts.length - 1);
+          const resolvedConnector = ctx.classInstance.resolveName(connectorParts);
+          if (resolvedConnector && resolvedConnector.isComponentInstance) {
+            if (!resolvedConnector.instantiated && !resolvedConnector.instantiating) {
+              if (typeof resolvedConnector.instantiate === "function") resolvedConnector.instantiate();
+            }
+            const flowVars = new Set<string>();
+            for (const comp of resolvedConnector.classInstance?.components ?? []) {
+              if (comp.flowPrefix === ModelicaFlow.FLOW && comp.name) {
+                flowVars.add(`${connectorPrefix}.${comp.name}`);
+              }
+            }
+            if (flowVars.size > 0) {
+              const flowVarsArr = Array.from(flowVars);
+              const firstFlowVar = flowVarsArr[0] as string;
+              let flowExpr: ModelicaExpression = new ModelicaNameExpression(firstFlowVar);
+              for (let i = 1; i < flowVarsArr.length; i++) {
+                const ithFlowVar = flowVarsArr[i] as string;
+                flowExpr = new ModelicaBinaryExpression(
+                  ModelicaBinaryOperator.ADDITION,
+                  flowExpr,
+                  new ModelicaNameExpression(ithFlowVar),
+                );
+              }
+              return new ModelicaIfElseExpression(
+                new ModelicaBinaryExpression(ModelicaBinaryOperator.GREATER_THAN, flowExpr, new ModelicaRealLiteral(0)),
+                new ModelicaNameExpression(`$inStream(${vName})`),
+                [],
+                v as ModelicaExpression,
+              );
+            }
+          }
+        }
+      }
+    }
+
     const result = new ModelicaFunctionCallExpression(finalFunctionName, finalArgs);
 
     // Only inline user-defined function calls when ALL arguments are compile-time constants.
