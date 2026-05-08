@@ -5408,6 +5408,13 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         // Use the builtin definition for constant folding, but keep the original
         // fully-qualified name in the output (e.g. Modelica.Math.sin, not sin)
         builtinDef = BUILTIN_FUNCTIONS.get(externalBuiltin);
+        // If the function declares `external "builtin"` but is not a recognized
+        // builtin, emit a diagnostic — the function cannot be evaluated at compile time.
+        // This mirrors OMC's "NFCeval.evalBuiltinCall: unimplemented case for X".
+        if (!builtinDef && isExternalBuiltinAlias) {
+          const targetDae = ctx.rootDae ?? ctx.dae;
+          targetDae.diagnostics.push(makeDiagnostic(ModelicaErrorCode.EVAL_EXTERNAL_BUILTIN, node, externalBuiltin));
+        }
         // Only rewrite to the bare builtin name for non-Modelica library functions
         // (user-defined short aliases like `function f = Modelica.Math.atan2`)
         if (isExternalBuiltinAlias && !originalName.startsWith("Modelica.")) {

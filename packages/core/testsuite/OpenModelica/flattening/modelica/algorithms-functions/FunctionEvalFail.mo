@@ -1,6 +1,6 @@
 // name:     FunctionEvalFail
 // keywords: function slice assignment
-// status:   correct
+// status:   incorrect
 //
 // Checks that the compiler fails on a binding it can't evaluate, instead of
 // giving it a default value.

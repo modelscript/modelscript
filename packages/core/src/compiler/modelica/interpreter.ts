@@ -1968,6 +1968,22 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
         clonedFunction = functionInstance.clone(modArgs);
       }
 
+      // If the function has an external clause and no algorithm body, it cannot
+      // be evaluated at compile time (unless it maps to a known builtin, which
+      // would have been handled above). Return null to signal evaluation failure
+      // instead of silently returning the type's default value (e.g. 0.0 for Real).
+      const funcClassSpec = functionInstance.abstractSyntaxNode?.classSpecifier;
+      if (funcClassSpec?.externalFunctionClause) {
+        const hasAlgorithms = clonedFunction.algorithms && [...clonedFunction.algorithms].length > 0;
+        const hasJsSource =
+          clonedFunction.parent &&
+          "jsSource" in clonedFunction.parent &&
+          typeof clonedFunction.parent.jsSource === "string";
+        if (!hasAlgorithms && !hasJsSource) {
+          return null;
+        }
+      }
+
       // Execute algorithm statements or JS source to compute output values
       let jsExecuted: ModelicaExpression | null = null;
 

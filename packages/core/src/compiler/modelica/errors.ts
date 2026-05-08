@@ -510,6 +510,12 @@ export const ModelicaErrorCode = {
     severity: "error",
     message: () => "The same variables must be solved in elsewhen clause as in the when clause.",
   },
+  EVAL_EXTERNAL_BUILTIN: {
+    code: 5011,
+    rule: "eval-external-builtin",
+    severity: "error",
+    message: (funcName: string) => `Internal error NFCeval.evalBuiltinCall: unimplemented case for ${funcName}`,
+  },
 } as const satisfies Record<string, ErrorCodeDef>;
 
 // Derive the union type of all error code keys
