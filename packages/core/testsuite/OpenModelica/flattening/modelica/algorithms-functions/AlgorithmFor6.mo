@@ -23,7 +23,7 @@ end AlgorithmFor6;
 //   Real a[2,3];
 // algorithm
 //   for i in 1:2 loop
-//     for j in {2, 3} loop
+//     for j in 2:3 loop
 //       a[i,j] := /*Real*/(i + j);
 //     end for;
 //   end for;

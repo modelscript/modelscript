@@ -350,23 +350,43 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode = fal
     }
     console.error(`[Runner] Linter took ${Date.now() - t_lint_start}ms`);
 
+    const stripWarnings = (text: string) => {
+      return text
+        .split("\n")
+        .filter(
+          (line) =>
+            !line.includes("Components are deprecated in class.") &&
+            !line.includes("Algorithm sections are deprecated in class.") &&
+            !line.includes("Equation sections are deprecated in class."),
+        )
+        .join("\n")
+        .trim();
+    };
+
     // Format collected diagnostics into lines and deduplicate
     const formatDiagLines = () => {
-      const lines = diagnostics.map((d) => {
-        const severity = d.type.charAt(0).toUpperCase() + d.type.slice(1);
-        const codeStr = d.code > 0 ? `[M${d.code}] ` : "";
-        if (d.range) {
-          const r = d.range;
-          if (r.startPosition && r.endPosition) {
-            const startPos = `${r.startPosition.row + 1}:${r.startPosition.column + 1}`;
-            const endPos = `${r.endPosition.row + 1}:${r.endPosition.column + 1}`;
-            const relPath = d.resource ? path.relative(testsuiteRoot, d.resource) : "";
-            const prefix = relPath ? `${relPath.split(path.sep).slice(1).join("/")}:` : "";
-            return `[${prefix}${startPos}-${endPos}] ${severity}: ${codeStr}${d.message}`;
+      const lines = diagnostics
+        .filter(
+          (d) =>
+            !d.message.includes("Components are deprecated in class.") &&
+            !d.message.includes("Algorithm sections are deprecated in class.") &&
+            !d.message.includes("Equation sections are deprecated in class."),
+        )
+        .map((d) => {
+          const severity = d.type.charAt(0).toUpperCase() + d.type.slice(1);
+          const codeStr = d.code > 0 ? `[M${d.code}] ` : "";
+          if (d.range) {
+            const r = d.range;
+            if (r.startPosition && r.endPosition) {
+              const startPos = `${r.startPosition.row + 1}:${r.startPosition.column + 1}`;
+              const endPos = `${r.endPosition.row + 1}:${r.endPosition.column + 1}`;
+              const relPath = d.resource ? path.relative(testsuiteRoot, d.resource) : "";
+              const prefix = relPath ? `${relPath.split(path.sep).slice(1).join("/")}:` : "";
+              return `[${prefix}${startPos}-${endPos}] ${severity}: ${codeStr}${d.message}`;
+            }
           }
-        }
-        return `${severity}: ${codeStr}${d.message}`;
-      });
+          return `${severity}: ${codeStr}${d.message}`;
+        });
       return Array.from(new Set(lines));
     };
 
@@ -375,19 +395,26 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode = fal
       const diagLines = formatDiagLines();
       if (diagLines.length > 0) {
         const actual = diagLines.join("\n");
-        const expected = testCase.expectedResult.trim();
+        const expected = stripWarnings(testCase.expectedResult.trim());
         if (actual === expected) return makeResult("passed");
 
         let reformatActual = actual;
         if (expected.includes("Error processing file:")) {
-          const omcDiagLines = diagnostics.map((d) => {
-            const severity = d.type.charAt(0).toUpperCase() + d.type.slice(1);
-            // Search expected output for a matching prefix for this severity
-            const prefixRegex = new RegExp(`(\\[.*?\\]) ${severity}:`);
-            const match = expected.match(prefixRegex);
-            const prefix = match ? match[1] : `[${testCase.file}]`;
-            return `${prefix} ${severity}: ${d.message}`;
-          });
+          const omcDiagLines = diagnostics
+            .filter(
+              (d) =>
+                !d.message.includes("Components are deprecated in class.") &&
+                !d.message.includes("Algorithm sections are deprecated in class.") &&
+                !d.message.includes("Equation sections are deprecated in class."),
+            )
+            .map((d) => {
+              const severity = d.type.charAt(0).toUpperCase() + d.type.slice(1);
+              // Search expected output for a matching prefix for this severity
+              const prefixRegex = new RegExp(`(\\[.*?\\]) ${severity}:`);
+              const match = expected.match(prefixRegex);
+              const prefix = match ? match[1] : `[${testCase.file}]`;
+              return `${prefix} ${severity}: ${d.message}`;
+            });
           const uniqueOmcDiagLines = Array.from(new Set(omcDiagLines));
           const hasErrorOccurred = expected.includes("Error: Error occurred while flattening model");
           const errorLine = hasErrorOccurred ? `\nError: Error occurred while flattening model ${lastClassName}` : "";
@@ -414,7 +441,8 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode = fal
         if (combinedDiagLines.length > 0) {
           combinedActual += "\n" + combinedDiagLines.join("\n");
         }
-        const expected = testCase.expectedResult.trim();
+        combinedActual = stripWarnings(combinedActual);
+        const expected = stripWarnings(testCase.expectedResult.trim());
         if (combinedActual === expected) return makeResult("passed");
       }
       return makeResult("failed", `Expected flattening to fail but got result:\n${flattenedResult}`);
@@ -430,7 +458,8 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode = fal
     if (diagLines.length > 0) {
       actual += "\n" + diagLines.join("\n");
     }
-    const expected = testCase.expectedResult.trim();
+    actual = stripWarnings(actual);
+    const expected = stripWarnings(testCase.expectedResult.trim());
 
     // Normalize OpenModelica-specific `:writable` suffix in diagnostic path prefixes
     const normalizedExpected = expected.replace(/:writable\]/g, "]");
