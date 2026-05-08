@@ -753,42 +753,45 @@ function getArrayShape(cls: ModelicaClassInstance | null): number[] {
 
 ModelicaLinter.register(ModelicaErrorCode.TYPE_MISMATCH_BINDING, {
   visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
-    // Only check model/class/block contexts
-    if (node.classKind === ModelicaClassKind.FUNCTION || node.classKind === ModelicaClassKind.PACKAGE) return;
-
+    // Check all component bindings
     for (const element of node.elements) {
       if (!(element instanceof ModelicaComponentInstance)) continue;
       if (!element.classInstance) continue;
 
       const compTypeName = getBaseTypeName(element.classInstance);
-      if (compTypeName !== "Integer") continue;
+      if (!compTypeName) continue;
 
-      // Check if the binding expression is Real-typed
+      // Check if the binding expression matches the component type
       const mod = element.modification;
       if (!mod) continue;
 
       const bindingExpr = mod.modificationExpression?.expression;
       if (!bindingExpr) continue;
 
-      // Check if the binding references a Real-typed component
-      const refParts = (bindingExpr as any).parts;
-      if (refParts && refParts.length === 1) {
-        const refName = refParts[0]?.identifier?.text;
-        if (refName) {
-          const refElement = node.resolveSimpleName(refName, false, true);
-          if (refElement instanceof ModelicaComponentInstance && refElement.classInstance) {
-            const refTypeName = getBaseTypeName(refElement.classInstance);
-            if (refTypeName === "Real") {
-              const astNode = element.abstractSyntaxNode;
-              diagnosticsCallback(
-                ModelicaErrorCode.TYPE_MISMATCH_BINDING.severity,
-                ModelicaErrorCode.TYPE_MISMATCH_BINDING.code,
-                ModelicaErrorCode.TYPE_MISMATCH_BINDING.message(element.name ?? "", "Integer", refName, "Real"),
-                astNode,
-              );
-            }
-          }
-        }
+      const exprType = inferExpressionType(bindingExpr, node);
+      if (!exprType) continue;
+
+      let isMismatch = false;
+      if (compTypeName === "Integer" && exprType === "Real") isMismatch = true;
+      else if (compTypeName === "Boolean" && exprType !== "Boolean") isMismatch = true;
+      else if (compTypeName === "String" && exprType !== "String") isMismatch = true;
+      else if (compTypeName === "Real" && exprType !== "Real" && exprType !== "Integer") {
+        isMismatch = true;
+      }
+
+      if (isMismatch) {
+        const astNode = element.abstractSyntaxNode;
+        diagnosticsCallback(
+          ModelicaErrorCode.TYPE_MISMATCH_BINDING.severity,
+          ModelicaErrorCode.TYPE_MISMATCH_BINDING.code,
+          ModelicaErrorCode.TYPE_MISMATCH_BINDING.message(
+            element.name ?? "",
+            compTypeName,
+            getExpressionText(bindingExpr),
+            exprType,
+          ),
+          astNode,
+        );
       }
     }
   },
@@ -942,6 +945,12 @@ function getExpressionText(expr: any): string {
   if (expr.parts) {
     return expr.parts.map((p: any) => p.identifier?.text || p.name?.text || "?").join(".");
   }
+  // String literals: ensure quotes
+  if (expr["@type"] === "STRING" || expr["@type"] === "string_literal" || expr["@type"] === "String") {
+    const text = expr.text || (expr.value !== undefined ? String(expr.value) : "");
+    if (!text.startsWith('"')) return `"${text}"`;
+    return text;
+  }
   // Literal values
   if (expr.text !== undefined && expr.text !== null) return String(expr.text);
   if (expr.value !== undefined && expr.value !== null) return String(expr.value);
@@ -977,15 +986,15 @@ function inferExpressionShape(expr: any): number[] {
 function inferExpressionType(expr: any, contextCls: ModelicaClassInstance): string | null {
   if (!expr) return null;
 
-  // Literal types
   const typeStr = expr["@type"];
-  if (typeStr === "unsigned_real") return "Real";
-  if (typeStr === "unsigned_integer") return "Integer";
-  if (typeStr === "boolean_literal") return "Boolean";
-  if (typeStr === "string_literal") return "String";
+  if (typeStr === "UNSIGNED_REAL" || typeStr === "unsigned_real" || typeStr === "FLOAT" || typeStr === "Real")
+    return "Real";
+  if (typeStr === "UNSIGNED_INTEGER" || typeStr === "unsigned_integer" || typeStr === "Integer") return "Integer";
+  if (typeStr === "BOOLEAN" || typeStr === "boolean_literal" || typeStr === "Boolean") return "Boolean";
+  if (typeStr === "STRING" || typeStr === "string_literal" || typeStr === "String") return "String";
 
   // Component references
-  if (typeStr === "component_reference" || (expr.parts && !expr.operand1)) {
+  if (typeStr === "ComponentReference" || typeStr === "component_reference" || (expr.parts && !expr.operand1)) {
     const parts = expr.parts;
     if (parts && parts.length > 0) {
       const name = parts[0]?.identifier?.text;

@@ -2441,20 +2441,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       }
       // Even if the constant was evaluated, collect any function definitions
       // referenced in the raw binding expression (e.g., constant Integer s = mySize({1,2,3}))
-      const rawConstExpr = dynamicModExpr ?? nodeMod?.modificationExpression?.expression;
-      if (rawConstExpr && rawConstExpr.accept) {
-        const syntaxFlattener = new ModelicaSyntaxFlattener(this.options);
-        const evalScope = this.#getEvaluationScope(node, args[0]);
-        syntaxFlattener.collectFunctionRefsFromAST(rawConstExpr, {
-          prefix: evalScope.prefix,
-          classInstance: evalScope.classInstance,
-          dae: args[1],
-          stmtCollector: [],
-          structuralFinalParams: this.#structuralFinalParams,
-          activeClassStack: this.activeClassStack,
-          activePrefixes: this.activePrefixes,
-        });
-      }
+      // Note: #flattenToSymbolic already handles this collection.
     } else if (variability === ModelicaVariability.PARAMETER) {
       // Parameters: prefer symbolic expression over evaluated literal.
       // Parameters can change between simulations so we want to keep references
@@ -2847,7 +2834,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     // Collect function definitions from the raw binding expression even when the
     // interpreter already evaluated the binding (e.g., fun(5) → {1,1,1,1,1}).
     // Without this, the function definition wouldn't appear in the DAE output.
-    if (arrayBindingExpression && rawArrayBinding) {
+    if (arrayBindingExpression && rawArrayBinding && !stillNeedsSyntaxFlattener) {
       const syntaxFlattener = new ModelicaSyntaxFlattener(this.options);
       syntaxFlattener.collectFunctionRefsFromAST(rawArrayBinding, {
         prefix: args[0],
@@ -6146,9 +6133,11 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         if (evalResult) {
           // Function was fully inlined — remove its definition from the DAE
           // so it doesn't appear in the output (matches OMC behavior).
-          const funcIdx = (ctx.rootDae ?? ctx.dae).functions.findIndex((f) => f.name === originalName);
+          const targetDae = ctx.rootDae ?? ctx.dae;
+          const fullFunctionName = componentPrefix ? componentPrefix + "." + originalName : originalName;
+          const funcIdx = targetDae.functions.findIndex((f) => f.name === fullFunctionName);
           if (funcIdx >= 0) {
-            (ctx.rootDae ?? ctx.dae).functions.splice(funcIdx, 1);
+            targetDae.functions.splice(funcIdx, 1);
           }
           return evalResult;
         }
@@ -6837,8 +6826,20 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     targetDae.functions.push(fnDae);
 
     // Flatten algorithm and equation sections (these still use the standard path)
+    const allEquationSections: any[] = [];
+    const allAlgorithmSections: any[] = [];
+    const collectSections = (cls: ModelicaClassInstance) => {
+      for (const declaredElement of cls.declaredElements) {
+        if (declaredElement instanceof ModelicaExtendsClassInstance && declaredElement.classInstance) {
+          collectSections(declaredElement.classInstance);
+        }
+      }
+      allEquationSections.push(...cls.equationSections);
+      allAlgorithmSections.push(...cls.algorithmSections);
+    };
+    collectSections(resolved);
 
-    for (const equationSection of resolved.equationSections) {
+    for (const equationSection of allEquationSections) {
       for (const eq of equationSection.equations) {
         eq.accept(new ModelicaSyntaxFlattener(this.options), {
           prefix: "",
@@ -6853,7 +6854,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         });
       }
     }
-    for (const algorithmSection of resolved.algorithmSections) {
+    for (const algorithmSection of allAlgorithmSections) {
       const collector: ModelicaStatement[] = [];
       for (const statement of algorithmSection.statements) {
         statement.accept(new ModelicaSyntaxFlattener(this.options), {
@@ -6873,6 +6874,9 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         // This walks into if-else branches to find recursive calls at tail position
         const markRecursiveReturns = (stmts: ModelicaStatement[]): void => {
           if (stmts.length === 0) return;
+          const hasOutput = fnDae.variables.some((v) => v.causality === "output");
+          if (!hasOutput) return;
+
           const last = stmts[stmts.length - 1];
           if (last instanceof ModelicaProcedureCallStatement && last.call.functionName === functionName) {
             last.isReturn = true;
