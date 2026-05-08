@@ -2042,8 +2042,11 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     if (typeof expr.accept === "function") {
       // If it's already a symbolic expression (from a previous flattening pass), don't re-flatten
       if (expr.hash && expr.elements !== undefined) return expr;
-      // Duck typing for ModelicaExpression
-      if ("hash" in expr || "operator" in expr || "operand1" in expr || "args" in expr) return expr;
+      // Duck typing for ModelicaExpression (DAE IR): only DAE expressions have 'hash'.
+      // CST syntax nodes (e.g., ModelicaBinaryExpressionSyntaxNode) also have 'operator'
+      // and 'operand1' but lack 'hash', so we must NOT match them here — they need
+      // to be visited by the syntax flattener below.
+      if ("hash" in expr) return expr;
 
       const evalScope = this.#getEvaluationScope(ctxNode, prefix);
       let result = expr.accept(new ModelicaSyntaxFlattener(this.options), {
