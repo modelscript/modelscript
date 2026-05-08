@@ -82,10 +82,9 @@ export class ModelicaAlgorithmScope extends Scope {
           if (expr instanceof ModelicaExpression) {
             initialExpr = expr;
           } else if (expr && typeof expr.accept === "function") {
-            // Raw AST syntax node — evaluate it via a temporary interpreter to get a literal
             try {
               const evalInterp = new ModelicaInterpreter(false);
-              initialExpr = expr.accept(evalInterp, (original as any).parent ?? this.parent);
+              initialExpr = expr.accept(evalInterp, this.parent);
             } catch {
               // Evaluation failed — leave as null
             }
@@ -563,7 +562,8 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     const operand2 = node.operand2?.accept(this, scope);
 
     if (node.operator && operand1 && operand2) {
-      return ModelicaBinaryExpression.new(node.operator, operand1, operand2);
+      const r = ModelicaBinaryExpression.new(node.operator, operand1, operand2);
+      return r;
     }
 
     return null;
@@ -689,18 +689,14 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
       let overrideExpr: any = null;
 
       // 1. Check if the evaluating scope provides an override for this component
-      if (
-        compName &&
-        scope &&
-        "modification" in scope &&
-        Array.isArray((scope as any).modification?.modificationArguments)
-      ) {
-        for (const arg of (scope as any).modification.modificationArguments) {
+      const hasMod = scope && "modification" in scope;
+      const modArgs = hasMod ? (scope as any).modification?.modificationArguments : null;
+      if (compName && hasMod && Array.isArray(modArgs)) {
+        for (const arg of modArgs) {
           const argName =
             typeof arg.name === "string"
               ? arg.name
               : (arg.name?.parts?.[0]?.text ?? arg.name?.parts?.[0]?.identifier?.text ?? arg.identifier?.text);
-
           if (argName === compName) {
             overrideExpr = arg.modificationExpression?.expression ?? arg.expression;
             break;
@@ -709,7 +705,13 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
       }
 
       if (overrideExpr !== null && overrideExpr !== undefined) {
-        if (typeof overrideExpr === "number" || typeof overrideExpr === "boolean" || typeof overrideExpr === "string") {
+        if (overrideExpr instanceof ModelicaExpression) {
+          return overrideExpr;
+        } else if (
+          typeof overrideExpr === "number" ||
+          typeof overrideExpr === "boolean" ||
+          typeof overrideExpr === "string"
+        ) {
           if (typeof overrideExpr === "number") return new ModelicaRealLiteral(overrideExpr);
           else if (typeof overrideExpr === "boolean") return new ModelicaBooleanLiteral(overrideExpr);
           else return new ModelicaStringLiteral(overrideExpr);
@@ -762,7 +764,7 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
           else if (typeof modExpr === "boolean") result = new ModelicaBooleanLiteral(modExpr);
           else result = new ModelicaStringLiteral(modExpr);
         } else if (modExpr && typeof modExpr.accept === "function") {
-          result = modExpr.accept(this, overrideExpr ? scope : (namedElement.parent ?? scope));
+          result = modExpr.accept(this, scope);
         } else {
           let bindingExpr: ModelicaExpressionSyntaxNode | null = null;
           const astNode = namedElement.abstractSyntaxNode;
@@ -772,7 +774,8 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
           }
 
           if (bindingExpr) {
-            result = bindingExpr.accept(this, namedElement.parent ?? scope);
+            result = bindingExpr.accept(this, scope);
+            console.log("EVAL BINDING", compName, result);
           } else {
             result = ModelicaExpression.fromClassInstance(namedElement.classInstance);
           }
@@ -827,9 +830,7 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
           else if (typeof modExpr === "boolean") result = new ModelicaBooleanLiteral(modExpr);
           else result = new ModelicaStringLiteral(modExpr);
         } else if (modExpr && typeof modExpr.accept === "function") {
-          console.log("EVALUATING", node.parts[0]?.identifier?.text, modExpr?.constructor?.name);
-          result = modExpr.accept(this, overrideExpr ? scope : (duck.parent ?? scope));
-          console.log("RESULT", result);
+          result = modExpr.accept(this, scope);
         } else if (duck.isComponentInstance) {
           // Fallback for ModelicaComponentInstance parameters that don't have an outer modification
           let bindingExpr: ModelicaExpressionSyntaxNode | null = null;
@@ -841,7 +842,7 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
           }
 
           if (bindingExpr) {
-            result = bindingExpr.accept(this, duck.parent ?? scope);
+            result = bindingExpr.accept(this, scope);
           } else {
             result = new ModelicaNameExpression(node.parts.map((p) => p.identifier?.text).join("."));
           }

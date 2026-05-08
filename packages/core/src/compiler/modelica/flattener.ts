@@ -790,7 +790,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
   /**
    * Retrieves the elements of a class instance, filtering out any conditionally disabled components.
    */
-  #getMergedElements(node: any): any[] {
+  static getMergedElements(node: any): any[] {
     const activeElements = [];
     for (const element of node.elements) {
       if (!ModelicaFlattener.isConditionallyDisabled(element, node)) {
@@ -848,6 +848,13 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     }
 
     const savedRedeclare = new Map(this.#redeclareContext);
+
+    // Snapshot of structural final params collected for THIS class level only.
+    // Used by #flattenPredefinedClass to mark variables as final.
+    // Must be taken before component flattening, which adds nested class params to the live set.
+    this.#currentLevelStructuralParams = new Set(this.#structuralFinalParams);
+    this.activeClassStack.push(node);
+    this.activePrefixes.set(node, args[0]);
 
     // Check for Optimization modifiers (objective, objectiveIntegrand, startTime, finalTime)
     if (node.classKind === ModelicaClassKind.OPTIMIZATION) {
@@ -922,14 +929,14 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     // since they determine class structure.
     const savedStructural = new Set(this.#structuralFinalParams);
     const savedCurrentLevel = new Set(this.#currentLevelStructuralParams);
-    let activeElements = this.#getMergedElements(node);
+    let activeElements = ModelicaFlattener.getMergedElements(node);
     if ("shortClassTarget" in node && (node as any).shortClassTarget) {
       const astNode = (node as any).abstractSyntaxNode;
       if (astNode) {
         // debug logging removed for brevity
       }
 
-      const targetElements = this.#getMergedElements((node as any).shortClassTarget);
+      const targetElements = ModelicaFlattener.getMergedElements((node as any).shortClassTarget);
       let classMod = node.modification;
       if (!classMod && astNode?.classSpecifier?.classModification) {
         classMod = astNode.classSpecifier.classModification;
@@ -943,7 +950,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
             );
             if (modArg) {
               const newMod = modArg.modification || modArg;
-              const mergedMod = this.#mergeModifications(el.modification, newMod);
+              const mergedMod = ModelicaFlattener.mergeModifications(el.modification, newMod);
               Object.defineProperty(el, "modification", { value: mergedMod, writable: true, configurable: true });
             }
           }
@@ -1045,7 +1052,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
             );
             if (modArg) {
               const newMod = modArg.modification || modArg;
-              const mergedMod = this.#mergeModifications(newMod, el.modification);
+              const mergedMod = ModelicaFlattener.mergeModifications(newMod, el.modification);
               Object.defineProperty(el, "modification", { value: mergedMod, writable: true, configurable: true });
             }
           }
@@ -1159,6 +1166,21 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     }
     for (const section of localSections) {
       this.#scanNodeForStructural(section, args[0]);
+    }
+
+    if (
+      node.classKind === ModelicaClassKind.FUNCTION ||
+      node.classKind === ModelicaClassKind.OPERATOR_FUNCTION ||
+      node.classKind === ModelicaClassKind.RECORD
+    ) {
+      if (node !== this.context.rootClass && !this.activeClassStack.some((c) => c === node)) {
+        // Output nested class definition as a DAE function/record
+        const fnDae = new ModelicaDAE(args[0] === "" ? node.name : args[0] + "." + node.name, null);
+        fnDae.classKind = node.classKind;
+        this.#flattenPredefinedClass(node as any, args[0], [args[0], fnDae], undefined, activeElements as any);
+        args[1].functions.push(fnDae);
+        return;
+      }
     }
 
     // Snapshot of structural final params collected for THIS class level only.
@@ -1659,7 +1681,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
   /**
    * Deep merges two modifications. Base modification is overridden by new modification.
    */
-  #mergeModifications(baseMod: any, newMod: any): any {
+  static mergeModifications(baseMod: any, newMod: any): any {
     if (!baseMod) return newMod;
     if (!newMod) return baseMod;
 
@@ -1679,7 +1701,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         argsMap.set(name, {
           ...m,
           name: m.name ?? existing.name,
-          modification: this.#mergeModifications(existing.modification, m.modification),
+          modification: ModelicaFlattener.mergeModifications(existing.modification, m.modification),
         });
       } else {
         argsMap.set(name, m);
@@ -1936,6 +1958,12 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     } else if (classInstance instanceof ModelicaArrayClassInstance) {
       this.#flattenArrayClass(node, name, args);
     } else {
+      if (
+        classInstance?.classKind === ModelicaClassKind.FUNCTION ||
+        classInstance?.classKind === ModelicaClassKind.OPERATOR_FUNCTION
+      ) {
+        return;
+      }
       // Extract structural CAD annotation from annotationClause
       if (node.abstractSyntaxNode && (node.abstractSyntaxNode as any).annotationClause) {
         const annClause = (node.abstractSyntaxNode as any).annotationClause;
@@ -5264,9 +5292,9 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         (delayTime instanceof ModelicaRealLiteral && delayTime.value === 0.0) ||
         (delayTime instanceof ModelicaIntegerLiteral && delayTime.value === 0)
       ) {
-        return flatArgs[0];
+        return flatArgs[0] ?? null;
       }
-      if (flatArgs.length === 2) {
+      if (flatArgs.length === 2 && delayTime) {
         // If delayMax is not supplied, it defaults to delayTime.
         flatArgs.push(delayTime);
       }
@@ -6255,10 +6283,12 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     if (!resolved.instantiated && !resolved.instantiating) resolved.instantiate();
 
     // Check candidates: the resolved class itself, and for short class defs,
-    // the inner classInstance (which is the cloned target class)
+    // the inner classInstance (which is the cloned target class) or shortClassTarget
     const candidates: ModelicaClassInstance[] = [resolved];
     const inner = (resolved as { classInstance?: ModelicaClassInstance | null }).classInstance;
     if (inner) candidates.push(inner);
+    const target = (resolved as { shortClassTarget?: ModelicaClassInstance | null }).shortClassTarget;
+    if (target) candidates.push(target);
 
     for (const cls of candidates) {
       const classSpecifier = cls.abstractSyntaxNode?.classSpecifier;
@@ -6512,7 +6542,32 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       }
     }
 
-    for (const element of resolved.elements) {
+    let activeElements = ModelicaFlattener.getMergedElements(resolved);
+    if ("shortClassTarget" in resolved && (resolved as any).shortClassTarget) {
+      const astNode = resolved.abstractSyntaxNode;
+      const targetElements = ModelicaFlattener.getMergedElements((resolved as any).shortClassTarget);
+      let classMod = resolved.modification;
+      if (!classMod && astNode?.classSpecifier?.classModification) {
+        classMod = astNode.classSpecifier.classModification;
+      }
+      if (classMod && classMod.modificationArguments) {
+        for (const el of targetElements) {
+          if (el instanceof ModelicaComponentInstance) {
+            const modArg = classMod.modificationArguments.find(
+              (m: any) => m.name === el.name || m.name?.text === el.name || m.name?.parts?.[0]?.text === el.name,
+            );
+            if (modArg) {
+              const newMod = modArg.modification || modArg;
+              const mergedMod = ModelicaFlattener.mergeModifications(el.modification, newMod);
+              Object.defineProperty(el, "modification", { value: mergedMod, writable: true, configurable: true });
+            }
+          }
+        }
+      }
+      activeElements = [...activeElements, ...targetElements];
+    }
+
+    for (const element of activeElements) {
       if (!(element instanceof ModelicaComponentInstance)) continue;
       if (!element.classInstance) continue;
       element.instantiate();
@@ -6655,7 +6710,6 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
           expression = (expression as any).accept(this, ctx) ?? expression;
         }
       }
-
       // Encode array dims in the variable name for emission.
       // Format: "name" for scalars, "\0dims\0name" for arrays (\0 is null separator)
       // The emitter will parse this to output "Type[dims] name".
