@@ -2123,6 +2123,14 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
       }
       // Get the existing array, clone it (to avoid mutating the literal definition), and update the element
       let currentExpr = ModelicaExpression.fromClassInstance(componentTarget.classInstance);
+      // Also check evaluatedExpression for SyntheticInterpreterVariable (algorithm-assigned arrays)
+      if (
+        !currentExpr &&
+        componentTarget instanceof SyntheticInterpreterVariable &&
+        componentTarget.evaluatedExpression instanceof ModelicaArray
+      ) {
+        currentExpr = componentTarget.evaluatedExpression;
+      }
       if (!currentExpr && componentTarget.classInstance instanceof ModelicaArrayClassInstance) {
         currentExpr = buildFilledArray(componentTarget.classInstance.shape, new ModelicaIntegerLiteral(0));
       }
@@ -2180,6 +2188,10 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
 
         const mod = toModArgs(newArray);
         componentTarget.classInstance = componentTarget.classInstance?.clone(mod) ?? null;
+        // Keep evaluatedExpression in sync for subscript-assigned arrays
+        if (componentTarget instanceof SyntheticInterpreterVariable) {
+          (componentTarget as any).evaluatedExpression = newArray;
+        }
       }
     } else {
       const mod = toModArgs(value);
@@ -2207,7 +2219,7 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
       // subsequent reads in algorithm statements (e.g., `if x > 5`) can use the
       // assigned value directly without relying on fromClassInstance.
       if (componentTarget instanceof SyntheticInterpreterVariable) {
-        componentTarget.evaluatedExpression = value;
+        (componentTarget as any).evaluatedExpression = value;
       }
     }
 
