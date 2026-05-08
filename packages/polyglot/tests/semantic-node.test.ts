@@ -369,7 +369,7 @@ describe("generateAstClasses", () => {
   const output = generateAstClasses(specs, "modelica");
 
   it("generates import header", () => {
-    expect(output).toContain("import type { QueryDB, SymbolEntry, SpecializationArgs }");
+    expect(output).toContain("import type { QueryDB, SymbolEntry, SymbolId, SpecializationArgs }");
     expect(output).toContain("import { SemanticNode, GenericNode }");
   });
 

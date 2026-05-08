@@ -181,6 +181,6 @@ describe("QueryEngine", () => {
     const index = makeIndex([]);
     const engine = new QueryEngine(index, new Map());
 
-    expect(() => engine.query("anything", 999)).toThrow(/Unknown symbol/);
+    expect(engine.query("anything", 999)).toBeNull();
   });
 });
