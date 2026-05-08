@@ -2271,9 +2271,12 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       isProtected = isProtected || this.#outerProtected;
     }
 
-    let isFinal = node.isFinal || this.#outerFinal || this.#currentLevelStructuralParams.has(name);
+    let isFinal =
+      node.isFinal ||
+      this.#outerFinal ||
+      (variability !== ModelicaVariability.CONSTANT && this.#currentLevelStructuralParams.has(name));
 
-    if (node.annotation("Evaluate") === true) {
+    if (node.annotation("Evaluate") === true && variability !== ModelicaVariability.CONSTANT) {
       isFinal = true;
     }
 
