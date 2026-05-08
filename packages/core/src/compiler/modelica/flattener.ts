@@ -6106,7 +6106,12 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     // it is a global constant and we SHOULD use its fully qualified path.
 
     if (resolved.isComponentInstance && nameSegments.length > 0) {
-      if (resolved.parent && (resolved.parent.classKind === "package" || nameSegments[0] === "Modelica")) {
+      if (
+        resolved.parent &&
+        resolved.parent.classKind !== ModelicaClassKind.FUNCTION &&
+        resolved.parent.classKind !== ModelicaClassKind.OPERATOR_FUNCTION &&
+        (resolved.parent.classKind === "package" || nameSegments[0] === "Modelica")
+      ) {
         return nameSegments.join(".");
       }
       // Return original function name if it resolved to a local component rather than a global class/function
