@@ -562,6 +562,26 @@ export const ModelicaErrorCode = {
     message: (variability: string, connectorName: string) =>
       `Invalid variability ${variability} on connector '${connectorName}'.`,
   },
+  FLOW_OUTSIDE_CONNECTOR: {
+    code: 4038,
+    rule: "flow-outside-connector",
+    severity: "warning",
+    message: () => `Prefix 'flow' used outside connector declaration.`,
+  },
+  DISCRETE_NOT_ON_LHS: {
+    code: 4039,
+    rule: "discrete-not-on-lhs",
+    severity: "error",
+    message: (varName: string) =>
+      `Following variable is discrete, but does not appear on the LHS of a when-statement: '${varName}'.`,
+  },
+  PROTECTED_ELEMENT_MODIFICATION: {
+    code: 4040,
+    rule: "protected-element-modification",
+    severity: "error",
+    message: (varName: string, modText: string) =>
+      `Protected element '${varName}' may not be modified, got '${modText}'.`,
+  },
 } as const satisfies Record<string, ErrorCodeDef>;
 
 // Derive the union type of all error code keys

@@ -2438,13 +2438,9 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     currentMods: { nameParts: string[]; valueExpr: any }[] = [],
   ): void {
     const variability = effectiveVariability ?? node.variability;
-    // For dotted names (sub-components like c1.x), OMC only preserves input/output
-    // if the component is declared inside a connector class. For model/record sub-components,
-    // causality is stripped.
-    const parentClassKind = node.parent?.classKind;
-    const isInConnector =
-      parentClassKind === ModelicaClassKind.CONNECTOR || parentClassKind === ModelicaClassKind.EXPANDABLE_CONNECTOR;
-    const causality = name.includes(".") && !isInConnector ? null : node.causality;
+    // For dotted names (sub-components like c1.x), OMC generally preserves input/output
+    // causality. The previous assumption that it was stripped for non-connectors was incorrect.
+    const causality = node.causality;
     const activeClass = this.activeClassStack[this.activeClassStack.length - 1];
     let isProtected = node.isProtected || this.#outerProtected || (activeClass?.isProtectedElement(node.name) ?? false);
 

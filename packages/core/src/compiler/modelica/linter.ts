@@ -1656,6 +1656,38 @@ ModelicaLinter.register([ModelicaErrorCode.CONNECTOR_VARIABILITY], {
 });
 
 // ---------------------------------------------------------------------------
+// Prefix 'flow'/'stream' outside connector declaration
+// ---------------------------------------------------------------------------
+
+ModelicaLinter.register([ModelicaErrorCode.FLOW_OUTSIDE_CONNECTOR], {
+  visitComponentInstance(
+    node: ModelicaComponentInstance,
+    diagnosticsCallback: DiagnosticsCallbackWithoutResource,
+  ): void {
+    // Check if component has flow prefix
+    const isFlow = (node as any).flowPrefix === "flow" || (node as any).flowPrefix === 1;
+    if (!isFlow) return;
+
+    // Check if the parent class is a connector
+    const classInst = node.parent;
+    if (!classInst || !(classInst instanceof ModelicaClassInstance)) return;
+
+    const isParentConnector =
+      classInst.classKind === ModelicaClassKind.CONNECTOR ||
+      classInst.classKind === ModelicaClassKind.EXPANDABLE_CONNECTOR;
+
+    if (!isParentConnector) {
+      diagnosticsCallback(
+        ModelicaErrorCode.FLOW_OUTSIDE_CONNECTOR.severity,
+        ModelicaErrorCode.FLOW_OUTSIDE_CONNECTOR.code,
+        ModelicaErrorCode.FLOW_OUTSIDE_CONNECTOR.message(),
+        node.abstractSyntaxNode ?? null,
+      );
+    }
+  },
+});
+
+// ---------------------------------------------------------------------------
 // Partial class instantiation check
 // Per Modelica Spec §4.4.2: partial classes may not be instantiated
 // ---------------------------------------------------------------------------
@@ -1906,7 +1938,7 @@ function checkModifications(
     // Semantic node (ModelicaElementModification)
     if (typeof mod.name === "string") {
       nameStr = mod.name;
-      modText = mod.arg?.value?.text ?? nameStr;
+      modText = mod.arg?.value?.text ? `${nameStr} = ${mod.arg.value.text}` : (nameStr ?? "");
     }
     // AST node (ModelicaElementModificationSyntaxNode)
     else if (mod.name && mod.name.parts) {
@@ -2031,6 +2063,25 @@ function checkModifications(
           }
         }
       } else {
+        const classInst = (node as any).classInstance ?? node;
+        const isProtected =
+          (resolved as any).isProtected ||
+          (classInst?.isProtectedElement &&
+            typeof classInst.isProtectedElement === "function" &&
+            classInst.isProtectedElement(parts[0]));
+
+        if (isProtected) {
+          diagnosticsCallback(
+            ModelicaErrorCode.PROTECTED_ELEMENT_MODIFICATION.severity,
+            ModelicaErrorCode.PROTECTED_ELEMENT_MODIFICATION.code,
+            ModelicaErrorCode.PROTECTED_ELEMENT_MODIFICATION.message(
+              parts[parts.length - 1] ?? nameStr ?? "?",
+              modText || nameStr || "?",
+            ),
+            mod.ast ?? mod,
+          );
+        }
+
         let subMods: any[] | undefined;
         try {
           subMods =
