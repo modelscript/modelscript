@@ -67,7 +67,7 @@ export const ModelicaErrorCode = {
     code: 2001,
     rule: "duplicate-element",
     severity: "error",
-    message: (name: string) => `An element with name '${name}' is already declared in this scope.`,
+    message: (name: string) => `An element with name ${name} is already declared in this scope.`,
   },
   VARIABLE_NOT_FOUND: {
     code: 2002,
@@ -346,6 +346,27 @@ export const ModelicaErrorCode = {
     rule: "function-multiple-algorithm",
     severity: "error",
     message: (funcName: string) => `Function ${funcName} has more than one algorithm section or external declaration.`,
+  },
+  REPLACEABLE_BASE_CLASS: {
+    code: 4034,
+    rule: "replaceable-base-class",
+    severity: "error",
+    message: (className: string, extendsText: string) =>
+      `Class '${className}' in 'extends ${extendsText}' is replaceable, the base class name must be transitively non-replaceable.`,
+  },
+  CYCLIC_DIMENSION_DEPENDENCY: {
+    code: 4035,
+    rule: "cyclic-dimension-dependency",
+    severity: "error",
+    message: (dimNum: string, varName: string, exprText: string) =>
+      `Dimension ${dimNum} of ${varName}, '${exprText}', could not be evaluated due to a cyclic dependency.`,
+  },
+  NOT_A_STREAM_VARIABLE: {
+    code: 5013,
+    rule: "not-a-stream-variable",
+    severity: "error",
+    message: (operand: string, operator: string) =>
+      `Operand '${operand}' to operator '${operator}' is not a stream variable.`,
   },
   DIVISION_BY_ZERO: {
     code: 5005,

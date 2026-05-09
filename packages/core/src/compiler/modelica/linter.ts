@@ -1354,7 +1354,11 @@ ModelicaLinter.register(
       const declaredElements = node.declaredElements;
       const seenNames = new Set<string>();
       for (const element of declaredElements) {
-        if (!element.isComponentInstance && !element.isClassInstance) continue;
+        // Only check components, classes, and enum literals. Ignore equations or other nameless elements.
+        const isComponentOrClass = element.isComponentInstance || element.isClassInstance;
+        const isEnumLiteral = element.kind === "enumeration_literal" || element.classKind === "enumeration_literal";
+        if (!isComponentOrClass && !isEnumLiteral) continue;
+
         if (!element.name) continue;
         if (seenNames.has(element.name)) {
           diagnosticsCallback(
@@ -1627,6 +1631,26 @@ ModelicaLinter.register([ModelicaErrorCode.REDECLARE_NON_REPLACEABLE], {
   visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
     // Check extends clauses for redeclarations targeting non-replaceable elements
     if (!node.extendsClassInstances) return;
+
+    // Per Modelica Spec §7.1.3: the base class name must be transitively non-replaceable.
+    for (const ext of node.extendsClassInstances) {
+      if (!ext.classInstance) continue;
+
+      // If the target class instance is replaceable, it's illegal.
+      if ((ext.classInstance as any).isReplaceable) {
+        const className = ext.classInstance.name ?? "?";
+        const extAst = (ext as any).abstractSyntaxNode;
+        // Try to get the original text like "A.<B>" or "M"
+        const extendsText = extAst?.typeSpecifier?.name?.parts?.map((p: any) => p.text).join(".") ?? className;
+
+        diagnosticsCallback(
+          ModelicaErrorCode.REPLACEABLE_BASE_CLASS.severity,
+          ModelicaErrorCode.REPLACEABLE_BASE_CLASS.code,
+          ModelicaErrorCode.REPLACEABLE_BASE_CLASS.message(className, extendsText),
+          extAst ?? null,
+        );
+      }
+    }
 
     for (const ext of node.extendsClassInstances) {
       const mod = ext.modification;
@@ -2424,6 +2448,129 @@ ModelicaLinter.register(ModelicaErrorCode.BUILTIN_TIME_INVALID, {
     for (const section of astNode.sections ?? []) {
       if (section instanceof AlgoSection) {
         scanForTimeRefs(section.statements ?? []);
+      }
+    }
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Stream variable operator check
+// Per Modelica Spec §15.2: inStream() and actualStream() arguments must be stream variables.
+// ---------------------------------------------------------------------------
+
+ModelicaLinter.register(ModelicaErrorCode.NOT_A_STREAM_VARIABLE, {
+  visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+    const astNode = (node as any).abstractSyntaxNode;
+    if (!astNode) return;
+
+    function scanForStreamCalls(stmtsOrEqs: any[]): void {
+      for (const item of stmtsOrEqs) {
+        scanExprForStream(item);
+      }
+    }
+
+    function scanExprForStream(expr: any): void {
+      if (!expr) return;
+      const typeStr = expr["@type"];
+
+      // Check for function calls
+      if (typeStr === "FunctionCall" || typeStr === "function_call") {
+        const funcName = expr.functionName?.text ?? expr.name?.text ?? expr.functionName ?? expr.functionReferenceName;
+        if (funcName === "inStream" || funcName === "actualStream") {
+          const args = expr.functionCallArguments?.arguments ?? expr.arguments ?? [];
+          if (args.length > 0) {
+            const arg = args[0].expression ?? args[0];
+            let isValid = false;
+            let argName = "Expression";
+
+            if (arg["@type"] === "ComponentReference" || arg["@type"] === "component_reference") {
+              const parts = arg.parts?.map((p: any) => p.identifier?.text ?? p.text) ?? [];
+              argName = parts.join(".");
+              if (parts.length > 0) {
+                const resolved = node.resolveComponentReference(parts);
+                // resolved should be a ModelicaComponentInstance
+                if (resolved && (resolved as any).isComponentInstance) {
+                  // Check if it's a stream variable
+                  const isStream = (resolved as any).flowPrefix === "stream" || (resolved as any).flowPrefix === 2; // ModelicaFlow.STREAM
+                  if (isStream) {
+                    isValid = true;
+                  }
+                }
+              }
+            } else if (arg["@type"]) {
+              // Extract a name for literals if possible
+              if (arg.value !== undefined) argName = String(arg.value);
+              else argName = arg.text ?? "Expression";
+            }
+
+            if (!isValid) {
+              diagnosticsCallback(
+                ModelicaErrorCode.NOT_A_STREAM_VARIABLE.severity,
+                ModelicaErrorCode.NOT_A_STREAM_VARIABLE.code,
+                ModelicaErrorCode.NOT_A_STREAM_VARIABLE.message(argName, funcName),
+                arg,
+              );
+            }
+          }
+        }
+      }
+
+      // Recurse into sub-expressions
+      if (expr.operand1) scanExprForStream(expr.operand1);
+      if (expr.operand2) scanExprForStream(expr.operand2);
+      if (expr.operand && !expr.operand1) scanExprForStream(expr.operand);
+      if (expr.expression) scanExprForStream(expr.expression);
+      if (expr.expression1) scanExprForStream(expr.expression1);
+      if (expr.expression2) scanExprForStream(expr.expression2);
+      if (expr.condition) scanExprForStream(expr.condition);
+      if (expr.target) scanExprForStream(expr.target);
+      if (expr.value) scanExprForStream(expr.value);
+
+      // Statements / Equations
+      if (expr.statements) scanForStreamCalls(expr.statements);
+      if (expr.elseStatements) scanForStreamCalls(expr.elseStatements);
+      if (expr.elseIfStatementClauses) {
+        for (const c of expr.elseIfStatementClauses) scanExprForStream(c);
+      }
+      if (expr.elseWhenStatementClauses) {
+        for (const c of expr.elseWhenStatementClauses) scanExprForStream(c);
+      }
+      if (expr.equations) scanForStreamCalls(expr.equations);
+      if (expr.elseEquations) scanForStreamCalls(expr.elseEquations);
+      if (expr.elseIfEquationClauses) {
+        for (const c of expr.elseIfEquationClauses) scanExprForStream(c);
+      }
+      if (expr.elseWhenEquationClauses) {
+        for (const c of expr.elseWhenEquationClauses) scanExprForStream(c);
+      }
+
+      // Function call arguments
+      if (expr.functionCallArguments?.arguments) {
+        for (const arg of expr.functionCallArguments.arguments) {
+          scanExprForStream(arg.expression ?? arg);
+        }
+      }
+    }
+
+    for (const section of astNode.sections ?? []) {
+      if (section.statements) {
+        scanForStreamCalls(section.statements);
+      }
+      if (section.equations) {
+        scanForStreamCalls(section.equations);
+      }
+    }
+
+    // Also scan component bindings
+    for (const element of astNode.elements ?? []) {
+      const clauses =
+        element["@type"] === "ComponentClause" ? [element] : element.componentClause ? [element.componentClause] : [];
+      for (const clause of clauses) {
+        for (const comp of clause.componentDeclarations ?? []) {
+          if (comp.declaration?.modification?.modificationExpression) {
+            scanExprForStream(comp.declaration.modification.modificationExpression);
+          }
+        }
       }
     }
   },

@@ -14,6 +14,7 @@ import {
   ModelicaEndExpressionSyntaxNode,
   ModelicaExpressionSyntaxNode,
   ModelicaForStatementSyntaxNode,
+  ModelicaFunctionArgumentSyntaxNode,
   ModelicaFunctionCallSyntaxNode,
   ModelicaIfElseExpressionSyntaxNode,
   ModelicaIfStatementSyntaxNode,
@@ -667,6 +668,20 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
   }
 
   /**
+   * Set of component names whose dimensions are currently being evaluated.
+   * Used to detect cyclic dimension dependencies.
+   */
+  evaluatingDimensionFor = new Set<string>();
+
+  /**
+   * Map of component names to arrays of resolved dimension sizes.
+   * NaN means "not yet resolved". A positive number means "already resolved".
+   * Used by #evaluateSize to distinguish valid cross-dimension references
+   * (e.g. size(x,2) when dim 2 is a literal) from cyclic references.
+   */
+  resolvedDimensions = new Map<string, number[]>();
+
+  /**
    * Visits a component reference, resolving the name to its corresponding value or expression.
    * Handles static array subscript evaluation if subscripts are provided.
    *
@@ -678,9 +693,15 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     // Depth guard: prevent stack overflow from deep modification/override chains
     if (this.#componentRefDepth > 200) return null;
     this.#componentRefDepth++;
+
+    const parts = node.parts;
+    if (parts.length > 0 && parts[0].identifier?.text && this.evaluatingDimensionFor.has(parts[0].identifier.text)) {
+      this.#componentRefDepth--;
+      throw new Error("CyclicDependencyError");
+    }
     if (this.#evaluatingNodes.has(node as unknown as ModelicaSyntaxNode)) {
       this.#componentRefDepth--;
-      return null;
+      throw new Error("CyclicDependencyError");
     }
     this.#evaluatingNodes.add(node as unknown as ModelicaSyntaxNode);
     try {
@@ -1176,6 +1197,7 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     let shape: number[] | null = null;
     if (arrayRefExpr instanceof ModelicaComponentReferenceSyntaxNode) {
       const namedElement = scope.resolveComponentReference(arrayRefExpr);
+
       let arrayClassInstance: ModelicaArrayClassInstance | null = null;
       if (namedElement instanceof ModelicaComponentInstance) {
         if (!namedElement.instantiated && !namedElement.instantiating) namedElement.instantiate();
@@ -1188,6 +1210,43 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
       if (arrayClassInstance) {
         shape = arrayClassInstance.shape;
       }
+
+      // Check for cyclic dimension dependency using resolvedDimensions
+      const refName = (namedElement as any)?.name;
+      if (refName && this.evaluatingDimensionFor.has(refName)) {
+        const resolved = this.resolvedDimensions.get(refName);
+        if (dimArg instanceof ModelicaIntegerLiteral && resolved) {
+          const dimIndex = dimArg.value - 1;
+          const resolvedVal = resolved[dimIndex];
+          // If this dimension is already resolved (not NaN), return it safely
+          if (!isNaN(resolvedVal) && resolvedVal > 0) {
+            return new ModelicaIntegerLiteral(resolvedVal);
+          }
+        }
+        // Unresolved dimension or 1-arg size() → cycle
+        throw new Error("CyclicDependencyError:" + refName);
+      }
+
+      // Cross-variable cycle detection: when size(y, d) is called while evaluating
+      // x's dims, check if y's dim d is an expression that might reference x.
+      // e.g., x[size(y,1)], y[size(x,1)] → mutual cycle
+      if (refName && this.evaluatingDimensionFor.size > 0 && arrayClassInstance) {
+        const subs = (arrayClassInstance as any).arraySubscripts;
+        if (subs && dimArg instanceof ModelicaIntegerLiteral) {
+          const dimIndex = dimArg.value - 1;
+          const sub = subs[dimIndex];
+          // If this dimension is an expression (not a literal value), it could create a cycle
+          if (sub?.expression && sub.expression.kind === "expression" && sub.expression.text) {
+            // Check if the expression text references any variable currently being evaluated
+            for (const evaluatingName of this.evaluatingDimensionFor) {
+              if (sub.expression.text.includes(evaluatingName)) {
+                throw new Error("CyclicDependencyError:" + refName);
+              }
+            }
+          }
+        }
+      }
+
       // Handle size(E, 1) where E is an enumeration type — return count of literals
       if (!shape) {
         let enumClass: ModelicaEnumerationClassInstance | null = null;
@@ -2659,6 +2718,10 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
    */
   visitStringLiteral(node: ModelicaStringLiteralSyntaxNode): ModelicaExpression | null {
     return new ModelicaStringLiteral(node.text ?? "");
+  }
+
+  visitFunctionArgument(node: ModelicaFunctionArgumentSyntaxNode, scope: Scope): ModelicaExpression | null {
+    return node.expression ? node.expression.accept(this, scope) : null;
   }
 
   /**

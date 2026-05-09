@@ -1737,6 +1737,10 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
   #parentObjectExpression: ModelicaObject | null = null;
   // Track emitted variable names to prevent duplicates from diamond inheritance
   #emittedVarNames = new Set<string>();
+  // Track variable names currently being evaluated for dimension resolution (cyclic dependency detection)
+  #evaluatingDimensionNames = new Set<string>();
+  // Track variables that already had cyclic dimension diagnostics reported (suppress duplicates)
+  #cyclicDimReported = new Set<string>();
   // Track all flow variable names emitted as DAE variables (for flow balance post-processing)
   #allFlowVars = new Set<string>();
   // Track flow variable names that appear in connect equations (populated during equation processing)
@@ -2834,7 +2838,10 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     const isProtected =
       node.isProtected || this.#outerProtected || (activeClass?.isProtectedElement(node.name) ?? false);
     const arrayClassInstance = node.classInstance as ModelicaArrayClassInstance;
-    const hasFlexibleDim = arrayClassInstance.shape.some((d: any) => d === 0);
+    const polysubs_early = (arrayClassInstance as any).arraySubscripts;
+    const hasFlexibleDim =
+      arrayClassInstance.shape.some((d: any) => d === 0) ||
+      (polysubs_early && polysubs_early.some((s: any) => s.expression?.kind === "flexible"));
     const rawArrayBinding = node.modification?.expression ?? null;
     let arrayBindingExpression = this.#flattenToSymbolic(rawArrayBinding, node, args[0], args[1]);
     // If the interpreter returned a ModelicaArray of ModelicaObjects (type structure, not values),
@@ -2852,17 +2859,34 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     // interpreter may return an empty/wrong-shape array because it can't execute
     // function algorithm bodies. Re-evaluate from the raw AST with algorithm
     // execution enabled to get the correct result.
-    if (
-      hasFlexibleDim &&
-      rawArrayBinding &&
-      (!(arrayBindingExpression instanceof ModelicaArray) || arrayBindingExpression.shape.some((d: number) => d === 0))
-    ) {
-      const freshResult = rawArrayBinding.accept(
-        new ModelicaInterpreter(true),
-        node.parent ?? ({} as ModelicaClassInstance),
-      );
-      if (freshResult instanceof ModelicaArray && freshResult.shape.every((d: number) => d > 0)) {
-        arrayBindingExpression = freshResult;
+    if (hasFlexibleDim && rawArrayBinding) {
+      const flexInterp = new ModelicaInterpreter(true);
+      // Propagate cyclic dimension tracking so that flexible dimension bindings
+      // referencing their own variable (e.g. c[:] = fill(0, size(c, 1))) are caught.
+      // For flexible dims, mark ALL dimension indices as being evaluated since `:` is unknown.
+      if (node.name) {
+        this.#evaluatingDimensionNames.add(node.name);
+        flexInterp.evaluatingDimensionFor = new Set(this.#evaluatingDimensionNames);
+      }
+      try {
+        const freshResult = rawArrayBinding.accept(flexInterp, node.parent ?? ({} as ModelicaClassInstance));
+        if (freshResult instanceof ModelicaArray && freshResult.shape.every((d: number) => d > 0)) {
+          arrayBindingExpression = freshResult;
+        }
+      } catch (e: any) {
+        if (e instanceof Error && e.message.startsWith("CyclicDependencyError")) {
+          const varName = node.name ?? "?";
+          if (!this.#cyclicDimReported.has(varName)) {
+            this.#cyclicDimReported.add(varName);
+            args[1].diagnostics.push(
+              makeDiagnostic(ModelicaErrorCode.CYCLIC_DIMENSION_DEPENDENCY, rawArrayBinding, String(1), varName, ":"),
+            );
+          }
+          if (node.name) this.#evaluatingDimensionNames.delete(node.name);
+          return;
+        }
+      } finally {
+        if (node.name) this.#evaluatingDimensionNames.delete(node.name);
       }
     }
     // If the interpreter couldn't evaluate the binding (returned null or a malformed
@@ -2961,16 +2985,60 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         ? [...arrayBindingExpression.flatElements]
         : null;
 
-    let shape = [...arrayClassInstance.shape];
+    let shape: any[] = [...arrayClassInstance.shape];
     const enumDimensions = new Map<
       number,
       { typeName: string; literals: { stringValue: string; ordinalValue: number }[] }
     >();
     const polysubs = (arrayClassInstance as any).arraySubscripts;
     if (polysubs) {
-      shape = polysubs.map((sub: any, i: number) => {
+      // Pre-compute resolved dimensions: NaN = not yet resolved, number = resolved.
+      // This allows the interpreter to detect cycles at the individual dimension level.
+      // E.g. for x[size(x,2), 3]: resolvedDims starts as [NaN, 3].
+      // When evaluating dim 0 (size(x,2)), the interpreter sees resolvedDims[1]=3, returns it.
+      // For x[size(x,2), size(x,1)]: resolvedDims starts as [NaN, NaN].
+      // Evaluating dim 0 sees resolvedDims[1]=NaN → cycle!
+      const resolvedDims: number[] = new Array(polysubs.length).fill(NaN);
+      // Pre-fill literal dimensions
+      for (let idx = 0; idx < polysubs.length; idx++) {
+        const s = polysubs[idx];
+        // Check multiple patterns for literal values:
+        // 1. s.kind === "literal" && s.value (rare, but possible)
+        // 2. s.expression.value is a number (polyglot stores literals as {expression: {value: 3}})
+        if (s.kind === "literal" && typeof s.value === "number") {
+          resolvedDims[idx] = s.value;
+        } else if (s.expression && typeof s.expression.value === "number" && !s.expression.kind) {
+          resolvedDims[idx] = s.expression.value;
+        } else if (s.expression?.kind === "flexible") {
+          resolvedDims[idx] = 0; // flexible dims → 0, handled separately
+        }
+      }
+
+      // Multi-pass dimension resolution: process left-to-right, retrying unresolved
+      // dimensions until no more progress or all resolved. This handles cascading
+      // dependencies like x[size(x,2), size(x,3), size(x,4), 2] regardless of order.
+      const newShape: any[] = new Array(polysubs.length);
+      const resolved: boolean[] = new Array(polysubs.length).fill(false);
+      let cyclicFound = false;
+
+      // Mark pre-filled literals as resolved
+      for (let i = 0; i < polysubs.length; i++) {
+        const val = resolvedDims[i];
+        if (val !== undefined && !isNaN(val)) {
+          resolved[i] = true;
+          newShape[i] = val;
+        }
+      }
+
+      const cycleTargets = new Set<string>();
+
+      const evaluateDim = (i: number): boolean => {
+        const sub = polysubs[i];
         if (sub.expression) {
-          if (sub.expression.kind === "flexible") return 0;
+          if (sub.expression.kind === "flexible") {
+            newShape[i] = 0;
+            return true;
+          }
           try {
             let exprNode = sub.expression;
             if (exprNode.kind === "expression" && exprNode.text) {
@@ -2980,8 +3048,8 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
                 const root = tree.rootNode as any;
                 const findExpr = (node: any): any => {
                   if (node.type === "ModificationExpression") return node.childForFieldName("expression");
-                  for (let i = 0; i < node.namedChildCount; i++) {
-                    const child = node.namedChild(i);
+                  for (let j = 0; j < node.namedChildCount; j++) {
+                    const child = node.namedChild(j);
                     const res = findExpr(child);
                     if (res) return res;
                   }
@@ -2996,6 +3064,13 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
               }
             }
             const interp = new ModelicaInterpreter(true);
+            if (node.name) this.#evaluatingDimensionNames.add(node.name);
+            interp.evaluatingDimensionFor = new Set(this.#evaluatingDimensionNames);
+            // Pass resolved dimensions so the interpreter can distinguish
+            // valid cross-dim references from cyclic ones
+            if (node.name) {
+              interp.resolvedDimensions = new Map([[node.name, [...resolvedDims]]]);
+            }
             const val = exprNode.accept(interp, node.parent ?? node);
 
             // Handle enumeration types used as dimensions!
@@ -3013,20 +3088,86 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
                   typeName: fqn,
                   literals: lits,
                 });
-                return lits.length;
+                resolvedDims[i] = lits.length;
+                newShape[i] = lits.length;
+                return true;
               }
             }
 
-            if (val != null && typeof val.value === "number") return val.value;
-            if (typeof val === "number") return val;
-          } catch {
-            /* ignore */
+            if (val != null && typeof val.value === "number") {
+              resolvedDims[i] = val.value;
+              newShape[i] = val.value;
+              return true;
+            }
+            if (typeof val === "number") {
+              resolvedDims[i] = val;
+              newShape[i] = val;
+              return true;
+            }
+          } catch (e: any) {
+            if (e instanceof Error && e.message.startsWith("CyclicDependencyError")) {
+              // Don't immediately report — might resolve on next pass
+              const cycleTarget = e.message.split(":")[1];
+              if (cycleTarget) cycleTargets.add(cycleTarget);
+              return false;
+            }
+          } finally {
+            if (node.name) this.#evaluatingDimensionNames.delete(node.name);
           }
         }
-        if (sub.kind === "literal") return sub.value;
-        if (sub.text) return sub.text;
-        return shape[i] ?? 1;
-      });
+        if (sub.kind === "literal") {
+          newShape[i] = sub.value;
+          return true;
+        }
+        if (sub.text) {
+          newShape[i] = sub.text;
+          return true;
+        }
+        newShape[i] = shape[i] ?? 1;
+        return true;
+      };
+
+      // Multi-pass resolution
+      const maxPasses = polysubs.length + 1;
+      for (let pass = 0; pass < maxPasses && !cyclicFound; pass++) {
+        let madeProgress = false;
+        for (let i = 0; i < polysubs.length; i++) {
+          if (resolved[i]) continue;
+          if (evaluateDim(i)) {
+            resolved[i] = true;
+            madeProgress = true;
+          }
+        }
+        if (!madeProgress) {
+          // No progress — remaining unresolved dims are cyclic
+          for (let i = 0; i < polysubs.length; i++) {
+            if (resolved[i]) continue;
+            const varName = node.name ?? "?";
+            if (!cyclicFound && !this.#cyclicDimReported.has(varName)) {
+              cyclicFound = true;
+              this.#cyclicDimReported.add(varName);
+              for (const target of cycleTargets) {
+                this.#cyclicDimReported.add(target);
+              }
+              const sub = polysubs[i];
+              const exprText = sub.expression?.text ?? "?";
+              args[1].diagnostics.push(
+                makeDiagnostic(
+                  ModelicaErrorCode.CYCLIC_DIMENSION_DEPENDENCY,
+                  sub.expression,
+                  String(i + 1),
+                  varName,
+                  exprText,
+                ),
+              );
+            }
+            newShape[i] = shape[i] ?? 1;
+          }
+          break;
+        }
+        if (resolved.every(Boolean)) break;
+      }
+      shape = newShape;
     }
 
     // Re-create declaredElements with the evaluated shape
@@ -5874,7 +6015,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
                   );
                   clone.instantiate();
                   const targetDae = ctx.rootDae ?? ctx.dae;
-                  const interpFallback = new ModelicaInterpreter(true, undefined, targetDae?.diagnostics);
+                  const interpFallback = new ModelicaInterpreter(true, undefined, targetDae?.diagnostics as any);
                   for (const stmt of clone.algorithms) {
                     stmt.accept(interpFallback, clone);
                   }
@@ -5998,7 +6139,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
                     );
                     clone.instantiate();
                     const targetDae = ctx.rootDae ?? ctx.dae;
-                    const interpFallback = new ModelicaInterpreter(true, undefined, targetDae?.diagnostics);
+                    const interpFallback = new ModelicaInterpreter(true, undefined, targetDae?.diagnostics as any);
                     for (const stmt of clone.algorithms) {
                       stmt.accept(interpFallback, clone);
                     }
@@ -6237,7 +6378,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       }
       if (defaultsAreConstant) {
         const targetDae = ctx.rootDae ?? ctx.dae;
-        const interp = new ModelicaInterpreter(true, undefined, targetDae.diagnostics);
+        const interp = new ModelicaInterpreter(true, undefined, targetDae.diagnostics as any);
         const evalResult = node.accept(interp, ctx.classInstance as any);
         if (evalResult) {
           // Function was fully inlined — remove its definition from the DAE
@@ -6277,7 +6418,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
                     mergedMod,
                   );
                   clone.instantiate();
-                  const interpFallback = new ModelicaInterpreter(true, undefined, targetDae?.diagnostics);
+                  const interpFallback = new ModelicaInterpreter(true, undefined, targetDae?.diagnostics as any);
                   for (const stmt of clone.algorithms) {
                     stmt.accept(interpFallback, clone);
                   }
