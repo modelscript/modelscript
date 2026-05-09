@@ -821,6 +821,47 @@ ModelicaLinter.register(ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH, {
 
     function checkExprShape(componentName: string, expr: any, expectedShape: number[]): boolean {
       if (!expr || expectedShape.length === 0) return true;
+
+      // Handle ArrayConcatenation: [a, b; c, d] → cat(2, ...) with shape [numRows, numCols]
+      if (expr["@type"] === "ArrayConcatenation" && expr.expressionLists) {
+        const rows = expr.expressionLists ?? [];
+        const numRows = rows.length;
+        const numCols = rows[0]?.expressions?.length ?? 0;
+        const actualShape = [numRows, numCols];
+
+        // Check if actual matrix shape matches expected dimensions
+        const shapeMismatch =
+          expectedShape.length !== actualShape.length ||
+          expectedShape.some((d: number, i: number) => d !== actualShape[i]);
+
+        if (shapeMismatch) {
+          // Build cat(2, ...) expression text matching OMC format
+          // Each scalar element becomes {{x}}, each row becomes a column vector
+          const catArgs: string[] = [];
+          for (const row of rows) {
+            for (const e of row.expressions ?? []) {
+              const eText = e.text ?? "?";
+              catArgs.push(`{{${eText}}}`);
+            }
+          }
+          const exprText = `cat(2, ${catArgs.join(", ")})`;
+
+          diagnosticsCallback(
+            ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.severity,
+            ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.code,
+            ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.message(
+              componentName,
+              exprText,
+              expectedShape.join(", "),
+              actualShape.join(", "),
+            ),
+            expr,
+          );
+          return false;
+        }
+        return true;
+      }
+
       if (expr["@type"] === "ArrayConstructor" && expr.expressionList) {
         const exprs = expr.expressionList.expressions ?? [];
         if (exprs.length !== expectedShape[0]) {
@@ -924,36 +965,61 @@ ModelicaLinter.register(ModelicaErrorCode.EQUATION_TYPE_MISMATCH, {
         if (eq.operator && eq.operator !== "=") continue;
 
         const lhsRef = (eq.expression1 as any)?.parts;
-        const rhsRef = (eq.expression2 as any)?.parts;
-        if (!lhsRef || !rhsRef) continue;
-        if (lhsRef.length !== 1 || rhsRef.length !== 1) continue;
-
+        if (!lhsRef || lhsRef.length !== 1) continue;
         const lhsName = lhsRef[0]?.identifier?.text;
-        const rhsName = rhsRef[0]?.identifier?.text;
-        if (!lhsName || !rhsName) continue;
+        if (!lhsName) continue;
 
         const lhsComp = node.resolveSimpleName(lhsName, false, true);
-        const rhsComp = node.resolveSimpleName(rhsName, false, true);
         if (!(lhsComp instanceof ModelicaComponentInstance)) continue;
-        if (!(rhsComp instanceof ModelicaComponentInstance)) continue;
-        if (!lhsComp.classInstance || !rhsComp.classInstance) continue;
+        if (!lhsComp.classInstance) continue;
 
         const lhsShape = getArrayShape(lhsComp.classInstance);
-        const rhsShape = getArrayShape(rhsComp.classInstance);
+        if (lhsShape.length === 0) continue;
 
-        // If both are arrays but shapes differ, report an error
+        // Case 1: RHS is a simple component reference
+        const rhsRef = (eq.expression2 as any)?.parts;
+        if (rhsRef && rhsRef.length === 1) {
+          const rhsName = rhsRef[0]?.identifier?.text;
+          if (rhsName) {
+            const rhsComp = node.resolveSimpleName(rhsName, false, true);
+            if (rhsComp instanceof ModelicaComponentInstance && rhsComp.classInstance) {
+              const rhsShape = getArrayShape(rhsComp.classInstance);
+              if (
+                rhsShape.length > 0 &&
+                (lhsShape.length !== rhsShape.length || lhsShape.some((d, i) => d !== rhsShape[i]))
+              ) {
+                const lhsTypeName = getBaseTypeName(lhsComp.classInstance) ?? "Real";
+                diagnosticsCallback(
+                  ModelicaErrorCode.EQUATION_TYPE_MISMATCH.severity,
+                  ModelicaErrorCode.EQUATION_TYPE_MISMATCH.code,
+                  ModelicaErrorCode.EQUATION_TYPE_MISMATCH.message(
+                    lhsName,
+                    rhsName,
+                    `${lhsTypeName}[${lhsShape.join(", ")}]`,
+                    `${lhsTypeName}[${rhsShape.join(", ")}]`,
+                  ),
+                  eq,
+                );
+                continue;
+              }
+            }
+          }
+        }
+
+        // Case 2: RHS is an expression with an inferable shape (e.g., {2,4,6}/2)
+        const rhsShape = inferExpressionShape(eq.expression2);
         if (
-          lhsShape.length > 0 &&
           rhsShape.length > 0 &&
           (lhsShape.length !== rhsShape.length || lhsShape.some((d, i) => d !== rhsShape[i]))
         ) {
           const lhsTypeName = getBaseTypeName(lhsComp.classInstance) ?? "Real";
+          const rhsText = getExpressionText(eq.expression2);
           diagnosticsCallback(
             ModelicaErrorCode.EQUATION_TYPE_MISMATCH.severity,
             ModelicaErrorCode.EQUATION_TYPE_MISMATCH.code,
             ModelicaErrorCode.EQUATION_TYPE_MISMATCH.message(
               lhsName,
-              rhsName,
+              rhsText,
               `${lhsTypeName}[${lhsShape.join(", ")}]`,
               `${lhsTypeName}[${rhsShape.join(", ")}]`,
             ),
@@ -979,6 +1045,17 @@ function getExpressionText(expr: any): string {
   // Component reference: reconstruct from parts
   if (expr.parts) {
     return expr.parts.map((p: any) => p.identifier?.text || p.name?.text || "?").join(".");
+  }
+  // Array constructor: {a, b, c}
+  if (expr["@type"] === "ArrayConstructor" && expr.expressionList) {
+    const exprs = expr.expressionList.expressions ?? [];
+    return `{${exprs.map(getExpressionText).join(", ")}}`;
+  }
+  // Array concatenation: [a, b; c, d]
+  if (expr["@type"] === "ArrayConcatenation" && expr.expressionLists) {
+    const rows = expr.expressionLists ?? [];
+    const rowTexts = rows.map((r: any) => (r.expressions ?? []).map(getExpressionText).join(", "));
+    return `[${rowTexts.join("; ")}]`;
   }
   // String literals: ensure quotes
   if (expr["@type"] === "STRING" || expr["@type"] === "string_literal" || expr["@type"] === "String") {
@@ -1013,8 +1090,22 @@ function inferExpressionShape(expr: any): number[] {
     const innerShape = inferExpressionShape(exprs[0]);
     return [exprs.length, ...innerShape];
   }
+  // ArrayConcatenation: [a, b; c, d] → shape [numRows, numCols]
+  if (typeStr === "ArrayConcatenation" && expr.expressionLists) {
+    const rows = expr.expressionLists ?? [];
+    const numRows = rows.length;
+    const numCols = rows[0]?.expressions?.length ?? 0;
+    return [numRows, numCols];
+  }
+  // Binary expression: array op scalar → array shape; scalar op array → array shape
+  if (typeStr === "binary_expression" || expr.operand1) {
+    const s1 = inferExpressionShape(expr.operand1);
+    const s2 = inferExpressionShape(expr.operand2);
+    if (s1.length > 0 && s2.length === 0) return s1;
+    if (s2.length > 0 && s1.length === 0) return s2;
+    if (s1.length > 0 && s2.length > 0) return s1; // same-shape assumed
+  }
   // Simplified for literals and references that are scalars (empty shape)
-  // More complex shape inference for references would require type resolution
   return [];
 }
 

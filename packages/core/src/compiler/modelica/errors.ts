@@ -446,7 +446,7 @@ export const ModelicaErrorCode = {
     rule: "binary-op-type-mismatch",
     severity: "error",
     message: (expr: string, type1: string, type2: string) =>
-      `Cannot resolve type of expression ${expr}. The operands have types ${type1}, ${type2} in component <NO COMPONENT>.`,
+      `Cannot resolve type of expression ${expr}. The operands have types ${type1}, ${type2} in component <NO_COMPONENT>.`,
   },
   OPTIMIZATION_OBJECTIVE_TYPE: {
     code: 3012,

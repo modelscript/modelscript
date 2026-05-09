@@ -5029,6 +5029,64 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       return new ModelicaFunctionCallExpression(qualifiedName, [operand1, operand2]);
     }
 
+    // Check for array/scalar type mismatches in arithmetic binary operations
+    // In Modelica, {1,2,3} + 1 is NOT valid — must use .+ for elementwise ops.
+    // Regular + and - require both operands to have matching array dimensions.
+    const isElementwise = operator.startsWith(".");
+    if (
+      !isElementwise &&
+      (operator === ModelicaBinaryOperator.ADDITION || operator === ModelicaBinaryOperator.SUBTRACTION)
+    ) {
+      const op1IsArray = operand1 instanceof ModelicaArray;
+      const op2IsArray = operand2 instanceof ModelicaArray;
+
+      if ((op1IsArray && !op2IsArray) || (!op1IsArray && op2IsArray)) {
+        // Array + scalar or scalar + array — type error
+        const inferType = (expr: ModelicaExpression): string => {
+          if (expr instanceof ModelicaArray) {
+            // Determine element type
+            const flatEl = [...expr.flatElements];
+            let elemType = "Real";
+            if (flatEl.length > 0) {
+              if (flatEl[0] instanceof ModelicaIntegerLiteral) elemType = "Integer";
+              else if (flatEl[0] instanceof ModelicaBooleanLiteral) elemType = "Boolean";
+              else if (flatEl[0] instanceof ModelicaStringLiteral) elemType = "String";
+            }
+            return `${elemType}[${expr.shape.join(", ")}]`;
+          }
+          if (expr instanceof ModelicaIntegerLiteral || expr instanceof ModelicaIntegerVariable) return "Integer";
+          if (expr instanceof ModelicaRealLiteral || expr instanceof ModelicaRealVariable) return "Real";
+          if (expr instanceof ModelicaBooleanLiteral || expr instanceof ModelicaBooleanVariable) return "Boolean";
+          if (expr instanceof ModelicaStringLiteral || expr instanceof ModelicaStringVariable) return "String";
+          return "Real";
+        };
+
+        // Format expression as Modelica text
+        const exprToText = (expr: ModelicaExpression): string => {
+          if (expr instanceof ModelicaArray) {
+            return `{${expr.elements.map(exprToText).join(", ")}}`;
+          }
+          if (expr instanceof ModelicaIntegerLiteral) return String(expr.value);
+          if (expr instanceof ModelicaRealLiteral) return String(expr.value);
+          if (expr instanceof ModelicaBooleanLiteral) return expr.value ? "true" : "false";
+          if (expr instanceof ModelicaStringLiteral) return `"${expr.value}"`;
+          if (expr instanceof ModelicaNameExpression) return expr.name;
+          if (expr instanceof ModelicaVariable) return expr.name;
+          return "...";
+        };
+        const exprText = `${exprToText(operand1)} ${operator} ${exprToText(operand2)}`;
+        ctx.dae.diagnostics.push(
+          makeDiagnostic(
+            ModelicaErrorCode.BINARY_OP_TYPE_MISMATCH,
+            node,
+            exprText,
+            inferType(operand1),
+            inferType(operand2),
+          ),
+        );
+      }
+    }
+
     return canonicalizeBinaryExpression(operator, operand1, operand2, ctx.dae);
   }
 
@@ -9449,6 +9507,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         );
       }
     }
+
     // Skip equations involving zero-size arrays (e.g., der(x) = A*x where x[0] is empty).
     // Empty arrays arise from zero-dimensional components and produce vacuous equations.
     const hasEmptyArray = (e: ModelicaExpression | null | undefined): boolean =>
