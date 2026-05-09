@@ -1274,6 +1274,10 @@ ModelicaLinter.register(ModelicaErrorCode.NESTED_WHEN, {
           }
           // Check inside the when's own body for further nesting
           checkStatementsForNestedWhen(stmt.statements ?? [], true, false);
+          // Check elsewhen clauses for nested when statements too
+          for (const elseWhen of stmt.elseWhenStatementClauses ?? []) {
+            checkStatementsForNestedWhen(elseWhen.statements ?? [], true, false);
+          }
         } else if (stmt instanceof IfStmt) {
           checkStatementsForNestedWhen(stmt.statements ?? [], insideWhen, true);
           checkStatementsForNestedWhen(stmt.elseStatements ?? [], insideWhen, true);
@@ -1412,7 +1416,7 @@ ModelicaLinter.register(
 
       // Check for external + algorithm coexistence
       let hasExternal = false;
-      let hasAlgorithm = false;
+      let algorithmCount = 0;
       let algoNode: any = null;
 
       function checkClassForAlgorithmsAndExternal(cls: ModelicaClassInstance) {
@@ -1421,7 +1425,7 @@ ModelicaLinter.register(
 
         for (const section of clsAst.sections ?? []) {
           if (section instanceof AlgoSection) {
-            hasAlgorithm = true;
+            algorithmCount++;
             algoNode = algoNode || section; // Keep first found
           }
           if (section["@type"] === "external_clause" || section["@type"] === "ExternalClause") {
@@ -1450,11 +1454,13 @@ ModelicaLinter.register(
 
       checkClassForAlgorithmsAndExternal(node);
 
-      if (hasExternal && hasAlgorithm) {
+      // OMC error: "Function f has more than one algorithm section or external declaration."
+      // This covers: multiple algorithm sections, or algorithm + external
+      if (algorithmCount > 1 || (hasExternal && algorithmCount > 0)) {
         diagnosticsCallback(
-          ModelicaErrorCode.EXTERNAL_WITH_ALGORITHM.severity,
-          ModelicaErrorCode.EXTERNAL_WITH_ALGORITHM.code,
-          "Element is not allowed in function context: algorithm",
+          ModelicaErrorCode.FUNCTION_MULTIPLE_ALGORITHM.severity,
+          ModelicaErrorCode.FUNCTION_MULTIPLE_ALGORITHM.code,
+          ModelicaErrorCode.FUNCTION_MULTIPLE_ALGORITHM.message(node.name ?? "?"),
           (node as any).abstractSyntaxNode ?? null,
         );
       }
@@ -2349,6 +2355,75 @@ ModelicaLinter.register(ModelicaErrorCode.FUNCTION_INVALID_PREFIX, {
           ModelicaErrorCode.FUNCTION_INVALID_PREFIX.message("outer", el.name),
           el.abstractSyntaxNode ?? null,
         );
+      }
+    }
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Builtin 'time' is not allowed in functions
+// Per Modelica Spec §3.7.3: time is only available in models and blocks
+// ---------------------------------------------------------------------------
+
+ModelicaLinter.register(ModelicaErrorCode.BUILTIN_TIME_INVALID, {
+  visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+    if (node.classKind !== ModelicaClassKind.FUNCTION) return;
+
+    const astNode = (node as any).abstractSyntaxNode;
+    if (!astNode) return;
+
+    function scanForTimeRefs(stmts: any[]): void {
+      for (const stmt of stmts) {
+        scanExprForTime(stmt);
+      }
+    }
+
+    function scanExprForTime(expr: any): void {
+      if (!expr) return;
+      const typeStr = expr["@type"];
+      // Check for component reference "time"
+      if (typeStr === "ComponentReference" || typeStr === "component_reference") {
+        const parts = expr.parts;
+        if (parts && parts.length === 1) {
+          const name = parts[0]?.identifier?.text;
+          if (name === "time") {
+            diagnosticsCallback(
+              ModelicaErrorCode.BUILTIN_TIME_INVALID.severity,
+              ModelicaErrorCode.BUILTIN_TIME_INVALID.code,
+              "time is not allowed in a function.",
+              expr,
+            );
+            return;
+          }
+        }
+      }
+      // Recurse into sub-expressions
+      if (expr.operand1) scanExprForTime(expr.operand1);
+      if (expr.operand2) scanExprForTime(expr.operand2);
+      if (expr.operand && !expr.operand1) scanExprForTime(expr.operand);
+      if (expr.expression) scanExprForTime(expr.expression);
+      if (expr.target) scanExprForTime(expr.target);
+      if (expr.value) scanExprForTime(expr.value);
+      // Statements
+      if (expr.statements) scanForTimeRefs(expr.statements);
+      if (expr.elseStatements) scanForTimeRefs(expr.elseStatements);
+      if (expr.elseIfStatementClauses) {
+        for (const c of expr.elseIfStatementClauses) scanExprForTime(c);
+      }
+      if (expr.elseWhenStatementClauses) {
+        for (const c of expr.elseWhenStatementClauses) scanExprForTime(c);
+      }
+      // Function call arguments
+      if (expr.functionCallArguments?.arguments) {
+        for (const arg of expr.functionCallArguments.arguments) {
+          scanExprForTime(arg.expression ?? arg);
+        }
+      }
+    }
+
+    for (const section of astNode.sections ?? []) {
+      if (section instanceof AlgoSection) {
+        scanForTimeRefs(section.statements ?? []);
       }
     }
   },

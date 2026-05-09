@@ -341,6 +341,12 @@ export const ModelicaErrorCode = {
     severity: "error",
     message: () => "Element is not allowed in function context: algorithm",
   },
+  FUNCTION_MULTIPLE_ALGORITHM: {
+    code: 4033,
+    rule: "function-multiple-algorithm",
+    severity: "error",
+    message: (funcName: string) => `Function ${funcName} has more than one algorithm section or external declaration.`,
+  },
   DIVISION_BY_ZERO: {
     code: 5005,
     rule: "division-by-zero",
