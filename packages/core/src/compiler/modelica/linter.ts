@@ -1483,6 +1483,8 @@ ModelicaLinter.register([ModelicaErrorCode.RESTRICTION_VIOLATION], {
       ModelicaClassKind.RECORD,
       ModelicaClassKind.OPERATOR_RECORD,
       ModelicaClassKind.TYPE,
+      ModelicaClassKind.PACKAGE,
+      ModelicaClassKind.FUNCTION,
     ]);
     const noAlgorithms = new Set([
       ModelicaClassKind.CONNECTOR,
@@ -1490,18 +1492,23 @@ ModelicaLinter.register([ModelicaErrorCode.RESTRICTION_VIOLATION], {
       ModelicaClassKind.RECORD,
       ModelicaClassKind.OPERATOR_RECORD,
       ModelicaClassKind.TYPE,
+      ModelicaClassKind.PACKAGE,
     ]);
     const noProtected = new Set([
       ModelicaClassKind.CONNECTOR,
       ModelicaClassKind.EXPANDABLE_CONNECTOR,
       ModelicaClassKind.RECORD,
       ModelicaClassKind.OPERATOR_RECORD,
+      ModelicaClassKind.TYPE,
     ]);
+    // Functions may not have initial equation/algorithm sections
+    const noInitialSections = new Set([ModelicaClassKind.FUNCTION]);
 
     if (
       !noEquations.has(classKind as ModelicaClassKind) &&
       !noAlgorithms.has(classKind as ModelicaClassKind) &&
-      !noProtected.has(classKind as ModelicaClassKind)
+      !noProtected.has(classKind as ModelicaClassKind) &&
+      !noInitialSections.has(classKind as ModelicaClassKind)
     ) {
       return;
     }
@@ -1513,27 +1520,43 @@ ModelicaLinter.register([ModelicaErrorCode.RESTRICTION_VIOLATION], {
     const kindName = classKind as string;
 
     for (const section of astNode.sections ?? []) {
-      if (section instanceof ModelicaEquationSectionSyntaxNode && noEquations.has(classKind as ModelicaClassKind)) {
-        // Check if this is a constraint section (allowed in optimization)
-        if ((section as any).inConstraintSection) continue;
-        diagnosticsCallback(
-          ModelicaErrorCode.RESTRICTION_VIOLATION.severity,
-          ModelicaErrorCode.RESTRICTION_VIOLATION.code,
-          ModelicaErrorCode.RESTRICTION_VIOLATION.message("Equations", kindName),
-          section,
-        );
+      if (section instanceof ModelicaEquationSectionSyntaxNode) {
+        if (noEquations.has(classKind as ModelicaClassKind)) {
+          // Check if this is a constraint section (allowed in optimization)
+          if ((section as any).inConstraintSection) continue;
+          // For functions: initial equations are not allowed either
+          const sectionType = section.initial ? "Initial equations" : "Equations";
+          diagnosticsCallback(
+            ModelicaErrorCode.RESTRICTION_VIOLATION.severity,
+            ModelicaErrorCode.RESTRICTION_VIOLATION.code,
+            ModelicaErrorCode.RESTRICTION_VIOLATION.message(sectionType, kindName),
+            section,
+          );
+        }
       }
-      if (section instanceof AlgoSection && noAlgorithms.has(classKind as ModelicaClassKind)) {
-        // Find the first statement node for better error location
-        const firstStmt = (section as any).statements?.[0];
-        diagnosticsCallback(
-          ModelicaErrorCode.RESTRICTION_VIOLATION.severity,
-          ModelicaErrorCode.RESTRICTION_VIOLATION.code,
-          ModelicaErrorCode.RESTRICTION_VIOLATION.message("Algorithm sections", kindName),
-          firstStmt ?? section,
-        );
+      if (section instanceof AlgoSection) {
+        if (noAlgorithms.has(classKind as ModelicaClassKind)) {
+          // Find the first statement node for better error location
+          const firstStmt = (section as any).statements?.[0];
+          const sectionType = section.initial ? "Initial algorithm sections" : "Algorithm sections";
+          diagnosticsCallback(
+            ModelicaErrorCode.RESTRICTION_VIOLATION.severity,
+            ModelicaErrorCode.RESTRICTION_VIOLATION.code,
+            ModelicaErrorCode.RESTRICTION_VIOLATION.message(sectionType, kindName),
+            firstStmt ?? section,
+          );
+        } else if (noInitialSections.has(classKind as ModelicaClassKind) && section.initial) {
+          // Functions may not have initial algorithm sections
+          const firstStmt = (section as any).statements?.[0];
+          diagnosticsCallback(
+            ModelicaErrorCode.RESTRICTION_VIOLATION.severity,
+            ModelicaErrorCode.RESTRICTION_VIOLATION.code,
+            ModelicaErrorCode.RESTRICTION_VIOLATION.message("Initial algorithm sections", kindName),
+            firstStmt ?? section,
+          );
+        }
       }
-      // Protected sections (only for connector and record)
+      // Protected sections (for connector, record, and type)
       if (
         section instanceof ElementSection &&
         (section as any).visibility === "protected" &&
@@ -2299,3 +2322,119 @@ ModelicaLinter.register(ModelicaErrorCode.FUNCTION_DEFAULT_ARG_CYCLE, {
     }
   },
 });
+
+// ---------------------------------------------------------------------------
+// Invalid prefix (inner/outer) on function formal parameters
+// Per Modelica Spec §12.2: inner/outer prefixes are not allowed in functions
+// ---------------------------------------------------------------------------
+
+ModelicaLinter.register(ModelicaErrorCode.FUNCTION_INVALID_PREFIX, {
+  visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+    if (node.classKind !== ModelicaClassKind.FUNCTION) return;
+
+    for (const el of node.elements) {
+      if (!(el instanceof ModelicaComponentInstance)) continue;
+      if ((el as any).isInner) {
+        diagnosticsCallback(
+          ModelicaErrorCode.FUNCTION_INVALID_PREFIX.severity,
+          ModelicaErrorCode.FUNCTION_INVALID_PREFIX.code,
+          ModelicaErrorCode.FUNCTION_INVALID_PREFIX.message("inner", el.name),
+          el.abstractSyntaxNode ?? null,
+        );
+      }
+      if ((el as any).isOuter) {
+        diagnosticsCallback(
+          ModelicaErrorCode.FUNCTION_INVALID_PREFIX.severity,
+          ModelicaErrorCode.FUNCTION_INVALID_PREFIX.code,
+          ModelicaErrorCode.FUNCTION_INVALID_PREFIX.message("outer", el.name),
+          el.abstractSyntaxNode ?? null,
+        );
+      }
+    }
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Variability binding mismatch
+// Per Modelica Spec §3.8.1: a constant/parameter may not have a binding
+// expression with higher variability (e.g., continuous).
+// ---------------------------------------------------------------------------
+
+ModelicaLinter.register(ModelicaErrorCode.VARIABILITY_BINDING_MISMATCH, {
+  visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+    // Only check in models/blocks where continuous variables exist
+    if (
+      node.classKind !== ModelicaClassKind.MODEL &&
+      node.classKind !== ModelicaClassKind.BLOCK &&
+      node.classKind !== ModelicaClassKind.CLASS
+    ) {
+      return;
+    }
+
+    const VARIABILITY_ORDER: Record<string, number> = {
+      constant: 0,
+      parameter: 1,
+      discrete: 2,
+      continuous: 3,
+    };
+
+    for (const el of node.elements) {
+      if (!(el instanceof ModelicaComponentInstance)) continue;
+      const compVariability = (el as any).variability as string | undefined;
+      if (!compVariability || compVariability === "continuous" || compVariability === "discrete") continue;
+
+      // Check the binding expression for references to higher-variability components
+      const mod = el.modification;
+      const bindingExpr = mod?.modificationExpression?.expression ?? mod?.expression;
+      if (!bindingExpr) continue;
+
+      // Walk the binding expression to find component references
+      const referencedNames = collectComponentRefs(bindingExpr);
+      for (const refName of referencedNames) {
+        // Look up the referenced component in the same class
+        const referenced = node.resolveSimpleName(refName);
+        if (!referenced || !(referenced instanceof ModelicaComponentInstance)) continue;
+        const refVariability = (referenced as any).variability as string | undefined;
+        if (!refVariability) continue;
+
+        const compLevel = VARIABILITY_ORDER[compVariability] ?? 3;
+        const refLevel = VARIABILITY_ORDER[refVariability] ?? 3;
+        if (refLevel > compLevel) {
+          // Get a text representation of the binding
+          const exprText = bindingExpr?.text ?? bindingExpr?.toString?.() ?? "...";
+          diagnosticsCallback(
+            ModelicaErrorCode.VARIABILITY_BINDING_MISMATCH.severity,
+            ModelicaErrorCode.VARIABILITY_BINDING_MISMATCH.code,
+            ModelicaErrorCode.VARIABILITY_BINDING_MISMATCH.message(el.name, compVariability, exprText, refVariability),
+            el.abstractSyntaxNode ?? null,
+          );
+          break; // One diagnostic per component is enough
+        }
+      }
+    }
+  },
+});
+
+/** Recursively collect top-level component reference names from an AST expression. */
+function collectComponentRefs(expr: any): string[] {
+  if (!expr) return [];
+  const refs: string[] = [];
+  const typeStr = expr["@type"];
+  if (typeStr === "ComponentReference" || typeStr === "component_reference" || (expr.parts && !expr.operand1)) {
+    const parts = expr.parts;
+    if (parts && parts.length > 0) {
+      const name = parts[0]?.identifier?.text;
+      if (name) refs.push(name);
+    }
+  } else if (expr.operand1 && expr.operand2) {
+    refs.push(...collectComponentRefs(expr.operand1));
+    refs.push(...collectComponentRefs(expr.operand2));
+  } else if (expr.operand && !expr.operand1) {
+    refs.push(...collectComponentRefs(expr.operand));
+  } else if (expr.functionReference || expr.functionReferenceName) {
+    for (const arg of expr.functionCallArguments?.arguments ?? []) {
+      refs.push(...collectComponentRefs(arg.expression));
+    }
+  }
+  return refs;
+}

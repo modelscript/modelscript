@@ -273,6 +273,12 @@ export const ModelicaErrorCode = {
     severity: "error",
     message: () => `The built-in variable 'time' is only available in models and blocks, not in functions or records.`,
   },
+  FUNCTION_INVALID_PREFIX: {
+    code: 4032,
+    rule: "function-invalid-prefix",
+    severity: "error",
+    message: (prefix: string, varName: string) => `Invalid prefix ${prefix} on formal parameter ${varName}.`,
+  },
   MISSING_INNER: {
     code: 0,
     rule: "missing-inner",
