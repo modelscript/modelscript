@@ -50,9 +50,11 @@ import {
 } from "@modelscript/symbolics";
 import { createHash, makeWeakRef } from "@modelscript/utils";
 import { ModelicaLoopScope, ModelicaScriptScope, Scope } from "../scope.js";
+import { makeDiagnostic, ModelicaErrorCode } from "./errors.js";
 
 export class ModelicaAlgorithmScope extends Scope {
   variables = new Map<string, SyntheticInterpreterVariable>();
+  public diagnostics?: import("./errors.js").ModelicaDiagnostic[];
 
   override get elements(): IterableIterator<any> {
     return this.variables.values();
@@ -83,7 +85,7 @@ export class ModelicaAlgorithmScope extends Scope {
             initialExpr = expr;
           } else if (expr && typeof expr.accept === "function") {
             try {
-              const evalInterp = new ModelicaInterpreter(false);
+              const evalInterp = new ModelicaInterpreter(false, undefined, this.diagnostics);
               initialExpr = expr.accept(evalInterp, this.parent);
             } catch {
               // Evaluation failed — leave as null
@@ -390,8 +392,13 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
    *
    * @param evaluateAlgorithms - If true, the interpreter will actively execute function algorithm sections to compute values. Defaults to false.
    * @param printCallback - Optional callback invoked when the Modelica `print()` built-in is called.
+   * @param diagnostics - Optional array to collect diagnostics during interpretation.
    */
-  constructor(evaluateAlgorithms = false, printCallback: ((msg: string) => void) | undefined = undefined) {
+  constructor(
+    evaluateAlgorithms = false,
+    printCallback: ((msg: string) => void) | undefined = undefined,
+    public diagnostics?: import("./errors.js").ModelicaDiagnostic[],
+  ) {
     super();
     this.#evaluateAlgorithms = evaluateAlgorithms;
     this.#printCallback = printCallback;
@@ -1983,6 +1990,9 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
           "jsSource" in clonedFunction.parent &&
           typeof clonedFunction.parent.jsSource === "string";
         if (!hasAlgorithms && !hasJsSource) {
+          if (this.diagnostics) {
+            this.diagnostics.push(makeDiagnostic(ModelicaErrorCode.EVAL_EXTERNAL_BUILTIN, node, clonedFunction.name));
+          }
           return null;
         }
       }
@@ -2037,6 +2047,7 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
         }
       }
       const algoScope = new ModelicaAlgorithmScope(clonedFunction);
+      algoScope.diagnostics = this.diagnostics;
       if (this.#evaluateAlgorithms && this.#functionCallDepth < ModelicaInterpreter.MAX_FUNCTION_CALL_DEPTH) {
         this.#functionCallDepth++;
         try {

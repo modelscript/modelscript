@@ -2211,3 +2211,91 @@ ModelicaLinter.register(ModelicaErrorCode.ELSEWHEN_VARIABLE_MISMATCH, {
     }
   },
 });
+
+// ---------------------------------------------------------------------------
+// Cyclic dependency in function default arguments
+// ---------------------------------------------------------------------------
+
+ModelicaLinter.register(ModelicaErrorCode.FUNCTION_DEFAULT_ARG_CYCLE, {
+  visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+    if (node.classKind !== ModelicaClassKind.FUNCTION) return;
+
+    function collectReferences(expr: any): string[] {
+      if (!expr) return [];
+      const refs: string[] = [];
+      const typeStr = expr["@type"];
+      if (typeStr === "ComponentReference" || typeStr === "component_reference" || (expr.parts && !expr.operand1)) {
+        const parts = expr.parts;
+        if (parts && parts.length > 0) {
+          const name = parts[0]?.identifier?.text;
+          if (name) refs.push(name);
+        }
+      } else if (expr.operand1 && expr.operand2) {
+        refs.push(...collectReferences(expr.operand1));
+        refs.push(...collectReferences(expr.operand2));
+      } else if (expr.operand && !expr.operand1) {
+        refs.push(...collectReferences(expr.operand));
+      } else if (expr.functionReference || expr.functionReferenceName) {
+        if (expr.functionArguments && expr.functionArguments.expressions) {
+          for (const arg of expr.functionArguments.expressions) {
+            refs.push(...collectReferences(arg));
+          }
+        }
+      } else if (typeStr === "ArrayConstructor" && expr.expressionList) {
+        for (const sub of expr.expressionList.expressions ?? []) {
+          refs.push(...collectReferences(sub));
+        }
+      } else if (expr.expressionList) {
+        for (const sub of expr.expressionList.expressions ?? []) {
+          refs.push(...collectReferences(sub));
+        }
+      }
+      return refs;
+    }
+
+    const deps = new Map<string, string[]>();
+    const compMap = new Map<string, ModelicaComponentInstance>();
+
+    for (const el of node.elements) {
+      if (
+        el instanceof ModelicaComponentInstance &&
+        (el.causality === "input" || el.causality === "output") &&
+        el.name
+      ) {
+        const mod = el.modification?.modificationExpression?.expression;
+        deps.set(el.name, mod ? collectReferences(mod) : []);
+        compMap.set(el.name, el);
+      }
+    }
+
+    function hasCycleFrom(start: string): boolean {
+      const visited = new Set<string>();
+      const stack = [start];
+
+      while (stack.length > 0) {
+        const current = stack.pop();
+        if (current === undefined) break;
+        const neighbors = deps.get(current) ?? [];
+        for (const next of neighbors) {
+          if (next === start) return true; // Cycle back to start
+          if (!visited.has(next) && deps.has(next)) {
+            visited.add(next);
+            stack.push(next);
+          }
+        }
+      }
+      return false;
+    }
+
+    for (const [name, el] of compMap.entries()) {
+      if (deps.has(name) && hasCycleFrom(name)) {
+        diagnosticsCallback(
+          ModelicaErrorCode.FUNCTION_DEFAULT_ARG_CYCLE.severity,
+          ModelicaErrorCode.FUNCTION_DEFAULT_ARG_CYCLE.code,
+          ModelicaErrorCode.FUNCTION_DEFAULT_ARG_CYCLE.message(name),
+          el.abstractSyntaxNode ?? null,
+        );
+      }
+    }
+  },
+});

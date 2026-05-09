@@ -5873,7 +5873,8 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
                     mergedMod,
                   );
                   clone.instantiate();
-                  const interpFallback = new ModelicaInterpreter(true);
+                  const targetDae = ctx.rootDae ?? ctx.dae;
+                  const interpFallback = new ModelicaInterpreter(true, undefined, targetDae?.diagnostics);
                   for (const stmt of clone.algorithms) {
                     stmt.accept(interpFallback, clone);
                   }
@@ -5996,7 +5997,8 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
                       mergedMod,
                     );
                     clone.instantiate();
-                    const interpFallback = new ModelicaInterpreter(true);
+                    const targetDae = ctx.rootDae ?? ctx.dae;
+                    const interpFallback = new ModelicaInterpreter(true, undefined, targetDae?.diagnostics);
                     for (const stmt of clone.algorithms) {
                       stmt.accept(interpFallback, clone);
                     }
@@ -6234,7 +6236,8 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         }
       }
       if (defaultsAreConstant) {
-        const interp = new ModelicaInterpreter(true);
+        const targetDae = ctx.rootDae ?? ctx.dae;
+        const interp = new ModelicaInterpreter(true, undefined, targetDae.diagnostics);
         const evalResult = node.accept(interp, ctx.classInstance as any);
         if (evalResult) {
           // Function was fully inlined — remove its definition from the DAE
@@ -6274,7 +6277,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
                     mergedMod,
                   );
                   clone.instantiate();
-                  const interpFallback = new ModelicaInterpreter(true);
+                  const interpFallback = new ModelicaInterpreter(true, undefined, targetDae?.diagnostics);
                   for (const stmt of clone.algorithms) {
                     stmt.accept(interpFallback, clone);
                   }
