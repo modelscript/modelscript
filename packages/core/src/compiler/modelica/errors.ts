@@ -199,7 +199,7 @@ export const ModelicaErrorCode = {
   FUNCTION_PUBLIC_VARIABLE: {
     code: 4007,
     rule: "function-public-variable",
-    severity: "warning",
+    severity: "error",
     message: (varName: string) =>
       `Invalid public variable ${varName}, function variables that are not input/output must be protected.`,
   },
@@ -548,6 +548,19 @@ export const ModelicaErrorCode = {
     rule: "eval-external-builtin",
     severity: "error",
     message: (funcName: string) => `Internal error NFCeval.evalBuiltinCall: unimplemented case for ${funcName}`,
+  },
+  PACKAGE_VARIABLE_NOT_CONSTANT: {
+    code: 4036,
+    rule: "package-variable-not-constant",
+    severity: "error",
+    message: (varName: string, packageName: string) => `Variable ${varName} in package ${packageName} is not constant.`,
+  },
+  CONNECTOR_VARIABILITY: {
+    code: 4037,
+    rule: "connector-variability",
+    severity: "error",
+    message: (variability: string, connectorName: string) =>
+      `Invalid variability ${variability} on connector '${connectorName}'.`,
   },
 } as const satisfies Record<string, ErrorCodeDef>;
 

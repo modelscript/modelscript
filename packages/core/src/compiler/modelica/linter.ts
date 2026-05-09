@@ -232,10 +232,24 @@ export class ModelicaModelLinter extends ModelicaModelVisitor<string | null | un
     if (node.isInner && node.name) {
       this.#knownInners.add(node.name);
     }
-    // Do NOT call super.visitComponentInstance - that would recurse into the component's
-    // type definition elements (via classInstance.elements), causing infinite recursion
-    // for models with cyclic type references. The type itself is linted when visited as a class.
+    // Apply component-level rules
     ModelicaLinter.applyRules("visitComponentInstance", node, this.#diagnosticsCallback, resource);
+    // Also visit the component's class instance to lint locally-defined classes
+    // (e.g., connectors, records, types used as component types).
+    // The #visited set in visitClassInstance prevents infinite recursion.
+    // Skip primitive types — they don't need structural linting.
+    const classInst = node.classInstance;
+    if (
+      classInst &&
+      typeof classInst.accept === "function" &&
+      !(classInst instanceof ModelicaRealClassInstance) &&
+      !(classInst instanceof ModelicaIntegerClassInstance) &&
+      !(classInst instanceof ModelicaBooleanClassInstance) &&
+      !(classInst instanceof ModelicaStringClassInstance) &&
+      !(classInst instanceof ModelicaArrayClassInstance)
+    ) {
+      classInst.accept(this, resource);
+    }
   }
 
   /** Returns the set of component names that have been declared as `inner` during linting. */
@@ -1534,8 +1548,8 @@ ModelicaLinter.register([ModelicaErrorCode.RESTRICTION_VIOLATION], {
         if (noEquations.has(classKind as ModelicaClassKind)) {
           // Check if this is a constraint section (allowed in optimization)
           if ((section as any).inConstraintSection) continue;
-          // For functions: initial equations are not allowed either
-          const sectionType = section.initial ? "Initial equations" : "Equations";
+          // For classes that ban ALL equations (connector, type, etc.), use just "Equations"
+          const sectionType = "Equations";
           diagnosticsCallback(
             ModelicaErrorCode.RESTRICTION_VIOLATION.severity,
             ModelicaErrorCode.RESTRICTION_VIOLATION.code,
@@ -1548,7 +1562,7 @@ ModelicaLinter.register([ModelicaErrorCode.RESTRICTION_VIOLATION], {
         if (noAlgorithms.has(classKind as ModelicaClassKind)) {
           // Find the first statement node for better error location
           const firstStmt = (section as any).statements?.[0];
-          const sectionType = section.initial ? "Initial algorithm sections" : "Algorithm sections";
+          const sectionType = "Algorithm sections";
           diagnosticsCallback(
             ModelicaErrorCode.RESTRICTION_VIOLATION.severity,
             ModelicaErrorCode.RESTRICTION_VIOLATION.code,
@@ -1582,6 +1596,61 @@ ModelicaLinter.register([ModelicaErrorCode.RESTRICTION_VIOLATION], {
           firstEl ?? section,
         );
       }
+    }
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Package variable must be constant
+// Per Modelica Spec §4.6: All public components of a package must be constant.
+// ---------------------------------------------------------------------------
+
+ModelicaLinter.register([ModelicaErrorCode.PACKAGE_VARIABLE_NOT_CONSTANT], {
+  visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+    if (node.classKind !== ModelicaClassKind.PACKAGE) return;
+
+    for (const element of node.elements) {
+      if (!(element instanceof ModelicaComponentInstance)) continue;
+      if (element.variability === "constant") continue;
+      // Non-constant variable in package
+      diagnosticsCallback(
+        ModelicaErrorCode.PACKAGE_VARIABLE_NOT_CONSTANT.severity,
+        ModelicaErrorCode.PACKAGE_VARIABLE_NOT_CONSTANT.code,
+        ModelicaErrorCode.PACKAGE_VARIABLE_NOT_CONSTANT.message(element.name ?? "?", node.name ?? "?"),
+        element.abstractSyntaxNode ?? null,
+      );
+    }
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Invalid variability on connector component
+// Per Modelica Spec §4.7: connector components may not have constant/parameter variability
+// ---------------------------------------------------------------------------
+
+ModelicaLinter.register([ModelicaErrorCode.CONNECTOR_VARIABILITY], {
+  visitComponentInstance(
+    node: ModelicaComponentInstance,
+    diagnosticsCallback: DiagnosticsCallbackWithoutResource,
+  ): void {
+    const classInst = node.classInstance;
+    if (!classInst) return;
+    // Check if the component's type is a connector
+    const isConnector =
+      classInst.classKind === ModelicaClassKind.CONNECTOR ||
+      classInst.classKind === ModelicaClassKind.EXPANDABLE_CONNECTOR;
+    if (!isConnector) return;
+    // Check if component variability is constant or parameter
+    if (node.variability === "constant" || node.variability === "parameter") {
+      diagnosticsCallback(
+        ModelicaErrorCode.CONNECTOR_VARIABILITY.severity,
+        ModelicaErrorCode.CONNECTOR_VARIABILITY.code,
+        ModelicaErrorCode.CONNECTOR_VARIABILITY.message(
+          node.variability === "constant" ? "constant" : "parameter",
+          node.name ?? "?",
+        ),
+        node.abstractSyntaxNode ?? null,
+      );
     }
   },
 });
