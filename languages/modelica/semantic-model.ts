@@ -985,11 +985,72 @@ export class ModelicaClassInstance extends ModelicaElement {
       // Query not available for this rule (e.g., SysML2 Package) — no extends
       return [];
     }
-    return extendsClauses.map((ext) => {
+    const result = extendsClauses.map((ext) => {
       // resolvedBaseClass returns a SymbolEntry (not a SymbolId), so extract .id
       const baseEntry = this.db.query<{ id: SymbolId } | null>("resolvedBaseClass", ext.id);
       return { classInstance: baseEntry?.id ? (this.wrapElement(baseEntry.id) as ModelicaClassInstance) : null };
     });
+
+    // Check for "redeclare model extends M ... end M" where M is parsed as part of LongClassSpecifier
+    try {
+      const cst = this.db.cstNode(this.id) as any;
+      if (cst) {
+        const spec = cst.childForFieldName?.("classSpecifier");
+        if (spec?.type === "LongClassSpecifier") {
+          let hasExtends = false;
+          for (let i = 0; i < spec.childCount; i++) {
+            if (spec.child(i).type === "extends") {
+              hasExtends = true;
+              break;
+            }
+          }
+          if (hasExtends) {
+            const identNode = spec.childForFieldName("identifier");
+            if (identNode && identNode.text) {
+              const ident = identNode.text;
+              const parentId = this.parent?.id;
+              if (parentId != null) {
+                // To avoid infinite recursion (where a class extends a class with the same name),
+                // if it resolves to itself, we must look into the parent's inherited classes.
+                const parentResolver = this.db.query<(n: string, enc?: boolean, skip?: boolean) => SymbolEntry | null>(
+                  "resolveSimpleName",
+                  parentId,
+                );
+
+                let resolved = parentResolver ? parentResolver(ident) : null;
+
+                if (resolved?.id === this.id && this.parent instanceof ModelicaClassInstance) {
+                  // It resolved to itself! We need to look in the parent's inherited classes.
+                  resolved = null;
+                  for (const pExt of this.parent.extendsClassInstances) {
+                    if (pExt.classInstance) {
+                      const extResolver = this.db.query<
+                        (n: string, enc?: boolean, skip?: boolean) => SymbolEntry | null
+                      >("resolveSimpleName", pExt.classInstance.id);
+                      if (extResolver) {
+                        const found = extResolver(ident);
+                        if (found && found.id !== this.id) {
+                          resolved = found;
+                          break;
+                        }
+                      }
+                    }
+                  }
+                }
+
+                if (resolved?.id && resolved.id !== this.id) {
+                  result.push({ classInstance: this.wrapElement(resolved.id) as ModelicaClassInstance });
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+
+    return result;
   }
 
   /** Components with variability=parameter. */

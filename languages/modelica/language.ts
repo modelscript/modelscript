@@ -91,6 +91,25 @@ function parseModArgsFromCst(node: any, scopeId: number | null = null): any {
           value: nested.bindingExpression,
           evaluationScopeId: scopeId,
         });
+      } else {
+        const shortClass = n.childForFieldName("shortClassDefinition");
+        if (shortClass) {
+          const ident = shortClass.childForFieldName("identifier");
+          const typeSpec = shortClass.childForFieldName("typeSpecifier");
+          const name = ident ? ident.text : "";
+          const typeName = typeSpec ? typeSpec.text : "";
+
+          args.push({
+            name,
+            each: false,
+            final: false,
+            isRedeclaration: true,
+            redeclaredTypeSpecifier: typeName,
+            nestedArgs: [],
+            value: null,
+            evaluationScopeId: scopeId,
+          });
+        }
       }
       return;
     }
@@ -596,22 +615,27 @@ export default language({
                 visited.add(targetId);
 
                 const targetChildren = db.childrenOf(targetId);
-                const targetEntry = db.symbol(targetId);
-
+                // First pass: add direct members
                 for (const child of targetChildren) {
-                  if (child.kind === "Extends") {
-                    const baseClass = db.query<SymbolEntry | null>("resolvedBaseClass", child.id);
-                    if (baseClass) {
-                      // (debug log removed)
-                      walk(baseClass.id);
-                    }
-                  } else if (
+                  if (
+                    child.kind !== "Extends" &&
                     child.name &&
                     child.kind !== "Reference" &&
                     child.kind !== "Import" &&
                     !inheritedByName!.has(child.name)
                   ) {
+                    // console.log("ADD", child.name, child.id, "to", targetEntry?.name);
                     inheritedByName!.set(child.name, child);
+                  }
+                }
+
+                // Second pass: walk base classes
+                for (const child of targetChildren) {
+                  if (child.kind === "Extends") {
+                    const baseClass = db.query<SymbolEntry | null>("resolvedBaseClass", child.id);
+                    if (baseClass) {
+                      walk(baseClass.id);
+                    }
                   }
                 }
               };
@@ -622,6 +646,54 @@ export default language({
                   if (baseClass) walk(baseClass.id);
                 }
               }
+
+              // NEW: handle extends in long class specifier!
+              const selfCst = db.cstNode(self.id) as any;
+              const spec = selfCst?.childForFieldName?.("classSpecifier");
+              if (spec?.type === "LongClassSpecifier") {
+                let hasExtends = false;
+                for (let i = 0; i < spec.childCount; i++) {
+                  if (spec.child(i).type === "extends") {
+                    hasExtends = true;
+                    break;
+                  }
+                }
+                if (hasExtends) {
+                  const identNode = spec.childForFieldName("identifier");
+                  if (identNode?.text && self.parentId !== null) {
+                    const baseName = identNode.text;
+                    const resolveName = db.query<any>("resolveName", self.parentId);
+                    if (resolveName) {
+                      let resolved = resolveName(baseName, true);
+                      if (resolved && resolved.id === self.id) {
+                        resolved = null;
+                        if (self.parentId !== null && self.parentId !== undefined) {
+                          for (const pChild of db.childrenOf(self.parentId)) {
+                            if (pChild.kind === "Extends") {
+                              const pBase = db.query<any>("resolvedBaseClass", pChild.id);
+                              if (pBase) {
+                                const pExtResolver = db.query<any>("resolveName", pBase.id);
+                                if (pExtResolver) {
+                                  const found = pExtResolver(baseName);
+                                  if (found && found.id !== self.parentId) {
+                                    resolved = found;
+                                    break;
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+
+                      if (resolved && resolved.kind !== "Reference") {
+                        walk(resolved.id);
+                      }
+                    }
+                  }
+                }
+              }
+
               return inheritedByName;
             };
 
@@ -731,33 +803,38 @@ export default language({
               const parts = qualifiedName.split(".");
               if (parts.length === 0) return null;
 
-              // Resolve first part via scope resolution
-              const resolver = db.query<(n: string, enc?: boolean, skip?: boolean) => SymbolEntry | null>(
-                "resolveSimpleName",
-                self.id,
-              );
-              let current = resolver?.(parts[0]!, false, skipInherited) ?? null;
+              // Handle fully qualified names (e.g. .Modelica.Math.sin)
+              let startIndex = 0;
+              let current: SymbolEntry | null = null;
+              if (parts[0] === "") {
+                if (parts.length < 2) return null;
+                current =
+                  db
+                    .byName(parts[1])
+                    ?.find((e) => e.kind === "Class" || e.kind === "Package" || e.kind === "Function") ?? null;
+                startIndex = 2;
+              } else {
+                // Resolve first part via scope resolution
+                const resolver = db.query<(n: string, enc?: boolean, skip?: boolean) => SymbolEntry | null>(
+                  "resolveSimpleName",
+                  self.id,
+                );
+                current = resolver?.(parts[0]!, false, skipInherited) ?? null;
+                startIndex = 1;
+              }
+
               if (!current) return null;
 
               // Navigate remaining parts
-              for (let i = 1; i < parts.length; i++) {
+              for (let i = startIndex; i < parts.length; i++) {
                 const part = parts[i]!;
-                let found: SymbolEntry | null = null;
-                let fallback: SymbolEntry | null = null;
-                for (const child of db.childrenOf(current.id)) {
-                  if (child.name === part) {
-                    // Prefer Class/Component/Extends over Reference entries
-                    if (child.kind !== "Reference") {
-                      found = child;
-                      break;
-                    } else if (!fallback) {
-                      fallback = child;
-                    }
-                  }
-                }
-                if (!found) found = fallback;
-                if (!found) return null;
-                current = found;
+                const targetResolver = db.query<(n: string, enc?: boolean, skip?: boolean) => SymbolEntry | null>(
+                  "resolveSimpleName",
+                  current.id,
+                );
+                const nextPart = targetResolver?.(part, false, false);
+                if (!nextPart) return null;
+                current = nextPart;
               }
 
               return current;
@@ -794,6 +871,28 @@ export default language({
               // use the base symbol's children
               const baseId = db.baseOf(self.id);
               const sourceId = baseId ?? self.id;
+
+              // Handle ShortClassSpecifier aliases
+              const selfCstShort = db.cstNode(sourceId) as any;
+              const specShort = selfCstShort?.childForFieldName?.("classSpecifier");
+              if (specShort?.type === "ShortClassSpecifier") {
+                const typeSpec = specShort.childForFieldName?.("typeSpecifier");
+                const typeName = typeSpec?.text;
+                if (typeName && self.parentId !== null) {
+                  const parentResolver = db.query<(n: string) => { id: SymbolId } | null>("resolveName", self.parentId);
+                  if (parentResolver) {
+                    const resolved = parentResolver(typeName);
+                    if (resolved && resolved.id !== self.id) {
+                      let targetId = resolved.id;
+                      if (outerMod) {
+                        targetId = db.specialize(resolved.id, modelicaMod(outerMod));
+                      }
+                      return db.query<SymbolId[]>("instantiate", targetId);
+                    }
+                  }
+                }
+              }
+
               const children = db.childrenOf(sourceId);
 
               // Pre-scan for body-level redeclares
@@ -806,6 +905,62 @@ export default language({
               }
 
               const elements: SymbolId[] = [];
+
+              // NEW: handle extends in long class specifier!
+              const selfCstExt = db.cstNode(self.id) as any;
+              const specExt = selfCstExt?.childForFieldName?.("classSpecifier");
+              if (specExt?.type === "LongClassSpecifier") {
+                let hasExtends = false;
+                for (let i = 0; i < specExt.childCount; i++) {
+                  if (specExt.child(i).type === "extends") {
+                    hasExtends = true;
+                    break;
+                  }
+                }
+                if (hasExtends) {
+                  const identNode = specExt.childForFieldName("identifier");
+                  if (identNode?.text && self.parentId !== null) {
+                    const baseName = identNode.text;
+                    const resolveName = db.query<any>("resolveName", self.parentId);
+                    if (resolveName) {
+                      let resolved = resolveName(baseName, true);
+                      if (resolved && resolved.id === self.id) {
+                        // Cycle detected, look in parent's inherited classes
+                        resolved = null;
+                        const grandParentId = db.symbol(self.parentId)?.parentId;
+                        if (self.parentId !== null && self.parentId !== undefined) {
+                          for (const pChild of db.childrenOf(self.parentId)) {
+                            if (pChild.kind === "Extends") {
+                              const pBase = db.query<any>("resolvedBaseClass", pChild.id);
+                              if (pBase) {
+                                const pExtResolver = db.query<any>("resolveName", pBase.id);
+                                if (pExtResolver) {
+                                  const found = pExtResolver(baseName);
+                                  if (found && found.id !== self.parentId) {
+                                    resolved = found;
+                                    break;
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+
+                      if (resolved && resolved.kind !== "Reference") {
+                        // We found the base class! Let's instantiate it!
+                        const baseElements = db.query<any>("instantiate", resolved.id) || [];
+                        for (const eid of baseElements) {
+                          const entry = db.symbol(eid);
+                          if (entry && !redeclaredNames.has(entry.name)) {
+                            elements.push(eid);
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
 
               for (const child of children) {
                 if (child.kind === "Component") {
@@ -870,10 +1025,8 @@ export default language({
                     }
                   }
                 } else if (child.kind === "Class") {
-                  // Nested class — include unless redeclared
-                  if (!redeclaredNames.has(child.name)) {
-                    elements.push(child.id);
-                  }
+                  // Nested class — include local redeclarations and regular classes
+                  elements.push(child.id);
                 } else if (child.kind === "Import") {
                   // Imports are not instantiated elements but recorded for scope
                   elements.push(child.id);
@@ -1697,7 +1850,36 @@ export default language({
               );
               if (resolveName) {
                 // Pass true for skipInherited to prevent cyclic lookup in extends clauses
-                const resolved = resolveName(baseName, true);
+                let resolved = resolveName(baseName, true);
+
+                // If it resolves to the exact class that contains this extends clause,
+                // this is a redeclared extends (e.g. `redeclare class extends BaseClass`).
+                // We must resolve it from the parent's base classes instead.
+                if (resolved && resolved.id === self.parentId) {
+                  resolved = null;
+                  const grandParentId = db.symbol(self.parentId)?.parentId;
+                  if (grandParentId !== null && grandParentId !== undefined) {
+                    const parentChildren = db.childrenOf(grandParentId);
+                    for (const pChild of parentChildren) {
+                      if (pChild.kind === "Extends") {
+                        const pBase = db.query<SymbolEntry | null>("resolvedBaseClass", pChild.id);
+                        if (pBase) {
+                          const pExtResolver = db.query<
+                            (n: string, enc?: boolean, skip?: boolean) => SymbolEntry | null
+                          >("resolveSimpleName", pBase.id);
+                          if (pExtResolver) {
+                            const found = pExtResolver(baseName);
+                            if (found && found.id !== self.parentId) {
+                              resolved = found;
+                              break;
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+
                 if (resolved && resolved.kind !== "Reference") return resolved;
               }
             }

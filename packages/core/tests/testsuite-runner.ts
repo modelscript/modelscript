@@ -269,6 +269,7 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode = fal
       arrayMode: testCase.metadata.arrayMode ?? "scalarize",
       functionInlining: "inline", // Flattener tests always expect inline
       ...(testCase.metadata.fmiVersion ? { fmiVersion: testCase.metadata.fmiVersion } : {}),
+      canonicalizeEquations: false,
     });
 
     let flattenedResult: string | null = null;

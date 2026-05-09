@@ -119,6 +119,7 @@ export function substituteVariable(
     return new ModelicaBinaryExpression(expr.operator, l, r);
   }
   if (expr instanceof ModelicaFunctionCallExpression) {
+    if (expr.functionName === "der") return expr; // Do not substitute inside derivatives
     const args = (expr.args as ModelicaExpression[]).map((a) => substituteVariable(a, varName, replacement));
     return new ModelicaFunctionCallExpression(expr.functionName, args);
   }

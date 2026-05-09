@@ -1999,6 +1999,7 @@ export class ModelicaArray extends ModelicaPrimaryExpression {
     let elements: JSONValue = [...this.flatElements].map((e) => e.toJSON);
     for (let i = fullShape.length - 1; i >= 1; i--) {
       const length = fullShape[i] ?? 0;
+      if (length <= 0) break;
       const chunks: JSONValue[] = [];
       for (let j = 0; j < (elements as JSONValue[]).length; j += length)
         chunks.push((elements as JSONValue[]).slice(j, j + length));

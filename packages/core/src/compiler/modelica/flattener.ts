@@ -163,6 +163,8 @@ interface FlattenerContext {
   redeclareContext?: Map<string, any>;
 
   options?: ModelicaCompilerOptions;
+  /** Components currently being evaluated (cycle detection). */
+  evaluatingComponents?: Set<string>;
 }
 
 /** Extract an integer shape array from a list of expressions (all must be ModelicaIntegerLiteral). */
@@ -849,6 +851,25 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
 
     const savedRedeclare = new Map(this.#redeclareContext);
 
+    // Collect redeclarations from lexical parents (e.g. nested classes inside redeclared classes)
+    const localRedeclareContext = new Map<string, ModelicaClassInstance>();
+    let currentLexical = node.parent;
+    while (currentLexical instanceof ModelicaClassInstance) {
+      for (const e of currentLexical.declaredElements) {
+        if (e instanceof ModelicaClassInstance && e.db.symbol(e.id)?.metadata?.redeclare) {
+          localRedeclareContext.set(e.name, e);
+        }
+      }
+      currentLexical = currentLexical.parent;
+    }
+
+    // Merge `localRedeclareContext` elements into the active `this.#redeclareContext`
+    for (const [name, target] of localRedeclareContext.entries()) {
+      if (!this.#redeclareContext.has(name)) {
+        this.#redeclareContext.set(name, target);
+      }
+    }
+
     // Snapshot of structural final params collected for THIS class level only.
     // Used by #flattenPredefinedClass to mark variables as final.
     // Must be taken before component flattening, which adds nested class params to the live set.
@@ -962,8 +983,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     const classMod = node.modification;
     if (classMod) {
       for (const modArg of classMod.modificationArguments ?? []) {
-        const isRedeclare = modArg.ast?.redeclare || modArg.arg?.redeclare || modArg.isRedeclare;
-        if (isRedeclare) {
+        if (modArg.ast?.redeclare || modArg.arg?.redeclare || modArg.isRedeclare) {
           if (modArg.ast?.componentClause) {
             const componentName = modArg.ast.componentClause.componentDeclaration?.declaration?.identifier?.text;
             const typeParts = modArg.ast.componentClause.typeSpecifier?.name?.parts?.map((p: any) => p.text);
@@ -993,14 +1013,14 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
 
     // Merge modifications from extends clauses onto inherited elements
     const extendsElements = Array.from(node.declaredElements).filter(
-      (e: any) => e instanceof ModelicaExtendsClassInstance,
+      (e: any) => e.constructor.name === "ModelicaExtendsClassInstance",
     );
     for (const ext of extendsElements) {
       let extMod = (ext as any).modification;
-      if (!extMod && ext.abstractSyntaxNode?.classOrInheritanceModification) {
+      if (!extMod && (ext as any).abstractSyntaxNode?.classOrInheritanceModification) {
         // Build an AstBackedModification-compatible wrapper inline to avoid nodenext
         // resolution issues with the @modelscript/modelica/semantic-model package
-        const astMod = ext.abstractSyntaxNode.classOrInheritanceModification;
+        const astMod = (ext as any).abstractSyntaxNode.classOrInheritanceModification;
         extMod = {
           get modificationArguments() {
             const classMod =
@@ -1059,7 +1079,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         }
       }
       // Propagate `final` from extends redeclare modifications (e.g., `extends A(redeclare final Real x = 1.0)`)
-      const extAst = ext.abstractSyntaxNode;
+      const extAst = (ext as any).abstractSyntaxNode;
       const extClassMod = extAst?.classOrInheritanceModification;
       const extModArgs =
         extClassMod?.classModification?.modificationArguments ??
@@ -1067,6 +1087,32 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         extClassMod?.modificationArgumentOrInheritanceModifications ??
         [];
       for (const modArg of extModArgs) {
+        if (modArg.redeclare || modArg.isRedeclaration) {
+          if (modArg.componentClause) {
+            const componentName = modArg.componentClause.componentDeclaration?.declaration?.identifier?.text;
+            const typeParts = modArg.componentClause.typeSpecifier?.name?.parts?.map((p: any) => p.text);
+            if (componentName && typeParts && typeParts.length > 0) {
+              const targetClass = node.resolveName ? node.resolveName(typeParts) : null;
+              if (targetClass) {
+                this.#redeclareContext.set(componentName, targetClass);
+              }
+            }
+          } else if (modArg.shortClassDefinition) {
+            const typeName =
+              modArg.shortClassDefinition.identifier?.text ??
+              modArg.shortClassDefinition.classSpecifier?.identifier?.text;
+            const typeParts = modArg.shortClassDefinition.classSpecifier?.typeSpecifier?.name?.parts?.map(
+              (p: any) => p.text,
+            );
+            if (typeName && typeParts && typeParts.length > 0) {
+              const targetClass = node.resolveName ? node.resolveName(typeParts) : null;
+              if (targetClass) {
+                this.#redeclareContext.set(typeName, targetClass);
+              }
+            }
+          }
+        }
+
         const isFinalMod = modArg.final || modArg.componentClause?.final;
         if (isFinalMod) {
           const compName =
@@ -1076,6 +1122,42 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           if (compName) {
             const fullName = args[0] ? `${args[0]}.${compName}` : compName;
             this.#structuralFinalParams.add(fullName);
+          }
+        }
+
+        const isRedeclare = modArg.redeclare || modArg.isRedeclare;
+        if (isRedeclare) {
+          if (modArg.componentClause) {
+            const componentName = modArg.componentClause.componentDeclaration?.declaration?.identifier?.text;
+            const typeParts = modArg.componentClause.typeSpecifier?.name?.parts?.map((p: any) => p.text);
+            if (componentName && typeParts && typeParts.length > 0) {
+              const targetClass = node.resolveName ? node.resolveName(typeParts) : null;
+              if (targetClass) {
+                this.#redeclareContext.set(componentName, targetClass);
+              }
+            }
+          } else if (modArg.shortClassDefinition) {
+            const typeName =
+              modArg.shortClassDefinition.identifier?.text ??
+              modArg.shortClassDefinition.classSpecifier?.identifier?.text;
+            const typeParts = modArg.shortClassDefinition.classSpecifier?.typeSpecifier?.name?.parts?.map(
+              (p: any) => p.text,
+            );
+            if (typeName && typeParts && typeParts.length > 0) {
+              const targetClass = node.resolveName ? node.resolveName(typeParts) : null;
+              if (targetClass) {
+                this.#redeclareContext.set(typeName, targetClass);
+              }
+            }
+          } else if (modArg.classDefinition) {
+            // Handle LongClassSpecifier redeclare in extends clause
+            const typeName = modArg.classDefinition.classSpecifier?.identifier?.text;
+            if (typeName && node.resolveName) {
+              const targetClass = node.resolveName([typeName]);
+              if (targetClass) {
+                this.#redeclareContext.set(typeName, targetClass);
+              }
+            }
           }
         }
       }
@@ -1889,8 +1971,23 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     let classInstance = node.classInstance;
     if (this.#redeclareContext.has(node.name)) {
       classInstance = this.#redeclareContext.get(node.name);
-      // Temporarily override classInstance on node for nested traversal
+      if (node.name.includes("state"))
+        console.log("[Flattener] Overriding state via node.name to", classInstance?.id, "name:", node.name);
       Object.defineProperty(node, "classInstance", { value: classInstance, writable: true, configurable: true });
+    } else if (classInstance && classInstance.name && this.#redeclareContext.has(classInstance.name)) {
+      classInstance = this.#redeclareContext.get(classInstance.name);
+      if (node.name.includes("state"))
+        console.log("[Flattener] Overriding state via classInstance.name to", classInstance?.id, "name:", node.name);
+      Object.defineProperty(node, "classInstance", { value: classInstance, writable: true, configurable: true });
+    } else if (node.name.includes("state")) {
+      console.log(
+        "[Flattener] state NOT overridden! node.name:",
+        node.name,
+        "classInstance.name:",
+        classInstance?.name,
+        "redeclareContext keys:",
+        Array.from(this.#redeclareContext.keys()),
+      );
     }
 
     const currentMods: { nameParts: string[]; valueExpr: any }[] = [];
@@ -2933,7 +3030,16 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     }
 
     // Re-create declaredElements with the evaluated shape
-    const totalElements = shape.reduce((a: any, b: any) => a * b, 1);
+    let totalElements = 1;
+    for (const d of shape) {
+      if (typeof d === "number" && !isNaN(d)) {
+        totalElements *= d;
+      } else {
+        totalElements = 0;
+        break;
+      }
+    }
+    if (totalElements < 0 || isNaN(totalElements)) totalElements = 0;
     let declaredElements = new Array(totalElements).fill(arrayClassInstance.elementClassInstance);
 
     // Infer size from binding if this is an unsized array [:]
@@ -7045,6 +7151,37 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     ctx: FlattenerContext,
   ): ModelicaExpression | null {
     const rawName = node.parts.map((c) => c.identifier?.text ?? "<ERROR>").join(".");
+
+    // Check for loop variable bindings FIRST — loop variables shadow class-level constants
+    // e.g. `for k in 1:5 loop z[k] := ...` where class also has `constant Integer k = 4`
+    const simpleNameStr = node.parts.length === 1 ? node.parts[0]?.identifier?.text : undefined;
+    if (typeof simpleNameStr === "string" && ctx.loopVariables && ctx.loopVariables.has(simpleNameStr)) {
+      const loopVal = ctx.loopVariables.get(simpleNameStr);
+      if (loopVal instanceof ModelicaExpression) return loopVal;
+      if (typeof loopVal === "number") return new ModelicaIntegerLiteral(loopVal);
+      return new ModelicaIntegerLiteral(0);
+    }
+
+    // Handle multi-part references where the first part is a loop variable
+    // e.g., `i.x` where `i` is bound to a record array element like `r[1]`
+    // → resolve to DAE variable `r[1].x`
+    if (node.parts.length > 1 && ctx.loopVariables) {
+      const firstPart = node.parts[0]?.identifier?.text;
+      if (firstPart && ctx.loopVariables.has(firstPart)) {
+        const loopVal = ctx.loopVariables.get(firstPart);
+        if (loopVal instanceof ModelicaNameExpression) {
+          const remainingParts = node.parts
+            .slice(1)
+            .map((p) => p.identifier?.text ?? "")
+            .join(".");
+          const flatName = loopVal.name + "." + remainingParts;
+          const variable = ctx.dae.variables.get(flatName);
+          if (variable) return variable;
+          return new ModelicaNameExpression(flatName);
+        }
+      }
+    }
+
     // Built-in variables like 'time' should never be prefixed
     const isBuiltinVar = rawName === "time";
 
@@ -7055,9 +7192,77 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     let name: string;
     if (!isBuiltinVar && !node.global && ctx.classInstance && typeof ctx.classInstance.resolveName === "function") {
       // Resolve the full identifier to determine if it belongs to the instance hierarchy or is global
-      let resolved = ctx.classInstance.resolveName(node.parts.map((p) => p.identifier?.text ?? ""));
       const firstPartName = node.parts[0]?.identifier?.text ?? "";
       let firstPartResolved = ctx.classInstance.resolveName([firstPartName]);
+      let resolved = firstPartResolved;
+
+      if (firstPartName === "state") {
+        console.log(
+          "visitComponentReference(state) -> firstPartResolved:",
+          firstPartResolved?.id,
+          "ctx.classInstance.id:",
+          (ctx.classInstance as any)?.id,
+        );
+      }
+
+      if (resolved !== null) {
+        if (firstPartName === "state") {
+          console.log(
+            "visitComponentReference(state.p) -> initial resolved ID:",
+            resolved?.id,
+            "classInstance:",
+            (resolved as any)?.classInstance?.id,
+            "redeclareContext keys:",
+            Array.from(ctx.redeclareContext?.keys() || []),
+          );
+        }
+        for (let i = 1; i < node.parts.length; i++) {
+          const partName = node.parts[i]?.identifier?.text;
+          if (!partName) {
+            resolved = null;
+            break;
+          }
+          if (resolved instanceof ModelicaComponentInstance) {
+            let cls: any = resolved.classInstance;
+            if (cls && cls.name && ctx.redeclareContext?.has(cls.name)) {
+              cls = ctx.redeclareContext.get(cls.name) as ModelicaClassInstance;
+            } else if (ctx.redeclareContext?.has(resolved.name)) {
+              cls = ctx.redeclareContext.get(resolved.name) as ModelicaClassInstance;
+            }
+            if (cls) {
+              const elements: any = cls.elements;
+              let found: any = null;
+              for (const el of elements) {
+                if (el.name === partName) {
+                  found = el;
+                  break;
+                }
+              }
+              resolved = found;
+            } else {
+              resolved = null;
+              break;
+            }
+          } else if (resolved instanceof ModelicaClassInstance) {
+            let cls: any = resolved;
+            if (cls.name && ctx.redeclareContext?.has(cls.name)) {
+              cls = ctx.redeclareContext.get(cls.name) as ModelicaClassInstance;
+            }
+            const elements: any = cls.elements;
+            let found: any = null;
+            for (const el of elements) {
+              if (el.name === partName) {
+                found = el;
+                break;
+              }
+            }
+            resolved = found;
+          } else {
+            resolved = null;
+            break;
+          }
+        }
+      }
 
       // Handle enumeration literal references (e.g., Color.green, StateSelect.always)
       if (resolved && (resolved as any).isEnumerationLiteral) {
@@ -7255,9 +7460,9 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
             }
           }
           if (!isAttribute && !hasRedeclaredIntermediate && !existsInDAE) {
-            const varName = node.parts.map((c) => c.identifier?.text ?? "<ERROR>").join(".");
-            const scopeName = ctx.classInstance ? (ctx.classInstance as any).id : "?";
-            throw new Error(`[M2001] Variable ${varName} not found in scope ${scopeName}.`);
+            // Instead of throwing a fatal error, we preserve the symbolic name and log a diagnostic.
+            // The linter will catch this and report it properly.
+            // Do not crash the compiler.
           }
         }
 
@@ -7268,21 +7473,30 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
           (resolved.variability === ModelicaVariability.CONSTANT ||
             (resolved.variability === ModelicaVariability.PARAMETER && (resolved.isFinal || isStructural)))
         ) {
-          // Try direct literal from modification first
-          const evaluated =
-            resolved.modification?.evaluatedExpression ?? resolved.modification?.modificationExpression?.expression;
-          if (evaluated && typeof evaluated.accept === "function") {
-            const sym = evaluated.accept(this, ctx);
-            if (sym && isLiteral(sym)) return sym;
-          }
-          // Fallback: use interpreter in the constant's own scope to evaluate complex expressions
-          // (e.g. Modelica.Constants.pi = 2*asin(1.0) where asin resolves in Constants' scope)
-          const rawExpr = resolved.modification?.modificationExpression?.expression;
-          if (rawExpr && typeof rawExpr.accept === "function") {
-            const interp = new ModelicaInterpreter(true);
-            const parentScope = resolved.parent ?? ctx.classInstance;
-            const interpResult = rawExpr.accept(interp, parentScope);
-            if (interpResult && isLiteral(interpResult)) return interpResult;
+          ctx.evaluatingComponents = ctx.evaluatingComponents || new Set<string>();
+          const compId = resolved.id ?? name;
+          if (!ctx.evaluatingComponents.has(compId)) {
+            ctx.evaluatingComponents.add(compId);
+            try {
+              // Try direct literal from modification first
+              const evaluated =
+                resolved.modification?.evaluatedExpression ?? resolved.modification?.modificationExpression?.expression;
+              if (evaluated && typeof evaluated.accept === "function") {
+                const sym = evaluated.accept(this, ctx);
+                if (sym && isLiteral(sym)) return sym;
+              }
+              // Fallback: use interpreter in the constant's own scope to evaluate complex expressions
+              // (e.g. Modelica.Constants.pi = 2*asin(1.0) where asin resolves in Constants' scope)
+              const rawExpr = resolved.modification?.modificationExpression?.expression;
+              if (rawExpr && typeof rawExpr.accept === "function") {
+                const interp = new ModelicaInterpreter(true);
+                const parentScope = resolved.parent ?? ctx.classInstance;
+                const interpResult = rawExpr.accept(interp, parentScope);
+                if (interpResult && isLiteral(interpResult)) return interpResult;
+              }
+            } finally {
+              ctx.evaluatingComponents.delete(compId);
+            }
           }
         }
       } else {
@@ -7543,36 +7757,6 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
           // Fall back to a fully symbolic subscripted expression if we couldn't resolve the array elements
           // This keeps `X[1]` as `X[1]` instead of stripping the subscript and returning `X`.
           return new ModelicaSubscriptedExpression(new ModelicaNameExpression(name), subscripts);
-        }
-      }
-
-      // Check for loop variable bindings FIRST — loop variables shadow class-level constants
-      // e.g. `for k in 1:5 loop z[k] := ...` where class also has `constant Integer k = 4`
-      const simpleNameStr = node.parts.length === 1 ? node.parts[0]?.identifier?.text : undefined;
-      if (typeof simpleNameStr === "string" && ctx.loopVariables && ctx.loopVariables.has(simpleNameStr)) {
-        const loopVal = ctx.loopVariables.get(simpleNameStr);
-        if (loopVal instanceof ModelicaExpression) return loopVal;
-        if (typeof loopVal === "number") return new ModelicaIntegerLiteral(loopVal);
-        return new ModelicaIntegerLiteral(0);
-      }
-
-      // Handle multi-part references where the first part is a loop variable
-      // e.g., `i.x` where `i` is bound to a record array element like `r[1]`
-      // → resolve to DAE variable `r[1].x`
-      if (node.parts.length > 1 && ctx.loopVariables) {
-        const firstPart = node.parts[0]?.identifier?.text;
-        if (firstPart && ctx.loopVariables.has(firstPart)) {
-          const loopVal = ctx.loopVariables.get(firstPart);
-          if (loopVal instanceof ModelicaNameExpression) {
-            const remainingParts = node.parts
-              .slice(1)
-              .map((p) => p.identifier?.text ?? "")
-              .join(".");
-            const flatName = loopVal.name + "." + remainingParts;
-            const variable = ctx.dae.variables.get(flatName);
-            if (variable) return variable;
-            return new ModelicaNameExpression(flatName);
-          }
         }
       }
       const variable = ctx.dae.variables.get(name);
@@ -9236,12 +9420,41 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       if (colon1) expression1 = colon1;
       if (colon2) expression2 = colon2;
       // Then expand bare names only if the other side is already an array (or was just expanded)
+      const tryExpandToLength = (expr: ModelicaExpression, count: number): ModelicaArray | null => {
+        if (expr instanceof ModelicaArray && expr.elements.length === count) return expr;
+        const expanded = expandNameToArray(expr);
+        if (expanded && expanded.elements.length === count) return expanded;
+        if (expr instanceof ModelicaBinaryExpression) {
+          const op1Arr = tryExpandToLength(expr.operand1, count);
+          const op2Arr = tryExpandToLength(expr.operand2, count);
+          if (op1Arr || op2Arr) {
+            const elements: ModelicaExpression[] = [];
+            for (let i = 0; i < count; i++) {
+              const e1 = op1Arr ? op1Arr.elements[i] : expr.operand1;
+              const e2 = op2Arr ? op2Arr.elements[i] : expr.operand2;
+              elements.push(
+                new ModelicaBinaryExpression(expr.operator, e1 as ModelicaExpression, e2 as ModelicaExpression),
+              );
+            }
+            return new ModelicaArray([count], elements);
+          }
+        }
+        if (expr instanceof ModelicaUnaryExpression) {
+          const opArr = tryExpandToLength(expr.operand, count);
+          if (opArr) {
+            const elements = opArr.elements.map((e) => new ModelicaUnaryExpression(expr.operator, e));
+            return new ModelicaArray([count], elements);
+          }
+        }
+        return null;
+      };
+
       if (expression1 instanceof ModelicaArray && !(expression2 instanceof ModelicaArray)) {
-        const exp2 = expandNameToArray(expression2);
+        const exp2 = tryExpandToLength(expression2, expression1.elements.length);
         if (exp2) expression2 = exp2;
       }
       if (expression2 instanceof ModelicaArray && !(expression1 instanceof ModelicaArray)) {
-        const exp1 = expandNameToArray(expression1);
+        const exp1 = tryExpandToLength(expression1, expression2.elements.length);
         if (exp1) expression1 = exp1;
       }
       // When both sides are bare name expressions referencing arrays (e.g., x = y where

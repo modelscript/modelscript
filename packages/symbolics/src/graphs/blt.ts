@@ -9,6 +9,7 @@ import {
   ModelicaExpression,
   ModelicaForEquation,
   ModelicaFunctionCallEquation,
+  ModelicaFunctionCallExpression,
   ModelicaIntegerVariable,
   ModelicaNameExpression,
   ModelicaRealVariable,
@@ -31,6 +32,16 @@ class VariableNameCollector extends ModelicaDAEVisitor<Set<string>> {
   }
   override visitBooleanVariable(node: ModelicaBooleanVariable, argument?: Set<string>): void {
     if (argument) argument.add(node.name);
+  }
+  override visitFunctionCallExpression(node: ModelicaFunctionCallExpression, argument?: Set<string>): void {
+    if (node.functionName === "der" && node.args.length === 1 && argument) {
+      const arg = node.args[0];
+      if (arg instanceof ModelicaNameExpression) {
+        argument.add(`der(${arg.name})`);
+        return; // Do not recurse into arguments
+      }
+    }
+    super.visitFunctionCallExpression(node, argument);
   }
 }
 
@@ -63,7 +74,12 @@ function isExplicitlySolvableFor(eq: ModelicaEquation, v: string): boolean {
         (expr instanceof ModelicaBooleanVariable && expr.name === target) ||
         (expr instanceof ModelicaSubscriptedExpression &&
           expr.base instanceof ModelicaNameExpression &&
-          expr.base.name === target)
+          expr.base.name === target) ||
+        (expr instanceof ModelicaFunctionCallExpression &&
+          expr.functionName === "der" &&
+          expr.args.length === 1 &&
+          expr.args[0] instanceof ModelicaNameExpression &&
+          `der(${expr.args[0].name})` === target)
       );
     };
 
@@ -114,7 +130,10 @@ function trySymbolicIsolation(eq: ModelicaEquation, v: string): ModelicaSimpleEq
 /**
  * Perform a full Block Lower Triangular (BLT) Transformation on the DAE equations.
  */
-export function performBltTransformation(dae: ModelicaDAE): {
+export function performBltTransformation(
+  dae: ModelicaDAE,
+  options?: { canonicalizeEquations?: boolean },
+): {
   sortedEquations: ModelicaEquation[];
   algebraicLoops: { variables: string[]; equations: ModelicaEquation[] }[];
 } {
@@ -209,7 +228,7 @@ export function performBltTransformation(dae: ModelicaDAE): {
       if (!assignedEqs.has(i)) {
         const unusedEq = equations[i];
         if (unusedEq) {
-          console.warn(`[BLT] Unused eq [${i}]:`, JSON.stringify(unusedEq, null, 2).slice(0, 500));
+          console.warn(`[BLT] Unused eq [${i}]: (skipped stringify to prevent OOM)`);
         }
       }
     }
@@ -319,17 +338,21 @@ export function performBltTransformation(dae: ModelicaDAE): {
             const matchingEq = equations[eqIdx];
             if (matchingEq && !isExplicitlySolvableFor(matchingEq, v)) {
               // Try symbolic isolation before giving up
-              const isolated = trySymbolicIsolation(matchingEq, v);
-              if (isolated) {
-                // Replace the implicit equation with the explicit one
-                const idx = sccEqs.indexOf(matchingEq);
-                if (idx >= 0) sccEqs[idx] = isolated;
-                equations[eqIdx] = isolated;
-                // Propagate back to the original DAE so output uses the isolated form
-                const origIdx = dae.equations.indexOf(matchingEq);
-                if (origIdx >= 0) dae.equations[origIdx] = isolated;
+              if (options?.canonicalizeEquations !== false) {
+                const isolated = trySymbolicIsolation(matchingEq, v);
+                if (isolated) {
+                  // Replace the implicit equation with the explicit one
+                  const idx = sccEqs.indexOf(matchingEq);
+                  if (idx >= 0) sccEqs[idx] = isolated;
+                  equations[eqIdx] = isolated;
+                  // Propagate back to the original DAE so output uses the isolated form
+                  const origIdx = dae.equations.indexOf(matchingEq);
+                  if (origIdx >= 0) dae.equations[origIdx] = isolated;
+                } else {
+                  // implicit single variable loop — cannot isolate
+                  algebraicLoops.push({ variables: scc, equations: sccEqs });
+                }
               } else {
-                // implicit single variable loop — cannot isolate
                 algebraicLoops.push({ variables: scc, equations: sccEqs });
               }
             }

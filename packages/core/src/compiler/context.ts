@@ -29,6 +29,7 @@ export interface ModelicaCompilerOptions {
   functionInlining?: "inline" | "preserve";
   fmiVersion?: "2.0" | "3.0";
   solver?: InitSolverConfig;
+  canonicalizeEquations?: boolean;
 }
 
 export class ModelicaLibrary {
