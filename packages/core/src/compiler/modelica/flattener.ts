@@ -2562,10 +2562,8 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         const rawExpr = node.modification?.evaluatedExpression ?? null;
         expression = this.#flattenToSymbolic(rawExpr, node, args[0], args[1]) ?? null;
       }
-      // Finally, if still no expression, use 'start' as the default for parameters
-      if (!expression && variability === ModelicaVariability.PARAMETER) {
-        expression = attributes.get("start") ?? null;
-      }
+      // NOTE: Do NOT use 'start' as a default binding for parameters.
+      // OMC leaves parameters without values unbound and emits a warning instead.
     } else {
       // For non-constant, non-parameter: prefer symbolic reference from syntax flattener
       // (e.g., `r1.x` → ModelicaNameExpression("r1.x")) so constant folding can resolve it
@@ -5220,8 +5218,8 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
 
         // Build positional args: named args mapped to component declaration order
         resolved.instantiate();
-        const components = [...resolved.components].filter((c: any) => {
-          if (!c.name || c.isProtected) return false;
+        const allComponents = [...resolved.components].filter((c: any) => {
+          if (!c.name) return false;
           if (c.classInstance instanceof ModelicaClassInstance) {
             const kind = c.classInstance.classKind;
             if (kind === ModelicaClassKind.FUNCTION || kind === ModelicaClassKind.OPERATOR_FUNCTION) {
@@ -5230,9 +5228,17 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
           }
           return true;
         });
+        // Separate into user-settable (input) and final/constant (protected) components
+        const inputComponents = allComponents.filter(
+          (c: any) => !c.isFinal && c.variability !== ModelicaVariability.CONSTANT,
+        );
+        const protectedComponents = allComponents.filter(
+          (c: any) => c.isFinal || c.variability === ModelicaVariability.CONSTANT,
+        );
+
         const orderedArgs: ModelicaExpression[] = [];
         let positionalIdx = 0;
-        for (const comp of components) {
+        for (const comp of inputComponents) {
           const compName = comp.name ?? "";
           if (namedArgsMap.has(compName)) {
             orderedArgs.push(namedArgsMap.get(compName) ?? new ModelicaIntegerLiteral(0));
@@ -5247,6 +5253,36 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
           // positional args already collected
         } else if (orderedArgs.length > 0) {
           flatArgs = orderedArgs;
+        }
+
+        // Append default values for final/constant components (OMC fills these in)
+        for (const comp of protectedComponents) {
+          const rawExpr = comp.modification?.evaluatedExpression ?? comp.modification?.expression ?? null;
+          if (rawExpr != null) {
+            let defaultVal: ModelicaExpression | null = null;
+            if (typeof rawExpr === "number") {
+              defaultVal = new ModelicaRealLiteral(rawExpr);
+            } else if (typeof rawExpr === "string") {
+              defaultVal = new ModelicaStringLiteral(rawExpr);
+            } else if (typeof rawExpr === "boolean") {
+              defaultVal = new ModelicaBooleanLiteral(rawExpr);
+            } else if (rawExpr instanceof ModelicaExpression) {
+              defaultVal = rawExpr;
+            } else if (typeof rawExpr?.accept === "function") {
+              const syntaxFlattener = new ModelicaSyntaxFlattener(this.options);
+              defaultVal =
+                rawExpr.accept(syntaxFlattener, {
+                  prefix: "",
+                  classInstance: resolved,
+                  dae: ctx.dae,
+                  stmtCollector: [],
+                  structuralFinalParams: new Map(),
+                  activeClassStack: [],
+                  activePrefixes: new Set(),
+                }) ?? null;
+            }
+            if (defaultVal) flatArgs.push(defaultVal);
+          }
         }
 
         // Collect the auto-generated record constructor function
@@ -6644,15 +6680,58 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
           ? comp.classInstance.elementClassInstance
           : comp.classInstance;
 
+      // Determine if this component should be protected (final or constant components
+      // become protected parameters in the auto-generated constructor, not inputs).
+      // Per Modelica spec, final components are not settable by the user.
+      const isFinalOrConstant = comp.isFinal || comp.variability === ModelicaVariability.CONSTANT;
+
+      // Determine causality: final/constant → no causality (protected); otherwise → input
+      const causality = isFinalOrConstant ? null : "input";
+
+      // For final/constant components, evaluate the default value
+      let defaultExpr: ModelicaExpression | null = null;
+      if (isFinalOrConstant) {
+        const rawExpr = comp.modification?.evaluatedExpression ?? comp.modification?.expression ?? null;
+        if (rawExpr != null) {
+          if (typeof rawExpr === "number") {
+            defaultExpr = Number.isInteger(rawExpr)
+              ? new ModelicaRealLiteral(rawExpr)
+              : new ModelicaRealLiteral(rawExpr);
+          } else if (typeof rawExpr === "string") {
+            defaultExpr = new ModelicaStringLiteral(rawExpr);
+          } else if (typeof rawExpr === "boolean") {
+            defaultExpr = new ModelicaBooleanLiteral(rawExpr);
+          } else if (rawExpr instanceof ModelicaExpression) {
+            defaultExpr = rawExpr;
+          } else if (typeof rawExpr?.accept === "function") {
+            // AST node — flatten it
+            const syntaxFlattener = new ModelicaSyntaxFlattener(this.options);
+            defaultExpr =
+              rawExpr.accept(syntaxFlattener, {
+                prefix: "",
+                classInstance: recordClass,
+                dae: ctx.dae,
+                stmtCollector: [],
+                structuralFinalParams: new Map(),
+                activeClassStack: [],
+                activePrefixes: new Set(),
+              }) ?? null;
+          }
+        }
+      }
+
       let variable: ModelicaVariable;
       if (typeInstance instanceof ModelicaIntegerClassInstance) {
-        variable = new ModelicaIntegerVariable(comp.name, null, new Map(), null, null, "input");
+        variable = new ModelicaIntegerVariable(comp.name, defaultExpr, new Map(), null, null, causality);
       } else if (typeInstance instanceof ModelicaBooleanClassInstance) {
-        variable = new ModelicaBooleanVariable(comp.name, null, new Map(), null, null, "input");
+        variable = new ModelicaBooleanVariable(comp.name, defaultExpr, new Map(), null, null, causality);
       } else if (typeInstance instanceof ModelicaStringClassInstance) {
-        variable = new ModelicaStringVariable(comp.name, null, new Map(), null, null, "input");
+        variable = new ModelicaStringVariable(comp.name, defaultExpr, new Map(), null, null, causality);
       } else {
-        variable = new ModelicaRealVariable(comp.name, null, new Map(), null, null, "input");
+        variable = new ModelicaRealVariable(comp.name, defaultExpr, new Map(), null, null, causality);
+      }
+      if (isFinalOrConstant) {
+        variable.isProtected = true;
       }
       fnDae.variables.push(variable);
     }
@@ -9248,34 +9327,10 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
 
         const funcDef = ctx.dae.functions.find((f) => f.name === funcCall.functionName);
         if (funcDef) {
-          // Expand record constructor equations: c1 = Complex(2.0, 3.0) → c1.re = 2.0; c1.im = 3.0
-          const outputVar = funcDef.variables.find((v) => v.causality === "output");
-          if (
-            outputVar?.customTypeName &&
-            funcCall.functionName === outputVar.customTypeName &&
-            funcCall.args.length > 0
-          ) {
-            // Get the LHS base name
-            const lhsName =
-              expression1 instanceof ModelicaNameExpression
-                ? expression1.name
-                : expression1 instanceof ModelicaVariable
-                  ? expression1.name
-                  : null;
-            if (lhsName) {
-              // Match args to input variables in declaration order
-              const inputVars = funcDef.variables.filter((v) => v.causality === "input");
-              for (let i = 0; i < Math.min(inputVars.length, funcCall.args.length); i++) {
-                const inputVar = inputVars[i];
-                const arg = funcCall.args[i];
-                if (!inputVar || !arg) continue;
-                const fieldName = `${lhsName}.${inputVar.name}`;
-                const lhs = new ModelicaNameExpression(fieldName);
-                ctx.dae.equations.push(new ModelicaSimpleEquation(lhs, arg));
-              }
-              return null;
-            }
-          }
+          // NOTE: Do NOT expand record constructor equations into per-field equations.
+          // OMC preserves whole-record equations like `tr = TestRecord(1)` in the DAE output.
+          // Record constructor expansion only happens in binding contexts (parameter declarations),
+          // not in equation or algorithm sections.
 
           const outputs = funcDef.variables.filter((v) => v.causality === "output");
           if (outputs.length > 1) {
@@ -9625,12 +9680,22 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       }
       // Widen integers to Real when the other side is Real-typed
       // Skip coercion for collapsed array name expressions (they already reference Real arrays)
+      // Skip coercion when one side is a record constructor call (returns record type, not Real)
+      const isRecordConstructorCall = (e: ModelicaExpression): boolean => {
+        if (!(e instanceof ModelicaFunctionCallExpression)) return false;
+        const fd = ctx.dae.functions.find((f) => f.name === e.functionName);
+        if (!fd) return false;
+        const outVar = fd.variables.find((v) => v.causality === "output");
+        return !!(outVar?.customTypeName && e.functionName === outVar.customTypeName);
+      };
       const isArrayName = (e: ModelicaExpression): boolean =>
         e instanceof ModelicaNameExpression && ctx.dae.variables.hasArrayElements(e.name);
-      if (isRealTyped(expression1, ctx.dae) && !isArrayName(expression2))
-        expression2 = coerceToReal(expression2, ctx.dae) ?? expression2;
-      if (isRealTyped(expression2, ctx.dae) && !isArrayName(expression1))
-        expression1 = coerceToReal(expression1, ctx.dae) ?? expression1;
+      if (!isRecordConstructorCall(expression1) && !isRecordConstructorCall(expression2)) {
+        if (isRealTyped(expression1, ctx.dae) && !isArrayName(expression2))
+          expression2 = coerceToReal(expression2, ctx.dae) ?? expression2;
+        if (isRealTyped(expression2, ctx.dae) && !isArrayName(expression1))
+          expression1 = coerceToReal(expression1, ctx.dae) ?? expression1;
+      }
 
       // Array mode checks
       const isArrayTarget = (expr: ModelicaExpression): boolean => {
