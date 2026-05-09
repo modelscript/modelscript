@@ -298,7 +298,7 @@ export const ModelicaErrorCode = {
     rule: "equation-type-mismatch",
     severity: "error",
     message: (lhsExpanded: string, rhsExpanded: string, lhsType: string, rhsType: string) =>
-      `Type mismatch in equation ${lhsExpanded}=${rhsExpanded} of type ${lhsType}=${rhsType}.`,
+      `Type mismatch in equation ${lhsExpanded} = ${rhsExpanded} of type ${lhsType} = ${rhsType}.`,
   },
   CONSTRAINEDBY_TYPE_MISMATCH: {
     code: 5002,
@@ -581,6 +581,12 @@ export const ModelicaErrorCode = {
     severity: "error",
     message: (varName: string, modText: string) =>
       `Protected element '${varName}' may not be modified, got '${modText}'.`,
+  },
+  NEGATIVE_DIMENSION: {
+    code: 4041,
+    rule: "negative-dimension",
+    severity: "error",
+    message: (dim: string, varName: string) => `Negative dimension index (${dim}) for component ${varName}.`,
   },
 } as const satisfies Record<string, ErrorCodeDef>;
 

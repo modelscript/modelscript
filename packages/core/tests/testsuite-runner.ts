@@ -451,7 +451,11 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode = fal
 
     // For correct tests: compare flattened output with expected
     if (flattenedResult === null) {
-      return makeResult("failed", "Flattening returned null (expected a result)");
+      const diagLines = formatDiagLines();
+      return makeResult(
+        "failed",
+        `Flattening returned null (expected a result)\nDiagnostics:\n${diagLines.join("\n")}`,
+      );
     }
 
     let actual = flattenedResult.trim();

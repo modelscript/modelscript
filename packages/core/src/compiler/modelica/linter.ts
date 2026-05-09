@@ -821,14 +821,8 @@ ModelicaLinter.register(ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH, {
 
     function checkExprShape(componentName: string, expr: any, expectedShape: number[]): boolean {
       if (!expr || expectedShape.length === 0) return true;
-      if (node.name === "Array_builtin") {
-        console.log("checkExprShape:", expr["@type"], expectedShape, "exprText:", expr.text);
-      }
       if (expr["@type"] === "ArrayConstructor" && expr.expressionList) {
         const exprs = expr.expressionList.expressions ?? [];
-        if (node.name === "Array_builtin") {
-          console.log("exprs.length:", exprs.length);
-        }
         if (exprs.length !== expectedShape[0]) {
           const exprText = expr.text ?? "{...}";
           diagnosticsCallback(
@@ -867,10 +861,6 @@ ModelicaLinter.register(ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH, {
       const expectedShape = getComponentArrayShape(element);
       if (expectedShape.length === 0) continue;
 
-      if (node.name === "Array_builtin") {
-        console.log("Checking element:", element.name, "modification:", element.modification);
-      }
-
       // Check the element's modifications (bindings and attributes)
       for (const mod of element.modification?.modificationArguments ?? []) {
         const expr = (mod as any).expression;
@@ -882,6 +872,37 @@ ModelicaLinter.register(ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH, {
       const directExpr = (element.modification as any)?.modificationExpression?.expression;
       if (directExpr) {
         checkExprShape(element.name ?? "?", directExpr, expectedShape);
+      }
+    }
+  },
+});
+// ---------------------------------------------------------------------------
+// Negative array dimensions: Real x[-2] is invalid
+// ---------------------------------------------------------------------------
+
+ModelicaLinter.register(ModelicaErrorCode.NEGATIVE_DIMENSION, {
+  visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+    for (const element of node.elements) {
+      if (!(element instanceof ModelicaComponentInstance)) continue;
+      const dims = (element as any).arrayDimensions;
+      if (!Array.isArray(dims)) continue;
+      for (const dim of dims) {
+        // dim.value is set for simple integer literals; dim.text is set for expressions
+        let val: number | undefined;
+        if (typeof dim?.value === "number") {
+          val = dim.value;
+        } else if (typeof dim?.text === "string") {
+          const parsed = parseInt(dim.text, 10);
+          if (!isNaN(parsed)) val = parsed;
+        }
+        if (typeof val === "number" && val < 0) {
+          diagnosticsCallback(
+            ModelicaErrorCode.NEGATIVE_DIMENSION.severity,
+            ModelicaErrorCode.NEGATIVE_DIMENSION.code,
+            ModelicaErrorCode.NEGATIVE_DIMENSION.message(String(val), element.name ?? "?"),
+            element.abstractSyntaxNode ?? null,
+          );
+        }
       }
     }
   },
@@ -1421,7 +1442,12 @@ ModelicaLinter.register(
             element.classInstance instanceof ModelicaArrayClassInstance
               ? (element.classInstance as any).elementClassInstance
               : element.classInstance;
-          if (cls && cls.classKind === ModelicaClassKind.MODEL) {
+          if (
+            cls &&
+            (cls.classKind === ModelicaClassKind.MODEL ||
+              cls.classKind === ModelicaClassKind.CONNECTOR ||
+              cls.classKind === ModelicaClassKind.BLOCK)
+          ) {
             diagnosticsCallback(
               ModelicaErrorCode.FUNCTION_INVALID_VAR_TYPE.severity,
               ModelicaErrorCode.FUNCTION_INVALID_VAR_TYPE.code,
@@ -2780,3 +2806,34 @@ function collectComponentRefs(expr: any): string[] {
   }
   return refs;
 }
+
+// ---------------------------------------------------------------------------
+// Tuple expressions in invalid context: (a, b) only valid on LHS of := or =
+// ---------------------------------------------------------------------------
+
+ModelicaLinter.register(ModelicaErrorCode.TUPLE_EXPRESSION_CONTEXT, {
+  visitOutputExpressionList(
+    node: ModelicaOutputExpressionListSyntaxNode,
+    diagnosticsCallback: DiagnosticsCallbackWithoutResource,
+  ): void {
+    // Single-element output expressions are just parenthesized expressions, not tuples
+    if (node.outputs.length <= 1) return;
+
+    // Tuples are valid on the LHS of:
+    // - ComplexAssignmentStatement: (x, y) := f()
+    // - SimpleEquation: (x, y) = f()  (less common)
+    const parentType = (node as any).parent?.["@type"];
+    if (parentType === "ComplexAssignmentStatement" || parentType === "SimpleEquation") {
+      return; // Valid context
+    }
+
+    // Build a text representation of the tuple for the error message
+    const tupleElements = node.outputs.map((o) => (o as any)?.sourceText ?? (o as any)?.text ?? "_").join(", ");
+    diagnosticsCallback(
+      ModelicaErrorCode.TUPLE_EXPRESSION_CONTEXT.severity,
+      ModelicaErrorCode.TUPLE_EXPRESSION_CONTEXT.code,
+      ModelicaErrorCode.TUPLE_EXPRESSION_CONTEXT.message(`(${tupleElements})`),
+      node,
+    );
+  },
+});

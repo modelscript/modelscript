@@ -69,10 +69,29 @@ export class ModelicaAlgorithmScope extends Scope {
     if (this.variables.has(name)) return this.variables.get(name) ?? null;
 
     if (this.parent) {
-      const original =
-        typeof (this.parent as any).getNamedElement === "function"
-          ? (this.parent as any).getNamedElement(name)
-          : this.parent.resolveSimpleName(name);
+      let original = null;
+      let currentParent: any = this.parent;
+      while (currentParent && !original) {
+        let found = null;
+        if (currentParent.elements) {
+          const elementsArray = Array.from(currentParent.elements);
+          found = elementsArray.find((el: any) => el.name === name) ?? null;
+        }
+
+        if (found) {
+          original = found;
+        } else if (typeof currentParent.getNamedElement === "function") {
+          original = currentParent.getNamedElement(name);
+        } else {
+          original = currentParent.resolveName?.([name]) ?? currentParent.resolveSimpleName?.(name) ?? null;
+        }
+
+        if (!original && currentParent.parent) {
+          currentParent = currentParent.parent;
+        } else {
+          break;
+        }
+      }
 
       if (original && (original as any).isComponentInstance) {
         // Extract the initial value from the component's binding expression.
@@ -697,11 +716,11 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     const parts = node.parts;
     if (parts.length > 0 && parts[0].identifier?.text && this.evaluatingDimensionFor.has(parts[0].identifier.text)) {
       this.#componentRefDepth--;
-      throw new Error("CyclicDependencyError");
+      throw new Error("CyclicDependencyError:" + parts[0].identifier.text);
     }
     if (this.#evaluatingNodes.has(node as unknown as ModelicaSyntaxNode)) {
       this.#componentRefDepth--;
-      throw new Error("CyclicDependencyError");
+      throw new Error("CyclicDependencyError:" + node.text);
     }
     this.#evaluatingNodes.add(node as unknown as ModelicaSyntaxNode);
     try {
@@ -2110,8 +2129,14 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
       if (this.#evaluateAlgorithms && this.#functionCallDepth < ModelicaInterpreter.MAX_FUNCTION_CALL_DEPTH) {
         this.#functionCallDepth++;
         try {
-          for (const statement of clonedFunction.algorithms) {
-            statement.accept(this, algoScope);
+          const previousEvaluatingDimensionFor = this.evaluatingDimensionFor;
+          this.evaluatingDimensionFor = new Set();
+          try {
+            for (const statement of clonedFunction.algorithms) {
+              statement.accept(this, algoScope);
+            }
+          } finally {
+            this.evaluatingDimensionFor = previousEvaluatingDimensionFor;
           }
         } catch (e) {
           if (e !== ReturnSignal) throw e;
@@ -2343,8 +2368,14 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     if (this.#evaluateAlgorithms && this.#functionCallDepth < ModelicaInterpreter.MAX_FUNCTION_CALL_DEPTH) {
       this.#functionCallDepth++;
       try {
-        for (const statement of clonedFunction.algorithms) {
-          statement.accept(this, algoScope);
+        const previousEvaluatingDimensionFor = this.evaluatingDimensionFor;
+        this.evaluatingDimensionFor = new Set();
+        try {
+          for (const statement of clonedFunction.algorithms) {
+            statement.accept(this, algoScope);
+          }
+        } finally {
+          this.evaluatingDimensionFor = previousEvaluatingDimensionFor;
         }
       } catch (e) {
         if (e !== ReturnSignal) throw e;

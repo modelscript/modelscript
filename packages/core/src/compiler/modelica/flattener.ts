@@ -5870,6 +5870,76 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       if (funcDef) {
         const inputVars = funcDef.variables.filter((v) => v.causality === "input");
 
+        // Type check: verify each positional argument's type matches the expected input type
+        for (let i = 0; i < Math.min(flatArgs.length, inputVars.length); i++) {
+          const arg = flatArgs[i];
+          const param = inputVars[i];
+          if (!arg || !param) continue;
+
+          // Infer the type of the argument
+          const inferVarType = (expr: ModelicaExpression): string | null => {
+            if (expr instanceof ModelicaStringLiteral) return "String";
+            if (expr instanceof ModelicaStringVariable) return "String";
+            if (expr instanceof ModelicaIntegerLiteral) return "Integer";
+            if (expr instanceof ModelicaIntegerVariable) return "Integer";
+            if (expr instanceof ModelicaBooleanLiteral) return "Boolean";
+            if (expr instanceof ModelicaBooleanVariable) return "Boolean";
+            if (expr instanceof ModelicaRealLiteral) return "Real";
+            if (expr instanceof ModelicaRealVariable) return "Real";
+            if (expr instanceof ModelicaVariable) {
+              if (expr instanceof ModelicaIntegerVariable) return "Integer";
+              if (expr instanceof ModelicaBooleanVariable) return "Boolean";
+              if (expr instanceof ModelicaStringVariable) return "String";
+              return "Real";
+            }
+            if (expr instanceof ModelicaNameExpression) {
+              const comp = ctx.classInstance.resolveName(expr.name.split("."));
+              if (comp instanceof ModelicaComponentInstance && comp.classInstance) {
+                if (comp.classInstance instanceof ModelicaStringClassInstance) return "String";
+                if (comp.classInstance instanceof ModelicaIntegerClassInstance) return "Integer";
+                if (comp.classInstance instanceof ModelicaBooleanClassInstance) return "Boolean";
+                if (comp.classInstance instanceof ModelicaRealClassInstance) return "Real";
+              }
+            }
+            return null;
+          };
+
+          // Get expected type from param
+          const expectedType =
+            param instanceof ModelicaStringVariable
+              ? "String"
+              : param instanceof ModelicaIntegerVariable
+                ? "Integer"
+                : param instanceof ModelicaBooleanVariable
+                  ? "Boolean"
+                  : "Real";
+
+          const argType = inferVarType(arg);
+
+          // Only emit mismatch for incompatible scalar types (not Integer→Real promotion)
+          if (argType && argType !== expectedType && !(argType === "Integer" && expectedType === "Real")) {
+            // Build call expression text: f(x=z)
+            const paramName = param.name?.replace(/\0.*\0/, "") ?? `arg${i}`;
+            const argName =
+              arg instanceof ModelicaNameExpression
+                ? arg.name
+                : arg instanceof ModelicaVariable
+                  ? arg.name
+                  : arg.toString();
+            const callExprText = `${functionName}(${paramName}=${argName})`;
+            ctx.dae.diagnostics.push(
+              makeDiagnostic(
+                ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH,
+                node,
+                callExprText,
+                String(i + 1),
+                argType,
+                expectedType,
+              ),
+            );
+          }
+        }
+
         // Auto-vectorization scalarization (§12.4.6):
         // When a function takes scalar inputs but receives array arguments,
         // scalarize the call into individual scalar calls wrapped in a ModelicaArray.
@@ -6888,7 +6958,12 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
 
       const compName = element.name ?? "";
       const causality = element.causality ?? null;
-      const variability = element.variability ?? null;
+      // Drop `constant` variability from input/output variables — `constant input` is
+      // semantically invalid in Modelica and OMC normalizes it away
+      let variability = element.variability ?? null;
+      if (variability === ModelicaVariability.CONSTANT && (causality === "input" || causality === "output")) {
+        variability = null;
+      }
       const isProtected =
         element.isProtected || protectedNames.has(compName) || (resolved.isProtectedElement?.(compName) ?? false);
 
@@ -8562,6 +8637,61 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       if (flatArg) flatArgs.push(flatArg);
     }
     const source = new ModelicaFunctionCallExpression(functionName, flatArgs);
+
+    // Validate tuple assignment: LHS target count must match function output count
+    {
+      const resolved = ctx.classInstance.resolveName(functionName.split("."));
+      if (
+        resolved instanceof ModelicaClassInstance &&
+        (resolved.classKind === ModelicaClassKind.FUNCTION ||
+          resolved.classKind === ModelicaClassKind.OPERATOR_FUNCTION)
+      ) {
+        if (!resolved.instantiated) resolved.instantiate();
+        const outputs = [...resolved.components].filter((c: ModelicaComponentInstance) => c.causality === "output");
+        if (targets.length > outputs.length) {
+          // Build type strings for the diagnostic: (Real, Real, Real) := (Real, Real)
+          const inferType = (cls: ModelicaClassInstance | null): string => {
+            if (!cls) return "Real";
+            if (cls instanceof ModelicaArrayClassInstance) cls = (cls as any).elementClassInstance;
+            if (!cls) return "Real";
+            if (cls instanceof ModelicaRealClassInstance) return "Real";
+            if (cls instanceof ModelicaIntegerClassInstance) return "Integer";
+            if (cls instanceof ModelicaBooleanClassInstance) return "Boolean";
+            if (cls instanceof ModelicaStringClassInstance) return "String";
+            return cls.name ?? "Real";
+          };
+          const targetTypes = targets.map((t) => {
+            if (t instanceof ModelicaNameExpression) {
+              const comp = ctx.classInstance.resolveName(t.name.split("."));
+              if (comp instanceof ModelicaComponentInstance && comp.classInstance) {
+                return inferType(comp.classInstance);
+              }
+            }
+            return "Real";
+          });
+          const outputTypes = outputs.map((o: ModelicaComponentInstance) => inferType(o.classInstance));
+          const targetTypeStr = `(${targetTypes.join(", ")})`;
+          const outputTypeStr = `(${outputTypes.join(", ")})`;
+          const targetStr = `(${targets
+            .map((t) => {
+              if (t instanceof ModelicaNameExpression) return t.name;
+              if (t instanceof ModelicaVariable) return t.name;
+              return "_";
+            })
+            .join(", ")})`;
+          ctx.dae.diagnostics.push(
+            makeDiagnostic(
+              ModelicaErrorCode.ASSIGNMENT_TYPE_MISMATCH,
+              node,
+              targetStr,
+              targetTypeStr,
+              `${functionName}()`,
+              outputTypeStr,
+            ),
+          );
+        }
+      }
+    }
     // If only one non-null target, convert to simple assignment with tuple indexing: y := F(x)[idx]
     const nonNullTargets = targets.map((t, i) => ({ target: t, index: i })).filter((t) => t.target !== null);
     if (nonNullTargets.length === 1 && nonNullTargets[0]) {
@@ -9257,6 +9387,68 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     // This preserves C = inv({{A[1,1],...}}) * B instead of {{C[1,1],...}} = ... * {{B[1,1],...}}
     if (expression1) expression1 = this.collapseArrayToName(expression1);
     if (expression2) expression2 = this.collapseArraysInExpr(expression2);
+
+    // Check for scalar type mismatch: e.g. String x = f(z) where f returns Real
+    if (expression1 && expression2) {
+      const inferExprType = (expr: ModelicaExpression): string | null => {
+        if (expr instanceof ModelicaStringVariable) return "String";
+        if (expr instanceof ModelicaIntegerVariable) return "Integer";
+        if (expr instanceof ModelicaBooleanVariable) return "Boolean";
+        if (expr instanceof ModelicaRealVariable) return "Real";
+        if (expr instanceof ModelicaStringLiteral) return "String";
+        if (expr instanceof ModelicaIntegerLiteral) return "Integer";
+        if (expr instanceof ModelicaBooleanLiteral) return "Boolean";
+        if (expr instanceof ModelicaRealLiteral) return "Real";
+        if (expr instanceof ModelicaNameExpression) {
+          const comp = ctx.classInstance.resolveName(expr.name.split("."));
+          if (comp instanceof ModelicaComponentInstance && comp.classInstance) {
+            if (comp.classInstance instanceof ModelicaStringClassInstance) return "String";
+            if (comp.classInstance instanceof ModelicaIntegerClassInstance) return "Integer";
+            if (comp.classInstance instanceof ModelicaBooleanClassInstance) return "Boolean";
+            if (comp.classInstance instanceof ModelicaRealClassInstance) return "Real";
+          }
+        }
+        if (expr instanceof ModelicaFunctionCallExpression) {
+          // Look up the function's return type from the collected definitions
+          const funcDef = ctx.dae.functions.find((f) => f.name === expr.functionName);
+          if (funcDef) {
+            const outputVars = funcDef.variables.filter((v) => v.causality === "output");
+            if (outputVars.length > 0) {
+              const out = outputVars[0];
+              if (out instanceof ModelicaStringVariable) return "String";
+              if (out instanceof ModelicaIntegerVariable) return "Integer";
+              if (out instanceof ModelicaBooleanVariable) return "Boolean";
+              return "Real";
+            }
+          }
+        }
+        return null;
+      };
+
+      const lhsType = inferExprType(expression1);
+      const rhsType = inferExprType(expression2);
+
+      if (lhsType && rhsType && lhsType !== rhsType && !(rhsType === "Integer" && lhsType === "Real")) {
+        // Build equation text for the diagnostic message
+        const lhsText =
+          expression1 instanceof ModelicaNameExpression
+            ? expression1.name
+            : expression1 instanceof ModelicaVariable
+              ? expression1.name
+              : expression1.toString();
+        const rhsText =
+          expression2 instanceof ModelicaFunctionCallExpression
+            ? `${expression2.functionName}(${expression2.args.map((a) => (a instanceof ModelicaNameExpression ? a.name : a instanceof ModelicaVariable ? a.name : a.toString())).join(", ")})`
+            : expression2 instanceof ModelicaNameExpression
+              ? expression2.name
+              : expression2 instanceof ModelicaVariable
+                ? expression2.name
+                : expression2.toString();
+        ctx.dae.diagnostics.push(
+          makeDiagnostic(ModelicaErrorCode.EQUATION_TYPE_MISMATCH, node, lhsText, `${rhsText}`, lhsType, rhsType),
+        );
+      }
+    }
     // Skip equations involving zero-size arrays (e.g., der(x) = A*x where x[0] is empty).
     // Empty arrays arise from zero-dimensional components and produce vacuous equations.
     const hasEmptyArray = (e: ModelicaExpression | null | undefined): boolean =>

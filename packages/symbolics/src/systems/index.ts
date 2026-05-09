@@ -5077,6 +5077,8 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
       }
       // Pad single-digit exponents to two digits: e-6 → e-06, e+6 → e+06
       str = str.replace(/e([+-]?)(\d)$/, "e$10$2");
+      // Remove '+' from positive exponents to match OMC output: e+308 -> e308
+      str = str.replace(/e\+/g, "e");
       this.out.write(str);
     }
   }
