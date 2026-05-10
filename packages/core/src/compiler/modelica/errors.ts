@@ -588,6 +588,19 @@ export const ModelicaErrorCode = {
     severity: "error",
     message: (dim: string, varName: string) => `Negative dimension index (${dim}) for component ${varName}.`,
   },
+  CONSTANT_HAS_NO_VALUE: {
+    code: 4042,
+    rule: "constant-has-no-value",
+    severity: "error",
+    message: (qualifiedName: string) => `Constant '${qualifiedName}' has no value.`,
+  },
+  CONSTANT_VARIABILITY_VIOLATION: {
+    code: 4043,
+    rule: "constant-variability-violation",
+    severity: "error",
+    message: (componentName: string, bindingText: string, bindingVariability: string) =>
+      `Component ${componentName} of variability constant has binding '${bindingText}' of higher variability ${bindingVariability}.`,
+  },
 } as const satisfies Record<string, ErrorCodeDef>;
 
 // Derive the union type of all error code keys

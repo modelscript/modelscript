@@ -949,6 +949,93 @@ ModelicaLinter.register(ModelicaErrorCode.NEGATIVE_DIMENSION, {
   },
 });
 // ---------------------------------------------------------------------------
+// Constant has no value: constant components must have a binding expression
+// ---------------------------------------------------------------------------
+
+ModelicaLinter.register(ModelicaErrorCode.CONSTANT_HAS_NO_VALUE, {
+  visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+    // Only check in models/blocks/classes — not in packages, functions, or types
+    if (
+      node.classKind === ModelicaClassKind.FUNCTION ||
+      node.classKind === ModelicaClassKind.PACKAGE ||
+      node.classKind === ModelicaClassKind.TYPE ||
+      node.classKind === ModelicaClassKind.OPERATOR_FUNCTION
+    ) {
+      return;
+    }
+
+    // Skip inner/nested class definitions — constants in type definitions don't
+    // need values until instantiated. Only check top-level models.
+    if (node.parent && node.parent instanceof ModelicaClassInstance) {
+      return;
+    }
+
+    /**
+     * Check elements for unvalued constants. When `inheritedConstant` is true,
+     * sub-components inherit constant variability from a parent even if they
+     * are not explicitly marked constant themselves.
+     */
+    const checkElements = (
+      elements: Iterable<any>,
+      qualifiedPrefix: string,
+      inheritedConstant: boolean,
+      astForDiag: any,
+    ) => {
+      for (const element of elements) {
+        if (!(element instanceof ModelicaComponentInstance)) continue;
+
+        const compName = element.name ?? "";
+        const qualifiedName = qualifiedPrefix ? `${qualifiedPrefix}.${compName}` : compName;
+
+        const isConstant = element.variability === "constant" || inheritedConstant;
+
+        if (!isConstant) continue;
+
+        // Skip flow/stream variables — they get default zero values via equation sections
+        const fp = (element as any).flowPrefix;
+        if (fp === "flow" || fp === "stream" || fp === 1 || fp === 2) {
+          continue;
+        }
+
+        // Check if this is a scalar primitive type (leaf)
+        const isScalar =
+          element.classInstance instanceof ModelicaRealClassInstance ||
+          element.classInstance instanceof ModelicaIntegerClassInstance ||
+          element.classInstance instanceof ModelicaBooleanClassInstance ||
+          element.classInstance instanceof ModelicaStringClassInstance;
+
+        if (isScalar) {
+          // Check if there's a binding expression
+          const mod = element.modification;
+          const hasBinding = mod?.modificationExpression?.expression != null || mod?.expression != null;
+
+          if (!hasBinding) {
+            diagnosticsCallback(
+              ModelicaErrorCode.CONSTANT_HAS_NO_VALUE.severity,
+              ModelicaErrorCode.CONSTANT_HAS_NO_VALUE.code,
+              ModelicaErrorCode.CONSTANT_HAS_NO_VALUE.message(qualifiedName),
+              astForDiag ?? element.abstractSyntaxNode ?? null,
+            );
+            return; // OMC reports only the first missing constant value
+          }
+        } else if (element.classInstance) {
+          // Composite type — recurse into its sub-components
+          const cls =
+            element.classInstance instanceof ModelicaArrayClassInstance
+              ? (element.classInstance as any).elementClassInstance
+              : element.classInstance;
+          if (cls && cls.elements) {
+            checkElements(cls.elements, qualifiedName, true, astForDiag ?? element.abstractSyntaxNode);
+          }
+        }
+      }
+    };
+
+    checkElements(node.elements, "", false, null);
+  },
+});
+
+// ---------------------------------------------------------------------------
 
 ModelicaLinter.register(ModelicaErrorCode.EQUATION_TYPE_MISMATCH, {
   visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
@@ -2854,17 +2941,23 @@ ModelicaLinter.register(ModelicaErrorCode.VARIABILITY_BINDING_MISMATCH, {
         const referenced = node.resolveSimpleName(refName);
         if (!referenced || !(referenced instanceof ModelicaComponentInstance)) continue;
         const refVariability = (referenced as any).variability as string | undefined;
-        if (!refVariability) continue;
+        // Default variability for components without explicit prefix is "continuous"
+        const effectiveRefVariability = refVariability ?? "continuous";
 
         const compLevel = VARIABILITY_ORDER[compVariability] ?? 3;
-        const refLevel = VARIABILITY_ORDER[refVariability] ?? 3;
+        const refLevel = VARIABILITY_ORDER[effectiveRefVariability] ?? 3;
         if (refLevel > compLevel) {
           // Get a text representation of the binding
-          const exprText = bindingExpr?.text ?? bindingExpr?.toString?.() ?? "...";
+          const exprText = bindingExpr?.text ?? getExpressionText(bindingExpr);
           diagnosticsCallback(
             ModelicaErrorCode.VARIABILITY_BINDING_MISMATCH.severity,
             ModelicaErrorCode.VARIABILITY_BINDING_MISMATCH.code,
-            ModelicaErrorCode.VARIABILITY_BINDING_MISMATCH.message(el.name, compVariability, exprText, refVariability),
+            ModelicaErrorCode.VARIABILITY_BINDING_MISMATCH.message(
+              el.name,
+              compVariability,
+              exprText,
+              effectiveRefVariability,
+            ),
             el.abstractSyntaxNode ?? null,
           );
           break; // One diagnostic per component is enough
