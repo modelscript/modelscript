@@ -1999,6 +1999,19 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     if (parentMods) {
       for (const pm of parentMods) {
         if (pm.nameParts.length > 0 && pm.nameParts[0] === node.name) {
+          // Direct component name match
+          currentMods.push({
+            nameParts: pm.nameParts.slice(1),
+            valueExpr: pm.valueExpr,
+          });
+        } else if (
+          pm.nameParts.length > 0 &&
+          classInstance &&
+          (pm.nameParts[0] === classInstance.name || pm.nameParts[0] === (classInstance as any).shortClassTarget?.name)
+        ) {
+          // Class modification: mod name matches the *class* name of this component's type.
+          // e.g., A a(B(x = 2.0)) where component b is of type B — "B" matches the class name.
+          // Propagate the sub-modifications (strip the class name prefix).
           currentMods.push({
             nameParts: pm.nameParts.slice(1),
             valueExpr: pm.valueExpr,
@@ -2042,10 +2055,29 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           else if (modArg.name.parts) parts = modArg.name.parts.map((p: any) => p.text);
 
           if (parts.length > 0) {
-            currentMods.push({
-              nameParts: parts,
-              valueExpr: modArg.modificationExpression?.expression || modArg.expression || modArg.arg?.value,
-            });
+            // Push the top-level value binding (e.g., x = 2.0 → nameParts: ["x"], valueExpr: 2.0)
+            const topExpr = modArg.modificationExpression?.expression || modArg.expression || modArg.arg?.value;
+            if (topExpr) {
+              currentMods.push({ nameParts: parts, valueExpr: topExpr });
+            }
+
+            // Also extract nested sub-modifications (e.g., B(x = 2.0) → nameParts: ["B", "x"], valueExpr: 2.0)
+            // This handles class modifications where the outer name is a class, not a component.
+            const subModArgs = modArg.modification?.modificationArguments ?? modArg.arg?.modificationArguments ?? [];
+            for (const subMod of subModArgs) {
+              const subName =
+                typeof subMod.name === "string"
+                  ? subMod.name
+                  : (subMod.name?.parts?.map((p: any) => p.text).join(".") ?? subMod.name?.text ?? null);
+              if (!subName) continue;
+              const subExpr = subMod.modificationExpression?.expression || subMod.expression || subMod.arg?.value;
+              if (subExpr) {
+                currentMods.push({
+                  nameParts: [...parts, ...subName.split(".")],
+                  valueExpr: subExpr,
+                });
+              }
+            }
           }
         }
       }
