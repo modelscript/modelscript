@@ -810,6 +810,14 @@ function isClassSubtypeOf(
     }
   }
 
+  // Walk short class specifier targets (type aliases: type M2E = E)
+  const shortTarget = (actual as any).shortClassTarget;
+  if (shortTarget && isClassSubtypeOf(shortTarget, expected, visited)) return true;
+
+  // Also check if expected is an alias pointing to actual's root
+  const expectedShort = (expected as any).shortClassTarget;
+  if (expectedShort && isClassSubtypeOf(actual, expectedShort, visited)) return true;
+
   // Modelica §4.7: check base type compatibility.
   // Two different class instances may represent the same primitive type
   // (e.g., one from resolveBuiltinClass, one from getComponentTypeDescriptor).
