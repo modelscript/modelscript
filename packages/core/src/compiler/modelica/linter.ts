@@ -2501,13 +2501,22 @@ function checkModifications(
           const typeName = curr.name;
           const common = ["value", "quantity", "start", "fixed"];
           const realInt = ["min", "max"];
-          const realOnly = ["nominal", "unconstrained", "stateSelect", "unit", "displayUnit"];
+          const realOnly = ["nominal", "unbounded", "stateSelect", "unit", "displayUnit"];
           const allowed = [...common];
           if (typeName === "Real" || typeName === "Integer" || typeName === "Enumeration") allowed.push(...realInt);
           if (typeName === "Real") allowed.push(...realOnly);
           if (allowed.includes(name)) {
             if (path.length === 1) return true; // resolved
             return null; // primitive attributes don't have nested members
+          }
+        }
+
+        // User-defined enumeration types have the same built-in attributes as predefined Enumeration
+        if (curr.constructor?.name === "ModelicaEnumerationClassInstance") {
+          const enumAttrs = ["value", "quantity", "min", "max", "start", "fixed"];
+          if (enumAttrs.includes(name)) {
+            if (path.length === 1) return true;
+            return null;
           }
         }
 

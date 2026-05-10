@@ -4785,19 +4785,37 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
         nominal: 9,
         stateSelect: 10,
       };
-      const sortedEntries = Array.from(variable.attributes.entries()).sort((a, b) => {
-        const pA = attrPriority[a[0]] ?? 99;
-        const pB = attrPriority[b[0]] ?? 99;
-        if (pA !== pB) return pA - pB;
-        return a[0].localeCompare(b[0]);
-      });
-      let i = 0;
-      for (const [key, expr] of sortedEntries) {
-        this.out.write(key + " = ");
-        expr.accept(this);
-        if (++i < sortedEntries.length) this.out.write(", ");
+      const sortedEntries = Array.from(variable.attributes.entries())
+        .filter(([key, expr]) => {
+          // OMC strips 'unbounded' from flattened output
+          if (key === "unbounded") return false;
+          // OMC strips default 'fixed = true' for String variables
+          if (
+            key === "fixed" &&
+            variable instanceof ModelicaStringVariable &&
+            expr instanceof ModelicaBooleanLiteral &&
+            expr.value === true
+          )
+            return false;
+          return true;
+        })
+        .sort((a, b) => {
+          const pA = attrPriority[a[0]] ?? 99;
+          const pB = attrPriority[b[0]] ?? 99;
+          if (pA !== pB) return pA - pB;
+          return a[0].localeCompare(b[0]);
+        });
+      if (sortedEntries.length === 0) {
+        // All attributes were filtered out; don't emit empty parens
+      } else {
+        let i = 0;
+        for (const [key, expr] of sortedEntries) {
+          this.out.write(key + " = ");
+          expr.accept(this);
+          if (++i < sortedEntries.length) this.out.write(", ");
+        }
+        this.out.write(")");
       }
-      this.out.write(")");
     }
     if (variable.expression) {
       this.out.write(" = ");
