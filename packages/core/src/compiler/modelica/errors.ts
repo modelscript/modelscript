@@ -601,6 +601,26 @@ export const ModelicaErrorCode = {
     message: (componentName: string, bindingText: string, bindingVariability: string) =>
       `Component ${componentName} of variability constant has binding '${bindingText}' of higher variability ${bindingVariability}.`,
   },
+  NON_ARRAY_MODIFICATION: {
+    code: 4044,
+    rule: "non-array-modification",
+    severity: "error",
+    message: (modText: string, componentName: string) =>
+      `Non-array modification '${modText}' for array component '${componentName}', possibly due to missing 'each'.`,
+  },
+  BINDING_DIMENSION_MISMATCH: {
+    code: 4045,
+    rule: "binding-dimension-mismatch",
+    severity: "error",
+    message: (componentName: string, bindingText: string, expectedDims: string, actualDims: string) =>
+      `Type mismatch in binding '${componentName} = ${bindingText}', expected array dimensions [${expectedDims}], got [${actualDims}].`,
+  },
+  CONSTANT_NOT_FIXED: {
+    code: 4046,
+    rule: "constant-not-fixed",
+    severity: "error",
+    message: (componentName: string) => `Constant '${componentName}' must be fixed but has 'fixed = false'`,
+  },
 } as const satisfies Record<string, ErrorCodeDef>;
 
 // Derive the union type of all error code keys

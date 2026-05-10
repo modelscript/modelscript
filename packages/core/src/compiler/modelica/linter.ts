@@ -795,14 +795,26 @@ ModelicaLinter.register(ModelicaErrorCode.TYPE_MISMATCH_BINDING, {
 
       if (isMismatch) {
         const astNode = element.abstractSyntaxNode;
+
+        // Retrieve shapes for correct type formatting
+        const compShape = getArrayShape(element.classInstance);
+        const exprShape = inferExpressionShape(bindingExpr);
+
+        const formatTypeStr = (base: string, shape: number[]) => {
+          return shape.length > 0 ? `${base}[${shape.join(", ")}]` : base;
+        };
+
+        const compTypeStr = formatTypeStr(compTypeName, compShape);
+        const exprTypeStr = formatTypeStr(exprType, exprShape);
+
         diagnosticsCallback(
           ModelicaErrorCode.TYPE_MISMATCH_BINDING.severity,
           ModelicaErrorCode.TYPE_MISMATCH_BINDING.code,
           ModelicaErrorCode.TYPE_MISMATCH_BINDING.message(
             element.name ?? "",
-            compTypeName,
+            compTypeStr,
             getExpressionText(bindingExpr),
-            exprType,
+            exprTypeStr,
           ),
           astNode,
         );
@@ -815,108 +827,180 @@ ModelicaLinter.register(ModelicaErrorCode.TYPE_MISMATCH_BINDING, {
 // Type mismatch in arrays
 // ---------------------------------------------------------------------------
 
-ModelicaLinter.register(ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH, {
-  visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
-    if (node.classKind === ModelicaClassKind.FUNCTION || node.classKind === ModelicaClassKind.PACKAGE) return;
+ModelicaLinter.register(
+  [
+    ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH,
+    ModelicaErrorCode.NON_ARRAY_MODIFICATION,
+    ModelicaErrorCode.BINDING_DIMENSION_MISMATCH,
+  ],
+  {
+    visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+      if (node.classKind === ModelicaClassKind.FUNCTION || node.classKind === ModelicaClassKind.PACKAGE) return;
 
-    function checkExprShape(componentName: string, expr: any, expectedShape: number[]): boolean {
-      if (!expr || expectedShape.length === 0) return true;
+      function checkExprShape(componentName: string, expr: any, expectedShape: number[], astForDiag: any): boolean {
+        if (!expr) return true;
 
-      // Handle ArrayConcatenation: [a, b; c, d] → cat(2, ...) with shape [numRows, numCols]
-      if (expr["@type"] === "ArrayConcatenation" && expr.expressionLists) {
-        const rows = expr.expressionLists ?? [];
-        const numRows = rows.length;
-        const numCols = rows[0]?.expressions?.length ?? 0;
-        const actualShape = [numRows, numCols];
+        // Handle ArrayConcatenation: [a, b; c, d] → cat(2, ...) with shape [numRows, numCols]
+        if (expr["@type"] === "ArrayConcatenation" && expr.expressionLists) {
+          const rows = expr.expressionLists ?? [];
+          const numRows = rows.length;
+          const numCols = rows[0]?.expressions?.length ?? 0;
+          const actualShape = [numRows, numCols];
 
-        // Check if actual matrix shape matches expected dimensions
-        const shapeMismatch =
-          expectedShape.length !== actualShape.length ||
-          expectedShape.some((d: number, i: number) => d !== actualShape[i]);
+          // Check if actual matrix shape matches expected dimensions
+          const shapeMismatch =
+            expectedShape.length !== actualShape.length ||
+            expectedShape.some((d: number, i: number) => d !== actualShape[i]);
 
-        if (shapeMismatch) {
-          // Build cat(2, ...) expression text matching OMC format
-          // Each scalar element becomes {{x}}, each row becomes a column vector
-          const catArgs: string[] = [];
-          for (const row of rows) {
-            for (const e of row.expressions ?? []) {
-              const eText = e.text ?? "?";
-              catArgs.push(`{{${eText}}}`);
+          if (shapeMismatch) {
+            // Build cat(2, ...) expression text matching OMC format
+            // Each scalar element becomes {{x}}, each row becomes a column vector
+            const catArgs: string[] = [];
+            for (const row of rows) {
+              for (const e of row.expressions ?? []) {
+                const eText = e.text ?? "?";
+                catArgs.push(`{{${eText}}}`);
+              }
+            }
+            const exprText = `cat(2, ${catArgs.join(", ")})`;
+
+            diagnosticsCallback(
+              ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.severity,
+              ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.code,
+              ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.message(
+                componentName,
+                exprText,
+                expectedShape.join(", "),
+                actualShape.join(", "),
+              ),
+              astForDiag ?? expr,
+            );
+            return false;
+          }
+          return true;
+        }
+
+        if (expr["@type"] === "ArrayConstructor" && expr.expressionList) {
+          const exprs = expr.expressionList.expressions ?? [];
+          if (expectedShape.length === 0) {
+            // Scalar component with array binding: Real x = {1, 2, 3}
+            const exprText = getExpressionText(expr);
+            const actualShape = inferExpressionShape(expr);
+            diagnosticsCallback(
+              ModelicaErrorCode.BINDING_DIMENSION_MISMATCH.severity,
+              ModelicaErrorCode.BINDING_DIMENSION_MISMATCH.code,
+              ModelicaErrorCode.BINDING_DIMENSION_MISMATCH.message(
+                componentName,
+                exprText,
+                "", // empty = scalar
+                actualShape.join(", "),
+              ),
+              astForDiag ?? expr,
+            );
+            return false;
+          }
+          if (exprs.length !== expectedShape[0]) {
+            const exprText = expr.text ?? "{...}";
+            diagnosticsCallback(
+              ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.severity,
+              ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.code,
+              ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.message(
+                componentName,
+                exprText,
+                `${expectedShape[0]}`,
+                `${exprs.length}`,
+              ),
+              astForDiag ?? expr,
+            );
+            return false;
+          } else if (expectedShape.length > 1) {
+            for (const child of exprs) {
+              if (!checkExprShape(componentName, child, expectedShape.slice(1), astForDiag)) return false;
             }
           }
-          const exprText = `cat(2, ${catArgs.join(", ")})`;
-
-          diagnosticsCallback(
-            ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.severity,
-            ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.code,
-            ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.message(
-              componentName,
-              exprText,
-              expectedShape.join(", "),
-              actualShape.join(", "),
-            ),
-            expr,
-          );
-          return false;
         }
         return true;
       }
 
-      if (expr["@type"] === "ArrayConstructor" && expr.expressionList) {
-        const exprs = expr.expressionList.expressions ?? [];
-        if (exprs.length !== expectedShape[0]) {
-          const exprText = expr.text ?? "{...}";
+      /** Check if an expression is a scalar literal/reference (not an array). */
+      function isScalarExpression(expr: any): boolean {
+        if (!expr) return false;
+        const typeStr = expr["@type"];
+        if (typeStr === "ArrayConstructor" || typeStr === "ArrayConcatenation") return false;
+        // Numeric/string/boolean literals
+        if (
+          typeStr === "UNSIGNED_REAL" ||
+          typeStr === "UNSIGNED_INTEGER" ||
+          typeStr === "unsigned_real" ||
+          typeStr === "unsigned_integer" ||
+          typeStr === "BOOLEAN" ||
+          typeStr === "boolean_literal" ||
+          typeStr === "STRING" ||
+          typeStr === "string_literal"
+        )
+          return true;
+        // Component references are generally scalar unless subscripted
+        if (typeStr === "ComponentReference" || typeStr === "component_reference" || (expr.parts && !expr.operand1))
+          return true;
+        // Binary/unary expressions on scalars
+        if (expr.operand1 || expr.operand) return true;
+        // Simple text-based values
+        if (expr.text !== undefined && expr.text !== null) return true;
+        return false;
+      }
+
+      function getComponentArrayShape(comp: ModelicaComponentInstance): number[] {
+        const dims = (comp as any).arrayDimensions;
+        if (Array.isArray(dims)) {
+          const shape = dims.map((d: any) => d.value);
+          if (shape.some((v) => typeof v !== "number")) return [];
+          return shape;
+        }
+        return [];
+      }
+
+      for (const element of node.elements) {
+        if (!(element instanceof ModelicaComponentInstance)) continue;
+        const expectedShape = getComponentArrayShape(element);
+
+        // Get the binding expression
+        const directExpr = (element.modification as any)?.modificationExpression?.expression;
+
+        if (expectedShape.length === 0) {
+          // Scalar component — check if binding is an array (e.g., Real x = {1,2,3})
+          if (directExpr) {
+            checkExprShape(element.name ?? "?", directExpr, expectedShape, element.abstractSyntaxNode);
+          }
+          continue;
+        }
+
+        // Array component — check for scalar binding (e.g., Real x[3] = 1)
+        if (directExpr && isScalarExpression(directExpr)) {
+          const exprText = getExpressionText(directExpr);
           diagnosticsCallback(
-            ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.severity,
-            ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.code,
-            ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.message(
-              componentName,
-              exprText,
-              `${expectedShape[0]}`,
-              `${exprs.length}`,
-            ),
-            expr,
+            ModelicaErrorCode.NON_ARRAY_MODIFICATION.severity,
+            ModelicaErrorCode.NON_ARRAY_MODIFICATION.code,
+            ModelicaErrorCode.NON_ARRAY_MODIFICATION.message(exprText, element.name ?? "?"),
+            element.abstractSyntaxNode ?? directExpr,
           );
-          return false;
-        } else if (expectedShape.length > 1) {
-          for (const child of exprs) {
-            if (!checkExprShape(componentName, child, expectedShape.slice(1))) return false;
+          continue;
+        }
+
+        // Check the element's modifications (bindings and attributes)
+        for (const mod of element.modification?.modificationArguments ?? []) {
+          const expr = (mod as any).expression;
+          if (expr) {
+            checkExprShape(element.name ?? "?", expr, expectedShape, element.abstractSyntaxNode);
           }
         }
-      }
-      return true;
-    }
-
-    function getComponentArrayShape(comp: ModelicaComponentInstance): number[] {
-      const dims = (comp as any).arrayDimensions;
-      if (Array.isArray(dims)) {
-        const shape = dims.map((d: any) => d.value);
-        if (shape.some((v) => typeof v !== "number")) return [];
-        return shape;
-      }
-      return [];
-    }
-
-    for (const element of node.elements) {
-      if (!(element instanceof ModelicaComponentInstance)) continue;
-      const expectedShape = getComponentArrayShape(element);
-      if (expectedShape.length === 0) continue;
-
-      // Check the element's modifications (bindings and attributes)
-      for (const mod of element.modification?.modificationArguments ?? []) {
-        const expr = (mod as any).expression;
-        if (expr) {
-          checkExprShape(element.name ?? "?", expr, expectedShape);
+        // Also check if the modification itself has an expression (for direct assignments)
+        if (directExpr) {
+          checkExprShape(element.name ?? "?", directExpr, expectedShape, element.abstractSyntaxNode);
         }
       }
-      // Also check if the modification itself has an expression (for direct assignments)
-      const directExpr = (element.modification as any)?.modificationExpression?.expression;
-      if (directExpr) {
-        checkExprShape(element.name ?? "?", directExpr, expectedShape);
-      }
-    }
+    },
   },
-});
+);
 // ---------------------------------------------------------------------------
 // Negative array dimensions: Real x[-2] is invalid
 // ---------------------------------------------------------------------------
@@ -948,6 +1032,33 @@ ModelicaLinter.register(ModelicaErrorCode.NEGATIVE_DIMENSION, {
     }
   },
 });
+ModelicaLinter.register(ModelicaErrorCode.CONSTANT_NOT_FIXED, {
+  visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+    for (const element of node.elements) {
+      if (!(element instanceof ModelicaComponentInstance)) continue;
+
+      if (element.variability !== "constant") continue;
+
+      const args = element.modification?.modificationArguments;
+      if (!args) continue;
+
+      for (const arg of args) {
+        if (arg.name === "fixed") {
+          const expr = arg.modificationExpression?.expression ?? arg.expression;
+          if (expr && (expr.type === "FALSE" || expr.type === "false_literal" || expr.text === "false")) {
+            diagnosticsCallback(
+              ModelicaErrorCode.CONSTANT_NOT_FIXED.severity,
+              ModelicaErrorCode.CONSTANT_NOT_FIXED.code,
+              ModelicaErrorCode.CONSTANT_NOT_FIXED.message(element.name ?? "?"),
+              element.abstractSyntaxNode ?? null,
+            );
+          }
+        }
+      }
+    }
+  },
+});
+
 // ---------------------------------------------------------------------------
 // Constant has no value: constant components must have a binding expression
 // ---------------------------------------------------------------------------
@@ -1238,6 +1349,20 @@ function inferExpressionType(expr: any, contextCls: ModelicaClassInstance): stri
   // Unary expressions
   if (typeStr === "unary_expression" || (expr.operand && !expr.operand1)) {
     return inferExpressionType(expr.operand, contextCls);
+  }
+
+  // Array literals
+  if (typeStr === "ArrayConstructor" && expr.expressionList) {
+    const exprs = expr.expressionList.expressions;
+    if (exprs && exprs.length > 0) {
+      return inferExpressionType(exprs[0], contextCls);
+    }
+  }
+  if (typeStr === "ArrayConcatenation" && expr.expressionLists) {
+    const rows = expr.expressionLists;
+    if (rows && rows.length > 0 && rows[0].expressions && rows[0].expressions.length > 0) {
+      return inferExpressionType(rows[0].expressions[0], contextCls);
+    }
   }
 
   // Function calls
