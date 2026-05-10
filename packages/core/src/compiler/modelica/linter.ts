@@ -740,8 +740,19 @@ ModelicaLinter.register(ModelicaErrorCode.DUPLICATE_MODIFICATION, {
 });
 
 // ---------------------------------------------------------------------------
-// Type mismatch in bindings: Real → Integer is not allowed (§4.7)
+// Unified type descriptor system
 // ---------------------------------------------------------------------------
+
+/**
+ * A complete type descriptor carrying a reference to the resolved element
+ * class instance and the array shape.
+ * e.g. Real[3,2] → { classRef: <RealClassInstance>, shape: [3, 2] }
+ *      Integer   → { classRef: <IntegerClassInstance>, shape: [] }
+ */
+interface ModelicaTypeDescriptor {
+  classRef: ModelicaClassInstance;
+  shape: number[];
+}
 
 /** Get the base type name of a class instance, resolving through arrays. */
 function getBaseTypeName(cls: ModelicaClassInstance | null): string | null {
@@ -757,6 +768,14 @@ function getBaseTypeName(cls: ModelicaClassInstance | null): string | null {
   return cls.name ?? null;
 }
 
+/** Unwrap an array class instance to its element class instance. */
+function resolveElementClass(cls: ModelicaClassInstance): ModelicaClassInstance | null {
+  if (cls instanceof ModelicaArrayClassInstance) {
+    return (cls as any).elementClassInstance ?? null;
+  }
+  return cls;
+}
+
 /** Get the array shape of a class instance (empty array for scalars). */
 function getArrayShape(cls: ModelicaClassInstance | null): number[] {
   if (cls instanceof ModelicaArrayClassInstance) {
@@ -765,70 +784,376 @@ function getArrayShape(cls: ModelicaClassInstance | null): number[] {
   return [];
 }
 
-ModelicaLinter.register(ModelicaErrorCode.TYPE_MISMATCH_BINDING, {
-  visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
-    // Check all component bindings
-    for (const element of node.elements) {
-      if (!(element instanceof ModelicaComponentInstance)) continue;
-      if (!element.classInstance) continue;
+/**
+ * Structural subtype check: is `actual` assignable to `expected`?
+ * Walks the extendsClassInstances chain of `actual` looking for `expected`.
+ * Also encodes the Modelica §4.7 Integer → Real widening rule.
+ */
+function isClassSubtypeOf(
+  actual: ModelicaClassInstance,
+  expected: ModelicaClassInstance,
+  visited?: Set<ModelicaClassInstance>,
+): boolean {
+  // Identity
+  if (actual === expected) return true;
 
-      const compTypeName = getBaseTypeName(element.classInstance);
-      if (!compTypeName) continue;
+  // Prevent infinite loops on circular extends
+  if (!visited) visited = new Set();
+  if (visited.has(actual)) return false;
+  visited.add(actual);
 
-      // Check if the binding expression matches the component type
-      const mod = element.modification;
-      if (!mod) continue;
+  // Walk extends chain structurally
+  const exts = actual.extendsClassInstances;
+  if (Array.isArray(exts)) {
+    for (const ext of exts) {
+      if (ext && isClassSubtypeOf(ext, expected, visited)) return true;
+    }
+  }
 
-      const bindingExpr = mod.modificationExpression?.expression;
-      if (!bindingExpr) continue;
+  // Modelica §4.7: check base type compatibility.
+  // Two different class instances may represent the same primitive type
+  // (e.g., one from resolveBuiltinClass, one from getComponentTypeDescriptor).
+  const actualName = getBaseTypeName(actual);
+  const expectedName = getBaseTypeName(expected);
+  if (actualName && expectedName) {
+    if (actualName === expectedName) return true;
+    // Integer → Real widening
+    if (expectedName === "Real" && actualName === "Integer") return true;
+  }
 
-      const exprType = inferExpressionType(bindingExpr, node);
-      if (!exprType) continue;
+  return false;
+}
 
-      let isMismatch = false;
-      if (compTypeName === "Integer" && exprType === "Real") isMismatch = true;
-      else if (compTypeName === "Boolean" && exprType !== "Boolean") isMismatch = true;
-      else if (compTypeName === "String" && exprType !== "String") isMismatch = true;
-      else if (compTypeName === "Real" && exprType !== "Real" && exprType !== "Integer") {
-        isMismatch = true;
-      }
+/**
+ * Resolve a builtin type name to its class instance from the context scope.
+ */
+function resolveBuiltinClass(name: string, contextCls: ModelicaClassInstance): ModelicaClassInstance | null {
+  const resolved = contextCls.resolveSimpleName(name, false, true);
+  if (resolved && !(resolved instanceof ModelicaComponentInstance)) {
+    return resolved;
+  }
+  return null;
+}
 
-      if (isMismatch) {
-        const astNode = element.abstractSyntaxNode;
+/** Extract a full type descriptor from a component's class instance. */
+function getComponentTypeDescriptor(comp: ModelicaComponentInstance): ModelicaTypeDescriptor | null {
+  if (!comp.classInstance) return null;
+  const classRef = resolveElementClass(comp.classInstance);
+  if (!classRef) return null;
+  const shape = getArrayShape(comp.classInstance);
+  // Also check component-level array dimensions (e.g., Real x[3])
+  const compDims = (comp as any).arrayDimensions;
+  if (Array.isArray(compDims) && compDims.length > 0 && shape.length === 0) {
+    const dimValues = compDims.map((d: any) => d.value);
+    if (dimValues.every((v: unknown) => typeof v === "number")) {
+      return { classRef, shape: dimValues };
+    }
+  }
+  return { classRef, shape };
+}
 
-        // Retrieve shapes for correct type formatting
-        const compShape = getArrayShape(element.classInstance);
-        const exprShape = inferExpressionShape(bindingExpr);
+/**
+ * Infer a full type descriptor from an expression AST node.
+ * Returns null if the type cannot be determined statically.
+ */
+function inferExpressionTypeDescriptor(expr: any, contextCls: ModelicaClassInstance): ModelicaTypeDescriptor | null {
+  if (!expr) return null;
 
-        const formatTypeStr = (base: string, shape: number[]) => {
-          return shape.length > 0 ? `${base}[${shape.join(", ")}]` : base;
-        };
+  const typeStr = expr["@type"];
 
-        const compTypeStr = formatTypeStr(compTypeName, compShape);
-        const exprTypeStr = formatTypeStr(exprType, exprShape);
+  // Scalar literals — resolve to actual builtin class instances
+  if (typeStr === "UNSIGNED_REAL" || typeStr === "unsigned_real" || typeStr === "FLOAT" || typeStr === "Real") {
+    const cls = resolveBuiltinClass("Real", contextCls);
+    return cls ? { classRef: cls, shape: [] } : null;
+  }
+  if (typeStr === "UNSIGNED_INTEGER" || typeStr === "unsigned_integer" || typeStr === "Integer") {
+    const cls = resolveBuiltinClass("Integer", contextCls);
+    return cls ? { classRef: cls, shape: [] } : null;
+  }
+  if (
+    typeStr === "BOOLEAN" ||
+    typeStr === "boolean_literal" ||
+    typeStr === "Boolean" ||
+    typeStr === "TRUE" ||
+    typeStr === "FALSE" ||
+    typeStr === "true_literal" ||
+    typeStr === "false_literal"
+  ) {
+    const cls = resolveBuiltinClass("Boolean", contextCls);
+    return cls ? { classRef: cls, shape: [] } : null;
+  }
+  if (typeStr === "STRING" || typeStr === "string_literal" || typeStr === "String") {
+    const cls = resolveBuiltinClass("String", contextCls);
+    return cls ? { classRef: cls, shape: [] } : null;
+  }
 
-        diagnosticsCallback(
-          ModelicaErrorCode.TYPE_MISMATCH_BINDING.severity,
-          ModelicaErrorCode.TYPE_MISMATCH_BINDING.code,
-          ModelicaErrorCode.TYPE_MISMATCH_BINDING.message(
-            element.name ?? "",
-            compTypeStr,
-            getExpressionText(bindingExpr),
-            exprTypeStr,
-          ),
-          astNode,
-        );
+  // Component references — resolve through the class instance to get full type + shape
+  if (typeStr === "ComponentReference" || typeStr === "component_reference" || (expr.parts && !expr.operand1)) {
+    const parts = expr.parts;
+    if (parts && parts.length > 0) {
+      const name = parts[0]?.identifier?.text;
+      if (name) {
+        if (name === "time") {
+          const cls = resolveBuiltinClass("Real", contextCls);
+          return cls ? { classRef: cls, shape: [] } : null;
+        }
+        let resolved = contextCls.resolveSimpleName(name, false, true);
+        if (resolved instanceof ModelicaComponentInstance) {
+          for (let i = 1; i < parts.length && resolved; i++) {
+            const partName = parts[i]?.identifier?.text;
+            if (!partName) break;
+            const cls = (resolved as ModelicaComponentInstance).classInstance;
+            if (!cls) return null;
+            const elemCls = resolveElementClass(cls);
+            if (!elemCls) return null;
+            resolved = elemCls.resolveSimpleName?.(partName, false, true);
+            if (!(resolved instanceof ModelicaComponentInstance)) return null;
+          }
+          if (resolved instanceof ModelicaComponentInstance) {
+            return getComponentTypeDescriptor(resolved);
+          }
+        }
       }
     }
-  },
-});
+  }
 
-// ---------------------------------------------------------------------------
-// Type mismatch in arrays
-// ---------------------------------------------------------------------------
+  // Array constructors: {a, b, c} → shape = [n, ...innerShape], classRef = innerClassRef
+  if (typeStr === "ArrayConstructor" && expr.expressionList) {
+    const exprs = expr.expressionList.expressions ?? [];
+    if (exprs.length === 0) {
+      const cls = resolveBuiltinClass("Real", contextCls);
+      return cls ? { classRef: cls, shape: [0] } : null;
+    }
+    const innerDesc = inferExpressionTypeDescriptor(exprs[0], contextCls);
+    if (!innerDesc) return null;
+    return { classRef: innerDesc.classRef, shape: [exprs.length, ...innerDesc.shape] };
+  }
+
+  // ArrayConcatenation: [a, b; c, d] → shape [numRows, numCols]
+  if (typeStr === "ArrayConcatenation" && expr.expressionLists) {
+    const rows = expr.expressionLists ?? [];
+    const numRows = rows.length;
+    const numCols = rows[0]?.expressions?.length ?? 0;
+    const firstEl = rows[0]?.expressions?.[0];
+    const innerDesc = firstEl ? inferExpressionTypeDescriptor(firstEl, contextCls) : null;
+    if (!innerDesc) {
+      const cls = resolveBuiltinClass("Real", contextCls);
+      return cls ? { classRef: cls, shape: [numRows, numCols] } : null;
+    }
+    return { classRef: innerDesc.classRef, shape: [numRows, numCols] };
+  }
+
+  // Binary expressions — type promotion + shape propagation
+  if (typeStr === "binary_expression" || expr.operand1) {
+    const t1 = inferExpressionTypeDescriptor(expr.operand1, contextCls);
+    const t2 = inferExpressionTypeDescriptor(expr.operand2, contextCls);
+
+    // Relational / comparison / logical operators always return Boolean
+    const op = expr.operator;
+    const isRelational =
+      op === BinOp.EQUALITY ||
+      op === BinOp.INEQUALITY ||
+      op === BinOp.LESS_THAN ||
+      op === BinOp.LESS_THAN_OR_EQUAL ||
+      op === BinOp.GREATER_THAN ||
+      op === BinOp.GREATER_THAN_OR_EQUAL ||
+      op === "==" ||
+      op === "<>" ||
+      op === "<" ||
+      op === "<=" ||
+      op === ">" ||
+      op === ">=" ||
+      op === "and" ||
+      op === "or";
+
+    let classRef: ModelicaClassInstance | null;
+    if (isRelational) {
+      classRef = resolveBuiltinClass("Boolean", contextCls);
+    } else if (op === BinOp.DIVISION) {
+      classRef = resolveBuiltinClass("Real", contextCls);
+    } else {
+      // Type promotion: if either operand is Real, result is Real
+      const r1 = t1?.classRef ?? null;
+      const r2 = t2?.classRef ?? null;
+      if (r1 && r2) {
+        const n1 = getBaseTypeName(r1);
+        const n2 = getBaseTypeName(r2);
+        if (n1 === "Real" || n2 === "Real") classRef = resolveBuiltinClass("Real", contextCls);
+        else classRef = r1; // same type
+      } else {
+        classRef = r1 ?? r2;
+      }
+    }
+    if (!classRef) return null;
+
+    // Shape propagation
+    const s1 = t1?.shape ?? [];
+    const s2 = t2?.shape ?? [];
+    let shape: number[];
+    if (s1.length > 0 && s2.length === 0) shape = s1;
+    else if (s2.length > 0 && s1.length === 0) shape = s2;
+    else if (s1.length > 0) shape = s1;
+    else shape = [];
+
+    return { classRef, shape };
+  }
+
+  // Unary expressions
+  if (typeStr === "unary_expression" || (expr.operand && !expr.operand1)) {
+    return inferExpressionTypeDescriptor(expr.operand, contextCls);
+  }
+
+  // If expression: if c then a else b → type of a
+  if (typeStr === "if_expression" || (expr.condition && expr.trueExpression)) {
+    return inferExpressionTypeDescriptor(expr.trueExpression, contextCls);
+  }
+
+  // Function calls
+  if (typeStr === "function_call" || expr.functionReference) {
+    const funcName = expr.functionReferenceName || expr.functionReference?.parts?.[0]?.identifier?.text;
+    if (funcName) {
+      // Functions that always return Real
+      if (
+        [
+          "sin",
+          "cos",
+          "tan",
+          "sqrt",
+          "exp",
+          "log",
+          "log10",
+          "asin",
+          "acos",
+          "atan",
+          "atan2",
+          "sinh",
+          "cosh",
+          "tanh",
+          "der",
+        ].includes(funcName)
+      ) {
+        const cls = resolveBuiltinClass("Real", contextCls);
+        return cls ? { classRef: cls, shape: [] } : null;
+      }
+
+      // Functions that preserve the type of their first argument
+      if (["abs", "mod", "rem", "div", "pre", "previous", "noEvent", "smooth", "delay"].includes(funcName)) {
+        // AST: expr.functionCallArguments.arguments[0].expression
+        const fcArgs = expr.functionCallArguments?.arguments;
+        const firstArg = Array.isArray(fcArgs) && fcArgs.length > 0 ? fcArgs[0]?.expression : null;
+        if (firstArg) {
+          const argDesc = inferExpressionTypeDescriptor(firstArg, contextCls);
+          if (argDesc) return argDesc;
+        }
+        const cls = resolveBuiltinClass("Real", contextCls);
+        return cls ? { classRef: cls, shape: [] } : null;
+      }
+
+      // Functions that return Boolean
+      if (["initial", "terminal", "edge", "change"].includes(funcName)) {
+        const cls = resolveBuiltinClass("Boolean", contextCls);
+        return cls ? { classRef: cls, shape: [] } : null;
+      }
+      if (["integer", "size", "ndims", "Integer", "cardinality", "sign"].includes(funcName)) {
+        const cls = resolveBuiltinClass("Integer", contextCls);
+        return cls ? { classRef: cls, shape: [] } : null;
+      }
+      if (["String"].includes(funcName)) {
+        const cls = resolveBuiltinClass("String", contextCls);
+        return cls ? { classRef: cls, shape: [] } : null;
+      }
+
+      // User-defined functions — resolve output type
+      const comp = contextCls.resolveSimpleName(funcName, false, true);
+      if (comp instanceof ModelicaComponentInstance && comp.classInstance) {
+        for (const el of comp.classInstance.elements) {
+          if (el instanceof ModelicaComponentInstance && el.causality === "output" && el.classInstance) {
+            return getComponentTypeDescriptor(el);
+          }
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Check whether `actual` type is assignment-compatible with `expected` type.
+ * Uses structural subtype checking via the class instance hierarchy,
+ * plus array shape matching.
+ *
+ * Returns null if compatible, or an error descriptor if not.
+ */
+function checkTypeCompatibility(
+  expected: ModelicaTypeDescriptor,
+  actual: ModelicaTypeDescriptor,
+): { kind: "base_type" | "shape" | "non_array_mod" } | null {
+  // Structural subtype check on classRef
+  if (!isClassSubtypeOf(actual.classRef, expected.classRef)) {
+    return { kind: "base_type" };
+  }
+
+  // Check shape compatibility
+  if (expected.shape.length !== actual.shape.length) {
+    if (expected.shape.length > 0 && actual.shape.length === 0) return { kind: "non_array_mod" };
+    return { kind: "shape" };
+  }
+  for (let i = 0; i < expected.shape.length; i++) {
+    if (expected.shape[i] !== actual.shape[i]) return { kind: "shape" };
+  }
+
+  return null; // compatible
+}
+
+/** Format a type descriptor as a human-readable string (e.g., "Real[3, 2]"). */
+function formatTypeDescriptor(desc: ModelicaTypeDescriptor): string {
+  const name = getBaseTypeName(desc.classRef) ?? "?";
+  return desc.shape.length > 0 ? `${name}[${desc.shape.join(", ")}]` : name;
+}
+
+// --- Legacy shims (kept for callers that still use separate type/shape) ---
+
+function inferExpressionType(expr: any, contextCls: ModelicaClassInstance): string | null {
+  const desc = inferExpressionTypeDescriptor(expr, contextCls);
+  return desc ? getBaseTypeName(desc.classRef) : null;
+}
+
+function inferExpressionShape(expr: any, contextCls?: ModelicaClassInstance): number[] {
+  if (contextCls) {
+    return inferExpressionTypeDescriptor(expr, contextCls)?.shape ?? [];
+  }
+  // Fallback without context: only handles literal shapes
+  return inferExpressionShapeLiteral(expr);
+}
+
+/** Shape inference from literal structure only (no name resolution). */
+function inferExpressionShapeLiteral(expr: any): number[] {
+  if (!expr) return [];
+  const typeStr = expr["@type"];
+  if (typeStr === "ArrayConstructor" && expr.expressionList) {
+    const exprs = expr.expressionList.expressions ?? [];
+    if (exprs.length === 0) return [0];
+    const innerShape = inferExpressionShapeLiteral(exprs[0]);
+    return [exprs.length, ...innerShape];
+  }
+  if (typeStr === "ArrayConcatenation" && expr.expressionLists) {
+    const rows = expr.expressionLists ?? [];
+    return [rows.length, rows[0]?.expressions?.length ?? 0];
+  }
+  if (typeStr === "binary_expression" || expr.operand1) {
+    const s1 = inferExpressionShapeLiteral(expr.operand1);
+    const s2 = inferExpressionShapeLiteral(expr.operand2);
+    if (s1.length > 0 && s2.length === 0) return s1;
+    if (s2.length > 0 && s1.length === 0) return s2;
+    if (s1.length > 0) return s1;
+  }
+  return [];
+}
 
 ModelicaLinter.register(
   [
+    ModelicaErrorCode.TYPE_MISMATCH_BINDING,
     ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH,
     ModelicaErrorCode.NON_ARRAY_MODIFICATION,
     ModelicaErrorCode.BINDING_DIMENSION_MISMATCH,
@@ -837,170 +1162,157 @@ ModelicaLinter.register(
     visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
       if (node.classKind === ModelicaClassKind.FUNCTION || node.classKind === ModelicaClassKind.PACKAGE) return;
 
-      function checkExprShape(componentName: string, expr: any, expectedShape: number[], astForDiag: any): boolean {
-        if (!expr) return true;
-
-        // Handle ArrayConcatenation: [a, b; c, d] → cat(2, ...) with shape [numRows, numCols]
-        if (expr["@type"] === "ArrayConcatenation" && expr.expressionLists) {
-          const rows = expr.expressionLists ?? [];
-          const numRows = rows.length;
-          const numCols = rows[0]?.expressions?.length ?? 0;
-          const actualShape = [numRows, numCols];
-
-          // Check if actual matrix shape matches expected dimensions
-          const shapeMismatch =
-            expectedShape.length !== actualShape.length ||
-            expectedShape.some((d: number, i: number) => d !== actualShape[i]);
-
-          if (shapeMismatch) {
-            // Build cat(2, ...) expression text matching OMC format
-            // Each scalar element becomes {{x}}, each row becomes a column vector
-            const catArgs: string[] = [];
-            for (const row of rows) {
-              for (const e of row.expressions ?? []) {
-                const eText = e.text ?? "?";
-                catArgs.push(`{{${eText}}}`);
-              }
-            }
-            const exprText = `cat(2, ${catArgs.join(", ")})`;
-
-            diagnosticsCallback(
-              ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.severity,
-              ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.code,
-              ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.message(
-                componentName,
-                exprText,
-                expectedShape.join(", "),
-                actualShape.join(", "),
-              ),
-              astForDiag ?? expr,
-            );
-            return false;
-          }
-          return true;
-        }
-
-        if (expr["@type"] === "ArrayConstructor" && expr.expressionList) {
-          const exprs = expr.expressionList.expressions ?? [];
-          if (expectedShape.length === 0) {
-            // Scalar component with array binding: Real x = {1, 2, 3}
-            const exprText = getExpressionText(expr);
-            const actualShape = inferExpressionShape(expr);
-            diagnosticsCallback(
-              ModelicaErrorCode.BINDING_DIMENSION_MISMATCH.severity,
-              ModelicaErrorCode.BINDING_DIMENSION_MISMATCH.code,
-              ModelicaErrorCode.BINDING_DIMENSION_MISMATCH.message(
-                componentName,
-                exprText,
-                "", // empty = scalar
-                actualShape.join(", "),
-              ),
-              astForDiag ?? expr,
-            );
-            return false;
-          }
-          if (exprs.length !== expectedShape[0]) {
-            const exprText = expr.text ?? "{...}";
-            diagnosticsCallback(
-              ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.severity,
-              ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.code,
-              ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.message(
-                componentName,
-                exprText,
-                `${expectedShape[0]}`,
-                `${exprs.length}`,
-              ),
-              astForDiag ?? expr,
-            );
-            return false;
-          } else if (expectedShape.length > 1) {
-            for (const child of exprs) {
-              if (!checkExprShape(componentName, child, expectedShape.slice(1), astForDiag)) return false;
-            }
-          }
-        }
-        return true;
-      }
-
-      /** Check if an expression is a scalar literal/reference (not an array). */
-      function isScalarExpression(expr: any): boolean {
-        if (!expr) return false;
-        const typeStr = expr["@type"];
-        if (typeStr === "ArrayConstructor" || typeStr === "ArrayConcatenation") return false;
-        // Numeric/string/boolean literals
-        if (
-          typeStr === "UNSIGNED_REAL" ||
-          typeStr === "UNSIGNED_INTEGER" ||
-          typeStr === "unsigned_real" ||
-          typeStr === "unsigned_integer" ||
-          typeStr === "BOOLEAN" ||
-          typeStr === "boolean_literal" ||
-          typeStr === "STRING" ||
-          typeStr === "string_literal"
-        )
-          return true;
-        // Component references are generally scalar unless subscripted
-        if (typeStr === "ComponentReference" || typeStr === "component_reference" || (expr.parts && !expr.operand1))
-          return true;
-        // Binary/unary expressions on scalars
-        if (expr.operand1 || expr.operand) return true;
-        // Simple text-based values
-        if (expr.text !== undefined && expr.text !== null) return true;
-        return false;
-      }
-
-      function getComponentArrayShape(comp: ModelicaComponentInstance): number[] {
-        const dims = (comp as any).arrayDimensions;
-        if (Array.isArray(dims)) {
-          const shape = dims.map((d: any) => d.value);
-          if (shape.some((v) => typeof v !== "number")) return [];
-          return shape;
-        }
-        return [];
-      }
-
       for (const element of node.elements) {
         if (!(element instanceof ModelicaComponentInstance)) continue;
-        const expectedShape = getComponentArrayShape(element);
+        if (!element.classInstance) continue;
 
-        // Get the binding expression
-        const directExpr = (element.modification as any)?.modificationExpression?.expression;
+        const expectedDesc = getComponentTypeDescriptor(element);
+        if (!expectedDesc) continue;
 
-        if (expectedShape.length === 0) {
-          // Scalar component — check if binding is an array (e.g., Real x = {1,2,3})
-          if (directExpr) {
-            checkExprShape(element.name ?? "?", directExpr, expectedShape, element.abstractSyntaxNode);
-          }
-          continue;
-        }
+        // Check the main binding expression
+        const mod = element.modification;
+        if (!mod) continue;
 
-        // Array component — check for scalar binding (e.g., Real x[3] = 1)
-        if (directExpr && isScalarExpression(directExpr)) {
-          const exprText = getExpressionText(directExpr);
+        const bindingExpr = mod.modificationExpression?.expression;
+        if (!bindingExpr) continue;
+
+        const actualDesc = inferExpressionTypeDescriptor(bindingExpr, node);
+        if (!actualDesc) continue;
+
+        const compat = checkTypeCompatibility(expectedDesc, actualDesc);
+        if (!compat) continue;
+
+        const astNode = element.abstractSyntaxNode;
+        const exprText = getExpressionText(bindingExpr);
+
+        if (compat.kind === "base_type") {
+          // Base type mismatch (e.g., Real x = "hello", Integer x[3] = {"1","2","3"})
+          diagnosticsCallback(
+            ModelicaErrorCode.TYPE_MISMATCH_BINDING.severity,
+            ModelicaErrorCode.TYPE_MISMATCH_BINDING.code,
+            ModelicaErrorCode.TYPE_MISMATCH_BINDING.message(
+              element.name ?? "",
+              formatTypeDescriptor(expectedDesc),
+              exprText,
+              formatTypeDescriptor(actualDesc),
+            ),
+            astNode,
+          );
+        } else if (compat.kind === "non_array_mod") {
+          // Scalar assigned to array component (e.g., Real x[3] = 1)
           diagnosticsCallback(
             ModelicaErrorCode.NON_ARRAY_MODIFICATION.severity,
             ModelicaErrorCode.NON_ARRAY_MODIFICATION.code,
             ModelicaErrorCode.NON_ARRAY_MODIFICATION.message(exprText, element.name ?? "?"),
-            element.abstractSyntaxNode ?? directExpr,
+            astNode,
           );
-          continue;
-        }
-
-        // Check the element's modifications (bindings and attributes)
-        for (const mod of element.modification?.modificationArguments ?? []) {
-          const expr = (mod as any).expression;
-          if (expr) {
-            checkExprShape(element.name ?? "?", expr, expectedShape, element.abstractSyntaxNode);
-          }
-        }
-        // Also check if the modification itself has an expression (for direct assignments)
-        if (directExpr) {
-          checkExprShape(element.name ?? "?", directExpr, expectedShape, element.abstractSyntaxNode);
+        } else if (compat.kind === "shape") {
+          // Shape mismatch (e.g., Real x = {1,2,3} or Real x[3] = {1,2})
+          diagnosticsCallback(
+            ModelicaErrorCode.BINDING_DIMENSION_MISMATCH.severity,
+            ModelicaErrorCode.BINDING_DIMENSION_MISMATCH.code,
+            ModelicaErrorCode.BINDING_DIMENSION_MISMATCH.message(
+              element.name ?? "?",
+              exprText,
+              expectedDesc.shape.join(", "),
+              actualDesc.shape.join(", "),
+            ),
+            astNode,
+          );
         }
       }
     },
   },
 );
+
+// ---------------------------------------------------------------------------
+// Type mismatch in builtin attributes (start, quantity, min, max, fixed, etc.)
+// ---------------------------------------------------------------------------
+
+/** Expected types for builtin attributes of each primitive type. */
+const BUILTIN_ATTRIBUTE_TYPES: Record<string, Record<string, string>> = {
+  Real: {
+    start: "Real",
+    min: "Real",
+    max: "Real",
+    nominal: "Real",
+    quantity: "String",
+    unit: "String",
+    displayUnit: "String",
+    fixed: "Boolean",
+    stateSelect: "StateSelect",
+  },
+  Integer: {
+    start: "Integer",
+    min: "Integer",
+    max: "Integer",
+    quantity: "String",
+    fixed: "Boolean",
+  },
+  Boolean: {
+    start: "Boolean",
+    quantity: "String",
+    fixed: "Boolean",
+  },
+  String: {
+    start: "String",
+    quantity: "String",
+  },
+};
+
+ModelicaLinter.register(ModelicaErrorCode.BUILTIN_ATTRIBUTE_TYPE_MISMATCH, {
+  visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+    for (const element of node.elements) {
+      if (!(element instanceof ModelicaComponentInstance)) continue;
+      if (!element.classInstance) continue;
+
+      const compTypeName = getBaseTypeName(element.classInstance);
+      if (!compTypeName) continue;
+
+      const attrTypes = BUILTIN_ATTRIBUTE_TYPES[compTypeName];
+      if (!attrTypes) continue;
+
+      const args = element.modification?.modificationArguments;
+      if (!args) continue;
+
+      for (const arg of args) {
+        const attrName = typeof arg.name === "string" ? arg.name : arg.name?.text;
+        if (!attrName) continue;
+
+        const expectedType = attrTypes[attrName];
+        if (!expectedType) continue;
+
+        const expr = arg.modificationExpression?.expression ?? arg.expression;
+        if (!expr) continue;
+
+        const actualType = inferExpressionType(expr, node);
+        if (!actualType) continue;
+
+        // Check type compatibility
+        let isMismatch = false;
+        if (expectedType === "Real" && actualType !== "Real" && actualType !== "Integer") isMismatch = true;
+        else if (expectedType === "Integer" && actualType !== "Integer") isMismatch = true;
+        else if (expectedType === "Boolean" && actualType !== "Boolean") isMismatch = true;
+        else if (expectedType === "String" && actualType !== "String") isMismatch = true;
+
+        if (isMismatch) {
+          diagnosticsCallback(
+            ModelicaErrorCode.BUILTIN_ATTRIBUTE_TYPE_MISMATCH.severity,
+            ModelicaErrorCode.BUILTIN_ATTRIBUTE_TYPE_MISMATCH.code,
+            ModelicaErrorCode.BUILTIN_ATTRIBUTE_TYPE_MISMATCH.message(
+              attrName,
+              getExpressionText(expr),
+              expectedType,
+              actualType,
+            ),
+            element.abstractSyntaxNode ?? null,
+          );
+        }
+      }
+    }
+  },
+});
+
 // ---------------------------------------------------------------------------
 // Negative array dimensions: Real x[-2] is invalid
 // ---------------------------------------------------------------------------
@@ -1277,140 +1589,6 @@ function getExpressionText(expr: any): string {
     return (expr.operator || "-") + getExpressionText(expr.operand);
   }
   return "...";
-}
-
-function inferExpressionShape(expr: any): number[] {
-  if (!expr) return [];
-  const typeStr = expr["@type"];
-  if (typeStr === "ArrayConstructor" && expr.expressionList) {
-    const exprs = expr.expressionList.expressions ?? [];
-    if (exprs.length === 0) return [0];
-    const innerShape = inferExpressionShape(exprs[0]);
-    return [exprs.length, ...innerShape];
-  }
-  // ArrayConcatenation: [a, b; c, d] → shape [numRows, numCols]
-  if (typeStr === "ArrayConcatenation" && expr.expressionLists) {
-    const rows = expr.expressionLists ?? [];
-    const numRows = rows.length;
-    const numCols = rows[0]?.expressions?.length ?? 0;
-    return [numRows, numCols];
-  }
-  // Binary expression: array op scalar → array shape; scalar op array → array shape
-  if (typeStr === "binary_expression" || expr.operand1) {
-    const s1 = inferExpressionShape(expr.operand1);
-    const s2 = inferExpressionShape(expr.operand2);
-    if (s1.length > 0 && s2.length === 0) return s1;
-    if (s2.length > 0 && s1.length === 0) return s2;
-    if (s1.length > 0 && s2.length > 0) return s1; // same-shape assumed
-  }
-  // Simplified for literals and references that are scalars (empty shape)
-  return [];
-}
-
-function inferExpressionType(expr: any, contextCls: ModelicaClassInstance): string | null {
-  if (!expr) return null;
-
-  const typeStr = expr["@type"];
-  if (typeStr === "UNSIGNED_REAL" || typeStr === "unsigned_real" || typeStr === "FLOAT" || typeStr === "Real")
-    return "Real";
-  if (typeStr === "UNSIGNED_INTEGER" || typeStr === "unsigned_integer" || typeStr === "Integer") return "Integer";
-  if (typeStr === "BOOLEAN" || typeStr === "boolean_literal" || typeStr === "Boolean") return "Boolean";
-  if (typeStr === "STRING" || typeStr === "string_literal" || typeStr === "String") return "String";
-
-  // Component references
-  if (typeStr === "ComponentReference" || typeStr === "component_reference" || (expr.parts && !expr.operand1)) {
-    const parts = expr.parts;
-    if (parts && parts.length > 0) {
-      const name = parts[0]?.identifier?.text;
-      if (name) {
-        if (name === "time") return "Real";
-        const comp = contextCls.resolveSimpleName(name, false, true);
-        if (comp instanceof ModelicaComponentInstance && comp.classInstance) {
-          return getBaseTypeName(comp.classInstance);
-        }
-      }
-    }
-  }
-
-  // Binary expressions
-  if (typeStr === "binary_expression" || expr.operand1) {
-    if (expr.operator === BinOp.DIVISION) return "Real";
-
-    const t1 = inferExpressionType(expr.operand1, contextCls);
-    const t2 = inferExpressionType(expr.operand2, contextCls);
-
-    if (t1 === "Real" || t2 === "Real") return "Real";
-    if (t1 === "Integer" && t2 === "Integer") return "Integer";
-    if (t1 === "Boolean" && t2 === "Boolean") return "Boolean";
-    if (t1 === "String" && t2 === "String") return "String";
-    return t1 || t2;
-  }
-
-  // Unary expressions
-  if (typeStr === "unary_expression" || (expr.operand && !expr.operand1)) {
-    return inferExpressionType(expr.operand, contextCls);
-  }
-
-  // Array literals
-  if (typeStr === "ArrayConstructor" && expr.expressionList) {
-    const exprs = expr.expressionList.expressions;
-    if (exprs && exprs.length > 0) {
-      return inferExpressionType(exprs[0], contextCls);
-    }
-  }
-  if (typeStr === "ArrayConcatenation" && expr.expressionLists) {
-    const rows = expr.expressionLists;
-    if (rows && rows.length > 0 && rows[0].expressions && rows[0].expressions.length > 0) {
-      return inferExpressionType(rows[0].expressions[0], contextCls);
-    }
-  }
-
-  // Function calls
-  if (typeStr === "function_call" || expr.functionReference) {
-    const funcName = expr.functionReferenceName || expr.functionReference?.parts?.[0]?.identifier?.text;
-    if (funcName) {
-      if (
-        [
-          "sin",
-          "cos",
-          "tan",
-          "sqrt",
-          "exp",
-          "log",
-          "log10",
-          "asin",
-          "acos",
-          "atan",
-          "atan2",
-          "sinh",
-          "cosh",
-          "tanh",
-          "abs",
-          "sign",
-          "der",
-          "pre",
-          "mod",
-          "rem",
-          "div",
-        ].includes(funcName)
-      )
-        return "Real";
-      if (["integer", "size", "ndims", "Integer"].includes(funcName)) return "Integer";
-      if (["String"].includes(funcName)) return "String";
-
-      const comp = contextCls.resolveSimpleName(funcName, false, true);
-      if (comp instanceof ModelicaComponentInstance && comp.classInstance) {
-        // Functions usually have an output parameter
-        for (const el of comp.classInstance.elements) {
-          if (el instanceof ModelicaComponentInstance && el.causality === "output" && el.classInstance) {
-            return getBaseTypeName(el.classInstance);
-          }
-        }
-      }
-    }
-  }
-
-  return null;
 }
 
 ModelicaLinter.register(

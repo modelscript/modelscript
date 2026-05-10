@@ -621,6 +621,13 @@ export const ModelicaErrorCode = {
     severity: "error",
     message: (componentName: string) => `Constant '${componentName}' must be fixed but has 'fixed = false'`,
   },
+  BUILTIN_ATTRIBUTE_TYPE_MISMATCH: {
+    code: 3014,
+    rule: "builtin-attribute-type-mismatch",
+    severity: "error",
+    message: (attrName: string, bindingText: string, expectedType: string, actualType: string) =>
+      `Type mismatch in binding ${attrName} = ${bindingText}, expected subtype of ${expectedType}, got type ${actualType}.`,
+  },
 } as const satisfies Record<string, ErrorCodeDef>;
 
 // Derive the union type of all error code keys
