@@ -833,17 +833,37 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
    * @param args - A tuple of `[prefixString, activeDAE]` to pass context down.
    */
   visitClassInstance(node: any /* ModelicaClassInstance */, args: [string, ModelicaDAE]): void {
-    // Cycle detection: if the same class (by semantic ID) is already on the
+    // Cycle detection: if the same class (by semantic ID or name) is already on the
     // active instantiation stack, we have a recursive component hierarchy
     // (e.g., incorrect type resolution causing Temperature → FluidPort_a →
     // MassFlowRate → System → Temperature). Per Modelica §4.5.3, classes may
     // not contain components of their own type. Silently skip rather than
     // stack-overflowing.
+    // We check if the same class is on the stack AND the current prefix is a
+    // descendant of the prefix where it was previously visited. This avoids
+    // false positives for sibling components of the same type (e.g., B b; B b2;).
     const nodeId = (node as any).id ?? node;
     const nodeName = node.name || nodeId || "Unknown";
-    const alreadyOnStack = this.activeClassStack.some(
-      (n) => ((n as any).id ?? n) === nodeId || (n.name && n.name === nodeName),
-    );
+    const currentPrefix = args[0];
+
+    // Safety: absolute depth limit to prevent stack overflow on complex undetected cycles
+    if (this.activeClassStack.length > 50) {
+      return;
+    }
+
+    const alreadyOnStack = this.activeClassStack.some((n) => {
+      const matchesId = ((n as any).id ?? n) === nodeId;
+      const matchesName = n.name && n.name === nodeName;
+      if (!matchesId && !matchesName) return false;
+      // Same class found on stack — check if current prefix is a descendant
+      if (!this.activePrefixes.has(n)) return false; // Leftover from unbalanced push — not a real cycle
+      const prevPrefix = this.activePrefixes.get(n) ?? "";
+      // If current prefix starts with previous prefix, it's a nesting cycle
+      if (currentPrefix === prevPrefix) return true; // Same exact path
+      if (currentPrefix.startsWith(prevPrefix + ".")) return true; // Descendant path
+      if (prevPrefix === "" && currentPrefix !== "") return true; // Root class — everything is a descendant
+      return false;
+    });
     if (alreadyOnStack) {
       // Cycle detected — skip this class to prevent infinite recursion
       return;
@@ -1074,6 +1094,56 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
               const newMod = modArg.modification || modArg;
               const mergedMod = ModelicaFlattener.mergeModifications(newMod, el.modification);
               Object.defineProperty(el, "modification", { value: mergedMod, writable: true, configurable: true });
+            } else {
+              // Class modification: mod name matches the element's *class* type name, not component name.
+              // e.g., extends A(B(x = 2.0)) where component b is of type B.
+              const classModArg = extMod.modificationArguments.find((m: any) => {
+                const modName = m.name?.text ?? m.name?.parts?.[0]?.text ?? m.name;
+                if (!modName) return false;
+                const elClassName = el.classInstance?.name;
+                const elShortTarget = (el.classInstance as any)?.shortClassTarget?.name;
+                return modName === elClassName || modName === elShortTarget;
+              });
+              if (classModArg) {
+                // Extract sub-modifications from the class mod and apply to this element.
+                // The wrapper's .modification returns { ast: <Modification AST>, scope }.
+                // We need to build a proper modification wrapper from ast.classModification.
+                const rawMod = classModArg.modification;
+                const astNode = rawMod?.ast;
+                const classMod = astNode?.classModification;
+                if (classMod && classMod.modificationArguments) {
+                  // Build a modification-like object with modificationArguments
+                  const wrappedMod = {
+                    get modificationArguments() {
+                      return classMod.modificationArguments.map((a: any) => ({
+                        get name() {
+                          return a.name?.parts?.map((p: any) => p.text).join(".") ?? a.identifier?.text ?? null;
+                        },
+                        get modification() {
+                          return a.modification ? { ast: a.modification, scope: rawMod?.scope } : null;
+                        },
+                        get modificationExpression() {
+                          if (!a.modification?.modificationExpression) return null;
+                          return { expression: a.modification.modificationExpression.expression };
+                        },
+                        get expression() {
+                          return this.modificationExpression?.expression ?? null;
+                        },
+                      }));
+                    },
+                    get modificationExpression() {
+                      const modExpr = astNode?.modificationExpression;
+                      if (!modExpr) return null;
+                      return { expression: modExpr.expression };
+                    },
+                    get expression() {
+                      return this.modificationExpression?.expression ?? null;
+                    },
+                  };
+                  const mergedMod = ModelicaFlattener.mergeModifications(wrappedMod, el.modification);
+                  Object.defineProperty(el, "modification", { value: mergedMod, writable: true, configurable: true });
+                }
+              }
             }
           }
         }
