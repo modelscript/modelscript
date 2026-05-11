@@ -192,7 +192,7 @@ export class Context extends Scope {
     // Hydrate root classes
     for (const id of this.#queryEngine.index.symbols.keys()) {
       const entry = this.#queryEngine.index.symbols.get(id);
-      if (entry && entry.parentId === null && entry.kind === "Class") {
+      if (entry && (entry.parentId === null || entry.parentId === id) && entry.kind === "Class") {
         if (!this.#classes.some((c) => c.id === id)) {
           this.#classes.push(new ModelicaClassInstance(id, this.#queryEngine.toQueryDB()));
         }
@@ -218,7 +218,7 @@ export class Context extends Scope {
     // Hydrate root classes
     for (const id of this.#queryEngine.index.symbols.keys()) {
       const entry = this.#queryEngine.index.symbols.get(id);
-      if (entry && entry.parentId === null && entry.kind === "Class") {
+      if (entry && (entry.parentId === null || entry.parentId === id) && entry.kind === "Class") {
         if (!this.#classes.some((c) => c.id === id)) {
           this.#classes.push(new ModelicaClassInstance(id, this.#queryEngine.toQueryDB()));
         }
@@ -568,7 +568,12 @@ export class Context extends Scope {
     this.#classes = this.#classes.filter((c) => c.db.symbol(c.id)?.resourceId !== uri);
     for (const id of this.#queryEngine.index.symbols.keys()) {
       const entry = this.#queryEngine.index.symbols.get(id);
-      if (entry && entry.parentId === null && entry.kind === "Class" && entry.resourceId === uri) {
+      if (
+        entry &&
+        (entry.parentId === null || entry.parentId === id) &&
+        entry.kind === "Class" &&
+        entry.resourceId === uri
+      ) {
         this.#classes.push(new ModelicaClassInstance(id, this.#queryEngine.toQueryDB()));
       }
     }
