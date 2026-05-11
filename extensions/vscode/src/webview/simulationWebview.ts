@@ -15,6 +15,22 @@ interface SimulationData {
   sweepResults?: { value: number; y: number[][] }[];
 }
 
+/** Per-variable statistics from Monte Carlo analysis */
+interface MCVariableStats {
+  mean: number[];
+  stddev: number[];
+  ciLo: number[];
+  ciHi: number[];
+  percentiles: Record<string, number[]>;
+}
+
+interface MonteCarloData {
+  t: number[];
+  statistics: Record<string, MCVariableStats>;
+  numSamples: number;
+  convergence: { coeffOfVariation: number; effectiveSampleSize: number };
+}
+
 const COLORS = [
   "#0969da",
   "#2da44e",
@@ -33,6 +49,7 @@ const COLORS = [
 ];
 
 let currentData: SimulationData | null = null;
+let currentMCData: MonteCarloData | null = null;
 let isDark = true;
 const hiddenVars = new Set<string>();
 const seenVars = new Set<string>();
@@ -111,6 +128,14 @@ const optControlsInput = document.getElementById("opt-controls") as HTMLInputEle
 const optToleranceInput = document.getElementById("opt-tolerance") as HTMLInputElement;
 const optItersInput = document.getElementById("opt-iters") as HTMLInputElement;
 
+// Monte Carlo inputs
+const mcSection = document.getElementById("mc-section")!;
+const btnMonteCarlo = document.getElementById("btn-montecarlo")!;
+const mcParamsInput = document.getElementById("mc-params") as HTMLTextAreaElement;
+const mcSamplesInput = document.getElementById("mc-samples") as HTMLInputElement;
+const mcConfidenceInput = document.getElementById("mc-confidence") as HTMLInputElement;
+const mcMethodSelect = document.getElementById("mc-method") as HTMLSelectElement;
+
 let currentParameters: Record<string, HTMLInputElement> = {};
 /* eslint-enable @typescript-eslint/no-non-null-assertion */
 
@@ -182,6 +207,24 @@ function calculateDefaultBounds(): { tMin: number; tMax: number; yMin: number; y
             if (v > yMax) yMax = v;
           }
         }
+      }
+    }
+    // Include MC fan-chart extents in bounds
+    if (currentMCData) {
+      for (const state of states) {
+        if (hiddenVars.has(state)) continue;
+        const stats = currentMCData.statistics[state];
+        if (!stats) continue;
+        const loArr = stats.percentiles.p5 || stats.ciLo;
+        const hiArr = stats.percentiles.p95 || stats.ciHi;
+        if (loArr)
+          for (const v of loArr) {
+            if (isFinite(v) && v < yMin) yMin = v;
+          }
+        if (hiArr)
+          for (const v of hiArr) {
+            if (isFinite(v) && v > yMax) yMax = v;
+          }
       }
     }
     if (!isFinite(yMin) || !isFinite(yMax)) {
@@ -286,6 +329,54 @@ window.addEventListener("message", (event) => {
 
     calibrationSection.style.display = "flex";
     optimizationSection.style.display = "flex";
+    mcSection.style.display = "flex";
+    currentMCData = null; // Clear old MC data on new simulation
+
+    draw();
+  } else if (msg.type === "monteCarloData") {
+    // Monte Carlo uncertainty results → fan chart
+    isLiveMode = false;
+    isDark = msg.isDark;
+    const mc = msg.data;
+
+    currentMCData = {
+      t: mc.t,
+      statistics: mc.statistics,
+      numSamples: mc.numSamples,
+      convergence: mc.convergence,
+    };
+
+    // Build simulation-like data using mean values
+    const varNames = Object.keys(mc.statistics);
+    const nT = mc.t.length;
+    const yMatrix: number[][] = [];
+    for (let i = 0; i < nT; i++) {
+      const row: number[] = [];
+      for (const name of varNames) {
+        row.push(mc.statistics[name].mean[i] ?? 0);
+      }
+      yMatrix.push(row);
+    }
+
+    currentData = {
+      t: mc.t,
+      y: yMatrix,
+      states: varNames,
+    };
+
+    varNames.forEach((state: string) => {
+      if (!seenVars.has(state)) {
+        hiddenVars.add(state);
+        seenVars.add(state);
+      }
+    });
+
+    placeholderEl.style.display = "none";
+    containerEl.style.display = "flex";
+    toolbarEl.classList.add("visible");
+    toolbarEl.classList.remove("live-mode");
+    stopLiveLoop();
+    buildTreeView(varNames);
 
     draw();
   } else if (msg.type === "calibrationData") {
@@ -469,6 +560,26 @@ btnOptimize?.addEventListener("click", () => {
       controls: controls.length > 0 ? controls : undefined,
       tolerance: optToleranceInput.value ? parseFloat(optToleranceInput.value) : undefined,
       maxIterations: optItersInput.value ? parseInt(optItersInput.value) : 200,
+    },
+  });
+});
+
+btnMonteCarlo?.addEventListener("click", () => {
+  if (!vscodeApi) return;
+  let parameters: unknown[] = [];
+  try {
+    parameters = JSON.parse(mcParamsInput.value || "[]");
+  } catch {
+    // Invalid JSON — send empty
+  }
+
+  vscodeApi.postMessage({
+    type: "montecarloRequest",
+    payload: {
+      numSamples: mcSamplesInput.value ? parseInt(mcSamplesInput.value) : 200,
+      confidenceLevel: mcConfidenceInput.value ? parseFloat(mcConfidenceInput.value) : 0.95,
+      method: mcMethodSelect.value,
+      parameters,
     },
   });
 });
@@ -1132,7 +1243,16 @@ function drawLive(): void {
   ctx.restore();
 }
 
-// ── Helper ──
+// ── Helpers ──
+
+/** Convert a hex color like "#0969da" to "rgba(9, 105, 218, alpha)" */
+function hexToRgba(hex: string, alpha: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 function drawSmoothSpline(ctx: CanvasRenderingContext2D, pts: { x: number; y: number }[]) {
   if (pts.length === 0) return;
   ctx.moveTo(pts[0].x, pts[0].y);
@@ -1256,6 +1376,61 @@ function draw() {
   ctx.rect(margin.left, margin.top, plotW, plotH);
   ctx.clip();
 
+  // ── Fan-chart bands (Monte Carlo percentile shading) ──
+  if (currentMCData && currentMCData.t.length > 0) {
+    const mcT = currentMCData.t;
+    for (let vi = 0; vi < states.length; vi++) {
+      if (hiddenVars.has(states[vi])) continue;
+      const stats = currentMCData.statistics[states[vi]];
+      if (!stats) continue;
+
+      const color = COLORS[vi % COLORS.length];
+
+      // Draw bands from widest (lightest) to narrowest (darkest)
+      const bands: { lo: number[]; hi: number[]; alpha: number }[] = [];
+
+      // Band 1: p5 to p95 (lightest)
+      if (stats.percentiles.p5 && stats.percentiles.p95) {
+        bands.push({ lo: stats.percentiles.p5, hi: stats.percentiles.p95, alpha: 0.1 });
+      }
+      // Band 2: p25 to p75
+      if (stats.percentiles.p25 && stats.percentiles.p75) {
+        bands.push({ lo: stats.percentiles.p25, hi: stats.percentiles.p75, alpha: 0.18 });
+      }
+      // Band 3: confidence interval (darkest shading)
+      if (stats.ciLo && stats.ciHi) {
+        bands.push({ lo: stats.ciLo, hi: stats.ciHi, alpha: 0.28 });
+      }
+
+      for (const band of bands) {
+        ctx.fillStyle = hexToRgba(color, band.alpha);
+        ctx.beginPath();
+        // Upper boundary (left to right)
+        let started = false;
+        for (let i = 0; i < mcT.length; i++) {
+          const hi = band.hi[i];
+          if (hi === undefined || !isFinite(hi)) continue;
+          const x = xScale(mcT[i]);
+          const y = yScale(hi);
+          if (!started) {
+            ctx.moveTo(x, y);
+            started = true;
+          } else {
+            ctx.lineTo(x, y);
+          }
+        }
+        // Lower boundary (right to left)
+        for (let i = mcT.length - 1; i >= 0; i--) {
+          const lo = band.lo[i];
+          if (lo === undefined || !isFinite(lo)) continue;
+          ctx.lineTo(xScale(mcT[i]), yScale(lo));
+        }
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+  }
+
   // Draw lines
   const { sweepResults } = currentData;
   const sweepCount = sweepResults ? sweepResults.length : 1;
@@ -1264,7 +1439,7 @@ function draw() {
 
     for (let si = 0; si < sweepCount; si++) {
       ctx.strokeStyle = COLORS[(vi * sweepCount + si) % COLORS.length];
-      ctx.lineWidth = 1.5;
+      ctx.lineWidth = currentMCData ? 2.0 : 1.5;
       ctx.lineJoin = "round";
       ctx.beginPath();
 
@@ -1381,7 +1556,19 @@ canvas.addEventListener("mousemove", (e) => {
       const color = COLORS[(vi * sweepCount + si) % COLORS.length];
       const baseName = escapeHtmlSim(states[vi]);
       const safeName = sweepResults ? `${baseName} (${sweepResults[si].value})` : baseName;
-      html += `<div><span style="color:${color}">●</span> ${safeName}: ${val !== undefined ? val.toFixed(6) : "N/A"}</div>`;
+      html += `<div><span style="color:${color}">●</span> ${safeName}: ${val !== undefined ? val.toFixed(6) : "N/A"}`;
+
+      // Add MC uncertainty info
+      if (currentMCData && !sweepResults) {
+        const stats = currentMCData.statistics[states[vi]];
+        if (stats && stats.stddev[closest] !== undefined) {
+          const sd = stats.stddev[closest];
+          const ciLo = stats.ciLo[closest];
+          const ciHi = stats.ciHi[closest];
+          html += `<br><span style="opacity:0.7;font-size:11px;margin-left:16px">σ=${sd.toFixed(4)} CI=[${ciLo.toFixed(4)}, ${ciHi.toFixed(4)}]</span>`;
+        }
+      }
+      html += `</div>`;
     }
   }
 

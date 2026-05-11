@@ -337,6 +337,40 @@ export class SimulationPanel {
               });
             },
           );
+        } else if (msg.type === "montecarloRequest" && this.client) {
+          const uri = this.sourceUri;
+          if (!uri) return;
+
+          await vscode.window.withProgress(
+            {
+              location: vscode.ProgressLocation.Notification,
+              title: "Running Monte Carlo uncertainty analysis...",
+              cancellable: false,
+            },
+            async () => {
+              if (!this.client) return;
+              const result: GenericWorkerResult = await this.client.sendRequest("modelscript/montecarlo", {
+                uri,
+                numSamples: msg.payload.numSamples,
+                confidenceLevel: msg.payload.confidenceLevel,
+                method: msg.payload.method,
+                parameters: msg.payload.parameters,
+              });
+
+              if (result.error || !result.success) {
+                vscode.window.showErrorMessage(`Monte Carlo failed: ${result.error || result.message}`);
+                return;
+              }
+
+              this.panel.webview.postMessage({
+                type: "monteCarloData",
+                data: result,
+                isDark:
+                  vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
+                  vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast,
+              });
+            },
+          );
         }
       },
       null,
@@ -725,6 +759,27 @@ export class SimulationPanel {
           <div class="settings-row"><label>Max Iterations</label><input type="number" id="opt-iters" step="any" value="200"></div>
           <div class="simulate-btn-container">
             <button id="btn-optimize" class="simulate-btn" style="background: var(--vscode-debugIcon-startForeground, #388a34);">Run Optimization</button>
+          </div>
+        </div>
+      </div>
+      <div class="sidebar-section" id="mc-section" style="display: none;">
+        <div class="sidebar-header" onclick="this.parentElement.classList.toggle('collapsed')">Uncertainty (Monte Carlo)</div>
+        <div class="sidebar-content" id="mc-view">
+          <div style="padding: 4px 16px; font-size: 11px;">
+            <label style="display:block;margin-bottom:4px">Uncertain Parameters (JSON)</label>
+            <textarea id="mc-params" rows="5" style="width: 100%; box-sizing: border-box; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); font-family: monospace; font-size: 10px;" placeholder='[{"name":"k","distribution":"gaussian","mean":1.0,"stddev":0.1}]'></textarea>
+          </div>
+          <div class="settings-row"><label>Samples</label><input type="number" id="mc-samples" step="1" value="200"></div>
+          <div class="settings-row"><label>Confidence</label><input type="number" id="mc-confidence" step="0.01" value="0.95"></div>
+          <div class="settings-row"><label>Method</label>
+            <select id="mc-method" style="width:80px;background:var(--vscode-input-background);color:var(--vscode-input-foreground);border:1px solid var(--vscode-input-border)">
+              <option value="crude">Crude</option>
+              <option value="lhs">LHS</option>
+              <option value="antithetic">Antithetic</option>
+            </select>
+          </div>
+          <div class="simulate-btn-container">
+            <button id="btn-montecarlo" class="simulate-btn" style="background: #8250df;">Run Monte Carlo</button>
           </div>
         </div>
       </div>

@@ -3878,6 +3878,197 @@ connection.onRequest(
   },
 );
 
+// ── Monte Carlo uncertainty estimation ──
+
+connection.onRequest(
+  "modelscript/montecarlo",
+  async (params: {
+    uri: string;
+    className?: string;
+    numSamples?: number;
+    seed?: number;
+    confidenceLevel?: number;
+    method?: "lhs" | "antithetic" | "crude";
+    parameters: {
+      name: string;
+      distribution: string;
+      mean?: number;
+      stddev?: number;
+      lo?: number;
+      hi?: number;
+      mu?: number;
+      sigma?: number;
+      alpha?: number;
+      beta?: number;
+      mode?: number;
+    }[];
+    startTime?: number;
+    stopTime?: number;
+    interval?: number;
+  }): Promise<{
+    success: boolean;
+    numSamples: number;
+    statistics: Record<
+      string,
+      {
+        mean: number[];
+        stddev: number[];
+        ciLo: number[];
+        ciHi: number[];
+        percentiles: Record<string, number[]>;
+      }
+    >;
+    t: number[];
+    convergence: { coeffOfVariation: number; effectiveSampleSize: number };
+    error?: string;
+  }> => {
+    connection.console.info(`[montecarlo] Requested MC for URI: ${params.uri}`);
+    const { runMonteCarloSimulation } = await import("@modelscript/simulator");
+    type RandomVariable = import("@modelscript/simulator").RandomVariable;
+    type Distribution = import("@modelscript/simulator").Distribution;
+
+    let instances = documentInstances.get(params.uri);
+    if (!instances || instances.length === 0) {
+      const doc = documents.get(params.uri);
+      if (doc) {
+        await validateTextDocument(doc);
+        instances = documentInstances.get(params.uri);
+      }
+    }
+    if (!instances || instances.length === 0) {
+      return {
+        success: false,
+        numSamples: 0,
+        statistics: {},
+        t: [],
+        convergence: { coeffOfVariation: Infinity, effectiveSampleSize: 0 },
+        error: "No class instances found.",
+      };
+    }
+
+    let classInstance = instances[0];
+    if (params.className) {
+      const found = instances.find((i) => i.name === params.className);
+      if (found) classInstance = found;
+    }
+
+    try {
+      if (!classInstance.instantiated) classInstance.instantiate();
+
+      const dae = new ModelicaDAE(classInstance.name || "Model");
+      const flattener = new ModelicaFlattener();
+      classInstance.accept(flattener, ["", dae]);
+      flattener.generateFlowBalanceEquations(dae);
+      flattener.foldDAEConstants(dae);
+
+      const simulator = new ModelicaSimulator(dae);
+      simulator.prepare();
+
+      const exp = simulator.dae.experiment;
+      const startTime = params.startTime ?? exp.startTime ?? 0;
+      const stopTime = params.stopTime ?? exp.stopTime ?? 10;
+      const step = params.interval ?? exp.interval ?? (stopTime - startTime) / 500;
+
+      // Build random variable definitions
+      const randomVars: RandomVariable[] = (params.parameters || []).map((p) => {
+        let distribution: Distribution;
+        switch (p.distribution) {
+          case "gaussian":
+          case "normal":
+            distribution = { type: "gaussian", mean: p.mean ?? 0, stddev: p.stddev ?? 1 };
+            break;
+          case "uniform":
+            distribution = { type: "uniform", lo: p.lo ?? 0, hi: p.hi ?? 1 };
+            break;
+          case "lognormal":
+            distribution = { type: "lognormal", mu: p.mu ?? 0, sigma: p.sigma ?? 1 };
+            break;
+          case "beta":
+            distribution = { type: "beta", alpha: p.alpha ?? 2, beta: p.beta ?? 5 };
+            break;
+          case "triangular":
+            distribution = { type: "triangular", lo: p.lo ?? 0, mode: p.mode ?? 0.5, hi: p.hi ?? 1 };
+            break;
+          default:
+            distribution = { type: "gaussian", mean: p.mean ?? 0, stddev: p.stddev ?? 1 };
+        }
+        return { name: p.name, distribution };
+      });
+
+      const simulateFn = (overrides: Map<string, number>) => {
+        return simulator.simulate(startTime, stopTime, step, {
+          solver: "dopri5",
+          equidistantOutput: true,
+          parameterOverrides: overrides,
+        });
+      };
+
+      const mcResult = runMonteCarloSimulation(simulateFn, randomVars, {
+        numSamples: params.numSamples ?? 200,
+        ...(params.seed != null ? { seed: params.seed } : {}),
+        confidenceLevel: params.confidenceLevel ?? 0.95,
+        latinHypercube: params.method === "lhs",
+        antithetic: params.method === "antithetic",
+        storeTrajectories: false,
+      });
+
+      // Build time vector from first simulation
+      const tResult = simulator.simulate(startTime, stopTime, step, {
+        solver: "dopri5",
+        equidistantOutput: true,
+      });
+
+      // Convert statistics to serializable format
+      const statistics: Record<
+        string,
+        {
+          mean: number[];
+          stddev: number[];
+          ciLo: number[];
+          ciHi: number[];
+          percentiles: Record<string, number[]>;
+        }
+      > = {};
+
+      for (const [varName, stats] of mcResult.statistics) {
+        const pcts: Record<string, number[]> = {};
+        for (const [pKey, pVals] of stats.percentiles) {
+          pcts[`p${Math.round(pKey * 100)}`] = pVals;
+        }
+        statistics[varName] = {
+          mean: stats.mean,
+          stddev: stats.stddev,
+          ciLo: stats.ciLo,
+          ciHi: stats.ciHi,
+          percentiles: pcts,
+        };
+      }
+
+      connection.console.info(
+        `[montecarlo] Completed ${mcResult.numSamples} samples, ${Object.keys(statistics).length} variables`,
+      );
+
+      return {
+        success: true,
+        numSamples: mcResult.numSamples,
+        statistics,
+        t: tResult.t,
+        convergence: mcResult.convergence,
+      };
+    } catch (e) {
+      console.error("[montecarlo] Error:", e);
+      return {
+        success: false,
+        numSamples: 0,
+        statistics: {},
+        t: [],
+        convergence: { coeffOfVariation: Infinity, effectiveSampleSize: 0 },
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
+  },
+);
+
 // ── Step-by-step co-simulation API ──
 
 /** Stored simulator instances for step-by-step co-simulation. */
