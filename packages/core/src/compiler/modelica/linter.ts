@@ -1102,7 +1102,16 @@ function checkTypeCompatibility(
     return { kind: "base_type" };
   }
 
-  // Check shape compatibility
+  // Check shape compatibility.
+  // Shape values of 0 represent unknown/flexible dimensions ([:]) that will be
+  // inferred from the binding at flattening time — skip those comparisons.
+  const hasFlexibleExpected = expected.shape.some((d) => d === 0);
+  if (hasFlexibleExpected) {
+    // Don't validate shapes when the expected type has flexible dimensions.
+    // The flattener will infer the actual shape from the binding expression.
+    return null;
+  }
+
   if (expected.shape.length !== actual.shape.length) {
     if (expected.shape.length > 0 && actual.shape.length === 0) return { kind: "non_array_mod" };
     return { kind: "shape" };
@@ -3304,13 +3313,25 @@ function collectComponentRefs(expr: any): string[] {
   } else if (expr.operand && !expr.operand1) {
     refs.push(...collectComponentRefs(expr.operand));
   } else if (expr.functionReference || expr.functionReferenceName) {
-    // cardinality() is a compile-time function that returns a parameter-variability constant.
-    // Skip collecting component refs from its arguments to avoid false variability mismatches.
+    // cardinality(), Connections.isRoot(), Connections.rooted(), size(), ndims(),
+    // getInstanceName(), and firstTick() are compile-time structural functions
+    // that return parameter-variability constants.
+    // Skip collecting component refs from their arguments to avoid false variability mismatches.
     const funcName =
-      expr.functionReference?.parts?.[0]?.identifier?.text ??
-      expr.functionReferenceName?.parts?.[0]?.identifier?.text ??
+      expr.functionReference?.parts?.map((p: any) => p?.identifier?.text ?? "").join(".") ??
+      expr.functionReferenceName?.parts?.map((p: any) => p?.identifier?.text ?? "").join(".") ??
       "";
-    if (funcName === "cardinality") return refs;
+    const compileTimeFuncs = new Set([
+      "cardinality",
+      "Connections.isRoot",
+      "Connections.rooted",
+      "rooted",
+      "size",
+      "ndims",
+      "getInstanceName",
+      "firstTick",
+    ]);
+    if (compileTimeFuncs.has(funcName)) return refs;
     for (const arg of expr.functionCallArguments?.arguments ?? []) {
       refs.push(...collectComponentRefs(arg.expression));
     }

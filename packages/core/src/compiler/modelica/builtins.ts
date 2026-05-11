@@ -159,6 +159,8 @@ export const BUILTIN_FUNCTIONS: ReadonlyMap<string, BuiltinFunctionDef> = new Ma
   ["edge", { inputs: [{ name: "b", type: "Boolean" }], outputType: "Boolean" }],
   ["change", { inputs: [{ name: "x", type: "Real" }], outputType: "Boolean" }],
   ["initial", { inputs: [], outputType: "Boolean" }],
+  // §3.7.2.6 getInstanceName
+  ["getInstanceName", { inputs: [], outputType: "String" }],
   ["terminal", { inputs: [], outputType: "Boolean" }],
   [
     "reinit",
@@ -338,6 +340,17 @@ export const BUILTIN_FUNCTIONS: ReadonlyMap<string, BuiltinFunctionDef> = new Ma
   ],
   ["transpose", { inputs: [{ name: "A", type: "Real" }], outputType: "Real" }],
   ["symmetric", { inputs: [{ name: "A", type: "Real" }], outputType: "Real" }],
+  // §10.3.6 outerProduct
+  [
+    "outerProduct",
+    {
+      inputs: [
+        { name: "v1", type: "Real" },
+        { name: "v2", type: "Real" },
+      ],
+      outputType: "Real",
+    },
+  ],
   [
     "cross",
     {
@@ -523,6 +536,8 @@ export const BUILTIN_FUNCTIONS: ReadonlyMap<string, BuiltinFunctionDef> = new Ma
   ["activeState", { inputs: [{ name: "state", type: "Real" }], outputType: "Boolean" }],
   ["ticksInState", { inputs: [], outputType: "Integer" }],
   ["timeInState", { inputs: [], outputType: "Real" }],
+  ["firstTick", { inputs: [], outputType: "Boolean" }],
+  ["interval", { inputs: [], outputType: "Real" }],
   [
     "transition",
     {
@@ -546,6 +561,22 @@ export const BUILTIN_FUNCTIONS: ReadonlyMap<string, BuiltinFunctionDef> = new Ma
 
   // §4.4.3
   ["rooted", { inputs: [{ name: "x", type: "Real" }], outputType: "Boolean" }],
+  // §12.3 pure operator — wraps an impure function call to mark it as pure
+  ["pure", { inputs: [{ name: "expr", type: "Real" }], outputType: "Real" }],
+  // §9.4.1 Connections.* graph operators
+  ["Connections.isRoot", { inputs: [{ name: "A", type: "Real" }], outputType: "Boolean" }],
+  ["Connections.potentialRoot", { inputs: [{ name: "A", type: "Real" }], outputType: null }],
+  ["Connections.root", { inputs: [{ name: "A", type: "Real" }], outputType: null }],
+  [
+    "Connections.branch",
+    {
+      inputs: [
+        { name: "A", type: "Real" },
+        { name: "B", type: "Real" },
+      ],
+      outputType: null,
+    },
+  ],
 
   // Type conversion (no parameter info needed — treated as primitive type constructors)
   ["Real", { inputs: [{ name: "x", type: "Real" }], outputType: "Real" }],

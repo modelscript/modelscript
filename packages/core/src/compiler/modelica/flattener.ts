@@ -5713,17 +5713,15 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         let isArrayPath = false;
         let arrayShape: number[] = [];
 
-        // Check each prefix in the path for array components
-        for (let i = 1; i <= nameParts.length; i++) {
-          const prefix = nameParts.slice(0, i);
-          const partResolved = ctx.classInstance.resolveName(prefix);
-          if (partResolved instanceof ModelicaComponentInstance) {
-            const classInst = partResolved.classInstance;
-            if (classInst instanceof ModelicaArrayClassInstance) {
-              isArrayPath = true;
-              arrayShape = classInst.shape;
-              break;
-            }
+        // Validate argument: must be a scalar connector, not an array.
+        // Check only the final resolved component — intermediate arrays along the
+        // path may have been subscripted (e.g. a1[1].c) and the subscripts are
+        // stripped from the flattened name.
+        if (resolved instanceof ModelicaComponentInstance) {
+          const classInst = resolved.classInstance;
+          if (classInst instanceof ModelicaArrayClassInstance) {
+            isArrayPath = true;
+            arrayShape = classInst.shape;
           }
         }
 
@@ -6111,6 +6109,58 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       return resolvedArg;
     });
 
+    // §3.7.2.6 getInstanceName() — returns the fully qualified instance path.
+    // OMC returns "TopLevelClass.component.subcomponent", so we need to prepend
+    // the root class name to the component prefix.
+    if (functionName === "getInstanceName") {
+      // Walk activeClassStack to find the root (top-level) class name
+      const rootName =
+        ctx.activeClassStack && ctx.activeClassStack.length > 0
+          ? (ctx.activeClassStack[0]?.name ?? "")
+          : (ctx.classInstance.name ?? "");
+      const instanceName = ctx.prefix ? `${rootName}.${ctx.prefix}` : rootName;
+      return new ModelicaStringLiteral(instanceName);
+    }
+
+    // §12.3 pure(expr) — unwrap to just the inner expression.
+    // `pure(f(x))` is a type annotation that marks the call as pure; in the DAE
+    // output, it should just emit `f(x)`.
+    if (functionName === "pure") {
+      return flatArgs[0] ?? null;
+    }
+
+    // §10.3.6 outerProduct(v1, v2) — constant fold when both args are literal arrays
+    if (functionName === "outerProduct" && flatArgs.length === 2) {
+      const v1 = flatArgs[0];
+      const v2 = flatArgs[1];
+      if (v1 instanceof ModelicaArray && v2 instanceof ModelicaArray) {
+        const n = v1.elements.length;
+        const m = v2.elements.length;
+        const rows: ModelicaExpression[] = [];
+        let allConstant = true;
+        for (let i = 0; i < n && allConstant; i++) {
+          const rowElements: ModelicaExpression[] = [];
+          for (let j = 0; j < m; j++) {
+            const ei = v1.elements[i];
+            const ej = v2.elements[j];
+            const a =
+              ei instanceof ModelicaIntegerLiteral ? ei.value : ei instanceof ModelicaRealLiteral ? ei.value : null;
+            const b =
+              ej instanceof ModelicaIntegerLiteral ? ej.value : ej instanceof ModelicaRealLiteral ? ej.value : null;
+            if (a != null && b != null) {
+              rowElements.push(new ModelicaRealLiteral(a * b));
+            } else {
+              allConstant = false;
+              break;
+            }
+          }
+          if (allConstant) rows.push(new ModelicaArray([m], rowElements));
+        }
+        if (allConstant) return new ModelicaArray([n], rows);
+      }
+      // Non-constant or non-array args — leave as symbolic expression
+    }
+
     // Evaluate built-in array constructors at flatten time via dispatch table
     const arrayHandler = BUILTIN_ARRAY_HANDLERS.get(functionName);
     if (arrayHandler) {
@@ -6325,11 +6375,45 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       const parts = functionName.split(".");
       const resolvedFunc = ctx.classInstance.resolveName(parts);
       if (!resolvedFunc || !(resolvedFunc.isClassInstance || resolvedFunc.isComponentInstance)) {
-        ctx.dae.diagnostics.push(
-          makeDiagnostic(ModelicaErrorCode.CLASS_NOT_FOUND, node, functionName, ctx.classInstance.name ?? "<Unknown>"),
-        );
+        // Before emitting CLASS_NOT_FOUND, check if the function name is an import
+        // alias for a builtin function (e.g. `import sinx = sin;` → sinx(0) → sin(0))
+        // or a user-defined function (e.g. `import P = Package;` → P.Func(1) → Package.Func(1)).
+        const importTarget = this.#resolveImportAlias(functionName, ctx);
+        if (importTarget) {
+          if (ModelicaSyntaxFlattener.#isBuiltinFunction(importTarget)) {
+            functionName = importTarget;
+            builtinDef = BUILTIN_FUNCTIONS.get(importTarget);
+          } else {
+            // Try resolving the expanded name (e.g. Package.Func)
+            const expandedParts = importTarget.split(".");
+            const expandedResolved = ctx.classInstance.resolveName(expandedParts);
+            if (expandedResolved && (expandedResolved.isClassInstance || expandedResolved.isComponentInstance)) {
+              functionName = importTarget;
+            } else {
+              ctx.dae.diagnostics.push(
+                makeDiagnostic(
+                  ModelicaErrorCode.CLASS_NOT_FOUND,
+                  node,
+                  functionName,
+                  ctx.classInstance.name ?? "<Unknown>",
+                ),
+              );
+            }
+          }
+        } else {
+          ctx.dae.diagnostics.push(
+            makeDiagnostic(
+              ModelicaErrorCode.CLASS_NOT_FOUND,
+              node,
+              functionName,
+              ctx.classInstance.name ?? "<Unknown>",
+            ),
+          );
+        }
       }
-      functionName = this.#resolveFullyQualifiedName(functionName, ctx);
+      if (!builtinDef) {
+        functionName = this.#resolveFullyQualifiedName(functionName, ctx);
+      }
     }
 
     const originalName = functionName;
@@ -7188,6 +7272,60 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       return functionName;
     }
     return nameSegments.length > 0 ? nameSegments.join(".") : functionName;
+  }
+
+  /**
+   * Resolve a function name through import aliases.
+   * Handles cases like `import sinx = sin;` where `sinx` should resolve to `sin`.
+   * Also handles dotted names like `P.Func` where `P` is an import alias.
+   * Walks the class hierarchy and active class stack to find import clauses.
+   * Returns the resolved name or null if no matching import is found.
+   */
+  #resolveImportAlias(functionName: string, ctx: FlattenerContext): string | null {
+    // For dotted names like P.Func, try resolving the first part as an import alias
+    const dotIdx = functionName.indexOf(".");
+    const lookupName = dotIdx >= 0 ? functionName.substring(0, dotIdx) : functionName;
+    const suffix = dotIdx >= 0 ? functionName.substring(dotIdx) : "";
+
+    // Collect class instances to check: ctx.classInstance, its parents, and the activeClassStack
+    const candidates: any[] = [];
+    let classInst: any = ctx.classInstance;
+    const visited = new Set<any>();
+    while (classInst && !visited.has(classInst)) {
+      visited.add(classInst);
+      candidates.push(classInst);
+      classInst = classInst.parent;
+    }
+    // Also check the active class stack (flattening ancestry)
+    if (ctx.activeClassStack) {
+      for (const cls of ctx.activeClassStack) {
+        if (!visited.has(cls)) {
+          visited.add(cls);
+          candidates.push(cls);
+        }
+      }
+    }
+
+    for (const inst of candidates) {
+      const astNode = inst.abstractSyntaxNode;
+      if (!astNode) continue;
+      // Elements may be on classSpecifier or astNode directly
+      const specifier = astNode.classSpecifier;
+      const elements = specifier?.elements ?? astNode.elements ?? [];
+      for (const el of elements) {
+        // ModelicaSimpleImportClauseSyntaxNode has:
+        //   shortName: ModelicaIdentifierSyntaxNode (the alias, e.g. "P")
+        //   packageName: ModelicaNameSyntaxNode (the target, e.g. "Package")
+        const alias = el.shortName?.text;
+        const targetName = el.packageName;
+        if (alias && targetName && alias === lookupName) {
+          const parts = targetName.parts ?? targetName.identifiers ?? [];
+          const name = parts.map((p: any) => p?.text ?? String(p)).join(".");
+          if (name) return name + suffix;
+        }
+      }
+    }
+    return null;
   }
 
   /**
