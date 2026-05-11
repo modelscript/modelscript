@@ -1536,6 +1536,13 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     this.activeClassStack.push(node);
     this.activePrefixes.set(node, args[0]);
 
+    const originalEquations = args[1].equations;
+    const compEqs: ModelicaEquation[] = [];
+    const extEqs: ModelicaEquation[] = [];
+    const localEqs: ModelicaEquation[] = [];
+    const flowEqs: ModelicaEquation[] = [];
+
+    args[1].equations = compEqs;
     const t_comp_start = Date.now();
     for (const element of activeElements) {
       if (element instanceof ModelicaComponentInstance) {
@@ -1548,9 +1555,11 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         `[Flattener] visitClassInstance components loop took ${t_comp_end - t_comp_start}ms for ${activeElements.length} elements`,
       );
 
+    args[1].equations = extEqs;
     for (const declaredElement of node.declaredElements) {
       if (declaredElement instanceof ModelicaExtendsClassInstance) declaredElement.accept(this, args);
     }
+    args[1].equations = localEqs;
     // Process only locally-declared equation/algorithm sections (not inherited ones).
     // Inherited equations are handled by visitExtendsClassInstance with proper break context.
 
@@ -1644,6 +1653,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     // ── Generate connection-set-based flow balance equations ──
     // Build connection sets from the deferred flow connect pairs using Union-Find,
     // then generate one sum-to-zero equation per connection set.
+    args[1].equations = flowEqs;
     if (this.#flowConnectPairs.length > 0) {
       // Union-Find data structure for grouping flow variables into connection sets
       const parent = new Map<string, string>();
@@ -1707,6 +1717,13 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       // Clear pairs so they're not processed again in nested flattening
       this.#flowConnectPairs = [];
     }
+
+    // Combine equations in OpenModelica-like order
+    args[1].equations = originalEquations;
+    for (const eq of localEqs) originalEquations.push(eq);
+    for (const eq of flowEqs) originalEquations.push(eq);
+    for (const eq of extEqs) originalEquations.push(eq);
+    for (const eq of compEqs) originalEquations.push(eq);
 
     // ── Generate inStream equations from stream connections ──
     // For a 2-port connection connect(a: any, b: any) with stream variable s:

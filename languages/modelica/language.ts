@@ -584,14 +584,17 @@ export default language({
                 const meta = child.metadata as Record<string, unknown>;
                 const importKind = meta?.importKind as string | undefined;
                 const pkgName = (meta?.packageName ?? child.name) as string;
+                console.log(`[ImportInit] kind=${importKind}, pkgName=${pkgName}, name=${child.name}`);
 
                 if (importKind === "simple" || !importKind) {
                   // import A = B.C.D  or  import B.C.D
                   const shortName = (meta?.shortName as string) ?? pkgName.split(".").pop() ?? pkgName;
                   qualifiedImports.set(shortName, pkgName);
+                  console.log(`[ImportInit] added qualifiedImport ${shortName} -> ${pkgName}`);
                 } else if (importKind === "unqualified") {
                   // import B.C.*
                   unqualifiedImportPkgs.push(pkgName);
+                  console.log(`[ImportInit] added unqualifiedImportPkgs ${pkgName}`);
                 } else if (importKind === "compound") {
                   // import B.C.{D, E}
                   const importNames = db
@@ -599,6 +602,7 @@ export default language({
                     .map((c) => c.name)
                     .filter(Boolean);
                   compoundImports.push({ pkg: pkgName, names: importNames });
+                  console.log(`[ImportInit] added compoundImports ${pkgName} -> ${importNames}`);
                 }
               }
             }
@@ -701,7 +705,7 @@ export default language({
 
             // Return the resolver closure
             return (name: string, encapsulated = false, skipInherited = false): SymbolEntry | null => {
-              // (debug log removed)
+              console.log(`[ResolveSimpleName] Resolving '${name}' in '${self.name}' (id=${self.id})`);
               // 1. Direct elements
               const direct = directByName.get(name);
               if (direct) return direct;
@@ -749,22 +753,40 @@ export default language({
                 return resolveQualified(db, qualPkg);
               }
 
+              // Helper to resolve an import path, respecting local aliases for the first segment
+              const resolveImportPath = (path: string): SymbolEntry | null => {
+                const parts = path.split(".");
+                const first = parts[0];
+                const aliasTarget = qualifiedImports.get(first);
+                console.log(`[ImportResolve] path='${path}', first='${first}', aliasTarget='${aliasTarget}'`);
+                if (aliasTarget) {
+                  const fullPath = [aliasTarget, ...parts.slice(1)].join(".");
+                  const res = resolveQualified(db, fullPath);
+                  console.log(`[ImportResolve] fullPath='${fullPath}', res=${res?.name}`);
+                  return res;
+                } else {
+                  const res = resolveQualified(db, path);
+                  console.log(`[ImportResolve] path='${path}', res=${res?.name}`);
+                  return res;
+                }
+              };
+
               // 4. Compound imports
               for (const ci of compoundImports) {
                 if (ci.names.includes(name)) {
-                  const resolved = db.byName(`${ci.pkg}.${name}`);
-                  const foundEntry = resolved?.find(
-                    (e) => e.kind === "Class" || e.kind === "Package" || e.kind === "Function",
-                  );
-                  if (foundEntry) return foundEntry;
+                  const pkgEntry = resolveImportPath(ci.pkg);
+                  if (pkgEntry) {
+                    const foundEntry = db
+                      .childrenOf(pkgEntry.id)
+                      .find((c) => c.name === name && c.kind !== "Reference");
+                    if (foundEntry) return foundEntry;
+                  }
                 }
               }
 
               // 5. Unqualified imports
               for (const pkg of unqualifiedImportPkgs) {
-                const pkgEntry = db
-                  .byName(pkg)
-                  ?.find((e) => e.kind === "Class" || e.kind === "Package" || e.kind === "Function");
+                const pkgEntry = resolveImportPath(pkg);
                 if (pkgEntry) {
                   for (const pkgChild of db.childrenOf(pkgEntry.id)) {
                     if (pkgChild.name === name && pkgChild.kind !== "Reference") return pkgChild;
