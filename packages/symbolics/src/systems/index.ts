@@ -5080,11 +5080,11 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     // - Very large integers → scientific notation
     if (node.value === 0) {
       this.out.write("0.0");
-    } else if (Number.isInteger(node.value) && Math.abs(node.value) < 1e15) {
+    } else if (Number.isInteger(node.value) && Math.abs(node.value) < 1e7) {
       this.out.write(node.value.toFixed(1));
     } else {
       let str: string;
-      if (Number.isInteger(node.value) && Math.abs(node.value) >= 1e15) {
+      if (Number.isInteger(node.value) && Math.abs(node.value) >= 1e7) {
         str = node.value.toExponential();
       } else if (Math.abs(node.value) < 0.0001 && Math.abs(node.value) > 0) {
         // Very small fractional values: use scientific notation
@@ -5093,9 +5093,7 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
         // Normal fractional values: use decimal notation
         str = node.value.toString();
       }
-      // Pad single-digit exponents to two digits: e-6 → e-06, e+6 → e+06
-      str = str.replace(/e([+-]?)(\d)$/, "e$10$2");
-      // Remove '+' from positive exponents to match OMC output: e+308 -> e308
+      // Remove '+' from positive exponents to match OMC output: e+8 -> e8
       str = str.replace(/e\+/g, "e");
       this.out.write(str);
     }
@@ -5268,8 +5266,14 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     if (node.value != null) {
       const v = node.value;
       if (v === 0) this.out.write("0.0");
-      else if (Number.isInteger(v) && Math.abs(v) < 1e15) this.out.write(v.toFixed(1));
-      else this.out.write(String(v));
+      else if (Number.isInteger(v) && Math.abs(v) < 1e7) this.out.write(v.toFixed(1));
+      else {
+        let str: string;
+        if (Number.isInteger(v) && Math.abs(v) >= 1e7) str = v.toExponential();
+        else str = String(v);
+        str = str.replace(/e\+/g, "e");
+        this.out.write(str);
+      }
     } else {
       this.out.write(node.text ?? "0.0");
     }

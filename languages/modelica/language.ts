@@ -582,19 +582,25 @@ export default language({
               // Import processing
               if (child.kind === "Import") {
                 const meta = child.metadata as Record<string, unknown>;
-                const importKind = meta?.importKind as string | undefined;
+                // Derive import kind from the CST rule name, since importKind string literals
+                // in the symbol config are not SelfAccessor proxies and get dropped during
+                // indexer hook generation.
+                const importKind =
+                  (meta?.importKind as string | undefined) ??
+                  (child.ruleName === "UnqualifiedImportClause"
+                    ? "unqualified"
+                    : child.ruleName === "CompoundImportClause"
+                      ? "compound"
+                      : "simple");
                 const pkgName = (meta?.packageName ?? child.name) as string;
-                console.log(`[ImportInit] kind=${importKind}, pkgName=${pkgName}, name=${child.name}`);
 
-                if (importKind === "simple" || !importKind) {
+                if (importKind === "simple") {
                   // import A = B.C.D  or  import B.C.D
                   const shortName = (meta?.shortName as string) ?? pkgName.split(".").pop() ?? pkgName;
                   qualifiedImports.set(shortName, pkgName);
-                  console.log(`[ImportInit] added qualifiedImport ${shortName} -> ${pkgName}`);
                 } else if (importKind === "unqualified") {
                   // import B.C.*
                   unqualifiedImportPkgs.push(pkgName);
-                  console.log(`[ImportInit] added unqualifiedImportPkgs ${pkgName}`);
                 } else if (importKind === "compound") {
                   // import B.C.{D, E}
                   const importNames = db
@@ -602,7 +608,6 @@ export default language({
                     .map((c) => c.name)
                     .filter(Boolean);
                   compoundImports.push({ pkg: pkgName, names: importNames });
-                  console.log(`[ImportInit] added compoundImports ${pkgName} -> ${importNames}`);
                 }
               }
             }
@@ -705,7 +710,6 @@ export default language({
 
             // Return the resolver closure
             return (name: string, encapsulated = false, skipInherited = false): SymbolEntry | null => {
-              console.log(`[ResolveSimpleName] Resolving '${name}' in '${self.name}' (id=${self.id})`);
               // 1. Direct elements
               const direct = directByName.get(name);
               if (direct) return direct;
@@ -758,16 +762,11 @@ export default language({
                 const parts = path.split(".");
                 const first = parts[0];
                 const aliasTarget = qualifiedImports.get(first);
-                console.log(`[ImportResolve] path='${path}', first='${first}', aliasTarget='${aliasTarget}'`);
                 if (aliasTarget) {
                   const fullPath = [aliasTarget, ...parts.slice(1)].join(".");
-                  const res = resolveQualified(db, fullPath);
-                  console.log(`[ImportResolve] fullPath='${fullPath}', res=${res?.name}`);
-                  return res;
+                  return resolveQualified(db, fullPath);
                 } else {
-                  const res = resolveQualified(db, path);
-                  console.log(`[ImportResolve] path='${path}', res=${res?.name}`);
-                  return res;
+                  return resolveQualified(db, path);
                 }
               };
 
