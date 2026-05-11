@@ -5448,6 +5448,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     // Check for array/scalar type mismatches in arithmetic binary operations
     // In Modelica, {1,2,3} + 1 is NOT valid — must use .+ for elementwise ops.
     // Regular + and - require both operands to have matching array dimensions.
+    // However, scalar * array and scalar / array ARE valid (§10.6).
     const isElementwise = operator.startsWith(".");
     if (
       !isElementwise &&
@@ -5457,49 +5458,64 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       const op2IsArray = operand2 instanceof ModelicaArray;
 
       if ((op1IsArray && !op2IsArray) || (!op1IsArray && op2IsArray)) {
-        // Array + scalar or scalar + array — type error
-        const inferType = (expr: ModelicaExpression): string => {
-          if (expr instanceof ModelicaArray) {
-            // Determine element type
-            const flatEl = [...expr.flatElements];
-            let elemType = "Real";
-            if (flatEl.length > 0) {
-              if (flatEl[0] instanceof ModelicaIntegerLiteral) elemType = "Integer";
-              else if (flatEl[0] instanceof ModelicaBooleanLiteral) elemType = "Boolean";
-              else if (flatEl[0] instanceof ModelicaStringLiteral) elemType = "String";
-            }
-            return `${elemType}[${expr.shape.join(", ")}]`;
-          }
-          if (expr instanceof ModelicaIntegerLiteral || expr instanceof ModelicaIntegerVariable) return "Integer";
-          if (expr instanceof ModelicaRealLiteral || expr instanceof ModelicaRealVariable) return "Real";
-          if (expr instanceof ModelicaBooleanLiteral || expr instanceof ModelicaBooleanVariable) return "Boolean";
-          if (expr instanceof ModelicaStringLiteral || expr instanceof ModelicaStringVariable) return "String";
-          return "Real";
-        };
+        // Array + scalar or scalar + array — type error.
+        // Suppress when the scalar is a zero literal (result of empty array
+        // reduction, e.g., C*x where x has dimension 0), a name expression
+        // (may refer to an array resolved later), or a compound expression
+        // (unevaluated matrix product or function call that couldn't be
+        // constant-folded and may actually produce an array result).
+        const scalarOp = op1IsArray ? operand2 : operand1;
+        const isZeroLiteral =
+          (scalarOp instanceof ModelicaIntegerLiteral && scalarOp.value === 0) ||
+          (scalarOp instanceof ModelicaRealLiteral && scalarOp.value === 0.0);
+        const isCompoundExpr =
+          scalarOp instanceof ModelicaNameExpression ||
+          scalarOp instanceof ModelicaBinaryExpression ||
+          scalarOp instanceof ModelicaFunctionCallExpression;
 
-        // Format expression as Modelica text
-        const exprToText = (expr: ModelicaExpression): string => {
-          if (expr instanceof ModelicaArray) {
-            return `{${expr.elements.map(exprToText).join(", ")}}`;
-          }
-          if (expr instanceof ModelicaIntegerLiteral) return String(expr.value);
-          if (expr instanceof ModelicaRealLiteral) return String(expr.value);
-          if (expr instanceof ModelicaBooleanLiteral) return expr.value ? "true" : "false";
-          if (expr instanceof ModelicaStringLiteral) return `"${expr.value}"`;
-          if (expr instanceof ModelicaNameExpression) return expr.name;
-          if (expr instanceof ModelicaVariable) return expr.name;
-          return "...";
-        };
-        const exprText = `${exprToText(operand1)} ${operator} ${exprToText(operand2)}`;
-        ctx.dae.diagnostics.push(
-          makeDiagnostic(
-            ModelicaErrorCode.BINARY_OP_TYPE_MISMATCH,
-            node,
-            exprText,
-            inferType(operand1),
-            inferType(operand2),
-          ),
-        );
+        if (!isZeroLiteral && !isCompoundExpr) {
+          // Format expression as Modelica text
+          const inferType = (expr: ModelicaExpression): string => {
+            if (expr instanceof ModelicaArray) {
+              const flatEl = [...expr.flatElements];
+              let elemType = "Real";
+              if (flatEl.length > 0) {
+                if (flatEl[0] instanceof ModelicaIntegerLiteral) elemType = "Integer";
+                else if (flatEl[0] instanceof ModelicaBooleanLiteral) elemType = "Boolean";
+                else if (flatEl[0] instanceof ModelicaStringLiteral) elemType = "String";
+              }
+              return `${elemType}[${expr.shape.join(", ")}]`;
+            }
+            if (expr instanceof ModelicaIntegerLiteral || expr instanceof ModelicaIntegerVariable) return "Integer";
+            if (expr instanceof ModelicaRealLiteral || expr instanceof ModelicaRealVariable) return "Real";
+            if (expr instanceof ModelicaBooleanLiteral || expr instanceof ModelicaBooleanVariable) return "Boolean";
+            if (expr instanceof ModelicaStringLiteral || expr instanceof ModelicaStringVariable) return "String";
+            return "Real";
+          };
+
+          const exprToText = (expr: ModelicaExpression): string => {
+            if (expr instanceof ModelicaArray) {
+              return `{${expr.elements.map(exprToText).join(", ")}}`;
+            }
+            if (expr instanceof ModelicaIntegerLiteral) return String(expr.value);
+            if (expr instanceof ModelicaRealLiteral) return String(expr.value);
+            if (expr instanceof ModelicaBooleanLiteral) return expr.value ? "true" : "false";
+            if (expr instanceof ModelicaStringLiteral) return `"${expr.value}"`;
+            if (expr instanceof ModelicaNameExpression) return expr.name;
+            if (expr instanceof ModelicaVariable) return expr.name;
+            return "...";
+          };
+          const exprText = `${exprToText(operand1)} ${operator} ${exprToText(operand2)}`;
+          ctx.dae.diagnostics.push(
+            makeDiagnostic(
+              ModelicaErrorCode.BINARY_OP_TYPE_MISMATCH,
+              node,
+              exprText,
+              inferType(operand1),
+              inferType(operand2),
+            ),
+          );
+        }
       }
     }
 
@@ -8409,61 +8425,92 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         }
       }
     } else {
-      // Check for subscripts on the last part (e.g. z[j, i, :])
-      const lastPart = node.parts?.[node.parts.length - 1];
-      const subscriptNodes = lastPart?.arraySubscripts?.subscripts ?? [];
+      // Validate subscripts on ALL parts by walking the component hierarchy.
+      // For `b[3].a[i]` where `b : A[3]` and `a : Real[4]`, we resolve `b`
+      // from `ctx.classInstance` and check `[3]` against shape [3], then
+      // resolve `a` from `b`'s class and check `[i]` against shape [4].
+      if (ctx.classInstance) {
+        let currentScope: any = ctx.classInstance;
+        for (const part of node.parts) {
+          const partName = part?.identifier?.text;
+          if (!partName || !currentScope) break;
+          const partSubs = part?.arraySubscripts?.subscripts ?? [];
 
-      if (subscriptNodes.length > 0) {
-        // Type checking and dimension validation on the array subscript inputs
-        if (ctx.classInstance) {
-          const typeRefName = node.parts[0]?.identifier?.text ?? (node.parts[0]?.identifier as any);
-          const typeRef = ctx.classInstance.resolveSimpleName(typeRefName);
-          if (typeRef instanceof ModelicaComponentInstance) {
-            if (!typeRef.instantiated && !typeRef.instantiating) typeRef.instantiate();
-            const classInst = typeRef.classInstance;
+          const partRef = currentScope.resolveSimpleName?.(partName);
+          if (!(partRef instanceof ModelicaComponentInstance)) {
+            break;
+          }
+          if (!partRef.instantiated && !partRef.instantiating) partRef.instantiate();
 
+          if (partSubs.length > 0) {
+            // Get the shape for THIS part's component
+            const classInst = partRef.classInstance;
             let expectedCount = 0;
+            let partShape: (number | null)[] = [];
+
             if (classInst instanceof ModelicaArrayClassInstance) {
               expectedCount = classInst.shape.length;
+              partShape = classInst.shape;
+            }
+            const dims = partRef.arrayDimensions;
+            if (dims && dims.length > 0) {
+              partShape = dims.map((d: any) => (typeof d === "number" ? d : (d?.value ?? null)));
+              expectedCount = partShape.length;
             }
 
-            // Subscript dimension matching against explicitly assigned sizes
-            if (subscriptNodes.length > 0 && expectedCount > 0 && expectedCount !== subscriptNodes.length) {
+            // Subscript count: partial subscripting is valid, only flag excess
+            if (expectedCount > 0 && partSubs.length > expectedCount) {
               ctx.dae.diagnostics.push(
                 makeDiagnostic(
                   ModelicaErrorCode.ARRAY_SUBSCRIPT_COUNT_MISMATCH,
-                  lastPart?.arraySubscripts,
-                  typeRef.name ?? "?",
-                  String(subscriptNodes.length),
+                  part?.arraySubscripts,
+                  partRef.name ?? "?",
+                  String(partSubs.length),
                   String(expectedCount),
                 ),
               );
             }
-          }
-        }
 
-        // Build subscript expressions
-        const subscripts: ModelicaExpression[] = [];
-        let shape: (number | null)[] = [];
-        if (ctx.classInstance) {
-          const typeRefName = node.parts[0]?.identifier?.text ?? (node.parts[0]?.identifier as any);
-          const typeRef = ctx.classInstance.resolveSimpleName(typeRefName);
-          if (typeRef instanceof ModelicaComponentInstance) {
-            if (!typeRef.instantiated && !typeRef.instantiating) typeRef.instantiate();
-            const dims = typeRef.arrayDimensions;
-            if (dims && dims.length > 0) {
-              shape = dims.map((d: any) => (typeof d === "number" ? d : (d?.value ?? null)));
-            } else {
-              const classInst = typeRef.classInstance;
-              if (classInst instanceof ModelicaArrayClassInstance) {
-                shape = classInst.shape;
+            // Bounds checking on constant subscripts for this part
+            for (let si = 0; si < partSubs.length; si++) {
+              const sub = partSubs[si];
+              if (!sub || sub.flexible || !sub.expression) continue;
+              const subExpr = sub.expression.accept(this, ctx);
+              if (subExpr instanceof ModelicaIntegerLiteral && si < partShape.length) {
+                const dimSize = partShape[si];
+                if (dimSize !== null && dimSize !== undefined) {
+                  if (subExpr.value < 1 || subExpr.value > dimSize) {
+                    ctx.dae.diagnostics.push(
+                      makeDiagnostic(
+                        ModelicaErrorCode.ARRAY_INDEX_OUT_OF_BOUNDS,
+                        sub.expression,
+                        String(subExpr.value),
+                        String(si + 1),
+                        String(dimSize),
+                        partRef.name ?? "?",
+                      ),
+                    );
+                  }
+                }
               }
             }
           }
-        }
 
-        for (let i = 0; i < subscriptNodes.length; i++) {
-          const sub = subscriptNodes[i];
+          // Advance scope into this component's class for the next part
+          const ci = partRef.classInstance;
+          currentScope = ci instanceof ModelicaArrayClassInstance ? (ci.elementClass ?? ci) : ci;
+        }
+      }
+
+      // Process subscripts on the last part for DAE variable resolution
+      const lastPart = node.parts?.[node.parts.length - 1];
+      const subscriptNodes = lastPart?.arraySubscripts?.subscripts ?? [];
+
+      if (subscriptNodes.length > 0) {
+        // Build subscript expressions for the last part
+        const subscripts: ModelicaExpression[] = [];
+
+        for (const sub of subscriptNodes) {
           if (!sub) continue;
           if (sub.flexible) {
             subscripts.push(new ModelicaColonExpression());
@@ -8471,22 +8518,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
             let subExpr = sub.expression.accept(this, ctx);
             if (!subExpr) continue;
 
-            if (subExpr instanceof ModelicaIntegerLiteral && i < shape.length) {
-              const dimSize = shape[i];
-              if (dimSize !== null && dimSize !== undefined) {
-                if (subExpr.value < 1 || subExpr.value > dimSize) {
-                  const diag = makeDiagnostic(
-                    ModelicaErrorCode.ARRAY_INDEX_OUT_OF_BOUNDS,
-                    sub.expression,
-                    String(subExpr.value),
-                    String(i + 1),
-                    String(dimSize),
-                    node.parts[0]?.identifier?.text ?? "?",
-                  );
-                  ctx.dae.diagnostics.push(diag);
-                }
-              }
-            }
+            // Bounds checking is now handled by the per-part validation above
 
             // Validate Subscript type validity
             if (subExpr instanceof ModelicaRealLiteral) {

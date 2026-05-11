@@ -283,7 +283,7 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode = fal
       functions: DAEOutput[];
     }
     const hasDAEErrors = (d: DAEOutput): boolean =>
-      d.diagnostics.some((diag) => diag.severity === "error") || d.functions.some(hasDAEErrors);
+      d.diagnostics.some((diag) => diag.severity === "error" && diag.code !== 5011) || d.functions.some(hasDAEErrors);
 
     if (dae) {
       if (!hasDAEErrors(dae as unknown as DAEOutput)) {

@@ -45,6 +45,7 @@ const browserServerConfig = {
       os: false,
       path: false,
       process: false,
+      readline: false,
       stream: false,
       string_decoder: false,
       tls: false,
