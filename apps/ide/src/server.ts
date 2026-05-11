@@ -301,6 +301,7 @@ app.get("/", (_req, res) => {
   .tpl-card:hover { background: #21262d; transform: translateY(-4px); }
   .tpl-icon { width: 80px; height: 80px; display: flex; align-items: center; justify-content: center; background: #0d1117; border-radius: 8px; color: #8b949e; }
   .tpl-name { font-size: 14px; font-weight: 500; text-align: center; }
+  .tpl-desc { font-size: 12px; color: #8b949e; text-align: center; line-height: 1.4; margin-top: -4px; }
 </style>
 </head><body>
 <div class="container">
@@ -309,7 +310,32 @@ app.get("/", (_req, res) => {
   <form onsubmit="event.preventDefault(); go();">
     <input id="url" type="text" placeholder="Enter a GitHub repository, e.g. owner/repo" autofocus />
   </form>
-  <div class="divider">or start a new project</div>
+  
+  <div class="divider">Featured Polyglot Scenarios</div>
+  <div class="templates">
+    <a href="/vscode/workbench/#memfs:cfd-verification" class="tpl-card">
+      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"/><path d="M14.5 5.5L16 4M9.5 5.5L8 4" stroke-width="2" stroke-linecap="round"/></svg></div>
+      <span class="tpl-name">CFD-FMU Verification</span>
+      <span class="tpl-desc">Verify thermal requirements using an embedded reduced-order CFD FMU.</span>
+    </a>
+    <a href="/vscode/workbench/#memfs:calibration" class="tpl-card">
+      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="10"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg></div>
+      <span class="tpl-name">Parameter Calibration</span>
+      <span class="tpl-desc">Calibrate spring-damper parameters against measurement data.</span>
+    </a>
+    <a href="/vscode/workbench/#memfs:optimica-polyglot" class="tpl-card">
+      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
+      <span class="tpl-name">SysML2 Optimization</span>
+      <span class="tpl-desc">Solve optimal control problems constrained by SysML2 requirements.</span>
+    </a>
+    <a href="/vscode/workbench/#memfs:uncertainty" class="tpl-card">
+      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 18 C6 18 8 6 12 6 C16 6 18 18 21 18" stroke-opacity="0.3" stroke-width="8" stroke-linecap="round"/><path d="M3 18 C6 18 8 10 12 10 C16 10 18 18 21 18" stroke-opacity="0.5" stroke-width="4" stroke-linecap="round"/><path d="M3 18 C6 16 8 12 12 12 C16 12 18 16 21 18" stroke-width="2"/></svg></div>
+      <span class="tpl-name">Monte Carlo Analysis</span>
+      <span class="tpl-desc">Run stochastic simulations to estimate system uncertainty.</span>
+    </a>
+  </div>
+
+  <div class="divider">Basic Templates</div>
   <div class="templates">
     <a href="/vscode/workbench/#memfs:empty" class="tpl-card dash">
       <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="currentColor"><path d="M11.75 4.5a.75.75 0 0 1 .75.75V11h5.75a.75.75 0 0 1 0 1.5H12.5v5.75a.75.75 0 0 1-1.5 0V12.5H5.25a.75.75 0 0 1 0-1.5H11V5.25a.75.75 0 0 1 .75-.75Z"></path></svg></div>
@@ -338,22 +364,6 @@ app.get("/", (_req, res) => {
     <a href="/vscode/workbench/#memfs:mbse-verification" class="tpl-card">
       <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 12l2 2 4-4M5 12a7 7 0 1114 0 7 7 0 01-14 0z"/></svg></div>
       <span class="tpl-name">MBSE Verification</span>
-    </a>
-    <a href="/vscode/workbench/#memfs:cfd-verification" class="tpl-card">
-      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"/><path d="M14.5 5.5L16 4M9.5 5.5L8 4" stroke-width="2" stroke-linecap="round"/></svg></div>
-      <span class="tpl-name">CFD + Verification</span>
-    </a>
-    <a href="/vscode/workbench/#memfs:calibration" class="tpl-card">
-      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="10"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg></div>
-      <span class="tpl-name">Parameter Calibration</span>
-    </a>
-    <a href="/vscode/workbench/#memfs:optimica-polyglot" class="tpl-card">
-      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
-      <span class="tpl-name">Optimica + SysML2</span>
-    </a>
-    <a href="/vscode/workbench/#memfs:uncertainty" class="tpl-card">
-      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 18 C6 18 8 6 12 6 C16 6 18 18 21 18" stroke-opacity="0.3" stroke-width="8" stroke-linecap="round"/><path d="M3 18 C6 18 8 10 12 10 C16 10 18 18 21 18" stroke-opacity="0.5" stroke-width="4" stroke-linecap="round"/><path d="M3 18 C6 16 8 12 12 12 C16 12 18 16 21 18" stroke-width="2"/></svg></div>
-      <span class="tpl-name">Uncertainty Analysis</span>
     </a>
     <a href="/vscode/workbench/#memfs:fmi2" class="tpl-card">
       <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13"/></svg></div>
