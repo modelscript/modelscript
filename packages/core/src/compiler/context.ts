@@ -149,6 +149,15 @@ export class Context extends Scope {
             parentFQN = parts.length > 0 ? parts.join(".") : undefined;
           }
 
+          // For single-file libraries (path IS the .mo file), the top-level
+          // class is a root class with no enclosing package.  Setting parentFQN
+          // to the library name would create a self-referential parent in the
+          // symbol table (parentId === symbolId), causing infinite loops in
+          // the flattener's scope traversal.
+          if (dir === path && basename !== "package.mo") {
+            parentFQN = undefined;
+          }
+
           // Register for lazy loading
           this.#workspaceIndex.register(
             dir,
