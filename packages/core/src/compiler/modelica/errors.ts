@@ -628,6 +628,18 @@ export const ModelicaErrorCode = {
     message: (attrName: string, bindingText: string, expectedType: string, actualType: string) =>
       `Type mismatch in binding ${attrName} = ${bindingText}, expected subtype of ${expectedType}, got type ${actualType}.`,
   },
+  CARDINALITY_INVALID_CONTEXT: {
+    code: 4047,
+    rule: "cardinality-invalid-context",
+    severity: "error",
+    message: () => `cardinality may only be used in the condition of an if-statement/equation or an assert.`,
+  },
+  CARDINALITY_EXPECTED_COMPONENT: {
+    code: 4048,
+    rule: "cardinality-expected-component",
+    severity: "error",
+    message: (name: string) => `Expected ${name} to be a component, but found class instead.`,
+  },
 } as const satisfies Record<string, ErrorCodeDef>;
 
 // Derive the union type of all error code keys

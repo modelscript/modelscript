@@ -161,6 +161,10 @@ interface FlattenerContext {
   functionBindings?: Map<string, ModelicaPartialFunctionExpression | string>;
   /** Redeclare context from the outer ModelicaFlattener, mapping component names to their substituted class instances. */
   redeclareContext?: Map<string, any>;
+  /** Per-connector connection count for cardinality() evaluation. Key = fully qualified connector name. */
+  connectorCardinality?: Map<string, number>;
+  /** Whether cardinality() is allowed in the current expression context (if-condition or assert). */
+  cardinalityAllowed?: boolean;
 
   options?: ModelicaCompilerOptions;
   /** Components currently being evaluated (cycle detection). */
@@ -762,6 +766,192 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
   }
 
   /**
+   * Pre-pass: count how many connect equations reference each connector.
+   * Populates #connectorCardinality so that cardinality() can be resolved during
+   * equation flattening. Scans local sections AND inherited sections (via extends).
+   *
+   * Per Modelica §9.3.1, cardinality(c) returns the number of connect equations
+   * that reference connector c (counting inside and outside connections).
+   */
+  #countConnections(node: ModelicaClassInstance, prefix: string): void {
+    const incrCardinality = (name: string) => {
+      this.#connectorCardinality.set(name, (this.#connectorCardinality.get(name) ?? 0) + 1);
+    };
+
+    /** Resolve a component reference to a prefixed connector name (same logic as #resolveConnectName). */
+    const resolveRefName = (ref: ModelicaComponentReferenceSyntaxNode, scope: ModelicaClassInstance): string | null => {
+      const parts = ref.parts.map((p) => {
+        let name = p.identifier?.text ?? "";
+        if (p.arraySubscripts?.subscripts?.length) {
+          const subs: string[] = [];
+          for (const sub of p.arraySubscripts.subscripts) {
+            const val = sub.expression?.accept(new ModelicaInterpreter(true), scope as any);
+            if (val instanceof ModelicaIntegerLiteral) subs.push(String(val.value));
+            else if (val instanceof ModelicaRealLiteral) subs.push(String(val.value));
+            else subs.push(val?.toString() ?? "");
+          }
+          name += "[" + subs.join(",") + "]";
+        }
+        return name;
+      });
+      const localName = parts.join(".");
+      return prefix === "" ? localName : prefix + "." + localName;
+    };
+
+    /** Scan a single equation section for connect equations. */
+    const scanSection = (section: any, scope: ModelicaClassInstance) => {
+      if (!(section instanceof ModelicaEquationSectionSyntaxNode)) return;
+      for (const eq of section.equations) {
+        if (eq instanceof ModelicaConnectEquationSyntaxNode) {
+          const ref1 = eq.componentReference1;
+          const ref2 = eq.componentReference2;
+          if (!ref1 || !ref2) continue;
+          const name1 = resolveRefName(ref1, scope);
+          const name2 = resolveRefName(ref2, scope);
+          if (name1) incrCardinality(name1);
+          if (name2) incrCardinality(name2);
+        }
+        // Also scan inside for-equations for connect statements
+        if (eq instanceof ModelicaForEquationSyntaxNode) {
+          this.#countConnectionsInForEq(eq, scope, prefix, incrCardinality);
+        }
+      }
+    };
+
+    // Scan local sections
+    const astNode = this.#getAstNode(node);
+    for (const section of astNode?.sections ?? []) {
+      scanSection(section, node);
+    }
+    // Scan short-class target sections
+    if ("shortClassTarget" in node && (node as any).shortClassTarget) {
+      const targetAst = this.#getAstNode((node as any).shortClassTarget);
+      for (const section of targetAst?.sections ?? []) {
+        scanSection(section, (node as any).shortClassTarget);
+      }
+    }
+    // Scan inherited sections from extends
+    this.#countConnectionsInExtends(node, prefix);
+  }
+
+  /** Recursively scan extends chains for connect equations. */
+  #countConnectionsInExtends(node: ModelicaClassInstance, prefix: string): void {
+    for (const declaredElement of node.declaredElements ?? []) {
+      if (!(declaredElement instanceof ModelicaExtendsClassInstance)) continue;
+      const baseClass = declaredElement.classInstance;
+      if (!baseClass) continue;
+      const baseSections = baseClass.abstractSyntaxNode?.sections ?? [];
+      for (const section of baseSections) {
+        if (!(section instanceof ModelicaEquationSectionSyntaxNode)) continue;
+        for (const eq of section.equations) {
+          if (eq instanceof ModelicaConnectEquationSyntaxNode) {
+            const ref1 = eq.componentReference1;
+            const ref2 = eq.componentReference2;
+            if (!ref1 || !ref2) continue;
+            // Resolve names using the base class's scope
+            const resolveRef = (ref: ModelicaComponentReferenceSyntaxNode): string | null => {
+              const parts = ref.parts.map((p) => {
+                let name = p.identifier?.text ?? "";
+                if (p.arraySubscripts?.subscripts?.length) {
+                  const subs: string[] = [];
+                  for (const sub of p.arraySubscripts.subscripts) {
+                    const val = sub.expression?.accept(new ModelicaInterpreter(true), baseClass as any);
+                    if (val instanceof ModelicaIntegerLiteral) subs.push(String(val.value));
+                    else if (val instanceof ModelicaRealLiteral) subs.push(String(val.value));
+                    else subs.push(val?.toString() ?? "");
+                  }
+                  name += "[" + subs.join(",") + "]";
+                }
+                return name;
+              });
+              const localName = parts.join(".");
+              return prefix === "" ? localName : prefix + "." + localName;
+            };
+            const name1 = resolveRef(ref1);
+            const name2 = resolveRef(ref2);
+            if (name1) this.#connectorCardinality.set(name1, (this.#connectorCardinality.get(name1) ?? 0) + 1);
+            if (name2) this.#connectorCardinality.set(name2, (this.#connectorCardinality.get(name2) ?? 0) + 1);
+          }
+        }
+      }
+      // Recurse into nested extends
+      this.#countConnectionsInExtends(baseClass, prefix);
+    }
+  }
+
+  /** Scan for-equations for nested connect statements. */
+  #countConnectionsInForEq(
+    forEq: ModelicaForEquationSyntaxNode,
+    scope: ModelicaClassInstance,
+    prefix: string,
+    incrCardinality: (name: string) => void,
+  ): void {
+    // For connect inside for-loops (e.g., for i in 1:N loop connect(a[i].c, b[i].c)),
+    // we need to expand the loop and count each iteration's connection.
+    // For simplicity, evaluate the loop range and count each expanded connection.
+    const forIndexes = forEq.forIndexes ?? [];
+    if (forIndexes.length === 0) return;
+
+    // Try to evaluate the loop range
+    const firstIndex = forIndexes[0];
+    const iterName = firstIndex?.identifier?.text ?? "";
+    const rangeExpr = firstIndex?.expression;
+    if (!rangeExpr || !iterName) return;
+
+    const interp = new ModelicaInterpreter(true);
+    const rangeVal = rangeExpr.accept(interp, scope as any);
+    const values: number[] = [];
+    if (rangeVal instanceof ModelicaArray) {
+      for (const el of rangeVal.elements) {
+        if (el instanceof ModelicaIntegerLiteral) values.push(el.value);
+        else if (el instanceof ModelicaRealLiteral) values.push(el.value);
+      }
+    }
+
+    if (values.length === 0) return;
+
+    // For each iteration value, scan nested equations
+    for (const val of values) {
+      for (const eq of forEq.equations ?? []) {
+        if (eq instanceof ModelicaConnectEquationSyntaxNode) {
+          const ref1 = eq.componentReference1;
+          const ref2 = eq.componentReference2;
+          if (!ref1 || !ref2) continue;
+          // Resolve names, substituting the loop variable
+          const resolveRef = (ref: ModelicaComponentReferenceSyntaxNode): string | null => {
+            const parts = ref.parts.map((p) => {
+              let name = p.identifier?.text ?? "";
+              if (p.arraySubscripts?.subscripts?.length) {
+                const subs: string[] = [];
+                for (const sub of p.arraySubscripts.subscripts) {
+                  // Simple substitution: if the subscript is the iterator variable, use the value
+                  const exprText = sub.expression && "text" in sub.expression ? (sub.expression as any).text : null;
+                  if (exprText === iterName) {
+                    subs.push(String(val));
+                  } else {
+                    const subVal = sub.expression?.accept(new ModelicaInterpreter(true), scope as any);
+                    if (subVal instanceof ModelicaIntegerLiteral) subs.push(String(subVal.value));
+                    else if (subVal instanceof ModelicaRealLiteral) subs.push(String(subVal.value));
+                    else subs.push(subVal?.toString() ?? "");
+                  }
+                }
+                name += "[" + subs.join(",") + "]";
+              }
+              return name;
+            });
+            const localName = parts.join(".");
+            return prefix === "" ? localName : prefix + "." + localName;
+          };
+          const name1 = resolveRef(ref1);
+          const name2 = resolveRef(ref2);
+          if (name1) incrCardinality(name1);
+          if (name2) incrCardinality(name2);
+        }
+      }
+    }
+  }
+
+  /**
    * Checks if an element is a conditionally disabled component.
    */
   static isConditionallyDisabled(element: any, scope: any): boolean {
@@ -964,6 +1154,10 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
 
     // Pre-pass: augment expandable connectors with virtual components from connect equations
     this.#augmentExpandableConnectors(node);
+
+    // Pre-pass: count connections per connector for cardinality() evaluation.
+    // Must run before equation flattening so cardinality() in if-conditions is resolved.
+    this.#countConnections(node, args[0]);
 
     // Scan for structural parameters: parameters used in conditional component declarations
     // or in if-expression conditions in bindings. These must be marked `final`
@@ -1386,6 +1580,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
             activePrefixes: this.activePrefixes,
             flowConnectPairs: this.#flowConnectPairs,
             streamConnections: this.#streamConnectPairs,
+            connectorCardinality: this.#connectorCardinality,
           });
         }
         args[1].equations = savedEquations;
@@ -1411,6 +1606,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
             flowConnectPairs: this.#flowConnectPairs,
             streamConnections: this.#streamConnectPairs,
             redeclareContext: this.#redeclareContext,
+            connectorCardinality: this.#connectorCardinality,
           });
         }
         args[1].equations = savedEquations;
@@ -1819,6 +2015,8 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
   #flowConnectPairs: { name1: string; name2: string }[] = [];
   // Deferred stream connection pairs for inStream() equation generation
   #streamConnectPairs: { side1: string; side2: string }[] = [];
+  // Per-connector connection count for cardinality() evaluation (key = fully qualified connector name)
+  #connectorCardinality = new Map<string, number>();
   // Track parameter names that are structurally significant (used in conditional component declarations)
   #structuralFinalParams = new Set<string>();
   // Snapshot of structural params for the current class level only (excludes nested class params)
@@ -2159,7 +2357,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     } else if (classInstance instanceof ModelicaEnumerationClassInstance) {
       this.#flattenEnumerationClass(node, name, args);
     } else if (classInstance instanceof ModelicaArrayClassInstance) {
-      this.#flattenArrayClass(node, name, args);
+      this.#flattenArrayClass(node, name, args, currentMods);
     } else {
       if (
         classInstance?.classKind === ModelicaClassKind.FUNCTION ||
@@ -2928,7 +3126,12 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     }
   }
 
-  #flattenArrayClass(node: ModelicaComponentInstance, name: string, args: [string, ModelicaDAE]): void {
+  #flattenArrayClass(
+    node: ModelicaComponentInstance,
+    name: string,
+    args: [string, ModelicaDAE],
+    currentMods: { nameParts: string[]; valueExpr: any }[] = [],
+  ): void {
     const { causality, isFinal } = node;
     const activeClass = this.activeClassStack[this.activeClassStack.length - 1];
     const isProtected =
@@ -3480,10 +3683,17 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           }
         }
 
+        // Apply inherited modifications (currentMods) that target single attributes (e.g., start)
+        for (const pm of currentMods) {
+          if (pm.nameParts.length === 1 && pm.nameParts[0] !== "annotation") {
+            attributes.set(pm.nameParts[0] ?? "", pm.valueExpr);
+          }
+        }
+
         // Evaluate all collected attributes into symbolic expressions
         for (const [key, val] of attributes.entries()) {
           let evalVal = this.#flattenToSymbolic(val, node, args[0], args[1]);
-          if (evalVal instanceof ModelicaArray && isCompileTimeEvaluable) {
+          if (evalVal instanceof ModelicaArray) {
             const subscripts = index.map((idx: number) => new ModelicaIntegerLiteral(idx));
 
             // The attribute might be defined on a base type (e.g. T = Real[3,2]) and thus only have shape [3,2],
@@ -3633,10 +3843,109 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         this.#outerFinal = this.#outerFinal || node.isFinal;
         this.#outerProtected = this.#outerProtected || isProtected;
 
+        // Distribute array-valued modifications across array elements.
+        // For `A a[3](x.start = {{1,2},{3,4},{5,6}})`, element a[1] gets x.start = {1,2}.
+        const elementMods: { nameParts: string[]; valueExpr: any }[] = [];
+        for (const mod of currentMods) {
+          let slicedExpr = mod.valueExpr;
+          // Evaluate the modification expression to check if it's an array
+          const flatVal = this.#flattenToSymbolic(mod.valueExpr, node, args[0], args[1]);
+          if (flatVal instanceof ModelicaArray && flatVal.elements.length > 0) {
+            const outerIdx = index[0] - 1; // 0-based
+            if (flatVal.elements[0] instanceof ModelicaArray) {
+              // Nested: elements are sub-arrays; directly pick the row
+              if (outerIdx >= 0 && outerIdx < flatVal.elements.length) {
+                slicedExpr = flatVal.elements[outerIdx] as any;
+              }
+            } else if (flatVal.flatShape.length > 1) {
+              // Flat representation of multi-dimensional array: extract a slice
+              const innerSize = flatVal.flatShape.slice(1).reduce((a, b) => a * b, 1);
+              const start = outerIdx * innerSize;
+              const sliceElements = [...flatVal.flatElements].slice(start, start + innerSize);
+              if (sliceElements.length > 0) {
+                slicedExpr =
+                  sliceElements.length === 1
+                    ? sliceElements[0]
+                    : new ModelicaArray(flatVal.flatShape.slice(1), sliceElements);
+              }
+            } else {
+              // 1D array: direct element extraction
+              if (outerIdx >= 0 && outerIdx < flatVal.elements.length) {
+                slicedExpr = flatVal.elements[outerIdx] as any;
+              }
+            }
+          }
+          elementMods.push({ nameParts: mod.nameParts, valueExpr: slicedExpr });
+        }
+
+        // Also collect the node's own modifications (e.g., from the component's mod clause)
+        // that target sub-components with dotted names
+        const compMod = node.modification;
+        if (compMod) {
+          for (const modArg of compMod.modificationArguments ?? []) {
+            const isRedeclare = modArg.ast?.redeclare || modArg.arg?.redeclare || modArg.isRedeclare;
+            if (isRedeclare) continue;
+            if (!modArg.name) continue;
+
+            let parts: string[] = [];
+            if (typeof modArg.name === "string") parts = modArg.name.split(".");
+            else if (modArg.name.parts) parts = modArg.name.parts.map((p: any) => p.text);
+
+            // Only process dotted mods targeting sub-components (e.g., x.start)
+            if (parts.length === 0) continue;
+
+            // Get sub-modifications (e.g., x(start = ...) → sub-mod start under "x")
+            const subModArgs = modArg.modification?.modificationArguments ?? modArg.arg?.modificationArguments ?? [];
+            for (const subMod of subModArgs) {
+              const subName =
+                typeof subMod.name === "string"
+                  ? subMod.name
+                  : (subMod.name?.parts?.map((p: any) => p.text).join(".") ?? subMod.name?.text ?? null);
+              if (!subName) continue;
+              const subExpr = subMod.modificationExpression?.expression || subMod.expression || subMod.arg?.value;
+              if (!subExpr) continue;
+
+              // Evaluate and slice by array index
+              const flatVal = this.#flattenToSymbolic(subExpr, node, args[0], args[1]);
+              let slicedExpr: any = subExpr;
+              if (flatVal instanceof ModelicaArray && flatVal.elements.length > 0) {
+                const outerIdx = index[0] - 1;
+                if (flatVal.elements[0] instanceof ModelicaArray) {
+                  if (outerIdx >= 0 && outerIdx < flatVal.elements.length) {
+                    slicedExpr = flatVal.elements[outerIdx] as any;
+                  }
+                } else if (flatVal.flatShape.length > 1) {
+                  const innerSize = flatVal.flatShape.slice(1).reduce((a, b) => a * b, 1);
+                  const start = outerIdx * innerSize;
+                  const sliceElements = [...flatVal.flatElements].slice(start, start + innerSize);
+                  if (sliceElements.length > 0) {
+                    slicedExpr =
+                      sliceElements.length === 1
+                        ? sliceElements[0]
+                        : new ModelicaArray(flatVal.flatShape.slice(1), sliceElements);
+                  }
+                } else {
+                  if (outerIdx >= 0 && outerIdx < flatVal.elements.length) {
+                    slicedExpr = flatVal.elements[outerIdx] as any;
+                  }
+                }
+              }
+              elementMods.push({
+                nameParts: [...parts, ...subName.split(".")],
+                valueExpr: slicedExpr,
+              });
+            }
+          }
+        }
+
+        this.#inheritedModificationsStack.push(elementMods);
+
         const prevArrayElementIndex = this.#arrayElementIndex;
         this.#arrayElementIndex = elementIndex;
         declaredElement.accept(this, [elementName, args[1]]);
         this.#arrayElementIndex = prevArrayElementIndex;
+
+        this.#inheritedModificationsStack.pop();
 
         this.#outerVariability = savedVar;
         this.#outerFinal = savedFinal;
@@ -3767,6 +4076,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
               activePrefixes: this.activePrefixes,
               flowConnectPairs: this.#flowConnectPairs,
               streamConnections: this.#streamConnectPairs,
+              connectorCardinality: this.#connectorCardinality,
               ...(brokenNames.size > 0 ? { brokenNames } : {}),
               ...(brokenConnects.size > 0 ? { brokenConnects } : {}),
             });
@@ -3793,6 +4103,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
               activePrefixes: this.activePrefixes,
               flowConnectPairs: this.#flowConnectPairs,
               streamConnections: this.#streamConnectPairs,
+              connectorCardinality: this.#connectorCardinality,
               ...(brokenNames.size > 0 ? { brokenNames } : {}),
               ...(brokenConnects.size > 0 ? { brokenConnects } : {}),
             });
@@ -5354,6 +5665,97 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
           positionalIndex++;
         }
         flatArgs = mergedArgs;
+      }
+    }
+
+    // Resolve cardinality(c) at compile time by looking up the connector's connection count.
+    // Per Modelica §9.3.1, cardinality returns the number of connect equations referencing the connector.
+    // It may only be used in the condition of an if-statement/equation or an assert.
+    if (functionName === "cardinality" && flatArgs.length === 1) {
+      // Validate context: cardinality may only appear in if-conditions or assert args
+      if (!ctx.cardinalityAllowed) {
+        ctx.dae.diagnostics.push(makeDiagnostic(ModelicaErrorCode.CARDINALITY_INVALID_CONTEXT, node));
+        return new ModelicaIntegerLiteral(0);
+      }
+
+      const arg = flatArgs[0];
+
+      // Validate argument: must be a component reference, not a class reference
+      if (arg instanceof ModelicaNameExpression) {
+        const nameParts = arg.name.split(".");
+        const resolved = ctx.classInstance.resolveName(nameParts);
+        if (resolved instanceof ModelicaClassInstance && !resolved.isComponentInstance) {
+          ctx.dae.diagnostics.push(makeDiagnostic(ModelicaErrorCode.CARDINALITY_EXPECTED_COMPONENT, node, arg.name));
+          return new ModelicaIntegerLiteral(0);
+        }
+        // Validate argument: must be a scalar connector, not an array.
+        // Check both the final resolved component and any parent in the path for array-ness.
+        // E.g., a1.c where a1 is A[2] — the final .c is scalar but the path is non-scalar.
+        let isArrayPath = false;
+        let arrayShape: number[] = [];
+
+        // Check each prefix in the path for array components
+        for (let i = 1; i <= nameParts.length; i++) {
+          const prefix = nameParts.slice(0, i);
+          const partResolved = ctx.classInstance.resolveName(prefix);
+          if (partResolved instanceof ModelicaComponentInstance) {
+            const classInst = partResolved.classInstance;
+            if (classInst instanceof ModelicaArrayClassInstance) {
+              isArrayPath = true;
+              arrayShape = classInst.shape;
+              break;
+            }
+          }
+        }
+
+        if (isArrayPath) {
+          // Use the connector type name from the final component in the path
+          let connectorTypeName = arg.name;
+          if (resolved instanceof ModelicaComponentInstance && resolved.classInstance) {
+            connectorTypeName = resolved.classInstance.name ?? resolved.name ?? arg.name;
+          }
+          ctx.dae.diagnostics.push(
+            makeDiagnostic(
+              ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH,
+              node,
+              `cardinality(c=${arg.name})`,
+              "1",
+              `${connectorTypeName}[${arrayShape.join(", ")}]`,
+              "Connector",
+            ),
+          );
+          return new ModelicaIntegerLiteral(0);
+        }
+      }
+
+      // Also catch array arguments that were expanded by the component reference flattener
+      if (arg instanceof ModelicaArray) {
+        // Get the original name from the syntax node for the error message
+        const origArg = node.functionCallArguments?.arguments?.[0]?.expression;
+        const origName = (origArg as any)?.text ?? (origArg as any)?.concreteSyntaxNode?.text ?? "...";
+        const shape = arg.shape;
+        ctx.dae.diagnostics.push(
+          makeDiagnostic(
+            ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH,
+            node,
+            `cardinality(c=${origName})`,
+            "1",
+            `Connector[${shape.join(", ")}]`,
+            "Connector",
+          ),
+        );
+        return new ModelicaIntegerLiteral(0);
+      }
+
+      let connectorName: string | null = null;
+      if (arg instanceof ModelicaNameExpression) {
+        connectorName = arg.name;
+      } else if (arg instanceof ModelicaVariable) {
+        connectorName = arg.name;
+      }
+      if (connectorName && ctx.connectorCardinality) {
+        const count = ctx.connectorCardinality.get(connectorName) ?? 0;
+        return new ModelicaIntegerLiteral(count);
       }
     }
 
@@ -8596,7 +8998,8 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
   }
 
   visitIfEquation(node: ModelicaIfEquationSyntaxNode, ctx: FlattenerContext): null {
-    const condition = node.condition?.accept(this, ctx);
+    const cardinalityCtx: FlattenerContext = { ...ctx, cardinalityAllowed: true };
+    const condition = node.condition?.accept(this, cardinalityCtx);
     if (!condition) return null;
 
     // Try compile-time evaluation: if condition is a known boolean, inline the matching branch.
@@ -8623,7 +9026,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         // Check elseif clauses
         let handled = false;
         for (const clause of node.elseIfEquationClauses ?? []) {
-          const clauseCondition = clause.condition?.accept(this, ctx);
+          const clauseCondition = clause.condition?.accept(this, cardinalityCtx);
           if (clauseCondition instanceof ModelicaBooleanLiteral && clauseCondition.value) {
             for (const eq of this.flattenEquations(clause.equations ?? [], ctx)) {
               ctx.dae.equations.push(eq);
@@ -8645,7 +9048,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     const thenEquations = this.flattenEquations(node.equations ?? [], ctx);
     const elseIfClauses: ModelicaElseIfClause[] = [];
     for (const clause of node.elseIfEquationClauses ?? []) {
-      const clauseCondition = clause.condition?.accept(this, ctx);
+      const clauseCondition = clause.condition?.accept(this, cardinalityCtx);
       if (!clauseCondition) continue;
       const clauseEquations = this.flattenEquations(clause.equations ?? [], ctx);
       elseIfClauses.push({ condition: clauseCondition, equations: clauseEquations });
@@ -9070,14 +9473,15 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
   }
 
   visitIfStatement(node: ModelicaIfStatementSyntaxNode, ctx: FlattenerContext): null {
-    const condition = node.condition?.accept(this, ctx);
+    const cardinalityCtx: FlattenerContext = { ...ctx, cardinalityAllowed: true };
+    const condition = node.condition?.accept(this, cardinalityCtx);
     if (!condition) return null;
     const thenStatements = this.flattenStatements(node.statements ?? [], ctx);
 
     // Collect all elseif clauses
     const allElseIfClauses: { condition: ModelicaExpression; statements: ModelicaStatement[] }[] = [];
     for (const clause of node.elseIfStatementClauses ?? []) {
-      const clauseCondition = clause.condition?.accept(this, ctx);
+      const clauseCondition = clause.condition?.accept(this, cardinalityCtx);
       if (!clauseCondition) continue;
       const clauseStatements = this.flattenStatements(clause.statements ?? [], ctx);
       allElseIfClauses.push({ condition: clauseCondition, statements: clauseStatements });
@@ -10104,8 +10508,12 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     const isBuiltin = !rawName.includes(".") && ModelicaSyntaxFlattener.#isBuiltinFunction(rawName);
     const functionName = isGlobal || isBuiltin ? rawName : this.#resolveFullyQualifiedName(rawName, ctx);
     const flatArgs: ModelicaExpression[] = [];
-    for (const arg of node.functionCallArguments?.arguments ?? []) {
-      const flatArg = arg.expression?.accept(this, ctx);
+    const args = node.functionCallArguments?.arguments ?? [];
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i];
+      // For assert(), allow cardinality() in the condition argument (first arg)
+      const argCtx = functionName === "assert" && i === 0 ? { ...ctx, cardinalityAllowed: true } : ctx;
+      const flatArg = arg?.expression?.accept(this, argCtx);
       if (flatArg) flatArgs.push(flatArg);
     }
 
@@ -10156,6 +10564,20 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         new ModelicaTransitionEquation(fromState, toState, condition, immediate, reset, synchronize, priority),
       );
       return null;
+    }
+
+    // Compile-time assert elimination: if the condition is statically true, drop the assert.
+    // This handles cases like assert(cardinality(c) == 0, "...") where cardinality is resolved.
+    if (functionName === "assert" && flatArgs.length >= 2) {
+      const condition = flatArgs[0];
+      if (condition instanceof ModelicaBooleanLiteral) {
+        if (condition.value) {
+          // Condition is statically true — assert is trivially satisfied, drop it
+          return null;
+        }
+        // Condition is statically false — could emit a compile-time error,
+        // but for now just emit the assert to match OMC behavior.
+      }
     }
 
     // Coerce integer arguments to Real for built-in functions that expect Real args

@@ -157,14 +157,38 @@ export class SyntheticInterpreterVariable {
   }
 }
 
+/**
+ * Convert a ModelicaExpression to a ModificationValue for the specialization system.
+ *
+ * The polyglot query engine hashes modification args via `hashModValue()` which
+ * expects objects with a `kind` discriminator (`"literal"` | `"expression"` | `"break"`).
+ * Passing raw ModelicaExpression objects (which lack `kind`) causes `hashModValue`
+ * to return `undefined`, collapsing all function specializations into the same cache key.
+ */
+function toModValue(v: any): any {
+  if (v == null) return null;
+  if (v instanceof ModelicaIntegerLiteral) return { kind: "literal", value: v.value };
+  if (v instanceof ModelicaRealLiteral) return { kind: "literal", value: v.value };
+  if (v instanceof ModelicaBooleanLiteral) return { kind: "literal", value: v.value };
+  if (v instanceof ModelicaStringLiteral) return { kind: "literal", value: v.value };
+  if (v instanceof ModelicaEnumerationLiteral)
+    return { kind: "literal", value: `__enum:${v.typeName}.${v.name}:${v.index}` };
+  if (v instanceof ModelicaArray) return { kind: "literal", value: `__array:${v.hash}` };
+  if (v instanceof ModelicaExpression) return { kind: "literal", value: `__expr:${v.hash}` };
+  // Already a ModificationValue or primitive — pass through
+  if (typeof v === "object" && "kind" in v) return v;
+  if (typeof v === "number" || typeof v === "string" || typeof v === "boolean") return { kind: "literal", value: v };
+  return v;
+}
+
 function toModArgs(expr: ModelicaExpression | null, args: any[] = []): any {
   return {
-    bindingExpression: expr,
+    bindingExpression: toModValue(expr),
     args: args.map((a) => ({
       name: a.name,
       each: a.each ?? false,
       final: a.final ?? false,
-      value: a.value,
+      value: toModValue(a.value),
       nestedArgs: a.nestedArgs ?? [],
       isRedeclaration: a.isRedeclaration ?? false,
     })),

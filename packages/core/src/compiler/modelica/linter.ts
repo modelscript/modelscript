@@ -3304,6 +3304,13 @@ function collectComponentRefs(expr: any): string[] {
   } else if (expr.operand && !expr.operand1) {
     refs.push(...collectComponentRefs(expr.operand));
   } else if (expr.functionReference || expr.functionReferenceName) {
+    // cardinality() is a compile-time function that returns a parameter-variability constant.
+    // Skip collecting component refs from its arguments to avoid false variability mismatches.
+    const funcName =
+      expr.functionReference?.parts?.[0]?.identifier?.text ??
+      expr.functionReferenceName?.parts?.[0]?.identifier?.text ??
+      "";
+    if (funcName === "cardinality") return refs;
     for (const arg of expr.functionCallArguments?.arguments ?? []) {
       refs.push(...collectComponentRefs(arg.expression));
     }
