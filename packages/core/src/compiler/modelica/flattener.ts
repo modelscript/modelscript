@@ -2871,21 +2871,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       expression = null;
       const rawVarExpr = dynamicModExpr ?? node.modification?.modificationExpression?.expression;
       if (rawVarExpr) {
-        if (rawVarExpr.accept) {
-          const syntaxFlattener = new ModelicaSyntaxFlattener(this.options);
-          expression =
-            rawVarExpr.accept(syntaxFlattener, {
-              prefix: args[0],
-              classInstance: node.parent ?? ({} as ModelicaClassInstance),
-              dae: args[1],
-              stmtCollector: [],
-              structuralFinalParams: this.#structuralFinalParams,
-              activeClassStack: this.activeClassStack,
-              activePrefixes: this.activePrefixes,
-            }) ?? null;
-        } else {
-          expression = this.#flattenToSymbolic(rawVarExpr, node, args[0], args[1]) ?? null;
-        }
+        expression = this.#flattenToSymbolic(rawVarExpr, node, args[0], args[1]) ?? null;
       }
       // Fall back to interpreter-evaluated expression
       if (!expression) {
@@ -8196,7 +8182,12 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
               if (
                 localResolved === firstPartResolved ||
                 (localAST && resolvedAST && localAST === resolvedAST) ||
-                (localId !== undefined && resolvedId !== undefined && localId === resolvedId)
+                (localId !== undefined && resolvedId !== undefined && localId === resolvedId) ||
+                (localAST &&
+                  resolvedAST &&
+                  (localAST as any).startIndex === (resolvedAST as any).startIndex &&
+                  (localAST as any).endIndex === (resolvedAST as any).endIndex &&
+                  (localAST as any).startIndex > 0)
               ) {
                 // verify that stackClass (or its base classes) is the lexical parent of the resolved element.
                 const ownerClass = localResolved.parent;

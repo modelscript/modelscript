@@ -2289,59 +2289,62 @@ export default language({
             const cst = db.cstNode(self.id) as import("@modelscript/polyglot/symbol-indexer").CSTNode | null;
             if (!cst) return null;
 
-            // Navigate up to ComponentClause
-            let current = cst as any;
-            while (
-              current &&
-              current.type !== "ComponentDeclaration" &&
-              current.type !== "ComponentClause" &&
-              current.type !== "Declaration"
-            ) {
-              current = current.parent;
-            }
-            let arraySubNode = current?.childForFieldName("arraySubscripts");
-            if (!arraySubNode) {
-              while (current && current.type !== "ComponentClause") {
-                current = current.parent;
-              }
-              arraySubNode = current?.childForFieldName("arraySubscripts");
-            }
-            if (!arraySubNode) return null;
-
-            const subscripts: Array<
+            /** Extract subscript descriptors from an ArraySubscripts CST node. */
+            const extractSubscripts = (
+              arraySubNode: any,
+            ): Array<
               | { kind: "literal"; value: number }
               | { kind: "flexible" }
               | { kind: "expression"; cstBytes: readonly [number, number]; text?: string }
-            > = [];
-
-            // Walk Subscript children
-            for (const child of arraySubNode.children) {
-              if (child.type !== "Subscript") continue;
-
-              // Check for flexible dimension ':'
-              const flexChild = child.childForFieldName("flexible");
-              if (flexChild) {
-                subscripts.push({ kind: "flexible" });
-                continue;
-              }
-
-              // Check for expression
-              const exprChild = child.childForFieldName("expression");
-              if (exprChild) {
-                // Check if the expression is a single integer literal node
-                if (exprChild.type === "UNSIGNED_INTEGER") {
-                  subscripts.push({ kind: "literal", value: parseInt(exprChild.text, 10) });
-                } else {
-                  // Store byte range for lazy evaluation
-                  subscripts.push({
-                    kind: "expression",
-                    cstBytes: [exprChild.startByte, exprChild.endByte],
-                    text: exprChild.text,
-                  });
+            > => {
+              const subs: Array<
+                | { kind: "literal"; value: number }
+                | { kind: "flexible" }
+                | { kind: "expression"; cstBytes: readonly [number, number]; text?: string }
+              > = [];
+              for (const child of arraySubNode.children) {
+                if (child.type !== "Subscript") continue;
+                const flexChild = child.childForFieldName("flexible");
+                if (flexChild) {
+                  subs.push({ kind: "flexible" });
+                  continue;
                 }
-                continue;
+                const exprChild = child.childForFieldName("expression");
+                if (exprChild) {
+                  if (exprChild.type === "UNSIGNED_INTEGER") {
+                    subs.push({ kind: "literal", value: parseInt(exprChild.text, 10) });
+                  } else {
+                    subs.push({
+                      kind: "expression",
+                      cstBytes: [exprChild.startByte, exprChild.endByte],
+                      text: exprChild.text,
+                    });
+                  }
+                  continue;
+                }
               }
+              return subs;
+            };
+
+            // Navigate up to the Declaration node to get component-level subscripts (e.g. x[2])
+            let declNode = cst as any;
+            while (declNode && declNode.type !== "Declaration") {
+              declNode = declNode.parent;
             }
+            const declArraySubNode = declNode?.childForFieldName("arraySubscripts");
+            const declSubscripts = declArraySubNode ? extractSubscripts(declArraySubNode) : [];
+
+            // Navigate up to the ComponentClause to get type-level subscripts (e.g. Real[3])
+            let clauseNode = cst as any;
+            while (clauseNode && clauseNode.type !== "ComponentClause") {
+              clauseNode = clauseNode.parent;
+            }
+            const clauseArraySubNode = clauseNode?.childForFieldName("arraySubscripts");
+            const typeSubscripts = clauseArraySubNode ? extractSubscripts(clauseArraySubNode) : [];
+
+            // Combine: component dimensions first, then type dimensions.
+            // For `Real[3] x[2]`, this produces [2, 3] matching Modelica semantics.
+            const subscripts = [...declSubscripts, ...typeSubscripts];
 
             return subscripts.length > 0 ? subscripts : null;
           },
