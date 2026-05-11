@@ -59,6 +59,9 @@ import type {
 
 // ── Build diagram data from a class instance ──
 
+/** Yield control back to the event loop so the WebWorker can process incoming LSP messages. */
+const yieldToEventLoop = () => new Promise<void>((r) => setTimeout(r, 0));
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function formatPropertyValue(expr: any): string | undefined {
   if (expr == null) return undefined;
@@ -76,7 +79,7 @@ function formatPropertyValue(expr: any): string | undefined {
   return undefined;
 }
 
-export function buildDiagramData(classInstance: ModelicaClassInstance): DiagramData {
+export async function buildDiagramData(classInstance: ModelicaClassInstance): Promise<DiagramData> {
   const nodes: DiagramNode[] = [];
   const edges: DiagramEdge[] = [];
 
@@ -90,6 +93,9 @@ export function buildDiagramData(classInstance: ModelicaClassInstance): DiagramD
   // Build nodes for each component
   for (const component of classInstance.components) {
     if (!component.name) continue;
+    // Yield to the event loop periodically so the LSP worker can process
+    // keystrokes and other messages while we build the diagram.
+    await yieldToEventLoop();
     const tc0 = performance.now();
     const condition = evaluateCondition(component, classInstance);
     tCondition += performance.now() - tc0;

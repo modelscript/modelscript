@@ -2917,6 +2917,13 @@ export class ModelicaParameterModification {
   }
 }
 
+/**
+ * WeakMap cache for evaluateCondition results.
+ * Keyed on the component instance identity — since components are cloned when
+ * modifications are applied, object identity is a safe cache key.
+ */
+const conditionCache = new WeakMap<ModelicaComponentInstance, boolean | undefined>();
+
 export function evaluateCondition(
   component: ModelicaComponentInstance,
   parentContext?: ModelicaClassInstance,
@@ -2924,12 +2931,16 @@ export function evaluateCondition(
   const node = component.abstractSyntaxNode;
   if (!node || !("conditionAttribute" in node) || !node.conditionAttribute?.condition) return true;
 
+  const cached = conditionCache.get(component);
+  if (cached !== undefined) return cached;
+
   const condition = node.conditionAttribute.condition;
   const interpreter = new ModelicaInterpreter(true);
   let result;
   try {
     result = condition.accept(interpreter, parentContext ?? component.parent ?? component);
     if (result instanceof ModelicaBooleanLiteral) {
+      conditionCache.set(component, result.value);
       return result.value;
     }
   } catch (e) {

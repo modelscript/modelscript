@@ -3139,8 +3139,9 @@ const diagramCache = new Map<string, { version: number | string; data: any }>();
  * SysML2 requests are delegated directly to the dispatch (which handles layout merging).
  */
 async function handleGetDiagramData(params: { uri: string; className?: string; diagramType?: string }) {
-  // Force flush semantic pass so we don't build diagram from stale AST
-  await flushValidation(params.uri);
+  // Do NOT flush validation here — it blocks the event loop and starves the
+  // text editor of diagnostic updates. Instead, build the diagram from the
+  // most recently indexed AST (at worst ~300ms stale).
 
   // SysML2 — delegate directly to dispatch (no caching needed, layout is in-memory)
   if (params.uri.endsWith(".sysml")) {
@@ -3177,7 +3178,7 @@ async function handleGetDiagramData(params: { uri: string; className?: string; d
 
   try {
     const tBuild0 = performance.now();
-    const result = buildDiagramData(classInstance);
+    const result = await buildDiagramData(classInstance);
     const tBuild = performance.now() - tBuild0;
     if (result) {
       (result as any).isLoading = !mslStdlibReady;
@@ -4985,7 +4986,7 @@ connection.onRequest("modelscript/runNotebookCell", async (params: { sessionId: 
       if (classInstance) {
         try {
           console.log(`[notebook-diagram] building diagram for '${name}'`);
-          const data = buildDiagramData(classInstance);
+          const data = await buildDiagramData(classInstance);
           console.log(
             `[notebook-diagram] diagram for '${name}': ${data.nodes.length} nodes, ${data.edges.length} edges`,
           );

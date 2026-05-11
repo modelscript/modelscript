@@ -61,12 +61,11 @@ export class ModelicaDiagramBackend implements DiagramBackend {
   constructor(private readonly deps: ModelicaBackendDeps) {}
 
   async getData(params: DiagramGetDataParams): Promise<DiagramData | null> {
-    await this.deps.flushValidation(params.uri);
     const classInstance = this.deps.resolveClassInstance(params.uri, params.className);
     if (!classInstance) return null;
 
     try {
-      return buildDiagramData(classInstance);
+      return await buildDiagramData(classInstance);
     } catch (e: unknown) {
       console.error(`[diagram] Error building diagram data: ${e}`);
       return null;
