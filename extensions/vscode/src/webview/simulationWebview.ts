@@ -127,6 +127,8 @@ const optObjectiveInput = document.getElementById("opt-objective") as HTMLInputE
 const optControlsInput = document.getElementById("opt-controls") as HTMLInputElement;
 const optToleranceInput = document.getElementById("opt-tolerance") as HTMLInputElement;
 const optItersInput = document.getElementById("opt-iters") as HTMLInputElement;
+const optSysmlUriInput = document.getElementById("opt-sysml-uri") as HTMLInputElement;
+const optSysmlFilterInput = document.getElementById("opt-sysml-filter") as HTMLInputElement;
 
 // Monte Carlo inputs
 const mcSection = document.getElementById("mc-section")!;
@@ -560,6 +562,8 @@ btnOptimize?.addEventListener("click", () => {
       controls: controls.length > 0 ? controls : undefined,
       tolerance: optToleranceInput.value ? parseFloat(optToleranceInput.value) : undefined,
       maxIterations: optItersInput.value ? parseInt(optItersInput.value) : 200,
+      sysmlUri: optSysmlUriInput.value || undefined,
+      sysmlFilter: optSysmlFilterInput.value || undefined,
     },
   });
 });

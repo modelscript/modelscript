@@ -70,6 +70,13 @@ export interface OptimizationProblem {
   monteCarloOptions?: MonteCarloOptions;
   /** Whether to use analytical uncertainty propagation in the NLP (default: true) */
   analyticalUncertainty?: boolean;
+  /**
+   * External state-variable inequality constraints.
+   * Each entry maps a state variable name to upper/lower bounds that will
+   * be applied at every collocation grid point.
+   * Typically injected from SysML2 requirement constraints.
+   */
+  stateConstraints?: { variable: string; bound: number; type: "<=" | ">=" }[];
 }
 
 /**
@@ -643,6 +650,24 @@ export class ModelicaOptimizer {
       const initVal = z0[i]!;
       lb[i] = initVal;
       ub[i] = initVal;
+    }
+
+    // Apply external state-variable constraints (e.g., from SysML2 requirements)
+    if (this.problem.stateConstraints) {
+      for (const sc of this.problem.stateConstraints) {
+        const stateIdx = stateNames.indexOf(sc.variable);
+        if (stateIdx === -1) continue; // Variable not a state — skip
+
+        // Apply at all grid points (except k=0 which is pinned by initial conditions)
+        for (let k = 1; k < nPoints; k++) {
+          const idx = k * varsPerPoint + stateIdx;
+          if (sc.type === "<=") {
+            ub[idx] = Math.min(ub[idx]!, sc.bound);
+          } else {
+            lb[idx] = Math.max(lb[idx]!, sc.bound);
+          }
+        }
+      }
     }
 
     // Helper: extract state and control values at grid point k

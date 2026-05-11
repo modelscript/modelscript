@@ -319,6 +319,8 @@ export class SimulationPanel {
                 controls: msg.payload.controls,
                 tolerance: msg.payload.tolerance,
                 maxIterations: msg.payload.maxIterations,
+                sysmlUri: msg.payload.sysmlUri || undefined,
+                sysmlFilter: msg.payload.sysmlFilter || undefined,
               });
 
               if (result.error || !result.success) {
@@ -757,6 +759,14 @@ export class SimulationPanel {
           </div>
           <div class="settings-row"><label>Tolerance</label><input type="number" id="opt-tolerance" step="any" value="0.000001"></div>
           <div class="settings-row"><label>Max Iterations</label><input type="number" id="opt-iters" step="any" value="200"></div>
+          <div style="padding: 4px 16px; font-size: 11px;">
+            <label style="display:block;margin-bottom:4px">SysML2 Constraints URI <span style="opacity:0.5">(optional)</span></label>
+            <input type="text" id="opt-sysml-uri" style="width: 100%; box-sizing: border-box; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); font-size: 11px;" placeholder="memfs:///requirements.sysml">
+          </div>
+          <div style="padding: 4px 16px; font-size: 11px;">
+            <label style="display:block;margin-bottom:4px">Constraint Filter <span style="opacity:0.5">(optional)</span></label>
+            <input type="text" id="opt-sysml-filter" style="width: 100%; box-sizing: border-box; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); font-size: 11px;" placeholder="OptAnalysis">
+          </div>
           <div class="simulate-btn-container">
             <button id="btn-optimize" class="simulate-btn" style="background: var(--vscode-debugIcon-startForeground, #388a34);">Run Optimization</button>
           </div>

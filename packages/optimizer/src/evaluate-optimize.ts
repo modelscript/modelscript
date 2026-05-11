@@ -160,6 +160,22 @@ export function evaluateOptimize(
   const _lp = getNamedArgStr("lpSolver") as SolverOptions["lpSolver"];
   if (_lp !== undefined) solverOptions.lpSolver = _lp;
 
+  // Parse state constraints: "v<=10,x>=0"
+  const constraintStr = getNamedArgStr("constraints") ?? "";
+  const stateConstraints: { variable: string; bound: number; type: "<=" | ">=" }[] = [];
+  if (constraintStr) {
+    for (const part of constraintStr.split(",")) {
+      const m = part.trim().match(/^([a-zA-Z_][a-zA-Z0-9_.]*)\s*(<=|>=)\s*(-?[0-9]+(?:\.[0-9]+)?)$/);
+      if (m && m[1] && m[2] && m[3]) {
+        stateConstraints.push({
+          variable: m[1],
+          bound: parseFloat(m[3]),
+          type: m[2] as "<=" | ">=",
+        });
+      }
+    }
+  }
+
   // ── Step 4: Run optimization ──
   let result: {
     success: boolean;
@@ -182,6 +198,7 @@ export function evaluateOptimize(
       tolerance,
       maxIterations,
       solverOptions,
+      stateConstraints: stateConstraints.length > 0 ? stateConstraints : undefined,
     });
     result = optimizer.solve();
   } catch (e) {

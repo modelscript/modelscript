@@ -111,7 +111,7 @@ import {
   registerCalibrateDeps,
   registerOptimizeDeps,
 } from "@modelscript/optimizer";
-import { VerificationRunner } from "@modelscript/polyglot";
+import { VerificationRunner, extractSysML2Constraints, mapConstraintsToOptimizer } from "@modelscript/polyglot";
 import { ScopeResolver } from "@modelscript/polyglot/resolver";
 import { SymbolIndexer } from "@modelscript/polyglot/symbol-indexer";
 import { ModelicaSimulator, registerMonteCarloDeps, registerSimulateDeps } from "@modelscript/simulator";
@@ -3605,6 +3605,12 @@ connection.onRequest(
     tolerance?: number;
     maxIterations?: number;
     parameterOverrides?: Record<string, number>;
+    /** URI of a SysML2 document containing requirement constraints to inject */
+    sysmlUri?: string;
+    /** Optional filter (analysis/package name) to restrict constraint extraction */
+    sysmlFilter?: string;
+    /** Optional explicit variable mapping from SysML2 paths to Modelica variable names */
+    sysmlVariableMap?: Record<string, string>;
   }): Promise<{
     success: boolean;
     cost: number;
@@ -3692,6 +3698,32 @@ connection.onRequest(
         finalControls = ["u"];
       }
 
+      // ── SysML2 constraint injection ──
+      let stateConstraints: { variable: string; bound: number; type: "<=" | ">=" }[] | undefined;
+      if (params.sysmlUri && globalSysML2QueryEngine) {
+        try {
+          // Ensure the SysML2 document is indexed
+          const sysmlDoc = documents.get(params.sysmlUri);
+          if (sysmlDoc) await validateTextDocument(sysmlDoc);
+
+          const sysmlDb = globalSysML2QueryEngine.toQueryDB();
+          const rawConstraints = extractSysML2Constraints(sysmlDb, params.sysmlFilter);
+          const variableMap = params.sysmlVariableMap ? new Map(Object.entries(params.sysmlVariableMap)) : undefined;
+          stateConstraints = mapConstraintsToOptimizer(rawConstraints, variableMap);
+          connection.console.info(
+            `[optimize] Extracted ${stateConstraints.length} SysML2 constraints` +
+              (params.sysmlFilter ? ` (filter: ${params.sysmlFilter})` : ""),
+          );
+          for (const sc of stateConstraints) {
+            connection.console.info(`[optimize]   ${sc.variable} ${sc.type} ${sc.bound}`);
+          }
+        } catch (e) {
+          connection.console.warn(
+            `[optimize] SysML2 constraint extraction failed: ${e instanceof Error ? e.message : String(e)}`,
+          );
+        }
+      }
+
       const optimizer = new ModelicaOptimizer(dae, {
         objective: params.objective ?? "u^2",
         controls: finalControls,
@@ -3702,6 +3734,7 @@ connection.onRequest(
         tolerance: params.tolerance ?? 1e-6,
         maxIterations: params.maxIterations ?? 200,
         parameterOverrides: params.parameterOverrides ? new Map(Object.entries(params.parameterOverrides)) : undefined,
+        stateConstraints,
       });
 
       const result = optimizer.solve();
