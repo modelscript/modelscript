@@ -585,6 +585,22 @@ export const BUILTIN_FUNCTIONS: ReadonlyMap<string, BuiltinFunctionDef> = new Ma
       outputType: "OptimizationResult",
     },
   ],
+  [
+    "montecarlo",
+    {
+      inputs: [
+        { name: "className", type: "TypeName" },
+        { name: "startTime", type: "Real", defaultValue: 0 },
+        { name: "stopTime", type: "Real", defaultValue: 10 },
+        { name: "numberOfIntervals", type: "Integer", defaultValue: 500 },
+        { name: "numSamples", type: "Integer", defaultValue: 200 },
+        { name: "seed", type: "Integer" },
+        { name: "confidenceLevel", type: "Real", defaultValue: 0.95 },
+        { name: "method", type: "String" },
+      ],
+      outputType: "MonteCarloResult",
+    },
+  ],
 ]);
 
 /**

@@ -339,6 +339,22 @@ app.get("/", (_req, res) => {
       <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 12l2 2 4-4M5 12a7 7 0 1114 0 7 7 0 01-14 0z"/></svg></div>
       <span class="tpl-name">MBSE Verification</span>
     </a>
+    <a href="/vscode/workbench/#memfs:cfd-verification" class="tpl-card">
+      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"/><path d="M14.5 5.5L16 4M9.5 5.5L8 4" stroke-width="2" stroke-linecap="round"/></svg></div>
+      <span class="tpl-name">CFD + Verification</span>
+    </a>
+    <a href="/vscode/workbench/#memfs:calibration" class="tpl-card">
+      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="10"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg></div>
+      <span class="tpl-name">Parameter Calibration</span>
+    </a>
+    <a href="/vscode/workbench/#memfs:optimica-polyglot" class="tpl-card">
+      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
+      <span class="tpl-name">Optimica + SysML2</span>
+    </a>
+    <a href="/vscode/workbench/#memfs:uncertainty" class="tpl-card">
+      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 18 C6 18 8 6 12 6 C16 6 18 18 21 18" stroke-opacity="0.3" stroke-width="8" stroke-linecap="round"/><path d="M3 18 C6 18 8 10 12 10 C16 10 18 18 21 18" stroke-opacity="0.5" stroke-width="4" stroke-linecap="round"/><path d="M3 18 C6 16 8 12 12 12 C16 12 18 16 21 18" stroke-width="2"/></svg></div>
+      <span class="tpl-name">Uncertainty Analysis</span>
+    </a>
     <a href="/vscode/workbench/#memfs:fmi2" class="tpl-card">
       <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13"/></svg></div>
       <span class="tpl-name">FMI 2.0 Template</span>

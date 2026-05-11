@@ -6,6 +6,7 @@ export * from "./branch-and-bound.js";
 export { dopri5, type Dopri5Options, type Dopri5Result, type EventCallback, type RhsFunction } from "./dopri5.js";
 export * from "./dual-evaluator.js";
 export * from "./dual.js";
+export * from "./evaluate-montecarlo.js";
 export * from "./evaluate-simulate.js";
 export * from "./gaussian.js";
 export * from "./homotopy-strategies.js";
@@ -32,5 +33,7 @@ export * from "./tape.js";
 export * from "./wasm-simulation-runner.js";
 
 import { ModelicaInterpreter, type BuiltinScriptingFunction } from "@modelscript/core";
+import { evaluateMonteCarlo } from "./evaluate-montecarlo.js";
 import { evaluateSimulate } from "./evaluate-simulate.js";
 ModelicaInterpreter.scriptingHandlers.set("simulate", evaluateSimulate as unknown as BuiltinScriptingFunction);
+ModelicaInterpreter.scriptingHandlers.set("montecarlo", evaluateMonteCarlo as unknown as BuiltinScriptingFunction);

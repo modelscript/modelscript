@@ -114,7 +114,7 @@ import {
 import { VerificationRunner } from "@modelscript/polyglot";
 import { ScopeResolver } from "@modelscript/polyglot/resolver";
 import { SymbolIndexer } from "@modelscript/polyglot/symbol-indexer";
-import { ModelicaSimulator, registerSimulateDeps } from "@modelscript/simulator";
+import { ModelicaSimulator, registerMonteCarloDeps, registerSimulateDeps } from "@modelscript/simulator";
 import { INDEXER_HOOKS as stepIndexerHooks } from "@modelscript/step/indexer_config";
 import { QUERY_HOOKS as stepQueryHooks } from "@modelscript/step/query_hooks";
 import { REF_HOOKS as stepRefHooks } from "@modelscript/step/ref_config";
@@ -136,6 +136,7 @@ import {
 registerSimulateDeps({ Flattener: ModelicaFlattener, Simulator: ModelicaSimulator });
 registerOptimizeDeps({ Flattener: ModelicaFlattener, Optimizer: ModelicaOptimizer });
 registerCalibrateDeps({ Flattener: ModelicaFlattener, Simulator: ModelicaSimulator, Calibrator: ModelicaCalibrator });
+registerMonteCarloDeps({ Flattener: ModelicaFlattener, Simulator: ModelicaSimulator });
 
 console.log("ModelScript language server starting...");
 
