@@ -6,16 +6,18 @@ import path from "node:path";
 import Parser, { type Range } from "tree-sitter";
 import type { CommandModule } from "yargs";
 import { NodeFileSystem } from "../util/filesystem.js";
+import { Profiler } from "../util/timing.js";
 
 interface FlattenArgs {
   name: string;
   paths: string[];
+  timing?: boolean;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export const Flatten: CommandModule<{}, FlattenArgs> = {
   command: "flatten <name> <paths...>",
-  describe: "",
+  describe: "Flatten a Modelica model to a flat DAE representation",
   builder: (yargs) => {
     return yargs
       .positional("name", {
@@ -28,9 +30,16 @@ export const Flatten: CommandModule<{}, FlattenArgs> = {
         demandOption: true,
         description: "paths of libraries and modules to load",
         type: "string",
+      })
+      .option("timing", {
+        description: "report timing information for each stage as JSON to stderr",
+        type: "boolean",
+        default: false,
       });
   },
   handler: async (args) => {
+    const profiler = new Profiler();
+
     const parser = new Parser();
     parser.setLanguage(Modelica);
 
@@ -44,7 +53,10 @@ export const Flatten: CommandModule<{}, FlattenArgs> = {
       pathMap.set(path.resolve(p), p);
     }
 
+    profiler.start("parsing");
     for (const p of args.paths) await context.addLibrary(p);
+    profiler.end("parsing");
+
     const instance = context.query(args.name);
     if (!instance) {
       console.error(`'${args.name}' not found`);
@@ -52,11 +64,14 @@ export const Flatten: CommandModule<{}, FlattenArgs> = {
     }
 
     // Flatten the model
+    profiler.start("flattening");
     const dae = new ModelicaDAE(instance.name ?? "DAE", instance.description);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (instance as any).accept(new ModelicaFlattener(), ["", dae]);
+    profiler.end("flattening");
 
     // Run the linter to collect diagnostics
+    profiler.start("linting");
     const diagnostics: { type: string; code: number; message: string; resource: string | null; range: Range | null }[] =
       [];
     const linter = new ModelicaLinter(
@@ -76,6 +91,7 @@ export const Flatten: CommandModule<{}, FlattenArgs> = {
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     linter.lint(instance as any);
+    profiler.end("linting");
 
     // Convert absolute resource path to user-provided relative path
     const toUserPath = (absPath: string | null) => {
@@ -108,6 +124,7 @@ export const Flatten: CommandModule<{}, FlattenArgs> = {
     if (errors.length > 0) {
       for (const d of diagnostics) console.error(formatDiag(d));
       console.error(`\n${errors.length} error(s), ${warnings.length} warning(s) found.`);
+      if (args.timing) profiler.report();
       return;
     }
 
@@ -119,5 +136,7 @@ export const Flatten: CommandModule<{}, FlattenArgs> = {
     if (errors.length > 0 || warnings.length > 0) {
       console.error(`\n${errors.length} error(s), ${warnings.length} warning(s) found.`);
     }
+
+    if (args.timing) profiler.report();
   },
 };

@@ -6,8 +6,8 @@ import PackageJson from "@npmcli/package-json";
 import path from "node:path";
 import yargs from "yargs/yargs";
 import { Cosim } from "./commands/cosim.js";
-import { ExportFmu } from "./commands/export-fmu.js";
 import { Flatten } from "./commands/flatten.js";
+import { Fmu } from "./commands/fmu.js";
 import { I18n } from "./commands/i18n.js";
 import { Init } from "./commands/init.js";
 import { Instantiate } from "./commands/instantiate.js";
@@ -29,7 +29,7 @@ yargs(process.argv.slice(2))
   .usage(`CLI for ModelScript ${pkg.content.version}`)
   .command(Flatten)
   .command(Cosim)
-  .command(ExportFmu)
+  .command(Fmu)
   .command(I18n)
   .command(Init)
   .command(Instantiate)

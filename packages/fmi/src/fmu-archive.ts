@@ -40,6 +40,8 @@ export interface FmuArchiveOptions extends FmuOptions {
   wasmJsGlue?: string;
   /** Additional resource files to bundle in `resources/` (filename → contents). */
   resourceFiles?: Map<string, Uint8Array>;
+  /** Which FMI versions to bundle (default: "both"). */
+  fmiVersion?: "2" | "3" | "both";
 }
 
 /** Result of FMU archive generation. */
@@ -65,6 +67,7 @@ export function buildFmuArchive(
   options: FmuArchiveOptions,
   stateVars: Set<string> = new Set<string>(),
 ): FmuArchiveResult {
+  const fmiVersion = options.fmiVersion ?? "both";
   const fmuResult = generateFmu(dae, options, stateVars);
   const fmi3Result = generateFmi3(dae, options, stateVars);
   const id = options.modelIdentifier;
@@ -72,12 +75,20 @@ export function buildFmuArchive(
   const files = new Map<string, Uint8Array>();
   const encoder = new TextEncoder();
 
-  // ── modelDescription.xml ──
-  files.set("modelDescription.xml", encoder.encode(fmuResult.modelDescriptionXml));
+  // ── FMI 2.0 XML ──
+  if (fmiVersion === "2" || fmiVersion === "both") {
+    files.set("modelDescription.xml", encoder.encode(fmuResult.modelDescriptionXml));
+  }
 
-  // ── terminalsAndIcons.xml (FMI 3.0) ──
-  if (fmi3Result.terminalsAndIconsXml) {
-    files.set("terminalsAndIcons/terminalsAndIcons.xml", encoder.encode(fmi3Result.terminalsAndIconsXml));
+  // ── FMI 3.0 XML ──
+  if (fmiVersion === "3" || fmiVersion === "both") {
+    // If we only want FMI 3, we still need a modelDescription.xml at the root
+    if (fmiVersion === "3") {
+      files.set("modelDescription.xml", encoder.encode(fmi3Result.modelDescriptionXml));
+    }
+    if (fmi3Result.terminalsAndIconsXml) {
+      files.set("terminalsAndIcons/terminalsAndIcons.xml", encoder.encode(fmi3Result.terminalsAndIconsXml));
+    }
   }
 
   // ── C source files ──
@@ -85,13 +96,17 @@ export function buildFmuArchive(
     const sources = generateFmuCSources(dae, fmuResult, options);
     files.set(`sources/${id}_model.h`, encoder.encode(sources.modelH));
     files.set(`sources/${id}_model.c`, encoder.encode(sources.modelC));
-    files.set("sources/fmi2Functions.c", encoder.encode(sources.fmi2FunctionsC));
-    files.set("sources/fmi3Functions.c", encoder.encode(sources.fmi3FunctionsC));
 
-    // Include FMI 2.0 headers (minimal subset for compilation)
-    files.set("sources/fmi2Functions.h", encoder.encode(FMI2_FUNCTIONS_H));
-    files.set("sources/fmi2TypesPlatform.h", encoder.encode(FMI2_TYPES_PLATFORM_H));
-    files.set("sources/fmi2FunctionTypes.h", encoder.encode(FMI2_FUNCTION_TYPES_H));
+    if (fmiVersion === "2" || fmiVersion === "both") {
+      files.set("sources/fmi2Functions.c", encoder.encode(sources.fmi2FunctionsC));
+      files.set("sources/fmi2Functions.h", encoder.encode(FMI2_FUNCTIONS_H));
+      files.set("sources/fmi2TypesPlatform.h", encoder.encode(FMI2_TYPES_PLATFORM_H));
+      files.set("sources/fmi2FunctionTypes.h", encoder.encode(FMI2_FUNCTION_TYPES_H));
+    }
+
+    if (fmiVersion === "3" || fmiVersion === "both") {
+      files.set("sources/fmi3Functions.c", encoder.encode(sources.fmi3FunctionsC));
+    }
 
     // CMake build system
     files.set("sources/CMakeLists.txt", encoder.encode(sources.cmakeLists));
@@ -154,19 +169,21 @@ export function buildFmuArchive(
   crawlDaeForJs(dae);
 
   // ── buildDescription.xml (FMI 3.0 §2.5) ──
-  const buildDescLines = [
-    '<?xml version="1.0" encoding="UTF-8"?>',
-    '<fmiBuildDescription fmiVersion="3.0">',
-    `  <BuildConfiguration modelIdentifier="${id}">`,
-    '    <SourceFileSet language="C">',
-    `      <SourceFile name="${id}_model.c" />`,
-    `      <SourceFile name="fmi2Functions.c" />`,
-    `      <SourceFile name="fmi3Functions.c" />`,
-    "    </SourceFileSet>",
-    "  </BuildConfiguration>",
-    "</fmiBuildDescription>",
-  ];
-  files.set("extra/buildDescription.xml", encoder.encode(buildDescLines.join("\n")));
+  if (fmiVersion === "3" || fmiVersion === "both") {
+    const buildDescLines = [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<fmiBuildDescription fmiVersion="3.0">',
+      `  <BuildConfiguration modelIdentifier="${id}">`,
+      '    <SourceFileSet language="C">',
+      `      <SourceFile name="${id}_model.c" />`,
+      fmiVersion === "both" ? `      <SourceFile name="fmi2Functions.c" />` : "",
+      `      <SourceFile name="fmi3Functions.c" />`,
+      "    </SourceFileSet>",
+      "  </BuildConfiguration>",
+      "</fmiBuildDescription>",
+    ].filter(Boolean);
+    files.set("extra/buildDescription.xml", encoder.encode(buildDescLines.join("\n")));
+  }
 
   // ── Build ZIP archive ──
   const archive = createZip(files);
