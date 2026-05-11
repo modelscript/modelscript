@@ -8,6 +8,7 @@ export * from "./dual-evaluator.js";
 export * from "./dual.js";
 export * from "./evaluate-montecarlo.js";
 export * from "./evaluate-simulate.js";
+export * from "./fmu-subsystem.js";
 export * from "./gaussian.js";
 export * from "./homotopy-strategies.js";
 export * from "./init-solver.js";

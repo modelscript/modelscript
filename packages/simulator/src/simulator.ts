@@ -40,6 +40,7 @@ import { type BdfOptions, bdf as bdfSolver } from "./bdf.js";
 import { type Dopri5Options, dopri5 as dopri5Solver } from "./dopri5.js";
 import { DualExpressionEvaluator } from "./dual-evaluator.js";
 import { Dual } from "./dual.js";
+import { type FmuSubsystemRegistry } from "./fmu-subsystem.js";
 import { solveInitialEquations } from "./init-solver.js";
 import { type MonteCarloResult, type RandomVariable, runMonteCarloSimulation } from "./monte-carlo.js";
 import { ReverseExpressionEvaluator } from "./reverse-evaluator.js";
@@ -581,6 +582,13 @@ export class ModelicaSimulator {
   private assertionEquations: { condition: ModelicaExpression; message: ModelicaExpression | null }[] = [];
   /** Runtime state for each state machine in the DAE. */
   private stateMachineRuntimes: StateMachineRuntime[] = [];
+  /**
+   * Optional registry of FMU subsystems that provide external evaluation
+   * for variables originating from co-simulation FMU blocks.
+   * When present, the simulator delegates input/step/output for matched
+   * variable prefixes to the corresponding FmuSubsystem.
+   */
+  fmuRegistry?: FmuSubsystemRegistry;
 
   constructor(dae: ModelicaDAE, debuggerHook?: SimulationDebugger) {
     this.dae = dae;

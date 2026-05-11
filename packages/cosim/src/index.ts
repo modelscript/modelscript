@@ -32,6 +32,7 @@ export * from "./historian/replayer.js";
 // ── FMU ──
 export * from "./fmu/model-description.js";
 export * from "./fmu/storage.js";
+export * from "./fmu/wrapper-gen.js";
 
 // ── WebSocket ──
 export * from "./ws/stream.js";
