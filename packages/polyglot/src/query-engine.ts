@@ -420,10 +420,12 @@ export class QueryEngine {
    * Unlike `createTrackedDB()`, accesses through this facade are NOT recorded
    * as dependencies of any executing query.
    */
+  private _queryDBCache: QueryDB | null = null;
   toQueryDB(): QueryDB {
+    if (this._queryDBCache) return this._queryDBCache;
     const engine = this;
 
-    return {
+    const db: QueryDB = {
       symbol(id: SymbolId): SymbolEntry | undefined {
         return engine.resolveEntry(id);
       },
@@ -541,6 +543,8 @@ export class QueryEngine {
         return engine.tree.getNode(entry.startByte, entry.endByte, entry);
       },
     };
+    this._queryDBCache = db;
+    return db;
   }
 
   // =========================================================================

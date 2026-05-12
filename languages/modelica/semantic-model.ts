@@ -153,6 +153,42 @@ const inputParametersCache = new WeakMap<SymbolEntry, any[]>();
 const outputParametersCache = new WeakMap<SymbolEntry, any[]>();
 
 // ---------------------------------------------------------------------------
+// Global wrapper instance cache
+// ---------------------------------------------------------------------------
+// Keyed by (QueryDB, SymbolId) → ModelicaElement wrapper.
+// This ensures the same SymbolId always returns the same wrapper instance
+// with warm internal caches (#elementsCache, etc.), avoiding expensive
+// re-instantiation on every access — especially for MSL library classes
+// that don't change between user edits.
+const wrapperCacheByDB = new WeakMap<QueryDB, Map<SymbolId, ModelicaElement>>();
+
+function getWrapperCache(db: QueryDB): Map<SymbolId, ModelicaElement> {
+  let cache = wrapperCacheByDB.get(db);
+  if (!cache) {
+    cache = new Map();
+    wrapperCacheByDB.set(db, cache);
+  }
+  return cache;
+}
+
+/**
+ * Invalidate wrapper caches for symbols that have changed.
+ * Called from the LSP after QueryEngine.invalidate() so that
+ * user document wrappers get fresh data while MSL library
+ * wrappers remain warm with their cached elements/components.
+ *
+ * For each changed ID, we clear the wrapper AND all wrappers whose
+ * elements referenced it (since their #elementsCache is now stale).
+ */
+export function invalidateWrapperCache(db: QueryDB, changedIds: Set<SymbolId>): void {
+  const cache = wrapperCacheByDB.get(db);
+  if (!cache) return;
+  for (const id of changedIds) {
+    cache.delete(id);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // AST Factory Registry
 // ---------------------------------------------------------------------------
 
@@ -477,44 +513,54 @@ export class ModelicaClassInstance extends ModelicaElement {
    */
 
   private wrapElement(eid: SymbolId): ModelicaElement | null {
+    // Check global wrapper cache first — returns the same instance with warm
+    // internal caches (#elementsCache, etc.) instead of creating a new one.
+    const wrapperCache = getWrapperCache(this.db);
+    const cached = wrapperCache.get(eid);
+    if (cached) return cached;
+
     const entry = this.db.symbol(eid);
     if (!entry) return null;
+    let result: ModelicaElement;
     if (entry.kind === "Component") {
-      return new ModelicaComponentInstance(eid, this.db);
-    }
-    if (entry.kind === "Extends") {
-      return new ModelicaExtendsClassInstance(eid, this.db);
-    }
-    if (entry.kind === "Class") {
+      result = new ModelicaComponentInstance(eid, this.db);
+    } else if (entry.kind === "Extends") {
+      result = new ModelicaExtendsClassInstance(eid, this.db);
+    } else if (entry.kind === "Class") {
       let arrayDims = null;
       try {
         arrayDims = this.db.query("arrayDimensions", eid);
       } catch {
         // Ignored
       }
-      if (arrayDims && (arrayDims as any[]).length > 0)
-        return new ModelicaArrayClassInstance(eid, this.db, arrayDims as any[]);
-
-      const meta = entry.metadata as Record<string, unknown>;
-      if (meta?.isPredefined) {
-        if (entry.name === "Integer") return new ModelicaIntegerClassInstance(eid, this.db);
-        if (entry.name === "Boolean") return new ModelicaBooleanClassInstance(eid, this.db);
-        if (entry.name === "String") return new ModelicaStringClassInstance(eid, this.db);
-        if (entry.name === "Real") return new ModelicaRealClassInstance(eid, this.db);
-      }
-      if (meta?.isEnumeration || meta?.enumeration === "enumeration")
-        return new ModelicaEnumerationClassInstance(eid, this.db);
-      // Detect enumeration short class specifiers (e.g., type E = enumeration(...))
-      if (meta?.classPrefixes === "type" || !meta?.isPredefined) {
-        const classCst = this.db.cstNode(eid) as any;
-        const classSpec = classCst?.childForFieldName?.("classSpecifier");
-        if (classSpec?.type === "ShortClassSpecifier" && classSpec.childForFieldName?.("enumeration")) {
-          return new ModelicaEnumerationClassInstance(eid, this.db);
+      if (arrayDims && (arrayDims as any[]).length > 0) {
+        result = new ModelicaArrayClassInstance(eid, this.db, arrayDims as any[]);
+      } else {
+        const meta = entry.metadata as Record<string, unknown>;
+        if (meta?.isPredefined) {
+          if (entry.name === "Integer") result = new ModelicaIntegerClassInstance(eid, this.db);
+          else if (entry.name === "Boolean") result = new ModelicaBooleanClassInstance(eid, this.db);
+          else if (entry.name === "String") result = new ModelicaStringClassInstance(eid, this.db);
+          else if (entry.name === "Real") result = new ModelicaRealClassInstance(eid, this.db);
+          else result = new ModelicaClassInstance(eid, this.db);
+        } else if (meta?.isEnumeration || meta?.enumeration === "enumeration") {
+          result = new ModelicaEnumerationClassInstance(eid, this.db);
+        } else {
+          // Detect enumeration short class specifiers (e.g., type E = enumeration(...))
+          const classCst = this.db.cstNode(eid) as any;
+          const classSpec = classCst?.childForFieldName?.("classSpecifier");
+          if (classSpec?.type === "ShortClassSpecifier" && classSpec.childForFieldName?.("enumeration")) {
+            result = new ModelicaEnumerationClassInstance(eid, this.db);
+          } else {
+            result = new ModelicaClassInstance(eid, this.db);
+          }
         }
       }
-      return new ModelicaClassInstance(eid, this.db);
+    } else {
+      result = new ModelicaElement(eid, this.db);
     }
-    return new ModelicaElement(eid, this.db);
+    wrapperCache.set(eid, result);
+    return result;
   }
 
   #elementsCache?: ModelicaElement[];
@@ -553,9 +599,12 @@ export class ModelicaClassInstance extends ModelicaElement {
     return this.#declaredElementsCache;
   }
 
+  #componentsCache?: any[];
   /** Component elements within this class instance. */
   get components(): any[] {
-    return this.elements.filter((e) => e.isComponentInstance);
+    if (this.#componentsCache !== undefined) return this.#componentsCache;
+    this.#componentsCache = this.elements.filter((e) => e.isComponentInstance);
+    return this.#componentsCache;
   }
 
   get originalClassInstance(): ModelicaClassInstance | this {
@@ -1170,10 +1219,27 @@ export class ModelicaComponentInstance extends ModelicaClassInstance {
    * Get the resolved class instance for this component's type.
    * Returns a ModelicaClassInstance wrapping the (possibly specialized) class.
    */
+  #classInstanceCache?: ModelicaClassInstance | null;
+  #classInstanceCacheComputed = false;
   get classInstance(): ModelicaClassInstance | null {
-    const classId = this.db.query<SymbolId | null>("classInstance", this.id);
-    if (classId === null) return null;
+    if (this.#classInstanceCacheComputed) return this.#classInstanceCache ?? null;
+    this.#classInstanceCacheComputed = true;
 
+    const classId = this.db.query<SymbolId | null>("classInstance", this.id);
+    if (classId === null) {
+      this.#classInstanceCache = null;
+      return null;
+    }
+
+    // Check global wrapper cache first
+    const wrapperCache = getWrapperCache(this.db);
+    const cachedWrapper = wrapperCache.get(classId);
+    if (cachedWrapper && cachedWrapper instanceof ModelicaClassInstance) {
+      this.#classInstanceCache = cachedWrapper;
+      return cachedWrapper;
+    }
+
+    let result: ModelicaClassInstance;
     const classEntry = this.db.symbol(classId);
     if (classEntry) {
       const meta = classEntry.metadata as Record<string, unknown>;
@@ -1208,27 +1274,32 @@ export class ModelicaComponentInstance extends ModelicaClassInstance {
 
       const combinedDims = [...arrayDims, ...typeArrayDims];
       if (combinedDims.length > 0) {
-        return new ModelicaArrayClassInstance(classId, this.db, combinedDims);
-      }
-
-      if (meta?.isPredefined) {
-        if (classEntry.name === "Integer") return new ModelicaIntegerClassInstance(classId, this.db);
-        if (classEntry.name === "Boolean") return new ModelicaBooleanClassInstance(classId, this.db);
-        if (classEntry.name === "String") return new ModelicaStringClassInstance(classId, this.db);
-        if (classEntry.name === "Real") return new ModelicaRealClassInstance(classId, this.db);
-      }
-      if (meta?.isEnumeration || meta?.enumeration === "enumeration")
-        return new ModelicaEnumerationClassInstance(classId, this.db);
-      // Detect enumeration short class specifiers (e.g., type E = enumeration(...))
-      if (meta?.classPrefixes === "type" || !meta?.isPredefined) {
+        result = new ModelicaArrayClassInstance(classId, this.db, combinedDims);
+      } else if (meta?.isPredefined) {
+        if (classEntry.name === "Integer") result = new ModelicaIntegerClassInstance(classId, this.db);
+        else if (classEntry.name === "Boolean") result = new ModelicaBooleanClassInstance(classId, this.db);
+        else if (classEntry.name === "String") result = new ModelicaStringClassInstance(classId, this.db);
+        else if (classEntry.name === "Real") result = new ModelicaRealClassInstance(classId, this.db);
+        else result = new ModelicaClassInstance(classId, this.db);
+      } else if (meta?.isEnumeration || meta?.enumeration === "enumeration") {
+        result = new ModelicaEnumerationClassInstance(classId, this.db);
+      } else {
+        // Detect enumeration short class specifiers (e.g., type E = enumeration(...))
         const classCst = this.db.cstNode(classId) as any;
         const classSpec = classCst?.childForFieldName?.("classSpecifier");
         if (classSpec?.type === "ShortClassSpecifier" && classSpec.childForFieldName?.("enumeration")) {
-          return new ModelicaEnumerationClassInstance(classId, this.db);
+          result = new ModelicaEnumerationClassInstance(classId, this.db);
+        } else {
+          result = new ModelicaClassInstance(classId, this.db);
         }
       }
+    } else {
+      result = new ModelicaClassInstance(classId, this.db);
     }
-    return new ModelicaClassInstance(classId, this.db);
+
+    wrapperCache.set(classId, result);
+    this.#classInstanceCache = result;
+    return result;
   }
 
   /** Alias for classInstance, for legacy compatibility. */

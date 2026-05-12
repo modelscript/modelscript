@@ -69,6 +69,8 @@ import { wrapEntry as sysml2WrapEntry } from "@modelscript/sysml2/ast_classes";
 // @ts-ignore
 import { QUERY_HOOKS as modelicaQueryHooks } from "@modelscript/modelica/query_hooks";
 // @ts-ignore
+import { invalidateWrapperCache } from "@modelscript/modelica/semantic-model";
+// @ts-ignore
 import { QUERY_HOOKS as sysml2QueryHooks } from "@modelscript/sysml2/query_hooks";
 
 import { Language, Parser, Node as SyntaxNode, Tree as TreeSitterTree } from "web-tree-sitter";
@@ -791,14 +793,25 @@ const lastIndexedText = new Map<string, string>();
 // Track the last semantic diagnostics to avoid flashing when sending early syntax diagnostics
 const lastSemanticDiagnostics = new Map<string, Diagnostic[]>();
 // Throttle projectTreeChanged notifications so the diagram editor isn't rebuilt
-// on every keystroke. Uses a trailing-edge throttle: after the first notification,
-// subsequent calls within the window are coalesced into a single deferred fire.
+// on every keystroke. Uses a leading-edge throttle: the first call fires
+// immediately; subsequent calls within the cooldown window are coalesced
+// into a single trailing fire.
 let projectTreeChangedTimer: ReturnType<typeof setTimeout> | null = null;
+let projectTreeChangedPending = false;
 function sendProjectTreeChanged() {
-  if (projectTreeChangedTimer) return; // already scheduled
+  if (projectTreeChangedTimer) {
+    // Inside cooldown — mark pending so we fire once when the timer expires.
+    projectTreeChangedPending = true;
+    return;
+  }
+  // Fire immediately (leading edge)
+  connection.sendNotification("modelscript/projectTreeChanged");
   projectTreeChangedTimer = setTimeout(() => {
     projectTreeChangedTimer = null;
-    connection.sendNotification("modelscript/projectTreeChanged");
+    if (projectTreeChangedPending) {
+      projectTreeChangedPending = false;
+      connection.sendNotification("modelscript/projectTreeChanged");
+    }
   }, 1000);
 }
 
@@ -1038,6 +1051,15 @@ async function runSemanticPipeline(
       }
       if (typeof globalModelicaQueryEngine.updateTree === "function")
         globalModelicaQueryEngine.updateTree(cstTreeWrapper);
+      // Invalidate wrapper caches for changed symbols so user document
+      // wrappers get fresh data while MSL library wrappers stay warm.
+      if (changedIds && typeof invalidateWrapperCache === "function") {
+        try {
+          invalidateWrapperCache(globalModelicaQueryEngine.toQueryDB(), changedIds);
+        } catch {
+          // Ignore — invalidation is best-effort
+        }
+      }
     } else {
       globalModelicaQueryEngine = createModelicaQueryEngine(unifiedIndex, cstTreeWrapper) as any;
     }
