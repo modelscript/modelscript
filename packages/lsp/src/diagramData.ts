@@ -91,11 +91,12 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
   let componentCount = 0;
 
   // Build nodes for each component
-  for (const component of classInstance.components) {
+  for (let _ci = 0; _ci < classInstance.components.length; _ci++) {
+    const component = classInstance.components[_ci];
     if (!component.name) continue;
     // Yield to the event loop periodically so the LSP worker can process
     // keystrokes and other messages while we build the diagram.
-    await yieldToEventLoop();
+    if (_ci % 5 === 0) await yieldToEventLoop();
     const tc0 = performance.now();
     const condition = evaluateCondition(component, classInstance);
     tCondition += performance.now() - tc0;

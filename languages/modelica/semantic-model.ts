@@ -1231,14 +1231,6 @@ export class ModelicaComponentInstance extends ModelicaClassInstance {
       return null;
     }
 
-    // Check global wrapper cache first
-    const wrapperCache = getWrapperCache(this.db);
-    const cachedWrapper = wrapperCache.get(classId);
-    if (cachedWrapper && cachedWrapper instanceof ModelicaClassInstance) {
-      this.#classInstanceCache = cachedWrapper;
-      return cachedWrapper;
-    }
-
     let result: ModelicaClassInstance;
     const classEntry = this.db.symbol(classId);
     if (classEntry) {
@@ -1297,7 +1289,6 @@ export class ModelicaComponentInstance extends ModelicaClassInstance {
       result = new ModelicaClassInstance(classId, this.db);
     }
 
-    wrapperCache.set(classId, result);
     this.#classInstanceCache = result;
     return result;
   }

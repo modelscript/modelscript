@@ -330,7 +330,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
         const isDark =
           vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
           vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast;
-        webviewPanel.webview.postMessage({ type: "diagramData", data, isDark });
+        webviewPanel.webview.postMessage({ type: "render", data, isDark });
       } else {
         webviewPanel.webview.postMessage({ type: "empty" });
       }
