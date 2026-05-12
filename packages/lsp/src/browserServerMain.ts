@@ -870,6 +870,13 @@ documents.onDidChangeContent((change) => {
     activeSemanticTimers.delete(uri);
   }
 
+  // Cancel any pending cross-file revalidation to prevent cascading
+  // semantic analyses during rapid editing.
+  if (revalidationTimer) {
+    clearTimeout(revalidationTimer);
+    revalidationTimer = null;
+  }
+
   // === TIER 1: Instant parse + syntax errors (0ms) ===
   // Parse and send syntax errors immediately — before any debounce.
   // Tree-sitter incremental parse is ~2ms even for large files.
@@ -938,10 +945,21 @@ documents.onDidChangeContent((change) => {
 
   activeValidationTimers.set(
     uri,
-    setTimeout(() => {
+    setTimeout(async () => {
+      activeValidationTimers.delete(uri);
+      // Wait for any in-flight validation to finish before starting a new one.
+      // This prevents concurrent pipelines for the same URI from stacking up.
+      const inflight = activeValidationPromises.get(uri);
+      if (inflight) {
+        try {
+          await inflight;
+        } catch {
+          /* ignore */
+        }
+      }
+      // Re-check staleness: if another edit arrived while we waited, bail out.
       const doc = documents.get(uri);
       if (doc) validateTextDocument(doc);
-      activeValidationTimers.delete(uri);
     }, 300),
   );
 });
